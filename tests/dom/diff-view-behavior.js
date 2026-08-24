@@ -252,6 +252,146 @@ async function main() {
     failed.find("diff-line-text").every((host) => host.children.length === 0),
   );
 
+  // Split is a second projection of the same records. The host control
+  // primitives own radiogroup markup and keyboard behavior; this view
+  // supplies the exclusive joined-group contract and reprojects on the
+  // reported value without fetching or lexing again.
+  let layoutChange = null;
+  let layoutSyntaxCalls = 0;
+  const preferenceWrites = [];
+  const layoutSpecs = [];
+  let unbound = 0;
+  const layoutApi = {
+    highlightSyntax: async (source) => {
+      layoutSyntaxCalls += 1;
+      const side = layoutSyntaxCalls % 2 === 1 ? "old" : "new";
+      return source.split("\n").map((text) => [{ classes: [`hljs-${side}`], text }]);
+    },
+    isLargeTextPreview: () => false,
+    langForExtension: () => "python",
+    prefs: {
+      get: () => "split",
+      set: (key, value) => {
+        preferenceWrites.push({ key, value });
+        return true;
+      },
+    },
+    filterControls: {
+      groupHtml: (spec) => {
+        layoutSpecs.push(spec);
+        return `<span role="radiogroup" data-select="${spec.select}" data-layout="${spec.layout}">${spec.options.map((option) => option.label).join("/")}</span>`;
+      },
+      bind: (_root, handlers) => {
+        layoutChange = handlers.onChange;
+        return () => {
+          unbound += 1;
+        };
+      },
+    },
+  };
+  const split = new FakeElement("div");
+  const splitHandle = mountDiffView(split, byName.get("modified-with-heading"), layoutApi);
+  const splitRoot = split.find("diff-root")[0];
+  check("valid split preference restores immediately", splitRoot.dataset.layout === "split");
+  check(
+    "one split row is projected per context or paired run row",
+    split.find("diff-split-row").length === 3,
+  );
+  const splitContext = split.find("diff-split-context")[0];
+  check(
+    "split context duplicates both source sides",
+    splitContext.find("diff-split-side").length === 2,
+  );
+  const splitChange = split.find("diff-split-change")[0];
+  check(
+    "equal replacements pair deletion and addition",
+    splitChange.find("diff-split-empty").length === 0,
+  );
+  check(
+    "layout control uses the exclusive joined primitive",
+    layoutSpecs[0].select === "one" &&
+      layoutSpecs[0].layout === "joined" &&
+      layoutSpecs[0].value === "split",
+  );
+  check(
+    "layout control is always present",
+    split.find("diff-layout-control")[0].innerHTML.includes('role="radiogroup"'),
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  const splitContextSides = splitContext.find("diff-split-side");
+  check(
+    "split context keeps each side's tokens",
+    splitContextSides[0].find("diff-line-text")[0].children[0].classList.contains("hljs-old") &&
+      splitContextSides[1].find("diff-line-text")[0].children[0].classList.contains("hljs-new"),
+  );
+  const callsBeforeSwitch = layoutSyntaxCalls;
+  layoutChange("diff-layout", "unified", "one");
+  check("layout switch reprojects immediately", split.find("diff-split-row").length === 0);
+  check("unified switch restores four source rows", split.find("diff-line").length === 4);
+  check(
+    "layout preference persists",
+    preferenceWrites.at(-1).key === "diff.layout" && preferenceWrites.at(-1).value === "unified",
+  );
+  layoutChange("diff-layout", "split", "one");
+  layoutChange("diff-layout", "unified", "one");
+  check("repeated switches never re-run the lexer", layoutSyntaxCalls === callsBeforeSwitch);
+
+  const unequalDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
+  unequalDoc.patches.f1.hunks[0].lines = [
+    { op: "del", text: "old one" },
+    { op: "del", text: "old two", no_newline: true },
+    { op: "add", text: "new one" },
+  ];
+  unequalDoc.patches.f1.hunks[0].old_count = 2;
+  unequalDoc.patches.f1.hunks[0].new_count = 1;
+  const unequal = new FakeElement("div");
+  mountDiffView(unequal, unequalDoc, layoutApi);
+  const unequalRows = unequal.find("diff-split-change");
+  check("unequal replacements use the longer side's row count", unequalRows.length === 2);
+  const empty = unequalRows[1].find("diff-split-empty")[0];
+  check(
+    "padding invents no accessible content or number",
+    empty.getAttribute("aria-hidden") === "true" &&
+      empty.children.length === 0 &&
+      empty.text() === "",
+  );
+  check(
+    "no-newline marker stays on its source side",
+    unequalRows[1].find("diff-split-old")[0].find("diff-line-no-newline").length === 1,
+  );
+
+  const invalidPreference = new FakeElement("div");
+  mountDiffView(invalidPreference, byName.get("modified-with-heading"), {
+    ...layoutApi,
+    prefs: { ...layoutApi.prefs, get: () => "future-layout" },
+  });
+  check(
+    "invalid layout preference falls back to unified",
+    invalidPreference.find("diff-root")[0].dataset.layout === "unified",
+  );
+  const pureAdd = new FakeElement("div");
+  mountDiffView(pureAdd, byName.get("added-text-file"), layoutApi);
+  const pureAddRows = pureAdd.find("diff-split-change");
+  check(
+    "pure additions leave only old-side padding",
+    pureAddRows.length > 0 &&
+      pureAddRows.every((row) =>
+        row.find("diff-split-old")[0].classList.contains("diff-split-empty"),
+      ),
+  );
+  const pureDelete = new FakeElement("div");
+  mountDiffView(pureDelete, byName.get("deleted-file"), layoutApi);
+  const pureDeleteRows = pureDelete.find("diff-split-change");
+  check(
+    "pure deletions leave only new-side padding",
+    pureDeleteRows.length > 0 &&
+      pureDeleteRows.every((row) =>
+        row.find("diff-split-new")[0].classList.contains("diff-split-empty"),
+      ),
+  );
+  splitHandle.dispose();
+  check("layout control binding disposes with the view", unbound === 1, String(unbound));
+
   // The per-file bar: the nav tree's own chevron mechanism (leading
   // glyph, expanded/collapsed classes) plus a copy control, with the
   // stat pair beside the filename.
@@ -380,6 +520,22 @@ async function main() {
   control.click();
   check("collapsing hides it again", group.classList.contains("diff-fold-collapsed"));
   check("short runs do not fold", container.find("diff-fold-control").length === 0);
+
+  const switchingFold = new FakeElement("div");
+  mountDiffView(switchingFold, longDoc, layoutApi);
+  const switchingControl = switchingFold.find("diff-fold-control")[0];
+  switchingControl.click();
+  layoutChange("diff-layout", "unified", "one");
+  layoutChange("diff-layout", "split", "one");
+  const restoredControl = switchingFold.find("diff-fold-control")[0];
+  check(
+    "expanded fold state survives reprojection",
+    restoredControl.getAttribute("aria-expanded") === "true",
+  );
+  check(
+    "restored split fold stays visible",
+    !switchingFold.find("diff-fold-group")[0].classList.contains("diff-fold-collapsed"),
+  );
 
   // The no-newline marker is visible, not silently dropped.
   const noNewline = new FakeElement("div");

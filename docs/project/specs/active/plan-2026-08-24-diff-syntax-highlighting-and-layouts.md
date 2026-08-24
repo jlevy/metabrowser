@@ -390,9 +390,9 @@ while retaining its row backgrounds.
 Ends with: one visible control switches the loaded comparison between unified and split
 without network or lexer work.
 
-- [ ] Add the split alignment projection: duplicated context, positional changed-run
+- [x] Add the split alignment projection: duplicated context, positional changed-run
   pairing, empty padding, and side-specific numbers and token runs.
-- [ ] Add the always-present toolbar and joined layout control, backed by the validated
+- [x] Add the always-present toolbar and joined layout control, backed by the validated
   `diff.layout` preference.
 - [ ] Preserve section, fold, hydration, and token state across projection changes; keep
   only the active projection mounted.

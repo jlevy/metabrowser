@@ -18,14 +18,27 @@ import { buildFileSyntaxModel, highlightFileSyntax } from "./diff-syntax.js";
  * @property {(data: Record<string, unknown>) => boolean} isLargeTextPreview
  * @property {(source: string, language: string, options?: {signal?: AbortSignal}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
  * @property {(extension: string) => string} langForExtension
+ * @property {NonNullable<MetabrowserPublicSdk["filterControls"]> | undefined} [filterControls]
+ * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  */
 
 /**
  * @typedef {object} FileViewState
  * @property {Record<string, unknown>} change
+ * @property {HTMLElement} body
+ * @property {Set<string>} expandedFolds
  * @property {Record<string, unknown>} patch
  * @property {ReturnType<typeof buildFileSyntaxModel>} syntax
- * @property {{host: HTMLElement, line: ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number]}[]} unifiedTextHosts
+ * @property {{host: HTMLElement, line: ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number], side: "old" | "new"}[]} textHosts
+ */
+
+/**
+ * @typedef {object} MountedDiffState
+ * @property {DiffViewApi | undefined} api
+ * @property {FileViewState[]} files
+ * @property {"unified" | "split"} layout
+ * @property {HTMLElement | null} layoutControl
+ * @property {HTMLElement} root
  */
 
 /**
@@ -45,6 +58,8 @@ function plainSyntaxApi() {
     highlightSyntax: async () => null,
     isLargeTextPreview: () => true,
     langForExtension: () => "",
+    filterControls: undefined,
+    prefs: undefined,
   };
 }
 
@@ -152,92 +167,220 @@ export function appendTokenRuns(host, runs) {
   host.replaceChildren(...spans);
 }
 
+/** @typedef {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number]} DiffLine */
+/** @typedef {{changedRun: number | null, old: DiffLine | null, new: DiffLine | null}} SplitRow */
+
 /**
- * Unified context follows the after-document interpretation.
- * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number]} line
+ * @param {DiffLine} line
+ * @param {"old" | "new"} side
  */
-function unifiedTokens(line) {
-  return line.op === "del" ? line.oldTokens : line.newTokens;
+function sideTokens(line, side) {
+  return side === "old" ? line.oldTokens : line.newTokens;
+}
+
+/**
+ * @param {FileViewState} state
+ * @param {DiffLine} line
+ * @param {"old" | "new"} side
+ */
+function renderTextHost(state, line, side) {
+  // `hljs` marks this as already owned by the token pipeline. The
+  // first paint remains complete plain text, and the shell's global
+  // `pre code:not(.hljs)` enhancer cannot select this span.
+  const host = el("span", "diff-line-text hljs", line.text);
+  const runs = sideTokens(line, side);
+  if (runs !== null) {
+    appendTokenRuns(host, runs);
+  }
+  state.textHosts.push({ host, line, side });
+  return host;
+}
+
+/** @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk */
+function renderHunkHeader(hunk) {
+  const heading = hunk.heading ? ` ${hunk.heading}` : "";
+  return el(
+    "div",
+    "diff-hunk-header",
+    `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@${heading}`,
+  );
+}
+
+/** @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk */
+export function projectUnifiedHunk(hunk) {
+  return hunk.lines.slice();
+}
+
+/** @param {DiffLine[]} lines @returns {SplitRow[]} */
+export function pairChangedRun(lines) {
+  const oldLines = lines.filter((line) => line.op === "del");
+  const newLines = lines.filter((line) => line.op === "add");
+  const changedRun = lines[0]?.changedRun ?? null;
+  return Array.from({ length: Math.max(oldLines.length, newLines.length) }, (_, index) => ({
+    changedRun,
+    new: newLines[index] ?? null,
+    old: oldLines[index] ?? null,
+  }));
+}
+
+/**
+ * Duplicate context and positionally pair each contiguous changed run.
+ * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
+ * @returns {SplitRow[]}
+ */
+export function projectSplitHunk(hunk) {
+  /** @type {SplitRow[]} */
+  const rows = [];
+  for (let index = 0; index < hunk.lines.length; ) {
+    const line = hunk.lines[index];
+    if (line.op === "context") {
+      rows.push({ changedRun: null, new: line, old: line });
+      index += 1;
+      continue;
+    }
+    const run = line.changedRun;
+    let end = index + 1;
+    while (end < hunk.lines.length && hunk.lines[end].changedRun === run) {
+      end += 1;
+    }
+    rows.push(...pairChangedRun(hunk.lines.slice(index, end)));
+    index = end;
+  }
+  return rows;
+}
+
+/**
+ * @param {FileViewState} state
+ * @param {DiffLine} line
+ */
+function renderUnifiedLine(state, line) {
+  const row = el("div", `diff-line diff-line-${line.op}`);
+  row.append(
+    el("span", "diff-line-number", line.oldNumber === null ? "" : String(line.oldNumber)),
+    el("span", "diff-line-number", line.newNumber === null ? "" : String(line.newNumber)),
+    el("span", "diff-line-marker", line.op === "add" ? "+" : line.op === "del" ? "-" : " "),
+    renderTextHost(state, line, line.op === "del" ? "old" : "new"),
+  );
+  if (line.noNewline) {
+    row.append(el("span", "diff-line-no-newline", "⏎ absent"));
+    row.dataset.tipText = "No newline at end of file";
+  }
+  return row;
+}
+
+/**
+ * @param {FileViewState} state
+ * @param {DiffLine | null} line
+ * @param {"old" | "new"} side
+ */
+function renderSplitSide(state, line, side) {
+  if (line === null) {
+    const empty = el("div", `diff-split-side diff-split-${side} diff-split-empty`);
+    empty.setAttribute("aria-hidden", "true");
+    return empty;
+  }
+  const op = line.op === "context" ? "context" : side === "old" ? "del" : "add";
+  const number = side === "old" ? line.oldNumber : line.newNumber;
+  const cell = el("div", `diff-split-side diff-split-${side} diff-line-${op}`);
+  cell.append(
+    el("span", "diff-line-number", number === null ? "" : String(number)),
+    el("span", "diff-line-marker", op === "del" ? "-" : op === "add" ? "+" : " "),
+    renderTextHost(state, line, side),
+  );
+  if (line.noNewline) {
+    cell.append(el("span", "diff-line-no-newline", "⏎ absent"));
+    cell.dataset.tipText = "No newline at end of file";
+  }
+  return cell;
+}
+
+/** @param {FileViewState} state @param {SplitRow} row */
+function renderSplitLine(state, row) {
+  const className = row.changedRun === null ? "diff-split-context" : "diff-split-change";
+  const element = el("div", `diff-split-row ${className}`);
+  element.append(renderSplitSide(state, row.old, "old"), renderSplitSide(state, row.new, "new"));
+  return element;
+}
+
+/**
+ * Append context rows and foldable changed runs. Split calls this with
+ * paired rows, so thresholds and labels count paired rows.
+ * @template T
+ * @param {HTMLElement} section
+ * @param {T[]} rows
+ * @param {(row: T) => number | null} changedRunOf
+ * @param {(row: T) => HTMLElement} renderRow
+ * @param {FileViewState} state
+ * @param {number} hunkIndex
+ */
+function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkIndex) {
+  for (let index = 0; index < rows.length; ) {
+    const changedRun = changedRunOf(rows[index]);
+    if (changedRun === null) {
+      section.append(renderRow(rows[index]));
+      index += 1;
+      continue;
+    }
+    let end = index + 1;
+    while (end < rows.length && changedRunOf(rows[end]) === changedRun) {
+      end += 1;
+    }
+    const run = rows.slice(index, end);
+    if (FOLD_THRESHOLD <= 0 || run.length <= FOLD_THRESHOLD) {
+      section.append(...run.map(renderRow));
+      index = end;
+      continue;
+    }
+    section.append(...run.slice(0, FOLD_VISIBLE).map(renderRow));
+    const hidden = run.length - FOLD_VISIBLE;
+    const key = `${String(state.change.id)}:${hunkIndex}:${changedRun}`;
+    const expanded = state.expandedFolds.has(key);
+    foldSequence += 1;
+    const group = el("div", `diff-fold-group${expanded ? "" : " diff-fold-collapsed"}`);
+    group.setAttribute("id", `diff-fold-group-${foldSequence}`);
+    group.append(...run.slice(FOLD_VISIBLE).map(renderRow));
+    section.append(renderFoldControl(group, hidden, state, key), group);
+    index = end;
+  }
 }
 
 /**
  * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
  * @param {FileViewState} state
- * @returns {HTMLElement}
+ * @param {number} hunkIndex
  */
-function renderUnifiedHunk(hunk, state) {
-  const section = el("div", "diff-hunk");
-  const heading = hunk.heading ? ` ${hunk.heading}` : "";
-  section.append(
-    el(
-      "div",
-      "diff-hunk-header",
-      `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@${heading}`,
-    ),
+function renderUnifiedHunk(hunk, state, hunkIndex) {
+  const section = el("div", "diff-hunk diff-hunk-unified");
+  section.append(renderHunkHeader(hunk));
+  const rows = projectUnifiedHunk(hunk);
+  appendFoldedRows(
+    section,
+    rows,
+    (line) => line.changedRun,
+    (line) => renderUnifiedLine(state, line),
+    state,
+    hunkIndex,
   );
-  const lines = hunk.lines;
-  // Index the contiguous runs of changed lines first, so each line knows
-  // whether it belongs to a run long enough to fold and where it sits
-  // within it. Folding is per run, not per hunk: a hunk may hold a large
-  // rewrite beside ordinary edits, and only the rewrite should collapse.
-  const runIndex = new Array(lines.length).fill(-1);
-  const runLength = new Array(lines.length).fill(0);
-  for (let start = 0; start < lines.length; ) {
-    if (lines[start].op === "context") {
-      start += 1;
-      continue;
-    }
-    let end = start;
-    while (end < lines.length && lines[end].op !== "context") {
-      end += 1;
-    }
-    for (let i = start; i < end; i += 1) {
-      runIndex[i] = i - start;
-      runLength[i] = end - start;
-    }
-    start = end;
-  }
+  return section;
+}
 
-  /** @type {HTMLElement | null} The group hidden lines are appended to. */
-  let foldGroup = null;
-  for (const [index, line] of lines.entries()) {
-    const op = line.op;
-    const row = el("div", `diff-line diff-line-${op}`);
-    const oldNumber = el(
-      "span",
-      "diff-line-number",
-      line.oldNumber === null ? "" : String(line.oldNumber),
-    );
-    const newNumber = el(
-      "span",
-      "diff-line-number",
-      line.newNumber === null ? "" : String(line.newNumber),
-    );
-    const marker = el("span", "diff-line-marker", op === "add" ? "+" : op === "del" ? "-" : " ");
-    // `hljs` marks this as already owned by the token pipeline. The
-    // first paint remains complete plain text, and the shell's global
-    // `pre code:not(.hljs)` enhancer cannot select this span.
-    const text = el("span", "diff-line-text hljs", line.text);
-    row.append(oldNumber, newNumber, marker, text);
-    state.unifiedTextHosts.push({ host: text, line });
-    if (line.noNewline) {
-      row.append(el("span", "diff-line-no-newline", "⏎ absent"));
-      row.dataset.tipText = "No newline at end of file";
-    }
-    const folds = FOLD_THRESHOLD > 0 && runLength[index] > FOLD_THRESHOLD;
-    if (folds && runIndex[index] === FOLD_VISIBLE) {
-      // The break: an expander stating exactly how many lines it holds.
-      const hidden = runLength[index] - FOLD_VISIBLE;
-      foldSequence += 1;
-      foldGroup = el("div", "diff-fold-group diff-fold-collapsed");
-      foldGroup.setAttribute("id", `diff-fold-group-${foldSequence}`);
-      section.append(renderFoldControl(foldGroup, hidden), foldGroup);
-    }
-    (folds && runIndex[index] >= FOLD_VISIBLE ? (foldGroup ?? section) : section).append(row);
-    if (runIndex[index] === runLength[index] - 1) {
-      foldGroup = null;
-    }
-  }
+/**
+ * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
+ * @param {FileViewState} state
+ * @param {number} hunkIndex
+ */
+function renderSplitHunk(hunk, state, hunkIndex) {
+  const section = el("div", "diff-hunk diff-hunk-split");
+  section.append(renderHunkHeader(hunk));
+  const rows = projectSplitHunk(hunk);
+  appendFoldedRows(
+    section,
+    rows,
+    (row) => row.changedRun,
+    (row) => renderSplitLine(state, row),
+    state,
+    hunkIndex,
+  );
   return section;
 }
 
@@ -246,29 +389,37 @@ function renderUnifiedHunk(hunk, state) {
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown>} patch
  * @param {DiffViewApi} api
+ * @param {HTMLElement} body
  * @returns {FileViewState}
  */
-export function createFileState(change, patch, api) {
+export function createFileState(change, patch, api, body) {
   return {
+    body,
     change,
+    expandedFolds: new Set(),
     patch,
     syntax: buildFileSyntaxModel(change, patch, api.langForExtension),
-    unifiedTextHosts: [],
+    textHosts: [],
   };
 }
 
 /**
- * Render the current unified projection from cached source facts.
- * @param {HTMLElement} body
+ * Render one active projection from cached source and token facts.
  * @param {FileViewState} state
+ * @param {"unified" | "split"} layout
  */
-export function renderFileBody(body, state) {
-  state.unifiedTextHosts = [];
-  for (const hunk of state.syntax.hunks) {
-    body.append(renderUnifiedHunk(hunk, state));
+export function renderFileBody(state, layout) {
+  state.body.replaceChildren();
+  state.textHosts = [];
+  for (const [hunkIndex, hunk] of state.syntax.hunks.entries()) {
+    state.body.append(
+      layout === "split"
+        ? renderSplitHunk(hunk, state, hunkIndex)
+        : renderUnifiedHunk(hunk, state, hunkIndex),
+    );
   }
   if (state.patch.truncated) {
-    body.append(el("div", "diff-availability", "This patch was truncated at its bounds."));
+    state.body.append(el("div", "diff-availability", "This patch was truncated at its bounds."));
   }
 }
 
@@ -284,8 +435,8 @@ async function enhanceFileSyntax(state, api) {
     if (!enhanced) {
       return;
     }
-    for (const { host, line } of state.unifiedTextHosts) {
-      const runs = unifiedTokens(line);
+    for (const { host, line, side } of state.textHosts) {
+      const runs = sideTokens(line, side);
       if (runs !== null) {
         appendTokenRuns(host, runs);
       }
@@ -301,13 +452,17 @@ async function enhanceFileSyntax(state, api) {
  *
  * @param {HTMLElement} group
  * @param {number} hidden
+ * @param {FileViewState} state
+ * @param {string} key
  * @returns {HTMLElement}
  */
-function renderFoldControl(group, hidden) {
+function renderFoldControl(group, hidden, state, key) {
+  let expanded = state.expandedFolds.has(key);
   const control = el("button", "diff-fold-control");
   control.setAttribute("type", "button");
-  control.setAttribute("aria-expanded", "false");
+  control.setAttribute("aria-expanded", String(expanded));
   control.setAttribute("aria-controls", group.getAttribute("id") || "");
+  control.classList.toggle("expanded", expanded);
   const chevron = el("span", "diff-fold-chevron");
   const svg = shellIcon("toggle");
   if (svg) {
@@ -318,15 +473,21 @@ function renderFoldControl(group, hidden) {
   const label = el(
     "span",
     "diff-fold-label",
-    `${hidden} more changed line${hidden === 1 ? "" : "s"}`,
+    expanded
+      ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
+      : `${hidden} more changed line${hidden === 1 ? "" : "s"}`,
   );
   control.append(chevron, label);
-  let expanded = false;
   control.addEventListener("click", (event) => {
     // The bar above owns clicks on the file section; a fold is its own
     // control and must not also collapse the whole file.
     event.stopPropagation();
     expanded = !expanded;
+    if (expanded) {
+      state.expandedFolds.add(key);
+    } else {
+      state.expandedFolds.delete(key);
+    }
     control.setAttribute("aria-expanded", String(expanded));
     control.classList.toggle("expanded", expanded);
     group.classList.toggle("diff-fold-collapsed", !expanded);
@@ -398,6 +559,99 @@ function renderFileBar(change, toggleId, bodyId) {
   return { bar, toggle };
 }
 
+/** @param {DiffViewApi | undefined} api @returns {"unified" | "split"} */
+export function readLayoutPreference(api) {
+  const value = api?.prefs?.get("diff.layout", /** @type {unknown} */ ("unified"));
+  return value === "split" ? "split" : "unified";
+}
+
+/** @param {MountedDiffState} view */
+function renderLayoutControl(view) {
+  const control = view.layoutControl;
+  const filterControls = view.api?.filterControls;
+  if (!control || !filterControls) {
+    return;
+  }
+  control.innerHTML = filterControls.groupHtml({
+    key: "diff-layout",
+    label: "Diff layout",
+    layout: "joined",
+    options: [
+      { label: "Unified", value: "unified" },
+      { label: "Split", value: "split" },
+    ],
+    select: "one",
+    value: view.layout,
+  });
+}
+
+/**
+ * Reproject cached file state and optionally persist the display choice.
+ * @param {MountedDiffState} view
+ * @param {string} value
+ * @param {boolean} [persist]
+ */
+export function setLayout(view, value, persist = true) {
+  const layout = value === "split" ? "split" : "unified";
+  if (layout === view.layout) {
+    return;
+  }
+  view.layout = layout;
+  view.root.dataset.layout = layout;
+  if (persist) {
+    view.api?.prefs?.set("diff.layout", layout);
+  }
+  renderLayoutControl(view);
+  for (const state of view.files) {
+    renderFileBody(state, layout);
+  }
+}
+
+/**
+ * The layout control is always present in the shell. Multi-file totals
+ * share its toolbar; single-file views avoid repeating their file bar.
+ * @param {Record<string, unknown>} totals
+ * @param {MountedDiffState} view
+ * @returns {{toolbar: HTMLElement, unbind: () => void}}
+ */
+function renderDiffToolbar(totals, view) {
+  const toolbar = el("div", "diff-toolbar");
+  if (Number(totals.files) !== 1) {
+    const plus = totals.additions === null ? "?" : String(totals.additions);
+    const minus = totals.deletions === null ? "?" : String(totals.deletions);
+    const summary = el("div", "diff-summary");
+    summary.append(
+      el(
+        "span",
+        "diff-summary-files",
+        `${totals.files} changed ${Number(totals.files) === 1 ? "file" : "files"}`,
+      ),
+      el("span", "diff-stat-add", `+${plus}`),
+      el("span", "diff-stat-del", `−${minus}`),
+    );
+    if (!totals.exact) {
+      summary.append(el("span", "diff-summary-note", "(estimated)"));
+    }
+    toolbar.append(summary);
+  }
+  const filterControls = view.api?.filterControls;
+  if (!filterControls) {
+    return { toolbar, unbind: () => {} };
+  }
+  const control = el("div", "diff-layout-control");
+  view.layoutControl = control;
+  renderLayoutControl(view);
+  toolbar.append(control);
+  const unbind = filterControls.bind(control, {
+    onChange(key, value, select) {
+      if (key === "diff-layout" && select === "one") {
+        setLayout(view, value);
+      }
+    },
+  });
+  return { toolbar, unbind };
+}
+
 /**
  * Fetch one deferred file's hunks and splice them in, behind the
  * standard progress box.
@@ -405,9 +659,9 @@ function renderFileBar(change, toggleId, bodyId) {
  * @param {HTMLElement} body
  * @param {Record<string, unknown>} change
  * @param {string} revision
- * @param {DiffViewApi | undefined} api
+ * @param {MountedDiffState} view
  */
-async function hydrateDeferred(body, change, revision, api) {
+async function hydrateDeferred(body, change, revision, view) {
   const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
   const path = String(side?.path ?? "");
   const box = progressBox(`Loading the diff for ${path}`);
@@ -436,11 +690,12 @@ async function hydrateDeferred(body, change, revision, api) {
     if (hunks.length === 0) {
       body.append(el("div", "diff-availability", "No content changes."));
     } else {
-      const renderApi = api ?? plainSyntaxApi();
-      const state = createFileState(only, patch, renderApi);
-      renderFileBody(body, state);
-      if (api) {
-        void enhanceFileSyntax(state, api);
+      const renderApi = view.api ?? plainSyntaxApi();
+      const state = createFileState(only, patch, renderApi, body);
+      view.files.push(state);
+      renderFileBody(state, view.layout);
+      if (view.api) {
+        void enhanceFileSyntax(state, view.api);
       }
     }
   } catch (error) {
@@ -459,11 +714,11 @@ async function hydrateDeferred(body, change, revision, api) {
 /**
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown> | undefined} patch
- * @param {{revision?: string}} [context]
- * @param {DiffViewApi | undefined} [api]
+ * @param {{revision?: string}} context
+ * @param {MountedDiffState} view
  * @returns {HTMLElement}
  */
-function renderFileSection(change, patch, context = {}, api) {
+function renderFileSection(change, patch, context, view) {
   sectionSequence += 1;
   const toggleId = `diff-file-toggle-${sectionSequence}`;
   const bodyId = `diff-file-body-${sectionSequence}`;
@@ -495,7 +750,7 @@ function renderFileSection(change, patch, context = {}, api) {
   if (availability === "deferred" && context.revision) {
     // Deferred is progress, not a state to explain: show the standard
     // progress box and fetch this file's hunks.
-    void hydrateDeferred(body, change, context.revision, api);
+    void hydrateDeferred(body, change, context.revision, view);
     return section;
   }
   if (availability !== "ready" || patch === undefined) {
@@ -510,10 +765,11 @@ function renderFileSection(change, patch, context = {}, api) {
     body.append(el("div", "diff-availability", "No content changes."));
     return section;
   }
-  const state = createFileState(change, patch, api ?? plainSyntaxApi());
-  renderFileBody(body, state);
-  if (api) {
-    void enhanceFileSyntax(state, api);
+  const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body);
+  view.files.push(state);
+  renderFileBody(state, view.layout);
+  if (view.api) {
+    void enhanceFileSyntax(state, view.api);
   }
   return section;
 }
@@ -528,37 +784,26 @@ function renderFileSection(change, patch, context = {}, api) {
  */
 export function mountDiffView(container, document_, api) {
   const root = el("div", "diff-root");
+  /** @type {MountedDiffState} */
+  const view = {
+    api,
+    files: [],
+    layout: readLayoutPreference(api),
+    layoutControl: null,
+    root,
+  };
+  root.dataset.layout = view.layout;
   const manifest =
     /** @type {{files: Record<string, unknown>[], totals: Record<string, unknown>, truncated: unknown, cursor?: unknown}} */ (
       document_.manifest
     );
   const patches = /** @type {Record<string, Record<string, unknown>>} */ (document_.patches);
   const totals = manifest.totals;
-  const plus = totals.additions === null ? "?" : String(totals.additions);
-  const minus = totals.deletions === null ? "?" : String(totals.deletions);
-  const exactness = totals.exact ? "" : " (estimated)";
-  // A single-file document is one file's diff — the bar already carries
-  // its name and stats, so a one-line summary above it would only repeat
-  // itself. Change sets keep the summary.
-  if (Number(totals.files) !== 1) {
-    const summary = el("div", "diff-summary");
-    summary.append(
-      el(
-        "span",
-        "diff-summary-files",
-        `${totals.files} changed ${Number(totals.files) === 1 ? "file" : "files"}`,
-      ),
-      el("span", "diff-stat-add", `+${plus}`),
-      el("span", "diff-stat-del", `−${minus}`),
-    );
-    if (exactness) {
-      summary.append(el("span", "diff-summary-note", exactness.trim()));
-    }
-    root.append(summary);
-  }
+  const { toolbar, unbind } = renderDiffToolbar(totals, view);
+  root.append(toolbar);
   const context = { revision: String(document_.__revision ?? "") };
   for (const change of manifest.files) {
-    root.append(renderFileSection(change, patches[String(change.id)], context, api));
+    root.append(renderFileSection(change, patches[String(change.id)], context, view));
   }
   if (manifest.truncated) {
     root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
@@ -566,6 +811,7 @@ export function mountDiffView(container, document_, api) {
   container.append(root);
   return {
     dispose() {
+      unbind();
       root.remove();
     },
   };

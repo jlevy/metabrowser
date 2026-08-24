@@ -4,14 +4,27 @@
    section-disclosure and icon-button primitives from the design
    system; the title is styled as a filename, not a heading. */
 
+.metabrowser-diff-host .diff-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  min-height: var(--ui-row-height);
+  border-bottom: 1px solid var(--border);
+}
+
 .metabrowser-diff-host .diff-summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
   font-size: var(--nav-font-size);
   color: var(--text);
-  border-bottom: 1px solid var(--border);
+}
+
+.metabrowser-diff-host .diff-layout-control {
+  flex: none;
+  margin-left: auto;
 }
 
 .metabrowser-diff-host .diff-file {
@@ -135,7 +148,7 @@
 .metabrowser-diff-host .diff-file-body {
   interpolate-size: allow-keywords;
   height: auto;
-  overflow: hidden;
+  overflow: auto hidden;
   transition:
     height var(--transition-fast),
     visibility var(--transition-fast) allow-discrete;
@@ -159,6 +172,28 @@
   font-family: var(--font-mono);
   font-size: var(--code-font-size, 0.85rem);
   line-height: 1.5;
+}
+
+.metabrowser-diff-host .diff-hunk-split {
+  min-width: 720px;
+}
+
+.metabrowser-diff-host .diff-split-row {
+  display: grid;
+  grid-template-columns: minmax(20em, 1fr) minmax(20em, 1fr);
+}
+
+.metabrowser-diff-host .diff-split-side {
+  display: grid;
+  grid-template-columns: 3.5em 1.25em minmax(0, 1fr);
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--code-font-size, 0.85rem);
+  line-height: 1.5;
+}
+
+.metabrowser-diff-host .diff-split-old {
+  border-right: 1px solid var(--border);
 }
 
 .metabrowser-diff-host .diff-line-number {
