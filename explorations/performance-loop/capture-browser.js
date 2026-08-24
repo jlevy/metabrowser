@@ -484,14 +484,6 @@ async function capture(options) {
       inputPulseCount = await inputPulse.stop();
     }
     await delay(INTERACTION_OBSERVER_SETTLE_MS);
-    // `performance.memory` is useful as an in-session endurance signal, but
-    // its value also depends on when V8 last happened to collect. Capture a
-    // second, controlled value after an explicit collection so comparisons
-    // can identify retained state rather than mistaking GC timing for a leak.
-    await session.send("HeapProfiler.enable");
-    await session.send("HeapProfiler.collectGarbage");
-    const heapUsage = await session.send("Runtime.getHeapUsage");
-    await waitForClientQuiescence(session, options.timeoutMs);
     const probe = fs.readFileSync(options.probe, "utf8");
     let payload = null;
     for (let attempt = 0; attempt < PROFILE_EXPORT_ATTEMPTS; attempt += 1) {
@@ -508,11 +500,18 @@ async function capture(options) {
     if (payload?.fetches_in_flight !== 0) {
       throw new Error("browser did not remain fetch-idle through profile export");
     }
-    payload.js_heap_after_gc_mb = Number((heapUsage.usedSize / (1024 * 1024)).toFixed(1));
     if (payload.interaction_inputs < 1) {
       throw new Error("CDP interaction did not reach the page as trusted input");
     }
     assertControlledInputCount(payload.interaction_inputs, inputPulseCount);
+    // Close the responsiveness profile before forcing collection. Otherwise
+    // measurement-only GC extends the profile after the input pulse stops,
+    // dilutes its loading-window coverage, and can appear as product blocking.
+    // The retained-heap field is a separate controlled sample by definition.
+    await session.send("HeapProfiler.enable");
+    await session.send("HeapProfiler.collectGarbage");
+    const heapUsage = await session.send("Runtime.getHeapUsage");
+    payload.js_heap_after_gc_mb = Number((heapUsage.usedSize / (1024 * 1024)).toFixed(1));
     fs.mkdirSync(path.dirname(options.output), { recursive: true });
     fs.writeFileSync(options.output, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
     process.stdout.write(`${options.output}\n`);

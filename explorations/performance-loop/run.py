@@ -85,6 +85,10 @@ PENDING = HERE / "results" / "pending.json"
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
 #
+# 9: the responsiveness profile closes before the driver's forced-GC retained
+# heap sample. Measurement-only collection cannot extend the input-coverage
+# denominator or appear as product main-thread blocking.
+#
 # 8: startup JavaScript is split from scripts loaded for the selected view,
 # with bounded URL-path attribution for the slowest and latest shell requests.
 # This makes an eager-plugin waterfall a named, enforceable regression.
@@ -118,7 +122,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 8
+HARNESS_VERSION = 9
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.

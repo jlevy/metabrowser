@@ -52,6 +52,9 @@ def test_capture_browser_records_controlled_retained_heap() -> None:
     assert 'session.send("HeapProfiler.collectGarbage")' in source
     assert 'session.send("Runtime.getHeapUsage")' in source
     assert "payload.js_heap_after_gc_mb" in source
+    assert source.index("const probe = fs.readFileSync") < source.index(
+        'session.send("HeapProfiler.collectGarbage")'
+    )
 
 
 def test_capture_browser_pulses_non_product_input_through_loading() -> None:

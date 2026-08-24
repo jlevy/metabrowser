@@ -45,7 +45,7 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "inventory_delivery_attribution_missing": 0,
         "inventory_delivery_work_pct": 0.2,
         "index_status_at_probe": "done",
-        "harness_version": 8,
+        "harness_version": 9,
         "labels_overflowed": 0,
         "lcp_ms": 900,
         "long_task_max_ms": 80,
