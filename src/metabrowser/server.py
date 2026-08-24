@@ -1070,6 +1070,25 @@ async def index(_request: Request) -> HTMLResponse:
     # not that view was ever opened. See docs/development.md "Asset Loading
     # Tiers" and the load-time plan for the measurement.
     on_demand_script_bundles = {
+        # Navigation, search, Help, and Git controls are application-lifetime
+        # tools, but none is needed to paint or fetch the first tree. Keeping
+        # their ordered classic scripts behind that usable-state boundary
+        # removes eleven requests from the shell's startup waterfall. They
+        # begin immediately after loadTree settles, before inventory delivery
+        # continues in the background.
+        "shell-tools": [
+            {"src": known_file_catalog_url},
+            {"src": catalog_feed_url},
+            {"src": file_fuzzy_match_url},
+            {"src": search_controller_url},
+            {"src": keyboard_shortcuts_url},
+            {"src": overlay_layer_url},
+            {"src": keyboard_help_url},
+            {"src": tree_keyboard_navigation_url},
+            {"src": search_palette_url},
+            {"src": git_graph_url},
+            {"src": git_panel_url},
+        ],
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js")},
             {
@@ -1298,19 +1317,6 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{tree_expansion_url}"></script>
   <script src="{tree_filter_model_url}"></script>
   <script src="{pending_tally_diagnostics_url}"></script>
-  <script src="{known_file_catalog_url}"></script>
-  <script src="{catalog_feed_url}"></script>
-  <script src="{file_fuzzy_match_url}"></script>
-  <script src="{search_controller_url}"></script>
-  <script src="{keyboard_shortcuts_url}"></script>
-  <script src="{overlay_layer_url}"></script>
-  <script src="{keyboard_help_url}"></script>
-  <script src="{tree_keyboard_navigation_url}"></script>
-  <script src="{search_palette_url}"></script>
-  <!-- Git graph modules load before app.js: the shell's DOMContentLoaded
-       handler calls MetabrowserGitPanel.init(), which needs both present. -->
-  <script src="{git_graph_url}"></script>
-  <script src="{git_panel_url}"></script>
   {plugin_asset_config}
   <script src="{app_url}"></script>
   {optional_assets_block}

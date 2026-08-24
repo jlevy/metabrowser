@@ -85,6 +85,9 @@ PENDING = HERE / "results" / "pending.json"
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
 #
+# 10: the application adapter proves its post-usable-state shell tools reached
+# ready, so deferring assets cannot buy a good startup number by losing them.
+#
 # 9: the responsiveness profile closes before the driver's forced-GC retained
 # heap sample. Measurement-only collection cannot extend the input-coverage
 # denominator or appear as product main-thread blocking.
@@ -122,7 +125,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 9
+HARNESS_VERSION = 10
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -226,6 +229,7 @@ METRICS = (
     "js_heap_after_gc_mb",
     "plugin_view_containers",
     "plugin_view_nonempty",
+    "shell_tools_missing",
     "viewport_w",
     "viewport_h",
 )

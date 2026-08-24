@@ -96,6 +96,8 @@ Development:
   The shell preserves each manifest’s script order and waits for the selected renderer
   before mounting it; folder navigation and first tree paint no longer wait for
   unrelated Markdown, structured-data, log, diff, or chart code.
+  Search, keyboard Help, and Git controls likewise initialize after the first usable
+  tree, with a correctness gate proving the deferred tools reached ready state.
   The server-carried first rows also paint as soon as the final core script runs rather
   than waiting for `DOMContentLoaded`.
 

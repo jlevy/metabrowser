@@ -35,16 +35,16 @@ def _function(source: str, name: str, length: int = 3000) -> str:
     return source[start : start + length]
 
 
-def test_tree_navigator_loads_after_registry_and_before_app() -> None:
+def test_tree_navigator_is_ordered_in_the_deferred_shell_tools() -> None:
     html = _index()
     assets = (
         "/static/keyboard-shortcuts.js",
         "/static/tree-keyboard-navigation.js",
         "/static/search-palette.js",
-        "/static/app.js",
     )
     positions = [html.index(asset) for asset in assets]
     assert positions == sorted(positions)
+    assert all(f'<script src="{asset}' not in html for asset in assets)
 
 
 def test_renderers_share_one_tree_semantics_helper() -> None:

@@ -13,7 +13,6 @@ load a page of history, then request one commit's detail.
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 from collections.abc import Iterator
@@ -185,15 +184,10 @@ def test_commit_route_path_parameter_is_gated(served_repo: Path) -> None:
     assert client.get("/api/git/commit/" + "0" * 40).status_code == 404
 
 
-def test_index_page_loads_the_git_modules(served_repo: Path) -> None:
+def test_index_page_defers_the_git_modules_in_dependency_order(served_repo: Path) -> None:
     client = TestClient(app)
     html = client.get("/").text
-    # Match the script tags, not bare filenames: "app.js" also appears in
-    # an HTML comment above the settings menu.
-    scripts = re.findall(r'<script src="([^"]+)"', html)
-    names = [src.rsplit("/", 1)[-1].split("?", 1)[0] for src in scripts]
-    assert "git-graph.js" in names
-    assert "git-panel.js" in names
-    # Order matters: app.js calls MetabrowserGitPanel.init() from its
-    # DOMContentLoaded handler, so both modules must already be parsed.
-    assert names.index("git-graph.js") < names.index("git-panel.js") < names.index("app.js")
+    assert html.index("/static/git-graph.js") < html.index("/static/git-panel.js")
+    assert '<script src="/static/git-graph.js' not in html
+    assert '<script src="/static/git-panel.js' not in html
+    assert '"shell-tools"' in html

@@ -140,13 +140,14 @@ initial navigation gap even when it attributes zero blocking, rendering, scripts
 resources to that frame, so duration alone is not evidence that the UI thread was busy.
 Inventory and catalog delivery have a tighter attribution gate: no callback may cross 50
 ms, and all such callbacks together may consume at most 5% of the measurement window.
-Metabrowser also gates the startup JavaScript tier at 40 non-vendor requests and 250 KB;
-the limits retain measured headroom above its 33-request, 214 KB directory shell while
-preventing every plugin from returning to the critical path.
-Rejected non-abort fetches and HTTP 5xx responses must also remain zero; aborts and 4xx
-responses stay visible as targets until a scenario can declare them intentional.
-The comparison checks every candidate run, not its median: one six-second freeze is a
-failure even if two clean runs would hide it statistically.
+Metabrowser also gates the startup JavaScript tier at 25 non-vendor requests and 175 KB;
+the limits retain measured headroom above its 22-request, 154 KB directory shell while
+preventing plugins or post-usable-state shell tools from returning to the critical path.
+The deferred tools carry a separate readiness gate, so transfer cannot improve by losing
+functionality. Rejected non-abort fetches and HTTP 5xx responses must also remain zero;
+aborts and 4xx responses stay visible as targets until a scenario can declare them
+intentional. The comparison checks every candidate run, not its median: one six-second
+freeze is a failure even if two clean runs would hide it statistically.
 
 **Roadmap targets** are visible debts, such as one tree paint or zero reserved-region
 movement. They are reported on every comparison but do not block unrelated work until

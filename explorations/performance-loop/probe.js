@@ -494,6 +494,7 @@
     plugin_view_nonempty: Array.from(document.querySelectorAll("[data-plugin-view]")).filter(
       (container) => container.childElementCount > 0 || container.textContent?.trim(),
     ).length,
+    shell_tools_missing: document.documentElement.dataset.shellToolsReady === "true" ? 0 : 1,
     dom_nodes: document.getElementsByTagName("*").length,
     // The tail is the point on a large tree: the sweep that warms collapsed
     // folders keeps requesting long after the page looks finished.

@@ -45,7 +45,7 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "inventory_delivery_attribution_missing": 0,
         "inventory_delivery_work_pct": 0.2,
         "index_status_at_probe": "done",
-        "harness_version": 9,
+        "harness_version": 10,
         "labels_overflowed": 0,
         "lcp_ms": 900,
         "long_task_max_ms": 80,
@@ -58,8 +58,9 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "recorded_at": "2026-08-23T12:00:00+00:00",
         "resource_timing_buffer_full": 0,
         "responsiveness_source": "navigation-profiler",
-        "startup_script_requests": 33,
-        "startup_script_transfer_kb": 214,
+        "shell_tools_missing": 0,
+        "startup_script_requests": 22,
+        "startup_script_transfer_kb": 154,
         "tree_region_repaints": 1,
         "unsupported": None,
         "visibility_state": "visible",
@@ -239,6 +240,24 @@ def test_eager_plugin_waterfall_is_a_blocking_budget_failure() -> None:
     )
 
     assert {issue.metric for issue in blocking_issues(issues)} == {
+        "startup_script_requests",
+        "startup_script_transfer_kb",
+    }
+
+
+def test_eager_shell_tools_or_missing_deferred_tools_fail() -> None:
+    config = load_performance_config(BUDGETS)
+    issues = budget_issues(
+        _valid_run(
+            shell_tools_missing=1,
+            startup_script_requests=33,
+            startup_script_transfer_kb=214,
+        ),
+        config,
+    )
+
+    assert {issue.metric for issue in blocking_issues(issues)} == {
+        "shell_tools_missing",
         "startup_script_requests",
         "startup_script_transfer_kb",
     }

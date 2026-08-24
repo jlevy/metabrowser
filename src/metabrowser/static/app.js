@@ -7383,6 +7383,18 @@ if (typeof window !== "undefined") {
 
 // ── Init ────────────────────────────────────────────────────────
 
+async function initDeferredShellTools() {
+  const assets = window.MetabrowserAssets;
+  if (!assets) {
+    throw new Error("Metabrowser asset loader is unavailable");
+  }
+  await _perf.measureAsync("loadShellTools", () => assets.ensureAsset("shell-tools"));
+  initKeyboardInfrastructure();
+  initQuickFileFinder();
+  await window.MetabrowserGitPanel?.init();
+  document.documentElement.dataset.shellToolsReady = "true";
+}
+
 // app.js is the last core script in the body, so the tree container and every
 // cache used by its renderer are initialized here. Paint the server-carried
 // rows now instead of waiting for DOMContentLoaded. The authoritative request
@@ -7395,14 +7407,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavTabs();
   initFilterBar();
   initNavScrollShadow();
-  initKeyboardInfrastructure();
-  initQuickFileFinder();
-  // Not awaited: whether the served root is a repository is irrelevant
-  // to first paint, and blocking the tree walk on a git call would make
-  // every non-repository directory pay for a feature it will not show.
-  window.MetabrowserGitPanel?.init()?.catch((error) => {
-    console.error("metabrowser git panel: init failed", { url: location.pathname }, error);
-  });
   // Start the URL-pinned file fetch in parallel with the tree walk. Only a
   // /view/ pathname selects a file; a hash is document state, never identity.
   var initialTarget = window.MetabrowserNavigationRoute.parse(
@@ -7419,6 +7423,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   // aggregates before any later recency selection repaints the panel
   // from /api/recent.
   await loadTree();
+  // These application-lifetime controls are not prerequisites for a usable
+  // tree. Start their ordered on-demand bundle only after the first tree
+  // request settles, so eleven unrelated scripts cannot delay the inline row,
+  // DOMContentLoaded, or that request. Inventory and navigation continue while
+  // the bundle loads; a failed tool never takes the file browser down with it.
+  initDeferredShellTools().catch((error) => {
+    console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
+  });
   if (filesPanelUsesRecentSource()) {
     loadRecent(filterState.get().recency);
   }

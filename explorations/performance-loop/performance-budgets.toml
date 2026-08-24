@@ -162,23 +162,31 @@ policy = "target"
 required = false
 description = "Largest contentful paint."
 
-# exp-014 measured 74 startup scripts / 337 KB before selected-kind loading and
-# 33 / 214 KB afterwards on the same 111,590-file corpus. These ceilings retain
-# headroom for a small core module while preventing every plugin from returning
-# to the directory shell's critical path.
+# exp-014 measured 74 startup scripts / 337 KB before selected-kind loading,
+# 33 / 214 KB after that change, and 22 / 154 KB after shell tools moved behind
+# the first usable tree on the same 111,590-file corpus. These ceilings retain
+# headroom for a small core module while preventing either eager tier from
+# returning to the directory shell's critical path.
 [metrics.startup_script_requests]
 category = "loading"
-maximum = 40
+maximum = 25
 policy = "gate"
 required = true
 description = "JavaScript requests started before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
 
 [metrics.startup_script_transfer_kb]
 category = "loading"
-maximum = 250
+maximum = 175
 policy = "gate"
 required = true
 description = "Transferred startup JavaScript before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
+
+[metrics.shell_tools_missing]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "Deferred application-lifetime search, keyboard, Help, and Git controls did not reach ready state."
 
 [metrics.first_row_ms]
 category = "application"

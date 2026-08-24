@@ -35,7 +35,7 @@ def _render_index_html() -> str:
     )
 
 
-def test_quick_file_assets_load_in_dependency_order_before_app() -> None:
+def test_quick_file_assets_load_in_deferred_dependency_order() -> None:
     html = _render_index_html()
     asset_paths = (
         "/static/known-file-catalog.js",
@@ -47,13 +47,13 @@ def test_quick_file_assets_load_in_dependency_order_before_app() -> None:
         "/static/keyboard-help.js",
         "/static/tree-keyboard-navigation.js",
         "/static/search-palette.js",
-        "/static/app.js",
     )
     positions = []
     for asset_path in asset_paths:
-        assert f'src="{asset_path}?v=' in html
+        assert asset_path in html
         positions.append(html.index(asset_path))
     assert positions == sorted(positions)
+    assert all(f'<script src="{asset_path}' not in html for asset_path in asset_paths)
 
 
 def test_preview_is_a_programmatic_focus_destination() -> None:
@@ -92,10 +92,9 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
 
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
-    assert loaded_block.index("initQuickFileFinder();") < loaded_block.index(
-        "navigationController.start()"
-    )
-    assert loaded_block.count("initQuickFileFinder();") == 1
+    assert loaded_block.index("await loadTree();") < loaded_block.index("initDeferredShellTools()")
+    deferred = js[js.index("async function initDeferredShellTools()") : loaded_start]
+    assert deferred.count("initQuickFileFinder();") == 1
 
 
 def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:

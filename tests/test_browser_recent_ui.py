@@ -105,6 +105,14 @@ def test_index_template_versions_core_static_assets() -> None:
         "/static/icons.js",
         "/static/tree-expansion.js",
         "/static/tree-filter-model.js",
+        "/static/app.js",
+    )
+    positions = []
+    for asset in assets:
+        assert f'src="{asset}?v=' in html
+        positions.append(html.index(asset))
+    assert positions == sorted(positions)
+    deferred_assets = (
         "/static/known-file-catalog.js",
         "/static/catalog-feed.js",
         "/static/file-fuzzy-match.js",
@@ -114,13 +122,9 @@ def test_index_template_versions_core_static_assets() -> None:
         "/static/keyboard-help.js",
         "/static/tree-keyboard-navigation.js",
         "/static/search-palette.js",
-        "/static/app.js",
     )
-    positions = []
-    for asset in assets:
-        assert f'src="{asset}?v=' in html
-        positions.append(html.index(asset))
-    assert positions == sorted(positions)
+    assert all(asset in html for asset in deferred_assets)
+    assert all(f'<script src="{asset}' not in html for asset in deferred_assets)
 
 
 def test_files_panel_owns_one_generated_tree_with_concise_row_names() -> None:
