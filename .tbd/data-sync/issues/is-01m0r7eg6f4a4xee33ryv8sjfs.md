@@ -5,7 +5,7 @@ title: Implement the pluggable inventory engine
 kind: feature
 status: open
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-23-pluggable-inventory-engine.md
 labels: []
 dependencies: []
@@ -14,8 +14,9 @@ child_order_hints:
   - is-01m0r8xj4bv4bbrr65vw28d31j
   - is-01m0r8xt95921dabcddjjm7csf
   - is-01m0t5yhbk3cds1j6x33pvaf26
+  - is-01m0t88jfkvafypd9h2sgvfz6p
 created_at: 2026-08-23T21:11:56.857Z
-updated_at: 2026-08-24T15:24:14.066Z
+updated_at: 2026-08-24T16:04:40.050Z
 ---
 
 ## Notes
