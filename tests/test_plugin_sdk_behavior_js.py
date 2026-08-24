@@ -28,6 +28,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "kpress-plugin-sdk-behavior.js"
+SYNTAX_SHIM = Path(__file__).resolve().parent / "dom" / "syntax-token-sdk-behavior.js"
 
 
 def test_plugin_sdk_behavior_contracts() -> None:
@@ -56,3 +57,20 @@ def test_plugin_sdk_behavior_contracts() -> None:
     assert payload["fileCatalog"]["ok"] is True, payload["fileCatalog"]
     assert payload["completeText"]["ok"] is True, payload["completeText"]
     assert payload["pathText"]["ok"] is True, payload["pathText"]
+
+
+def test_plugin_sdk_syntax_token_contracts() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available; skipping plugin-sdk.js syntax shim")
+
+    result = subprocess.run(
+        ["node", str(SYNTAX_SHIM), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"syntax token SDK shim failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "syntax token SDK OK" in result.stdout

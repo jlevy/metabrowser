@@ -354,7 +354,7 @@ views/models/routes map does not change.
 Ends with: the existing unified diff progressively receives the regular source palette
 while retaining its row backgrounds.
 
-- [ ] Add the typed, bounded `mb.highlightSyntax` SDK helper and DOM-free scanner, with
+- [x] Add the typed, bounded `mb.highlightSyntax` SDK helper and DOM-free scanner, with
   focused behavior tests for ready, delayed, missing, unknown-language, over-limit,
   lexer-throw, malformed-output, and aborted cases.
   Pin the vendored entity vocabulary with a test.

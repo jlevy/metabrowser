@@ -72,6 +72,8 @@
 //     sizeHtml(bytes, extraClass?)       — formatSize wrapped in <span class=size>
 //     isLargeTextPreview(data)           — true if /api/file payload exceeds the
 //                                          syntax-highlight cutoff
+//     highlightSyntax(source, language, options?)
+//                                        — bounded DOM-free Highlight.js token data
 //
 //   Visual:
 //     icons.<name>                       — raw SVG strings for built-in icons
@@ -1433,11 +1435,93 @@
     return `<span class="${cls}">${formatSize(bytes)}</span>`;
   }
 
-  // Threshold for syntax-highlight bypass. Mirrors app.js's
-  // SYNTAX_HIGHLIGHT_MAX_BYTES so plugins make the same call about
-  // whether a file is too big to highlight client-side. Files larger
-  // than this fall back to escaped <pre> rendering.
-  const SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024;
+  /** Package fallback when the server has not injected its environment-aware limit. */
+  const DEFAULT_SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024;
+  const HIGHLIGHT_TOKEN_CLASS_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
+  const HIGHLIGHT_ENTITIES = Object.freeze({
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": '"',
+    "&#x27;": "'",
+  });
+  let syntaxAssetsSettled = false;
+  if (typeof global.addEventListener === "function") {
+    global.addEventListener("metabrowser:optional-assets-loaded", () => {
+      syntaxAssetsSettled = true;
+    });
+  }
+
+  function syntaxHighlightMaxBytes() {
+    const configured = Number(
+      /** @type {{SYNTAX_HIGHLIGHT_MAX_BYTES?: unknown} | undefined} */ (
+        global.METABROWSER_SETTINGS
+      )?.SYNTAX_HIGHLIGHT_MAX_BYTES,
+    );
+    return Number.isFinite(configured) && configured >= 0
+      ? configured
+      : DEFAULT_SYNTAX_HIGHLIGHT_MAX_BYTES;
+  }
+
+  /** @param {string} value */
+  function utf8ByteLength(value) {
+    return new global.TextEncoder().encode(value).byteLength;
+  }
+
+  /** @param {string} language */
+  function syntaxGrammarReady(language) {
+    return (
+      typeof global.hljs?.highlight === "function" &&
+      typeof global.hljs?.getLanguage === "function" &&
+      Boolean(global.hljs.getLanguage(language))
+    );
+  }
+
+  function syntaxAbortError() {
+    return new global.DOMException("Syntax highlighting was aborted.", "AbortError");
+  }
+
+  /**
+   * Wait for a requested grammar or the terminal optional-asset event.
+   * @param {string} language
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<boolean>}
+   */
+  function waitForSyntaxAssets(language, signal) {
+    if (signal?.aborted) {
+      return Promise.reject(syntaxAbortError());
+    }
+    if (syntaxGrammarReady(language)) {
+      return Promise.resolve(true);
+    }
+    if (syntaxAssetsSettled || typeof global.addEventListener !== "function") {
+      return Promise.resolve(false);
+    }
+    return new Promise((resolve, reject) => {
+      function cleanup() {
+        global.removeEventListener("metabrowser:optional-asset-loaded", onAsset);
+        global.removeEventListener("metabrowser:optional-assets-loaded", onTerminal);
+        signal?.removeEventListener("abort", onAbort);
+      }
+      function onAsset() {
+        if (syntaxGrammarReady(language)) {
+          cleanup();
+          resolve(true);
+        }
+      }
+      function onTerminal() {
+        cleanup();
+        resolve(syntaxGrammarReady(language));
+      }
+      function onAbort() {
+        cleanup();
+        reject(syntaxAbortError());
+      }
+      global.addEventListener("metabrowser:optional-asset-loaded", onAsset);
+      global.addEventListener("metabrowser:optional-assets-loaded", onTerminal);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
 
   function isLargeTextPreview(data) {
     if (!data) {
@@ -1446,9 +1530,141 @@
     return (
       !!data.content_truncated ||
       !!data.highlight_disabled ||
-      (data.size || 0) > SYNTAX_HIGHLIGHT_MAX_BYTES ||
-      (typeof data.content === "string" && data.content.length > SYNTAX_HIGHLIGHT_MAX_BYTES)
+      (data.size || 0) > syntaxHighlightMaxBytes() ||
+      (typeof data.content === "string" && utf8ByteLength(data.content) > syntaxHighlightMaxBytes())
     );
+  }
+
+  /**
+   * Convert Highlight.js's constrained markup to token data without an HTML parser.
+   * @param {string} markup
+   * @returns {MetabrowserSyntaxTokenLines | null}
+   */
+  function scanHighlightMarkup(markup) {
+    /** @type {MetabrowserSyntaxTokenLines} */
+    const lines = [[]];
+    /** @type {string[][]} */
+    const classStack = [];
+    let offset = 0;
+
+    /** @param {string} text */
+    function appendText(text) {
+      if (text.length === 0) {
+        return;
+      }
+      const classes = classStack.flat();
+      const line = lines[lines.length - 1];
+      const previous = line[line.length - 1];
+      if (
+        previous &&
+        previous.classes.length === classes.length &&
+        previous.classes.every((name, index) => name === classes[index])
+      ) {
+        previous.text += text;
+      } else {
+        line.push({ classes, text });
+      }
+    }
+
+    while (offset < markup.length) {
+      if (markup.startsWith("</span>", offset)) {
+        if (classStack.length === 0) {
+          return null;
+        }
+        classStack.pop();
+        offset += "</span>".length;
+        continue;
+      }
+      if (markup.startsWith('<span class="', offset)) {
+        const end = markup.indexOf('">', offset);
+        if (end < 0) {
+          return null;
+        }
+        const opening = markup.slice(offset, end + 2);
+        const match = /^<span class="([^"]+)">$/.exec(opening);
+        const classes = match?.[1].split(" ") ?? [];
+        if (
+          classes.length === 0 ||
+          !classes.some((name) => name.startsWith("hljs-")) ||
+          !classes.every((name) => HIGHLIGHT_TOKEN_CLASS_RE.test(name))
+        ) {
+          return null;
+        }
+        classStack.push(classes);
+        offset = end + 2;
+        continue;
+      }
+      const character = markup[offset];
+      if (character === "<") {
+        return null;
+      }
+      if (character === "&") {
+        const end = markup.indexOf(";", offset);
+        if (end < 0) {
+          return null;
+        }
+        const entity = markup.slice(offset, end + 1);
+        const decoded = HIGHLIGHT_ENTITIES[entity];
+        if (decoded === undefined) {
+          return null;
+        }
+        appendText(decoded);
+        offset = end + 1;
+        continue;
+      }
+      if (character === "\n") {
+        lines.push([]);
+        offset += 1;
+        continue;
+      }
+      let end = offset + 1;
+      while (end < markup.length && !"<&\n".includes(markup[end])) {
+        end += 1;
+      }
+      appendText(markup.slice(offset, end));
+      offset = end;
+    }
+    return classStack.length === 0 ? lines : null;
+  }
+
+  /**
+   * Highlight source through the host grammar registry and return DOM-free token lines.
+   * @param {string} source
+   * @param {string} language
+   * @param {{signal?: AbortSignal}} [options]
+   * @returns {Promise<MetabrowserSyntaxTokenLines | null>}
+   */
+  async function highlightSyntax(source, language, options = {}) {
+    if (options.signal?.aborted) {
+      throw syntaxAbortError();
+    }
+    if (utf8ByteLength(source) > syntaxHighlightMaxBytes()) {
+      return null;
+    }
+    if (!(await waitForSyntaxAssets(language, options.signal))) {
+      return null;
+    }
+    if (options.signal?.aborted) {
+      throw syntaxAbortError();
+    }
+    try {
+      const result = global.hljs.highlight(source, { language, ignoreIllegals: true });
+      if (!result || typeof result.value !== "string") {
+        return null;
+      }
+      const lines = scanHighlightMarkup(result.value);
+      const sourceLines = source.split("\n");
+      if (
+        lines === null ||
+        lines.length !== sourceLines.length ||
+        lines.some((runs, index) => runs.map((run) => run.text).join("") !== sourceLines[index])
+      ) {
+        return null;
+      }
+      return lines;
+    } catch (_error) {
+      return null;
+    }
   }
 
   // Copy-icon SVG. Defined here (not pulled from window.MetabrowserIcons)
@@ -1664,6 +1880,7 @@
     sizeClass: sizeClass,
     sizeHtml: sizeHtml,
     isLargeTextPreview: isLargeTextPreview,
+    highlightSyntax: highlightSyntax,
     wrapWithCopy: wrapWithCopy,
     icons: icons,
     perf: perf,

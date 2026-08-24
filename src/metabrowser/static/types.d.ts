@@ -786,6 +786,11 @@ type MetabrowserSdk = {
   formatInteger(value: number): string;
   getRegisteredView(kind: string, view: string): MetabrowserViewSpec | undefined;
   icons: Record<string, string>;
+  highlightSyntax(
+    source: string,
+    language: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<MetabrowserSyntaxTokenLines | null>;
   isLargeTextPreview(data: Record<string, unknown>): boolean;
   ensureAsset(name: string): Promise<void>;
   ensureKindAssets(kind: string): Promise<void>;
@@ -1362,6 +1367,15 @@ type MetabrowserTreeKeyboardRuntime = Readonly<{
 }>;
 
 declare global {
+  /** One exact source-text run and its validated Highlight.js classes. */
+  interface MetabrowserSyntaxTokenRun {
+    classes: string[];
+    text: string;
+  }
+
+  /** Highlighted source split into one token-run array per source line. */
+  type MetabrowserSyntaxTokenLines = MetabrowserSyntaxTokenRun[][];
+
   /**
    * Wire shapes for the `/api/git/` endpoints.
    *
@@ -1539,6 +1553,11 @@ declare global {
   type MetabrowserPublicSdk = MetabrowserSdk;
 
   var hljs: {
+    getLanguage(language: string): unknown;
+    highlight(
+      source: string,
+      options: { language: string; ignoreIllegals: boolean },
+    ): { value: string };
     highlightElement(element: Element): void;
   };
 
@@ -1665,6 +1684,7 @@ declare global {
       ROLLUP_FILE_TYPE_REMAINING_LIMIT?: number;
       ROLLUP_DEFAULT_TOP?: number;
       ROLLUP_WATCH_DEBOUNCE_MS?: number;
+      SYNTAX_HIGHLIGHT_MAX_BYTES?: number;
       TREE_AUTO_EXPAND_FALLBACK_ROWS?: number;
       TEXT_PREVIEW_CHUNK_BYTES?: number;
       TEXT_PREVIEW_MAX_CHUNK_BYTES?: number;
