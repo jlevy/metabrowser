@@ -97,7 +97,7 @@ Metabrowser now ships the complete reference implementation and a self-contained
 - `fs_paths.py`, `inventory_rollup.py`, and `wire_models.py` implement the shared
   logical extension, conserved dual-population Breakdown v1, independent 20-child
   fallback caps, exact Others remainders, and strict registry-identity validation.
-- `file_type_taxonomy.js`, `plugin_sdk.js`, and `types.d.ts` expose the same registry
+- `file-type-taxonomy.js`, `plugin-sdk.js`, and `types.d.ts` expose the same registry
   and Breakdown v1 contract to the browser.
   Overview, navigation, and Treemap consume those helpers rather than separate extension
   catalogs.
@@ -177,7 +177,7 @@ semantic file-type interface.
 
 `src/metabrowser/file_type_filters.py` owns three display categories and a Python tuple
 of semantic families.
-It serializes the declarations into browser settings, and `static/file_type_taxonomy.js`
+It serializes the declarations into browser settings, and `static/file-type-taxonomy.js`
 validates and exposes the browser runtime.
 
 `FsEntry.ext` carries one bounded logical extension.
@@ -1058,7 +1058,7 @@ mergeable bounded summary separately; do not label an approximate top list as ex
 
 ### Browser Runtime and Navigation
 
-- Refactor `static/file_type_taxonomy.js` into a strict runtime for groups, families,
+- Refactor `static/file-type-taxonomy.js` into a strict runtime for groups, families,
   kinds, registry identity, and matching parity.
 - Remove hard-coded Docs/Code/Data unions and validation branches; validate IDs against
   the injected registry.
@@ -1072,12 +1072,12 @@ mergeable bounded summary separately; do not label an approximate top list as ex
 
 ### Folder Overview
 
-- Extend `folder/file_type_summary_model.js` normalizers for named metric populations,
+- Extend `folder/file-type-summary-model.js` normalizers for named metric populations,
   singleton family disclosures, No extension filename children, Remaining types raw
   children, and Others rows.
 - Change the model’s disclosure rule from two children to one child.
 - Use registry-declared group order instead of the hard-coded category tuple.
-- Extend `folder/distribution_view.js` so family and special parents share the same
+- Extend `folder/distribution-view.js` so family and special parents share the same
   accessible disclosure behavior and controlled-row bookkeeping.
 - Resolve filename child icons from the basename and raw child icons from the extension.
 - Keep family parents iconless; keep the two special parents and Others on the neutral

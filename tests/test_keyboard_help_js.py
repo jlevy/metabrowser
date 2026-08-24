@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-HELP_TEST_JS = Path(__file__).resolve().parent / "dom" / "keyboard_help_behavior.js"
+HELP_TEST_JS = Path(__file__).resolve().parent / "dom" / "keyboard-help-behavior.js"
 
 
 def test_keyboard_help_js_assertions_pass() -> None:

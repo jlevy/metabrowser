@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-CATALOG_FEED_TEST_JS = Path(__file__).resolve().parent / "dom" / "catalog_feed_behavior.js"
+CATALOG_FEED_TEST_JS = Path(__file__).resolve().parent / "dom" / "catalog-feed-behavior.js"
 
 
 def test_catalog_feed_js_assertions_pass() -> None:

@@ -54,7 +54,7 @@ on both themes.
 
 ### Where color actually comes from
 
-`builtin_plugins/folder/category_palette.js` hashes the family key with FNV-1a, takes
+`builtin_plugins/folder/category-palette.js` hashes the family key with FNV-1a, takes
 the remainder against a slot count, and probes linearly for a free slot.
 `DISTRIBUTION_PALETTE_SLOTS` is 12. The registry has 56 families.
 
@@ -229,7 +229,7 @@ family’s hue matches its recorded upstream color; every chosen hue clears the 
 every painted color keeps its lightness and hue and lands inside sRGB. `--suggest`
 prints a free hue for a new family.
 
-**`category_palette.js`** stops hashing families.
+**`category-palette.js`** stops hashing families.
 The slot pool, the per-folder session, the reservation table, and
 `DISTRIBUTION_PALETTE_SLOTS` all go.
 A hash remains for the extensions inside **Other types**, which are unfamilied by
@@ -258,7 +258,7 @@ contradicted it.
 
 ### Phase 2: Everything reads from it
 
-- [x] `serialize_distribution_colors` joins hue to tone; `category_palette.js` reads it
+- [x] `serialize_distribution_colors` joins hue to tone; `category-palette.js` reads it
 - [x] Overview and Treemap take color from the same field; hash, probe, and slot pool go
 - [x] Tests that a family’s color is the same in any palette and does not depend on
   which other families are present, and that the shipped colors match the registry
@@ -276,7 +276,7 @@ contradicted it.
   close upstream pairs it deliberately permits.
 - Classification results must not move: the conformance corpus is regenerated and
   reviewed as a diff, and nothing but the registry identity should appear in it.
-- `tests/dom/folder_overview_models_behavior.js` holds the palette properties the old
+- `tests/dom/folder-overview-models-behavior.js` holds the palette properties the old
   allocator could not give.
 
 ## Rollout Plan

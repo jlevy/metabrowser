@@ -104,9 +104,9 @@ def test_spinners_carry_no_visible_loading_label() -> None:
         "server shell": REPO_ROOT / "src" / "metabrowser" / "server.py",
         "Markdown": PLUGIN_ROOT / "markdown" / "rendered.js",
         "agent-log charts": PLUGIN_ROOT / "agent_log" / "index.js",
-        "folder totals": PLUGIN_ROOT / "folder" / "folder_totals.js",
+        "folder totals": PLUGIN_ROOT / "folder" / "folder-totals.js",
         "Treemap": PLUGIN_ROOT / "folder" / "treemap.js",
-        "file types": PLUGIN_ROOT / "folder" / "distribution_view.js",
+        "file types": PLUGIN_ROOT / "folder" / "distribution-view.js",
     }
     # "Still scanning this folder…" and the tooltip's "Loading size…" are not
     # in this set: they report a state a spinner cannot express on its own.
@@ -132,7 +132,7 @@ def test_expandable_folders_are_prefetched_so_expansion_needs_no_load() -> None:
     Every unexpanded folder past the server's depth cap carries a lazy stub, so
     the sweep takes its candidates from the rendered tree rather than guessing.
     Which of those stubs is a candidate is a question about the screen, and
-    ``tests/dom/subtree_prefetch_viewport_behavior.js`` owns that half.
+    ``tests/dom/subtree-prefetch-viewport-behavior.js`` owns that half.
     """
 
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")

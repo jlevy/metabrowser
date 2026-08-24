@@ -158,7 +158,7 @@ produces this, verified against the pinned `kpress==0.3.3`:
 
 The same render call returns an asset manifest whose entry points include
 `js/diagrams.js` at `/kpress-static/v0.3.3/js/diagrams.js`, with an empty import map.
-`plugin_sdk.js` validates that manifest and loads every module entry point, so the
+`plugin-sdk.js` validates that manifest and loads every module entry point, so the
 module is already fetched and evaluated on any document containing a diagram.
 
 `diagrams.js` then does nothing:
@@ -198,7 +198,7 @@ entries are single flat files, and the Mermaid ESM build is an entry plus a dire
 103 chunks. `devtools/vendor_assets.py` needs a directory-shaped entry, and `NOTICE.md`
 needs the usual attribution line.
 
-**A lazy loader and one SDK primitive.** `plugin_sdk.js` already has the pattern, in
+**A lazy loader and one SDK primitive.** `plugin-sdk.js` already has the pattern, in
 `_loadKpressTocModule`: dynamically import a KPress module, capture its named export,
 and expose a per-mount wrapper.
 Diagrams want the same shape — capture `initKpressDiagrams`, expose
@@ -495,7 +495,7 @@ The loading decision below is generalized in
 - [ ] Extend `devtools/vendor_assets.py` with a directory-shaped vendor entry and raise
   the total cap with the measurement recorded.
 - [ ] Vendor Mermaid 11.17.0, pin it in `package.json`, and add the `NOTICE.md` entry.
-- [ ] Add lazy Mermaid loading and `kpressInitDiagrams` to `plugin_sdk.js` and
+- [ ] Add lazy Mermaid loading and `kpressInitDiagrams` to `plugin-sdk.js` and
   `types.d.ts`, and call it from `rendered.js` with disposal.
 - [ ] Wire diagram theme to `data-theme`, including re-render on change.
 - [ ] Add the copy button and the visible parse-error state.

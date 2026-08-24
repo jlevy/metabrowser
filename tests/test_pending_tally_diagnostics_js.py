@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-WATCHDOG_TEST_JS = Path(__file__).resolve().parent / "dom" / "pending_tally_diagnostics_behavior.js"
+WATCHDOG_TEST_JS = Path(__file__).resolve().parent / "dom" / "pending-tally-diagnostics-behavior.js"
 
 
 def test_pending_tally_diagnostics_js_assertions_pass() -> None:

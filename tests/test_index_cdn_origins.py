@@ -124,7 +124,7 @@ def test_chart_js_is_published_on_demand_rather_than_loaded_eagerly() -> None:
 
     Eager loading measured about 374 ms of every document's load event whether
     or not that view was ever opened, so the shell must publish it as a bundle
-    for asset_loader.js and must not put it in the chain that runs on load.
+    for asset-loader.js and must not put it in the chain that runs on load.
     See docs/development.md "Asset Loading Tiers".
     """
     html = _index_html()
@@ -147,7 +147,7 @@ def test_chart_js_is_published_on_demand_rather_than_loaded_eagerly() -> None:
         assert name in chain, f"prefetched asset missing from the load chain: {name}"
 
     # The loader has to be present before anything can ask it for a bundle.
-    assert "/static/asset_loader.js" in html
+    assert "/static/asset-loader.js" in html
 
 
 def test_prefetched_assets_wait_for_idle_rather_than_dom_content_loaded() -> None:
@@ -176,7 +176,7 @@ def test_prefetched_assets_wait_for_idle_rather_than_dom_content_loaded() -> Non
 def test_local_core_scripts_load_before_optional_assets() -> None:
     """The shell must not wait on optional libraries before registering its app."""
     html = _index_html()
-    app_pos = html.index("/static/app.js")
+    app_pos = html.index('<script src="/static/app.js')
     optional_pos = html.index("vendor/highlight.min.js")
     assert app_pos < optional_pos
     assert "metabrowser:optional-assets-loaded" in html
@@ -184,16 +184,27 @@ def test_local_core_scripts_load_before_optional_assets() -> None:
 
 def test_strict_sdk_dependencies_load_before_the_legacy_adapter() -> None:
     html = _index_html()
-    sdk_position = html.index("/static/plugin_sdk.js")
+    sdk_position = html.index("/static/plugin-sdk.js")
     for name in (
-        "request_error.js",
+        "request-error.js",
         "formatters.js",
-        "inventory_scope.js",
-        "contribution_registry.js",
-        "resource_context.js",
-        "view_state.js",
+        "inventory-scope.js",
+        "contribution-registry.js",
+        "resource-context.js",
+        "view-state.js",
     ):
         assert html.index(f"/static/{name}") < sdk_position
+
+
+def test_performance_recorder_uses_the_sdk_namespace_before_application_work() -> None:
+    """The console profiler must attach to the one public browser namespace."""
+    html = _index_html()
+    sdk_position = html.index("/static/plugin-sdk.js")
+    perf_position = html.index("/static/perf.js")
+    app_position = html.index('<script src="/static/app.js')
+
+    assert html.count("/static/perf.js") == 1
+    assert sdk_position < perf_position < app_position
 
 
 def test_duplicate_markdown_assets_are_absent() -> None:

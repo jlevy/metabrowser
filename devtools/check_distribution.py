@@ -30,10 +30,10 @@ EXPECTED_LICENSE_METADATA = {
 }
 VSCODE_LICENSE_PATH = "metabrowser/static/vendor/licenses/vscode.txt"
 KEYBOARD_STATIC_ASSETS = {
-    "keyboard_help.js",
-    "keyboard_shortcuts.js",
-    "overlay_layer.js",
-    "tree_keyboard_navigation.js",
+    "keyboard-help.js",
+    "keyboard-shortcuts.js",
+    "overlay-layer.js",
+    "tree-keyboard-navigation.js",
 }
 
 
@@ -77,10 +77,10 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/__init__.py",
             "metabrowser/static/app.js",
             "metabrowser/static/charts.js",
-            "metabrowser/static/contribution_registry.js",
-            "metabrowser/static/resource_context.js",
-            "metabrowser/static/view_state.js",
-            "metabrowser/static/source_append.js",
+            "metabrowser/static/contribution-registry.js",
+            "metabrowser/static/resource-context.js",
+            "metabrowser/static/view-state.js",
+            "metabrowser/static/source-append.js",
             # Vendored browser libraries: the offline-first page depends on
             # these shipping in the wheel (see static/vendor/manifest.json).
             "metabrowser/static/vendor/manifest.json",
@@ -90,7 +90,7 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/builtin_plugins/markdown/manifest.toml",
             "metabrowser/builtin_plugins/markdown/rendered.js",
             "metabrowser/builtin_plugins/folder/overview.js",
-            "metabrowser/builtin_plugins/folder/file_type_summary.js",
+            "metabrowser/builtin_plugins/folder/file-type-summary.js",
             "metabrowser/builtin_plugins/folder/file_type_summary.css",
             "metabrowser/data/file-rollup-format/empty-file-rollup.json",
             "metabrowser/data/file-rollup-format/file-rollup-conformance.json",
@@ -182,11 +182,11 @@ def _smoke_install(wheel: Path) -> None:
             "assert metabrowser.__version__; "
             "assert registry.family('javascript') is not None; "
             "static = files('metabrowser').joinpath('static'); "
-            "assets = ('app.js', 'keyboard_help.js', 'keyboard_shortcuts.js', "
-            "'overlay_layer.js', 'tree_keyboard_navigation.js'); "
+            "assets = ('app.js', 'keyboard-help.js', 'keyboard-shortcuts.js', "
+            "'overlay-layer.js', 'tree-keyboard-navigation.js'); "
             "assert all(static.joinpath(asset).is_file() for asset in assets); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/overview.js').is_file(); "
-            "assert files('metabrowser').joinpath('builtin_plugins/diff/diff_view.js').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/diff/diff-view.js').is_file(); "
             "assert files('metabrowser').joinpath("
             "'data/file-diff-format/file-diff.schema.json').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "

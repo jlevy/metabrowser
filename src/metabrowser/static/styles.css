@@ -332,7 +332,7 @@
 
      A file type's color is not here. The registry declares its hue, the server
      resolves that hue against both themes at one lightness and one chroma
-     target, and category_palette.js writes both answers onto the element as
+     target, and category-palette.js writes both answers onto the element as
      --mb-distribution-color-light and -dark. Composing the color in CSS was
      the obvious alternative and does not work: sRGB cannot hold the target
      chroma at every hue, and a browser handed an out-of-gamut oklch() clips
@@ -997,7 +997,7 @@
      the five hues stay distinguishable from one another under the common
      forms of color vision deficiency, which is a property of the set and
      is lost as soon as one member is returned alone. The renderer
-     references them only as tokens (see git_graph.js). They are
+     references them only as tokens (see git-graph.js). They are
      identical in both themes: they are drawn as 1px strokes on either
      background and already carry enough contrast on both. */
   --git-lane-1: oklch(0.81 0.17 76.38);
@@ -2457,7 +2457,7 @@ html[data-prose-font="sans"] {
 /* ── Filter controls ─────────────────────────────────────────────
    The one chip family for every filtering surface. See
    docs/design-system.md ("Filter Controls") for the contract and
-   static/filter_controls.js for the markup that produces it.
+   static/filter-controls.js for the markup that produces it.
 
    Three shapes built from one atom:
      .chip                          the pill itself; state on
@@ -2745,7 +2745,7 @@ html[data-prose-font="sans"] {
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
-  /* The server ships this element empty and filter_controls.js fills it, so
+  /* The server ships this element empty and filter-controls.js fills it, so
      without a reserved height it stands 13px tall until the chips arrive and
      then grows to 37 -- pushing the whole tree down on every load and every
      reload. One chip, this element's 6px vertical padding, and its bottom
@@ -3419,7 +3419,7 @@ html[data-prose-font="sans"] {
    it. The preview pane is marked `data-kpress-viewport` (see server.py) and
    carries the `kpress-doc` query container (see .preview-pane above), so
    KPress's components.css drives the responsive sidebar/drawer against the
-   pane and toc.js (loaded + initialized via plugin_sdk.js) drives scroll-spy,
+   pane and toc.js (loaded + initialized via plugin-sdk.js) drives scroll-spy,
    the toggle, and the drawer. The doc <h1> header is suppressed at the source
    via show_doc_header=False (the path shows in metabrowser's file header), so
    no host CSS override is needed. */
@@ -4691,7 +4691,7 @@ pre.code-block code.hljs {
    and right-aligned author and age.
 
    The 22px row height is not a style choice — it is SWIMLANE_HEIGHT in
-   git_graph.js, and each row's SVG is drawn to exactly that height.
+   git-graph.js, and each row's SVG is drawn to exactly that height.
    Changing one without the other misaligns every lane against its row. */
 
 .git-graph-list {

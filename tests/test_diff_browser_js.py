@@ -35,8 +35,8 @@ def _run(script: str, marker: str) -> None:
 
 
 def test_diff_model_agrees_with_the_corpus() -> None:
-    _run("diff_model_behavior.js", "diff model OK")
+    _run("diff-model-behavior.js", "diff model OK")
 
 
 def test_diff_view_projects_the_model() -> None:
-    _run("diff_view_behavior.js", "diff view OK")
+    _run("diff-view-behavior.js", "diff view OK")

@@ -783,13 +783,13 @@ src/metabrowser/
 ├── server.py                            folder envelope, rollup route, asset wiring
 ├── wire_models.py                       rollup and tally wire types/validators
 ├── static/
-│   ├── request_error.js                 generic request error classification
+│   ├── request-error.js                 generic request error classification
 │   ├── formatters.js                    shared byte/count formatting
-│   ├── inventory_scope.js               scoped event relevance and watch factory
-│   ├── contribution_registry.js         generic deterministic registry primitive
-│   ├── resource_context.js              multiplexed live resource-envelope store
-│   ├── view_state.js                    active-view and dynamic print-state bridge
-│   ├── plugin_sdk.js                    public SDK adapters only
+│   ├── inventory-scope.js               scoped event relevance and watch factory
+│   ├── contribution-registry.js         generic deterministic registry primitive
+│   ├── resource-context.js              multiplexed live resource-envelope store
+│   ├── view-state.js                    active-view and dynamic print-state bridge
+│   ├── plugin-sdk.js                    public SDK adapters only
 │   ├── types.d.ts                       exact SDK and wire declarations
 │   ├── app.js                           routing, folder chrome, generic view mounting
 │   └── styles.css                       design tokens only for the new components
@@ -801,27 +801,27 @@ src/metabrowser/
     └── folder/
         ├── manifest.toml                Overview default; Treemap peer
         ├── index.js                     imports and registrations only
-        ├── overview_registry.js         folder-panel schema and registry facade
+        ├── overview-registry.js         folder-panel schema and registry facade
         ├── overview.js                  panel composer and lifecycle
-        ├── readme_panel.js               conditional Markdown contribution
-        ├── file_type_summary_model.js   pure tally-to-view-model transform
-        ├── distribution_view.js         grouped inline-bar table
-        ├── file_type_summary.js         live panel controller
-        ├── category_palette.js          path-scoped stable palette pool
-        ├── treemap_layout.js             pure geometry exports
-        ├── treemap_model.js              pure rollup/filter/cell transforms
+        ├── readme-panel.js               conditional Markdown contribution
+        ├── file-type-summary-model.js   pure tally-to-view-model transform
+        ├── distribution-view.js         grouped inline-bar table
+        ├── file-type-summary.js         live panel controller
+        ├── category-palette.js          path-scoped stable palette pool
+        ├── treemap-layout.js             pure geometry exports
+        ├── treemap-model.js              pure rollup/filter/cell transforms
         ├── treemap.js                    Treemap DOM controller and view adapter
         ├── styles.css                    existing Treemap styles
         ├── overview.css                  composer and panel presentation styles
         └── file_type_summary.css         distribution-specific layout styles
 ```
 
-Every new browser file except the existing legacy adapters `app.js`, `plugin_sdk.js`,
+Every new browser file except the existing legacy adapters `app.js`, `plugin-sdk.js`,
 and Markdown `index.js` stays under the fully strict `tsconfig.json` include.
 Do not add any new file to the legacy exclusion list.
 Folder and Markdown `index.js` files are ES modules and use relative imports served by
 the existing plugin-static route; the folder manifest no longer needs
-`extra_scripts = ["treemap_layout.js"]`.
+`extra_scripts = ["treemap-layout.js"]`.
 
 ### Cross-Layer Data Flow
 
@@ -992,7 +992,7 @@ again on every production request.
   It calls `discover_folder` in a worker thread, retains `readme_path` as discovery
   data, and keeps the envelope `no-store`.
 - `_api_file_impl(request)` continues to route directories before file classification.
-- `index(request)` adds the strict helper assets before `plugin_sdk.js`, preserves all
+- `index(request)` adds the strict helper assets before `plugin-sdk.js`, preserves all
   later dependency ordering, and no longer injects `METABROWSER_INITIAL_PATH`.
 - Remove `_initial_file_path()`. With no hash route, the browser selects the served root
   folder; README becomes a panel inside its Overview rather than replacing the landing
@@ -1005,7 +1005,7 @@ again on every production request.
 These modules are small IIFEs that expose one frozen global factory for the legacy SDK
 and shell adapters. They contain no folder panel IDs, README branches, or component CSS.
 
-#### `src/metabrowser/static/request_error.js` — new
+#### `src/metabrowser/static/request-error.js` — new
 
 - `RequestError` stores a safe message, HTTP status, operation, and cause.
 - `isAbortError(error)` recognizes browser aborts without depending on one realm’s
@@ -1025,10 +1025,10 @@ display raw response bodies or local paths.
 - `formatFileCount(value)` applies localized integers and correct `file`/`files` copy.
 
 Expose one frozen `window.MetabrowserFormatters` object.
-Both `app.js` and `plugin_sdk.js` delegate to it; neither keeps a private
+Both `app.js` and `plugin-sdk.js` delegate to it; neither keeps a private
 byte-formatting implementation.
 
-#### `src/metabrowser/static/inventory_scope.js` — new
+#### `src/metabrowser/static/inventory-scope.js` — new
 
 - `pathsIntersectScope(changedPaths, scopePath)` is the single relevance predicate used
   by rollups and live folder envelopes.
@@ -1041,7 +1041,7 @@ byte-formatting implementation.
 `mb.watchRollup` becomes a typed wrapper that supplies `fetchRollup` to this generic
 factory rather than duplicating listener code.
 
-#### `src/metabrowser/static/contribution_registry.js` — new
+#### `src/metabrowser/static/contribution-registry.js` — new
 
 - `createContributionRegistry({ validate, compare })` returns an isolated registry with
   `register(id, spec)` and `list()`.
@@ -1050,12 +1050,12 @@ factory rather than duplicating listener code.
 - `list` returns a frozen sorted snapshot and never exposes the mutable backing map.
 
 The helper knows nothing about folder placements or panel presentation.
-`overview_registry.js` supplies those rules.
+`overview-registry.js` supplies those rules.
 Like `registerView`, panel registration happens during plugin module evaluation before
 the DOM-ready mount; version one does not hot-add a newly registered descriptor to an
 already mounted Overview.
 
-#### `src/metabrowser/static/resource_context.js` — new
+#### `src/metabrowser/static/resource-context.js` — new
 
 - `createResourceContextStore({ fetchEnvelope, pathsIntersect, debounceMs })` returns
   `seed`, `subscribe`, `refresh`, and `dispose` methods.
@@ -1069,11 +1069,11 @@ already mounted Overview.
   with subscribers.
 - The last unsubscribe clears that path’s timer and request and releases the map entry.
 
-`plugin_sdk.js` instantiates this generic store as `mb.folderContext`. Only folder
+`plugin-sdk.js` instantiates this generic store as `mb.folderContext`. Only folder
 envelopes are seeded in version one, but the helper’s state model remains
 resource-generic.
 
-#### `src/metabrowser/static/view_state.js` — new
+#### `src/metabrowser/static/view-state.js` — new
 
 - `setActive(container, active)` is the shell-side state write and notifies subscribers
   only on a real transition.
@@ -1089,7 +1089,7 @@ Expose plugin-safe methods as `mb.viewState.isActive`, `mb.viewState.subscribeAc
 and `mb.setViewPrintState`. The shell-only active setter remains on
 `window.MetabrowserViewState`.
 
-#### `src/metabrowser/static/plugin_sdk.js`
+#### `src/metabrowser/static/plugin-sdk.js`
 
 Keep this legacy file an adapter:
 
@@ -1193,7 +1193,7 @@ README and directly opened Markdown now exercise exactly the same mount function
 
 ### Folder Plugin Function Map
 
-#### `src/metabrowser/builtin_plugins/folder/overview_registry.js` — new
+#### `src/metabrowser/builtin_plugins/folder/overview-registry.js` — new
 
 - `PLACEMENT_ORDER` maps `summary`, `content`, and `supplemental` to fixed ranks.
 - `validatePanelId(id)` requires a stable plugin-qualified form such as
@@ -1243,7 +1243,7 @@ modules execute.
 The composer contains no `if panelId === ...` branches.
 Tests must register a synthetic third panel and receive the same lifecycle as built-ins.
 
-#### `src/metabrowser/builtin_plugins/folder/readme_panel.js` — new
+#### `src/metabrowser/builtin_plugins/folder/readme-panel.js` — new
 
 - `createReadmePanel(mb)` returns the `folder.readme` descriptor in the `content` band
   with `document` presentation and `printable: true`.
@@ -1256,7 +1256,7 @@ Tests must register a synthetic third panel and receive the same lifecycle as bu
 There is no README title, wrapper card, copied KPress selector, or README-specific TOC
 cleanup in the folder plugin.
 
-#### `src/metabrowser/builtin_plugins/folder/file_type_summary_model.js` — new
+#### `src/metabrowser/builtin_plugins/folder/file-type-summary-model.js` — new
 
 This file is pure and has no DOM, fetch, preference, or global access.
 
@@ -1283,7 +1283,7 @@ This file is pure and has no DOM, fetch, preference, or global access.
 - `_assertPopulationSums(model)` is a development/test assertion that named plus Other
   integers equal the selected root totals.
 
-#### `src/metabrowser/builtin_plugins/folder/distribution_view.js` — new
+#### `src/metabrowser/builtin_plugins/folder/distribution-view.js` — new
 
 - `mountDistributionView(container, model, palette)` builds the semantic Type/Metric
   table once, with screen-reader-only column headers.
@@ -1305,7 +1305,7 @@ This file is pure and has no DOM, fetch, preference, or global access.
 Color is applied through `mb-distribution-slot-N` or Other classes.
 Only unitless data weights may be inline.
 
-#### `src/metabrowser/builtin_plugins/folder/file_totals_panel.js`
+#### `src/metabrowser/builtin_plugins/folder/file-totals-panel.js`
 
 - `createFileTotalsPanel(mb, palettePool, projectionPool, rollupControls)` returns the
   required `folder.file-totals` summary/surface descriptor, initially expanded.
@@ -1318,7 +1318,7 @@ Only unitless data weights may be inline.
   A missing, stale, or incompatible projection leaves a nonzero row as one neutral
   full-width fill.
 
-#### `src/metabrowser/builtin_plugins/folder/rollup_projection.js`
+#### `src/metabrowser/builtin_plugins/folder/rollup-projection.js`
 
 - `createFolderRollupProjectionPool()` owns ref-counted sessions keyed by folder path.
 - `acquire(path)` returns a small publish, subscribe, and release lease.
@@ -1326,7 +1326,7 @@ Only unitless data weights may be inline.
   release.
 - The pool transports already-normalized data; it does not fetch, classify, or render.
 
-#### `src/metabrowser/builtin_plugins/folder/file_type_summary.js`
+#### `src/metabrowser/builtin_plugins/folder/file-type-summary.js`
 
 - `createFileTypeSummaryPanel(mb, palettePool, projectionPool, rollupControls)` returns
   the required `folder.file-types` summary/surface descriptor headed File Breakdown and
@@ -1352,7 +1352,7 @@ Only unitless data weights may be inline.
 The rollup options resolve to `depth=0`, `top=0`, `ext_top=0`, independently bounded
 filename and remaining-type fallbacks, and `ext_rank="dual"`.
 
-#### `src/metabrowser/builtin_plugins/folder/category_palette.js` — new
+#### `src/metabrowser/builtin_plugins/folder/category-palette.js` — new
 
 - `createCategoryPalettePool(slotCount)` owns a path-to-session map.
 - `acquire(path)` increments a reference count and returns a lease with `sync(keys)`,
@@ -1369,11 +1369,11 @@ Overview and Treemap both acquire the same pool exported by folder `index.js`.
 
 The Treemap implementation stays split by responsibility:
 
-- `treemap_layout.js` exports `squarify`, `packLevel`, `cellTypography`, `layoutTree`,
+- `treemap-layout.js` exports `squarify`, `packLevel`, `cellTypography`, `layoutTree`,
   and `worstAspect`; it has no global registration or DOM access.
   It owns hierarchy-only packing, remainder conservation, ignored-scope weight
   selection, bounded recursion, and fluid type geometry.
-- `treemap_model.js` owns parent-path and parent-navigation calculations as pure
+- `treemap-model.js` owns parent-path and parent-navigation calculations as pure
   functions.
 - `treemap.js` owns shared-control markup and binding, file-type palette classes,
   formatter-backed labels and status, resize handling, view-preserving folder
@@ -1474,15 +1474,15 @@ wrapper:
   multiplexing, generation races, last-subscriber cleanup, and one request per path.
 - `tests/dom/view_state_behavior.js` tests active delivery, transition deduplication,
   print validation, active-view print events, and idempotent unsubscribe.
-- `tests/dom/markdown_mount_behavior.js` tests direct/composed parity, two simultaneous
+- `tests/dom/markdown-mount-behavior.js` tests direct/composed parity, two simultaneous
   TOCs, abort, late completion, diagnostics/error DOM, and exactly-once disposal.
-- `tests/dom/folder_overview_behavior.js` tests placement/ID order, hidden optional
+- `tests/dom/folder-overview-behavior.js` tests placement/ID order, hidden optional
   slots, out-of-order resolution, keyed preserve/update/remount, local Retry, print
   aggregation, synthetic third panels, active gating, and teardown.
 - `tests/dom/file_type_summary_model_behavior.js` tests tally normalization, active
   populations, sums, percent/size/count boundaries, row order, and every discriminated
   state without a DOM.
-- `tests/dom/file_type_summary_behavior.js` tests the flat summary body, grouped table,
+- `tests/dom/file-type-summary-behavior.js` tests the flat summary body, grouped table,
   inline metric fills, escaped labels, keyed patches, filters, Retry, hidden refresh,
   empty/ignored-only/zero-byte DOM, and teardown.
 - `tests/dom/category_palette_behavior.js` tests deterministic probing, distinct capped
@@ -1573,7 +1573,7 @@ types meet only in the final composition, avoiding a long serial implementation 
 - [x] Add request errors, shared formatters, scoped inventory watch, generic
   contribution registry, resource-context store, and view-state bridge under strict
   check-JS.
-- [x] Reduce `plugin_sdk.js` to adapters for those modules and extend exact public
+- [x] Reduce `plugin-sdk.js` to adapters for those modules and extend exact public
   types.
 - [x] Integrate context seeding, dynamic print state, per-instance view handles, and
   root folder startup into `app.js` with focused DOM tests.

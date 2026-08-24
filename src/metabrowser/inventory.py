@@ -112,6 +112,11 @@ LOG = logging.getLogger(__name__)
 _SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS = 30_000_000_000
 # Unit conversion for comparing second-based filter windows with inventory mtimes.
 _NANOSECONDS_PER_SECOND = 1_000_000_000
+# The exact installed-build browser comparison in exp-014 measured a 1 ms
+# `/api/tree` handler queued for 33-37 ms while the startup walker applied a
+# wide directory without suspending. Yield four times inside each 256-entry
+# delivery batch so request tasks run independently of directory width.
+_WALKER_COOPERATIVE_YIELD_BATCH = 64
 
 
 # Rollup revisions come from one process-wide sequence rather than a
@@ -1378,6 +1383,7 @@ class InventoryIndex:
         """
 
         batch: list[FsEntry] = []
+        entries_since_yield = 0
         try:
             gi_check = await run_cancellable_thread(
                 lambda cancel_event: _build_gitignore_check_for(
@@ -1401,12 +1407,15 @@ class InventoryIndex:
                     )
                     entry = replace(entry, write_token=WriteToken(observed_generation))
                 stored = self._store_walker_entry(entry)
-                if stored is None:
-                    continue
-                batch.append(stored)
-                if len(batch) >= WALKER_EMIT_BATCH:
-                    self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
-                    batch.clear()
+                if stored is not None:
+                    batch.append(stored)
+                    if len(batch) >= WALKER_EMIT_BATCH:
+                        self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
+                        batch.clear()
+                entries_since_yield += 1
+                if entries_since_yield >= _WALKER_COOPERATIVE_YIELD_BATCH:
+                    entries_since_yield = 0
+                    await asyncio.sleep(0)
             if batch:
                 self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
                 batch.clear()
@@ -1956,15 +1965,18 @@ def _derive_catalog_change(change: FsChange) -> CatalogChange | None:
     """The minimal Quick File companion for one ``fs.change`` batch.
 
     Non-gitignored file upserts shrink to ``{p, e}``; a gitignored
-    file upsert becomes a catalog remove so ignore-state flips
+    file upsert becomes an exact-file removal so ignore-state flips
     converge; directory upserts are dropped (the catalog holds files
     only — the client removes a directory's descendants itself on a
-    remove op). Returns ``None`` when nothing catalog-relevant
-    remains so no empty event reaches the wire.
+    remove op). Keeping exact file removals separate prevents one
+    catalog-wide prefix scan per ignored file. Returns ``None`` when
+    nothing catalog-relevant remains so no empty event reaches the
+    wire.
     """
 
     upserts: list[CatalogUpsert] = []
     removes: list[str] = []
+    remove_files: list[str] = []
     for op in change.ops:
         if isinstance(op, FsRemove):
             removes.append(op.path)
@@ -1973,12 +1985,16 @@ def _derive_catalog_change(change: FsChange) -> CatalogChange | None:
         if entry.type != "file":
             continue
         if entry.gitignored:
-            removes.append(entry.path)
+            remove_files.append(entry.path)
         else:
             upserts.append(CatalogUpsert(p=entry.path, e=entry.ext))
-    if not upserts and not removes:
+    if not upserts and not removes and not remove_files:
         return None
-    return CatalogChange(upserts=tuple(upserts), removes=tuple(removes))
+    return CatalogChange(
+        upserts=tuple(upserts),
+        removes=tuple(removes),
+        remove_files=tuple(remove_files),
+    )
 
 
 # ── Process-wide singleton ──────────────────────────────────────

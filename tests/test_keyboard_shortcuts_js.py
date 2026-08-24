@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-SHORTCUT_TEST_JS = Path(__file__).resolve().parent / "dom" / "keyboard_shortcuts_behavior.js"
+SHORTCUT_TEST_JS = Path(__file__).resolve().parent / "dom" / "keyboard-shortcuts-behavior.js"
 
 
 def test_keyboard_shortcut_js_assertions_pass() -> None:

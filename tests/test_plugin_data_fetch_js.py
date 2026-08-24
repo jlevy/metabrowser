@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "plugin_data_fetch_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "plugin-data-fetch-behavior.js"
 
 
 def test_fetch_plugin_data_contracts() -> None:

@@ -227,7 +227,19 @@ cutoff instead of hard-coding the limit in JavaScript.
 
 ## Browser SDK
 
-The supported API is available as `window.metabrowser`.
+The supported API is available as `window.metabrowser`. It is also the one
+browser-console entry point: diagnostics extend this object instead of creating
+additional window globals.
+
+`metabrowser.perf` is the active performance recorder.
+Use `report()` for readable tables, `responsiveness()` for the current responsiveness
+summary, and `copy()` or `download()` for a complete JSON profile suitable for a bug
+report. `metabrowser.debug` contains narrow shell troubleshooting helpers after the
+application script loads, including `clearFileCache(path?)` and `selectFile(path)`. The
+serving benchmark installs `metabrowser.bench` only after its browser probe is
+evaluated. The `debug` and `bench` tools are for interactive diagnosis, not plugin
+dependencies; plugins may use `perf.measure` and `perf.measureAsync` to contribute
+bounded, stable operation labels to the shared profile.
 
 ### Registration and Lifecycle
 
@@ -290,6 +302,7 @@ Useful helpers include:
 - `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
 - `ensureAsset(name)`;
+- `ensureKindAssets(kind)`;
 - `perf.measure` and `perf.measureAsync`.
 
 `ensureAsset(name)` loads a vendored library that the shell does not put on every page,
@@ -301,6 +314,13 @@ The bundles the host publishes are named in `server.py`; `"chart"` is Chart.js w
 annotation plugin and date adapter.
 See [Asset Loading Tiers](development.md#asset-loading-tiers) for which tier an asset
 belongs in.
+
+`ensureKindAssets(kind)` loads the plugins that declare a view for a file kind.
+Await it before embedding one kind’s renderer inside another plugin, then read the
+renderer from the SDK. Already-loaded plugins resolve immediately, and simultaneous
+callers share one load.
+This keeps cross-kind renderers off the eager shell path without exposing the private
+plugin host.
 
 `chart(container, type, data, options)` requires that bundle:
 `await metabrowser.ensureAsset("chart")` first, or the call throws.
@@ -462,7 +482,7 @@ diagnostics, aggregate source bytes, and an explicit completeness flag.
 It performs no live catalog subscription and does not provide visualization.
 Do not copy Markdown DOM or TOC behavior into a folder contribution.
 
-Use only the SDK surface documented here and in `static/plugin_sdk.js`. Variables in
+Use only the SDK surface documented here and in `static/plugin-sdk.js`. Variables in
 `app.js` are implementation details and may change without a plugin compatibility
 guarantee.
 

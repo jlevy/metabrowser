@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-LAYOUT_TEST_JS = Path(__file__).resolve().parent / "dom" / "treemap_layout_behavior.js"
+LAYOUT_TEST_JS = Path(__file__).resolve().parent / "dom" / "treemap-layout-behavior.js"
 
 
 def test_treemap_layout_behavior() -> None:

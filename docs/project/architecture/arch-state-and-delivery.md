@@ -312,7 +312,7 @@ computation, N deliveries.
 | --- | --- |
 | `fs.snapshot` | Authoritative initial state at the connection’s scope |
 | `fs.change` | Ordered upsert and remove ops |
-| `catalog.change` | Quick File catalog deltas, emitted beside every `fs.change` |
+| `catalog.change` | Quick File catalog upserts, exact file evictions, and subtree removals, emitted beside every `fs.change` |
 | `fs.resync_required` | A gap marker: drop derived state and resubscribe |
 | `capability.update` | Index completeness, watcher backends |
 | `projection.invalidate` / `projection.update` | Plugin projection lifecycle |
@@ -331,6 +331,16 @@ handler.
 Live catalog updates then arrive as `catalog.change`; the pair converges without
 a shared transaction because ops are idempotent by path.
 
+Removal semantics stay explicit on that event.
+`remove_files` names files made ineligible by a gitignored upsert, so the browser
+applies each with one exact `Map.delete`. `removes` names filesystem paths that
+disappeared and may therefore name directories, so the browser performs the prefix sweep
+needed to evict descendants.
+Combining the two is a correctness-preserving but unbounded-cost mistake: the client has
+to interpret every exact file as a possible directory and scan the complete catalog.
+`tests/dom/known-file-catalog-behavior.js` installs a `Map` that counts key enumeration
+and is the named check that exact removals never enter that path.
+
 ### Routes
 
 | Route | Purpose |
@@ -347,6 +357,33 @@ a shared transaction because ops are idempotent by path.
 | `/api/kpress/render`, `/api/kpress/export`, `/kpress-static/{path}` | Document rendering |
 | `/raw` | Bounded byte passthrough for embedded resources |
 
+#### `/api/tree` serves two different questions
+
+The same route answers a request for *rows* and a request for *tallies*, and which one
+it answers is decided by `depth` alone.
+A client that does not know this will ask the wrong one and read the absence of a field
+as a defect.
+
+| Request | `depth` | Returns | Issued by |
+| --- | --- | --- | --- |
+| Rows | absent, or `>= 1` | `tree` populated; tally fields null unless a fresh memo exists | the nav tree, via `treeUrl` |
+| Tallies | `0` | `tree` empty, always; `summary`, `extensions`, `canonical_extensions`, `file_type_registry`, `type_families`, `type_presets`, `recency_tallies` | `scheduleRootSummaryRefresh`, behind the render |
+
+An absent `depth` is not unbounded: it resolves to `DEFAULT_TREE_DEPTH`, which is 2. So
+the browser’s ordinary row request is a depth-2 request, and `depth=0` is a channel that
+never carries rows at all -- time to first row cannot be measured on it.
+
+**Only `depth=0` computes tallies.** The pass costs 0.37 s at 60,000 files indexed and
+1.30 s at 220,000, and it competes with the walker for the GIL, so paying it on a row
+request delays the rows and slows the scan that is producing them.
+Every tally field is nullable and the client guards each one, which is what makes the
+split safe. See
+`explorations/performance-loop/experiments/exp-007-rows-stop-waiting-for-the-tally-pass.md`.
+
+A client that wants both asks twice.
+That is what the browser does, and it is why the split is invisible in the app and
+visible at the API.
+
 A URL fragment identifies a location *inside* the selected document and never the file
 itself; query keys beginning with `_mb_` are reserved for presentation parameters and
 every other key belongs to the document.
@@ -356,7 +393,7 @@ The full grammar is in [Browser URL Grammar](../../architecture.md#browser-url-g
 
 The shell is plain ES modules over a small number of stores.
 `static/app.js` owns navigation, the tree, tabs, and view mounting;
-`static/plugin_sdk.js` exposes `window.metabrowser`, the only surface plugins may use.
+`static/plugin-sdk.js` exposes `window.metabrowser`, the only surface plugins may use.
 The other modules are single-purpose seams the shell and the SDK share.
 
 Client state falls into three tiers that mirror the server’s.
@@ -370,8 +407,8 @@ refetched wholesale in normal operation.
 | Store | Module | Holds |
 | --- | --- | --- |
 | `fileStore` | `app.js` | path → `FsEntry`, the source of truth for tree decoration |
-| `metabrowserDirectoryTotalsStore` | `directory_totals_store.js` | Per-directory totals, the plugin-visible cache |
-| Known-file catalog | `known_file_catalog.js`, `catalog_feed.js` | The Quick File universe |
+| `metabrowserDirectoryTotalsStore` | `directory-totals-store.js` | Per-directory totals, the plugin-visible cache |
+| Known-file catalog | `known-file-catalog.js`, `catalog-feed.js` | The Quick File universe |
 
 Applying an op patches the store and the rendered row together, so a live update does
 not require a re-render of the tree.
@@ -381,9 +418,9 @@ not require a re-render of the tree.
 These are the client’s half of the pull layer: a response that is refetched when
 something relevant changes, rather than patched.
 
-- `resource_context.js` — a multiplexed live envelope store for path-scoped resources,
+- `resource-context.js` — a multiplexed live envelope store for path-scoped resources,
   so several views of one path share a single fetch.
-- `inventory_scope.js` — the shared primitive underneath both: *is this inventory event
+- `inventory-scope.js` — the shared primitive underneath both: *is this inventory event
   relevant to my scope*, plus the debounced refresh lifecycle.
   Its debounce is bounded by one window, because a crawl emits changes continuously and
   a debounce that restarted on every one would never fire until the stream paused.
@@ -394,11 +431,11 @@ something relevant changes, rather than patched.
 
 State that belongs to what is on screen rather than to the tree.
 
-`view_state.js` (active-view subscriptions, print metadata), `tree_expansion.js`
-(disclosure state and the initial expansion plan), `filter_state.js` (the one filter
-vocabulary behind the nav controls), `theme_state.js` (the resolved-theme boundary the
+`view-state.js` (active-view subscriptions, print metadata), `tree-expansion.js`
+(disclosure state and the initial expansion plan), `filter-state.js` (the one filter
+vocabulary behind the nav controls), `theme-state.js` (the resolved-theme boundary the
 shell and canvas renderers share), `navigation.js` (canonical route construction),
-`contribution_registry.js` (deterministic registration for views and commands).
+`contribution-registry.js` (deterministic registration for views and commands).
 
 Mounted plugin views are the disposable part of this tier.
 Replacing the preview pane runs every registered disposer; switching tabs does not, so a

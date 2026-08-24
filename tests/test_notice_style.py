@@ -24,7 +24,7 @@ STATIC_DIR = REPO_ROOT / "src" / "metabrowser" / "static"
 PLUGINS_DIR = STATIC_DIR.parent / "builtin_plugins"
 CORE_CSS = STATIC_DIR / "styles.css"
 PLUGIN_CSS = tuple(sorted(PLUGINS_DIR.glob("*/styles.css")))
-SDK_JS = STATIC_DIR / "plugin_sdk.js"
+SDK_JS = STATIC_DIR / "plugin-sdk.js"
 
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 CSS_RULE_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")

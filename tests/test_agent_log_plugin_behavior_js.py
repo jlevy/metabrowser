@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "agent_log_plugin_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "agent-log-plugin-behavior.js"
 PLUGIN_JS = REPO_ROOT / "src/metabrowser/builtin_plugins/agent_log/index.js"
 APP_JS = REPO_ROOT / "src/metabrowser/static/app.js"
 

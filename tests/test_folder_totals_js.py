@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "folder_totals_model_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "folder-totals-model-behavior.js"
 
 
 def test_folder_totals_model_behavior() -> None:

@@ -2,6 +2,128 @@
 
 All notable changes to Metabrowser are documented here.
 
+## Unreleased
+
+Performance, validated against 0.6.0 side by side:
+
+- A full index of a 247,000-file project tree completes in 11.348 s where 0.6.0 takes
+  25.378 s, medians of five interleaved runs against the final installed wheel.
+  The first navigation row arrives in 1.107 s instead of 2.647 s, and peak RSS falls
+  from 183.0 MB to 176.3 MB. Two other tree shapes agree: 11.1 s against 28.6 s deep and
+  narrow, and 2.7 s against 6.0 s wide and shallow.
+  Peak memory is unchanged to slightly lower.
+  Both builds report identical rows, file counts and byte totals on every shape.
+
+- Gitignored-file updates now remove one exact Quick File entry in constant time,
+  whether they arrive in a prefetched subtree or on the live event stream.
+  They previously shared the directory-prefix removal path, scanning the complete
+  catalog once per ignored leaf and freezing the browser repeatedly on large trees.
+  Filesystem removals retain subtree semantics.
+
+- The browser performance loop now treats responsiveness as an acceptance gate.
+  Its reusable navigation-time profile covers loading, Long Tasks, Long Animation
+  Frames, Event Timing interactions grouped by gesture, rendering, visual stability,
+  exact fetch failures, network cost, and bounded retention; recorded comparisons reject
+  hidden, late, unsettled, interaction-free, truncated, or undersampled evidence.
+  Trusted input now pulses from first usable state through client quiescence, and the
+  profile records and gates its loading-window coverage, so one early click cannot miss
+  a later event storm.
+  It also separates startup JavaScript from scripts loaded for the selected view,
+  retains bounded path-only attribution for the slowest and latest startup assets, and
+  gates startup request count and transfer size.
+  Recording exits nonzero as soon as any run crosses a hard budget.
+
+- Four final visible browser pairs against the globally installed 0.6.0 reduce
+  inventory-delivery work from 11% of the loading window to 0.4%, its worst callback
+  from 7 ms to 1 ms, startup JavaScript from 75 requests / 340 KB to 22 / 154 KB, and
+  total transfer from 518 KB to 454 KB. Every candidate run passes the hard
+  responsiveness and correctness gates.
+  Cold FCP remains a named tradeoff at 146 ms against 114 ms; the performance record
+  does not hide it inside the responsiveness win.
+
+- The gain is largest exactly when a client is watching, because that is what the change
+  addresses: a row request no longer computes navigation tallies, so polling the tree
+  during a scan no longer competes with the walk that is filling it.
+  Under a client polling without backoff, 0.6.0 does not finish indexing that tree
+  within four minutes; this build finishes in 29 s.
+
+API, observable to plugin authors:
+
+- `metabrowser.ensureKindAssets(kind)` loads deferred plugins for a file kind before a
+  plugin embeds that kind’s renderer.
+  Folder README panels use it to wait for the Markdown renderer, fixing Overview panels
+  that reported “The request could not be completed” when Markdown had not already been
+  opened.
+
+- Browser-console tools now share the existing `window.metabrowser` namespace.
+  The complete recorder is `metabrowser.perf`, shell troubleshooting helpers are under
+  `metabrowser.debug`, and the pasted serving probe installs `metabrowser.bench`. The
+  standalone `metabrowserPerf` global and this development cycle’s
+  `webPerformanceProfiler` alias are removed.
+
+- `/api/tree` answers rows and tallies as two separate requests, and only `depth=0`
+  computes tallies. A request with `depth` absent or `>= 1` returns rows with the tally
+  fields null unless a fresh memo happens to exist.
+  Every tally field was already nullable and guarded field by field on the client, so
+  the browser is unaffected — it asks twice, which is what any client wanting both
+  should do. See
+  [the route documentation](docs/project/architecture/arch-state-and-delivery.md) for
+  the table.
+
+Development:
+
+- First-party JavaScript and TypeScript filenames now use lowercase kebab-case
+  consistently. `make lint-check` rejects nonconforming tracked or newly added files;
+  vendored assets retain their upstream names.
+
+- A build that is not exactly a released one now says so: `metab --version` annotates
+  the version with how far past the tag it is, which commit, and whether the tree is
+  dirty. An installed release is unchanged.
+  This exists because two builds under comparison both reported `0.6.0` while thirty
+  commits apart, and nothing on screen contradicted it.
+
+- `devtools/bench_serving.py` takes `--corpus {synthetic,realistic,project}`. Two of the
+  three corpus shapes had no command-line route, including the one the scan-ordering
+  figures were measured on, so reproducing them meant importing the module by hand.
+
+- Performance harnesses can select an exact installed `metab` console script and record
+  its reported version.
+  Browser runs also require an immutable build reference, preventing `PATH` order or an
+  ambiguous version string from mislabeling a comparison.
+  Browser profiles can be recorded from an exported JSON file as well as an inline
+  console paste. A dependency-free Chrome DevTools Protocol capture command now produces
+  the same profile with browser-trusted input and can record and gate it directly.
+
+- The initial fetched tree now reconciles into the shell’s inline rows instead of
+  replacing the complete tree panel.
+  Reconciliation is keyed through every visible expanded container, while collapsed
+  descendants remain cached data until expansion instead of consuming hidden DOM.
+  Performance profiles also report inventory-delivery batch volume, maximum callback
+  time, and whole-window work share, with hard gates against both single callback stalls
+  and sustained event storms.
+  Automated captures wait for browser-side fetch and work quiescence, exercise inert
+  trusted-input paints throughout the load, send a final paint at the settle boundary,
+  freeze product responsiveness before adapter diagnostics, and record controlled
+  post-GC retained heap.
+  Backend completion, an early-only interaction, adapter work, and garbage-collection
+  timing therefore cannot hide regressions.
+  The inventory walker also yields between bounded entry groups so one wide directory
+  cannot monopolize the request event loop.
+
+- Built-in plugin styles, classic dependencies, and modules now load on demand for the
+  selected file kind instead of every plugin joining every directory load.
+  The shell preserves each manifest’s script order and waits for the selected renderer
+  before mounting it; folder navigation and first tree paint no longer wait for
+  unrelated Markdown, structured-data, log, diff, or chart code.
+  Search, keyboard Help, and Git controls likewise initialize after the first usable
+  tree. The live inventory starts independently, and a stream that opens before the
+  on-demand Quick File modules arrive still starts their authoritative catalog feed.
+  Separate correctness gates prove both the deferred tools and the complete catalog
+  reached ready state.
+  The server-carried first rows also paint as soon as the final core script runs rather
+  than waiting for `DOMContentLoaded`; the shell preloads that already-eager final
+  script so its download does not sit behind the rest of the startup waterfall.
+
 ## 0.6.0
 
 File-type colors:

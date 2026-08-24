@@ -28,12 +28,12 @@ def _run_node_suite(script: Path, expected_prefix: str) -> None:
 
 
 def test_filter_state_js_assertions_pass() -> None:
-    _run_node_suite(DOM_DIR / "filter_state_behavior.js", "OK filter state")
+    _run_node_suite(DOM_DIR / "filter-state-behavior.js", "OK filter state")
 
 
 def test_filter_controls_js_assertions_pass() -> None:
-    _run_node_suite(DOM_DIR / "filter_controls_behavior.js", "OK filter controls")
+    _run_node_suite(DOM_DIR / "filter-controls-behavior.js", "OK filter controls")
 
 
 def test_tree_filter_model_js_assertions_pass() -> None:
-    _run_node_suite(DOM_DIR / "tree_filter_model_behavior.js", "OK tree filter model")
+    _run_node_suite(DOM_DIR / "tree-filter-model-behavior.js", "OK tree filter model")

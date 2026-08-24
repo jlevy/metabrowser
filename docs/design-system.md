@@ -887,7 +887,7 @@ focus is itself a reveal trigger.
 
 Every filter in the app is built from one chip family, documented in the
 `── Filter controls ──` block of `static/styles.css` and rendered by
-`static/filter_controls.js`. A surface that needs a filter reaches for these rather than
+`static/filter-controls.js`. A surface that needs a filter reaches for these rather than
 inventing a pill of its own; four near-identical pills is what this family replaced.
 
 Core and plugin views use the same renderer and interaction code.
@@ -1050,7 +1050,7 @@ need stable distribution identities of their own.
 
 The component uses a declared categorical palette, a neutral **Other** token, a track
 token, and a named track-height token.
-Consumers apply the palette through `category_palette.js`; they do not copy color
+Consumers apply the palette through `category-palette.js`; they do not copy color
 literals or compose colors themselves.
 Inline percentage widths are allowed because they encode data rather than theme.
 
@@ -1074,7 +1074,7 @@ separation the palette is built on.
 
 The server therefore ships finished colors.
 `METABROWSER_SETTINGS.DISTRIBUTION_COLORS` carries each family’s distribution key with
-its color on both themes, and `category_palette.js` writes both onto the element as
+its color on both themes, and `category-palette.js` writes both onto the element as
 `--mb-distribution-color-light` and `--mb-distribution-color-dark`.
 `.mb-distribution-mark` selects between them by theme and `.mb-distribution-other` takes
 the neutral, so a theme change is a selector switch rather than a repaint.

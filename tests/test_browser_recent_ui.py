@@ -100,27 +100,32 @@ def test_index_template_renders_index_progress_footer() -> None:
 def test_index_template_versions_core_static_assets() -> None:
     html = _render_index_html()
     assert 'href="/static/styles.css?v=' in html
+    assert '<link rel="preload" href="/static/app.js?v=' not in html
     assets = (
-        "/static/plugin_sdk.js",
+        "/static/plugin-sdk.js",
         "/static/icons.js",
-        "/static/tree_expansion.js",
-        "/static/tree_filter_model.js",
-        "/static/known_file_catalog.js",
-        "/static/catalog_feed.js",
-        "/static/file_fuzzy_match.js",
-        "/static/search_controller.js",
-        "/static/keyboard_shortcuts.js",
-        "/static/overlay_layer.js",
-        "/static/keyboard_help.js",
-        "/static/tree_keyboard_navigation.js",
-        "/static/search_palette.js",
+        "/static/tree-expansion.js",
+        "/static/tree-filter-model.js",
         "/static/app.js",
     )
     positions = []
     for asset in assets:
         assert f'src="{asset}?v=' in html
-        positions.append(html.index(asset))
+        positions.append(html.index(f'<script src="{asset}?v='))
     assert positions == sorted(positions)
+    deferred_assets = (
+        "/static/known-file-catalog.js",
+        "/static/catalog-feed.js",
+        "/static/file-fuzzy-match.js",
+        "/static/search-controller.js",
+        "/static/keyboard-shortcuts.js",
+        "/static/overlay-layer.js",
+        "/static/keyboard-help.js",
+        "/static/tree-keyboard-navigation.js",
+        "/static/search-palette.js",
+    )
+    assert all(asset in html for asset in deferred_assets)
+    assert all(f'<script src="{asset}' not in html for asset in deferred_assets)
 
 
 def test_files_panel_owns_one_generated_tree_with_concise_row_names() -> None:
@@ -618,3 +623,13 @@ def test_dom_content_loaded_calls_init_nav_tabs() -> None:
     handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     handler_block = js[handler_start : handler_start + 3000]
     assert "initNavTabs();" in handler_block
+
+
+def test_startup_gives_the_tree_request_priority_over_preview_plugins() -> None:
+    js = _read_app_js()
+    handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
+    handler_block = js[handler_start : handler_start + 3000]
+
+    assert handler_block.index("await loadTree();") < handler_block.index(
+        "navigationController.start()"
+    )

@@ -66,8 +66,8 @@ def test_plugin_messages_use_product_language() -> None:
 
 
 def test_search_copy_explains_incomplete_indexing() -> None:
-    palette = _read(STATIC / "search_palette.js")
-    controller = _read(STATIC / "search_controller.js")
+    palette = _read(STATIC / "search-palette.js")
+    controller = _read(STATIC / "search-controller.js")
     copy = palette + controller
 
     assert "Search includes ${scope}." in palette
@@ -85,7 +85,7 @@ def test_search_copy_explains_incomplete_indexing() -> None:
 
 def test_live_filter_exposes_its_exact_cutoff() -> None:
     app = _read(STATIC / "app.js")
-    controls = _read(STATIC / "filter_controls.js")
+    controls = _read(STATIC / "filter-controls.js")
 
     assert "Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds" in app
     assert 'const tip = opt.tip ? ` data-tip-text="${esc(opt.tip)}"` : "";' in controls

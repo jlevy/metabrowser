@@ -132,7 +132,7 @@ def test_embedded_readme_suppresses_its_own_table_of_contents() -> None:
     """
 
     folder_dir = PLUGIN_DIR.parent / "folder"
-    readme_panel = (folder_dir / "readme_panel.js").read_text(encoding="utf-8")
+    readme_panel = (folder_dir / "readme-panel.js").read_text(encoding="utf-8")
     assert 'includeToc: "off"' in readme_panel
 
     # The option has to survive the whole path or the panel's request is inert:
@@ -140,7 +140,7 @@ def test_embedded_readme_suppresses_its_own_table_of_contents() -> None:
     rendered = (PLUGIN_DIR / "rendered.js").read_text(encoding="utf-8")
     assert "includeToc: options.includeToc" in rendered
 
-    sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin_sdk.js").read_text(encoding="utf-8")
+    sdk = (PLUGIN_DIR.parent.parent / "static" / "plugin-sdk.js").read_text(encoding="utf-8")
     assert 'url.searchParams.set("toc", includeToc)' in sdk
 
 

@@ -65,11 +65,11 @@ there.
 
 ### Existing keyboard behavior is fragmented
 
-`static/search_palette.js` owns both a document-level listener for `/` and `T` and a
+`static/search-palette.js` owns both a document-level listener for `/` and `T` and a
 separate `HINT_GROUPS` constant for `ArrowUp`, `ArrowDown`, `Enter`, and `Escape`. The
 dispatch and presentation can drift because they are different data.
 
-`static/filter_controls.js` correctly implements local ARIA behavior for its menus and
+`static/filter-controls.js` correctly implements local ARIA behavior for its menus and
 radiogroups, while the settings control and Quick File each own separate Escape and
 focus behavior. Those control-local conventions should remain local, but application
 commands need one arbitration point so two global listeners cannot claim the same key.
@@ -246,7 +246,7 @@ widths, both themes, reduced motion, and spoken names.
 
 ### Shortcut Registry
 
-A new strict module, `static/keyboard_shortcuts.js`, exposes an internal frozen factory
+A new strict module, `static/keyboard-shortcuts.js`, exposes an internal frozen factory
 as `window.MetabrowserKeyboardShortcuts`. It is core-shell infrastructure, not a public
 plugin API.
 
@@ -433,7 +433,7 @@ Focus moving around the application must not repeatedly announce changing tips.
 
 ### File-Tree Semantics and Focus
 
-A new strict module, `static/tree_keyboard_navigation.js`, owns the keyboard and focus
+A new strict module, `static/tree-keyboard-navigation.js`, owns the keyboard and focus
 model. `app.js` continues to own fetching, rendering, selection, and lazy expansion; the
 navigator receives callbacks for the existing toggle and open operations rather than
 reaching into private fetch state.
@@ -521,11 +521,11 @@ controls.
 
 | Component | Responsibility |
 | --- | --- |
-| `static/keyboard_shortcuts.js` | Registry, scope arbitration, event matching, descriptor validation, canonical binding formatting and rendering, immutable presentation snapshots, disposal |
-| `static/keyboard_help.js` | Registry-derived Help dialog and nav hint rendering through shared dialog and binding primitives |
-| `static/tree_keyboard_navigation.js` | Tree semantics, roving focus, visible-row traversal, activation callbacks |
-| Shared `static/overlay_layer.js` | Modal portal, inert background, focus containment and restoration, registry-scoped Escape, scrim dismissal |
-| `static/search_palette.js` | Search-specific state and results; registers its commands and consumes shared hints |
+| `static/keyboard-shortcuts.js` | Registry, scope arbitration, event matching, descriptor validation, canonical binding formatting and rendering, immutable presentation snapshots, disposal |
+| `static/keyboard-help.js` | Registry-derived Help dialog and nav hint rendering through shared dialog and binding primitives |
+| `static/tree-keyboard-navigation.js` | Tree semantics, roving focus, visible-row traversal, activation callbacks |
+| Shared `static/overlay-layer.js` | Modal portal, inert background, focus containment and restoration, registry-scoped Escape, scrim dismissal |
+| `static/search-palette.js` | Search-specific state and results; registers its commands and consumes shared hints |
 | `static/app.js` | Composition root, existing tree actions, synchronization calls, selection and source changes |
 | `server.py` index template | Help trigger host, hint-strip host, script ordering |
 | `static/styles.css` | Shared dialog anatomy plus token-based Help, focus, keycap, and hint-strip presentation |
@@ -540,7 +540,7 @@ The names and seams below are the implementation contract.
 If implementation exposes a conflict, update this plan and the owning bead before
 introducing a parallel helper or moving behavior across a boundary.
 
-#### `static/keyboard_shortcuts.js`
+#### `static/keyboard-shortcuts.js`
 
 This new strict module exposes `window.MetabrowserKeyboardShortcuts` and contains no
 application-specific DOM.
@@ -575,7 +575,7 @@ item. Registration order cannot change Help order.
 unavailable command and passes `context.trigger` to a handler only after those checks.
 Only a true result from `invoke()` or the keyboard handler consumes an event.
 
-#### `static/overlay_layer.js`
+#### `static/overlay-layer.js`
 
 This new strict module exposes `window.MetabrowserOverlay`. This feature lands the modal
 slice; point and element anchoring remain in the menu-and-actions plan.
@@ -604,7 +604,7 @@ connected fallback; it never guesses an unrelated control inside the generic ove
 layer. The dialog root may own its local Tab handler because Tab containment is widget
 behavior, not an application shortcut.
 
-#### `static/keyboard_help.js`
+#### `static/keyboard-help.js`
 
 This new strict module exposes `window.MetabrowserKeyboardHelp`.
 
@@ -634,7 +634,7 @@ The hint host is never live-announced.
 Disposing removes both command registrations, the registry subscription, and the modal
 portal.
 
-#### `static/search_palette.js`
+#### `static/search-palette.js`
 
 The existing `create(options)` keeps search, listbox, status, and stale-result behavior,
 but gains required `shortcuts` and `overlay` inputs.
@@ -665,7 +665,7 @@ but gains required `shortcuts` and `overlay` inputs.
 The returned palette API remains `open`, `close`, `isOpen`, `element`, and `dispose`, so
 `app.js` and existing callers do not acquire a second migration.
 
-#### `static/tree_keyboard_navigation.js`
+#### `static/tree-keyboard-navigation.js`
 
 This new strict module exposes `window.MetabrowserTreeKeyboardNavigation` and receives
 existing application actions as callbacks.
@@ -774,9 +774,9 @@ Page Down, and Space therefore remain unhandled.
 
 #### `server.py`, `types.d.ts`, and `styles.css`
 
-`server.py:index()` adds cache-busted URLs for `keyboard_shortcuts.js`,
-`overlay_layer.js`, `keyboard_help.js`, and `tree_keyboard_navigation.js`. It emits them
-in that dependency order before `search_palette.js` and `app.js`. The template adds an
+`server.py:index()` adds cache-busted URLs for `keyboard-shortcuts.js`,
+`overlay-layer.js`, `keyboard-help.js`, and `tree-keyboard-navigation.js`. It emits them
+in that dependency order before `search-palette.js` and `app.js`. The template adds an
 empty `#nav-shortcut-hints` region immediately before `#index-progress`; the progress
 live region remains unchanged.
 The hints region carries `role="group"` together with its accessible name, because ARIA
@@ -795,21 +795,21 @@ New selectors introduce no literal colors, shadows, radii, z-indexes, or type si
 
 #### Test and Distribution Files
 
-- `tests/dom/keyboard_shortcuts_behavior.js` covers validation, matching, priority,
+- `tests/dom/keyboard-shortcuts-behavior.js` covers validation, matching, priority,
   editable and composition guards, repeat policy, invocation, single-command and
   snapshot presentation, subscription, and disposal.
-- `tests/dom/overlay_layer_behavior.js` covers modal arbitration, anatomy, inert-state
+- `tests/dom/overlay-layer-behavior.js` covers modal arbitration, anatomy, inert-state
   restoration, control binding and trigger-state restoration, Tab containment, every
   close path through one descriptor, detached-focus fallback, registry scope disposal,
   and portal cleanup.
-- `tests/dom/keyboard_help_behavior.js` covers exact copy, safe project link, Help
+- `tests/dom/keyboard-help-behavior.js` covers exact copy, safe project link, Help
   groups, keyed persistent and contextual hints, trigger preservation, pointer
   invocation, valid-or-omitted ARIA, and subscription disposal.
-- `tests/dom/tree_keyboard_navigation_behavior.js` covers every tree key, visible-order
+- `tests/dom/tree-keyboard-navigation-behavior.js` covers every tree key, visible-order
   rules, concise accessible names, owned group relationships, declared level and set
   metadata, focus versus selection, known-empty end nodes, pagination, lazy children,
   render repair, scope activation, and native unhandled keys.
-- `tests/dom/search_palette_behavior.js` replaces local-key and local-overlay assertions
+- `tests/dom/search-palette-behavior.js` replaces local-key and local-overlay assertions
   with injected registry and modal assertions while retaining every search, stale-row,
   catalog-growth, cancellation, and result-opening regression.
 - `tests/test_browser_keyboard_js.py` runs the four new Node behavior suites under the

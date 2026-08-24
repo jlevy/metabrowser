@@ -105,8 +105,8 @@ def test_client_settings_publish_one_authoritative_registry() -> None:
 def test_index_loads_the_taxonomy_before_the_plugin_sdk() -> None:
     response = asyncio.run(server.index(cast(Any, None)))
     html = bytes(response.body).decode()
-    assert "/static/file_type_taxonomy.js?v=" in html
-    assert html.index("/static/file_type_taxonomy.js") < html.index("/static/plugin_sdk.js")
+    assert "/static/file-type-taxonomy.js?v=" in html
+    assert html.index("/static/file-type-taxonomy.js") < html.index("/static/plugin-sdk.js")
 
 
 def test_distribution_colors_cover_every_family_on_both_themes() -> None:

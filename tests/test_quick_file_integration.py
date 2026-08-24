@@ -35,25 +35,25 @@ def _render_index_html() -> str:
     )
 
 
-def test_quick_file_assets_load_in_dependency_order_before_app() -> None:
+def test_quick_file_assets_load_in_deferred_dependency_order() -> None:
     html = _render_index_html()
     asset_paths = (
-        "/static/known_file_catalog.js",
-        "/static/catalog_feed.js",
-        "/static/file_fuzzy_match.js",
-        "/static/search_controller.js",
-        "/static/keyboard_shortcuts.js",
-        "/static/overlay_layer.js",
-        "/static/keyboard_help.js",
-        "/static/tree_keyboard_navigation.js",
-        "/static/search_palette.js",
-        "/static/app.js",
+        "/static/known-file-catalog.js",
+        "/static/catalog-feed.js",
+        "/static/file-fuzzy-match.js",
+        "/static/search-controller.js",
+        "/static/keyboard-shortcuts.js",
+        "/static/overlay-layer.js",
+        "/static/keyboard-help.js",
+        "/static/tree-keyboard-navigation.js",
+        "/static/search-palette.js",
     )
     positions = []
     for asset_path in asset_paths:
-        assert f'src="{asset_path}?v=' in html
+        assert asset_path in html
         positions.append(html.index(asset_path))
     assert positions == sorted(positions)
+    assert all(f'<script src="{asset_path}' not in html for asset_path in asset_paths)
 
 
 def test_preview_is_a_programmatic_focus_destination() -> None:
@@ -92,14 +92,17 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
 
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
-    assert loaded_block.index("initQuickFileFinder();") < loaded_block.index(
-        "navigationController.start()"
+    assert loaded_block.index("await loadTree();") < loaded_block.index("initDeferredShellTools()")
+    assert loaded_block.index("initDeferredShellTools()") < loaded_block.index(
+        "startInventoryEventStream();"
     )
-    assert loaded_block.count("initQuickFileFinder();") == 1
+    assert "await initDeferredShellTools();" not in loaded_block
+    deferred = js[js.index("async function initDeferredShellTools()") : loaded_start]
+    assert deferred.count("initQuickFileFinder();") == 1
 
 
 def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
-    palette = proc_browser.STATIC_DIR.joinpath("search_palette.js").read_text()
+    palette = proc_browser.STATIC_DIR.joinpath("search-palette.js").read_text()
     assert "function registerCommands()" in palette
     assert "function renderShortcutHints()" in palette
     assert "options.overlay.createModal" in palette
@@ -111,13 +114,13 @@ def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
 
 
 def test_registry_is_the_only_application_shortcut_dispatcher() -> None:
-    registry = proc_browser.STATIC_DIR.joinpath("keyboard_shortcuts.js").read_text()
+    registry = proc_browser.STATIC_DIR.joinpath("keyboard-shortcuts.js").read_text()
     assert registry.count('hostDocument.addEventListener("keydown"') == 1
     for filename in (
-        "keyboard_help.js",
-        "overlay_layer.js",
-        "search_palette.js",
-        "tree_keyboard_navigation.js",
+        "keyboard-help.js",
+        "overlay-layer.js",
+        "search-palette.js",
+        "tree-keyboard-navigation.js",
     ):
         source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
         assert 'hostDocument.addEventListener("keydown"' not in source
@@ -205,15 +208,32 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 
     onopen_start = js.index("inventoryEventSource.onopen")
     onopen_block = js[onopen_start : onopen_start + 700]
+    assert "catalogFeedCanStart = true" in onopen_block
     assert "quickFileCatalogFeed?.start()" in onopen_block
 
     degraded_start = js.index("function startInventoryEventStream()")
     degraded_block = js[degraded_start : degraded_start + 600]
+    assert degraded_block.index("catalogFeedCanStart = true") < degraded_block.index(
+        "quickFileCatalogFeed?.start()"
+    )
     assert "quickFileCatalogFeed?.start()" in degraded_block
 
     init_start = js.index("function initQuickFileFinder()")
     init_block = js[init_start : init_start + 1200]
     assert "window.MetabrowserCatalogFeed.create" in init_block
+    assert "if (catalogFeedCanStart)" in init_block
+    assert "quickFileCatalogFeed.start()" in init_block
+
+
+def test_catalog_delivery_is_attributed_with_bounded_work_volume() -> None:
+    feed = proc_browser.STATIC_DIR.joinpath("catalog-feed.js").read_text()
+
+    assert '"knownFileCatalog:applyCatalogChange"' in feed
+    assert "work_items: upserts + subtreeRemoves + fileRemoves" in feed
+    assert '"knownFileCatalog:applyBulkSnapshot"' in feed
+    assert "work_items: Array.isArray(payload.files) ? payload.files.length : 0" in feed
+    assert "subtree_removes: subtreeRemoves" in feed
+    assert "file_removes: fileRemoves" in feed
 
 
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
@@ -244,7 +264,7 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
 def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     """Folder visualizations can carry their view intent across navigation."""
     js = _read_app_js()
-    sdk = (proc_browser.STATIC_DIR / "plugin_sdk.js").read_text()
+    sdk = (proc_browser.STATIC_DIR / "plugin-sdk.js").read_text()
     types = (proc_browser.STATIC_DIR / "types.d.ts").read_text()
     treemap = (
         proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder" / "treemap.js"
@@ -272,10 +292,10 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
 
 def test_local_quick_file_modules_define_no_search_endpoint() -> None:
     for filename in (
-        "known_file_catalog.js",
-        "file_fuzzy_match.js",
-        "search_controller.js",
-        "search_palette.js",
+        "known-file-catalog.js",
+        "file-fuzzy-match.js",
+        "search-controller.js",
+        "search-palette.js",
     ):
         source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
         assert "/api/search" not in source

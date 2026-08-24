@@ -15,7 +15,7 @@ the load time of a document that contains no diagram.
 Most of the pipeline already exists.
 KPress treats a Mermaid fence as a diagram rather than as code, ships a `js/diagrams.js`
 behavior that swaps the source for rendered SVG, and lists that module as an asset entry
-point which `plugin_sdk.js` already loads.
+point which `plugin-sdk.js` already loads.
 It returns on its first line, because it asks the host for `globalThis.mermaid` and
 Metabrowser never defines it.
 
@@ -55,7 +55,7 @@ Rendering a Mermaid fence through `kpress_adapter.render_kpress_view` against th
 ```
 
 The same render returns an asset manifest listing `js/diagrams.js`, which
-`plugin_sdk.js` already fetches and evaluates.
+`plugin-sdk.js` already fetches and evaluates.
 The figure stays at `data-kpress-diagram-status="source"` and the reader sees Mermaid
 source.
 
@@ -91,7 +91,7 @@ a tree, since every entry today is one flat file.
 `TOTAL_CAP_BYTES` rises from 3,000,000 with the measured tree size recorded beside it.
 `PER_FILE_CAP_BYTES` stays at 1,700,000: the largest Mermaid chunk is 705,086 bytes.
 
-**`static/plugin_sdk.js`.** Gains `kpressInitDiagrams(container)`, mirroring
+**`static/plugin-sdk.js`.** Gains `kpressInitDiagrams(container)`, mirroring
 `kpressInitToc`: ensure Mermaid through the asset loader, assign `window.mermaid`,
 import KPress’s `diagrams.js`, capture `initKpressDiagrams`, run it against the
 container, and return a disposer.
@@ -131,7 +131,7 @@ Depends on the on-demand asset tier landing in
 - [ ] Vendor Mermaid at an exact pin, add the `package.json` pin and the `NOTICE.md`
   entry, and check the manifest into `static/vendor/manifest.json`
 - [ ] Register Mermaid as an on-demand asset and add `kpressInitDiagrams` to
-  `plugin_sdk.js` and `static/types.d.ts`
+  `plugin-sdk.js` and `static/types.d.ts`
 - [ ] Call it from `rendered.js`, gated on the figure being present, with disposal
 - [ ] Confirm through the load-time harness that a document with no diagram requests
   nothing new

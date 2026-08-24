@@ -115,7 +115,7 @@ They stop being blockers for this plan.
 
 ### What we did not borrow from VS Code
 
-`git_graph.js` derives from `scmHistory.ts` — the swimlane layout, and nothing else.
+`git-graph.js` derives from `scmHistory.ts` — the swimlane layout, and nothing else.
 No diff code came from VS Code, and none should: VS Code’s diff viewer is Monaco, whose
 one-file editor model and runtime footprint the research assessed as a poor fit unless
 full IDE behavior becomes the goal.
@@ -163,8 +163,8 @@ state. An empty body never has to be interpreted.
 | `diff/adapters/git.py` | core | Git source, built on the existing `git/process.py` runner |
 | `diff/adapters/patch_file.py` | core | Unified-patch parser for `.diff` and `.patch` files |
 | `diff/routes.py` | core | `/api/diff/` collection |
-| `static/diff_view.js` | core | Renderer: unified and split, hunk expansion, states |
-| `static/diff_model.js` | core | Browser-side patch model shared by every consumer |
+| `static/diff-view.js` | core | Renderer: unified and split, hunk expansion, states |
+| `static/diff-model.js` | core | Browser-side patch model shared by every consumer |
 
 The renderer is a core static module rather than a plugin, for the same reason the
 Markdown mount is: more than one surface mounts it, and each should not carry its own.
@@ -239,11 +239,11 @@ and is a context manager so it is purged on exit.
 Cloning and fetching live here rather than in `git/`, which keeps that package’s
 read-only contract intact.
 
-**`static/diff_model.js`** — the browser model.
+**`static/diff-model.js`** — the browser model.
 `parseManifest`, `parseFilePatch`, `fileChangeLabel(change)` for the indicator set, and
 `validateDocument` — the same corpus, the other side.
 
-**`static/diff_view.js`** — the renderer.
+**`static/diff-view.js`** — the renderer.
 `mountDiffView(container, patch, options) -> { dispose }`, with `renderHunk`,
 `renderLine`, `expandContext(hunk, direction)`, and `renderAvailability(state)` so every
 non-content state has one rendering path.
@@ -539,7 +539,7 @@ No Git involvement.
 - [ ] `diff/service.py`: adapter registry, deterministic comparison IDs, bounded caches
 - [ ] `diff/routes.py`: the `/api/diff/` collection above
 - [ ] `diff` file kind wired into classification and the view registry
-- [ ] `static/diff_model.js` and `static/diff_view.js`: unified rendering, hunk context
+- [ ] `static/diff-model.js` and `static/diff-view.js`: unified rendering, hunk context
   expansion, sticky file headers, every availability state
 - [ ] Golden fixtures: a corpus of patches including pathological and malformed cases
 

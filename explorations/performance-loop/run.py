@@ -24,10 +24,11 @@ here rather than left to whoever remembers.
 
 ``compare`` prints the median of each metric per label with the range beside
 it, because on a corpus this size a single run says very little and a median
-without its range says less. ``report`` regenerates the ledger in
-``report.md`` from the recorded runs and the experiment artifacts. The accept
-rule is in ``explorations/performance-loop/README.md``; it is a judgment, not something this
-file computes.
+without its range says less. It also enforces evidence validity and the hard
+budgets in ``performance-budgets.toml`` against every candidate run.
+``report`` regenerates the ledger in ``report.md`` from the recorded runs and
+the experiment artifacts. The primary metric's accept rule remains a judgment;
+invalid evidence and a responsiveness regression are not.
 """
 
 from __future__ import annotations
@@ -54,6 +55,17 @@ HERE = Path(__file__).resolve().parent
 # reaches for -- the corpus under .bench/, the git metadata it records, the paths
 # it prints -- is relative to the repository root rather than to explorations/.
 REPO = HERE.parents[1]
+sys.path.insert(0, str(REPO))
+
+from devtools.bench_serving import MetabBuild, resolve_metab_build
+from devtools.web_performance import (
+    blocking_issues,
+    budget_issues,
+    format_issues,
+    load_performance_config,
+    validity_issues,
+)
+
 RESULTS = HERE / "results" / "runs.jsonl"
 # Every port `serve` has handed out, recorded the moment it does. A port whose
 # run was never recorded has still been loaded in a browser, so reusing it would
@@ -61,8 +73,10 @@ RESULTS = HERE / "results" / "runs.jsonl"
 # these numbers cold.
 PORTS_USED = HERE / "results" / "ports-used.txt"
 PROBE = HERE / "probe.js"
+CAPTURE_BROWSER = HERE / "capture-browser.js"
 REPORT = HERE / "report.md"
 EXPERIMENTS = HERE / "experiments"
+PERFORMANCE_BUDGETS = HERE / "performance-budgets.toml"
 # What `serve` last set up. `record` reads it so a paste cannot be filed
 # against the wrong experiment, port, or corpus -- the three things that are
 # invisible in the payload and expensive to get wrong.
@@ -70,6 +84,55 @@ PENDING = HERE / "results" / "pending.json"
 # Bumped when a change to run.py or probe.js makes a number incomparable with
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
+#
+# 14: JavaScript transfer and startup attribution classify `.js` URL paths too.
+# A preloaded script has a `link` initiator and its later script tag reuses that
+# response, so initiator-only classification omitted the application shell.
+#
+# 13: stylesheet transfer is classified by a `.css` URL path rather than by
+# the Resource Timing `link` initiator. The latter also includes script and
+# font preloads and double-counted the preloaded application shell as CSS.
+#
+# 12: the driver sends a final controlled input at the product-settle boundary,
+# and the application adapter freezes the navigation-time profile before its
+# own observer wait and diagnostic fetches. Fast loads no longer fail coverage
+# because measurement work created an untested tail.
+#
+# 11: the application adapter proves the deferred Quick File catalog reached
+# authoritative completion. Ready controls with a missed stream-open event are
+# not a correct asset-tier result.
+#
+# 10: the application adapter proves its post-usable-state shell tools reached
+# ready, so deferring assets cannot buy a good startup number by losing them.
+#
+# 9: the responsiveness profile closes before the driver's forced-GC retained
+# heap sample. Measurement-only collection cannot extend the input-coverage
+# denominator or appear as product main-thread blocking.
+#
+# 8: startup JavaScript is split from scripts loaded for the selected view,
+# with bounded URL-path attribution for the slowest and latest shell requests.
+# This makes an eager-plugin waterfall a named, enforceable regression.
+#
+# 7: acceptance input is pulsed from first usable state through client
+# quiescence, and the profile proves how much of the measured window it spans.
+# A single early click could miss a later inventory-delivery freeze.
+#
+# 6: the trusted Chrome capture adds a controlled post-GC heap measurement,
+# separating retained state from the runtime-dependent collection timing in
+# `performance.memory`.
+#
+# 5: inventory delivery adds whole-window callback count, work-item volume,
+# maximum duration, total duration, and window share. These fields make an
+# event storm visible even when every individual callback stays below the
+# browser's Long Task threshold.
+#
+# 4: responsiveness comes from the profiler attached with the document rather
+# than a late observer or optional console paste; exact whole-window totals no
+# longer get overwritten by the late-buffer floor. App-span milestones and
+# counts come from non-evicting label totals. Event Timing entries are grouped
+# into logical interactions; FCP, LCP, and CLS attach at navigation; and
+# loading, resource-buffer, memory, animation-frame, and retention fields join
+# the record.
 #
 # 3: four metric definitions changed at once. `frame_missing_px` measures the
 # shipped state against the markup `server.py` really ships rather than a
@@ -79,16 +142,20 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 3
+HARNESS_VERSION = 14
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
 MIN_VIEWPORT = (900, 600)
 FIRST_PORT = 8600
-LAST_PORT = 8699
+LAST_PORT = 65_535
 # The metrics compare prints, in the order they matter to a reader.
 METRICS = (
+    "ttfb_ms",
+    "response_download_ms",
+    "dom_interactive_ms",
     "first_row_ms",
+    "first_row_render_ms",
     "load_tree_ms",
     "tree_fetch_srv_ms",
     "tree_fetch_wait_ms",
@@ -120,6 +187,35 @@ METRICS = (
     "tree_region_repaints",
     "long_tasks",
     "long_task_ms_total",
+    "total_blocking_time_ms",
+    "long_task_max_ms",
+    "long_task_max_ms_first_5s",
+    "long_tasks_over_200ms",
+    "main_thread_blocked_pct",
+    "inventory_delivery_attribution_missing",
+    "inventory_delivery_batches",
+    "inventory_delivery_items",
+    "inventory_delivery_batch_items_max",
+    "inventory_delivery_max_ms",
+    "inventory_delivery_work_ms_total",
+    "inventory_delivery_work_pct",
+    "animation_frames",
+    "animation_frame_max_ms",
+    "animation_frames_over_200ms",
+    "animation_frame_blocking_ms_total",
+    "animation_frame_blocking_ms_max",
+    "animation_frames_blocking_over_200ms",
+    "forced_style_layout_ms_max",
+    "interactions",
+    "interaction_inputs",
+    "interaction_input_first_ms",
+    "interaction_input_last_ms",
+    "interaction_input_span_ms",
+    "interaction_input_coverage_pct",
+    "interaction_samples_retained",
+    "interaction_p50_ms",
+    "interaction_p95_ms",
+    "interaction_max_ms",
     "render_spans",
     "render_ms_total",
     "tree_reprobe_ms",
@@ -128,6 +224,30 @@ METRICS = (
     "srv_settled_ms",
     "wall_scanning_ms",
     "wall_settled_ms",
+    "requests",
+    "fetches_in_flight",
+    "fetch_network_errors",
+    "fetch_aborts",
+    "fetch_http_4xx",
+    "fetch_http_5xx",
+    "resource_timing_capacity",
+    "resource_timing_buffer_full",
+    "script_transfer_kb",
+    "startup_script_requests",
+    "startup_script_transfer_kb",
+    "startup_script_last_response_ms",
+    "startup_script_duration_max_ms",
+    "style_transfer_kb",
+    "image_transfer_kb",
+    "api_transfer_kb",
+    "largest_resource_kb",
+    "resource_duration_max_ms",
+    "js_heap_mb",
+    "js_heap_after_gc_mb",
+    "plugin_view_containers",
+    "plugin_view_nonempty",
+    "shell_tools_missing",
+    "file_catalog_incomplete",
     "viewport_w",
     "viewport_h",
 )
@@ -202,7 +322,7 @@ def _next_port() -> int:
             return port
         except OSError:
             return port
-    raise SystemExit(f"no free port in {FIRST_PORT}-{LAST_PORT}; clear results/runs.jsonl")
+    raise SystemExit(f"no unused loopback port in {FIRST_PORT}-{LAST_PORT}")
 
 
 def _load_runs() -> list[dict[str, Any]]:
@@ -248,6 +368,23 @@ def _git_dirty() -> bool:
     except (OSError, subprocess.SubprocessError):
         return False
     return bool(result.stdout.strip())
+
+
+def _build_provenance(build_version: str, *, build_ref: str, external: bool) -> dict[str, Any]:
+    """Identify the artifact behind a browser benchmark run."""
+    if external:
+        if not build_ref:
+            raise SystemExit("--build-ref is required when --metab selects an external build")
+        return {
+            "build_version": build_version,
+            "commit": build_ref,
+            "dirty": False,
+        }
+    return {
+        "build_version": build_version,
+        "commit": _git_commit(),
+        "dirty": _git_dirty(),
+    }
 
 
 _WALK_LINE = re.compile(
@@ -310,7 +447,24 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return _serve_root(args, corpus, str(corpus.relative_to(REPO)), args.files)
 
 
+def _load_probe_payload(json_text: str, json_file: str) -> Any:
+    """Load a browser profile from an inline paste or an exported file."""
+    if json_file:
+        try:
+            json_text = Path(json_file).read_text(encoding="utf-8")
+        except OSError as error:
+            raise SystemExit(f"could not read browser profile {json_file}: {error}") from error
+    return json.loads(json_text)
+
+
 def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: int) -> int:
+    requested_build = args.metab or "metab"
+    build: MetabBuild = resolve_metab_build(requested_build)
+    provenance = _build_provenance(
+        build.version,
+        build_ref=args.build_ref,
+        external=bool(args.metab),
+    )
     subprocess.run(["pkill", "-f", "metab .*--no-open --port"], check=False)
     while (
         subprocess.run(
@@ -327,7 +481,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     log = HERE / "results" / f"server-{port}.log"
     with log.open("w", encoding="utf-8") as handle:
         subprocess.Popen(
-            ["uv", "run", "--frozen", "metab", str(root), "--no-open", "--port", str(port)],
+            [str(build.executable), str(root), "--no-open", "--port", str(port)],
             cwd=REPO,
             stdout=handle,
             stderr=subprocess.STDOUT,
@@ -358,8 +512,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "files": files,
                 "corpus": corpus_label,
                 "corpus_shape": _corpus_shape(root),
-                "commit": _git_commit(),
-                "dirty": _git_dirty(),
+                **provenance,
                 "note": args.note,
             },
             indent=2,
@@ -370,20 +523,21 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     )
 
     print(f"experiment  {args.exp or '(unset)'}   label {args.label or '(unset)'}")
+    print(f"build       {build.version}   ref {provenance['commit']}")
     print(f"port        {port}   (unused, so the browser cache starts empty)")
     print(f"corpus      {corpus_label}  ({files} files)")
     print(f"url         {url}")
     print()
-    print("1. size the browser pane to at least 1280x900 and load that URL cold")
-    print(
-        "2. evaluate explorations/performance-loop/probe.js in the page (`run.py probe` prints it)"
-    )
-    print("3. explorations/performance-loop/run.py record --json '<paste>'")
+    print("1. size the browser pane to at least 1280x900, keep it visible, and load that URL cold")
+    print("2. keep exercising real interactions throughout inventory loading")
+    print("3. after the inventory settles, evaluate probe.js (`run.py probe` prints it)")
+    print("4. explorations/performance-loop/run.py record --json '<paste>'")
+    print("   or automate 1-4 with `run.py capture --headed --output FILE --record`")
     return 0
 
 
 def cmd_record(args: argparse.Namespace) -> int:
-    payload: Any = json.loads(args.json)
+    payload = _load_probe_payload(args.json or "", args.json_file or "")
     if not isinstance(payload, dict):
         raise SystemExit("probe payload must be a JSON object")
     # A browser pane that never got a size runs the app and reports plausible
@@ -394,6 +548,7 @@ def cmd_record(args: argparse.Namespace) -> int:
     # A `probe-server` payload is a route sample, not a page load: it has no
     # viewport by construction and the floor below does not apply to it.
     is_server_sample = "route" in probe
+    config = None
     width = probe.get("viewport_w")
     height = probe.get("viewport_h")
     if is_server_sample:
@@ -411,21 +566,38 @@ def cmd_record(args: argparse.Namespace) -> int:
     label = args.label or pending.get("label")
     if not label:
         raise SystemExit("no label: pass --label, or set one on `serve`")
+    # The harness owns provenance. Put the browser payload first so pasted JSON
+    # cannot replace the commit, corpus, timestamp, or other run identity that
+    # `serve` established.
     run: dict[str, Any] = {
+        **payload,
         "experiment": pending.get("experiment"),
         "label": label,
         "port": port,
         "files": pending.get("files"),
         "corpus": pending.get("corpus"),
         "commit": pending.get("commit"),
+        "build_version": pending.get("build_version"),
         "dirty": pending.get("dirty"),
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "harness_version": HARNESS_VERSION,
         "corpus_shape": pending.get("corpus_shape"),
         "note": args.note or pending.get("note", ""),
         **_walk_facts(port),
-        **payload,
     }
+    if not is_server_sample:
+        config = load_performance_config(Path(args.budgets))
+        issues = [
+            *validity_issues(run, config),
+            *(issue for issue in budget_issues(run, config) if issue.kind == "invalid"),
+        ]
+        if issues:
+            raise SystemExit(
+                "browser performance record is inadmissible:\n"
+                f"{format_issues(issues)}\n"
+                "Keep the tab visible, interact while it loads, wait for settle, and use the "
+                "navigation-time profiler exposed by the current build."
+            )
     RESULTS.parent.mkdir(parents=True, exist_ok=True)
     with RESULTS.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(run, sort_keys=True) + "\n")
@@ -435,7 +607,65 @@ def cmd_record(args: argparse.Namespace) -> int:
         f"recorded {run['experiment'] or '-'}/{label} port {port} "
         f"({run.get('files')} files, {regime}) -> {RESULTS.relative_to(REPO)}"
     )
-    return 0
+    hard: list[Any] = []
+    if config is not None:
+        misses = [issue for issue in budget_issues(run, config) if issue.kind == "budget"]
+        hard = [issue for issue in misses if issue.policy == "gate"]
+        targets = [issue for issue in misses if issue.policy == "target"]
+        print(
+            f"performance budgets: {len(hard)} hard-gate miss(es), "
+            f"{len(targets)} roadmap-target miss(es)"
+        )
+        if hard:
+            print("run retained as evidence, but its hard performance gate failed:")
+            print(format_issues(hard))
+    return 1 if hard else 0
+
+
+def cmd_capture(args: argparse.Namespace) -> int:
+    """Capture one Chrome profile with trusted input, then optionally record it."""
+    if args.record and not args.headed:
+        raise SystemExit("--headed is required when --record creates acceptance evidence")
+    pending = _read_pending()
+    port = pending.get("port")
+    if not isinstance(port, int):
+        raise SystemExit("pending browser run has no valid port")
+    node = shutil.which("node")
+    if node is None:
+        raise SystemExit("node is required for browser capture")
+    output = Path(args.output).expanduser().resolve()
+    command = [
+        node,
+        str(CAPTURE_BROWSER),
+        "--url",
+        f"http://127.0.0.1:{port}/view/",
+        "--probe",
+        str(PROBE),
+        "--output",
+        str(output),
+        "--timeout-ms",
+        str(args.timeout_ms),
+        "--width",
+        str(args.width),
+        "--height",
+        str(args.height),
+    ]
+    if args.chrome:
+        command.extend(["--chrome", args.chrome])
+    if args.headed:
+        command.append("--headed")
+    result = subprocess.run(command, cwd=REPO, check=False)
+    if result.returncode != 0 or not args.record:
+        return result.returncode
+    return cmd_record(
+        argparse.Namespace(
+            budgets=args.budgets,
+            json=None,
+            json_file=str(output),
+            label=args.label,
+            note=args.note,
+        )
+    )
 
 
 def _summarize(runs: list[dict[str, Any]], metric: str) -> str:
@@ -469,7 +699,56 @@ def cmd_compare(args: argparse.Namespace) -> int:
     print()
     print("Median with the range beside it. A median whose ranges overlap is not a result;")
     print("see the accept rule in explorations/performance-loop/README.md before writing one down.")
-    return 0
+
+    config = load_performance_config(Path(args.budgets))
+    browser_by_label = {
+        label: [run for run in rows if "route" not in run] for label, rows in by_label.items()
+    }
+    if not any(browser_by_label.values()):
+        return 0
+
+    evidence_errors: list[str] = []
+    for label, rows in browser_by_label.items():
+        if len(rows) < config.requirements.minimum_runs_per_condition:
+            evidence_errors.append(
+                f"{label}: {len(rows)} browser run(s), need at least "
+                f"{config.requirements.minimum_runs_per_condition}"
+            )
+        for index, run in enumerate(rows, start=1):
+            invalid = [
+                *validity_issues(run, config),
+                *(issue for issue in budget_issues(run, config) if issue.kind == "invalid"),
+            ]
+            if invalid:
+                evidence_errors.append(f"{label} run {index}:\n{format_issues(invalid)}")
+
+    candidate_label = labels[-1]
+    candidate_issues = [
+        issue
+        for run in browser_by_label[candidate_label]
+        for issue in budget_issues(run, config)
+        if issue.kind == "budget"
+    ]
+    hard_failures = blocking_issues(candidate_issues)
+    target_misses = [issue for issue in candidate_issues if issue.policy == "target"]
+
+    print()
+    print(f"Performance gate ({candidate_label} is the candidate):")
+    if evidence_errors:
+        print("  INVALID")
+        for error in evidence_errors:
+            print(f"  {error}")
+    if hard_failures:
+        print("  FAIL")
+        print(format_issues(hard_failures))
+    if not evidence_errors and not hard_failures:
+        print("  PASS — evidence is admissible and every hard responsiveness budget passed")
+    if target_misses:
+        unique_targets = sorted({issue.message for issue in target_misses})
+        print("  Roadmap targets still open:")
+        for message in unique_targets:
+            print(f"  - {message}")
+    return 1 if evidence_errors or hard_failures else 0
 
 
 def _sample_route(port: int, path: str) -> tuple[float, float | None, int]:
@@ -797,8 +1076,8 @@ def cmd_report(_args: argparse.Namespace) -> int:
 
     add("## Provenance")
     add("")
-    add("| experiment | label | recorded | commit | corpus | shape | harness | walk |")
-    add("| --- | --- | --- | --- | --- | ---: | ---: | --- |")
+    add("| experiment | label | recorded | build | commit | corpus | shape | harness | walk |")
+    add("| --- | --- | --- | --- | --- | --- | ---: | ---: | --- |")
     for run in runs:
         walk = run.get("walk_elapsed_ms")
         walk_text = f"{walk:,} ms" if isinstance(walk, int) else str(run.get("walk_status", "-"))
@@ -807,7 +1086,8 @@ def cmd_report(_args: argparse.Namespace) -> int:
             commit += "+dirty"
         add(
             f"| {run.get('experiment') or '-'} | {run.get('label')} "
-            f"| {str(run.get('recorded_at') or '-')[:16]} | {commit} "
+            f"| {str(run.get('recorded_at') or '-')[:16]} "
+            f"| {run.get('build_version') or '-'} | {commit} "
             f"| {run.get('corpus') or run.get('files') or '-'} "
             f"| {run.get('corpus_shape') if run.get('corpus_shape') is not None else '-'} "
             f"| {run.get('harness_version') or '-'} | {walk_text} |"
@@ -839,6 +1119,16 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--exp", default="", help="experiment id this run belongs to, e.g. exp-003")
     serve.add_argument("--label", default="", help="condition name, e.g. before / after")
     serve.add_argument("--note", default="")
+    serve.add_argument(
+        "--metab",
+        default="",
+        help="external Metabrowser console script; requires --build-ref",
+    )
+    serve.add_argument(
+        "--build-ref",
+        default="",
+        help="immutable commit or tag identifying the external build",
+    )
     serve.set_defaults(func=cmd_serve)
 
     probe = sub.add_parser("probe", help="print probe.js for pasting into the page")
@@ -854,13 +1144,53 @@ def main(argv: list[str] | None = None) -> int:
     server_probe.set_defaults(func=cmd_probe_server)
 
     record = sub.add_parser("record", help="append one probe payload")
-    record.add_argument("--json", required=True, help="the probe's printed JSON")
+    record_source = record.add_mutually_exclusive_group(required=True)
+    record_source.add_argument("--json", help="the probe's printed JSON")
+    record_source.add_argument("--json-file", help="file containing the exported probe JSON")
     record.add_argument("--label", default="", help="override the label `serve` set")
     record.add_argument("--note", default="")
+    record.add_argument(
+        "--budgets",
+        default=str(PERFORMANCE_BUDGETS),
+        help="performance requirements and budgets TOML",
+    )
     record.set_defaults(func=cmd_record)
+
+    capture = sub.add_parser(
+        "capture",
+        help="capture a fresh Chrome profile with trusted input for the pending serve run",
+    )
+    capture.add_argument("--output", required=True, help="write the exported profile JSON here")
+    capture.add_argument("--chrome", default="", help="Chrome or Chromium executable")
+    capture.add_argument(
+        "--headed",
+        action="store_true",
+        help="show and foreground Chrome; required for acceptance-quality visual timing",
+    )
+    capture.add_argument("--timeout-ms", type=int, default=180_000)
+    capture.add_argument("--width", type=int, default=1600)
+    capture.add_argument("--height", type=int, default=900)
+    capture.add_argument(
+        "--record",
+        action="store_true",
+        help="append the profile and apply the current evidence and budget gates",
+    )
+    capture.add_argument("--label", default="", help="override the label `serve` set")
+    capture.add_argument("--note", default="")
+    capture.add_argument(
+        "--budgets",
+        default=str(PERFORMANCE_BUDGETS),
+        help="performance requirements and budgets TOML",
+    )
+    capture.set_defaults(func=cmd_capture)
 
     compare = sub.add_parser("compare", help="median and range per label")
     compare.add_argument("labels", nargs="+")
+    compare.add_argument(
+        "--budgets",
+        default=str(PERFORMANCE_BUDGETS),
+        help="performance requirements and budgets TOML",
+    )
     compare.set_defaults(func=cmd_compare)
 
     count = sub.add_parser("count", help="files and directories in a real tree")

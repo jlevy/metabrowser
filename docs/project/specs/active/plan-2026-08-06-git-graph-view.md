@@ -148,10 +148,10 @@ A separate route table under `/api/git/` is composed into the application’s ro
 rather than appended to the existing endpoints in `server.py`.
 
 The browser gains two modules.
-`git_graph.js` is a pure port of the VS Code layout and SVG renderer with no fetching
+`git-graph.js` is a pure port of the VS Code layout and SVG renderer with no fetching
 and no DOM ownership beyond the SVG it returns, which keeps it testable under the
 existing Node `vm` shims.
-`git_panel.js` owns the tab: fetching, paging, row rendering, selection, hover, and the
+`git-panel.js` owns the tab: fetching, paging, row rendering, selection, hover, and the
 commit-detail request.
 
 ### Components
@@ -186,11 +186,11 @@ commit-detail request.
 
 **Browser**
 
-- `static/git_graph.js` — `computeSwimlanes(commits, priorLanes)` and
+- `static/git-graph.js` — `computeSwimlanes(commits, priorLanes)` and
   `renderCommitGraph(row)`. Ported from `scmHistory.ts`, with the VS Code color registry
   replaced by design-token references.
   `priorLanes` is what carries lane continuity across a page boundary.
-- `static/git_panel.js` — the tab: initial fetch, scroll paging, row rendering, hover
+- `static/git-panel.js` — the tab: initial fetch, scroll paging, row rendering, hover
   card, selection, and the commit-detail fetch.
   Keeps a bounded client-side cache of commit details so a hover and a subsequent
   selection do not issue two requests.
@@ -353,11 +353,11 @@ Every constraint here exists because the endpoints run on a request path:
 - [x] Replace the hardcoded nav tab markup with a data-driven panel registry in
   `app.js`, preserving the current Files behavior including lazy loading and the scroll
   shadow
-- [x] Add `git_graph.js`: the swimlane port and the per-row SVG renderer, with lane
+- [x] Add `git-graph.js`: the swimlane port and the per-row SVG renderer, with lane
   continuity across pages
 - [x] Add the lane, badge, and row design tokens, and the `.git-graph-*` rules ported
   from the `.history-item` proportions
-- [x] Add `git_panel.js`: gated tab visibility from `/api/git/repo`, initial page,
+- [x] Add `git-panel.js`: gated tab visibility from `/api/git/repo`, initial page,
   scroll paging, reference badges, hover card with debounce and a bounded detail cache,
   and row selection
 - [x] Add the commit-detail preview renderer, with changed-file rows navigating through
@@ -411,7 +411,7 @@ site rather than “correcting” it into a different shape.
   Only `.git-commit-sha` and `.git-commit-body` are monospace, both as named exceptions
   in that test.
 - `app.js` gained a narrow `window.MetabrowserShell` bridge (`registerNavPanel`,
-  `removeNavPanel`, `activateNavPanel`, `renderPreviewHtml`) so `git_panel.js` could
+  `removeNavPanel`, `activateNavPanel`, `renderPreviewHtml`) so `git-panel.js` could
   live outside `app.js`. This is an internal seam between the shell and core modules,
   deliberately separate from `window.metabrowser`, which is the documented plugin SDK
   and carries a compatibility contract.
@@ -504,14 +504,14 @@ Everything else is automated-green under `make verify`.
 
 ## Attribution
 
-`git_graph.js` is a derivative of `scmHistory.ts` from `microsoft/vscode`, MIT-licensed,
+`git-graph.js` is a derivative of `scmHistory.ts` from `microsoft/vscode`, MIT-licensed,
 and the row proportions derive from `media/scm.css` in the same repository.
 Metabrowser is AGPL-3.0-or-later, which permits incorporating MIT-licensed source.
 The ported files carry a header naming the upstream file and its license, and the MIT
 notice is retained where required.
 
 The port was copied at upstream commit `9245212c26af8113b3b96392c04563623cd99811`
-(2026-08-07), recorded in the `git_graph.js` header and in `NOTICE.md`. That commit id
+(2026-08-07), recorded in the `git-graph.js` header and in `NOTICE.md`. That commit id
 is the whole provenance record.
 There is deliberately no automated check on the license text or the ported source: a
 pinned digest next to the file it validates defends against nothing, and would fail on a
@@ -543,15 +543,15 @@ git -C attic/vscode diff 9245212c26af8113b3b96392c04563623cd99811..HEAD \
 ```
 
 If that diff is empty, there is nothing to do.
-If it is not, review each hunk against `git_graph.js` by hand.
+If it is not, review each hunk against `git-graph.js` by hand.
 The four intentional divergences are numbered in the file header and each is marked at
 its site, so a hunk landing on one of them is a decision, not a mechanical apply.
 Re-check `media/scm.css` the same way if row proportions changed upstream.
 
-When the port is updated: refresh the commit id in the `git_graph.js` header and in
+When the port is updated: refresh the commit id in the `git-graph.js` header and in
 `NOTICE.md`, re-copy `vendor/licenses/vscode.txt` if upstream’s license changed, and
 note what moved in this spec.
-The lane-assignment suite in `tests/dom/git_graph_behavior.js` is what catches a bad
+The lane-assignment suite in `tests/dom/git-graph-behavior.js` is what catches a bad
 apply, so run it before and after.
 
 ## References

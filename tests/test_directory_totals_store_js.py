@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SHIM = Path(__file__).resolve().parent / "dom" / "directory_totals_store_behavior.js"
+SHIM = Path(__file__).resolve().parent / "dom" / "directory-totals-store-behavior.js"
 
 
 def test_directory_totals_store_behavior() -> None:

@@ -320,7 +320,7 @@ pretend it was transcluded.
 | `src/metabrowser/cli/serve.py` | Emit a segment-encoded `/view/<path>` startup URL. |
 | New strict module under `src/metabrowser/static/` | Define `NavigationTarget`, parse and format canonical routes, and own push, replace, pop, and fragment behavior. |
 | `src/metabrowser/static/app.js` | Compose the navigation module with `selectFile`; delete hash file routing and its heuristic. |
-| `plugin_sdk.js` and `types.d.ts` | Expose the `metabrowser.navigation` namespace, migrate bundled consumers, and remove the old path event surface. |
+| `plugin-sdk.js` and `types.d.ts` | Expose the `metabrowser.navigation` namespace, migrate bundled consumers, and remove the old path event surface. |
 | New strict Markdown link modules | Resolve and enhance standard KPress links and resources, then parse and resolve Obsidian wiki syntax over the same result model. |
 | Existing Markdown mount | Install enhancement after asynchronous render and dispose it with the TOC and render controller. |
 | Inventory-derived note index | Provide bounded, completion-aware basename and path-suffix lookup for wiki targets only. |

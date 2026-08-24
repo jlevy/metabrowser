@@ -14,7 +14,7 @@ their bytes, and their newest mtime. A directory then appears in the tree only
 when that count is non-zero, and its row carries the filtered aggregates rather
 than the directory's own.
 
-The predicate mirrors ``static/filter_state.js`` exactly, because the browser
+The predicate mirrors ``static/filter-state.js`` exactly, because the browser
 still judges rows that arrive live on ``/api/events`` and the two verdicts have
 to agree. Where the two sides need a shared table they read the same one: the
 recency windows come from :mod:`metabrowser.settings`, and the size floor
@@ -104,7 +104,7 @@ def parse_size_floor(raw: str) -> int:
 
     The browser owns the bucket labels ("over 10M") and sends the floor it
     resolved them to, so there is no second table of bucket names here to drift
-    from the one in ``static/filter_state.js``.
+    from the one in ``static/filter-state.js``.
     """
 
     try:
@@ -130,7 +130,7 @@ def parse_types(values: Sequence[str]) -> tuple[str, ...]:
 
     A token is either an extension (leading dot, possibly a compound tail such
     as ``.min.js``) or a whole filename such as ``README``. That is the one
-    convention ``static/filter_state.js`` uses, and it is what lets a preset
+    convention ``static/filter-state.js`` uses, and it is what lets a preset
     name files that carry no extension at all.
     """
 

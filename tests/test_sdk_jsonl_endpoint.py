@@ -1,6 +1,6 @@
 """Verify that the JS SDK helper ``fetchJsonl()`` calls a real route.
 
-Regression coverage: ``plugin_sdk.js`` once advertised
+Regression coverage: ``plugin-sdk.js`` once advertised
 ``fetchJsonl(path)`` -> ``GET /api/jsonl?path=...`` but no such route
 existed. Fixed by routing the helper through ``/api/file?path=...``,
 which already returns ``{type: "jsonl", events, summary, ...}`` for
@@ -9,7 +9,7 @@ which already returns ``{type: "jsonl", events, summary, ...}`` for
 This test asserts:
 1. ``/api/file`` returns ``type: "jsonl"`` for a .jsonl file (the
    contract fetchJsonl() depends on);
-2. The static plugin_sdk.js wires the helper to ``/api/file``, not
+2. The static plugin-sdk.js wires the helper to ``/api/file``, not
    ``/api/jsonl``.
 """
 
@@ -57,7 +57,7 @@ def test_api_file_returns_jsonl_envelope(tmp_path: Path) -> None:
 def test_plugin_sdk_fetchJsonl_uses_api_file() -> None:
     """The advertised SDK helper must hit a real endpoint."""
     sdk_js = (
-        Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "plugin_sdk.js"
+        Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "static" / "plugin-sdk.js"
     ).read_text()
     # Negative: no /api/jsonl reference (was the broken target)
     assert "/api/jsonl" not in sdk_js, (

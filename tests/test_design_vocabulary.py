@@ -38,7 +38,7 @@ def test_disclosure_chevron_is_one_glyph_everywhere() -> None:
 
 
 def test_diff_bar_uses_the_shared_chevron_and_registry() -> None:
-    view = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/diff_view.js").read_text(
+    view = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/diff-view.js").read_text(
         encoding="utf-8"
     )
     assert 'shellIcon("toggle")' in view, "diff bar must lead with the registry's toggle glyph"
@@ -82,7 +82,7 @@ def test_disclosure_motion_is_one_recipe_everywhere() -> None:
         rule = _rule(css, selector)
         assert "height: 0" in rule and "visibility: hidden" in rule, f"{selector} state drifted"
     # Class-driven collapse: the tree never toggles inline display.
-    for name in ("app.js", "tree_expansion.js"):
+    for name in ("app.js", "tree-expansion.js"):
         source = (STATIC / name).read_text(encoding="utf-8")
         assert "tree-children-collapsed" in source, f"{name} lost the collapse class"
 
@@ -126,7 +126,7 @@ def test_age_is_one_primitive_everywhere() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
     assert "function age(epochSeconds)" in formatters, "the shared age primitive moved"
-    for name in ("git_panel.js", "app.js"):
+    for name in ("git-panel.js", "app.js"):
         consumer = (STATIC / name).read_text(encoding="utf-8")
         assert "MetabrowserFormatters" in consumer and "age(" in consumer, (
             f"{name} must take its ages from the shared primitive"
@@ -249,7 +249,7 @@ def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
     assert "outline:" in head, "HEAD is a ring, orthogonal to the chip's kind"
     # The kind classes must reach the markup from the wire, not be guessed
     # in the browser.
-    panel = (STATIC / "git_panel.js").read_text(encoding="utf-8")
+    panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
     assert "ref.is_trunk" in panel and "git-ref-trunk" in panel
 
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STYLES_CSS = ROOT / "src" / "metabrowser" / "static" / "styles.css"
-FILTER_CONTROLS = ROOT / "src" / "metabrowser" / "static" / "filter_controls.js"
+FILTER_CONTROLS = ROOT / "src" / "metabrowser" / "static" / "filter-controls.js"
 DESIGN_SYSTEM = ROOT / "docs" / "design-system.md"
 
 MINIMUM_TEXT_CONTRAST = 4.5

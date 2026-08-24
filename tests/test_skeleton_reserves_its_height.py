@@ -1,7 +1,7 @@
 """The page's structure must not grow under the reader after it paints.
 
 Two regions were rendered before they had content and grew when it arrived:
-the filter bar, which the server ships empty for filter_controls.js to fill,
+the filter bar, which the server ships empty for filter-controls.js to fill,
 and the tree's tally row, which paints with the inlined rows and gets its
 numbers from a later request. Measured at 1280x900 on the 246,282-file corpus:
 24 px and 43 px of downward movement, on every load and every reload.
@@ -63,7 +63,7 @@ def _function_source(js: str, signature: str) -> str:
 def test_the_filter_bar_reserves_a_chip_row_before_the_chips_arrive() -> None:
     css = (STATIC / "styles.css").read_text(encoding="utf-8")
     assert "min-height" in _rule(css, ".nav-filter-bar"), (
-        "the filter bar grows when filter_controls.js fills it unless it reserves the height"
+        "the filter bar grows when filter-controls.js fills it unless it reserves the height"
     )
 
 

@@ -248,7 +248,7 @@ stop.
 
 ### Filter State
 
-New strict module `static/filter_state.js` exposing `window.MetabrowserFilterState`,
+New strict module `static/filter-state.js` exposing `window.MetabrowserFilterState`,
 with an `mb.filters` SDK proxy so plugin views never touch the global:
 
 ```js
@@ -274,7 +274,7 @@ information, not a non-match, and pending rows must not flicker as filtered.
 A missing *extension* is the deliberate exception — “this file has no extension” is
 complete information, so `Makefile` is a real non-match for a `.md` filter.
 
-This is the treemap branch’s `filter_state.js` with `current` and `ageWindow` folded
+This is the treemap branch’s `filter-state.js` with `current` and `ageWindow` folded
 into `recency`, `size` added, and its `ignored` three-state reduced to a boolean; that
 branch rebases onto this module rather than carrying its own.
 
@@ -412,7 +412,7 @@ Checked items are implemented and covered by tests; `make verify` passes on the 
 - [x] Core `styles.css` section for `.chip`, `.chip-group[data-select]`, `.chip-toggle`,
   `.chip-menu`, `.chip-badge`, `.chip-clear`, with light and dark token coverage and no
   color literals
-- [x] `static/filter_controls.js` producing group markup with correct ARIA per variant,
+- [x] `static/filter-controls.js` producing group markup with correct ARIA per variant,
   plus shared click, keyboard, and dropdown-dismissal handling
 - [x] `docs/design-system.md` gains a Filter Controls section stating the single-select
   and multi-select fill convention, the one-mechanism rule, and the dropdown contract
@@ -420,7 +420,7 @@ Checked items are implemented and covered by tests; `make verify` passes on the 
 
 ### Phase 2: Filter State and the Bar — done
 
-- [x] `static/filter_state.js` under the strict `tsconfig.json` gate, with transient
+- [x] `static/filter-state.js` under the strict `tsconfig.json` gate, with transient
   state, change events, `activeCount`, and the shared predicates
 - [x] `mb.prefs` and `mb.filters` SDK surfaces with safe no-ops when absent
 - [x] The filter bar and drawer in the shell HTML, wired to the state, with the badge,
@@ -539,11 +539,11 @@ The raw-extension cap and all existing keyboard and menu semantics remain unchan
 
 Implemented:
 
-- vm tests (`tests/dom/filter_controls_behavior.js`) for each control variant:
+- vm tests (`tests/dom/filter-controls-behavior.js`) for each control variant:
   single-select exclusivity, multi-select accumulation and empty-set normalization,
   `aria-pressed` / `aria-checked` correctness, roving tabindex, dropdown summarisation
   and row state, and HTML escaping
-- vm tests (`tests/dom/filter_state_behavior.js`) for `FilterState`: transient defaults,
+- vm tests (`tests/dom/filter-state-behavior.js`) for `FilterState`: transient defaults,
   legacy preference cleanup, caller-value sanitization, `activeCount`, event and
   subscriber delivery, unsubscribe, snapshot isolation, the cumulative size floor, and
   extension matching
@@ -567,7 +567,7 @@ rendered tree. Phase 3 changes appearance only when a filter is set.
 Phase 4 removes the Recent tab, which is the one irreversible step.
 
 The folder-treemap branch rebases onto this and drops its private `.tm-seg`,
-`.tm-check`, `.filter-chip`, and `filter_state.js` in favor of the core family; its
+`.tm-check`, `.filter-chip`, and `filter-state.js` in favor of the core family; its
 toolbar keeps its view-local encodings (Metric, Grouping, Color, Depth) and binds its
 gitignored control to the shared dimension.
 Its `current` + `ageWindow` pair collapses to `recency`, and its `ignored` three-state

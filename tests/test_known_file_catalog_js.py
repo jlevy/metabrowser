@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 KNOWN_FILE_CATALOG_TEST_JS = (
-    Path(__file__).resolve().parent / "dom" / "known_file_catalog_behavior.js"
+    Path(__file__).resolve().parent / "dom" / "known-file-catalog-behavior.js"
 )
 
 

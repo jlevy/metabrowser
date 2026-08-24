@@ -1,4 +1,4 @@
-import { findMarkdownHeading, findNamedBlock, preprocessObsidianWiki } from "./wiki_parser.js";
+import { findMarkdownHeading, findNamedBlock, preprocessObsidianWiki } from "./wiki-parser.js";
 
 /** Bounds recursive embedding depth. */
 const DEFAULT_MAX_TRANSCLUSION_DEPTH = 4;

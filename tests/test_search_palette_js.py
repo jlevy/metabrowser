@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-SEARCH_PALETTE_TEST_JS = Path(__file__).resolve().parent / "dom" / "search_palette_behavior.js"
+SEARCH_PALETTE_TEST_JS = Path(__file__).resolve().parent / "dom" / "search-palette-behavior.js"
 
 
 def test_search_palette_js_assertions_pass() -> None:

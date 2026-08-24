@@ -281,7 +281,7 @@ need it.
 ### Browser Contract
 
 Expose the serialized catalog in `METABROWSER_SETTINGS.FILE_TYPE_TAXONOMY` and add a
-strict browser module at `src/metabrowser/static/file_type_taxonomy.js`. It validates
+strict browser module at `src/metabrowser/static/file-type-taxonomy.js`. It validates
 and freezes the injected data, provides the matching helpers above, and publishes the
 read-only runtime used by the shell.
 
@@ -426,9 +426,9 @@ Keyed live updates preserve expansion and focus for families that remain present
 stale state when a family disappears, and do not remount the whole table.
 Folder replacement creates a new collapsed state.
 
-Update `file_type_summary_model.js` to normalize the hierarchical response and build
+Update `file-type-summary-model.js` to normalize the hierarchical response and build
 family parent/child rows.
-Update `distribution_view.js` and `file_type_summary.css` for keyed parent rows,
+Update `distribution-view.js` and `file_type_summary.css` for keyed parent rows,
 accessible disclosures, child indentation, responsive metrics, reduced motion, print
 behavior, and live updates.
 The empty, ignored-only, zero-byte, truncated, failed, and unavailable states remain
@@ -457,7 +457,7 @@ An aggregate row is checked only when all of its member values are selected.
 Removing a child makes its parents unchecked; no third visual state is introduced in
 this phase.
 
-`filter_state.js` canonicalizes each row’s logical extension before matching selected
+`filter-state.js` canonicalizes each row’s logical extension before matching selected
 extension tokens.
 A selected `.js` therefore includes `.min.js`; an unknown raw extension
 remains exact. Exact whole-filename tokens continue to reach extensionless files such as
@@ -532,9 +532,9 @@ documented rollup contract.
     serialization helpers.
 - `src/metabrowser/settings.py`
   - inject `FILE_TYPE_TAXONOMY` and a `ROLLUP_FILE_TYPE_RAW_LIMIT` default.
-- `src/metabrowser/static/file_type_taxonomy.js`
+- `src/metabrowser/static/file-type-taxonomy.js`
   - validate/freeze injected descriptors and expose pure matching helpers.
-- `src/metabrowser/static/plugin_sdk.js`
+- `src/metabrowser/static/plugin-sdk.js`
   - publish the read-only `mb.fileTypes` facade.
 - `src/metabrowser/static/types.d.ts`
   - type settings, taxonomy descriptors, matches, and SDK methods.
@@ -555,14 +555,14 @@ documented rollup contract.
 - `src/metabrowser/server.py::api_tree` and `api_rollup`
   - serialize additive fields, parse `type_top`, and keep aggregation off the event
     loop.
-- `src/metabrowser/static/plugin_sdk.js::fetchRollup` and `watchRollup`
+- `src/metabrowser/static/plugin-sdk.js::fetchRollup` and `watchRollup`
   - forward `type_top` while retaining disposal and refresh behavior.
 
 ### Navigation Filter
 
-- `src/metabrowser/static/filter_state.js::typeMatches`
+- `src/metabrowser/static/filter-state.js::typeMatches`
   - canonicalize logical extensions through the shared runtime before membership tests.
-- `src/metabrowser/static/filter_controls.js::menuGroupHtml`
+- `src/metabrowser/static/filter-controls.js::menuGroupHtml`
   - accept ordered generic preset sections and preserve menu keyboard semantics.
 - `src/metabrowser/static/app.js`
   - store canonical/family tallies;
@@ -574,19 +574,19 @@ documented rollup contract.
 
 ### Folder Overview and Treemap
 
-- `src/metabrowser/builtin_plugins/folder/file_type_summary.js`
+- `src/metabrowser/builtin_plugins/folder/file-type-summary.js`
   - request semantic tallies and pass the SDK taxonomy runtime to the model/view.
-- `src/metabrowser/builtin_plugins/folder/file_type_summary_model.js`
+- `src/metabrowser/builtin_plugins/folder/file-type-summary-model.js`
   - normalize family parents, canonical children, raw rows, and fallbacks;
   - calculate folder-relative metrics and deterministic category ordering.
-- `src/metabrowser/builtin_plugins/folder/distribution_view.js`
+- `src/metabrowser/builtin_plugins/folder/distribution-view.js`
   - reconcile keyed family rows and child rows;
   - own expanded-family state and accessible disclosure events.
 - `src/metabrowser/builtin_plugins/folder/file_type_summary.css`
   - add family disclosure and child indentation without changing metric alignment.
-- `src/metabrowser/builtin_plugins/folder/category_palette.js`
+- `src/metabrowser/builtin_plugins/folder/category-palette.js`
   - lease family keys for recognized extensions.
-- `src/metabrowser/builtin_plugins/folder/treemap.js` and `treemap_model.js`
+- `src/metabrowser/builtin_plugins/folder/treemap.js` and `treemap-model.js`
   - map file and dominant extensions through the shared distribution key.
 
 ### Durable Documentation

@@ -22,7 +22,7 @@ def _render_index_html() -> str:
     return response.body.decode() if isinstance(response.body, bytes) else str(response.body)
 
 
-def test_help_assets_and_navigation_hint_host_have_stable_shell_order() -> None:
+def test_help_assets_have_stable_deferred_shell_order() -> None:
     html = _render_index_html()
     hints = html.index('id="nav-shortcut-hints"')
     progress = html.index('id="index-progress"')
@@ -30,17 +30,17 @@ def test_help_assets_and_navigation_hint_host_have_stable_shell_order() -> None:
     assert 'aria-live="' not in html[hints : html.index(">", hints)]
 
     assets = (
-        "/static/keyboard_shortcuts.js",
-        "/static/overlay_layer.js",
-        "/static/keyboard_help.js",
-        "/static/search_palette.js",
-        "/static/app.js",
+        "/static/keyboard-shortcuts.js",
+        "/static/overlay-layer.js",
+        "/static/keyboard-help.js",
+        "/static/search-palette.js",
     )
     positions = []
     for asset in assets:
-        assert f'src="{asset}?v=' in html
+        assert asset in html
         positions.append(html.index(asset))
     assert positions == sorted(positions)
+    assert all(f'<script src="{asset}' not in html for asset in assets)
 
 
 def test_application_composes_one_help_runtime_before_quick_file() -> None:
@@ -55,6 +55,8 @@ def test_application_composes_one_help_runtime_before_quick_file() -> None:
     assert 'getElementById("nav-shortcut-hints")' in infrastructure
     assert "resolveApplicationFocusFallback" in infrastructure
 
-    loaded = js[js.rindex('addEventListener("DOMContentLoaded", async () =>') :]
-    assert loaded.index("initKeyboardInfrastructure();") < loaded.index("initQuickFileFinder();")
-    assert loaded.count("initKeyboardInfrastructure();") == 1
+    deferred = js[js.index("async function initDeferredShellTools()") :]
+    assert deferred.index("initKeyboardInfrastructure();") < deferred.index(
+        "initQuickFileFinder();"
+    )
+    assert deferred.count("initKeyboardInfrastructure();") == 1

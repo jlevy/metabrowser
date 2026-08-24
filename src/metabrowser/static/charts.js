@@ -1,7 +1,7 @@
 // Shared chart and tally rendering for built-in and external plugins.
 
 ((global) => {
-  var _perf = global.metabrowserPerf || {
+  var _perf = global.metabrowser?.perf || {
     measure: (_label, fn) => fn(),
   };
   var ICONS = global.MetabrowserIcons || {};

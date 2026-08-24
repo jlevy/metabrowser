@@ -269,8 +269,57 @@ type MetabrowserPerf = {
   ): Promise<T>;
   report?(): unknown;
   reset?(): void;
+  /**
+   * How responsive the page has been since load: the worst main-thread block,
+   * the same for the first five seconds alone, the blocked share with the
+   * window it is a share of, and interaction-to-next-paint percentiles.
+   *
+   * `measurement_valid` is false when the tab was ever hidden, because browser
+   * throttling makes that scheduling incomparable to a visible session.
+   */
+  responsiveness?(): MetabrowserResponsiveness;
   setSlowThreshold?(milliseconds: number): number;
   snapshot?(): unknown;
+};
+
+type MetabrowserDebug = Readonly<{
+  clearFileCache(path?: string): void;
+  selectFile(path: string): Promise<unknown>;
+}>;
+
+type MetabrowserBench = Readonly<{
+  run(options?: { clients?: number; shapes?: Record<string, string> }): Promise<string>;
+  SHAPES: Record<string, string>;
+}>;
+
+type MetabrowserResponsiveness = {
+  animation_frame_blocking_ms_max: number | null;
+  animation_frame_blocking_ms_total: number | null;
+  animation_frame_max_ms: number | null;
+  animation_frames: number | null;
+  animation_frames_over_200ms: number | null;
+  attribution_unsupported: string[] | null;
+  ever_hidden: boolean;
+  forced_style_layout_ms_max: number | null;
+  interaction_max_ms: number | null;
+  interaction_inputs: number;
+  interaction_p50_ms: number | null;
+  interaction_p95_ms: number | null;
+  interaction_percentile_scope: string;
+  interaction_samples_retained: number;
+  interactions: number;
+  long_task_max_ms: number;
+  long_task_max_ms_first_5s: number;
+  long_task_ms_total: number;
+  long_tasks: number;
+  long_tasks_over_200ms: number;
+  main_thread_blocked_pct: number | null;
+  measurement_valid: boolean;
+  profile_started_at_ms: number;
+  total_blocking_time_ms: number;
+  unsupported: string[] | null;
+  visibility_state: string | null;
+  window_ms: number;
 };
 
 type MetabrowserChartRuntime = {
@@ -670,7 +719,9 @@ type MetabrowserTreemapLayoutApi = {
 type MetabrowserSdk = {
   ageBucket(mtimeSeconds: number | null | undefined): MetabrowserAgeBucket | null;
   ageLabelHtml(mtimeSeconds: number | null | undefined): string;
+  bench?: MetabrowserBench;
   builtins: MetabrowserBuiltins;
+  debug?: MetabrowserDebug;
   errors: MetabrowserRequestErrorRuntime;
   directoryTotals: MetabrowserDirectoryTotalsStore;
   filters: MetabrowserFilterState;
@@ -737,6 +788,7 @@ type MetabrowserSdk = {
   icons: Record<string, string>;
   isLargeTextPreview(data: Record<string, unknown>): boolean;
   ensureAsset(name: string): Promise<void>;
+  ensureKindAssets(kind: string): Promise<void>;
   kpressInitToc(container: HTMLElement): (() => void) | null;
   langForExtension(ext: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
@@ -870,6 +922,7 @@ type MetabrowserKnownFileCatalogSnapshot = Readonly<{
 }>;
 
 type MetabrowserCatalogChangePayload = {
+  remove_files?: string[];
   upserts?: Array<{ p: string; e: string }>;
   removes?: string[];
 };
@@ -928,6 +981,18 @@ type MetabrowserPublicFileCatalogApi = Readonly<{
 
 type MetabrowserPluginHostRuntime = Readonly<{
   attachFileCatalog(catalog: MetabrowserKnownFileCatalogApi): () => void;
+  configureAssets(
+    assetsByKind: Record<
+      string,
+      Array<{
+        name: string;
+        module: string;
+        scripts: string[];
+        styles: string[];
+      }>
+    >,
+  ): void;
+  loadPluginsForKind(kind: string): Promise<void>;
 }>;
 
 type MetabrowserCatalogFeedApi = Readonly<{
@@ -1502,10 +1567,6 @@ declare global {
       assetLoaded(name: string): boolean;
     };
     MetabrowserCharts?: MetabrowserChartRuntime;
-    MetabrowserDebug?: {
-      clearFileCache(path?: string): void;
-      selectFile(path: string): unknown;
-    };
     MetabrowserFileTypes?: {
       classFor(path: string): string;
       iconFor(path: string): { cls: string; svg: string };
@@ -1613,7 +1674,6 @@ declare global {
     metabrowserAgentLog?: {
       mountLogEventRaw?: (rawEl: HTMLElement) => void;
     };
-    metabrowserPerf?: MetabrowserPerf;
     toggleKindFilter?: (kind: string) => void;
   }
 }

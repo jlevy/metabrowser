@@ -491,12 +491,6 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 
 STATIC_DIR: Path = Path(__file__).parent / "static"
 
-# perf.js is optional (only present in dev builds with the perf overlay
-# bundled). Probed at module load so the index template can skip the
-# script tag rather than emit a 404 reference.
-_PERF_JS_AVAILABLE: bool = (STATIC_DIR / "perf.js").is_file()
-
-
 _SLOW_SERVER_REQUEST_MS = int(
     os.environ.get(
         "METABROWSER_SLOW_SERVER_MS",
@@ -939,41 +933,39 @@ async def index(_request: Request) -> HTMLResponse:
     initial_root = html_escape(_display_root_str(), quote=True)
     repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
-    asset_loader_url = _static_asset_url("asset_loader.js")
-    theme_state_url = _static_asset_url("theme_state.js")
-    request_error_url = _static_asset_url("request_error.js")
+    asset_loader_url = _static_asset_url("asset-loader.js")
+    theme_state_url = _static_asset_url("theme-state.js")
+    request_error_url = _static_asset_url("request-error.js")
     formatters_url = _static_asset_url("formatters.js")
-    inventory_scope_url = _static_asset_url("inventory_scope.js")
-    directory_totals_store_url = _static_asset_url("directory_totals_store.js")
-    contribution_registry_url = _static_asset_url("contribution_registry.js")
-    resource_context_url = _static_asset_url("resource_context.js")
-    view_state_url = _static_asset_url("view_state.js")
+    inventory_scope_url = _static_asset_url("inventory-scope.js")
+    directory_totals_store_url = _static_asset_url("directory-totals-store.js")
+    contribution_registry_url = _static_asset_url("contribution-registry.js")
+    resource_context_url = _static_asset_url("resource-context.js")
+    view_state_url = _static_asset_url("view-state.js")
     navigation_url = _static_asset_url("navigation.js")
-    source_append_url = _static_asset_url("source_append.js")
-    file_type_taxonomy_url = _static_asset_url("file_type_taxonomy.js")
-    plugin_sdk_url = _static_asset_url("plugin_sdk.js")
-    filter_state_url = _static_asset_url("filter_state.js")
-    filter_controls_url = _static_asset_url("filter_controls.js")
+    source_append_url = _static_asset_url("source-append.js")
+    file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
+    plugin_sdk_url = _static_asset_url("plugin-sdk.js")
+    filter_state_url = _static_asset_url("filter-state.js")
+    filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
-    tree_expansion_url = _static_asset_url("tree_expansion.js")
-    tree_filter_model_url = _static_asset_url("tree_filter_model.js")
-    pending_tally_diagnostics_url = _static_asset_url("pending_tally_diagnostics.js")
-    known_file_catalog_url = _static_asset_url("known_file_catalog.js")
-    catalog_feed_url = _static_asset_url("catalog_feed.js")
-    file_fuzzy_match_url = _static_asset_url("file_fuzzy_match.js")
-    search_controller_url = _static_asset_url("search_controller.js")
-    keyboard_shortcuts_url = _static_asset_url("keyboard_shortcuts.js")
-    overlay_layer_url = _static_asset_url("overlay_layer.js")
-    keyboard_help_url = _static_asset_url("keyboard_help.js")
-    tree_keyboard_navigation_url = _static_asset_url("tree_keyboard_navigation.js")
-    search_palette_url = _static_asset_url("search_palette.js")
-    git_graph_url = _static_asset_url("git_graph.js")
-    git_panel_url = _static_asset_url("git_panel.js")
+    tree_expansion_url = _static_asset_url("tree-expansion.js")
+    tree_filter_model_url = _static_asset_url("tree-filter-model.js")
+    pending_tally_diagnostics_url = _static_asset_url("pending-tally-diagnostics.js")
+    known_file_catalog_url = _static_asset_url("known-file-catalog.js")
+    catalog_feed_url = _static_asset_url("catalog-feed.js")
+    file_fuzzy_match_url = _static_asset_url("file-fuzzy-match.js")
+    search_controller_url = _static_asset_url("search-controller.js")
+    keyboard_shortcuts_url = _static_asset_url("keyboard-shortcuts.js")
+    overlay_layer_url = _static_asset_url("overlay-layer.js")
+    keyboard_help_url = _static_asset_url("keyboard-help.js")
+    tree_keyboard_navigation_url = _static_asset_url("tree-keyboard-navigation.js")
+    search_palette_url = _static_asset_url("search-palette.js")
+    git_graph_url = _static_asset_url("git-graph.js")
+    git_panel_url = _static_asset_url("git-panel.js")
     app_url = _static_asset_url("app.js")
-    perf_block = (
-        f'<script src="{_static_asset_url("perf.js")}"></script>' if _PERF_JS_AVAILABLE else ""
-    )
+    perf_url = _static_asset_url("perf.js")
     # Inject the client-visible settings dict before any app code
     # runs so JS can read window.METABROWSER_SETTINGS.* without
     # duplicating constants in the source.
@@ -1072,12 +1064,31 @@ async def index(_request: Request) -> HTMLResponse:
         {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
     ]
-    # On-demand tier: fetched by asset_loader.js the first time a consumer asks.
+    # On-demand tier: fetched by asset-loader.js the first time a consumer asks.
     # Chart.js and its two plugins are 297,531 bytes read by one view, and
     # eager loading measured ~374 ms of every document's load event whether or
     # not that view was ever opened. See docs/development.md "Asset Loading
     # Tiers" and the load-time plan for the measurement.
     on_demand_script_bundles = {
+        # Navigation, search, Help, and Git controls are application-lifetime
+        # tools, but none is needed to paint or fetch the first tree. Keeping
+        # their ordered classic scripts behind that usable-state boundary
+        # removes eleven requests from the shell's startup waterfall. They
+        # begin immediately after loadTree settles, before inventory delivery
+        # continues in the background.
+        "shell-tools": [
+            {"src": known_file_catalog_url},
+            {"src": catalog_feed_url},
+            {"src": file_fuzzy_match_url},
+            {"src": search_controller_url},
+            {"src": keyboard_shortcuts_url},
+            {"src": overlay_layer_url},
+            {"src": keyboard_help_url},
+            {"src": tree_keyboard_navigation_url},
+            {"src": search_palette_url},
+            {"src": git_graph_url},
+            {"src": git_panel_url},
+        ],
         "chart": [
             {"src": _static_asset_url("vendor/chart.umd.min.js")},
             {
@@ -1147,16 +1158,12 @@ async def index(_request: Request) -> HTMLResponse:
     }}
   }})();
   </script>"""
-    # Emit per-plugin <link>/<script> tags from each loaded plugin's
-    # manifest. Each plugin contributes (in discovery order):
-    #   - <link rel="stylesheet"> for styles.css if present + every
-    #     manifest.plugin.extra_styles entry
-    #   - <script> for every manifest.plugin.extra_scripts entry
-    #   - <script type="module" src=".../index.js"> last
-    # Plugins that need additional JS/CSS files declare them in their
-    # manifest; metabrowser core never special-cases plugin asset names.
-    plugin_styles = _build_plugin_style_block()
-    plugin_scripts = _build_plugin_script_block()
+    # Plugin assets are configured in the shell but fetched only when a
+    # selected resource names a kind that consumes them. A cold directory
+    # should not wait for Markdown, structured-data, diff, and log modules
+    # before its first tree row. The manifest remains the source of every URL;
+    # core does not special-case plugin names.
+    plugin_asset_config = _build_plugin_asset_config_block()
 
     # Reuse KPress's vendored reader faces for the whole UI. Link KPress's
     # style-tokens.css (the @font-face source of truth) and preload the chrome's
@@ -1190,7 +1197,6 @@ async def index(_request: Request) -> HTMLResponse:
        same-origin (see static/vendor/manifest.json), so the page loads
        with no external origins and works offline. -->
   <link rel="stylesheet" href="{styles_url}">
-  {plugin_styles}
 </head>
 <body>
   <main class="container">
@@ -1286,7 +1292,6 @@ async def index(_request: Request) -> HTMLResponse:
        tree/readme rendering. TOML support comes from the official
        highlight.js ini.min.js grammar (`aliases:["toml"]`), vendored as
        highlight-toml.min.js. -->
-  {perf_block}
   {settings_block}
   {repository_context_block}
   {initial_tree_block}
@@ -1304,6 +1309,7 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{source_append_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
+  <script src="{perf_url}"></script>
   <script src="{filter_state_url}"></script>
   <script src="{filter_controls_url}"></script>
   <script src="{icons_url}"></script>
@@ -1311,21 +1317,8 @@ async def index(_request: Request) -> HTMLResponse:
   <script src="{tree_expansion_url}"></script>
   <script src="{tree_filter_model_url}"></script>
   <script src="{pending_tally_diagnostics_url}"></script>
-  <script src="{known_file_catalog_url}"></script>
-  <script src="{catalog_feed_url}"></script>
-  <script src="{file_fuzzy_match_url}"></script>
-  <script src="{search_controller_url}"></script>
-  <script src="{keyboard_shortcuts_url}"></script>
-  <script src="{overlay_layer_url}"></script>
-  <script src="{keyboard_help_url}"></script>
-  <script src="{tree_keyboard_navigation_url}"></script>
-  <script src="{search_palette_url}"></script>
-  <!-- Git graph modules load before app.js: the shell's DOMContentLoaded
-       handler calls MetabrowserGitPanel.init(), which needs both present. -->
-  <script src="{git_graph_url}"></script>
-  <script src="{git_panel_url}"></script>
+  {plugin_asset_config}
   <script src="{app_url}"></script>
-  {plugin_scripts}
   {optional_assets_block}
 </body>
 </html>"""
@@ -1412,7 +1405,7 @@ def _query_values(request: Request, key: str) -> list[str]:
 def tree_filter_from_request(request: Request) -> TreeFilter:
     """Read the nav filter off a request.
 
-    Shares its vocabulary with ``static/filter_state.js``: ``recency`` names a
+    Shares its vocabulary with ``static/filter-state.js``: ``recency`` names a
     window from :data:`RECENT_WINDOW_SECONDS`, ``types`` carries extension or
     filename tokens (repeated or comma-separated), ``min_size`` is a byte
     floor, and ``include_ignored=0`` drops gitignored entries. An absent or
@@ -3174,38 +3167,33 @@ def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     return out
 
 
-def _build_plugin_style_block() -> str:
-    """Emit <link rel='stylesheet'> tags for each plugin's styles.css + extra_styles.
+def _build_plugin_asset_config_block() -> str:
+    """Configure manifest-owned assets by the kinds that consume them.
 
-    Emitted in the <head>; each plugin contributes its `styles.css`
-    (auto-detected) followed by every entry in `[plugin].extra_styles`
-    in manifest order.
+    No plugin asset is an eager shell dependency. The private plugin host
+    loads one descriptor at most once when ``app.js`` selects any kind in its
+    manifest. Extra classic scripts retain manifest order before ``index.js``;
+    styles load in parallel and settle before the plugin renderer mounts.
     """
-    parts: list[str] = []
+    assets_by_kind: dict[str, list[dict[str, object]]] = {}
     for plugin in _LOADED_PLUGINS:
-        css_path = plugin.static_root / "styles.css"
-        if css_path.is_file():
-            parts.append(f'<link rel="stylesheet" href="/plugin-static/{plugin.name}/styles.css">')
-        for extra in plugin.manifest.plugin.extra_styles:
-            parts.append(f'<link rel="stylesheet" href="/plugin-static/{plugin.name}/{extra}">')
-    return "\n  ".join(parts)
-
-
-def _build_plugin_script_block() -> str:
-    """Emit per-plugin <script> tags after the shell loads.
-
-    For each plugin (in discovery order), emit any `extra_scripts`
-    declared in its manifest as classic <script> tags first (so they
-    set up globals that `index.js` can use), then the plugin's
-    `index.js` as an ES module. Plugins that don't declare
-    `extra_scripts` get just the index.js tag.
-    """
-    parts: list[str] = []
-    for plugin in _LOADED_PLUGINS:
-        for extra in plugin.manifest.plugin.extra_scripts:
-            parts.append(f'<script src="/plugin-static/{plugin.name}/{extra}"></script>')
-        parts.append(f'<script type="module" src="/plugin-static/{plugin.name}/index.js"></script>')
-    return "\n  ".join(parts)
+        prefix = f"/plugin-static/{plugin.name}"
+        styles: list[str] = []
+        if plugin.static_root.joinpath("styles.css").is_file():
+            styles.append(f"{prefix}/styles.css")
+        styles.extend(f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_styles)
+        descriptor: dict[str, object] = {
+            "name": plugin.name,
+            "module": f"{prefix}/index.js",
+            "scripts": [f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_scripts],
+            "styles": styles,
+        }
+        kinds = {view.kind for view in plugin.manifest.view}
+        kinds.update(kind.id for kind in plugin.manifest.kind)
+        for kind in sorted(kinds):
+            assets_by_kind.setdefault(kind, []).append(descriptor)
+    encoded = _json.dumps(assets_by_kind).replace("<", "\\u003c")
+    return f"<script>window.MetabrowserPluginHost.configureAssets({encoded});</script>"
 
 
 # ── Diagnostic routes (opt-in) ──────────────────────────────────

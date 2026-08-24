@@ -5,7 +5,7 @@
 //                         fetched from /api/plugin/binary/chunk and
 //                         rendered one display unit per byte.
 
-import { mountBytesView } from "./bytes_view.js";
+import { mountBytesView } from "./bytes-view.js";
 
 const mb = window.metabrowser;
 if (!mb) {

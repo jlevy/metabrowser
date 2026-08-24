@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-TREE_EXPANSION_TEST_JS = Path(__file__).resolve().parent / "dom" / "tree_expansion_behavior.js"
+TREE_EXPANSION_TEST_JS = Path(__file__).resolve().parent / "dom" / "tree-expansion-behavior.js"
 
 
 def test_tree_expansion_js_assertions_pass() -> None:

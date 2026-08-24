@@ -24,8 +24,8 @@ AGENT_LOG_STYLES_CSS = PLUGINS_DIR / "agent_log" / "styles.css"
 # inherits the classified monospace rule instead of declaring its own.
 BINARY_STYLES_CSS = PLUGINS_DIR / "binary" / "styles.css"
 STYLE_FILES = (STATIC_DIR / "styles.css", AGENT_LOG_STYLES_CSS, BINARY_STYLES_CSS)
-SEARCH_PALETTE_JS = STATIC_DIR / "search_palette.js"
-KEYBOARD_SHORTCUTS_JS = STATIC_DIR / "keyboard_shortcuts.js"
+SEARCH_PALETTE_JS = STATIC_DIR / "search-palette.js"
+KEYBOARD_SHORTCUTS_JS = STATIC_DIR / "keyboard-shortcuts.js"
 
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 CSS_RULE_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")
