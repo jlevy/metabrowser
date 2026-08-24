@@ -180,10 +180,27 @@ round.
 | Visual stability | Fixed viewport; capture shipped, intermediate, and final states | CLS, direct region movement, visual-state and repaint counts | First usable time and responsiveness do not regress |
 | Endurance | Long-lived session with repeated navigation and updates | Heap slope, DOM ceiling, retained sample counts, listener and cache sizes | Interaction latency stays flat and attribution does not overflow |
 | Backend delivery | Same corpus, with and without an attached client | Scan time, route wall/server time, RSS, payload | Browser hard gates and semantic response equivalence |
+| Previous-release regression | Previous published artifact and candidate, installed and alternated on one unchanged corpus | Full metric vector from the affected loops, with ranges | Semantic equivalence, every candidate hard gate, immutable build and corpus provenance |
 
 For a new metric, first name the user-visible failure, then choose the loop that can
 make the field come out bad.
 A metric that can only report success is not a guard.
+
+The previous-release row is a comparison protocol across the other loops, not a single
+score. A progressively loaded application runs at least the cold-load, progressive-load,
+and backend-delivery scenarios, with three or more runs per condition.
+It keeps full machine reports locally, appends normalized profiles to its evidence
+ledger, and commits a result document containing immutable build identities, ranges,
+limits, and the decision.
+An overlapping range means no detected difference; it cannot support either a win or a
+regression. A candidate fails when any run crosses a hard gate or when a repeatable
+wrong-way metric lacks an accepted explanation.
+
+An older release may predate the recorder.
+A measurement-only adapter may supply the current standard observers, provided the
+product code being measured stays exact and the result documents the substitution.
+That adapter is test instrumentation, not a reason to ship a production compatibility
+layer.
 
 ## Integrating Another Application
 

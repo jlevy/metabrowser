@@ -138,6 +138,84 @@ The harness resolves the executable and verifies its reported version before sta
 It refuses an external build without `--build-ref`; a version string alone cannot
 distinguish a modified or incorrectly installed artifact.
 
+### Comparing a candidate with the previous release
+
+A release comparison is a complete loop, not a screenshot or one timing copied from a
+terminal. It uses installed console scripts on both sides, at least three cold browser
+runs and three backend runs per condition, immutable build references, one unchanged
+corpus, semantic response comparison, and the full responsiveness gate.
+
+Build the candidate as the artifact users will install.
+Keep machine-specific reports under `.bench/`; they contain absolute executable and
+corpus paths and therefore do not belong in the public repository.
+
+```shell
+RESULTS=.bench/release-comparisons/vX.Y.Z-to-candidate
+uv build --wheel --out-dir "$RESULTS/dist"
+uv venv "$RESULTS/candidate"
+uv pip install --python "$RESULTS/candidate/bin/python" \
+  "$RESULTS"/dist/metabrowser-*.whl
+
+uv --config-file uv.toml run --frozen python -m devtools.compare_builds \
+  /path/to/unchanged/tree \
+  --baseline /absolute/path/to/released/metab \
+  --candidate "$RESULTS/candidate/bin/metab" \
+  --runs 5 --corpus-name <opaque-corpus-label> \
+  --output "$RESULTS/backend.json"
+```
+
+Read `valid` before reading the timings.
+It is true only when every run completed, the corpus fingerprint stayed fixed, required
+response fields existed, and ordered rows and tallies were identical.
+
+For the browser half, first use `count` to obtain the inventory count, then alternate
+the release and candidate in both orders.
+Each `serve` creates a fresh process and origin; each `capture --record` creates a fresh
+visible Chrome profile, applies the evidence and budget policy, and appends the
+normalized record to the ledger.
+
+```shell
+$UV explorations/performance-loop/run.py serve \
+  --metab /absolute/path/to/released/metab --build-ref vX.Y.Z \
+  --tree /path/to/unchanged/tree --files <inventory-count> \
+  --exp exp-0NN --label release-vX.Y.Z
+$UV explorations/performance-loop/run.py capture --headed \
+  --output "$RESULTS/browser-release-1.json" --record
+
+$UV explorations/performance-loop/run.py serve \
+  --metab "$RESULTS/candidate/bin/metab" --build-ref <candidate-commit> \
+  --tree /path/to/unchanged/tree --files <inventory-count> \
+  --exp exp-0NN --label candidate-<commit>
+$UV explorations/performance-loop/run.py capture --headed \
+  --output "$RESULTS/browser-candidate-1.json" --record
+```
+
+Wait for the `recorded` confirmation before starting the next server.
+Repeat each condition at least three times, keep the tab visible, and interact through
+the complete progressive-load window.
+Then run `compare`, write an `exp-NNN` document with the ranges and verdict, and
+regenerate `report.md`:
+
+```shell
+$UV explorations/performance-loop/run.py compare \
+  release-vX.Y.Z candidate-<commit>
+$UV explorations/performance-loop/run.py report
+```
+
+The durable record has three levels:
+
+- raw backend JSON and full browser profiles under `.bench/`, attached to a pull request
+  or bug when the diagnostic detail matters;
+- normalized browser records in `results/runs.jsonl`; and
+- the committed experiment and generated `report.md`, which retain the comparison, its
+  limits, and the decision without publishing local paths.
+
+The v0.6.0 application predates the current profiler.
+Comparing that release requires the measurement-only adapter recorded in
+[exp-015](experiments/exp-015-merged-main-preserves-the-release-performance-win.md).
+Do not turn that adapter into a production compatibility layer.
+Releases containing the current recorder can be measured directly.
+
 ### Which probe to use
 
 **`probe-server`** samples one route every second from the moment the socket answers
