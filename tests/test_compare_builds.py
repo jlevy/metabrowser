@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from devtools.compare_builds import (
     missing_required_fields,
     normalise,
     resolve_tree,
+    write_report,
 )
 
 
@@ -114,3 +116,12 @@ def test_missing_equivalence_results_invalidate_the_comparison() -> None:
     )
 
     assert failures == ["tallies equivalence result is missing"]
+
+
+def test_report_is_written_as_machine_readable_json(tmp_path: Path) -> None:
+    output = tmp_path / "nested" / "comparison.json"
+    report = {"valid": True, "timings": {"first_row": {"candidate": {"median": 1.2}}}}
+
+    write_report(report, output)
+
+    assert json.loads(output.read_text(encoding="utf-8")) == report

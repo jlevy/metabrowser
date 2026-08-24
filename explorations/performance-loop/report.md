@@ -49,6 +49,7 @@ against one that did.
 | exp-012 | [Exact file removals stop scanning the catalog](experiments/exp-012-exact-file-removals-stop-scanning-the-catalog.md) | H58 | `long_tasks_over_500ms` | accepted |
 | exp-013 | [The v0.6.0 regression leaves one visual regression](experiments/exp-013-v060-regression-leaves-one-visual-regression.md) | H58, H11 | `hard responsiveness gates plus the full non-regression matrix` | unresolved |
 | exp-014 | [Backend volume stops controlling browser responsiveness](experiments/exp-014-backend-volume-stops-controlling-browser-responsiveness.md) | H9, H10, H11, H51, H57, H58 | `hard responsiveness and correctness gates during progressive loading` | accepted |
+| exp-015 | [Merged main preserves the release performance win](experiments/exp-015-merged-main-preserves-the-release-performance-win.md) | H58 | `every candidate run passes the hard responsiveness and correctness gates` | accepted |
 
 ## Absolute numbers, per condition
 

@@ -47,7 +47,8 @@ process spawn, so start-up is not charged to the code under test.
 Usage::
 
     uv --config-file uv.toml run --frozen python -m devtools.compare_builds \\
-        /path/to/tree --baseline metab --candidate /tmp/cand/bin/metab --runs 5
+        /path/to/tree --baseline metab --candidate /tmp/cand/bin/metab --runs 5 \\
+        --output .bench/release-comparison/backend.json
 
 Build a candidate to compare against a released baseline with ``uv build --wheel``
 and ``uv pip install`` into a throwaway venv; that is what makes both sides a
@@ -69,6 +70,8 @@ import time
 import urllib.request
 from pathlib import Path
 from typing import Any, cast
+
+from strif import atomic_output_file
 
 SETTLE_KEY = "tally_cache_status"
 SETTLE_VALUE = "done"
@@ -312,7 +315,13 @@ def comparison_failures(report: dict[str, Any]) -> list[str]:
     return failures
 
 
-def main() -> int:
+def write_report(report: dict[str, Any], output: Path) -> None:
+    """Atomically persist the complete comparison report."""
+    with atomic_output_file(output, make_parents=True) as temporary:
+        temporary.write_text(f"{json.dumps(report, indent=2, default=str)}\n", encoding="utf-8")
+
+
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("tree")
     p.add_argument("--baseline", default="metab")
@@ -321,7 +330,12 @@ def main() -> int:
     p.add_argument("--poll", type=float, default=0.25)
     p.add_argument("--deadline", type=float, default=300.0)
     p.add_argument("--corpus-name", default="")
-    args = p.parse_args()
+    p.add_argument(
+        "--output",
+        type=Path,
+        help="write the complete validated report as JSON",
+    )
+    args = p.parse_args(argv)
     tree = resolve_tree(args.tree)
 
     # Resolve to absolute paths before anything else. Under `uv run` a bare name
@@ -452,6 +466,8 @@ def main() -> int:
     report["equivalence"] = equivalence
     report["validation_errors"] = comparison_failures(report)
     report["valid"] = not report["validation_errors"]
+    if args.output is not None:
+        write_report(report, args.output)
     print(json.dumps(report, indent=1, default=str))
     return 0 if report["valid"] else 1
 
