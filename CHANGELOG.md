@@ -6,10 +6,11 @@ All notable changes to Metabrowser are documented here.
 
 Performance, validated against 0.6.0 side by side:
 
-- A full index of a 247,000-file project tree completes in 12.2 s where 0.6.0 takes 28.2
-  s, medians of five interleaved runs.
-  Two other tree shapes agree: 11.1 s against 28.6 s deep and narrow, and 2.7 s against
-  6.0 s wide and shallow.
+- A full index of a 247,000-file project tree completes in 11.348 s where 0.6.0 takes
+  25.378 s, medians of five interleaved runs against the final installed wheel.
+  The first navigation row arrives in 1.107 s instead of 2.647 s, and peak RSS falls
+  from 183.0 MB to 176.3 MB. Two other tree shapes agree: 11.1 s against 28.6 s deep and
+  narrow, and 2.7 s against 6.0 s wide and shallow.
   Peak memory is unchanged to slightly lower.
   Both builds report identical rows, file counts and byte totals on every shape.
 
@@ -31,6 +32,14 @@ Performance, validated against 0.6.0 side by side:
   retains bounded path-only attribution for the slowest and latest startup assets, and
   gates startup request count and transfer size.
   Recording exits nonzero as soon as any run crosses a hard budget.
+
+- Four final visible browser pairs against the globally installed 0.6.0 reduce
+  inventory-delivery work from 11% of the loading window to 0.4%, its worst callback
+  from 7 ms to 1 ms, startup JavaScript from 75 requests / 340 KB to 22 / 154 KB, and
+  total transfer from 518 KB to 454 KB. Every candidate run passes the hard
+  responsiveness and correctness gates.
+  Cold FCP remains a named tradeoff at 146 ms against 114 ms; the performance record
+  does not hide it inside the responsiveness win.
 
 - The gain is largest exactly when a client is watching, because that is what the change
   addresses: a row request no longer computes navigation tallies, so polling the tree
@@ -92,6 +101,8 @@ Development:
   post-GC retained heap.
   Backend completion, an early-only interaction, adapter work, and garbage-collection
   timing therefore cannot hide regressions.
+  The inventory walker also yields between bounded entry groups so one wide directory
+  cannot monopolize the request event loop.
 
 - Built-in plugin styles, classic dependencies, and modules now load on demand for the
   selected file kind instead of every plugin joining every directory load.

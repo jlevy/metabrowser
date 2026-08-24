@@ -117,3 +117,13 @@ def test_probe_does_not_classify_script_preloads_as_stylesheets() -> None:
     assert 'initiatorType === "script"' not in scripts
     assert 'pathname.endsWith(".css")' in styles
     assert 'initiatorType === "link"' not in styles
+
+
+def test_probe_attributes_startup_resource_queue_and_server_time() -> None:
+    source = PROBE.read_text(encoding="utf-8")
+    startup = source[source.index("startup_scripts_slowest:") : source.index("style_transfer_kb:")]
+
+    assert startup.count("response_start_ms:") == 2
+    assert startup.count("wait_ms:") == 2
+    assert startup.count("download_ms:") == 2
+    assert startup.count('entry.name === "srv"') == 2

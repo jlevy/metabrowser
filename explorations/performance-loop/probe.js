@@ -530,8 +530,12 @@
       .map((resource) => ({
         path: new URL(resource.name).pathname,
         start_ms: Math.round(resource.startTime),
+        response_start_ms: Math.round(resource.responseStart),
         response_end_ms: Math.round(resource.responseEnd),
         duration_ms: Math.round(resource.duration),
+        wait_ms: Math.round(resource.responseStart - resource.startTime),
+        download_ms: Math.round(resource.responseEnd - resource.responseStart),
+        server_ms: resource.serverTiming?.find((entry) => entry.name === "srv")?.duration ?? null,
         transfer_kb: Math.round((resource.transferSize || 0) / 1024),
       })),
     startup_scripts_latest: startupScripts
@@ -541,8 +545,12 @@
       .map((resource) => ({
         path: new URL(resource.name).pathname,
         start_ms: Math.round(resource.startTime),
+        response_start_ms: Math.round(resource.responseStart),
         response_end_ms: Math.round(resource.responseEnd),
         duration_ms: Math.round(resource.duration),
+        wait_ms: Math.round(resource.responseStart - resource.startTime),
+        download_ms: Math.round(resource.responseEnd - resource.responseStart),
+        server_ms: resource.serverTiming?.find((entry) => entry.name === "srv")?.duration ?? null,
         transfer_kb: Math.round((resource.transferSize || 0) / 1024),
       })),
     style_transfer_kb: kb(styles),
