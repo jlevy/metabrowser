@@ -204,13 +204,14 @@ def build_corpus(root: Path, target_files: int) -> dict[str, Any]:
     marker file records the size, so rerunning at the same size reuses the
     tree instead of paying to rebuild it.
     """
+    shape_version = 2
     marker = root / ".bench-corpus.json"
     if marker.is_file():
         try:
             existing: dict[str, Any] = json.loads(marker.read_text())
         except (OSError, ValueError):
             existing = {}
-        if existing.get("files") == target_files:
+        if existing.get("files") == target_files and existing.get("shape") == shape_version:
             return existing
 
     if root.exists():
@@ -229,6 +230,13 @@ def build_corpus(root: Path, target_files: int) -> dict[str, Any]:
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
 
+    # The default corpus path is under this repository's ignored ``.bench``
+    # directory. Establish an independent Git boundary so the synthetic files are
+    # tracked inputs rather than inheriting that outer ignore rule; otherwise the
+    # Quick File catalog is correctly empty and cannot measure catalog delivery.
+    (root / ".git").mkdir()
+    (root / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+
     made = 0
     per_directory = target_files // len(directories) + 1
     for directory in directories:
@@ -241,7 +249,13 @@ def build_corpus(root: Path, target_files: int) -> dict[str, Any]:
         if made >= target_files:
             break
 
-    info: dict[str, Any] = {"files": made, "dirs": len(directories), "path": str(root)}
+    info: dict[str, Any] = {
+        "files": made,
+        "shape": shape_version,
+        "dirs": len(directories),
+        "ignored_files": 0,
+        "path": str(root),
+    }
     marker.write_text(json.dumps(info))
     return info
 
@@ -750,14 +764,85 @@ def phase_settled(
     marker = root / "metabrowser-bench-touch.tmp"
     marker.unlink(missing_ok=True)
     with Server(root, log_dir / "settled.log", build, provider=provider) as server:
-        if server.await_walk() is None:
+        walk = server.await_walk()
+        if walk is None:
             return {"converged": False}
         base = server.base_url
         overview = f"{base}/api/rollup?{OVERVIEW_QUERY}"
         treemap = f"{base}/api/rollup?{TREEMAP_QUERY}"
+        navigation_url = f"{base}/api/tree?depth=0"
+        catalog_url = f"{base}/api/catalog"
 
         aggregated, retained, revalidated = Timing(), Timing(), Timing()
         errors: list[str] = []
+
+        navigation_first_ms: float | None = None
+        navigation_reused = Timing()
+        navigation_summary: object = None
+        navigation_status, _etag, navigation_body, elapsed_ms = _http(navigation_url)
+        if navigation_status == 200:
+            navigation_first_ms = round(elapsed_ms, 1)
+            payload: dict[str, Any] = json.loads(navigation_body)
+            navigation_summary = payload.get("summary")
+            if not isinstance(navigation_summary, dict):
+                errors.append("initial navigation response did not contain a summary")
+            else:
+                typed_summary = cast("dict[str, Any]", navigation_summary)
+                summary_files = typed_summary.get("files", 0)
+                ignored_files = typed_summary.get("ignored_files", 0)
+                if not isinstance(summary_files, int) or not isinstance(ignored_files, int):
+                    errors.append("initial navigation summary contained nonnumeric counts")
+                elif summary_files + ignored_files != walk.get("files"):
+                    errors.append(
+                        "initial navigation summary disagreed with the settled walker: "
+                        f"summary={summary_files + ignored_files} walker={walk.get('files')}"
+                    )
+        else:
+            errors.append(f"initial navigation request returned status={navigation_status}")
+        for _ in range(10):
+            status, _etag, body, reused_ms = _http(navigation_url)
+            if status != 200:
+                errors.append(f"reused navigation request returned status={status}")
+                continue
+            reused_payload = json.loads(body)
+            if reused_payload.get("summary") != navigation_summary:
+                errors.append("reused navigation response changed on a settled inventory")
+                continue
+            navigation_reused.add(reused_ms)
+
+        catalog_first_ms: float | None = None
+        catalog_bytes = 0
+        catalog_retained = Timing()
+        catalog_revalidated = Timing()
+        catalog_status, catalog_etag, catalog_body, elapsed_ms = _http(catalog_url)
+        if catalog_status == 200 and catalog_etag:
+            catalog_first_ms = round(elapsed_ms, 1)
+            catalog_bytes = len(catalog_body)
+            catalog_payload = json.loads(catalog_body)
+            catalog_files = catalog_payload.get("files")
+            if catalog_payload.get("complete") is not True or not isinstance(catalog_files, list):
+                errors.append("initial catalog response was incomplete or malformed")
+            elif walk.get("files", 0) and not catalog_files:
+                errors.append("initial catalog was empty although the settled walker found files")
+            for _ in range(8):
+                status, etag, body, retained_ms = _http(catalog_url)
+                if status == 200 and etag == catalog_etag and body == catalog_body:
+                    catalog_retained.add(retained_ms)
+                else:
+                    errors.append(
+                        "retained catalog response changed: "
+                        f"status={status} etag={etag!r} bytes={len(body)}"
+                    )
+                status, _etag, body, revalidated_ms = _http(catalog_url, etag=catalog_etag)
+                if status == 304 and not body:
+                    catalog_revalidated.add(revalidated_ms)
+                else:
+                    errors.append(
+                        f"catalog revalidation returned status={status} bytes={len(body)}"
+                    )
+        else:
+            errors.append(f"initial catalog returned status={catalog_status} etag={catalog_etag!r}")
+
         status, current_etag, _body, _elapsed_ms = _http(treemap)
         if status != 200 or not current_etag:
             return {
@@ -856,6 +941,12 @@ def phase_settled(
         "rollup_aggregated_ms": aggregated.summary(),
         "rollup_retained_body_ms": retained.summary(),
         "rollup_revalidated_304_ms": revalidated.summary(),
+        "navigation_first_ms": navigation_first_ms,
+        "navigation_reused_ms": navigation_reused.summary(),
+        "catalog_first_ms": catalog_first_ms,
+        "catalog_bytes": catalog_bytes,
+        "catalog_retained_body_ms": catalog_retained.summary(),
+        "catalog_revalidated_304_ms": catalog_revalidated.summary(),
         "tree": trees,
         "clients": clients,
         "clients_staggered_ms": staggered.summary(),
@@ -966,6 +1057,20 @@ def _rows(result: dict[str, Any]) -> list[tuple[str, Any]]:
             settled.get("rollup_retained_body_ms", {}).get("p50"),
         ),
         ("settled rollup, 304 p50 (ms)", settled.get("rollup_revalidated_304_ms", {}).get("p50")),
+        ("settled navigation, first pass (ms)", settled.get("navigation_first_ms")),
+        (
+            "settled navigation, memo p50 (ms)",
+            settled.get("navigation_reused_ms", {}).get("p50"),
+        ),
+        ("settled catalog, first body (ms)", settled.get("catalog_first_ms")),
+        (
+            "settled catalog, retained body p50 (ms)",
+            settled.get("catalog_retained_body_ms", {}).get("p50"),
+        ),
+        (
+            "settled catalog, 304 p50 (ms)",
+            settled.get("catalog_revalidated_304_ms", {}).get("p50"),
+        ),
         (
             f"{settled.get('clients', '?')} clients staggered p50 (ms)",
             settled.get("clients_staggered_ms", {}).get("p50"),
@@ -1037,6 +1142,9 @@ def render_report(result: dict[str, Any], baseline: dict[str, Any] | None) -> st
         lines.append("  tree response sizes:")
         for tree in trees:
             lines.append(f"    {tree['path']} depth={tree['depth']}: {tree['bytes']} bytes")
+    catalog_bytes = result.get("settled", {}).get("catalog_bytes")
+    if catalog_bytes:
+        lines.append(f"  catalog response size: {catalog_bytes} bytes")
     lines.append("")
     return "\n".join(lines)
 

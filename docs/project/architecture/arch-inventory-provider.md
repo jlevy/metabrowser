@@ -79,6 +79,15 @@ A version-pinned request either returns that version or raises
 This rule lets the coordinator assemble a complete paged catalog without joining pages
 from different generations.
 
+The Python provider retains the last coherent root-entry and navigation bundle while its
+revision is moving. A repeated root-summary read may return that earlier boundary until
+the cost-aware refresh cadence expires.
+Its version, cursor, state, and entry projection all remain from the retained boundary;
+only recency rows are evaluated at the query’s explicit `as_of_ns`. A settled unchanged
+revision reuses the exact memo without copying the index.
+A provider with incrementally maintained tallies may always return a newer exact
+boundary.
+
 ## Closed Query Algebra
 
 `ReadRequest.queries` accepts only the registered records below.
@@ -139,6 +148,10 @@ application overlay keyed by the same path identity.
 They do not cross the provider contract, advance an engine version, or contribute to
 filesystem totals. The coordinator combines the engine version and overlay revision into
 the host version used for browser events and caches.
+Entry-bearing projections receive decorations automatically.
+Catalog projections return identities rather than entries, so a coordinator caller must
+opt in to catalog decorations.
+The activity tracker opts in; bulk Quick File delivery does not traverse the overlay.
 
 ## State and Failures
 
@@ -212,7 +225,7 @@ and
 | `/api/tree` | `DirectoryQuery` or `FilteredTreeQuery`, bundled with `NavigationQuery` for root tallies |
 | `/api/rollup` and folder hooks | `RollupQuery` |
 | `/api/recent` | `RecentQuery` |
-| Quick File catalog | Version-pinned `CatalogQuery` pages |
+| Quick File catalog | Version-pinned `CatalogQuery` pages; the Python scope fits in one page bounded by `InventoryConfig.max_entries` |
 | `/api/file` folder facts | `EntryQuery` |
 | Initial browser stream | Bounded entry and directory reads followed by `changes()` from the captured cursor |
 | Live browser stream | `changes()` plus coherent rereads |

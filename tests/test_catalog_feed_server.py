@@ -18,15 +18,21 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 from pathlib import Path
 from typing import Any, cast
+
+import pytest
 
 from metabrowser import events_route
 from metabrowser.events import CapabilityUpdate, CatalogChange, CatalogUpsert
 from metabrowser.events_route import _filter_event_for_scope, api_catalog
 from metabrowser.inventory_engine.contract import (
+    CatalogQuery,
+    CatalogRecord,
     ObservationKind,
+    ReadRequest,
     RefreshObservation,
     RefreshRequest,
 )
@@ -87,6 +93,38 @@ def test_api_catalog_lists_the_complete_nonignored_file_universe(tmp_path: Path)
     assert set(body["files"][0]) == {"p", "e"}
     assert body["complete"] is True
     assert body["truncated"] is False
+
+
+def test_api_catalog_is_incomplete_while_discovery_is_blocked(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    from metabrowser.inventory_engine.providers import python as python_provider
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    original_walk = python_provider.walk_tree
+
+    async def blocked_walk(*args: Any, **kwargs: Any):
+        started.set()
+        await release.wait()
+        async for entry in original_walk(*args, **kwargs):
+            yield entry
+
+    monkeypatch.setattr(python_provider, "walk_tree", blocked_walk)
+
+    async def run() -> dict[str, Any]:
+        async with inventory_harness(tmp_path, settle=False) as harness:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            try:
+                response = await api_catalog(cast(Any, _FakeRequest(harness.app)))
+                return _body(response)
+            finally:
+                release.set()
+
+    body = asyncio.run(run())
+    assert body["complete"] is False
+    assert body["files"] == []
 
 
 def test_catalog_etag_and_live_addition_converge(tmp_path: Path) -> None:
@@ -228,22 +266,53 @@ def test_walker_completion_projects_capability_update(
     assert update.index["truncated"] is False
 
 
-def test_catalog_encoding_is_off_loop_and_reused(tmp_path: Path) -> None:
+def test_catalog_encoding_is_off_loop_and_reused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _build_fixture(tmp_path)
     calls: list[int] = []
+    catalog_reads = 0
     real_encode = events_route._encode_catalog
 
-    def counting_encode(files: list[tuple[str, str]], status: str, revision: int) -> bytes:
-        calls.append(len(files))
-        return real_encode(files, status, revision)
+    def counting_encode(
+        pages: tuple[tuple[CatalogRecord, ...], ...],
+        status: str,
+        revision: int,
+    ) -> bytes:
+        calls.append(sum(len(page) for page in pages))
+        return real_encode(pages, status, revision)
 
     async def run() -> tuple[Any, Any]:
         async with inventory_harness(tmp_path) as harness:
             events_route._CATALOG_BODY_CACHE.clear()
             events_route._encode_catalog = counting_encode  # type: ignore[assignment]
+            real_read = harness.runtime.coordinator.read
+
+            async def counting_read(
+                request: ReadRequest,
+                *,
+                include_catalog_decorations: bool = False,
+            ) -> Any:
+                nonlocal catalog_reads
+                if any(isinstance(query, CatalogQuery) for query in request.queries):
+                    catalog_reads += 1
+                return await real_read(
+                    request,
+                    include_catalog_decorations=include_catalog_decorations,
+                )
+
+            monkeypatch.setattr(harness.runtime.coordinator, "read", counting_read)
             try:
                 first = await api_catalog(cast(Any, _FakeRequest(harness.app)))
                 second = await api_catalog(cast(Any, _FakeRequest(harness.app)))
+                conditional = await api_catalog(
+                    cast(
+                        Any,
+                        _FakeRequest(harness.app, {"If-None-Match": first.headers["ETag"]}),
+                    )
+                )
+                assert conditional.status_code == 304
                 return first, second
             finally:
                 events_route._encode_catalog = real_encode  # type: ignore[assignment]
@@ -252,3 +321,18 @@ def test_catalog_encoding_is_off_loop_and_reused(tmp_path: Path) -> None:
     assert first.body == second.body
     assert first.headers["ETag"] == second.headers["ETag"]
     assert len(calls) == 1
+    assert catalog_reads == 1
+
+
+def test_catalog_bulk_materialization_stays_in_the_worker() -> None:
+    route_source = inspect.getsource(events_route.api_catalog)
+    read_source = inspect.getsource(events_route._read_catalog)
+    encode_source = inspect.getsource(events_route._encode_catalog)
+    coordinator_source = inspect.getsource(events_route.InventoryCoordinator._returned_paths)
+
+    assert '{"p": record.path, "e": record.logical_extension}' not in route_source
+    assert '{"p": record.path, "e": record.logical_extension}' in encode_source
+    assert "for record in projection.records" not in read_source
+    assert "pages.append(projection.records)" in read_source
+    assert "page_size = runtime.config.max_entries" in read_source
+    assert "if include_catalog:" in coordinator_source

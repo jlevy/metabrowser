@@ -177,6 +177,7 @@ _NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
 # wide directory without suspending. Yield four times inside each 256-entry
 # delivery batch so request tasks run independently of directory width.
 _WALKER_COOPERATIVE_YIELD_BATCH = 64
+_NAVIGATION_TALLY_REFRESH_FLOOR_S = 0.5
 _CONTRACT_ID = "inventory-provider-v1"
 
 
@@ -300,6 +301,28 @@ def _with_recency(
 # computed -- the revision says when, and the staleness bound reads it from the
 # clock instead, because during a walk the revision moves on every write.
 _NavigationTallyKey = tuple[int, int, tuple[tuple[str, tuple[str, ...]], ...]]
+_NavigationReadShape = tuple[
+    str,
+    str,
+    str,
+    int,
+    tuple[tuple[str, tuple[str, ...]], ...],
+    tuple[tuple[str, float], ...],
+]
+
+
+@dataclass(frozen=True, slots=True)
+class _NavigationReadMemo:
+    """One coherent root-summary read retained across moving revisions."""
+
+    shape: _NavigationReadShape
+    version: EngineVersion
+    cursor: ChangeCursor
+    state: IndexState
+    projections: tuple[ProjectionResult, ...]
+    base: _NavigationTallyBase
+    computed_at: float
+    compute_cost_s: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -507,6 +530,11 @@ class PythonInventoryHandle:
         # One entry. A superseded revision can never be requested again, so
         # there is nothing to evict and nothing to bound.
         self._navigation_tally_memo: tuple[_NavigationTallyKey, _NavigationTallyBase] | None = None
+        # The root-summary route bundles its root lookup with the navigation
+        # projection. Retain that complete observation boundary so a cache hit can
+        # return the older version honestly instead of pairing stale tallies with the
+        # provider's current version and state.
+        self._navigation_read_memo: _NavigationReadMemo | None = None
         self._rollup_generation = next(_ROLLUP_REVISIONS)
         # Per-directory subtree aggregates, retained across rollup requests.
         # Without this, every ``/api/rollup`` re-walked every file under the
@@ -669,6 +697,11 @@ class PythonInventoryHandle:
         self._generation.clear()
         self._done_event.clear()
         self._catalog_revision += 1
+        with self._navigation_tally_lock:
+            self._navigation_tally_at = 0.0
+            self._navigation_tally_cost_s = 0.0
+            self._navigation_tally_memo = None
+            self._navigation_read_memo = None
         self._emit(FsResyncRequired(reason="root_swap"))
 
     async def wait_until_done(self, timeout: float | None = None) -> None:
@@ -941,7 +974,16 @@ class PythonInventoryHandle:
                 )
                 for query in request.queries
             )
-            if targeted:
+            if targeted and any(isinstance(query, CatalogQuery) for query in request.queries):
+                # Catalog predicates require a whole-index visit. Copy the immutable
+                # image under the writer lock and perform filtering, sorting, and page
+                # construction after releasing it. Filtering into a second dict here
+                # held discovery writes for the duration of the full pass and then the
+                # projection repeated the same predicates outside the lock.
+                entries = tuple(self._entries.values())
+                entries_visited = len(entries)
+                directories_visited = sum(entry.type == "dir" for entry in entries)
+            elif targeted:
                 selected: dict[str, FsEntry] = {}
                 entries_visited = 0
                 directories_visited = 0
@@ -969,12 +1011,6 @@ class PythonInventoryHandle:
                             frontier = next_frontier
                             if not frontier:
                                 break
-                    elif isinstance(query, CatalogQuery):
-                        for entry in self._entries.values():
-                            entries_visited += 1
-                            directories_visited += int(entry.type == "dir")
-                            if _catalog_entry_matches(entry, query):
-                                selected[entry.path] = entry
                 entries = tuple(selected.values())
             else:
                 entries = tuple(self._entries.values())
@@ -1038,6 +1074,9 @@ class PythonInventoryHandle:
         )
 
     def _read_sync(self, request: ReadRequest) -> ReadResult:
+        navigation_shape = self._navigation_read_shape(request)
+        if navigation_shape is not None:
+            return self._read_navigation_sync(request, navigation_shape)
         if any(isinstance(query, RollupQuery) for query in request.queries) and all(
             isinstance(query, (RollupQuery, DiagnosticsQuery)) for query in request.queries
         ):
@@ -1051,8 +1090,23 @@ class PythonInventoryHandle:
         wall_started = time.monotonic_ns()
         cpu_started = time.thread_time_ns()
         image = self._capture_image(request)
-        entries_by_path = {entry.path: entry for entry in image.entries}
-        children = _children_for(image.entries)
+        needs_entry_graph = any(
+            isinstance(
+                query,
+                (
+                    EntryQuery,
+                    DirectoryQuery,
+                    FilteredTreeQuery,
+                    RollupQuery,
+                    RecentQuery,
+                ),
+            )
+            for query in request.queries
+        )
+        entries_by_path = (
+            {entry.path: entry for entry in image.entries} if needs_entry_graph else {}
+        )
+        children = _children_for(image.entries) if needs_entry_graph else {}
         projections: list[ProjectionResult] = []
         rows_returned = 0
         remaining_rollup_passes = image.rollup_passes
@@ -1088,6 +1142,128 @@ class PythonInventoryHandle:
             projections=tuple(projections),
             work=work,
         )
+
+    @staticmethod
+    def _navigation_read_shape(request: ReadRequest) -> _NavigationReadShape | None:
+        """The one bounded bundle polled while the root inventory is moving."""
+
+        if len(request.queries) != 2:
+            return None
+        entry, navigation = request.queries
+        if (
+            not isinstance(entry, EntryQuery)
+            or entry.path
+            or not isinstance(navigation, NavigationQuery)
+        ):
+            return None
+        return (
+            entry.query_id,
+            entry.path,
+            navigation.query_id,
+            navigation.max_rows,
+            navigation.presets,
+            navigation.recency_windows,
+        )
+
+    def _read_navigation_sync(
+        self,
+        request: ReadRequest,
+        shape: _NavigationReadShape,
+    ) -> ReadResult:
+        """Reuse one coherent root-summary boundary before copying the index."""
+
+        lock_started = time.monotonic_ns()
+        with self._rollup_cache_lock:
+            lock_wait_ns = time.monotonic_ns() - lock_started
+            current_sequence = self._rollup_generation
+            current_status = self._status
+        now = time.monotonic()
+        with self._navigation_tally_lock:
+            memo = self._navigation_read_memo
+            if memo is not None and memo.shape == shape:
+                if request.at_version is not None:
+                    reusable = request.at_version == memo.version
+                elif memo.version.sequence == current_sequence:
+                    reusable = True
+                elif current_status == "scanning":
+                    refresh_after = max(
+                        _NAVIGATION_TALLY_REFRESH_FLOOR_S,
+                        memo.compute_cost_s,
+                    )
+                    reusable = now - memo.computed_at <= refresh_after
+                else:
+                    # A finalized walk or a live mutation needs one exact refresh.
+                    # Otherwise a single debounced browser request could consume a
+                    # completed-but-stale summary and have no later event that asks
+                    # again. The cost-aware concession exists only while discovery is
+                    # already labelling every tally provisional.
+                    reusable = False
+            else:
+                reusable = False
+
+        if reusable and memo is not None:
+            wall_started = time.monotonic_ns()
+            cpu_started = time.thread_time_ns()
+            navigation = request.queries[1]
+            if not isinstance(navigation, NavigationQuery):  # pragma: no cover - shape proves it
+                raise TypeError("the navigation cache received the wrong query shape")
+            current_ns = time.time_ns() if navigation.as_of_ns is None else navigation.as_of_ns
+            projections = tuple(
+                NavigationProjection(
+                    query_id=projection.query_id,
+                    payload=_with_recency(
+                        memo.base,
+                        navigation.recency_windows,
+                        current_ns,
+                    ),
+                )
+                if isinstance(projection, NavigationProjection)
+                else projection
+                for projection in memo.projections
+            )
+            work = WorkCounters(
+                rows_returned=sum(self._projection_rows(projection) for projection in projections),
+                lock_wait_ns=lock_wait_ns,
+                cpu_time_ns=time.thread_time_ns() - cpu_started,
+                wall_time_ns=time.monotonic_ns() - wall_started,
+            )
+            self._record_read_work(work)
+            return ReadResult(
+                version=memo.version,
+                cursor=memo.cursor,
+                state=memo.state,
+                projections=projections,
+                work=work,
+            )
+
+        result = self._read_snapshot_sync(request)
+        navigation = request.queries[1]
+        if not isinstance(navigation, NavigationQuery):  # pragma: no cover - shape proves it
+            raise TypeError("the navigation cache received the wrong query shape")
+        expected_key: _NavigationTallyKey = (
+            result.version.sequence,
+            navigation.max_rows,
+            tuple((preset_id, tuple(sorted(values))) for preset_id, values in navigation.presets),
+        )
+        with self._navigation_tally_lock:
+            tally_memo = self._navigation_tally_memo
+            existing = self._navigation_read_memo
+            if (
+                tally_memo is not None
+                and tally_memo[0] == expected_key
+                and (existing is None or existing.version.sequence <= result.version.sequence)
+            ):
+                self._navigation_read_memo = _NavigationReadMemo(
+                    shape=shape,
+                    version=result.version,
+                    cursor=result.cursor,
+                    state=result.state,
+                    projections=result.projections,
+                    base=tally_memo[1],
+                    computed_at=self._navigation_tally_at,
+                    compute_cost_s=self._navigation_tally_cost_s,
+                )
+        return result
 
     def _read_rollup_sync(self, request: ReadRequest) -> ReadResult:
         """Answer rollup bundles atomically without copying the whole index.

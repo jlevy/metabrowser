@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import pytest
 
-from devtools.bench_serving import _record_inventory_identity, resolve_metab_build
+from devtools.bench_serving import (
+    _record_inventory_identity,
+    _rows,
+    build_corpus,
+    phase_settled,
+    resolve_metab_build,
+)
 
 
 def test_explicit_benchmark_build_is_resolved_and_versioned(tmp_path: Path) -> None:
@@ -59,3 +66,41 @@ def test_inventory_identity_validation_rejects_a_present_phase_without_identity(
 
     with pytest.raises(SystemExit, match="scan_with_client"):
         _record_inventory_identity(result, "python")
+
+
+def test_synthetic_corpus_has_an_independent_git_boundary(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+
+    result = build_corpus(corpus, 1)
+
+    assert result["shape"] == 2
+    assert result["ignored_files"] == 0
+    assert (corpus / ".git" / "HEAD").read_text() == "ref: refs/heads/main\n"
+
+
+def test_settled_benchmark_covers_navigation_and_catalog_cache_paths() -> None:
+    source = inspect.getsource(phase_settled)
+    assert 'navigation_url = f"{base}/api/tree?depth=0"' in source
+    assert 'catalog_url = f"{base}/api/catalog"' in source
+    assert 'catalog_payload.get("complete") is not True' in source
+    assert "body == catalog_body" in source
+    assert "status == 304 and not body" in source
+
+    rows = dict(
+        _rows(
+            {
+                "settled": {
+                    "navigation_first_ms": 10.0,
+                    "navigation_reused_ms": {"p50": 1.0},
+                    "catalog_first_ms": 20.0,
+                    "catalog_retained_body_ms": {"p50": 2.0},
+                    "catalog_revalidated_304_ms": {"p50": 0.5},
+                }
+            }
+        )
+    )
+    assert rows["settled navigation, first pass (ms)"] == 10.0
+    assert rows["settled navigation, memo p50 (ms)"] == 1.0
+    assert rows["settled catalog, first body (ms)"] == 20.0
+    assert rows["settled catalog, retained body p50 (ms)"] == 2.0
+    assert rows["settled catalog, 304 p50 (ms)"] == 0.5

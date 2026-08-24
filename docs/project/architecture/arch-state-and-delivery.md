@@ -170,10 +170,10 @@ this reason rather than assigning into `_entries`.
 | `_aggregate_evicted_at` | directory → eviction epoch | Released once no rollup pass is in flight |
 | `_descendant_file_counts` and siblings | running per-directory totals | Adjusted per write, incrementally |
 | `_pending_dirs` | directories awaiting finalize | Post-order finalize, or end-of-walk repair |
-| `_navigation_tally_memo` | the root request’s index-wide tallies | A new revision |
+| `_navigation_tally_memo` | the root request’s index-wide tallies and sorted mtimes | Recalculation after a moving revision exceeds the cost-aware refresh cadence |
+| `_navigation_read_memo` | one coherent root-entry and navigation read boundary | Recalculation after the same cadence; root replacement clears it |
 
-The two structures that exist to remove per-request O(N) work follow the same rule from
-opposite directions:
+Three structures remove per-request O(N) work:
 
 - `_children_index` is **maintained**. A write updates one bucket.
   Every reader — the rollup’s subtree walk and `/api/tree`’s recursion — looks up only
@@ -181,6 +181,12 @@ opposite directions:
 - `_subtree_aggregates` is **evicted**. A write drops the changed path and its
   ancestors; sibling subtrees stay valid and are reused.
   A rollup then recomputes only what moved.
+- `_navigation_read_memo` is **retained as a coherent boundary**. During discovery, a
+  repeated root-summary read may reuse that boundary until the greater of the refresh
+  floor and the prior pass cost has elapsed.
+  The returned version, state, root entry, and tally base stay together, so
+  stale-but-provisional numbers are not relabeled as a newer engine version.
+  Recency rows use the new request’s observation time and the memo’s sorted mtimes.
 
 An epoch exists only so a merge can refuse an aggregate the walker has moved past, so
 once no pass is in flight there is no merge left to consult one and the whole map is

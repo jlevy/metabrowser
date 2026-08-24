@@ -288,6 +288,10 @@ new filename.
   contract identities in diagnostics, even though Python is the only Phase 1 provider.
 - [x] Run the normalized wire, browser, lifecycle, race, bound, work-counter, and
   performance comparisons after each vertical migration slice.
+- [x] Reaudit the rebased implementation against the landed large-tree performance work.
+  Preserve cooperative discovery yields, tree-first browser startup, bounded navigation
+  refreshes, exact catalog invalidation, constant-work cache hits, off-loop bulk catalog
+  materialization, and one Python catalog scan per complete response.
 
 **Phase 1 exit:** Metabrowser ships with only the Python provider and no fdu dependency.
 Every inventory consumer crosses the provider-neutral coordinator, one handle owns all
@@ -403,6 +407,10 @@ axis shown in the performance-loop documentation.
 The corrected harness waits for a visible filesystem mutation and a changed ETag before
 timing fresh aggregation, rejects failed route responses, and samples process resources
 only after discovery completes so the instrumentation does not perturb the cold walk.
+It separately times first-pass and memoized navigation reads and the catalog’s first
+body, retained body, and `304` paths.
+The harness checks the navigation count against the settled walker and requires repeated
+catalog bodies and validators to agree.
 
 ## Rollout Plan
 

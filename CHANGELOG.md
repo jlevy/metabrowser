@@ -4,6 +4,20 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Inventory engine:
+
+- Root-summary polling now reuses the Python provider’s last coherent navigation read
+  while discovery advances.
+  Cache hits return that read’s original version and state and report zero entries
+  visited; they never label older tallies as facts from the current engine version.
+
+- Quick File catalog validators and retained bodies are checked from constant-size
+  provider diagnostics before catalog records are read.
+  A cache miss scans the bounded Python inventory once, and catalog record flattening
+  and JSON materialization stay off the request event loop.
+  Catalog decorations are joined only for the activity tracker, the one consumer that
+  reads them.
+
 Performance, validated against 0.6.0 side by side:
 
 - On the final installed candidate, five interleaved backend pairs over a fingerprinted
@@ -75,6 +89,9 @@ Development:
 - `devtools/bench_serving.py` takes `--corpus {synthetic,realistic,project}`. Two of the
   three corpus shapes had no command-line route, including the one the scan-ordering
   figures were measured on, so reproducing them meant importing the module by hand.
+  The same benchmark now separates first-pass and memoized navigation cost and the
+  catalog’s first-body, retained-body, and `304` paths, with semantic checks on repeated
+  responses.
 
 - Performance harnesses can select an exact installed `metab` console script and record
   its reported version.

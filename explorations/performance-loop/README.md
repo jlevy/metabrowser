@@ -468,9 +468,12 @@ $UV -m devtools.bench_serving --files 100000 --provider python \
 Run the two conditions on the same immutable corpus and interleave them when the
 expected effect is below 2×. The benchmark records cold and reader-attached discovery,
 first useful rows, scanning and settled rollups, retained bodies, validators, concurrent
-clients, tree routes, process CPU and memory, provider work, and binding-copy bytes.
-Fresh settled aggregation is accepted as a sample only after a visible marker changes
-the inventory ETag; non-200 route responses invalidate the phase.
+clients, tree routes, navigation’s first and memoized paths, the catalog’s first body,
+retained body, and `304` paths, process CPU and memory, provider work, and binding-copy
+bytes. Navigation summaries must agree with the settled walker, and repeated catalog
+bodies and validators must remain identical, so lower latency cannot hide a semantic
+change. Fresh settled aggregation is accepted as a sample only after a visible marker
+changes the inventory ETag; non-200 route responses invalidate the phase.
 
 ## Known gaps in this loop
 

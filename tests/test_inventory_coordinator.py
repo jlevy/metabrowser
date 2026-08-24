@@ -11,6 +11,9 @@ from typing import cast
 import pytest
 
 from metabrowser.inventory_engine.contract import (
+    CatalogProjection,
+    CatalogQuery,
+    CatalogRecord,
     ChangeBatch,
     ChangeCursor,
     Coverage,
@@ -127,6 +130,24 @@ class _FakeHandle:
                         DirectoryProjection(
                             query_id=query.query_id,
                             entries=tuple(self.entries.values()),
+                        )
+                    )
+                elif isinstance(query, CatalogQuery):
+                    records = tuple(
+                        CatalogRecord(
+                            path=entry.path,
+                            logical_extension=entry.logical_extension,
+                            size=entry.size,
+                            mtime_ns=entry.mtime_ns,
+                        )
+                        for entry in self.entries.values()
+                        if entry.type.value == "file"
+                    )
+                    projections.append(
+                        CatalogProjection(
+                            query_id=query.query_id,
+                            records=records,
+                            total_matches=len(records),
                         )
                     )
                 else:
@@ -383,6 +404,33 @@ def test_coherent_read_joins_only_returned_overlay_entries_without_changing_fact
         after_cursor, after_version, _state_value = await coordinator.checkpoint()
         assert no_op_version == before_version == after_version
         assert after_cursor == before_cursor
+        await coordinator.close()
+
+    asyncio.run(_run())
+
+
+def test_catalog_decorations_are_joined_only_when_requested(tmp_path: Path) -> None:
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        path = "logs/a.jsonl"
+        handle.entries[path] = InventoryEntry.for_observed_file(
+            path=path,
+            parent="logs",
+            name="a.jsonl",
+            size=41,
+            mtime_ns=9,
+        )
+        await coordinator.replace_decoration(path, InventoryDecoration(active=True))
+        request = ReadRequest(queries=(CatalogQuery(query_id="catalog", max_rows=10),))
+
+        bulk = await coordinator.read(request)
+        activity = await coordinator.read(request, include_catalog_decorations=True)
+
+        assert bulk.decorations == {}
+        assert activity.decorations[path].active
         await coordinator.close()
 
     asyncio.run(_run())

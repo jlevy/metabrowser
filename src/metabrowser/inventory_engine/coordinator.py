@@ -252,8 +252,19 @@ class InventoryCoordinator:
 
         return await self.open(root)
 
-    async def read(self, request: ReadRequest) -> CoordinatedRead:
-        """Run one coherent provider read and join only its returned entries."""
+    async def read(
+        self,
+        request: ReadRequest,
+        *,
+        include_catalog_decorations: bool = False,
+    ) -> CoordinatedRead:
+        """Run one coherent provider read and join requested host decorations.
+
+        Entry-bearing projections always receive their sparse overlay. Catalog
+        projections carry identities rather than entries, so their decorations are
+        joined only for the activity tracker that consumes them. Bulk catalog delivery
+        leaves this false and therefore performs no O(catalog) work on the event loop.
+        """
 
         handle = await self._begin_operation()
         try:
@@ -265,7 +276,11 @@ class InventoryCoordinator:
                     )
                 self._observe_read_locked(result)
                 facts = self._returned_entries(result)
-                returned_paths = self._returned_paths(result, facts)
+                returned_paths = self._returned_paths(
+                    result,
+                    facts,
+                    include_catalog=include_catalog_decorations,
+                )
                 overlay = self._overlay.snapshot(returned_paths)
                 decorated = {
                     path: DecoratedInventoryEntry(
@@ -762,13 +777,16 @@ class InventoryCoordinator:
     def _returned_paths(
         result: ReadResult,
         entries: Mapping[str, InventoryEntry],
+        *,
+        include_catalog: bool,
     ) -> tuple[str, ...]:
         """Path identities returned by any projection at this read boundary."""
 
         paths = dict.fromkeys(entries)
-        for projection in result.projections:
-            if isinstance(projection, CatalogProjection):
-                paths.update((record.path, None) for record in projection.records)
+        if include_catalog:
+            for projection in result.projections:
+                if isinstance(projection, CatalogProjection):
+                    paths.update((record.path, None) for record in projection.records)
         return tuple(paths)
 
     def _current_host_version_locked(self) -> HostVersion:

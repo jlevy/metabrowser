@@ -72,6 +72,7 @@ from metabrowser.http_caching import (
 from metabrowser.inventory_engine.contract import (
     CatalogProjection,
     CatalogQuery,
+    CatalogRecord,
     DiagnosticsProjection,
     DiagnosticsQuery,
     DirectoryProjection,
@@ -81,6 +82,7 @@ from metabrowser.inventory_engine.contract import (
     EntryProjection,
     EntryQuery,
     EntryType,
+    IndexState,
     InventoryConfig,
     LifecyclePhase,
     NavigationProjection,
@@ -1068,27 +1070,66 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
 _CATALOG_BODY_CACHE: dict[str, bytes] = {}
 
 
-def _encode_catalog(files: list[tuple[str, str]], status: str, revision: int) -> bytes:
+def _catalog_status(state: IndexState) -> str:
+    truncated = not state.coverage.complete and any(
+        issue.code.value == "resource_budget" for issue in state.issues
+    )
+    return _status_from_phase(
+        state.phase,
+        complete=state.coverage.complete,
+        truncated=truncated,
+    )
+
+
+def _catalog_etag(engine: EngineVersion) -> str:
+    return build_scoped_etag(
+        f"catalog-{engine.session}-{engine.sequence}-{engine.scope_fingerprint}-"
+        f"{engine.registry_fingerprint}"
+    )
+
+
+async def _catalog_checkpoint(runtime: InventoryRuntime) -> str:
+    """Read the current catalog identity without traversing catalog records."""
+
+    coordinated = await runtime.coordinator.read(
+        ReadRequest(queries=(DiagnosticsQuery(query_id="catalog-checkpoint"),))
+    )
+    engine = coordinated.version.engine
+    return _catalog_etag(engine)
+
+
+def _encode_catalog(
+    pages: tuple[tuple[CatalogRecord, ...], ...],
+    status: str,
+    revision: int,
+) -> bytes:
     """Build the wire envelope and encode it. Runs in a worker thread, so it
-    must touch only the private ``files`` snapshot, never the live index."""
+    must touch only the immutable provider pages, never the live index."""
 
     envelope = {
         "complete": status in ("done", "truncated"),
         "truncated": status == "truncated",
         "revision": revision,
-        "files": [{"p": p, "e": e} for p, e in files],
+        "files": [
+            {"p": record.path, "e": record.logical_extension} for page in pages for record in page
+        ],
     }
     return json.dumps(envelope, separators=(",", ":")).encode()
 
 
 async def _read_catalog(
     runtime: InventoryRuntime,
-) -> tuple[list[tuple[str, str]], str, int, str]:
+) -> tuple[tuple[tuple[CatalogRecord, ...], ...], str, int, str]:
     """Assemble the complete bounded catalog from one engine version."""
 
-    page_size = min(50_000, runtime.config.max_entries)
+    # The provider retains at most this many entries, so the complete file catalog
+    # cannot exceed this bound. Asking for that bound lets the Python provider answer
+    # in one scan instead of rescanning and resorting the same index for each 50k page.
+    # The continuation loop remains part of the application contract for a provider
+    # whose own semantic scope can return more than one bounded page.
+    page_size = runtime.config.max_entries
     for _attempt in range(3):
-        records: list[tuple[str, str]] = []
+        pages: list[tuple[CatalogRecord, ...]] = []
         after: str | None = None
         pinned: EngineVersion | None = None
         try:
@@ -1110,26 +1151,14 @@ async def _read_catalog(
                     raise TypeError("the catalog read returned the wrong projection")
                 if pinned is None:
                     pinned = coordinated.version.engine
-                records.extend(
-                    (record.path, record.logical_extension) for record in projection.records
-                )
+                pages.append(projection.records)
                 after = projection.next_page
                 if after is None:
                     state = coordinated.result.state
-                    truncated = not state.coverage.complete and any(
-                        issue.code.value == "resource_budget" for issue in state.issues
-                    )
-                    status = _status_from_phase(
-                        state.phase,
-                        complete=state.coverage.complete,
-                        truncated=truncated,
-                    )
+                    status = _catalog_status(state)
                     engine = coordinated.version.engine
-                    etag = build_scoped_etag(
-                        f"catalog-{engine.session}-{engine.sequence}-"
-                        f"{engine.scope_fingerprint}-{engine.registry_fingerprint}"
-                    )
-                    return records, status, engine.sequence, etag
+                    etag = _catalog_etag(engine)
+                    return tuple(pages), status, engine.sequence, etag
         except VersionUnavailableError:
             continue
 
@@ -1150,21 +1179,11 @@ async def _read_catalog(
     if not isinstance(projection, CatalogProjection):
         raise TypeError("the catalog read returned the wrong projection")
     state = coordinated.result.state
-    truncated = not state.coverage.complete and any(
-        issue.code.value == "resource_budget" for issue in state.issues
-    )
-    status = _status_from_phase(
-        state.phase,
-        complete=state.coverage.complete,
-        truncated=truncated,
-    )
+    status = _catalog_status(state)
     engine = coordinated.version.engine
-    etag = build_scoped_etag(
-        f"catalog-{engine.session}-{engine.sequence}-{engine.scope_fingerprint}-"
-        f"{engine.registry_fingerprint}"
-    )
+    etag = _catalog_etag(engine)
     return (
-        [(record.path, record.logical_extension) for record in projection.records],
+        (projection.records,),
         status,
         engine.sequence,
         etag,
@@ -1185,13 +1204,25 @@ async def api_catalog(request: Request) -> Response:
     ops are idempotent by path.
     """
 
-    files, status, revision, etag = await _read_catalog(_runtime_for(request))
+    runtime = _runtime_for(request)
+    checkpoint_etag = await _catalog_checkpoint(runtime)
+    if matches_if_none_match(request, checkpoint_etag):
+        return Response(status_code=304, headers={"ETag": checkpoint_etag})
+    cached = _CATALOG_BODY_CACHE.get(checkpoint_etag)
+    if cached is not None:
+        return Response(
+            cached,
+            media_type="application/json",
+            headers=etag_headers(checkpoint_etag),
+        )
+
+    pages, status, revision, etag = await _read_catalog(runtime)
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
     cached = _CATALOG_BODY_CACHE.get(etag)
     if cached is not None:
         return Response(cached, media_type="application/json", headers=etag_headers(etag))
-    body = await asyncio.to_thread(_encode_catalog, files, status, revision)
+    body = await asyncio.to_thread(_encode_catalog, pages, status, revision)
     # Reconnect storms and multiple tabs re-request the same revision; the
     # ETag turns most of those into 304s, but a client without the ETag (a
     # fresh tab) would otherwise pay the full encode again.

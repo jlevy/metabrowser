@@ -225,6 +225,69 @@ async def _targeted_read_reports_bounded_work(tmp_path: Path) -> None:
         await handle.close()
 
 
+async def _navigation_poll_reuses_one_coherent_read_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for index in range(20):
+        (tmp_path / f"{index}.txt").write_text(str(index), encoding="utf-8")
+    started = asyncio.Event()
+    release = asyncio.Event()
+    original_walk = python_provider.walk_tree
+
+    async def blocked_walk(*args: Any, **kwargs: Any) -> AsyncIterator[Any]:
+        seen = 0
+        async for entry in original_walk(*args, **kwargs):
+            yield entry
+            seen += 1
+            if seen == 5:
+                started.set()
+                await release.wait()
+
+    monkeypatch.setattr(python_provider, "walk_tree", blocked_walk)
+    handle = await PythonInventoryBackend().open(tmp_path, InventoryConfig())
+    request = ReadRequest(
+        queries=(
+            EntryQuery(query_id="root", path=""),
+            NavigationQuery(query_id="navigation"),
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=1)
+        first = await handle.read(request)
+        first_navigation = first.projection("navigation")
+        assert isinstance(first_navigation, NavigationProjection)
+        first_summary = first_navigation.payload["summary"]
+        assert isinstance(first_summary, dict)
+        assert first.state.phase is LifecyclePhase.DISCOVERING
+        assert first.work.entries_visited > 0
+
+        (tmp_path / "new.txt").write_text("new", encoding="utf-8")
+        await handle.refresh(RefreshRequest(observations=(RefreshObservation(path="new.txt"),)))
+        cached = await handle.read(request)
+        cached_navigation = cached.projection("navigation")
+        assert isinstance(cached_navigation, NavigationProjection)
+        assert cached.version == first.version
+        assert cached.state == first.state
+        assert cached.projection("root") == first.projection("root")
+        assert cached_navigation.payload["summary"] == first_navigation.payload["summary"]
+        assert cached.work.entries_visited == 0
+
+        monkeypatch.setattr(python_provider, "_NAVIGATION_TALLY_REFRESH_FLOOR_S", 0.0)
+        await asyncio.sleep(0.02)
+        refreshed = await handle.read(request)
+        refreshed_navigation = refreshed.projection("navigation")
+        assert isinstance(refreshed_navigation, NavigationProjection)
+        assert refreshed.version.sequence > first.version.sequence
+        refreshed_summary = refreshed_navigation.payload["summary"]
+        assert isinstance(refreshed_summary, dict)
+        assert refreshed_summary["files"] == first_summary["files"] + 1
+        assert refreshed.work.entries_visited > first.work.entries_visited
+    finally:
+        release.set()
+        await handle.close()
+
+
 async def _expired_change_cursor_yields_reset(tmp_path: Path) -> None:
     handle = await _open_settled(
         tmp_path,
@@ -279,6 +342,13 @@ def test_python_provider_implements_every_projection(tmp_path: Path) -> None:
 
 def test_targeted_read_reports_bounded_work(tmp_path: Path) -> None:
     asyncio.run(_targeted_read_reports_bounded_work(tmp_path))
+
+
+def test_navigation_poll_reuses_one_coherent_read_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(_navigation_poll_reuses_one_coherent_read_boundary(tmp_path, monkeypatch))
 
 
 def test_catalog_predicates_are_applied_inside_the_provider(tmp_path: Path) -> None:

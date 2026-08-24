@@ -83,7 +83,8 @@ async def _read_candidates(
                     size_less_than=TRACKABLE_FILE_MAX_SIZE,
                 ),
             )
-        )
+        ),
+        include_catalog_decorations=True,
     )
     projection = read.result.projection("activity-candidates")
     if not isinstance(projection, CatalogProjection):
