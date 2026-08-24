@@ -576,6 +576,19 @@ implementation the measurements justify.
   virtualization on the chosen path
 - [ ] Whitespace and wrap controls, keyboard next-file and next-hunk navigation
 
+#### 2026-08-24 addendum: syntax and split layout
+
+[Diff Syntax Highlighting and Layouts](plan-2026-08-24-diff-syntax-highlighting-and-layouts.md)
+resolves the renderer decision for two Phase 3 items.
+Syntax highlighting and the split projection will extend the in-house renderer over one
+old/new semantic line model, reuse the existing vendored Highlight.js runtime and
+palette, and add no runtime dependency.
+
+That focused plan supersedes the dependency gate for syntax and split only.
+Intraline refinement, context expansion, whitespace controls, and virtualization remain
+on this plan and its existing follow-up bead; they can still trigger a measured
+dependency review if their implementation cost justifies one.
+
 ## The dependency question
 
 Metabrowser ships no runtime npm dependencies today and has no bundling step, so
