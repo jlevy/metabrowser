@@ -7419,22 +7419,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   initNavTabs();
   initFilterBar();
   initNavScrollShadow();
-  // Start the URL-pinned file fetch in parallel with the tree walk. Only a
-  // /view/ pathname selects a file; a hash is document state, never identity.
+  // Only a /view/ pathname selects a file; a hash is document state, never identity.
   var initialTarget = window.MetabrowserNavigationRoute.parse(
     location.pathname,
     location.search,
     location.hash,
   );
   var initialPath = initialTarget?.path.replace(/\/$/, "") || "";
-  navigationController.start().catch((error) => {
-    console.error("Could not initialize browser navigation", error);
-  });
   startIndexProgressPolling();
   // The tree fetch always runs: it supplies the header path and root
   // aggregates before any later recency selection repaints the panel
   // from /api/recent.
   await loadTree();
+  // The selected preview and its on-demand plugin assets share the local
+  // HTTP/1.1 connection pool with the tree. Start them after the first tree
+  // request so a folder renderer cannot delay the navigation's usable rows.
+  navigationController.start().catch((error) => {
+    console.error("Could not initialize browser navigation", error);
+  });
   // These application-lifetime controls are not prerequisites for a usable
   // tree. Start their ordered on-demand bundle only after the first tree
   // request settles, so eleven unrelated scripts cannot delay the inline row,

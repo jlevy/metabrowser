@@ -1197,7 +1197,6 @@ async def index(_request: Request) -> HTMLResponse:
        same-origin (see static/vendor/manifest.json), so the page loads
        with no external origins and works offline. -->
   <link rel="stylesheet" href="{styles_url}">
-  <link rel="preload" href="{app_url}" as="script">
 </head>
 <body>
   <main class="container">

@@ -100,8 +100,7 @@ def test_index_template_renders_index_progress_footer() -> None:
 def test_index_template_versions_core_static_assets() -> None:
     html = _render_index_html()
     assert 'href="/static/styles.css?v=' in html
-    assert html.count('<link rel="preload" href="/static/app.js?v=') == 1
-    assert 'as="script">' in html[html.index('<link rel="preload" href="/static/app.js?v=') :]
+    assert '<link rel="preload" href="/static/app.js?v=' not in html
     assets = (
         "/static/plugin-sdk.js",
         "/static/icons.js",
@@ -624,3 +623,13 @@ def test_dom_content_loaded_calls_init_nav_tabs() -> None:
     handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     handler_block = js[handler_start : handler_start + 3000]
     assert "initNavTabs();" in handler_block
+
+
+def test_startup_gives_the_tree_request_priority_over_preview_plugins() -> None:
+    js = _read_app_js()
+    handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
+    handler_block = js[handler_start : handler_start + 3000]
+
+    assert handler_block.index("await loadTree();") < handler_block.index(
+        "navigationController.start()"
+    )
