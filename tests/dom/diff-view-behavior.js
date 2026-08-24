@@ -94,7 +94,14 @@ class FakeElement {
     this.listeners.set(type, handlers);
   }
 
-  click() {
+  removeEventListener(type, handler) {
+    this.listeners.set(
+      type,
+      (this.listeners.get(type) ?? []).filter((candidate) => candidate !== handler),
+    );
+  }
+
+  dispatch(type) {
     // Bubbles like the real event: handlers up the ancestor chain all
     // see the original target, and any of them can stop it.
     let stopped = false;
@@ -105,10 +112,27 @@ class FakeElement {
       },
     };
     for (let node = this; node && !stopped; node = node.parentNode) {
-      for (const handler of node.listeners.get("click") ?? []) {
+      for (const handler of node.listeners.get(type) ?? []) {
         handler(event);
       }
     }
+  }
+
+  click() {
+    this.dispatch("click");
+  }
+
+  pointerDown() {
+    this.dispatch("pointerdown");
+  }
+
+  contains(candidate) {
+    for (let node = candidate; node; node = node.parentNode) {
+      if (node === this) {
+        return true;
+      }
+    }
+    return false;
   }
 
   closest(selector) {
@@ -153,7 +177,26 @@ function tokenLines(source, className) {
 }
 
 async function main() {
-  global.document = { createElement: (tag) => new FakeElement(tag) };
+  const documentListeners = new Map();
+  global.document = {
+    createElement: (tag) => new FakeElement(tag),
+    addEventListener(type, handler) {
+      const handlers = documentListeners.get(type) ?? [];
+      handlers.push(handler);
+      documentListeners.set(type, handlers);
+    },
+    removeEventListener(type, handler) {
+      documentListeners.set(
+        type,
+        (documentListeners.get(type) ?? []).filter((candidate) => candidate !== handler),
+      );
+    },
+  };
+  const dispatchDocument = (type) => {
+    for (const handler of documentListeners.get(type) ?? []) {
+      handler({ target: null });
+    }
+  };
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
   const { mountDiffView, setChangeLoader } = await import(pathToFileURL(viewPath).href);
   const corpus = JSON.parse(
@@ -353,6 +396,19 @@ async function main() {
     "collapsed file state survives reprojection",
     splitBody.classList.contains("diff-file-body-collapsed"),
   );
+  const splitOldText = split.find("diff-split-old")[0].find("diff-line-text")[0];
+  const splitNewText = split.find("diff-split-new")[0].find("diff-line-text")[0];
+  splitOldText.pointerDown();
+  check("old-side pointer down gates selection", splitRoot.dataset.selectionSide === "old");
+  split.find("diff-hunk-header")[0].pointerDown();
+  check("full-width hunk header clears the side gate", !splitRoot.dataset.selectionSide);
+  splitNewText.pointerDown();
+  check("new-side pointer down gates selection", splitRoot.dataset.selectionSide === "new");
+  dispatchDocument("pointerup");
+  check("pointer up releases the side gate", !splitRoot.dataset.selectionSide);
+  splitOldText.pointerDown();
+  dispatchDocument("pointercancel");
+  check("pointer cancellation releases the side gate", !splitRoot.dataset.selectionSide);
 
   const unequalDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
   unequalDoc.patches.f1.hunks[0].lines = [
@@ -407,8 +463,13 @@ async function main() {
         row.find("diff-split-new")[0].classList.contains("diff-split-empty"),
       ),
   );
+  const pointerUpListeners = documentListeners.get("pointerup")?.length ?? 0;
   splitHandle.dispose();
   check("layout control binding disposes with the view", unbound === 1, String(unbound));
+  check(
+    "selection gate listeners dispose with the view",
+    (documentListeners.get("pointerup")?.length ?? 0) === pointerUpListeners - 1,
+  );
 
   // The per-file bar: the nav tree's own chevron mechanism (leading
   // glyph, expanded/collapsed classes) plus a copy control, with the

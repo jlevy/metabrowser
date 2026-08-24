@@ -624,6 +624,45 @@ export function readLayoutPreference(api) {
   return value === "split" ? "split" : "unified";
 }
 
+/**
+ * Let a drag select one split code column without interleaving the
+ * opposite side's row-major DOM text. Full-width rows clear the gate.
+ * @param {HTMLElement} root
+ */
+export function installSplitSelectionGate(root) {
+  const owner = root.ownerDocument || document;
+  function clear() {
+    delete root.dataset.selectionSide;
+  }
+  /** @param {Event} event */
+  function onPointerDown(event) {
+    const target = /** @type {{closest?: (selector: string) => unknown} | null} */ (event.target);
+    const text = typeof target?.closest === "function" ? target.closest(".diff-line-text") : null;
+    const side =
+      text && typeof (/** @type {{closest?: unknown}} */ (text).closest) === "function"
+        ? /** @type {HTMLElement | null} */ (
+            /** @type {{closest: (selector: string) => unknown}} */ (text).closest(
+              ".diff-split-side",
+            )
+          )
+        : null;
+    if (!side || !root.contains(side)) {
+      clear();
+      return;
+    }
+    root.dataset.selectionSide = side.classList.contains("diff-split-old") ? "old" : "new";
+  }
+  root.addEventListener("pointerdown", onPointerDown);
+  owner.addEventListener("pointerup", clear);
+  owner.addEventListener("pointercancel", clear);
+  return () => {
+    clear();
+    root.removeEventListener("pointerdown", onPointerDown);
+    owner.removeEventListener("pointerup", clear);
+    owner.removeEventListener("pointercancel", clear);
+  };
+}
+
 /** @param {MountedDiffState} view */
 function renderLayoutControl(view) {
   const control = view.layoutControl;
@@ -872,6 +911,7 @@ export function mountDiffView(container, document_, api) {
     timers: new Set(),
     yielders: new Set(),
   };
+  const removeSelectionGate = installSplitSelectionGate(root);
   root.dataset.layout = view.layout;
   const manifest =
     /** @type {{files: Record<string, unknown>[], totals: Record<string, unknown>, truncated: unknown, cursor?: unknown}} */ (
@@ -907,6 +947,7 @@ export function mountDiffView(container, document_, api) {
       }
       view.yielders.clear();
       unbind();
+      removeSelectionGate();
       root.remove();
     },
   };
