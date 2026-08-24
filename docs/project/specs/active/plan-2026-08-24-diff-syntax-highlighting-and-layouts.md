@@ -374,7 +374,7 @@ while retaining its row backgrounds.
   Pin the vendored entity vocabulary with a test.
 - [x] Add the strict diff syntax module with old/new reconstruction, multiline token
   data, exact text round-trip checks, and old-path/new-path language resolution.
-- [ ] Refactor hunk rendering around stable line records and enhance unified cells from
+- [x] Refactor hunk rendering around stable line records and enhance unified cells from
   their side-specific token runs.
 - [ ] Add transparent token-host styling and extend contrast tests to the add/delete
   composites in both themes.

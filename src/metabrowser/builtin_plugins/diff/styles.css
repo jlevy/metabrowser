@@ -178,6 +178,15 @@
   overflow-wrap: anywhere;
 }
 
+/* The status row owns the background. `hljs` opts this token host out
+   of the shell's whole-code-block enhancer while reusing its semantic
+   foreground palette. */
+.metabrowser-diff-host .diff-line-text.hljs {
+  display: inline;
+  padding: 0;
+  background: transparent;
+}
+
 .metabrowser-diff-host .diff-line-add {
   background: color-mix(in srgb, var(--status-success) 12%, transparent);
 }

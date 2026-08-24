@@ -64,6 +64,15 @@ class FakeElement {
     }
   }
 
+  replaceChildren(...nodes) {
+    for (const child of this.children) {
+      child.parentNode = null;
+    }
+    this.children = [];
+    this.textContent = "";
+    this.append(...nodes);
+  }
+
   remove() {
     if (this.parentNode) {
       this.parentNode.children = this.parentNode.children.filter((child) => child !== this);
@@ -161,6 +170,87 @@ async function main() {
   const firstNumbers = lines[0].find("diff-line-number").map((cell) => cell.textContent);
   check("context rows carry both numbers", JSON.stringify(firstNumbers) === '["3","3"]');
   check("hunk heading renders", container.text().includes("def f():"));
+
+  // Unified syntax is progressive: complete plain text mounts before
+  // the asynchronous helper can settle, then only the existing text
+  // hosts receive scanner-produced spans. The unified projection uses
+  // old-side tokens for deletions and new-side tokens everywhere else.
+  let syntaxCalls = 0;
+  const syntaxApi = {
+    highlightSyntax: async (source) => {
+      syntaxCalls += 1;
+      const side = syntaxCalls % 2 === 1 ? "old" : "new";
+      return source.split("\n").map((text) => [{ classes: [`hljs-${side}`], text }]);
+    },
+    isLargeTextPreview: () => false,
+    langForExtension: () => "python",
+  };
+  const highlighted = new FakeElement("div");
+  const highlightedHandle = mountDiffView(
+    highlighted,
+    byName.get("modified-with-heading"),
+    syntaxApi,
+  );
+  const plainHosts = highlighted.find("diff-line-text");
+  check("plain text renders synchronously", plainHosts[1].textContent === "    return 1");
+  check(
+    "plain render has no token spans",
+    plainHosts.every((host) => host.children.length === 0),
+  );
+  check(
+    "diff token hosts escape the global enhancer",
+    plainHosts.every((host) => host.tagName === "SPAN" && host.classList.contains("hljs")),
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  const highlightedLines = highlighted.find("diff-line");
+  const contextHost = highlightedLines[0].find("diff-line-text")[0];
+  const deletionHost = highlightedLines[1].find("diff-line-text")[0];
+  const additionHost = highlightedLines[2].find("diff-line-text")[0];
+  check(
+    "unified context uses new-side tokens",
+    contextHost.children[0].classList.contains("hljs-new"),
+  );
+  check(
+    "unified deletion uses old-side tokens",
+    deletionHost.children[0].classList.contains("hljs-old"),
+  );
+  check(
+    "unified addition uses new-side tokens",
+    additionHost.children[0].classList.contains("hljs-new"),
+  );
+  check(
+    "enhancement preserves visible text",
+    deletionHost.children.map((span) => span.textContent).join("") === "    return 1",
+  );
+  check("one old and one new lexer call serve the hunk", syntaxCalls === 2, String(syntaxCalls));
+  highlightedHandle.dispose();
+
+  const unsafeDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
+  unsafeDoc.patches.f1.hunks[0].lines[2].text = "<script>alert(1)</script>";
+  const unsafe = new FakeElement("div");
+  mountDiffView(unsafe, unsafeDoc, {
+    ...syntaxApi,
+    highlightSyntax: async (source) =>
+      source.split("\n").map((text) => [{ classes: ["hljs-keyword"], text }]),
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const unsafeHost = unsafe.find("diff-line-add")[0].find("diff-line-text")[0];
+  check("token text is assigned without HTML parsing", unsafeHost.innerHTML === "");
+  check(
+    "hostile-looking token text remains literal",
+    unsafeHost.children[0].textContent === "<script>alert(1)</script>",
+  );
+
+  const failed = new FakeElement("div");
+  mountDiffView(failed, byName.get("modified-with-heading"), {
+    ...syntaxApi,
+    highlightSyntax: async () => null,
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  check(
+    "failed enhancement leaves complete plain text",
+    failed.find("diff-line-text").every((host) => host.children.length === 0),
+  );
 
   // The per-file bar: the nav tree's own chevron mechanism (leading
   // glyph, expanded/collapsed classes) plus a copy control, with the

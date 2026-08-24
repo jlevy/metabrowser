@@ -11,6 +11,22 @@
 // conformance corpus and CLI goldens, and this layer only projects it.
 
 import { fileChangeLabel, validateDocument } from "./diff-model.js";
+import { buildFileSyntaxModel, highlightFileSyntax } from "./diff-syntax.js";
+
+/**
+ * @typedef {object} DiffViewApi
+ * @property {(data: Record<string, unknown>) => boolean} isLargeTextPreview
+ * @property {(source: string, language: string, options?: {signal?: AbortSignal}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
+ * @property {(extension: string) => string} langForExtension
+ */
+
+/**
+ * @typedef {object} FileViewState
+ * @property {Record<string, unknown>} change
+ * @property {Record<string, unknown>} patch
+ * @property {ReturnType<typeof buildFileSyntaxModel>} syntax
+ * @property {{host: HTMLElement, line: ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number]}[]} unifiedTextHosts
+ */
 
 /**
  * Fetch one file's change from a comparison. Injected by the plugin so
@@ -22,6 +38,15 @@ import { fileChangeLabel, validateDocument } from "./diff-model.js";
 let loadOneChange = async () => {
   throw new Error("no loader configured");
 };
+
+/** @returns {DiffViewApi} */
+function plainSyntaxApi() {
+  return {
+    highlightSyntax: async () => null,
+    isLargeTextPreview: () => true,
+    langForExtension: () => "",
+  };
+}
 
 /** @param {(revision: string, path: string) => Promise<Record<string, unknown>>} loader */
 export function setChangeLoader(loader) {
@@ -113,20 +138,44 @@ function shellIcon(name) {
   return shell.metabrowser?.icons?.[name] ?? "";
 }
 
-/** @param {Record<string, unknown>} hunk @returns {HTMLElement} */
-function renderHunk(hunk) {
+/**
+ * Put scanner-validated token data into an existing text host.
+ * @param {HTMLElement} host
+ * @param {MetabrowserSyntaxTokenRun[]} runs
+ */
+export function appendTokenRuns(host, runs) {
+  const spans = runs.map((run) => {
+    const span = el("span", run.classes.join(" "));
+    span.textContent = run.text;
+    return span;
+  });
+  host.replaceChildren(...spans);
+}
+
+/**
+ * Unified context follows the after-document interpretation.
+ * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number]} line
+ */
+function unifiedTokens(line) {
+  return line.op === "del" ? line.oldTokens : line.newTokens;
+}
+
+/**
+ * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
+ * @param {FileViewState} state
+ * @returns {HTMLElement}
+ */
+function renderUnifiedHunk(hunk, state) {
   const section = el("div", "diff-hunk");
   const heading = hunk.heading ? ` ${hunk.heading}` : "";
   section.append(
     el(
       "div",
       "diff-hunk-header",
-      `@@ -${hunk.old_start},${hunk.old_count} +${hunk.new_start},${hunk.new_count} @@${heading}`,
+      `@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@${heading}`,
     ),
   );
-  let oldLine = Number(hunk.old_start);
-  let newLine = Number(hunk.new_start);
-  const lines = /** @type {Record<string, unknown>[]} */ (hunk.lines);
+  const lines = hunk.lines;
   // Index the contiguous runs of changed lines first, so each line knows
   // whether it belongs to a run long enough to fold and where it sits
   // within it. Folding is per run, not per hunk: a hunk may hold a large
@@ -134,12 +183,12 @@ function renderHunk(hunk) {
   const runIndex = new Array(lines.length).fill(-1);
   const runLength = new Array(lines.length).fill(0);
   for (let start = 0; start < lines.length; ) {
-    if (String(lines[start].op) === "context") {
+    if (lines[start].op === "context") {
       start += 1;
       continue;
     }
     let end = start;
-    while (end < lines.length && String(lines[end].op) !== "context") {
+    while (end < lines.length && lines[end].op !== "context") {
       end += 1;
     }
     for (let i = start; i < end; i += 1) {
@@ -152,14 +201,26 @@ function renderHunk(hunk) {
   /** @type {HTMLElement | null} The group hidden lines are appended to. */
   let foldGroup = null;
   for (const [index, line] of lines.entries()) {
-    const op = String(line.op);
+    const op = line.op;
     const row = el("div", `diff-line diff-line-${op}`);
-    const oldNumber = el("span", "diff-line-number", op === "add" ? "" : String(oldLine));
-    const newNumber = el("span", "diff-line-number", op === "del" ? "" : String(newLine));
+    const oldNumber = el(
+      "span",
+      "diff-line-number",
+      line.oldNumber === null ? "" : String(line.oldNumber),
+    );
+    const newNumber = el(
+      "span",
+      "diff-line-number",
+      line.newNumber === null ? "" : String(line.newNumber),
+    );
     const marker = el("span", "diff-line-marker", op === "add" ? "+" : op === "del" ? "-" : " ");
-    const text = el("span", "diff-line-text", String(line.text));
+    // `hljs` marks this as already owned by the token pipeline. The
+    // first paint remains complete plain text, and the shell's global
+    // `pre code:not(.hljs)` enhancer cannot select this span.
+    const text = el("span", "diff-line-text hljs", line.text);
     row.append(oldNumber, newNumber, marker, text);
-    if (line.no_newline) {
+    state.unifiedTextHosts.push({ host: text, line });
+    if (line.noNewline) {
       row.append(el("span", "diff-line-no-newline", "⏎ absent"));
       row.dataset.tipText = "No newline at end of file";
     }
@@ -176,14 +237,62 @@ function renderHunk(hunk) {
     if (runIndex[index] === runLength[index] - 1) {
       foldGroup = null;
     }
-    if (op !== "add") {
-      oldLine += 1;
-    }
-    if (op !== "del") {
-      newLine += 1;
-    }
   }
   return section;
+}
+
+/**
+ * Build the cached semantic state shared by every projection.
+ * @param {Record<string, unknown>} change
+ * @param {Record<string, unknown>} patch
+ * @param {DiffViewApi} api
+ * @returns {FileViewState}
+ */
+export function createFileState(change, patch, api) {
+  return {
+    change,
+    patch,
+    syntax: buildFileSyntaxModel(change, patch, api.langForExtension),
+    unifiedTextHosts: [],
+  };
+}
+
+/**
+ * Render the current unified projection from cached source facts.
+ * @param {HTMLElement} body
+ * @param {FileViewState} state
+ */
+export function renderFileBody(body, state) {
+  state.unifiedTextHosts = [];
+  for (const hunk of state.syntax.hunks) {
+    body.append(renderUnifiedHunk(hunk, state));
+  }
+  if (state.patch.truncated) {
+    body.append(el("div", "diff-availability", "This patch was truncated at its bounds."));
+  }
+}
+
+/**
+ * Enhance only the text hosts from the current projection. Token data
+ * stays on the semantic records for later projections.
+ * @param {FileViewState} state
+ * @param {DiffViewApi} api
+ */
+async function enhanceFileSyntax(state, api) {
+  try {
+    const enhanced = await highlightFileSyntax(state.syntax, api, undefined);
+    if (!enhanced) {
+      return;
+    }
+    for (const { host, line } of state.unifiedTextHosts) {
+      const runs = unifiedTokens(line);
+      if (runs !== null) {
+        appendTokenRuns(host, runs);
+      }
+    }
+  } catch (error) {
+    console.warn("metabrowser diff: syntax enhancement failed", error);
+  }
 }
 
 /**
@@ -296,8 +405,9 @@ function renderFileBar(change, toggleId, bodyId) {
  * @param {HTMLElement} body
  * @param {Record<string, unknown>} change
  * @param {string} revision
+ * @param {DiffViewApi | undefined} api
  */
-async function hydrateDeferred(body, change, revision) {
+async function hydrateDeferred(body, change, revision, api) {
   const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
   const path = String(side?.path ?? "");
   const box = progressBox(`Loading the diff for ${path}`);
@@ -323,11 +433,15 @@ async function hydrateDeferred(body, change, revision) {
     }
     box.remove();
     const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
-    for (const hunk of hunks) {
-      body.append(renderHunk(hunk));
-    }
     if (hunks.length === 0) {
       body.append(el("div", "diff-availability", "No content changes."));
+    } else {
+      const renderApi = api ?? plainSyntaxApi();
+      const state = createFileState(only, patch, renderApi);
+      renderFileBody(body, state);
+      if (api) {
+        void enhanceFileSyntax(state, api);
+      }
     }
   } catch (error) {
     reportLoad(
@@ -346,9 +460,10 @@ async function hydrateDeferred(body, change, revision) {
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown> | undefined} patch
  * @param {{revision?: string}} [context]
+ * @param {DiffViewApi | undefined} [api]
  * @returns {HTMLElement}
  */
-function renderFileSection(change, patch, context = {}) {
+function renderFileSection(change, patch, context = {}, api) {
   sectionSequence += 1;
   const toggleId = `diff-file-toggle-${sectionSequence}`;
   const bodyId = `diff-file-body-${sectionSequence}`;
@@ -380,7 +495,7 @@ function renderFileSection(change, patch, context = {}) {
   if (availability === "deferred" && context.revision) {
     // Deferred is progress, not a state to explain: show the standard
     // progress box and fetch this file's hunks.
-    void hydrateDeferred(body, change, context.revision);
+    void hydrateDeferred(body, change, context.revision, api);
     return section;
   }
   if (availability !== "ready" || patch === undefined) {
@@ -395,11 +510,10 @@ function renderFileSection(change, patch, context = {}) {
     body.append(el("div", "diff-availability", "No content changes."));
     return section;
   }
-  for (const hunk of hunks) {
-    body.append(renderHunk(hunk));
-  }
-  if (patch.truncated) {
-    body.append(el("div", "diff-availability", "This patch was truncated at its bounds."));
+  const state = createFileState(change, patch, api ?? plainSyntaxApi());
+  renderFileBody(body, state);
+  if (api) {
+    void enhanceFileSyntax(state, api);
   }
   return section;
 }
@@ -409,9 +523,10 @@ function renderFileSection(change, patch, context = {}) {
  *
  * @param {HTMLElement} container
  * @param {Record<string, unknown>} document_
+ * @param {DiffViewApi} [api]
  * @returns {{dispose: () => void}}
  */
-export function mountDiffView(container, document_) {
+export function mountDiffView(container, document_, api) {
   const root = el("div", "diff-root");
   const manifest =
     /** @type {{files: Record<string, unknown>[], totals: Record<string, unknown>, truncated: unknown, cursor?: unknown}} */ (
@@ -443,7 +558,7 @@ export function mountDiffView(container, document_) {
   }
   const context = { revision: String(document_.__revision ?? "") };
   for (const change of manifest.files) {
-    root.append(renderFileSection(change, patches[String(change.id)], context));
+    root.append(renderFileSection(change, patches[String(change.id)], context, api));
   }
   if (manifest.truncated) {
     root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));

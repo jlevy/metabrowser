@@ -77,6 +77,6 @@ mb.registerView("diff", "diff", {
     if (!result.ok) {
       return renderFailure(container, `This diff document is not valid: ${result.error}`);
     }
-    return mountDiffView(container, result.document);
+    return mountDiffView(container, result.document, mb);
   },
 });
