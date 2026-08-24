@@ -1,14 +1,20 @@
 ---
 type: is
 id: is-01m0dmjfnekkf22fb5zhmj1nke
-title: "Diff view: syntax highlighting by layer, added files first"
+title: "Diff view: syntax highlighting over old/new streams"
 kind: feature
 status: open
 priority: 2
-version: 1
+version: 3
+spec_path: docs/project/specs/active/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels: []
 dependencies: []
+parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 created_at: 2026-08-19T18:29:40.141Z
-updated_at: 2026-08-19T18:29:40.141Z
+updated_at: 2026-08-24T21:58:03.634Z
 ---
-Design layer over the diff view, informed by the research appendix (highlight-then-diff vs diff-then-highlight across GitHub, Monaco, delta, difftastic). Phase order: (1) Added whole files get full, clean syntax highlighting with an added indicator that does not fight the lexer — status-success left bar plus a very light status-success background wash; deleted files the mirror. (2) Mixed hunks: highlighting is messier and may not pay below a size threshold — measure before bounding, decide per research. (3) Per-file small subtle tabs on each file section: inline view now, Rendered view for Markdown — the per-file expression of the spec's view-phasing table. Keep add/del tints and intraline emphasis legible under highlighting. Related: mb-hhmb keeps split view, intraline, and context expansion; highlighting itself lives here.
+Add bounded progressive syntax highlighting to the diff renderer. Reconstruct and highlight each hunk's old and new source independently, split token spans back onto stable line records, and reuse the regular source grammar registry and semantic palette over transparent token backgrounds. Unified deletion rows consume old tokens, addition rows consume new tokens, and context consumes the new side. Keep plain text as the fallback for unknown languages, unavailable assets, and over-limit input. The focused plan also defines the shared line model used by the split projection.
+
+## Notes
+
+2026-08-24 planning review complete. The focused spec selects per-hunk old/new token streams, the existing Highlight.js palette and bound, plain-first enhancement, and one semantic model for unified and split projections. Current GitHub, React Diff View, CodeMirror, Monaco, and git diff-highlight behavior informed the decisions. Implementation remains open.
