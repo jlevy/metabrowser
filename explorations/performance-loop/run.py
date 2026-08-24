@@ -85,6 +85,10 @@ PENDING = HERE / "results" / "pending.json"
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
 #
+# 8: startup JavaScript is split from scripts loaded for the selected view,
+# with bounded URL-path attribution for the slowest and latest shell requests.
+# This makes an eager-plugin waterfall a named, enforceable regression.
+#
 # 7: acceptance input is pulsed from first usable state through client
 # quiescence, and the profile proves how much of the measured window it spans.
 # A single early click could miss a later inventory-delivery freeze.
@@ -114,7 +118,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 7
+HARNESS_VERSION = 8
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -205,6 +209,10 @@ METRICS = (
     "resource_timing_capacity",
     "resource_timing_buffer_full",
     "script_transfer_kb",
+    "startup_script_requests",
+    "startup_script_transfer_kb",
+    "startup_script_last_response_ms",
+    "startup_script_duration_max_ms",
     "style_transfer_kb",
     "image_transfer_kb",
     "api_transfer_kb",
@@ -212,6 +220,8 @@ METRICS = (
     "resource_duration_max_ms",
     "js_heap_mb",
     "js_heap_after_gc_mb",
+    "plugin_view_containers",
+    "plugin_view_nonempty",
     "viewport_w",
     "viewport_h",
 )

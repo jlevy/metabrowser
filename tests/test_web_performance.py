@@ -45,7 +45,7 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "inventory_delivery_attribution_missing": 0,
         "inventory_delivery_work_pct": 0.2,
         "index_status_at_probe": "done",
-        "harness_version": 7,
+        "harness_version": 8,
         "labels_overflowed": 0,
         "lcp_ms": 900,
         "long_task_max_ms": 80,
@@ -58,6 +58,8 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "recorded_at": "2026-08-23T12:00:00+00:00",
         "resource_timing_buffer_full": 0,
         "responsiveness_source": "navigation-profiler",
+        "startup_script_requests": 33,
+        "startup_script_transfer_kb": 214,
         "tree_region_repaints": 1,
         "unsupported": None,
         "visibility_state": "visible",
@@ -228,3 +230,15 @@ def test_fetch_failures_gate_while_abort_semantics_stay_visible() -> None:
     assert {issue.metric for issue in blocking_issues(failure_issues)} == {"fetch_network_errors"}
     assert {issue.metric for issue in abort_issues} == {"fetch_aborts"}
     assert blocking_issues(abort_issues) == []
+
+
+def test_eager_plugin_waterfall_is_a_blocking_budget_failure() -> None:
+    config = load_performance_config(BUDGETS)
+    issues = budget_issues(
+        _valid_run(startup_script_requests=74, startup_script_transfer_kb=337), config
+    )
+
+    assert {issue.metric for issue in blocking_issues(issues)} == {
+        "startup_script_requests",
+        "startup_script_transfer_kb",
+    }

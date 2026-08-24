@@ -1139,16 +1139,12 @@ async def index(_request: Request) -> HTMLResponse:
     }}
   }})();
   </script>"""
-    # Emit per-plugin <link>/<script> tags from each loaded plugin's
-    # manifest. Each plugin contributes (in discovery order):
-    #   - <link rel="stylesheet"> for styles.css if present + every
-    #     manifest.plugin.extra_styles entry
-    #   - <script> for every manifest.plugin.extra_scripts entry
-    #   - <script type="module" src=".../index.js"> last
-    # Plugins that need additional JS/CSS files declare them in their
-    # manifest; metabrowser core never special-cases plugin asset names.
-    plugin_styles = _build_plugin_style_block()
-    plugin_scripts = _build_plugin_script_block()
+    # Plugin assets are configured in the shell but fetched only when a
+    # selected resource names a kind that consumes them. A cold directory
+    # should not wait for Markdown, structured-data, diff, and log modules
+    # before its first tree row. The manifest remains the source of every URL;
+    # core does not special-case plugin names.
+    plugin_asset_config = _build_plugin_asset_config_block()
 
     # Reuse KPress's vendored reader faces for the whole UI. Link KPress's
     # style-tokens.css (the @font-face source of truth) and preload the chrome's
@@ -1182,7 +1178,6 @@ async def index(_request: Request) -> HTMLResponse:
        same-origin (see static/vendor/manifest.json), so the page loads
        with no external origins and works offline. -->
   <link rel="stylesheet" href="{styles_url}">
-  {plugin_styles}
 </head>
 <body>
   <main class="container">
@@ -1316,8 +1311,8 @@ async def index(_request: Request) -> HTMLResponse:
        handler calls MetabrowserGitPanel.init(), which needs both present. -->
   <script src="{git_graph_url}"></script>
   <script src="{git_panel_url}"></script>
+  {plugin_asset_config}
   <script src="{app_url}"></script>
-  {plugin_scripts}
   {optional_assets_block}
 </body>
 </html>"""
@@ -3166,38 +3161,33 @@ def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     return out
 
 
-def _build_plugin_style_block() -> str:
-    """Emit <link rel='stylesheet'> tags for each plugin's styles.css + extra_styles.
+def _build_plugin_asset_config_block() -> str:
+    """Configure manifest-owned assets by the kinds that consume them.
 
-    Emitted in the <head>; each plugin contributes its `styles.css`
-    (auto-detected) followed by every entry in `[plugin].extra_styles`
-    in manifest order.
+    No plugin asset is an eager shell dependency. The private plugin host
+    loads one descriptor at most once when ``app.js`` selects any kind in its
+    manifest. Extra classic scripts retain manifest order before ``index.js``;
+    styles load in parallel and settle before the plugin renderer mounts.
     """
-    parts: list[str] = []
+    assets_by_kind: dict[str, list[dict[str, object]]] = {}
     for plugin in _LOADED_PLUGINS:
-        css_path = plugin.static_root / "styles.css"
-        if css_path.is_file():
-            parts.append(f'<link rel="stylesheet" href="/plugin-static/{plugin.name}/styles.css">')
-        for extra in plugin.manifest.plugin.extra_styles:
-            parts.append(f'<link rel="stylesheet" href="/plugin-static/{plugin.name}/{extra}">')
-    return "\n  ".join(parts)
-
-
-def _build_plugin_script_block() -> str:
-    """Emit per-plugin <script> tags after the shell loads.
-
-    For each plugin (in discovery order), emit any `extra_scripts`
-    declared in its manifest as classic <script> tags first (so they
-    set up globals that `index.js` can use), then the plugin's
-    `index.js` as an ES module. Plugins that don't declare
-    `extra_scripts` get just the index.js tag.
-    """
-    parts: list[str] = []
-    for plugin in _LOADED_PLUGINS:
-        for extra in plugin.manifest.plugin.extra_scripts:
-            parts.append(f'<script src="/plugin-static/{plugin.name}/{extra}"></script>')
-        parts.append(f'<script type="module" src="/plugin-static/{plugin.name}/index.js"></script>')
-    return "\n  ".join(parts)
+        prefix = f"/plugin-static/{plugin.name}"
+        styles: list[str] = []
+        if plugin.static_root.joinpath("styles.css").is_file():
+            styles.append(f"{prefix}/styles.css")
+        styles.extend(f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_styles)
+        descriptor: dict[str, object] = {
+            "name": plugin.name,
+            "module": f"{prefix}/index.js",
+            "scripts": [f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_scripts],
+            "styles": styles,
+        }
+        kinds = {view.kind for view in plugin.manifest.view}
+        kinds.update(kind.id for kind in plugin.manifest.kind)
+        for kind in sorted(kinds):
+            assets_by_kind.setdefault(kind, []).append(descriptor)
+    encoded = _json.dumps(assets_by_kind).replace("<", "\\u003c")
+    return f"<script>window.MetabrowserPluginHost.configureAssets({encoded});</script>"
 
 
 # ── Diagnostic routes (opt-in) ──────────────────────────────────

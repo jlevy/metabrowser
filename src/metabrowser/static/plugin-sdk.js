@@ -127,6 +127,10 @@
   });
   /** @type {{snapshot: () => unknown, subscribe: (listener: () => void) => () => void} | null} */
   let _attachedFileCatalog = null;
+  /** @type {Map<string, Array<{name: string, module: string, scripts: string[], styles: string[]}>>} */
+  const _pluginAssetsByKind = new Map();
+  /** @type {Map<string, Promise<void>>} */
+  const _pluginLoads = new Map();
 
   const fileCatalog = Object.freeze({
     snapshot() {
@@ -186,7 +190,82 @@
     };
   }
 
-  global.MetabrowserPluginHost = Object.freeze({ attachFileCatalog });
+  function _loadPluginElement(tagName, url, attributes) {
+    return new Promise((resolve) => {
+      const element = global.document.createElement(tagName);
+      for (const [name, value] of Object.entries(attributes || {})) {
+        element.setAttribute(name, value);
+      }
+      element.addEventListener("load", () => resolve(undefined), { once: true });
+      element.addEventListener(
+        "error",
+        () => {
+          console.error(`metabrowser plugin asset failed to load: ${url}`);
+          resolve(undefined);
+        },
+        { once: true },
+      );
+      if (tagName === "link") {
+        element.setAttribute("href", url);
+      } else {
+        element.setAttribute("src", url);
+      }
+      global.document.head.append(element);
+    });
+  }
+
+  function configureAssets(assetsByKind) {
+    if (!assetsByKind || typeof assetsByKind !== "object") {
+      throw new TypeError("configureAssets: expected a kind-to-assets object");
+    }
+    _pluginAssetsByKind.clear();
+    for (const [kind, descriptors] of Object.entries(assetsByKind)) {
+      if (!Array.isArray(descriptors)) {
+        throw new TypeError(`configureAssets: ${kind} must contain an array`);
+      }
+      _pluginAssetsByKind.set(kind, descriptors);
+    }
+  }
+
+  function _loadPlugin(descriptor) {
+    const existing = _pluginLoads.get(descriptor.name);
+    if (existing) {
+      return existing;
+    }
+    const loading = (async () => {
+      await Promise.all(
+        descriptor.styles.map((url, index) =>
+          _loadPluginElement("link", url, {
+            "data-metabrowser-plugin-asset": `${descriptor.name}:style:${index}`,
+            rel: "stylesheet",
+          }),
+        ),
+      );
+      for (let index = 0; index < descriptor.scripts.length; index += 1) {
+        await _loadPluginElement("script", descriptor.scripts[index], {
+          "data-metabrowser-plugin-asset": `${descriptor.name}:script:${index}`,
+        });
+      }
+      try {
+        await import(descriptor.module);
+      } catch (error) {
+        console.error(`metabrowser plugin failed to load: ${descriptor.name}`, error);
+      }
+    })();
+    _pluginLoads.set(descriptor.name, loading);
+    return loading;
+  }
+
+  async function loadPluginsForKind(kind) {
+    const descriptors = _pluginAssetsByKind.get(kind) || [];
+    await Promise.all(descriptors.map(_loadPlugin));
+  }
+
+  global.MetabrowserPluginHost = Object.freeze({
+    attachFileCatalog,
+    configureAssets,
+    loadPluginsForKind,
+  });
 
   function registerView(kindId, viewId, spec) {
     if (typeof kindId !== "string" || !kindId) {

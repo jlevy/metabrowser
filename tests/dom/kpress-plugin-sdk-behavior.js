@@ -1,4 +1,4 @@
-// Behavioral shim for plugin-sdk.js — tests six contracts that
+// Behavioral shim for plugin-sdk.js — tests contracts that
 // kpress-asset-loading.js (the happy-path shim) cannot:
 //
 //   1. _loadStylesheet awaits the actual onload event (not just appendChild)
@@ -8,6 +8,7 @@
 //   4. Failed stylesheet, script, and TOC module loads can be retried
 //   5. A cached stylesheet settles even when the browser omits load events
 //   6. A failed auxiliary asset does not discard rendered HTML
+//   7. Manifest-owned plugin assets load in order and deduplicate by plugin
 //
 // Usage:
 //   node kpress-plugin-sdk-behavior.js <repo_root>
@@ -63,6 +64,13 @@ function makeElement(tagName) {
     async: true,
     onload: null,
     onerror: null,
+    addEventListener(name, listener) {
+      if (name === "load") {
+        this.onload = listener;
+      } else if (name === "error") {
+        this.onerror = listener;
+      }
+    },
     setAttribute(name, value) {
       attrs[name] = String(value);
     },
@@ -82,6 +90,9 @@ const fakeParent = {
       pendingOnload.push(element);
     }
     return element;
+  },
+  append(element) {
+    return this.appendChild(element);
   },
 };
 
@@ -625,6 +636,42 @@ async function check_path_text_fetch() {
   return { ok: true };
 }
 
+// ── Contract 11: selected-kind plugin assets are ordered and deduplicated ─
+
+async function check_selected_kind_plugin_assets() {
+  const firstAppend = appended.length;
+  sandbox.MetabrowserPluginHost.configureAssets({
+    "fixture-kind": [
+      {
+        name: "fixture",
+        module: "/plugin-static/fixture/index.js",
+        scripts: ["/plugin-static/fixture/setup.js"],
+        styles: ["/plugin-static/fixture/styles.css"],
+      },
+    ],
+  });
+  const first = sandbox.MetabrowserPluginHost.loadPluginsForKind("fixture-kind");
+  const concurrent = sandbox.MetabrowserPluginHost.loadPluginsForKind("fixture-kind");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const stylesheet = appended.at(-1);
+  if (stylesheet?.tagName !== "LINK" || appended.length !== firstAppend + 1) {
+    return { ok: false, detail: "selected-kind stylesheet was not loaded first" };
+  }
+  stylesheet.onload();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const script = appended.at(-1);
+  if (script?.tagName !== "SCRIPT" || appended.length !== firstAppend + 2) {
+    return { ok: false, detail: "selected-kind classic script was not loaded after styles" };
+  }
+  script.onload();
+  await Promise.all([first, concurrent]);
+  await sandbox.MetabrowserPluginHost.loadPluginsForKind("fixture-kind");
+  if (appended.length !== firstAppend + 2) {
+    return { ok: false, detail: "selected-kind assets were loaded more than once" };
+  }
+  return { ok: true };
+}
+
 // ── Driver ────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -638,9 +685,10 @@ async function check_path_text_fetch() {
   const fileCatalog = check_file_catalog_bridge();
   const completeText = await check_complete_text_fetch();
   const pathText = await check_path_text_fetch();
+  const selectedKindAssets = await check_selected_kind_plugin_assets();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets })}\n`,
   );
 
   if (
@@ -653,7 +701,8 @@ async function check_path_text_fetch() {
     !transformedSource.ok ||
     !fileCatalog.ok ||
     !completeText.ok ||
-    !pathText.ok
+    !pathText.ok ||
+    !selectedKindAssets.ok
   ) {
     process.exit(1);
   }

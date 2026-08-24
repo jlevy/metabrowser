@@ -86,6 +86,10 @@
   const vendor = resources.filter((r) => r.name.includes("/static/vendor/"));
   const subtree = resources.filter((r) => r.name.includes("/api/tree?path="));
   const scripts = resources.filter((r) => r.initiatorType === "script");
+  const startupScripts = scripts.filter(
+    (r) =>
+      !r.name.includes("/static/vendor/") && r.startTime < Number(nav.domContentLoadedEventEnd),
+  );
   const styles = resources.filter((r) => r.initiatorType === "link" || r.name.endsWith(".css"));
   const images = resources.filter((r) => r.initiatorType === "img");
   const apiResources = resources.filter((r) => r.name.includes("/api/"));
@@ -486,6 +490,10 @@
     index_status_at_probe: reprobe.index_status,
     tree_items: document.querySelectorAll('[role="treeitem"]').length,
     lazy_stubs: document.querySelectorAll("[data-tree-lazy-stub]").length,
+    plugin_view_containers: document.querySelectorAll("[data-plugin-view]").length,
+    plugin_view_nonempty: Array.from(document.querySelectorAll("[data-plugin-view]")).filter(
+      (container) => container.childElementCount > 0 || container.textContent?.trim(),
+    ).length,
     dom_nodes: document.getElementsByTagName("*").length,
     // The tail is the point on a large tree: the sweep that warms collapsed
     // folders keeps requesting long after the page looks finished.
@@ -496,6 +504,36 @@
     requests: resources.length,
     transferred_kb: kb(resources),
     script_transfer_kb: kb(scripts),
+    startup_script_requests: startupScripts.length,
+    startup_script_transfer_kb: kb(startupScripts),
+    startup_script_last_response_ms: startupScripts.length
+      ? Math.round(Math.max(...startupScripts.map((resource) => resource.responseEnd || 0)))
+      : null,
+    startup_script_duration_max_ms: startupScripts.length
+      ? Math.round(Math.max(...startupScripts.map((resource) => resource.duration || 0)))
+      : null,
+    startup_scripts_slowest: startupScripts
+      .slice()
+      .sort((left, right) => right.duration - left.duration)
+      .slice(0, 10)
+      .map((resource) => ({
+        path: new URL(resource.name).pathname,
+        start_ms: Math.round(resource.startTime),
+        response_end_ms: Math.round(resource.responseEnd),
+        duration_ms: Math.round(resource.duration),
+        transfer_kb: Math.round((resource.transferSize || 0) / 1024),
+      })),
+    startup_scripts_latest: startupScripts
+      .slice()
+      .sort((left, right) => right.responseEnd - left.responseEnd)
+      .slice(0, 10)
+      .map((resource) => ({
+        path: new URL(resource.name).pathname,
+        start_ms: Math.round(resource.startTime),
+        response_end_ms: Math.round(resource.responseEnd),
+        duration_ms: Math.round(resource.duration),
+        transfer_kb: Math.round((resource.transferSize || 0) / 1024),
+      })),
     style_transfer_kb: kb(styles),
     image_transfer_kb: kb(images),
     api_transfer_kb: kb(apiResources),

@@ -307,6 +307,7 @@ adds no automation package or product dependency.
 | `fetch_network_errors`, `fetch_aborts`, `fetch_http_4xx`, `fetch_http_5xx` | Exact whole-window fetch outcomes outside the detail ring | Keeps a failed click from looking like a merely slow one. Rejected non-abort requests and 5xx responses are hard gates; cancellation and expected-not-found semantics remain visible targets |
 | `fetches_in_flight` | Application fetches still unresolved when the profile was taken | Prevents a faster server-completion marker from cutting the browser measurement off while delivery work is still running |
 | `script_transfer_kb`, `style_transfer_kb`, `image_transfer_kb`, `api_transfer_kb`, `largest_resource_kb` | Transfer split by resource class | Makes an asset or API trade visible without treating all bytes as interchangeable |
+| `startup_script_requests`, `startup_script_transfer_kb`, `startup_script_last_response_ms`, `startup_script_duration_max_ms`, `startup_scripts_slowest`, `startup_scripts_latest` | Count, transfer, tail, worst duration, and bounded path-only attribution for non-vendor scripts started before `DOMContentLoaded` | Catches an eager plugin or feature tier added to every page even when noisy paint timings obscure the waterfall |
 | `js_heap_mb`, `js_heap_after_gc_mb` | Chromium’s optional natural used heap and the trusted driver’s controlled post-GC retained heap | The first is an in-session endurance signal; the second makes side-by-side retention comparisons robust to different GC timing |
 
 `first_row_ms` is wall clock until a tree row exists.

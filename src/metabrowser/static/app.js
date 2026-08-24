@@ -849,7 +849,7 @@ async function loadTree() {
   _rootTreeRequestsInFlight += 1;
   try {
     return await _perf.measureAsync("loadTree", async () => {
-      var paintedInlineTree = renderInitialTreeRows();
+      renderInitialTreeRows();
 
       /** Replace whatever is on screen with a failure the reader can act on. */
       function failTree(reason) {
@@ -983,7 +983,7 @@ async function loadTree() {
       // flight. Keep the authoritative cache current without painting over the
       // newer source selection.
       if (!filesPanelUsesRecentSource()) {
-        if (paintedInlineTree && _inlineTreeBaseline) {
+        if (_inlineTreeBaseline) {
           reconcileInlineTree(data.tree, truncationHtml + summaryHtml);
         } else {
           renderFilesFromTree();
@@ -4990,6 +4990,15 @@ var LOADING_INDICATOR_DELAY_MS = 120;
 var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
 
+async function renderFileWithPlugins(data, preferredViewId, previewClaim) {
+  await _perf.measureAsync(
+    "loadPluginsForKind",
+    () => window.MetabrowserPluginHost?.loadPluginsForKind(data.kind) || Promise.resolve(),
+    { kind: data.kind || "" },
+  );
+  return renderFile(data, preferredViewId, previewClaim);
+}
+
 /** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, preferredViewId) {
   var previewClaim = claimPreview("file");
@@ -5021,7 +5030,7 @@ async function selectFile(path, preferredViewId) {
       const needsRevalidate = fileNeedsRevalidate.has(path);
       if (cached && !needsRevalidate && !activeFiles.has(path)) {
         navigationController.canonicalizePath(path, cached.kind === "folder");
-        renderFile(cached, preferredViewId, previewClaim);
+        await renderFileWithPlugins(cached, preferredViewId, previewClaim);
         maybeOpenLiveStream(path, cached);
         return openedFileOutcome(path, cached, preview);
       }
@@ -5070,7 +5079,7 @@ async function selectFile(path, preferredViewId) {
               loadingIndicatorTimer = null;
             }
             navigationController.canonicalizePath(path, cached.kind === "folder");
-            renderFile(cached, preferredViewId, previewClaim);
+            await renderFileWithPlugins(cached, preferredViewId, previewClaim);
             maybeOpenLiveStream(path, cached);
             return openedFileOutcome(path, cached, preview);
           }
@@ -5109,7 +5118,7 @@ async function selectFile(path, preferredViewId) {
             loadingIndicatorTimer = null;
           }
           navigationController.canonicalizePath(path, data.kind === "folder");
-          renderFile(data, preferredViewId, previewClaim);
+          await renderFileWithPlugins(data, preferredViewId, previewClaim);
           maybeOpenLiveStream(path, data);
           return openedFileOutcome(path, data, preview);
         }
@@ -7373,6 +7382,12 @@ if (typeof window !== "undefined") {
 }
 
 // ── Init ────────────────────────────────────────────────────────
+
+// app.js is the last core script in the body, so the tree container and every
+// cache used by its renderer are initialized here. Paint the server-carried
+// rows now instead of waiting for DOMContentLoaded. The authoritative request
+// below keeps the same baseline and reconciles into it.
+renderInitialTreeRows();
 
 document.addEventListener("DOMContentLoaded", async () => {
   initTooltip();

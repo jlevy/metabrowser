@@ -162,6 +162,24 @@ policy = "target"
 required = false
 description = "Largest contentful paint."
 
+# exp-014 measured 74 startup scripts / 337 KB before selected-kind loading and
+# 33 / 214 KB afterwards on the same 111,590-file corpus. These ceilings retain
+# headroom for a small core module while preventing every plugin from returning
+# to the directory shell's critical path.
+[metrics.startup_script_requests]
+category = "loading"
+maximum = 40
+policy = "gate"
+required = true
+description = "JavaScript requests started before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
+
+[metrics.startup_script_transfer_kb]
+category = "loading"
+maximum = 250
+policy = "gate"
+required = true
+description = "Transferred startup JavaScript before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
+
 [metrics.first_row_ms]
 category = "application"
 maximum = 500

@@ -88,7 +88,7 @@ becomes a good zero.
 
 | Dimension | Standard fields | What they prevent |
 | --- | --- | --- |
-| Loading | `ttfb_ms`, `response_download_ms`, `dom_interactive_ms`, `dcl_ms`, `load_ms`, `fcp_ms`, `lcp_ms` | Treating a fast shell, server response, or load event as a usable application |
+| Loading | `ttfb_ms`, `response_download_ms`, `dom_interactive_ms`, `dcl_ms`, `load_ms`, `fcp_ms`, `lcp_ms`, plus startup script count, transfer, tail, maximum duration, and bounded path-only attribution | Treating a fast shell, server response, or load event as a usable application, or hiding an eager feature tier inside noisy paint timing |
 | Responsiveness | Long Task count, total, maximum, first-five-second maximum, tasks over budget, Total Blocking Time, blocked share, and application-delivery callback maximum/share | Hiding one multi-second freeze inside a total, or an event storm inside individually short callbacks |
 | Frame attribution | Long Animation Frame count, maximum, blocking time, forced style/layout maximum, worst scripts and nearby resources | Knowing that the page froze without knowing which callback or rendering cost owned it |
 | Interaction | Trusted-input count, first and last offset, span, loading-window coverage, plus grouped Event Timing interaction count, retained count, percentile scope, p50, p95, and exact maximum | Calling an untouched or single-early-click page responsive, counting one gesture’s several DOM events as several interactions, confusing no slow entry with no input, or reporting a bounded percentile as whole-session evidence |
@@ -140,6 +140,9 @@ initial navigation gap even when it attributes zero blocking, rendering, scripts
 resources to that frame, so duration alone is not evidence that the UI thread was busy.
 Inventory and catalog delivery have a tighter attribution gate: no callback may cross 50
 ms, and all such callbacks together may consume at most 5% of the measurement window.
+Metabrowser also gates the startup JavaScript tier at 40 non-vendor requests and 250 KB;
+the limits retain measured headroom above its 33-request, 214 KB directory shell while
+preventing every plugin from returning to the critical path.
 Rejected non-abort fetches and HTTP 5xx responses must also remain zero; aborts and 4xx
 responses stay visible as targets until a scenario can declare them intentional.
 The comparison checks every candidate run, not its median: one six-second freeze is a
@@ -186,7 +189,8 @@ A metric that can only report success is not a guard.
    `measureAsync(label, fn, metadata)`. Keep labels finite; put bounded diagnostic
    values in metadata.
 3. Write a small adapter that reads the standard snapshot and adds the application’s
-   first usable state, completion marker, visible-region changes, and correctness facts.
+   first usable state, completion marker, visible-region changes, correctness facts, and
+   the resource boundary between shell startup and selected-feature loading.
 4. Copy the TOML policy and replace the application targets.
    Keep the core evidence requirements and responsiveness gates unless the product has a
    stricter contract.

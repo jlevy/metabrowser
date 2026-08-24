@@ -86,8 +86,13 @@ def test_the_inline_rows_are_painted_once_and_only_unfiltered() -> None:
     assert "if (!Array.isArray(rows) || rows.length === 0 || _lastTreeRender)" in block
 
     # And loadTree still owns the authoritative render that follows.
-    load_tree = app[app.index("async function loadTree()") :][:2000]
+    load_tree = app[app.index("async function loadTree()") : app.index("function treeSummaryHtml")]
     assert "renderInitialTreeRows()" in load_tree
+    assert "if (_inlineTreeBaseline)" in load_tree
+    init = app[app.index("// ── Init") :]
+    assert init.index("renderInitialTreeRows();") < init.index(
+        'document.addEventListener("DOMContentLoaded"'
+    )
     assert "await fetch(treeUrl(" in load_tree
 
 

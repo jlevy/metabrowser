@@ -27,6 +27,9 @@ Performance, validated against 0.6.0 side by side:
   Trusted input now pulses from first usable state through client quiescence, and the
   profile records and gates its loading-window coverage, so one early click cannot miss
   a later event storm.
+  It also separates startup JavaScript from scripts loaded for the selected view,
+  retains bounded path-only attribution for the slowest and latest startup assets, and
+  gates startup request count and transfer size.
   Recording exits nonzero as soon as any run crosses a hard budget.
 
 - The gain is largest exactly when a client is watching, because that is what the change
@@ -87,6 +90,14 @@ Development:
   trusted-input paints throughout the load, and record controlled post-GC retained heap
   so backend completion, an early-only interaction, and garbage-collection timing cannot
   hide regressions.
+
+- Built-in plugin styles, classic dependencies, and modules now load on demand for the
+  selected file kind instead of every plugin joining every directory load.
+  The shell preserves each manifest’s script order and waits for the selected renderer
+  before mounting it; folder navigation and first tree paint no longer wait for
+  unrelated Markdown, structured-data, log, diff, or chart code.
+  The server-carried first rows also paint as soon as the final core script runs rather
+  than waiting for `DOMContentLoaded`.
 
 ## 0.6.0
 

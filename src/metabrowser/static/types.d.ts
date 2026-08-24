@@ -980,6 +980,18 @@ type MetabrowserPublicFileCatalogApi = Readonly<{
 
 type MetabrowserPluginHostRuntime = Readonly<{
   attachFileCatalog(catalog: MetabrowserKnownFileCatalogApi): () => void;
+  configureAssets(
+    assetsByKind: Record<
+      string,
+      Array<{
+        name: string;
+        module: string;
+        scripts: string[];
+        styles: string[];
+      }>
+    >,
+  ): void;
+  loadPluginsForKind(kind: string): Promise<void>;
 }>;
 
 type MetabrowserCatalogFeedApi = Readonly<{
