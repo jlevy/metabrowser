@@ -358,7 +358,7 @@ while retaining its row backgrounds.
   focused behavior tests for ready, delayed, missing, unknown-language, over-limit,
   lexer-throw, malformed-output, and aborted cases.
   Pin the vendored entity vocabulary with a test.
-- [ ] Add the strict diff syntax module with old/new reconstruction, multiline token
+- [x] Add the strict diff syntax module with old/new reconstruction, multiline token
   data, exact text round-trip checks, and old-path/new-path language resolution.
 - [ ] Refactor hunk rendering around stable line records and enhance unified cells from
   their side-specific token runs.

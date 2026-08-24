@@ -40,3 +40,7 @@ def test_diff_model_agrees_with_the_corpus() -> None:
 
 def test_diff_view_projects_the_model() -> None:
     _run("diff-view-behavior.js", "diff view OK")
+
+
+def test_diff_syntax_builds_independent_side_streams() -> None:
+    _run("diff-syntax-behavior.js", "diff syntax OK")
