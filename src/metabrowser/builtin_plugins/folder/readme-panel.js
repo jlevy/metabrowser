@@ -19,8 +19,12 @@ export function createReadmePanel(mb) {
     defaultExpanded: true,
     resolve: resolveReadme,
     /** @param {HTMLElement} container @param {{path?: string, raw?: unknown}} context @param {{path: string}} data @param {{signal?: AbortSignal}} options */
-    mount(container, context, data, options) {
+    async mount(container, context, data, options) {
       const value = data;
+      await mb.ensureKindAssets("markdown");
+      if (options.signal?.aborted) {
+        return undefined;
+      }
       const markdown = mb.builtins.markdown;
       if (!markdown) {
         throw new Error("The Markdown renderer is unavailable.");

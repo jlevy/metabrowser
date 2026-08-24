@@ -4993,7 +4993,7 @@ var selectFileAbortController = null;
 async function renderFileWithPlugins(data, preferredViewId, previewClaim) {
   await _perf.measureAsync(
     "loadPluginsForKind",
-    () => window.MetabrowserPluginHost?.loadPluginsForKind(data.kind) || Promise.resolve(),
+    () => window.metabrowser.ensureKindAssets(data.kind),
     { kind: data.kind || "" },
   );
   return renderFile(data, preferredViewId, previewClaim);

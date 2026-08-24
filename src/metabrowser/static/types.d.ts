@@ -788,6 +788,7 @@ type MetabrowserSdk = {
   icons: Record<string, string>;
   isLargeTextPreview(data: Record<string, unknown>): boolean;
   ensureAsset(name: string): Promise<void>;
+  ensureKindAssets(kind: string): Promise<void>;
   kpressInitToc(container: HTMLElement): (() => void) | null;
   langForExtension(ext: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;

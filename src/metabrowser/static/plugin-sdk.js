@@ -1171,6 +1171,19 @@
     return assets.ensureAsset(name);
   }
 
+  // Load the plugins that declare support for a file kind. This is public so
+  // one plugin can embed another kind's renderer without reaching into the
+  // private plugin host or forcing that renderer onto the eager shell path.
+  /** @param {string} kind @returns {Promise<void>} */
+  function ensureKindAssets(kind) {
+    if (typeof kind !== "string" || !kind) {
+      return Promise.reject(
+        new TypeError("metabrowser.ensureKindAssets: kind must be a non-empty string"),
+      );
+    }
+    return loadPluginsForKind(kind);
+  }
+
   // Wire KPress's TOC for a freshly mounted document and return its disposer.
   // KPress's toc.js owns the behavior; the host's only jobs are to mark a scroll
   // element [data-kpress-viewport] (the preview pane) and call this on mount /
@@ -1639,6 +1652,7 @@
     partialNoticeHtml: partialNoticeHtml,
     loadKpressAssets: loadKpressAssets,
     ensureAsset: ensureAsset,
+    ensureKindAssets: ensureKindAssets,
     kpressInitToc: kpressInitToc,
     formatKpressError: formatKpressError,
     chart: chart,

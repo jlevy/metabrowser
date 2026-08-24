@@ -49,6 +49,12 @@ Performance, validated against 0.6.0 side by side:
 
 API, observable to plugin authors:
 
+- `metabrowser.ensureKindAssets(kind)` loads deferred plugins for a file kind before a
+  plugin embeds that kind’s renderer.
+  Folder README panels use it to wait for the Markdown renderer, fixing Overview panels
+  that reported “The request could not be completed” when Markdown had not already been
+  opened.
+
 - Browser-console tools now share the existing `window.metabrowser` namespace.
   The complete recorder is `metabrowser.perf`, shell troubleshooting helpers are under
   `metabrowser.debug`, and the pasted serving probe installs `metabrowser.bench`. The

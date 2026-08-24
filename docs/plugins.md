@@ -302,6 +302,7 @@ Useful helpers include:
 - `filterControls` for the host’s accessible filter chips and menus;
 - `chart(container, type, data, options)`;
 - `ensureAsset(name)`;
+- `ensureKindAssets(kind)`;
 - `perf.measure` and `perf.measureAsync`.
 
 `ensureAsset(name)` loads a vendored library that the shell does not put on every page,
@@ -313,6 +314,13 @@ The bundles the host publishes are named in `server.py`; `"chart"` is Chart.js w
 annotation plugin and date adapter.
 See [Asset Loading Tiers](development.md#asset-loading-tiers) for which tier an asset
 belongs in.
+
+`ensureKindAssets(kind)` loads the plugins that declare a view for a file kind.
+Await it before embedding one kind’s renderer inside another plugin, then read the
+renderer from the SDK. Already-loaded plugins resolve immediately, and simultaneous
+callers share one load.
+This keeps cross-kind renderers off the eager shell path without exposing the private
+plugin host.
 
 `chart(container, type, data, options)` requires that bundle:
 `await metabrowser.ensureAsset("chart")` first, or the call throws.

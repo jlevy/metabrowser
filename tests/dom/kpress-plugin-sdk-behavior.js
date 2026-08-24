@@ -650,8 +650,11 @@ async function check_selected_kind_plugin_assets() {
       },
     ],
   });
-  const first = sandbox.MetabrowserPluginHost.loadPluginsForKind("fixture-kind");
-  const concurrent = sandbox.MetabrowserPluginHost.loadPluginsForKind("fixture-kind");
+  if (typeof sandbox.metabrowser.ensureKindAssets !== "function") {
+    return { ok: false, detail: "metabrowser.ensureKindAssets is not public" };
+  }
+  const first = sandbox.metabrowser.ensureKindAssets("fixture-kind");
+  const concurrent = sandbox.metabrowser.ensureKindAssets("fixture-kind");
   await new Promise((resolve) => setTimeout(resolve, 0));
   const stylesheet = appended.at(-1);
   if (stylesheet?.tagName !== "LINK" || appended.length !== firstAppend + 1) {
@@ -665,7 +668,7 @@ async function check_selected_kind_plugin_assets() {
   }
   script.onload();
   await Promise.all([first, concurrent]);
-  await sandbox.MetabrowserPluginHost.loadPluginsForKind("fixture-kind");
+  await sandbox.metabrowser.ensureKindAssets("fixture-kind");
   if (appended.length !== firstAppend + 2) {
     return { ok: false, detail: "selected-kind assets were loaded more than once" };
   }

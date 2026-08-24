@@ -117,7 +117,8 @@ def test_file_render_waits_for_the_selected_kind_plugin() -> None:
         )
     ]
 
-    assert "loadPluginsForKind(data.kind)" in helper
+    assert "ensureKindAssets(data.kind)" in helper
+    assert "MetabrowserPluginHost" not in helper
     assert "await _perf.measureAsync" in helper
     assert "return renderFile(data, preferredViewId, previewClaim)" in helper
 

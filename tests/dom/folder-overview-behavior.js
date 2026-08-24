@@ -117,6 +117,57 @@ global.window = { METABROWSER_SETTINGS: {} };
     builtInOrder.map((panel) => panel.id).join(",") === "folder.file-overview,folder.readme",
   );
 
+  const readmePanelSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/folder/readme-panel.js"),
+    "utf8",
+  );
+  const readmePanelModule = await import(
+    `data:text/javascript;base64,${Buffer.from(readmePanelSource).toString("base64")}`
+  );
+  let releaseMarkdownAssets;
+  let ensuredKind = null;
+  let markdownMount = null;
+  const readmeMb = {
+    builtins: {},
+    ensureKindAssets(kind) {
+      ensuredKind = kind;
+      return new Promise((resolve) => {
+        releaseMarkdownAssets = () => {
+          readmeMb.builtins.markdown = {
+            mountRendered(container, context, options) {
+              markdownMount = { container, context, options };
+              return { dispose() {} };
+            },
+          };
+          resolve();
+        };
+      });
+    },
+  };
+  const readmePanel = readmePanelModule.createReadmePanel(readmeMb);
+  const readmeContainer = new Element("div");
+  const readmeMount = readmePanel.mount(
+    readmeContainer,
+    { path: "", raw: {} },
+    { path: "README.md" },
+    {},
+  );
+  check(
+    "README requests Markdown assets before reading the deferred renderer",
+    ensuredKind === "markdown" && markdownMount === null,
+  );
+  releaseMarkdownAssets();
+  const readmeHandle = await readmeMount;
+  check(
+    "README mounts after Markdown assets become available",
+    markdownMount?.container === readmeContainer &&
+      markdownMount?.context?.kind === "markdown" &&
+      markdownMount?.context?.path === "README.md" &&
+      markdownMount?.options?.includeToc === "off" &&
+      typeof readmeHandle?.dispose === "function",
+    JSON.stringify(markdownMount),
+  );
+
   let rollupApply = null;
   let rollupOptions = null;
   const controlListeners = [];
