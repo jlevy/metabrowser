@@ -57,6 +57,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(REPO))
 
+from devtools.bench_serving import MetabBuild, resolve_metab_build
 from devtools.web_performance import (
     blocking_issues,
     budget_issues,
@@ -72,6 +73,7 @@ RESULTS = HERE / "results" / "runs.jsonl"
 # these numbers cold.
 PORTS_USED = HERE / "results" / "ports-used.txt"
 PROBE = HERE / "probe.js"
+CAPTURE_BROWSER = HERE / "capture-browser.js"
 REPORT = HERE / "report.md"
 EXPERIMENTS = HERE / "experiments"
 PERFORMANCE_BUDGETS = HERE / "performance-budgets.toml"
@@ -82,6 +84,15 @@ PENDING = HERE / "results" / "pending.json"
 # Bumped when a change to run.py or probe.js makes a number incomparable with
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
+#
+# 6: the trusted Chrome capture adds a controlled post-GC heap measurement,
+# separating retained state from the runtime-dependent collection timing in
+# `performance.memory`.
+#
+# 5: inventory delivery adds whole-window callback count, work-item volume,
+# maximum duration, total duration, and window share. These fields make an
+# event storm visible even when every individual callback stays below the
+# browser's Long Task threshold.
 #
 # 4: responsiveness comes from the profiler attached with the document rather
 # than a late observer or optional console paste; exact whole-window totals no
@@ -99,7 +110,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 4
+HARNESS_VERSION = 6
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -149,11 +160,19 @@ METRICS = (
     "long_task_max_ms_first_5s",
     "long_tasks_over_200ms",
     "main_thread_blocked_pct",
+    "inventory_delivery_attribution_missing",
+    "inventory_delivery_batches",
+    "inventory_delivery_items",
+    "inventory_delivery_batch_items_max",
+    "inventory_delivery_max_ms",
+    "inventory_delivery_work_ms_total",
+    "inventory_delivery_work_pct",
     "animation_frames",
     "animation_frame_max_ms",
     "animation_frames_over_200ms",
     "animation_frame_blocking_ms_total",
     "animation_frame_blocking_ms_max",
+    "animation_frames_blocking_over_200ms",
     "forced_style_layout_ms_max",
     "interactions",
     "interaction_inputs",
@@ -170,6 +189,7 @@ METRICS = (
     "wall_scanning_ms",
     "wall_settled_ms",
     "requests",
+    "fetches_in_flight",
     "fetch_network_errors",
     "fetch_aborts",
     "fetch_http_4xx",
@@ -183,6 +203,7 @@ METRICS = (
     "largest_resource_kb",
     "resource_duration_max_ms",
     "js_heap_mb",
+    "js_heap_after_gc_mb",
     "viewport_w",
     "viewport_h",
 )
@@ -305,6 +326,23 @@ def _git_dirty() -> bool:
     return bool(result.stdout.strip())
 
 
+def _build_provenance(build_version: str, *, build_ref: str, external: bool) -> dict[str, Any]:
+    """Identify the artifact behind a browser benchmark run."""
+    if external:
+        if not build_ref:
+            raise SystemExit("--build-ref is required when --metab selects an external build")
+        return {
+            "build_version": build_version,
+            "commit": build_ref,
+            "dirty": False,
+        }
+    return {
+        "build_version": build_version,
+        "commit": _git_commit(),
+        "dirty": _git_dirty(),
+    }
+
+
 _WALK_LINE = re.compile(
     r"inventory walker complete: status=(?P<status>\w+) files=(?P<files>\d+) "
     r"entries=(?P<entries>\d+) elapsed=(?P<elapsed>\d+)ms"
@@ -365,7 +403,24 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return _serve_root(args, corpus, str(corpus.relative_to(REPO)), args.files)
 
 
+def _load_probe_payload(json_text: str, json_file: str) -> Any:
+    """Load a browser profile from an inline paste or an exported file."""
+    if json_file:
+        try:
+            json_text = Path(json_file).read_text(encoding="utf-8")
+        except OSError as error:
+            raise SystemExit(f"could not read browser profile {json_file}: {error}") from error
+    return json.loads(json_text)
+
+
 def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: int) -> int:
+    requested_build = args.metab or "metab"
+    build: MetabBuild = resolve_metab_build(requested_build)
+    provenance = _build_provenance(
+        build.version,
+        build_ref=args.build_ref,
+        external=bool(args.metab),
+    )
     subprocess.run(["pkill", "-f", "metab .*--no-open --port"], check=False)
     while (
         subprocess.run(
@@ -382,7 +437,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     log = HERE / "results" / f"server-{port}.log"
     with log.open("w", encoding="utf-8") as handle:
         subprocess.Popen(
-            ["uv", "run", "--frozen", "metab", str(root), "--no-open", "--port", str(port)],
+            [str(build.executable), str(root), "--no-open", "--port", str(port)],
             cwd=REPO,
             stdout=handle,
             stderr=subprocess.STDOUT,
@@ -413,8 +468,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "files": files,
                 "corpus": corpus_label,
                 "corpus_shape": _corpus_shape(root),
-                "commit": _git_commit(),
-                "dirty": _git_dirty(),
+                **provenance,
                 "note": args.note,
             },
             indent=2,
@@ -425,6 +479,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     )
 
     print(f"experiment  {args.exp or '(unset)'}   label {args.label or '(unset)'}")
+    print(f"build       {build.version}   ref {provenance['commit']}")
     print(f"port        {port}   (unused, so the browser cache starts empty)")
     print(f"corpus      {corpus_label}  ({files} files)")
     print(f"url         {url}")
@@ -433,11 +488,12 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     print("2. exercise at least one real interaction while the inventory is still loading")
     print("3. after the inventory settles, evaluate probe.js (`run.py probe` prints it)")
     print("4. explorations/performance-loop/run.py record --json '<paste>'")
+    print("   or automate 1-4 with `run.py capture --headed --output FILE --record`")
     return 0
 
 
 def cmd_record(args: argparse.Namespace) -> int:
-    payload: Any = json.loads(args.json)
+    payload = _load_probe_payload(args.json or "", args.json_file or "")
     if not isinstance(payload, dict):
         raise SystemExit("probe payload must be a JSON object")
     # A browser pane that never got a size runs the app and reports plausible
@@ -477,6 +533,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         "files": pending.get("files"),
         "corpus": pending.get("corpus"),
         "commit": pending.get("commit"),
+        "build_version": pending.get("build_version"),
         "dirty": pending.get("dirty"),
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "harness_version": HARNESS_VERSION,
@@ -519,6 +576,52 @@ def cmd_record(args: argparse.Namespace) -> int:
             print("run retained as evidence, but its hard performance gate failed:")
             print(format_issues(hard))
     return 1 if hard else 0
+
+
+def cmd_capture(args: argparse.Namespace) -> int:
+    """Capture one Chrome profile with trusted input, then optionally record it."""
+    if args.record and not args.headed:
+        raise SystemExit("--headed is required when --record creates acceptance evidence")
+    pending = _read_pending()
+    port = pending.get("port")
+    if not isinstance(port, int):
+        raise SystemExit("pending browser run has no valid port")
+    node = shutil.which("node")
+    if node is None:
+        raise SystemExit("node is required for browser capture")
+    output = Path(args.output).expanduser().resolve()
+    command = [
+        node,
+        str(CAPTURE_BROWSER),
+        "--url",
+        f"http://127.0.0.1:{port}/view/",
+        "--probe",
+        str(PROBE),
+        "--output",
+        str(output),
+        "--timeout-ms",
+        str(args.timeout_ms),
+        "--width",
+        str(args.width),
+        "--height",
+        str(args.height),
+    ]
+    if args.chrome:
+        command.extend(["--chrome", args.chrome])
+    if args.headed:
+        command.append("--headed")
+    result = subprocess.run(command, cwd=REPO, check=False)
+    if result.returncode != 0 or not args.record:
+        return result.returncode
+    return cmd_record(
+        argparse.Namespace(
+            budgets=args.budgets,
+            json=None,
+            json_file=str(output),
+            label=args.label,
+            note=args.note,
+        )
+    )
 
 
 def _summarize(runs: list[dict[str, Any]], metric: str) -> str:
@@ -929,8 +1032,8 @@ def cmd_report(_args: argparse.Namespace) -> int:
 
     add("## Provenance")
     add("")
-    add("| experiment | label | recorded | commit | corpus | shape | harness | walk |")
-    add("| --- | --- | --- | --- | --- | ---: | ---: | --- |")
+    add("| experiment | label | recorded | build | commit | corpus | shape | harness | walk |")
+    add("| --- | --- | --- | --- | --- | --- | ---: | ---: | --- |")
     for run in runs:
         walk = run.get("walk_elapsed_ms")
         walk_text = f"{walk:,} ms" if isinstance(walk, int) else str(run.get("walk_status", "-"))
@@ -939,7 +1042,8 @@ def cmd_report(_args: argparse.Namespace) -> int:
             commit += "+dirty"
         add(
             f"| {run.get('experiment') or '-'} | {run.get('label')} "
-            f"| {str(run.get('recorded_at') or '-')[:16]} | {commit} "
+            f"| {str(run.get('recorded_at') or '-')[:16]} "
+            f"| {run.get('build_version') or '-'} | {commit} "
             f"| {run.get('corpus') or run.get('files') or '-'} "
             f"| {run.get('corpus_shape') if run.get('corpus_shape') is not None else '-'} "
             f"| {run.get('harness_version') or '-'} | {walk_text} |"
@@ -971,6 +1075,16 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--exp", default="", help="experiment id this run belongs to, e.g. exp-003")
     serve.add_argument("--label", default="", help="condition name, e.g. before / after")
     serve.add_argument("--note", default="")
+    serve.add_argument(
+        "--metab",
+        default="",
+        help="external Metabrowser console script; requires --build-ref",
+    )
+    serve.add_argument(
+        "--build-ref",
+        default="",
+        help="immutable commit or tag identifying the external build",
+    )
     serve.set_defaults(func=cmd_serve)
 
     probe = sub.add_parser("probe", help="print probe.js for pasting into the page")
@@ -986,7 +1100,9 @@ def main(argv: list[str] | None = None) -> int:
     server_probe.set_defaults(func=cmd_probe_server)
 
     record = sub.add_parser("record", help="append one probe payload")
-    record.add_argument("--json", required=True, help="the probe's printed JSON")
+    record_source = record.add_mutually_exclusive_group(required=True)
+    record_source.add_argument("--json", help="the probe's printed JSON")
+    record_source.add_argument("--json-file", help="file containing the exported probe JSON")
     record.add_argument("--label", default="", help="override the label `serve` set")
     record.add_argument("--note", default="")
     record.add_argument(
@@ -995,6 +1111,34 @@ def main(argv: list[str] | None = None) -> int:
         help="performance requirements and budgets TOML",
     )
     record.set_defaults(func=cmd_record)
+
+    capture = sub.add_parser(
+        "capture",
+        help="capture a fresh Chrome profile with trusted input for the pending serve run",
+    )
+    capture.add_argument("--output", required=True, help="write the exported profile JSON here")
+    capture.add_argument("--chrome", default="", help="Chrome or Chromium executable")
+    capture.add_argument(
+        "--headed",
+        action="store_true",
+        help="show and foreground Chrome; required for acceptance-quality visual timing",
+    )
+    capture.add_argument("--timeout-ms", type=int, default=180_000)
+    capture.add_argument("--width", type=int, default=1600)
+    capture.add_argument("--height", type=int, default=900)
+    capture.add_argument(
+        "--record",
+        action="store_true",
+        help="append the profile and apply the current evidence and budget gates",
+    )
+    capture.add_argument("--label", default="", help="override the label `serve` set")
+    capture.add_argument("--note", default="")
+    capture.add_argument(
+        "--budgets",
+        default=str(PERFORMANCE_BUDGETS),
+        help="performance requirements and budgets TOML",
+    )
+    capture.set_defaults(func=cmd_capture)
 
     compare = sub.add_parser("compare", help="median and range per label")
     compare.add_argument("labels", nargs="+")

@@ -22,7 +22,7 @@ that make this application usable, such as its first tree row and final inventor
 | Navigation-time recorder | `src/metabrowser/static/perf.js` | Attach before application work; retain bounded detail and exact aggregates for fetches, named spans, paint, layout stability, Long Tasks, Long Animation Frames, and Event Timing |
 | Application adapter | `explorations/performance-loop/probe.js` | Add app milestones, visual states, completion, DOM size, and route attribution to the standard profile |
 | Policy | `explorations/performance-loop/performance-budgets.toml` | Declare evidence requirements, hard gates, and improvement targets without embedding them in the collector |
-| Orchestrator | `explorations/performance-loop/run.py` and `devtools/web_performance.py` | Preserve build and corpus provenance, reject invalid records, compare repeated conditions, and make budget failure a nonzero result |
+| Orchestrator | `explorations/performance-loop/run.py`, `capture-browser.js`, and `devtools/web_performance.py` | Preserve build and corpus provenance, drive trusted Chrome input without another package, reject invalid records, compare repeated conditions, and make budget failure a nonzero result |
 
 Metabrowser exposes the recorder as `window.metabrowser.perf`, alongside the other
 supported browser and console tools.
@@ -68,6 +68,8 @@ The loop refuses a record unless it establishes all of these facts:
   entries above its duration threshold; trusted-input coverage distinguishes that good
   zero from an untouched page.
 - The application-specific completion marker says the scenario settled.
+- Application fetches are idle, so backend completion cannot end the profile while the
+  browser is still consuming its result.
 - The viewport clears the application’s declared floor.
 - Span-label retention did not overflow.
 - The Resource Timing buffer did not fill; truncated network totals are invalid, not
@@ -85,12 +87,12 @@ becomes a good zero.
 | Dimension | Standard fields | What they prevent |
 | --- | --- | --- |
 | Loading | `ttfb_ms`, `response_download_ms`, `dom_interactive_ms`, `dcl_ms`, `load_ms`, `fcp_ms`, `lcp_ms` | Treating a fast shell, server response, or load event as a usable application |
-| Responsiveness | Long Task count, total, maximum, first-five-second maximum, tasks over budget, Total Blocking Time, and blocked share | Hiding one multi-second freeze inside a total or a long measurement window |
+| Responsiveness | Long Task count, total, maximum, first-five-second maximum, tasks over budget, Total Blocking Time, blocked share, and application-delivery callback maximum/share | Hiding one multi-second freeze inside a total, or an event storm inside individually short callbacks |
 | Frame attribution | Long Animation Frame count, maximum, blocking time, forced style/layout maximum, worst scripts and nearby resources | Knowing that the page froze without knowing which callback or rendering cost owned it |
 | Interaction | Trusted-input count plus grouped Event Timing interaction count, retained count, percentile scope, p50, p95, and exact maximum | Calling an untouched page responsive, counting one gesture’s several DOM events as several interactions, confusing no slow entry with no input, or reporting a bounded percentile as whole-session evidence |
 | Visual stability | Navigation-time LCP and CLS’s maximum session window, plus adapter-defined movement and repaint counts | Improving first paint by assembling or moving the visible page afterwards, or reporting an all-session shift sum under the CLS name |
-| Rendering and memory | Named-span counts, totals, maxima, first completion, `dom_nodes`, and optional `js_heap_mb` | Moving work into an unmeasured callback, growing the DOM with the corpus, or losing early attribution to a ring buffer |
-| Network | Request count, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Losing failures from a bounded detail ring or conflating server work with queueing, payload, and client processing |
+| Rendering and memory | Named-span counts, totals, maxima, first completion, `dom_nodes`, optional natural heap, and controlled post-GC retained heap | Moving work into an unmeasured callback, growing the DOM with the corpus, mistaking garbage-collection timing for retained-state growth, or losing early attribution to a ring buffer |
+| Network | Request count, in-flight count at capture, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Ending a profile before client work settles, losing failures from a bounded detail ring, or conflating server work with queueing, payload, and client processing |
 | Backend and correctness | Scan completion, route samples, peak RSS, corpus fingerprint, and semantic API comparison | Buying browser speed with a different answer or moving cost behind the browser boundary |
 
 The detail rings are intentionally bounded.
@@ -125,12 +127,18 @@ navigation. CLS is the largest shift session window, not the sum over a long-liv
 The TOML policy distinguishes two kinds of limits.
 
 **Hard gates** are properties the application currently satisfies and must never trade
-away. Metabrowser’s candidate must have no task or animation frame over 200 ms, no
-interaction over 200 ms, and no more than 5% whole-window blocked share.
-Rejected non-abort fetches and HTTP 5xx responses must also remain zero; aborts and 4xx
-responses stay visible as targets until a scenario can declare them intentional.
-The comparison checks every candidate run, not its median: one six-second freeze is a
-failure even if two clean runs would hide it statistically.
+away. Metabrowser’s candidate must have no task or Long Animation Frame attributed
+blocking over 200 ms, no interaction over 200 ms, and no more than 5% whole-window
+blocked share.
+Raw Long Animation Frame duration remains a target: Chromium can include a
+document’s initial navigation gap even when it attributes zero blocking, rendering,
+scripts, and resources to that frame, so duration alone is not evidence that the UI
+thread was busy. Inventory and catalog delivery have a tighter attribution gate: no
+callback may cross 50 ms, and all such callbacks together may consume at most 5% of the
+measurement window. Rejected non-abort fetches and HTTP 5xx responses must also remain
+zero; aborts and 4xx responses stay visible as targets until a scenario can declare them
+intentional. The comparison checks every candidate run, not its median: one six-second
+freeze is a failure even if two clean runs would hide it statistically.
 
 **Roadmap targets** are visible debts, such as one tree paint or zero reserved-region
 movement. They are reported on every comparison but do not block unrelated work until
@@ -179,15 +187,17 @@ A metric that can only report success is not a guard.
    stricter contract.
 5. Use the orchestrator’s serve, record, and compare sequence, or call
    `devtools.web_performance` from another runner.
-   Invalid evidence is refused; a hard-gate miss is retained as evidence and exits
-   nonzero immediately.
+   A Chrome-based application can adapt `capture-browser.js` by replacing the ready
+   selector, completion poll, and probe while retaining its fresh-profile and trusted
+   input mechanics. Invalid evidence is refused; a hard-gate miss is retained as evidence
+   and exits nonzero immediately.
 6. Keep raw run records append-only and generate summaries from them.
 
 The framework intentionally adds no browser-automation dependency.
-A signed-in or embedded browser can drive the scenario as long as it remains visibly
+Its small DevTools Protocol driver covers an installed Chrome or Chromium; a signed-in
+or embedded browser can still drive the same scenario as long as it remains visibly
 foregrounded and produces the contract envelope.
-Automation may replace that driver later without changing the metrics, adapter, policy,
-or stored records.
+Changing the driver does not change the metrics, adapter, policy, or stored records.
 
 ## Limits
 

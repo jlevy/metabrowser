@@ -239,6 +239,14 @@ def normalise(payload: Any) -> Any:
     return payload
 
 
+def resolve_tree(requested: str) -> Path:
+    """Resolve the corpus before benchmark servers change their working directory."""
+    tree = Path(requested).expanduser().resolve()
+    if not tree.is_dir():
+        raise SystemExit(f"benchmark tree is not a directory: {requested}")
+    return tree
+
+
 def differences(left: Any, right: Any, path: str, out: list[str], limit: int = 25) -> None:
     if len(out) >= limit:
         return
@@ -314,6 +322,7 @@ def main() -> int:
     p.add_argument("--deadline", type=float, default=300.0)
     p.add_argument("--corpus-name", default="")
     args = p.parse_args()
+    tree = resolve_tree(args.tree)
 
     # Resolve to absolute paths before anything else. Under `uv run` a bare name
     # finds the project venv first, which quietly makes "baseline" the candidate.
@@ -356,11 +365,11 @@ def main() -> int:
         )
         return 2
 
-    before = fingerprint(Path(args.tree))
+    before = fingerprint(tree)
     print(
         json.dumps(
             {
-                "tree": args.tree,
+                "tree": str(tree),
                 "corpus": args.corpus_name,
                 "versions": versions,
                 "resolved": resolved,
@@ -377,7 +386,7 @@ def main() -> int:
     finals: dict[str, Any] = {}
     for index in range(args.runs):
         for name, command in builds.items():
-            run = run_once(command, args.tree, args.poll, args.deadline)
+            run = run_once(command, str(tree), args.poll, args.deadline)
             final = run.pop("final", None)
             if index == 0 and final is not None:
                 finals[name] = final
@@ -390,10 +399,10 @@ def main() -> int:
                 flush=True,
             )
 
-    after = fingerprint(Path(args.tree))
+    after = fingerprint(tree)
     report: dict[str, Any] = {
         "corpus": args.corpus_name,
-        "tree": args.tree,
+        "tree": str(tree),
         "versions": versions,
         "resolved": resolved,
         "row_endpoint": ROW_ENDPOINT,

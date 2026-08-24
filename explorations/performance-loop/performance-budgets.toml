@@ -49,16 +49,30 @@ description = "No synchronous task may cross the responsiveness budget."
 [metrics.animation_frame_max_ms]
 category = "responsiveness"
 maximum = 200
-policy = "gate"
+policy = "target"
 required = false
-description = "Chromium Long Animation Frame guard, when supported."
+description = "Longest Chromium animation frame, including non-blocking navigation gaps."
 
 [metrics.animation_frames_over_200ms]
 category = "responsiveness"
 maximum = 0
+policy = "target"
+required = false
+description = "Animation frames crossing 200 ms, including non-blocking navigation gaps."
+
+[metrics.animation_frame_blocking_ms_max]
+category = "responsiveness"
+maximum = 200
 policy = "gate"
 required = false
-description = "Animation frames crossing the same responsiveness budget."
+description = "Worst main-thread blocking attributed by Chromium Long Animation Frame."
+
+[metrics.animation_frames_blocking_over_200ms]
+category = "responsiveness"
+maximum = 0
+policy = "gate"
+required = false
+description = "Animation frames whose attributed blocking crosses the responsiveness budget."
 
 [metrics.interaction_max_ms]
 category = "responsiveness"
@@ -74,12 +88,40 @@ policy = "gate"
 required = true
 description = "Whole-window blocked share catches sustained smaller hitches."
 
+[metrics.inventory_delivery_max_ms]
+category = "responsiveness"
+maximum = 50
+policy = "gate"
+required = true
+description = "No inventory or catalog delivery callback may become a Long Task."
+
+[metrics.inventory_delivery_attribution_missing]
+category = "responsiveness"
+maximum = 0
+policy = "gate"
+required = true
+description = "The application must retain named inventory-delivery attribution."
+
+[metrics.inventory_delivery_work_pct]
+category = "responsiveness"
+maximum = 5
+policy = "gate"
+required = true
+description = "Inventory delivery may not consume a sustained share of the measured main-thread window."
+
 [metrics.fetch_network_errors]
 category = "correctness"
 maximum = 0
 policy = "gate"
 required = true
 description = "Rejected non-abort fetches, which status and timing summaries otherwise hide."
+
+[metrics.fetches_in_flight]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "A settled browser profile may not leave application fetch work running."
 
 [metrics.fetch_http_5xx]
 category = "correctness"

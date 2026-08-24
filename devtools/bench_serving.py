@@ -77,6 +77,9 @@ CORPUS_EXTS = (
 # that never will reports so instead of hanging. A scan that hits this is
 # itself the finding, so it is recorded rather than raised.
 SCAN_TIMEOUT_S = 600.0
+# A selected build must identify itself promptly; otherwise the benchmark cannot
+# establish which artifact produced its results.
+BUILD_VERSION_TIMEOUT_S = 10.0
 
 # The banner metab prints once it is listening, which also reports the port it
 # settled on -- it picks another when the requested one is busy, so parsing
@@ -110,6 +113,38 @@ class Timing:
             "p95": round(ordered[max(0, int(len(ordered) * 0.95) - 1)], 1),
             "max": round(ordered[-1], 1),
         }
+
+
+@dataclass(frozen=True)
+class MetabBuild:
+    """One resolved console script and the version it reports."""
+
+    executable: Path
+    version: str
+
+
+def resolve_metab_build(requested: str) -> MetabBuild:
+    """Resolve and identify the exact Metabrowser executable under test."""
+    resolved = shutil.which(requested)
+    if resolved is None:
+        raise SystemExit(f"metab executable is not runnable: {requested}")
+    executable = Path(resolved).resolve()
+    try:
+        result = subprocess.run(
+            [str(executable), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=BUILD_VERSION_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise SystemExit(f"could not identify metab executable {requested}: {error}") from error
+    output = (result.stdout or result.stderr).strip()
+    if result.returncode != 0 or not output:
+        raise SystemExit(
+            f"metab executable did not report a version: {requested} (exit {result.returncode})"
+        )
+    return MetabBuild(executable=executable, version=output.splitlines()[-1])
 
 
 def _http(
@@ -195,19 +230,14 @@ def build_corpus(root: Path, target_files: int) -> dict[str, Any]:
 class Server:
     """A ``metab`` subprocess, with its log tailed for the facts only it knows."""
 
-    def __init__(self, root: Path, log_path: Path) -> None:
+    def __init__(self, root: Path, log_path: Path, build: MetabBuild) -> None:
         self._root = root
         self._log_path = log_path
+        self._build = build
         self._process: subprocess.Popen[bytes] | None = None
         self.base_url = ""
 
     def __enter__(self) -> Server:
-        executable = shutil.which("metab")
-        if executable is None:
-            raise SystemExit(
-                "metab is not on PATH. Run this through the locked environment:\n"
-                "  uv --config-file uv.toml run --frozen python -m devtools.bench_serving"
-            )
         # metab rejects port 0, so ask the kernel for a free one and hand over
         # the number. Another process can still take it in between; metab
         # falls forward to the next free port when that happens, which is why
@@ -217,7 +247,13 @@ class Server:
             port = probe.getsockname()[1]
         with self._log_path.open("wb") as handle:
             self._process = subprocess.Popen(
-                [executable, str(self._root), "--no-open", "--port", str(port)],
+                [
+                    str(self._build.executable),
+                    str(self._root),
+                    "--no-open",
+                    "--port",
+                    str(port),
+                ],
                 stdout=handle,
                 stderr=subprocess.STDOUT,
                 cwd=REPO,
@@ -539,20 +575,20 @@ def build_realistic_corpus(root: Path, target_files: int) -> dict[str, Any]:
     return info
 
 
-def phase_cold_scan(root: Path, log_dir: Path) -> dict[str, Any]:
+def phase_cold_scan(root: Path, log_dir: Path, build: MetabBuild) -> dict[str, Any]:
     """Walker throughput with nothing attached.
 
     Read from the walker's own log record rather than by polling, because
     polling is exactly what the next phase deliberately does.
     """
-    with Server(root, log_dir / "cold.log") as server:
+    with Server(root, log_dir / "cold.log", build) as server:
         result = server.await_walk()
     if result is None:
         return {"converged": False, "timeout_s": SCAN_TIMEOUT_S}
     return {"converged": True, **result}
 
 
-def phase_scan_with_client(root: Path, log_dir: Path) -> dict[str, Any]:
+def phase_scan_with_client(root: Path, log_dir: Path, build: MetabBuild) -> dict[str, Any]:
     """The scan a reader actually experiences.
 
     A client refreshing the folder view competes with the walker for CPU, so
@@ -565,7 +601,7 @@ def phase_scan_with_client(root: Path, log_dir: Path) -> dict[str, Any]:
     first_count_s: float | None = None
     walk: dict[str, Any] | None = None
     started = time.time()
-    with Server(root, log_dir / "attached.log") as server:
+    with Server(root, log_dir / "attached.log", build) as server:
         url = f"{server.base_url}/api/rollup?{OVERVIEW_QUERY}"
         while time.time() - started < SCAN_TIMEOUT_S:
             status, _etag, body, elapsed_ms = _http(url)
@@ -592,7 +628,7 @@ def phase_scan_with_client(root: Path, log_dir: Path) -> dict[str, Any]:
     }
 
 
-def phase_settled(root: Path, log_dir: Path, clients: int) -> dict[str, Any]:
+def phase_settled(root: Path, log_dir: Path, clients: int, build: MetabBuild) -> dict[str, Any]:
     """Costs once the index has stopped moving.
 
     The three rollup paths are measured apart because they are three different
@@ -600,7 +636,7 @@ def phase_settled(root: Path, log_dir: Path, clients: int) -> dict[str, Any]:
     makes the aggregating path measurable at all on a settled index; every
     other request would be answered from the retained body.
     """
-    with Server(root, log_dir / "settled.log") as server:
+    with Server(root, log_dir / "settled.log", build) as server:
         if server.await_walk() is None:
             return {"converged": False}
         base = server.base_url
@@ -813,6 +849,11 @@ def main(argv: list[str] | None = None) -> int:
         help="copies of the sample project for --corpus project (about 22000 files each)",
     )
     parser.add_argument("--label", default="run", help="name for this run, shown in the report")
+    parser.add_argument(
+        "--metab",
+        default="metab",
+        help="Metabrowser console script to benchmark (resolved and versioned before the run)",
+    )
     parser.add_argument("--corpus-dir", type=Path, default=None, help="where to build the tree")
     parser.add_argument("--clients", type=int, default=8, help="concurrent clients (default 8)")
     parser.add_argument("--json", type=Path, default=None, help="write the full result here")
@@ -835,6 +876,9 @@ def main(argv: list[str] | None = None) -> int:
         print(PROBE_PATH.read_text())
         return 0
 
+    build = resolve_metab_build(args.metab)
+    print(f"build       {build.version} ({build.executable})", flush=True)
+
     # The corpus name is part of the corpus directory and part of the saved
     # result: a timing is only comparable against another measured on the same
     # shape, and a saved run that does not say which shape it used cannot be
@@ -849,14 +893,18 @@ def main(argv: list[str] | None = None) -> int:
     corpus = CORPUS_BUILDERS[args.corpus](corpus_dir, size)
     corpus = {"shape": args.corpus, **corpus}
 
-    result: dict[str, Any] = {"label": args.label, "corpus": corpus}
+    result: dict[str, Any] = {
+        "label": args.label,
+        "build": {"version": build.version, "executable": str(build.executable)},
+        "corpus": corpus,
+    }
     if not args.skip_cold_scan:
         print("phase 1/3: cold scan, nothing attached ...", flush=True)
-        result["cold_scan"] = phase_cold_scan(corpus_dir, log_dir)
+        result["cold_scan"] = phase_cold_scan(corpus_dir, log_dir, build)
     print("phase 2/3: scan with a client attached ...", flush=True)
-    result["scan_with_client"] = phase_scan_with_client(corpus_dir, log_dir)
+    result["scan_with_client"] = phase_scan_with_client(corpus_dir, log_dir, build)
     print("phase 3/3: settled index ...", flush=True)
-    result["settled"] = phase_settled(corpus_dir, log_dir, args.clients)
+    result["settled"] = phase_settled(corpus_dir, log_dir, args.clients, build)
 
     baseline: dict[str, Any] | None = None
     if args.baseline is not None:

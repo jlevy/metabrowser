@@ -172,6 +172,7 @@ layer, and record the comparison in the pull request.
 ```shell
 # Establish a baseline, then measure the change against it.
 uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
+  --metab /path/to/release/bin/metab \
   --files 100000 --label before --json bench-before.json
 
 uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
@@ -180,6 +181,10 @@ uv --config-file uv.toml run --frozen python -m devtools.bench_serving \
 
 The corpus, server logs, and result JSON live in `.bench/`, which is not committed.
 A corpus is reused when it already matches `--files`, so repeat runs skip the build.
+Pass `--metab` on both sides when comparing installed artifacts.
+The harness resolves the console script, runs its `--version` command before measuring,
+and records both in the result; this prevents `PATH` order from silently changing the
+build under test.
 
 Take both sides back to back, on the same machine and the same corpus size.
 Only the comparison carries over; the absolute numbers move a great deal with the

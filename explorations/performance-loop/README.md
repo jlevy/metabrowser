@@ -111,16 +111,32 @@ $UV explorations/performance-loop/run.py probe-server                # server-si
 # ... or the browser half, for anything a reader sees:
 $UV explorations/performance-loop/run.py probe                       # prints probe.js to evaluate in the page
 $UV explorations/performance-loop/run.py record --json '<paste>'
+$UV explorations/performance-loop/run.py record --json-file .bench/profile.json
+$UV explorations/performance-loop/run.py capture \
+  --headed --output .bench/profile.json --record                    # trusted Chrome input
 $UV explorations/performance-loop/run.py compare before after
 $UV explorations/performance-loop/run.py report
 ```
 
 `serve` remembers the experiment, label, port, corpus, and commit, so `record` needs
 only the paste. Provenance is filled in automatically: timestamp, commit, whether the
-tree was dirty, and — read back out of the server’s own log — how long that run’s walk
-took.
+tree was dirty, the selected build’s reported version, and — read back out of the
+server’s own log — how long that run’s walk took.
 A number nobody can trace is a number nobody can defend, so none of that is left to
 whoever remembers.
+
+When measuring an installed build instead of the current environment, select it and name
+its immutable source explicitly:
+
+```shell
+$UV explorations/performance-loop/run.py serve \
+  --metab /path/to/release/bin/metab --build-ref <release-tag-or-commit> \
+  --tree /path/to/tree --files <count> --exp exp-0NN --label release
+```
+
+The harness resolves the executable and verifies its reported version before starting.
+It refuses an external build without `--build-ref`; a version string alone cannot
+distinguish a modified or incorrectly installed artifact.
 
 ### Which probe to use
 
@@ -246,6 +262,18 @@ $UV explorations/performance-loop/run.py serve --exp exp-0NN --label before --fi
    visual history `late-buffer`, and `record` refuses it rather than letting a floor
    read as a total.
 
+`run.py capture --headed` performs the same sequence in a fresh Chrome profile through
+the Chrome DevTools Protocol.
+It foregrounds the headed browser on macOS, sends input through Chromium’s trusted input
+pipeline, waits for index completion, evaluates the same probe, and can pass the result
+straight to `record`. After the backend reports completion, it waits until application
+fetches are idle and browser work remains stable across several polls; a fast backend
+response cannot end the responsiveness window while the client is still consuming it.
+It also asks V8 to collect garbage after the scenario settles and records the resulting
+retained heap separately from the runtime-timed `performance.memory` sample.
+The driver uses Node and browser APIs already present in the development environment; it
+adds no automation package or product dependency.
+
 ## What is measured
 
 | Metric | What it is | Why |
@@ -262,13 +290,15 @@ $UV explorations/performance-loop/run.py serve --exp exp-0NN --label before --fi
 | `long_task_max_ms_first_5s` | The same, restricted to the first five seconds | Event rate peaks right after load, so the naive design is worst exactly when the reader is deciding whether the app is alive |
 | `long_tasks_over_200ms`, `total_blocking_time_ms` | Absolute-budget crossings and the standard sum of task time beyond each task’s first 50 ms | The first is the hard invariant; the second catches accumulated smaller stalls |
 | `main_thread_blocked_pct` | Blocked time over its window | Always read with `long_task_window_ms`. The same work in half the time doubles the share while improving every absolute |
+| `inventory_delivery_*` | Batch and work-item volume, worst callback, total time, and share of the measurement window for filesystem and catalog delivery | Directly guards the failure exp-012 found. A backend may produce any volume, but the browser must preserve exact operations, coalesce or slice them, and keep each synchronous delivery below 50 ms and their sustained share below 5% |
 | `interaction_inputs`, `interactions`, `interaction_p50_ms`, `interaction_p95_ms`, `interaction_max_ms` | Trusted-input coverage and interaction-to-next-paint latency from Event Timing, grouped by non-zero `interactionId` | Separates an untouched page from inputs too fast to cross Event Timing’s reporting threshold. One click’s pointer and click events count once; the profiler retains the exact interaction maximum, while percentiles describe the explicitly reported bounded recent sample |
-| `animation_frame_*`, `forced_style_layout_ms_max`, `worst_animation_frames` | Chromium Long Animation Frame totals and bounded script/resource attribution | Names the callback and rendering cost behind a Long Task without making an optional signal look universal |
+| `animation_frame_*`, `forced_style_layout_ms_max`, `worst_animation_frames` | Chromium Long Animation Frame duration, attributed blocking, and bounded script/resource detail | Names the callback and rendering cost behind a Long Task without making an optional signal look universal. Attributed blocking is gated; raw duration remains a target because Chromium can report a long initial navigation frame with zero blocking or work attribution |
 | `label_totals` | Per-span count, total and max, never evicted | Attribution. `longtask` says the thread was blocked; this says by what |
 | `*_samples_seen`, `*_samples_retained`, `labels_overflowed`, `resource_timing_buffer_full` | Retention provenance | Proves bounded detail did not silently become a whole-window claim and refuses incomplete attribution or network totals |
 | `fetch_network_errors`, `fetch_aborts`, `fetch_http_4xx`, `fetch_http_5xx` | Exact whole-window fetch outcomes outside the detail ring | Keeps a failed click from looking like a merely slow one. Rejected non-abort requests and 5xx responses are hard gates; cancellation and expected-not-found semantics remain visible targets |
+| `fetches_in_flight` | Application fetches still unresolved when the profile was taken | Prevents a faster server-completion marker from cutting the browser measurement off while delivery work is still running |
 | `script_transfer_kb`, `style_transfer_kb`, `image_transfer_kb`, `api_transfer_kb`, `largest_resource_kb` | Transfer split by resource class | Makes an asset or API trade visible without treating all bytes as interchangeable |
-| `js_heap_mb` | Chromium’s optional used JavaScript heap | An endurance signal, null where the browser cannot provide it |
+| `js_heap_mb`, `js_heap_after_gc_mb` | Chromium’s optional natural used heap and the trusted driver’s controlled post-GC retained heap | The first is an in-session endurance signal; the second makes side-by-side retention comparisons robust to different GC timing |
 
 `first_row_ms` is wall clock until a tree row exists.
 Waiting for `load` reports a page that painted its shell, and waiting for network idle
@@ -290,7 +320,7 @@ moves afterwards.
 | --- | --- | --- |
 | `reserved_region_shift_px` | Downward movement of the two regions that reserve a height, populated minus empty | The jump a reader gets. Two named regions, *not* the page — the name says so on purpose |
 | `filter_bar_shift_px`, `summary_shift_px` | The two halves of it | They have different causes and different fixes |
-| `tree_region_repaints` | `renderTreeNodes:root` spans per load — the label on the only span that replaces the panel wholesale | A region can hold perfectly still and still be assembled in front of the reader. Today’s proxy for H56’s `visual_states`. Counts one paint once: `:inline` wraps a call that emits its own `:root`, and `:subtree*` patch a tree already standing |
+| `tree_region_repaints` | `renderTreeNodes:root` spans per load — the label on the only span that replaces the panel wholesale | A region can hold perfectly still and still be assembled in front of the reader. Today’s proxy for H56’s `visual_states`. Counts one paint once: the fetched answer now reconciles through `reconcileTreeNodes:root`, while `:subtree*` patch a tree already standing |
 | `lcp_ms`, `cls` | Navigation-time paint entries and CLS’s largest layout-shift session window | Valid only in a visible page. The record gate refuses hidden or late-observer runs that used to turn absence or a truncated buffer into misleading evidence |
 | `page_visible`, `page_laid_out` | Whether the pane could answer visual questions | Provenance beside the visual metrics rather than an assumption made afterwards |
 | `frame_missing_px` | Settled height minus shipped height, summed over the regions the shell places | H52: how much of the frame does not exist at first paint. 532 px today, all of it the files panel |
@@ -419,8 +449,10 @@ past result still holds after the fixture changed:
 ```shell
 git worktree add /tmp/mb-at-<sha> <sha>            # the code as it was
 cd /tmp/mb-at-<sha> && uv sync --all-extras --locked
-# Run today's harness against that checkout's server:
-$UV explorations/performance-loop/run.py serve --tree /tmp/mb-at-<sha> ...   # or point metab at the old tree
+# Run today's harness against that checkout's installed console script:
+$UV explorations/performance-loop/run.py serve \
+  --metab /tmp/mb-at-<sha>/.venv/bin/metab --build-ref <sha> \
+  --tree /path/to/corpus --files <count> --exp exp-0NN --label old
 ```
 
 The harness lives in the repository it measures, so checking out an old commit reverts

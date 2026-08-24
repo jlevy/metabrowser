@@ -80,6 +80,7 @@ def test_the_inline_rows_are_painted_once_and_only_unfiltered() -> None:
     block = block[: block.index("async function loadTree()")]
 
     assert "_inlineTreeRows = null;" in block, "the inline rows must be consumed once"
+    assert "_inlineTreeBaseline = painted ? rows : null;" in block
     assert "treeFilterKey()" in block, "a filtered view must not paint server-rendered rows"
     assert "filesPanelUsesRecentSource()" in block
     assert "if (!Array.isArray(rows) || rows.length === 0 || _lastTreeRender)" in block
@@ -88,3 +89,28 @@ def test_the_inline_rows_are_painted_once_and_only_unfiltered() -> None:
     load_tree = app[app.index("async function loadTree()") :][:2000]
     assert "renderInitialTreeRows()" in load_tree
     assert "await fetch(treeUrl(" in load_tree
+
+
+def test_the_fetched_tree_reconciles_an_inline_paint_in_place() -> None:
+    """The fast shell paint must not be paid for with a second root rebuild."""
+    app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    load_tree = app[app.index("async function loadTree()") : app.index("function treeSummaryHtml")]
+    reconcile = app[
+        app.index("function reconcileTreeContainer") : app.index("function treeTruncationNoteHtml")
+    ]
+
+    assert "reconcileInlineTree(data.tree" in load_tree
+    assert "reconcileTreeNodes:root" in reconcile
+    assert "nextNodes.slice(0, TREE_PAGE_SIZE)" in reconcile
+    assert "deferredTreePageHtml(tail" in reconcile
+    assert "subtreeCache.set(subtreeCacheKey(node.path), node.children)" in reconcile
+    assert "panel.innerHTML =" not in reconcile
+
+
+def test_collapsed_inline_descendants_stay_cached_out_of_the_dom() -> None:
+    app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    render = app[app.index("function renderTreeNodes") : app.index("// ── Lazy subtree loading")]
+
+    assert "Array.isArray(node.children) && expanded" in render
+    assert "subtreeCache.set(subtreeCacheKey(node.path), node.children)" in render
+    assert "data-tree-lazy-stub" in render

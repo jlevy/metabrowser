@@ -19,7 +19,9 @@ BUDGETS = ROOT / "explorations" / "performance-loop" / "performance-budgets.toml
 def _valid_run(**overrides: object) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "animation_frame_max_ms": 80,
+        "animation_frame_blocking_ms_max": 30,
         "animation_frames_over_200ms": 0,
+        "animation_frames_blocking_over_200ms": 0,
         "cls": 0.01,
         "commit": "abc1234",
         "corpus": "test-corpus",
@@ -31,12 +33,16 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "fetch_http_4xx": 0,
         "fetch_http_5xx": 0,
         "fetch_network_errors": 0,
+        "fetches_in_flight": 0,
         "first_row_ms": 300,
         "files": 100,
         "frame_missing_px": 0,
         "interaction_max_ms": 90,
         "interaction_inputs": 1,
         "interactions": 3,
+        "inventory_delivery_max_ms": 8,
+        "inventory_delivery_attribution_missing": 0,
+        "inventory_delivery_work_pct": 0.2,
         "index_status_at_probe": "done",
         "harness_version": 4,
         "labels_overflowed": 0,
@@ -97,7 +103,9 @@ def test_multisecond_freeze_is_a_blocking_budget_failure() -> None:
     issues = budget_issues(
         _valid_run(
             animation_frame_max_ms=6393,
+            animation_frame_blocking_ms_max=6200,
             animation_frames_over_200ms=3,
+            animation_frames_blocking_over_200ms=3,
             long_task_max_ms=6393,
             long_tasks_over_200ms=3,
             main_thread_blocked_pct=55.3,
@@ -108,12 +116,37 @@ def test_multisecond_freeze_is_a_blocking_budget_failure() -> None:
     blocking_metrics = {issue.metric for issue in blocking_issues(issues)}
 
     assert {
-        "animation_frame_max_ms",
-        "animation_frames_over_200ms",
+        "animation_frame_blocking_ms_max",
+        "animation_frames_blocking_over_200ms",
         "long_task_max_ms",
         "long_tasks_over_200ms",
         "main_thread_blocked_pct",
     } <= blocking_metrics
+
+
+def test_event_storm_is_blocking_even_when_no_single_task_crosses_200_ms() -> None:
+    config = load_performance_config(BUDGETS)
+    issues = budget_issues(
+        _valid_run(
+            inventory_delivery_max_ms=48,
+            inventory_delivery_work_pct=18,
+            long_task_max_ms=48,
+            long_tasks_over_200ms=0,
+            main_thread_blocked_pct=0,
+        ),
+        config,
+    )
+
+    assert {issue.metric for issue in blocking_issues(issues)} == {"inventory_delivery_work_pct"}
+
+
+def test_missing_inventory_attribution_cannot_report_a_good_zero() -> None:
+    config = load_performance_config(BUDGETS)
+    issues = budget_issues(_valid_run(inventory_delivery_attribution_missing=1), config)
+
+    assert {issue.metric for issue in blocking_issues(issues)} == {
+        "inventory_delivery_attribution_missing"
+    }
 
 
 def test_known_roadmap_debt_is_reported_without_blocking_unrelated_work() -> None:

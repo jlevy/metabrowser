@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "explorations" / "performance-loop" / "run.py"
 BUDGETS = ROOT / "explorations" / "performance-loop" / "performance-budgets.toml"
@@ -24,7 +26,9 @@ def _runner() -> Any:
 def _run(label: str, **overrides: object) -> dict[str, Any]:
     result: dict[str, Any] = {
         "animation_frame_max_ms": 80,
+        "animation_frame_blocking_ms_max": 30,
         "animation_frames_over_200ms": 0,
+        "animation_frames_blocking_over_200ms": 0,
         "cls": 0.01,
         "commit": "abc1234",
         "corpus": "test-corpus",
@@ -36,6 +40,7 @@ def _run(label: str, **overrides: object) -> dict[str, Any]:
         "fetch_http_4xx": 0,
         "fetch_http_5xx": 0,
         "fetch_network_errors": 0,
+        "fetches_in_flight": 0,
         "first_row_ms": 300,
         "files": 100,
         "frame_missing_px": 0,
@@ -44,6 +49,9 @@ def _run(label: str, **overrides: object) -> dict[str, Any]:
         "interaction_inputs": 1,
         "interaction_max_ms": 90,
         "interactions": 1,
+        "inventory_delivery_max_ms": 8,
+        "inventory_delivery_attribution_missing": 0,
+        "inventory_delivery_work_pct": 0.2,
         "label": label,
         "labels_overflowed": 0,
         "lcp_ms": 900,
@@ -73,6 +81,97 @@ def _compare(module: Any, runs: list[dict[str, Any]]) -> int:
     return int(
         module.cmd_compare(argparse.Namespace(labels=["before", "after"], budgets=str(BUDGETS)))
     )
+
+
+def test_external_browser_benchmark_requires_an_immutable_build_reference() -> None:
+    module = _runner()
+
+    try:
+        module._build_provenance("metab 0.6.0", build_ref="", external=True)
+    except SystemExit as error:
+        assert "--build-ref" in str(error)
+    else:
+        raise AssertionError("external build was accepted without provenance")
+
+    assert module._build_provenance("metab 0.6.0", build_ref="v0.6.0", external=True) == {
+        "build_version": "metab 0.6.0",
+        "commit": "v0.6.0",
+        "dirty": False,
+    }
+
+
+def test_browser_profile_can_be_loaded_from_a_file(tmp_path: Any) -> None:
+    module = _runner()
+    profile = tmp_path / "profile.json"
+    profile.write_text('{"viewport_w": 1600, "viewport_h": 900}\n', encoding="utf-8")
+
+    assert module._load_probe_payload("", str(profile)) == {
+        "viewport_w": 1600,
+        "viewport_h": 900,
+    }
+
+
+def test_browser_capture_uses_the_pending_port_and_headed_driver(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    module = _runner()
+    module.PENDING = tmp_path / "pending.json"
+    module.PENDING.write_text('{"port": 8642}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        module.shutil, "which", lambda name: "/usr/bin/node" if name == "node" else None
+    )
+    calls: list[list[str]] = []
+
+    class Result:
+        returncode = 0
+
+    def run(command: list[str], **_kwargs: object) -> Result:
+        calls.append(command)
+        return Result()
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    output = tmp_path / "profile.json"
+
+    result = module.cmd_capture(
+        argparse.Namespace(
+            budgets=str(BUDGETS),
+            chrome="",
+            headed=True,
+            height=900,
+            label="",
+            note="",
+            output=str(output),
+            record=False,
+            timeout_ms=30_000,
+            width=1600,
+        )
+    )
+
+    assert result == 0
+    assert len(calls) == 1
+    assert "http://127.0.0.1:8642/view/" in calls[0]
+    assert "--headed" in calls[0]
+    assert str(output.resolve()) in calls[0]
+
+
+def test_recorded_browser_capture_requires_headed_chrome(tmp_path: Path) -> None:
+    module = _runner()
+
+    with pytest.raises(SystemExit, match="--headed is required"):
+        module.cmd_capture(
+            argparse.Namespace(
+                budgets=str(BUDGETS),
+                chrome="",
+                headed=False,
+                height=900,
+                label="",
+                note="",
+                output=str(tmp_path / "profile.json"),
+                record=True,
+                timeout_ms=30_000,
+                width=1600,
+            )
+        )
 
 
 def test_compare_passes_when_candidate_repairs_a_control_freeze() -> None:
@@ -146,6 +245,7 @@ def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: A
         argparse.Namespace(
             budgets=str(BUDGETS),
             json=json.dumps(payload),
+            json_file=None,
             label=None,
             note="",
         )

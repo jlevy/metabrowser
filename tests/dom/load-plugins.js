@@ -98,6 +98,10 @@ for (const filename of [
 ]) {
   load(path.join(repoRoot, "src", "metabrowser", "static", filename), filename);
 }
+// A host or extension may expose an unrelated value under this ordinary name.
+// The SDK must recognize its own contract rather than treating truthiness as
+// proof that initialization already happened.
+sandbox.metabrowser = { foreignHostValue: true };
 load(path.join(repoRoot, "src", "metabrowser", "static", "plugin-sdk.js"), "plugin-sdk.js");
 load(
   path.join(repoRoot, "src", "metabrowser", "static", "filter-controls.js"),
@@ -105,8 +109,11 @@ load(
 );
 load(path.join(repoRoot, "src", "metabrowser", "static", "icons.js"), "icons.js");
 
-if (!sandbox.metabrowser) {
+if (typeof sandbox.metabrowser?.registerView !== "function") {
   fail("plugin-sdk.js did not set window.metabrowser");
+}
+if (sandbox.metabrowser.foreignHostValue) {
+  fail("plugin-sdk.js retained a foreign namespace collision");
 }
 
 // ── 1b. Install a tracking Proxy on mb.builtins ───────────────────

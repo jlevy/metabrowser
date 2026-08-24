@@ -93,8 +93,14 @@
 // for sections). Auto-escaping is on by default.
 
 ((global) => {
-  if (global.metabrowser) {
-    // Already initialized; protect against double-load.
+  if (
+    typeof global.metabrowser?.registerView === "function" &&
+    typeof global.metabrowser?.navigation?.open === "function"
+  ) {
+    // The actual SDK is already initialized; protect against double-load.
+    // A host or browser extension may expose an unrelated truthy value under
+    // this ordinary property name, so existence alone is not proof that our
+    // contract is installed.
     return;
   }
   if (!global.MetabrowserNavigationRoute?.navigation) {

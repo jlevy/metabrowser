@@ -60,6 +60,26 @@
     let lastBulkWasAuthoritative = false;
     let lastBulkHadCompleteCoverage = false;
 
+    /**
+     * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[],
+     *   remove_files?: string[]}} payload
+     */
+    function applyChange(payload) {
+      const upserts = Array.isArray(payload?.upserts) ? payload.upserts.length : 0;
+      const subtreeRemoves = Array.isArray(payload?.removes) ? payload.removes.length : 0;
+      const fileRemoves = Array.isArray(payload?.remove_files) ? payload.remove_files.length : 0;
+      return perf.measure(
+        "knownFileCatalog:applyCatalogChange",
+        () => catalog.applyCatalogChange(payload),
+        {
+          work_items: upserts + subtreeRemoves + fileRemoves,
+          upserts,
+          subtree_removes: subtreeRemoves,
+          file_removes: fileRemoves,
+        },
+      );
+    }
+
     function clearRetry() {
       if (retryHandle !== null) {
         cancelRetry(retryHandle);
@@ -120,7 +140,10 @@
                 completeCoverage,
                 authoritative,
               ),
-            { files: Array.isArray(payload.files) ? payload.files.length : 0 },
+            {
+              files: Array.isArray(payload.files) ? payload.files.length : 0,
+              work_items: Array.isArray(payload.files) ? payload.files.length : 0,
+            },
           );
           lastBulkWasAuthoritative = authoritative;
           lastBulkHadCompleteCoverage = completeCoverage;
@@ -138,7 +161,7 @@
         const replay = pendingChanges;
         pendingChanges = [];
         for (const change of replay) {
-          catalog.applyCatalogChange(change);
+          applyChange(change);
         }
       } catch (_error) {
         if (disposed || serial !== fetchSerial) {
@@ -220,7 +243,7 @@
         return;
       }
       if (fetchedOnce && !fetching) {
-        catalog.applyCatalogChange(payload);
+        applyChange(payload);
       } else {
         pendingChanges.push(payload);
       }

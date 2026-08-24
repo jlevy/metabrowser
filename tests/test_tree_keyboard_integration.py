@@ -62,7 +62,9 @@ def test_renderers_share_one_tree_semantics_helper() -> None:
         assert "data-tree-set-size" in source
     assert 'role="group"' in render
     assert 'role="tree" aria-label="Files"' in source
-    assert 'kind: "page"' in render
+    deferred_page = _function(source, "deferredTreePageHtml", 2000)
+    assert "deferredTreePageHtml(" in render
+    assert 'kind: "page"' in deferred_page
 
 
 def test_pointer_fuses_open_and_toggle_while_keyboard_splits_them() -> None:

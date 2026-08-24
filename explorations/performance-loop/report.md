@@ -47,6 +47,7 @@ against one that did.
 | exp-010 | [Every checkpoint on one corpus](experiments/exp-010-every-checkpoint-on-one-corpus.md) | H55, H53 | `first_row_ms` | baseline |
 | exp-011 | [The shipped work, measured against the release](experiments/exp-011-the-shipped-work-measured-against-the-release.md) | H27, H30, H31 | `index_done_ms_project` | accepted |
 | exp-012 | [Exact file removals stop scanning the catalog](experiments/exp-012-exact-file-removals-stop-scanning-the-catalog.md) | H58 | `long_tasks_over_500ms` | accepted |
+| exp-013 | [The v0.6.0 regression leaves one visual regression](experiments/exp-013-v060-regression-leaves-one-visual-regression.md) | H58, H11 | `hard responsiveness gates plus the full non-regression matrix` | unresolved |
 
 ## Absolute numbers, per condition
 
@@ -54,6 +55,92 @@ Median with the range beside it, over every recorded run of that condition.
 Absolute rather than relative on purpose: a percentage cannot be checked against a later
 run, and cannot say whether the thing is fast -- only that it moved.
 Conditions are grouped by corpus, because none of these numbers compare across one.
+
+### 250 files
+
+**What a reader gets** — browser probe
+
+| metric | wide-root (n=1) | wide-root-v6 (n=1) |
+| --- | ---: | ---: |
+| `ttfb_ms` | 57 | 18 |
+| `response_download_ms` | 1 | 1 |
+| `dom_interactive_ms` | 312 | 180 |
+| `first_row_ms` | 370 | 223 |
+| `first_row_render_ms` | 7 | 6 |
+| `load_tree_ms` | 52 | 34 |
+| `tree_fetch_srv_ms` | 2 | 2 |
+| `tree_fetch_wait_ms` | 2 | 2 |
+| `tree_fetch_total_ms` | 4 | 3 |
+| `tree_fetch_kb` | 3 | 3 |
+| `dcl_ms` | 373 | 227 |
+| `load_ms` | 383 | 234 |
+| `last_resource_ms` | 1,586 | 744 |
+| `subtree_requests` | 0 | 0 |
+| `tree_items` | 201 | 201 |
+| `lazy_stubs` | 0 | 0 |
+| `dom_nodes` | 3,232 | 3,232 |
+| `transferred_kb` | 528 | 527 |
+| `vendor_first_start_ms` | 437 | 268 |
+| `fcp_ms` | 244 | 144 |
+| `lcp_ms` | 244 | 144 |
+| `cls` | 0 | 0 |
+| `cls_shifts` | 0 | 0 |
+| `frame_missing_px` | 4,781 | 4,781 |
+| `filter_bar_shift_px` | 0 | 0 |
+| `summary_shift_px` | 0 | 0 |
+| `reserved_region_shift_px` | 0 | 0 |
+| `tree_region_repaints` | 1 | 1 |
+| `long_tasks` | 0 | 0 |
+| `long_task_ms_total` | 0 | 0 |
+| `total_blocking_time_ms` | 0 | 0 |
+| `long_task_max_ms` | 0 | 0 |
+| `long_task_max_ms_first_5s` | 0 | 0 |
+| `long_tasks_over_200ms` | 0 | 0 |
+| `main_thread_blocked_pct` | 0 | 0 |
+| `inventory_delivery_batches` | 1 | 1 |
+| `inventory_delivery_items` | 251 | 251 |
+| `inventory_delivery_batch_items_max` | 251 | 251 |
+| `inventory_delivery_max_ms` | 11 | 9 |
+| `inventory_delivery_work_ms_total` | 11 | 9 |
+| `inventory_delivery_work_pct` | 0.7 | 1.2 |
+| `animation_frames` | 1 | 1 |
+| `animation_frame_max_ms` | 213 | 68 |
+| `animation_frames_over_200ms` | 1 | 0 |
+| `animation_frame_blocking_ms_total` | 0 | 0 |
+| `animation_frame_blocking_ms_max` | 0 | 0 |
+| `animation_frames_blocking_over_200ms` | 0 | 0 |
+| `forced_style_layout_ms_max` | 0 | 0 |
+| `interactions` | 1 | 1 |
+| `interaction_inputs` | 1 | 1 |
+| `interaction_samples_retained` | 1 | 1 |
+| `interaction_p50_ms` | 32 | 32 |
+| `interaction_p95_ms` | 32 | 32 |
+| `interaction_max_ms` | 32 | 32 |
+| `render_spans` | 2 | 2 |
+| `render_ms_total` | 16 | 13 |
+| `tree_reprobe_ms` | 3 | 4 |
+| `tree_reprobe_srv_ms` | 1 | 2 |
+| `requests` | 99 | 98 |
+| `fetches_in_flight` | - | 0 |
+| `fetch_network_errors` | 0 | 0 |
+| `fetch_aborts` | 0 | 0 |
+| `fetch_http_4xx` | 0 | 0 |
+| `fetch_http_5xx` | 0 | 0 |
+| `resource_timing_capacity` | 500 | 500 |
+| `resource_timing_buffer_full` | 0 | 0 |
+| `script_transfer_kb` | 382 | 382 |
+| `style_transfer_kb` | 110 | 110 |
+| `image_transfer_kb` | 0 | 0 |
+| `api_transfer_kb` | 8 | 7 |
+| `largest_resource_kb` | 78 | 78 |
+| `resource_duration_max_ms` | 218 | 135 |
+| `js_heap_mb` | 4 | 3.8 |
+| `js_heap_after_gc_mb` | 2.5 | 2.5 |
+| `viewport_w` | 1,600 | 1,600 |
+| `viewport_h` | 900 | 900 |
+
+Walk elapsed across these runs: 24-24 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
 
 ### 17,103 files
 
@@ -88,6 +175,90 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `transferred_kb` | 1,185 | 709 |
 | `vendor_first_start_ms` | 368 (152-1,176) | 594 (156-800) |
 | `requests` | 127 | 129 |
+
+### 111,590 files
+
+**What a reader gets** — browser probe
+
+| metric | inline-reconcile (n=2) |
+| --- | ---: |
+| `ttfb_ms` | 56 (34-77) |
+| `response_download_ms` | 1 (1-1) |
+| `dom_interactive_ms` | 266 (249-282) |
+| `first_row_ms` | 310 (290-330) |
+| `first_row_render_ms` | 2 (2-2) |
+| `load_tree_ms` | 21 (20-22) |
+| `tree_fetch_srv_ms` | 10 (9-12) |
+| `tree_fetch_wait_ms` | 13 (12-14) |
+| `tree_fetch_total_ms` | 14 (13-15) |
+| `tree_fetch_kb` | 2 (2-2) |
+| `dcl_ms` | 314 (294-333) |
+| `load_ms` | 316 (297-336) |
+| `last_resource_ms` | 1,607 (1,465-1,749) |
+| `subtree_requests` | 12 (10-13) |
+| `tree_items` | 16 (10-23) |
+| `lazy_stubs` | 16 (10-22) |
+| `dom_nodes` | 1,111 (1,040-1,182) |
+| `transferred_kb` | 674 (667-680) |
+| `vendor_first_start_ms` | 628 (306-949) |
+| `fcp_ms` | 406 (200-612) |
+| `lcp_ms` | 200 |
+| `cls` | 0 (0-0.0021) |
+| `cls_shifts` | 0 (0-1) |
+| `frame_missing_px` | 376 (220-532) |
+| `filter_bar_shift_px` | 0 (0-0) |
+| `summary_shift_px` | 23 (23-23) |
+| `reserved_region_shift_px` | 23 (23-23) |
+| `tree_region_repaints` | 1 (1-1) |
+| `long_tasks` | 0 (0-0) |
+| `long_task_ms_total` | 0 (0-0) |
+| `total_blocking_time_ms` | 0 (0-0) |
+| `long_task_max_ms` | 0 (0-0) |
+| `long_task_max_ms_first_5s` | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) |
+| `inventory_delivery_batches` | 1 (1-1) |
+| `inventory_delivery_items` | 141 (141-141) |
+| `inventory_delivery_batch_items_max` | 141 (141-141) |
+| `inventory_delivery_max_ms` | 2 (2-3) |
+| `inventory_delivery_work_ms_total` | 2 (2-3) |
+| `inventory_delivery_work_pct` | 0 (0.1-0.2) |
+| `animation_frames` | 2 (1-4) |
+| `animation_frame_max_ms` | 270 (169-372) |
+| `animation_frames_over_200ms` | 2 (0-4) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) |
+| `forced_style_layout_ms_max` | 2 (0-3) |
+| `interactions` | 1 (1-1) |
+| `interaction_inputs` | 2 (1-2) |
+| `interaction_samples_retained` | 1 (1-1) |
+| `interaction_p50_ms` | 188 (16-360) |
+| `interaction_p95_ms` | 188 (16-360) |
+| `interaction_max_ms` | 188 (16-360) |
+| `render_spans` | 2 (2-3) |
+| `render_ms_total` | 6 (5-6) |
+| `tree_reprobe_ms` | 6 (5-7) |
+| `tree_reprobe_srv_ms` | 4 (3-5) |
+| `requests` | 111 (109-113) |
+| `fetch_network_errors` | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) |
+| `script_transfer_kb` | 382 (382-382) |
+| `style_transfer_kb` | 110 (110-110) |
+| `image_transfer_kb` | 0 (0-0) |
+| `api_transfer_kb` | 182 (175-188) |
+| `largest_resource_kb` | 89 (89-89) |
+| `resource_duration_max_ms` | 166 (149-184) |
+| `js_heap_mb` | 13 (11.9-14.1) |
+| `viewport_w` | 1,600 (1,600-1,600) |
+| `viewport_h` | 900 (900-900) |
+
+Walk elapsed across these runs: 15,414-15,414 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
 
 ### 241,063 files
 
@@ -229,67 +400,71 @@ A run loaded during a walk and a run loaded after one are different regimes.
 
 ## Provenance
 
-| experiment | label | recorded | commit | corpus | shape | harness | walk |
-| --- | --- | --- | --- | --- | ---: | ---: | --- |
-| exp-001 | prefetch-on-dcl | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-dcl | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-dcl | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-idle | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-idle | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-idle | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-idle | - | - | 100000 | - | - | - |
-| exp-002 | viewport-bounded-sweep | - | - | 300000 | - | - | - |
-| exp-002 | dom-order-sweep | - | - | 300000 | - | - | - |
-| exp-002 | dom-order-sweep | - | - | 300000 | - | - | - |
-| exp-002 | dom-order-sweep | - | - | 300000 | - | - | - |
-| exp-002 | viewport-bounded-sweep | - | - | 300000 | - | - | - |
-| exp-002 | viewport-bounded-sweep | - | - | 300000 | - | - | - |
-| exp-003 | revision-keyed-tallies | 2026-08-22T17:55 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 12,613 ms |
-| exp-003 | revision-keyed-tallies | 2026-08-22T18:00 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | revision-keyed-tallies | 2026-08-22T18:00 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | revision-keyed-tallies | 2026-08-22T18:00 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | bounded-stale-tallies | 2026-08-22T18:00 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | bounded-stale-tallies | 2026-08-22T18:00 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | bounded-stale-tallies | 2026-08-22T18:00 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:03 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:03 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:03 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:05 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 15,843 ms |
-| exp-003 | warmed-tallies | 2026-08-22T18:07 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
-| exp-003 | warmed-tallies | 2026-08-22T18:07 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
-| exp-003 | warmed-tallies | 2026-08-22T18:07 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:18 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:18 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:18 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
-| exp-003 | revision-keyed-tallies | 2026-08-22T18:18 | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
-| exp-004 | inline-first-rows | 2026-08-22T18:26 | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,263 ms |
-| exp-004 | inline-first-rows | 2026-08-22T18:27 | 6115a41+dirty | .bench/corpus-300000 | - | - | 16,953 ms |
-| exp-004 | inline-first-rows | 2026-08-22T18:28 | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,828 ms |
-| exp-004 | fetch-first-rows | 2026-08-22T18:28 | 6115a41+dirty | .bench/corpus-300000 | - | - | 14,147 ms |
-| exp-004 | fetch-first-rows | 2026-08-22T18:29 | 6115a41+dirty | .bench/corpus-300000 | - | - | 16,880 ms |
-| exp-004 | fetch-first-rows | 2026-08-22T18:30 | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,728 ms |
-| exp-005 | real-tree-browser | 2026-08-22T20:06 | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
-| exp-005 | real-tree-with-client | 2026-08-22T20:06 | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
-| exp-005 | real-tree-baseline | 2026-08-22T20:06 | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
-| exp-007 | rows-with-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
-| exp-007 | rows-with-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
-| exp-007 | rows-without-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
-| exp-007 | rows-without-tallies | 2026-08-22T22:08 | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
-| exp-008 | before-main | 2026-08-23T00:39 | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
-| exp-008 | after-branch | 2026-08-23T00:39 | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
-| exp-009 | reserved-skeleton | 2026-08-23T04:51 | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
-| exp-009 | shifting-skeleton | 2026-08-23T04:52 | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
-| exp-010 | p0-before-perf | 2026-08-23T06:14 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,609 ms |
-| exp-010 | p1-rows-partial-index | 2026-08-23T06:15 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 14,546 ms |
-| exp-010 | p2-main | 2026-08-23T06:17 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,806 ms |
-| exp-010 | p3-skeleton-paint | 2026-08-23T06:18 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,397 ms |
-| exp-010 | p3-skeleton-paint | 2026-08-23T06:19 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,139 ms |
-| exp-010 | p3-skeleton-paint | 2026-08-23T06:20 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,161 ms |
-| exp-010 | p2-main | 2026-08-23T06:21 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,920 ms |
-| exp-010 | p2-main | 2026-08-23T06:22 | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,781 ms |
-| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:51 | 5501200+dirty | tree-e167d99b | 1 | 3 | 14,894 ms |
-| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:53 | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,493 ms |
-| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:54 | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,593 ms |
+| experiment | label | recorded | build | commit | corpus | shape | harness | walk |
+| --- | --- | --- | --- | --- | --- | ---: | ---: | --- |
+| exp-001 | prefetch-on-dcl | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-dcl | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-dcl | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-idle | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-idle | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-idle | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-idle | - | - | - | 100000 | - | - | - |
+| exp-002 | viewport-bounded-sweep | - | - | - | 300000 | - | - | - |
+| exp-002 | dom-order-sweep | - | - | - | 300000 | - | - | - |
+| exp-002 | dom-order-sweep | - | - | - | 300000 | - | - | - |
+| exp-002 | dom-order-sweep | - | - | - | 300000 | - | - | - |
+| exp-002 | viewport-bounded-sweep | - | - | - | 300000 | - | - | - |
+| exp-002 | viewport-bounded-sweep | - | - | - | 300000 | - | - | - |
+| exp-003 | revision-keyed-tallies | 2026-08-22T17:55 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 12,613 ms |
+| exp-003 | revision-keyed-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | revision-keyed-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | revision-keyed-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | bounded-stale-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | bounded-stale-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | bounded-stale-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | cost-derived-tallies | 2026-08-22T18:03 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
+| exp-003 | cost-derived-tallies | 2026-08-22T18:03 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
+| exp-003 | cost-derived-tallies | 2026-08-22T18:03 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
+| exp-003 | cost-derived-tallies | 2026-08-22T18:05 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 15,843 ms |
+| exp-003 | warmed-tallies | 2026-08-22T18:07 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
+| exp-003 | warmed-tallies | 2026-08-22T18:07 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
+| exp-003 | warmed-tallies | 2026-08-22T18:07 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
+| exp-003 | cost-derived-tallies | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
+| exp-003 | cost-derived-tallies | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
+| exp-003 | cost-derived-tallies | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
+| exp-003 | revision-keyed-tallies | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
+| exp-004 | inline-first-rows | 2026-08-22T18:26 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,263 ms |
+| exp-004 | inline-first-rows | 2026-08-22T18:27 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 16,953 ms |
+| exp-004 | inline-first-rows | 2026-08-22T18:28 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,828 ms |
+| exp-004 | fetch-first-rows | 2026-08-22T18:28 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 14,147 ms |
+| exp-004 | fetch-first-rows | 2026-08-22T18:29 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 16,880 ms |
+| exp-004 | fetch-first-rows | 2026-08-22T18:30 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,728 ms |
+| exp-005 | real-tree-browser | 2026-08-22T20:06 | - | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
+| exp-005 | real-tree-with-client | 2026-08-22T20:06 | - | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
+| exp-005 | real-tree-baseline | 2026-08-22T20:06 | - | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
+| exp-007 | rows-with-tallies | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-007 | rows-with-tallies | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-007 | rows-without-tallies | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-007 | rows-without-tallies | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-008 | before-main | 2026-08-23T00:39 | - | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
+| exp-008 | after-branch | 2026-08-23T00:39 | - | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
+| exp-009 | reserved-skeleton | 2026-08-23T04:51 | - | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
+| exp-009 | shifting-skeleton | 2026-08-23T04:52 | - | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
+| exp-010 | p0-before-perf | 2026-08-23T06:14 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,609 ms |
+| exp-010 | p1-rows-partial-index | 2026-08-23T06:15 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 14,546 ms |
+| exp-010 | p2-main | 2026-08-23T06:17 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,806 ms |
+| exp-010 | p3-skeleton-paint | 2026-08-23T06:18 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,397 ms |
+| exp-010 | p3-skeleton-paint | 2026-08-23T06:19 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,139 ms |
+| exp-010 | p3-skeleton-paint | 2026-08-23T06:20 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,161 ms |
+| exp-010 | p2-main | 2026-08-23T06:21 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,920 ms |
+| exp-010 | p2-main | 2026-08-23T06:22 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,781 ms |
+| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:51 | - | 5501200+dirty | tree-e167d99b | 1 | 3 | 14,894 ms |
+| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:53 | - | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,493 ms |
+| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:54 | - | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,593 ms |
+| exp-014 | inline-reconcile | 2026-08-24T00:23 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-2962a2a1 | 1 | 5 | 15,414 ms |
+| exp-014 | inline-reconcile | 2026-08-24T00:24 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-2962a2a1 | 1 | 5 | 15,414 ms |
+| exp-014 | wide-root | 2026-08-24T00:34 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-97a7c6d8 | - | 6 | 24 ms |
+| exp-014 | wide-root-v6 | 2026-08-24T00:41 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-97a7c6d8 | - | 6 | 24 ms |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->

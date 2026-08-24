@@ -65,6 +65,25 @@ Development:
   three corpus shapes had no command-line route, including the one the scan-ordering
   figures were measured on, so reproducing them meant importing the module by hand.
 
+- Performance harnesses can select an exact installed `metab` console script and record
+  its reported version.
+  Browser runs also require an immutable build reference, preventing `PATH` order or an
+  ambiguous version string from mislabeling a comparison.
+  Browser profiles can be recorded from an exported JSON file as well as an inline
+  console paste. A dependency-free Chrome DevTools Protocol capture command now produces
+  the same profile with browser-trusted input and can record and gate it directly.
+
+- The initial fetched tree now reconciles into the shell’s inline rows instead of
+  replacing the complete tree panel.
+  Reconciliation is keyed through every visible expanded container, while collapsed
+  descendants remain cached data until expansion instead of consuming hidden DOM.
+  Performance profiles also report inventory-delivery batch volume, maximum callback
+  time, and whole-window work share, with hard gates against both single callback stalls
+  and sustained event storms.
+  Automated captures wait for browser-side fetch and work quiescence, exercise a trusted
+  interaction, and record controlled post-GC retained heap so backend completion and
+  garbage-collection timing cannot hide regressions.
+
 ## 0.6.0
 
 File-type colors:

@@ -127,15 +127,21 @@ async function main() {
   );
   check("legacy profiler globals are absent", !("metabrowserPerf" in sandbox));
   check("portable profiler global is absent", !("webPerformanceProfiler" in sandbox));
-  await Promise.allSettled([
+  const fetches = [
     sandbox.fetch("/ok"),
     sandbox.fetch("/missing"),
     sandbox.fetch("/server-error"),
     sandbox.fetch("/network"),
     sandbox.fetch("/abort"),
-  ]);
+  ];
+  check(
+    "in-flight fetch count is visible before settlement",
+    sandbox.metabrowser.perf.snapshot().fetches_in_flight === 5,
+  );
+  await Promise.allSettled(fetches);
   const fetchProfile = sandbox.metabrowser.perf.snapshot();
   check("fetch count survives bounded detail", fetchProfile.fetch_samples_seen === 5);
+  check("in-flight fetch count returns to zero", fetchProfile.fetches_in_flight === 0);
   check("non-abort fetch rejection is exact", fetchProfile.fetch_network_errors === 1);
   check("fetch abort is classified separately", fetchProfile.fetch_aborts === 1);
   check("HTTP 4xx count is exact", fetchProfile.fetch_http_4xx === 1);
@@ -173,6 +179,10 @@ async function main() {
   check("animation-frame maximum is exact", responsiveness.animation_frame_max_ms === 650);
   check("animation-frame budget count is exact", responsiveness.animation_frames_over_200ms === 1);
   check(
+    "animation-frame blocking budget count is exact",
+    responsiveness.animation_frames_blocking_over_200ms === 1,
+  );
+  check(
     "animation-frame blocking maximum is exact",
     responsiveness.animation_frame_blocking_ms_max === 590,
   );
@@ -199,14 +209,28 @@ async function main() {
   check("CLS uses the largest session window", vitals.cls === 0.08 && vitals.cls_shifts === 3);
 
   sandbox.metabrowser.perf.measureAsync("async-span", () => 42);
+  sandbox.metabrowser.perf.measure("batched-span", () => 1, { work_items: 17 });
+  sandbox.metabrowser.perf.measure("batched-span", () => 2, { work_items: 5 });
+  sandbox.metabrowser.perf.measure("empty-batch", () => 0, { work_items: 0 });
   const profile = sandbox.metabrowser.perf.snapshot();
   check("profile uses the reusable schema", profile.schema === "web-performance-profile/v1");
-  check("async spans contribute whole-window attribution", profile.measure_samples_seen === 1);
+  check("async spans contribute whole-window attribution", profile.measure_samples_seen === 4);
   check(
     "first-span milestone survives outside the detail ring",
     profile.label_totals[0]?.label === "async-span" &&
       Number.isFinite(profile.label_totals[0]?.first_end_ms),
     JSON.stringify(profile.label_totals),
+  );
+  const batchedSpan = profile.label_totals.find((row) => row.label === "batched-span");
+  check(
+    "batched work volume survives the detail ring",
+    batchedSpan?.work_items_total === 22 && batchedSpan?.work_items_max === 17,
+    JSON.stringify(batchedSpan),
+  );
+  const emptyBatch = profile.label_totals.find((row) => row.label === "empty-batch");
+  check(
+    "measured zero work stays distinct from missing work metadata",
+    emptyBatch?.work_items_total === 0 && emptyBatch?.work_items_max === 0,
   );
   for (let index = 0; index < 205; index += 1) {
     sandbox.metabrowser.perf.measure(`dynamic-${index}`, () => index);
@@ -277,6 +301,10 @@ async function main() {
   check("reset clears interaction aggregates", responsiveness.interactions === 0);
   check("reset clears interaction coverage", responsiveness.interaction_inputs === 0);
   check("reset clears animation-frame aggregates", responsiveness.animation_frames === 0);
+  check(
+    "reset clears animation-frame blocking budget count",
+    responsiveness.animation_frames_blocking_over_200ms === 0,
+  );
   const resetProfile = sandbox.metabrowser.perf.snapshot();
   check("reset clears navigation vitals", resetProfile.vitals.lcp_ms === null);
   check("reset clears Resource Timing overflow", resetProfile.resource_timing_buffer_full === 0);

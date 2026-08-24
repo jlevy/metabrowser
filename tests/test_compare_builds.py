@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from devtools.compare_builds import (
@@ -10,6 +11,7 @@ from devtools.compare_builds import (
     differences,
     missing_required_fields,
     normalise,
+    resolve_tree,
 )
 
 
@@ -22,6 +24,16 @@ def _equivalence(*, differences_found: int = 0) -> dict[str, Any]:
         }
         for channel in ("rows", "tallies")
     }
+
+
+def test_relative_tree_is_resolved_before_the_server_changes_directory(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    tree = tmp_path / "corpus"
+    tree.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    assert resolve_tree("corpus") == tree.resolve()
 
 
 def test_normalise_preserves_list_order_and_nested_contract_fields() -> None:

@@ -159,6 +159,23 @@
         interaction_p95_ms: null,
         interaction_max_ms: null,
       };
+  // The workload that triggered this investigation has its own bounded view:
+  // a backend may emit any volume, but no one delivery callback may monopolize
+  // a frame and the callbacks together may not consume a material share of the
+  // measured window. Work-item totals preserve the event volume beside the
+  // time, so a later optimization cannot look good merely by dropping updates.
+  const inventoryDeliveryLabels = [
+    "fileStoreApplySnapshot",
+    "fileStoreApplyChange",
+    "knownFileCatalog:applyBulkSnapshot",
+    "knownFileCatalog:applyCatalogChange",
+  ];
+  const inventoryDeliveryRows = inventoryDeliveryLabels.map(totalFor).filter((row) => row !== null);
+  const inventoryDeliveryWorkMs = inventoryDeliveryRows.reduce(
+    (total, row) => total + row.total_ms,
+    0,
+  );
+  const inventoryDeliveryWindowMs = Number(responsiveness.long_task_window_ms || 0);
 
   const paints = {};
   for (const entry of performance.getEntriesByType("paint")) {
@@ -419,6 +436,24 @@
     // browser's bounded historical buffer. The late buffer remains diagnostic
     // and is named as such; it never overwrites the admissible totals.
     ...responsiveness,
+    inventory_delivery_attribution_missing: inventoryDeliveryRows.length === 0 ? 1 : 0,
+    inventory_delivery_batches: inventoryDeliveryRows.reduce((total, row) => total + row.count, 0),
+    inventory_delivery_items: inventoryDeliveryRows.reduce(
+      (total, row) => total + (row.work_items_total || 0),
+      0,
+    ),
+    inventory_delivery_batch_items_max: inventoryDeliveryRows.reduce(
+      (largest, row) => Math.max(largest, row.work_items_max || 0),
+      0,
+    ),
+    inventory_delivery_max_ms: Math.round(
+      inventoryDeliveryRows.reduce((largest, row) => Math.max(largest, row.max_ms), 0),
+    ),
+    inventory_delivery_work_ms_total: Math.round(inventoryDeliveryWorkMs),
+    inventory_delivery_work_pct:
+      inventoryDeliveryWindowMs > 0
+        ? Math.round((1000 * inventoryDeliveryWorkMs) / inventoryDeliveryWindowMs) / 10
+        : null,
     late_buffer_long_tasks: longTasks ? longTasks.length : null,
     late_buffer_long_task_ms_total: longTasks
       ? Math.round(longTasks.reduce((t, e) => t + e.duration, 0))
@@ -433,6 +468,7 @@
     worst_animation_frames: perf.worst_animation_frames || null,
     fetch_samples_seen: perf.fetch_samples_seen ?? null,
     fetch_samples_retained: perf.fetch_samples_retained ?? null,
+    fetches_in_flight: perf.fetches_in_flight ?? null,
     fetch_aborts: perf.fetch_aborts ?? null,
     fetch_http_4xx: perf.fetch_http_4xx ?? null,
     fetch_http_5xx: perf.fetch_http_5xx ?? null,

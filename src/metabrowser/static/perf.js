@@ -40,6 +40,7 @@
   var fetchSamples = [];
   var measureSamples = [];
   var fetchCount = 0;
+  var fetchesInFlight = 0;
   var fetchAbortCount = 0;
   var fetchHttp4xxCount = 0;
   var fetchHttp5xxCount = 0;
@@ -87,7 +88,7 @@
   var labelTotals = {};
   var labelOverflowed = 0;
 
-  function _tally(label, durationMs, finishedAtMs) {
+  function _tally(label, durationMs, finishedAtMs, meta) {
     var tallyLabel = String(label || "(unlabelled)");
     var row = labelTotals[tallyLabel];
     if (!row && Object.keys(labelTotals).length >= MAX_LABELS - 1) {
@@ -104,6 +105,9 @@
         over_200ms: 0,
         first_ts: finishedAtMs,
         first_duration_ms: durationMs,
+        work_items_total: 0,
+        work_items_max: 0,
+        work_items_measured: false,
       };
       labelTotals[tallyLabel] = row;
     }
@@ -114,6 +118,12 @@
     }
     if (durationMs > 200) {
       row.over_200ms += 1;
+    }
+    var workItems = Number(meta?.work_items);
+    if (Number.isFinite(workItems) && workItems >= 0) {
+      row.work_items_measured = true;
+      row.work_items_total += workItems;
+      row.work_items_max = Math.max(row.work_items_max, workItems);
     }
   }
 
@@ -211,7 +221,7 @@
 
   function _recordMeasure(sample) {
     measureCount += 1;
-    _tally(sample.label, sample.duration_ms, sample.ts);
+    _tally(sample.label, sample.duration_ms, sample.ts, sample.meta);
     _record(measureSamples, "span", sample);
   }
 
@@ -232,9 +242,17 @@
             : input instanceof URL
               ? input.href
               : "";
-      var p = fetchImpl(input, init);
+      fetchesInFlight += 1;
+      var p;
+      try {
+        p = fetchImpl(input, init);
+      } catch (error) {
+        fetchesInFlight -= 1;
+        throw error;
+      }
       p.then(
         (resp) => {
+          fetchesInFlight -= 1;
           var t1 = _now();
           var status = resp?.status;
           // Sample size from Content-Length when we can; otherwise -1.
@@ -273,6 +291,7 @@
           });
         },
         (error) => {
+          fetchesInFlight -= 1;
           var t1 = _now();
           fetchCount += 1;
           var aborted = error?.name === "AbortError";
@@ -445,6 +464,7 @@
       sample_capacity: MAX_SAMPLES,
       fetch_samples_seen: fetchCount,
       fetch_samples_retained: fetchSamples.length,
+      fetches_in_flight: fetchesInFlight,
       fetch_aborts: fetchAbortCount,
       fetch_http_4xx: fetchHttp4xxCount,
       fetch_http_5xx: fetchHttp5xxCount,
@@ -490,6 +510,8 @@
             total_ms: Math.round(r.total_ms),
             max_ms: Math.round(r.max_ms),
             over_200ms: r.over_200ms,
+            work_items_total: r.work_items_measured ? r.work_items_total : null,
+            work_items_max: r.work_items_measured ? r.work_items_max : null,
             first_end_ms: Math.round(
               r.first_ts - (typeof performance !== "undefined" ? performance.timeOrigin || 0 : 0),
             ),
@@ -639,6 +661,7 @@
   var animationFramesOver200Ms = 0;
   var animationFrameBlockingTotalMs = 0;
   var animationFrameBlockingMaxMs = 0;
+  var animationFramesBlockingOver200Ms = 0;
   var forcedStyleLayoutMaxMs = 0;
   var worstAnimationFrames = [];
   var firstContentfulPaintMs = null;
@@ -859,6 +882,9 @@
         if (durationMs > 200) {
           animationFramesOver200Ms += 1;
         }
+        if (blockingMs > 200) {
+          animationFramesBlockingOver200Ms += 1;
+        }
         if (durationMs < 200) {
           continue;
         }
@@ -1044,6 +1070,9 @@
       animation_frame_blocking_ms_max: frameAttributionSupported
         ? animationFrameBlockingMaxMs
         : null,
+      animation_frames_blocking_over_200ms: frameAttributionSupported
+        ? animationFramesBlockingOver200Ms
+        : null,
       forced_style_layout_ms_max: frameAttributionSupported
         ? Math.round(forcedStyleLayoutMaxMs)
         : null,
@@ -1097,6 +1126,7 @@
     animationFramesOver200Ms = 0;
     animationFrameBlockingTotalMs = 0;
     animationFrameBlockingMaxMs = 0;
+    animationFramesBlockingOver200Ms = 0;
     forcedStyleLayoutMaxMs = 0;
     worstAnimationFrames.length = 0;
     firstContentfulPaintMs = null;

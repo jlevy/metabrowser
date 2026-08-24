@@ -216,6 +216,17 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
     assert "window.MetabrowserCatalogFeed.create" in init_block
 
 
+def test_catalog_delivery_is_attributed_with_bounded_work_volume() -> None:
+    feed = proc_browser.STATIC_DIR.joinpath("catalog-feed.js").read_text()
+
+    assert '"knownFileCatalog:applyCatalogChange"' in feed
+    assert "work_items: upserts + subtreeRemoves + fileRemoves" in feed
+    assert '"knownFileCatalog:applyBulkSnapshot"' in feed
+    assert "work_items: Array.isArray(payload.files) ? payload.files.length : 0" in feed
+    assert "subtree_removes: subtreeRemoves" in feed
+    assert "file_removes: fileRemoves" in feed
+
+
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
     js = _read_app_js()
     select_file = js[
