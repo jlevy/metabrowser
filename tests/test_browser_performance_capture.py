@@ -106,3 +106,14 @@ def test_probe_freezes_product_responsiveness_before_diagnostic_work() -> None:
 
     assert snapshot < source.index("new PerformanceObserver")
     assert snapshot < source.index('fetch("/api/tree?depth=1"')
+
+
+def test_probe_does_not_classify_script_preloads_as_stylesheets() -> None:
+    source = PROBE.read_text(encoding="utf-8")
+    scripts = source[source.index("const scripts =") : source.index("const startupScripts =")]
+    styles = source[source.index("const styles =") : source.index("const images =")]
+
+    assert 'pathname.endsWith(".js")' in scripts
+    assert 'initiatorType === "script"' not in scripts
+    assert 'pathname.endsWith(".css")' in styles
+    assert 'initiatorType === "link"' not in styles

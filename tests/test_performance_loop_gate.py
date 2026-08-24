@@ -46,7 +46,7 @@ def _run(label: str, **overrides: object) -> dict[str, Any]:
         "files": 100,
         "frame_missing_px": 0,
         "index_status_at_probe": "done",
-        "harness_version": 12,
+        "harness_version": 14,
         "interaction_input_coverage_pct": 90,
         "interaction_inputs": 6,
         "interaction_max_ms": 90,
@@ -103,6 +103,25 @@ def test_external_browser_benchmark_requires_an_immutable_build_reference() -> N
         "commit": "v0.6.0",
         "dirty": False,
     }
+
+
+def test_port_allocation_outlives_the_original_hundred_run_range(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    module = _runner()
+    module.PORTS_USED = tmp_path / "ports-used"
+    module._load_runs = lambda: [{"port": port} for port in range(8600, 8700)]
+    checked: list[str] = []
+
+    def unavailable(url: str, *, timeout: float) -> None:
+        checked.append(url)
+        assert timeout == 0.2
+        raise OSError
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", unavailable)
+
+    assert module._next_port() == 8700
+    assert checked == ["http://127.0.0.1:8700/"]
 
 
 def test_browser_profile_can_be_loaded_from_a_file(tmp_path: Any) -> None:

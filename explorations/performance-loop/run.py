@@ -85,6 +85,14 @@ PENDING = HERE / "results" / "pending.json"
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
 #
+# 14: JavaScript transfer and startup attribution classify `.js` URL paths too.
+# A preloaded script has a `link` initiator and its later script tag reuses that
+# response, so initiator-only classification omitted the application shell.
+#
+# 13: stylesheet transfer is classified by a `.css` URL path rather than by
+# the Resource Timing `link` initiator. The latter also includes script and
+# font preloads and double-counted the preloaded application shell as CSS.
+#
 # 12: the driver sends a final controlled input at the product-settle boundary,
 # and the application adapter freezes the navigation-time profile before its
 # own observer wait and diagnostic fetches. Fast loads no longer fail coverage
@@ -134,13 +142,13 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 12
+HARNESS_VERSION = 14
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
 MIN_VIEWPORT = (900, 600)
 FIRST_PORT = 8600
-LAST_PORT = 8699
+LAST_PORT = 65_535
 # The metrics compare prints, in the order they matter to a reader.
 METRICS = (
     "ttfb_ms",
@@ -314,7 +322,7 @@ def _next_port() -> int:
             return port
         except OSError:
             return port
-    raise SystemExit(f"no free port in {FIRST_PORT}-{LAST_PORT}; clear results/runs.jsonl")
+    raise SystemExit(f"no unused loopback port in {FIRST_PORT}-{LAST_PORT}")
 
 
 def _load_runs() -> list[dict[str, Any]]:

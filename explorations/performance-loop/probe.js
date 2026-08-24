@@ -89,12 +89,16 @@
     Math.round(list.reduce((total, r) => total + (r.transferSize || 0), 0) / 1024);
   const vendor = resources.filter((r) => r.name.includes("/static/vendor/"));
   const subtree = resources.filter((r) => r.name.includes("/api/tree?path="));
-  const scripts = resources.filter((r) => r.initiatorType === "script");
+  // A preloaded script has Resource Timing initiator type `link`, and its later
+  // script tag reuses that response without creating a second entry. Classify
+  // scripts and styles by the requested path so preloading changes scheduling,
+  // not the category totals.
+  const scripts = resources.filter((r) => new URL(r.name).pathname.endsWith(".js"));
   const startupScripts = scripts.filter(
     (r) =>
       !r.name.includes("/static/vendor/") && r.startTime < Number(nav.domContentLoadedEventEnd),
   );
-  const styles = resources.filter((r) => r.initiatorType === "link" || r.name.endsWith(".css"));
+  const styles = resources.filter((r) => new URL(r.name).pathname.endsWith(".css"));
   const images = resources.filter((r) => r.initiatorType === "img");
   const apiResources = resources.filter((r) => r.name.includes("/api/"));
 
