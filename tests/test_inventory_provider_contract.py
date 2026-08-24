@@ -85,9 +85,7 @@ async def _open_settled_provider(
 ) -> InventoryHandle:
     handle = await factory().open(root, config or InventoryConfig())
     for _attempt in range(500):
-        result = await handle.read(
-            ReadRequest(queries=(DiagnosticsQuery(query_id="settled-state"),))
-        )
+        result = await handle.read(ReadRequest())
         if result.state.phase in {LifecyclePhase.WATCHING, LifecyclePhase.FAILED}:
             return handle
         await asyncio.sleep(0.005)
@@ -151,10 +149,8 @@ def test_bounded_queries_reject_nonpositive_bounds(
         query_type(query_id="q", **kwargs)
 
 
-def test_read_request_rejects_empty_or_duplicate_projection_ids() -> None:
-    with pytest.raises(ValueError, match="at least one"):
-        ReadRequest(queries=())
-
+def test_read_request_defaults_to_a_checkpoint_and_rejects_duplicate_projection_ids() -> None:
+    assert ReadRequest().queries == ()
     with pytest.raises(ValueError, match="unique"):
         ReadRequest(
             queries=(
@@ -302,6 +298,30 @@ def test_protocols_are_structural_and_provider_neutral() -> None:
         "metabrowser.inventory",
         "metabrowser.sse",
     }
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_checkpoint_read_returns_only_a_coherent_constant_work_envelope(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "file.txt").write_text("content", encoding="utf-8")
+
+    async def run() -> None:
+        handle = await _open_settled_provider(provider_factory, tmp_path)
+        try:
+            checkpoint = await handle.read(ReadRequest())
+            assert checkpoint.projections == ()
+            assert checkpoint.version.session == checkpoint.cursor.session
+            assert checkpoint.version.sequence == checkpoint.cursor.sequence
+            assert checkpoint.state.phase is LifecyclePhase.WATCHING
+            assert checkpoint.work.entries_visited == 0
+            assert checkpoint.work.directories_visited == 0
+            assert checkpoint.work.rows_returned == 0
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)

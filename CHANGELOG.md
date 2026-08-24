@@ -11,8 +11,8 @@ Inventory engine:
   Cache hits return that read’s original version and state and report zero entries
   visited; they never label older tallies as facts from the current engine version.
 
-- Quick File catalog validators and retained bodies are checked from constant-size
-  provider diagnostics before catalog records are read.
+- Quick File catalog validators and retained bodies are checked with a constant-work
+  provider checkpoint before catalog records are read.
   A cache miss scans the bounded Python inventory once, and catalog record flattening
   and JSON materialization stay off the request event loop.
   Catalog decorations are joined only for the activity tracker, the one consumer that

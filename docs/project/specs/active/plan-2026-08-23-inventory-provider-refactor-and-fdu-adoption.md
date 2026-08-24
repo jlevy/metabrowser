@@ -292,6 +292,9 @@ new filename.
   Preserve cooperative discovery yields, tree-first browser startup, bounded navigation
   refreshes, exact catalog invalidation, constant-work cache hits, off-loop bulk catalog
   materialization, and one Python catalog scan per complete response.
+- [x] Make an empty projection bundle the explicit constant-work checkpoint read, so
+  validators and retained-body caches can observe a coherent provider boundary without
+  coupling either provider to a dummy metadata or diagnostics query.
 
 **Phase 1 exit:** Metabrowser ships with only the Python provider and no fdu dependency.
 Every inventory consumer crosses the provider-neutral coordinator, one handle owns all

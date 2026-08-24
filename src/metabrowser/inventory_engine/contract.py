@@ -557,12 +557,10 @@ QUERY_TYPE_BY_KIND: Mapping[str, type[ReadQuery]] = {
 
 @dataclass(frozen=True, slots=True)
 class ReadRequest:
-    queries: tuple[ReadQuery, ...]
+    queries: tuple[ReadQuery, ...] = ()
     at_version: EngineVersion | None = None
 
     def __post_init__(self) -> None:
-        if not self.queries:
-            raise ValueError("a read request requires at least one query")
         query_ids = [query.query_id for query in self.queries]
         if len(query_ids) != len(set(query_ids)):
             raise ValueError("query_id values must be unique within a read request")

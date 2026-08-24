@@ -1091,9 +1091,7 @@ def _catalog_etag(engine: EngineVersion) -> str:
 async def _catalog_checkpoint(runtime: InventoryRuntime) -> str:
     """Read the current catalog identity without traversing catalog records."""
 
-    coordinated = await runtime.coordinator.read(
-        ReadRequest(queries=(DiagnosticsQuery(query_id="catalog-checkpoint"),))
-    )
+    coordinated = await runtime.coordinator.read(ReadRequest())
     engine = coordinated.version.engine
     return _catalog_etag(engine)
 

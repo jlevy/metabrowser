@@ -95,6 +95,11 @@ Each record has a request-local `query_id`, and identifiers must be unique withi
 bundled read. Output bounds are mandatory at the provider boundary even when an HTTP
 route later assembles a complete response from version-pinned pages.
 
+`ReadRequest()` with no projections is the constant-work checkpoint form.
+It returns only the coherent version, cursor, lifecycle state, and work envelope.
+Routes use it to validate retained bodies before paying for a projection; an empty read
+must not traverse inventory entries or manufacture a diagnostics dependency.
+
 | Kind | Query | Required bound | Result |
 | --- | --- | --- | --- |
 | `entry` | `EntryQuery` | One relative path | Present, absent, or unknown lookup plus filesystem facts |
@@ -225,7 +230,7 @@ and
 | `/api/tree` | `DirectoryQuery` or `FilteredTreeQuery`, bundled with `NavigationQuery` for root tallies |
 | `/api/rollup` and folder hooks | `RollupQuery` |
 | `/api/recent` | `RecentQuery` |
-| Quick File catalog | Version-pinned `CatalogQuery` pages; the Python scope fits in one page bounded by `InventoryConfig.max_entries` |
+| Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages; the Python scope fits in one page bounded by `InventoryConfig.max_entries` |
 | `/api/file` folder facts | `EntryQuery` |
 | Initial browser stream | Bounded entry and directory reads followed by `changes()` from the captured cursor |
 | Live browser stream | `changes()` plus coherent rereads |
