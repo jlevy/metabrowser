@@ -195,17 +195,22 @@ export function applySideTokens(hunk, sideName, tokenLines) {
  * @param {AbortSignal | undefined} signal
  */
 export async function highlightFileSyntax(model, api, signal) {
+  signal?.throwIfAborted();
   if (api.isLargeTextPreview({ size: model.inputBytes })) {
     return false;
   }
   let enhanced = false;
   for (const hunk of model.hunks) {
     if (hunk.oldLineIndices.length > 0 && model.oldLanguage) {
+      signal?.throwIfAborted();
       const oldTokens = await api.highlightSyntax(hunk.oldSource, model.oldLanguage, { signal });
+      signal?.throwIfAborted();
       enhanced = applySideTokens(hunk, "old", oldTokens) || enhanced;
     }
     if (hunk.newLineIndices.length > 0 && model.newLanguage) {
+      signal?.throwIfAborted();
       const newTokens = await api.highlightSyntax(hunk.newSource, model.newLanguage, { signal });
+      signal?.throwIfAborted();
       enhanced = applySideTokens(hunk, "new", newTokens) || enhanced;
     }
   }

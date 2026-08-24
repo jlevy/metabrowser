@@ -148,10 +148,14 @@ function check(label, condition, detail = "") {
   }
 }
 
+function tokenLines(source, className) {
+  return source.split("\n").map((text) => [{ classes: [`hljs-${className}`], text }]);
+}
+
 async function main() {
   global.document = { createElement: (tag) => new FakeElement(tag) };
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
-  const { mountDiffView } = await import(pathToFileURL(viewPath).href);
+  const { mountDiffView, setChangeLoader } = await import(pathToFileURL(viewPath).href);
   const corpus = JSON.parse(
     fs.readFileSync(
       path.join(repoRoot, "src/metabrowser/data/file-diff-format/file-diff-conformance.json"),
@@ -159,6 +163,11 @@ async function main() {
     ),
   );
   const byName = new Map(corpus.cases.map((entry) => [entry.name, entry.document]));
+  const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const nextSyntaxUnit = async () => {
+    await Promise.resolve();
+    await nextTask();
+  };
 
   // A modified file renders numbered rows with the right ops.
   const container = new FakeElement("div");
@@ -201,7 +210,7 @@ async function main() {
     "diff token hosts escape the global enhancer",
     plainHosts.every((host) => host.tagName === "SPAN" && host.classList.contains("hljs")),
   );
-  await new Promise((resolve) => setImmediate(resolve));
+  await nextSyntaxUnit();
   const highlightedLines = highlighted.find("diff-line");
   const contextHost = highlightedLines[0].find("diff-line-text")[0];
   const deletionHost = highlightedLines[1].find("diff-line-text")[0];
@@ -233,7 +242,7 @@ async function main() {
     highlightSyntax: async (source) =>
       source.split("\n").map((text) => [{ classes: ["hljs-keyword"], text }]),
   });
-  await new Promise((resolve) => setImmediate(resolve));
+  await nextSyntaxUnit();
   const unsafeHost = unsafe.find("diff-line-add")[0].find("diff-line-text")[0];
   check("token text is assigned without HTML parsing", unsafeHost.innerHTML === "");
   check(
@@ -246,7 +255,7 @@ async function main() {
     ...syntaxApi,
     highlightSyntax: async () => null,
   });
-  await new Promise((resolve) => setImmediate(resolve));
+  await nextSyntaxUnit();
   check(
     "failed enhancement leaves complete plain text",
     failed.find("diff-line-text").every((host) => host.children.length === 0),
@@ -317,7 +326,7 @@ async function main() {
     "layout control is always present",
     split.find("diff-layout-control")[0].innerHTML.includes('role="radiogroup"'),
   );
-  await new Promise((resolve) => setImmediate(resolve));
+  await nextSyntaxUnit();
   const splitContextSides = splitContext.find("diff-split-side");
   check(
     "split context keeps each side's tokens",
@@ -325,6 +334,7 @@ async function main() {
       splitContextSides[1].find("diff-line-text")[0].children[0].classList.contains("hljs-new"),
   );
   const callsBeforeSwitch = layoutSyntaxCalls;
+  const splitLayoutChange = layoutChange;
   layoutChange("diff-layout", "unified", "one");
   check("layout switch reprojects immediately", split.find("diff-split-row").length === 0);
   check("unified switch restores four source rows", split.find("diff-line").length === 4);
@@ -335,6 +345,14 @@ async function main() {
   layoutChange("diff-layout", "split", "one");
   layoutChange("diff-layout", "unified", "one");
   check("repeated switches never re-run the lexer", layoutSyntaxCalls === callsBeforeSwitch);
+  const splitBar = split.find("diff-file-bar")[0];
+  const splitBody = split.find("diff-file-body")[0];
+  splitBar.click();
+  splitLayoutChange("diff-layout", "split", "one");
+  check(
+    "collapsed file state survives reprojection",
+    splitBody.classList.contains("diff-file-body-collapsed"),
+  );
 
   const unequalDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
   unequalDoc.patches.f1.hunks[0].lines = [
@@ -524,6 +542,12 @@ async function main() {
   const switchingFold = new FakeElement("div");
   mountDiffView(switchingFold, longDoc, layoutApi);
   const switchingControl = switchingFold.find("diff-fold-control")[0];
+  const splitFoldGroup = switchingFold.find("diff-fold-group")[0];
+  check(
+    "split fold hides one paired interval across unequal sides",
+    splitFoldGroup.find("diff-split-row").length === 40 &&
+      splitFoldGroup.find("diff-split-empty").length === 40,
+  );
   switchingControl.click();
   layoutChange("diff-layout", "unified", "one");
   layoutChange("diff-layout", "split", "one");
@@ -535,6 +559,123 @@ async function main() {
   check(
     "restored split fold stays visible",
     !switchingFold.find("diff-fold-group")[0].classList.contains("diff-fold-collapsed"),
+  );
+
+  // Deferred data and syntax share one mount lifetime. Layout changes
+  // only alter the projection; pending work is neither restarted nor
+  // allowed to mutate state after disposal.
+  const deferredDoc = JSON.parse(JSON.stringify(byName.get("deferred-manifest-only")));
+  deferredDoc.__revision = "revision-1";
+  let deferredResolve;
+  let deferredSignal;
+  let deferredLoads = 0;
+  setChangeLoader((_revision, _path, options) => {
+    deferredLoads += 1;
+    deferredSignal = options?.signal;
+    return new Promise((resolve) => {
+      deferredResolve = resolve;
+    });
+  });
+  const hydrated = new FakeElement("div");
+  mountDiffView(hydrated, deferredDoc, layoutApi);
+  const deferredLayoutChange = layoutChange;
+  check("deferred loader receives the mount signal", deferredSignal instanceof AbortSignal);
+  deferredLayoutChange("diff-layout", "unified", "one");
+  deferredResolve(JSON.parse(JSON.stringify(byName.get("modified-with-heading"))));
+  await nextTask();
+  check("deferred file hydrates exactly once", deferredLoads === 1, String(deferredLoads));
+  check("pending hydration uses the latest layout", hydrated.find("diff-line").length === 4);
+
+  let disposedFetchResolve;
+  let disposedFetchSignal;
+  setChangeLoader((_revision, _path, options) => {
+    disposedFetchSignal = options?.signal;
+    return new Promise((resolve) => {
+      disposedFetchResolve = resolve;
+    });
+  });
+  const disposedFetch = new FakeElement("div");
+  const disposedFetchHandle = mountDiffView(disposedFetch, deferredDoc, layoutApi);
+  const detachedBody = disposedFetch.find("diff-file-body")[0];
+  disposedFetchHandle.dispose();
+  check("dispose aborts deferred fetches", disposedFetchSignal?.aborted === true);
+  disposedFetchResolve(JSON.parse(JSON.stringify(byName.get("modified-with-heading"))));
+  await nextTask();
+  check(
+    "late fetch completion cannot mutate detached DOM",
+    detachedBody.find("diff-progress").length === 1 && detachedBody.find("diff-line").length === 0,
+  );
+
+  let tokenResolve;
+  let tokenSignal;
+  let tokenSource = "";
+  let tokenCalls = 0;
+  const pendingTokenApi = {
+    highlightSyntax: (source, _language, options) => {
+      tokenCalls += 1;
+      tokenSource = source;
+      tokenSignal = options?.signal;
+      if (tokenCalls > 1) {
+        return Promise.resolve(null);
+      }
+      return new Promise((resolve) => {
+        tokenResolve = resolve;
+      });
+    },
+    isLargeTextPreview: () => false,
+    langForExtension: () => "python",
+  };
+  const disposedSyntax = new FakeElement("div");
+  const disposedSyntaxHandle = mountDiffView(
+    disposedSyntax,
+    byName.get("modified-with-heading"),
+    pendingTokenApi,
+  );
+  const detachedHosts = disposedSyntax.find("diff-line-text");
+  await nextSyntaxUnit();
+  check("syntax work starts after plain paint", tokenCalls === 1, String(tokenCalls));
+  disposedSyntaxHandle.dispose();
+  check("dispose aborts syntax waits", tokenSignal?.aborted === true);
+  tokenResolve(tokenLines(tokenSource, "late"));
+  await nextTask();
+  check(
+    "late syntax completion cannot mutate detached hosts",
+    detachedHosts.every((host) => host.children.length === 0),
+  );
+
+  const queuedDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
+  const secondChange = JSON.parse(JSON.stringify(queuedDoc.manifest.files[0]));
+  secondChange.id = "f2";
+  secondChange.old.path = "b.py";
+  secondChange.new.path = "b.py";
+  queuedDoc.manifest.files.push(secondChange);
+  queuedDoc.manifest.totals.files = 2;
+  const secondPatch = JSON.parse(JSON.stringify(queuedDoc.patches.f1));
+  secondPatch.file_id = "f2";
+  secondPatch.hunks[0].lines[0].text = "second file";
+  queuedDoc.patches.f2 = secondPatch;
+  const queueCalls = [];
+  const queueApi = {
+    highlightSyntax: async (source) => {
+      queueCalls.push(source);
+      if (queueCalls.length === 1) {
+        throw new Error("first file failed");
+      }
+      return tokenLines(source, "queue");
+    },
+    isLargeTextPreview: () => false,
+    langForExtension: () => "python",
+  };
+  const queued = new FakeElement("div");
+  mountDiffView(queued, queuedDoc, queueApi);
+  check("many-file enhancement yields after plain paint", queueCalls.length === 0);
+  await nextSyntaxUnit();
+  check("only the first file runs in the first task", queueCalls.length === 1);
+  await nextSyntaxUnit();
+  check(
+    "one failed file does not block the next queued file",
+    queueCalls.length === 3 && queueCalls[1].includes("second file"),
+    JSON.stringify(queueCalls),
   );
 
   // The no-newline marker is visible, not silently dropped.

@@ -214,6 +214,38 @@ async function main() {
   );
   check("unknown side languages stay plain", unknown === false && unknownCalls === 0);
 
+  const abortedModel = buildFileSyntaxModel(
+    change,
+    patch,
+    (extension) => languages[extension] ?? "",
+  );
+  const controller = new AbortController();
+  let releaseIgnoredAbort;
+  const ignoredAbort = highlightFileSyntax(
+    abortedModel,
+    {
+      isLargeTextPreview: () => false,
+      highlightSyntax: () =>
+        new Promise((resolve) => {
+          releaseIgnoredAbort = resolve;
+        }),
+    },
+    controller.signal,
+  );
+  controller.abort();
+  releaseIgnoredAbort(tokenLines(abortedModel.hunks[0].oldSource, "late"));
+  let abortName = "";
+  try {
+    await ignoredAbort;
+  } catch (error) {
+    abortName = error?.name ?? "";
+  }
+  check("abort is rechecked after an uncooperative helper", abortName === "AbortError", abortName);
+  check(
+    "late helper output never mutates cached tokens",
+    abortedModel.hunks[0].lines.every((line) => line.oldTokens === null),
+  );
+
   if (failures.length > 0) {
     for (const failure of failures) {
       console.error(failure);

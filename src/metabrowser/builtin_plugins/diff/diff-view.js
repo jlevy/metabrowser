@@ -35,10 +35,16 @@ import { buildFileSyntaxModel, highlightFileSyntax } from "./diff-syntax.js";
 /**
  * @typedef {object} MountedDiffState
  * @property {DiffViewApi | undefined} api
+ * @property {AbortController} controller
+ * @property {boolean} disposed
  * @property {FileViewState[]} files
+ * @property {number} generation
  * @property {"unified" | "split"} layout
  * @property {HTMLElement | null} layoutControl
  * @property {HTMLElement} root
+ * @property {Promise<void>} syntaxTail
+ * @property {Set<number>} timers
+ * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  */
 
 /**
@@ -46,7 +52,7 @@ import { buildFileSyntaxModel, highlightFileSyntax } from "./diff-syntax.js";
  * this module keeps its only job — projecting a document — and stays
  * testable without a shell.
  *
- * @type {(revision: string, path: string) => Promise<Record<string, unknown>>}
+ * @type {(revision: string, path: string, options?: {signal?: AbortSignal}) => Promise<Record<string, unknown>>}
  */
 let loadOneChange = async () => {
   throw new Error("no loader configured");
@@ -63,7 +69,7 @@ function plainSyntaxApi() {
   };
 }
 
-/** @param {(revision: string, path: string) => Promise<Record<string, unknown>>} loader */
+/** @param {(revision: string, path: string, options?: {signal?: AbortSignal}) => Promise<Record<string, unknown>>} loader */
 export function setChangeLoader(loader) {
   loadOneChange = loader;
 }
@@ -428,11 +434,13 @@ export function renderFileBody(state, layout) {
  * stays on the semantic records for later projections.
  * @param {FileViewState} state
  * @param {DiffViewApi} api
+ * @param {AbortSignal} signal
+ * @param {() => boolean} isCurrent
  */
-async function enhanceFileSyntax(state, api) {
+async function enhanceFileSyntax(state, api, signal, isCurrent) {
   try {
-    const enhanced = await highlightFileSyntax(state.syntax, api, undefined);
-    if (!enhanced) {
+    const enhanced = await highlightFileSyntax(state.syntax, api, signal);
+    if (!enhanced || !isCurrent()) {
       return;
     }
     for (const { host, line, side } of state.textHosts) {
@@ -442,8 +450,59 @@ async function enhanceFileSyntax(state, api) {
       }
     }
   } catch (error) {
+    if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      return;
+    }
     console.warn("metabrowser diff: syntax enhancement failed", error);
   }
+}
+
+/** @param {MountedDiffState} view @param {number} generation */
+function mountIsCurrent(view, generation) {
+  return !view.disposed && view.generation === generation;
+}
+
+/**
+ * Yield one task between file-sized lexer units. Disposal resolves the
+ * waiter as inactive instead of leaving the queue pending.
+ * @param {MountedDiffState} view
+ * @param {number} generation
+ */
+function yieldForSyntax(view, generation) {
+  return new Promise((resolve) => {
+    if (!mountIsCurrent(view, generation)) {
+      resolve(false);
+      return;
+    }
+    const waiter = { resolve, timer: 0 };
+    waiter.timer = setTimeout(() => {
+      view.yielders.delete(waiter);
+      resolve(mountIsCurrent(view, generation));
+    }, 0);
+    view.yielders.add(waiter);
+  });
+}
+
+/**
+ * Serialize syntax enhancement in document order. Each file failure is
+ * contained by enhanceFileSyntax, so the tail always reaches later files.
+ * @param {MountedDiffState} view
+ * @param {FileViewState} state
+ */
+function scheduleSyntaxEnhancement(view, state) {
+  if (!view.api) {
+    return;
+  }
+  const api = view.api;
+  const generation = view.generation;
+  view.syntaxTail = view.syntaxTail.then(async () => {
+    if (!(await yieldForSyntax(view, generation))) {
+      return;
+    }
+    await enhanceFileSyntax(state, api, view.controller.signal, () =>
+      mountIsCurrent(view, generation),
+    );
+  });
 }
 
 /**
@@ -592,6 +651,9 @@ function renderLayoutControl(view) {
  * @param {boolean} [persist]
  */
 export function setLayout(view, value, persist = true) {
+  if (view.disposed) {
+    return;
+  }
   const layout = value === "split" ? "split" : "unified";
   if (layout === view.layout) {
     return;
@@ -662,16 +724,24 @@ function renderDiffToolbar(totals, view) {
  * @param {MountedDiffState} view
  */
 async function hydrateDeferred(body, change, revision, view) {
+  const generation = view.generation;
   const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
   const path = String(side?.path ?? "");
   const box = progressBox(`Loading the diff for ${path}`);
   body.append(box);
   const started = Date.now();
   const slow = setTimeout(() => {
-    reportLoad("file hydration", { revision, path, elapsedMs: Date.now() - started });
+    view.timers.delete(slow);
+    if (mountIsCurrent(view, generation)) {
+      reportLoad("file hydration", { revision, path, elapsedMs: Date.now() - started });
+    }
   }, SLOW_LOAD_MS);
+  view.timers.add(slow);
   try {
-    const payload = await loadOneChange(revision, path);
+    const payload = await loadOneChange(revision, path, { signal: view.controller.signal });
+    if (!mountIsCurrent(view, generation)) {
+      return;
+    }
     const result = validateDocument(payload);
     if (!result.ok) {
       throw new Error(`invalid document: ${result.error}`);
@@ -694,11 +764,16 @@ async function hydrateDeferred(body, change, revision, view) {
       const state = createFileState(only, patch, renderApi, body);
       view.files.push(state);
       renderFileBody(state, view.layout);
-      if (view.api) {
-        void enhanceFileSyntax(state, view.api);
-      }
+      scheduleSyntaxEnhancement(view, state);
     }
   } catch (error) {
+    if (
+      !mountIsCurrent(view, generation) ||
+      view.controller.signal.aborted ||
+      (error instanceof DOMException && error.name === "AbortError")
+    ) {
+      return;
+    }
     reportLoad(
       "file hydration",
       { revision, path, hook: "diff/comparison", elapsedMs: Date.now() - started },
@@ -708,6 +783,7 @@ async function hydrateDeferred(body, change, revision, view) {
     body.append(el("div", "diff-availability", "Could not load this file's changes."));
   } finally {
     clearTimeout(slow);
+    view.timers.delete(slow);
   }
 }
 
@@ -768,9 +844,7 @@ function renderFileSection(change, patch, context, view) {
   const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body);
   view.files.push(state);
   renderFileBody(state, view.layout);
-  if (view.api) {
-    void enhanceFileSyntax(state, view.api);
-  }
+  scheduleSyntaxEnhancement(view, state);
   return section;
 }
 
@@ -787,10 +861,16 @@ export function mountDiffView(container, document_, api) {
   /** @type {MountedDiffState} */
   const view = {
     api,
+    controller: new AbortController(),
+    disposed: false,
     files: [],
+    generation: 1,
     layout: readLayoutPreference(api),
     layoutControl: null,
     root,
+    syntaxTail: Promise.resolve(),
+    timers: new Set(),
+    yielders: new Set(),
   };
   root.dataset.layout = view.layout;
   const manifest =
@@ -811,6 +891,21 @@ export function mountDiffView(container, document_, api) {
   container.append(root);
   return {
     dispose() {
+      if (view.disposed) {
+        return;
+      }
+      view.disposed = true;
+      view.generation += 1;
+      view.controller.abort();
+      for (const timer of view.timers) {
+        clearTimeout(timer);
+      }
+      view.timers.clear();
+      for (const waiter of view.yielders) {
+        clearTimeout(waiter.timer);
+        waiter.resolve(false);
+      }
+      view.yielders.clear();
       unbind();
       root.remove();
     },

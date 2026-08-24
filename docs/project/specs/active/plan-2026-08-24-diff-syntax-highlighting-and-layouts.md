@@ -394,7 +394,7 @@ without network or lexer work.
   pairing, empty padding, and side-specific numbers and token runs.
 - [x] Add the always-present toolbar and joined layout control, backed by the validated
   `diff.layout` preference.
-- [ ] Preserve section, fold, hydration, and token state across projection changes; keep
+- [x] Preserve section, fold, hydration, and token state across projection changes; keep
   only the active projection mounted.
 - [ ] Add split geometry, full-width hunk/fold rows, practical code-column minimums,
   horizontal overflow, one-side selection semantics, keyboard semantics, and
