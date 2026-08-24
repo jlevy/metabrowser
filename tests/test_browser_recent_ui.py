@@ -100,6 +100,8 @@ def test_index_template_renders_index_progress_footer() -> None:
 def test_index_template_versions_core_static_assets() -> None:
     html = _render_index_html()
     assert 'href="/static/styles.css?v=' in html
+    assert html.count('<link rel="preload" href="/static/app.js?v=') == 1
+    assert 'as="script">' in html[html.index('<link rel="preload" href="/static/app.js?v=') :]
     assets = (
         "/static/plugin-sdk.js",
         "/static/icons.js",
@@ -110,7 +112,7 @@ def test_index_template_versions_core_static_assets() -> None:
     positions = []
     for asset in assets:
         assert f'src="{asset}?v=' in html
-        positions.append(html.index(asset))
+        positions.append(html.index(f'<script src="{asset}?v='))
     assert positions == sorted(positions)
     deferred_assets = (
         "/static/known-file-catalog.js",

@@ -34,6 +34,7 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "fetch_http_5xx": 0,
         "fetch_network_errors": 0,
         "fetches_in_flight": 0,
+        "file_catalog_incomplete": 0,
         "first_row_ms": 300,
         "files": 100,
         "frame_missing_px": 0,
@@ -45,7 +46,7 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "inventory_delivery_attribution_missing": 0,
         "inventory_delivery_work_pct": 0.2,
         "index_status_at_probe": "done",
-        "harness_version": 10,
+        "harness_version": 11,
         "labels_overflowed": 0,
         "lcp_ms": 900,
         "long_task_max_ms": 80,
@@ -261,3 +262,11 @@ def test_eager_shell_tools_or_missing_deferred_tools_fail() -> None:
         "startup_script_requests",
         "startup_script_transfer_kb",
     }
+
+
+def test_incomplete_deferred_file_catalog_fails() -> None:
+    config = load_performance_config(BUDGETS)
+
+    issues = budget_issues(_valid_run(file_catalog_incomplete=1), config)
+
+    assert {issue.metric for issue in blocking_issues(issues)} == {"file_catalog_incomplete"}

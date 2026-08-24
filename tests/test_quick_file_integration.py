@@ -93,6 +93,10 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
     assert loaded_block.index("await loadTree();") < loaded_block.index("initDeferredShellTools()")
+    assert loaded_block.index("initDeferredShellTools()") < loaded_block.index(
+        "startInventoryEventStream();"
+    )
+    assert "await initDeferredShellTools();" not in loaded_block
     deferred = js[js.index("async function initDeferredShellTools()") : loaded_start]
     assert deferred.count("initQuickFileFinder();") == 1
 
@@ -204,15 +208,21 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 
     onopen_start = js.index("inventoryEventSource.onopen")
     onopen_block = js[onopen_start : onopen_start + 700]
+    assert "catalogFeedCanStart = true" in onopen_block
     assert "quickFileCatalogFeed?.start()" in onopen_block
 
     degraded_start = js.index("function startInventoryEventStream()")
     degraded_block = js[degraded_start : degraded_start + 600]
+    assert degraded_block.index("catalogFeedCanStart = true") < degraded_block.index(
+        "quickFileCatalogFeed?.start()"
+    )
     assert "quickFileCatalogFeed?.start()" in degraded_block
 
     init_start = js.index("function initQuickFileFinder()")
     init_block = js[init_start : init_start + 1200]
     assert "window.MetabrowserCatalogFeed.create" in init_block
+    assert "if (catalogFeedCanStart)" in init_block
+    assert "quickFileCatalogFeed.start()" in init_block
 
 
 def test_catalog_delivery_is_attributed_with_bounded_work_volume() -> None:

@@ -176,7 +176,7 @@ def test_prefetched_assets_wait_for_idle_rather_than_dom_content_loaded() -> Non
 def test_local_core_scripts_load_before_optional_assets() -> None:
     """The shell must not wait on optional libraries before registering its app."""
     html = _index_html()
-    app_pos = html.index("/static/app.js")
+    app_pos = html.index('<script src="/static/app.js')
     optional_pos = html.index("vendor/highlight.min.js")
     assert app_pos < optional_pos
     assert "metabrowser:optional-assets-loaded" in html
@@ -201,7 +201,7 @@ def test_performance_recorder_uses_the_sdk_namespace_before_application_work() -
     html = _index_html()
     sdk_position = html.index("/static/plugin-sdk.js")
     perf_position = html.index("/static/perf.js")
-    app_position = html.index("/static/app.js")
+    app_position = html.index('<script src="/static/app.js')
 
     assert html.count("/static/perf.js") == 1
     assert sdk_position < perf_position < app_position

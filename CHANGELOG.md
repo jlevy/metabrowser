@@ -97,9 +97,13 @@ Development:
   before mounting it; folder navigation and first tree paint no longer wait for
   unrelated Markdown, structured-data, log, diff, or chart code.
   Search, keyboard Help, and Git controls likewise initialize after the first usable
-  tree, with a correctness gate proving the deferred tools reached ready state.
+  tree. The live inventory starts independently, and a stream that opens before the
+  on-demand Quick File modules arrive still starts their authoritative catalog feed.
+  Separate correctness gates prove both the deferred tools and the complete catalog
+  reached ready state.
   The server-carried first rows also paint as soon as the final core script runs rather
-  than waiting for `DOMContentLoaded`.
+  than waiting for `DOMContentLoaded`; the shell preloads that already-eager final
+  script so its download does not sit behind the rest of the startup waterfall.
 
 ## 0.6.0
 

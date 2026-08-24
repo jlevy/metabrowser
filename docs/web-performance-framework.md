@@ -70,6 +70,10 @@ The loop refuses a record unless it establishes all of these facts:
   entries above its duration threshold; the separate count and span distinguish that
   good zero from an untouched or single-early-click page.
 - The application-specific completion marker says the scenario settled.
+- Application-specific readiness and correctness checks say deferred features reached
+  their final state. A scenario is not settled merely because its network and render work
+  stopped; a missed initialization event can make an incomplete application look
+  unusually fast.
 - Application fetches are idle, so backend completion cannot end the profile while the
   browser is still consuming its result.
 - The viewport clears the application’s declared floor.
@@ -95,7 +99,7 @@ becomes a good zero.
 | Visual stability | Navigation-time LCP and CLS’s maximum session window, plus adapter-defined movement and repaint counts | Improving first paint by assembling or moving the visible page afterwards, or reporting an all-session shift sum under the CLS name |
 | Rendering and memory | Named-span counts, totals, maxima, first completion, `dom_nodes`, optional natural heap, and controlled post-profile-GC retained heap | Moving work into an unmeasured callback, growing the DOM with the corpus, mistaking garbage-collection timing for retained-state growth, including measurement-only collection in UI timing, or losing early attribution to a ring buffer |
 | Network | Request count, in-flight count at capture, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Ending a profile before client work settles, losing failures from a bounded detail ring, or conflating server work with queueing, payload, and client processing |
-| Backend and correctness | Scan completion, route samples, peak RSS, corpus fingerprint, and semantic API comparison | Buying browser speed with a different answer or moving cost behind the browser boundary |
+| Backend and correctness | Scan completion, adapter-defined feature readiness and final-state checks, route samples, peak RSS, corpus fingerprint, and semantic API comparison | Buying browser speed with a missing feature, incomplete data, a different answer, or cost moved behind the browser boundary |
 
 The detail rings are intentionally bounded.
 Whole-window counts, totals, maxima, milestones, and per-label aggregates are maintained
@@ -143,11 +147,12 @@ ms, and all such callbacks together may consume at most 5% of the measurement wi
 Metabrowser also gates the startup JavaScript tier at 25 non-vendor requests and 175 KB;
 the limits retain measured headroom above its 22-request, 154 KB directory shell while
 preventing plugins or post-usable-state shell tools from returning to the critical path.
-The deferred tools carry a separate readiness gate, so transfer cannot improve by losing
-functionality. Rejected non-abort fetches and HTTP 5xx responses must also remain zero;
-aborts and 4xx responses stay visible as targets until a scenario can declare them
-intentional. The comparison checks every candidate run, not its median: one six-second
-freeze is a failure even if two clean runs would hide it statistically.
+The deferred tools and their authoritative file catalog carry separate readiness gates,
+so transfer cannot improve by losing controls or stopping at partial data.
+Rejected non-abort fetches and HTTP 5xx responses must also remain zero; aborts and 4xx
+responses stay visible as targets until a scenario can declare them intentional.
+The comparison checks every candidate run, not its median: one six-second freeze is a
+failure even if two clean runs would hide it statistically.
 
 **Roadmap targets** are visible debts, such as one tree paint or zero reserved-region
 movement. They are reported on every comparison but do not block unrelated work until
@@ -192,6 +197,8 @@ A metric that can only report success is not a guard.
 3. Write a small adapter that reads the standard snapshot and adds the application’s
    first usable state, completion marker, visible-region changes, correctness facts, and
    the resource boundary between shell startup and selected-feature loading.
+   Gate feature readiness and final data authority separately from quiescence so a
+   missed callback cannot pass as reduced work.
 4. Copy the TOML policy and replace the application targets.
    Keep the core evidence requirements and responsiveness gates unless the product has a
    stricter contract.

@@ -334,9 +334,9 @@ def test_root_entry_refreshes_summary_and_tooltip_before_row_guard() -> None:
 
 def test_dom_content_loaded_starts_inventory_event_stream() -> None:
     js = _read_app_js()
-    # The DOMContentLoaded async handler near the bottom of
-    # app.js wires startInventoryEventStream() AFTER loadTree
-    # so the snapshot can populate the just-rendered cells.
+    # The DOMContentLoaded async handler near the bottom of app.js wires the
+    # stream after loadTree, but does not await deferred shell tools. The
+    # stream can populate rendered cells without taking their loading cost.
     handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     handler_block = js[handler_start : handler_start + 3000]
     assert "await loadTree();" in handler_block
@@ -346,6 +346,7 @@ def test_dom_content_loaded_starts_inventory_event_stream() -> None:
     assert handler_block.index("await loadTree();") < handler_block.index(
         "startInventoryEventStream();"
     )
+    assert "await initDeferredShellTools();" not in handler_block
 
 
 def test_dom_content_loaded_starts_index_progress_before_load_tree() -> None:

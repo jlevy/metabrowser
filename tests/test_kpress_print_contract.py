@@ -62,7 +62,7 @@ def test_index_bootstraps_theme_before_app_paint() -> None:
     assert "data-theme" in html
     assert "data-kpress-resolved-theme" in html
     assert html.index("/static/theme-state.js") < html.index("/static/plugin-sdk.js")
-    assert html.index("/static/theme-state.js") < html.index("/static/app.js")
+    assert html.index("/static/theme-state.js") < html.index('<script src="/static/app.js')
     # Settings menu (gear) + the reading-font boot.
     assert 'id="settings-btn"' in html
     assert "metabrowser.proseFont" in html

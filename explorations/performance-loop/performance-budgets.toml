@@ -188,6 +188,13 @@ policy = "gate"
 required = true
 description = "Deferred application-lifetime search, keyboard, Help, and Git controls did not reach ready state."
 
+[metrics.file_catalog_incomplete]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "Quick File did not converge to an authoritative complete catalog after the index settled."
+
 [metrics.first_row_ms]
 category = "application"
 maximum = 500

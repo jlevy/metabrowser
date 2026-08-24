@@ -98,7 +98,7 @@ def test_index_configures_plugin_assets_for_on_demand_loading(tmp_path: Path) ->
     body = bytes(response.body).decode("utf-8")
 
     config_idx = body.index("MetabrowserPluginHost.configureAssets")
-    app_idx = body.index("/static/app.js")
+    app_idx = body.index('<script src="/static/app.js')
     assert config_idx < app_idx
     assert body.index("/plugin-static/fixture/alpha.js") < body.index(
         "/plugin-static/fixture/beta.js"

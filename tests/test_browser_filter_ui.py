@@ -1140,14 +1140,17 @@ def test_index_loads_filter_modules_before_app() -> None:
     html = _render_index_html()
     assert 'src="/static/filter-state.js?v=' in html
     assert 'src="/static/filter-controls.js?v=' in html
-    assert html.index("/static/filter-state.js") < html.index("/static/app.js")
-    assert html.index("/static/filter-controls.js") < html.index("/static/app.js")
+    app_script = html.index('<script src="/static/app.js')
+    assert html.index("/static/filter-state.js") < app_script
+    assert html.index("/static/filter-controls.js") < app_script
 
 
 def test_index_loads_pending_tally_watchdog_before_app() -> None:
     html = _render_index_html()
     assert 'src="/static/pending-tally-diagnostics.js?v=' in html
-    assert html.index("/static/pending-tally-diagnostics.js") < html.index("/static/app.js")
+    assert html.index("/static/pending-tally-diagnostics.js") < html.index(
+        '<script src="/static/app.js'
+    )
 
 
 def test_dom_content_loaded_initializes_the_filter_bar() -> None:

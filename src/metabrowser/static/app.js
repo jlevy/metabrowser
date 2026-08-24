@@ -5996,6 +5996,7 @@ function flagRunEndedBadge() {
 var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
+var catalogFeedCanStart = false;
 
 // Instrumented at the batch, not per entry: wrapping applyCellPatch itself
 // would emit one span per file and charge the measurement more than the work.
@@ -6944,6 +6945,7 @@ function _scheduleInventoryReconnect() {
     inventoryEventSource.close();
     inventoryEventSource = null;
   }
+  catalogFeedCanStart = false;
   if (_esReconnectTimer !== null) {
     return;
   }
@@ -6960,6 +6962,7 @@ function _scheduleInventoryReconnect() {
 }
 
 function _createInventoryEventSource() {
+  catalogFeedCanStart = false;
   try {
     inventoryEventSource = new EventSource("/api/events?scope=root-depth-2");
   } catch (_e) {
@@ -7021,6 +7024,7 @@ function _createInventoryEventSource() {
     _scheduleInventoryReconnect();
   });
   inventoryEventSource.onopen = () => {
+    catalogFeedCanStart = true;
     // Do not erase accumulated failure state as soon as a socket opens. A
     // connection that survives this interval is healthy enough to reset the
     // exponential backoff; repeated overflow/resync cycles keep backing off.
@@ -7046,6 +7050,7 @@ function startInventoryEventStream() {
   if (typeof EventSource === "undefined") {
     // Graceful degradation: no live deltas, but the one-shot bulk
     // fetch still gives the palette complete-as-of-fetch coverage.
+    catalogFeedCanStart = true;
     quickFileCatalogFeed?.start();
     return;
   }
@@ -7313,6 +7318,13 @@ function initQuickFileFinder() {
     quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
       catalog: knownFileCatalog,
     });
+    // The stream can open while its on-demand catalog modules are loading.
+    // Start here if that open already happened, or if this browser has no live
+    // transport; otherwise onopen starts it. JavaScript dispatches neither
+    // callback in the middle of this task, so the first fetch runs once.
+    if (catalogFeedCanStart) {
+      quickFileCatalogFeed.start();
+    }
   }
   quickFileSearchController = window.MetabrowserSearch.createController({
     maxResults: QUICK_FILE_RESULT_LIMIT,
@@ -7426,8 +7438,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // These application-lifetime controls are not prerequisites for a usable
   // tree. Start their ordered on-demand bundle only after the first tree
   // request settles, so eleven unrelated scripts cannot delay the inline row,
-  // DOMContentLoaded, or that request. Inventory and navigation continue while
-  // the bundle loads; a failed tool never takes the file browser down with it.
+  // DOMContentLoaded, that request, inventory, or navigation. The catalog feed
+  // repairs the ordering when its stream opened before the bundle arrived.
   initDeferredShellTools().catch((error) => {
     console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
   });
