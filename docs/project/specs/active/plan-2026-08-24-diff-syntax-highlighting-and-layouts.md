@@ -18,7 +18,7 @@ It also completes the related unified and split presentations with one semantic 
 model rather than two renderers.
 
 The central rule is simple: reconstruct the visible old and new source for each hunk,
-highlight those two streams independently, and attach their token fragments back to the
+highlight those two streams independently, and attach their token runs back to the
 semantic lines. Unified and split views are projections over those lines.
 The mixed patch stream is never passed to a lexer, and lines are never highlighted one
 at a time.
@@ -84,6 +84,8 @@ secondhand descriptions.
 | React Diff View | Tokenization can use full old source and reconstruct new source for better multiline accuracy. It documents that patch-only input can misclassify constructs spanning omitted context. Its split projection pairs nearby deletion and addition sequences. | Reconstruct both sides, but reset at honest hunk boundaries until full source is available. Pair each contiguous changed run by position. |
 | CodeMirror MergeView and Monaco Diff Editor | Both compare complete old and new documents and offer side-by-side and inline presentations. Their editor models solve selection, editing, alignment, and full-document state. | Keep them out of this read-only renderer. Their full-document model explains the accuracy ceiling but their runtime and editing surface do not earn a place here. |
 | Git `diff-highlight` | Intraline emphasis pairs equal-sized removed and added groups, then finds common edges rather than attempting semantic parsing. | Keep syntax tokenization separate from a future intraline overlay, and reserve stable text offsets for that overlay. |
+| `@pierre/diffs` and `@git-diff-view/core` | Both offer richer diff-rendering machinery, but adopting either would introduce a runtime dependency and bundling to a repository that currently ships neither. Their main advantage is in intraline refinement, virtualization, and worker tokenization. | Keep the owned renderer for syntax and positional split alignment. Leave the dependency gate open for the deferred features that could justify its cost. |
+| Server-side tokenization | A Pygments-style service could return highlighted source with each diff payload. | Reject it because it would add a second grammar registry and palette, change the wire format, and diverge from the client-side Highlight.js path used by regular source views. |
 
 The live GitHub review also showed progressive enhancement: split cells were readable as
 plain text first and received syntax spans shortly afterward.
@@ -94,8 +96,10 @@ That is the right failure mode for Metabrowser too.
 ### One model, two projections
 
 Each validated hunk becomes an internal array of line records with stable source text,
-operation, old and new line numbers, and optional token fragments for both sides.
-Context records can carry two token fragments because the same text may have different
+operation, old and new line numbers, and optional token-run arrays for both sides.
+Each run contains text and the active Highlight.js classes at that text offset; it is
+plain data, not a DOM node or HTML fragment.
+Context records can carry two token-run arrays because the same text may have different
 lexical state in the old and new documents.
 
 ```mermaid
@@ -104,7 +108,7 @@ flowchart LR
     H --> N[New stream<br />context + addition]
     O --> OH[Highlight once per hunk side]
     N --> NH[Highlight once per hunk side]
-    OH --> M[Semantic line records<br />old and new token fragments]
+    OH --> M[Semantic line records<br />old and new token runs]
     NH --> M
     M --> U[Unified projection]
     M --> S[Split projection]
@@ -137,17 +141,24 @@ For each ready textual file:
 3. For each hunk, join `context + del` lines into the old stream and `context + add`
    lines into the new stream.
    Keep an index from stream line back to the semantic line record.
-4. Highlight each nonempty side as one continuous fragment.
-   Never highlight the interleaved unified patch, because deletion text can corrupt the
-   new lexical state and addition text can corrupt the old one.
+4. Highlight each nonempty side as one continuous source string through the shared
+   syntax service. Never highlight the interleaved unified patch, because deletion text
+   can corrupt the new lexical state and addition text can corrupt the old one.
    Never invoke the lexer per line, because that breaks multiline strings and comments
    and multiplies call overhead.
-5. Split the highlighted fragment at text newlines while preserving and reopening any
-   active token spans. Assert that the resulting fragment count matches the source-line
-   index. If it does not, retain the plain-text records and report one diagnostic.
-6. Attach clonable token fragments to the line records and render the active projection.
-   All user source entered the highlighter as text; only markup produced by the vendored
-   highlighter is parsed, and rendered text must round-trip exactly.
+5. In the syntax service, scan Highlight.js’s constrained output vocabulary into
+   per-line token runs.
+   The scanner recognizes only opening token spans, closing spans, text, and the five
+   entities emitted by the vendored version: `&amp;`, `&lt;`, `&gt;`, `&quot;`, and
+   `&#x27;`. It rejects every other tag, attribute, class shape, or entity, carries the
+   active class stack across newlines, and decodes entities into run text; it never
+   assigns the highlighter output to `innerHTML` or asks a DOM parser to interpret it.
+6. Assert that the token-line count matches the source-line index and that concatenating
+   each line’s run text exactly reproduces its source line.
+   If either check fails, retain plain-text records and report one diagnostic.
+7. Attach the token-run arrays to the semantic line records.
+   Each projection creates token spans with `createElement`, assigns only
+   scanner-validated Highlight.js classes, and assigns content through `textContent`.
 
 A hunk is the largest honest lexical unit currently available.
 Two hunks have omitted text between them, so carrying grammar state across that gap
@@ -159,27 +170,42 @@ either layout projection.
 
 The diff plugin must not reach through `window.metabrowser` to a private shell function
 or depend directly on a third-party global.
-Add one narrow, additive SDK helper:
+Add one narrow, additive SDK helper and data shape:
 
 ```typescript
+interface MetabrowserSyntaxTokenRun {
+  classes: string[];
+  text: string;
+}
+
+type MetabrowserSyntaxTokenLines = MetabrowserSyntaxTokenRun[][];
+
 highlightSyntax(
   source: string,
   language: string,
   options?: { signal?: AbortSignal },
-): Promise<DocumentFragment | null>;
+): Promise<MetabrowserSyntaxTokenLines | null>;
 ```
 
 The helper waits for the existing prefetched syntax assets, checks that the requested
-grammar exists, enforces the shared syntax size bound, and returns a fragment containing
-only Highlight.js token spans and text.
-It resolves to `null` for an unknown language, an unavailable asset, or an over-limit
-input. Abort follows the supplied signal.
+grammar exists, enforces the shared syntax size bound, calls
+`hljs.highlight(source, { language, ignoreIllegals: true })`, and returns DOM-free token
+lines. It resolves to `null` for an unknown language, an unavailable asset, or an
+over-limit input, and treats a lexer or scanner exception as the same plain-text
+fallback. It rejects with `AbortError` when the supplied signal aborts.
+Asset failure cannot leave the promise pending: the optional chain fires
+`metabrowser:optional-assets-loaded` after both success and failure, which settles every
+waiter.
 
 This keeps asset readiness, the global Highlight.js call, input escaping, and the bound
 inside the host. The existing regular-view enhancer can continue to highlight mounted
 `<code>` elements; both paths share the same library, grammar registry, loading tier,
 and palette. No asset moves into the eager shell and no package or lockfile changes.
 
+The service reads `METABROWSER_SETTINGS.SYNTAX_HIGHLIGHT_MAX_BYTES`, which carries the
+server’s environment-aware value, and uses the package constant only when no injected
+setting exists. Update `isLargeTextPreview` to read the same value rather than retaining
+its hard-coded mirror.
 The service needs `highlight`, `getLanguage`, and `highlightElement` in the ambient
 Highlight.js declaration.
 The public SDK declaration and source change together.
@@ -190,8 +216,10 @@ Unified remains the default and retains the existing row order, line-number colu
 markers, folding, sticky file bars, and availability copy.
 The only structural change inside a text cell is a token host whose background is
 explicitly transparent.
+Rendering token data uses newly created spans and `textContent`; no shipping diff path
+parses or retains highlighted HTML.
 
-The initial render always uses `textContent`. When token fragments arrive, the renderer
+The initial render always uses `textContent`. When token runs arrive, the renderer
 replaces text cells only if the mount is still current.
 Highlighting failure leaves the plain rows untouched.
 
@@ -210,6 +238,16 @@ tokenizer.
 - Give each code side a practical minimum width and let the diff body scroll
   horizontally when the container cannot support both.
   Do not silently change the user’s selected layout at a breakpoint.
+- Allow selection from only one code side at a time.
+  Pointer-down in an old or new text column marks that side as active and suppresses
+  `user-select` on the opposite side until pointer-up or cancellation.
+  Full-width hunk headers and fold controls clear the side gate and never become part of
+  either code-column selection.
+- Count fold thresholds and labels in paired rows.
+  For a changed run with `D` deletions and `A` additions, split length is `max(D, A)`;
+  one fold boundary hides the same paired row interval on both sides.
+  Expanded state is keyed by file, hunk, and changed-run index so it survives
+  reprojection even when unified and split projected lengths differ.
 
 The positional pairing matches GitHub’s predictable presentation and leaves semantic
 intraline pairing to its own later feature.
@@ -217,7 +255,8 @@ intraline pairing to its own later feature.
 ### Layout control and preference
 
 Add a compact joined `Unified / Split` chip group to an always-present diff toolbar,
-using the design system’s existing exclusive-control primitive.
+using `mb.filterControls.groupHtml` and `bind` with `data-select="one"` and
+`data-layout="joined"`, the design system’s existing exclusive-control primitive.
 Multi-file totals share that toolbar; a single-file diff shows only the control rather
 than repeating its file name and counts.
 
@@ -253,8 +292,14 @@ addition and deletion backgrounds in light and dark themes and require the exist
 Highlighting is enhancement, so first paint, unknown languages, asset failure, and the
 large-file path are all readable plain text.
 The renderer performs at most two lexer calls per visible hunk and stores their
-projected line fragments for both layouts.
+projected token runs for both layouts.
 Switching layouts is DOM work only.
+
+Enhance one file at a time in document order and yield to the event loop between files.
+Hunks within one file stay together under the per-file input bound, while a comparison
+with many near-limit files cannot become one unbounded synchronous enhancement pass.
+Keep the aggregate-cap question in the measurement phase rather than guessing a second
+limit.
 
 Speed is not the product constraint that should complicate this slice.
 The simple main-thread implementation is preferred over a worker protocol.
@@ -273,15 +318,16 @@ change increments only the projection generation, not the data or token generati
 
 | Surface | Planned change |
 | --- | --- |
-| `static/plugin-sdk.js` | Add the bounded, abortable syntax-fragment helper over the existing prefetched Highlight.js asset. |
-| `static/types.d.ts` | Declare the SDK helper and the Highlight.js methods it uses. |
-| `builtin_plugins/diff/diff-syntax.js` | Build old/new hunk streams, split token fragments across lines, validate text round trips, and attach side-specific fragments. New fully strict module. |
+| `static/plugin-sdk.js` | Add the bounded, abortable syntax-token helper and DOM-free Highlight.js output scanner over the existing prefetched asset; unify the injected size-bound lookup. |
+| `static/types.d.ts` | Declare the SDK helper, token-run data, and the Highlight.js methods it uses. |
+| `builtin_plugins/diff/diff-syntax.js` | Build old/new hunk streams, validate token-line round trips, and attach side-specific token data. New fully strict module. |
 | `builtin_plugins/diff/diff-view.js` | Introduce stable line records, unified and split projections, the toolbar preference control, cached deferred patches, and disposal guards. |
 | `builtin_plugins/diff/index.js` | Pass the mount abort signal through deferred comparison fetches so replacement cancels both data and syntax work. |
 | `builtin_plugins/diff/styles.css` | Add split geometry, toolbar placement, transparent syntax hosts, and horizontal overflow using design tokens and shared controls. |
 | DOM behavior suites | Cover projection, preference, async enhancement, folding, hydration, switching, and disposal. |
 | Syntax palette tests | Verify the existing foreground palette over the actual diff backgrounds in both themes. |
 | Asset and SDK contract tests | Keep syntax prefetched rather than eager, and keep helper source and declarations synchronized. |
+| `CHANGELOG.md` | Record the additive syntax-token SDK helper and visible unified/split diff control. |
 
 No registered kind, view, route, format, or plugin hook changes, so the architecture
 views/models/routes map does not change.
@@ -308,16 +354,22 @@ views/models/routes map does not change.
 Ends with: the existing unified diff progressively receives the regular source palette
 while retaining its row backgrounds.
 
-- [ ] Add the typed, bounded `mb.highlightSyntax` SDK helper and focused behavior tests
-  for ready, delayed, missing, unknown-language, over-limit, and aborted cases.
+- [ ] Add the typed, bounded `mb.highlightSyntax` SDK helper and DOM-free scanner, with
+  focused behavior tests for ready, delayed, missing, unknown-language, over-limit,
+  lexer-throw, malformed-output, and aborted cases.
+  Pin the vendored entity vocabulary with a test.
 - [ ] Add the strict diff syntax module with old/new reconstruction, multiline token
-  splitting, exact text round-trip checks, and old-path/new-path language resolution.
+  data, exact text round-trip checks, and old-path/new-path language resolution.
 - [ ] Refactor hunk rendering around stable line records and enhance unified cells from
-  their side-specific token fragments.
+  their side-specific token runs.
 - [ ] Add transparent token-host styling and extend contrast tests to the add/delete
   composites in both themes.
 - [ ] Cover added, deleted, modified, renamed-across-language, unknown-language,
   no-trailing-newline, truncated, and over-limit files.
+  Include a known-degraded hunk that begins inside a multiline construct and prove the
+  error is cosmetic and contained to that hunk.
+- [ ] Assert that the shell’s global `pre code:not(.hljs)` enhancer cannot select diff
+  token hosts and double-highlight them.
 
 ### Phase 2: Split projection and effortless switching
 
@@ -325,15 +377,17 @@ Ends with: one visible control switches the loaded comparison between unified an
 without network or lexer work.
 
 - [ ] Add the split alignment projection: duplicated context, positional changed-run
-  pairing, empty padding, and side-specific numbers and token fragments.
+  pairing, empty padding, and side-specific numbers and token runs.
 - [ ] Add the always-present toolbar and joined layout control, backed by the validated
   `diff.layout` preference.
 - [ ] Preserve section, fold, hydration, and token state across projection changes; keep
   only the active projection mounted.
 - [ ] Add split geometry, full-width hunk/fold rows, practical code-column minimums,
-  horizontal overflow, keyboard semantics, and reduced-motion behavior.
+  horizontal overflow, one-side selection semantics, keyboard semantics, and
+  reduced-motion behavior.
 - [ ] Cover unequal add/delete runs, pure additions and deletions, different old/new
-  languages, narrow containers, repeated switches, and preference restoration.
+  languages, narrow containers, repeated switches, preference restoration, an
+  unequal-run fold, and multi-row copy from one split side.
 
 ### Phase 3: Browser validation and documentation reconciliation
 
@@ -345,28 +399,36 @@ points to this resolved Phase 3 design.
 - [ ] Exercise deferred hydration and disposal while syntax and patch requests are in
   flight.
 - [ ] Record representative lexer input, call count, and main-thread duration with the
-  existing performance instrumentation.
+  existing performance instrumentation, including a comparison with many ready files
+  near the per-file bound.
   Change no bound unless the measurement supports it.
 - [ ] Update the dated addendum in the general diff-rendering plan with the
   implementation outcome and measurements; leave intraline, context, whitespace, and
   virtualization in their existing follow-up bead.
+- [ ] Update `CHANGELOG.md` for the additive SDK helper and the visible unified/split
+  diff control.
 - [ ] Run `make format` and `make verify`.
 
 ## Testing Strategy
 
-- **Pure token projection.** Load the vendored Highlight.js build in the existing Node
-  harness. Assert exact visible text and token classes for multiline comments, template
-  strings, escaped `<script>` text, blank lines, trailing newlines, and grammars whose
-  spans cross line boundaries.
+- **Pure token projection.** Load the vendored Highlight.js build in the existing
+  jsdom-free Node harness.
+  Assert DOM-free token data, exact visible text, and token classes for multiline
+  comments, template strings, escaped `<script>` text, every supported emitted entity,
+  blank lines, trailing newlines, and grammars whose spans cross line boundaries.
 - **Side correctness.** Use edits that deliberately change lexical state.
   Assert that deletions use old tokens, additions use new tokens, unified context uses
   new tokens, and split context uses its respective side.
 - **Layout.** Golden DOM-shape assertions cover unified order and split pairing without
   snapshotting incidental generated IDs.
   Empty padding must not invent line numbers, markers, copyable text, or no-newline
-  state.
+  state. Unequal-run folding counts paired rows.
+  DOM behavior tests assert the pointer side gate, and a real-browser selection test
+  copies only the active split side across multiple rows.
 - **Progressive enhancement.** Mount without Highlight.js, assert complete plain text,
   make the asset ready, and assert in-place token enhancement with no data reload.
+  A failed asset chain settles to plain text, and a many-file fixture yields between
+  file units rather than running one synchronous pass.
 - **Bounds.** Cross the shared limit with the combined lexer input and assert that both
   sides stay plain. A file just below the limit highlights in both layouts without a
   second lexer pass after switching.
@@ -381,7 +443,7 @@ points to this resolved Phase 3 design.
 - **Visual contract.** Test semantic token contrast against context, addition, and
   deletion surfaces in both themes.
   Real-browser checks cover long lines, narrow panes, sticky file bars, fold controls,
-  and absence of token-level backgrounds.
+  one-side split selection, and absence of token-level backgrounds.
 
 ## Rollout
 

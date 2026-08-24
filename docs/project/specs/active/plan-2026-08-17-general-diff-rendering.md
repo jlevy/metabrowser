@@ -584,6 +584,13 @@ Syntax highlighting and the split projection will extend the in-house renderer o
 old/new semantic line model, reuse the existing vendored Highlight.js runtime and
 palette, and add no runtime dependency.
 
+The two named candidates do not earn that dependency for this slice.
+`@pierre/diffs` and `@git-diff-view/core` would both add a runtime package and bundling;
+their material advantage lies in intraline refinement, virtualization, and worker
+tokenization, which remain deferred behind the measured gate.
+The owned renderer already has the positional line model, design-token palette, and
+Content Security Policy posture that syntax and split need.
+
 That focused plan supersedes the dependency gate for syntax and split only.
 Intraline refinement, context expansion, whitespace controls, and virtualization remain
 on this plan and its existing follow-up bead; they can still trigger a measured
