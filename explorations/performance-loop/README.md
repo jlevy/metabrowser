@@ -253,9 +253,12 @@ $UV explorations/performance-loop/run.py serve --exp exp-0NN --label before --fi
 ```
 
 1. Load the URL in a **visible** browser window.
-2. Use the app while it loads — expand a folder, switch a tab.
-   `interaction_inputs` proves a trusted input occurred; an untouched page is not
-   evidence of a responsive one, so `record` refuses it.
+2. Use the app throughout the load — expand a folder, switch a tab, then interact again
+   while later inventory updates arrive.
+   `interaction_inputs` and `interaction_input_coverage_pct` prove that trusted input
+   spans the loading window.
+   An untouched page or one early click is not evidence of a responsive progressive
+   load, so `record` refuses either.
 3. Paste `probe.js` once the tree settles.
    It reads exact whole-window aggregates from `metabrowser.perf`. If that
    navigation-time source is absent, the probe labels its bounded responsiveness and
@@ -264,11 +267,17 @@ $UV explorations/performance-loop/run.py serve --exp exp-0NN --label before --fi
 
 `run.py capture --headed` performs the same sequence in a fresh Chrome profile through
 the Chrome DevTools Protocol.
-It foregrounds the headed browser on macOS, sends input through Chromium’s trusted input
-pipeline, waits for index completion, evaluates the same probe, and can pass the result
-straight to `record`. After the backend reports completion, it waits until application
-fetches are idle and browser work remains stable across several polls; a fast backend
-response cannot end the responsiveness window while the client is still consuming it.
+It foregrounds the headed browser on macOS and pulses a tiny inert paint target through
+Chromium’s trusted input pipeline from first usable state until client quiescence.
+The target changes no application state, while Event Timing observes input-to-next-paint
+latency throughout the update stream.
+The recorder requires at least five inputs spanning 80% of the measurement window.
+One early click therefore cannot miss a later freeze and certify the run.
+The driver also rejects input outside its controlled pulses, so a person clicking the
+temporary benchmark window invalidates that capture instead of quietly changing it.
+After the backend reports completion, the driver waits until application fetches are
+idle and browser work remains stable across several polls; a fast backend response
+cannot end the responsiveness window while the client is still consuming it.
 It also asks V8 to collect garbage after the scenario settles and records the resulting
 retained heap separately from the runtime-timed `performance.memory` sample.
 The driver uses Node and browser APIs already present in the development environment; it
@@ -291,7 +300,7 @@ adds no automation package or product dependency.
 | `long_tasks_over_200ms`, `total_blocking_time_ms` | Absolute-budget crossings and the standard sum of task time beyond each task’s first 50 ms | The first is the hard invariant; the second catches accumulated smaller stalls |
 | `main_thread_blocked_pct` | Blocked time over its window | Always read with `long_task_window_ms`. The same work in half the time doubles the share while improving every absolute |
 | `inventory_delivery_*` | Batch and work-item volume, worst callback, total time, and share of the measurement window for filesystem and catalog delivery | Directly guards the failure exp-012 found. A backend may produce any volume, but the browser must preserve exact operations, coalesce or slice them, and keep each synchronous delivery below 50 ms and their sustained share below 5% |
-| `interaction_inputs`, `interactions`, `interaction_p50_ms`, `interaction_p95_ms`, `interaction_max_ms` | Trusted-input coverage and interaction-to-next-paint latency from Event Timing, grouped by non-zero `interactionId` | Separates an untouched page from inputs too fast to cross Event Timing’s reporting threshold. One click’s pointer and click events count once; the profiler retains the exact interaction maximum, while percentiles describe the explicitly reported bounded recent sample |
+| `interaction_inputs`, `interaction_input_first_ms`, `interaction_input_last_ms`, `interaction_input_span_ms`, `interaction_input_coverage_pct`, `interactions`, `interaction_p50_ms`, `interaction_p95_ms`, `interaction_max_ms` | Trusted-input count and loading-window coverage, plus interaction-to-next-paint latency from Event Timing grouped by non-zero `interactionId` | Rejects untouched and single-early-click runs, separates fast inputs below Event Timing’s reporting threshold from missing input, and proves that responsiveness was sampled while later updates arrived. One click’s pointer and click events count once; the profiler retains the exact interaction maximum, while percentiles describe the explicitly reported bounded recent sample |
 | `animation_frame_*`, `forced_style_layout_ms_max`, `worst_animation_frames` | Chromium Long Animation Frame duration, attributed blocking, and bounded script/resource detail | Names the callback and rendering cost behind a Long Task without making an optional signal look universal. Attributed blocking is gated; raw duration remains a target because Chromium can report a long initial navigation frame with zero blocking or work attribution |
 | `label_totals` | Per-span count, total and max, never evicted | Attribution. `longtask` says the thread was blocked; this says by what |
 | `*_samples_seen`, `*_samples_retained`, `labels_overflowed`, `resource_timing_buffer_full` | Retention provenance | Proves bounded detail did not silently become a whole-window claim and refuses incomplete attribution or network totals |

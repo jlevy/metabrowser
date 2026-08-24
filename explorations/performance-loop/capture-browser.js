@@ -20,6 +20,9 @@ const CHROME_EXIT_GRACE_MS = 2_000;
 const CLIENT_COMPLETION_SETTLE_MS = 1_000;
 const DEVTOOLS_START_TIMEOUT_MS = 15_000;
 const FIRST_ROW_TIMEOUT_MS = 30_000;
+const INPUT_PULSE_INTERVAL_MS = 250;
+const INPUT_SENTINEL_ID = "metabrowser-performance-input-sentinel";
+const INTERACTION_OBSERVER_SETTLE_MS = 100;
 const PROFILE_EXPORT_ATTEMPTS = 3;
 const QUIESCENCE_POLL_MS = 100;
 const QUIESCENCE_STABLE_POLLS = 3;
@@ -267,18 +270,42 @@ async function evaluate(session, expression, awaitPromise = false) {
   return result.result?.value;
 }
 
-async function dispatchTrustedClick(session) {
-  const point = await evaluate(
+async function installInputSentinel(session) {
+  return evaluate(
     session,
     `(() => {
-      const target = document.querySelector('[role="treeitem"]');
-      if (!target) return null;
+      const existing = document.getElementById(${JSON.stringify(INPUT_SENTINEL_ID)});
+      existing?.remove();
+      const target = document.createElement("span");
+      target.id = ${JSON.stringify(INPUT_SENTINEL_ID)};
+      target.setAttribute("aria-hidden", "true");
+      Object.assign(target.style, {
+        backgroundColor: "rgba(0, 0, 0, 0.001)",
+        height: "3px",
+        left: "0",
+        pointerEvents: "auto",
+        position: "fixed",
+        top: "0",
+        width: "3px",
+        zIndex: "2147483647",
+      });
+      target.addEventListener("click", (event) => {
+        target.dataset.pulse = target.dataset.pulse === "a" ? "b" : "a";
+        target.style.backgroundColor = target.dataset.pulse === "a"
+          ? "rgba(0, 0, 0, 0.001)"
+          : "rgba(255, 255, 255, 0.001)";
+        event.stopPropagation();
+      });
+      document.body.append(target);
       const rect = target.getBoundingClientRect();
-      return {x: rect.left + Math.min(rect.width / 2, 24), y: rect.top + rect.height / 2};
+      return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
     })()`,
   );
+}
+
+async function dispatchTrustedClickAtPoint(session, point) {
   if (!point) {
-    throw new Error("could not find a tree row for the trusted interaction");
+    throw new Error("could not install the trusted-input sentinel");
   }
   await session.send("Input.dispatchMouseEvent", {
     type: "mouseMoved",
@@ -301,6 +328,42 @@ async function dispatchTrustedClick(session) {
     x: point.x,
     y: point.y,
   });
+}
+
+async function removeInputSentinel(session) {
+  await evaluate(
+    session,
+    `document.getElementById(${JSON.stringify(INPUT_SENTINEL_ID)})?.remove()`,
+  );
+}
+
+async function startTrustedInputPulse(session) {
+  const point = await installInputSentinel(session);
+  let count = 0;
+  let running = true;
+  let pulseError = null;
+  const completion = (async () => {
+    try {
+      while (running) {
+        await dispatchTrustedClickAtPoint(session, point);
+        count += 1;
+        await delay(INPUT_PULSE_INTERVAL_MS);
+      }
+    } catch (error) {
+      pulseError = error;
+    }
+  })();
+  return {
+    async stop() {
+      running = false;
+      await completion;
+      await removeInputSentinel(session);
+      if (pulseError) {
+        throw pulseError;
+      }
+      return count;
+    },
+  };
 }
 
 async function waitForIndex(url, timeoutMs) {
@@ -359,6 +422,12 @@ async function waitForClientQuiescence(session, timeoutMs) {
   );
 }
 
+function assertControlledInputCount(observed, expected) {
+  if (observed !== expected) {
+    throw new Error("trusted input count differs from the controlled CDP pulse count");
+  }
+}
+
 async function capture(options) {
   if (typeof WebSocket !== "function") {
     throw new Error("this Node runtime does not provide WebSocket");
@@ -397,13 +466,24 @@ async function capture(options) {
       FIRST_ROW_TIMEOUT_MS,
       "application first row and performance recorder",
     );
-    await dispatchTrustedClick(session);
-    await waitForIndex(options.url, options.timeoutMs);
-    // Completion can arm idle and timeout work (subtree warming, optional
-    // assets). Let those callbacks become observable before declaring the
-    // client quiet, then require a stable zero-in-flight window.
-    await delay(CLIENT_COMPLETION_SETTLE_MS);
-    await waitForClientQuiescence(session, options.timeoutMs);
+    // A single early interaction can miss the exact update storm this loop is
+    // meant to catch. Pulse a one-pixel, non-product sentinel from first usable
+    // state through client quiescence. The click toggles only its own paint, so
+    // Event Timing samples input-to-next-paint latency without changing the
+    // application state or adding application work to one side of a comparison.
+    const inputPulse = await startTrustedInputPulse(session);
+    let inputPulseCount;
+    try {
+      await waitForIndex(options.url, options.timeoutMs);
+      // Completion can arm idle and timeout work (subtree warming, optional
+      // assets). Let those callbacks become observable before declaring the
+      // client quiet, then require a stable zero-in-flight window.
+      await delay(CLIENT_COMPLETION_SETTLE_MS);
+      await waitForClientQuiescence(session, options.timeoutMs);
+    } finally {
+      inputPulseCount = await inputPulse.stop();
+    }
+    await delay(INTERACTION_OBSERVER_SETTLE_MS);
     // `performance.memory` is useful as an in-session endurance signal, but
     // its value also depends on when V8 last happened to collect. Capture a
     // second, controlled value after an explicit collection so comparisons
@@ -432,6 +512,7 @@ async function capture(options) {
     if (payload.interaction_inputs < 1) {
       throw new Error("CDP interaction did not reach the page as trusted input");
     }
+    assertControlledInputCount(payload.interaction_inputs, inputPulseCount);
     fs.mkdirSync(path.dirname(options.output), { recursive: true });
     fs.writeFileSync(options.output, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
     process.stdout.write(`${options.output}\n`);
@@ -467,4 +548,13 @@ if (require.main === module) {
   });
 }
 
-module.exports = { capture, chromeExecutable, parseArgs, usage, waitForClientQuiescence };
+module.exports = {
+  assertControlledInputCount,
+  capture,
+  chromeExecutable,
+  dispatchTrustedClickAtPoint,
+  parseArgs,
+  startTrustedInputPulse,
+  usage,
+  waitForClientQuiescence,
+};

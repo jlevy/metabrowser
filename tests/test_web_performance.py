@@ -38,13 +38,14 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "files": 100,
         "frame_missing_px": 0,
         "interaction_max_ms": 90,
-        "interaction_inputs": 1,
+        "interaction_input_coverage_pct": 90,
+        "interaction_inputs": 6,
         "interactions": 3,
         "inventory_delivery_max_ms": 8,
         "inventory_delivery_attribution_missing": 0,
         "inventory_delivery_work_pct": 0.2,
         "index_status_at_probe": "done",
-        "harness_version": 4,
+        "harness_version": 7,
         "labels_overflowed": 0,
         "lcp_ms": 900,
         "long_task_max_ms": 80,
@@ -79,6 +80,7 @@ def test_hidden_late_or_interaction_free_records_are_invalid() -> None:
     config = load_performance_config(BUDGETS)
     payload = _valid_run(
         ever_hidden=True,
+        interaction_input_coverage_pct=0,
         interaction_inputs=0,
         measurement_valid=False,
         performance_profile_schema=None,
@@ -94,8 +96,22 @@ def test_hidden_late_or_interaction_free_records_are_invalid() -> None:
         "late-profiler",
         "late-vitals",
         "not-visible-throughout",
-        "no-interactions",
+        "insufficient-interactions",
+        "interaction-coverage",
     } <= codes
+
+
+def test_one_early_click_cannot_claim_whole_load_responsiveness() -> None:
+    config = load_performance_config(BUDGETS)
+
+    codes = {
+        issue.code
+        for issue in validity_issues(
+            _valid_run(interaction_input_coverage_pct=0, interaction_inputs=1), config
+        )
+    }
+
+    assert {"insufficient-interactions", "interaction-coverage"} <= codes
 
 
 def test_multisecond_freeze_is_a_blocking_budget_failure() -> None:

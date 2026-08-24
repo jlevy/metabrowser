@@ -655,6 +655,8 @@
   var longTasksOver200Ms = 0;
   var interactionCount = 0;
   var interactionInputCount = 0;
+  var interactionInputFirstMs = null;
+  var interactionInputLastMs = null;
   var interactionMaxMs = 0;
   var animationFrameCount = 0;
   var animationFrameMaxMs = 0;
@@ -1007,6 +1009,11 @@
     });
     var recordInteractionInput = (event) => {
       if (event.isTrusted) {
+        var inputAtMs = _now();
+        if (interactionInputFirstMs === null) {
+          interactionInputFirstMs = inputAtMs;
+        }
+        interactionInputLastMs = inputAtMs;
         interactionInputCount += 1;
       }
     };
@@ -1036,6 +1043,10 @@
   function responsiveness() {
     var latencies = interactions.map((i) => i.dur);
     var windowMs = Math.round(Math.max(0, _now() - measurementStartedAt));
+    var interactionInputSpanMs =
+      interactionInputFirstMs !== null && interactionInputLastMs !== null
+        ? Math.max(0, interactionInputLastMs - interactionInputFirstMs)
+        : 0;
     var frameAttributionSupported = !attributionNotes.includes("long-animation-frame");
     return {
       measurement_valid: !everHidden,
@@ -1055,6 +1066,17 @@
         windowMs > 0 ? Math.round((1000 * longTaskTotalMs) / windowMs) / 10 : null,
       interactions: interactionCount,
       interaction_inputs: interactionInputCount,
+      interaction_input_first_ms:
+        interactionInputFirstMs === null
+          ? null
+          : Math.round(interactionInputFirstMs - measurementStartedAt),
+      interaction_input_last_ms:
+        interactionInputLastMs === null
+          ? null
+          : Math.round(interactionInputLastMs - measurementStartedAt),
+      interaction_input_span_ms: Math.round(interactionInputSpanMs),
+      interaction_input_coverage_pct:
+        windowMs > 0 ? Math.round((1000 * interactionInputSpanMs) / windowMs) / 10 : 0,
       interaction_samples_retained: interactions.length,
       interaction_percentile_scope:
         interactionCount > interactions.length ? `most-recent-${MAX_SAMPLES}` : "all",
@@ -1120,6 +1142,8 @@
     longTasksOver200Ms = 0;
     interactionCount = 0;
     interactionInputCount = 0;
+    interactionInputFirstMs = null;
+    interactionInputLastMs = null;
     interactionMaxMs = 0;
     animationFrameCount = 0;
     animationFrameMaxMs = 0;

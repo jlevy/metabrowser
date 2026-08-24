@@ -52,3 +52,40 @@ def test_capture_browser_records_controlled_retained_heap() -> None:
     assert 'session.send("HeapProfiler.collectGarbage")' in source
     assert 'session.send("Runtime.getHeapUsage")' in source
     assert "payload.js_heap_after_gc_mb" in source
+
+
+def test_capture_browser_pulses_non_product_input_through_loading() -> None:
+    source = CAPTURE.read_text(encoding="utf-8")
+
+    assert "startTrustedInputPulse(session)" in source
+    assert "await waitForIndex(options.url, options.timeoutMs)" in source
+    assert "inputPulseCount = await inputPulse.stop()" in source
+    assert "INPUT_PULSE_INTERVAL_MS" in source
+    assert "metabrowser-performance-input-sentinel" in source
+    assert "assertControlledInputCount(payload.interaction_inputs, inputPulseCount)" in source
+
+
+def test_capture_browser_rejects_input_outside_the_controlled_pulse() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+capture.assertControlledInputCount(12, 12);
+try {{
+  capture.assertControlledInputCount(13, 12);
+}} catch (error) {{
+  process.stdout.write(String(error.message));
+}}
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "differs from the controlled CDP pulse count" in result.stdout

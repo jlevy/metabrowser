@@ -40,6 +40,8 @@ class PerformanceRequirements:
     vitals_source: str
     require_visible: bool
     require_interactions: bool
+    minimum_interaction_inputs: int
+    minimum_interaction_coverage_pct: float
     require_no_label_overflow: bool
     require_no_resource_overflow: bool
     required_observers: tuple[str, ...]
@@ -115,6 +117,21 @@ def load_performance_config(path: Path) -> PerformanceConfig:
     minimum_runs = requirements_raw.get("minimum_runs_per_condition", 1)
     if not isinstance(minimum_runs, int) or isinstance(minimum_runs, bool) or minimum_runs < 1:
         raise ValueError("requirements.minimum_runs_per_condition must be a positive integer")
+    minimum_interaction_inputs = requirements_raw.get("minimum_interaction_inputs", 1)
+    if (
+        not isinstance(minimum_interaction_inputs, int)
+        or isinstance(minimum_interaction_inputs, bool)
+        or minimum_interaction_inputs < 1
+    ):
+        raise ValueError("requirements.minimum_interaction_inputs must be a positive integer")
+    minimum_interaction_coverage_pct = requirements_raw.get("minimum_interaction_coverage_pct", 0)
+    if (
+        not isinstance(minimum_interaction_coverage_pct, (int, float))
+        or isinstance(minimum_interaction_coverage_pct, bool)
+        or not math.isfinite(float(minimum_interaction_coverage_pct))
+        or not 0 <= float(minimum_interaction_coverage_pct) <= 100
+    ):
+        raise ValueError("requirements.minimum_interaction_coverage_pct must be between 0 and 100")
     completion_field_raw = requirements_raw.get("completion_field")
     if completion_field_raw is not None and (
         not isinstance(completion_field_raw, str) or not completion_field_raw
@@ -130,6 +147,8 @@ def load_performance_config(path: Path) -> PerformanceConfig:
         vitals_source=vitals_source,
         require_visible=bool(requirements_raw.get("require_visible", True)),
         require_interactions=bool(requirements_raw.get("require_interactions", True)),
+        minimum_interaction_inputs=minimum_interaction_inputs,
+        minimum_interaction_coverage_pct=float(minimum_interaction_coverage_pct),
         require_no_label_overflow=bool(requirements_raw.get("require_no_label_overflow", True)),
         require_no_resource_overflow=bool(
             requirements_raw.get("require_no_resource_overflow", True)
@@ -245,17 +264,34 @@ def validity_issues(payload: dict[str, Any], config: PerformanceConfig) -> list[
                 message=f"required PerformanceObserver signals are unavailable: {missing_observers}",
             )
         )
-    if required.require_interactions and (
-        _number(payload.get("interaction_inputs")) is None
-        or float(payload["interaction_inputs"]) < 1
-    ):
-        issues.append(
-            PerformanceIssue(
-                kind="invalid",
-                code="no-interactions",
-                message="no trusted pointer or keyboard interaction was captured during the run",
+    if required.require_interactions:
+        interaction_inputs = _number(payload.get("interaction_inputs"))
+        if interaction_inputs is None or interaction_inputs < required.minimum_interaction_inputs:
+            issues.append(
+                PerformanceIssue(
+                    kind="invalid",
+                    code="insufficient-interactions",
+                    message=(
+                        "trusted input did not cover enough of the run: "
+                        f"need at least {required.minimum_interaction_inputs} inputs"
+                    ),
+                )
             )
-        )
+        interaction_coverage = _number(payload.get("interaction_input_coverage_pct"))
+        if (
+            interaction_coverage is None
+            or interaction_coverage < required.minimum_interaction_coverage_pct
+        ):
+            issues.append(
+                PerformanceIssue(
+                    kind="invalid",
+                    code="interaction-coverage",
+                    message=(
+                        "trusted input did not span the measured loading window: "
+                        f"need at least {required.minimum_interaction_coverage_pct:g}% coverage"
+                    ),
+                )
+            )
     if required.require_no_label_overflow:
         labels_overflowed = _number(payload.get("labels_overflowed"))
         if labels_overflowed is None:

@@ -62,11 +62,13 @@ The loop refuses a record unless it establishes all of these facts:
 - The navigation-time profiler produced the expected schema.
 - The tab stayed visible for the complete window.
 - Required `PerformanceObserver` signals were supported.
-- At least one trusted pointer or keyboard interaction occurred while measuring, and
-  Event Timing was available.
-  A fast interaction may produce no Event Timing entry because the browser reports only
-  entries above its duration threshold; trusted-input coverage distinguishes that good
-  zero from an untouched page.
+- Trusted pointer or keyboard input spans the progressive loading window, and Event
+  Timing was available.
+  The policy sets both a minimum input count and a minimum percentage from first to last
+  input over the measured window.
+  A fast input may produce no Event Timing entry because the browser reports only
+  entries above its duration threshold; the separate count and span distinguish that
+  good zero from an untouched or single-early-click page.
 - The application-specific completion marker says the scenario settled.
 - Application fetches are idle, so backend completion cannot end the profile while the
   browser is still consuming its result.
@@ -89,7 +91,7 @@ becomes a good zero.
 | Loading | `ttfb_ms`, `response_download_ms`, `dom_interactive_ms`, `dcl_ms`, `load_ms`, `fcp_ms`, `lcp_ms` | Treating a fast shell, server response, or load event as a usable application |
 | Responsiveness | Long Task count, total, maximum, first-five-second maximum, tasks over budget, Total Blocking Time, blocked share, and application-delivery callback maximum/share | Hiding one multi-second freeze inside a total, or an event storm inside individually short callbacks |
 | Frame attribution | Long Animation Frame count, maximum, blocking time, forced style/layout maximum, worst scripts and nearby resources | Knowing that the page froze without knowing which callback or rendering cost owned it |
-| Interaction | Trusted-input count plus grouped Event Timing interaction count, retained count, percentile scope, p50, p95, and exact maximum | Calling an untouched page responsive, counting one gesture’s several DOM events as several interactions, confusing no slow entry with no input, or reporting a bounded percentile as whole-session evidence |
+| Interaction | Trusted-input count, first and last offset, span, loading-window coverage, plus grouped Event Timing interaction count, retained count, percentile scope, p50, p95, and exact maximum | Calling an untouched or single-early-click page responsive, counting one gesture’s several DOM events as several interactions, confusing no slow entry with no input, or reporting a bounded percentile as whole-session evidence |
 | Visual stability | Navigation-time LCP and CLS’s maximum session window, plus adapter-defined movement and repaint counts | Improving first paint by assembling or moving the visible page afterwards, or reporting an all-session shift sum under the CLS name |
 | Rendering and memory | Named-span counts, totals, maxima, first completion, `dom_nodes`, optional natural heap, and controlled post-GC retained heap | Moving work into an unmeasured callback, growing the DOM with the corpus, mistaking garbage-collection timing for retained-state growth, or losing early attribution to a ring buffer |
 | Network | Request count, in-flight count at capture, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Ending a profile before client work settles, losing failures from a bounded detail ring, or conflating server work with queueing, payload, and client processing |
@@ -129,16 +131,19 @@ The TOML policy distinguishes two kinds of limits.
 **Hard gates** are properties the application currently satisfies and must never trade
 away. Metabrowser’s candidate must have no task or Long Animation Frame attributed
 blocking over 200 ms, no interaction over 200 ms, and no more than 5% whole-window
-blocked share.
-Raw Long Animation Frame duration remains a target: Chromium can include a
-document’s initial navigation gap even when it attributes zero blocking, rendering,
-scripts, and resources to that frame, so duration alone is not evidence that the UI
-thread was busy. Inventory and catalog delivery have a tighter attribution gate: no
-callback may cross 50 ms, and all such callbacks together may consume at most 5% of the
-measurement window. Rejected non-abort fetches and HTTP 5xx responses must also remain
-zero; aborts and 4xx responses stay visible as targets until a scenario can declare them
-intentional. The comparison checks every candidate run, not its median: one six-second
-freeze is a failure even if two clean runs would hide it statistically.
+blocked share. An admissible progressive-load profile also needs at least five trusted
+inputs spanning 80% of its measured window.
+This is an evidence requirement, not a speed budget: a run that never tested the late
+update stream cannot pass or fail responsiveness honestly.
+Raw Long Animation Frame duration remains a target: Chromium can include a document’s
+initial navigation gap even when it attributes zero blocking, rendering, scripts, and
+resources to that frame, so duration alone is not evidence that the UI thread was busy.
+Inventory and catalog delivery have a tighter attribution gate: no callback may cross 50
+ms, and all such callbacks together may consume at most 5% of the measurement window.
+Rejected non-abort fetches and HTTP 5xx responses must also remain zero; aborts and 4xx
+responses stay visible as targets until a scenario can declare them intentional.
+The comparison checks every candidate run, not its median: one six-second freeze is a
+failure even if two clean runs would hide it statistically.
 
 **Roadmap targets** are visible debts, such as one tree paint or zero reserved-region
 movement. They are reported on every comparison but do not block unrelated work until
@@ -188,9 +193,12 @@ A metric that can only report success is not a guard.
 5. Use the orchestrator’s serve, record, and compare sequence, or call
    `devtools.web_performance` from another runner.
    A Chrome-based application can adapt `capture-browser.js` by replacing the ready
-   selector, completion poll, and probe while retaining its fresh-profile and trusted
-   input mechanics. Invalid evidence is refused; a hard-gate miss is retained as evidence
-   and exits nonzero immediately.
+   condition, completion poll, and probe while retaining its fresh-profile and
+   continuous trusted-input sentinel.
+   The driver rejects input outside that controlled pulse, so accidental human
+   interaction invalidates rather than contaminates a run.
+   Invalid evidence is refused; a hard-gate miss is retained as evidence and exits
+   nonzero immediately.
 6. Keep raw run records append-only and generate summaries from them.
 
 The framework intentionally adds no browser-automation dependency.

@@ -23,8 +23,11 @@ Performance, validated against 0.6.0 side by side:
   Its reusable navigation-time profile covers loading, Long Tasks, Long Animation
   Frames, Event Timing interactions grouped by gesture, rendering, visual stability,
   exact fetch failures, network cost, and bounded retention; recorded comparisons reject
-  hidden, late, unsettled, interaction-free, truncated, or undersampled evidence, and
-  recording exits nonzero as soon as any run crosses a hard budget.
+  hidden, late, unsettled, interaction-free, truncated, or undersampled evidence.
+  Trusted input now pulses from first usable state through client quiescence, and the
+  profile records and gates its loading-window coverage, so one early click cannot miss
+  a later event storm.
+  Recording exits nonzero as soon as any run crosses a hard budget.
 
 - The gain is largest exactly when a client is watching, because that is what the change
   addresses: a row request no longer computes navigation tallies, so polling the tree
@@ -80,9 +83,10 @@ Development:
   Performance profiles also report inventory-delivery batch volume, maximum callback
   time, and whole-window work share, with hard gates against both single callback stalls
   and sustained event storms.
-  Automated captures wait for browser-side fetch and work quiescence, exercise a trusted
-  interaction, and record controlled post-GC retained heap so backend completion and
-  garbage-collection timing cannot hide regressions.
+  Automated captures wait for browser-side fetch and work quiescence, exercise inert
+  trusted-input paints throughout the load, and record controlled post-GC retained heap
+  so backend completion, an early-only interaction, and garbage-collection timing cannot
+  hide regressions.
 
 ## 0.6.0
 

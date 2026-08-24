@@ -85,6 +85,10 @@ PENDING = HERE / "results" / "pending.json"
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
 #
+# 7: acceptance input is pulsed from first usable state through client
+# quiescence, and the profile proves how much of the measured window it spans.
+# A single early click could miss a later inventory-delivery freeze.
+#
 # 6: the trusted Chrome capture adds a controlled post-GC heap measurement,
 # separating retained state from the runtime-dependent collection timing in
 # `performance.memory`.
@@ -110,7 +114,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 6
+HARNESS_VERSION = 7
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -176,6 +180,10 @@ METRICS = (
     "forced_style_layout_ms_max",
     "interactions",
     "interaction_inputs",
+    "interaction_input_first_ms",
+    "interaction_input_last_ms",
+    "interaction_input_span_ms",
+    "interaction_input_coverage_pct",
     "interaction_samples_retained",
     "interaction_p50_ms",
     "interaction_p95_ms",
@@ -485,7 +493,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     print(f"url         {url}")
     print()
     print("1. size the browser pane to at least 1280x900, keep it visible, and load that URL cold")
-    print("2. exercise at least one real interaction while the inventory is still loading")
+    print("2. keep exercising real interactions throughout inventory loading")
     print("3. after the inventory settles, evaluate probe.js (`run.py probe` prints it)")
     print("4. explorations/performance-loop/run.py record --json '<paste>'")
     print("   or automate 1-4 with `run.py capture --headed --output FILE --record`")

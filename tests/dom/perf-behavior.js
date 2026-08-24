@@ -148,6 +148,8 @@ async function main() {
   check("HTTP 5xx count is exact", fetchProfile.fetch_http_5xx === 1);
   interactionListeners[0]({ isTrusted: true });
   interactionListeners[0]({ isTrusted: false });
+  now = 1_500;
+  interactionListeners[0]({ isTrusted: true });
 
   // Whole-window long-task aggregates stay exact without retaining every task.
   deliver("longtask", [
@@ -269,7 +271,15 @@ async function main() {
     responsiveness.interaction_percentile_scope === "most-recent-500",
   );
   check("interaction maximum is exact", responsiveness.interaction_max_ms === 700);
-  check("trusted input coverage is counted", responsiveness.interaction_inputs === 1);
+  check("trusted input coverage is counted", responsiveness.interaction_inputs === 2);
+  check(
+    "trusted input coverage spans the observed window",
+    responsiveness.interaction_input_first_ms === 1_000 &&
+      responsiveness.interaction_input_last_ms === 1_500 &&
+      responsiveness.interaction_input_span_ms === 500 &&
+      responsiveness.interaction_input_coverage_pct > 0,
+    JSON.stringify(responsiveness),
+  );
 
   // A reset starts a coherent new window. Old buffered observer entries are
   // ignored, the denominator restarts, and a previously hidden session can
@@ -300,6 +310,13 @@ async function main() {
   check("reset clears the hidden marker when currently visible", responsiveness.measurement_valid);
   check("reset clears interaction aggregates", responsiveness.interactions === 0);
   check("reset clears interaction coverage", responsiveness.interaction_inputs === 0);
+  check(
+    "reset clears interaction span",
+    responsiveness.interaction_input_first_ms === null &&
+      responsiveness.interaction_input_last_ms === null &&
+      responsiveness.interaction_input_span_ms === 0 &&
+      responsiveness.interaction_input_coverage_pct === 0,
+  );
   check("reset clears animation-frame aggregates", responsiveness.animation_frames === 0);
   check(
     "reset clears animation-frame blocking budget count",
