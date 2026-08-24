@@ -193,9 +193,21 @@ grammar exists, enforces the shared syntax size bound, calls
 lines. It resolves to `null` for an unknown language, an unavailable asset, or an
 over-limit input, and treats a lexer or scanner exception as the same plain-text
 fallback. It rejects with `AbortError` when the supplied signal aborts.
-Asset failure cannot leave the promise pending: the optional chain fires
-`metabrowser:optional-assets-loaded` after both success and failure, which settles every
-waiter.
+Readiness resolves without waiting wherever it can, because a diff usually mounts long
+after the prefetch chain has settled.
+The helper checks for the requested grammar first and subscribes to the optional-asset
+events only when it is not there yet.
+Subscription alone strands the late caller: the chain dispatches its terminal
+`metabrowser:optional-assets-loaded` once, so a helper that begins listening afterwards
+waits for an event that already happened.
+The SDK therefore latches that terminal event at load.
+It can do so reliably because the SDK is an eager script and the chain does not start
+until the first idle callback after `DOMContentLoaded`; moving the SDK to a later
+loading tier would break that ordering.
+Once the latch is set, a request resolves against the loaded grammars immediately rather
+than waiting, so an absent grammar returns `null` instead of hanging.
+Waiting is otherwise bounded by the chain, which dispatches its terminal event on asset
+failure as well as success.
 
 This keeps asset readiness, the global Highlight.js call, input escaping, and the bound
 inside the host. The existing regular-view enhancer can continue to highlight mounted
@@ -206,8 +218,10 @@ The service reads `METABROWSER_SETTINGS.SYNTAX_HIGHLIGHT_MAX_BYTES`, which carri
 server’s environment-aware value, and uses the package constant only when no injected
 setting exists. Update `isLargeTextPreview` to read the same value rather than retaining
 its hard-coded mirror.
-The service needs `highlight`, `getLanguage`, and `highlightElement` in the ambient
-Highlight.js declaration.
+
+The ambient Highlight.js declaration currently exposes only `highlightElement`, for the
+shell’s own enhancer.
+Add `highlight` and `getLanguage` beside it; the token service needs no element method.
 The public SDK declaration and source change together.
 
 ### Unified layout
@@ -318,7 +332,7 @@ change increments only the projection generation, not the data or token generati
 
 | Surface | Planned change |
 | --- | --- |
-| `static/plugin-sdk.js` | Add the bounded, abortable syntax-token helper and DOM-free Highlight.js output scanner over the existing prefetched asset; unify the injected size-bound lookup. |
+| `static/plugin-sdk.js` | Add the bounded, abortable syntax-token helper and DOM-free Highlight.js output scanner over the existing prefetched asset; latch optional-asset settlement so a late caller never waits; unify the injected size-bound lookup. |
 | `static/types.d.ts` | Declare the SDK helper, token-run data, and the Highlight.js methods it uses. |
 | `builtin_plugins/diff/diff-syntax.js` | Build old/new hunk streams, validate token-line round trips, and attach side-specific token data. New fully strict module. |
 | `builtin_plugins/diff/diff-view.js` | Introduce stable line records, unified and split projections, the toolbar preference control, cached deferred patches, and disposal guards. |
@@ -356,7 +370,7 @@ while retaining its row backgrounds.
 
 - [x] Add the typed, bounded `mb.highlightSyntax` SDK helper and DOM-free scanner, with
   focused behavior tests for ready, delayed, missing, unknown-language, over-limit,
-  lexer-throw, malformed-output, and aborted cases.
+  lexer-throw, malformed-output, aborted, and already-settled-chain cases.
   Pin the vendored entity vocabulary with a test.
 - [x] Add the strict diff syntax module with old/new reconstruction, multiline token
   data, exact text round-trip checks, and old-path/new-path language resolution.
@@ -427,8 +441,9 @@ points to this resolved Phase 3 design.
   copies only the active split side across multiple rows.
 - **Progressive enhancement.** Mount without Highlight.js, assert complete plain text,
   make the asset ready, and assert in-place token enhancement with no data reload.
-  A failed asset chain settles to plain text, and a many-file fixture yields between
-  file units rather than running one synchronous pass.
+  A failed asset chain settles to plain text, a helper called after that chain already
+  settled resolves rather than waiting, and a many-file fixture yields between file
+  units rather than running one synchronous pass.
 - **Bounds.** Cross the shared limit with the combined lexer input and assert that both
   sides stay plain. A file just below the limit highlights in both layouts without a
   second lexer pass after switching.
