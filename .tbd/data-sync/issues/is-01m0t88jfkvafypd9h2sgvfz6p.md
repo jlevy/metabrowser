@@ -5,7 +5,7 @@ title: Audit provider refactor against every landed performance change
 kind: task
 status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels:
   - inventory-provider
@@ -19,7 +19,7 @@ child_order_hints:
   - is-01m0t8bt30ykqhy4ksn5bs4ba4
   - is-01m0t8c0dr9dc0xkz1kvw6dya1
 created_at: 2026-08-24T16:04:40.050Z
-updated_at: 2026-08-24T16:50:54.989Z
+updated_at: 2026-08-24T16:59:34.422Z
 closed_at: 2026-08-24T16:50:54.988Z
 close_reason: Every landed performance/stability change was audited against the final provider architecture, all incompatibilities were fixed and measured, and focused plus full verification pass on the current upstream tip.
 resolution: null
@@ -29,4 +29,4 @@ Enumerate every commit and changed surface that landed on main after the provide
 
 ## Notes
 
-Audited the provider refactor against current origin/main bae51fd and all 26 PR 73 commits. Of 257 upstream-touched files, 237 remain byte-identical and every one of the 20 overlapping files received an explicit invariant review. Five performance regressions and one harness validity bug were fixed as child beads. The 319-test focused compatibility matrix, paired 100,000-file semantic/performance comparison, and full make verify pass. PR 74 is ready for the final commit, push, CI, and mergeability check.
+Audited the provider refactor against current origin/main bae51fd and all 26 PR 73 commits. Of 257 upstream-touched files, 237 remain byte-identical and every one of the 20 overlapping files received an explicit invariant review. Five performance regressions and one harness validity bug were fixed as child beads. A final interface cleanup made ReadRequest() the constant-work checkpoint instead of coupling validators to DiagnosticsQuery. The 319-test focused compatibility matrix, paired 100,000-file semantic/performance comparison, and final make verify with 1,556 passing tests plus one platform skip all pass.
