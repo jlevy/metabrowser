@@ -14,6 +14,12 @@
 //   4. explorations/performance-loop/run.py record --label <name> --json '<paste>'
 (async () => {
   const origin = performance.timeOrigin;
+  // Freeze the navigation-time profile before this adapter runs its own
+  // buffered-observer beat and diagnostic route requests. Those operations
+  // explain the load; they are not product work and must not extend the
+  // interaction-coverage or main-thread responsiveness window.
+  const profiler = window.metabrowser?.perf;
+  const perf = profiler ? profiler.snapshot() : { raw_measure: [], label_totals: [] };
   const supportsEntryType = (type) => {
     if (typeof PerformanceObserver === "undefined") {
       return false;
@@ -66,8 +72,6 @@
   }
 
   const nav = performance.getEntriesByType("navigation")[0] || {};
-  const profiler = window.metabrowser?.perf;
-  const perf = profiler ? profiler.snapshot() : { raw_measure: [], label_totals: [] };
   const spans = perf.raw_measure || [];
   const labelTotals = perf.label_totals || [];
   const firstOf = (label) => spans.filter((s) => s.label === label)[0] || null;

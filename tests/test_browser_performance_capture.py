@@ -11,6 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CAPTURE = ROOT / "explorations" / "performance-loop" / "capture-browser.js"
+PROBE = ROOT / "explorations" / "performance-loop" / "probe.js"
 
 
 def test_capture_browser_argument_contract() -> None:
@@ -65,6 +66,11 @@ def test_capture_browser_pulses_non_product_input_through_loading() -> None:
     assert "inputPulseCount = await inputPulse.stop()" in source
     assert "INPUT_PULSE_INTERVAL_MS" in source
     assert "metabrowser-performance-input-sentinel" in source
+    stop_start = source.index("async stop()")
+    stop_block = source[stop_start : stop_start + 900]
+    assert stop_block.index("await dispatchTrustedClickAtPoint(session, point)") < (
+        stop_block.index("await removeInputSentinel(session)")
+    )
     assert "assertControlledInputCount(payload.interaction_inputs, inputPulseCount)" in source
 
 
@@ -92,3 +98,11 @@ try {{
 
     assert result.returncode == 0, result.stderr
     assert "differs from the controlled CDP pulse count" in result.stdout
+
+
+def test_probe_freezes_product_responsiveness_before_diagnostic_work() -> None:
+    source = PROBE.read_text(encoding="utf-8")
+    snapshot = source.index("profiler ? profiler.snapshot()")
+
+    assert snapshot < source.index("new PerformanceObserver")
+    assert snapshot < source.index('fetch("/api/tree?depth=1"')

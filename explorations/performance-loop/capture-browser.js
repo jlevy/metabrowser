@@ -357,11 +357,20 @@ async function startTrustedInputPulse(session) {
     async stop() {
       running = false;
       await completion;
-      await removeInputSentinel(session);
-      if (pulseError) {
-        throw pulseError;
+      try {
+        if (pulseError) {
+          throw pulseError;
+        }
+        // A fast application can settle during the interval sleep. Send one
+        // last controlled paint at the boundary so the stability polls do not
+        // create an untested tail in the responsiveness window.
+        await dispatchTrustedClickAtPoint(session, point);
+        count += 1;
+        await delay(INTERACTION_OBSERVER_SETTLE_MS);
+        return count;
+      } finally {
+        await removeInputSentinel(session);
       }
-      return count;
     },
   };
 }
@@ -483,7 +492,6 @@ async function capture(options) {
     } finally {
       inputPulseCount = await inputPulse.stop();
     }
-    await delay(INTERACTION_OBSERVER_SETTLE_MS);
     const probe = fs.readFileSync(options.probe, "utf8");
     let payload = null;
     for (let attempt = 0; attempt < PROFILE_EXPORT_ATTEMPTS; attempt += 1) {

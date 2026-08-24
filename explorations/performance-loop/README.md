@@ -278,9 +278,12 @@ temporary benchmark window invalidates that capture instead of quietly changing 
 After the backend reports completion, the driver waits until application fetches are
 idle and browser work remains stable across several polls; a fast backend response
 cannot end the responsiveness window while the client is still consuming it.
-It closes the responsiveness profile when the scenario settles, then asks V8 to collect
-garbage and records the resulting retained heap separately from both UI timing and the
-runtime-timed `performance.memory` sample.
+It sends one final controlled input at that settle boundary and freezes the
+responsiveness snapshot before the adapter’s buffered-observer wait and diagnostic route
+requests. Fast loads therefore retain late-window interaction coverage without counting
+the measurement itself as product work.
+It then asks V8 to collect garbage and records the resulting retained heap separately
+from both UI timing and the runtime-timed `performance.memory` sample.
 The driver uses Node and browser APIs already present in the development environment; it
 adds no automation package or product dependency.
 

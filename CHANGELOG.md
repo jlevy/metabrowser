@@ -87,9 +87,11 @@ Development:
   time, and whole-window work share, with hard gates against both single callback stalls
   and sustained event storms.
   Automated captures wait for browser-side fetch and work quiescence, exercise inert
-  trusted-input paints throughout the load, and record controlled post-GC retained heap
-  so backend completion, an early-only interaction, and garbage-collection timing cannot
-  hide regressions.
+  trusted-input paints throughout the load, send a final paint at the settle boundary,
+  freeze product responsiveness before adapter diagnostics, and record controlled
+  post-GC retained heap.
+  Backend completion, an early-only interaction, adapter work, and garbage-collection
+  timing therefore cannot hide regressions.
 
 - Built-in plugin styles, classic dependencies, and modules now load on demand for the
   selected file kind instead of every plugin joining every directory load.

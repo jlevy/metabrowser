@@ -207,8 +207,10 @@ A metric that can only report success is not a guard.
    A Chrome-based application can adapt `capture-browser.js` by replacing the ready
    condition, completion poll, and probe while retaining its fresh-profile and
    continuous trusted-input sentinel.
-   The driver rejects input outside that controlled pulse, so accidental human
-   interaction invalidates rather than contaminates a run.
+   Send a final controlled input at the settle boundary and freeze the standard profile
+   before adapter diagnostics, so neither fast completion nor measurement work creates
+   an untested tail. The driver rejects input outside that controlled pulse, so
+   accidental human interaction invalidates rather than contaminates a run.
    Invalid evidence is refused; a hard-gate miss is retained as evidence and exits
    nonzero immediately.
 6. Keep raw run records append-only and generate summaries from them.

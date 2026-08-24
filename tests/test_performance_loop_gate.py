@@ -46,7 +46,7 @@ def _run(label: str, **overrides: object) -> dict[str, Any]:
         "files": 100,
         "frame_missing_px": 0,
         "index_status_at_probe": "done",
-        "harness_version": 11,
+        "harness_version": 12,
         "interaction_input_coverage_pct": 90,
         "interaction_inputs": 6,
         "interaction_max_ms": 90,
