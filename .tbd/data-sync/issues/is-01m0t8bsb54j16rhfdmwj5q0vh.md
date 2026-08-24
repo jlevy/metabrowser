@@ -3,9 +3,9 @@ type: is
 id: is-01m0t8bsb54j16rhfdmwj5q0vh
 title: Audit backend delivery and scheduling invariants from PR 73
 kind: task
-status: open
+status: closed
 priority: 1
-version: 7
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels:
   - inventory-provider
@@ -21,6 +21,14 @@ child_order_hints:
   - is-01m0t91hpmqkhcqgmfckmnp6fm
   - is-01m0t9dbjv2mvbv26cj8fy1p95
 created_at: 2026-08-24T16:06:25.368Z
-updated_at: 2026-08-24T16:24:45.402Z
+updated_at: 2026-08-24T16:50:42.970Z
+closed_at: 2026-08-24T16:50:42.970Z
+close_reason: All landed backend delivery and scheduling invariants have an explicit disposition, discovered regressions are fixed, focused compatibility coverage and make verify pass, and the 100,000-file comparison is semantically clean.
+resolution: null
+duplicate_of: null
 ---
 Trace PR 73 changes to inventory walking, event-loop yields, catalog invalidation, tree/filter reads, server composition, startup cancellation, and backend benchmarking into the final Python provider/coordinator architecture. Prove each invariant survives or fix it.
+
+## Notes
+
+Audited every PR 73 backend invariant. Cooperative walker yields, exact file-versus-subtree catalog removal, tree-first query separation, progress diagnostics, provider-owned scheduling, rollup cache/ETag/single-flight, and startup cancellation survive. Five independently tracked navigation/catalog regressions were fixed. The 319-test focused compatibility subset and full make verify pass; paired 100,000-file evidence preserves scan behavior and improves repeated reads.
