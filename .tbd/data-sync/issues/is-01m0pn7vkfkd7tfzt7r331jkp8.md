@@ -5,7 +5,7 @@ title: "Stability for 0.6.1: validating the perf work, and the measurement error
 kind: epic
 status: open
 priority: 1
-version: 13
+version: 15
 labels: []
 dependencies: []
 child_order_hints:
@@ -21,8 +21,10 @@ child_order_hints:
   - is-01m0p8c31yfhs5sxy0qt6nztvw
   - is-01m0pmgjhkfhhg2whf99q8693d
   - is-01m0pqdwbs6t1tfbmhyn4b065q
+  - is-01m0s89fnaknv3z2nxh16mh8tg
+  - is-01m0s8aj66bkeprhxw8ar6hed5
 created_at: 2026-08-23T06:34:30.382Z
-updated_at: 2026-08-23T07:12:44.920Z
+updated_at: 2026-08-24T06:46:30.853Z
 ---
 The perf work in #66 and #68 landed on main after 0.6.0 shipped. This epic covers proving it is genuine, proving it changed no behaviour, and recording the measurement errors made while doing so -- because every one of them produced a confident wrong answer, and every one is cheap to repeat.
 
