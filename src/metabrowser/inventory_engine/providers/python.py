@@ -172,6 +172,11 @@ _NANOSECONDS_PER_SECOND = 1_000_000_000
 # thread-switch interval.
 _NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH = 2_048
 _NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
+# The exact installed-build browser comparison in exp-014 measured a 1 ms
+# `/api/tree` handler queued for 33-37 ms while the startup walker applied a
+# wide directory without suspending. Yield four times inside each 256-entry
+# delivery batch so request tasks run independently of directory width.
+_WALKER_COOPERATIVE_YIELD_BATCH = 64
 _CONTRACT_ID = "inventory-provider-v1"
 
 
@@ -2587,6 +2592,7 @@ class PythonInventoryHandle:
         """
 
         batch: list[FsEntry] = []
+        entries_since_yield = 0
         try:
             gi_check = await run_cancellable_thread(
                 lambda cancel_event: _build_gitignore_check_for(
@@ -2611,12 +2617,15 @@ class PythonInventoryHandle:
                     )
                     entry = replace(entry, write_token=WriteToken(observed_generation))
                 stored = self._store_walker_entry(entry)
-                if stored is None:
-                    continue
-                batch.append(stored)
-                if len(batch) >= WALKER_EMIT_BATCH:
-                    self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
-                    batch.clear()
+                if stored is not None:
+                    batch.append(stored)
+                    if len(batch) >= WALKER_EMIT_BATCH:
+                        self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
+                        batch.clear()
+                entries_since_yield += 1
+                if entries_since_yield >= _WALKER_COOPERATIVE_YIELD_BATCH:
+                    entries_since_yield = 0
+                    await asyncio.sleep(0)
             if batch:
                 self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
                 batch.clear()

@@ -230,17 +230,22 @@ def _catalog_change(change: FsChange) -> CatalogChange | None:
 
     upserts: list[CatalogUpsert] = []
     removes: list[str] = []
+    remove_files: list[str] = []
     for operation in change.ops:
         if isinstance(operation, FsRemove):
             removes.append(operation.path)
         elif operation.entry.type == "file":
             if operation.entry.gitignored:
-                removes.append(operation.entry.path)
+                remove_files.append(operation.entry.path)
             else:
                 upserts.append(CatalogUpsert(p=operation.entry.path, e=operation.entry.ext))
-    if not upserts and not removes:
+    if not upserts and not removes and not remove_files:
         return None
-    return CatalogChange(upserts=tuple(upserts), removes=tuple(removes))
+    return CatalogChange(
+        upserts=tuple(upserts),
+        removes=tuple(removes),
+        remove_files=tuple(remove_files),
+    )
 
 
 class _EventBus:

@@ -150,6 +150,7 @@ PENDING = HERE / "results" / "pending.json"
 # text and so passed on the hole it existed to catch.
 HARNESS_VERSION = 15
 INVENTORY_PROVIDERS = ("python",)
+INVENTORY_CONTRACT = "inventory-provider-v1"
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -454,6 +455,51 @@ def _inventory_facts(port: int) -> dict[str, Any]:
     }
 
 
+def _require_inventory_identity(
+    walk_facts: dict[str, Any],
+    inventory_facts: dict[str, Any],
+    requested_provider: object,
+) -> tuple[str, str]:
+    """Return one complete, consistent identity for a measured server."""
+
+    observations: list[tuple[str, str, str]] = []
+    for source, facts in (("walker log", walk_facts), ("debug endpoint", inventory_facts)):
+        provider = facts.get("inventory_provider")
+        contract = facts.get("inventory_contract")
+        if provider is None and contract is None:
+            continue
+        if (
+            not isinstance(provider, str)
+            or not provider
+            or not isinstance(contract, str)
+            or not contract
+        ):
+            raise SystemExit(f"{source} reported an incomplete inventory identity")
+        observations.append((source, provider, contract))
+
+    if not observations:
+        raise SystemExit("server did not report an inventory provider and contract")
+    identities = {(provider, contract) for _source, provider, contract in observations}
+    if len(identities) != 1:
+        details = ", ".join(
+            f"{source}={provider}/{contract}" for source, provider, contract in observations
+        )
+        raise SystemExit(f"server reported conflicting inventory identities: {details}")
+
+    provider, contract = identities.pop()
+    if not isinstance(requested_provider, str) or not requested_provider:
+        raise SystemExit("pending run does not name the requested inventory provider")
+    if provider != requested_provider:
+        raise SystemExit(
+            f"requested inventory provider {requested_provider!r}, but server reported {provider!r}"
+        )
+    if contract != INVENTORY_CONTRACT:
+        raise SystemExit(
+            f"expected inventory contract {INVENTORY_CONTRACT!r}, but server reported {contract!r}"
+        )
+    return provider, contract
+
+
 def _read_pending() -> dict[str, Any]:
     if not PENDING.is_file():
         raise SystemExit(
@@ -658,15 +704,12 @@ def cmd_record(args: argparse.Namespace) -> int:
     # `serve` established.
     walk_facts = _walk_facts(port)
     inventory_facts = _inventory_facts(port)
-    actual_provider = inventory_facts.get("inventory_provider") or walk_facts.get(
-        "inventory_provider"
-    )
     requested_provider = pending.get("inventory_provider_requested")
-    if actual_provider and requested_provider and actual_provider != requested_provider:
-        raise SystemExit(
-            f"requested inventory provider {requested_provider!r}, "
-            f"but server reported {actual_provider!r}"
-        )
+    inventory_provider, inventory_contract = _require_inventory_identity(
+        walk_facts,
+        inventory_facts,
+        requested_provider,
+    )
     run: dict[str, Any] = {
         **payload,
         "experiment": pending.get("experiment"),
@@ -684,6 +727,8 @@ def cmd_record(args: argparse.Namespace) -> int:
         "note": args.note or pending.get("note", ""),
         **walk_facts,
         **inventory_facts,
+        "inventory_provider": inventory_provider,
+        "inventory_contract": inventory_contract,
     }
     if not is_server_sample:
         config = load_performance_config(Path(args.budgets))

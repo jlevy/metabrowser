@@ -896,18 +896,19 @@ def _phase_diagnostics(result: dict[str, Any], phase: str) -> dict[str, Any]:
 
 
 def _record_inventory_identity(result: dict[str, Any], requested_provider: str) -> None:
-    missing = [
-        phase
-        for phase in ("cold_scan", "scan_with_client", "settled")
-        if not _phase_diagnostics(result, phase).get("provider")
-    ]
+    phases = tuple(
+        phase for phase in ("cold_scan", "scan_with_client", "settled") if phase in result
+    )
+    if not phases:
+        raise SystemExit("benchmark result contains no inventory phases")
+    missing = [phase for phase in phases if not _phase_diagnostics(result, phase).get("provider")]
     if missing:
         raise SystemExit(
             f"benchmark phases did not report inventory identity: {', '.join(missing)}"
         )
     identities = {
         (diagnostic.get("provider"), diagnostic.get("contract"))
-        for phase in ("cold_scan", "scan_with_client", "settled")
+        for phase in phases
         if (diagnostic := _phase_diagnostics(result, phase)).get("provider")
     }
     if len(identities) != 1:

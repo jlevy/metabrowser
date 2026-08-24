@@ -119,10 +119,10 @@ $UV explorations/performance-loop/run.py report
 ```
 
 `serve` remembers the experiment, label, port, corpus, commit, selected build, requested
-inventory provider, and provider contract, so `record` needs only the paste. Provenance
-is filled in automatically: timestamp, commit, whether the tree was dirty, the selected
-build’s reported version, the provider identity read from the running server, and — read
-back out of the server’s own log — how long that run’s walk took.
+inventory provider, and provider contract, so `record` needs only the paste.
+Provenance is filled in automatically: timestamp, commit, whether the tree was dirty,
+the selected build’s reported version, the provider identity read from the running
+server, and — read back out of the server’s own log — how long that run’s walk took.
 A number nobody can trace is a number nobody can defend, so none of that is left to
 whoever remembers.
 
