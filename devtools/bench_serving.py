@@ -29,10 +29,10 @@ prints the in-page probe; see ``devtools/bench-browser-probe.js``.
 Usage::
 
     uv --config-file uv.toml run --frozen python -m devtools.bench_serving \\
-        --files 100000 --label before --json bench-before.json
+        --files 100000 --provider python --label before --json bench-before.json
 
     uv --config-file uv.toml run --frozen python -m devtools.bench_serving \\
-        --files 100000 --label after --baseline bench-before.json
+        --files 100000 --provider python --label after --baseline bench-before.json
 
 Run the two on the same machine and the same corpus size; the absolute numbers
 move a lot with the filesystem and the page cache, and only the comparison
@@ -56,10 +56,12 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 REPO = Path(__file__).resolve().parent.parent
 PROBE_PATH = Path(__file__).resolve().parent / "bench-browser-probe.js"
+INVENTORY_PROVIDERS = ("python",)
+INVENTORY_CONTRACT = "inventory-provider-v1"
 
 # The bounds the folder Overview actually asks for. Measuring a shape the
 # browser never requests would report a cost no reader pays.
@@ -85,13 +87,33 @@ BUILD_VERSION_TIMEOUT_S = 10.0
 # settled on -- it picks another when the requested one is busy, so parsing
 # this is more reliable than assuming the port we asked for.
 _BANNER_RE = re.compile(r"http://(?P<host>[^:/]+):(?P<port>\d+)/view/")
-# Emitted by InventoryIndex when the boot crawl finishes. This is the walker's
+# Emitted by the selected provider when the boot crawl finishes. This is the walker's
 # own elapsed time, which is what a cold scan has to be measured by: polling
 # for it would make it a scan with a client attached.
 _WALK_DONE_RE = re.compile(
-    r"inventory walker complete: status=(?P<status>\w+) "
+    r"inventory walker complete: provider=(?P<provider>[\w-]+) "
+    r"contract=(?P<contract>[\w-]+) status=(?P<status>\w+) "
     r"files=(?P<files>\d+) entries=\d+ elapsed=(?P<ms>\d+)ms"
 )
+
+
+def _cpu_seconds(value: str) -> float | None:
+    """Parse the portable ``ps time`` shape into elapsed CPU seconds."""
+
+    try:
+        day_text, clock = value.split("-", 1) if "-" in value else ("0", value)
+        clock_parts = clock.split(":")
+        parts = [int(part) for part in clock_parts[:-1]]
+        seconds = float(clock_parts[-1])
+        if len(parts) == 2:
+            hours, minutes = parts
+        elif len(parts) == 1:
+            hours, minutes = 0, parts[0]
+        else:
+            return None
+        return int(day_text) * 86_400 + hours * 3_600 + minutes * 60 + seconds
+    except (IndexError, ValueError):
+        return None
 
 
 @dataclass
@@ -230,11 +252,20 @@ def build_corpus(root: Path, target_files: int) -> dict[str, Any]:
 class Server:
     """A ``metab`` subprocess, with its log tailed for the facts only it knows."""
 
-    def __init__(self, root: Path, log_path: Path, build: MetabBuild) -> None:
+    def __init__(
+        self,
+        root: Path,
+        log_path: Path,
+        build: MetabBuild,
+        *,
+        provider: str,
+    ) -> None:
         self._root = root
         self._log_path = log_path
         self._build = build
+        self._provider = provider
         self._process: subprocess.Popen[bytes] | None = None
+        self._peak_rss_kb: int | None = None
         self.base_url = ""
 
     def __enter__(self) -> Server:
@@ -246,6 +277,9 @@ class Server:
             probe.bind(("127.0.0.1", 0))
             port = probe.getsockname()[1]
         with self._log_path.open("wb") as handle:
+            environment = os.environ.copy()
+            environment["METABROWSER_INVENTORY_PROVIDER"] = self._provider
+            environment["METABROWSER_DEBUG"] = "1"
             self._process = subprocess.Popen(
                 [
                     str(self._build.executable),
@@ -257,6 +291,7 @@ class Server:
                 stdout=handle,
                 stderr=subprocess.STDOUT,
                 cwd=REPO,
+                env=environment,
             )
         deadline = time.time() + 60
         while time.time() < deadline:
@@ -293,7 +328,13 @@ class Server:
         match = _WALK_DONE_RE.search(self._log_text())
         if match is None:
             return None
+        # ``await_walk`` polls this method every 50 ms. Sampling with ``ps`` on
+        # every miss materially slows the process being measured; the retained
+        # index makes completion RSS the representative high-water sample.
+        self._sample_process_resources()
         return {
+            "provider": match["provider"],
+            "contract": match["contract"],
             "status": match["status"],
             "files": int(match["files"]),
             "walk_ms": int(match["ms"]),
@@ -307,6 +348,53 @@ class Server:
                 return result
             time.sleep(0.05)
         return None
+
+    def diagnostics(self) -> dict[str, Any]:
+        """Read provider work plus the server process resource counters."""
+
+        status, _etag, body, _elapsed_ms = _http(
+            f"{self.base_url}/_debug/inventory",
+            timeout=30,
+        )
+        payload: dict[str, Any] = {}
+        if status == 200:
+            loaded: Any = json.loads(body)
+            if isinstance(loaded, dict):
+                payload = cast("dict[str, Any]", loaded)
+        payload["process"] = self._sample_process_resources()
+        return payload
+
+    def _sample_process_resources(self) -> dict[str, Any]:
+        process = self._process
+        exit_code = process.poll() if process is not None else None
+        if process is None or exit_code is not None:
+            return {
+                "rss_kb": None,
+                "peak_rss_kb": self._peak_rss_kb,
+                "cpu_seconds": None,
+                "exit_code": exit_code,
+            }
+        try:
+            sample = subprocess.run(
+                ["ps", "-o", "rss=", "-o", "time=", "-p", str(process.pid)],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            sample = None
+        fields = sample.stdout.split() if sample is not None and sample.returncode == 0 else []
+        rss_kb = int(fields[0]) if fields and fields[0].isdigit() else None
+        if rss_kb is not None:
+            self._peak_rss_kb = max(self._peak_rss_kb or 0, rss_kb)
+        cpu_seconds = _cpu_seconds(fields[1]) if len(fields) > 1 else None
+        return {
+            "rss_kb": rss_kb,
+            "peak_rss_kb": self._peak_rss_kb,
+            "cpu_seconds": cpu_seconds,
+            "exit_code": None,
+        }
 
 
 # ── Phases ───────────────────────────────────────────────────
@@ -575,20 +663,35 @@ def build_realistic_corpus(root: Path, target_files: int) -> dict[str, Any]:
     return info
 
 
-def phase_cold_scan(root: Path, log_dir: Path, build: MetabBuild) -> dict[str, Any]:
+def phase_cold_scan(
+    root: Path,
+    log_dir: Path,
+    build: MetabBuild,
+    provider: str,
+) -> dict[str, Any]:
     """Walker throughput with nothing attached.
 
     Read from the walker's own log record rather than by polling, because
     polling is exactly what the next phase deliberately does.
     """
-    with Server(root, log_dir / "cold.log", build) as server:
+    with Server(root, log_dir / "cold.log", build, provider=provider) as server:
         result = server.await_walk()
+        diagnostics = server.diagnostics()
     if result is None:
-        return {"converged": False, "timeout_s": SCAN_TIMEOUT_S}
-    return {"converged": True, **result}
+        return {
+            "converged": False,
+            "timeout_s": SCAN_TIMEOUT_S,
+            "diagnostics": diagnostics,
+        }
+    return {"converged": True, **result, "diagnostics": diagnostics}
 
 
-def phase_scan_with_client(root: Path, log_dir: Path, build: MetabBuild) -> dict[str, Any]:
+def phase_scan_with_client(
+    root: Path,
+    log_dir: Path,
+    build: MetabBuild,
+    provider: str,
+) -> dict[str, Any]:
     """The scan a reader actually experiences.
 
     A client refreshing the folder view competes with the walker for CPU, so
@@ -601,7 +704,7 @@ def phase_scan_with_client(root: Path, log_dir: Path, build: MetabBuild) -> dict
     first_count_s: float | None = None
     walk: dict[str, Any] | None = None
     started = time.time()
-    with Server(root, log_dir / "attached.log", build) as server:
+    with Server(root, log_dir / "attached.log", build, provider=provider) as server:
         url = f"{server.base_url}/api/rollup?{OVERVIEW_QUERY}"
         while time.time() - started < SCAN_TIMEOUT_S:
             status, _etag, body, elapsed_ms = _http(url)
@@ -616,6 +719,7 @@ def phase_scan_with_client(root: Path, log_dir: Path, build: MetabBuild) -> dict
                 walk = server.walk_result()
                 break
         wall_s = round(time.time() - started, 1)
+        diagnostics = server.diagnostics()
     return {
         "converged": walk is not None,
         "wall_s": wall_s if walk is not None else None,
@@ -625,10 +729,17 @@ def phase_scan_with_client(root: Path, log_dir: Path, build: MetabBuild) -> dict
         "first_count_s": first_count_s,
         "requests_issued": len(rollup.samples),
         "rollup_ms": rollup.summary(),
+        "diagnostics": diagnostics,
     }
 
 
-def phase_settled(root: Path, log_dir: Path, clients: int, build: MetabBuild) -> dict[str, Any]:
+def phase_settled(
+    root: Path,
+    log_dir: Path,
+    clients: int,
+    build: MetabBuild,
+    provider: str,
+) -> dict[str, Any]:
     """Costs once the index has stopped moving.
 
     The three rollup paths are measured apart because they are three different
@@ -636,7 +747,9 @@ def phase_settled(root: Path, log_dir: Path, clients: int, build: MetabBuild) ->
     makes the aggregating path measurable at all on a settled index; every
     other request would be answered from the retained body.
     """
-    with Server(root, log_dir / "settled.log", build) as server:
+    marker = root / "metabrowser-bench-touch.tmp"
+    marker.unlink(missing_ok=True)
+    with Server(root, log_dir / "settled.log", build, provider=provider) as server:
         if server.await_walk() is None:
             return {"converged": False}
         base = server.base_url
@@ -644,61 +757,102 @@ def phase_settled(root: Path, log_dir: Path, clients: int, build: MetabBuild) ->
         treemap = f"{base}/api/rollup?{TREEMAP_QUERY}"
 
         aggregated, retained, revalidated = Timing(), Timing(), Timing()
-        marker = root / ".bench-touch"
+        errors: list[str] = []
+        status, current_etag, _body, _elapsed_ms = _http(treemap)
+        if status != 200 or not current_etag:
+            return {
+                "converged": False,
+                "errors": [f"initial treemap returned status={status} etag={current_etag!r}"],
+                "diagnostics": server.diagnostics(),
+            }
+
         for round_index in range(8):
             # A write moves the index revision, so the next request cannot be
             # answered from the retained body and has to aggregate.
             marker.write_text(str(round_index))
-            time.sleep(0.35)  # let the watcher apply it
-            status, etag, _body, elapsed_ms = _http(treemap)
-            if status != 200:
+            deadline = time.time() + 5.0
+            changed: tuple[int, str | None, bytes, float] | None = None
+            while time.time() < deadline:
+                response = _http(treemap)
+                if response[0] == 200 and response[1] and response[1] != current_etag:
+                    changed = response
+                    break
+                time.sleep(0.05)
+            if changed is None:
+                errors.append(f"round {round_index}: watcher did not advance the treemap ETag")
                 continue
+            _status, etag, _body, elapsed_ms = changed
+            current_etag = etag
             # Recorded regardless of whether this server emits a validator:
             # a build with no caching at all still has this path, and leaving
             # the row blank there would hide the number worth comparing.
             aggregated.add(elapsed_ms)
             # The same answer again. With a retained body this is a lookup;
             # without one it is a second aggregation, which is the point.
-            retained.add(_http(treemap)[3])
+            retained_response = _http(treemap)
+            if retained_response[0] == 200 and retained_response[1] == current_etag:
+                retained.add(retained_response[3])
+            else:
+                errors.append(
+                    f"round {round_index}: retained treemap returned "
+                    f"status={retained_response[0]} etag={retained_response[1]!r}"
+                )
             if not etag:
                 continue
             # The same answer with the validator: a 304, carrying no body.
             status_304, _e, body_304, ms_304 = _http(treemap, etag=etag)
             if status_304 == 304 and not body_304:
                 revalidated.add(ms_304)
-        marker.unlink(missing_ok=True)
-
+            else:
+                errors.append(
+                    f"round {round_index}: revalidation returned "
+                    f"status={status_304} bytes={len(body_304)}"
+                )
         trees: list[dict[str, Any]] = []
         for path, depth in (("", 1), ("", 2), ("top00", 2), ("top00/mid00", 2)):
             timing, size = Timing(), 0
             for _ in range(10):
-                _status, _etag, body, elapsed_ms = _http(
+                tree_status, _etag, body, elapsed_ms = _http(
                     f"{base}/api/tree?path={path}&depth={depth}"
                 )
-                timing.add(elapsed_ms)
-                size = len(body)
+                if tree_status == 200:
+                    timing.add(elapsed_ms)
+                    size = len(body)
+                else:
+                    errors.append(f"tree path={path!r} depth={depth} returned status={tree_status}")
             trees.append(
                 {"path": path or "<root>", "depth": depth, "bytes": size, **timing.summary()}
             )
 
         staggered = Timing()
         for _ in range(clients):
-            staggered.add(_http(overview)[3])
+            overview_response = _http(overview)
+            if overview_response[0] == 200:
+                staggered.add(overview_response[3])
+            else:
+                errors.append(f"staggered overview returned status={overview_response[0]}")
             time.sleep(0.02)
 
         # Arriving together is the case single-flight exists for: without it
         # each client aggregates the same answer independently.
         simultaneous = Timing()
 
-        def one_client(_index: int) -> float:
-            return _http(overview)[3]
+        def one_client(_index: int) -> tuple[int, float]:
+            response = _http(overview)
+            return response[0], response[3]
 
         with ThreadPoolExecutor(max_workers=clients) as pool:
-            for elapsed_ms in pool.map(one_client, range(clients)):
-                simultaneous.add(elapsed_ms)
+            for simultaneous_status, elapsed_ms in pool.map(one_client, range(clients)):
+                if simultaneous_status == 200:
+                    simultaneous.add(elapsed_ms)
+                else:
+                    errors.append(f"simultaneous overview returned status={simultaneous_status}")
+        diagnostics = server.diagnostics()
 
+    marker.unlink(missing_ok=True)
     return {
-        "converged": True,
+        "converged": not errors,
+        "errors": errors,
         "rollup_aggregated_ms": aggregated.summary(),
         "rollup_retained_body_ms": retained.summary(),
         "rollup_revalidated_304_ms": revalidated.summary(),
@@ -706,6 +860,7 @@ def phase_settled(root: Path, log_dir: Path, clients: int, build: MetabBuild) ->
         "clients": clients,
         "clients_staggered_ms": staggered.summary(),
         "clients_simultaneous_ms": simultaneous.summary(),
+        "diagnostics": diagnostics,
     }
 
 
@@ -731,16 +886,79 @@ def _ratio(before: Any, after: Any) -> str:
     return f"{after / before:.1f}x slower"
 
 
+def _phase_diagnostics(result: dict[str, Any], phase: str) -> dict[str, Any]:
+    phase_result = result.get(phase)
+    if not isinstance(phase_result, dict):
+        return {}
+    typed_phase = cast("dict[str, Any]", phase_result)
+    value: Any = typed_phase.get("diagnostics", {})
+    return cast("dict[str, Any]", value) if isinstance(value, dict) else {}
+
+
+def _record_inventory_identity(result: dict[str, Any], requested_provider: str) -> None:
+    missing = [
+        phase
+        for phase in ("cold_scan", "scan_with_client", "settled")
+        if not _phase_diagnostics(result, phase).get("provider")
+    ]
+    if missing:
+        raise SystemExit(
+            f"benchmark phases did not report inventory identity: {', '.join(missing)}"
+        )
+    identities = {
+        (diagnostic.get("provider"), diagnostic.get("contract"))
+        for phase in ("cold_scan", "scan_with_client", "settled")
+        if (diagnostic := _phase_diagnostics(result, phase)).get("provider")
+    }
+    if len(identities) != 1:
+        raise SystemExit(
+            f"benchmark phases reported inconsistent inventory identities: {identities}"
+        )
+    provider, contract = identities.pop()
+    if provider != requested_provider:
+        raise SystemExit(
+            f"requested inventory provider {requested_provider!r}, but server reported {provider!r}"
+        )
+    if contract != INVENTORY_CONTRACT:
+        raise SystemExit(
+            f"expected inventory contract {INVENTORY_CONTRACT!r}, but server reported {contract!r}"
+        )
+    result["inventory"] = {
+        "provider": provider,
+        "contract": contract,
+    }
+
+
 def _rows(result: dict[str, Any]) -> list[tuple[str, Any]]:
     """The comparable scalars, flattened, in report order."""
     attached = result.get("scan_with_client", {})
     settled = result.get("settled", {})
+    cold_diagnostics = _phase_diagnostics(result, "cold_scan")
+    attached_diagnostics = _phase_diagnostics(result, "scan_with_client")
+    settled_diagnostics = _phase_diagnostics(result, "settled")
+    cold_process = cold_diagnostics.get("process", {})
+    attached_process = attached_diagnostics.get("process", {})
+    settled_process = settled_diagnostics.get("process", {})
+    attached_work = attached_diagnostics.get("work", {})
+    settled_work = settled_diagnostics.get("work", {})
     rows: list[tuple[str, Any]] = [
         ("cold scan, walker only (ms)", result.get("cold_scan", {}).get("walk_ms")),
+        ("cold scan process CPU (s)", cold_process.get("cpu_seconds")),
+        ("cold scan peak RSS (KiB)", cold_process.get("peak_rss_kb")),
         ("scan with a client attached (s)", attached.get("wall_s")),
         ("first folder count on the wire (s)", attached.get("first_count_s")),
         ("rollup during scan p50 (ms)", attached.get("rollup_ms", {}).get("p50")),
         ("rollup during scan p95 (ms)", attached.get("rollup_ms", {}).get("p95")),
+        ("attached scan process CPU (s)", attached_process.get("cpu_seconds")),
+        ("attached scan peak RSS (KiB)", attached_process.get("peak_rss_kb")),
+        ("attached provider entries visited", attached_work.get("entries_visited")),
+        (
+            "attached provider CPU (ms)",
+            round(attached_work.get("cpu_time_ns", 0) / 1_000_000, 1)
+            if isinstance(attached_work.get("cpu_time_ns"), int)
+            else None,
+        ),
+        ("attached binding copies (bytes)", attached_work.get("binding_bytes_copied")),
         ("settled rollup, aggregated p50 (ms)", settled.get("rollup_aggregated_ms", {}).get("p50")),
         (
             "settled rollup, retained body p50 (ms)",
@@ -755,6 +973,16 @@ def _rows(result: dict[str, Any]) -> list[tuple[str, Any]]:
             f"{settled.get('clients', '?')} clients simultaneous p50 (ms)",
             settled.get("clients_simultaneous_ms", {}).get("p50"),
         ),
+        ("settled process CPU (s)", settled_process.get("cpu_seconds")),
+        ("settled peak RSS (KiB)", settled_process.get("peak_rss_kb")),
+        ("settled provider entries visited", settled_work.get("entries_visited")),
+        (
+            "settled provider CPU (ms)",
+            round(settled_work.get("cpu_time_ns", 0) / 1_000_000, 1)
+            if isinstance(settled_work.get("cpu_time_ns"), int)
+            else None,
+        ),
+        ("settled binding copies (bytes)", settled_work.get("binding_bytes_copied")),
     ]
     for tree in settled.get("tree", []):
         # The label is the join key between two runs, so it carries only the
@@ -766,10 +994,12 @@ def _rows(result: dict[str, Any]) -> list[tuple[str, Any]]:
 
 def render_report(result: dict[str, Any], baseline: dict[str, Any] | None) -> str:
     corpus = result.get("corpus", {})
+    inventory = result.get("inventory", {})
     lines = [
         "",
         f"Metabrowser serving benchmark -- {result.get('label')}",
         f"corpus: {corpus.get('files')} files in {corpus.get('dirs')} dirs",
+        f"inventory: provider={inventory.get('provider')} contract={inventory.get('contract')}",
         "",
     ]
     attached = result.get("scan_with_client", {})
@@ -854,6 +1084,12 @@ def main(argv: list[str] | None = None) -> int:
         default="metab",
         help="Metabrowser console script to benchmark (resolved and versioned before the run)",
     )
+    parser.add_argument(
+        "--provider",
+        choices=INVENTORY_PROVIDERS,
+        default="python",
+        help="inventory provider under test (default python)",
+    )
     parser.add_argument("--corpus-dir", type=Path, default=None, help="where to build the tree")
     parser.add_argument("--clients", type=int, default=8, help="concurrent clients (default 8)")
     parser.add_argument("--json", type=Path, default=None, help="write the full result here")
@@ -896,15 +1132,28 @@ def main(argv: list[str] | None = None) -> int:
     result: dict[str, Any] = {
         "label": args.label,
         "build": {"version": build.version, "executable": str(build.executable)},
+        "inputs": {
+            "provider": args.provider,
+            "contract": INVENTORY_CONTRACT,
+            "files": args.files,
+            "clients": args.clients,
+        },
         "corpus": corpus,
     }
     if not args.skip_cold_scan:
         print("phase 1/3: cold scan, nothing attached ...", flush=True)
-        result["cold_scan"] = phase_cold_scan(corpus_dir, log_dir, build)
+        result["cold_scan"] = phase_cold_scan(corpus_dir, log_dir, build, args.provider)
     print("phase 2/3: scan with a client attached ...", flush=True)
-    result["scan_with_client"] = phase_scan_with_client(corpus_dir, log_dir, build)
+    result["scan_with_client"] = phase_scan_with_client(corpus_dir, log_dir, build, args.provider)
     print("phase 3/3: settled index ...", flush=True)
-    result["settled"] = phase_settled(corpus_dir, log_dir, args.clients, build)
+    result["settled"] = phase_settled(
+        corpus_dir,
+        log_dir,
+        args.clients,
+        build,
+        args.provider,
+    )
+    _record_inventory_identity(result, args.provider)
 
     baseline: dict[str, Any] | None = None
     if args.baseline is not None:

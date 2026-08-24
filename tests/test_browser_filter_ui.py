@@ -914,57 +914,38 @@ def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     assert "_lastTreeSummaryHtml = html;" in block
 
 
-def _api_tree_source() -> str:
+def _provider_tree_source() -> str:
     py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
-    start = py.index("async def api_tree(")
+    start = py.index("async def _read_tree_from_provider(")
     return py[start : py.index("\nasync def ", start + 1)]
 
 
 def test_index_wide_tallies_stay_off_the_event_loop() -> None:
-    """One O(index) pass per request, and the nav re-requests this route
-    while the walk converges.
+    """The route delegates the O(index) tally to the provider query.
 
-    The snapshot the pass needs is O(index) too, so on the unfiltered path it
-    is taken inside the same thread rather than in the handler -- see
-    explorations/performance-loop/experiments/exp-003, where taking it on the loop cost every
-    root request a copy of all 300,000 entries before it discovered its
-    tallies were memoized."""
+    Provider implementations own scheduling and report their work counters;
+    the request path must not copy or traverse retained entries itself.
+    """
 
-    block = _api_tree_source()
-    assert "asyncio.to_thread" in block
-    assert "navigation_tallies(" in block
+    block = _provider_tree_source()
+    assert "NavigationQuery(" in block
     assert "RECENT_WINDOW_SECONDS.items()" in block
-    assert "entries=tally_entries" in block
-    assert "navigation_tallies_snapshotting" in block
+    assert "await runtime.coordinator.read(read_request)" in block
+    assert "asyncio.to_thread" not in block
+    assert ".entries(scope=" not in block
 
 
 def test_one_index_snapshot_serves_every_pass_a_request_makes() -> None:
-    """A root request with a filter active runs two O(index) passes — the
-    filtered rollup and the nav tallies — over the same entries for
-    overlapping reasons. Snapshotting per pass copies the index twice on the
-    request the page makes first, and lets the two describe different indexes.
+    """Tree, filter, and navigation projections share one coherent read."""
 
-    The revision and the reported status are read in the same tick as the
-    snapshot: a revision that has already moved keys a memo that never
-    matches, and a newer "done" beside partial tallies stops the browser
-    polling before it asks for the final snapshot."""
-
-    block = _api_tree_source()
-    assert block.count('inventory.entries(scope="all-known")') == 1
-    assert block.count("inventory.rollup_revision()") == 1
-    # And the tally path reuses it rather than taking a second one: the
-    # unfiltered path snapshots lazily inside its thread, but when a filter has
-    # already forced a snapshot, both passes read that one.
-    assert "if navigation_tallies is None and wants_tallies and index_entries is not None:" in block
-    # No await between the snapshot and the two reads that must describe it.
-    snapshot = block.index('index_entries = inventory.entries(scope="all-known")')
-    settled = block.index("tally_cache_status = inventory_status()", snapshot)
-    assert "await" not in block[snapshot:settled]
-    # And both passes are handed that one snapshot.
-    assert "entries=index_entries" in block
-    assert "tally_entries = index_entries" in block
-    assert "generation=index_revision" in block
-    assert "tally_revision = index_revision" in block
+    block = _provider_tree_source()
+    request = block.index("read_request = ReadRequest(queries=tuple(queries))")
+    read = block.index("await runtime.coordinator.read(read_request)", request)
+    assert "FilteredTreeQuery(" in block[:request]
+    assert "NavigationQuery(" in block[:request]
+    assert ".rollup_revision()" not in block
+    assert ".entries(scope=" not in block
+    assert "await" not in block[request:read]
 
 
 def test_reapply_is_skipped_when_nothing_is_filtered() -> None:

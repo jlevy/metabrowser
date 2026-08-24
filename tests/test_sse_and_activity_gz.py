@@ -12,7 +12,8 @@ import gzip
 from pathlib import Path
 
 from metabrowser import server as proc_browser
-from metabrowser.activity import _discover_trackable_files
+from metabrowser.active_tracker import _is_trackable
+from metabrowser.inventory_engine.contract import CatalogRecord
 
 
 class _Params:
@@ -73,7 +74,19 @@ def test_activity_tracker_skips_gz_files(tmp_path: Path) -> None:
     in the tracked set even if dropped into a ``.logs/`` directory.
     """
     _setup_logs_dir(tmp_path)
-    paths = _discover_trackable_files(tmp_path)
-    names = {p.name for p in paths}
-    assert "live.jsonl" in names
-    assert "archived.jsonl.gz" not in names
+    assert _is_trackable(
+        CatalogRecord(
+            path=".logs/live.jsonl",
+            logical_extension=".jsonl",
+            size=10,
+            mtime_ns=1,
+        )
+    )
+    assert not _is_trackable(
+        CatalogRecord(
+            path=".logs/archived.jsonl.gz",
+            logical_extension=".jsonl.gz",
+            size=10,
+            mtime_ns=1,
+        )
+    )

@@ -23,8 +23,9 @@ from pathlib import Path
 
 import pytest
 
-from metabrowser.active_tracker import _tick
-from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser.active_tracker import _tick, _TrackerState
+from metabrowser.activity import FileActivityTracker
+from tests.inventory_harness import inventory_harness
 
 # Tuneable: how many .logs JSONL files to fabricate. 200 matches a busy
 # session with several active dispatch runs; the bug shows even at 50.
@@ -91,18 +92,29 @@ def test_tick_does_not_block_event_loop(tmp_path: Path) -> None:
     _make_workload(tmp_path)
 
     async def _run() -> tuple[float, float]:
-        reset_instance_for_tests()
-        inv = get_instance()
-        inv.start(tmp_path)
-        await inv.wait_until_done(timeout=20.0)
+        async with inventory_harness(tmp_path) as harness:
+            state = _TrackerState()
+            tracker = FileActivityTracker()
 
-        async def workload() -> None:
-            # Two ticks: the first seeds the fingerprint table; the
-            # second is the steady-state cost the user pays every 5 s.
-            await _tick(inv, tmp_path, {})
-            await _tick(inv, tmp_path, {})
+            async def workload() -> None:
+                # Two ticks: the first seeds the fingerprint table; the
+                # second is the steady-state cost the user pays every 5 s.
+                await _tick(
+                    harness.runtime.coordinator,
+                    tmp_path,
+                    harness.runtime.config,
+                    state,
+                    tracker,
+                )
+                await _tick(
+                    harness.runtime.coordinator,
+                    tmp_path,
+                    harness.runtime.config,
+                    state,
+                    tracker,
+                )
 
-        return await _measure_max_stall_during(workload)
+            return await _measure_max_stall_during(workload)
 
     tick_ms, stall_ms = asyncio.run(_run())
     print(

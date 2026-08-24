@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import inspect
+import os
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -13,23 +16,32 @@ from metabrowser.inventory_engine.contract import (
     ALLOWED_PHASE_TRANSITIONS,
     QUERY_TYPE_BY_KIND,
     REGISTERED_QUERY_TYPES,
+    CatalogProjection,
     CatalogQuery,
     ChangeBatch,
     ChangeCursor,
     Coverage,
     CoverageReason,
     DiagnosticsQuery,
+    DirectoryProjection,
     DirectoryQuery,
     EngineVersion,
+    EntryPresence,
+    EntryProjection,
     EntryQuery,
+    EntryType,
+    FilteredTreeProjection,
     FilteredTreeQuery,
     Freshness,
     IndexState,
     InventoryBackend,
     InventoryConfig,
+    InventoryFilter,
     InventoryHandle,
     LifecyclePhase,
+    MetadataProjection,
     MetadataQuery,
+    NavigationProjection,
     NavigationQuery,
     PriorityRequest,
     QueryKind,
@@ -37,12 +49,15 @@ from metabrowser.inventory_engine.contract import (
     ReadResult,
     RecentProjection,
     RecentQuery,
+    RefreshObservation,
     RefreshReceipt,
     RefreshRequest,
+    RollupProjection,
     RollupQuery,
     SourceKind,
     WorkCounters,
 )
+from metabrowser.inventory_engine.providers.python import PythonInventoryBackend
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-inventory-provider.md"
@@ -58,6 +73,41 @@ EXPECTED_QUERIES = {
     "metadata": MetadataQuery,
     "diagnostics": DiagnosticsQuery,
 }
+
+PROVIDER_FACTORIES: tuple[Any, ...] = (pytest.param(PythonInventoryBackend, id="python"),)
+
+
+async def _open_settled_provider(
+    factory: Callable[[], InventoryBackend],
+    root: Path,
+    *,
+    config: InventoryConfig | None = None,
+) -> InventoryHandle:
+    handle = await factory().open(root, config or InventoryConfig())
+    for _attempt in range(500):
+        result = await handle.read(
+            ReadRequest(queries=(DiagnosticsQuery(query_id="settled-state"),))
+        )
+        if result.state.phase in {LifecyclePhase.WATCHING, LifecyclePhase.FAILED}:
+            return handle
+        await asyncio.sleep(0.005)
+    await handle.close()
+    raise AssertionError("inventory provider did not settle")
+
+
+def _entry_semantics(entry: Any) -> tuple[object, ...]:
+    return (
+        entry.path,
+        entry.type.value,
+        entry.logical_extension,
+        entry.size if entry.type is EntryType.FILE else None,
+        entry.gitignored,
+        entry.total_files,
+        entry.total_size,
+        entry.unignored_files,
+        entry.unignored_size,
+        entry.empty,
+    )
 
 
 def test_query_algebra_is_closed_and_registered_once() -> None:
@@ -114,6 +164,19 @@ def test_read_request_rejects_empty_or_duplicate_projection_ids() -> None:
         )
 
 
+def test_catalog_predicates_are_canonical_and_bounded() -> None:
+    with pytest.raises(ValueError, match="start with a dot"):
+        CatalogQuery(query_id="q", max_rows=1, terminal_extensions=("jsonl",))
+    with pytest.raises(ValueError, match="lowercase"):
+        CatalogQuery(query_id="q", max_rows=1, terminal_extensions=(".JSONL",))
+    with pytest.raises(ValueError, match="canonical terminal suffixes"):
+        CatalogQuery(query_id="q", max_rows=1, terminal_extensions=(".run.jsonl",))
+    with pytest.raises(ValueError, match="exact path-component"):
+        CatalogQuery(query_id="q", max_rows=1, ancestor_names=("runs/.logs",))
+    with pytest.raises(ValueError, match="positive"):
+        CatalogQuery(query_id="q", max_rows=1, size_less_than=0)
+
+
 def test_state_requires_an_explanation_for_partial_coverage() -> None:
     with pytest.raises(ValueError, match="reason"):
         Coverage(complete=False)
@@ -129,7 +192,9 @@ def test_configuration_and_command_bounds_are_enforced() -> None:
     with pytest.raises(ValueError, match="change_queue_size must be positive"):
         InventoryConfig(change_queue_size=0)
     with pytest.raises(ValueError, match="at most 1024"):
-        RefreshRequest(paths=tuple(str(index) for index in range(1_025)))
+        RefreshRequest(
+            observations=tuple(RefreshObservation(path=str(index)) for index in range(1_025))
+        )
     with pytest.raises(ValueError, match="at most 1024"):
         PriorityRequest(paths=tuple(str(index) for index in range(1_025)))
     with pytest.raises(ValueError, match="nonnegative"):
@@ -237,3 +302,221 @@ def test_protocols_are_structural_and_provider_neutral() -> None:
         "metabrowser.inventory",
         "metabrowser.sse",
     }
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_semantic_digest(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    """Every provider must produce the same normalized filesystem semantics."""
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+    tracked = tmp_path / "tracked"
+    tracked.mkdir()
+    bundle = tracked / "bundle.min.js"
+    bundle.write_text("code", encoding="utf-8")
+    readme = tracked / "README"
+    readme.write_text("readme", encoding="utf-8")
+    ignored = tmp_path / "ignored"
+    ignored.mkdir()
+    cache = ignored / "cache.bin"
+    cache.write_text("xxx", encoding="utf-8")
+    os.utime(bundle, ns=(4_000_000_000, 4_000_000_000))
+    os.utime(readme, ns=(3_000_000_000, 3_000_000_000))
+    os.utime(cache, ns=(2_000_000_000, 2_000_000_000))
+    try:
+        (tmp_path / "bundle-link").symlink_to("tracked/bundle.min.js")
+    except OSError as error:  # pragma: no cover - unsupported Windows policy
+        pytest.skip(f"symlinks are unavailable: {error}")
+
+    async def run() -> dict[str, object]:
+        handle = await _open_settled_provider(provider_factory, tmp_path)
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=(
+                        EntryQuery(query_id="link", path="bundle-link"),
+                        DirectoryQuery(
+                            query_id="directory",
+                            max_depth=3,
+                            max_rows=100,
+                        ),
+                        FilteredTreeQuery(
+                            query_id="filtered",
+                            max_depth=3,
+                            max_rows=100,
+                            filter=InventoryFilter(
+                                extensions=(".min.js",),
+                                include_ignored=False,
+                            ),
+                        ),
+                        RollupQuery(
+                            query_id="rollup",
+                            max_depth=3,
+                            max_nodes=100,
+                            top=20,
+                            extension_top=20,
+                        ),
+                        NavigationQuery(query_id="navigation", max_rows=20),
+                        RecentQuery(
+                            query_id="recent",
+                            max_rows=20,
+                            as_of_ns=10**30,
+                            include_ignored=True,
+                        ),
+                        CatalogQuery(
+                            query_id="catalog",
+                            max_rows=20,
+                            include_ignored=False,
+                        ),
+                        MetadataQuery(query_id="metadata"),
+                    )
+                )
+            )
+            link = cast("EntryProjection", result.projection("link"))
+            directory = cast("DirectoryProjection", result.projection("directory"))
+            filtered = cast("FilteredTreeProjection", result.projection("filtered"))
+            rollup = cast("RollupProjection", result.projection("rollup"))
+            navigation = cast("NavigationProjection", result.projection("navigation"))
+            recent = cast("RecentProjection", result.projection("recent"))
+            catalog = cast("CatalogProjection", result.projection("catalog"))
+            metadata = cast("MetadataProjection", result.projection("metadata"))
+
+            assert link.presence is EntryPresence.PRESENT
+            assert link.entry is not None
+            assert rollup.payload is not None
+            rollup_node = cast("dict[str, object]", rollup.payload["node"])
+            rollup_children = cast("list[dict[str, object]]", rollup_node["children"])
+            navigation_summary = cast("dict[str, int]", navigation.payload["summary"])
+            return {
+                "state": (
+                    result.state.phase.value,
+                    result.state.coverage.complete,
+                    result.state.freshness.value,
+                    result.state.source.value,
+                ),
+                "link": _entry_semantics(link.entry),
+                "directory": tuple(_entry_semantics(entry) for entry in directory.entries),
+                "filtered": (
+                    tuple(entry.path for entry in filtered.entries),
+                    filtered.matching_files,
+                    filtered.matching_bytes,
+                ),
+                "rollup": (
+                    rollup_node["total_files"],
+                    rollup_node["total_size"],
+                    rollup_node["unignored_files"],
+                    rollup_node["unignored_size"],
+                    tuple(
+                        (
+                            child["name"],
+                            child["type"],
+                            child.get("total_files"),
+                            child.get("total_size"),
+                            child.get("unignored_files"),
+                            child.get("unignored_size"),
+                            child.get("gitignored", False),
+                        )
+                        for child in rollup_children
+                    ),
+                ),
+                "navigation": navigation_summary,
+                "recent": tuple(entry.path for entry in recent.entries),
+                "catalog": tuple(
+                    (record.path, record.logical_extension, record.size)
+                    for record in catalog.records
+                ),
+                "metadata": (metadata.provider, metadata.contract),
+            }
+        finally:
+            await handle.close()
+
+    actual = asyncio.run(run())
+    expected = {
+        "state": ("watching", True, "fresh", "scanned"),
+        "link": ("bundle-link", "symlink", "", None, False, None, None, None, None, None),
+        "directory": (
+            ("ignored", "dir", "", None, True, 1, 3, 0, 0, False),
+            ("tracked", "dir", "", None, False, 2, 10, 2, 10, False),
+            ("bundle-link", "symlink", "", None, False, None, None, None, None, None),
+            ("ignored/cache.bin", "file", ".bin", 3, True, None, None, None, None, None),
+            ("tracked/README", "file", "", 6, False, None, None, None, None, None),
+            (
+                "tracked/bundle.min.js",
+                "file",
+                ".min.js",
+                4,
+                False,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+        ),
+        "filtered": (("tracked", "tracked/bundle.min.js"), 1, 4),
+        "rollup": (
+            3,
+            13,
+            2,
+            10,
+            (
+                ("tracked", "dir", 2, 10, 2, 10, False),
+                ("ignored", "dir", 1, 3, 0, 0, True),
+            ),
+        ),
+        "navigation": {
+            "files": 2,
+            "size": 10,
+            "ignored_files": 1,
+            "ignored_size": 3,
+        },
+        "recent": ("tracked/bundle.min.js", "tracked/README", "ignored/cache.bin"),
+        "catalog": (
+            ("tracked/README", "", 6),
+            ("tracked/bundle.min.js", ".min.js", 4),
+        ),
+        "metadata": ("python", "inventory-provider-v1"),
+    }
+    assert actual == expected, actual
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_budget_stop_is_explicit_and_absence_remains_unknown(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    for name in ("a.txt", "b.txt", "c.txt", "d.txt", "z.txt"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+
+    async def run() -> tuple[object, ...]:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(max_entries=2),
+        )
+        try:
+            result = await handle.read(
+                ReadRequest(queries=(EntryQuery(query_id="missing", path="z.txt"),))
+            )
+            projection = cast("EntryProjection", result.projection("missing"))
+            return (
+                result.state.phase.value,
+                result.state.coverage.complete,
+                result.state.coverage.reason.value if result.state.coverage.reason else None,
+                tuple(issue.code.value for issue in result.state.issues),
+                projection.presence.value,
+            )
+        finally:
+            await handle.close()
+
+    assert asyncio.run(run()) == (
+        "watching",
+        False,
+        "budget",
+        ("resource_budget",),
+        "unknown",
+    )

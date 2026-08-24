@@ -12,16 +12,19 @@ import asyncio
 import json
 import re
 from pathlib import Path
-from unittest.mock import Mock
+from types import SimpleNamespace
+from typing import Any, cast
 
 from metabrowser import server
-from metabrowser.events import FsEntry
+from tests.inventory_harness import inventory_harness
 
 STATIC_ROOT = Path(server.__file__).resolve().parent / "static"
 
 
-def _index_html() -> str:
-    return bytes(asyncio.run(server.index(Mock())).body).decode("utf-8")
+async def _index_html(root: Path) -> str:
+    async with inventory_harness(root) as harness:
+        request = SimpleNamespace(app=harness.app)
+        return bytes((await server.index(cast(Any, request))).body).decode("utf-8")
 
 
 def _inline_payload(html: str) -> dict[str, object] | None:
@@ -34,26 +37,12 @@ def _inline_payload(html: str) -> dict[str, object] | None:
 
 def test_the_shell_carries_the_roots_first_rows(tmp_path: Path) -> None:
     previous_root = server._resolved_root_dir()
-    inventory = server.get_inventory()
     try:
         (tmp_path / "alpha").mkdir()
         (tmp_path / "beta.md").write_text("# beta\n")
         server._set_root_dir(tmp_path)
-        # Populated directly rather than by running the walker: the walker owns
-        # an event loop, and what this test is about is the shell reading a
-        # warm index, not how the index got warm.
-        inventory.clear()
-        inventory.apply_walker_entries(
-            [
-                FsEntry.for_observed_dir(path="alpha", parent="", name="alpha"),
-                FsEntry.for_observed_file(
-                    path="beta.md", parent="", name="beta.md", size=7, mtime_ns=1
-                ),
-            ]
-        )
-        payload = _inline_payload(_index_html())
+        payload = _inline_payload(asyncio.run(_index_html(tmp_path)))
     finally:
-        inventory.clear()
         server._set_root_dir(previous_root)
 
     assert payload is not None, "the shell no longer inlines the first rows"

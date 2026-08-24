@@ -21,8 +21,11 @@ from typing import Any
 from conftest import SyntheticIndexWriter
 from watchfiles import Change
 
-from metabrowser.events import FsChange, FsEntry, FsUpsert
-from metabrowser.inventory import InventoryIndex
+from metabrowser.events import FsEntry
+from metabrowser.inventory_engine.contract import DiagnosticsQuery, ReadRequest
+from metabrowser.inventory_engine.providers.python import (
+    PythonInventoryHandle as InventoryIndex,
+)
 from metabrowser.watch_backends import _emit_for_path
 from metabrowser.wire_models import RollupDirNode, RollupResult, validate_rollup_node
 
@@ -184,25 +187,34 @@ def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> N
 
         before = index.rollup("", depth=3, top=40, ext_top=12)
         assert before is not None
-        sub_q = index.subscribe(max_queue=1024)
+        checkpoint = await index.read(
+            ReadRequest(queries=(DiagnosticsQuery(query_id="before-add"),))
+        )
 
         target = tmp_path / "src" / "table.csv"
         target.write_bytes(b"c" * 500)
-        await _emit_for_path(index, tmp_path, str(target), Change.added)
-
-        upserts: set[str] = set()
-        while not sub_q.empty():
-            evt = sub_q.get_nowait()
-            if isinstance(evt, FsChange):
-                for op in evt.ops:
-                    if isinstance(op, FsUpsert):
-                        upserts.add(op.entry.path)
+        await _emit_for_path(
+            index.refresh,
+            tmp_path,
+            str(target),
+            Change.added,
+        )
+        change = await asyncio.wait_for(
+            anext(index.changes(after=checkpoint.cursor)),
+            timeout=1.0,
+        )
+        upserts = set(change.dirty_paths)
 
         after_add = index.rollup("", depth=3, top=40, ext_top=12)
         assert after_add is not None
 
         target.unlink()
-        await _emit_for_path(index, tmp_path, str(target), Change.deleted)
+        await _emit_for_path(
+            index.refresh,
+            tmp_path,
+            str(target),
+            Change.deleted,
+        )
         after_delete = index.rollup("", depth=3, top=40, ext_top=12)
         assert after_delete is not None
         return before, upserts, after_add, after_delete

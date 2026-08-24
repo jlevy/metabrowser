@@ -1,13 +1,12 @@
 # Inventory Provider Contract
 
-**Status:** The provider contract is implemented; the Python provider and application
-ownership migration are in progress.
+**Status:** Implemented for the Python reference provider; the fdu provider is planned.
 
 Metabrowser owns a sealed interface between application behavior and the engine that
 walks, retains, aggregates, and watches one served root.
-The interface lets the Python reference implementation and the fdu-backed implementation
-answer the same requests without exposing either engine’s retained-index types or
-concurrency model.
+The interface lets the Python reference implementation and a future fdu-backed
+implementation answer the same requests without exposing either engine’s retained-index
+types or concurrency model.
 
 The provider is authoritative for filesystem facts and aggregate indexes.
 The application coordinator owns root selection, host-only decorations, response
@@ -21,7 +20,7 @@ routes and browser event projection
                 |
           InventoryHandle
           /             \
- PythonInventoryHandle  FduInventoryHandle
+ PythonInventoryHandle  FduInventoryHandle (planned)
 ```
 
 `tests/test_inventory_provider_contract.py` checks the registered query types, explicit
@@ -44,6 +43,11 @@ The application constructs the backend in its lifespan composition root.
 A root change closes the old handle, invalidates host caches and cursors, opens the
 replacement, and then makes the new coordinator state visible.
 Tasks belonging to a closed session cannot publish into the replacement session.
+
+`METABROWSER_INVENTORY_PROVIDER` selects the sealed in-tree factory entry.
+Phase 1 accepts only `python`; an unknown value fails explicitly.
+The performance harnesses use the same selection axis, so adding `fdu` does not require
+a second benchmark path.
 
 ## Configuration and Identity
 
@@ -87,10 +91,10 @@ route later assembles a complete response from version-pinned pages.
 | `entry` | `EntryQuery` | One relative path | Present, absent, or unknown lookup plus filesystem facts |
 | `directory` | `DirectoryQuery` | Positive depth and row count | Name-ordered rows, continuation, and exact known remainder |
 | `filtered_tree` | `FilteredTreeQuery` | Positive depth and row count | Matching tree rows and selected scalar totals |
-| `rollup` | `RollupQuery` | Positive depth, node, ranking, extension, remainder, and filename counts | File Rollup Format payload for one directory |
+| `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node bound | File Rollup Format payload for one directory |
 | `navigation` | `NavigationQuery` | Positive tally-row count | Population, extension, family, preset, and recency tallies |
 | `recent` | `RecentQuery` | Positive row count and explicit observation time | Newest matching files, pre-bound match count, and truncation |
-| `catalog` | `CatalogQuery` | Positive page size | Nonignored file identities and logical extensions from one pinned version |
+| `catalog` | `CatalogQuery` | Positive page size; optional terminal-extension, ancestor-name, and size predicates | Matching file identities and logical extensions from one pinned version |
 | `metadata` | `MetadataQuery` | Constant-size session record | Provider, contract, root, and identity facts |
 | `diagnostics` | `DiagnosticsQuery` | Constant-size counter record | Provider state, progress, cache, watch, and queue diagnostics |
 
@@ -99,6 +103,12 @@ time-dependent answer.
 Providers may return `valid_until_ns` when the answer has a known expiry.
 The coordinator includes that time boundary in request fingerprints, validators, and
 retained-body keys.
+
+Catalog terminal extensions use one lowercase terminal suffix including its leading dot;
+matching is case-insensitive against the file name.
+Ancestor names are exact, case-sensitive path components, and `size_less_than` is an
+exclusive byte bound.
+These rules are provider semantics, not Python implementation details.
 
 The algebra has no generic report name, provider command, HTTP status, response header,
 or provider-specific options map.
@@ -174,7 +184,10 @@ a suffix presented as complete.
 Refresh requests contain 1 to 1,024 unique paths and a typed reason.
 Priority requests contain the same maximum number of paths and a positive depth.
 A notification remains a hint: a provider verifies filesystem state before applying a
-mutation.
+mutation. The primary native-or-polling watcher belongs to the opened provider so
+baseline discovery, observation capture, reconciliation, and freshness share one
+lifecycle. `refresh()` also accepts bounded external hints from activity probes or
+application writes; it is not a second watcher.
 
 ## Work and Performance Evidence
 
@@ -201,9 +214,9 @@ and
 | `/api/recent` | `RecentQuery` |
 | Quick File catalog | Version-pinned `CatalogQuery` pages |
 | `/api/file` folder facts | `EntryQuery` |
-| Initial browser stream | Bounded directory and catalog reads followed from their returned cursor |
+| Initial browser stream | Bounded entry and directory reads followed by `changes()` from the captured cursor |
 | Live browser stream | `changes()` plus coherent rereads |
-| Activity discovery | Scoped catalog reads; results update the host overlay |
+| Activity discovery | Provider-filtered catalog reads by terminal extension, ancestor name, and size; results update the host overlay |
 | Index metadata and capabilities | `MetadataQuery` and `DiagnosticsQuery` |
 
 Safe-path validation and file-content reads remain above the engine.

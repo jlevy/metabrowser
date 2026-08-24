@@ -1,11 +1,4 @@
-"""Shared metabrowser test fixtures.
-
-Resets the inventory and events bus so tests that drive the walker or
-subscribe to the event stream do not leak
-state across tests. Without this fixture, the InventoryIndex singleton
-(populated by one test, e.g. the migration suite) would intercept later
-tests that expect the legacy filesystem walk path.
-"""
+"""Shared Metabrowser test fixtures."""
 
 from __future__ import annotations
 
@@ -20,20 +13,12 @@ os.environ["METABROWSER_PLUGINS_DIRS"] = ""
 
 
 @pytest.fixture(autouse=True)
-def _reset_browser_inventory() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
-    """Reset the process-wide InventoryIndex + events bus between tests."""
+def _reset_browser_response_caches() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Keep route response caches isolated between tests."""
     yield
     try:
-        from metabrowser.events_route import (
-            reset_bus_for_tests,
-        )
-        from metabrowser.inventory import (
-            reset_instance_for_tests,
-        )
         from metabrowser.server import reset_response_caches_for_tests
 
-        reset_instance_for_tests()
-        reset_bus_for_tests()
         reset_response_caches_for_tests()
     except Exception:
         # Defensive: never let cleanup failure mask a test failure.
@@ -41,7 +26,7 @@ def _reset_browser_inventory() -> Generator[None, None, None]:  # pyright: ignor
 
 
 class SyntheticIndexWriter:
-    """Dict-like façade for building an :class:`InventoryIndex` in tests.
+    """Dict-like façade for building a Python provider handle in tests.
 
     Several rollup tests assemble an index in memory instead of on disk. The
     index keeps derived structures alongside ``_entries`` (the parent/child

@@ -63,6 +63,49 @@ EMPTY_DECORATION = InventoryDecoration()
 
 
 @dataclass(frozen=True, slots=True)
+class InventoryDecorationPatch:
+    """Sparse ownership-safe update to one application decoration.
+
+    ``None`` leaves the scalar or tuple field unchanged. Label values of ``None``
+    remove only that named label, which lets independent host features share one
+    decoration without reading and replacing each other's state.
+    """
+
+    active: bool | None = None
+    views: tuple[str, ...] | None = None
+    labels: tuple[tuple[str, str | None], ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.views is not None:
+            if any(not view for view in self.views):
+                raise ValueError("overlay view ids must not be empty")
+            if len(self.views) != len(set(self.views)):
+                raise ValueError("overlay view ids must be unique")
+        label_names = [name for name, _value in self.labels]
+        if any(not name for name in label_names):
+            raise ValueError("overlay label names must not be empty")
+        if len(label_names) != len(set(label_names)):
+            raise ValueError("overlay label names must be unique")
+        if self.labels != tuple(sorted(self.labels)):
+            raise ValueError("overlay label updates must be sorted by name")
+
+    def apply(self, current: InventoryDecoration) -> InventoryDecoration:
+        """Merge this patch onto *current* without touching unowned fields."""
+
+        labels = dict(current.labels)
+        for name, value in self.labels:
+            if value is None:
+                labels.pop(name, None)
+            else:
+                labels[name] = value
+        return InventoryDecoration(
+            active=current.active if self.active is None else self.active,
+            views=current.views if self.views is None else self.views,
+            labels=tuple(sorted(labels.items())),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class OverlaySnapshot:
     """One coherent sparse overlay image for a requested path set."""
 
@@ -144,6 +187,7 @@ class InventoryOverlay:
 __all__ = [
     "EMPTY_DECORATION",
     "InventoryDecoration",
+    "InventoryDecorationPatch",
     "InventoryOverlay",
     "OverlaySnapshot",
 ]

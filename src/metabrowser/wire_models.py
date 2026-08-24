@@ -2,10 +2,9 @@
 
 Single source of truth for the JSON payload shape returned by
 ``/api/tree`` (file/dir nodes) and ``/api/recent`` (clustered
-dir/file rows). Two producers — :func:`metabrowser.tree._dir_tree`
-(filesystem walk) and :func:`metabrowser.tree._build_inventory_tree`
-(InventoryIndex read) — must emit values that satisfy these
-TypedDicts. The SPA's ``renderTreeNodes`` reads the same shape.
+dir/file rows). The CLI walker projection and the provider-neutral tree
+projection must emit values that satisfy these TypedDicts. The SPA's
+``renderTreeNodes`` reads the same shape.
 
 Why this exists
 ---------------
@@ -259,6 +258,8 @@ class NavigationTallies(TypedDict):
     type_families: list[list[object]]
     type_presets: list[list[object]]
     recency_tallies: list[list[object]]
+    oldest_mtime_ns: int
+    newest_mtime_ns: int
 
 
 class FileTypeMeasure(TypedDict):

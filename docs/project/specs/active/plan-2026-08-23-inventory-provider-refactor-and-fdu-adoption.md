@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
-**Status:** Draft
+**Status:** Phase 1 implemented; Phase 2 planned
 
 ## Overview
 
@@ -176,8 +176,18 @@ Active state, PID labels, preview choices, and plugin labels live in a sparse ov
 keyed by the same lossless path identity.
 The activity tracker reads bounded candidates, updates only the overlay, and submits a
 refresh hint when it observes changed filesystem metadata.
+Its catalog request carries terminal-extension, ancestor-name, and size predicates so a
+native provider returns only candidates across the binding.
 The coordinator joins decorations only onto returned rows and combines overlay changes
 with provider invalidations in host event order.
+
+The selected provider owns the one primary filesystem watcher.
+The Python handle runs the existing native-or-polling observer; the fdu handle will run
+its native equivalent.
+Both feed verified observations through their own mutation path and expose watcher gaps
+through state, issues, and diagnostics.
+The coordinator invalidates host projection caches and emits browser invalidations from
+provider changes, so neither watcher imports application wire types.
 
 ### Behavior Preserved by the Python Provider
 
@@ -235,10 +245,10 @@ new filename.
   algebra, lifecycle transitions, errors, bounds, route mapping, and invariants; link it
   from the architecture map and name the check that keeps registered projections and
   consumers aligned.
-- [ ] Capture normalized goldens for every row in the preservation table, plus a
+- [x] Capture normalized goldens for every row in the preservation table, plus a
   provider-neutral semantic digest for representative complete, progressive, partial,
   ignored, symlinked, and failing trees.
-- [ ] Record a back-to-back Python baseline in the existing engine, server, and browser
+- [x] Record a back-to-back Python baseline in the existing engine, server, and browser
   performance harness before moving code.
 - [x] Define the sealed factory, protocols, immutable semantic records, and a contract
   test harness. Use a small deterministic test provider only where it proves coordinator
@@ -249,34 +259,34 @@ new filename.
 - [x] Move current retained entries, child indexes, reducers, walker, refresh mutation
   path, and watcher lifecycle into `PythonInventoryHandle` while preserving its
   algorithms and observation semantics.
-- [ ] Give every Python read atomic payload/version/cursor capture.
+- [x] Give every Python read atomic payload/version/cursor capture.
   Fix the existing rollup payload/ETag race and equivalent catalog or snapshot races in
   the same slice.
-- [ ] Add `InventoryCoordinator` as the sole application owner, serialize root changes,
+- [x] Add `InventoryCoordinator` as the sole application owner, serialize root changes,
   await close, centralize response-cache invalidation, and replace process-wide mutable
   access with explicit dependency access from the application lifespan.
-- [ ] Move active state and labels into the sparse overlay while preserving current
+- [x] Move active state and labels into the sparse overlay while preserving current
   browser event and `/api/activity` behavior.
-- [ ] Convert Python mutations into bounded `ChangeBatch` invalidations and implement
+- [x] Convert Python mutations into bounded `ChangeBatch` invalidations and implement
   coordinator read-on-dirty, cursor resume, coalescing, all-dirty, reset, and host event
   ordering.
 
 #### Migrate Every Consumer and Remove the Old Seam
 
-- [ ] Move `/api/tree`, `/api/rollup`, `/api/recent`, `/api/catalog`, `/api/index/*`,
+- [x] Move `/api/tree`, `/api/rollup`, `/api/recent`, `/api/catalog`, `/api/index/*`,
   `/api/capabilities`, folder facts in `/api/file`, and folder plugin hooks onto bundled
   coordinator reads.
-- [ ] Move tree helpers, recent collection, activity candidate discovery, event routing,
+- [x] Move tree helpers, recent collection, activity candidate discovery, event routing,
   watcher refresh, diagnostics, tests, and root-reset logic off concrete
   `InventoryIndex` imports.
-- [ ] Remove route-level filesystem fallback branches or contain the proven necessary
+- [x] Remove route-level filesystem fallback branches or contain the proven necessary
   behavior in the Python provider with honest source and coverage.
-- [ ] Delete the public singleton accessor, old event subscription surface, obsolete
+- [x] Delete the public singleton accessor, old event subscription surface, obsolete
   response revision reads, duplicate walker/index paths, and tests of removed internals.
   Do not retain aliases for in-repository consumers.
-- [ ] Add `provider=python` to benchmark inputs and result records, with provider and
+- [x] Add `provider=python` to benchmark inputs and result records, with provider and
   contract identities in diagnostics, even though Python is the only Phase 1 provider.
-- [ ] Run the normalized wire, browser, lifecycle, race, bound, work-counter, and
+- [x] Run the normalized wire, browser, lifecycle, race, bound, work-counter, and
   performance comparisons after each vertical migration slice.
 
 **Phase 1 exit:** Metabrowser ships with only the Python provider and no fdu dependency.
@@ -365,6 +375,35 @@ Shared CI does not use wall-clock thresholds.
 A Phase 1 regression or Phase 2 adoption decision uses a same-host before/after run and
 the standing performance-loop method.
 
+### Phase 1 Preservation Evidence
+
+The provider-parametrized semantic digest in `tests/test_inventory_provider_contract.py`
+is the Phase 2 parity entry point.
+It covers complete and budget-limited trees, ignored entries, symlinks, compound
+extensions, typed presence, rollup conservation, navigation, recency, catalog
+membership, and provider identity.
+`tests/test_python_inventory_provider.py` adds progressive, failure, cursor-expiry,
+refresh, paging, bound, and work-counter checks for the reference implementation.
+
+The existing product suites remain the wire and browser preservation oracle:
+
+| Surface | Evidence |
+| --- | --- |
+| Progressive open and lifecycle | `tests/test_startup_nonblocking.py`, `tests/test_browser_lifespan_e2e.py` |
+| Tree, filters, and folder facts | `tests/test_browser_walk.py`, `tests/test_tree_filter.py`, `tests/test_api_folder_envelope.py` |
+| Rollups and validators | `tests/test_inventory_rollup.py`, `tests/test_rollup_route.py`, `tests/test_browser_rollup.py` |
+| Recent files and catalog | `tests/test_browser_recent.py`, `tests/test_catalog_feed_server.py` |
+| Live delivery and recovery | `tests/test_e2e_filesystem_to_sse.py`, `tests/test_browser_events_route.py` |
+| Activity overlay | `tests/test_browser_active_tracker.py`, `tests/test_inventory_overlay.py` |
+| Watch, refresh, and root replacement | `tests/test_browser_watch_backends.py`, `tests/test_inventory_coordinator.py` |
+| Diagnostics and provider-neutral ownership | `tests/test_perf_instrumentation.py`, `tests/test_inventory_provider_ownership.py` |
+
+The serving comparison uses the same 100,000-file corpus and the `--provider python`
+axis shown in the performance-loop documentation.
+The corrected harness waits for a visible filesystem mutation and a changed ETag before
+timing fresh aggregation, rejects failed route responses, and samples process resources
+only after discovery completes so the instrumentation does not perturb the cold walk.
+
 ## Rollout Plan
 
 Phase 1 lands in vertical slices but never leaves two production ownership paths.
@@ -387,8 +426,9 @@ manifest in the same change.
 
 ## Open Questions
 
-No unresolved question blocks Phase 1. The contract spike must settle the exact stable
-paging token for complete catalog assembly before that consumer migrates.
+Phase 1 has no unresolved contract question.
+Catalog assembly uses the provider’s bounded continuation together with a version-pinned
+read sequence, so it cannot join pages from different versions.
 
 Two Phase 2 optimizations remain measurement-gated:
 

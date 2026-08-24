@@ -94,6 +94,29 @@ rendering, and the in-process navigation API check.
 The installed wheel must also pass `metab --doctor`, so the release gate validates the
 user-facing plugin diagnostics rather than only importing plugin internals.
 
+## Inventory Provider Development
+
+The application lifespan owns one inventory runtime and coordinator for the served root.
+Routes, browser-event projection, activity tracking, and watcher integration use that
+provider-neutral boundary; only the sealed factory imports a concrete provider.
+The exact contract and query-to-consumer map are in the
+[Inventory Provider Contract](project/architecture/arch-inventory-provider.md).
+
+The Python reference provider is the only Phase 1 runtime selection.
+Select it explicitly when testing the provider axis:
+
+```shell
+METABROWSER_INVENTORY_PROVIDER=python METABROWSER_DEBUG=1 \
+  uv --config-file uv.toml run --frozen metab ./tests/manual-fixtures --no-open
+```
+
+An unknown provider fails at startup instead of falling back.
+With debug mode enabled, `/_debug/inventory` reports the selected provider, contract,
+lifecycle state, version, and cumulative work counters.
+Use `--provider python` in `devtools/bench_serving.py` and
+`explorations/performance-loop/run.py`; Phase 2 adds fdu to those same axes rather than
+creating provider-specific harnesses.
+
 ## Asset Loading Tiers
 
 Every browser asset has a loading tier, and the tier is chosen from what the asset costs

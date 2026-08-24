@@ -118,6 +118,26 @@ Development:
 
 ## 0.6.0
 
+Inventory engine:
+
+- Filesystem discovery, rollups, navigation tallies, recency, catalog reads, refresh,
+  and live invalidation now cross one sealed inventory-provider contract owned by the
+  application lifespan.
+  The Python implementation remains the only shipped provider; routes and browser events
+  no longer depend on its retained-index types or a process-wide singleton.
+
+- Inventory reads return one coherent version, cursor, lifecycle state, projection
+  bundle, and work record.
+  Rollup payloads and ETags therefore cannot describe different generations, root
+  replacement joins old work before exposing the new handle, and bounded cursor gaps
+  request a coherent reset.
+
+- `METABROWSER_INVENTORY_PROVIDER=python` exposes the provider selection axis used by
+  the performance harnesses.
+  `METABROWSER_DEBUG=1` also enables `/_debug/inventory`, which reports provider and
+  contract identity, lifecycle state, version, process resources, and cumulative
+  provider work without changing the public browser protocol.
+
 File-type colors:
 
 - Every file-type family now has its own color, taken from GitHub where GitHub names

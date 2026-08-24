@@ -13,13 +13,14 @@ import contextlib
 import logging
 import uuid
 from collections import deque
-from collections.abc import AsyncGenerator, Callable, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
 from metabrowser.inventory_engine.contract import (
     MAX_CHANGE_PATHS,
+    CatalogProjection,
     ChangeBatch,
     ChangeCursor,
     DiagnosticsQuery,
@@ -46,6 +47,7 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_engine.overlay import (
     EMPTY_DECORATION,
     InventoryDecoration,
+    InventoryDecorationPatch,
     InventoryOverlay,
 )
 
@@ -112,6 +114,7 @@ class CoordinatedRead:
     version: HostVersion
     cursor: HostCursor
     entries: Mapping[str, DecoratedInventoryEntry]
+    decorations: Mapping[str, InventoryDecoration]
 
     def __post_init__(self) -> None:
         if self.version.engine != self.result.version:
@@ -131,6 +134,7 @@ class HostChange:
     dirty_queries: frozenset[QueryKind] = frozenset()
     all_dirty: bool = False
     reset: bool = False
+    facts_changed: bool = False
     work: WorkCounters = field(default_factory=WorkCounters)
 
     def __post_init__(self) -> None:
@@ -165,6 +169,7 @@ def _reset_from(change: HostChange) -> HostChange:
         version=change.version,
         state=change.state,
         reset=True,
+        facts_changed=change.facts_changed,
         work=change.work,
     )
 
@@ -177,6 +182,18 @@ def _provider_reset_from(batch: ChangeBatch) -> ChangeBatch:
         reset=True,
         work=batch.work,
     )
+
+
+async def _drain_provider_operation_on_cancel[T](operation: Awaitable[T]) -> T:
+    """Keep a cancelled caller accounted for until provider work has stopped."""
+
+    task = asyncio.ensure_future(operation)
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+        raise
 
 
 class InventoryCoordinator:
@@ -240,7 +257,7 @@ class InventoryCoordinator:
 
         handle = await self._begin_operation()
         try:
-            result = await handle.read(request)
+            result = await _drain_provider_operation_on_cancel(handle.read(request))
             async with self._lock:
                 if handle is not self._handle:
                     raise InventoryConsistencyError(
@@ -248,7 +265,8 @@ class InventoryCoordinator:
                     )
                 self._observe_read_locked(result)
                 facts = self._returned_entries(result)
-                overlay = self._overlay.snapshot(facts)
+                returned_paths = self._returned_paths(result, facts)
+                overlay = self._overlay.snapshot(returned_paths)
                 decorated = {
                     path: DecoratedInventoryEntry(
                         facts=entry,
@@ -264,6 +282,7 @@ class InventoryCoordinator:
                     ),
                     cursor=self._current_host_cursor_locked(),
                     entries=MappingProxyType(decorated),
+                    decorations=overlay.decorations,
                 )
         finally:
             await asyncio.shield(self._end_operation())
@@ -273,7 +292,7 @@ class InventoryCoordinator:
 
         handle = await self._begin_operation()
         try:
-            return await handle.refresh(request)
+            return await _drain_provider_operation_on_cancel(handle.refresh(request))
         finally:
             await asyncio.shield(self._end_operation())
 
@@ -282,7 +301,7 @@ class InventoryCoordinator:
 
         handle = await self._begin_operation()
         try:
-            await handle.prioritize(request)
+            await _drain_provider_operation_on_cancel(handle.prioritize(request))
         finally:
             await asyncio.shield(self._end_operation())
 
@@ -301,38 +320,68 @@ class InventoryCoordinator:
     ) -> HostVersion:
         """Atomically update decorations and publish at most one host change."""
 
-        published: HostChange | None = None
+        published: HostChange | None
         async with self._condition:
             await self._wait_for_transition_locked()
             self._require_handle_locked()
-            before = self._overlay.snapshot(replacements)
-            changed_paths = tuple(
-                path
-                for path, requested in replacements.items()
-                if before.decorations.get(path, EMPTY_DECORATION)
-                != (requested if requested is not None else EMPTY_DECORATION)
-            )
-            revision = self._overlay.replace_many(replacements)
-            if changed_paths:
-                all_dirty = len(changed_paths) > MAX_CHANGE_PATHS
-                published = self._new_host_change_locked(
-                    version=HostVersion(
-                        engine=self._require_engine_version_locked(),
-                        overlay_revision=revision,
-                    ),
-                    state=self._require_state_locked(),
-                    dirty_paths=() if all_dirty else changed_paths,
-                    dirty_queries=_DECORATED_QUERY_KINDS,
-                    all_dirty=all_dirty,
-                )
-                self._publish_locked(published)
-            version = HostVersion(
-                engine=self._require_engine_version_locked(),
-                overlay_revision=revision,
-            )
+            version, published = self._replace_decorations_locked(replacements)
         if published is not None:
             self._notify_listeners(published)
         return version
+
+    async def patch_decorations(
+        self,
+        patches: Mapping[str, InventoryDecorationPatch],
+    ) -> HostVersion:
+        """Atomically merge feature-owned fields and publish one host change."""
+
+        published: HostChange | None
+        async with self._condition:
+            await self._wait_for_transition_locked()
+            self._require_handle_locked()
+            before = self._overlay.snapshot(patches)
+            replacements = {
+                path: patch.apply(before.decorations.get(path, EMPTY_DECORATION))
+                for path, patch in patches.items()
+            }
+            version, published = self._replace_decorations_locked(replacements)
+        if published is not None:
+            self._notify_listeners(published)
+        return version
+
+    def _replace_decorations_locked(
+        self,
+        replacements: Mapping[str, InventoryDecoration | None],
+    ) -> tuple[HostVersion, HostChange | None]:
+        before = self._overlay.snapshot(replacements)
+        changed_paths = tuple(
+            path
+            for path, requested in replacements.items()
+            if before.decorations.get(path, EMPTY_DECORATION)
+            != (requested if requested is not None else EMPTY_DECORATION)
+        )
+        revision = self._overlay.replace_many(replacements)
+        published: HostChange | None = None
+        if changed_paths:
+            all_dirty = len(changed_paths) > MAX_CHANGE_PATHS
+            published = self._new_host_change_locked(
+                version=HostVersion(
+                    engine=self._require_engine_version_locked(),
+                    overlay_revision=revision,
+                ),
+                state=self._require_state_locked(),
+                dirty_paths=() if all_dirty else changed_paths,
+                dirty_queries=_DECORATED_QUERY_KINDS,
+                all_dirty=all_dirty,
+            )
+            self._publish_locked(published)
+        return (
+            HostVersion(
+                engine=self._require_engine_version_locked(),
+                overlay_revision=revision,
+            ),
+            published,
+        )
 
     def changes(self, *, after: HostCursor | None) -> AsyncGenerator[HostChange]:
         """Yield resumable bounded host invalidations after *after*."""
@@ -418,6 +467,7 @@ class InventoryCoordinator:
             ),
             state=initial.state,
             reset=True,
+            facts_changed=True,
             work=initial.work,
         )
         self._publish_locked(published)
@@ -543,6 +593,7 @@ class InventoryCoordinator:
                     dirty_queries=merged.dirty_queries,
                     all_dirty=merged.all_dirty,
                     reset=merged.reset,
+                    facts_changed=bool(merged.dirty_paths) or merged.all_dirty or merged.reset,
                     work=merged.work,
                 )
             self._publish_locked(published)
@@ -557,6 +608,7 @@ class InventoryCoordinator:
                 version=self._current_host_version_locked(),
                 state=self._require_state_locked(),
                 reset=True,
+                facts_changed=True,
             )
             self._publish_locked(published)
         self._notify_listeners(published)
@@ -624,6 +676,7 @@ class InventoryCoordinator:
             version=self._current_host_version_locked(),
             state=self._require_state_locked(),
             reset=True,
+            facts_changed=True,
         )
 
     def _new_host_change_locked(
@@ -635,6 +688,7 @@ class InventoryCoordinator:
         dirty_queries: frozenset[QueryKind] = frozenset(),
         all_dirty: bool = False,
         reset: bool = False,
+        facts_changed: bool = False,
         work: WorkCounters = WorkCounters(),
     ) -> HostChange:
         session = self._host_session
@@ -649,6 +703,7 @@ class InventoryCoordinator:
             dirty_queries=dirty_queries,
             all_dirty=all_dirty,
             reset=reset,
+            facts_changed=facts_changed,
             work=work,
         )
 
@@ -702,6 +757,19 @@ class InventoryCoordinator:
                     )
                 returned[entry.path] = entry
         return returned
+
+    @staticmethod
+    def _returned_paths(
+        result: ReadResult,
+        entries: Mapping[str, InventoryEntry],
+    ) -> tuple[str, ...]:
+        """Path identities returned by any projection at this read boundary."""
+
+        paths = dict.fromkeys(entries)
+        for projection in result.projections:
+            if isinstance(projection, CatalogProjection):
+                paths.update((record.path, None) for record in projection.records)
+        return tuple(paths)
 
     def _current_host_version_locked(self) -> HostVersion:
         return HostVersion(

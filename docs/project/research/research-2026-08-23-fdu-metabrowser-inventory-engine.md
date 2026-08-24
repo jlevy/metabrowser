@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers with OpenAI Codex research assistance
 
-**Status:** Complete; reconciled with the fdu-side contract review
+**Status:** Complete
 
 ## Overview
 
@@ -31,7 +31,7 @@ This design preserves a simple Python oracle, lets either backend run from the s
 configuration, and gives the performance framework one explicit comparison axis.
 It also requires a stronger correctness contract than either implementation exposes now:
 every query must return one coherent version, and every data or trust transition must be
-resumable from the same change cursor.
+resumable from the same event cursor.
 
 Pull request [fdu#44](https://github.com/jlevy/fdu/pull/44) has the right broad
 direction. Its shared reads, partitioned rollups, runtime taxonomy, progressive session,
@@ -77,51 +77,11 @@ orientation evidence.
 This research did not rerun those benchmarks and does not turn their host-specific
 results into a Metabrowser performance claim.
 
-## Reconciliation Addendum
-
-The
-[fdu-side reconciliation](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/research/research-2026-08-23-interactive-contract-reconciliation.md)
-checked this research against fdu pull request 44 and its source.
-Its
-[review comment](https://github.com/jlevy/metabrowser/pull/74#issuecomment-5388311365)
-confirms the central boundary and identifies where this document asked for more than the
-first implementation needs.
-
-The repository boundary is an information boundary, not a compatibility or coordination
-boundary. The same maintainers can change Metabrowser, fdu, and the adapter together.
-Each repository should keep the design and evidence relevant to its own implementation,
-link to the other repository for the other half, and avoid a generalized protocol or
-compatibility shim.
-
-The reconciliation resolves the remaining design choices:
-
-| Subject | Decision |
-| --- | --- |
-| Provider surface | Keep one sealed internal contract for the two in-tree providers. Represent genuine platform absence in state and diagnostics; do not add general capability negotiation. |
-| First change shape | Emit status, progress, aggregated trust transitions, bounded dirty projections, and reset. Metabrowser performs coherent reads on dirtiness. Prefix or catalog entry deltas are a later optimization only if the live-change benchmark shows a net win. |
-| Warm start | Load the snapshot and persisted reducers, then revalidate. Lazy block materialization is conditional on the standing warm-usefulness gate, not a prerequisite at the currently supported scale. |
-| Shared format corpus | Export Metabrowser’s self-contained File Rollup packet and vendor that reviewed, revision-pinned packet in fdu. CI verifies the manifest and hashes without a network fetch. |
-| Compound extensions | The packet must test derivation as well as classification. Known suffixes such as `.v2.zip` still classify and roll up under canonical `.zip`; the raw `.v2.zip` value still affects navigation tallies, literal filters, catalog rows, and unknown-extension fallback keys. |
-| Reducer cost | Measure the complete maintained-state union: populations, groups, subtree provenance, and non-directory leaf counts. Individual microbenchmarks cannot price their shared ancestor-merge path. |
-| Delivery order | Refine both designs first, then run small cross-seam spikes. Promote an interface only after the conformance, coherent-read, and live-lifecycle spikes prove it; revise both designs and repeat when a spike falsifies an assumption. |
-
-Metabrowser already has the corpus handoff mechanism in
-[File Rollup Format maintenance](../../development.md#file-rollup-format-maintenance).
-The exporter produces a manifest-pinned packet with the format, schemas, registry,
-conformance cases, and expected rollups.
-The first spike should strengthen that packet with explicit logical-extension derivation
-cases, including `release.v2.zip` and `bundle.umd.min.js`, before fdu consumes it.
-
-The implementation contract now lives in the
-[pluggable inventory-engine plan](../specs/active/plan-2026-08-23-pluggable-inventory-engine.md).
-The migration outline later in this research records the pre-reconciliation proposal and
-is not the active sequence.
-
 ## Findings
 
 ### Metabrowser Has the Right Product Architecture but the Wrong Replacement Seam
 
-The new provider boundary should preserve these current properties:
+The current design has several strong properties worth preserving:
 
 - one authoritative inventory is built once and updated incrementally;
 - strict breadth-first discovery makes shallow navigation useful early;
@@ -130,8 +90,7 @@ The new provider boundary should preserve these current properties:
 - all-file and unignored totals are maintained separately;
 - the File Rollup Format defines classification, populations, bounds, conservation, and
   registry identity independently of the application;
-- folder rollups and other expensive payloads already use explicit bounds, retained
-  bodies, single-flight builds, and validation;
+- query bodies are bounded, retained, single-flight, and validated;
 - initial snapshots and later changes share the SSE delivery path.
 
 The performance limitations arise below those decisions.
@@ -145,7 +104,6 @@ one Python class. Its hot paths include:
 - ancestor-chain updates on each file mutation;
 - full entry-list copies and whole-index passes for filtered trees, recent files,
   catalogs, and navigation tallies;
-- unbounded direct-child or catalog materialization on some query paths;
 - rollups built against live Python maps, with memoized aggregates added after the pass;
 - no persisted inventory, so every process starts from an empty index;
 - safety caps that turn large or deep trees into partial inventories.
@@ -224,14 +182,14 @@ the plan.
 | Paths | Rust and PyO3 preserve native identity; rendered strings can be lossy unless raw identity accompanies them | Native identity through the provider and one documented lossless encoding at the host wire boundary |
 | Instrumentation | CLI-oriented counters and summaries | Typed per-session and per-query work counters available to the serving benchmark |
 
-The logical-extension algorithms already disagree.
+The logical-extension difference is a concrete parity failure, not registry policy.
 For example, the File Rollup Format classifies `release.v2.zip` as `.v2.zip` and
 `bundle.umd.min.js` as `.min.js`; fdu currently derives `.zip` and `.js`. A runtime
 registry cannot repair facts already derived differently.
 fdu must run the existing File Rollup conformance corpus before it can produce
 Metabrowser’s rollups.
 
-Warm-open provenance also differs from the required contract.
+The provenance limitations are similarly important for a warm interactive open.
 fdu’s current `Index::provenance(path)` documents that a complete, revalidated directory
 can still contain cached descendants.
 It also documents that a cached-to-revalidated transition with no data change is absent
@@ -240,6 +198,8 @@ learn to clear it. Subtree provenance and clocked trust transitions are integrat
 prerequisites, not later polish.
 
 ### The Correct Boundary Is a Stateful Inventory Engine
+
+Three boundaries are plausible:
 
 | Boundary | Advantage | Structural problem | Verdict |
 | --- | --- | --- | --- |
@@ -270,7 +230,7 @@ the current Python implementation.
 | --- | --- |
 | Root and path identity | Paths are relative to one canonical served root. Native components remain lossless and distinct inside the engine. The HTTP layer owns a reversible machine encoding and a separate display-safe string. |
 | Hidden names | Hidden components are outside the scan scope, except for a configured exact-name allowlist. They are pruned rather than tagged because the product does not offer a hidden-path toggle. |
-| Gitignore | Visible entries are retained and tagged. Matching follows full gitignore negation and directory semantics. Hidden ignore-control files may be read without becoming retained entries. `all` includes ignored entries and `unignored` excludes them. |
+| Gitignore | Visible entries are retained and tagged. Matching follows full gitignore negation and directory semantics. `all` includes them and `unignored` excludes them. |
 | Traversal order | Breadth-first is the interactive scheduling default. Order affects progressive usefulness, not final state or cache validity. It is an operational policy, not a semantic fingerprint. |
 | Symlinks | Retained as leaves, never followed by the interactive profile, and excluded from regular-file totals. |
 | Special objects | Retained as `other` leaves when safely observable and excluded from file totals and content reads. They are never labeled as regular files. |
@@ -283,7 +243,6 @@ the current Python implementation.
 | Registry lifetime | The registry is immutable during a session. A new registry starts a new session/cache identity rather than retagging live values under the same version. |
 | Populations | The interactive profile maintains `all` and `unignored`. `all` means all entries inside the scan scope, not hidden paths. Arbitrary selections are query predicates, not permanent rollup planes. |
 | Filesystem failures | Permission, disappearance, malformed metadata, mount, and watcher failures are typed issues. A skipped subtree is partial, never silently complete or empty. |
-| Path lookup | A lookup returns present, absent, or unknown. Absence is authoritative only when the containing scope has complete coverage; discovery has not proved that an unknown path is absent. |
 | Snapshot consistency | Every response is derived from one engine version. Detailed rollup partitions conserve against totals from that same version. |
 | Cache honesty | Cached values may be served immediately only with source, observation time, freshness, and coverage. Verification never silently upgrades a subtree whose descendants remain unverified. |
 
@@ -306,21 +265,23 @@ class InventoryBackend(Protocol):
         self,
         root: Path,
         config: InventoryConfig,
-    ) -> InventoryHandle: ...
+    ) -> InventorySession: ...
 
 
-class InventoryHandle(Protocol):
+class InventorySession(Protocol):
+    @property
+    def capabilities(self) -> InventoryCapabilities: ...
+
     async def read(self, request: ReadRequest) -> ReadResult: ...
 
-    def changes(
+    def events(
         self,
         *,
-        after: ChangeCursor | None,
-    ) -> AsyncIterator[ChangeBatch]: ...
+        after: EventCursor | None,
+        interests: EventInterests,
+    ) -> AsyncIterator[EventBatch]: ...
 
     async def refresh(self, request: RefreshRequest) -> RefreshReceipt: ...
-
-    async def prioritize(self, request: PriorityRequest) -> None: ...
 
     async def close(self) -> None: ...
 ```
@@ -330,12 +291,10 @@ The important properties are:
 
 - `open()` returns promptly with a session even when a cold scan continues;
 - the backend owns every authoritative record and derived index for that session;
-- `read()` is the only query boundary and returns the corresponding version and cursor;
-- `changes()` is a pull-based, batched, bounded, resumable invalidation stream;
+- `read()` is the only query boundary and returns the version it actually read;
+- `events()` is pull-based, batched, bounded, resumable, and cancellable;
 - `refresh()` accepts verified hints but all mutations still pass through the backend’s
   one delta path;
-- `prioritize()` changes discovery or verification scheduling without changing semantic
-  scope or cache identity;
 - `close()` cancels scan, reconciliation, watch, and adapter workers before releasing
   resources.
 
@@ -343,43 +302,8 @@ The Python provider owns the existing Python walker, inventory, and watcher behi
 surface. The fdu provider owns the native equivalents.
 The coordinator above them owns root selection, provider construction, route-to-query
 mapping, SSE projection, and wire serialization; it never stores a second authoritative
-entry map.
-
-`InventoryConfig` separates semantic inputs from execution policy:
-
-| Configuration | Examples | Identity rule |
-| --- | --- | --- |
-| Scope | depth, filesystem boundary, symlink policy, hidden allowlist | Fingerprinted into snapshots and engine versions |
-| Classification | registry packet, tag rules, maintained populations | Fingerprinted into snapshots and engine versions |
-| Resource budget | explicit memory or retained-entry stop | Produces partial coverage and cannot masquerade as a reusable complete snapshot |
-| Execution | traversal order, worker count, batch and queue sizes, priority | Recorded as telemetry; does not invalidate an otherwise identical snapshot |
-| Cache and watch policy | cache mode, native or poll backend, verification cadence | Recorded in source/freshness and telemetry; does not change final semantic state |
-
-This prevents a worker-count change from invalidating valid data while ensuring a scope
-or registry change cannot reuse incompatible state.
-
-### Sparse Application Decorations Stay Above the Engine
-
-File Rollup classification is not Metabrowser plugin classification.
-The former derives portable type, family, group, extension, and content-family
-identities from metadata.
-The latter can inspect bounded file content and chooses preview kinds, views, run-state
-badges, and plugin labels.
-fdu should own only the portable classification.
-
-Metabrowser should keep active state, preview kind/view choices, and plugin labels in a
-sparse `EntryOverlayStore` keyed by the same lossless path identity.
-The coordinator joins overlays only onto the bounded rows being serialized.
-The overlay is not a mirror inventory and never contributes to filesystem totals or File
-Rollup conservation.
-
-An activity poll can update the overlay and submit a refresh hint when its stat detects
-changed filesystem metadata.
-It must not write authoritative size or mtime values around the provider.
-A host response version combines the engine version and overlay revision, and the host
-SSE cursor orders projected engine batches together with overlay changes.
-The engine cursor remains responsible for lossless data and trust resume inside the
-provider.
+entry map. External activity or application observations may call `refresh()`, but they
+do not run a second watcher.
 
 ### One Closed Query Algebra, Not a Generic Report Escape Hatch
 
@@ -389,34 +313,17 @@ same version in one backend call and one FFI crossing.
 
 | Projection | Domain result | Bound and intended cost shape |
 | --- | --- | --- |
-| `EntryQuery` | Present, absent, or unknown lookup with facts and scalar directory totals when present | One path lookup; no filesystem stat |
+| `EntryQuery` | One entry’s facts and scalar directory totals | One path lookup; no filesystem stat |
 | `DirectoryQuery` | A page or bounded-depth tree of child rows | Explicit row/node bound and remainder; scalar totals only |
 | `FilteredTreeQuery` | Bounded tree plus whole-subtree selected totals | Explicit output bound; native/indexed predicate evaluation |
-| `RollupQuery` | Directory tree totals and File Rollup breakdown | Explicit tree depth/ranking/node and format-permitted fallback bounds; exact remainders |
+| `RollupQuery` | Directory tree totals and File Rollup breakdown | Explicit depth, child, fallback, and node bounds; exact remainder |
 | `NavigationQuery` | Root populations, registry identity, extension/family/preset and recency tallies | Bounded rows from maintained or indexed state |
 | `RecentQuery` | Newest matching regular files and ignored ancestor facts | Explicit row bound and exact pre-bound match count |
-| `CatalogQuery` | Nonignored file identities and logical extensions | Paged or streamed with a stable version; never an accidental unbounded tuple |
+| `CatalogQuery` | File identities and logical extensions, optionally filtered by terminal extension, exact ancestor name, size, and ignore state | Paged or streamed with a stable version; predicates run before binding transfer; never an accidental unbounded tuple |
 
-These projections describe inventory domains and can be composed by more than one route.
-No projection contains HTTP status codes, JSON dictionaries, ETags, or browser labels.
-
-| Metabrowser consumer | Provider operation |
-| --- | --- |
-| `/api/tree` | `DirectoryQuery`, plus `FilteredTreeQuery` when filtered and `NavigationQuery` for the root tally request |
-| `/api/rollup` and folder overview hooks | `RollupQuery` |
-| `/api/recent` | `RecentQuery` |
-| Quick File catalog | Paged or streamed `CatalogQuery` |
-| `/api/file` folder facts and path validation | `EntryQuery`; file contents remain outside the inventory engine |
-| Initial SSE snapshot | Coherent bounded directory/catalog projections followed from their returned cursor |
-| Live SSE | `changes()` projected through the coordinator and combined with sparse-overlay changes |
-| Activity candidate discovery | Scoped `CatalogQuery`; activity results update the sparse overlay |
-
-All semantic inputs belong in the request.
-A recency or age-filtered query carries an explicit `as_of_ns`; the result may provide
-the next time at which its answer expires.
-An unchanged index version does not make a time-dependent result immutable.
-Retained bodies and ETags therefore include the canonical request fingerprint, including
-its time boundary or validity interval.
+This is domain-shaped rather than route-shaped.
+A future route may compose the same projections, and no projection contains HTTP status
+codes, JSON dictionaries, ETags, or browser labels.
 
 The query boundary should make expensive work visible.
 Each result reports work counters such as entries visited, directories visited, output
@@ -433,32 +340,20 @@ A separate bounded rollup query asks for that detail only when the folder overvi
 it. This distinction keeps work proportional to visible output and avoids both unbounded
 cloning and one FFI call per child.
 
-The production fdu provider should make frequent queries proportional to the answer:
-name-ordered directory paging from the child index, scalar and classification totals
-from maintained reducers, and recent-file lookup from an mtime index or another measured
-equivalent. Arbitrary intersections of type, recency, size, and ignore filters may still
-scan indexed columns at first, but the scan remains native, reports its work, and stays
-off the event loop. Measurements can then justify secondary indexes or bitmap
-intersections without exposing either choice in the provider contract.
-
 ### Every Read Returns Its Version and State
 
 `ReadResult` contains:
 
-- an opaque `EngineVersion` with a session identity, logical clock, scope fingerprint,
+- an opaque `StateVersion` with a session identity, logical clock, scope fingerprint,
   and registry fingerprint;
-- a `ChangeCursor` captured at the same boundary, so `changes(after=cursor)` starts
-  strictly after the state represented by the result;
 - `IndexState`, separating lifecycle phase, structural coverage, freshness, source,
   progress, and typed issues;
 - the requested typed projections;
 - execution telemetry that is not part of the semantic payload.
 
 The version is minted or captured inside the same read boundary as the projections.
-The coordinator combines it with the sparse overlay revision to make a host version.
-The route builds its ETag from that host version, the canonical request fingerprint, and
-application build identity.
-It never samples a revision before dispatching work.
+The route builds its ETag from the returned version, query parameters, and application
+build identity. It never samples a revision before dispatching work.
 A retained body is cached only under the version that produced it.
 
 An implementation may satisfy coherent reads with a shared lock, an immutable snapshot,
@@ -474,9 +369,10 @@ image or purpose-built secondary index, then be measured under concurrent writes
 The Python provider must atomically capture the fields needed by the query and its
 version; its current live rollup view is not sufficient.
 
-### Lifecycle and Changes Share One State Machine
+### Lifecycle and Events Share One State Machine
 
-A session reports lifecycle through independent facts:
+Lifecycle is not one overloaded status string.
+A session reports independent facts:
 
 - **phase:** opening cache, discovering, reconciling, watching, stopped, or failed;
 - **coverage:** complete or partial, with a reason such as building, budget, cancelled,
@@ -485,34 +381,25 @@ A session reports lifecycle through independent facts:
 - **source:** scanned, revalidated, journal-scoped, or cached;
 - **progress:** entries and directories observed, with no invented total when unknown.
 
-Only an additive discovery phase guarantees monotone lower bounds.
-Partial coverage caused by errors, invalidation, or reconciliation can move in either
-direction, so the phase and cause must accompany the coverage value.
+An `EventBatch` contains one cursor and resulting state version, plus any of:
 
-The first `ChangeBatch` shape contains one cursor and resulting state version, plus any
-of:
-
-- a bounded set of directories or named projections whose answers may have changed;
+- entry upserts and removals carrying the complete host-domain record needed by an
+  interested consumer;
+- directories whose aggregates or projections changed;
 - lifecycle, coverage, freshness, provenance, or issue transitions;
 - progress and execution counters;
 - a reset marker when a retained cursor or bounded queue has a gap.
 
-It is an invalidation stream, not a second representation of the inventory.
-Metabrowser rereads an invalidated visible projection and receives its new value,
-version, and resume cursor atomically.
-Provenance-only changes advance the stream even when file values did not change.
-A count of unverified descendants, or an equivalent composed reducer, should turn a
-large revalidation sweep into bounded subtree trust transitions rather than per-entry
-records. A client that reconnects with `after=cursor` either receives every later
-effective batch or a reset marker; it never receives an apparently continuous suffix
-with missing state.
+Provenance-only changes advance this stream even when file values did not change.
+A client that reconnects with `after=cursor` either receives every later effective batch
+or a reset marker; it never receives an apparently continuous suffix with missing state.
 
-The engine may maintain the complete index, but it does not serialize every cold-scan
-entry into Python. Dirty sets are coalesced and dominated by shallower prefixes where
-valid. An oversized set becomes an all-dirty marker; a retained-cursor gap becomes a
-reset. Slow consumers cause a gap and re-read; they do not block the native walker.
-Prefix-scoped entry deltas or catalog deltas belong behind a measurement gate: add them
-only if their end-to-end latency and copy cost beat invalidation plus a bounded read.
+Event interests keep the native-to-Python path bounded.
+A client can ask for shallow rows, expanded prefixes, recent-set effects, catalog
+effects, or status only.
+The engine may always maintain the complete index, but it should not serialize every
+cold-scan entry into Python when no consumer needs it.
+Slow consumers cause a gap and re-read; they do not block the native walker.
 
 ### Initial Discovery and Watching Need a Proved No-Gap Handoff
 
@@ -526,7 +413,7 @@ The backend should implement and test this sequence:
 4. Reconcile every captured event against observation expectations; on overflow or an
    unreliable backend, invalidate the affected scope and verify it.
 5. Publish complete/fresh only after that reconciliation reaches a known cursor.
-6. Continue the same change stream in resident watch mode.
+6. Continue the same event stream in resident watch mode.
 
 The source of a filesystem notification is always a hint.
 A stat or scoped rescan verifies it before mutation.
@@ -539,7 +426,7 @@ to catch in-place edits; directory mtime alone cannot prove an unchanged subtree
 
 ### Metabrowser Owns
 
-- the `InventoryBackend` and `InventoryHandle` protocols and host-domain values;
+- the `InventoryBackend` and `InventorySession` protocols and host-domain values;
 - provider selection and lifecycle coordination;
 - the interactive scope profile, including hidden allowlist and maintained populations;
 - the File Rollup registry artifact it ships and passes to the selected provider;
@@ -573,21 +460,11 @@ run a second watcher, or parse rendered fdu reports.
 readable reference.
 
 This division resolves the registry release-cadence question in pull request 44. fdu
-keeps its compiled default for its CLI. Metabrowser supplies the registry bytes,
-profile, and expected identity at session open.
-Each provider validates the packet once and returns the identity it indexed;
-disagreement fails the open.
-fdu’s parser supports the File Rollup schema version and indexes that immutable registry
-for the session.
-A Metabrowser registry edit therefore requires a Metabrowser release and
-cache refresh, not an fdu release.
-
-The full registry and conformance corpus stay authoritative in Metabrowser.
-fdu exposes the generic parser, classifier, and projection entry points needed for
-Metabrowser’s cross-provider test to run that corpus unchanged.
-fdu can keep small generic parser unit fixtures without copying Metabrowser’s complete
-registry. This provides cross-repository conformance without a third package or
-duplicated data authority.
+keeps its compiled default for its CLI. Metabrowser supplies its own registry at session
+open. fdu’s parser supports the File Rollup schema version and indexes that immutable
+registry for the session.
+A Metabrowser registry edit therefore requires a Metabrowser release and cache refresh,
+not an fdu release.
 
 ## Required fdu Work
 
@@ -611,19 +488,12 @@ The fdu plan should be revised into these integration capabilities, in dependenc
 7. **Progressive session.** Return immediately, expose bounded read-anytime state and
    progress, accept priority hints, cancel promptly, and use a bounded pull queue across
    PyO3.
-8. **Measured warm serving.** Persist the reducer and index structures needed for a
-   shallow query, load the snapshot in bulk, and revalidate with honest provenance.
-   Add lazy block materialization only if the standing warm-usefulness measurement
-   requires it at a supported scale.
-9. **Embedder change lifecycle.** Add dirty directories, async consumption, scoped
+8. **Embedder change lifecycle.** Add dirty directories, async consumption, scoped
    refresh, explicit native and poll policies, cursor-gap handling, and the tested
    discovery-to-watch handoff.
-10. **Combined reducer measurement.** Price the union of maintained populations, groups,
-    subtree provenance, and leaf counts on a dense real corpus before committing to its
-    final representation.
-11. **Typed telemetry.** Expose scan, cache, query, lock, journal, and binding-copy work
-    beside results without adding execution facts to semantic report schemas.
-12. **Interactive reference example.** Exercise boot, coherent queries, dual
+9. **Typed telemetry.** Expose scan, cache, query, lock, journal, and binding-copy work
+   beside results without adding execution facts to semantic report schemas.
+10. **Interactive reference example.** Exercise boot, coherent queries, dual
     populations, resumable changes, cancellation, and resync without containing
     Metabrowser-specific wire models.
 
@@ -639,25 +509,22 @@ The watcher’s verified entry operations remain a strong base for both.
 2. Extract `PythonInventoryBackend` from `InventoryIndex` without changing wire output.
    Keep its storage and mutation internals private to the provider.
 3. Make Python reads coherent.
-   In particular, pair rollup payloads with the version they observe and make full-index
-   snapshots plus revisions atomic.
+   In particular, pair rollup payloads with the version they actually observe and make
+   full-index snapshots plus revisions atomic.
 4. Move tree-path existence checks from direct `Path.is_dir()` calls to the selected
    inventory session after lexical safe-path validation.
 5. Change routes, recent-file collection, catalog, event routing, and diagnostics to
    depend only on the coordinator and typed query results.
-6. Move active state, preview views, and plugin labels into a sparse overlay.
-   Its polls may submit provider refresh hints but cannot mutate authoritative
-   filesystem facts.
-7. Load the File Rollup registry once per session and pass the same packet to either
-   provider. Remove duplicate classification from the fdu path.
-8. Add `python`, `fdu`, and later `auto` provider selection.
+6. Load the File Rollup registry once per session and pass the same normalized packet to
+   either provider. Remove duplicate classification from the fdu path.
+7. Add `python`, `fdu`, and later `auto` provider selection.
    An explicit unavailable `fdu` selection fails clearly; only `auto` may choose Python,
    and diagnostics report the choice and reason.
-9. Add cross-provider fixtures, mutation replay, wire goldens, cursor tests, race tests,
+8. Add cross-provider fixtures, mutation replay, wire goldens, cursor tests, race tests,
    and error/partial-state tests.
-10. Extend the serving and browser performance loops with a forced provider axis and the
-    measurements below.
-11. Enable fdu as an explicit experimental provider, validate it, and change the default
+9. Extend the serving and browser performance loops with a forced provider axis and the
+   measurements below.
+10. Enable fdu as an explicit experimental provider, validate it, and change the default
     only after the acceptance gates pass.
 
 No compatibility layer is needed around the current singleton or `FsEntry`. They are
@@ -669,7 +536,7 @@ without protecting an independently released consumer.
 
 ### Three Complementary Oracles
 
-Matching root byte totals covers only one invariant.
+The integration needs more than matching root byte totals.
 
 1. **Shared format corpus.** Both providers run the existing File Rollup registry,
    classification, projection, and conservation cases.
@@ -700,10 +567,10 @@ The filesystem scenarios should include:
   or scope fingerprint.
 
 Parallel discovery need not emit records in the same order as Python.
-The change oracle checks stronger semantic properties instead: cursors are monotonic,
-rereading every invalidated projection converges to the queried state, every gap forces
-a reset or all-dirty read, coverage never claims missing work, and a complete final
-snapshot is identical.
+The event oracle checks stronger semantic properties instead: cursors are monotonic,
+applying an unbroken feed to its matching baseline yields the queried state, every gap
+forces a reset, coverage never claims missing work, and a complete final snapshot is
+identical.
 
 ### Acceptance Gates
 
@@ -723,23 +590,6 @@ Semantic, race, bound, and deterministic work-counter assertions should be.
 
 ## Performance Framework Alignment
 
-### Reframe the Existing Hypotheses Around the Engine
-
-The active load-time register already names most of this work.
-The provider boundary changes their unit of implementation:
-
-| Existing direction | Alignment |
-| --- | --- |
-| H21, persistent state | fdu snapshots and persisted reducers provide the warm answer; provenance and background verification keep it honest, with lazy blocks added only if measured |
-| H39, compiled matching | fdu compiles the interactive gitignore tagger once per session; hidden admission remains a cheaper scope decision |
-| H40, native walker | Expand from a walker swap to the fdu inventory provider so native discovery feeds native retained state and reducers |
-| H41, compact/columnar index | Keep this below the fdu provider boundary; Metabrowser measures the result without prescribing fdu’s layout |
-| H49, additional regimes | Make warm reopen, interaction, churn, memory, recovery, and backend identity standing benchmark dimensions |
-
-Treating H40 as a walker-only change would strand the representation and query costs H41
-is meant to remove. The inventory provider lets both hypotheses land as one coherent
-architecture while the performance loop still measures structural changes separately.
-
 ### Measure the Backend at Three Layers
 
 The comparison needs three nested views:
@@ -751,10 +601,9 @@ The comparison needs three nested views:
 3. **Browser:** first useful and final visible state, interaction latency, repaint and
    movement, and convergence after changes.
 
-Adoption evidence must cover all three layers; an engine result omits binding,
-serialization, event-loop, and rendering costs.
+An engine-only win is necessary but not sufficient.
 A design that saves scan time and then copies the full index or every extension map into
-Python continues to pay the cost after the scan.
+Python has moved rather than removed the cost.
 
 ### Extend the Standing Serving Benchmark
 
@@ -835,12 +684,7 @@ does not trade a faster complete scan for a slower first useful viewport or live
 interaction. A result that improves one layer and regresses another remains a hypothesis
 result, not an adoption result.
 
-## Initial Migration Outline (Superseded)
-
-The [active plan](../specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
-replaces this pre-reconciliation outline with design convergence followed by three
-vertical spikes and a production migration.
-The outline remains here as historical research, not as the implementation sequence.
+## Migration Plan
 
 ### Phase 0: Freeze the Contract and Oracles
 
@@ -869,7 +713,6 @@ route imports Python inventory internals.
 - Add configured populations, complete directory facts, coherent bounded query bundles,
   and subtree provenance.
 - Add the progressive session and clocked event state.
-- Make compatible cached shallow results readable before full index materialization.
 - Add async watch, scoped reconciliation, polling, and no-gap handoff.
 - Expose typed telemetry and exercise the generic embedder example.
 
@@ -923,8 +766,8 @@ and diagnostics and benchmarks always identify the selected engine.
 
 ### Adopt the Stateful Inventory Engine Boundary
 
-**Description:** Extract one internal Metabrowser opened-handle/query/change protocol
-and adapt the current Python engine and fdu to it.
+**Description:** Extract one internal Metabrowser session/query/event protocol and adapt
+the current Python engine and fdu to it.
 
 **Advantages:**
 
@@ -970,32 +813,26 @@ under measurement.
 ## Recommendations
 
 1. Treat the retained inventory engine, not the walker, as the replacement unit.
-2. Refine both repository designs, then prove the minimum interface with classification,
-   coherent-read, and live-lifecycle spikes before the full Python extraction or fdu
-   adapter.
+2. Extract and correct the Python provider before integrating fdu, so the interface is
+   proven against the existing application rather than designed around one candidate.
 3. Require atomic versioned query results and one cursor for data and trust changes.
 4. Make all hot reads bounded and batch multiple projections into one coherent backend
    call. Do not adapt fdu’s current unbounded `children()` directly.
-5. Use File Rollup Format and its exported, pinned packet as the shared classification
-   and rollup authority.
-   Metabrowser supplies its registry at runtime; fdu supplies the engine.
+5. Use File Rollup Format and its corpus as the shared classification and rollup
+   authority. Metabrowser supplies its registry at runtime; fdu supplies the engine.
 6. Prune hidden paths as scope, tag gitignored paths, and maintain only the named
    populations the interactive profile needs.
 7. Make cache, partial coverage, filesystem errors, watcher gaps, and provenance visible
    in the same state model.
-8. Start with bounded dirty projections and coherent read-on-dirty.
-   Prove the discovery-to-watch handoff and backpressure behavior before calling the
-   change stream resumable; add entry deltas only after a measured win.
+8. Prove the discovery-to-watch handoff and bounded backpressure behavior before calling
+   the event stream resumable.
 9. Keep the Python provider as an executable oracle and fallback, not a mirror alongside
    fdu.
-10. Measure the combined reducer state as one cost, and evaluate adoption with paired,
-    real-corpus, end-to-end measurements plus platform-floor ratios across cold, warm,
-    query, live-change, memory, and correctness dimensions.
+10. Evaluate adoption with paired, real-corpus, end-to-end measurements plus
+    platform-floor ratios across cold, warm, query, live-change, memory, and correctness
+    dimensions.
 
-## Initial Next Steps (Superseded)
-
-These items led to the active plan linked above.
-Its spike exits and acceptance gates are now authoritative.
+## Next Steps
 
 - [ ] Convert the shared semantic contract and protocol into a Metabrowser architecture
   document with registered interfaces and invariants.
@@ -1019,9 +856,9 @@ state-and-delivery design, File Rollup Format and corpus, current load-time plan
 review, performance-loop harness, serving benchmark, walker, inventory, rollup builder,
 events, recent-file query, and relevant server routes.
 
-The initial fdu review used pull request 44 commit `64398b7` in a detached, ignored
-research clone. The reconciliation addendum then reviewed the fdu-side response at
-`bd1dcf8`. The review covered the pull request plan, engine and surface principles,
+The fdu repository was checked out at pull request 44 commit `64398b7` in a detached,
+ignored research clone.
+The review covered the pull request plan, engine and surface principles,
 progressive-results and interactive-browser research, metadata-walk floor report, Python
 API and models, PyO3 binding, engine contract, retained index, public queries,
 provenance, snapshot, watch, and logical-extension implementation.
@@ -1036,16 +873,13 @@ interface findings follow from current code and documented contracts.
 
 - [State and delivery](../architecture/arch-state-and-delivery.md)
 - [File Rollup Format](../architecture/file-rollup-format/file-rollup-format.md)
-- [File Rollup Format maintenance and export](../../development.md#file-rollup-format-maintenance)
 - [Views, models, and routes](../architecture/arch-views-models-routes.md)
-- [Pluggable inventory-engine plan](../specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
 - [End-to-end load-time plan](../specs/active/plan-2026-08-21-load-time-performance.md)
 - [Load-time performance review](../reviews/review-2026-08-22-load-time-performance.md)
 - [Metabrowser performance loop](../../../explorations/performance-loop/README.md)
 - [Earlier high-performance rollup research](research-2026-08-06-file-rollup-engine.md)
 - [fdu pull request 44](https://github.com/jlevy/fdu/pull/44)
-- [fdu contract reconciliation](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/research/research-2026-08-23-interactive-contract-reconciliation.md)
-- [fdu interactive-client integration plan](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-integration.md)
+- [fdu interactive-client integration plan](https://github.com/jlevy/fdu/blob/64398b7/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-integration.md)
 - [fdu design principles](https://github.com/jlevy/fdu/blob/64398b7/docs/project/architecture/fdu-design-principles.md)
 - [fdu progressive-results plan](https://github.com/jlevy/fdu/blob/64398b7/docs/project/specs/active/plan-2026-08-11-fdu-progressive-results.md)
 - [fdu interactive-browser research](https://github.com/jlevy/fdu/blob/64398b7/docs/project/research/research-2026-08-11-interactive-browser-use-case.md)

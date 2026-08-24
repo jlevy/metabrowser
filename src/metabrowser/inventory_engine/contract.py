@@ -374,6 +374,7 @@ class DirectoryQuery:
 @dataclass(frozen=True, slots=True)
 class InventoryFilter:
     extensions: tuple[str, ...] = ()
+    filenames: tuple[str, ...] = ()
     type_families: tuple[str, ...] = ()
     recency_seconds: float | None = None
     minimum_size: int | None = None
@@ -422,15 +423,9 @@ class RollupQuery:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
-        for name in (
-            "max_depth",
-            "max_nodes",
-            "top",
-            "extension_top",
-            "remaining_top",
-            "filename_top",
-        ):
-            _require_positive(getattr(self, name), name)
+        _require_positive(self.max_nodes, "max_nodes")
+        for name in ("max_depth", "top", "extension_top", "remaining_top", "filename_top"):
+            _require_nonnegative(getattr(self, name), name)
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,7 +454,7 @@ class RecentQuery:
     max_rows: int
     as_of_ns: int
     prefix: str = ""
-    extension: str | None = None
+    extensions: tuple[str, ...] = ()
     within_seconds: float | None = None
     include_ignored: bool = False
     kind: Literal[QueryKind.RECENT] = field(init=False, default=QueryKind.RECENT)
@@ -477,11 +472,32 @@ class CatalogQuery:
     query_id: str
     max_rows: int
     after: str | None = None
+    include_ignored: bool = False
+    terminal_extensions: tuple[str, ...] = ()
+    ancestor_names: tuple[str, ...] = ()
+    size_less_than: int | None = None
     kind: Literal[QueryKind.CATALOG] = field(init=False, default=QueryKind.CATALOG)
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
         _require_positive(self.max_rows, "max_rows")
+        if len(set(self.terminal_extensions)) != len(self.terminal_extensions):
+            raise ValueError("terminal_extensions entries must be unique")
+        if any(not value.startswith(".") for value in self.terminal_extensions):
+            raise ValueError("terminal_extensions entries must start with a dot")
+        if any(value != value.lower() for value in self.terminal_extensions):
+            raise ValueError("terminal_extensions entries must be lowercase")
+        if any(
+            len(value) < 2 or "/" in value or "\\" in value or "." in value[1:]
+            for value in self.terminal_extensions
+        ):
+            raise ValueError("terminal_extensions entries must be canonical terminal suffixes")
+        if len(set(self.ancestor_names)) != len(self.ancestor_names):
+            raise ValueError("ancestor_names entries must be unique")
+        if any(not name or "/" in name or "\\" in name for name in self.ancestor_names):
+            raise ValueError("ancestor_names entries must be exact path-component names")
+        if self.size_less_than is not None:
+            _require_positive(self.size_less_than, "size_less_than")
 
 
 @dataclass(frozen=True, slots=True)
@@ -586,6 +602,7 @@ class DirectoryProjection:
 class FilteredTreeProjection:
     query_id: str
     entries: tuple[InventoryEntry, ...]
+    matching_leaves: int
     matching_files: int
     matching_bytes: int
     next_page: str | None = None
@@ -593,6 +610,7 @@ class FilteredTreeProjection:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
+        _require_nonnegative(self.matching_leaves, "matching_leaves")
         _require_nonnegative(self.matching_files, "matching_files")
         _require_nonnegative(self.matching_bytes, "matching_bytes")
         _require_nonnegative(self.remaining_rows, "remaining_rows")
@@ -643,9 +661,13 @@ class RecentProjection:
 class CatalogRecord:
     path: str
     logical_extension: str
+    size: int
+    mtime_ns: int
 
     def __post_init__(self) -> None:
         _require_nonempty(self.path, "path")
+        _require_nonnegative(self.size, "size")
+        _require_nonnegative(self.mtime_ns, "mtime_ns")
 
 
 @dataclass(frozen=True, slots=True)
@@ -756,18 +778,43 @@ class RefreshReason(StrEnum):
     USER_REQUEST = "user_request"
 
 
+class ObservationKind(StrEnum):
+    """Best-effort source label for a path that the provider must verify."""
+
+    CREATED = "created"
+    MODIFIED = "modified"
+    DELETED = "deleted"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshObservation:
+    """One served-root-relative filesystem hint."""
+
+    path: str
+    kind: ObservationKind = ObservationKind.UNKNOWN
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.path, "path")
+
+
 @dataclass(frozen=True, slots=True)
 class RefreshRequest:
-    paths: tuple[str, ...]
+    observations: tuple[RefreshObservation, ...]
     reason: RefreshReason = RefreshReason.FILESYSTEM_HINT
 
     def __post_init__(self) -> None:
-        if not self.paths:
+        if not self.observations:
             raise ValueError("refresh requires at least one path")
-        if len(self.paths) > MAX_COMMAND_PATHS:
+        if len(self.observations) > MAX_COMMAND_PATHS:
             raise ValueError("refresh accepts at most 1024 paths")
-        if len(self.paths) != len(set(self.paths)):
+        paths = self.paths
+        if len(paths) != len(set(paths)):
             raise ValueError("refresh paths must be unique")
+
+    @property
+    def paths(self) -> tuple[str, ...]:
+        return tuple(observation.path for observation in self.observations)
 
 
 @dataclass(frozen=True, slots=True)

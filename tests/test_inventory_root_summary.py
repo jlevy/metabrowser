@@ -15,7 +15,9 @@ from typing import Any
 
 from metabrowser.events import FsEntry
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
-from metabrowser.inventory import InventoryIndex
+from metabrowser.inventory_engine.providers.python import (
+    PythonInventoryHandle as InventoryIndex,
+)
 
 
 def _index_for(root: Path) -> InventoryIndex:

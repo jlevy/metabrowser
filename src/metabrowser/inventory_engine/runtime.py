@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 from pathlib import Path
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.file_type_registry import load_file_type_registry
-from metabrowser.inventory_engine.contract import InventoryConfig
-from metabrowser.inventory_engine.coordinator import HostVersion, InventoryCoordinator
+from metabrowser.inventory_engine.contract import InventoryBackend, InventoryConfig
+from metabrowser.inventory_engine.coordinator import HostChange, HostVersion, InventoryCoordinator
 from metabrowser.inventory_engine.factory import InventoryProvider, create_inventory_backend
+from metabrowser.projections import invalidate_path as invalidate_projection_path
 from metabrowser.settings import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_FILES,
@@ -28,6 +31,19 @@ def default_inventory_config() -> InventoryConfig:
     )
 
 
+def inventory_provider_from_environment() -> InventoryProvider:
+    """Resolve the sealed provider selection used by the composition root."""
+
+    raw = os.environ.get("METABROWSER_INVENTORY_PROVIDER", InventoryProvider.PYTHON.value)
+    try:
+        return InventoryProvider(raw.strip().lower())
+    except ValueError as error:
+        supported = ", ".join(provider.value for provider in InventoryProvider)
+        raise RuntimeError(
+            f"unknown inventory provider {raw!r}; supported providers: {supported}"
+        ) from error
+
+
 class InventoryRuntime:
     """Own one coordinator for one application lifespan."""
 
@@ -36,29 +52,51 @@ class InventoryRuntime:
         *,
         provider: InventoryProvider | str = InventoryProvider.PYTHON,
         config: InventoryConfig | None = None,
+        backend: InventoryBackend | None = None,
     ) -> None:
         selected = InventoryProvider(provider)
         self.provider = selected
         self.config = config if config is not None else default_inventory_config()
         self.coordinator = InventoryCoordinator(
-            backend=create_inventory_backend(selected),
+            backend=backend if backend is not None else create_inventory_backend(selected),
             config=self.config,
         )
+        self._root: Path | None = None
+        self._remove_invalidation_listener = self.coordinator.add_invalidation_listener(
+            self._invalidate_host_projections
+        )
+
+    def _invalidate_host_projections(self, change: HostChange) -> None:
+        root = self._root
+        if root is None or not change.facts_changed:
+            return
+        for relative_path in change.dirty_paths:
+            invalidate_projection_path(root / relative_path)
 
     async def open(self, root: Path) -> HostVersion:
         """Open the initial served root."""
 
-        return await self.coordinator.open(root)
+        version = await self.coordinator.open(root)
+        self._root = await asyncio.to_thread(root.resolve)
+        return version
 
     async def replace_root(self, root: Path) -> HostVersion:
         """Replace the served root within the same application lifespan."""
 
-        return await self.coordinator.replace_root(root)
+        version = await self.coordinator.replace_root(root)
+        self._root = await asyncio.to_thread(root.resolve)
+        return version
 
     async def close(self) -> None:
         """Promptly stop and join all inventory work."""
 
         await self.coordinator.close()
+        self._remove_invalidation_listener()
+        self._root = None
 
 
-__all__ = ["InventoryRuntime", "default_inventory_config"]
+__all__ = [
+    "InventoryRuntime",
+    "default_inventory_config",
+    "inventory_provider_from_environment",
+]

@@ -11,7 +11,9 @@ from conftest import SyntheticIndexWriter
 import metabrowser.inventory_rollup as inventory_rollup
 from metabrowser.events import FsEntry
 from metabrowser.file_type_registry import FileTypeClassification, load_file_type_registry
-from metabrowser.inventory import InventoryIndex
+from metabrowser.inventory_engine.providers.python import (
+    PythonInventoryHandle as InventoryIndex,
+)
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 
 

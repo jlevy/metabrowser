@@ -559,79 +559,32 @@ def _tree_depth_from_query(depth_str: str) -> int:
     return max(0, min(depth, MAX_TREE_DEPTH))
 
 
-# ── InventoryIndex-backed tree builder ─────────────────────────────
-#
-# When the InventoryIndex walker has populated entries, /api/tree
-# can serve from memory in milliseconds rather than walking the
-# filesystem. Cold-target budget: first-byte <500 ms on a 35k+
-# file repo. The shape of the returned list matches `_dir_tree`'s
-# output exactly, so the SPA renderer doesn't branch.
-#
-# When the index has NO data for a requested directory (e.g., the
-# walker hasn't reached this subtree yet), we emit `null` aggregate
-# fields and `has_children: true` so the client renders a skeleton
-# row. Subsequent fs.change ops on /api/events will populate the
-# cell in place.
-
-
-def _build_inventory_tree(
+def build_inventory_tree_from_entries(
     *,
+    entries: Sequence[Any],
     parent_rel: str,
     max_depth: int,
     root_abs: Path,
+    parent_ignored: bool = False,
     max_entries: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Recursive in-memory build of the tree shape for a subtree
-    rooted at *parent_rel*. Reads only from
-    ``InventoryIndex`` — no filesystem access.
+    """Build the stable tree wire shape from one provider projection."""
 
-    *parent_rel* is the relative path under the served root
-    (``""`` for root, ``"sub1"`` for a top-level dir, etc).
+    children: dict[str, list[Any]] = {}
+    for entry in entries:
+        children.setdefault(entry.parent, []).append(entry)
 
-    Returns a list of dicts shaped like ``_dir_tree``'s output:
-    each entry carries ``name``, ``path``, ``type``, plus dir
-    aggregates / file size+mtime. Aggregates that the walker has
-    not yet finalized come through as JSON ``null``; the client
-    renders them as skeleton cells and patches via
-    ``fs.change`` ops on ``/api/events``.
-
-    *max_entries* bounds each level to its first *n* entries in display order.
-    The shell uses it to inline the root's first rows: that runs synchronously
-    on the event loop for every page load, and a root with tens of thousands of
-    immediate children should not pay for all of them to send two hundred.
-    """
-
-    if max_depth <= 0:
-        return []
-    # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (
-        get_instance as get_inventory,
-    )
+    def children_of(path: str) -> Sequence[Any]:
+        return children.get(path, ())
 
     return _build_inventory_subtree(
-        children_of=get_inventory().children_of,
+        children_of=children_of,
         parent_rel=parent_rel,
         max_depth=max_depth,
-        parent_ignored=parent_is_gitignored(parent_rel),
+        parent_ignored=parent_ignored,
         root_abs=root_abs,
         max_entries=max_entries,
     )
-
-
-def parent_is_gitignored(parent_rel: str) -> bool:
-    """Carry forward "an ancestor was gitignored so this whole subtree
-    paints gray." Look the parent up in the inventory; if we don't have
-    an entry for it (stub or root), fall back to False — the per-entry
-    ``gitignored`` field written by the walker is the authoritative
-    per-row signal."""
-
-    # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (
-        get_instance as get_inventory,
-    )
-
-    parent_entry = get_inventory().get(parent_rel) if parent_rel else None
-    return bool(parent_entry.gitignored) if parent_entry else False
 
 
 @dataclass(frozen=True, slots=True)
@@ -670,15 +623,11 @@ def build_filtered_inventory_tree(
     facts come from one rollup over the whole index, which is why they can be
     right for a folder whose children were never sent.
 
-    Two different reads, for two different reasons. *entries* is a snapshot the
-    caller took on the event loop, because the rollup is an O(index) pass and
-    belongs on a worker — the same split
-    :func:`InventoryIndex.navigation_tallies` already uses. Structure comes from
-    *children_of* instead, which serves each level from the index the inventory
-    maintains on write: grouping the snapshot by parent would cost a second full
-    pass to answer a question about one subtree, which is the cost
-    :func:`InventoryIndex.children_of` exists to remove. It is safe off the loop
-    because it copies each bucket under the index lock.
+    Two different reads serve two different costs. *entries* is the coherent
+    provider snapshot used for the O(index) filtered rollup. Structure comes
+    from *children_of*, which serves each requested level from the provider's
+    maintained child index; grouping the full snapshot by parent would cost a
+    second full pass to answer a question about one subtree.
 
     *generation* is the inventory's rollup generation, which keys the memo in
     :func:`cached_rollups` so one filter change costs one pass rather than one
@@ -831,7 +780,11 @@ def _build_inventory_subtree(
                 "has_children": (
                     True
                     if dir_matches
-                    else (inv_child_count > 0 if children is None else bool(children))
+                    else (
+                        (inv_child_count > 0 or entry.empty is not True)
+                        if children is None
+                        else bool(children)
+                    )
                 ),
                 "children": children,
             }
@@ -878,29 +831,3 @@ def _build_inventory_subtree(
                 file_dict["gitignored"] = True
             out.append(file_dict)
     return out
-
-
-def inventory_has_data() -> bool:
-    """True iff the InventoryIndex has at least one entry for
-    the served root. Used by the route layer to decide between
-    inventory-backed and filesystem-walked tree responses."""
-
-    # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (
-        get_instance as get_inventory,
-    )
-
-    return bool(get_inventory().entries(scope="all-known"))
-
-
-def inventory_status() -> str:
-    """Pass-through for the route layer's ``tally_cache_status``
-    envelope field. Returns 'idle' / 'scanning' / 'done' /
-    'truncated'."""
-
-    # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (
-        get_instance as get_inventory,
-    )
-
-    return get_inventory().status()

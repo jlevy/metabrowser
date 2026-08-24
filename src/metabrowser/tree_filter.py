@@ -283,13 +283,10 @@ def matches_for(totals: Mapping[str, DirMatches], path: str) -> DirMatches:
 # cache makes. The useful entries are the current filter and whatever the
 # reader just came from.
 _ROLLUP_CACHE_MAX = 4
-# Keyed on the index revision, which `InventoryIndex` draws from a
-# process-wide counter so a freshly built index can never reuse one. This
-# cache depends on that: with a per-instance counter, two tests that each
-# build an index and share a TreeFilter would collide on (1, filter) and one
-# would be served the other's rollups. `reset_rollup_cache_for_tests` makes
-# the dependency something a test can discharge rather than something that
-# has to stay true by luck.
+# Keyed on the provider generation. The Python reference provider draws it
+# from a process-wide counter so a fresh handle cannot reuse one. The host
+# version adds session identity at the coordinator boundary; this lower-level
+# reducer cache also resets between isolated test apps.
 _ROLLUP_CACHE: OrderedDict[tuple[int, TreeFilter], dict[str, DirMatches]] = OrderedDict()
 _ROLLUP_CACHE_LOCK = Lock()
 

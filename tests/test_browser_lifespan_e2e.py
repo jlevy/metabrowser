@@ -23,15 +23,14 @@ browser. Coverage:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
 from metabrowser import server as proc_browser
-from metabrowser.events import FsChange, FsUpsert
-from metabrowser.inventory import get_instance, reset_instance_for_tests
-from metabrowser.watch_backends import run_watcher
+from metabrowser.inventory_engine.runtime import default_inventory_config
+from tests.inventory_harness import inventory_harness, wait_until_settled
 
 
 def _build_realistic_fixture(root: Path) -> None:
@@ -65,6 +64,7 @@ class _FakeRequest:
     def __init__(self, q: dict[str, str] | None = None) -> None:
         self.query_params = _FakeQuery(q or {})
         self.headers: dict[str, str] = {}
+        self.app: object = proc_browser.app
 
 
 def test_full_lifespan_stack_serves_all_endpoints(tmp_path: Path) -> None:
@@ -74,7 +74,6 @@ def test_full_lifespan_stack_serves_all_endpoints(tmp_path: Path) -> None:
     _build_realistic_fixture(tmp_path)
 
     async def _run() -> dict[str, Any]:
-        reset_instance_for_tests()
         # ``_set_root_dir`` is the public way to point the
         # browser at a different root; monkey-patching the
         # imported binding doesn't affect call sites that
@@ -83,7 +82,7 @@ def test_full_lifespan_stack_serves_all_endpoints(tmp_path: Path) -> None:
         try:
             async with proc_browser.app.router.lifespan_context(proc_browser.app):
                 # Wait for walker to drain.
-                await get_instance().wait_until_done(timeout=10.0)
+                await wait_until_settled(proc_browser.app.state.inventory_runtime, timeout=10.0)
                 # /api/tree
                 tree_resp = await proc_browser.api_tree(cast(Any, _FakeRequest()))
                 tree = json.loads(bytes(tree_resp.body))
@@ -140,39 +139,37 @@ def test_watcher_detects_new_file_after_walker_completes(tmp_path: Path) -> None
     _build_realistic_fixture(tmp_path)
 
     async def _run() -> bool:
-        reset_instance_for_tests()
-        inv = get_instance()
-        # Subscribe BEFORE starting walker so we capture every
-        # event from the start.
-        q = inv.subscribe()
-
-        inv.start(tmp_path)
-        await inv.wait_until_done(timeout=5.0)
-        watcher = asyncio.create_task(run_watcher(root=tmp_path, mode="polling"))
-        try:
-            # Drain pre-existing events.
-            while not q.empty():
-                q.get_nowait()
-            # Give the watcher a beat to start.
+        config = replace(default_inventory_config(), watch_mode="poll")
+        async with inventory_harness(tmp_path, config=config) as harness:
             await asyncio.sleep(0.5)
             new_file = tmp_path / "runs" / "x" / ".logs" / "fresh.jsonl"
             new_file.write_text('{"event":"new"}\n')
-            # Polling cadence is 2 s; wait long enough for
-            # detection + emission.
-            await asyncio.sleep(3.5)
-        finally:
-            watcher.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await watcher
+            from metabrowser.inventory_engine.contract import (
+                EntryPresence,
+                EntryProjection,
+                EntryQuery,
+                ReadRequest,
+            )
 
-        # Drain the queue and check the new file came through.
-        while not q.empty():
-            evt = q.get_nowait()
-            if isinstance(evt, FsChange):
-                for op in evt.ops:
-                    if isinstance(op, FsUpsert) and op.entry.path == "runs/x/.logs/fresh.jsonl":
-                        return True
-        return False
+            deadline = asyncio.get_running_loop().time() + 5.0
+            while asyncio.get_running_loop().time() < deadline:
+                read = await harness.runtime.coordinator.read(
+                    ReadRequest(
+                        queries=(
+                            EntryQuery(
+                                query_id="fresh",
+                                path="runs/x/.logs/fresh.jsonl",
+                            ),
+                        )
+                    )
+                )
+                projection = read.result.projection("fresh")
+                if isinstance(projection, EntryProjection) and (
+                    projection.presence is EntryPresence.PRESENT
+                ):
+                    return True
+                await asyncio.sleep(0.1)
+            return False
 
     assert asyncio.run(_run()) is True, "watcher did not pick up new file"
 
@@ -186,16 +183,13 @@ def test_recent_filter_includes_logs_state_files(tmp_path: Path) -> None:
     _build_realistic_fixture(tmp_path)
 
     async def _run() -> set[str]:
-        reset_instance_for_tests()
         proc_browser._set_root_dir(tmp_path)
         try:
-            inv = get_instance()
-            inv.start(tmp_path)
-            await inv.wait_until_done(timeout=5.0)
-            recent_resp = await proc_browser.api_recent(
-                cast(Any, _FakeRequest({"window": "all", "limit": "100"}))
-            )
-            recent = json.loads(bytes(recent_resp.body))
+            async with inventory_harness(tmp_path) as harness:
+                request = _FakeRequest({"window": "all", "limit": "100"})
+                request.app = harness.app
+                recent_resp = await proc_browser.api_recent(cast(Any, request))
+                recent = json.loads(bytes(recent_resp.body))
         finally:
             proc_browser._set_root_dir(Path())
 

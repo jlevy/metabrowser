@@ -27,7 +27,10 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
+
+import pytest
 
 import metabrowser.events_route as evroute
 from metabrowser import paths_safe
@@ -47,11 +50,14 @@ from metabrowser.events_route import (
     api_index_meta,
     api_index_progress,
     api_pending_tally_diagnostic,
-    get_or_create_bus,
     parse_sse_frames,
-    reset_bus_for_tests,
 )
-from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser.inventory_engine.contract import (
+    ObservationKind,
+    RefreshObservation,
+    RefreshRequest,
+)
+from tests.inventory_harness import inventory_harness
 
 # ── Fake request plumbing ──────────────────────────────────────
 
@@ -81,6 +87,7 @@ class _FakeRequest:
         disconnect_after: int | None = None,
         body: bytes = b"",
         body_chunks: list[bytes] | None = None,
+        app: object | None = None,
     ) -> None:
         self.query_params = _FakeQuery(query or {})
         self.headers = _FakeHeaders(headers or {})
@@ -89,6 +96,7 @@ class _FakeRequest:
         self._body = body
         self._body_chunks = body_chunks
         self.streamed_chunks = 0
+        self.app = app
 
     async def body(self) -> bytes:
         return self._body
@@ -115,6 +123,27 @@ def _build_tree(root: Path) -> None:
     (root / "sub2" / "file_d.log").write_bytes(b"d" * 75)
 
 
+def test_lifespan_propagates_required_inventory_open_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_open(_self: object, _root: Path) -> None:
+        raise RuntimeError("open failure sentinel")
+
+    monkeypatch.setattr(evroute.InventoryRuntime, "open", fail_open)
+    app = SimpleNamespace(state=SimpleNamespace())
+
+    async def run() -> None:
+        async with evroute.build_lifespan(
+            app=cast(Any, app),
+            root_provider=lambda: tmp_path,
+        ):
+            raise AssertionError("lifespan must not yield after a failed inventory open")
+
+    with pytest.raises(RuntimeError, match="open failure sentinel"):
+        asyncio.run(run())
+
+
 async def _drain_sse(stream: AsyncIterator[bytes], *, max_records: int) -> list[dict[str, str]]:
     """Pull from *stream* until *max_records* records have been
     parsed or the stream ends. Wraps each chunk through
@@ -136,14 +165,6 @@ async def _drain_sse(stream: AsyncIterator[bytes], *, max_records: int) -> list[
         for record in parse_sse_frames(buffer + b"\n\n"):
             out.append(record)
     return out
-
-
-async def _drive_walker(root: Path) -> None:
-    reset_instance_for_tests()
-    reset_bus_for_tests()
-    inv = get_instance()
-    inv.start(root)
-    await inv.wait_until_done(timeout=5.0)
 
 
 class _FastHeartbeat:
@@ -175,11 +196,11 @@ def test_api_events_emits_snapshot_on_connect(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> tuple[list[dict[str, str]], dict[str, Any]]:
-        await _drive_walker(tmp_path)
-        with _fast_heartbeat():
-            request = _FakeRequest(disconnect_after=2)
-            stream = _stream_events(cast(Any, request))
-            records = await _drain_sse(stream, max_records=2)
+        async with inventory_harness(tmp_path) as harness:
+            with _fast_heartbeat():
+                request = _FakeRequest(disconnect_after=2, app=harness.app)
+                stream = _stream_events(cast(Any, request))
+                records = await _drain_sse(stream, max_records=2)
         snapshot_payload = json.loads(records[0]["data"])
         return records, snapshot_payload
 
@@ -197,11 +218,11 @@ def test_api_events_scope_query_param_drives_snapshot_scope(tmp_path: Path) -> N
     _build_tree(tmp_path)
 
     async def _run(scope: str) -> str:
-        await _drive_walker(tmp_path)
-        with _fast_heartbeat():
-            request = _FakeRequest({"scope": scope}, disconnect_after=1)
-            stream = _stream_events(cast(Any, request))
-            records = await _drain_sse(stream, max_records=1)
+        async with inventory_harness(tmp_path) as harness:
+            with _fast_heartbeat():
+                request = _FakeRequest({"scope": scope}, disconnect_after=1, app=harness.app)
+                stream = _stream_events(cast(Any, request))
+                records = await _drain_sse(stream, max_records=1)
         return json.loads(records[0]["data"])["scope"]
 
     assert asyncio.run(_run("all-known")) == "all-known"
@@ -218,27 +239,17 @@ def test_api_events_replay_returns_envelopes_after_last_id(tmp_path: Path) -> No
     _build_tree(tmp_path)
 
     async def _run() -> list[dict[str, str]]:
-        # Drive the walker so the bus relays envelopes into the
-        # ring buffer.
-        await _drive_walker(tmp_path)
-        # Open one stream to trigger bus creation, drain a few
-        # frames, then disconnect.
-        reset_bus_for_tests()
-
-        await get_or_create_bus()
-
-        inv = get_instance()
-        for i in range(5):
-            inv._emit(Heartbeat(ts_ns=i))
-        # Yield once so the relay drains them.
-        await asyncio.sleep(0.05)
-        # Now connect with Last-Event-ID = 2 and assert we get
-        # back only envelopes 3, 4, 5 (and potentially older
-        # walker envelopes too, but their ids must all be > 2).
-        with _fast_heartbeat():
-            request = _FakeRequest(headers={"Last-Event-ID": "2"}, disconnect_after=2)
-            stream = _stream_events(cast(Any, request))
-            return await _drain_sse(stream, max_records=10)
+        async with inventory_harness(tmp_path) as harness:
+            for i in range(5):
+                harness.bus.publish(Heartbeat(ts_ns=i))
+            with _fast_heartbeat():
+                request = _FakeRequest(
+                    headers={"Last-Event-ID": "2"},
+                    disconnect_after=2,
+                    app=harness.app,
+                )
+                stream = _stream_events(cast(Any, request))
+                return await _drain_sse(stream, max_records=10)
 
     records = asyncio.run(_run())
     # First record is the snapshot (id=0 sentinel), then the
@@ -253,23 +264,18 @@ def test_api_events_replay_returns_envelopes_after_last_id(tmp_path: Path) -> No
             assert int(rec["id"]) > 2, f"replay leaked id={rec['id']}"
 
 
-def test_event_bus_overflow_restarts_slow_connection() -> None:
+def test_event_bus_overflow_restarts_slow_connection(tmp_path: Path) -> None:
     async def _run() -> tuple[int, object]:
         original_size = evroute.PER_CONNECTION_QUEUE_SIZE
         evroute.PER_CONNECTION_QUEUE_SIZE = 1
-        inventory = evroute.InventoryIndex()
-        bus = evroute._EventBus(inventory)
         try:
-            await bus.start()
-            queue = bus.attach_connection()
-            inventory.emit_event(Heartbeat(ts_ns=1))
-            inventory.emit_event(Heartbeat(ts_ns=2))
-            await asyncio.sleep(0.05)
-            return bus.connection_count(), queue.get_nowait().event
+            async with inventory_harness(tmp_path) as harness:
+                queue = harness.bus.attach_connection()
+                harness.bus.publish(Heartbeat(ts_ns=1))
+                harness.bus.publish(Heartbeat(ts_ns=2))
+                return harness.bus.connection_count(), queue.get_nowait().event
         finally:
             evroute.PER_CONNECTION_QUEUE_SIZE = original_size
-            if bus._relay_task is not None:
-                bus._relay_task.cancel()
 
     connection_count, event = asyncio.run(_run())
     assert connection_count == 0
@@ -277,55 +283,110 @@ def test_event_bus_overflow_restarts_slow_connection() -> None:
     assert event.reason == "connection_queue_overflow"
 
 
-def test_inventory_bus_overflow_refreshes_connected_browsers() -> None:
-    async def _run() -> tuple[int, bool, object]:
-        original_size = evroute.SSE_BUS_INVENTORY_QUEUE_SIZE
-        evroute.SSE_BUS_INVENTORY_QUEUE_SIZE = 1
-        inventory = evroute.InventoryIndex()
-        bus = evroute._EventBus(inventory)
-        try:
-            queue = bus.attach_connection()
-            inventory.emit_event(Heartbeat(ts_ns=1))
-            inventory.emit_event(Heartbeat(ts_ns=2))
-            inventory.emit_event(Heartbeat(ts_ns=3))
-            await bus.start()
-            await asyncio.sleep(0.05)
-            return (
-                bus.connection_count(),
-                inventory.is_subscribed(bus._inventory_queue),
-                queue.get_nowait().event,
+def test_event_bus_defers_provider_projection_until_a_browser_connects(
+    tmp_path: Path,
+) -> None:
+    async def _run() -> tuple[int, object]:
+        async with inventory_harness(tmp_path) as harness:
+            await harness.bus.close()
+            first_cursor, _version, _state = await harness.runtime.coordinator.checkpoint()
+            first = tmp_path / "first.txt"
+            first.write_text("first", encoding="utf-8")
+            await harness.runtime.coordinator.refresh(
+                RefreshRequest(
+                    observations=(
+                        RefreshObservation(
+                            path="first.txt",
+                            kind=ObservationKind.CREATED,
+                        ),
+                    )
+                )
             )
-        finally:
-            evroute.SSE_BUS_INVENTORY_QUEUE_SIZE = original_size
-            if bus._relay_task is not None:
-                bus._relay_task.cancel()
+            first_changes = harness.runtime.coordinator.changes(after=first_cursor)
+            for _attempt in range(4):
+                first_change = await asyncio.wait_for(anext(first_changes), timeout=1.0)
+                if "first.txt" in first_change.dirty_paths:
+                    break
+            else:
+                raise AssertionError("first refresh did not emit its path")
+            await first_changes.aclose()
+            await harness.bus._project_change(first_change)
+            projected_without_browser = harness.bus.latest_id()
 
-    connection_count, subscribed, event = asyncio.run(_run())
+            queue = harness.bus.attach_connection()
+            second_cursor, _version, _state = await harness.runtime.coordinator.checkpoint()
+            second = tmp_path / "second.txt"
+            second.write_text("second", encoding="utf-8")
+            await harness.runtime.coordinator.refresh(
+                RefreshRequest(
+                    observations=(
+                        RefreshObservation(
+                            path="second.txt",
+                            kind=ObservationKind.CREATED,
+                        ),
+                    )
+                )
+            )
+            second_changes = harness.runtime.coordinator.changes(after=second_cursor)
+            for _attempt in range(4):
+                second_change = await asyncio.wait_for(anext(second_changes), timeout=1.0)
+                if "second.txt" in second_change.dirty_paths:
+                    break
+            else:
+                raise AssertionError("second refresh did not emit its path")
+            await second_changes.aclose()
+            await harness.bus._project_change(second_change)
+            for _attempt in range(len(second_change.dirty_paths) + 2):
+                connected = (await asyncio.wait_for(queue.get(), timeout=1.0)).event
+                if isinstance(connected, FsChange):
+                    break
+            else:
+                raise AssertionError("connected browser did not receive the filesystem change")
+            return projected_without_browser, connected
+
+    projected_without_browser, connected_event = asyncio.run(_run())
+    assert projected_without_browser == 0
+    assert isinstance(connected_event, FsChange)
+    upserted = {
+        operation.entry.path for operation in connected_event.ops if isinstance(operation, FsUpsert)
+    }
+    assert "second.txt" in upserted
+
+
+def test_root_replacement_refreshes_connected_browsers(tmp_path: Path) -> None:
+    async def _run() -> tuple[int, object]:
+        old_root = tmp_path / "old"
+        new_root = tmp_path / "new"
+        old_root.mkdir()
+        new_root.mkdir()
+        async with inventory_harness(old_root) as harness:
+            queue = harness.bus.attach_connection()
+            await harness.runtime.replace_root(new_root)
+            event = await asyncio.wait_for(queue.get(), timeout=1.0)
+            return harness.bus.connection_count(), event.event
+
+    connection_count, event = asyncio.run(_run())
     assert connection_count == 0
-    assert subscribed is True
     assert isinstance(event, FsResyncRequired)
-    assert event.reason == "subscriber_queue_overflow"
+    assert event.reason == "coordinator_reset"
 
 
-def test_resync_marker_ends_stream_after_delivery() -> None:
+def test_resync_marker_ends_stream_after_delivery(tmp_path: Path) -> None:
     async def _run() -> tuple[str, bool]:
-        reset_instance_for_tests()
-        reset_bus_for_tests()
-        inventory = get_instance()
-        request = _FakeRequest()
-        stream = _stream_events(cast(Any, request))
-        await anext(stream)
-        inventory.emit_event(FsResyncRequired(reason="test_gap"))
-        frame = await asyncio.wait_for(anext(stream), timeout=1.0)
-        records = list(parse_sse_frames(frame))
-        ended = False
-        with _fast_heartbeat(0.01):
-            try:
-                await asyncio.wait_for(anext(stream), timeout=1.0)
-            except StopAsyncIteration:
-                ended = True
-        reset_bus_for_tests()
-        return records[0]["event"], ended
+        async with inventory_harness(tmp_path) as harness:
+            request = _FakeRequest(app=harness.app)
+            stream = _stream_events(cast(Any, request))
+            await anext(stream)
+            harness.bus.publish(FsResyncRequired(reason="test_gap"))
+            frame = await asyncio.wait_for(anext(stream), timeout=1.0)
+            records = list(parse_sse_frames(frame))
+            ended = False
+            with _fast_heartbeat(0.01):
+                try:
+                    await asyncio.wait_for(anext(stream), timeout=1.0)
+                except StopAsyncIteration:
+                    ended = True
+            return records[0]["event"], ended
 
     event_type, ended = asyncio.run(_run())
     assert event_type == "fs.resync_required"
@@ -376,9 +437,9 @@ def test_api_index_progress_payload_shape(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> dict[str, Any]:
-        await _drive_walker(tmp_path)
-        resp = await api_index_progress(cast(Any, _FakeRequest()))
-        return json.loads(bytes(resp.body))
+        async with inventory_harness(tmp_path) as harness:
+            resp = await api_index_progress(cast(Any, _FakeRequest(app=harness.app)))
+            return json.loads(bytes(resp.body))
 
     body = asyncio.run(_run())
     for field in (
@@ -400,11 +461,16 @@ def test_api_index_progress_etag_round_trip(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> tuple[int, str, int]:
-        await _drive_walker(tmp_path)
-        resp1 = await api_index_progress(cast(Any, _FakeRequest()))
-        etag = resp1.headers.get("etag", "")
-        resp2 = await api_index_progress(cast(Any, _FakeRequest(headers={"If-None-Match": etag})))
-        return resp1.status_code, etag, resp2.status_code
+        async with inventory_harness(tmp_path) as harness:
+            resp1 = await api_index_progress(cast(Any, _FakeRequest(app=harness.app)))
+            etag = resp1.headers.get("etag", "")
+            resp2 = await api_index_progress(
+                cast(
+                    Any,
+                    _FakeRequest(headers={"If-None-Match": etag}, app=harness.app),
+                )
+            )
+            return resp1.status_code, etag, resp2.status_code
 
     status1, etag, status2 = asyncio.run(_run())
     assert status1 == 200
@@ -412,19 +478,33 @@ def test_api_index_progress_etag_round_trip(tmp_path: Path) -> None:
     assert status2 == 304
 
 
-def test_api_index_progress_does_not_304_while_active(tmp_path: Path) -> None:
+def test_api_index_progress_does_not_304_while_active(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> tuple[int, str, str]:
-        reset_instance_for_tests()
-        reset_bus_for_tests()
-        inv = get_instance()
-        inv.start(tmp_path)
-        resp1 = await api_index_progress(cast(Any, _FakeRequest()))
-        etag = resp1.headers.get("etag", "")
-        resp2 = await api_index_progress(cast(Any, _FakeRequest(headers={"If-None-Match": etag})))
-        inv.clear()
-        return resp2.status_code, etag, bytes(resp2.body).decode()
+        import metabrowser.inventory_engine.providers.python as python_provider
+
+        release = asyncio.Event()
+
+        async def blocked_walk(*_args: object, **_kwargs: object) -> AsyncIterator[object]:
+            await release.wait()
+            if False:
+                yield object()
+
+        monkeypatch.setattr(python_provider, "walk_tree", blocked_walk)
+        async with inventory_harness(tmp_path, settle=False) as harness:
+            resp1 = await api_index_progress(cast(Any, _FakeRequest(app=harness.app)))
+            etag = resp1.headers.get("etag", "")
+            resp2 = await api_index_progress(
+                cast(
+                    Any,
+                    _FakeRequest(headers={"If-None-Match": etag}, app=harness.app),
+                )
+            )
+            return resp2.status_code, etag, bytes(resp2.body).decode()
 
     status, etag, body = asyncio.run(_run())
     assert etag
@@ -439,18 +519,19 @@ def test_pending_tally_diagnostic_correlates_client_and_inventory_state(
     _build_tree(tmp_path)
 
     async def _run() -> dict[str, Any]:
-        await _drive_walker(tmp_path)
-        payload = {
-            "diagnostic_id": "pending-tally-test-1",
-            "elapsed_ms": 5_100,
-            "pending": {"sample": [{"path": "sub1"}]},
-        }
-        request = _FakeRequest(
-            headers={"Content-Type": "application/json"},
-            body=json.dumps(payload).encode(),
-        )
-        response = await api_pending_tally_diagnostic(cast(Any, request))
-        return json.loads(bytes(response.body))
+        async with inventory_harness(tmp_path) as harness:
+            payload = {
+                "diagnostic_id": "pending-tally-test-1",
+                "elapsed_ms": 5_100,
+                "pending": {"sample": [{"path": "sub1"}]},
+            }
+            request = _FakeRequest(
+                headers={"Content-Type": "application/json"},
+                body=json.dumps(payload).encode(),
+                app=harness.app,
+            )
+            response = await api_pending_tally_diagnostic(cast(Any, request))
+            return json.loads(bytes(response.body))
 
     with caplog.at_level("WARNING", logger="metabrowser.events_route"):
         body = asyncio.run(_run())
@@ -505,9 +586,9 @@ def test_api_index_meta_payload_shape(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> dict[str, Any]:
-        await _drive_walker(tmp_path)
-        resp = await api_index_meta(cast(Any, _FakeRequest()))
-        return json.loads(bytes(resp.body))
+        async with inventory_harness(tmp_path) as harness:
+            resp = await api_index_meta(cast(Any, _FakeRequest(app=harness.app)))
+            return json.loads(bytes(resp.body))
 
     body = asyncio.run(_run())
     for field in (
@@ -533,12 +614,16 @@ def test_api_index_meta_etag_round_trip(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> tuple[int, str, int]:
-        await _drive_walker(tmp_path)
-        resp1 = await api_index_meta(cast(Any, _FakeRequest()))
-        etag = resp1.headers.get("etag", "")
-        # Same ETag → 304.
-        resp2 = await api_index_meta(cast(Any, _FakeRequest(headers={"If-None-Match": etag})))
-        return resp1.status_code, etag, resp2.status_code
+        async with inventory_harness(tmp_path) as harness:
+            resp1 = await api_index_meta(cast(Any, _FakeRequest(app=harness.app)))
+            etag = resp1.headers.get("etag", "")
+            resp2 = await api_index_meta(
+                cast(
+                    Any,
+                    _FakeRequest(headers={"If-None-Match": etag}, app=harness.app),
+                )
+            )
+            return resp1.status_code, etag, resp2.status_code
 
     status1, etag, status2 = asyncio.run(_run())
     assert status1 == 200
@@ -562,8 +647,8 @@ def test_api_capabilities_shape_with_fs_type_detection(tmp_path: Path) -> None:
         original = paths_safe._resolved_root_dir
         paths_safe._resolved_root_dir = lambda: tmp_path  # type: ignore[assignment]
         try:
-            await _drive_walker(tmp_path)
-            resp = await api_capabilities(cast(Any, _FakeRequest()))
+            async with inventory_harness(tmp_path) as harness:
+                resp = await api_capabilities(cast(Any, _FakeRequest(app=harness.app)))
         finally:
             paths_safe._resolved_root_dir = original  # type: ignore[assignment]
         return json.loads(bytes(resp.body))
@@ -602,11 +687,11 @@ def test_api_events_heartbeat_arrives_when_producer_quiet(tmp_path: Path) -> Non
     _build_tree(tmp_path)
 
     async def _run() -> list[dict[str, str]]:
-        await _drive_walker(tmp_path)
-        with _fast_heartbeat():
-            request = _FakeRequest(disconnect_after=20)
-            stream = _stream_events(cast(Any, request))
-            return await _drain_sse(stream, max_records=10)
+        async with inventory_harness(tmp_path) as harness:
+            with _fast_heartbeat():
+                request = _FakeRequest(disconnect_after=20, app=harness.app)
+                stream = _stream_events(cast(Any, request))
+                return await _drain_sse(stream, max_records=10)
 
     records = asyncio.run(_run())
     events = [r["event"] for r in records]

@@ -41,9 +41,9 @@ links to the document that covers each in depth.
 - [Web diff viewer architecture and intermediate representations](research/research-2026-07-17-web-diff-viewer-architecture.md)
 - [Fuzzy file ranking contract and measurements](research/research-2026-07-31-fuzzy-file-ranking.md)
 - [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
+- [fdu and Metabrowser inventory-engine alignment](research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
 - [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
-- [fdu and Metabrowser inventory-engine alignment](research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
 
 ## Reviews
 

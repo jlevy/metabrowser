@@ -37,22 +37,24 @@ from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
 
-import pytest
-
 import metabrowser.inventory_engine.providers.python as inventory_module
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.events import (
     FsChange,
     FsEntry,
-    FsRemove,
-    FsResyncRequired,
     FsUpsert,
-    StreamEvent,
     WriteToken,
 )
 from metabrowser.fs_paths import derive_ext as _ext_of
 from metabrowser.fs_paths import is_visible, is_visible_segment
-from metabrowser.inventory_engine.contract import InventoryEntry
+from metabrowser.inventory_engine.contract import (
+    ChangeBatch,
+    ChangeCursor,
+    DiagnosticsQuery,
+    InventoryConfig,
+    InventoryEntry,
+    ReadRequest,
+)
 from metabrowser.inventory_engine.providers.python import (
     PythonInventoryHandle as InventoryIndex,
 )
@@ -74,6 +76,41 @@ class _ScanTrackingEntries(dict[str, FsEntry]):
     def keys(self) -> Any:
         self.full_scan_requested = True
         return super().keys()
+
+
+def _apply_entries(inv: InventoryIndex, entries: list[FsEntry]) -> int:
+    """Drive the provider's retained-state path without a second public writer API."""
+
+    stored = [
+        applied for entry in entries if (applied := inv._store_walker_entry(entry)) is not None
+    ]
+    if stored:
+        inv._emit(FsChange(ops=tuple(FsUpsert(entry=entry) for entry in stored)))
+    return len(stored)
+
+
+async def _checkpoint(inv: InventoryIndex) -> ChangeCursor:
+    result = await inv.read(ReadRequest(queries=(DiagnosticsQuery(query_id="test-checkpoint"),)))
+    return result.cursor
+
+
+async def _changes_since(
+    inv: InventoryIndex,
+    after: ChangeCursor,
+) -> list[ChangeBatch]:
+    """Replay every provider invalidation through the current boundary."""
+
+    current = await _checkpoint(inv)
+    if current == after:
+        return []
+    stream = inv.changes(after=after)
+    batches: list[ChangeBatch] = []
+    try:
+        while not batches or batches[-1].cursor.sequence < current.sequence:
+            batches.append(await asyncio.wait_for(anext(stream), timeout=1.0))
+    finally:
+        await stream.aclose()
+    return batches
 
 
 def _build_tree(root: Path) -> None:
@@ -446,7 +483,7 @@ def test_inventory_direct_child_index_tracks_stores_and_removals() -> None:
         active=False,
     )
 
-    assert inv.apply_walker_entries([directory, child]) == 2
+    assert _apply_entries(inv, [directory, child]) == 2
     assert inv.has_direct_child("") is True
     assert inv.has_direct_child("runs") is True
 
@@ -473,7 +510,7 @@ def test_live_empty_state_tracks_subtree_leaves_separately_from_file_totals() ->
         total_size=0,
         newest_mtime_ns=0,
     )
-    assert inv.apply_walker_entries([root]) == 1
+    assert _apply_entries(inv, [root]) == 1
     indexed_root = inv.get("")
     assert indexed_root is not None
     assert indexed_root.empty is True
@@ -530,11 +567,11 @@ def test_live_empty_state_tracks_subtree_leaves_separately_from_file_totals() ->
 def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[FsEntry, FsEntry, list[FsChange]]:
+    async def _run() -> tuple[FsEntry, FsEntry, list[ChangeBatch]]:
         inv = await _drive_inventory(tmp_path)
         before = inv.get("")
         assert before is not None
-        queue = inv.subscribe()
+        cursor = await _checkpoint(inv)
         live = FsEntry(
             path="live.txt",
             parent="",
@@ -553,13 +590,7 @@ def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
         inv.remove("live.txt")
         after_remove = inv.get("")
         assert after_remove is not None
-        changes: list[FsChange] = []
-        # Each fs.change is followed by its minimal catalog.change
-        # companion; this test cares about the fat events only.
-        while len(changes) < 2:
-            event = await queue.get()
-            if isinstance(event, FsChange):
-                changes.append(event)
+        changes = await _changes_since(inv, cursor)
         return after_insert, after_remove, changes
 
     after_insert, after_remove, changes = asyncio.run(_run())
@@ -569,7 +600,7 @@ def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
     assert (after_remove.unignored_files, after_remove.unignored_size) == (4, 250)
     assert (after_remove.newest_mtime_ns or 0) < (after_insert.newest_mtime_ns or 0)
     for change in changes:
-        assert any(isinstance(op, FsUpsert) and op.entry.path == "" for op in change.ops)
+        assert "" in change.dirty_paths
 
 
 def test_live_ignore_state_flip_updates_only_unignored_ancestor_totals(tmp_path: Path) -> None:
@@ -670,8 +701,8 @@ def test_unchanged_mtime_upserts_do_not_grow_child_heaps(tmp_path: Path) -> None
         assert entry is not None
         before = sum(len(heap) for heap in inv._child_mtime_heaps.values())
         for index in range(100):
-            inv.apply_walker_entries(
-                [replace(entry, active=bool(index % 2), labels=(("tick", str(index)),))]
+            _apply_entries(
+                inv, [replace(entry, active=bool(index % 2), labels=(("tick", str(index)),))]
             )
         after = sum(len(heap) for heap in inv._child_mtime_heaps.values())
         return before, after
@@ -688,7 +719,7 @@ def test_changing_mtime_upserts_periodically_compact_child_heaps(tmp_path: Path)
         entry = inv.get("file_a.log")
         assert entry is not None
         for index in range(200):
-            inv.apply_walker_entries([replace(entry, mtime_ns=entry.mtime_ns + index + 1)])
+            _apply_entries(inv, [replace(entry, mtime_ns=entry.mtime_ns + index + 1)])
         return len(inv._child_mtime_heaps[""])
 
     heap_size = asyncio.run(_run())
@@ -897,72 +928,49 @@ def test_inventory_repair_pending_dir_aggregates_after_stale_finalize() -> None:
     so ``status=done`` never leaves the tree showing pending
     tallies."""
 
-    inv = InventoryIndex()
-    inv._generation["runs"] = 1
-    root = FsEntry(
-        path="",
-        parent="",
-        name="root",
-        type="dir",
-        ext="",
-        kind="dir",
-        size=0,
-        mtime_ns=0,
-        mtime_hash="",
-        active=False,
-    )
-    runs = FsEntry(
-        path="runs",
-        parent="",
-        name="runs",
-        type="dir",
-        ext="",
-        kind="dir",
-        size=0,
-        mtime_ns=0,
-        mtime_hash="",
-        active=False,
-    )
-    child = FsEntry(
-        path="runs/a.txt",
-        parent="runs",
-        name="a.txt",
-        type="file",
-        ext=".txt",
-        kind="text",
-        size=11,
-        mtime_ns=123,
-        mtime_hash="",
-        active=False,
-    )
-    assert inv.apply_walker_entries([root, runs, child]) == 3
-    q = inv.subscribe()
-
-    inv._repair_pending_dir_aggregates()
-
-    assert inv._entries["runs"].total_files == 1
-    assert inv._entries["runs"].total_size == 11
-    assert inv._entries["runs"].newest_mtime_ns == 123
-    assert inv._entries[""].total_files == 1
-    event = q.get_nowait()
-    assert isinstance(event, FsChange)
-    paths = {op.entry.path for op in event.ops if isinstance(op, FsUpsert)}
-    assert {"", "runs"} <= paths
-
-    inv.apply_live_entry(
-        FsEntry(
-            path="older.txt",
-            parent="",
-            name="older.txt",
+    async def _run() -> tuple[InventoryIndex, tuple[str, ...]]:
+        inv = InventoryIndex()
+        inv._generation["runs"] = 1
+        root = FsEntry.for_observed_dir(path="", parent="", name="root")
+        runs = FsEntry.for_observed_dir(path="runs", parent="", name="runs")
+        child = FsEntry(
+            path="runs/a.txt",
+            parent="runs",
+            name="a.txt",
             type="file",
             ext=".txt",
             kind="text",
-            size=1,
-            mtime_ns=1,
+            size=11,
+            mtime_ns=123,
             mtime_hash="",
             active=False,
         )
-    )
+        assert _apply_entries(inv, [root, runs, child]) == 3
+        cursor = await _checkpoint(inv)
+        inv._repair_pending_dir_aggregates()
+        changes = await _changes_since(inv, cursor)
+        inv.apply_live_entry(
+            FsEntry(
+                path="older.txt",
+                parent="",
+                name="older.txt",
+                type="file",
+                ext=".txt",
+                kind="text",
+                size=1,
+                mtime_ns=1,
+                mtime_hash="",
+                active=False,
+            )
+        )
+        return inv, changes[-1].dirty_paths
+
+    inv, paths = asyncio.run(_run())
+    assert inv._entries["runs"].total_files == 1
+    assert inv._entries["runs"].total_size == 11
+    assert inv._entries["runs"].newest_mtime_ns == 123
+    assert inv._entries[""].total_files == 2
+    assert {"", "runs"} <= set(paths)
     assert inv._entries[""].newest_mtime_ns == 123
 
 
@@ -981,7 +989,7 @@ def test_inventory_pending_repair_does_not_scan_all_entries_on_event_loop() -> N
         mtime_hash="",
         active=False,
     )
-    assert inv.apply_walker_entries([root, child]) == 2
+    assert _apply_entries(inv, [root, child]) == 2
     inv._entries = _SlowValuesEntries(inv._entries)
 
     async def _run() -> float:
@@ -1048,22 +1056,23 @@ def test_inventory_walker_crash_surfaces_failed_status(tmp_path: Path) -> None:
     assert asyncio.run(_run()) == "failed"
 
 
-def test_inventory_subscribe_receives_walker_changes(tmp_path: Path) -> None:
+def test_inventory_change_stream_replays_walker_dirty_paths(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> set[str]:
         inv = InventoryIndex()
-        q = inv.subscribe()
+        cursor = await _checkpoint(inv)
+        stream = inv.changes(after=cursor)
+        first = asyncio.ensure_future(anext(stream))
+        await asyncio.sleep(0)
         inv.start(tmp_path)
         await inv.wait_until_done(timeout=5.0)
-        seen: set[str] = set()
-        while not q.empty():
-            evt = q.get_nowait()
-            if isinstance(evt, FsChange):
-                for op in evt.ops:
-                    if isinstance(op, FsUpsert):
-                        seen.add(op.entry.path)
-        return seen
+        current = await _checkpoint(inv)
+        batches = [await first]
+        while batches[-1].cursor.sequence < current.sequence:
+            batches.append(await asyncio.wait_for(anext(stream), timeout=1.0))
+        await stream.aclose()
+        return {path for batch in batches for path in batch.dirty_paths}
 
     seen = asyncio.run(_run())
     assert "file_a.log" in seen
@@ -1071,104 +1080,42 @@ def test_inventory_subscribe_receives_walker_changes(tmp_path: Path) -> None:
     assert "sub1/file_b.log" in seen
 
 
-def test_inventory_slow_subscriber_gets_resync_without_blocking(tmp_path: Path) -> None:
+def test_inventory_slow_change_consumer_gets_bounded_reset() -> None:
+    async def _run() -> ChangeBatch:
+        inv = InventoryIndex(config=InventoryConfig(change_queue_size=1))
+        cursor = await _checkpoint(inv)
+        stream = inv.changes(after=cursor)
+        first = asyncio.ensure_future(anext(stream))
+        await asyncio.sleep(0)
+        for index in range(3):
+            inv.apply_live_entry(
+                FsEntry.for_observed_file(
+                    path=f"{index}.txt",
+                    parent="",
+                    name=f"{index}.txt",
+                    size=1,
+                    mtime_ns=index + 1,
+                )
+            )
+        reset = await first
+        await stream.aclose()
+        return reset
+
+    assert asyncio.run(_run()).reset
+
+
+def test_inventory_clear_records_provider_reset(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[bool, bool, int, object]:
+    async def _run() -> ChangeBatch:
         inv = InventoryIndex()
-        slow = inv.subscribe(max_queue=1)
-        fast = inv.subscribe(max_queue=1024)
-        # Drive emits directly: the walker batches upserts now, so a
-        # tiny tree no longer guarantees N>queue events from start().
-        # The behavior under test doesn't depend on the walker.
-        for _ in range(3):
-            inv._emit(FsChange(ops=()))
-        return (
-            slow in inv._subscribers,
-            fast in inv._subscribers,
-            inv.subscriber_count(),
-            slow.get_nowait(),
-        )
-
-    slow_attached, fast_attached, count, slow_event = asyncio.run(_run())
-    assert slow_attached is True
-    assert fast_attached is True
-    assert count == 2
-    assert isinstance(slow_event, FsResyncRequired)
-    assert slow_event.reason == "subscriber_queue_overflow"
-
-
-def test_inventory_overflow_warning_is_rate_limited(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    now_ns = 1
-    monkeypatch.setattr(inventory_module.time, "monotonic_ns", lambda: now_ns)
-
-    class _RecordHandler(logging.Handler):
-        def __init__(self) -> None:
-            super().__init__(level=logging.WARNING)
-            self.records: list[logging.LogRecord] = []
-
-        def emit(self, record: logging.LogRecord) -> None:
-            self.records.append(record)
-
-    logger = logging.getLogger("metabrowser.inventory_engine.providers.python")
-    original_level = logger.level
-    handler = _RecordHandler()
-    logger.addHandler(handler)
-
-    try:
-        logger.setLevel(logging.WARNING)
-        inv = InventoryIndex()
-        inv.subscribe(max_queue=1)
-        inv._emit(FsChange(ops=()))  # fill the queue
-        inv._emit(FsChange(ops=()))  # first overflow logs immediately
-        inv._emit(FsChange(ops=()))  # repeated overflow stays quiet
-
-        now_ns += inventory_module._SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS
-        inv._emit(FsChange(ops=()))
-    finally:
-        logger.setLevel(original_level)
-        logger.removeHandler(handler)
-
-    messages = [record.getMessage() for record in handler.records]
-    assert messages == [
-        "inventory subscriber backlog overflowed; requested resync for 1 subscriber(s)",
-        "inventory subscriber backlog overflowed; requested resync for 2 subscriber(s)",
-    ]
-
-
-def test_inventory_clear_emits_resync(tmp_path: Path) -> None:
-    _build_tree(tmp_path)
-
-    async def _run() -> object:
-        inv = InventoryIndex()
-        q = inv.subscribe()
         inv.start(tmp_path)
         await inv.wait_until_done(timeout=5.0)
-        while not q.empty():
-            q.get_nowait()
+        cursor = await _checkpoint(inv)
         inv.clear()
-        return q.get_nowait()
+        return (await _changes_since(inv, cursor))[-1]
 
-    evt = asyncio.run(_run())
-    assert isinstance(evt, FsResyncRequired)
-    assert evt.reason == "root_swap"
-
-
-def test_inventory_initial_snapshot_complete_flag_tracks_status(tmp_path: Path) -> None:
-    _build_tree(tmp_path)
-
-    async def _run() -> tuple[str, bool, set[str]]:
-        inv = await _drive_inventory(tmp_path)
-        snap = inv.initial_snapshot(scope="root-depth-2")
-        return (snap.scope, snap.complete, {e.path for e in snap.entries})
-
-    scope, complete, paths = asyncio.run(_run())
-    assert scope == "root-depth-2"
-    assert complete is True
-    assert "sub1/file_b.log" in paths
-    assert "sub1/sub1a/file_c.log" not in paths
+    assert asyncio.run(_run()).reset
 
 
 # ── rewalk_subtree ────────────────────────────────────────────
@@ -1180,16 +1127,14 @@ def test_rewalk_subtree_ingests_a_newly_created_directory(tmp_path: Path) -> Non
     branch calls ``rewalk_subtree``. This test exercises that path
     directly: build a tree, run the walker, then mkdir + populate
     a new subtree and call ``rewalk_subtree``. Every new entry must
-    land in ``_entries`` and a single ``FsChange`` event must reach
-    subscribers per upsert (one per file plus the dir placeholder
-    + finalize)."""
+    land in ``_entries`` and provider invalidations must name the changed
+    subtree."""
 
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[set[str], list[StreamEvent]]:
+    async def _run() -> tuple[set[str], list[ChangeBatch]]:
         inv = await _drive_inventory(tmp_path)
-        # Drain anything the walker emitted before we attach.
-        q = inv.subscribe(max_queue=1024)
+        cursor = await _checkpoint(inv)
         # New subtree on disk:
         new_dir = tmp_path / "newdir"
         new_dir.mkdir()
@@ -1197,19 +1142,15 @@ def test_rewalk_subtree_ingests_a_newly_created_directory(tmp_path: Path) -> Non
         (new_dir / "nested").mkdir()
         (new_dir / "nested" / "y.txt").write_bytes(b"y" * 20)
         await inv.rewalk_subtree("newdir")
-        events: list[StreamEvent] = []
-        while not q.empty():
-            events.append(q.get_nowait())
         paths_now = {p for p in inv._entries if p.startswith("newdir")}
-        return paths_now, events
+        return paths_now, await _changes_since(inv, cursor)
 
     paths, events = asyncio.run(_run())
     assert "newdir" in paths
     assert "newdir/x.txt" in paths
     assert "newdir/nested" in paths
     assert "newdir/nested/y.txt" in paths
-    # Each fresh entry produces an FsChange via _apply_walker_entry.
-    assert any(isinstance(e, FsChange) for e in events)
+    assert any(path.startswith("newdir") for batch in events for path in batch.dirty_paths)
 
 
 def test_rewalk_subtree_refuses_root_and_missing_paths(tmp_path: Path) -> None:
@@ -1265,31 +1206,22 @@ def test_rewalk_subtree_replaces_file_without_double_counting_root(tmp_path: Pat
 # ── remove ────────────────────────────────────────────────────
 
 
-def test_remove_drops_path_and_emits_fs_remove(tmp_path: Path) -> None:
-    """``remove(path)`` for a file pops the entry and emits one
-    ``FsChange`` with one ``FsRemove`` op."""
+def test_remove_drops_path_and_invalidates_it(tmp_path: Path) -> None:
+    """``remove(path)`` drops a file and names it in the provider change."""
 
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[bool, list[FsRemove]]:
+    async def _run() -> tuple[bool, tuple[str, ...]]:
         inv = await _drive_inventory(tmp_path)
-        q = inv.subscribe(max_queue=1024)
+        cursor = await _checkpoint(inv)
         inv.remove("sub1/file_b.log")
-        events: list[StreamEvent] = []
-        while not q.empty():
-            events.append(q.get_nowait())
         in_index = "sub1/file_b.log" in inv._entries
-        removes: list[FsRemove] = []
-        for e in events:
-            if isinstance(e, FsChange):
-                for op in e.ops:
-                    if isinstance(op, FsRemove):
-                        removes.append(op)
-        return in_index, removes
+        changes = await _changes_since(inv, cursor)
+        return in_index, changes[-1].dirty_paths
 
-    in_index, removes = asyncio.run(_run())
+    in_index, dirty_paths = asyncio.run(_run())
     assert in_index is False
-    assert any(r.path == "sub1/file_b.log" for r in removes)
+    assert "sub1/file_b.log" in dirty_paths
 
 
 def test_remove_known_file_does_not_scan_large_inventory() -> None:
@@ -1323,34 +1255,21 @@ def test_remove_known_file_does_not_scan_large_inventory() -> None:
 
 def test_remove_directory_drops_descendants_in_one_event(tmp_path: Path) -> None:
     """``remove(path)`` for a dir drops the dir AND every
-    descendant; subscribers see one ``FsChange`` carrying every
-    removed path."""
+    descendant; consumers see one change carrying every removed path."""
 
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[set[str], int, set[str]]:
+    async def _run() -> tuple[set[str], list[ChangeBatch]]:
         inv = await _drive_inventory(tmp_path)
-        q = inv.subscribe(max_queue=1024)
+        cursor = await _checkpoint(inv)
         inv.remove("sub1")
-        events: list[StreamEvent] = []
-        while not q.empty():
-            events.append(q.get_nowait())
-        # All sub1/* must be gone.
         residual = {p for p in inv._entries if p.startswith("sub1")}
-        # Find the FsChange events; collect every removed path.
-        change_count = 0
-        removed_paths: set[str] = set()
-        for e in events:
-            if isinstance(e, FsChange):
-                change_count += 1
-                for op in e.ops:
-                    if isinstance(op, FsRemove):
-                        removed_paths.add(op.path)
-        return residual, change_count, removed_paths
+        return residual, await _changes_since(inv, cursor)
 
-    residual, n_changes, removed = asyncio.run(_run())
+    residual, changes = asyncio.run(_run())
+    removed = set(changes[0].dirty_paths)
     assert residual == set()
-    assert n_changes == 1, "directory remove must coalesce into one FsChange"
+    assert len(changes) == 1, "directory remove must coalesce into one provider change"
     assert "sub1" in removed
     assert "sub1/file_b.log" in removed
     assert "sub1/sub1a" in removed
@@ -1362,13 +1281,13 @@ def test_remove_unknown_path_is_noop(tmp_path: Path) -> None:
 
     _build_tree(tmp_path)
 
-    async def _run() -> int:
+    async def _run() -> bool:
         inv = await _drive_inventory(tmp_path)
-        q = inv.subscribe(max_queue=1024)
+        before = await _checkpoint(inv)
         inv.remove("does-not-exist")
-        return q.qsize()
+        return before == await _checkpoint(inv)
 
-    assert asyncio.run(_run()) == 0
+    assert asyncio.run(_run())
 
 
 # ── walker populates FsEntry.gitignored ───────────────────────

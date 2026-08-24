@@ -16,7 +16,6 @@ from metabrowser import server as proc_browser
 from metabrowser.server import (
     DEFAULT_TREE_DEPTH,
     MAX_TREE_DEPTH,
-    _collect_trackable_files,
     _dir_tree,
     _find_git_root,
     _set_root_dir,
@@ -99,15 +98,12 @@ def test_tree_depth_query_is_always_bounded() -> None:
     assert _tree_depth_from_query(str(MAX_TREE_DEPTH + 100)) == MAX_TREE_DEPTH
 
 
-def test_tree_cold_start_uses_constant_time_child_lookup() -> None:
-    # The cold-start wait lives in the shared _ensure_inventory_serving
-    # helper (used by /api/tree and /api/rollup); the property under
-    # guard is unchanged: the wait polls the O(1) direct-child lookup,
-    # never a full-index scan.
-    source = inspect.getsource(proc_browser._ensure_inventory_serving)
-    assert "inventory.has_direct_child(subpath)" in source
-    assert 'inventory.entries(scope="all-known")' not in source
-    assert "_ensure_inventory_serving" in inspect.getsource(proc_browser.api_tree)
+def test_tree_cold_start_uses_bounded_provider_queries() -> None:
+    source = inspect.getsource(proc_browser._read_tree_from_provider)
+    assert "EntryQuery(" in source
+    assert "PriorityRequest(" in source
+    assert "runtime.config.max_entries" in source
+    assert "_dir_tree(" not in source
 
 
 def test_build_gitignore_check_no_repo_returns_noop(tmp_path: Path) -> None:
@@ -346,24 +342,3 @@ def test_matches_git_check_ignore_behavior(tmp_path: Path) -> None:
     assert check(repo / "cache", is_dir=True) == git_ignored("cache")
     assert check(repo / "app.log") == git_ignored("app.log")
     assert check(repo / "app.py") == git_ignored("app.py")
-
-
-def test_collect_trackable_files_uses_short_lived_cache(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    logs = repo / ".logs"
-    logs.mkdir(parents=True)
-    _touch(logs / "first.jsonl")
-    _set_root_dir(repo)
-
-    try:
-        first = {p.name for p in _collect_trackable_files(repo)}
-        _touch(logs / "second.jsonl")
-        cached = {p.name for p in _collect_trackable_files(repo)}
-        _set_root_dir(repo)
-        refreshed = {p.name for p in _collect_trackable_files(repo)}
-    finally:
-        _set_root_dir(Path())
-
-    assert first == {"first.jsonl"}
-    assert cached == {"first.jsonl"}
-    assert refreshed == {"first.jsonl", "second.jsonl"}

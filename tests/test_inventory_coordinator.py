@@ -34,6 +34,7 @@ from metabrowser.inventory_engine.contract import (
     QueryKind,
     ReadRequest,
     ReadResult,
+    RefreshObservation,
     RefreshReceipt,
     RefreshRequest,
     SourceKind,
@@ -75,6 +76,7 @@ class _FakeHandle:
         self.refreshes: list[RefreshRequest] = []
         self.priorities: list[PriorityRequest] = []
         self.read_gate: asyncio.Event | None = None
+        self.read_started = asyncio.Event()
         self.concurrent_reads_started = asyncio.Event()
         self.active_reads = 0
         self.max_active_reads = 0
@@ -96,6 +98,7 @@ class _FakeHandle:
         )
         if should_gate:
             self.active_reads += 1
+            self.read_started.set()
             self.max_active_reads = max(self.max_active_reads, self.active_reads)
             if self.active_reads >= 2:
                 self.concurrent_reads_started.set()
@@ -294,6 +297,40 @@ def test_reads_run_concurrently_and_root_replacement_waits_for_them(tmp_path: Pa
     asyncio.run(_run())
 
 
+def test_cancelled_read_drains_before_root_replacement_closes_handle(tmp_path: Path) -> None:
+    async def _run() -> None:
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        first.mkdir()
+        second.mkdir()
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(first)
+        handle = backend.handles[0]
+        handle.read_gate = asyncio.Event()
+
+        read = asyncio.create_task(
+            coordinator.read(ReadRequest(queries=(DirectoryQuery(query_id="tree"),)))
+        )
+        await asyncio.wait_for(handle.read_started.wait(), timeout=1)
+        read.cancel()
+        replacement = asyncio.create_task(coordinator.replace_root(second))
+        await asyncio.sleep(0)
+
+        assert not read.done()
+        assert not replacement.done()
+        assert backend.events == ["open:first"]
+
+        handle.read_gate.set()
+        with pytest.raises(asyncio.CancelledError):
+            await read
+        await replacement
+        assert backend.events == ["open:first", "close:first", "open:second"]
+        await coordinator.close()
+
+    asyncio.run(_run())
+
+
 def test_coherent_read_joins_only_returned_overlay_entries_without_changing_facts(
     tmp_path: Path,
 ) -> None:
@@ -377,6 +414,7 @@ def test_provider_changes_are_coalesced_and_reset_dominates(tmp_path: Path) -> N
         handle.emit(dirty_paths=("a", "c"), work=WorkCounters(entries_visited=3))
         merged = await asyncio.wait_for(first_change, timeout=1)
         assert merged.dirty_paths == ("a", "b", "c")
+        assert merged.facts_changed is True
         assert merged.dirty_queries == frozenset({QueryKind.ENTRY, QueryKind.DIRECTORY})
         assert merged.version.engine.sequence == 3
         assert merged.work.entries_visited == 6
@@ -408,6 +446,7 @@ def test_host_resume_overflow_and_history_expiry_return_reset(tmp_path: Path) ->
         await coordinator.replace_decoration("a", InventoryDecoration(active=True))
         first = await asyncio.wait_for(first_task, timeout=1)
         assert first.reset is False
+        assert first.facts_changed is False
 
         await coordinator.replace_decoration("b", InventoryDecoration(active=True))
         await coordinator.replace_decoration("c", InventoryDecoration(active=True))
@@ -469,7 +508,7 @@ def test_refresh_and_priority_are_provider_neutral(tmp_path: Path) -> None:
         coordinator = _coordinator(backend)
         await coordinator.open(tmp_path)
         handle = backend.handles[0]
-        refresh = RefreshRequest(paths=("a",))
+        refresh = RefreshRequest(observations=(RefreshObservation(path="a"),))
         priority = PriorityRequest(paths=("b",), max_depth=3)
         receipt = await coordinator.refresh(refresh)
         await coordinator.prioritize(priority)

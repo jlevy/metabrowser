@@ -1,201 +1,254 @@
-"""Tests for the server-side active-file tracker.
-
-The tracker replaces /api/activity polling: a background task
-periodically fingerprints trackable files in .logs/.state and
-emits fs.change ops on the InventoryIndex when a file's active
-state flips.
-
-Coverage:
-
-* `_is_trackable` matches BROWSER_TRACKABLE_EXTS files inside
-  .logs / .state subtrees and rejects everything else.
-* A single tick on a fixture marks a freshly-written file as
-  active and emits an fs.change op via the inventory.
-* A file unchanged across `ACTIVE_TRACKER_QUIET_POLLS` ticks
-  flips back to active=false.
-* PID-alive labels propagate to FsEntry.labels.
-* Tracker survives transient errors and keeps running.
-"""
+"""Provider-neutral activity tracker and sparse-overlay behavior."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
-from metabrowser.active_tracker import _is_trackable, _tick
-from metabrowser.events import FsChange, FsEntry, FsUpsert
-from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser import server as proc_browser
+from metabrowser.active_tracker import _is_trackable, _tick, _TrackerState
+from metabrowser.activity import TRACKABLE_FILE_MAX_SIZE, FileActivityTracker
+from metabrowser.events import CatalogChange, FsChange, FsUpsert
+from metabrowser.inventory_engine.contract import (
+    CatalogProjection,
+    CatalogQuery,
+    CatalogRecord,
+    EntryQuery,
+    ReadRequest,
+    RollupProjection,
+    RollupQuery,
+)
+from metabrowser.inventory_engine.overlay import (
+    InventoryDecoration,
+    InventoryDecorationPatch,
+)
 from metabrowser.settings import ACTIVE_TRACKER_QUIET_POLLS
+from tests.inventory_harness import InventoryHarness, inventory_harness
 
 
-def _file_entry(
-    path: str, *, name: str, mtime_ns: int = 1_000_000_000_000, active: bool = False
-) -> FsEntry:
-    return FsEntry(
+def _record(path: str, *, size: int = 10) -> CatalogRecord:
+    return CatalogRecord(
         path=path,
-        parent="/".join(path.split("/")[:-1]),
-        name=name,
-        type="file",
-        ext=".jsonl" if name.endswith(".jsonl") else "",
-        kind="file",
-        size=100,
-        mtime_ns=mtime_ns,
-        mtime_hash="",
-        active=active,
+        logical_extension=Path(path).suffix,
+        size=size,
+        mtime_ns=1,
     )
 
 
-# ── _is_trackable ──────────────────────────────────────────────
+def test_trackable_catalog_records_are_scoped_bounded_and_uncompressed() -> None:
+    assert _is_trackable(_record("runs/x/.logs/foo.jsonl"))
+    assert _is_trackable(_record("runs/x/.state/status.yaml"))
+    assert not _is_trackable(_record("docs/notes.md"))
+    assert not _is_trackable(_record("runs/x/.logs/archive.jsonl.gz"))
+    assert not _is_trackable(_record("runs/x/.logs/huge.jsonl", size=TRACKABLE_FILE_MAX_SIZE))
+    assert _is_trackable(_record("live.jsonl"), root_is_scoped=True)
 
 
-def test_is_trackable_logs_jsonl() -> None:
-    e = _file_entry("runs/x/.logs/foo.jsonl", name="foo.jsonl")
-    assert _is_trackable(e) is True
-
-
-def test_is_trackable_state_yaml() -> None:
-    e = _file_entry("runs/x/.state/status.yaml", name="status.yaml")
-    assert _is_trackable(e) is True
-
-
-def test_is_trackable_rejects_outside_logs_state() -> None:
-    e = _file_entry("docs/notes.md", name="notes.md")
-    assert _is_trackable(e) is False
-
-
-def test_is_trackable_rejects_unknown_ext_inside_logs() -> None:
-    e = _file_entry("runs/x/.logs/something.bin", name="something.bin")
-    assert _is_trackable(e) is False
-
-
-def test_is_trackable_rejects_dir() -> None:
-    d = FsEntry(
-        path="runs/x/.logs",
-        parent="runs/x",
-        name=".logs",
-        type="dir",
-        ext="",
-        kind="dir",
-        size=0,
-        mtime_ns=0,
-        mtime_hash="",
-        active=False,
-    )
-    assert _is_trackable(d) is False
-
-
-# ── End-to-end tick on a real fixture ─────────────────────────
-
-
-def _setup_fixture(tmp_path: Path) -> Path:
-    """A repo with a .logs jsonl that has just been written
-    (so the tracker should mark it active)."""
-    (tmp_path / "runs").mkdir()
-    (tmp_path / "runs" / "x").mkdir()
-    (tmp_path / "runs" / "x" / ".logs").mkdir()
-    log = tmp_path / "runs" / "x" / ".logs" / "foo.jsonl"
+def _setup_fixture(root: Path, *, with_pid: bool = False) -> Path:
+    logs = root / "runs" / "x" / ".logs"
+    logs.mkdir(parents=True)
+    log = logs / "foo.jsonl"
     log.write_text('{"event":"start"}\n')
+    if with_pid:
+        (logs / "worker.pid").write_text(f"{os.getpid()}\n")
     return log
 
 
-def test_tick_marks_freshly_written_file_active(tmp_path: Path) -> None:
+async def _entry(harness: InventoryHarness, path: str):
+    read = await harness.runtime.coordinator.read(
+        ReadRequest(queries=(EntryQuery(query_id="entry", path=path),))
+    )
+    return read, read.entries[path]
+
+
+def test_tick_refreshes_facts_then_marks_the_overlay_active(tmp_path: Path) -> None:
     log = _setup_fixture(tmp_path)
 
-    async def _run() -> bool:
-        reset_instance_for_tests()
-        inv = get_instance()
-        inv.start(tmp_path)
-        await inv.wait_until_done(timeout=5.0)
+    async def run() -> None:
+        async with inventory_harness(tmp_path) as harness:
+            state = _TrackerState()
+            tracker = FileActivityTracker(stale_after_s=60.0)
+            await _tick(
+                harness.runtime.coordinator,
+                tmp_path,
+                harness.runtime.config,
+                state,
+                tracker,
+            )
+            baseline, baseline_entry = await _entry(harness, "runs/x/.logs/foo.jsonl")
+            assert not baseline_entry.decoration.active
 
-        quiet: dict[str, int] = {}
-        await _tick(inv, tmp_path, quiet)  # baseline (no change yet)
-        # Touch the file → mtime + size change.
-        log.write_text('{"event":"start"}\n{"event":"step"}\n')
-        # Force a different mtime even at sub-second resolution.
-        st = log.stat()
-        os.utime(log, (st.st_mtime + 1.0, st.st_mtime + 1.0))
-        await _tick(inv, tmp_path, quiet)
-        e = inv.get("runs/x/.logs/foo.jsonl")
-        return e is not None and e.active
+            log.write_text('{"event":"start"}\n{"event":"step"}\n')
+            await _tick(
+                harness.runtime.coordinator,
+                tmp_path,
+                harness.runtime.config,
+                state,
+                tracker,
+            )
+            updated, updated_entry = await _entry(harness, "runs/x/.logs/foo.jsonl")
+            assert updated_entry.decoration.active
+            assert updated_entry.facts.size == log.stat().st_size
+            assert updated.version.engine.sequence > baseline.version.engine.sequence
 
-    assert asyncio.run(_run()) is True
-
-
-def test_tick_emits_fs_change_op_via_subscriber(tmp_path: Path) -> None:
-    """Each active-state flip must surface as an fs.change
-    upsert on subscribers (so the SPA's FileStore picks it up)."""
-
-    log = _setup_fixture(tmp_path)
-
-    async def _run() -> list[FsUpsert]:
-        reset_instance_for_tests()
-        inv = get_instance()
-        q = inv.subscribe()
-        inv.start(tmp_path)
-        await inv.wait_until_done(timeout=5.0)
-
-        # Drain walker emissions.
-        while not q.empty():
-            q.get_nowait()
-
-        quiet: dict[str, int] = {}
-        await _tick(inv, tmp_path, quiet)
-        log.write_text('{"event":"step"}\n')
-        st = log.stat()
-        os.utime(log, (st.st_mtime + 1.0, st.st_mtime + 1.0))
-        await _tick(inv, tmp_path, quiet)
-
-        # Collect upserts that flipped active=True.
-        upserts: list[FsUpsert] = []
-        while not q.empty():
-            evt = q.get_nowait()
-            if isinstance(evt, FsChange):
-                for op in evt.ops:
-                    if isinstance(op, FsUpsert) and op.entry.active:
-                        upserts.append(op)
-        return upserts
-
-    upserts = asyncio.run(_run())
-    assert any(u.entry.path == "runs/x/.logs/foo.jsonl" for u in upserts)
+    asyncio.run(run())
 
 
-def test_tick_marks_file_inactive_after_quiet_polls(tmp_path: Path) -> None:
-    """After ACTIVE_TRACKER_QUIET_POLLS ticks without a change,
-    the file flips back to active=False."""
+def test_quiet_overlay_transition_preserves_engine_version_and_pid_label(
+    tmp_path: Path,
+) -> None:
+    log = _setup_fixture(tmp_path, with_pid=True)
 
-    log = _setup_fixture(tmp_path)
+    async def run() -> None:
+        async with inventory_harness(tmp_path) as harness:
+            state = _TrackerState()
+            tracker = FileActivityTracker(stale_after_s=1e-9)
+            await _tick(
+                harness.runtime.coordinator,
+                tmp_path,
+                harness.runtime.config,
+                state,
+                tracker,
+            )
+            baseline, seeded = await _entry(harness, "runs/x/.logs/foo.jsonl")
+            assert dict(seeded.decoration.labels)["pid_alive"] == "1"
+            assert baseline.version.engine.sequence == baseline.result.version.sequence
 
-    async def _run() -> bool:
-        reset_instance_for_tests()
-        inv = get_instance()
-        inv.start(tmp_path)
-        await inv.wait_until_done(timeout=5.0)
+            log.write_text('{"event":"step"}\n')
+            await _tick(
+                harness.runtime.coordinator,
+                tmp_path,
+                harness.runtime.config,
+                state,
+                tracker,
+            )
+            changed, active = await _entry(harness, "runs/x/.logs/foo.jsonl")
+            assert active.decoration.active
+            engine_after_write = changed.version.engine
 
-        # Make the file appear active via a write+touch.
-        log.write_text('{"event":"step"}\n')
-        st = log.stat()
-        os.utime(log, (st.st_mtime + 1.0, st.st_mtime + 1.0))
+            for _ in range(ACTIVE_TRACKER_QUIET_POLLS + 1):
+                await _tick(
+                    harness.runtime.coordinator,
+                    tmp_path,
+                    harness.runtime.config,
+                    state,
+                    tracker,
+                )
+            quiet, quiet_entry = await _entry(harness, "runs/x/.logs/foo.jsonl")
+            assert not quiet_entry.decoration.active
+            assert dict(quiet_entry.decoration.labels)["pid_alive"] == "1"
+            assert quiet.version.engine == engine_after_write
 
-        quiet: dict[str, int] = {}
-        await _tick(inv, tmp_path, quiet)  # see the change
-        # Subsequent ticks see no change; quiet counter increments.
-        for _ in range(ACTIVE_TRACKER_QUIET_POLLS + 2):
-            await _tick(inv, tmp_path, quiet)
-
-        e = inv.get("runs/x/.logs/foo.jsonl")
-        return e is not None and not e.active
-
-    assert asyncio.run(_run()) is True
+    asyncio.run(run())
 
 
-def test_tick_no_ops_when_inventory_empty() -> None:
-    """No trackable entries → tick is a no-op (no exception,
-    no emission)."""
+def test_activity_patch_preserves_other_fields_and_cache_inputs(tmp_path: Path) -> None:
+    _setup_fixture(tmp_path)
 
-    async def _run() -> None:
-        reset_instance_for_tests()
-        inv = get_instance()
-        await _tick(inv, Path("/nonexistent"), {})
+    async def read_products(harness: InventoryHarness):
+        read = await harness.runtime.coordinator.read(
+            ReadRequest(
+                queries=(
+                    CatalogQuery(query_id="catalog", max_rows=100),
+                    RollupQuery(query_id="rollup"),
+                )
+            )
+        )
+        catalog = read.result.projection("catalog")
+        rollup = read.result.projection("rollup")
+        assert isinstance(catalog, CatalogProjection)
+        assert isinstance(rollup, RollupProjection)
+        return read, catalog, rollup
 
-    asyncio.run(_run())  # just shouldn't raise
+    async def run() -> None:
+        async with inventory_harness(tmp_path) as harness:
+            path = "runs/x/.logs/foo.jsonl"
+            await harness.runtime.coordinator.replace_decoration(
+                path,
+                InventoryDecoration(
+                    views=("source",),
+                    labels=(("plugin_state", "ready"),),
+                ),
+            )
+            before, before_catalog, before_rollup = await read_products(harness)
+            await harness.runtime.coordinator.patch_decorations(
+                {
+                    path: InventoryDecorationPatch(
+                        active=True,
+                        labels=(("pid_alive", "1"),),
+                    )
+                }
+            )
+            after, after_catalog, after_rollup = await read_products(harness)
+            _read, decorated = await _entry(harness, path)
+
+            assert after.version.engine == before.version.engine
+            assert after.version.overlay_revision > before.version.overlay_revision
+            assert after_catalog.records == before_catalog.records
+            assert after_rollup.payload == before_rollup.payload
+            assert decorated.decoration.views == ("source",)
+            assert dict(decorated.decoration.labels) == {
+                "pid_alive": "1",
+                "plugin_state": "ready",
+            }
+
+    asyncio.run(run())
+
+
+def test_decoration_change_emits_fs_upsert_without_catalog_delta(tmp_path: Path) -> None:
+    _setup_fixture(tmp_path)
+
+    async def run() -> None:
+        async with inventory_harness(tmp_path) as harness:
+            path = "runs/x/.logs/foo.jsonl"
+            queue = harness.bus.attach_connection()
+            try:
+                await harness.runtime.coordinator.patch_decorations(
+                    {path: InventoryDecorationPatch(active=True)}
+                )
+                envelope = await asyncio.wait_for(queue.get(), timeout=2.0)
+                assert isinstance(envelope.event, FsChange)
+                upserts = [
+                    operation for operation in envelope.event.ops if isinstance(operation, FsUpsert)
+                ]
+                assert len(upserts) == 1
+                assert upserts[0].entry.path == path
+                assert upserts[0].entry.active
+                try:
+                    pending = await asyncio.wait_for(queue.get(), timeout=0.05)
+                except TimeoutError:
+                    pass
+                else:
+                    assert not isinstance(pending.event, CatalogChange)
+            finally:
+                harness.bus.detach_connection(queue)
+
+    asyncio.run(run())
+
+
+def test_api_activity_reads_the_same_overlay_snapshot(tmp_path: Path) -> None:
+    _setup_fixture(tmp_path)
+
+    async def run() -> dict[str, object]:
+        async with inventory_harness(tmp_path) as harness:
+            await harness.runtime.coordinator.patch_decorations(
+                {
+                    "runs/x/.logs/foo.jsonl": InventoryDecorationPatch(
+                        active=True,
+                        labels=(("pid_alive", "1"),),
+                    )
+                }
+            )
+            request = SimpleNamespace(app=harness.app)
+            response = await proc_browser.api_activity(cast(Any, request))
+            return cast(dict[str, object], json.loads(bytes(response.body)))
+
+    body = asyncio.run(run())
+    assert body == {
+        "active_files": [{"path": "runs/x/.logs/foo.jsonl", "pid_alive": True}],
+        "poll_interval_ms": 5_000,
+    }

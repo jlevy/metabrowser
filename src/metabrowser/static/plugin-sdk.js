@@ -1425,8 +1425,8 @@
 
   function sizeHtml(bytes, extraClass) {
     if (bytes === null || bytes === undefined) {
-      // Walker emits null aggregates while a directory is still finalizing
-      // in the InventoryIndex; render as a skeleton cell so the row paints
+      // The provider emits null aggregates while a directory is still
+      // finalizing; render as a skeleton cell so the row paints
       // with shape; the SSE fs.change patch flow replaces it in place.
       const pendCls = `size tally-pending ${extraClass || ""}`.trim();
       return `<span class="${pendCls}"></span>`;

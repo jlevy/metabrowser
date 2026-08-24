@@ -78,11 +78,11 @@ forbidden. See
 
 ## Server: Concurrency Model
 
-**One writer, many readers.** Every inventory mutation — the boot walker, the filesystem
-watcher, the active-file tracker, and subtree rewalks — runs on the single asyncio event
-loop and yields only at explicit `await` points.
-That is what lets `InventoryIndex.remove` snapshot and mutate without a lock: no other
-producer can interleave inside a region that contains no `await`.
+**One provider writer, many readers.** The opened `InventoryHandle` owns filesystem
+facts. In the Python provider, the boot walker, verified watcher refreshes, and subtree
+rewalks write on the asyncio event loop and yield only at explicit `await` points.
+The activity tracker writes the coordinator’s sparse host overlay instead of mutating
+provider entries.
 
 **A worker thread is such a producer, so it takes the lock.** The argument above holds
 only for code on the loop.
@@ -106,8 +106,9 @@ cheap, not to move it to a thread.
 
 Two synchronization points matter:
 
-- `InventoryIndex._rollup_cache_lock` guards `_entries` and every structure derived from
-  it. It is held for dict operations only, never across an `await`.
+- `PythonInventoryHandle._rollup_cache_lock` guards `_entries` and every structure
+  derived from it. It is held for dict operations only, never across an `await` or a
+  bounded rollup reduction.
 - An **eviction epoch** covers the one genuinely concurrent case.
   A rollup runs in a worker thread while the walker keeps writing, so an aggregate
   computed from what the worker read can finish *after* a write has invalidated it.
@@ -148,8 +149,9 @@ at all. See [What Is Not Solved](#what-is-not-solved).
 
 ### Authoritative
 
-`InventoryIndex._entries` maps path to `FsEntry`. Everything else is derived from it and
-must be able to be rebuilt from it.
+`PythonInventoryHandle._entries` maps path to the Python provider’s retained filesystem
+record. Everything else in that provider is derived from it and must be rebuildable from
+it.
 `tests/test_browser_rollup.py::test_derived_index_state_survives_writes_and_removals`
 asserts exactly that, by deriving from scratch and comparing.
 
@@ -202,8 +204,8 @@ Changing the served root clears these through `paths_safe.register_root_callback
 ### Response state
 
 `/api/rollup` answers conditionally.
-A rollup body is a pure function of the index revision, the path, and the bounds that
-shape the response, so those three make an exact validator.
+A rollup body is a pure function of the returned engine version, host overlay revision,
+path, and bounds that shape the response, so those values make an exact validator.
 The bounds must be in the tag: two clients asking for different depths share a revision,
 and a tag that ignored the difference would hand one of them the other’s shape.
 
@@ -235,13 +237,14 @@ That rule exists because the tag has to fold in the build’s identity, not just
 source: Metabrowser answers with a *rendering* of a file, so a validator derived from
 the file alone will hand a browser back a stale rendering after an upgrade that changed
 how that file renders.
-Inventory-derived responses validate on the index revision instead of file metadata,
-because their bodies summarize many files rather than reproducing one.
+Inventory-derived responses validate on the coherent host version returned with their
+provider read instead of file metadata, because their bodies summarize many files rather
+than reproducing one.
 
 ### Why a conditional response is safe
 
 A validator is a claim, and the claim has to be checked.
-`/api/rollup` answers `304 Not Modified` on an unchanged index revision, so it is worth
+`/api/rollup` answers `304 Not Modified` on an unchanged host version, so it is worth
 stating exactly what that promises and what it rests on.
 
 **The tag identifies the resource.** It carries the served root, because “the rollup of
@@ -252,16 +255,17 @@ root out would reuse one root’s body for another wherever their revisions line
 tallies, the file-type breakdown, `index_status`, `indexed_files`, `max_files`, and
 `truncated`. Every one of those is a function of the index contents, the request’s
 bounds, or a constant.
-`index_status` and the bounds are in the tag directly.
-The rest move only with the revision: `_entries` is mutated in exactly two places
-(`_replace_index_entry`, `_pop_index_entry`), both of which bump it, and
-`_files_indexed` is only ever adjusted in the same statement sequence as one of those
-calls. There is no path that changes what the body would say without changing the tag.
+The bounds are in the tag directly.
+The remaining fields come from the same bundled, versioned read as the rollup.
+In the Python provider, `_entries` is mutated in exactly two places
+(`_replace_index_entry`, `_pop_index_entry`), both of which advance the engine sequence,
+and lifecycle transitions advance it as well.
+There is no path that changes what the body would say without changing the tag.
 
-**The revision only moves forward.** Revisions come from one process-wide sequence
-rather than a per-instance counter, so a tag can never be reused for different content —
-including across `reset_instance_for_tests`, which builds a whole new index and would
-otherwise restart the count at zero.
+**The revision only moves forward.** Python-provider revisions come from one
+process-wide sequence rather than a per-handle counter, and the engine version also
+carries a session identity.
+A tag cannot be reused for different content across roots or handles.
 
 **So a `304` means “the index has not changed”.** It does not, by itself, mean the
 filesystem has not changed.
@@ -270,10 +274,12 @@ the watcher’s job:
 
 ```
 filesystem change
-  → watcher (native inotify/FSEvents/kqueue, or 2s polling)
-  → apply_live_entry / remove
+  → provider-owned watcher (native inotify/FSEvents/kqueue, or 2s polling)
+  → provider refresh hint
+  → provider verifies and applies the observation
   → _replace_index_entry / _pop_index_entry
-  → revision bumps
+  → coordinator invalidates host projection caches
+  → engine and host versions advance
   → new ETag, fs.change on the stream
 ```
 
@@ -286,11 +292,10 @@ Every link is checked except the first, and the first is where the honest limits
   never *never*.
 - **A failed watch.** If the watch itself fails, live updates end.
   Exhausting the inotify watch limit on a large tree lands here.
-  The watcher announces that on the event stream as a `capability.update` with
-  `state: "failed"` and logs it, because nothing downstream can distinguish a quiet
-  filesystem from a dead watch: requests keep being answered, and conditional ones keep
-  answering “not modified”, truthfully about an index that has stopped being about the
-  filesystem.
+  The provider marks coverage with `watcher_gap`, freshness as stale, and reports a
+  typed issue and diagnostics; the coordinator projects that transition as a
+  `capability.update` with `state: "failed"`. This is necessary because nothing
+  downstream can distinguish a quiet filesystem from a dead watch.
 - **Gitignore edits.** `FsEntry.gitignored` is stamped at write time from a checker
   cached per served root, so editing a `.gitignore` does not re-flag entries already in
   the index until they are rewalked.
@@ -305,8 +310,10 @@ has seen nothing.
 ### The event stream
 
 `/api/events` is one Server-Sent Events connection per tab, carrying an ordered delta
-stream. `InventoryIndex._emit` pushes each event to every subscriber queue: one
-computation, N deliveries.
+stream. The provider publishes bounded `ChangeBatch` invalidations to the coordinator;
+the application event bus performs one coherent reread and projects the result to each
+connected browser. With no browser connected, it advances the cursor without building
+wire records; a new connection always begins with a coherent snapshot.
 
 | Event | Carries |
 | --- | --- |
@@ -319,9 +326,9 @@ computation, N deliveries.
 | `file.append` / `truncate` / `rotate` / `closed` / `coalesced` | Live-file tailing |
 | `heartbeat` | Liveness |
 
-A subscriber whose queue fills cannot be sent a correct ordered stream any more, so
-`_emit` drains its backlog and replaces it with `fs.resync_required` — bounded memory,
-and an honest signal instead of a corrupted delta stream.
+A subscriber whose queue fills cannot be sent a correct ordered stream any more, so the
+event bus drains its backlog, replaces it with `fs.resync_required`, and detaches that
+connection: bounded memory and an honest signal instead of a corrupted delta stream.
 
 Bulk state deliberately does not ride the stream.
 `/api/catalog` is a plain JSON response because the gzip middleware compresses it (SSE
@@ -601,9 +608,10 @@ Each has a test that fails when it does not; 2 and 7 are enforced by a scan over
 source rather than by exercising a behavior, so a new violation fails the build wherever
 it is written.
 
-1. Every derived structure equals a from-scratch derivation from `_entries`, after
-   writes and after removals.
-2. Every index write goes through `_replace_index_entry` or `_pop_index_entry`.
+1. Every Python-provider derived structure equals a from-scratch derivation from
+   `_entries`, after writes and after removals.
+2. Every Python-provider index write goes through `_replace_index_entry` or
+   `_pop_index_entry`.
 3. No request path *repeats* work proportional to the index.
    A rollup costs what changed; a tree expansion costs the subtree it returns; the root
    request’s index-wide tally is computed once per revision and reused.

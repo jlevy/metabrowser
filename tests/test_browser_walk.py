@@ -22,7 +22,9 @@ from typing import Any
 import yaml
 
 from metabrowser import walker
-from metabrowser.inventory import InventoryIndex
+from metabrowser.inventory_engine.providers.python import (
+    PythonInventoryHandle as InventoryIndex,
+)
 from metabrowser.walk import (
     build_tree_envelope,
     collect_stream,

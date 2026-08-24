@@ -2,12 +2,11 @@
 
 This module owns:
 
-* ``GET /api/events`` — global inventory SSE stream backed by
-  :class:`metabrowser.inventory.InventoryIndex`. Emits an
-  ``fs.snapshot`` on connect, then ``fs.change`` ops as the
-  walker / watcher backends produce them. Heartbeat every 15 s.
-  ``Last-Event-ID`` resume from the inventory's process-wide
-  ring buffer.
+* ``GET /api/events`` — global inventory SSE stream backed by the
+  application-owned inventory coordinator. Emits an ``fs.snapshot`` on
+  connect, then projects provider invalidations into ``fs.change`` ops.
+  Heartbeat every 15 s. ``Last-Event-ID`` resumes from the event bus's
+  process-wide ring buffer.
 * ``GET /api/index/progress`` — lightweight crawl status for the
   left-nav progress footer. Reads in-memory inventory counters
   only; never scans the tree or rebuilds suffix tallies.
@@ -20,9 +19,8 @@ This module owns:
 * ``GET /api/capabilities`` — unified capability surface with
   filesystem-type-driven watcher status.
 * :func:`build_lifespan` — Starlette lifespan context manager
-  that bumps the asyncio default executor to 64 workers and
-  spawns the eager ``InventoryIndex`` pre-warm without blocking
-  HTTP bind.
+  that bumps the asyncio default executor to 64 workers and opens the
+  selected inventory provider without blocking HTTP bind.
 
 Everything in this module is end-to-end testable via
 ``starlette.testclient.TestClient`` without opening a browser.
@@ -38,8 +36,7 @@ import asyncio
 import contextlib
 import json
 import logging
-from collections import Counter
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
@@ -49,10 +46,19 @@ from typing import TYPE_CHECKING, Literal, cast
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from metabrowser.active_tracker import run_active_tracker
 from metabrowser.events import (
+    CapabilityUpdate,
+    CatalogChange,
+    CatalogUpsert,
     EventEnvelope,
     FsChange,
+    FsEntry,
+    FsRemove,
     FsResyncRequired,
+    FsSnapshot,
+    FsUpsert,
+    ProjectionInvalidate,
     RingBuffer,
     StreamEvent,
     encode_heartbeat_comment,
@@ -63,22 +69,46 @@ from metabrowser.http_caching import (
     etag_headers,
     matches_if_none_match,
 )
-from metabrowser.inventory import InventoryIndex
-from metabrowser.inventory import (
-    get_instance as get_inventory,
+from metabrowser.inventory_engine.contract import (
+    CatalogProjection,
+    CatalogQuery,
+    DiagnosticsProjection,
+    DiagnosticsQuery,
+    DirectoryProjection,
+    DirectoryQuery,
+    EngineVersion,
+    EntryPresence,
+    EntryProjection,
+    EntryQuery,
+    EntryType,
+    InventoryConfig,
+    LifecyclePhase,
+    NavigationProjection,
+    NavigationQuery,
+    QueryKind,
+    ReadRequest,
+    VersionUnavailableError,
 )
-from metabrowser.paths_safe import _resolved_root_dir
+from metabrowser.inventory_engine.coordinator import (
+    DecoratedInventoryEntry,
+    HostChange,
+    HostCursor,
+    InventoryCoordinator,
+)
+from metabrowser.inventory_engine.runtime import (
+    InventoryRuntime,
+    default_inventory_config,
+    inventory_provider_from_environment,
+)
 from metabrowser.settings import (
     DEFAULT_EXECUTOR_WORKERS,
     INDEX_PROGRESS_UPDATE_FILES,
     PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES,
     PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
-    SSE_BUS_INVENTORY_QUEUE_SIZE,
     SSE_HEARTBEAT_INTERVAL_S,
     SSE_PER_CONNECTION_QUEUE_SIZE,
     SSE_RING_BUFFER_CAPACITY,
 )
-from metabrowser.watch_backends import select_watch_mode
 
 if TYPE_CHECKING:
     from starlette.applications import Starlette
@@ -107,25 +137,10 @@ VALID_SCOPES: tuple[str, ...] = (
 @asynccontextmanager  # pyright: ignore[reportDeprecated]
 async def build_lifespan(
     *,
+    app: Starlette,
     root_provider: Callable[[], object] = lambda: None,
 ) -> AsyncIterator[None]:
-    """Starlette lifespan that pre-warms ``InventoryIndex`` and
-    raises the asyncio default executor's worker count.
-
-    *root_provider* is a zero-arg callable returning the served
-    root path; tests pass an in-place lambda, production wires it
-    to ``paths_safe._resolved_root_dir``.
-
-    On startup:
-      1. ``loop.set_default_executor(ThreadPoolExecutor(64))`` so
-         cache-served handlers don't queue behind slow stat-poll
-         threads (default pool is min(32, cpus+4) ≈ 12).
-      2. ``inventory.start(root)`` is called (idempotent). The walker
-         must move synchronous filesystem setup off the event loop
-         before doing real work so startup can bind immediately.
-
-    On shutdown the walker task is cancelled cleanly.
-    """
+    """Own one runtime and stop host observation tasks before its provider."""
 
     loop = asyncio.get_running_loop()
     loop.set_default_executor(
@@ -135,96 +150,161 @@ async def build_lifespan(
         )
     )
 
-    inventory = get_inventory()
+    config = default_inventory_config()
+    runtime = InventoryRuntime(
+        provider=inventory_provider_from_environment(),
+        config=config,
+    )
+    app.state.inventory_runtime = runtime
+    app.state.inventory_event_bus = None
     root = root_provider()
-    walker_task: asyncio.Task[None] | None = None
     active_task: asyncio.Task[None] | None = None
-    watcher_task: asyncio.Task[None] | None = None
-    if isinstance(root, Path):
-        try:
-            walker_task = inventory.start(root)
-            LOG.debug("inventory pre-warm started at %s", root)
-        except Exception:
-            # Never crash startup because the pre-warm fell over —
-            # the lazy path can rebuild on first user action and
-            # an unhealthy inventory shouldn't take down the
-            # process.
-            LOG.exception("inventory pre-warm failed to start")
-
-        # The active-file tracker pushes fs.change ops into the
-        # inventory whenever a tracked file's active state flips.
-        try:
-            from metabrowser.active_tracker import (
-                run_active_tracker,
-            )
-
+    bus: _EventBus | None = None
+    try:
+        if isinstance(root, Path):
+            await runtime.open(root)
+            LOG.debug("inventory opened at %s", root)
+            cursor, _version, _state = await runtime.coordinator.checkpoint()
+            bus = _EventBus(runtime.coordinator, config=config)
+            app.state.inventory_event_bus = bus
+            await bus.start(after=cursor)
             active_task = asyncio.create_task(
-                run_active_tracker(root=root),
+                run_active_tracker(
+                    coordinator=runtime.coordinator,
+                    config=config,
+                    root=root,
+                ),
                 name="metabrowser-active-tracker",
             )
-        except Exception:
-            LOG.exception("active tracker failed to start")
-        # Spawn the filesystem watcher (native on local mounts,
-        # polling on NFS / FUSE). Keeps the inventory in sync
-        # with on-disk state without a Phase-4 writer event log.
-        try:
-            from metabrowser.watch_backends import (
-                run_watcher,
-            )
-
-            watcher_task = asyncio.create_task(
-                run_watcher(root=root),
-                name="metabrowser-fs-watcher",
-            )
-        except Exception:
-            LOG.exception("fs watcher failed to start")
-
-    try:
         yield
     finally:
-        for t in (walker_task, active_task, watcher_task):
+        for t in (active_task,):
             if t is not None and not t.done():
                 t.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await t
+        if bus is not None:
+            await bus.close()
+        await runtime.close()
 
 
 # ── Process-wide ring buffer ──────────────────────────────────
 #
-# A single ring buffer per process. Wired into the inventory's
-# subscriber queue: every event the inventory emits is also
-# appended here, so Last-Event-ID resume can replay a short
-# disconnect without bouncing the client back to a fresh
-# snapshot.
+# A single ring buffer per process. Every application-projected event is
+# appended here, so Last-Event-ID resume can replay a short disconnect without
+# bouncing the client back to a fresh snapshot.
+
+
+def _wire_entry(entry: DecoratedInventoryEntry) -> FsEntry:
+    """Join provider facts and host decorations into the existing SSE record."""
+
+    facts = entry.facts
+    if facts.type is EntryType.OTHER:
+        raise ValueError(f"the browser event wire cannot represent special entry {facts.path!r}")
+    entry_type = facts.type.value
+    return FsEntry(
+        path=facts.path,
+        parent=facts.parent,
+        name=facts.name,
+        type=entry_type,
+        ext=facts.ext,
+        kind="file" if entry_type == "file" else entry_type,
+        size=facts.size,
+        mtime_ns=facts.mtime_ns,
+        mtime_hash="",
+        active=entry.decoration.active,
+        views=entry.decoration.views,
+        labels=entry.decoration.labels,
+        total_files=facts.total_files,
+        total_size=facts.total_size,
+        unignored_files=facts.unignored_files,
+        unignored_size=facts.unignored_size,
+        newest_mtime_ns=facts.newest_mtime_ns,
+        empty=facts.empty,
+        gitignored=facts.gitignored,
+    )
+
+
+def _catalog_change(change: FsChange) -> CatalogChange | None:
+    """Derive the Quick File delta from one host-projected filesystem change."""
+
+    upserts: list[CatalogUpsert] = []
+    removes: list[str] = []
+    for operation in change.ops:
+        if isinstance(operation, FsRemove):
+            removes.append(operation.path)
+        elif operation.entry.type == "file":
+            if operation.entry.gitignored:
+                removes.append(operation.entry.path)
+            else:
+                upserts.append(CatalogUpsert(p=operation.entry.path, e=operation.entry.ext))
+    if not upserts and not removes:
+        return None
+    return CatalogChange(upserts=tuple(upserts), removes=tuple(removes))
 
 
 class _EventBus:
-    """Tee from the inventory's subscriber queue to the
-    process-wide ring buffer + per-connection queues.
+    """Project coordinator invalidations into the stable browser event wire."""
 
-    One bus per process. Spawning the bus is the route layer's
-    job — the first request to ``/api/events`` calls
-    :func:`get_or_create_bus`, which lazily attaches the bus to
-    the inventory and starts the relay task.
-    """
-
-    def __init__(self, inventory: InventoryIndex) -> None:
-        self._inventory = inventory
+    def __init__(self, coordinator: InventoryCoordinator, *, config: InventoryConfig) -> None:
+        self._coordinator = coordinator
+        self._config = config
         self._ring = RingBuffer(capacity=RING_BUFFER_CAPACITY)
-        # The bus queue absorbs ordinary producer bursts. If it fills,
-        # the inventory replaces the stale backlog with a resync marker;
-        # connected browsers then refresh from a bounded snapshot.
-        self._inventory_queue = inventory.subscribe(max_queue=SSE_BUS_INVENTORY_QUEUE_SIZE)
         self._connections: set[asyncio.Queue[EventEnvelope]] = set()
         self._relay_task: asyncio.Task[None] | None = None
+        self._after: HostCursor | None = None
         self._lock = asyncio.Lock()
 
-    async def start(self) -> None:
+    async def start(self, *, after: HostCursor) -> None:
+        """Start once from an explicit captured coordinator cursor."""
+
         async with self._lock:
-            if self._relay_task is None or self._relay_task.done():
-                self._relay_task = asyncio.create_task(
-                    self._relay_loop(), name="metabrowser-events-bus"
+            if self._relay_task is not None and not self._relay_task.done():
+                return
+            self._after = after
+            self._relay_task = asyncio.create_task(
+                self._relay_loop(), name="metabrowser-events-bus"
+            )
+
+    async def close(self) -> None:
+        """Cancel and join the coordinator relay."""
+
+        async with self._lock:
+            task = self._relay_task
+            self._relay_task = None
+            if task is not None and not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+    async def snapshot(self, scope: _ScopeType) -> FsSnapshot:
+        """Build one scoped initial snapshot through a coherent provider read."""
+
+        max_depth = 2 if scope == "root-depth-2" else self._config.max_depth
+        read = await self._coordinator.read(
+            ReadRequest(
+                queries=(
+                    EntryQuery(query_id="snapshot-root", path=""),
+                    DirectoryQuery(
+                        query_id="snapshot-tree",
+                        path="",
+                        max_depth=max_depth,
+                        max_rows=self._config.max_entries,
+                    ),
                 )
+            )
+        )
+        entries = tuple(_wire_entry(entry) for entry in read.entries.values())
+        return FsSnapshot(
+            scope=scope,
+            entries=entries,
+            complete=read.result.state.coverage.complete,
+        )
+
+    def publish(self, event: StreamEvent) -> None:
+        """Publish a host-owned non-inventory event in the same SSE ordering."""
+
+        self._forward_event(event)
 
     @staticmethod
     def _replace_with_resync(
@@ -247,76 +327,14 @@ class _EventBus:
         queue.put_nowait(envelope)
 
     async def _relay_loop(self) -> None:
-        # A relay exception must not stop process-wide SSE delivery. Back off
-        # after crashes and defensively repair an explicitly detached queue.
+        # A relay exception must not stop application-wide SSE delivery. Resume
+        # from the last successfully projected host cursor after a short backoff.
         backoff = 0.5
         while True:
             try:
-                while True:
-                    try:
-                        event = await asyncio.wait_for(
-                            self._inventory_queue.get(),
-                            timeout=5.0,
-                        )
-                    except TimeoutError:
-                        if not self._inventory.is_subscribed(self._inventory_queue):
-                            LOG.warning(
-                                "events bus: inventory subscription was lost; "
-                                "refreshing browser connections"
-                            )
-                            self._inventory_queue = self._inventory.subscribe(
-                                max_queue=SSE_BUS_INVENTORY_QUEUE_SIZE,
-                            )
-                            self._inventory_queue.put_nowait(
-                                FsResyncRequired(reason="inventory_subscription_lost")
-                            )
-                        continue
-                    envelope = self._ring.append(event)
-                    event_type = getattr(event, "type", type(event).__name__)
-                    n_conns = len(self._connections)
-                    if isinstance(event, FsResyncRequired):
-                        for q in tuple(self._connections):
-                            self._replace_with_resync(q, envelope, reason=event.reason)
-                            self._connections.discard(q)
-                        if n_conns and event.reason == "subscriber_queue_overflow":
-                            LOG.warning(
-                                "events bus: inventory updates exceeded the buffer; "
-                                "refreshing %d browser connection(s)",
-                                n_conns,
-                            )
-                        else:
-                            LOG.debug(
-                                "events bus: requested fresh snapshots reason=%s conns=%d",
-                                event.reason,
-                                n_conns,
-                            )
-                        continue
-                    dead: list[asyncio.Queue[EventEnvelope]] = []
-                    for q in self._connections:
-                        try:
-                            q.put_nowait(envelope)
-                        except asyncio.QueueFull:
-                            dead.append(q)
-                    for q in dead:
-                        self._replace_with_resync(
-                            q,
-                            envelope,
-                            reason="connection_queue_overflow",
-                        )
-                        self._connections.discard(q)
-                    if dead:
-                        LOG.warning(
-                            "events bus: refreshing %d slow browser connection(s) "
-                            "after queue overflow",
-                            len(dead),
-                        )
-                    LOG.debug(
-                        "events bus: forwarded id=%d type=%s conns=%d refreshed=%d",
-                        envelope.id,
-                        event_type,
-                        n_conns,
-                        len(dead),
-                    )
+                async for change in self._coordinator.changes(after=self._after):
+                    await self._project_change(change)
+                    self._after = change.cursor
                     backoff = 0.5
             except asyncio.CancelledError:
                 raise
@@ -324,6 +342,135 @@ class _EventBus:
                 LOG.exception("events bus relay crashed; restarting in %.1fs", backoff)
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30.0)
+
+    async def _project_change(self, change: HostChange) -> None:
+        # A fresh SSE connection always starts with a coherent snapshot. Until
+        # a browser is attached, projecting every discovery batch would perform
+        # provider reads and build wire records that nobody can consume. Keep
+        # the coordinator cursor current and begin projection only once a
+        # connection can receive the result.
+        if not self._connections:
+            return
+        if change.reset or change.all_dirty:
+            self._forward_event(
+                FsResyncRequired(
+                    reason="coordinator_reset" if change.reset else "inventory_all_dirty"
+                )
+            )
+            return
+        if not change.dirty_paths:
+            if change.dirty_queries & {QueryKind.METADATA, QueryKind.DIAGNOSTICS}:
+                await self._project_capability_change()
+            return
+
+        if change.facts_changed:
+            for path in change.dirty_paths:
+                self._forward_event(ProjectionInvalidate(path=path, projection="*"))
+
+        queries = tuple(
+            EntryQuery(query_id=f"change-{index}", path=path)
+            for index, path in enumerate(change.dirty_paths)
+        )
+        read = await self._coordinator.read(ReadRequest(queries=queries))
+        ops: list[FsUpsert | FsRemove] = []
+        for query, path in zip(queries, change.dirty_paths, strict=True):
+            projection = read.result.projection(query.query_id)
+            if not isinstance(projection, EntryProjection):
+                raise TypeError("an entry query returned a non-entry projection")
+            if projection.presence is EntryPresence.UNKNOWN:
+                self._forward_event(FsResyncRequired(reason="inventory_presence_unknown"))
+                return
+            decorated = read.entries.get(path)
+            if decorated is None:
+                ops.append(FsRemove(path=path))
+            else:
+                ops.append(FsUpsert(entry=_wire_entry(decorated)))
+        if not ops:
+            return
+        fs_change = FsChange(ops=tuple(ops))
+        self._forward_event(fs_change)
+        if QueryKind.CATALOG in change.dirty_queries:
+            catalog = _catalog_change(fs_change)
+            if catalog is not None:
+                self._forward_event(catalog)
+        if change.dirty_queries & {QueryKind.METADATA, QueryKind.DIAGNOSTICS}:
+            await self._project_capability_change()
+
+    async def _project_capability_change(self) -> None:
+        read = await self._coordinator.read(
+            ReadRequest(queries=(DiagnosticsQuery(query_id="capability-change"),))
+        )
+        diagnostic = read.result.projection("capability-change")
+        if not isinstance(diagnostic, DiagnosticsProjection):
+            raise TypeError("the capability read returned the wrong projection")
+        state = read.result.state
+        truncated = not state.coverage.complete and any(
+            issue.code.value == "resource_budget" for issue in state.issues
+        )
+        self._forward_event(
+            CapabilityUpdate(
+                backends=(
+                    {
+                        "kind": "fs-watch",
+                        "mode": _counter_str(diagnostic, "watch_mode"),
+                        "state": _counter_str(diagnostic, "watch_state"),
+                        "reason": _counter_str(diagnostic, "watch_reason"),
+                    },
+                ),
+                index={
+                    "complete": state.coverage.complete,
+                    "truncated": truncated,
+                    "indexed_files": _counter_int(diagnostic, "files_indexed"),
+                    "max_files": self._config.max_entries,
+                    "status": _status_from_phase(
+                        state.phase,
+                        complete=state.coverage.complete,
+                        truncated=truncated,
+                    ),
+                },
+                events={},
+            )
+        )
+
+    def _forward_event(self, event: StreamEvent) -> None:
+        envelope = self._ring.append(event)
+        event_type = getattr(event, "type", type(event).__name__)
+        n_conns = len(self._connections)
+        if isinstance(event, FsResyncRequired):
+            for queue in tuple(self._connections):
+                self._replace_with_resync(queue, envelope, reason=event.reason)
+                self._connections.discard(queue)
+            LOG.debug(
+                "events bus: requested fresh snapshots reason=%s conns=%d",
+                event.reason,
+                n_conns,
+            )
+            return
+        dead: list[asyncio.Queue[EventEnvelope]] = []
+        for queue in self._connections:
+            try:
+                queue.put_nowait(envelope)
+            except asyncio.QueueFull:
+                dead.append(queue)
+        for queue in dead:
+            self._replace_with_resync(
+                queue,
+                envelope,
+                reason="connection_queue_overflow",
+            )
+            self._connections.discard(queue)
+        if dead:
+            LOG.warning(
+                "events bus: refreshing %d slow browser connection(s) after queue overflow",
+                len(dead),
+            )
+        LOG.debug(
+            "events bus: forwarded id=%d type=%s conns=%d refreshed=%d",
+            envelope.id,
+            event_type,
+            n_conns,
+            len(dead),
+        )
 
     def attach_connection(self) -> asyncio.Queue[EventEnvelope]:
         q: asyncio.Queue[EventEnvelope] = asyncio.Queue(maxsize=PER_CONNECTION_QUEUE_SIZE)
@@ -343,37 +490,24 @@ class _EventBus:
         return len(self._connections)
 
 
-class _BusSingleton:
-    """Module-level holder for the process-wide event bus.
-    Wrapping the slot in a class dodges basedpyright's
-    constant-naming rule on lowercase mutable slots."""
-
-    instance: _EventBus | None = None
-
-
-async def get_or_create_bus() -> _EventBus:
-    """Lazy bus accessor. The first ``/api/events`` connection
-    creates the bus; subsequent connections share it."""
-
-    if _BusSingleton.instance is None:
-        _BusSingleton.instance = _EventBus(get_inventory())
-    await _BusSingleton.instance.start()
-    return _BusSingleton.instance
-
-
-def reset_bus_for_tests() -> None:
-    """Drop the module-level bus. Tests call this between cases
-    to avoid one test's events leaking into another."""
-
-    if _BusSingleton.instance is not None and _BusSingleton.instance._relay_task is not None:
-        _BusSingleton.instance._relay_task.cancel()
-    _BusSingleton.instance = None
-
-
 # ── /api/events route ────────────────────────────────────────
 
 
 _ScopeType = Literal["root-depth-2", "recent-top-N", "expanded-prefixes", "all-known"]
+
+
+def _runtime_for(request: Request) -> InventoryRuntime:
+    runtime = getattr(request.app.state, "inventory_runtime", None)
+    if not isinstance(runtime, InventoryRuntime):
+        raise RuntimeError("the application inventory runtime is not available")
+    return runtime
+
+
+def _event_bus_for(request: Request) -> _EventBus:
+    bus = getattr(request.app.state, "inventory_event_bus", None)
+    if not isinstance(bus, _EventBus):
+        raise RuntimeError("the application inventory event bus is not available")
+    return bus
 
 
 def _scope_from_query(request: Request) -> _ScopeType:
@@ -448,8 +582,7 @@ async def _stream_events(
 ) -> AsyncIterator[bytes]:
     """Yield SSE frames for one /api/events connection."""
 
-    bus = await get_or_create_bus()
-    inventory = get_inventory()
+    bus = _event_bus_for(request)
     scope = _scope_from_query(request)
     last_id = _parse_last_event_id(request)
     queue = bus.attach_connection()
@@ -465,7 +598,7 @@ async def _stream_events(
 
     try:
         # 1) On connect: emit the snapshot at the requested scope.
-        snap = inventory.initial_snapshot(scope=scope)
+        snap = await bus.snapshot(scope)
         # The snapshot rides on the next available envelope id by
         # being the first thing the relay forwards after we're
         # attached. For deterministic id ordering we synthesize an
@@ -581,6 +714,11 @@ class IndexMeta:
     oldest_mtime_ns: int
     newest_mtime_ns: int
     suffixes: list[dict[str, int | str]]
+    provider: str
+    contract: str
+    watch_mode: str
+    watch_state: str
+    watch_reason: str
 
 
 @dataclass(slots=True, frozen=True)
@@ -593,20 +731,71 @@ class IndexProgress:
     truncated: bool
     complete: bool
     active: bool
+    provider: str
+    contract: str
 
 
-def _build_index_progress(inventory: InventoryIndex) -> IndexProgress:
-    status = inventory.status()
-    complete = status in ("done", "truncated")
-    truncated = status == "truncated"
+def _status_from_phase(
+    phase: LifecyclePhase,
+    *,
+    complete: bool,
+    truncated: bool,
+) -> str:
+    if truncated:
+        return "truncated"
+    if phase is LifecyclePhase.FAILED:
+        return "failed"
+    if phase is LifecyclePhase.STOPPED:
+        return "idle"
+    if complete:
+        return "done"
+    return "scanning"
+
+
+def _counter_int(projection: DiagnosticsProjection, key: str) -> int:
+    value = projection.counters.get(key, 0)
+    return value if isinstance(value, int) else 0
+
+
+def _counter_str(projection: DiagnosticsProjection, key: str) -> str:
+    value = projection.counters.get(key, "")
+    return value if isinstance(value, str) else ""
+
+
+async def _read_index_progress(
+    runtime: InventoryRuntime,
+) -> tuple[IndexProgress, str]:
+    coordinated = await runtime.coordinator.read(
+        ReadRequest(queries=(DiagnosticsQuery(query_id="progress"),))
+    )
+    diagnostic = coordinated.result.projection("progress")
+    if not isinstance(diagnostic, DiagnosticsProjection):
+        raise TypeError("the progress read returned the wrong projection")
+    state = coordinated.result.state
+    truncated = not state.coverage.complete and any(
+        issue.code.value == "resource_budget" for issue in state.issues
+    )
+    status = _status_from_phase(
+        state.phase,
+        complete=state.coverage.complete,
+        truncated=truncated,
+    )
+    engine = coordinated.version.engine
     return IndexProgress(
         status=status,
-        indexed_files=inventory.files_indexed(),
-        max_files=inventory.max_files(),
+        indexed_files=_counter_int(diagnostic, "files_indexed"),
+        max_files=runtime.config.max_entries,
         truncated=truncated,
-        complete=complete,
-        active=status == "scanning",
-    )
+        complete=state.coverage.complete or truncated,
+        active=state.phase
+        in {
+            LifecyclePhase.OPENING_CACHE,
+            LifecyclePhase.DISCOVERING,
+            LifecyclePhase.RECONCILING,
+        },
+        provider=_counter_str(diagnostic, "provider"),
+        contract=_counter_str(diagnostic, "contract"),
+    ), engine.session
 
 
 def _progress_etag(progress: IndexProgress) -> str:
@@ -620,45 +809,82 @@ def _progress_etag(progress: IndexProgress) -> str:
     return build_scoped_etag(f"{progress.status}-{count_key}")
 
 
-def _build_index_meta(inventory: InventoryIndex, *, suffix_limit: int = 64) -> IndexMeta:
-    """Compute the meta envelope from the current index state.
-    Cheap (linear in known entries); cached per-call by the
-    handler via ETag rather than memoized here."""
+async def _read_index_meta(
+    runtime: InventoryRuntime,
+    *,
+    suffix_limit: int = 64,
+) -> tuple[IndexMeta, str]:
+    """Read the metadata envelope from one coherent provider boundary."""
 
-    files = 0
-    dirs = 0
-    oldest = 0
-    newest = 0
-    suffix_counter: Counter[str] = Counter()
-    for e in inventory.entries(scope="all-known"):
-        if e.type == "file":
-            files += 1
-            if e.mtime_ns:
-                if oldest == 0 or e.mtime_ns < oldest:
-                    oldest = e.mtime_ns
-                if e.mtime_ns > newest:
-                    newest = e.mtime_ns
-            suffix_counter[e.ext] += 1
-        elif e.type == "dir":
-            dirs += 1
-    suffixes = [
-        {"ext": ext, "count": count}
-        for ext, count in suffix_counter.most_common(suffix_limit)
-        if ext  # drop the empty-string bucket
-    ]
-    status = inventory.status()
-    complete = status in ("done", "truncated")
-    truncated = status == "truncated"
+    coordinated = await runtime.coordinator.read(
+        ReadRequest(
+            queries=(
+                NavigationQuery(
+                    query_id="meta-navigation",
+                    max_rows=max(1, suffix_limit),
+                ),
+                DiagnosticsQuery(query_id="meta-diagnostics"),
+            )
+        )
+    )
+    navigation = coordinated.result.projection("meta-navigation")
+    diagnostic = coordinated.result.projection("meta-diagnostics")
+    if not isinstance(navigation, NavigationProjection) or not isinstance(
+        diagnostic, DiagnosticsProjection
+    ):
+        raise TypeError("the metadata read returned the wrong projections")
+
+    payload = navigation.payload
+    summary_value = payload.get("summary", {})
+    summary = summary_value if isinstance(summary_value, Mapping) else {}
+
+    def summary_int(key: str) -> int:
+        value = summary.get(key, 0)
+        return value if isinstance(value, int) else 0
+
+    files = summary_int("files") + summary_int("ignored_files")
+    dirs = _counter_int(diagnostic, "directories_indexed")
+    oldest_value = payload.get("oldest_mtime_ns", 0)
+    newest_value = payload.get("newest_mtime_ns", 0)
+    oldest = oldest_value if isinstance(oldest_value, int) else 0
+    newest = newest_value if isinstance(newest_value, int) else 0
+    suffixes: list[dict[str, int | str]] = []
+    extension_rows = payload.get("extensions", [])
+    if suffix_limit > 0 and isinstance(extension_rows, list):
+        for row in extension_rows[:suffix_limit]:
+            if not isinstance(row, list) or len(row) < 3:
+                continue
+            ext, tracked, ignored = row[:3]
+            if isinstance(ext, str) and isinstance(tracked, int) and isinstance(ignored, int):
+                suffixes.append({"ext": ext, "count": tracked + ignored})
+    state = coordinated.result.state
+    truncated = not state.coverage.complete and any(
+        issue.code.value == "resource_budget" for issue in state.issues
+    )
+    status = _status_from_phase(
+        state.phase,
+        complete=state.coverage.complete,
+        truncated=truncated,
+    )
+    engine = coordinated.version.engine
     return IndexMeta(
         status=status,
         indexed_files=files,
         indexed_dirs=dirs,
-        max_files=inventory.max_files(),
+        max_files=runtime.config.max_entries,
         truncated=truncated,
-        complete=complete,
+        complete=state.coverage.complete or truncated,
         oldest_mtime_ns=oldest,
         newest_mtime_ns=newest,
         suffixes=suffixes,
+        provider=_counter_str(diagnostic, "provider"),
+        contract=_counter_str(diagnostic, "contract"),
+        watch_mode=_counter_str(diagnostic, "watch_mode"),
+        watch_state=_counter_str(diagnostic, "watch_state"),
+        watch_reason=_counter_str(diagnostic, "watch_reason"),
+    ), build_scoped_etag(
+        f"index-meta-{engine.session}-{engine.sequence}-{engine.scope_fingerprint}-"
+        f"{engine.registry_fingerprint}-{suffix_limit}"
     )
 
 
@@ -671,9 +897,8 @@ async def api_index_progress(request: Request) -> Response:
     filling.
     """
 
-    inventory = get_inventory()
-    progress = _build_index_progress(inventory)
-    etag = _progress_etag(progress)
+    progress, session = await _read_index_progress(_runtime_for(request))
+    etag = build_scoped_etag(f"{session}-{_progress_etag(progress)}")
     if not progress.active and matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
     body = json.dumps(asdict(progress), separators=(",", ":")).encode()
@@ -734,16 +959,89 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
         if isinstance(raw_id, str)
         else "pending-tally-unknown"
     )
-    inventory = get_inventory()
-    inventory_state = inventory.diagnostic_snapshot(
-        _pending_tally_paths(payload),
-        sample_limit=PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
+    runtime = _runtime_for(request)
+    requested_paths = _pending_tally_paths(payload)
+    queries: list[EntryQuery | DirectoryQuery | DiagnosticsQuery] = [
+        DiagnosticsQuery(query_id="pending-diagnostics")
+    ]
+    for index, path in enumerate(requested_paths):
+        queries.extend(
+            (
+                EntryQuery(query_id=f"pending-entry-{index}", path=path),
+                DirectoryQuery(
+                    query_id=f"pending-children-{index}",
+                    path=path,
+                    max_depth=1,
+                    max_rows=runtime.config.max_entries,
+                ),
+            )
+        )
+    coordinated = await runtime.coordinator.read(ReadRequest(queries=tuple(queries)))
+    diagnostic = coordinated.result.projection("pending-diagnostics")
+    if not isinstance(diagnostic, DiagnosticsProjection):
+        raise TypeError("the pending-tally read returned the wrong projection")
+    path_state: list[dict[str, object]] = []
+    for index, path in enumerate(requested_paths):
+        entry_projection = coordinated.result.projection(f"pending-entry-{index}")
+        children_projection = coordinated.result.projection(f"pending-children-{index}")
+        if not isinstance(entry_projection, EntryProjection) or not isinstance(
+            children_projection, DirectoryProjection
+        ):
+            raise TypeError("the pending-tally path read returned the wrong projection")
+        entry = entry_projection.entry
+        path_state.append(
+            {
+                "path": path,
+                "known": entry_projection.presence is EntryPresence.PRESENT,
+                "pending": bool(
+                    entry is not None
+                    and entry.type is EntryType.DIRECTORY
+                    and entry.total_files is None
+                ),
+                "generation": 0,
+                "direct_children": len(children_projection.entries),
+                "descendant_files": entry.total_files if entry is not None else None,
+                "descendant_size": entry.total_size if entry is not None else None,
+                "descendant_leaves": entry.total_files if entry is not None else None,
+                "type": entry.type.value if entry is not None else None,
+                "total_files": entry.total_files if entry is not None else None,
+                "total_size": entry.total_size if entry is not None else None,
+                "newest_mtime_ns": entry.newest_mtime_ns if entry is not None else None,
+                "empty": entry.empty if entry is not None else None,
+                "write_generation": 0,
+            }
+        )
+    state = coordinated.result.state
+    truncated = not state.coverage.complete and any(
+        issue.code.value == "resource_budget" for issue in state.issues
     )
-    bus = _BusSingleton.instance
+    status = _status_from_phase(
+        state.phase,
+        complete=state.coverage.complete,
+        truncated=truncated,
+    )
+    inventory_state: dict[str, object] = {
+        "status": status,
+        "walker_task": (
+            "active"
+            if state.phase
+            in {
+                LifecyclePhase.OPENING_CACHE,
+                LifecyclePhase.DISCOVERING,
+                LifecyclePhase.RECONCILING,
+            }
+            else status
+        ),
+        "provider": _counter_str(diagnostic, "provider"),
+        "contract": _counter_str(diagnostic, "contract"),
+        "version": coordinated.version.engine.sequence,
+        "requested_paths": path_state,
+    }
+    bus = getattr(request.app.state, "inventory_event_bus", None)
     event_state: dict[str, object] = {
-        "bus_started": bus is not None,
-        "connections": bus.connection_count() if bus is not None else 0,
-        "latest_event_id": bus.latest_id() if bus is not None else 0,
+        "bus_started": isinstance(bus, _EventBus),
+        "connections": bus.connection_count() if isinstance(bus, _EventBus) else 0,
+        "latest_event_id": bus.latest_id() if isinstance(bus, _EventBus) else 0,
     }
     response_payload = {
         "diagnostic_id": diagnostic_id,
@@ -778,8 +1076,94 @@ def _encode_catalog(files: list[tuple[str, str]], status: str, revision: int) ->
     return json.dumps(envelope, separators=(",", ":")).encode()
 
 
-def _catalog_etag(inventory: InventoryIndex) -> str:
-    return build_scoped_etag(f"{inventory.status()}-{inventory.catalog_revision()}")
+async def _read_catalog(
+    runtime: InventoryRuntime,
+) -> tuple[list[tuple[str, str]], str, int, str]:
+    """Assemble the complete bounded catalog from one engine version."""
+
+    page_size = min(50_000, runtime.config.max_entries)
+    for _attempt in range(3):
+        records: list[tuple[str, str]] = []
+        after: str | None = None
+        pinned: EngineVersion | None = None
+        try:
+            while True:
+                coordinated = await runtime.coordinator.read(
+                    ReadRequest(
+                        queries=(
+                            CatalogQuery(
+                                query_id="catalog",
+                                max_rows=page_size,
+                                after=after,
+                            ),
+                        ),
+                        at_version=pinned,
+                    )
+                )
+                projection = coordinated.result.projection("catalog")
+                if not isinstance(projection, CatalogProjection):
+                    raise TypeError("the catalog read returned the wrong projection")
+                if pinned is None:
+                    pinned = coordinated.version.engine
+                records.extend(
+                    (record.path, record.logical_extension) for record in projection.records
+                )
+                after = projection.next_page
+                if after is None:
+                    state = coordinated.result.state
+                    truncated = not state.coverage.complete and any(
+                        issue.code.value == "resource_budget" for issue in state.issues
+                    )
+                    status = _status_from_phase(
+                        state.phase,
+                        complete=state.coverage.complete,
+                        truncated=truncated,
+                    )
+                    engine = coordinated.version.engine
+                    etag = build_scoped_etag(
+                        f"catalog-{engine.session}-{engine.sequence}-"
+                        f"{engine.scope_fingerprint}-{engine.registry_fingerprint}"
+                    )
+                    return records, status, engine.sequence, etag
+        except VersionUnavailableError:
+            continue
+
+    # A continuously moving cold scan can invalidate each multi-page attempt.
+    # One provider-bounded maximum page is still coherent and cannot exceed the
+    # configured retained-entry budget.
+    coordinated = await runtime.coordinator.read(
+        ReadRequest(
+            queries=(
+                CatalogQuery(
+                    query_id="catalog",
+                    max_rows=runtime.config.max_entries,
+                ),
+            )
+        )
+    )
+    projection = coordinated.result.projection("catalog")
+    if not isinstance(projection, CatalogProjection):
+        raise TypeError("the catalog read returned the wrong projection")
+    state = coordinated.result.state
+    truncated = not state.coverage.complete and any(
+        issue.code.value == "resource_budget" for issue in state.issues
+    )
+    status = _status_from_phase(
+        state.phase,
+        complete=state.coverage.complete,
+        truncated=truncated,
+    )
+    engine = coordinated.version.engine
+    etag = build_scoped_etag(
+        f"catalog-{engine.session}-{engine.sequence}-{engine.scope_fingerprint}-"
+        f"{engine.registry_fingerprint}"
+    )
+    return (
+        [(record.path, record.logical_extension) for record in projection.records],
+        status,
+        engine.sequence,
+        etag,
+    )
 
 
 async def api_catalog(request: Request) -> Response:
@@ -796,28 +1180,12 @@ async def api_catalog(request: Request) -> Response:
     ops are idempotent by path.
     """
 
-    inventory = get_inventory()
-    etag = _catalog_etag(inventory)
+    files, status, revision, etag = await _read_catalog(_runtime_for(request))
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
-
     cached = _CATALOG_BODY_CACHE.get(etag)
     if cached is not None:
-        return Response(
-            cached,
-            media_type="application/json",
-            headers=etag_headers(etag),
-        )
-
-    status = inventory.status()
-    revision = inventory.catalog_revision()
-    # One O(N) pass on the loop, and only one. catalog_files() returns a
-    # private list of tuples, so it is a consistent point-in-time snapshot
-    # that a worker may traverse without racing the live index — building the
-    # wire dicts here as well would have doubled the on-loop cost, which at
-    # the 100k design center and 500k cap stalls unrelated requests and the
-    # event stream.
-    files = inventory.catalog_files()
+        return Response(cached, media_type="application/json", headers=etag_headers(etag))
     body = await asyncio.to_thread(_encode_catalog, files, status, revision)
     # Reconnect storms and multiple tabs re-request the same revision; the
     # ETag turns most of those into 304s, but a client without the ETag (a
@@ -836,10 +1204,8 @@ async def api_index_meta(request: Request) -> Response:
     file count + walker generation, so a 304 is cheap when
     nothing has finalized since the last poll."""
 
-    inventory = get_inventory()
-    meta = _build_index_meta(inventory)
+    meta, etag = await _read_index_meta(_runtime_for(request))
     body = json.dumps(asdict(meta), separators=(",", ":")).encode()
-    etag = build_scoped_etag(f"{meta.status}-{meta.indexed_files}-{meta.indexed_dirs}")
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
     return Response(
@@ -853,29 +1219,28 @@ async def api_index_meta(request: Request) -> Response:
 
 
 async def api_capabilities(request: Request) -> JSONResponse:
-    """Return capabilities with the filesystem-driven watcher mode.
+    """Return the selected provider's reported observation capability."""
 
-    ``backends`` reports native versus polling mode via
-    :func:`metabrowser.watch_backends.select_watch_mode`."""
+    runtime = _runtime_for(request)
+    meta, _etag = await _read_index_meta(runtime, suffix_limit=0)
 
-    inventory = get_inventory()
-    meta = _build_index_meta(inventory, suffix_limit=0)
-
-    backends_payload: list[dict[str, str]]
-    try:
-        root = _resolved_root_dir()
-        if str(root) and root != Path():
-            mode, reason = select_watch_mode(root)
-            backends_payload = [{"prefix": ".", "mode": mode, "reason": reason}]
-        else:
-            backends_payload = [{"prefix": ".", "mode": "polling", "reason": "no-root-set"}]
-    except Exception:
-        LOG.exception("capabilities: fs-type detection failed; reporting polling fallback")
-        backends_payload = [{"prefix": ".", "mode": "polling", "reason": "fs-type-detect-failed"}]
+    reported_mode = meta.watch_mode
+    mode = reported_mode if reported_mode in {"native", "polling"} else "polling"
+    backends_payload = [
+        {
+            "prefix": ".",
+            "mode": mode,
+            "reason": meta.watch_reason or "provider-did-not-report-observation-mode",
+            "state": meta.watch_state or "unknown",
+        }
+    ]
 
     has_native = any(b["mode"] == "native" for b in backends_payload)
-    if meta.complete and has_native:
+    watch_running = meta.watch_state == "running"
+    if meta.complete and has_native and watch_running:
         stream_status, stream_reason = "live", "inventory-done+watchfiles-native"
+    elif meta.watch_state == "failed":
+        stream_status, stream_reason = "polling", "inventory-watch-failed"
     elif not meta.complete:
         stream_status, stream_reason = "polling", "inventory-walker-active"
     else:
@@ -888,6 +1253,8 @@ async def api_capabilities(request: Request) -> JSONResponse:
             "indexed_files": meta.indexed_files,
             "max_files": meta.max_files,
             "truncated": meta.truncated,
+            "provider": meta.provider,
+            "contract": meta.contract,
         },
         "events": {
             "stream": stream_status,

@@ -5,7 +5,9 @@ from __future__ import annotations
 import ast
 import asyncio
 import inspect
+from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -28,13 +30,17 @@ from metabrowser.inventory_engine.contract import (
     InventoryConfig,
     InventoryFilter,
     InventoryHandle,
+    IssueCode,
+    LifecyclePhase,
     MetadataProjection,
     MetadataQuery,
     NavigationProjection,
     NavigationQuery,
+    PriorityRequest,
     ReadRequest,
     RecentProjection,
     RecentQuery,
+    RefreshObservation,
     RefreshRequest,
     RollupProjection,
     RollupQuery,
@@ -118,10 +124,17 @@ async def _refresh_advances_version_and_emits_provider_change(tmp_path: Path) ->
         changes = handle.changes(after=before.cursor)
 
         (tmp_path / "b.txt").write_text("bravo", encoding="utf-8")
-        receipt = await handle.refresh(RefreshRequest(paths=("b.txt",)))
+        receipt = await handle.refresh(
+            RefreshRequest(observations=(RefreshObservation(path="b.txt"),))
+        )
         assert receipt.accepted_paths == ("b.txt",)
 
-        batch = await asyncio.wait_for(anext(changes), timeout=1)
+        for _attempt in range(4):
+            batch = await asyncio.wait_for(anext(changes), timeout=1)
+            if "b.txt" in batch.dirty_paths:
+                break
+        else:
+            raise AssertionError("refresh did not emit the changed path")
         assert isinstance(batch, ChangeBatch)
         assert batch.version.sequence > before.version.sequence
         assert "b.txt" in batch.dirty_paths
@@ -222,7 +235,7 @@ async def _expired_change_cursor_yields_reset(tmp_path: Path) -> None:
         for index in range(3):
             path = f"{index}.txt"
             (tmp_path / path).write_text(path, encoding="utf-8")
-            await handle.refresh(RefreshRequest(paths=(path,)))
+            await handle.refresh(RefreshRequest(observations=(RefreshObservation(path=path),)))
 
         batch = await asyncio.wait_for(anext(handle.changes(after=before.cursor)), timeout=1)
         assert batch.reset
@@ -235,7 +248,13 @@ async def _expired_change_cursor_yields_reset(tmp_path: Path) -> None:
 async def _refresh_rejects_noncanonical_paths(tmp_path: Path) -> None:
     handle = await _open_settled(tmp_path)
     try:
-        receipt = await handle.refresh(RefreshRequest(paths=("../outside", "a//b", "a\\b")))
+        receipt = await handle.refresh(
+            RefreshRequest(
+                observations=tuple(
+                    RefreshObservation(path=path) for path in ("../outside", "a//b", "a\\b")
+                )
+            )
+        )
         assert receipt.accepted_paths == ()
         assert receipt.rejected_paths == ("../outside", "a//b", "a\\b")
     finally:
@@ -262,12 +281,253 @@ def test_targeted_read_reports_bounded_work(tmp_path: Path) -> None:
     asyncio.run(_targeted_read_reports_bounded_work(tmp_path))
 
 
+def test_catalog_predicates_are_applied_inside_the_provider(tmp_path: Path) -> None:
+    logs = tmp_path / "runs" / "x" / ".logs"
+    state = tmp_path / "runs" / "x" / ".state"
+    logs.mkdir(parents=True)
+    state.mkdir()
+    (logs / "active.run.jsonl").write_text("active", encoding="utf-8")
+    (logs / "too-large.jsonl").write_text("0123456789", encoding="utf-8")
+    (state / "status.yaml").write_text("ok", encoding="utf-8")
+    (tmp_path / "outside.yaml").write_text("outside", encoding="utf-8")
+
+    async def run() -> tuple[set[str], int]:
+        handle = await _open_settled(tmp_path)
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=(
+                        CatalogQuery(
+                            query_id="candidates",
+                            max_rows=100,
+                            include_ignored=True,
+                            terminal_extensions=(".jsonl", ".yaml"),
+                            ancestor_names=(".logs", ".state"),
+                            size_less_than=10,
+                        ),
+                    )
+                )
+            )
+            projection = result.projection("candidates")
+            assert isinstance(projection, CatalogProjection)
+            return {record.path for record in projection.records}, result.work.entries_visited
+        finally:
+            await handle.close()
+
+    paths, visited = asyncio.run(run())
+    assert paths == {
+        "runs/x/.logs/active.run.jsonl",
+        "runs/x/.state/status.yaml",
+    }
+    assert visited == 9
+
+
+def test_priority_hint_returns_before_reference_refresh_finishes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> None:
+        handle = await _open_settled(tmp_path)
+        release = asyncio.Event()
+        started = asyncio.Event()
+
+        async def blocked_refresh(*_args: object, **_kwargs: object) -> None:
+            started.set()
+            await release.wait()
+
+        monkeypatch.setattr(handle, "_refresh_path", blocked_refresh)
+        try:
+            await asyncio.wait_for(
+                handle.prioritize(PriorityRequest(paths=("later",), max_depth=1)),
+                timeout=0.1,
+            )
+            await asyncio.wait_for(started.wait(), timeout=1)
+        finally:
+            release.set()
+            await handle.close()
+
+    asyncio.run(run())
+
+
+def test_refresh_builds_gitignore_checker_once_per_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("b", encoding="utf-8")
+
+    async def run() -> int:
+        handle = await _open_settled(tmp_path)
+        calls = 0
+
+        def build_once(*_args: object, **_kwargs: object) -> None:
+            nonlocal calls
+            calls += 1
+            return None
+
+        monkeypatch.setattr(python_provider, "_build_gitignore_check_for", build_once)
+        try:
+            await handle.refresh(
+                RefreshRequest(
+                    observations=(
+                        RefreshObservation(path="a.txt"),
+                        RefreshObservation(path="b.txt"),
+                    )
+                )
+            )
+            return calls
+        finally:
+            await handle.close()
+
+    assert asyncio.run(run()) == 1
+
+
 def test_expired_change_cursor_yields_reset(tmp_path: Path) -> None:
     asyncio.run(_expired_change_cursor_yields_reset(tmp_path))
 
 
 def test_refresh_rejects_noncanonical_paths(tmp_path: Path) -> None:
     asyncio.run(_refresh_rejects_noncanonical_paths(tmp_path))
+
+
+def test_python_provider_exposes_progressive_partial_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "one.txt").write_text("one", encoding="utf-8")
+
+    async def run() -> tuple[str, bool, str | None, str, bool]:
+        release = asyncio.Event()
+        real_walk = python_provider.walk_tree
+
+        async def blocked_walk(
+            *args: Any,
+            **kwargs: Any,
+        ) -> AsyncIterator[contract.InventoryEntry]:
+            await release.wait()
+            async for entry in real_walk(*args, **kwargs):
+                yield entry
+
+        monkeypatch.setattr(python_provider, "walk_tree", blocked_walk)
+        handle = await PythonInventoryBackend().open(tmp_path, InventoryConfig())
+        try:
+            progressive = await handle.read(
+                ReadRequest(queries=(DiagnosticsQuery(query_id="progressive"),))
+            )
+            release.set()
+            for _attempt in range(200):
+                settled = await handle.read(
+                    ReadRequest(queries=(DiagnosticsQuery(query_id="settled"),))
+                )
+                if settled.state.phase is LifecyclePhase.WATCHING:
+                    break
+                await asyncio.sleep(0.005)
+            else:
+                raise AssertionError("Python provider did not finish after release")
+            return (
+                progressive.state.phase.value,
+                progressive.state.coverage.complete,
+                progressive.state.coverage.reason.value
+                if progressive.state.coverage.reason
+                else None,
+                settled.state.phase.value,
+                settled.state.coverage.complete,
+            )
+        finally:
+            release.set()
+            await handle.close()
+
+    assert asyncio.run(run()) == ("discovering", False, "building", "watching", True)
+
+
+def test_python_provider_surfaces_discovery_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> tuple[
+        str,
+        bool,
+        str | None,
+        tuple[IssueCode, ...],
+        tuple[str, ...],
+    ]:
+        async def failing_walk(
+            *_args: Any,
+            **_kwargs: Any,
+        ) -> AsyncIterator[contract.InventoryEntry]:
+            if False:
+                yield cast("contract.InventoryEntry", None)
+            raise RuntimeError("contract failure sentinel")
+
+        monkeypatch.setattr(python_provider, "walk_tree", failing_walk)
+        handle = await _open_settled(tmp_path)
+        try:
+            result = await handle.read(ReadRequest(queries=(DiagnosticsQuery(query_id="failed"),)))
+            return (
+                result.state.phase.value,
+                result.state.coverage.complete,
+                result.state.coverage.reason.value if result.state.coverage.reason else None,
+                tuple(issue.code for issue in result.state.issues),
+                tuple(issue.detail for issue in result.state.issues),
+            )
+        finally:
+            await handle.close()
+
+    phase, complete, reason, issue_codes, details = asyncio.run(run())
+    assert (phase, complete, reason, issue_codes) == (
+        "failed",
+        False,
+        "failed",
+        (IssueCode.PROVIDER_FAILURE,),
+    )
+    assert "contract failure sentinel" in details[0]
+
+
+def test_python_provider_surfaces_watcher_gap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metabrowser.watch_backends as watch_backends
+
+    def failing_watch(*_args: object, **_kwargs: object) -> object:
+        raise OSError("watch failure sentinel")
+
+    monkeypatch.setattr(watch_backends, "awatch", failing_watch)
+
+    async def run() -> tuple[str | None, str, tuple[IssueCode, ...], str]:
+        handle = await _open_settled(
+            tmp_path,
+            InventoryConfig(watch_mode="native"),
+        )
+        try:
+            for _attempt in range(100):
+                result = await handle.read(
+                    ReadRequest(queries=(DiagnosticsQuery(query_id="watch"),))
+                )
+                diagnostic = result.projection("watch")
+                assert isinstance(diagnostic, DiagnosticsProjection)
+                if any(issue.code is IssueCode.WATCHER_GAP for issue in result.state.issues):
+                    reason = (
+                        result.state.coverage.reason.value
+                        if result.state.coverage.reason is not None
+                        else None
+                    )
+                    return (
+                        reason,
+                        result.state.freshness.value,
+                        tuple(issue.code for issue in result.state.issues),
+                        str(diagnostic.counters["watch_state"]),
+                    )
+                await asyncio.sleep(0.005)
+            raise AssertionError("provider did not surface the failed watcher")
+        finally:
+            await handle.close()
+
+    reason, freshness, issue_codes, watch_state = asyncio.run(run())
+    assert reason == "watcher_gap"
+    assert freshness == "stale"
+    assert IssueCode.WATCHER_GAP in issue_codes
+    assert watch_state == "failed"
 
 
 def test_scanner_and_reducer_do_not_depend_on_browser_events() -> None:

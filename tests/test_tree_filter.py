@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from metabrowser.events import FsEntry
-from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser.inventory_engine.providers.python import PythonInventoryHandle
 from metabrowser.tree import build_filtered_inventory_tree
 from metabrowser.tree_filter import (
     TreeFilter,
@@ -50,20 +50,27 @@ def _build_fixture(root: Path) -> None:
     (root / "logs" / "big.bin").write_text("0123456789abcdef" * 8)
 
 
-def _walk(root: Path) -> None:
-    async def drive() -> None:
-        reset_instance_for_tests()
-        inv = get_instance()
+def _walk(root: Path) -> PythonInventoryHandle:
+    async def drive() -> PythonInventoryHandle:
+        inv = PythonInventoryHandle()
         inv.start(root)
         await inv.wait_until_done(timeout=5.0)
+        return inv
 
-    asyncio.run(drive())
+    return asyncio.run(drive())
 
 
-def _filtered(root: Path, tree_filter: TreeFilter, *, depth: int = 20, subpath: str = ""):
+def _filtered(
+    inv: PythonInventoryHandle,
+    root: Path,
+    tree_filter: TreeFilter,
+    *,
+    depth: int = 20,
+    subpath: str = "",
+):
     return build_filtered_inventory_tree(
-        entries=get_instance().entries(scope="all-known"),
-        children_of=get_instance().children_of,
+        entries=inv.entries(scope="all-known"),
+        children_of=inv.children_of,
         parent_rel=subpath,
         max_depth=depth,
         root_abs=root,
@@ -97,7 +104,6 @@ def test_the_filtered_path_reads_structure_from_the_index(tmp_path: Path) -> Non
 
     source = (Path(__file__).resolve().parents[1] / "src/metabrowser/tree.py").read_text()
     assert "by_parent" not in source
-    assert "children_of=get_inventory().children_of" in source
     assert "children_of: Callable[[str], Sequence[Any]]" in source
 
     # And the filtered builder threads it through rather than rebuilding one.
@@ -110,8 +116,7 @@ def test_the_filtered_path_reads_structure_from_the_index(tmp_path: Path) -> Non
     # one subtree still gets that subtree, so nothing depends on the map being
     # complete.
     _build_fixture(tmp_path)
-    _walk(tmp_path)
-    inv = get_instance()
+    inv = _walk(tmp_path)
     seen: list[str] = []
 
     def counting_children_of(parent: str):
@@ -202,9 +207,9 @@ def test_a_folder_totals_its_matches_not_its_contents(tmp_path: Path) -> None:
     filter it is 1 file and 7 bytes."""
 
     _build_fixture(tmp_path)
-    _walk(tmp_path)
+    inv = _walk(tmp_path)
 
-    result = _filtered(tmp_path, TreeFilter(types=(".md",)))
+    result = _filtered(inv, tmp_path, TreeFilter(types=(".md",)))
     rows = _by_path(result.tree)
 
     assert rows["notes"]["total_files"] == 1
@@ -220,9 +225,9 @@ def test_a_folder_with_no_match_anywhere_below_it_is_absent(tmp_path: Path) -> N
     moment expanding it proved there was nothing to see."""
 
     _build_fixture(tmp_path)
-    _walk(tmp_path)
+    inv = _walk(tmp_path)
 
-    rows = _by_path(_filtered(tmp_path, TreeFilter(types=(".md",))).tree)
+    rows = _by_path(_filtered(inv, tmp_path, TreeFilter(types=(".md",))).tree)
     assert "logs" not in rows
     assert "logs/run.log" not in rows
 
@@ -233,9 +238,9 @@ def test_a_folder_survives_on_a_match_below_the_depth_cap(tmp_path: Path) -> Non
     listed on the strength of a file two levels down."""
 
     _build_fixture(tmp_path)
-    _walk(tmp_path)
+    inv = _walk(tmp_path)
 
-    result = _filtered(tmp_path, TreeFilter(types=(".md",)), depth=1)
+    result = _filtered(inv, tmp_path, TreeFilter(types=(".md",)), depth=1)
     rows = _by_path(result.tree)
     assert "notes" in rows
     assert rows["notes"]["children"] is None
@@ -252,17 +257,17 @@ def test_a_filtered_folder_is_never_reported_empty(tmp_path: Path) -> None:
     old behaviour read to a reader."""
 
     _build_fixture(tmp_path)
-    _walk(tmp_path)
+    inv = _walk(tmp_path)
 
-    for node in _by_path(_filtered(tmp_path, TreeFilter(types=(".md",))).tree).values():
+    for node in _by_path(_filtered(inv, tmp_path, TreeFilter(types=(".md",))).tree).values():
         assert "empty" not in node
 
 
 def test_a_size_floor_keeps_the_folders_holding_something_that_large(tmp_path: Path) -> None:
     _build_fixture(tmp_path)
-    _walk(tmp_path)
+    inv = _walk(tmp_path)
 
-    rows = _by_path(_filtered(tmp_path, TreeFilter(min_size=100)).tree)
+    rows = _by_path(_filtered(inv, tmp_path, TreeFilter(min_size=100)).tree)
     assert "logs" in rows
     assert "logs/big.bin" in rows
     assert "logs/run.log" not in rows

@@ -69,7 +69,7 @@ TEXT_PREVIEW_REQUEST_MAX_BYTES = 16 * 1024 * 1024
 # step in this path, so it stays off above this regardless of chunk size.
 SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024
 
-# ── InventoryIndex walker ────────────────────────────────────
+# ── Inventory provider walker ────────────────────────────────
 
 INVENTORY_MAX_DEPTH = 20
 # Hard ceiling on files indexed by the BFS walker at startup. The

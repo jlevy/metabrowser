@@ -1,9 +1,9 @@
-"""Filesystem-watcher backends for the inventory event plane.
+"""Filesystem observation backends owned by an opened inventory provider.
 
-Single entry point :func:`run_watcher` spawns a long-running task
-that emits ``fs.change`` ops on the InventoryIndex whenever the
-filesystem under the served root reports an mtime / create /
-delete event.
+Single entry point :func:`run_watcher` spawns a long-running task that submits
+typed, bounded ``RefreshRequest`` values whenever the filesystem under the
+served root reports an mtime, create, or delete event. The selected provider
+verifies each hint and owns all retained-state mutation.
 
 Debugging a "no live updates" report? See
 ``docs/realtime-debugging.md`` — it walks the
@@ -27,11 +27,9 @@ We do not branch by OS; ``watchfiles`` handles the per-platform
 native-driver choice. Only the local-vs-polling distinction
 lives here.
 
-Output: each detected change resolves to a path, runs through
-the same :func:`metabrowser.activity.activity_tracker.poll`
-fingerprinter, and pushes an ``fs.change`` op via
-:meth:`InventoryIndex._apply_walker_entry`. New files trigger a
-fresh ``FsEntry``; deletes emit ``FsRemove``.
+Output: each detected batch resolves to bounded, deduplicated relative paths and
+observation labels. Watch labels are hints, not truth: the owning provider must stat and
+reconcile each path before publishing a change.
 
 The watcher is additive to (not a replacement for) the
 inventory walker: the walker does the initial scan; the watcher
@@ -42,22 +40,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import stat as stat_module
 import subprocess
 import sys
+from collections.abc import Awaitable, Callable, Collection
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from watchfiles import Change, awatch
 
-from metabrowser.cancellable_thread import run_cancellable_thread
-from metabrowser.events import CapabilityUpdate, FsEntry, ProjectionInvalidate
 from metabrowser.fs_paths import is_visible_segment as _is_visible_segment
-from metabrowser.inventory import InventoryIndex
-from metabrowser.inventory import get_instance as get_inventory
-from metabrowser.projections import invalidate_path as projection_invalidate_path
-from metabrowser.tree import build_gitignore_check
+from metabrowser.inventory_engine.contract import (
+    MAX_COMMAND_PATHS,
+    ObservationKind,
+    RefreshObservation,
+    RefreshReceipt,
+    RefreshRequest,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -102,6 +101,16 @@ _POLLING_FS_TYPES: frozenset[str] = frozenset(
 
 
 WatchMode = Literal["native", "polling"]
+
+
+@dataclass(frozen=True, slots=True)
+class WatcherStatus:
+    """Provider-facing observation health without application wire types."""
+
+    mode: WatchMode
+    state: Literal["running", "failed"]
+    reason: str
+    detail: str = ""
 
 
 def _longest_prefix_fs(target: str, entries: list[tuple[str, str]]) -> str:
@@ -212,145 +221,75 @@ def _abs_to_rel(root: Path, abs_path: str) -> str | None:
 
 
 async def _emit_for_path(
-    inventory: InventoryIndex,
+    refresh: Callable[[RefreshRequest], Awaitable[RefreshReceipt]],
     root: Path,
     abs_path: str,
     change_type: Change,
 ) -> None:
-    """Translate one watchfiles change into an inventory write."""
+    """Translate one watchfiles event into a verified provider refresh."""
 
-    rel = _abs_to_rel(root, abs_path)
-    if rel is None:
-        LOG.debug("watcher: drop (outside root) change=%s abs=%s", change_type.name, abs_path)
-        return
-    if not _is_visible_segment(rel):
-        LOG.debug("watcher: drop (hidden segment) change=%s rel=%s", change_type.name, rel)
-        return
-
-    # Invalidate the path and every ancestor before observing the live state.
-    # A boot-walker directory finalization carries the generation captured when
-    # its placeholder was stored, so a pre-change aggregate is dropped and
-    # repaired from the current inventory instead of overwriting this event.
-    inventory.invalidate(rel)
-
-    # Created / modified: stat and update the FsEntry. ``lstat`` so a
-    # symlink is described by the link itself, not its target — the
-    # boot walker uses ``follow_symlinks=False`` and records symlinks
-    # as leaf entries, so following one here would diverge from the
-    # boot tree (and, for a symlinked directory, trigger a rewalk that
-    # grafts the link target's whole subtree under the link path).
-    p = Path(abs_path)
-    existing = inventory.get(rel)
-    try:
-        st = await asyncio.to_thread(os.lstat, p)
-    except FileNotFoundError as exc:
-        if existing is None:
-            LOG.debug("watcher: absent-noop rel=%s change=%s err=%s", rel, change_type.name, exc)
-            return
-        # Watch backends may coalesce a remove/recreate burst into stale or
-        # out-of-order labels. The filesystem is authoritative at handling
-        # time, so an absent path is a removal regardless of its event label.
-        inventory.remove(rel)
-        LOG.debug("watcher: absent remove rel=%s change=%s", rel, change_type.name)
-        return
-    except OSError as exc:
-        LOG.debug("watcher: stat-failed rel=%s err=%s", rel, exc)
-        return
-
-    is_symlink = stat_module.S_ISLNK(st.st_mode)
-    # For non-symlinks the threaded lstat above already describes the entry
-    # itself, so reuse its mode instead of a second synchronous ``is_dir``
-    # stat on the event loop.
-    if stat_module.S_ISDIR(st.st_mode) and not is_symlink:
-        # Real directories: re-walk the subtree so every descendant
-        # lands in the inventory. ``rewalk_subtree`` reuses the boot
-        # walker's machinery, including the generation counters, so a
-        # concurrent invalidate on this subtree drops stale writes the
-        # same way as boot. ``rewalk_subtree`` also re-checks
-        # containment and refuses to follow symlinks, so a link that
-        # slips past the ``is_symlink`` check above (e.g. a symlinked
-        # *ancestor* of ``rel``) still can't escape the served root.
-        if change_type == Change.deleted and existing is not None:
-            # A delete label for a directory that currently exists means the
-            # directory was replaced. Drop the old descendants before the
-            # rewalk so files from the previous incarnation cannot survive.
-            inventory.remove(rel)
-        await inventory.rewalk_subtree(rel)
-        LOG.debug("watcher: dir rewalk rel=%s", rel)
-        return
-    if is_symlink:
-        # Symlink (to anything): record it as a leaf entry, matching
-        # the boot walker, and never descend. This is the upstream
-        # guard for the phantom-subtree bug.
-        LOG.debug("watcher: symlink leaf rel=%s -> %s", rel, os.readlink(abs_path))
-
-    name = p.name
-    parent_rel = rel.rsplit("/", 1)[0] if "/" in rel else ""
-
-    # Re-derive gitignored on every event — the watcher fires for
-    # both new files (no existing entry) and edits (a `.gitignore`
-    # change in between can flip the matching state).
-    # ``build_gitignore_check`` is TTL-cached in
-    # ``tree._IGNORE_CACHE``, so this is one dict lookup per event
-    # past the first.
-    try:
-        gi_check, git_root = await run_cancellable_thread(
-            lambda cancel_event: build_gitignore_check(
-                root,
-                cancel_event=cancel_event,
-            )
-        )
-    except Exception:
-        gi_check, git_root = None, None
-    gitignored = False
-    if gi_check is not None and git_root is not None:
-        try:
-            gitignored = bool(gi_check(p, is_dir=False))
-        except Exception:
-            gitignored = False
-
-    if is_symlink:
-        entry = FsEntry.for_observed_symlink(
-            path=rel,
-            parent=parent_rel,
-            name=name,
-            size=st.st_size,
-            mtime_ns=st.st_mtime_ns,
-            gitignored=gitignored,
-        )
-    else:
-        entry = FsEntry.for_stat(
-            path=rel,
-            parent=parent_rel,
-            name=name,
-            stat=st,
-            gitignored=gitignored,
-            existing=existing,
-        )
-    inventory.apply_live_entry(entry)
-    # Drop the projection caches' entry for this path and tell
-    # subscribers the derived view is stale. ``MtimeCache.read``
-    # will re-stat lazily anyway, but the explicit invalidate is
-    # symmetric with the fs.change op the bus just emitted, and
-    # the ``projection.invalidate`` event lets client-side caches
-    # stay in step with the same edge.
-    try:
-        projection_invalidate_path(p)
-    except Exception:
-        LOG.exception("watcher: projection invalidate failed for %s", p)
-    inventory.emit_event(ProjectionInvalidate(path=rel, projection="*"))
-    LOG.debug(
-        "watcher: file %s rel=%s size=%d existing=%s",
-        "modified" if existing else "created",
-        rel,
-        st.st_size,
-        existing is not None,
+    await _emit_batch(
+        refresh,
+        root,
+        ((change_type, abs_path),),
     )
 
 
-async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
-    """Long-running watcher coroutine. Spawn from the lifespan
-    hook; cancel on shutdown.
+def _observations_for_batch(
+    root: Path,
+    changes: Collection[tuple[Change, str]],
+) -> tuple[RefreshObservation, ...]:
+    """Normalize and deduplicate one backend batch without reading the filesystem."""
+
+    by_path: dict[str, ObservationKind] = {}
+    for change_type, abs_path in sorted(changes, key=lambda item: (item[1], int(item[0]))):
+        rel = _abs_to_rel(root, abs_path)
+        if rel is None:
+            LOG.debug("watcher: drop (outside root) change=%s abs=%s", change_type.name, abs_path)
+            continue
+        if not rel:
+            LOG.debug("watcher: drop root metadata change=%s", change_type.name)
+            continue
+        if not _is_visible_segment(rel):
+            LOG.debug("watcher: drop (hidden segment) change=%s rel=%s", change_type.name, rel)
+            continue
+        by_path[rel] = {
+            Change.added: ObservationKind.CREATED,
+            Change.modified: ObservationKind.MODIFIED,
+            Change.deleted: ObservationKind.DELETED,
+        }[change_type]
+    return tuple(RefreshObservation(path=path, kind=kind) for path, kind in sorted(by_path.items()))
+
+
+async def _emit_batch(
+    refresh: Callable[[RefreshRequest], Awaitable[RefreshReceipt]],
+    root: Path,
+    changes: Collection[tuple[Change, str]],
+) -> None:
+    """Submit one backend batch in contract-sized chunks."""
+
+    observations = _observations_for_batch(root, changes)
+    for offset in range(0, len(observations), MAX_COMMAND_PATHS):
+        chunk = observations[offset : offset + MAX_COMMAND_PATHS]
+        receipt = await refresh(RefreshRequest(observations=chunk))
+        accepted = frozenset(receipt.accepted_paths)
+        for observation in chunk:
+            rel = observation.path
+            if rel not in accepted:
+                LOG.debug("watcher: provider rejected rel=%s kind=%s", rel, observation.kind)
+                continue
+            LOG.debug("watcher: submitted rel=%s kind=%s", rel, observation.kind)
+
+
+async def run_watcher(
+    *,
+    root: Path,
+    refresh: Callable[[RefreshRequest], Awaitable[RefreshReceipt]],
+    on_status: Callable[[WatcherStatus], None] = lambda _status: None,
+    mode: WatchMode | None = None,
+) -> None:
+    """Long-running watcher coroutine. Spawn from an opened provider
+    handle; cancel and join it when the handle closes.
 
     Selects native vs polling automatically (override via *mode*
     for tests). A failure to observe one path is logged and the
@@ -362,7 +301,6 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
     so the lifespan teardown completes.
     """
 
-    inventory = get_inventory()
     reason = "override"
     if mode is None:
         mode, reason = await asyncio.to_thread(select_watch_mode, root)
@@ -372,13 +310,7 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
 
     force_polling = mode == "polling"
     poll_delay_ms = 2000 if force_polling else 50
-    inventory.emit_event(
-        CapabilityUpdate(
-            backends=({"kind": "fs-watch", "mode": mode, "reason": reason, "state": "running"},),
-            index={},
-            events={},
-        )
-    )
+    on_status(WatcherStatus(mode=mode, state="running", reason=reason))
 
     try:
         async for changes in awatch(
@@ -388,11 +320,10 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
             recursive=True,
         ):
             LOG.debug("watcher: batch n=%d", len(changes))
-            for change_type, abs_path in changes:
-                try:
-                    await _emit_for_path(inventory, root, abs_path, change_type)
-                except Exception:
-                    LOG.exception("watcher emit failed for %s", abs_path)
+            try:
+                await _emit_batch(refresh, root, changes)
+            except Exception:
+                LOG.exception("watcher batch failed for %d path(s)", len(changes))
     except asyncio.CancelledError:
         LOG.debug("watcher cancelled")
         raise
@@ -404,18 +335,12 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
         # being about the filesystem. Exhausting the inotify watch limit on
         # a large tree lands here. Say so loudly and on the event stream.
         LOG.exception("watcher stopped at %s mode=%s; live updates have ended", root, mode)
-        inventory.emit_event(
-            CapabilityUpdate(
-                backends=(
-                    {
-                        "kind": "fs-watch",
-                        "mode": mode,
-                        "state": "failed",
-                        "detail": f"{type(error).__name__}: {error}",
-                    },
-                ),
-                index={},
-                events={},
+        on_status(
+            WatcherStatus(
+                mode=mode,
+                state="failed",
+                reason="watch-failed",
+                detail=f"{type(error).__name__}: {error}",
             )
         )
         return
@@ -423,6 +348,7 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
 
 __all__ = [
     "WatchMode",
+    "WatcherStatus",
     "detect_fs_type",
     "run_watcher",
     "select_watch_mode",
