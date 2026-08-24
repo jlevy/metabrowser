@@ -891,7 +891,7 @@ async def _read_index_meta(
         watch_reason=_counter_str(diagnostic, "watch_reason"),
     ), build_scoped_etag(
         f"index-meta-{engine.session}-{engine.sequence}-{engine.scope_fingerprint}-"
-        f"{engine.registry_fingerprint}-{suffix_limit}"
+        f"{engine.semantic_fingerprint}-{suffix_limit}"
     )
 
 
@@ -1084,7 +1084,7 @@ def _catalog_status(state: IndexState) -> str:
 def _catalog_etag(engine: EngineVersion) -> str:
     return build_scoped_etag(
         f"catalog-{engine.session}-{engine.sequence}-{engine.scope_fingerprint}-"
-        f"{engine.registry_fingerprint}"
+        f"{engine.semantic_fingerprint}"
     )
 
 

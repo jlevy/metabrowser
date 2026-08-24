@@ -1,6 +1,6 @@
 # Feature: Inventory Provider Refactor and fdu Adoption
 
-**Date:** 2026-08-23 (last updated 2026-08-23)
+**Date:** 2026-08-23 (last updated 2026-08-24)
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
@@ -142,7 +142,9 @@ Every `ReadResult` returns the following values from one read boundary:
 - lifecycle phase, coverage, freshness, source, progress, and typed issues;
 - the requested typed projections;
 - request work, including lock wait, visited entries and directories, returned rows,
-  elapsed CPU and wall time, and bytes copied across the binding.
+  elapsed wall time, exact CPU time when measured, and bytes copied across the binding.
+  CPU time is unavailable when the provider cannot measure it exactly; zero never means
+  unavailable.
 
 Metabrowser derives a host version from the returned engine version and overlay
 revision.
@@ -156,6 +158,8 @@ When an existing HTTP response is intentionally complete, such as the Quick File
 catalog, the coordinator assembles pages from one version-pinned read sequence off the
 event loop. A provider may return an explicit restart if it no longer retains that
 version; it may not mix pages from two versions.
+If any page has time-dependent semantics, the coordinator chooses one `as_of_ns` before
+the first page and reuses it for the complete assembly.
 
 ### Live Changes and Sparse Decorations
 
@@ -185,7 +189,10 @@ The selected provider owns the one primary filesystem watcher.
 The Python handle runs the existing native-or-polling observer; the fdu handle will run
 its native equivalent.
 Both feed verified observations through their own mutation path and expose watcher gaps
-through state, issues, and diagnostics.
+as stale freshness plus a typed issue.
+They reconcile the affected scope when recovery is available; an unrecoverable observer
+failure remains stale.
+Coverage changes only if reconciliation discovers or cannot resolve an enumeration hole.
 The coordinator invalidates host projection caches and emits browser invalidations from
 provider changes, so neither watcher imports application wire types.
 
@@ -306,6 +313,12 @@ a route or browser change.
 
 ### Phase 2: Implement and Adopt the fdu Provider
 
+The current fdu design and implementation are in
+[fdu pull request 47](https://github.com/jlevy/fdu/pull/47), stacked on the design work
+in [fdu pull request 44](https://github.com/jlevy/fdu/pull/44). The live execution map
+is `fdu-u7vo` in an up-to-date fdu checkout; this plan does not copy its changing bead
+counts or statuses.
+
 #### Prove the Real Rust Boundary First
 
 - [ ] Refine the linked Metabrowser architecture and fdu integration design until their
@@ -425,6 +438,8 @@ remains available.
 Phase 2 first exposes `fdu` as an explicit development and benchmark selection.
 Its snapshot identity includes the provider contract, semantic scope, registry, and
 native engine identity, so incompatible caches fail closed.
+The engine version’s semantic fingerprint also covers every answer-affecting tag rule
+and reducer registration, not only the File Rollup registry.
 `auto` is added only after the recorded adoption review.
 Selecting `python` is the rollback and does not require a second live index or an older
 server API.
@@ -456,9 +471,10 @@ Two Phase 2 optimizations remain measurement-gated:
 - [End-to-end load time](plan-2026-08-21-load-time-performance.md)
 - [Metabrowser performance loop](../../../../explorations/performance-loop/README.md)
 - [fdu pull request 44](https://github.com/jlevy/fdu/pull/44)
-- [fdu contract reconciliation](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/research/research-2026-08-23-interactive-contract-reconciliation.md)
-- [fdu interactive-client integration plan](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-integration.md)
-- [fdu metadata-walk floor report](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/reports/report-2026-08-23-metadata-walk-floor.md)
+- [fdu pull request 47](https://github.com/jlevy/fdu/pull/47)
+- [fdu interactive-client integration plan](https://github.com/jlevy/fdu/blob/claude/fdu-interactive-client-implementation-map/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-integration.md)
+- [fdu implementation map](https://github.com/jlevy/fdu/blob/claude/fdu-interactive-client-implementation-map/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-implementation.md)
+- [fdu metadata-walk floor report](https://github.com/jlevy/fdu/blob/claude/fdu-interactive-client-implementation-map/docs/project/reports/report-2026-08-23-metadata-walk-floor.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

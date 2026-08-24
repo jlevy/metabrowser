@@ -564,7 +564,7 @@ def test_python_provider_surfaces_watcher_gap(
 
     monkeypatch.setattr(watch_backends, "awatch", failing_watch)
 
-    async def run() -> tuple[str | None, str, tuple[IssueCode, ...], str]:
+    async def run() -> tuple[bool, str | None, str, tuple[IssueCode, ...], str]:
         handle = await _open_settled(
             tmp_path,
             InventoryConfig(watch_mode="native"),
@@ -583,6 +583,7 @@ def test_python_provider_surfaces_watcher_gap(
                         else None
                     )
                     return (
+                        result.state.coverage.complete,
                         reason,
                         result.state.freshness.value,
                         tuple(issue.code for issue in result.state.issues),
@@ -593,8 +594,9 @@ def test_python_provider_surfaces_watcher_gap(
         finally:
             await handle.close()
 
-    reason, freshness, issue_codes, watch_state = asyncio.run(run())
-    assert reason == "watcher_gap"
+    complete, reason, freshness, issue_codes, watch_state = asyncio.run(run())
+    assert complete is True
+    assert reason is None
     assert freshness == "stale"
     assert IssueCode.WATCHER_GAP in issue_codes
     assert watch_state == "failed"

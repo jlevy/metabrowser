@@ -56,7 +56,7 @@ Configuration separates state identity from execution policy:
 | Class | Fields | Effect |
 | --- | --- | --- |
 | Semantic scope | entry and depth budgets, hidden-name allowlist, symlink and filesystem-boundary policy | Included in the scope fingerprint; a budget stop reports partial coverage |
-| Classification | File Rollup registry fingerprint | Included in the registry fingerprint; changing it opens a new session |
+| Classification | File Rollup registry fingerprint | Contributes to the semantic fingerprint; changing it opens a new session |
 | Execution | breadth-first traversal and change-queue size | Reported as provider facts; does not change a complete result’s meaning |
 | Persistence and observation | cache mode and watch mode | Reported through source, freshness, and diagnostics |
 
@@ -65,7 +65,14 @@ The contract rejects a configuration that asks a provider to do so instead of le
 providers disagree.
 
 An `EngineVersion` consists of a session identity, monotonic sequence, scope
-fingerprint, and registry fingerprint.
+fingerprint, and semantic fingerprint.
+The semantic fingerprint changes when any non-scope rule or reducer that can change a
+complete answer changes.
+A provider with one native fingerprint returns it directly.
+A provider with several computes SHA-256 over the UTF-8 canonical JSON array of
+`[name, value]` string pairs sorted by name, with no insignificant whitespace.
+The Python provider’s sole component is the File Rollup registry, while fdu also
+includes its tag rules and reducer registrations.
 A `ChangeCursor` contains the same session and sequence at the read boundary.
 A provider may implement coherent reads with a lock, an immutable image, or
 version-check-and-retry, provided that:
@@ -116,7 +123,9 @@ Recency filters carry `as_of_ns`; an unchanged engine version does not freeze a
 time-dependent answer.
 Providers may return `valid_until_ns` when the answer has a known expiry.
 The coordinator includes that time boundary in request fingerprints, validators, and
-retained-body keys.
+retained-body keys. A caller assembling a time-dependent result from several
+version-pinned pages chooses one `as_of_ns` before the first page and reuses it for
+every page in that assembly.
 
 Catalog terminal extensions use one lowercase terminal suffix including its leading dot;
 matching is case-insensitive against the file name.
@@ -178,10 +187,11 @@ discovery to enter watching when no reconciliation is needed.
 `stopped` is terminal; `failed` may only transition to `stopped`.
 
 Coverage is either complete with no reason or partial with one of `building`, `budget`,
-`cancelled`, `inaccessible`, `watcher_gap`, or `failed`. Freshness is `fresh`,
-`reconciling`, `stale`, or `partial`. Typed issues distinguish permission failures,
-disappearance, invalid metadata, filesystem-boundary skips, watcher gaps, resource
-stops, and provider failures.
+`cancelled`, `inaccessible`, or `failed`. Freshness is `fresh`, `reconciling`, `stale`,
+or `partial`. A watcher gap makes freshness stale and adds a typed watcher-gap issue;
+coverage changes only if reconciliation discovers or cannot resolve an enumeration hole.
+Typed issues also distinguish permission failures, disappearance, invalid metadata,
+filesystem-boundary skips, resource stops, and provider failures.
 Providers preserve the original path and cause when the current layer can handle them.
 
 ## Change Delivery
@@ -198,6 +208,11 @@ The coordinator rereads the affected visible projections, resumes from the read�
 cursor, and projects results into browser events.
 A slow consumer causes a reset and coherent reread; it cannot block discovery or receive
 a suffix presented as complete.
+That consumer-side reset does not describe a provider observation gap.
+A provider watch gap makes answers stale while the provider reconciles the affected
+scope when recovery is available; an unrecoverable observer failure remains stale with
+its typed issue. The coordinator may continue coherent reads and must not treat either
+state as a failed reset recovery.
 
 Refresh requests contain 1 to 1,024 unique paths and a typed reason.
 Priority requests contain the same maximum number of paths and a positive depth.
@@ -210,8 +225,10 @@ application writes; it is not a second watcher.
 ## Work and Performance Evidence
 
 Every read and change reports nonnegative counts for entries visited, directories
-visited, rows returned, bytes copied across the binding, lock wait, CPU time, and wall
-time. Diagnostics identify the selected provider and contract.
+visited, rows returned, bytes copied across the binding, lock wait, and wall time.
+CPU time is an exact nonnegative measurement when present and is unavailable otherwise;
+a provider never substitutes zero or infers CPU from wall time.
+Diagnostics identify the selected provider and contract.
 The serving benchmark records the same identities so Python-before, Python-after, and
 fdu runs differ by a declared provider axis rather than by separate harnesses.
 

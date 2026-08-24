@@ -502,7 +502,7 @@ class PythonInventoryHandle:
         self._entries: dict[str, FsEntry] = {}
         self._rollup_cache_lock = threading.Lock()
         self._work_lock = threading.Lock()
-        self._work_totals = WorkCounters()
+        self._work_totals = WorkCounters(cpu_time_ns=0)
         self._read_requests = 0
         # Navigation tallies are one full pass over every file entry: 486ms at
         # 100k on the reference machine, and the root nav request is the first
@@ -882,7 +882,7 @@ class PythonInventoryHandle:
             session=self._session,
             sequence=sequence,
             scope_fingerprint=self._scope_fingerprint,
-            registry_fingerprint=self._config.registry_fingerprint,
+            semantic_fingerprint=self._config.registry_fingerprint,
         )
 
     def _state_for(
@@ -927,8 +927,6 @@ class PythonInventoryHandle:
             coverage = Coverage(complete=False, reason=CoverageReason.CANCELLED)
             freshness = Freshness.STALE
         if self._watcher_state == "failed":
-            if coverage.complete:
-                coverage = Coverage(complete=False, reason=CoverageReason.WATCHER_GAP)
             freshness = Freshness.STALE
             issues += (
                 InventoryIssue(
@@ -1385,13 +1383,18 @@ class PythonInventoryHandle:
     def _record_read_work(self, work: WorkCounters) -> None:
         with self._work_lock:
             current = self._work_totals
+            cpu_time_ns = (
+                current.cpu_time_ns + work.cpu_time_ns
+                if current.cpu_time_ns is not None and work.cpu_time_ns is not None
+                else None
+            )
             self._work_totals = WorkCounters(
                 entries_visited=current.entries_visited + work.entries_visited,
                 directories_visited=current.directories_visited + work.directories_visited,
                 rows_returned=current.rows_returned + work.rows_returned,
                 bytes_copied=current.bytes_copied + work.bytes_copied,
                 lock_wait_ns=current.lock_wait_ns + work.lock_wait_ns,
-                cpu_time_ns=current.cpu_time_ns + work.cpu_time_ns,
+                cpu_time_ns=cpu_time_ns,
                 wall_time_ns=current.wall_time_ns + work.wall_time_ns,
             )
             self._read_requests += 1

@@ -1,10 +1,10 @@
 # Feature: Pluggable Inventory Engine
 
-**Date:** 2026-08-23 (last updated 2026-08-23)
+**Date:** 2026-08-23 (last updated 2026-08-24)
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
-**Status:** In Review
+**Status:** Phase 1 implemented; Phase 2 planned
 
 ## Overview
 
@@ -22,10 +22,11 @@ fdu owns its native index, reducers, persistence, discovery, and watch lifecycle
 
 The design comes from the
 [inventory-engine research](../../research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
-and the
-[fdu-side reconciliation](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/research/research-2026-08-23-interactive-contract-reconciliation.md).
-Because both projects can change together, the repository boundary is for focused
-context, not compatibility negotiation.
+and the [current fdu implementation](https://github.com/jlevy/fdu/pull/47). Because both
+projects can change together, the repository boundary is for focused context, not
+compatibility negotiation.
+The live fdu execution map is `fdu-u7vo` in an up-to-date fdu checkout; this plan does
+not copy its changing bead counts or statuses.
 The implementation proceeds through executable cross-seam spikes.
 A spike that disproves the contract changes both designs before more production code is
 built.
@@ -169,9 +170,9 @@ Every `ReadResult` contains:
 - one opaque engine version and a change cursor captured at the same read boundary;
 - lifecycle, coverage, freshness, source, progress, and typed issues;
 - the requested typed projections;
-- scope and registry fingerprints;
-- lock wait, entries and directories visited, rows returned, query CPU and wall time,
-  and bytes copied across the binding.
+- scope and semantic-configuration fingerprints;
+- lock wait, entries and directories visited, rows returned, wall time, exact CPU time
+  when measured, and bytes copied across the binding.
 
 The result is coherent as a whole.
 A backend may use a shared guard, an immutable read image, or checked retry internally,
@@ -185,6 +186,7 @@ Metabrowser builds an HTTP cache key from the returned engine version, sparse-ov
 revision, canonical request fingerprint, and application build identity.
 It never reads a revision before dispatch and associates that earlier value with a later
 payload. Time-dependent projections carry an explicit `as_of_ns` or validity boundary.
+A multi-page version-pinned assembly reuses one `as_of_ns` across every page.
 
 ### Change and Trust Contract
 
@@ -202,7 +204,12 @@ On relevant dirtiness, the coordinator performs a coherent read and resumes from
 cursor returned by that read.
 Dirty prefixes coalesce, and a shallower prefix may dominate its descendants when it
 invalidates the same projection.
-A gap is explicit and forces bounded re-reads; a slow consumer never stalls discovery.
+A consumer cursor gap is explicit, produces a reset, and forces bounded rereads; a slow
+consumer never stalls discovery.
+A provider observation gap instead makes freshness stale, adds a typed watcher-gap
+issue, and starts provider reconciliation when recovery is available; an unrecoverable
+observer failure remains stale.
+Coverage changes only if reconciliation discovers or cannot resolve an enumeration hole.
 
 Trust participates in the same clock as data.
 fdu should aggregate revalidation state, for example with an unverified-descendant count
@@ -245,8 +252,10 @@ The interactive profile prunes hidden paths except for an exact allowlist, retai
 tags visible gitignored paths with full negation and directory semantics, and maintains
 `all` and `unignored` populations.
 Hidden control files may be read without being retained.
-Semantic scope and registry inputs are fingerprinted; traversal order, worker count,
-batching, and priority are telemetry rather than cache identity.
+Semantic scope and answer-affecting configuration inputs are fingerprinted; traversal
+order, worker count, batching, and priority are telemetry rather than cache identity.
+The fdu adapter combines its type-rule, tag-rule, and reducer-registration fingerprints
+into the engine version’s semantic fingerprint instead of discarding two axes.
 
 Warm open first uses persisted reducers plus bulk snapshot load and background
 revalidation with explicit source and freshness.
@@ -382,7 +391,7 @@ benchmark surfaces. An explicit request never falls back silently.
 After the adoption review, `auto` may select fdu on supported platforms and Python
 elsewhere, with a concrete reason in diagnostics.
 Selecting Python is the rollback; it does not require retaining parallel state or an old
-route API. Cache and registry fingerprints make snapshots fail closed when either
+route API. Scope and semantic fingerprints make snapshots fail closed when either
 implementation changes semantics.
 
 ## Open Questions
@@ -409,10 +418,10 @@ verifies its own registry packet.
 - [Load-time performance review](../../reviews/review-2026-08-22-load-time-performance.md)
 - [Metabrowser performance loop](../../../../explorations/performance-loop/README.md)
 - [fdu pull request 44](https://github.com/jlevy/fdu/pull/44)
-- [fdu contract reconciliation](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/research/research-2026-08-23-interactive-contract-reconciliation.md)
-- [fdu interactive-client integration plan](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-integration.md)
-- [fdu progressive-results plan](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/specs/active/plan-2026-08-11-fdu-progressive-results.md)
-- [fdu metadata-walk floor report](https://github.com/jlevy/fdu/blob/bd1dcf8/docs/project/reports/report-2026-08-23-metadata-walk-floor.md)
+- [fdu pull request 47](https://github.com/jlevy/fdu/pull/47)
+- [fdu interactive-client integration plan](https://github.com/jlevy/fdu/blob/claude/fdu-interactive-client-implementation-map/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-integration.md)
+- [fdu implementation map](https://github.com/jlevy/fdu/blob/claude/fdu-interactive-client-implementation-map/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-implementation.md)
+- [fdu metadata-walk floor report](https://github.com/jlevy/fdu/blob/claude/fdu-interactive-client-implementation-map/docs/project/reports/report-2026-08-23-metadata-walk-floor.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -1670,7 +1670,7 @@ async def api_rollup(request: Request) -> Response:
         engine = version.engine
         return build_scoped_etag(
             f"rollup-{_resolved_root_dir()}-{engine.session}-{engine.sequence}-"
-            f"{engine.scope_fingerprint}-{engine.registry_fingerprint}-{request_shape}"
+            f"{engine.scope_fingerprint}-{engine.semantic_fingerprint}-{request_shape}"
         )
 
     async def encode(*, at_version: EngineVersion | None = None) -> tuple[str, bytes]:
@@ -3273,6 +3273,10 @@ async def _debug_inventory(request: Request) -> JSONResponse:
         value = counters.get(name, 0)
         return value if isinstance(value, int) else 0
 
+    def optional_counter(name: str) -> int | None:
+        value = counters.get(name)
+        return value if isinstance(value, int) else None
+
     return JSONResponse(
         {
             "provider": str(counters.get("provider", "")),
@@ -3287,7 +3291,7 @@ async def _debug_inventory(request: Request) -> JSONResponse:
                 "rows_returned": counter("work_rows_returned"),
                 "binding_bytes_copied": counter("work_bytes_copied"),
                 "lock_wait_ns": counter("work_lock_wait_ns"),
-                "cpu_time_ns": counter("work_cpu_time_ns"),
+                "cpu_time_ns": optional_counter("work_cpu_time_ns"),
                 "wall_time_ns": counter("work_wall_time_ns"),
             },
         }

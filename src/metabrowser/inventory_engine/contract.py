@@ -63,18 +63,23 @@ class InventoryConfig:
 
 @dataclass(frozen=True, slots=True)
 class EngineVersion:
-    """Opaque identity for one coherent provider state."""
+    """Opaque identity for one coherent provider state.
+
+    The semantic fingerprint covers every non-scope rule or reducer that can change a
+    complete answer. Providers with several native fingerprints combine them before
+    returning the version.
+    """
 
     session: str
     sequence: int
     scope_fingerprint: str
-    registry_fingerprint: str
+    semantic_fingerprint: str
 
     def __post_init__(self) -> None:
         _require_nonempty(self.session, "session")
         _require_nonnegative(self.sequence, "sequence")
         _require_nonempty(self.scope_fingerprint, "scope_fingerprint")
-        _require_nonempty(self.registry_fingerprint, "registry_fingerprint")
+        _require_nonempty(self.semantic_fingerprint, "semantic_fingerprint")
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +144,6 @@ class CoverageReason(StrEnum):
     BUDGET = "budget"
     CANCELLED = "cancelled"
     INACCESSIBLE = "inaccessible"
-    WATCHER_GAP = "watcher_gap"
     FAILED = "failed"
 
 
@@ -220,17 +224,28 @@ class IndexState:
 
 @dataclass(frozen=True, slots=True)
 class WorkCounters:
+    """Measured request work, with exact CPU time when the provider can measure it."""
+
     entries_visited: int = 0
     directories_visited: int = 0
     rows_returned: int = 0
     bytes_copied: int = 0
     lock_wait_ns: int = 0
-    cpu_time_ns: int = 0
+    cpu_time_ns: int | None = None
     wall_time_ns: int = 0
 
     def __post_init__(self) -> None:
-        for name in self.__dataclass_fields__:
+        for name in (
+            "entries_visited",
+            "directories_visited",
+            "rows_returned",
+            "bytes_copied",
+            "lock_wait_ns",
+            "wall_time_ns",
+        ):
             _require_nonnegative(getattr(self, name), name)
+        if self.cpu_time_ns is not None:
+            _require_nonnegative(self.cpu_time_ns, "cpu_time_ns")
 
 
 class EntryType(StrEnum):

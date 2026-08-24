@@ -89,7 +89,7 @@ class _FakeHandle:
             session=self.session,
             sequence=self.sequence,
             scope_fingerprint=f"scope-{self.root.name}",
-            registry_fingerprint=self.config.registry_fingerprint,
+            semantic_fingerprint=self.config.registry_fingerprint,
         )
 
     def cursor(self) -> ChangeCursor:
@@ -452,21 +452,32 @@ def test_provider_changes_are_coalesced_and_reset_dominates(tmp_path: Path) -> N
         handle.emit(
             dirty_paths=("a",),
             dirty_queries=frozenset({QueryKind.ENTRY}),
-            work=WorkCounters(entries_visited=1),
+            work=WorkCounters(entries_visited=1, cpu_time_ns=1),
         )
         handle.emit(
             dirty_paths=("b",),
             dirty_queries=frozenset({QueryKind.DIRECTORY}),
-            work=WorkCounters(entries_visited=2),
+            work=WorkCounters(entries_visited=2, cpu_time_ns=2),
         )
-        handle.emit(dirty_paths=("a", "c"), work=WorkCounters(entries_visited=3))
+        handle.emit(
+            dirty_paths=("a", "c"),
+            work=WorkCounters(entries_visited=3, cpu_time_ns=3),
+        )
         merged = await asyncio.wait_for(first_change, timeout=1)
         assert merged.dirty_paths == ("a", "b", "c")
         assert merged.facts_changed is True
         assert merged.dirty_queries == frozenset({QueryKind.ENTRY, QueryKind.DIRECTORY})
         assert merged.version.engine.sequence == 3
         assert merged.work.entries_visited == 6
+        assert merged.work.cpu_time_ns == 6
         assert observed[-1] == merged
+
+        absent_cpu_change = asyncio.ensure_future(anext(changes))
+        await asyncio.sleep(0)
+        handle.emit(dirty_paths=("d",), work=WorkCounters(cpu_time_ns=4))
+        handle.emit(dirty_paths=("e",), work=WorkCounters())
+        merged_with_absent_cpu = await asyncio.wait_for(absent_cpu_change, timeout=1)
+        assert merged_with_absent_cpu.work.cpu_time_ns is None
 
         reset_change = asyncio.ensure_future(anext(changes))
         handle.emit(dirty_paths=("before-reset",))

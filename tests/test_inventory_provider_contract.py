@@ -174,6 +174,7 @@ def test_catalog_predicates_are_canonical_and_bounded() -> None:
 
 
 def test_state_requires_an_explanation_for_partial_coverage() -> None:
+    assert "watcher_gap" not in {reason.value for reason in CoverageReason}
     with pytest.raises(ValueError, match="reason"):
         Coverage(complete=False)
     with pytest.raises(ValueError, match="complete"):
@@ -187,6 +188,8 @@ def test_configuration_and_command_bounds_are_enforced() -> None:
         InventoryConfig(max_depth=0)
     with pytest.raises(ValueError, match="change_queue_size must be positive"):
         InventoryConfig(change_queue_size=0)
+    with pytest.raises(ValueError, match="registry_fingerprint must not be empty"):
+        InventoryConfig(registry_fingerprint="")
     with pytest.raises(ValueError, match="at most 1024"):
         RefreshRequest(
             observations=tuple(RefreshObservation(path=str(index)) for index in range(1_025))
@@ -195,6 +198,10 @@ def test_configuration_and_command_bounds_are_enforced() -> None:
         PriorityRequest(paths=tuple(str(index) for index in range(1_025)))
     with pytest.raises(ValueError, match="nonnegative"):
         WorkCounters(entries_visited=-1)
+    assert WorkCounters().cpu_time_ns is None
+    assert WorkCounters(cpu_time_ns=0).cpu_time_ns == 0
+    with pytest.raises(ValueError, match="nonnegative"):
+        WorkCounters(cpu_time_ns=-1)
     with pytest.raises(ValueError, match="nonnegative"):
         RecentProjection(
             query_id="recent",
@@ -209,7 +216,7 @@ def test_change_batches_are_bounded_and_reset_dominates_dirtiness() -> None:
         session="session-a",
         sequence=2,
         scope_fingerprint="scope",
-        registry_fingerprint="registry",
+        semantic_fingerprint="semantics",
     )
     state = IndexState(
         phase=LifecyclePhase.DISCOVERING,
@@ -240,7 +247,7 @@ def test_version_and_cursor_share_a_session() -> None:
         session="session-a",
         sequence=2,
         scope_fingerprint="scope",
-        registry_fingerprint="registry",
+        semantic_fingerprint="semantics",
     )
     state = IndexState(
         phase=LifecyclePhase.WATCHING,
@@ -322,6 +329,61 @@ def test_checkpoint_read_returns_only_a_coherent_constant_work_envelope(
             await handle.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_paged_time_dependent_reads_reuse_one_as_of(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    for index, mtime_ns in enumerate((210_000_000_000, 220_000_000_000, 230_000_000_000)):
+        path = tmp_path / f"recent-{index}.txt"
+        path.write_text(str(index), encoding="utf-8")
+        os.utime(path, ns=(mtime_ns, mtime_ns))
+
+    async def run() -> tuple[str, ...]:
+        handle = await _open_settled_provider(provider_factory, tmp_path)
+        try:
+            as_of_ns = 300_000_000_000
+            after: str | None = None
+            version: EngineVersion | None = None
+            paths: list[str] = []
+            while True:
+                result = await handle.read(
+                    ReadRequest(
+                        queries=(
+                            FilteredTreeQuery(
+                                query_id="recent-page",
+                                max_depth=1,
+                                max_rows=1,
+                                after=after,
+                                filter=InventoryFilter(
+                                    recency_seconds=100,
+                                    as_of_ns=as_of_ns,
+                                ),
+                            ),
+                        ),
+                        at_version=version,
+                    )
+                )
+                if version is None:
+                    version = result.version
+                projection = cast(
+                    "FilteredTreeProjection",
+                    result.projection("recent-page"),
+                )
+                paths.extend(entry.path for entry in projection.entries)
+                after = projection.next_page
+                if after is None:
+                    return tuple(paths)
+        finally:
+            await handle.close()
+
+    assert asyncio.run(run()) == (
+        "recent-0.txt",
+        "recent-1.txt",
+        "recent-2.txt",
+    )
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)

@@ -152,13 +152,18 @@ type InvalidationListener = Callable[[HostChange], None]
 
 
 def _sum_work(items: tuple[WorkCounters, ...]) -> WorkCounters:
+    cpu_times = tuple(item.cpu_time_ns for item in items)
     return WorkCounters(
         entries_visited=sum(item.entries_visited for item in items),
         directories_visited=sum(item.directories_visited for item in items),
         rows_returned=sum(item.rows_returned for item in items),
         bytes_copied=sum(item.bytes_copied for item in items),
         lock_wait_ns=sum(item.lock_wait_ns for item in items),
-        cpu_time_ns=sum(item.cpu_time_ns for item in items),
+        cpu_time_ns=(
+            sum(cpu_time for cpu_time in cpu_times if cpu_time is not None)
+            if all(cpu_time is not None for cpu_time in cpu_times)
+            else None
+        ),
         wall_time_ns=sum(item.wall_time_ns for item in items),
     )
 
