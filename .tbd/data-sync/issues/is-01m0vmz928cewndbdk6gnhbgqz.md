@@ -3,17 +3,17 @@ type: is
 id: is-01m0vmz928cewndbdk6gnhbgqz
 title: Preserve v0.7 tally responsiveness through provider extraction
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels: []
 dependencies: []
 parent_id: is-01m0tytbmjsb46bnmh5134r5tg
 created_at: 2026-08-25T05:06:01.415Z
-updated_at: 2026-08-25T05:16:09.942Z
-closed_at: 2026-08-25T05:08:43.712Z
-close_reason: "Rebased PR #74 onto origin/main c7dcb14 and preserved both v0.7 responsiveness invariants in PythonInventoryHandle: navigation tally freshness uses a nonblocking lock attempt, and the measured cooperative yield runs inside _compute_navigation_tallies. Updated the upstream test to use PythonInventoryHandle directly, without restoring InventoryIndex. Focused overlap suite: 79 passed. Full make verify: 1,601 pytest tests and 48 golden scenarios passed, with lint, types, audits, build, and distribution checks green. Implemented in 1e0f9b5."
+updated_at: 2026-08-25T05:18:23.998Z
+closed_at: 2026-08-25T05:18:23.997Z
+close_reason: CI rerun 32811814043 completed green on Python 3.12, 3.13, and 3.14, plus lint and distribution. The original 3.12-only 55ms event-loop sentinel miss did not reproduce; Python 3.13/3.14 had only been canceled by fail-fast. Ten consecutive local focused runs measured 4.9-7.6ms. Classified as shared-runner timing noise with exact evidence; no production or test threshold change was warranted.
 resolution: null
 duplicate_of: null
 ---

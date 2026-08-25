@@ -5,7 +5,7 @@ title: "Monitor PR #74 and FDU #44/#47 alignment through adoption readiness"
 kind: task
 status: in_progress
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m0r8xt95921dabcddjjm7csf
 child_order_hints:
   - is-01m0vmz928cewndbdk6gnhbgqz
 created_at: 2026-08-24T22:38:51.537Z
-updated_at: 2026-08-25T05:13:33.229Z
+updated_at: 2026-08-25T05:18:42.086Z
 ---
 Recurring alignment owner for MetaBrowser PR #74 and FDU PRs #44 and #47. Each cycle must sync both tbd stores, inspect exact PR heads, CI, issue comments, formal reviews, inline threads, and current FDU implementation beads, then review material FDU deltas against the implemented InventoryHandle contract and performance/adoption gates. Actionable MetaBrowser feedback is addressed through per-finding beads and a disposition map; FDU defects or drift are deduplicated into fdu-u7vo and published on the appropriate FDU PR. Report only material changes and keep monitoring until the three PRs and adoption handoff reach a terminal state.
 
@@ -30,3 +30,5 @@ THIRD MONITOR DELTA (2026-08-25). FDU #47 advanced from 56dcf56 to exact head 71
 FOURTH MONITOR DELTA (2026-08-25). FDU #47 advanced from 715f748 through 278457a to exact reviewed head fad3d2f; it is draft/clean with all 19 checks green. The 278 performance commit closes fdu-kbir with direct additive phase timings, distinct projection cost, exhaustive structural binding accounting, and forced GIL progress. fad3d2f correctly constructs the carrier from one complete journal slice and fixes long-interval async teardown. Exact-head review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5014290603 records four remaining P1 adoption blockers on existing beads: an idle Session is not awakened by journal-only producer commits (fdu-vfx7); state transitions lose their actual clocks and public reconcile sinks still omit begin/finish commits (reopened fdu-jxs0); Retagged retains and emits an unbounded embedded path vector (fdu-vfx7); and provider gaps still collapse into reset while truncation emits reset + all_dirty, which MetaBrowser rejects (fdu-fltq). fdu-91ru remains open for typed lifecycle/issues and caller-pinned as_of. MetaBrowser #74 remains exact head 68eeaac, open/clean with 5/5 green and no new feedback; FDU #44 remains 7f18f20, open/clean with 19/19 green and no new feedback.
 
 FIFTH MONITOR DELTA (2026-08-25). User-directed full tbd/Python and engineering review of MetaBrowser PR #74 at 68eeaac found seven actionable contract, paging, SSE handoff, watcher-failure, cache-invalidation, canonical-shape, and naming findings. Review https://github.com/jlevy/metabrowser/pull/74#issuecomment-5404472008 was posted; mb-f7xf and R1-R7 children were completed. The implementation was hardened, including the direct providers/python.py to providers/python_inventory.py rename with no shim. PR #74 was then rebased onto v0.7.0 main c7dcb14. The rebase-specific tally responsiveness regressions were fixed under completed bead mb-k3bm. Exact pushed head is 1e0f9b5, mergeable; local make verify and protected pre-push gate each passed with 1,601 tests and 48 golden scenarios. Per-finding disposition https://github.com/jlevy/metabrowser/pull/74#issuecomment-5405660825 was posted. All five exact-head GitHub CI jobs were in progress at the last check. The previous FDU exact-head review baseline remains #44 7f18f20 and #47 fad3d2f; no newer FDU head was evaluated during this user-directed MetaBrowser review turn.
+
+CI FOLLOW-UP (2026-08-25). Exact-head run 32811814043 initially had one Python 3.12 failure: the pre-existing active-tracker event-loop sentinel measured 55.0ms against 50ms; Python 3.13/3.14 were canceled by fail-fast. Ten consecutive local focused runs measured 4.9-7.6ms. The exact-head rerun passed the complete suite on Python 3.12, 3.13, and 3.14, plus lint and distribution. mb-k3bm was reclosed with the shared-runner timing-noise evidence; no production change or threshold weakening was made. PR #74 head 1e0f9b5 is mergeable with all five required checks green.
