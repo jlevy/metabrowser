@@ -1,10 +1,10 @@
 # Feature: Diff Syntax Highlighting and Layouts
 
-**Date:** 2026-08-24
+**Date:** 2026-08-24 (last updated 2026-08-24)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Complete
 
 ## Overview
 
@@ -330,7 +330,7 @@ change increments only the projection generation, not the data or token generati
 
 ## Components and Interfaces
 
-| Surface | Planned change |
+| Surface | Implemented change |
 | --- | --- |
 | `static/plugin-sdk.js` | Add the bounded, abortable syntax-token helper and DOM-free Highlight.js output scanner over the existing prefetched asset; latch optional-asset settlement so a late caller never waits; unify the injected size-bound lookup. |
 | `static/types.d.ts` | Declare the SDK helper, token-run data, and the Highlight.js methods it uses. |
@@ -345,6 +345,31 @@ change increments only the projection generation, not the data or token generati
 
 No registered kind, view, route, format, or plugin hook changes, so the architecture
 views/models/routes map does not change.
+
+## Implementation Outcome
+
+The implementation follows the reviewed design without a compatibility layer or new
+dependency. The shell exposes a bounded, abortable `metabrowser.highlightSyntax` helper
+over its existing prefetched Highlight.js assets.
+The diff plugin reconstructs old and new hunk streams independently, stores validated
+token runs on one semantic line model, and renders unified and split layouts from that
+model.
+Layout changes are immediate and persisted; deferred hydration, folds, token data,
+and section state survive reprojection, while replacement aborts outstanding work.
+
+The profiler records `diffSyntax:file` spans with combined input bytes, hunk count, and
+actual lexer-call count, plus one `diffSyntax:lexer` span with language and UTF-8 input
+for every call. Visible Chromium validation produced these results:
+
+| Scenario | Evidence |
+| --- | --- |
+| Manual JavaScript/TOML/unknown-language fixture | Unified rendered 61 token hosts and 299 token spans. Split rendered 56 paired rows, 43 assistive-hidden padding cells, and 326 token spans. Layout persisted across reload; dark-theme token backgrounds stayed transparent. |
+| Narrow split viewport | At an 800 px browser viewport, a file body measured 437 px client width and 616 px scroll width with `overflow-x: auto`; its file bar remained sticky at `top: 0`. |
+| Per-file syntax bound | Four modified JavaScript files at 508,038 bytes of combined old/new lexer input highlighted. A fifth at 528,038 bytes remained plain. The final two eligible files enhanced over a 74 ms observed interval with a task yield between file units. |
+| Many-file lifecycle | A 55-file comparison showed 50 ready sections and five deferred sections at 365 ms. Hydration finished at 382 ms while syntax advanced file by file and completed at 750 ms. Replacement at 187 ms with five requests pending left one current five-file root, no progress residue, no late mutation, and no console errors. |
+
+These measurements retain the shared 512 KiB per-file bound.
+They do not support adding an aggregate cap, worker, or runtime dependency.
 
 ## Compatibility
 
@@ -376,13 +401,13 @@ while retaining its row backgrounds.
   data, exact text round-trip checks, and old-path/new-path language resolution.
 - [x] Refactor hunk rendering around stable line records and enhance unified cells from
   their side-specific token runs.
-- [ ] Add transparent token-host styling and extend contrast tests to the add/delete
+- [x] Add transparent token-host styling and extend contrast tests to the add/delete
   composites in both themes.
-- [ ] Cover added, deleted, modified, renamed-across-language, unknown-language,
+- [x] Cover added, deleted, modified, renamed-across-language, unknown-language,
   no-trailing-newline, truncated, and over-limit files.
   Include a known-degraded hunk that begins inside a multiline construct and prove the
   error is cosmetic and contained to that hunk.
-- [ ] Assert that the shell’s global `pre code:not(.hljs)` enhancer cannot select diff
+- [x] Assert that the shell’s global `pre code:not(.hljs)` enhancer cannot select diff
   token hosts and double-highlight them.
 
 ### Phase 2: Split projection and effortless switching
@@ -396,10 +421,10 @@ without network or lexer work.
   `diff.layout` preference.
 - [x] Preserve section, fold, hydration, and token state across projection changes; keep
   only the active projection mounted.
-- [ ] Add split geometry, full-width hunk/fold rows, practical code-column minimums,
+- [x] Add split geometry, full-width hunk/fold rows, practical code-column minimums,
   horizontal overflow, one-side selection semantics, keyboard semantics, and
   reduced-motion behavior.
-- [ ] Cover unequal add/delete runs, pure additions and deletions, different old/new
+- [x] Cover unequal add/delete runs, pure additions and deletions, different old/new
   languages, narrow containers, repeated switches, preference restoration, an
   unequal-run fold, and multi-row copy from one split side.
 
@@ -408,20 +433,20 @@ without network or lexer work.
 Ends with: the feature has passed the repository handoff gate and the parent diff plan
 points to this resolved Phase 3 design.
 
-- [ ] Add a real-browser fixture that observes plain-first rendering, later token
+- [x] Add a real-browser fixture that observes plain-first rendering, later token
   enhancement, immediate layout switching, and no duplicate fetch or highlighting work.
-- [ ] Exercise deferred hydration and disposal while syntax and patch requests are in
+- [x] Exercise deferred hydration and disposal while syntax and patch requests are in
   flight.
-- [ ] Record representative lexer input, call count, and main-thread duration with the
+- [x] Record representative lexer input, call count, and main-thread duration with the
   existing performance instrumentation, including a comparison with many ready files
   near the per-file bound.
   Change no bound unless the measurement supports it.
-- [ ] Update the dated addendum in the general diff-rendering plan with the
+- [x] Update the dated addendum in the general diff-rendering plan with the
   implementation outcome and measurements; leave intraline, context, whitespace, and
   virtualization in their existing follow-up bead.
-- [ ] Update `CHANGELOG.md` for the additive SDK helper and the visible unified/split
+- [x] Update `CHANGELOG.md` for the additive SDK helper and the visible unified/split
   diff control.
-- [ ] Run `make format` and `make verify`.
+- [x] Run `make format` and `make verify`.
 
 ## Testing Strategy
 
@@ -479,7 +504,7 @@ or split layout.
 
 ## References
 
-- [General Diff Rendering](plan-2026-08-17-general-diff-rendering.md)
+- [General Diff Rendering](../active/plan-2026-08-17-general-diff-rendering.md)
 - [Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
 - [File Diff Format](../../architecture/file-diff-format/file-diff-format.md)
 - [Rendering large content](../../../large-content-rendering.md)

@@ -49,6 +49,12 @@ Performance, validated against 0.6.0 side by side:
 
 API, observable to plugin authors:
 
+- `metabrowser.highlightSyntax(source, language, { signal })` exposes the shell’s
+  prefetched Highlight.js grammars as DOM-free token runs.
+  It uses the same injected byte bound as regular source previews, preserves source text
+  exactly, supports cancellation, and falls back to plain text for unavailable,
+  unsupported, malformed, or over-limit input.
+
 - `metabrowser.ensureKindAssets(kind)` loads deferred plugins for a file kind before a
   plugin embeds that kind’s renderer.
   Folder README panels use it to wait for the Markdown renderer, fixing Overview panels
@@ -379,6 +385,15 @@ Git history:
 
 Diff rendering:
 
+- Diffs use the same syntax foregrounds and Highlight.js grammars as regular source
+  views while their context, addition, and deletion rows keep their own backgrounds.
+  Old and new hunk streams are highlighted independently, so deleted text cannot alter
+  the lexical state of added text; plain text remains the bounded fallback.
+- An always-visible Unified/Split control reprojects the loaded comparison immediately
+  and remembers the choice without fetching or highlighting again.
+  Split view aligns changed runs by position, preserves side-specific line numbers and
+  token state, keeps full-width hunk and fold controls, and scrolls horizontally when
+  both practical code-column minimums do not fit.
 - Plugin render contexts gain a `revision` field: a surface may ask a registered view
   for a Git comparison rather than a file, which is how the history view mounts the diff
   view. Plugin-visible via the SDK’s `MetabrowserRenderContext` type.
