@@ -5,7 +5,7 @@ title: "Monitor PR #74 and FDU #44/#47 alignment through adoption readiness"
 kind: task
 status: in_progress
 priority: 1
-version: 23
+version: 25
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 refs:
   - kind: pr
@@ -32,13 +32,16 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/fdu/pull/47#issuecomment-5411017628
     at: 2026-08-25T13:24:03.909Z
+  - kind: pr
+    url: https://github.com/jlevy/fdu/pull/47#pullrequestreview-5019981640
+    at: 2026-08-25T14:16:30.265Z
 labels: []
 dependencies: []
 parent_id: is-01m0r8xt95921dabcddjjm7csf
 child_order_hints:
   - is-01m0vmz928cewndbdk6gnhbgqz
 created_at: 2026-08-24T22:38:51.537Z
-updated_at: 2026-08-25T13:24:03.910Z
+updated_at: 2026-08-25T14:16:30.266Z
 ---
 Recurring alignment owner for MetaBrowser PR #74 and FDU PRs #44 and #47. Each cycle must sync both tbd stores, inspect exact PR heads, CI, issue comments, formal reviews, inline threads, and current FDU implementation beads, then review material FDU deltas against the implemented InventoryHandle contract and performance/adoption gates. Actionable MetaBrowser feedback is addressed through per-finding beads and a disposition map; FDU defects or drift are deduplicated into fdu-u7vo and published on the appropriate FDU PR. Report only material changes and keep monitoring until the three PRs and adoption handoff reach a terminal state.
 
@@ -75,3 +78,5 @@ TENTH MONITOR DELTA (2026-08-25). FDU #47 advanced from d19b0ce to exact reviewe
 ELEVENTH MONITOR DELTA (2026-08-25). FDU #47 advanced from 9f9bd3d to exact reviewed head d0a6a6a5a298f91a5c4adbb4c6b8e8f8941d5565 in two commits; it remains draft/open/clean with all 19 checks green. Exact review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5018663775 accepts native special-object exclusion across scan, snapshot, reconciliation, targeted refresh, watch, Python, and tally conservation; fdu-bjhy is correctly closed. fdu-vfyw remains open with new exact evidence: the reference adapter adds internal exclude_special to the shared application scope digest, while MetaBrowser’s authoritative component set is exactly hidden_allowlist/max_depth/max_files. The internal FDU snapshot axis is valid but cannot change EngineVersion.scope_fingerprint; raw special mode spelling is also not a safe identity source. fdu-kl7r now has the FDU half of the special-object fixture but remains open for the combined oracle. Other open gates remain fdu-91ru, fdu-7sou, and fdu-97dd. MetaBrowser #74 remains 0577bb1, open/clean/mergeable with five green checks and no new feedback. FDU #44 remains 7f18f20, open/clean/mergeable with 19 green checks and no new feedback. Post-review channel sweep: zero inline comments or unresolved threads on all three PRs; latest Meta comment 5409452056, latest FDU #47 formal review 5018663775, latest FDU #44 comment 5408704238.
 
 TWELFTH MONITOR DELTA (2026-08-25). FDU #47 advanced from d0a6a6a through exact reviewed head 71772fc38d2efb555ed5b383a2dbe1709bcd6b42. Formal review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5019372007 accepts exact MetaBrowser scope-digest bytes, the bounded open builder, and the direction of an authoritative global retained-index cap. It found live hidden-path admission bypass (fdu-xyvu); reopened fdu-7sou for one_filesystem retained-boundary drift, fdu-97dd for refused-count, completion, and typed ResourceStop drift, and fdu-vfx7 for a state-only-batch acceptance-test race; fdu-vfyw remains open because the reference example still uses and documents the obsolete row-carrying path; fdu-kl7r carries the deliberate Python-provider global-cap alignment; fdu-91ru remains open for continuation scaling. Exact-head CI finished with 18 green checks and one Windows golden failure caused by the new sh -c fixture creating one 3-byte file even in the uncapped control; actionable comment https://github.com/jlevy/fdu/pull/47#issuecomment-5411017628. MetaBrowser #74 remains exact 0577bb1, open/clean/mergeable with all five checks green and no new issue, formal, inline, or thread feedback. FDU #44 remains exact 7f18f20, open/clean/mergeable with all 19 checks green and no new review feedback. Last reviewed FDU #47 channels: formal review 5019372007 and issue comment 5411017628; zero inline comments or unresolved threads. Monitoring remains useful because #47 is red and seven adoption/review gates are open.
+
+THIRTEENTH MONITOR DELTA (2026-08-25). FDU #47 advanced from 71772fc through exact reviewed head 1e9b85d4ce6b4c01fa800f8a25eb607ebb9675a0 in two commits; the native seek-after path and carried first-page denominator establish the correct flat continuation-work shape. Exact review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5019981640 reopened fdu-91ru: EntryCursor is public caller-controlled totals state, binds only version rather than root/depth/selection/plane, trusts impossible/tampered claims under saturating arithmetic, and turns a stale cursor without ReadRequest.expected into an absent projection instead of a typed refusal. New P1 bead fdu-8w5k tracks the missing exact MetaBrowser CatalogQuery algebra: case-insensitive terminal extensions and exact ancestor components are not equivalent to FDU's generic case-sensitive globs, and the new reference catalog_page proves only an unconstrained all-files page. fdu-t5h2 records optional sorted paging; it is not a MetaBrowser adoption gate because RecentQuery is intentionally a bounded slice. The exact head remains UNSTABLE with 18 green checks and the same Windows file-cap golden failure; implementation-agent update https://github.com/jlevy/fdu/pull/47#issuecomment-5411478671 was reviewed. Existing open gates fdu-7sou, fdu-97dd, fdu-vfx7, fdu-xyvu, fdu-vfyw, and fdu-kl7r remain open; fdu-jxs0 remains closed. MetaBrowser #74 remains exact 0577bb1, open/clean/mergeable with five green checks and no new issue, formal, inline, or unresolved-thread feedback. FDU #44 remains exact 7f18f20, open/clean/mergeable with 19 green checks and no new review feedback. Last reviewed FDU #47 channels: issue comment 5411478671 and formal review 5019981640; zero inline comments or unresolved threads.
