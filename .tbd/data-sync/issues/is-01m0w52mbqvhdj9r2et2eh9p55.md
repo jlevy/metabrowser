@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -17,6 +17,6 @@ child_order_hints:
   - is-01m0w542g2gzak7th85hx2bdz8
   - is-01m0wq55zyfz7g5r55k9h6ntyv
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-25T15:03:26.461Z
+updated_at: 2026-08-25T15:08:34.215Z
 ---
-Deliver the five-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: trusted interaction instrumentation and baseline, bounded preparation and atomic handoff, pending-state polish, fixed-corpus validation and documentation, and final PR review and CI delivery. Keep useful content visible, retain at most one speculative comparison, separate server/client/paint attribution, preserve lifecycle safety, and close the epic only after PR #82 has exact-head green CI.
+Deliver the six-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: trusted interaction instrumentation and baseline, bounded preparation and atomic handoff, pending-state polish, fixed-corpus validation and documentation, shared navigational-row keyboard parity, and final PR review and CI delivery. Keep useful content visible, retain at most one speculative comparison, separate server/client/paint attribution, give file-tree and Git-history rows one enforced focus-and-open contract, preserve lifecycle safety, and close the epic only after PR #82 has exact-head green CI.

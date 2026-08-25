@@ -5,7 +5,7 @@ title: "Monitor PR #74 and FDU #44/#47 alignment through adoption readiness"
 kind: task
 status: in_progress
 priority: 1
-version: 25
+version: 27
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 refs:
   - kind: pr
@@ -35,15 +35,18 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/fdu/pull/47#pullrequestreview-5019981640
     at: 2026-08-25T14:16:30.265Z
+  - kind: pr
+    url: https://github.com/jlevy/fdu/pull/47#pullrequestreview-5020603690
+    at: 2026-08-25T15:11:39.712Z
 labels: []
 dependencies: []
 parent_id: is-01m0r8xt95921dabcddjjm7csf
 child_order_hints:
   - is-01m0vmz928cewndbdk6gnhbgqz
 created_at: 2026-08-24T22:38:51.537Z
-updated_at: 2026-08-25T14:16:30.266Z
+updated_at: 2026-08-25T15:11:39.713Z
 ---
-Recurring alignment owner for MetaBrowser PR #74 and FDU PRs #44 and #47. Each cycle must sync both tbd stores, inspect exact PR heads, CI, issue comments, formal reviews, inline threads, and current FDU implementation beads, then review material FDU deltas against the implemented InventoryHandle contract and performance/adoption gates. Actionable MetaBrowser feedback is addressed through per-finding beads and a disposition map; FDU defects or drift are deduplicated into fdu-u7vo and published on the appropriate FDU PR. Report only material changes and keep monitoring until the three PRs and adoption handoff reach a terminal state.
+Recurring alignment owner for MetaBrowser PR #74 and FDU PRs #44 and #47. Current reviewed heads (2026-08-25 15:10Z): MetaBrowser #74 0577bb125c4a607719befa3f213362f5522d5724, open/clean with 5 green checks and no feedback; FDU #44 7f18f208dbd3ccb2002228bb52ae00c5d4ffcabb, open/clean with 19 green checks and no feedback; FDU #47 353d48f6c795b72e1c4c94ed8f95b8e08b815c9b, draft/unstable with 18 green and one Windows failure. Exact review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5020603690 accepts the improved fixtures, live admission direction, coherent refusal state, and reference invalidations path, but reopens fdu-0778 for lost hidden-control-file rebinds and tracks unclocked cap-refusal mutations in fdu-a7cl plus one-filesystem fail-open/Windows portability in fdu-4ubw. Existing adoption gates fdu-91ru, fdu-8w5k, fdu-7sou, fdu-97dd, fdu-vfx7, fdu-xyvu, fdu-vfyw, and fdu-kl7r remain open. Last FDU #47 channel cursors are issue comment 5411478671 and formal review 5020603690; no inline comments or unresolved threads. Continue exact-head diffing and act on material feedback until all three PRs and adoption handoff are terminal.
 
 ## Notes
 
