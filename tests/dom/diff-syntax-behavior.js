@@ -54,10 +54,19 @@ async function main() {
       },
     ],
   };
-  const languages = { ".js": "javascript", ".py": "python" };
-  const model = buildFileSyntaxModel(change, patch, (extension) => languages[extension] ?? "");
+  const resolvedPaths = [];
+  const languageForPath = (sourcePath) => {
+    resolvedPaths.push(sourcePath);
+    return sourcePath.endsWith(".js") ? "javascript" : sourcePath.endsWith(".py") ? "python" : "";
+  };
+  const model = buildFileSyntaxModel(change, patch, languageForPath);
   check("old rename language", model.oldLanguage === "javascript", model.oldLanguage);
   check("new rename language", model.newLanguage === "python", model.newLanguage);
+  check(
+    "language resolver receives full side paths",
+    JSON.stringify(resolvedPaths) === '["after/example.py","before/example.js"]',
+    JSON.stringify(resolvedPaths),
+  );
   check("every hunk stays separate", model.hunks.length === 2, String(model.hunks.length));
 
   const records = model.hunks[0].lines;
@@ -118,11 +127,7 @@ async function main() {
       records[0].newTokens?.[0]?.classes[0] === "hljs-new",
   );
 
-  const overLimitModel = buildFileSyntaxModel(
-    change,
-    patch,
-    (extension) => languages[extension] ?? "",
-  );
+  const overLimitModel = buildFileSyntaxModel(change, patch, languageForPath);
   let overLimitCalls = 0;
   const overLimit = await highlightFileSyntax(
     overLimitModel,
@@ -137,11 +142,7 @@ async function main() {
   );
   check("over-limit file stays wholly plain", overLimit === false && overLimitCalls === 0);
 
-  const invalidModel = buildFileSyntaxModel(
-    change,
-    patch,
-    (extension) => languages[extension] ?? "",
-  );
+  const invalidModel = buildFileSyntaxModel(change, patch, languageForPath);
   const originalWarn = console.warn;
   let warningCount = 0;
   console.warn = () => {
@@ -183,7 +184,7 @@ async function main() {
         },
       ],
     },
-    (extension) => languages[extension] ?? "",
+    languageForPath,
   );
   let addedCalls = 0;
   await highlightFileSyntax(
@@ -214,11 +215,7 @@ async function main() {
   );
   check("unknown side languages stay plain", unknown === false && unknownCalls === 0);
 
-  const abortedModel = buildFileSyntaxModel(
-    change,
-    patch,
-    (extension) => languages[extension] ?? "",
-  );
+  const abortedModel = buildFileSyntaxModel(change, patch, languageForPath);
   const controller = new AbortController();
   let releaseIgnoredAbort;
   const ignoredAbort = highlightFileSyntax(

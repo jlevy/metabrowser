@@ -5,6 +5,9 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const repoRoot = path.resolve(process.argv[2]);
+const syntaxSettings = JSON.parse(process.argv[3]);
+const syntaxLanguageByBasename = syntaxSettings.SYNTAX_LANGUAGE_BY_BASENAME;
+const syntaxLanguageByExtension = syntaxSettings.SYNTAX_LANGUAGE_BY_EXTENSION;
 
 function check(condition, message) {
   if (!condition) {
@@ -28,6 +31,11 @@ function createSandbox() {
     console,
     fetch: () => Promise.reject(new Error("fetch unavailable in syntax SDK test")),
     location: { origin: "http://localhost" },
+    METABROWSER_SETTINGS: {
+      SYNTAX_HIGHLIGHT_MAX_BYTES: 512 * 1024,
+      SYNTAX_LANGUAGE_BY_BASENAME: syntaxLanguageByBasename,
+      SYNTAX_LANGUAGE_BY_EXTENSION: syntaxLanguageByExtension,
+    },
     setInterval,
     setTimeout,
     addEventListener(type, listener) {
@@ -98,7 +106,116 @@ function loadSdk(sandbox) {
 async function main() {
   const ready = createSandbox();
   load(ready, "src/metabrowser/static/vendor/highlight.min.js");
+  load(ready, "src/metabrowser/static/vendor/highlight-toml.min.js");
   loadSdk(ready);
+
+  for (const [extension, language] of Object.entries(syntaxLanguageByExtension)) {
+    check(
+      ready.hljs.getLanguage(language),
+      `${extension} maps to unavailable shipped grammar ${language}`,
+    );
+    check(
+      ready.metabrowser.langForExtension(extension) === language,
+      `${extension} should resolve through the injected registry`,
+    );
+  }
+  for (const [basename, language] of Object.entries(syntaxLanguageByBasename)) {
+    check(ready.hljs.getLanguage(language), `${basename} maps to unavailable grammar ${language}`);
+    check(
+      ready.metabrowser.langForPath(`nested/${basename}`) === language,
+      `${basename} should resolve through the injected basename registry`,
+    );
+  }
+  check(ready.metabrowser.langForExtension(".unknown") === "", "unknown extensions stay plain");
+  check(ready.metabrowser.langForPath("Makefile.gz") === "makefile", "compressed names resolve");
+  check(ready.metabrowser.langForPath("nested/example.rs") === "rust", "paths infer extensions");
+
+  const sourceContainer = {
+    classList: {
+      add(name) {
+        this.added = name;
+      },
+    },
+    innerHTML: "",
+  };
+  ready.metabrowser.renderSourceView(sourceContainer, {
+    content: "const literal = '<script>';",
+    ext: ".ts",
+  });
+  check(
+    sourceContainer.classList.added === "metabrowser-source-host",
+    "shared source renderer should install the host class",
+  );
+  check(
+    sourceContainer.innerHTML.includes('class="language-typescript"'),
+    "shared source renderer should use the injected grammar mapping",
+  );
+  check(
+    sourceContainer.innerHTML.includes("&lt;script&gt;") &&
+      !sourceContainer.innerHTML.includes("'<script>'"),
+    "shared source renderer should escape exact source text",
+  );
+  ready.metabrowser.renderSourceView(sourceContainer, {
+    content: "target:\n\tbuild\n",
+    ext: "",
+    path: "nested/Makefile",
+  });
+  check(
+    sourceContainer.innerHTML.includes('class="language-makefile"'),
+    "shared source renderer should highlight extensionless source names",
+  );
+
+  const markdownSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/source.js"),
+    "utf-8",
+  );
+  const markdownModule = await import(
+    `data:text/javascript;base64,${Buffer.from(markdownSource).toString("base64")}`
+  );
+  const markdownText = "---\ntitle: Example\n---\n# Heading\n";
+  const markdownHtml = markdownModule.renderMarkdownSourceHtml(
+    { content: markdownText },
+    {
+      renderTextTruncationWarning: () => "TOP",
+      renderTextLoadMoreFooter: () => "BOTTOM",
+      isLargeTextPreview: () => false,
+      escapeHtml: (value) =>
+        String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
+      wrapWithCopy: (html) => `<div>${html}</div>`,
+    },
+  );
+  check(markdownHtml.startsWith("TOP<div>"), "Markdown Source should retain its top notice");
+  check(markdownHtml.endsWith("</div>BOTTOM"), "Markdown Source should retain its footer");
+  check(
+    markdownHtml.includes(
+      `<code data-mb-copy-payload class="no-highlight" hidden>${markdownText}</code>`,
+    ),
+    "frontmatter Source should retain one exact whole-document copy payload",
+  );
+  check(
+    markdownHtml.includes('<code class="language-yaml">---\ntitle: Example\n---\n</code>'),
+    "the YAML segment should retain the closing-delimiter newline",
+  );
+  const markdownCrLf = "---\r\ntitle: Example\r\n---\r\n<script>\r\n";
+  const markdownCrLfHtml = markdownModule.renderMarkdownSourceHtml(
+    { content: markdownCrLf },
+    {
+      renderTextTruncationWarning: () => "",
+      renderTextLoadMoreFooter: () => "",
+      isLargeTextPreview: () => false,
+      escapeHtml: (value) =>
+        String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;"),
+      wrapWithCopy: (html) => html,
+    },
+  );
+  check(
+    markdownCrLfHtml.includes("---\r\ntitle: Example\r\n---\r\n</code>"),
+    "CRLF frontmatter should retain its exact line endings",
+  );
+  check(
+    markdownCrLfHtml.includes("&lt;script&gt;\r\n") && !markdownCrLfHtml.includes("<script>\r\n"),
+    "frontmatter Source should escape its whole-document payload and visible body",
+  );
 
   const source = "/* first line\n+ * second line */";
   const lines = await ready.metabrowser.highlightSyntax(source, "javascript");
@@ -172,7 +289,11 @@ async function main() {
   );
 
   const bounded = createSandbox();
-  bounded.METABROWSER_SETTINGS = { SYNTAX_HIGHLIGHT_MAX_BYTES: 4 };
+  bounded.METABROWSER_SETTINGS = {
+    SYNTAX_HIGHLIGHT_MAX_BYTES: 4,
+    SYNTAX_LANGUAGE_BY_BASENAME: syntaxLanguageByBasename,
+    SYNTAX_LANGUAGE_BY_EXTENSION: syntaxLanguageByExtension,
+  };
   load(bounded, "src/metabrowser/static/vendor/highlight.min.js");
   loadSdk(bounded);
   check(
@@ -187,6 +308,18 @@ async function main() {
     bounded.metabrowser.isLargeTextPreview({ content: "éé" }) === false &&
       bounded.metabrowser.isLargeTextPreview({ content: "ééx" }) === true,
     "regular previews and syntax tokens should share the injected UTF-8 byte bound",
+  );
+  check(
+    bounded.metabrowser.isLargeTextPreview({
+      content: "éé",
+      content_truncated: true,
+      size: 1_000_000,
+    }) === false,
+    "a bounded loaded prefix should highlight even when the backing file is larger",
+  );
+  check(
+    bounded.metabrowser.isLargeTextPreview({ content: "éé", highlight_disabled: true }) === true,
+    "an explicit server decision should disable highlighting",
   );
 
   const delayed = createSandbox();

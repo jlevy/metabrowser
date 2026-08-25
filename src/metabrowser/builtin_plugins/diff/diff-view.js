@@ -17,7 +17,7 @@ import { buildFileSyntaxModel, highlightFileSyntax } from "./diff-syntax.js";
  * @typedef {object} DiffViewApi
  * @property {(data: Record<string, unknown>) => boolean} isLargeTextPreview
  * @property {(source: string, language: string, options?: {signal?: AbortSignal}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
- * @property {(extension: string) => string} langForExtension
+ * @property {(pathOrName: string) => string} langForPath
  * @property {NonNullable<MetabrowserPublicSdk["filterControls"]> | undefined} [filterControls]
  * @property {Pick<MetabrowserPublicSdk["perf"], "measureAsync"> | undefined} [perf]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
@@ -64,7 +64,7 @@ function plainSyntaxApi() {
   return {
     highlightSyntax: async () => null,
     isLargeTextPreview: () => true,
-    langForExtension: () => "",
+    langForPath: () => "",
     filterControls: undefined,
     prefs: undefined,
   };
@@ -405,7 +405,7 @@ export function createFileState(change, patch, api, body) {
     change,
     expandedFolds: new Set(),
     patch,
-    syntax: buildFileSyntaxModel(change, patch, api.langForExtension),
+    syntax: buildFileSyntaxModel(change, patch, api.langForPath),
     textHosts: [],
   };
 }

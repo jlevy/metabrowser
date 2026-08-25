@@ -236,7 +236,7 @@ async function main() {
       return source.split("\n").map((text) => [{ classes: [`hljs-${side}`], text }]);
     },
     isLargeTextPreview: () => false,
-    langForExtension: () => "python",
+    langForPath: () => "python",
     perf: {
       measureAsync: async (label, work, metadata) => {
         const result = await work();
@@ -343,7 +343,7 @@ async function main() {
       return source.split("\n").map((text) => [{ classes: [`hljs-${side}`], text }]);
     },
     isLargeTextPreview: () => false,
-    langForExtension: () => "python",
+    langForPath: () => "python",
     prefs: {
       get: () => "split",
       set: (key, value) => {
@@ -707,7 +707,7 @@ async function main() {
       });
     },
     isLargeTextPreview: () => false,
-    langForExtension: () => "python",
+    langForPath: () => "python",
   };
   const disposedSyntax = new FakeElement("div");
   const disposedSyntaxHandle = mountDiffView(
@@ -748,7 +748,7 @@ async function main() {
       return tokenLines(source, "queue");
     },
     isLargeTextPreview: () => false,
-    langForExtension: () => "python",
+    langForPath: () => "python",
   };
   const queued = new FakeElement("div");
   mountDiffView(queued, queuedDoc, queueApi);

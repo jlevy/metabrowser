@@ -35,6 +35,15 @@ Performance, validated against 0.6.0 side by side:
   an error panel cannot count as a successful paint milestone.
   Recording exits nonzero as soon as any run crosses a hard budget.
 
+Browser:
+
+- Raw Source tabs now use syntax highlighting consistently for every extension backed by
+  the shipped Highlight.js registry, including lazy Markdown, YAML, and JSON Source
+  views. Structured Source no longer depends on the generic text plugin already being
+  loaded. Large syntax-known files open with a highlighted prefix up to the measured 512
+  KiB bound; loading beyond it withdraws highlighting uniformly while preserving the
+  full loaded text and normal 2–8 MiB chunk growth.
+
 API, observable to plugin authors:
 
 - **`PLUGIN_SDK_VERSION` is `0.5`.** External plugins must set `sdk_version = "0.5"` for
@@ -50,6 +59,12 @@ API, observable to plugin authors:
   It uses the same injected byte bound as regular source previews, preserves source text
   exactly, supports cancellation, and falls back to plain text for unavailable,
   unsupported, malformed, or over-limit input.
+
+- `metabrowser.renderSourceView(container, data)` exposes the standard bounded Source
+  surface. `metabrowser.langForExtension(ext)` and
+  `metabrowser.langForPath(pathOrName, ext)` read server-injected mappings checked
+  against the vendored grammar registry, including extensionless `Makefile`, `Gemfile`,
+  and `Rakefile` source.
 
 - Browser-console tools now share the existing `window.metabrowser` namespace.
   The complete recorder is `metabrowser.perf`, shell troubleshooting helpers are under

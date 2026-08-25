@@ -85,6 +85,28 @@ The source view measured 55 ms at 128 KB rising to 152 ms at 1.4 MB. That is lin
 click and quadratic across a sequence — the failure only appears after several clicks,
 which is exactly where casual testing stops.
 
+### Syntax highlighting spends elements and main-thread time
+
+Highlight.js lexing is only part of the cost.
+Its token markup becomes tens or hundreds of thousands of spans, then the browser must
+style and lay out those elements.
+Measured in Chromium 141 with software raster, against the vendored grammars and an
+attached `<code>` element:
+
+| Grammar | 256 KiB | 512 KiB | 1 MiB | 2 MiB | Token spans, 512 KiB → 2 MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| YAML | 384 ms | 756 ms | 1,686 ms | 3,098 ms | 62,602 → 250,406 |
+| Markdown | 244 ms | 340 ms | 674 ms | 1,477 ms | 29,127 → 116,509 |
+| JSON | 530 ms | 1,139 ms | 2,133 ms | 4,449 ms | 170,392 → 681,571 |
+| TypeScript | 475 ms | 868 ms | 1,850 ms | 3,612 ms | 50,902 → 203,608 |
+
+Each timing combines `hljs.highlightElement` with a forced layout of the attached
+result. The growth is broadly linear for these sources, but the absolute work at 1–2 MiB
+is already too disruptive for an optional foreground-color enhancement.
+The 512 KiB bound keeps the worst measured representative case near one second and
+limits the resulting DOM. The shell schedules that work after first paint, so plain,
+exact source remains usable while the optional asset or main thread is busy.
+
 ### Element count and memory are the real ceilings
 
 Real text in the DOM is what buys native find-in-page and selection, and it is what
@@ -157,6 +179,15 @@ When the append cannot be done safely — a syntax-highlighted block, an unexpec
 shape — fall back to a full render rather than dropping content, and keep any status the
 render would have refreshed in sync by hand.
 
+**Highlight a bounded prefix, not a small-file category.** For an extension backed by
+the shipped grammar registry, the initial source window is capped at the syntax bound
+and may be highlighted even when the complete file is much larger.
+Truncation and total file size do not disable the bounded prefix.
+If Load more takes the visible window past the bound, the source view re-renders the
+entire loaded window as plain text once, then returns to incremental appends.
+This applies the degradation uniformly instead of leaving an arbitrary colored boundary
+on screen.
+
 **One authority per limit.** Sizes live in `settings.py` and reach the client through
 `window.METABROWSER_SETTINGS`. A constant restated on both sides of the boundary drifts.
 
@@ -190,7 +221,7 @@ window that never existed on disk.
 | `TEXT_PREVIEW_CHUNK_BYTES` | 2 MiB | Opening latency |
 | `TEXT_PREVIEW_MAX_CHUNK_BYTES` | 8 MiB | Per-click main-thread time |
 | `TEXT_PREVIEW_REQUEST_MAX_BYTES` | 16 MiB | One request, and the decompression window |
-| `SYNTAX_HIGHLIGHT_MAX_BYTES` | 512 KiB | Highlight.js, superlinear in input |
+| `SYNTAX_HIGHLIGHT_MAX_BYTES` | 512 KiB | Highlight.js main-thread work and token-span DOM |
 | `BINARY_PREVIEW_MAX_BYTES` | 32 MiB | Browser memory for loaded bytes |
 | `BINARY_PREVIEW_CHUNK_BYTES` | 1 MiB | Opening latency |
 | `DEFAULT_ACCENT_RUN_BUDGET` | 60,000 runs | Element count across the mounted view |

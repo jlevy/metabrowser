@@ -796,6 +796,7 @@ type MetabrowserSdk = {
   ensureKindAssets(kind: string): Promise<void>;
   kpressInitToc(container: HTMLElement): (() => void) | null;
   langForExtension(ext: string): string;
+  langForPath(pathOrName: string, ext?: string): string;
   loadKpressAssets(manifest: KpressAssetManifest): Promise<void>;
   navigation: MetabrowserNavigationApi;
   repository: MetabrowserRepositoryContext | null;
@@ -807,6 +808,10 @@ type MetabrowserSdk = {
   ): void;
   renderTextTruncationWarning(data: Record<string, unknown>): string;
   renderTextLoadMoreFooter(data: Record<string, unknown>): string;
+  renderSourceView(
+    container: HTMLElement,
+    data: Record<string, unknown> & { content?: string; ext?: string },
+  ): void;
   partialNoticeHtml(
     progress: { loaded: string; total: string },
     position: "top" | "bottom",

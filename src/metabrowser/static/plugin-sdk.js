@@ -1437,8 +1437,6 @@
     return `<span class="${cls}">${formatSize(bytes)}</span>`;
   }
 
-  /** Package fallback when the server has not injected its environment-aware limit. */
-  const DEFAULT_SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024;
   const HIGHLIGHT_TOKEN_CLASS_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
   const HIGHLIGHT_ENTITIES = Object.freeze({
     "&amp;": "&",
@@ -1460,9 +1458,7 @@
         global.METABROWSER_SETTINGS
       )?.SYNTAX_HIGHLIGHT_MAX_BYTES,
     );
-    return Number.isFinite(configured) && configured >= 0
-      ? configured
-      : DEFAULT_SYNTAX_HIGHLIGHT_MAX_BYTES;
+    return Number.isFinite(configured) && configured >= 0 ? configured : 0;
   }
 
   /** @param {string} value */
@@ -1530,9 +1526,7 @@
       return false;
     }
     return (
-      !!data.content_truncated ||
       !!data.highlight_disabled ||
-      (data.size || 0) > syntaxHighlightMaxBytes() ||
       (typeof data.content === "string" && utf8ByteLength(data.content) > syntaxHighlightMaxBytes())
     );
   }
@@ -1723,29 +1717,57 @@
     },
   });
 
-  // File-extension → highlight.js language id. Single source of truth so
-  // every plugin uses the same `language-X` class for `.py`, `.ts`, etc.
-  const LANG_MAP = {
-    ".py": "python",
-    ".js": "javascript",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".jsx": "javascript",
-    ".sh": "bash",
-    ".bash": "bash",
-    ".zsh": "bash",
-    ".json": "json",
-    ".jsonl": "json",
-    ".yaml": "yaml",
-    ".yml": "yaml",
-    ".toml": "toml",
-    ".md": "markdown",
-    ".css": "css",
-    ".html": "xml",
-  };
-
   function langForExtension(ext) {
-    return LANG_MAP[ext || ""] || "";
+    const languageByExtension = /** @type {Record<string, string>} */ (
+      global.METABROWSER_SETTINGS?.SYNTAX_LANGUAGE_BY_EXTENSION || {}
+    );
+    return languageByExtension[ext || ""] || "";
+  }
+
+  function langForPath(pathOrName, ext = "") {
+    const languageByBasename = /** @type {Record<string, string>} */ (
+      global.METABROWSER_SETTINGS?.SYNTAX_LANGUAGE_BY_BASENAME || {}
+    );
+    const pathParts = String(pathOrName || "")
+      .replaceAll("\\", "/")
+      .split("/");
+    let basename = (pathParts[pathParts.length - 1] || "").toLowerCase();
+    for (const compressionSuffix of [".gz", ".zlib"]) {
+      if (basename.endsWith(compressionSuffix)) {
+        basename = basename.slice(0, -compressionSuffix.length);
+        break;
+      }
+    }
+    let logicalExtension = ext.toLowerCase();
+    if (!logicalExtension) {
+      const dot = basename.lastIndexOf(".");
+      logicalExtension = dot > 0 ? basename.slice(dot) : "";
+    }
+    return languageByBasename[basename] || langForExtension(logicalExtension);
+  }
+
+  /**
+   * Render the shared bounded Source surface used by generic text-like views.
+   * @param {HTMLElement} container
+   * @param {Record<string, unknown> & {content?: string, ext?: string}} data
+   */
+  function renderSourceView(container, data) {
+    const truncationWarning = renderTextTruncationWarning(data);
+    const loadMoreFooter = renderTextLoadMoreFooter(data);
+    const content = typeof data.content === "string" ? data.content : "";
+    let languageClass = "plaintext no-highlight";
+    if (!isLargeTextPreview(data)) {
+      const language = langForPath(
+        typeof data.path === "string" ? data.path : "",
+        typeof data.ext === "string" ? data.ext : "",
+      );
+      languageClass = language ? `language-${language}` : "plaintext";
+    }
+    const code =
+      `<pre class="code-block"><code class="${languageClass}">` +
+      `${escapeHtml(content)}</code></pre>`;
+    container.classList.add("metabrowser-source-host");
+    container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
   }
 
   // Delegated click handler for the copy buttons wrapWithCopy emits.
@@ -1759,7 +1781,10 @@
     if (!wrap) {
       return;
     }
-    var code = typeof wrap.querySelector === "function" ? wrap.querySelector("code") : null;
+    var code =
+      typeof wrap.querySelector === "function"
+        ? wrap.querySelector("[data-mb-copy-payload]") || wrap.querySelector("code")
+        : null;
     var text = code ? code.textContent || "" : "";
     if (!text) {
       // No <code> child: copy the wrap's text minus the button's label.
@@ -1867,6 +1892,7 @@
     fetchKpressRender: fetchKpressRender,
     renderTextTruncationWarning: renderTextTruncationWarning,
     renderTextLoadMoreFooter: renderTextLoadMoreFooter,
+    renderSourceView: renderSourceView,
     partialNoticeHtml: partialNoticeHtml,
     loadKpressAssets: loadKpressAssets,
     ensureAsset: ensureAsset,
@@ -1890,5 +1916,6 @@
     filters: filters,
     fileTypes: fileTypes,
     langForExtension: langForExtension,
+    langForPath: langForPath,
   };
 })(typeof window !== "undefined" ? window : globalThis);

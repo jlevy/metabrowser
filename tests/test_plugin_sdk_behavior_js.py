@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser.settings import client_settings_dict
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "kpress-plugin-sdk-behavior.js"
 SYNTAX_SHIM = Path(__file__).resolve().parent / "dom" / "syntax-token-sdk-behavior.js"
@@ -64,8 +66,19 @@ def test_plugin_sdk_syntax_token_contracts() -> None:
     if shutil.which("node") is None:
         pytest.skip("node not available; skipping plugin-sdk.js syntax shim")
 
+    settings = client_settings_dict()
     result = subprocess.run(
-        ["node", str(SYNTAX_SHIM), str(REPO_ROOT)],
+        [
+            "node",
+            str(SYNTAX_SHIM),
+            str(REPO_ROOT),
+            json.dumps(
+                {
+                    "SYNTAX_LANGUAGE_BY_BASENAME": settings["SYNTAX_LANGUAGE_BY_BASENAME"],
+                    "SYNTAX_LANGUAGE_BY_EXTENSION": settings["SYNTAX_LANGUAGE_BY_EXTENSION"],
+                }
+            ),
+        ],
         capture_output=True,
         text=True,
         timeout=20,

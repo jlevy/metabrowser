@@ -516,14 +516,25 @@ def test_render_index_progress_gates_count_on_positive_value() -> None:
     assert '"Scanning…"' in fn_block or "'Scanning…'" in fn_block
 
 
-def test_enhance_after_optional_asset_only_runs_highlight() -> None:
+def test_enhance_after_optional_asset_only_schedules_highlight() -> None:
     """Optional visual libraries must not trigger a second document render."""
 
     js = _read_app_js()
     fn_start = js.index("function enhanceCurrentFileAfterOptionalAsset()")
     fn_block = js[fn_start : fn_start + 160]
-    assert "highlightCode();" in fn_block
+    assert "scheduleHighlightCode(document);" in fn_block
     assert "renderFile(" not in fn_block
+
+
+def test_plugin_mount_schedules_scoped_post_paint_highlighting() -> None:
+    """Default and lazy views share one post-mount enhancement lifecycle."""
+    js = _read_app_js()
+    mount_start = js.index("function mountPluginView(container, pluginView, ctx)")
+    mount_block = js[mount_start : mount_start + 1800]
+    assert "scheduleHighlightCode(container);" in mount_block
+    assert "requestAnimationFrame(afterFrame)" in js
+    assert "root !== document && !root.isConnected" in js
+    assert 'rawLogHost.closest(".log-event.expanded")' in js
 
 
 def test_user_visible_strings_dropped_crawling_label() -> None:

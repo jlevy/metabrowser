@@ -495,6 +495,28 @@ No feature flag, data migration, or server rollout order is required.
 Unknown languages, unavailable assets, and over-limit documents continue to render plain
 text. Those are normal degraded states, not rollout blockers.
 
+## Implementation Addendum: Regular Source Consistency
+
+The completed diff work exposed two regular-view gaps during end-to-end review.
+Nondefault Source tabs mounted after the shell’s one syntax pass, and structured Source
+depended on the text plugin having loaded despite the selected-kind asset lifecycle.
+
+The follow-up makes syntax enhancement a post-mount shell responsibility for initial and
+lazy views, moves the generic Source surface into `metabrowser.renderSourceView`, and
+injects one Python-owned path-to-grammar registry into the SDK. Missing runtime settings
+disable the optional enhancement safely; the co-shipped server always provides the
+measured bound and registry.
+
+Real-browser measurement also refined the large-file behavior.
+Syntax-known files now open with a highlighted prefix no larger than 512 KiB even when
+the backing file is larger.
+Loading beyond that bound withdraws highlighting from the whole visible source and
+continues with the existing text chunk policy.
+The measurements and durable invariants live in
+[Rendering large content](../../../large-content-rendering.md),
+[Development](../../../development.md#browser-code), and
+[Views, Models, and Routes](../../architecture/arch-views-models-routes.md#shared-source-rendering).
+
 ## Open Questions
 
 None for this slice.

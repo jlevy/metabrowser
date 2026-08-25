@@ -104,23 +104,16 @@ export function buildHunkRecords(hunk) {
   };
 }
 
-/** @param {string} path */
-function extensionForPath(path) {
-  const name = path.slice(path.lastIndexOf("/") + 1);
-  const dot = name.lastIndexOf(".");
-  return dot <= 0 ? "" : name.slice(dot).toLowerCase();
-}
-
 /**
- * Resolve one side through the host extension registry.
+ * Resolve one side through the host path registry.
  * @param {Record<string, unknown>} change
  * @param {"old" | "new"} sideName
- * @param {(extension: string) => string} langForExtension
+ * @param {(pathOrName: string) => string} langForPath
  */
-export function languageForSide(change, sideName, langForExtension) {
+export function languageForSide(change, sideName, langForPath) {
   const side = /** @type {Record<string, unknown> | undefined} */ (change[sideName]);
   const path = typeof side?.path === "string" ? side.path : "";
-  return langForExtension(extensionForPath(path));
+  return langForPath(path);
 }
 
 /** @param {DiffHunkRecord[]} hunks */
@@ -138,17 +131,17 @@ export function syntaxInputBytes(hunks) {
  * Token fields remain mutable so progressive enhancement can attach its result.
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown>} patch
- * @param {(extension: string) => string} langForExtension
+ * @param {(pathOrName: string) => string} langForPath
  * @returns {DiffFileSyntaxModel}
  */
-export function buildFileSyntaxModel(change, patch, langForExtension) {
+export function buildFileSyntaxModel(change, patch, langForPath) {
   const rawHunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
   const hunks = rawHunks.map(buildHunkRecords);
   return {
     hunks,
     inputBytes: syntaxInputBytes(hunks),
-    newLanguage: languageForSide(change, "new", langForExtension),
-    oldLanguage: languageForSide(change, "old", langForExtension),
+    newLanguage: languageForSide(change, "new", langForPath),
+    oldLanguage: languageForSide(change, "old", langForPath),
   };
 }
 
