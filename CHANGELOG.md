@@ -6,19 +6,19 @@ All notable changes to Metabrowser are documented here.
 
 Performance, validated against 0.6.0 side by side:
 
-- A full index of a 247,000-file project tree completes in 11.348 s where 0.6.0 takes
-  25.378 s, medians of five interleaved runs against the final installed wheel.
-  The first navigation row arrives in 1.107 s instead of 2.647 s, and peak RSS falls
-  from 183.0 MB to 176.3 MB. Two other tree shapes agree: 11.1 s against 28.6 s deep and
-  narrow, and 2.7 s against 6.0 s wide and shallow.
-  Peak memory is unchanged to slightly lower.
-  Both builds report identical rows, file counts and byte totals on every shape.
+- On the final installed candidate, five interleaved backend pairs over a fingerprinted
+  123,658-file project corpus return the first navigation row in 0.571 s instead of
+  1.075 s and complete indexing in 3.998 s instead of 7.859 s. Peak RSS is 123.5 MB
+  against 126.3 MB. The full ranges do not overlap for any of those three measures, the
+  corpus remains unchanged, and both builds return identical ordered rows and tallies.
 
-- Gitignored-file updates now remove one exact Quick File entry in constant time,
-  whether they arrive in a prefetched subtree or on the live event stream.
-  They previously shared the directory-prefix removal path, scanning the complete
-  catalog once per ignored leaf and freezing the browser repeatedly on large trees.
-  Filesystem removals retain subtree semantics.
+- Four fresh-profile, visible browser pairs reduce median first row from 962 ms to 239
+  ms, FCP from 308 ms to 166 ms, and LCP from 862 ms to 166 ms.
+  Startup JavaScript falls from 74 requests / 332 KB to 22 / 154 KB, all requests from a
+  median 138 to 81, and total transfer from 519 KB to 473 KB. Every candidate run passes
+  every hard responsiveness, correctness, readiness, network, and startup-asset gate,
+  with no Long Task, blocked main-thread share, rendered preview error, or uncaught page
+  exception.
 
 - The browser performance loop now treats responsiveness as an acceptance gate.
   Its reusable navigation-time profile covers loading, Long Tasks, Long Animation
@@ -31,35 +31,25 @@ Performance, validated against 0.6.0 side by side:
   It also separates startup JavaScript from scripts loaded for the selected view,
   retains bounded path-only attribution for the slowest and latest startup assets, and
   gates startup request count and transfer size.
+  Rendered main-panel error states and uncaught browser exceptions are hard failures, so
+  an error panel cannot count as a successful paint milestone.
   Recording exits nonzero as soon as any run crosses a hard budget.
 
-- Four final visible browser pairs against the globally installed 0.6.0 reduce
-  inventory-delivery work from 11% of the loading window to 0.4%, its worst callback
-  from 7 ms to 1 ms, startup JavaScript from 75 requests / 340 KB to 22 / 154 KB, and
-  total transfer from 518 KB to 454 KB. Every candidate run passes the hard
-  responsiveness and correctness gates.
-  Cold FCP remains a named tradeoff at 146 ms against 114 ms; the performance record
-  does not hide it inside the responsiveness win.
-
-- The gain is largest exactly when a client is watching, because that is what the change
-  addresses: a row request no longer computes navigation tallies, so polling the tree
-  during a scan no longer competes with the walk that is filling it.
-  Under a client polling without backoff, 0.6.0 does not finish indexing that tree
-  within four minutes; this build finishes in 29 s.
-
 API, observable to plugin authors:
+
+- **`PLUGIN_SDK_VERSION` is `0.5`.** External plugins must set `sdk_version = "0.5"` for
+  the selected-kind asset lifecycle.
+  A plugin’s styles settle first, its classic scripts load sequentially in manifest
+  order, and `index.js` evaluates last, only when one of its kinds is selected or
+  `metabrowser.ensureKindAssets(kind)` requests it.
+  Version 0.4 manifests are rejected rather than admitted under different global CSS and
+  module-side-effect timing; see [the plugin documentation](docs/plugins.md).
 
 - `metabrowser.highlightSyntax(source, language, { signal })` exposes the shell’s
   prefetched Highlight.js grammars as DOM-free token runs.
   It uses the same injected byte bound as regular source previews, preserves source text
   exactly, supports cancellation, and falls back to plain text for unavailable,
   unsupported, malformed, or over-limit input.
-
-- `metabrowser.ensureKindAssets(kind)` loads deferred plugins for a file kind before a
-  plugin embeds that kind’s renderer.
-  Folder README panels use it to wait for the Markdown renderer, fixing Overview panels
-  that reported “The request could not be completed” when Markdown had not already been
-  opened.
 
 - Browser-console tools now share the existing `window.metabrowser` namespace.
   The complete recorder is `metabrowser.perf`, shell troubleshooting helpers are under
@@ -96,6 +86,8 @@ Development:
   its reported version.
   Browser runs also require an immutable build reference, preventing `PATH` order or an
   ambiguous version string from mislabeling a comparison.
+  External builds run from the served root rather than the candidate checkout, and the
+  harness stops only the exact server process it recorded starting.
   Browser profiles can be recorded from an exported JSON file as well as an inline
   console paste. A dependency-free Chrome DevTools Protocol capture command now produces
   the same profile with browser-trusted input and can record and gate it directly.

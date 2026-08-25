@@ -37,7 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # built-in manifest in the same commit. The host ships no shims for older
 # values: an external plugin is expected to update and declare it. See
 # docs/development.md "Compatibility and Legacy Code".
-PLUGIN_SDK_VERSION = "0.4"
+PLUGIN_SDK_VERSION = "0.5"
 
 # Metabrowser 0.4.0 allowed manifests to omit sdk_version. Such a manifest
 # targets the only SDK that existed under that contract. Keep this value pinned

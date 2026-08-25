@@ -10,7 +10,10 @@ once settled. See explorations/performance-loop/experiments/exp-003.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
+import sys
+import threading
 import time
 
 from metabrowser.inventory import InventoryIndex
@@ -105,6 +108,83 @@ def test_a_different_preset_shape_is_a_miss_not_a_wrong_answer() -> None:
     index.navigation_tallies_snapshotting(PRESETS, WINDOWS, LIMIT)
     other = [("prose", ["md"])]
     assert index.navigation_tallies_fresh_within(other, WINDOWS, LIMIT, min_stale_s=60.0) is None
+
+
+def test_a_freshness_probe_never_waits_for_an_in_flight_tally_pass() -> None:
+    """A cache lookup on the request loop must not wait for worker-owned work."""
+    index = _index_with(4)
+    lock_acquired = threading.Event()
+
+    def hold_tally_lock() -> None:
+        with index._navigation_tally_lock:  # pyright: ignore[reportPrivateUsage]
+            lock_acquired.set()
+            time.sleep(0.35)
+
+    holder = threading.Thread(target=hold_tally_lock)
+    holder.start()
+    assert lock_acquired.wait(1.0), "tally worker did not acquire its lock"
+
+    async def scenario() -> tuple[float, float]:
+        async def heartbeat() -> float:
+            started = time.perf_counter()
+            await asyncio.sleep(0.001)
+            return (time.perf_counter() - started) * 1000.0
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+        await asyncio.sleep(0)
+        started = time.perf_counter()
+        result = index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=60.0)
+        call_ms = (time.perf_counter() - started) * 1000.0
+        assert result is None
+        return call_ms, await heartbeat_task
+
+    try:
+        call_ms, heartbeat_ms = asyncio.run(scenario())
+    finally:
+        holder.join(timeout=1.0)
+
+    assert call_ms < 50.0
+    assert heartbeat_ms < 50.0
+
+
+def test_worker_tally_pass_cooperatively_yields_to_the_event_loop() -> None:
+    """Worker CPU must not depend on the interpreter's ordinary switch interval."""
+    index = InventoryIndex()
+    entry = FsEntry.for_observed_file(path="same.py", parent="", name="same.py", size=1, mtime_ns=1)
+    snapshot = [entry] * 80_000
+    previous_switch_interval = sys.getswitchinterval()
+
+    async def scenario() -> float:
+        heartbeat_started = asyncio.Event()
+
+        async def heartbeat() -> float:
+            started = time.perf_counter()
+            heartbeat_started.set()
+            await asyncio.sleep(0.001)
+            return (time.perf_counter() - started) * 1000.0
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+        await heartbeat_started.wait()
+        tally_task = asyncio.create_task(
+            asyncio.to_thread(
+                index.navigation_tallies,
+                PRESETS,
+                WINDOWS,
+                LIMIT,
+                entries=snapshot,
+            )
+        )
+        heartbeat_ms = await heartbeat_task
+        await tally_task
+        return heartbeat_ms
+
+    try:
+        sys.setswitchinterval(0.5)
+        heartbeat_ms = asyncio.run(scenario())
+    finally:
+        sys.setswitchinterval(previous_switch_interval)
+
+    assert heartbeat_ms < 50.0
 
 
 def test_the_snapshot_and_its_revision_are_read_together() -> None:

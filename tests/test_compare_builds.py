@@ -12,6 +12,7 @@ from devtools.compare_builds import (
     differences,
     missing_required_fields,
     normalise,
+    resolve_executable,
     resolve_tree,
     write_report,
 )
@@ -28,6 +29,18 @@ def _equivalence(*, differences_found: int = 0) -> dict[str, Any]:
     }
 
 
+def _runs(*, progress_max_ms: float = 12.0, progress_samples: int = 3) -> dict[str, Any]:
+    return {
+        "baseline": [{}],
+        "candidate": [
+            {
+                "tally_overlap_progress_max_ms": progress_max_ms,
+                "tally_overlap_progress_samples": progress_samples,
+            }
+        ],
+    }
+
+
 def test_relative_tree_is_resolved_before_the_server_changes_directory(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
@@ -36,6 +49,17 @@ def test_relative_tree_is_resolved_before_the_server_changes_directory(
     monkeypatch.chdir(tmp_path)
 
     assert resolve_tree("corpus") == tree.resolve()
+
+
+def test_relative_executable_is_resolved_before_the_server_changes_directory(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    executable = tmp_path / "installed" / "bin" / "metab"
+    executable.parent.mkdir(parents=True)
+    executable.touch(mode=0o755)
+    monkeypatch.chdir(tmp_path)
+
+    assert resolve_executable("installed/bin/metab") == str(executable.resolve())
 
 
 def test_normalise_preserves_list_order_and_nested_contract_fields() -> None:
@@ -87,6 +111,7 @@ def test_comparison_is_valid_only_when_runs_corpus_and_answers_are_valid() -> No
         "corpus_unchanged": True,
         "equivalence": _equivalence(),
         "errors": [],
+        "runs": _runs(),
     }
 
     assert comparison_failures(report) == []
@@ -99,6 +124,7 @@ def test_comparison_reports_every_invalidating_condition() -> None:
         "corpus_unchanged": False,
         "equivalence": equivalence,
         "errors": ["never settled"],
+        "runs": _runs(),
     }
 
     failures = comparison_failures(report)
@@ -112,10 +138,56 @@ def test_comparison_reports_every_invalidating_condition() -> None:
 
 def test_missing_equivalence_results_invalidate_the_comparison() -> None:
     failures = comparison_failures(
-        {"corpus_unchanged": True, "equivalence": {"rows": _equivalence()["rows"]}, "errors": []}
+        {
+            "corpus_unchanged": True,
+            "equivalence": {"rows": _equivalence()["rows"]},
+            "errors": [],
+            "runs": _runs(),
+        }
     )
 
     assert failures == ["tallies equivalence result is missing"]
+
+
+def test_candidate_event_loop_stall_invalidates_the_comparison() -> None:
+    failures = comparison_failures(
+        {
+            "corpus_unchanged": True,
+            "equivalence": _equivalence(),
+            "errors": [],
+            "runs": _runs(progress_max_ms=350.0),
+        }
+    )
+
+    assert failures == ["candidate tally-overlap progress latency 350.0 ms exceeds 200 ms"]
+
+
+def test_missing_candidate_event_loop_samples_invalidate_the_comparison() -> None:
+    failures = comparison_failures(
+        {
+            "corpus_unchanged": True,
+            "equivalence": _equivalence(),
+            "errors": [],
+            "runs": _runs(progress_samples=0),
+        }
+    )
+
+    assert failures == ["candidate tally-overlap progress measurement has no samples"]
+
+
+def test_candidate_tally_overlap_error_invalidates_the_comparison() -> None:
+    runs = _runs()
+    runs["candidate"][0]["tally_overlap_error"] = "TimeoutError: timed out"
+    failures = comparison_failures(
+        {
+            "corpus_unchanged": True,
+            "equivalence": _equivalence(),
+            "errors": [],
+            "runs": runs,
+        }
+    )
+
+    assert failures == ["candidate tally-overlap measurement failed: TimeoutError: timed out"]
 
 
 def test_report_is_written_as_machine_readable_json(tmp_path: Path) -> None:

@@ -294,10 +294,14 @@ the tree, walk throughput, whole-tree response cost, and the 500,000-file cap.
 Both are additive; server, shell, and built-in plugins ship as one artifact and change
 together in one commit.
 
-`PLUGIN_SDK_VERSION` does not move.
-The gate is an exact-match test, so a bump would force an edit to every built-in
-manifest and buy nothing; per the repository’s rule, it belongs to a break, and these
-are additions.
+`PLUGIN_SDK_VERSION` moves from 0.4 to 0.5 before v0.7.0. Version 0.6.0 loaded every
+admitted plugin’s styles, classic scripts, and index module with the page.
+Loading those assets only when the browser selects one of the plugin’s kinds changes
+when global CSS and module side effects exist, so it is a released contract break even
+though the callable SDK surface is additive.
+The exact-match gate must reject 0.4 manifests rather than silently admitting them under
+the new lifecycle; every built-in manifest and the plugin documentation move with the
+host.
 
 Any change to `/api/tree`’s progressive contract or to `INVENTORY_MAX_FILES` is
 observable, so it lands in `CHANGELOG.md` and in
@@ -321,6 +325,15 @@ one paint per load to three, which is the flicker
 
 Rows 1–6 are the reader-facing block and are new to the top.
 Rows 7–19 are the scan and walker work, unchanged in content and in relative order.
+
+The v0.7.0 stabilization gate preempts that backlog.
+It begins with H59’s failing installed-build comparison, then makes the navigation-tally
+freshness lookup nonblocking, versions the deferred plugin lifecycle as SDK 0.5,
+preserves manifest order when several plugins own one kind, and re-runs both backend and
+visible-browser comparisons before the changelog is finalized.
+The release comparison is the source of the release numbers; an intermediate regression
+introduced and corrected within this cycle is part of the final behavior, not a shipped
+fix.
 
 | # | Next | Why here |
 | --- | --- | --- |
@@ -432,6 +445,54 @@ reader spends their attention elsewhere rather than re-deriving them:
   Silent truncation is not an option either way.
 - [ ] Re-measure and record the comparison
 
+### Phase 4: v0.7.0 Release Stabilization
+
+- [x] Extend `devtools/compare_builds.py` before changing production code.
+  While one root tally is computing and another depth-0 tally request overlaps it, probe
+  `/api/index/progress` and record `tally_overlap_progress_max_ms` and the sample count.
+  Pair it with a deterministic test that holds the tally lock for 350 ms while a 1 ms
+  asyncio heartbeat runs.
+  The deterministic cache-probe budget is less than 50 ms.
+  The installed-server budget is less than 200 ms, matching the browser responsiveness
+  boundary. The final five exact pairs record 389.1–439.4 ms on `c123ae6` and 50.4–135.4
+  ms on the candidate over the unchanged 123,658-file corpus.
+- [x] Make `navigation_tallies_fresh_within` a nonblocking cache probe.
+  Contention may miss the memo and move work to the existing worker path, but it must
+  never wait for the O(index) pass on the request event loop.
+- [x] Bound the worker pass’s GIL residency with measured cooperative yield points.
+  The first exact v0.6.0 comparison found one 291.7 ms progress outlier while that
+  candidate tally pass stretched to 928.9 ms; the other four runs were 73.4–116.8 ms.
+  Preserve the 200 ms release gate and add a deterministic heartbeat test that extends
+  the interpreter switch interval, so a cold CPU tail cannot starve unrelated requests.
+- [x] Bump the plugin SDK to 0.5, update every built-in manifest, and document the
+  selected-kind lifecycle for `styles.css`, `extra_styles`, `extra_scripts`, and
+  `index.js`. Keep the installed-browser startup gates at no more than 25 scripts and
+  175 KB.
+- [x] Load same-kind plugin descriptors sequentially in server discovery order.
+  Add a behavioral test with two delayed modules that proves the later manifest
+  deterministically owns a duplicate view while preserving per-plugin asset order,
+  deduplication, and retry.
+- [x] Treat the initial inventory as the navigation baseline before enabling live-change
+  highlighting. Snapshot rows and walker upserts must stay neutral until the first
+  inventory reports completion; only later inserts may use the yellow change flash.
+  Gate the transition with a browser regression test and include the result in the final
+  visible comparison.
+- [x] Reject rendered preview errors and uncaught page exceptions as hard browser-gate
+  failures. Rebuild the v0.6.0 measurement adapter from the exact tag, preserve its
+  pre-SDK `metabrowserPerf` handoff, isolate external builds from the candidate
+  checkout, and stop only the exact server process the harness started.
+- [x] Build and install the exact candidate.
+  Compare it first with the pre-fix `c123ae6` control and then with v0.6.0 using at
+  least five interleaved backend pairs and four visible headed-browser pairs on one
+  fingerprinted project corpus.
+  Require identical ordered rows and tallies, less than 200 ms tally-overlap progress
+  latency, every browser hard gate, and the existing startup asset gates.
+  Retain full ranges for process start, FCP, LCP, and first row so cold-tail variance
+  cannot disappear into a median.
+- [x] Write the v0.7.0 changelog from the exact-candidate experiment.
+  Describe the aggregate v0.6.0-to-v0.7.0 behavior and omit bugs that existed only
+  between refactor commits in this unreleased cycle.
+
 ## Hypotheses
 
 The loop that resolves these lives in
@@ -464,7 +525,7 @@ server could have inlined (H20).
 
 ### What Each Hypothesis Is For
 
-Fifty-seven rows is a list, not a map.
+A registry this large is a list, not a map.
 Every registered hypothesis appears exactly once below, grouped by which part of
 [the objective](#what-we-are-optimizing-for) it serves, so an agent picking up this loop
 can find the rows that bear on the question they care about instead of reading all of
@@ -478,6 +539,8 @@ The objective’s first two failure modes.
 - H11 patch the panel instead of replacing it · H53 repaints as a standing metric
 - H52 ship a skeleton, not placeholders · H10 render-blocking stylesheets
 - H51 measure LCP and CLS in a visible window · H56 the primary metric is mis-aimed
+- H62 ✓ treat the first inventory as baseline before highlighting changes
+- H63 ✓ reject rendered failures and isolate release measurement adapters
 
 **How fast the first correct frame arrives** — everything on the critical path between
 navigation and a usable viewport.
@@ -486,6 +549,7 @@ navigation and a usable viewport.
 - H57 attribute the shell’s own boot · H9 the eager JavaScript count · H17 import cost
 - H19 `/api/events` on the critical path · H29 the first byte waits on a filesystem walk
 - H5 the root tree route under a scan · H8 ✓/H23 ✓ the tally pass per request
+- H59 the event loop waits on the tally memo lock · H61 the worker pass can starve it
 - H25 re-serializing an unchanged answer · H45 serialization cost · H37 path
   normalization
 - H12 `/api/recent` on the critical path · H24 two progress channels at once
@@ -588,7 +652,11 @@ Ordered by the evidence behind them, not by where they sit in the stack.
 | H55 | The campaign’s numbers span seven corpora and none of them compare, so nothing says what all of it bought. Each round measured its own control against its own candidate, which is sound per round and is why the verdicts stand, but it leaves the campaign itself unmeasured. | Every checkpoint’s standing metrics against one corpus with one harness, in one table | **Confirmed** (exp-010, `mb-3a3h`). Answered by holding the corpus and the harness fixed and moving only `src/metabrowser`: first row 1,473 ms to 276, server share of the first tree fetch 1,099 ms to 6, tail 28.9 s to 12.3. It also surfaced two regressions no round could see from inside itself — repaints 1 to 2, and shift 42 px to 67 on main before this branch took it to 23 |
 | H56 | `first_row_ms` rewards painting *something* early and says nothing about how many states follow it. The campaign drove it from 1,473 ms to 276 while repaints went 1 to 2, so the loop’s own primary metric is what steered it into placeholder-then-replace. The objective is one visual state in the viewport, and nothing measures that. | `visual_states`, the count of distinct painted viewport layouts between navigation and settle, target 1; `time_to_final_state` beside it | Open, **P1** (`mb-unt6`). The visible driver removes the environment blocker. It still needs H51’s three-run baseline and an instrument for distinct visible states; `tree_region_repaints` is today’s partial proxy and covers one region |
 | H57 | The server is no longer the bottleneck and the shell’s own boot is, but nothing has attributed it. On the fixed corpus this branch answers the first tree request in 6 ms and paints no row until 276 ms; the ~270 ms in between is 126 requests and 742 KB of shell, unexamined. | Navigation to first row broken into connect, HTML, blocking CSS, JS parse, JS execute, and the inline render | **Attributed; optimization remains open** (exp-014, `mb-emhr`). The directory shell is now 22 startup scripts / 154 KB and the first-row ranges overlap the release, but FCP does not. A representative slow `app.js` fetch spends 130 ms to response start: 48.5 ms server work and roughly 81 ms local HTTP/1.1 queue, followed by 9 ms download. Bounded startup rows now retain this split. H26 owns measuring whether server-side concatenation earns its complexity remotely; the local FCP delta keeps the same mechanism relevant here |
-| H58 | Main-thread work during load is bounded by the data, not by a budget. The UI thread should never be blocked by backend work: responsiveness independent of server latency, bandwidth, and tree size, tuned for a local server but not *depending* on one, so `--remote` over a tunnel shows content later rather than freezing. The invariant is constant-bounded synchronous slices however much data arrives — preserve exact operations across boundaries, coalesce events into one render of the latest state per frame, deadline-slice any inventory-sized loop, aggregate in a worker, and let speculation yield to interaction. | `long_task_max_ms` and `interaction_max_ms` between navigation and settle, from instrumentation attached at navigation, **measured visible**; target no task over 200 ms | **Confirmed, fixed, and gated** (exp-012 and exp-014, `mb-y2ft`). The first record was void because `ever_hidden` was true. A visible run then named two versions of the same O(N) mistake: passive ignored-file sightings and live ignored-file updates were routed through directory-prefix removal, scanning the complete Quick File catalog once per exact leaf. The wire had combined exact ignored-file eviction with filesystem subtree removal, so the client could not choose correctly. `catalog.change.remove_files` now preserves exact semantics and both paths use `Map.delete`; only removals that may name a directory scan prefixes. Harness 14 continuously drives exact-count trusted input through client settle, freezes the product window before diagnostics, and separately gates readiness and final catalog authority. In four final installed-build pairs, the candidate applies the same inventory volume in 52 ms total and 0.4% of the window, against 1,684 ms and 11% for v0.6.0; every candidate run passes every hard responsiveness gate |
+| H58 | Main-thread work during load is bounded by the data, not by a budget. The UI thread should never be blocked by backend work: responsiveness independent of server latency, bandwidth, and tree size, tuned for a local server but not *depending* on one, so `--remote` over a tunnel shows content later rather than freezing. The invariant is constant-bounded synchronous slices however much data arrives — preserve exact operations across boundaries, coalesce events into one render of the latest state per frame, deadline-slice any inventory-sized loop, aggregate in a worker, and let speculation yield to interaction. | `long_task_max_ms` and `interaction_max_ms` between navigation and settle, from instrumentation attached at navigation, **measured visible**; target no task over 200 ms | **Confirmed, fixed, and gated** (exp-012, exp-014, and exp-016, `mb-y2ft`). The first record was void because `ever_hidden` was true. A visible run then named two versions of the same O(N) mistake: passive ignored-file sightings and live ignored-file updates were routed through directory-prefix removal, scanning the complete Quick File catalog once per exact leaf. The wire had combined exact ignored-file eviction with filesystem subtree removal, so the client could not choose correctly. `catalog.change.remove_files` now preserves exact semantics and both paths use `Map.delete`; only removals that may name a directory scan prefixes. Harness 15 continuously drives exact-count trusted input through client settle, freezes the product window before diagnostics, and separately gates readiness, final catalog authority, rendered errors, and page exceptions. Across four final installed-candidate profiles, inventory delivery totals 28–29 ms, its longest callback is 1–2 ms, its window share is 0.1%–0.5%, and every hard gate passes |
+| H59 | `navigation_tallies_fresh_within` waits on the same lock an off-thread O(index) tally pass holds, so an overlapping tally request can stop the server event loop even though the expensive pass itself was offloaded. | `tally_overlap_progress_max_ms` while two depth-0 tally requests overlap, target less than 200 ms; plus a 1 ms in-process heartbeat under a controlled 350 ms lock hold, target less than 50 ms | **Confirmed and fixed** (exp-016, `mb-09xv`, `mb-gicx`). The controlled lookup took 352 ms. Across ten exact installed pairs on the unchanged 123,658-file fingerprinted project corpus, `c123ae6` takes 363.8–547.3 ms and the final candidate takes 52.4–156.0 ms, with identical ordered rows and tallies |
+| H61 | Removing the memo-lock wait does not bound the worker’s GIL residency. If a cold tally pass stretches under host contention, its Python loop can still starve unrelated request work past the responsiveness budget. | `tally_overlap_progress_max_ms`, target less than 200 ms in every exact candidate run; deterministic 1 ms heartbeat while the interpreter switch interval is lengthened, target less than 50 ms | **Confirmed, fixed, and gated** (exp-016, `mb-1sa3`). Candidate `5a8f3ed` recorded four runs at 73.4–116.8 ms and one at 291.7 ms while its tally pass stretched to 928.9 ms. The final candidate yields every 2,048 entries, passes the deterministic heartbeat, records 52.4–156.0 ms across ten exact `c123ae6` pairs, and records 63.9–115.7 ms across five exact v0.6.0 pairs |
+| H62 | Initial walker upserts use the same yellow row flash as live filesystem changes, so rows painted while the navigation baseline is still forming look like newly created files. Keep highlighting disarmed through the initial snapshot and crawl, then arm it on the first terminal inventory signal. | A browser behavior test proves snapshot and pre-completion upserts stay neutral while the first post-completion insert flashes; the final visible comparison continues to pass every hard responsiveness and visual-stability gate | **Confirmed, fixed, and verified** (exp-016, `mb-ppvj`). Snapshot application explicitly suppresses the flash, walker changes read a completion-gated state, and both an already-complete snapshot and the ordered terminal capability event arm later live changes. All four exact candidate profiles pass every hard browser gate |
+| H63 | A browser profile can be mechanically valid while the main panel is an error state or plugin scripts are throwing. A release measurement adapter can also change an internal namespace contract before the SDK loads, invalidating the control it is meant to observe. | `rendered_preview_errors` and `page_exceptions`, both required and zero; exact-tag asset provenance; external server isolation | **Confirmed, fixed, and gated** (exp-016, `mb-jtg8`). Harness 15 counts rendered preview errors and CDP `Runtime.exceptionThrown` events from navigation through export. The broken adapter now fails with one rendered error and eight exceptions. The rebuilt exact-tag v0.6.0 adapter preserves the release’s `metabrowserPerf` handoff, and all four admissible control and candidate profiles record zero for both fields. External builds run from the served root, and PID-plus-command verification replaces a broad process-name kill |
 
 ## Reproducing the Measurements
 
@@ -661,14 +729,21 @@ Beyond the harness:
   arrives on the prefetch tier rather than the eager chain
 - A test that the nav tree renders rows while the index reports `scanning`, which is the
   behavior Phase 2 adds and the one most likely to regress quietly
+- A server-availability comparison and deterministic event-loop heartbeat test for an
+  overlapping navigation-tally pass; browser Long Tasks cannot observe a blocked Python
+  event loop, so the backend needs its own responsiveness gate
+- A manifest-gate test for the 0.4-to-0.5 plugin SDK break and a delayed two-plugin
+  behavioral test for deterministic same-kind registration order
 - A test that a corpus above the current cap is browsable and reports its state honestly
 
 ## Rollout Plan
 
 Server, shell, and built-in plugins ship as one artifact, so every phase lands as
 ordinary commits with no flag.
-Each phase is independently shippable and independently valuable: Phase 1 cuts payload,
-Phase 2 cuts the wait, Phase 3 raises the ceiling.
+Each performance phase is independently shippable and independently valuable: Phase 1
+cuts payload, Phase 2 cuts the wait, and Phase 3 raises the ceiling.
+Phase 4 is a release gate and ships as one coordinated host-plus-built-ins change: SDK
+0.5 rejects an older manifest rather than trying to emulate its eager lifecycle.
 
 The recorded baseline is the rollback signal.
 A phase that does not move the rows its mechanism touches has not done its job, and the

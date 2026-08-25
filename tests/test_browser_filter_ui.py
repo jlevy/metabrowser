@@ -1125,7 +1125,7 @@ def test_filters_reapply_after_live_row_inserts() -> None:
     assert "function scheduleFilterReapply()" in js
     # applyCellPatch owns both live paths: patching an existing row
     # (mtime and activity can flip its verdict) and inserting a new one.
-    patch_start = js.index("function applyCellPatch(entry)")
+    patch_start = js.index("function applyCellPatch(entry, highlightChange)")
     patch_block = js[patch_start : js.index("function _removeRenderedRows(path)")]
     assert patch_block.count("scheduleFilterReapply()") == 2
 

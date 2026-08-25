@@ -9,6 +9,7 @@
 //   5. A cached stylesheet settles even when the browser omits load events
 //   6. A failed auxiliary asset does not discard rendered HTML
 //   7. Manifest-owned plugin assets load in order and deduplicate by plugin
+//   8. Same-kind plugin modules evaluate in manifest order
 //
 // Usage:
 //   node kpress-plugin-sdk-behavior.js <repo_root>
@@ -109,7 +110,20 @@ const firstFetchGate = makeReleaseable();
 
 let tocImportAttempts = 0;
 const cachedStylesheetSettleDeadlineMs = 100;
-async function importKpressModule() {
+const orderedPluginModules = new Map([
+  ["/plugin-static/order-first/index.js", { delayMs: 30, owner: "first" }],
+  ["/plugin-static/order-second/index.js", { delayMs: 0, owner: "second" }],
+]);
+async function importKpressModule(specifier) {
+  const orderedPlugin = orderedPluginModules.get(specifier);
+  if (orderedPlugin) {
+    await new Promise((resolve) => setTimeout(resolve, orderedPlugin.delayMs));
+    sandbox.metabrowser.registerView("ordered-kind", "main", {
+      owner: orderedPlugin.owner,
+      render() {},
+    });
+    return import(`data:text/javascript,export default ${JSON.stringify(orderedPlugin.owner)}`);
+  }
   tocImportAttempts += 1;
   if (tocImportAttempts === 1) {
     throw new Error("simulated TOC module failure");
@@ -675,6 +689,34 @@ async function check_selected_kind_plugin_assets() {
   return { ok: true };
 }
 
+async function check_same_kind_plugins_follow_manifest_order() {
+  sandbox.MetabrowserPluginHost.configureAssets({
+    "ordered-kind": [
+      {
+        name: "order-first",
+        module: "/plugin-static/order-first/index.js",
+        scripts: [],
+        styles: [],
+      },
+      {
+        name: "order-second",
+        module: "/plugin-static/order-second/index.js",
+        scripts: [],
+        styles: [],
+      },
+    ],
+  });
+  await sandbox.metabrowser.ensureKindAssets("ordered-kind");
+  const registered = sandbox.metabrowser.getRegisteredView("ordered-kind", "main");
+  if (registered?.owner !== "second") {
+    return {
+      ok: false,
+      detail: `same-kind winner followed module timing: ${registered?.owner || "none"}`,
+    };
+  }
+  return { ok: true };
+}
+
 // ── Driver ────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -689,9 +731,10 @@ async function check_selected_kind_plugin_assets() {
   const completeText = await check_complete_text_fetch();
   const pathText = await check_path_text_fetch();
   const selectedKindAssets = await check_selected_kind_plugin_assets();
+  const sameKindOrder = await check_same_kind_plugins_follow_manifest_order();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, sameKindOrder })}\n`,
   );
 
   if (
@@ -705,7 +748,8 @@ async function check_selected_kind_plugin_assets() {
     !fileCatalog.ok ||
     !completeText.ok ||
     !pathText.ok ||
-    !selectedKindAssets.ok
+    !selectedKindAssets.ok ||
+    !sameKindOrder.ok
   ) {
     process.exit(1);
   }
