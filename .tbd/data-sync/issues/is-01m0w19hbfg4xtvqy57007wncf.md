@@ -3,9 +3,9 @@ type: is
 id: is-01m0w19hbfg4xtvqy57007wncf
 title: "Phase 4.3: Cache changed-run refinements in the shared render model"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,7 +14,11 @@ dependencies:
     target: is-01m0w19z4e4ze02hwv6m24zvqv
 parent_id: is-01m0w18bwddnc94htabvg4zke8
 created_at: 2026-08-25T08:41:20.493Z
-updated_at: 2026-08-25T08:41:34.605Z
+updated_at: 2026-08-25T09:14:53.448Z
+closed_at: 2026-08-25T09:14:53.447Z
+close_reason: Added cached per-run rows/ranges/status, idempotent hunk/file refinement, abort checks, positional fallback, and per-run failure containment in the shared model; focused render-model tests pass.
+resolution: null
+duplicate_of: null
 ---
 Files/functions:
 - Extend src/metabrowser/builtin_plugins/diff/diff-render-model.js types with ChangedRunRefinement, per-line old/new intraline ranges, and per-hunk cached split rows.

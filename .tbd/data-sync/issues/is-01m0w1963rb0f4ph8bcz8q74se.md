@@ -3,9 +3,9 @@ type: is
 id: is-01m0w1963rb0f4ph8bcz8q74se
 title: "Phase 4.2: Extract the syntax-neutral diff render model"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,7 +14,11 @@ dependencies:
     target: is-01m0w19hbfg4xtvqy57007wncf
 parent_id: is-01m0w18bwddnc94htabvg4zke8
 created_at: 2026-08-25T08:41:08.983Z
-updated_at: 2026-08-25T08:43:56.677Z
+updated_at: 2026-08-25T09:14:53.207Z
+closed_at: 2026-08-25T09:14:53.206Z
+close_reason: Extracted buildFileRenderModel/buildHunkRecords and semantic records into diff-render-model.js, reduced diff-syntax.js to language/measurement/token work, updated every internal consumer with no compatibility alias, and passed focused syntax/model tests.
+resolution: null
+duplicate_of: null
 ---
 Files/functions:
 - Add src/metabrowser/builtin_plugins/diff/diff-render-model.js.

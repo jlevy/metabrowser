@@ -3,9 +3,9 @@ type: is
 id: is-01m0w1a9mspr5zknta7jg40j3n
 title: "Phase 4.5: Settle semantic intraline colors and contrast coverage"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,7 +14,11 @@ dependencies:
     target: is-01m0w1ane5z1tkemm258pkpq60
 parent_id: is-01m0w18bwddnc94htabvg4zke8
 created_at: 2026-08-25T08:41:45.369Z
-updated_at: 2026-08-25T08:41:57.444Z
+updated_at: 2026-08-25T09:14:53.913Z
+closed_at: 2026-08-25T09:14:53.912Z
+close_reason: Added token-derived 12% ordinary, 4% refined-row, and additional 8% inner-change surfaces; all syntax foregrounds retain >=4.5:1 computed contrast across the supported light/dark palettes, markers and line numbers retain non-color meaning, and real Chrome confirms the intended hierarchy.
+resolution: null
+duplicate_of: null
 ---
 Files/functions:
 - Add semantic custom properties in src/metabrowser/builtin_plugins/diff/styles.css for ordinary add/delete rows, lighter refined replacement rows, and stronger old/new inner changed ranges.

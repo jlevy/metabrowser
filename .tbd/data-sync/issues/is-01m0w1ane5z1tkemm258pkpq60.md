@@ -3,9 +3,9 @@ type: is
 id: is-01m0w1ane5z1tkemm258pkpq60
 title: "Phase 4.6: Measure and validate intraline behavior in a real browser"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -16,7 +16,11 @@ dependencies:
     target: is-01m0w1bh84kq4t17bjwxyqv5mj
 parent_id: is-01m0w18bwddnc94htabvg4zke8
 created_at: 2026-08-25T08:41:57.444Z
-updated_at: 2026-08-25T08:42:25.923Z
+updated_at: 2026-08-25T09:27:33.221Z
+closed_at: 2026-08-25T09:27:33.221Z
+close_reason: Chrome 151 benchmarked ordinary, unequal, minified, unrelated, and 8 MiB patch-bound cases over five runs; the measured one-million-work bound caps fallback at 32.6 ms while similar maximum input refines in 20.5 ms. Live worktree validation covered unified/split JS, YAML, Markdown, unknown grammar, light/dark hierarchy, folds, persisted layout, narrow scrolling, exact text, and zero diff errors.
+resolution: null
+duplicate_of: null
 ---
 Files/functions:
 - Add or extend checked-in real-browser fixtures/explorations for JavaScript, YAML, Markdown, long lines, shifted/unequal runs, unrelated text, and the maximum accepted comparison shape.

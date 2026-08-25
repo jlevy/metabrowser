@@ -3,9 +3,9 @@ type: is
 id: is-01m0w19z4e4ze02hwv6m24zvqv
 title: "Phase 4.4: Compose syntax and intraline rendering in unified and split layouts"
 kind: task
-status: open
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -16,7 +16,11 @@ dependencies:
     target: is-01m0w1ane5z1tkemm258pkpq60
 parent_id: is-01m0w18bwddnc94htabvg4zke8
 created_at: 2026-08-25T08:41:34.605Z
-updated_at: 2026-08-25T08:41:57.444Z
+updated_at: 2026-08-25T09:14:53.677Z
+closed_at: 2026-08-25T09:14:53.676Z
+close_reason: Unified and split now compose cached syntax and intraline boundaries through exact text nodes, share refined alignment, and preserve first paint, fold/layout state, hydration, generation, abort, replacement, and disposal paths; focused DOM tests and real-app layout checks pass.
+resolution: null
+duplicate_of: null
 ---
 Files/functions:
 - Update src/metabrowser/builtin_plugins/diff/diff-view.js imports/types/state from syntax to renderModel.
