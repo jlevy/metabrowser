@@ -327,11 +327,13 @@ def test_git_commit_summary_is_one_component() -> None:
 
     assert "### Git Commit Summary" in doc
     assert "test_git_commit_summary_is_one_component" in doc
-    assert "function renderCommitSummary(detail)" in panel
+    assert "function renderCommitSummary(detail, options = {})" in panel
+    assert "function renderCommitTooltip(detail)" in panel
     assert "function renderCommitChangeStats(" in panel
-    assert '<section class="git-commit-summary"' in panel
+    assert '"git-commit-summary git-commit-summary-compact"' in panel
     assert 'class="git-commit-change-stats"' in panel
     assert "html += renderCommitSummary(detail);" in panel
+    assert "renderCommitSummary(detail, { compact: true })" in panel
     for component_part in (
         'class="git-commit-subject"',
         'class="git-commit-meta"',
@@ -341,6 +343,11 @@ def test_git_commit_summary_is_one_component() -> None:
     ):
         assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
     assert "white-space: nowrap" in _rule(styles, ".git-commit-change-stats")
+    compact = _rule(styles, ".git-commit-summary-compact")
+    compact_subject = _rule(styles, ".git-commit-summary-compact .git-commit-subject")
+    assert "max-width:" in compact
+    assert "line-clamp:" in compact_subject
+    assert "noninteractive copy glyph" in doc
 
 
 def test_one_document_surface_has_one_set_of_breakpoints() -> None:

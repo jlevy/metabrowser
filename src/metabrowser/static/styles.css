@@ -4960,6 +4960,37 @@ pre.code-block code.hljs {
   white-space: nowrap;
 }
 
+.git-commit-summary-compact {
+  max-width: min(340px, calc(100vw - 32px));
+}
+
+.git-commit-summary-compact .git-commit-subject {
+  display: -webkit-box;
+  margin: 0 0 6px;
+  overflow: hidden;
+  font-size: var(--tooltip-font-size);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.git-commit-summary-compact .git-commit-meta {
+  gap: 6px;
+  font-size: var(--tooltip-detail-font-size);
+}
+
+.git-commit-summary-compact .git-commit-revision-copy-preview {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.git-commit-summary-compact .git-commit-revision-copy-preview svg {
+  width: 100%;
+  height: 100%;
+}
+
 .git-commit-refs {
   display: flex;
   flex-wrap: wrap;

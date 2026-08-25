@@ -701,6 +701,14 @@ It uses the shared inline-change-stat colors and weight, renders a true minus si
 wraps with the metadata row rather than truncating.
 Missing totals remain visibly unknown; a bounded file list never becomes an exact count.
 
+Git history rows use `.git-commit-summary-compact` as the tooltip projection of this
+component. It retains the subject, author, short revision, age, and change stats, while
+omitting refs and the commit description.
+The subject is clamped to two lines so one message cannot take over the viewport.
+The familiar mark beside the revision is a noninteractive copy glyph, not a control:
+tooltips remain supplementary and never own actions.
+Selecting the commit exposes the real copy button in the full summary.
+
 The component owns commit identity and message only.
 The comparison, files outside the served root, and truncation notice are siblings under
 `.git-commit-view`, because they describe the rendered change rather than the commit

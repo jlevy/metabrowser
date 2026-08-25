@@ -84,6 +84,12 @@ Browser:
   copy control that writes the full commit ID. Revision, file-header, and diff-file
   copies share one delegated clipboard and feedback contract.
 
+- Git history hover and focus tooltips now reuse a compact commit-summary projection
+  with author, short revision, age, and aggregate change counts.
+  They omit the long commit description and refs, clamp the subject to two lines, and
+  keep the copy glyph noninteractive while the real copy action remains in the selected
+  commit summary.
+
 - Diff views now pair similar removed and added lines monotonically and emphasize the
   changed words or characters in both unified and split layouts.
   Similar replacements use a lighter whole-row tint with a stronger inner range, while

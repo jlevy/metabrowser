@@ -390,9 +390,17 @@ const renderedDiffContexts = [];
 const canceledDiffRevisions = [];
 const disposedDiffRevisions = [];
 const comparisonFetches = [];
+const shownTooltips = [];
+let tooltipHideCount = 0;
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
   icons: { copy: '<svg data-icon="copy"></svg>' },
+  tooltip: {
+    show: (html, anchor) => shownTooltips.push({ html, anchor }),
+    hide: () => {
+      tooltipHideCount += 1;
+    },
+  },
   ensureKindAssets: async (kind) => {
     ensuredKinds.push(kind);
     diffAssetsLoaded = true;
@@ -582,18 +590,39 @@ async function run() {
     assertContains("file row: rename arrow", renamed, "→");
   }
 
-  // ── Hover card ─────────────────────────────────────────────
+  // ── Commit-summary tooltip ─────────────────────────────────
   {
-    const text = internals.hoverText({
-      commit: commit(SHA_A, [], "the subject"),
-      body: "the body",
+    const detail = {
+      commit: commit(SHA_A, [], "the <subject>", [
+        { id: "refs/heads/main", name: "main", kind: "branch" },
+      ]),
+      body: "the long body must stay out of a bounded tooltip",
       stats: { files_changed: 3, additions: 10, deletions: 4 },
+      files: [],
+      files_truncated: false,
+    };
+    const html = internals.renderCommitTooltip(detail);
+    assertContains("tooltip: compact summary root", html, "git-commit-summary-compact");
+    assertContains("tooltip: escaped subject", html, "the &lt;subject&gt;");
+    assertContains("tooltip: author", html, "Author");
+    assertContains("tooltip: short revision", html, SHA_A.slice(0, 7));
+    assertContains("tooltip: copy identity glyph", html, 'data-icon="copy"');
+    assertContains("tooltip: file count", html, "3 changed files");
+    assertContains("tooltip: additions", html, "+10");
+    assertContains("tooltip: deletions", html, "−4");
+    assertNotContains("tooltip: omits long body", html, "long body");
+    assertNotContains("tooltip: omits refs", html, "main");
+    assertNotContains("tooltip: has no interactive copy button", html, "<button");
+    assertNotContains("tooltip: has no copy behavior", html, "data-mb-copy");
+
+    const unknown = internals.renderCommitTooltip({
+      ...detail,
+      stats: {},
+      files_truncated: true,
     });
-    assertContains("hover: subject", text, "the subject");
-    assertContains("hover: body", text, "the body");
-    assertContains("hover: file count", text, "3 file(s) changed");
-    assertContains("hover: additions", text, "+10");
-    assertContains("hover: deletions", text, "−4");
+    assertContains("tooltip: unknown file count stays unknown", unknown, "? changed files");
+    assertContains("tooltip: unknown additions stay unknown", unknown, "+?");
+    assertContains("tooltip: unknown deletions stay unknown", unknown, "−?");
   }
   internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });
   await internals.renderCommitDetail({
@@ -816,6 +845,42 @@ async function run() {
     assertEqual("rows: first row is the roving anchor", rows[0].getAttribute("tabindex"), "0");
     assertEqual("rows: other rows leave the Tab order", rows[1].getAttribute("tabindex"), "-1");
     assertEqual("rows: exposed as buttons", rows[0].getAttribute("role"), "button");
+
+    responses.set(`/api/git/commit/${SHA_A}`, {
+      is_repo: true,
+      commit: commit(SHA_A, [SHA_B], "first"),
+      body: "verbose tooltip body",
+      stats: { files_changed: 2, additions: 7, deletions: 3 },
+      files: [],
+      files_truncated: false,
+    });
+    shownTooltips.length = 0;
+    const hidesBefore = tooltipHideCount;
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual("tooltip lifecycle: hover shows one anchored summary", shownTooltips.length, 1);
+    assertTrue("tooltip lifecycle: row is the anchor", shownTooltips[0].anchor === rows[0]);
+    assertContains(
+      "tooltip lifecycle: rich summary reaches shared tooltip",
+      shownTooltips[0].html,
+      "git-commit-summary-compact",
+    );
+
+    rows[0].focus();
+    const hidesWhileFocused = tooltipHideCount;
+    rows[0]._hovered = false;
+    rows[0].dispatch("mouseleave");
+    assertEqual(
+      "tooltip lifecycle: pointer leave keeps a focused tooltip",
+      tooltipHideCount,
+      hidesWhileFocused,
+    );
+    rows[1].focus();
+    assertTrue(
+      "tooltip lifecycle: blur hides an unhovered tooltip",
+      tooltipHideCount > hidesBefore,
+    );
   }
 
   // ── Selection and stale-response handling ──────────────────

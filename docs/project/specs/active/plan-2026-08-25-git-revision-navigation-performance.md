@@ -27,6 +27,8 @@ server, transfer, client rendering, and paint costs remain separable.
 That scenario includes a large-comparison stress phase so request fanout, obsolete
 completions, and selection/render divergence fail validation instead of remaining
 console-only evidence.
+Git history rows also project the selected commit summary into a compact tooltip instead
+of repeating the complete commit description as an unstructured block.
 
 ## Goals
 
@@ -49,6 +51,9 @@ console-only evidence.
 - Fail the standard Git scenario when deferred hydration exceeds its concurrency bound,
   an obsolete file request completes after selection, or row, route, and rendered
   revision diverge
+- Reuse the commit-summary vocabulary in a bounded row tooltip with subject, author,
+  revision identity, age, and aggregate change counts, without making the tooltip an
+  interactive surface
 - Preserve route ownership, rapid-selection correctness, plugin disposal, keyboard and
   pointer behavior, and reduced-motion preferences
 
@@ -420,7 +425,29 @@ server work a single viewport can start.
   bounded maximum and cancellation, and exits nonzero when any invariant is violated.
   `make format` and `make verify` pass.
 
-### Phase 11: Deliver and Monitor (`mb-j8ni`)
+### Phase 11: Render Bounded Commit-Summary Tooltips (`mb-3j4g`)
+
+- **Files and functions:** Extend `renderCommitSummary` and `renderCommitChangeStats` in
+  `static/git-panel.js` with one compact projection for `scheduleHover` and
+  `cancelHover`. Add the modifier styles in `static/styles.css` and focused contracts in
+  `tests/dom/git-panel-behavior.js` and `tests/test_design_vocabulary.py`. Reconcile the
+  design system and changelog.
+- **Behavior and invariants:** Hovering or focusing a history row shows subject, author,
+  short revision with the familiar copy glyph, age, changed-file count, additions, and
+  deletions through the shared tooltip controller.
+  The tooltip omits the commit body and refs, clamps the subject to a small fixed line
+  count, escapes all content, preserves unknown totals, and remains supplementary and
+  noninteractive. The actual copy button remains in the selected commit summary.
+  Pointer and keyboard intent share cached detail preparation, and leaving one modality
+  does not dismiss the tooltip while the other still owns the row.
+- **Acceptance:** Focused tests fail before and pass after the compact projection and
+  hover/focus lifecycle.
+  A maintained design-system test binds the documented modifier, renderer, and styles.
+  Real-browser checks cover long messages, unknown totals, hover, focus, dismissal, both
+  themes, and unchanged row selection and revision-copy behavior.
+  `make format` and `make verify` pass.
+
+### Phase 12: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
@@ -467,11 +494,11 @@ for the complete record and caveats.
 
 The fake-DOM Git panel suite pins request sharing, ordering, stale-operation behavior,
 preview continuity, accessibility state, retained-work cancellation, exact disposal,
-commit-header ordering, and the full revision copy payload.
-Diff plugin tests verify that prepared and fetched documents follow the same validation
-and mount path and that only direct diff documents retain the toolbar summary.
-Copy delegate and static design tests pin clipboard feedback, tokenized transitions, and
-reduced-motion behavior.
+commit-header ordering, compact tooltip projection and lifecycle, and the full revision
+copy payload. Diff plugin tests verify that prepared and fetched documents follow the
+same validation and mount path and that only direct diff documents retain the toolbar
+summary. Copy delegate and static design tests pin clipboard feedback, tokenized
+transitions, and reduced-motion behavior.
 
 The CDP scenario provides end-to-end evidence on the repository itself.
 Its large-comparison phase fails on deferred-request fanout, missing cancellation,

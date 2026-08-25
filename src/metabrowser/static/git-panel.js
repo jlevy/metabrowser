@@ -20,7 +20,7 @@
   const settings = (typeof window !== "undefined" && window.METABROWSER_SETTINGS) || {};
   const LOG_LIMIT = settings.GIT_LOG_LIMIT || 250;
   const HISTORY_MAX_ROWS = settings.GIT_HISTORY_MAX_ROWS || 500;
-  const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS || 300;
+  const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS ?? 300;
   const DETAIL_CACHE_SIZE = settings.GIT_DETAIL_CACHE_SIZE || 200;
   // Mirrors the measured file-navigation grace in app.js: fast local work
   // should swap directly, while slower work gets a quiet pending state.
@@ -187,38 +187,58 @@
    * rendered change rather than the commit's identity and message.
    *
    * @param {MetabrowserGitCommitDetail} detail
+   * @param {{compact?: boolean}} [options]
    * @returns {string}
    */
-  function renderCommitSummary(detail) {
+  function renderCommitSummary(detail, options = {}) {
     const commit = detail.commit;
     const stats = detail.stats || {};
     const files = detail.files || [];
-    let html = '<section class="git-commit-summary" aria-label="Commit summary">';
+    const compact = options.compact === true;
+    const summaryClass = compact
+      ? "git-commit-summary git-commit-summary-compact"
+      : "git-commit-summary";
+    const subjectTag = compact ? "div" : "h1";
+    let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
     html += '<div class="git-commit-header">';
-    html += `<h1 class="git-commit-subject">${escapeHtml(commit.subject)}</h1>`;
+    html += `<${subjectTag} class="git-commit-subject">${escapeHtml(commit.subject)}</${subjectTag}>`;
     html += '<div class="git-commit-meta">';
     html += '<span class="git-commit-revision">';
     html += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
-    html +=
-      '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
-      ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
-      ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
-      ` aria-label="Copy revision">${copyIcon()}</button>`;
+    if (compact) {
+      html +=
+        '<span class="git-commit-revision-copy-preview" aria-hidden="true">' +
+        `${copyIcon()}</span>`;
+    } else {
+      html +=
+        '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
+        ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
+        ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
+        ` aria-label="Copy revision">${copyIcon()}</button>`;
+    }
     html += "</span>";
     html += `<span>${escapeHtml(commit.author?.name || "")}</span>`;
     html += `<span class="${escapeHtml(ageClass(commit.committed_at))}">`;
     html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
     html += renderCommitChangeStats(stats, files.length, detail.files_truncated);
     html += "</div>";
-    if (commit.refs?.length) {
+    if (!compact && commit.refs?.length) {
       html += `<div class="git-commit-refs">${renderRefBadges(commit.refs)}</div>`;
     }
     html += "</div>";
-    if (detail.body) {
+    if (!compact && detail.body) {
       html += `<pre class="git-commit-body">${escapeHtml(detail.body)}</pre>`;
     }
     html += "</section>";
     return html;
+  }
+
+  /**
+   * @param {MetabrowserGitCommitDetail} detail
+   * @returns {string}
+   */
+  function renderCommitTooltip(detail) {
+    return renderCommitSummary(detail, { compact: true });
   }
 
   /**
@@ -796,15 +816,23 @@
       handleCommitRowKeydown(event, element, commit.id),
     );
     element.addEventListener("mouseenter", () => scheduleHover(element, commit.id));
-    element.addEventListener("mouseleave", () => cancelHover(commit.id));
+    element.addEventListener("mouseleave", () => {
+      if (document.activeElement !== element) {
+        cancelHover(commit.id);
+      }
+    });
     element.addEventListener("focus", () => {
       const list = element.parentElement;
       if (list instanceof HTMLElement) {
         setCommitRowAnchor(list, element);
       }
-      prepareRevision(commit.id, true);
+      scheduleHover(element, commit.id);
     });
-    element.addEventListener("blur", () => cancelSpeculativePreparation(commit.id));
+    element.addEventListener("blur", () => {
+      if (!element.matches(":hover")) {
+        cancelHover(commit.id);
+      }
+    });
     return element;
   }
 
@@ -837,22 +865,27 @@
    * @param {string} revision
    */
   function scheduleHover(rowElement, revision) {
-    cancelHover();
+    if (hoverRevision !== revision) {
+      cancelHover();
+    } else if (hoverTimer !== null) {
+      clearTimeout(hoverTimer);
+    }
     hoverRevision = revision;
     const preparation = prepareRevision(revision, true);
-    // Debounced because the hover is backed by a real request: dragging
-    // the pointer down the graph must not show one card per row. Data
-    // preparation begins on intent; only the native tooltip waits.
+    // Detail preparation begins on intent, while presentation waits for a
+    // stable target so dragging down the graph does not flash one card per row.
     hoverTimer = setTimeout(async () => {
+      hoverTimer = null;
       const detail = await (preparation?.detail ?? fetchCommitDetail(revision));
       if (!detail) {
         return;
       }
-      // The pointer may have left during the request.
-      if (!rowElement.matches(":hover")) {
+      // Either pointer or keyboard focus can own the same tooltip while data
+      // loads. The other modality may have left without ending that ownership.
+      if (!rowElement.matches(":hover") && document.activeElement !== rowElement) {
         return;
       }
-      rowElement.dataset.tipText = hoverText(detail);
+      sdk()?.tooltip?.show(renderCommitTooltip(detail), rowElement);
     }, HOVER_DEBOUNCE_MS);
   }
 
@@ -865,34 +898,9 @@
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
+    sdk()?.tooltip?.hide();
     cancelSpeculativePreparation(revision);
     hoverRevision = null;
-  }
-
-  /**
-   * The hover card body: full message plus this commit's line counts.
-   *
-   * A native title attribute rather than a custom popover — it needs no
-   * positioning logic, no dismissal handling, and no z-index against the
-   * resize handle, and the content is plain text.
-   *
-   * @param {MetabrowserGitCommitDetail} detail
-   * @returns {string}
-   */
-  function hoverText(detail) {
-    const commit = detail.commit;
-    const stats = detail.stats || {};
-    const parts = [commit.subject];
-    if (detail.body) {
-      parts.push("", detail.body);
-    }
-    parts.push("");
-    parts.push(`${commit.author?.name || ""} · ${commit.short_id}`);
-    parts.push(
-      `${stats.files_changed || 0} file(s) changed, ` +
-        `+${stats.additions || 0} −${stats.deletions || 0}`,
-    );
-    return parts.join("\n");
   }
 
   // ── Commit detail view ─────────────────────────────────────
@@ -1358,10 +1366,10 @@
     _internals: {
       appendPage,
       emptyState,
-      hoverText,
       ageClass,
       relativeAge,
       renderCommitSummary,
+      renderCommitTooltip,
       renderCommitDetail,
       renderFileRow,
       renderPanel,
