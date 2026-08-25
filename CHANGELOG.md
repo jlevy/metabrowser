@@ -15,12 +15,23 @@ Inventory engine:
   The current Python implementation remains the only shipped provider and preserves the
   existing routes and browser wire; its module is named `python_inventory.py` to make
   ownership explicit before the fdu provider is added.
+  Its public handle now exposes only the five provider operations; retained indexes,
+  walking, watching, and projection helpers live behind that façade.
+  Lifecycle state now distinguishes an open idle `ready` handle from one with a live
+  filesystem observer.
+
+- The shared provider conformance registry now covers coherent checkpoints, version
+  pins, lossless paging, change resume and gap resets, verified refresh, lifecycle and
+  session stability, and joined close against every registered backend.
+  Rollup and navigation projections carry their named typed payloads instead of generic
+  object mappings.
 
 - Complete tree responses and initial browser snapshots now follow every bounded page at
   one engine version and sparse-overlay boundary.
   A connection is attached only after that snapshot, and changes already represented by
   it are suppressed, so a reconnect cannot apply an older ring-buffer delta after newer
-  state.
+  state. Page work is independently bounded from the much larger discovery file budget,
+  and a bundled provider read has its own aggregate query bound.
 
 - The inventory scope now applies its exact hidden-name allowlist to both walking and
   watching, distinguishes the regular-file budget from query row bounds, validates
@@ -28,6 +39,8 @@ Inventory engine:
   stale watcher gap instead of silently continuing.
   A required aggregate-repair failure likewise marks discovery failed instead of
   advertising incomplete rollups as done.
+  Inert cache, traversal, symlink-following, and filesystem-boundary configuration
+  fields are removed; fixed traversal and symlink semantics remain part of the contract.
 
 - Root-summary polling now reuses the Python provider’s last coherent navigation read
   while discovery advances.

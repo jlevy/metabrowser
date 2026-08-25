@@ -407,6 +407,7 @@ async def build_tree_envelope(
                 ReadRequest(queries=(DiagnosticsQuery(query_id="walk-status"),))
             )
             if diagnostic.result.state.phase in {
+                LifecyclePhase.READY,
                 LifecyclePhase.WATCHING,
                 LifecyclePhase.FAILED,
                 LifecyclePhase.STOPPED,

@@ -1,4 +1,4 @@
-"""PythonInventoryHandle.rollup: subtree aggregation for the treemap.
+"""PythonInventoryStore.rollup: subtree aggregation for the treemap.
 
 Deterministic fixture trees exercise: full-subtree totals with the
 gitignore-excluded variants, extension tallies with the remainder row,
@@ -24,17 +24,17 @@ from watchfiles import Change
 from metabrowser.events import FsEntry
 from metabrowser.inventory_engine.contract import DiagnosticsQuery, ReadRequest
 from metabrowser.inventory_engine.providers.python_inventory import (
-    PythonInventoryHandle,
+    _PythonInventoryStore as PythonInventoryStore,
 )
 from metabrowser.watch_backends import _emit_for_path
 from metabrowser.wire_models import RollupDirNode, RollupResult, validate_rollup_node
 
 
-def _build_index(root: Path, *, gitignore: str | None = None) -> PythonInventoryHandle:
+def _build_index(root: Path, *, gitignore: str | None = None) -> PythonInventoryStore:
     if gitignore is not None:
         (root / ".gitignore").write_text(gitignore)
         (root / ".git").mkdir()
-    index = PythonInventoryHandle()
+    index = PythonInventoryStore()
 
     async def run() -> None:
         index.start(root)
@@ -181,7 +181,7 @@ def test_rollup_reflects_real_fs_mutation_through_fs_change(tmp_path: Path) -> N
     (tmp_path / "src" / "a.py").write_text("x" * 100)
 
     async def run() -> tuple[RollupResult, set[str], RollupResult, RollupResult]:
-        index = PythonInventoryHandle()
+        index = PythonInventoryStore()
         index.start(tmp_path)
         await index.wait_until_done(10)
 
@@ -265,7 +265,7 @@ def test_rollup_global_node_budget_on_adversarial_branching() -> None:
 
     from metabrowser.settings import ROLLUP_MAX_NODES
 
-    index = PythonInventoryHandle()
+    index = PythonInventoryStore()
     entries = SyntheticIndexWriter(index)  # synthetic index setup, test-only
     mtime_ns = 1_700_000_000_000_000_000
 
@@ -330,7 +330,7 @@ def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:
     the measured value prints for the budget record.
     """
 
-    index = PythonInventoryHandle()
+    index = PythonInventoryStore()
     entries = SyntheticIndexWriter(index)  # synthetic index setup, test-only
     root_placeholder = FsEntry.for_observed_dir(path="", parent="", name="root")
     dir_count = 200
@@ -371,7 +371,7 @@ def test_rollup_budget_on_synthetic_large_index(tmp_path: Path) -> None:
     assert elapsed_ms < 1_000, f"rollup took {elapsed_ms:.1f}ms on {total} synthetic entries"
 
 
-def _assert_derived_state_matches_entries(index: PythonInventoryHandle) -> None:
+def _assert_derived_state_matches_entries(index: PythonInventoryStore) -> None:
     """The index keeps derived structures beside ``_entries``; they must agree.
 
     ``_children_index`` and ``_subtree_aggregates`` are maintained on every
@@ -392,14 +392,14 @@ def _assert_derived_state_matches_entries(index: PythonInventoryHandle) -> None:
     # Every cached aggregate must equal what a cold rollup would compute.
     for path in list(index._subtree_aggregates):
         cached = index.rollup(path, depth=0, top=0, ext_top=0)
-        cold = PythonInventoryHandle()
+        cold = PythonInventoryStore()
         for entry in index._entries.values():
             cold._replace_index_entry(entry)
         fresh = cold.rollup(path, depth=0, top=0, ext_top=0)
         assert cached == fresh, f"stale aggregate cached for {path!r}"
 
 
-def _total_files(index: PythonInventoryHandle, path: str) -> int:
+def _total_files(index: PythonInventoryStore, path: str) -> int:
     result = index.rollup(path, depth=0, top=0, ext_top=0)
     assert result is not None, f"no rollup for {path!r}"
     return result["node"]["total_files"]
@@ -565,7 +565,7 @@ def test_aggregate_computed_against_moved_data_is_never_published(
     # same entries produce with no cache at all.
     settled = index.rollup("", depth=2, top=40, ext_top=12)
     assert settled is not None
-    cold = PythonInventoryHandle()
+    cold = PythonInventoryStore()
     for entry in index._entries.values():
         cold._replace_index_entry(entry)
     expected = cold.rollup("", depth=2, top=40, ext_top=12)

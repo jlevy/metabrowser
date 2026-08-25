@@ -47,17 +47,24 @@ from metabrowser.inventory_engine.contract import (
     VersionUnavailableError,
 )
 from metabrowser.inventory_engine.providers import python_inventory as python_provider
-from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
+from metabrowser.inventory_engine.providers.python_inventory import (
+    PythonInventoryBackend,
+    PythonInventoryHandle,
+)
 
 
 async def _open_settled(
     root: Path,
     config: InventoryConfig | None = None,
-) -> InventoryHandle:
+) -> PythonInventoryHandle:
     handle = await PythonInventoryBackend().open(root, config or InventoryConfig())
     for _attempt in range(200):
         result = await handle.read(ReadRequest(queries=(DiagnosticsQuery(query_id="state"),)))
-        if result.state.phase.value in {"watching", "failed"}:
+        if result.state.phase in {
+            LifecyclePhase.READY,
+            LifecyclePhase.WATCHING,
+            LifecyclePhase.FAILED,
+        }:
             return handle
         await asyncio.sleep(0.005)
     raise AssertionError("Python provider did not settle")
@@ -422,7 +429,7 @@ def test_priority_hint_returns_before_reference_refresh_finishes(
             started.set()
             await release.wait()
 
-        monkeypatch.setattr(handle, "_refresh_path", blocked_refresh)
+        monkeypatch.setattr(handle._store, "_refresh_path", blocked_refresh)
         try:
             await asyncio.wait_for(
                 handle.prioritize(PriorityRequest(paths=("later",), max_depth=1)),
@@ -583,7 +590,7 @@ def test_python_provider_surfaces_watcher_gap(
 
     monkeypatch.setattr(watch_backends, "awatch", failing_watch)
 
-    async def run() -> tuple[bool, str | None, str, tuple[IssueCode, ...], str]:
+    async def run() -> tuple[LifecyclePhase, bool, str | None, str, tuple[IssueCode, ...], str]:
         handle = await _open_settled(
             tmp_path,
             InventoryConfig(watch_mode="native"),
@@ -602,6 +609,7 @@ def test_python_provider_surfaces_watcher_gap(
                         else None
                     )
                     return (
+                        result.state.phase,
                         result.state.coverage.complete,
                         reason,
                         result.state.freshness.value,
@@ -613,7 +621,8 @@ def test_python_provider_surfaces_watcher_gap(
         finally:
             await handle.close()
 
-    complete, reason, freshness, issue_codes, watch_state = asyncio.run(run())
+    phase, complete, reason, freshness, issue_codes, watch_state = asyncio.run(run())
+    assert phase is LifecyclePhase.READY
     assert complete is True
     assert reason is None
     assert freshness == "stale"

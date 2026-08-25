@@ -107,11 +107,14 @@ class InventoryOverlay:
         self._decorations: dict[str, InventoryDecoration] = {}
 
     def snapshot(self, paths: Iterable[str] = ()) -> OverlaySnapshot:
-        """Return decorations for only *paths* at one overlay revision."""
+        """Return decorations for provider-validated *paths* at one revision.
+
+        Canonical-path validation belongs on overlay writes. Read paths have already
+        crossed the provider contract, and repeating the same parse on every returned
+        row would make a sparse join linear in validation work rather than lookups.
+        """
 
         requested = tuple(dict.fromkeys(paths))
-        for path in requested:
-            require_canonical_inventory_path(path, "overlay path", allow_root=True)
         with self._lock:
             selected = {
                 path: decoration

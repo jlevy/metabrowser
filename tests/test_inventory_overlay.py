@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import pytest
 
+import metabrowser.inventory_engine.overlay as overlay_module
 from metabrowser.inventory_engine.overlay import (
     EMPTY_DECORATION,
     InventoryDecoration,
@@ -54,6 +55,26 @@ def test_overlay_rejects_noncanonical_paths(path: str) -> None:
     overlay = InventoryOverlay()
     with pytest.raises(ValueError, match="canonical"):
         overlay.replace(path, InventoryDecoration(active=True))
+
+
+def test_overlay_validates_writes_but_snapshot_is_only_a_sparse_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    overlay = InventoryOverlay()
+    decoration = InventoryDecoration(active=True)
+    overlay.replace("known.txt", decoration)
+
+    def unexpected_validation(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("provider-returned read paths must not be revalidated")
+
+    monkeypatch.setattr(
+        overlay_module,
+        "require_canonical_inventory_path",
+        unexpected_validation,
+    )
+    assert overlay.snapshot(("known.txt",)).decorations == {"known.txt": decoration}
+    with pytest.raises(AssertionError, match="must not be revalidated"):
+        overlay.replace("later.txt", decoration)
 
 
 def test_decoration_requires_deterministic_unique_views_and_labels() -> None:

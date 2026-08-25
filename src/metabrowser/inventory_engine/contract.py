@@ -17,9 +17,11 @@ from pathlib import Path, PurePosixPath
 from typing import Literal, Protocol, runtime_checkable
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
+from metabrowser.wire_models import NavigationTallies, RollupResult
 
 MAX_CHANGE_PATHS = 1_024
 MAX_COMMAND_PATHS = 1_024
+MAX_QUERIES_PER_READ = 1_024
 
 
 def _require_nonempty(value: str, name: str) -> None:
@@ -68,29 +70,17 @@ class InventoryConfig:
     max_files: int = 500_000
     max_depth: int = 20
     hidden_allowlist: tuple[str, ...] = (LOGS_DIR, STATE_DIR)
-    follow_symlinks: bool = False
-    stay_on_filesystem: bool = False
     registry_fingerprint: str = "builtin"
-    traversal: Literal["breadth_first"] = "breadth_first"
     change_queue_size: int = 1_024
     watch_mode: Literal["auto", "native", "poll", "off"] = "auto"
-    cache_mode: Literal["off", "read", "read_write"] = "off"
 
     def __post_init__(self) -> None:
         _require_positive(self.max_files, "max_files")
         _require_positive(self.max_depth, "max_depth")
         _require_positive(self.change_queue_size, "change_queue_size")
         _require_nonempty(self.registry_fingerprint, "registry_fingerprint")
-        if self.follow_symlinks:
-            raise ValueError("the Metabrowser inventory scope does not follow symlinks")
-        if self.stay_on_filesystem:
-            raise ValueError("the Metabrowser inventory scope cannot stay on one filesystem yet")
-        if self.traversal != "breadth_first":
-            raise ValueError("the Metabrowser inventory scope requires breadth-first traversal")
         if self.watch_mode not in {"auto", "native", "poll", "off"}:
             raise ValueError("watch_mode must be auto, native, poll, or off")
-        if self.cache_mode not in {"off", "read", "read_write"}:
-            raise ValueError("cache_mode must be off, read, or read_write")
         if len(set(self.hidden_allowlist)) != len(self.hidden_allowlist):
             raise ValueError("hidden_allowlist entries must be unique")
         if any(
@@ -113,7 +103,6 @@ def inventory_scope_fingerprint(config: InventoryConfig) -> str:
     """
 
     components = (
-        ("follow_symlinks", "true" if config.follow_symlinks else "false"),
         (
             "hidden_allowlist",
             json.dumps(
@@ -124,8 +113,6 @@ def inventory_scope_fingerprint(config: InventoryConfig) -> str:
         ),
         ("max_depth", str(config.max_depth)),
         ("max_files", str(config.max_files)),
-        ("stay_on_filesystem", "true" if config.stay_on_filesystem else "false"),
-        ("traversal", config.traversal),
     )
     payload = json.dumps(sorted(components), ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -151,6 +138,12 @@ class EngineVersion:
         _require_nonempty(self.scope_fingerprint, "scope_fingerprint")
         _require_nonempty(self.semantic_fingerprint, "semantic_fingerprint")
 
+    @property
+    def cursor(self) -> ChangeCursor:
+        """The change-stream position at this observation boundary."""
+
+        return ChangeCursor.from_version(self)
+
 
 @dataclass(frozen=True, slots=True)
 class ChangeCursor:
@@ -163,11 +156,18 @@ class ChangeCursor:
         _require_nonempty(self.session, "session")
         _require_nonnegative(self.sequence, "sequence")
 
+    @classmethod
+    def from_version(cls, version: EngineVersion) -> ChangeCursor:
+        """Derive the only valid cursor for *version*."""
+
+        return cls(session=version.session, sequence=version.sequence)
+
 
 class LifecyclePhase(StrEnum):
     OPENING_CACHE = "opening_cache"
     DISCOVERING = "discovering"
     RECONCILING = "reconciling"
+    READY = "ready"
     WATCHING = "watching"
     STOPPED = "stopped"
     FAILED = "failed"
@@ -178,6 +178,7 @@ ALLOWED_PHASE_TRANSITIONS: Mapping[LifecyclePhase, frozenset[LifecyclePhase]] = 
         {
             LifecyclePhase.DISCOVERING,
             LifecyclePhase.RECONCILING,
+            LifecyclePhase.READY,
             LifecyclePhase.STOPPED,
             LifecyclePhase.FAILED,
         }
@@ -185,6 +186,7 @@ ALLOWED_PHASE_TRANSITIONS: Mapping[LifecyclePhase, frozenset[LifecyclePhase]] = 
     LifecyclePhase.DISCOVERING: frozenset(
         {
             LifecyclePhase.RECONCILING,
+            LifecyclePhase.READY,
             LifecyclePhase.WATCHING,
             LifecyclePhase.STOPPED,
             LifecyclePhase.FAILED,
@@ -192,6 +194,7 @@ ALLOWED_PHASE_TRANSITIONS: Mapping[LifecyclePhase, frozenset[LifecyclePhase]] = 
     ),
     LifecyclePhase.RECONCILING: frozenset(
         {
+            LifecyclePhase.READY,
             LifecyclePhase.WATCHING,
             LifecyclePhase.STOPPED,
             LifecyclePhase.FAILED,
@@ -200,6 +203,15 @@ ALLOWED_PHASE_TRANSITIONS: Mapping[LifecyclePhase, frozenset[LifecyclePhase]] = 
     LifecyclePhase.WATCHING: frozenset(
         {
             LifecyclePhase.RECONCILING,
+            LifecyclePhase.READY,
+            LifecyclePhase.STOPPED,
+            LifecyclePhase.FAILED,
+        }
+    ),
+    LifecyclePhase.READY: frozenset(
+        {
+            LifecyclePhase.RECONCILING,
+            LifecyclePhase.WATCHING,
             LifecyclePhase.STOPPED,
             LifecyclePhase.FAILED,
         }
@@ -663,6 +675,8 @@ class ReadRequest:
     at_version: EngineVersion | None = None
 
     def __post_init__(self) -> None:
+        if len(self.queries) > MAX_QUERIES_PER_READ:
+            raise ValueError(f"a read request accepts at most {MAX_QUERIES_PER_READ} queries")
         query_ids = [query.query_id for query in self.queries]
         if len(query_ids) != len(set(query_ids)):
             raise ValueError("query_id values must be unique within a read request")
@@ -731,7 +745,7 @@ class FilteredTreeProjection:
 @dataclass(frozen=True, slots=True)
 class RollupProjection:
     query_id: str
-    payload: Mapping[str, object] | None
+    payload: RollupResult | None
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
@@ -740,7 +754,7 @@ class RollupProjection:
 @dataclass(frozen=True, slots=True)
 class NavigationProjection:
     query_id: str
-    payload: Mapping[str, object]
+    payload: NavigationTallies
     valid_until_ns: int | None = None
 
     def __post_init__(self) -> None:
@@ -754,7 +768,6 @@ class RecentProjection:
     query_id: str
     entries: tuple[InventoryEntry, ...]
     total_matches: int
-    truncated: bool
     gitignored_directories: tuple[str, ...] = ()
     valid_until_ns: int | None = None
 
@@ -763,14 +776,18 @@ class RecentProjection:
         _require_nonnegative(self.total_matches, "total_matches")
         if self.total_matches < len(self.entries):
             raise ValueError("total_matches cannot be smaller than returned entries")
-        if self.truncated != (self.total_matches > len(self.entries)):
-            raise ValueError("truncated must report whether matching rows were omitted")
         if len(self.gitignored_directories) != len(set(self.gitignored_directories)):
             raise ValueError("gitignored_directories entries must be unique")
         for path in self.gitignored_directories:
             require_canonical_inventory_path(path, "gitignored directory", allow_root=False)
         if self.valid_until_ns is not None:
             _require_positive(self.valid_until_ns, "valid_until_ns")
+
+    @property
+    def truncated(self) -> bool:
+        """Whether the query bound omitted matching rows."""
+
+        return self.total_matches > len(self.entries)
 
 
 @dataclass(frozen=True, slots=True)
@@ -990,10 +1007,6 @@ class InventoryClosedError(InventoryContractError):
 
 class VersionUnavailableError(InventoryContractError):
     """The requested coherent version is no longer retained."""
-
-
-class CursorUnavailableError(InventoryContractError):
-    """The requested change cursor has fallen outside retained history."""
 
 
 @runtime_checkable

@@ -1,6 +1,6 @@
 """Unit tests for the Python inventory provider.
 
-Covers the walker correctness invariants and the public PythonInventoryHandle
+Covers the walker correctness invariants and the private PythonInventoryStore
 surface:
 
 * Walker yields every file/dir in the tree exactly once (files
@@ -12,9 +12,9 @@ surface:
   finalized form *after* every descendant.
 * Safety caps: ``max_files`` truncates correctly; the walker
   still finalizes the partial subtree it did walk.
-* PythonInventoryHandle.start is idempotent.
-* PythonInventoryHandle.entries(scope='root-depth-2') filters by depth.
-* PythonInventoryHandle.invalidate bumps generation along the ancestor
+* PythonInventoryStore.start is idempotent.
+* PythonInventoryStore.entries(scope='root-depth-2') filters by depth.
+* PythonInventoryStore.invalidate bumps generation along the ancestor
   chain.
 * ``_apply_walker_entry`` accepts fresh observations (entries with
   ``write_token=None``) and stamps them with cur_gen on write;
@@ -56,7 +56,9 @@ from metabrowser.inventory_engine.contract import (
     ReadRequest,
 )
 from metabrowser.inventory_engine.providers.python_inventory import (
-    PythonInventoryHandle,
+    _PythonInventoryStore as PythonInventoryStore,
+)
+from metabrowser.inventory_engine.providers.python_inventory import (
     walk_tree,
 )
 from metabrowser.walker import depth_of as _depth_of
@@ -76,7 +78,7 @@ class _ScanTrackingEntries(dict[str, FsEntry]):
         return super().keys()
 
 
-def _apply_entries(inv: PythonInventoryHandle, entries: list[FsEntry]) -> int:
+def _apply_entries(inv: PythonInventoryStore, entries: list[FsEntry]) -> int:
     """Drive the provider's retained-state path without a second public writer API."""
 
     stored = [
@@ -87,13 +89,13 @@ def _apply_entries(inv: PythonInventoryHandle, entries: list[FsEntry]) -> int:
     return len(stored)
 
 
-async def _checkpoint(inv: PythonInventoryHandle) -> ChangeCursor:
+async def _checkpoint(inv: PythonInventoryStore) -> ChangeCursor:
     result = await inv.read(ReadRequest(queries=(DiagnosticsQuery(query_id="test-checkpoint"),)))
     return result.cursor
 
 
 async def _changes_since(
-    inv: PythonInventoryHandle,
+    inv: PythonInventoryStore,
     after: ChangeCursor,
 ) -> list[ChangeBatch]:
     """Replay every provider invalidation through the current boundary."""
@@ -403,10 +405,10 @@ def test_visibility_helpers_share_one_canonical_filter() -> None:
 # Python inventory handle
 
 
-async def _drive_inventory(tmp_path: Path) -> PythonInventoryHandle:
-    """Spin up a PythonInventoryHandle against *tmp_path* and wait for
+async def _drive_inventory(tmp_path: Path) -> PythonInventoryStore:
+    """Spin up a PythonInventoryStore against *tmp_path* and wait for
     completion. Returns the index for assertions."""
-    inv = PythonInventoryHandle()
+    inv = PythonInventoryStore()
     inv.start(tmp_path)
     await inv.wait_until_done(timeout=5.0)
     return inv
@@ -416,7 +418,7 @@ def test_inventory_start_is_idempotent(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> tuple[bool, str]:
-        inv = PythonInventoryHandle()
+        inv = PythonInventoryStore()
         task1 = inv.start(tmp_path)
         task2 = inv.start(tmp_path)
         await inv.wait_until_done(timeout=5.0)
@@ -455,7 +457,7 @@ def test_inventory_files_indexed_counter(tmp_path: Path) -> None:
 
 
 def test_inventory_direct_child_index_tracks_stores_and_removals() -> None:
-    inv = PythonInventoryHandle()
+    inv = PythonInventoryStore()
     directory = FsEntry(
         path="runs",
         parent="",
@@ -492,7 +494,7 @@ def test_inventory_direct_child_index_tracks_stores_and_removals() -> None:
 
 
 def test_live_empty_state_tracks_subtree_leaves_separately_from_file_totals() -> None:
-    inv = PythonInventoryHandle()
+    inv = PythonInventoryStore()
     root = FsEntry(
         path="",
         parent="",
@@ -663,7 +665,7 @@ def test_live_change_during_boot_invalidates_stale_directory_finalization(
     monkeypatch.setattr(inventory_module, "walk_tree", _walk)
 
     async def _run() -> tuple[int | None, int | None]:
-        inv = PythonInventoryHandle()
+        inv = PythonInventoryStore()
         inv.start(tmp_path)
         await walker_paused.wait()
         inv.invalidate("live.txt")
@@ -748,7 +750,7 @@ def test_inventory_apply_walker_entry_drops_stale_writes() -> None:
     observation and the counter bumped before the write landed."""
 
     async def _run() -> bool:
-        inv = PythonInventoryHandle()
+        inv = PythonInventoryStore()
         inv._generation["sub/x"] = 5
         stale = FsEntry(
             path="sub/x",
@@ -786,7 +788,7 @@ def test_inventory_stale_walker_write_is_debug_diagnostic() -> None:
     logger.addHandler(handler)
     try:
         logger.setLevel(logging.DEBUG)
-        inv = PythonInventoryHandle()
+        inv = PythonInventoryStore()
         inv._generation["sub/x"] = 5
         inv._apply_walker_entry(
             FsEntry(
@@ -824,7 +826,7 @@ def test_inventory_apply_walker_entry_accepts_fresh_observation_after_invalidate
     stale after any invalidate (7,659 dropped writes / 0 live updates
     in the field repro)."""
 
-    inv = PythonInventoryHandle()
+    inv = PythonInventoryStore()
     # Simulate a prior invalidate on this path (e.g. caused by an
     # inventory.remove() earlier in the session).
     inv._generation["sub/x"] = 3
@@ -856,7 +858,7 @@ def test_inventory_apply_walker_entry_accepts_caller_stamped_current_gen() -> No
     This is the path that ``_repair_pending_dir_aggregates`` uses
     to restamp finalized dir aggregates."""
 
-    inv = PythonInventoryHandle()
+    inv = PythonInventoryStore()
     inv._generation["sub/x"] = 4
     stamped = FsEntry(
         path="sub/x",
@@ -926,8 +928,8 @@ def test_inventory_repair_pending_dir_aggregates_after_stale_finalize() -> None:
     so ``status=done`` never leaves the tree showing pending
     tallies."""
 
-    async def _run() -> tuple[PythonInventoryHandle, tuple[str, ...]]:
-        inv = PythonInventoryHandle()
+    async def _run() -> tuple[PythonInventoryStore, tuple[str, ...]]:
+        inv = PythonInventoryStore()
         inv._generation["runs"] = 1
         root = FsEntry.for_observed_dir(path="", parent="", name="root")
         runs = FsEntry.for_observed_dir(path="runs", parent="", name="runs")
@@ -973,7 +975,7 @@ def test_inventory_repair_pending_dir_aggregates_after_stale_finalize() -> None:
 
 
 def test_inventory_pending_repair_does_not_scan_all_entries_on_event_loop() -> None:
-    inv = PythonInventoryHandle()
+    inv = PythonInventoryStore()
     root = FsEntry.for_observed_dir(path="", parent="", name="root")
     child = FsEntry(
         path="event.jsonl",
@@ -1011,7 +1013,7 @@ def test_inventory_pending_repair_failure_surfaces_failed_status(tmp_path: Path)
     _build_tree(tmp_path)
 
     async def _run() -> str:
-        inv = PythonInventoryHandle()
+        inv = PythonInventoryStore()
 
         def _fail_repair() -> None:
             raise RuntimeError("repair failed")
@@ -1034,7 +1036,7 @@ def test_inventory_walker_crash_surfaces_failed_status(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> str:
-        inv = PythonInventoryHandle()
+        inv = PythonInventoryStore()
 
         # Force the walker coroutine to raise after the inventory has
         # been started by monkey-patching the internal apply call.
@@ -1058,7 +1060,7 @@ def test_inventory_change_stream_replays_walker_dirty_paths(tmp_path: Path) -> N
     _build_tree(tmp_path)
 
     async def _run() -> set[str]:
-        inv = PythonInventoryHandle()
+        inv = PythonInventoryStore()
         cursor = await _checkpoint(inv)
         stream = inv.changes(after=cursor)
         first = asyncio.ensure_future(anext(stream))
@@ -1080,7 +1082,7 @@ def test_inventory_change_stream_replays_walker_dirty_paths(tmp_path: Path) -> N
 
 def test_inventory_slow_change_consumer_gets_bounded_reset() -> None:
     async def _run() -> ChangeBatch:
-        inv = PythonInventoryHandle(config=InventoryConfig(change_queue_size=1))
+        inv = PythonInventoryStore(config=InventoryConfig(change_queue_size=1))
         cursor = await _checkpoint(inv)
         stream = inv.changes(after=cursor)
         first = asyncio.ensure_future(anext(stream))
@@ -1106,7 +1108,7 @@ def test_inventory_clear_records_provider_reset(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> ChangeBatch:
-        inv = PythonInventoryHandle()
+        inv = PythonInventoryStore()
         inv.start(tmp_path)
         await inv.wait_until_done(timeout=5.0)
         cursor = await _checkpoint(inv)
@@ -1114,6 +1116,33 @@ def test_inventory_clear_records_provider_reset(tmp_path: Path) -> None:
         return (await _changes_since(inv, cursor))[-1]
 
     assert asyncio.run(_run()).reset
+
+
+def test_concurrent_close_callers_join_the_same_shutdown() -> None:
+    async def _run() -> None:
+        inventory = PythonInventoryStore()
+        cancellation_seen = asyncio.Event()
+        release = asyncio.Event()
+
+        async def stubborn_walker() -> None:
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancellation_seen.set()
+                await release.wait()
+
+        inventory._walker_task = asyncio.create_task(stubborn_walker())
+        first = asyncio.create_task(inventory.close())
+        await asyncio.wait_for(cancellation_seen.wait(), timeout=1)
+        second = asyncio.create_task(inventory.close())
+        await asyncio.sleep(0)
+        assert not first.done()
+        assert not second.done()
+
+        release.set()
+        await asyncio.gather(first, second)
+
+    asyncio.run(_run())
 
 
 # ── rewalk_subtree ────────────────────────────────────────────
@@ -1223,7 +1252,7 @@ def test_remove_drops_path_and_invalidates_it(tmp_path: Path) -> None:
 
 
 def test_remove_known_file_does_not_scan_large_inventory() -> None:
-    inv = PythonInventoryHandle()
+    inv = PythonInventoryStore()
     target = FsEntry(
         path="target.txt",
         parent="",

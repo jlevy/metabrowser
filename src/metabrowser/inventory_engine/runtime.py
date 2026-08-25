@@ -40,17 +40,10 @@ def default_inventory_config() -> InventoryConfig:
     )
 
 
-def inventory_provider_from_environment() -> InventoryProvider:
-    """Resolve the sealed provider selection used by the composition root."""
+def inventory_provider_from_environment() -> str:
+    """Return the configured provider spelling for the sealed factory."""
 
-    raw = os.environ.get("METABROWSER_INVENTORY_PROVIDER", InventoryProvider.PYTHON.value)
-    try:
-        return InventoryProvider(raw.strip().lower())
-    except ValueError as error:
-        supported = ", ".join(provider.value for provider in InventoryProvider)
-        raise RuntimeError(
-            f"unknown inventory provider {raw!r}; supported providers: {supported}"
-        ) from error
+    return os.environ.get("METABROWSER_INVENTORY_PROVIDER", InventoryProvider.PYTHON.value)
 
 
 class InventoryRuntime:
@@ -63,11 +56,9 @@ class InventoryRuntime:
         config: InventoryConfig | None = None,
         backend: InventoryBackend | None = None,
     ) -> None:
-        selected = InventoryProvider(provider)
-        self.provider = selected
         self.config = config if config is not None else default_inventory_config()
         self.coordinator = InventoryCoordinator(
-            backend=backend if backend is not None else create_inventory_backend(selected),
+            backend=backend if backend is not None else create_inventory_backend(provider),
             config=self.config,
         )
         self._root: Path | None = None

@@ -45,6 +45,7 @@ from metabrowser.inventory_engine.contract import (
 )
 from metabrowser.inventory_engine.coordinator import (
     HostCursor,
+    InventoryConsistencyError,
     InventoryCoordinator,
 )
 from metabrowser.inventory_engine.factory import (
@@ -79,6 +80,7 @@ class _FakeHandle:
         self.refreshes: list[RefreshRequest] = []
         self.priorities: list[PriorityRequest] = []
         self.read_gate: asyncio.Event | None = None
+        self.read_error: Exception | None = None
         self.read_started = asyncio.Event()
         self.concurrent_reads_started = asyncio.Event()
         self.active_reads = 0
@@ -108,6 +110,8 @@ class _FakeHandle:
         try:
             if should_gate:
                 await cast(asyncio.Event, self.read_gate).wait()
+            if self.read_error is not None:
+                raise self.read_error
             projections = []
             for query in request.queries:
                 if isinstance(query, DiagnosticsQuery):
@@ -252,6 +256,7 @@ def test_factory_is_sealed_to_the_real_python_provider() -> None:
     backend = create_inventory_backend(InventoryProvider.PYTHON)
     assert isinstance(backend, PythonInventoryBackend)
     assert isinstance(backend, InventoryBackend)
+    assert isinstance(create_inventory_backend(" PYTHON "), PythonInventoryBackend)
     with pytest.raises(ValueError, match="unknown inventory provider"):
         create_inventory_backend("fdu")
 
@@ -350,6 +355,34 @@ def test_cancelled_read_drains_before_root_replacement_closes_handle(tmp_path: P
         await coordinator.close()
 
     asyncio.run(_run())
+
+
+def test_cancelled_read_logs_a_provider_failure_discovered_while_draining(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        handle.read_gate = asyncio.Event()
+        handle.read_error = RuntimeError("late provider failure")
+
+        read = asyncio.create_task(
+            coordinator.read(ReadRequest(queries=(DirectoryQuery(query_id="tree"),)))
+        )
+        await asyncio.wait_for(handle.read_started.wait(), timeout=1)
+        read.cancel()
+        handle.read_gate.set()
+        with pytest.raises(asyncio.CancelledError):
+            await read
+        await coordinator.close()
+
+    with caplog.at_level("DEBUG", logger="metabrowser.inventory_engine.coordinator"):
+        asyncio.run(_run())
+    assert "cancelled caller drained it" in caplog.text
+    assert "late provider failure" in caplog.text
 
 
 def test_coherent_read_joins_only_returned_overlay_entries_without_changing_facts(
@@ -557,6 +590,32 @@ def test_old_root_changes_cannot_publish_and_close_ends_subscriptions(
         await coordinator.close()
         with pytest.raises(StopAsyncIteration):
             await pending
+
+    asyncio.run(_run())
+
+
+def test_provider_session_drift_fails_reads_and_resets_stream_consumers(
+    tmp_path: Path,
+) -> None:
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        cursor, _version, _state_value = await coordinator.checkpoint()
+        changes = coordinator.changes(after=cursor)
+        pending = asyncio.create_task(anext(changes))
+        await asyncio.sleep(0)
+
+        handle.session = "illegal-replacement-session"
+        handle.emit(dirty_paths=("changed",))
+        reset = await asyncio.wait_for(pending, timeout=1)
+        assert reset.reset is True
+        with pytest.raises(InventoryConsistencyError, match="changed provider session"):
+            await coordinator.read(ReadRequest())
+
+        await changes.aclose()
+        await coordinator.close()
 
     asyncio.run(_run())
 

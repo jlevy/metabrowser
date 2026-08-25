@@ -18,7 +18,7 @@ import time
 
 from metabrowser.events import FsEntry
 from metabrowser.inventory_engine.providers.python_inventory import (
-    PythonInventoryHandle,
+    _PythonInventoryStore as PythonInventoryStore,
 )
 
 PRESETS: list[tuple[str, list[str]]] = [("code", ["py", "js"])]
@@ -26,8 +26,8 @@ WINDOWS: list[tuple[str, float]] = [("24h", 86_400.0)]
 LIMIT = 200
 
 
-def _index_with(files: int) -> PythonInventoryHandle:
-    index = PythonInventoryHandle()
+def _index_with(files: int) -> PythonInventoryStore:
+    index = PythonInventoryStore()
     for i in range(files):
         index.apply_live_entry(
             FsEntry.for_observed_file(
@@ -149,7 +149,7 @@ def test_a_freshness_probe_never_waits_for_an_in_flight_tally_pass() -> None:
 
 def test_worker_tally_pass_cooperatively_yields_to_the_event_loop() -> None:
     """Worker CPU must not depend on the interpreter's ordinary switch interval."""
-    index = PythonInventoryHandle()
+    index = PythonInventoryStore()
     entry = FsEntry.for_observed_file(path="same.py", parent="", name="same.py", size=1, mtime_ns=1)
     snapshot = [entry] * 80_000
     previous_switch_interval = sys.getswitchinterval()

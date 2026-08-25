@@ -21,10 +21,13 @@ routes and browser event projection
           InventoryHandle
           /             \
  PythonInventoryHandle  FduInventoryHandle (planned)
+          |
+ _PythonInventoryStore
 ```
 
-`tests/test_inventory_provider_contract.py` checks the registered query types, explicit
-bounds, lifecycle invariants, and provider-neutral imports described here.
+`PythonInventoryHandle` is a five-method façade.
+The private Python store owns walking, watching, retained indexes, and projection
+execution; none of those helpers are part of the provider interface.
 
 ## One Opened Root
 
@@ -43,6 +46,11 @@ The application constructs the backend in its lifespan composition root.
 A root change closes the old handle, invalidates host caches and cursors, opens the
 replacement, and then makes the new coordinator state visible.
 Tasks belonging to a closed session cannot publish into the replacement session.
+The provider session is immutable for the life of a handle.
+A read carrying a different session raises `InventoryConsistencyError`; the change relay
+treats the same violation as provider failure and publishes a host reset so stream
+consumers recover coherently.
+Every concurrent `close()` caller joins the same shutdown before returning.
 
 `METABROWSER_INVENTORY_PROVIDER` selects the sealed in-tree factory entry.
 Phase 1 accepts only `python`; an unknown value fails explicitly.
@@ -55,25 +63,26 @@ Configuration separates state identity from execution policy:
 
 | Class | Fields | Effect |
 | --- | --- | --- |
-| Semantic scope | `max_files`, `max_depth`, exact hidden-name allowlist, symlink policy, filesystem-boundary policy, and traversal order | Included in the scope fingerprint; a file-budget stop reports partial coverage |
+| Semantic scope | `max_files`, `max_depth`, and exact hidden-name allowlist | Included in the scope fingerprint; a file-budget stop reports partial coverage |
 | Classification | File Rollup registry fingerprint | Contributes to the semantic fingerprint; changing it opens a new session |
 | Execution | change-queue size | Reported as a provider fact; does not change a result’s meaning |
-| Persistence and observation | cache mode and watch mode | Reported through source, freshness, and diagnostics |
+| Observation | watch mode | Reported through source, freshness, and diagnostics |
 
 `max_files` limits regular files, not directory rows.
 Query `max_rows` bounds each returned page independently, and complete directory-style
 consumers follow every continuation.
+Metabrowser route and initial-stream tree assembly use `INVENTORY_TREE_PAGE_ROWS` rather
+than reusing the `INVENTORY_MAX_FILES` discovery budget.
+One `ReadRequest` contains at most `MAX_QUERIES_PER_READ` queries, which also bounds a
+dirty-path projection batch.
 The walker and watcher both apply `hidden_allowlist`; a name that changes scope cannot
 be fingerprinted without also changing observation behavior.
 
-Traversal order is semantic while a file budget can truncate discovery, because it
-determines which partial prefix is retained.
-The current product scope requires breadth-first traversal and validates that
-requirement at runtime.
-
-The current product scope follows neither symlinks nor a one-filesystem policy.
-The contract rejects `follow_symlinks=True` and `stay_on_filesystem=True` instead of
-letting providers disagree or silently ignore an input.
+Traversal is breadth-first and symlinks are visible leaves but never followed.
+These are contract semantics, not configurable fields.
+Filesystem-boundary restriction and persistent-cache modes are absent until an
+implementation and consumer require them; providers cannot silently ignore inert
+options.
 
 The scope fingerprint is SHA-256 over the UTF-8 compact JSON array of sorted
 `[name, value]` string pairs.
@@ -121,9 +130,10 @@ boundary.
 ## Closed Query Algebra
 
 `ReadRequest.queries` accepts only the registered records below.
-Each record has a request-local `query_id`, and identifiers must be unique within a
-bundled read. Output bounds are mandatory at the provider boundary even when an HTTP
-route later assembles a complete response from version-pinned pages.
+Each record has a request-local `query_id`, identifiers must be unique within a bundled
+read, and the bundle itself has the `MAX_QUERIES_PER_READ` bound.
+Output bounds are mandatory at the provider boundary even when an HTTP route later
+assembles a complete response from version-pinned pages.
 
 `ReadRequest()` with no projections is the constant-work checkpoint form.
 It returns only the coherent version, cursor, lifecycle state, and work envelope.
@@ -135,9 +145,9 @@ must not traverse inventory entries or manufacture a diagnostics dependency.
 | `entry` | `EntryQuery` | One relative path | Present, absent, or unknown lookup plus filesystem facts |
 | `directory` | `DirectoryQuery` | Positive depth and row count | Name-ordered rows, continuation, and exact known remainder |
 | `filtered_tree` | `FilteredTreeQuery` | Positive depth and row count | Matching tree rows and selected scalar totals |
-| `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node bound | File Rollup Format payload for one directory |
-| `navigation` | `NavigationQuery` | Positive tally-row count | Population, extension, family, preset, and recency tallies |
-| `recent` | `RecentQuery` | Positive row count and explicit observation time | Newest matching files, pre-bound match count, and truncation |
+| `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node bound | Typed File Rollup Format record for one directory |
+| `navigation` | `NavigationQuery` | Positive tally-row count | Typed population, extension, family, preset, and recency record |
+| `recent` | `RecentQuery` | Positive row count and explicit observation time | Newest matching files and pre-bound match count; truncation is derived |
 | `catalog` | `CatalogQuery` | Positive page size; optional terminal-extension, ancestor-name, and size predicates | Matching file identities, logical extensions, continuation, and exact known remainder from one pinned version |
 | `metadata` | `MetadataQuery` | Constant-size session record | Provider, contract, root, and identity facts |
 | `diagnostics` | `DiagnosticsQuery` | Constant-size counter record | Provider state, progress, cache, watch, and queue diagnostics |
@@ -189,27 +199,32 @@ They do not cross the provider contract, advance an engine version, or contribut
 filesystem totals. The coordinator combines the engine version and overlay revision into
 the host version used for browser events and caches.
 Entry-bearing projections receive decorations automatically.
-Catalog projections return identities rather than entries, so a coordinator caller must
-opt in to catalog decorations.
+Provider-returned paths have already passed contract construction, so sparse-overlay
+reads perform only deduplication and dictionary lookups.
+Canonical validation occurs on overlay writes, where untrusted host paths first enter
+that store. Catalog projections return identities rather than entries, so a coordinator
+caller must opt in to catalog decorations.
 The activity tracker opts in; bulk Quick File delivery does not traverse the overlay.
 
 ## State and Failures
 
 State reports independent lifecycle, coverage, freshness, source, progress, and issue
-facts. The lifecycle transitions are:
+facts. A same-phase observation is always valid; cross-phase transitions are:
 
-```text
-opening_cache -> discovering -> reconciling -> watching
-      |              |              |             |
-      +--------------+--------------+-----------> stopped
-      |              |              |             |
-      +--------------+--------------+-----------> failed -> stopped
+| Current phase | Legal next phases |
+| --- | --- |
+| `opening_cache` | `discovering`, `reconciling`, `ready`, `stopped`, `failed` |
+| `discovering` | `reconciling`, `ready`, `watching`, `stopped`, `failed` |
+| `reconciling` | `ready`, `watching`, `stopped`, `failed` |
+| `ready` | `reconciling`, `watching`, `stopped`, `failed` |
+| `watching` | `reconciling`, `ready`, `stopped`, `failed` |
+| `stopped` | none |
+| `failed` | `stopped` |
 
-watching -> reconciling -> watching
-```
-
-The implementation also permits cache opening to enter reconciliation directly and
-discovery to enter watching when no reconciliation is needed.
+`ready` means the handle is open and answering without discovery, reconciliation, or a
+live filesystem observer.
+`watching` requires a live observer; a provider configured with observation off, or one
+whose observer has failed while the retained index remains readable, reports `ready`.
 `stopped` is terminal; `failed` may only transition to `stopped`.
 
 Coverage is either complete with no reason or partial with one of `building`, `budget`,
@@ -219,6 +234,26 @@ coverage changes only if reconciliation discovers or cannot resolve an enumerati
 Typed issues also distinguish permission failures, disappearance, invalid metadata,
 filesystem-boundary skips, resource stops, and provider failures.
 Providers preserve the original path and cause when the current layer can handle them.
+
+The Phase 2 fdu adapter uses the following total mappings; it does not infer them from
+strings at individual call sites:
+
+| Metabrowser fact | fdu fact |
+| --- | --- |
+| `LifecyclePhase.READY` | `Ready` |
+| `SourceKind.SCANNED` | `cold_scan` |
+| `SourceKind.REVALIDATED` | `warm_revalidate` |
+| `SourceKind.CACHED` | `cache_only` |
+| `IssueCode.PERMISSION_DENIED` | `Permission` |
+| `IssueCode.WATCHER_GAP` | `ObservationGap` |
+| `IssueCode.RESOURCE_BUDGET` | `ResourceStop` |
+
+`SourceKind.JOURNAL_SCOPED` has no fdu mapping because replaying a journal does not
+manufacture a new answer-shaping state.
+Other issue spellings are identical.
+Zero progress is honest for a settled provider that did not expose progressive state; an
+adapter never invents progress, and fdu must expose real mid-discovery progress before
+it can satisfy the progressive-open adoption gate.
 
 ## Change Delivery
 
@@ -240,13 +275,17 @@ scope when recovery is available; an unrecoverable observer failure remains stal
 its typed issue. The coordinator may continue coherent reads and must not treat either
 state as a failed reset recovery.
 
-Refresh and priority requests contain 1 to 1,024 unique canonical paths.
+Refresh and priority requests contain at most `MAX_COMMAND_PATHS` unique canonical paths
+and cannot be empty.
 Refresh adds a typed reason; priority adds a positive depth.
 A notification remains a hint: a provider verifies filesystem state before applying a
-mutation. The primary native-or-polling watcher belongs to the opened provider so
-baseline discovery, observation capture, reconciliation, and freshness share one
-lifecycle. `refresh()` also accepts bounded external hints from activity probes or
-application writes; it is not a second watcher.
+mutation.
+One refresh request is one atomic provider operation with one resulting cursor;
+an adapter cannot implement a batch as independently committed single-path refreshes.
+The primary native-or-polling watcher belongs to the opened provider so baseline
+discovery, observation capture, reconciliation, and freshness share one lifecycle.
+`refresh()` also accepts bounded external hints from activity probes or application
+writes; it is not a second watcher.
 If a watch batch cannot be submitted completely, the observer stops and reports a
 watcher gap. It never drops one failed chunk and continues while claiming freshness.
 
@@ -285,6 +324,31 @@ and
 Safe-path validation and file-content reads remain above the engine.
 No inventory-serving route performs a second filesystem walk or reads a concrete
 provider directly.
+Every provider implements flat filtered-tree and catalog continuations
+natively with the requested version, mandatory row bound, and exact remainder.
+An adapter cannot materialize an unbounded result, retain a mirror solely to page it, or
+claim a truncated first page is terminal.
+
+## Provider Conformance Registry
+
+This is the adoption gate shared by every provider factory.
+The named check `test_architecture_document_registers_every_provider_conformance_case`
+verifies that every row resolves to a provider-parametrized test in
+`tests/test_inventory_provider_contract.py`.
+
+| Test |
+| --- |
+| `test_checkpoint_read_returns_only_a_coherent_constant_work_envelope` |
+| `test_paged_time_dependent_reads_reuse_one_as_of` |
+| `test_provider_semantic_digest` |
+| `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` |
+| `test_directory_pages_are_lossless_when_directories_outnumber_file_budget` |
+| `test_catalog_pages_report_exact_lossless_remainders` |
+| `test_provider_version_pins_fail_instead_of_moving` |
+| `test_provider_changes_resume_and_report_history_gaps_as_reset` |
+| `test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint` |
+| `test_provider_close_joins_change_delivery_and_is_idempotent` |
+| `test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session` |
 
 ## References
 

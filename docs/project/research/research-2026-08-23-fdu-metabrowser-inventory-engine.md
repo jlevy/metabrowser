@@ -393,9 +393,10 @@ version; its current live rollup view is not sufficient.
 Lifecycle is not one overloaded status string.
 A session reports independent facts:
 
-- **phase:** opening cache, discovering, reconciling, watching, stopped, or failed;
+- **phase:** opening cache, discovering, reconciling, ready, watching, stopped, or
+  failed;
 - **coverage:** complete or partial, with a reason such as building, budget, cancelled,
-  inaccessible, or watcher gap;
+  inaccessible, or failed;
 - **freshness:** fresh, reconciling, stale, or partial;
 - **source:** scanned, revalidated, journal-scoped, or cached;
 - **progress:** entries and directories observed, with no invented total when unknown.

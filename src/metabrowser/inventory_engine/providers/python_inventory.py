@@ -1,6 +1,6 @@
 """Python reference provider for filesystem inventory and rollups.
 
-``PythonInventoryHandle`` is the retained owner of filesystem-entry
+``_PythonInventoryStore`` is the retained owner of filesystem-entry
 metadata in the browser process. The server lifespan eagerly populates
 it, ``/api/tree`` and ``/api/activity`` read from it, and writes emit
 ``fs.change`` events on a single shared SSE channel so the client
@@ -9,8 +9,8 @@ fills in skeleton cells without manual reload.
 There is at most one discovery task per opened handle. Concurrent
 ``/api/tree`` requests do **not** trigger walks — they read whatever
 is currently in the index and return ``None`` for fields the walker
-has not yet finalized. The boot lifespan hook calls
-``PythonInventoryHandle.start(root)`` once; the call is idempotent.
+has not yet finalized. The backend calls ``_PythonInventoryStore.start(root)``
+once; the call is idempotent.
 
 The inventory contract covers cold start, subtree invalidation, and realtime updates.
 
@@ -36,7 +36,7 @@ Walker semantics (verified by tests):
   the walker stops emission past the cap.
 
 The :func:`walk_tree` generator is decoupled from the
-``PythonInventoryHandle`` object so tests can drive it directly with
+``_PythonInventoryStore`` object so implementation tests can drive it directly with
 ``async for``.
 """
 
@@ -224,7 +224,7 @@ class _NavigationTallyBase:
 
 
 class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
-    """Read-through view of ``PythonInventoryHandle._children_index``.
+    """Read-through view of ``_PythonInventoryStore._children_index``.
 
     A rollup visits only the directories whose aggregates are missing, so
     copying every bucket up front is wasted work. Each lookup instead takes
@@ -234,7 +234,7 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
 
     __slots__ = ("_index",)
 
-    def __init__(self, index: PythonInventoryHandle) -> None:
+    def __init__(self, index: _PythonInventoryStore) -> None:
         self._index = index
 
     def __getitem__(self, parent: str) -> Sequence[FsEntry]:
@@ -459,8 +459,8 @@ def _catalog_entry_matches(entry: FsEntry, query: CatalogQuery) -> bool:
     return True
 
 
-class PythonInventoryHandle:
-    """Retained Python implementation for one opened filesystem root.
+class _PythonInventoryStore:
+    """Private retained Python implementation for one opened filesystem root.
 
     Every consumer reads from this object. The walker writes into
     it. Per-path generation counters serialize concurrent
@@ -487,6 +487,7 @@ class PythonInventoryHandle:
         self._session = uuid.uuid4().hex
         self._scope_fingerprint = inventory_scope_fingerprint(config)
         self._closed = False
+        self._close_task: asyncio.Task[None] | None = None
         self._last_error: str | None = None
         self._root: Path | None = None
         self._entries: dict[str, FsEntry] = {}
@@ -836,9 +837,19 @@ class PythonInventoryHandle:
     async def close(self) -> None:
         """Cancel and join discovery, then wake every change consumer."""
 
-        if self._closed:
-            return
-        self._closed = True
+        task = self._close_task
+        if task is None:
+            self._closed = True
+            task = asyncio.create_task(
+                self._close_owned_tasks(),
+                name="metabrowser-python-inventory-close",
+            )
+            self._close_task = task
+        await asyncio.shield(task)
+
+    async def _close_owned_tasks(self) -> None:
+        """Perform shutdown once while every ``close`` caller joins the task."""
+
         watcher_task = self._watcher_task
         if watcher_task is not None and not watcher_task.done():
             watcher_task.cancel()
@@ -876,6 +887,14 @@ class PythonInventoryHandle:
             semantic_fingerprint=self._config.registry_fingerprint,
         )
 
+    def _settled_phase(self) -> LifecyclePhase:
+        """Report whether the settled store has a live observation task."""
+
+        watcher = self._watcher_task
+        if watcher is None or watcher.done() or self._watcher_state == "failed":
+            return LifecyclePhase.READY
+        return LifecyclePhase.WATCHING
+
     def _state_for(
         self,
         status: IndexStatus,
@@ -890,11 +909,11 @@ class PythonInventoryHandle:
             coverage = Coverage(complete=False, reason=CoverageReason.BUILDING)
             freshness = Freshness.PARTIAL
         elif status == "done":
-            phase = LifecyclePhase.WATCHING
+            phase = self._settled_phase()
             coverage = Coverage(complete=True)
             freshness = Freshness.FRESH
         elif status == "truncated":
-            phase = LifecyclePhase.WATCHING
+            phase = self._settled_phase()
             coverage = Coverage(complete=False, reason=CoverageReason.BUDGET)
             freshness = Freshness.PARTIAL
             issues = (
@@ -1030,7 +1049,7 @@ class PythonInventoryHandle:
             entries_visited=entries_visited,
             directories_visited=directories_visited,
             version=version,
-            cursor=ChangeCursor(session=self._session, sequence=sequence),
+            cursor=version.cursor,
             state=state,
             diagnostics={
                 "provider": "python",
@@ -1365,7 +1384,7 @@ class PythonInventoryHandle:
         self._record_read_work(work)
         return ReadResult(
             version=version,
-            cursor=ChangeCursor(session=self._session, sequence=sequence),
+            cursor=version.cursor,
             state=state,
             projections=tuple(projections),
             work=work,
@@ -1682,7 +1701,6 @@ class PythonInventoryHandle:
             query_id=query.query_id,
             entries=tuple(_semantic_entry(entry) for entry in capped),
             total_matches=total,
-            truncated=total > len(capped),
             gitignored_directories=tuple(sorted(ignored_directories)),
         )
 
@@ -1781,7 +1799,7 @@ class PythonInventoryHandle:
             )
         version = self._version(sequence)
         return ChangeBatch(
-            cursor=ChangeCursor(session=self._session, sequence=sequence),
+            cursor=version.cursor,
             version=version,
             state=state,
             reset=True,
@@ -2688,75 +2706,6 @@ class PythonInventoryHandle:
         ops.extend(FsUpsert(entry=entry) for entry in aggregate_updates)
         self._emit(FsChange(ops=tuple(ops)))
 
-    def diagnostic_snapshot(
-        self,
-        paths: Sequence[str],
-        *,
-        sample_limit: int = 20,
-    ) -> dict[str, object]:
-        """Return bounded state for diagnosing unresolved directory totals.
-
-        The client reports only rendered paths. Pairing those with the live
-        inventory, generation, descendant aggregate, and walker state makes it
-        possible to distinguish a server-side pending directory from a stale
-        browser snapshot or a missed event-stream patch.
-        """
-
-        limit = max(0, sample_limit)
-        walker = self._walker_task
-        if walker is None:
-            walker_state = "missing"
-        elif walker.cancelled():
-            walker_state = "cancelled"
-        elif walker.done():
-            walker_state = "done"
-        else:
-            walker_state = "running"
-
-        elapsed_ms = 0
-        if self._started_at_ns:
-            elapsed_ms = (time.monotonic_ns() - self._started_at_ns) // 1_000_000
-
-        requested: list[dict[str, object]] = []
-        for path in list(paths)[:limit]:
-            entry = self._entries.get(path)
-            row: dict[str, object] = {
-                "path": path,
-                "known": entry is not None,
-                "pending": path in self._pending_dirs,
-                "generation": self._generation.get(path, 0),
-                "direct_children": self._direct_child_counts.get(path, 0),
-                "descendant_files": self._descendant_file_counts.get(path, 0),
-                "descendant_size": self._descendant_file_sizes.get(path, 0),
-                "descendant_leaves": self._descendant_leaf_counts.get(path, 0),
-            }
-            if entry is not None:
-                row.update(
-                    {
-                        "type": entry.type,
-                        "total_files": entry.total_files,
-                        "total_size": entry.total_size,
-                        "newest_mtime_ns": entry.newest_mtime_ns,
-                        "empty": entry.empty,
-                        "write_generation": (
-                            entry.write_token.generation if entry.write_token is not None else None
-                        ),
-                    }
-                )
-            requested.append(row)
-
-        return {
-            "status": self._status,
-            "elapsed_ms": elapsed_ms,
-            "files_indexed": self._files_indexed,
-            "entries": len(self._entries),
-            "pending_dirs": len(self._pending_dirs),
-            "pending_dir_sample": heapq.nsmallest(limit, self._pending_dirs),
-            "catalog_revision": self._catalog_revision,
-            "walker_task": walker_state,
-            "requested_paths": requested,
-        }
-
     # Internals
 
     def _mark_discovery_failed(self, error: Exception) -> None:
@@ -3327,7 +3276,7 @@ class PythonInventoryHandle:
         version = self._version(sequence)
         all_dirty = len(dirty_paths) > MAX_CHANGE_PATHS
         batch = ChangeBatch(
-            cursor=ChangeCursor(session=self._session, sequence=sequence),
+            cursor=version.cursor,
             version=version,
             state=state,
             dirty_paths=() if all_dirty or reset else dirty_paths,
@@ -3348,19 +3297,32 @@ class PythonInventoryHandle:
                 queue.put_nowait(self._reset_batch())
 
 
+class PythonInventoryHandle:
+    """Thin provider-contract façade over the private Python inventory store."""
+
+    __slots__ = ("_store",)
+
+    def __init__(self, store: _PythonInventoryStore) -> None:
+        self._store = store
+
+    async def read(self, request: ReadRequest) -> ReadResult:
+        return await self._store.read(request)
+
+    def changes(self, *, after: ChangeCursor | None) -> AsyncGenerator[ChangeBatch, None]:
+        return self._store.changes(after=after)
+
+    async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
+        return await self._store.refresh(request)
+
+    async def prioritize(self, request: PriorityRequest) -> None:
+        await self._store.prioritize(request)
+
+    async def close(self) -> None:
+        await self._store.close()
+
+
 class PythonInventoryBackend:
     """Construct one Python reference-provider handle per served root."""
-
-    def __init__(
-        self,
-        *,
-        handle_factory: Callable[[InventoryConfig], PythonInventoryHandle] | None = None,
-    ) -> None:
-        self._handle_factory = handle_factory or self._default_handle
-
-    @staticmethod
-    def _default_handle(config: InventoryConfig) -> PythonInventoryHandle:
-        return PythonInventoryHandle(config=config)
 
     async def open(
         self,
@@ -3368,10 +3330,10 @@ class PythonInventoryBackend:
         config: InventoryConfig,
     ) -> PythonInventoryHandle:
         canonical_root = await asyncio.to_thread(root.resolve)
-        handle = self._handle_factory(config)
-        handle.start_watcher(canonical_root)
-        handle.start(canonical_root)
-        return handle
+        store = _PythonInventoryStore(config=config)
+        store.start_watcher(canonical_root)
+        store.start(canonical_root)
+        return PythonInventoryHandle(store)
 
 
 # Re-export the non-trivial helpers used by tests and inventory consumers.

@@ -27,12 +27,15 @@ from metabrowser import paths_safe
 from metabrowser import server as proc_browser
 from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.inventory_engine.contract import (
+    DirectoryQuery,
     EntryPresence,
     EntryProjection,
     EntryQuery,
+    FilteredTreeQuery,
     InventoryEntry,
     ReadRequest,
 )
+from metabrowser.settings import INVENTORY_MAX_FILES, INVENTORY_TREE_PAGE_ROWS
 from tests.inventory_harness import inventory_harness
 
 
@@ -81,6 +84,45 @@ class _FakeRequest:
 
 
 # ── proc_browser.api_tree: route-level integration ────────────
+
+
+def test_api_tree_pages_provider_reads_independently_of_the_discovery_budget(
+    tmp_path: Path,
+) -> None:
+    assert 0 < INVENTORY_TREE_PAGE_ROWS < INVENTORY_MAX_FILES
+    _build_fixture(tmp_path)
+
+    async def _run() -> tuple[int, ...]:
+        original_root = paths_safe.ROOT_DIR
+        paths_safe._set_root_dir(tmp_path)
+        server_namespace = cast(dict[str, Any], vars(proc_browser))
+        original_assemble = server_namespace["assemble_tree_pages"]
+        observed_page_bounds: list[int] = []
+
+        async def recording_assemble(*args: Any, **kwargs: Any) -> Any:
+            query = cast(DirectoryQuery | FilteredTreeQuery, kwargs["page_query"])
+            observed_page_bounds.append(query.max_rows)
+            return await original_assemble(*args, **kwargs)
+
+        server_namespace["assemble_tree_pages"] = recording_assemble
+        try:
+            async with inventory_harness(tmp_path) as harness:
+                await proc_browser.api_tree(cast(Any, _FakeRequest(app=harness.app)))
+                await proc_browser.api_tree(
+                    cast(
+                        Any,
+                        _FakeRequest({"extensions": ".md"}, app=harness.app),
+                    )
+                )
+                return tuple(observed_page_bounds)
+        finally:
+            server_namespace["assemble_tree_pages"] = original_assemble
+            paths_safe._set_root_dir(original_root)
+
+    assert asyncio.run(_run()) == (
+        INVENTORY_TREE_PAGE_ROWS,
+        INVENTORY_TREE_PAGE_ROWS,
+    )
 
 
 def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:

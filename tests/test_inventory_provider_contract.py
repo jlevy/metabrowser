@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import inspect
+import itertools
 import os
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
@@ -36,6 +37,7 @@ from metabrowser.inventory_engine.contract import (
     Freshness,
     IndexState,
     InventoryBackend,
+    InventoryClosedError,
     InventoryConfig,
     InventoryEntry,
     InventoryFilter,
@@ -47,6 +49,7 @@ from metabrowser.inventory_engine.contract import (
     MetadataQuery,
     NavigationProjection,
     NavigationQuery,
+    ObservationKind,
     PriorityRequest,
     QueryKind,
     ReadRequest,
@@ -59,10 +62,12 @@ from metabrowser.inventory_engine.contract import (
     RollupProjection,
     RollupQuery,
     SourceKind,
+    VersionUnavailableError,
     WorkCounters,
     inventory_scope_fingerprint,
 )
 from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
+from metabrowser.wire_models import validate_rollup_result
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-inventory-provider.md"
@@ -81,6 +86,22 @@ EXPECTED_QUERIES = {
 
 PROVIDER_FACTORIES: tuple[Any, ...] = (pytest.param(PythonInventoryBackend, id="python"),)
 
+PROVIDER_CONFORMANCE_TESTS = frozenset(
+    {
+        "test_checkpoint_read_returns_only_a_coherent_constant_work_envelope",
+        "test_paged_time_dependent_reads_reuse_one_as_of",
+        "test_provider_semantic_digest",
+        "test_provider_budget_stop_is_explicit_and_absence_remains_unknown",
+        "test_directory_pages_are_lossless_when_directories_outnumber_file_budget",
+        "test_catalog_pages_report_exact_lossless_remainders",
+        "test_provider_version_pins_fail_instead_of_moving",
+        "test_provider_changes_resume_and_report_history_gaps_as_reset",
+        "test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint",
+        "test_provider_close_joins_change_delivery_and_is_idempotent",
+        "test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session",
+    }
+)
+
 
 async def _open_settled_provider(
     factory: Callable[[], InventoryBackend],
@@ -91,7 +112,11 @@ async def _open_settled_provider(
     handle = await factory().open(root, config or InventoryConfig())
     for _attempt in range(500):
         result = await handle.read(ReadRequest())
-        if result.state.phase in {LifecyclePhase.WATCHING, LifecyclePhase.FAILED}:
+        if result.state.phase in {
+            LifecyclePhase.READY,
+            LifecyclePhase.WATCHING,
+            LifecyclePhase.FAILED,
+        }:
             return handle
         await asyncio.sleep(0.005)
     await handle.close()
@@ -126,10 +151,26 @@ def test_architecture_document_lists_every_registered_query() -> None:
         assert f"| `{kind}` | `{query_type.__name__}` |" in document
 
 
+def test_architecture_document_registers_every_provider_conformance_case() -> None:
+    document = ARCHITECTURE_DOC.read_text(encoding="utf-8")
+    for test_name in PROVIDER_CONFORMANCE_TESTS:
+        assert test_name in globals(), f"missing provider conformance test: {test_name}"
+        marks = getattr(globals()[test_name], "pytestmark", ())
+        assert any(
+            mark.name == "parametrize" and mark.args and mark.args[0] == "provider_factory"
+            for mark in marks
+        ), f"provider conformance test is not factory-parametrized: {test_name}"
+        assert f"| `{test_name}` |" in document
+
+
 def test_lifecycle_transition_graph_is_explicit_and_terminal() -> None:
     assert set(ALLOWED_PHASE_TRANSITIONS) == set(LifecyclePhase)
     assert ALLOWED_PHASE_TRANSITIONS[LifecyclePhase.STOPPED] == frozenset()
     assert ALLOWED_PHASE_TRANSITIONS[LifecyclePhase.FAILED] == frozenset({LifecyclePhase.STOPPED})
+    assert LifecyclePhase.READY in ALLOWED_PHASE_TRANSITIONS[LifecyclePhase.DISCOVERING]
+    assert LifecyclePhase.READY in ALLOWED_PHASE_TRANSITIONS[LifecyclePhase.RECONCILING]
+    assert LifecyclePhase.READY in ALLOWED_PHASE_TRANSITIONS[LifecyclePhase.WATCHING]
+    assert LifecyclePhase.WATCHING in ALLOWED_PHASE_TRANSITIONS[LifecyclePhase.READY]
     for phase in set(LifecyclePhase) - {LifecyclePhase.STOPPED, LifecyclePhase.FAILED}:
         assert LifecyclePhase.STOPPED in ALLOWED_PHASE_TRANSITIONS[phase]
         assert LifecyclePhase.FAILED in ALLOWED_PHASE_TRANSITIONS[phase]
@@ -224,12 +265,8 @@ def test_configuration_and_command_bounds_are_enforced() -> None:
         InventoryConfig(change_queue_size=0)
     with pytest.raises(ValueError, match="registry_fingerprint must not be empty"):
         InventoryConfig(registry_fingerprint="")
-    with pytest.raises(ValueError, match="breadth-first"):
-        InventoryConfig(traversal=cast(Any, "depth_first"))
     with pytest.raises(ValueError, match="watch_mode"):
         InventoryConfig(watch_mode=cast(Any, "sometimes"))
-    with pytest.raises(ValueError, match="cache_mode"):
-        InventoryConfig(cache_mode=cast(Any, "forever"))
     for invalid_hidden_name in ("visible", ".", "..", ".nested/name", ".bad\\name", ".bad\x00name"):
         with pytest.raises(ValueError, match="exact hidden path-component"):
             InventoryConfig(hidden_allowlist=(invalid_hidden_name,))
@@ -239,6 +276,12 @@ def test_configuration_and_command_bounds_are_enforced() -> None:
         )
     with pytest.raises(ValueError, match="at most 1024"):
         PriorityRequest(paths=tuple(str(index) for index in range(1_025)))
+    with pytest.raises(ValueError, match="at most 1024"):
+        ReadRequest(
+            queries=tuple(
+                EntryQuery(query_id=f"entry-{index}", path=str(index)) for index in range(1_025)
+            )
+        )
     with pytest.raises(ValueError, match="unique"):
         PriorityRequest(paths=("same", "same"))
     with pytest.raises(ValueError, match="nonnegative"):
@@ -252,7 +295,6 @@ def test_configuration_and_command_bounds_are_enforced() -> None:
             query_id="recent",
             entries=(),
             total_matches=-1,
-            truncated=False,
         )
 
 
@@ -278,11 +320,6 @@ def test_inventory_scope_fingerprint_is_portable_and_semantic() -> None:
     assert digest != inventory_scope_fingerprint(changed)
     assert len(digest) == 64
     assert all(character in "0123456789abcdef" for character in digest)
-
-
-def test_unimplemented_filesystem_scope_is_rejected_explicitly() -> None:
-    with pytest.raises(ValueError, match="cannot stay on one filesystem yet"):
-        InventoryConfig(stay_on_filesystem=True)
 
 
 @pytest.mark.parametrize("path", ("/absolute", "a//b", "a/./b", "a/../b", "a\\b", "a\x00b"))
@@ -318,7 +355,6 @@ def test_path_bearing_contract_records_reject_noncanonical_paths(path: str) -> N
             query_id="recent",
             entries=(),
             total_matches=0,
-            truncated=False,
             gitignored_directories=(path,),
         )
 
@@ -390,6 +426,14 @@ def test_version_and_cursor_share_a_session() -> None:
             projections=(),
             work=WorkCounters(),
         )
+    assert version.cursor == ChangeCursor.from_version(version)
+
+
+def test_recent_truncation_is_derived_from_the_projection_rows() -> None:
+    complete = RecentProjection(query_id="complete", entries=(), total_matches=0)
+    truncated = RecentProjection(query_id="truncated", entries=(), total_matches=1)
+    assert complete.truncated is False
+    assert truncated.truncated is True
 
 
 class _Handle:
@@ -597,9 +641,26 @@ def test_provider_semantic_digest(
             assert link.presence is EntryPresence.PRESENT
             assert link.entry is not None
             assert rollup.payload is not None
+            assert set(rollup.payload) == {
+                "node",
+                "ext_tallies",
+                "file_type_breakdown",
+            }
+            validate_rollup_result(rollup.payload)
+            assert set(navigation.payload) == {
+                "summary",
+                "file_type_registry",
+                "extensions",
+                "canonical_extensions",
+                "type_families",
+                "type_presets",
+                "recency_tallies",
+                "oldest_mtime_ns",
+                "newest_mtime_ns",
+            }
             rollup_node = cast("dict[str, object]", rollup.payload["node"])
             rollup_children = cast("list[dict[str, object]]", rollup_node["children"])
-            navigation_summary = cast("dict[str, int]", navigation.payload["summary"])
+            navigation_summary = navigation.payload["summary"]
             return {
                 "state": (
                     result.state.phase.value,
@@ -832,3 +893,162 @@ def test_catalog_pages_report_exact_lossless_remainders(
     seen, remaining = asyncio.run(run())
     assert seen == expected
     assert remaining == (5, 3, 1, 0)
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_version_pins_fail_instead_of_moving(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        )
+        try:
+            pinned = await handle.read(ReadRequest())
+            (tmp_path / "later.txt").write_text("later", encoding="utf-8")
+            receipt = await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="later.txt"),))
+            )
+            assert receipt.accepted_paths == ("later.txt",)
+            with pytest.raises(VersionUnavailableError):
+                await handle.read(ReadRequest(at_version=pinned.version))
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_changes_resume_and_report_history_gaps_as_reset(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(change_queue_size=1, watch_mode="off"),
+        )
+        try:
+            initial = await handle.read(ReadRequest())
+            (tmp_path / "first.txt").write_text("first", encoding="utf-8")
+            await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="first.txt"),))
+            )
+            first_stream = handle.changes(after=initial.cursor)
+            first = await asyncio.wait_for(anext(first_stream), timeout=1)
+            assert first.reset is False
+            assert "first.txt" in first.dirty_paths
+            assert first.cursor.session == initial.cursor.session
+
+            (tmp_path / "second.txt").write_text("second", encoding="utf-8")
+            await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="second.txt"),))
+            )
+            resumed_stream = handle.changes(after=first.cursor)
+            resumed = await asyncio.wait_for(anext(resumed_stream), timeout=1)
+            assert resumed.reset is False
+            assert "second.txt" in resumed.dirty_paths
+
+            gap_stream = handle.changes(after=initial.cursor)
+            gap = await asyncio.wait_for(anext(gap_stream), timeout=1)
+            assert gap.reset is True
+            assert gap.cursor.session == initial.cursor.session
+            assert gap.cursor.sequence >= resumed.cursor.sequence
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        )
+        try:
+            (tmp_path / "observed.txt").write_text("present", encoding="utf-8")
+            receipt = await handle.refresh(
+                RefreshRequest(
+                    observations=(
+                        RefreshObservation(
+                            path="observed.txt",
+                            kind=ObservationKind.DELETED,
+                        ),
+                    )
+                )
+            )
+            assert receipt.accepted_paths == ("observed.txt",)
+            result = await handle.read(
+                ReadRequest(queries=(EntryQuery(query_id="observed", path="observed.txt"),))
+            )
+            projection = result.projection("observed")
+            assert isinstance(projection, EntryProjection)
+            assert projection.presence is EntryPresence.PRESENT
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_close_joins_change_delivery_and_is_idempotent(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        handle = await _open_settled_provider(provider_factory, tmp_path)
+        checkpoint = await handle.read(ReadRequest())
+        stream = handle.changes(after=checkpoint.cursor)
+        waiting = asyncio.ensure_future(anext(stream))
+        await asyncio.sleep(0)
+        await asyncio.gather(handle.close(), handle.close())
+        result = await asyncio.gather(waiting, return_exceptions=True)
+        assert isinstance(result[0], StopAsyncIteration)
+        with pytest.raises(InventoryClosedError):
+            await handle.read(ReadRequest())
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    for index in range(50):
+        (tmp_path / f"file-{index}.txt").write_text(str(index), encoding="utf-8")
+
+    async def run() -> None:
+        handle = await provider_factory().open(
+            tmp_path,
+            InventoryConfig(watch_mode="off"),
+        )
+        try:
+            phases: list[LifecyclePhase] = []
+            sessions: set[str] = set()
+            for _attempt in range(500):
+                result = await handle.read(ReadRequest())
+                sessions.add(result.version.session)
+                if not phases or result.state.phase is not phases[-1]:
+                    phases.append(result.state.phase)
+                if result.state.phase in {LifecyclePhase.READY, LifecyclePhase.FAILED}:
+                    break
+                await asyncio.sleep(0.005)
+            assert phases[-1] is LifecyclePhase.READY
+            assert len(sessions) == 1
+            for before, after in itertools.pairwise(phases):
+                assert after in ALLOWED_PHASE_TRANSITIONS[before]
+        finally:
+            await handle.close()
+
+    asyncio.run(run())

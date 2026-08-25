@@ -155,6 +155,7 @@ from metabrowser.recent import (
 from metabrowser.repository_context import discover_repository_context
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
+    INVENTORY_TREE_PAGE_ROWS,
     RECENT_WINDOW_SECONDS,
     ROLLUP_BODY_CACHE_ENTRIES,
     ROLLUP_DEFAULT_DEPTH,
@@ -1446,7 +1447,7 @@ async def _read_tree_from_provider(
             query_id=projection_id,
             path=subpath,
             max_depth=max(1, remaining_depth),
-            max_rows=runtime.config.max_files,
+            max_rows=INVENTORY_TREE_PAGE_ROWS,
             filter=InventoryFilter(
                 extensions=extensions,
                 filenames=filenames,
@@ -1463,7 +1464,7 @@ async def _read_tree_from_provider(
             query_id=projection_id,
             path=subpath,
             max_depth=remaining_depth,
-            max_rows=runtime.config.max_files,
+            max_rows=INVENTORY_TREE_PAGE_ROWS,
         )
 
     navigation_id: str | None = None

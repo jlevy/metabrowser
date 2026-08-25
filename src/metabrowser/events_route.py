@@ -36,7 +36,7 @@ import asyncio
 import contextlib
 import json
 import logging
-from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from collections.abc import AsyncIterator, Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
@@ -108,6 +108,7 @@ from metabrowser.inventory_engine.tree_page_assembly import assemble_tree_pages
 from metabrowser.settings import (
     DEFAULT_EXECUTOR_WORKERS,
     INDEX_PROGRESS_UPDATE_FILES,
+    INVENTORY_TREE_PAGE_ROWS,
     PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES,
     PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
     SSE_HEARTBEAT_INTERVAL_S,
@@ -297,7 +298,7 @@ class _EventBus:
                 query_id="snapshot-tree",
                 path="",
                 max_depth=max_depth,
-                max_rows=self._config.max_files,
+                max_rows=INVENTORY_TREE_PAGE_ROWS,
             ),
             companion_queries=(EntryQuery(query_id="snapshot-root", path=""),),
         )
@@ -877,24 +878,15 @@ async def _read_index_meta(
         raise TypeError("the metadata read returned the wrong projections")
 
     payload = navigation.payload
-    summary_value = payload.get("summary", {})
-    summary = summary_value if isinstance(summary_value, Mapping) else {}
-
-    def summary_int(key: str) -> int:
-        value = summary.get(key, 0)
-        return value if isinstance(value, int) else 0
-
-    files = summary_int("files") + summary_int("ignored_files")
+    summary = payload["summary"]
+    files = summary["files"] + summary["ignored_files"]
     dirs = _counter_int(diagnostic, "directories_indexed")
-    oldest_value = payload.get("oldest_mtime_ns", 0)
-    newest_value = payload.get("newest_mtime_ns", 0)
-    oldest = oldest_value if isinstance(oldest_value, int) else 0
-    newest = newest_value if isinstance(newest_value, int) else 0
+    oldest = payload["oldest_mtime_ns"]
+    newest = payload["newest_mtime_ns"]
     suffixes: list[dict[str, int | str]] = []
-    extension_rows = payload.get("extensions", [])
-    if suffix_limit > 0 and isinstance(extension_rows, list):
-        for row in extension_rows[:suffix_limit]:
-            if not isinstance(row, list) or len(row) < 3:
+    if suffix_limit > 0:
+        for row in payload["extensions"][:suffix_limit]:
+            if len(row) < 3:
                 continue
             ext, tracked, ignored = row[:3]
             if isinstance(ext, str) and isinstance(tracked, int) and isinstance(ignored, int):

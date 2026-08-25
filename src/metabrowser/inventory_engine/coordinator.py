@@ -226,8 +226,15 @@ async def _drain_provider_operation_on_cancel[T](operation: Awaitable[T]) -> T:
     try:
         return await asyncio.shield(task)
     except asyncio.CancelledError:
-        with contextlib.suppress(asyncio.CancelledError, Exception):
+        try:
             await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            LOG.debug(
+                "inventory provider operation failed while its cancelled caller drained it",
+                exc_info=True,
+            )
         raise
 
 
@@ -539,8 +546,14 @@ class InventoryCoordinator:
             with contextlib.suppress(asyncio.CancelledError):
                 await relay
         elif relay is not None:
-            with contextlib.suppress(Exception):
+            try:
                 relay.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                # The running relay logs failures at ERROR before publishing its
+                # recovery reset. Retrieval here is cleanup accounting only.
+                LOG.debug("joined failed inventory change relay", exc_info=True)
 
         handle = self._handle
         self._handle = None
@@ -629,28 +642,23 @@ class InventoryCoordinator:
                 return
             current = self._require_engine_version_locked()
             if merged.version.session != current.session:
-                published = self._new_host_change_locked(
-                    version=self._current_host_version_locked(),
-                    state=self._require_state_locked(),
-                    reset=True,
-                    facts_changed=True,
-                    work=merged.work,
+                raise InventoryConsistencyError(
+                    "an opened inventory handle changed provider session"
                 )
-            else:
-                if merged.version.sequence >= current.sequence:
-                    self._engine_version = merged.version
-                    self._engine_cursor = merged.cursor
-                    self._state = merged.state
-                published = self._new_host_change_locked(
-                    version=self._current_host_version_locked(),
-                    state=self._require_state_locked(),
-                    dirty_paths=merged.dirty_paths,
-                    dirty_queries=merged.dirty_queries,
-                    all_dirty=merged.all_dirty,
-                    reset=merged.reset,
-                    facts_changed=bool(merged.dirty_paths) or merged.all_dirty or merged.reset,
-                    work=merged.work,
-                )
+            if merged.version.sequence >= current.sequence:
+                self._engine_version = merged.version
+                self._engine_cursor = merged.cursor
+                self._state = merged.state
+            published = self._new_host_change_locked(
+                version=self._current_host_version_locked(),
+                state=self._require_state_locked(),
+                dirty_paths=merged.dirty_paths,
+                dirty_queries=merged.dirty_queries,
+                all_dirty=merged.all_dirty,
+                reset=merged.reset,
+                facts_changed=bool(merged.dirty_paths) or merged.all_dirty or merged.reset,
+                work=merged.work,
+            )
             self._publish_locked(published)
         self._notify_listeners(published)
 
@@ -781,11 +789,9 @@ class InventoryCoordinator:
 
     def _observe_read_locked(self, result: ReadResult) -> None:
         current = self._engine_version
-        if (
-            current is None
-            or result.version.session != current.session
-            or result.version.sequence >= current.sequence
-        ):
+        if current is not None and result.version.session != current.session:
+            raise InventoryConsistencyError("an opened inventory handle changed provider session")
+        if current is None or result.version.sequence >= current.sequence:
             self._engine_version = result.version
             self._engine_cursor = result.cursor
             self._state = result.state

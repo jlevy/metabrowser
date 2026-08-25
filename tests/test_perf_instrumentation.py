@@ -35,7 +35,10 @@ import pytest
 
 from devtools import bench_serving
 from metabrowser import server, tree
-from metabrowser.inventory_engine.runtime import inventory_provider_from_environment
+from metabrowser.inventory_engine.runtime import (
+    InventoryRuntime,
+    inventory_provider_from_environment,
+)
 from tests.inventory_harness import inventory_harness
 
 
@@ -288,10 +291,12 @@ def test_inventory_provider_environment_selection_is_explicit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("METABROWSER_INVENTORY_PROVIDER", " PYTHON ")
-    assert inventory_provider_from_environment().value == "python"
+    assert inventory_provider_from_environment() == " PYTHON "
+    runtime = InventoryRuntime(provider=inventory_provider_from_environment())
+    assert runtime.config.max_files > 0
     monkeypatch.setenv("METABROWSER_INVENTORY_PROVIDER", "missing")
-    with pytest.raises(RuntimeError, match="supported providers: python"):
-        inventory_provider_from_environment()
+    with pytest.raises(ValueError, match="unknown inventory provider"):
+        InventoryRuntime(provider=inventory_provider_from_environment())
 
 
 def test_serving_benchmark_records_and_validates_provider_identity() -> None:

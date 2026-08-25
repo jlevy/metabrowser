@@ -106,7 +106,7 @@ cheap, not to move it to a thread.
 
 Two synchronization points matter:
 
-- `PythonInventoryHandle._rollup_cache_lock` guards `_entries` and every structure
+- `_PythonInventoryStore._rollup_cache_lock` guards `_entries` and every structure
   derived from it. It is held for dict operations only, never across an `await` or a
   bounded rollup reduction.
 - An **eviction epoch** covers the one genuinely concurrent case.
@@ -149,7 +149,7 @@ at all. See [What Is Not Solved](#what-is-not-solved).
 
 ### Authoritative
 
-`PythonInventoryHandle._entries` maps path to the Python provider’s retained filesystem
+`_PythonInventoryStore._entries` maps path to the Python provider’s retained filesystem
 record. Everything else in that provider is derived from it and must be rebuildable from
 it.
 `tests/test_browser_rollup.py::test_derived_index_state_survives_writes_and_removals`

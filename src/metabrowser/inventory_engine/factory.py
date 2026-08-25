@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import assert_never
 
 from metabrowser.inventory_engine.contract import InventoryBackend
 from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
@@ -19,13 +20,14 @@ def create_inventory_backend(
 ) -> InventoryBackend:
     """Construct the selected backend or fail explicitly for an unknown name."""
 
+    normalized = str(provider).strip().lower()
     try:
-        selected = InventoryProvider(provider)
+        selected = InventoryProvider(normalized)
     except ValueError as error:
         raise ValueError(f"unknown inventory provider: {provider!r}") from error
     if selected is InventoryProvider.PYTHON:
         return PythonInventoryBackend()
-    raise AssertionError(f"unhandled inventory provider: {selected}")
+    assert_never(selected)
 
 
 __all__ = ["InventoryProvider", "create_inventory_backend"]

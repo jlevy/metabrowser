@@ -82,6 +82,8 @@ routes, serializers, and browser wire
           /                 \
  PythonInventoryHandle    FduInventoryHandle
        Phase 1                 Phase 2
+          |
+ _PythonInventoryStore
 ```
 
 Provider selection appears only in the factory and composition root.
@@ -274,8 +276,8 @@ new filename.
 #### Extract Ownership Without a Compatibility Facade
 
 - [x] Move current retained entries, child indexes, reducers, walker, refresh mutation
-  path, and watcher lifecycle into `PythonInventoryHandle` while preserving its
-  algorithms and observation semantics.
+  path, and watcher lifecycle behind the five-method `PythonInventoryHandle` façade in a
+  private store while preserving algorithms and observation semantics.
 - [x] Give every Python read atomic payload/version/cursor capture.
   Fix the existing rollup payload/ETag race and equivalent catalog or snapshot races in
   the same slice.
@@ -356,6 +358,18 @@ counts or statuses.
 - [ ] Implement `FduInventoryHandle` as bounded value translation and async/GIL
   management only. Retain no entries, rollups, navigation indexes, cursors, or watcher
   state in the adapter.
+- [ ] Preserve `InventoryConfig.max_files` as semantic scope and make fdu enforce the
+  same discovery stop, partial coverage, and resource-budget issue as Python.
+  Projection bounds do not replace this Phase 1 resource and behavior contract.
+- [ ] Map fdu state, source, and issue values through the total table in
+  [Inventory Provider](../../architecture/arch-inventory-provider.md#state-and-failures),
+  including the distinct open-idle `ready` phase; never infer a later state from a
+  second read.
+- [ ] Add one native bounded fdu refresh batch with one commit, cursor, and per-path
+  receipt. The adapter must not turn it into independently committed single-path calls.
+- [ ] Add native version-pinned flat paging with exact remainders for filtered trees and
+  catalogs. The adapter must not retain a mirror, materialize an unbounded result, or
+  report a truncated page as complete.
 - [ ] Add forced `python` and `fdu` selection through the composition root and benchmark
   CLI. An explicit unavailable or incompatible fdu selection fails with provider,
   platform, build, and contract details; it never falls back silently.
@@ -412,13 +426,14 @@ the standing performance-loop method.
 
 ### Phase 1 Preservation Evidence
 
-The provider-parametrized semantic digest in `tests/test_inventory_provider_contract.py`
-is the Phase 2 parity entry point.
-It covers complete and budget-limited trees, ignored entries, symlinks, compound
-extensions, typed presence, rollup conservation, navigation, recency, catalog
-membership, and provider identity.
-`tests/test_python_inventory_provider.py` adds progressive, failure, cursor-expiry,
-refresh, paging, bound, and work-counter checks for the reference implementation.
+The provider-parametrized registry in
+`docs/project/architecture/arch-inventory-provider.md` is the Phase 2 parity entry
+point. Its maintained tests cover coherent checkpoints, time-pinned paging, semantic
+digests, explicit budget stops, lossless remainders, unavailable versions, change resume
+and reset recovery, verified refresh, joined close, lifecycle, and session stability.
+`tests/test_python_inventory_provider.py` adds implementation-specific progressive,
+failure, refresh, paging, bound, and work-counter checks for the reference store without
+expanding the public handle.
 
 The existing product suites remain the wire and browser preservation oracle:
 

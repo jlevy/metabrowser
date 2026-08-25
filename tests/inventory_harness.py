@@ -30,6 +30,7 @@ async def wait_until_settled(runtime: InventoryRuntime, *, timeout: float = 5.0)
         while True:
             _cursor, _version, state = await runtime.coordinator.checkpoint()
             if state.phase in {
+                LifecyclePhase.READY,
                 LifecyclePhase.WATCHING,
                 LifecyclePhase.FAILED,
                 LifecyclePhase.STOPPED,

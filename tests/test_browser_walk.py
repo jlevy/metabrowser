@@ -23,7 +23,7 @@ import yaml
 
 from metabrowser import walker
 from metabrowser.inventory_engine.providers.python_inventory import (
-    PythonInventoryHandle,
+    _PythonInventoryStore as PythonInventoryStore,
 )
 from metabrowser.walk import (
     build_tree_envelope,
@@ -301,8 +301,8 @@ def test_stream_records(tmp_path: Path) -> None:
 # ── rewalk_subtree containment guard ──────────────────────────────
 
 
-async def _booted_inventory(root: Path) -> PythonInventoryHandle:
-    inv = PythonInventoryHandle()
+async def _booted_inventory(root: Path) -> PythonInventoryStore:
+    inv = PythonInventoryStore()
     inv.start(root)
     await inv.wait_until_done(timeout=10)
     return inv

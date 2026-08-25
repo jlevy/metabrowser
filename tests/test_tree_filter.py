@@ -17,7 +17,9 @@ import time
 from pathlib import Path
 
 from metabrowser.events import FsEntry
-from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryHandle
+from metabrowser.inventory_engine.providers.python_inventory import (
+    _PythonInventoryStore as PythonInventoryStore,
+)
 from metabrowser.tree import build_filtered_inventory_tree
 from metabrowser.tree_filter import (
     TreeFilter,
@@ -50,9 +52,9 @@ def _build_fixture(root: Path) -> None:
     (root / "logs" / "big.bin").write_text("0123456789abcdef" * 8)
 
 
-def _walk(root: Path) -> PythonInventoryHandle:
-    async def drive() -> PythonInventoryHandle:
-        inv = PythonInventoryHandle()
+def _walk(root: Path) -> PythonInventoryStore:
+    async def drive() -> PythonInventoryStore:
+        inv = PythonInventoryStore()
         inv.start(root)
         await inv.wait_until_done(timeout=5.0)
         return inv
@@ -61,7 +63,7 @@ def _walk(root: Path) -> PythonInventoryHandle:
 
 
 def _filtered(
-    inv: PythonInventoryHandle,
+    inv: PythonInventoryStore,
     root: Path,
     tree_filter: TreeFilter,
     *,
@@ -95,7 +97,7 @@ def _by_path(nodes: list[dict[str, object]]) -> dict[str, dict[str, object]]:
 def test_the_filtered_path_reads_structure_from_the_index(tmp_path: Path) -> None:
     """Two reads, two reasons: the rollup needs every entry, the tree shape
     needs one subtree. Grouping the snapshot by parent answers the second with
-    a full index pass, which is the cost ``PythonInventoryHandle.children_of`` exists to
+    a full index pass, which is the cost ``PythonInventoryStore.children_of`` exists to
     remove — 63 ms to 7 ms for a folder expansion at 117k entries.
 
     This branch and the child index landed on separate branches, and the
