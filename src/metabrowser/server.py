@@ -1238,7 +1238,7 @@ async def index(_request: Request) -> HTMLResponse:
              cannot be reached is not a control. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
-                  aria-haspopup="true" data-tip-text="Metabrowser" aria-label="Metabrowser menu"></button>
+                  aria-haspopup="true" aria-label="Metabrowser menu"></button>
           <div class="settings-menu menu" role="menu" aria-label="Metabrowser">
             <a class="menu-title menu-title-link" href="https://github.com/jlevy/metabrowser"
                target="_blank" rel="noopener noreferrer"
