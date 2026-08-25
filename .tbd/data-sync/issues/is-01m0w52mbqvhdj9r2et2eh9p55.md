@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 15
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -18,8 +18,9 @@ child_order_hints:
   - is-01m0wrpxfbmxdjaew4e3v6w19s
   - is-01m0wrpxv4phv1x1q6a7h9cnns
   - is-01m0wtb8g8gjxbm6d5m9zqv5bh
+  - is-01m0ww2gzdqqmkx8gjfjd5gct0
   - is-01m0w542g2gzak7th85hx2bdz8
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-25T16:01:46.918Z
+updated_at: 2026-08-25T16:32:03.222Z
 ---
-Deliver the nine-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: trusted interaction instrumentation and baseline, bounded preparation and atomic handoff, pending-state polish, fixed-corpus validation and documentation, shared navigational-row keyboard parity, commit-summary placement, shared copyable revision identity, consolidated commit-summary component ownership, and final PR review and CI delivery. Keep useful content visible, retain at most one speculative comparison, separate server/client/paint attribution, give file-tree and Git-history rows one enforced focus-and-open contract, keep commit identity and aggregate totals together in one maintained component, preserve lifecycle safety, and close the epic only after PR #82 has exact-head green CI.
+Deliver the ten-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: trusted interaction instrumentation and baseline, bounded preparation and atomic handoff, pending-state polish, fixed-corpus validation and documentation, shared navigational-row keyboard parity, commit-summary placement, shared copyable revision identity, consolidated commit-summary component ownership, obsolete retained-work cancellation, and final PR review and CI delivery. Keep useful content visible, retain at most one speculative comparison, cancel background hydration and syntax work as soon as its retained revision becomes obsolete, separate server/client/paint attribution, give file-tree and Git-history rows one enforced focus-and-open contract, keep commit identity and aggregate totals together in one maintained component, preserve lifecycle safety, and close the epic only after PR #82 has exact-head green CI.
