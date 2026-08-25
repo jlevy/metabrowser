@@ -319,6 +319,30 @@ def test_git_history_vocabulary_is_documented() -> None:
         )
 
 
+def test_git_commit_summary_is_one_component() -> None:
+    """Commit identity and description have one maintained component boundary."""
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+
+    assert "### Git Commit Summary" in doc
+    assert "test_git_commit_summary_is_one_component" in doc
+    assert "function renderCommitSummary(detail)" in panel
+    assert "function renderCommitChangeStats(" in panel
+    assert '<section class="git-commit-summary"' in panel
+    assert 'class="git-commit-change-stats"' in panel
+    assert "html += renderCommitSummary(detail);" in panel
+    for component_part in (
+        'class="git-commit-subject"',
+        'class="git-commit-meta"',
+        'class="git-commit-change-stats"',
+        'class="git-commit-change-files"',
+        'class="git-commit-body"',
+    ):
+        assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
+    assert "white-space: nowrap" in _rule(styles, ".git-commit-change-stats")
+
+
 def test_one_document_surface_has_one_set_of_breakpoints() -> None:
     """A README reads at the same measure in Overview as on its own.
 

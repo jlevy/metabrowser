@@ -4952,7 +4952,7 @@ pre.code-block code.hljs {
   pointer-events: auto;
 }
 
-.git-commit-summary {
+.git-commit-change-stats {
   display: inline-flex;
   align-items: center;
   gap: 8px;

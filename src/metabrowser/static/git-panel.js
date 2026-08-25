@@ -162,27 +162,63 @@
   }
 
   /**
-   * Keep commit-level change totals in the identity row. The hosted diff
-   * suppresses its own aggregate line, so the description never separates
-   * the commit from the size of the change it describes.
-   *
    * @param {Record<string, unknown>} stats
    * @param {number} fallbackFiles
    * @param {boolean} filesTruncated
    * @returns {string}
    */
-  function renderCommitSummary(stats, fallbackFiles, filesTruncated) {
+  function renderCommitChangeStats(stats, fallbackFiles, filesTruncated) {
     const fileCount = stats.files_changed ?? (filesTruncated ? "?" : fallbackFiles);
     const additions = stats.additions ?? "?";
     const deletions = stats.deletions ?? "?";
     const fileLabel = Number(fileCount) === 1 ? "file" : "files";
     return (
-      '<span class="git-commit-summary">' +
-      `<span class="git-commit-summary-files">${escapeHtml(String(fileCount))} changed ${fileLabel}</span>` +
+      '<span class="git-commit-change-stats">' +
+      `<span class="git-commit-change-files">${escapeHtml(String(fileCount))} changed ${fileLabel}</span>` +
       `<span class="git-stat-add">+${escapeHtml(String(additions))}</span>` +
       `<span class="git-stat-del">−${escapeHtml(String(deletions))}</span>` +
       "</span>"
     );
+  }
+
+  /**
+   * Render the complete commit summary as one component. The comparison,
+   * out-of-root files, and bounds remain siblings because they describe the
+   * rendered change rather than the commit's identity and message.
+   *
+   * @param {MetabrowserGitCommitDetail} detail
+   * @returns {string}
+   */
+  function renderCommitSummary(detail) {
+    const commit = detail.commit;
+    const stats = detail.stats || {};
+    const files = detail.files || [];
+    let html = '<section class="git-commit-summary" aria-label="Commit summary">';
+    html += '<div class="git-commit-header">';
+    html += `<h1 class="git-commit-subject">${escapeHtml(commit.subject)}</h1>`;
+    html += '<div class="git-commit-meta">';
+    html += '<span class="git-commit-revision">';
+    html += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
+    html +=
+      '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
+      ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
+      ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
+      ` aria-label="Copy revision">${copyIcon()}</button>`;
+    html += "</span>";
+    html += `<span>${escapeHtml(commit.author?.name || "")}</span>`;
+    html += `<span class="${escapeHtml(ageClass(commit.committed_at))}">`;
+    html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
+    html += renderCommitChangeStats(stats, files.length, detail.files_truncated);
+    html += "</div>";
+    if (commit.refs?.length) {
+      html += `<div class="git-commit-refs">${renderRefBadges(commit.refs)}</div>`;
+    }
+    html += "</div>";
+    if (detail.body) {
+      html += `<pre class="git-commit-body">${escapeHtml(detail.body)}</pre>`;
+    }
+    html += "</section>";
+    return html;
   }
 
   /**
@@ -996,30 +1032,7 @@
     const files = detail.files || [];
 
     let html = `<div class="git-commit-view" data-revision="${escapeHtml(commit.id)}">`;
-    html += '<div class="git-commit-header">';
-    html += `<h1 class="git-commit-subject">${escapeHtml(commit.subject)}</h1>`;
-    html += '<div class="git-commit-meta">';
-    html += '<span class="git-commit-revision">';
-    html += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
-    html +=
-      '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
-      ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
-      ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
-      ` aria-label="Copy revision">${copyIcon()}</button>`;
-    html += "</span>";
-    html += `<span>${escapeHtml(commit.author?.name || "")}</span>`;
-    html += `<span class="${escapeHtml(ageClass(commit.committed_at))}">`;
-    html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
-    html += renderCommitSummary(stats, files.length, detail.files_truncated);
-    html += "</div>";
-    if (commit.refs?.length) {
-      html += `<div class="git-commit-refs">${renderRefBadges(commit.refs)}</div>`;
-    }
-    html += "</div>";
-
-    if (detail.body) {
-      html += `<pre class="git-commit-body">${escapeHtml(detail.body)}</pre>`;
-    }
+    html += renderCommitSummary(detail);
 
     // Files outside the served root are the one thing the comparison
     // below cannot show: it renders paths this server can open, and
@@ -1343,6 +1356,7 @@
       hoverText,
       ageClass,
       relativeAge,
+      renderCommitSummary,
       renderCommitDetail,
       renderFileRow,
       renderPanel,

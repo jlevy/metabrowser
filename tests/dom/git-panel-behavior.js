@@ -630,13 +630,28 @@ async function run() {
   assertContains("detail: revision uses the shared copy icon", previewHtml, 'data-icon="copy"');
   assertContains("detail: body", previewHtml, "explanatory body");
   assertContains("detail: ref badge", previewHtml, "main");
-  assertContains("detail: summary sits in commit chrome", previewHtml, "git-commit-summary");
+  assertContains(
+    "detail: summary has one component root",
+    previewHtml,
+    '<section class="git-commit-summary"',
+  );
+  assertContains(
+    "detail: summary gives change stats their own child",
+    previewHtml,
+    "git-commit-change-stats",
+  );
   assertContains("detail: summary counts files", previewHtml, "2 changed files");
   assertContains("detail: summary counts additions", previewHtml, "+5");
   assertContains("detail: summary counts deletions", previewHtml, "−1");
+  const summaryStart = previewHtml.indexOf('<section class="git-commit-summary"');
+  const summaryEnd = previewHtml.indexOf("</section>", summaryStart);
   assertTrue(
-    "detail: summary precedes the description",
-    previewHtml.indexOf("git-commit-summary") < previewHtml.indexOf("git-commit-body"),
+    "detail: component owns subject, metadata, refs, and description",
+    summaryStart >= 0 &&
+      previewHtml.indexOf("git-commit-subject", summaryStart) < summaryEnd &&
+      previewHtml.indexOf("git-commit-meta", summaryStart) < summaryEnd &&
+      previewHtml.indexOf("git-commit-refs", summaryStart) < summaryEnd &&
+      previewHtml.indexOf("git-commit-body", summaryStart) < summaryEnd,
   );
   // The commit's files are presented by the diff view mounted below, so
   // the panel keeps only what that view cannot show: a host for it, the

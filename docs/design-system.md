@@ -685,6 +685,32 @@ still reads, and a halved branch name does not.
 Rows are independent — no shared column — which is also what lets a new page of history
 be appended to the list instead of rebuilding every row above it.
 
+### Git Commit Summary
+
+The selected commit begins with one `.git-commit-summary` component rendered by
+`renderCommitSummary` in `static/git-panel.js`. Its anatomy has one order:
+
+1. subject;
+2. metadata containing the copyable revision, author, age, and
+   `.git-commit-change-stats`;
+3. refs, when present; and
+4. the commit description, when present.
+
+The change-stats child reports changed files before additions and deletions.
+It uses the shared inline-change-stat colors and weight, renders a true minus sign, and
+wraps with the metadata row rather than truncating.
+Missing totals remain visibly unknown; a bounded file list never becomes an exact count.
+
+The component owns commit identity and message only.
+The comparison, files outside the served root, and truncation notice are siblings under
+`.git-commit-view`, because they describe the rendered change rather than the commit
+summary. A revision-hosted comparison suppresses its aggregate summary so the mounted
+view has one set of totals; direct diff documents retain their own summary.
+
+Do not assemble commit-summary fragments in `renderCommitDetail` or add a second root.
+`tests/test_design_vocabulary.py::test_git_commit_summary_is_one_component` maintains
+the renderer, root, child, styling, and documentation contract.
+
 ### Branch Chips
 
 Git ref badges (`.git-ref`) are their own vocabulary, not filter chips: at

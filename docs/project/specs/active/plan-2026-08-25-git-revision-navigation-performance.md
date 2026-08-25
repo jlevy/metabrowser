@@ -172,8 +172,8 @@ change. No compatibility layer is needed.
 ## Implementation Plan
 
 Epic `mb-fgcg` owns this plan.
-Its eight child beads separate measurement, behavior, presentation, validation, keyboard
-consistency, commit-header information design, and delivery.
+Its nine child beads separate measurement, behavior, presentation, validation, keyboard
+consistency, commit-header information design, component ownership, and delivery.
 Blockers express only real sequencing; the baseline also feeds final validation
 directly.
 
@@ -186,7 +186,8 @@ directly.
 | Enforce navigational-row keyboard parity | `mb-xmkn` | `mb-8j0r` | Closed |
 | Move the change summary into the commit metadata header | `mb-j0um` | None | Closed |
 | Make the revision a shared copyable identifier | `mb-wchz` | None | Closed |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-xmkn`, `mb-j0um`, `mb-wchz` | Blocked |
+| Consolidate the Git commit summary component | `mb-lk26` | None | Closed |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-xmkn`, `mb-j0um`, `mb-wchz`, `mb-lk26` | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -325,7 +326,27 @@ directly.
   behavior, and the shared design-system vocabulary.
   Pointer, keyboard, and screen-reader operation work in a visible browser.
 
-### Phase 8: Deliver and Monitor (`mb-j8ni`)
+### Phase 8: Consolidate the Commit Summary Component (`mb-lk26`)
+
+- **Files and functions:** Give `renderCommitSummary` in `git-panel.js` sole ownership
+  of the summary markup, keep aggregate projection in `renderCommitChangeStats`, and
+  reduce `renderCommitDetail` to composing that component with the comparison and
+  bounded-file surfaces.
+  Update the component selectors in `styles.css`, the Git-panel DOM suite,
+  `docs/design-system.md`, and the static design-vocabulary registry.
+- **Behavior and invariants:** One `.git-commit-summary` root contains the subject,
+  revision and copy control, author, age, change stats, refs, and optional description
+  in that order. The `.git-commit-change-stats` child owns only files, additions, and
+  deletions. The comparison, out-of-root files, and bounds remain siblings.
+  Escaping, unknown totals, semantic colors, wrapping, copy behavior, and hosted-summary
+  suppression remain unchanged.
+- **Acceptance:** Focused tests prove that one root owns the complete anatomy and that
+  the detail renderer composes it rather than rebuilding fragments.
+  A maintained design-system test ties the documented root and child names to the
+  renderer and CSS. Focused tests, `make format`, `make verify`, and a visible-browser
+  smoke test pass.
+
+### Phase 9: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
