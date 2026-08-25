@@ -123,6 +123,36 @@ class CoordinatedRead:
             raise ValueError("decorated-entry keys must match provider paths")
 
 
+class InventoryReadSession:
+    """Serialize a bounded multi-read assembly at one host observation boundary."""
+
+    def __init__(self, coordinator: InventoryCoordinator, handle: InventoryHandle) -> None:
+        self._coordinator = coordinator
+        self._handle = handle
+        self._active = True
+
+    async def read(
+        self,
+        request: ReadRequest,
+        *,
+        include_catalog_decorations: bool = False,
+    ) -> CoordinatedRead:
+        """Read while root changes, overlay writes, and host publication are paused."""
+
+        if not self._active:
+            raise RuntimeError("the inventory read session is no longer active")
+        result = await _drain_provider_operation_on_cancel(self._handle.read(request))
+        if self._handle is not self._coordinator._handle:
+            raise InventoryConsistencyError("the served root changed during a read session")
+        return self._coordinator._compose_read_locked(
+            result,
+            include_catalog_decorations=include_catalog_decorations,
+        )
+
+    def _finish(self) -> None:
+        self._active = False
+
+
 @dataclass(frozen=True, slots=True)
 class HostChange:
     """Bounded invalidation in the coordinator's host ordering."""
@@ -279,33 +309,37 @@ class InventoryCoordinator:
                     raise InventoryConsistencyError(
                         "the served root changed during a coordinated read"
                     )
-                self._observe_read_locked(result)
-                facts = self._returned_entries(result)
-                returned_paths = self._returned_paths(
+                return self._compose_read_locked(
                     result,
-                    facts,
-                    include_catalog=include_catalog_decorations,
-                )
-                overlay = self._overlay.snapshot(returned_paths)
-                decorated = {
-                    path: DecoratedInventoryEntry(
-                        facts=entry,
-                        decoration=overlay.decorations.get(path, EMPTY_DECORATION),
-                    )
-                    for path, entry in facts.items()
-                }
-                return CoordinatedRead(
-                    result=result,
-                    version=HostVersion(
-                        engine=result.version,
-                        overlay_revision=overlay.revision,
-                    ),
-                    cursor=self._current_host_cursor_locked(),
-                    entries=MappingProxyType(decorated),
-                    decorations=overlay.decorations,
+                    include_catalog_decorations=include_catalog_decorations,
                 )
         finally:
             await asyncio.shield(self._end_operation())
+
+    @contextlib.asynccontextmanager
+    async def read_session(self) -> AsyncGenerator[InventoryReadSession]:
+        """Hold one host boundary across a bounded version-pinned page assembly.
+
+        Provider mutation may still advance the native engine, so callers must pin
+        pages to the first ``EngineVersion`` and retry on ``VersionUnavailableError``.
+        The session prevents root replacement, overlay changes, and host-change
+        publication from splitting the assembled response.
+        """
+
+        async with self._condition:
+            await self._wait_for_transition_locked()
+            handle = self._require_handle_locked()
+            self._active_operations += 1
+            session = InventoryReadSession(self, handle)
+            try:
+                yield session
+            finally:
+                session._finish()
+                self._active_operations -= 1
+                if self._active_operations < 0:
+                    raise RuntimeError("inventory operation accounting underflow")
+                if self._active_operations == 0:
+                    self._condition.notify_all()
 
     async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
         """Forward verified filesystem hints without exposing the provider."""
@@ -599,6 +633,7 @@ class InventoryCoordinator:
                     version=self._current_host_version_locked(),
                     state=self._require_state_locked(),
                     reset=True,
+                    facts_changed=True,
                     work=merged.work,
                 )
             else:
@@ -755,6 +790,40 @@ class InventoryCoordinator:
             self._engine_cursor = result.cursor
             self._state = result.state
 
+    def _compose_read_locked(
+        self,
+        result: ReadResult,
+        *,
+        include_catalog_decorations: bool,
+    ) -> CoordinatedRead:
+        """Join one provider result while the coordinator lock is held."""
+
+        self._observe_read_locked(result)
+        facts = self._returned_entries(result)
+        returned_paths = self._returned_paths(
+            result,
+            facts,
+            include_catalog=include_catalog_decorations,
+        )
+        overlay = self._overlay.snapshot(returned_paths)
+        decorated = {
+            path: DecoratedInventoryEntry(
+                facts=entry,
+                decoration=overlay.decorations.get(path, EMPTY_DECORATION),
+            )
+            for path, entry in facts.items()
+        }
+        return CoordinatedRead(
+            result=result,
+            version=HostVersion(
+                engine=result.version,
+                overlay_revision=overlay.revision,
+            ),
+            cursor=self._current_host_cursor_locked(),
+            entries=MappingProxyType(decorated),
+            decorations=overlay.decorations,
+        )
+
     @staticmethod
     def _returned_entries(result: ReadResult) -> dict[str, InventoryEntry]:
         returned: dict[str, InventoryEntry] = {}
@@ -860,4 +929,5 @@ __all__ = [
     "InventoryConsistencyError",
     "InventoryCoordinator",
     "InventoryNotOpenError",
+    "InventoryReadSession",
 ]

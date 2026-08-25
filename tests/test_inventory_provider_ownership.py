@@ -51,7 +51,7 @@ def test_obsolete_inventory_module_and_singleton_api_are_absent() -> None:
 
 
 def test_python_provider_has_only_the_contract_change_stream() -> None:
-    provider_path = _PROVIDER_ROOT / "python.py"
+    provider_path = _PROVIDER_ROOT / "python_inventory.py"
     tree = ast.parse(
         provider_path.read_text(encoding="utf-8"),
         filename=str(provider_path),

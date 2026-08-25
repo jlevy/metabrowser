@@ -18,6 +18,7 @@ from metabrowser.inventory_engine.contract import (
     REGISTERED_QUERY_TYPES,
     CatalogProjection,
     CatalogQuery,
+    CatalogRecord,
     ChangeBatch,
     ChangeCursor,
     Coverage,
@@ -36,8 +37,11 @@ from metabrowser.inventory_engine.contract import (
     IndexState,
     InventoryBackend,
     InventoryConfig,
+    InventoryEntry,
     InventoryFilter,
     InventoryHandle,
+    InventoryIssue,
+    IssueCode,
     LifecyclePhase,
     MetadataProjection,
     MetadataQuery,
@@ -56,8 +60,9 @@ from metabrowser.inventory_engine.contract import (
     RollupQuery,
     SourceKind,
     WorkCounters,
+    inventory_scope_fingerprint,
 )
-from metabrowser.inventory_engine.providers.python import PythonInventoryBackend
+from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-inventory-provider.md"
@@ -160,6 +165,35 @@ def test_read_request_defaults_to_a_checkpoint_and_rejects_duplicate_projection_
         )
 
 
+@pytest.mark.parametrize(
+    "factory",
+    (
+        lambda: DirectoryProjection(query_id="directory", entries=(), remaining_rows=1),
+        lambda: FilteredTreeProjection(
+            query_id="filtered",
+            entries=(),
+            matching_leaves=0,
+            matching_files=0,
+            matching_bytes=0,
+            next_page="1",
+            remaining_rows=0,
+        ),
+        lambda: CatalogProjection(
+            query_id="catalog",
+            records=(),
+            total_matches=1,
+            next_page="1",
+            remaining_rows=0,
+        ),
+    ),
+)
+def test_paged_projection_continuations_match_lossless_remainders(
+    factory: Callable[[], object],
+) -> None:
+    with pytest.raises(ValueError, match="continuation"):
+        factory()
+
+
 def test_catalog_predicates_are_canonical_and_bounded() -> None:
     with pytest.raises(ValueError, match="start with a dot"):
         CatalogQuery(query_id="q", max_rows=1, terminal_extensions=("jsonl",))
@@ -182,20 +216,31 @@ def test_state_requires_an_explanation_for_partial_coverage() -> None:
 
 
 def test_configuration_and_command_bounds_are_enforced() -> None:
-    with pytest.raises(ValueError, match="max_entries must be positive"):
-        InventoryConfig(max_entries=0)
+    with pytest.raises(ValueError, match="max_files must be positive"):
+        InventoryConfig(max_files=0)
     with pytest.raises(ValueError, match="max_depth must be positive"):
         InventoryConfig(max_depth=0)
     with pytest.raises(ValueError, match="change_queue_size must be positive"):
         InventoryConfig(change_queue_size=0)
     with pytest.raises(ValueError, match="registry_fingerprint must not be empty"):
         InventoryConfig(registry_fingerprint="")
+    with pytest.raises(ValueError, match="breadth-first"):
+        InventoryConfig(traversal=cast(Any, "depth_first"))
+    with pytest.raises(ValueError, match="watch_mode"):
+        InventoryConfig(watch_mode=cast(Any, "sometimes"))
+    with pytest.raises(ValueError, match="cache_mode"):
+        InventoryConfig(cache_mode=cast(Any, "forever"))
+    for invalid_hidden_name in ("visible", ".", "..", ".nested/name", ".bad\\name", ".bad\x00name"):
+        with pytest.raises(ValueError, match="exact hidden path-component"):
+            InventoryConfig(hidden_allowlist=(invalid_hidden_name,))
     with pytest.raises(ValueError, match="at most 1024"):
         RefreshRequest(
             observations=tuple(RefreshObservation(path=str(index)) for index in range(1_025))
         )
     with pytest.raises(ValueError, match="at most 1024"):
         PriorityRequest(paths=tuple(str(index) for index in range(1_025)))
+    with pytest.raises(ValueError, match="unique"):
+        PriorityRequest(paths=("same", "same"))
     with pytest.raises(ValueError, match="nonnegative"):
         WorkCounters(entries_visited=-1)
     assert WorkCounters().cpu_time_ns is None
@@ -209,6 +254,88 @@ def test_configuration_and_command_bounds_are_enforced() -> None:
             total_matches=-1,
             truncated=False,
         )
+
+
+def test_inventory_scope_fingerprint_is_portable_and_semantic() -> None:
+    first = InventoryConfig(
+        max_files=10,
+        max_depth=3,
+        hidden_allowlist=(".z", ".a"),
+    )
+    reordered = InventoryConfig(
+        max_files=10,
+        max_depth=3,
+        hidden_allowlist=(".a", ".z"),
+    )
+    changed = InventoryConfig(
+        max_files=11,
+        max_depth=3,
+        hidden_allowlist=(".a", ".z"),
+    )
+
+    digest = inventory_scope_fingerprint(first)
+    assert digest == inventory_scope_fingerprint(reordered)
+    assert digest != inventory_scope_fingerprint(changed)
+    assert len(digest) == 64
+    assert all(character in "0123456789abcdef" for character in digest)
+
+
+def test_unimplemented_filesystem_scope_is_rejected_explicitly() -> None:
+    with pytest.raises(ValueError, match="cannot stay on one filesystem yet"):
+        InventoryConfig(stay_on_filesystem=True)
+
+
+@pytest.mark.parametrize("path", ("/absolute", "a//b", "a/./b", "a/../b", "a\\b", "a\x00b"))
+def test_path_bearing_contract_records_reject_noncanonical_paths(path: str) -> None:
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        EntryQuery(query_id="entry", path=path)
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        DirectoryQuery(query_id="directory", path=path)
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        FilteredTreeQuery(query_id="filtered", path=path)
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        RollupQuery(query_id="rollup", path=path)
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        RefreshObservation(path=path)
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        PriorityRequest(paths=(path,))
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        CatalogRecord(path=path, logical_extension="", size=0, mtime_ns=0)
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        InventoryEntry(
+            path=path,
+            parent="",
+            name="entry",
+            type=EntryType.FILE,
+            ext="",
+            size=0,
+            mtime_ns=0,
+        )
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        InventoryIssue(code=IssueCode.PROVIDER_FAILURE, detail="failed", path=path)
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        RecentProjection(
+            query_id="recent",
+            entries=(),
+            total_matches=0,
+            truncated=False,
+            gitignored_directories=(path,),
+        )
+
+
+def test_entry_identity_and_refresh_receipts_are_self_consistent() -> None:
+    with pytest.raises(ValueError, match="one identity"):
+        InventoryEntry(
+            path="directory/file.txt",
+            parent="wrong",
+            name="file.txt",
+            type=EntryType.FILE,
+            ext=".txt",
+            size=0,
+            mtime_ns=0,
+        )
+    with pytest.raises(ValueError, match="both accepted and rejected"):
+        RefreshReceipt(accepted_paths=("same",), rejected_paths=("same",))
 
 
 def test_change_batches_are_bounded_and_reset_dominates_dirtiness() -> None:
@@ -578,7 +705,7 @@ def test_provider_budget_stop_is_explicit_and_absence_remains_unknown(
         handle = await _open_settled_provider(
             provider_factory,
             tmp_path,
-            config=InventoryConfig(max_entries=2),
+            config=InventoryConfig(max_files=2),
         )
         try:
             result = await handle.read(
@@ -602,3 +729,106 @@ def test_provider_budget_stop_is_explicit_and_absence_remains_unknown(
         ("resource_budget",),
         "unknown",
     )
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_directory_pages_are_lossless_when_directories_outnumber_file_budget(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    expected = {f"directory-{index}" for index in range(7)}
+    for path in expected:
+        (tmp_path / path).mkdir()
+
+    async def run() -> tuple[set[str], tuple[int, ...]]:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(max_files=1, watch_mode="off"),
+        )
+        try:
+            seen: set[str] = set()
+            remaining: list[int] = []
+            after: str | None = None
+            pinned: EngineVersion | None = None
+            while True:
+                result = await handle.read(
+                    ReadRequest(
+                        queries=(
+                            DirectoryQuery(
+                                query_id="tree",
+                                max_depth=2,
+                                max_rows=2,
+                                after=after,
+                            ),
+                        ),
+                        at_version=pinned,
+                    )
+                )
+                projection = result.projection("tree")
+                assert isinstance(projection, DirectoryProjection)
+                pinned = result.version if pinned is None else pinned
+                assert result.version == pinned
+                assert not (seen & {entry.path for entry in projection.entries})
+                seen.update(entry.path for entry in projection.entries)
+                remaining.append(projection.remaining_rows)
+                after = projection.next_page
+                if after is None:
+                    return seen, tuple(remaining)
+        finally:
+            await handle.close()
+
+    seen, remaining = asyncio.run(run())
+    assert seen == expected
+    assert remaining == (5, 3, 1, 0)
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_catalog_pages_report_exact_lossless_remainders(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    expected = {f"file-{index}.txt" for index in range(7)}
+    for path in expected:
+        (tmp_path / path).write_text(path, encoding="utf-8")
+
+    async def run() -> tuple[set[str], tuple[int, ...]]:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(max_files=10, watch_mode="off"),
+        )
+        try:
+            seen: set[str] = set()
+            remaining: list[int] = []
+            after: str | None = None
+            pinned: EngineVersion | None = None
+            while True:
+                result = await handle.read(
+                    ReadRequest(
+                        queries=(
+                            CatalogQuery(
+                                query_id="catalog",
+                                max_rows=2,
+                                after=after,
+                            ),
+                        ),
+                        at_version=pinned,
+                    )
+                )
+                projection = result.projection("catalog")
+                assert isinstance(projection, CatalogProjection)
+                pinned = result.version if pinned is None else pinned
+                assert result.version == pinned
+                assert not (seen & {record.path for record in projection.records})
+                seen.update(record.path for record in projection.records)
+                remaining.append(projection.remaining_rows)
+                after = projection.next_page
+                if after is None:
+                    return seen, tuple(remaining)
+        finally:
+            await handle.close()
+
+    seen, remaining = asyncio.run(run())
+    assert seen == expected
+    assert remaining == (5, 3, 1, 0)

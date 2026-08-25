@@ -76,7 +76,7 @@ async def _read_candidates(
             queries=(
                 CatalogQuery(
                     query_id="activity-candidates",
-                    max_rows=config.max_entries,
+                    max_rows=config.max_files,
                     include_ignored=True,
                     terminal_extensions=tuple(sorted(BROWSER_TRACKABLE_EXTS)),
                     ancestor_names=() if root_is_scoped else tuple(sorted(_SCOPED_DIRS)),

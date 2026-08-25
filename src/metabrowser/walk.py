@@ -34,7 +34,6 @@ import yaml
 from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.inventory_engine.contract import (
     DiagnosticsQuery,
-    DirectoryProjection,
     DirectoryQuery,
     EntryProjection,
     EntryQuery,
@@ -49,6 +48,10 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_engine.runtime import (
     InventoryRuntime,
     default_inventory_config,
+)
+from metabrowser.inventory_engine.tree_page_assembly import (
+    TreePageQuery,
+    assemble_tree_pages,
 )
 from metabrowser.tree import build_inventory_tree_from_entries
 from metabrowser.tree_filter import TreeFilter
@@ -391,7 +394,7 @@ async def build_tree_envelope(
 
     config = replace(
         default_inventory_config(),
-        max_entries=max_files,
+        max_files=max_files,
         max_depth=max_depth,
         watch_mode="off",
     )
@@ -416,57 +419,63 @@ async def build_tree_envelope(
 
         active_filter = tree_filter is not None and tree_filter.active
         projection_id = "walk-filtered" if active_filter else "walk-directory"
-        queries: list[ReadQuery] = [EntryQuery(query_id="walk-parent", path=subpath)]
+        companion_queries: tuple[ReadQuery, ...] = (
+            EntryQuery(query_id="walk-parent", path=subpath),
+        )
+        page_query: TreePageQuery | None = None
         as_of_ns = time.time_ns() if now_sec is None else int(now_sec * 1_000_000_000)
         if active_filter:
             assert tree_filter is not None
             extensions = tuple(value for value in tree_filter.types if value.startswith("."))
             filenames = tuple(value for value in tree_filter.types if not value.startswith("."))
-            queries.append(
-                FilteredTreeQuery(
-                    query_id=projection_id,
-                    path=subpath,
-                    max_depth=max(1, max_depth),
-                    max_rows=max_files,
-                    filter=InventoryFilter(
-                        extensions=extensions,
-                        filenames=filenames,
-                        recency_seconds=(
-                            float(tree_filter.recency_seconds)
-                            if tree_filter.recency_seconds
-                            else None
-                        ),
-                        minimum_size=tree_filter.min_size or None,
-                        include_ignored=tree_filter.include_ignored,
-                        as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
+            page_query = FilteredTreeQuery(
+                query_id=projection_id,
+                path=subpath,
+                max_depth=max(1, max_depth),
+                max_rows=max_files,
+                filter=InventoryFilter(
+                    extensions=extensions,
+                    filenames=filenames,
+                    recency_seconds=(
+                        float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
                     ),
-                )
+                    minimum_size=tree_filter.min_size or None,
+                    include_ignored=tree_filter.include_ignored,
+                    as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
+                ),
             )
         elif max_depth > 0:
-            queries.append(
-                DirectoryQuery(
-                    query_id=projection_id,
-                    path=subpath,
-                    max_depth=max_depth,
-                    max_rows=max_files,
-                )
+            page_query = DirectoryQuery(
+                query_id=projection_id,
+                path=subpath,
+                max_depth=max_depth,
+                max_rows=max_files,
             )
 
-        read = await runtime.coordinator.read(ReadRequest(queries=tuple(queries)))
+        assembly = (
+            await assemble_tree_pages(
+                runtime.coordinator,
+                page_query=page_query,
+                companion_queries=companion_queries,
+            )
+            if page_query is not None
+            else None
+        )
+        read = (
+            assembly.first_read
+            if assembly is not None
+            else await runtime.coordinator.read(ReadRequest(queries=companion_queries))
+        )
         parent = read.result.projection("walk-parent")
         if not isinstance(parent, EntryProjection):
             raise TypeError("the walk parent query returned the wrong projection")
         entries = ()
         filtered_projection: FilteredTreeProjection | None = None
-        if active_filter or max_depth > 0:
-            projection = read.result.projection(projection_id)
+        if assembly is not None:
+            projection = assembly.projection
             if isinstance(projection, FilteredTreeProjection):
                 filtered_projection = projection
-                entries = projection.entries
-            elif isinstance(projection, DirectoryProjection):
-                entries = projection.entries
-            else:
-                raise TypeError("the walk tree query returned the wrong projection")
+            entries = projection.entries
         tree = build_inventory_tree_from_entries(
             entries=entries,
             parent_rel=subpath,
@@ -474,7 +483,7 @@ async def build_tree_envelope(
             root_abs=root,
             parent_ignored=bool(parent.entry.gitignored) if parent.entry is not None else False,
         )
-        state = read.result.state
+        state = assembly.final_read.result.state if assembly is not None else read.result.state
         budget = any(issue.code.value == "resource_budget" for issue in state.issues)
         if budget:
             status = "truncated"
@@ -499,7 +508,7 @@ async def build_tree_envelope(
                 else None
             ),
             "tally_cache_status": status,
-            "tally_cache_max_files": config.max_entries,
+            "tally_cache_max_files": config.max_files,
         }
     finally:
         await runtime.close()

@@ -9,7 +9,7 @@ file's mtime fingerprint. Tests verify:
 * When the file vanishes, callers get a domain-appropriate
   empty result without re-raising.
 * ``invalidate_path`` drops every cache entry for that path.
-* Root-swap clears every cache (`_reset_all_caches`).
+* Root-swap clears every cache (``invalidate_all_projection_caches``).
 
 Plugin-defined chart projections are intentionally absent here. Metabrowser
 core only caches its built-in agent-log projection.
@@ -26,8 +26,8 @@ from unittest.mock import patch
 from metabrowser.projections import (
     _AGENT_CHARTS_CACHE,
     _PARSE_CACHE,
-    _reset_all_caches,
     extract_agent_charts_cached,
+    invalidate_all_projection_caches,
     invalidate_path,
     parse_jsonl_file_cached,
 )
@@ -50,7 +50,7 @@ def _bump_mtime(path: Path) -> None:
 
 
 def setup_function() -> None:
-    _reset_all_caches()
+    invalidate_all_projection_caches()
 
 
 # ── parse_jsonl_file_cached ────────────────────────────────────
@@ -120,16 +120,16 @@ def test_invalidate_path_drops_all_caches(tmp_path: Path) -> None:
     assert _AGENT_CHARTS_CACHE.read(f).hit is False
 
 
-# ── _reset_all_caches clears state ────────────────────────────
+# Broad invalidation
 
 
-def test_reset_all_caches_clears_state(tmp_path: Path) -> None:
+def test_invalidate_all_projection_caches_clears_state(tmp_path: Path) -> None:
     f = tmp_path / "a.jsonl"
     _write_agent_jsonl(f)
     parse_jsonl_file_cached(f)
     _AGENT_CHARTS_CACHE.update(f, {"charts": [], "summary": None})
 
-    _reset_all_caches()
+    invalidate_all_projection_caches()
     assert len(_PARSE_CACHE.cache) == 0
     assert len(_AGENT_CHARTS_CACHE.cache) == 0
 

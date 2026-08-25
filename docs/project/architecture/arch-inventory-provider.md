@@ -55,14 +55,32 @@ Configuration separates state identity from execution policy:
 
 | Class | Fields | Effect |
 | --- | --- | --- |
-| Semantic scope | entry and depth budgets, hidden-name allowlist, symlink and filesystem-boundary policy | Included in the scope fingerprint; a budget stop reports partial coverage |
+| Semantic scope | `max_files`, `max_depth`, exact hidden-name allowlist, symlink policy, filesystem-boundary policy, and traversal order | Included in the scope fingerprint; a file-budget stop reports partial coverage |
 | Classification | File Rollup registry fingerprint | Contributes to the semantic fingerprint; changing it opens a new session |
-| Execution | breadth-first traversal and change-queue size | Reported as provider facts; does not change a complete result’s meaning |
+| Execution | change-queue size | Reported as a provider fact; does not change a result’s meaning |
 | Persistence and observation | cache mode and watch mode | Reported through source, freshness, and diagnostics |
 
-The current product scope never follows symlinks.
-The contract rejects a configuration that asks a provider to do so instead of letting
-providers disagree.
+`max_files` limits regular files, not directory rows.
+Query `max_rows` bounds each returned page independently, and complete directory-style
+consumers follow every continuation.
+The walker and watcher both apply `hidden_allowlist`; a name that changes scope cannot
+be fingerprinted without also changing observation behavior.
+
+Traversal order is semantic while a file budget can truncate discovery, because it
+determines which partial prefix is retained.
+The current product scope requires breadth-first traversal and validates that
+requirement at runtime.
+
+The current product scope follows neither symlinks nor a one-filesystem policy.
+The contract rejects `follow_symlinks=True` and `stay_on_filesystem=True` instead of
+letting providers disagree or silently ignore an input.
+
+The scope fingerprint is SHA-256 over the UTF-8 compact JSON array of sorted
+`[name, value]` string pairs.
+Structured values, currently `hidden_allowlist`, are compact canonical JSON strings
+within that outer array.
+Every provider adapter uses the application helper that defines this encoding; it does
+not hash a language-specific object representation.
 
 An `EngineVersion` consists of a session identity, monotonic sequence, scope
 fingerprint, and semantic fingerprint.
@@ -83,8 +101,13 @@ version-check-and-retry, provided that:
 
 A version-pinned request either returns that version or raises
 `VersionUnavailableError`. It never continues on a newer version.
-This rule lets the coordinator assemble a complete paged catalog without joining pages
-from different generations.
+This rule lets the coordinator assemble complete paged catalogs and trees without
+joining generations.
+`InventoryReadSession` also holds the root and sparse-overlay boundary while those pages
+assemble. If the native engine stops retaining the pinned version, the whole bounded
+assembly restarts; cursors must advance and the final page must report zero remaining
+rows. Exhausted retries fail the request with `VersionUnavailableError`; a complete
+consumer never substitutes a partial first page.
 
 The Python provider retains the last coherent root-entry and navigation bundle while its
 revision is moving. A repeated root-summary read may return that earlier boundary until
@@ -115,7 +138,7 @@ must not traverse inventory entries or manufacture a diagnostics dependency.
 | `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node bound | File Rollup Format payload for one directory |
 | `navigation` | `NavigationQuery` | Positive tally-row count | Population, extension, family, preset, and recency tallies |
 | `recent` | `RecentQuery` | Positive row count and explicit observation time | Newest matching files, pre-bound match count, and truncation |
-| `catalog` | `CatalogQuery` | Positive page size; optional terminal-extension, ancestor-name, and size predicates | Matching file identities and logical extensions from one pinned version |
+| `catalog` | `CatalogQuery` | Positive page size; optional terminal-extension, ancestor-name, and size predicates | Matching file identities, logical extensions, continuation, and exact known remainder from one pinned version |
 | `metadata` | `MetadataQuery` | Constant-size session record | Provider, contract, root, and identity facts |
 | `diagnostics` | `DiagnosticsQuery` | Constant-size counter record | Provider state, progress, cache, watch, and queue diagnostics |
 
@@ -144,6 +167,9 @@ implementing it in every production provider.
 `InventoryEntry` contains served-root-relative filesystem facts: lossless path identity,
 object type, logical extension, size, modification time, ignore state, and optional
 directory aggregates.
+Path-bearing contract records use one canonical POSIX-relative grammar: the root is
+`""`, absolute paths, backslashes, nulls, `.` and `..` segments, duplicate separators,
+and trailing separators are rejected at construction.
 A lookup distinguishes:
 
 - `present`: the entry is known and returned
@@ -214,13 +240,15 @@ scope when recovery is available; an unrecoverable observer failure remains stal
 its typed issue. The coordinator may continue coherent reads and must not treat either
 state as a failed reset recovery.
 
-Refresh requests contain 1 to 1,024 unique paths and a typed reason.
-Priority requests contain the same maximum number of paths and a positive depth.
+Refresh and priority requests contain 1 to 1,024 unique canonical paths.
+Refresh adds a typed reason; priority adds a positive depth.
 A notification remains a hint: a provider verifies filesystem state before applying a
 mutation. The primary native-or-polling watcher belongs to the opened provider so
 baseline discovery, observation capture, reconciliation, and freshness share one
 lifecycle. `refresh()` also accepts bounded external hints from activity probes or
 application writes; it is not a second watcher.
+If a watch batch cannot be submitted completely, the observer stops and reports a
+watcher gap. It never drops one failed chunk and continues while claiming freshness.
 
 ## Work and Performance Evidence
 
@@ -244,12 +272,12 @@ and
 
 | Consumer | Queries |
 | --- | --- |
-| `/api/tree` | `DirectoryQuery` or `FilteredTreeQuery`, bundled with `NavigationQuery` for root tallies |
+| `/api/tree` | Version-pinned `DirectoryQuery` or `FilteredTreeQuery` pages, with `NavigationQuery` at the same host boundary for root tallies |
 | `/api/rollup` and folder hooks | `RollupQuery` |
 | `/api/recent` | `RecentQuery` |
-| Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages; the Python scope fits in one page bounded by `InventoryConfig.max_entries` |
+| Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages; the Python scope fits in one page bounded by `InventoryConfig.max_files` |
 | `/api/file` folder facts | `EntryQuery` |
-| Initial browser stream | Bounded entry and directory reads followed by `changes()` from the captured cursor |
+| Initial browser stream | A lossless version-pinned snapshot assembled before atomic queue attachment; covered older changes are suppressed per connection |
 | Live browser stream | `changes()` plus coherent rereads |
 | Activity discovery | Provider-filtered catalog reads by terminal extension, ancestor name, and size; results update the host overlay |
 | Index metadata and capabilities | `MetadataQuery` and `DiagnosticsQuery` |

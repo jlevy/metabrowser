@@ -6,6 +6,24 @@ All notable changes to Metabrowser are documented here.
 
 Inventory engine:
 
+- Filesystem inventory now crosses one pluggable, provider-neutral contract.
+  The current Python implementation remains the only shipped provider and preserves the
+  existing routes and browser wire; its module is named `python_inventory.py` to make
+  ownership explicit before the fdu provider is added.
+
+- Complete tree responses and initial browser snapshots now follow every bounded page at
+  one engine version and sparse-overlay boundary.
+  A connection is attached only after that snapshot, and changes already represented by
+  it are suppressed, so a reconnect cannot apply an older ring-buffer delta after newer
+  state.
+
+- The inventory scope now applies its exact hidden-name allowlist to both walking and
+  watching, distinguishes the regular-file budget from query row bounds, validates
+  canonical relative paths, and reports an incompletely submitted watcher batch as a
+  stale watcher gap instead of silently continuing.
+  A required aggregate-repair failure likewise marks discovery failed instead of
+  advertising incomplete rollups as done.
+
 - Root-summary polling now reuses the Python provider’s last coherent navigation read
   while discovery advances.
   Cache hits return that read’s original version and state and report zero entries

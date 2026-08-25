@@ -102,7 +102,7 @@ def test_tree_cold_start_uses_bounded_provider_queries() -> None:
     source = inspect.getsource(proc_browser._read_tree_from_provider)
     assert "EntryQuery(" in source
     assert "PriorityRequest(" in source
-    assert "runtime.config.max_entries" in source
+    assert "runtime.config.max_files" in source
     assert "_dir_tree(" not in source
 
 

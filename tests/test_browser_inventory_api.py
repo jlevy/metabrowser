@@ -1,4 +1,4 @@
-"""End-to-end tests for InventoryIndex-backed API behavior.
+"""End-to-end tests for Python-inventory-backed API behavior.
 
 * ``api_tree`` uses the inventory path when the index has data;
   the response carries ``tally_cache_status`` reflecting walker
@@ -212,7 +212,7 @@ def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
         await blocker.wait()
 
     monkeypatch.setattr(
-        "metabrowser.inventory_engine.providers.python.walk_tree",
+        "metabrowser.inventory_engine.providers.python_inventory.walk_tree",
         partial_walk,
     )
 

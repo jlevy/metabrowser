@@ -125,7 +125,12 @@ is the starting point.
 
 `InventoryConfig` separates semantic scope and classification inputs from execution,
 cache, watch, and resource policy.
-Semantic inputs carry fingerprints.
+`max_files` is the regular-file discovery budget; directory rows use bounded query pages
+and do not consume that budget.
+The Python walker and watcher both apply the configured exact hidden-name allowlist.
+Unsupported symlink-following and one-filesystem scopes fail at construction.
+Semantic inputs use the portable canonical scope-fingerprint encoding defined by the
+contract rather than a Python representation.
 Execution facts remain telemetry.
 An explicit resource stop reports partial coverage and its cause.
 
@@ -154,10 +159,11 @@ A route never samples a revision, dispatches work, and assigns the earlier revis
 the later payload.
 
 Large results are bounded or paged at the provider seam.
-When an existing HTTP response is intentionally complete, such as the Quick File
-catalog, the coordinator assembles pages from one version-pinned read sequence off the
-event loop. A provider may return an explicit restart if it no longer retains that
-version; it may not mix pages from two versions.
+When an existing HTTP response is intentionally complete, including Quick File, tree
+responses, and the initial browser snapshot, the coordinator assembles pages from one
+version-pinned sequence and one sparse-overlay boundary.
+A provider may require a full restart if it no longer retains that version; it may not
+mix pages from two versions.
 If any page has time-dependent semantics, the coordinator chooses one `as_of_ns` before
 the first page and reuses it for the complete assembly.
 
@@ -195,6 +201,10 @@ failure remains stale.
 Coverage changes only if reconciliation discovers or cannot resolve an enumeration hole.
 The coordinator invalidates host projection caches and emits browser invalidations from
 provider changes, so neither watcher imports application wire types.
+Reset and all-dirty changes clear every projection cache; bounded changes invalidate
+only their canonical dirty paths.
+A failed watcher batch is a watcher gap and stops the observer rather than losing a
+suffix while freshness remains green.
 
 ### Behavior Preserved by the Python Provider
 
@@ -232,8 +242,8 @@ The implementation should converge on a focused package with these responsibilit
 - `inventory_engine.coordinator`: root lifecycle, provider-neutral reads, host versions,
   cache invalidation, change-to-host projection, and diagnostics;
 - `inventory_engine.overlay`: sparse application decorations and overlay revision;
-- `inventory_engine.providers.python`: the existing Python walker, retained state,
-  reducers, refresh, and watcher behavior behind `InventoryHandle`;
+- `inventory_engine.providers.python_inventory`: the existing Python walker, retained
+  state, reducers, refresh, and watcher behavior behind `InventoryHandle`;
 - `inventory_engine.providers.fdu`: a Phase 2 translation layer that owns no derived
   state;
 - one sealed factory at the composition root.
@@ -302,6 +312,11 @@ new filename.
 - [x] Make an empty projection bundle the explicit constant-work checkpoint read, so
   validators and retained-body caches can observe a coherent provider boundary without
   coupling either provider to a dummy metadata or diagnostics query.
+- [x] Harden the reviewed seam: rename the Python provider module descriptively, enforce
+  canonical paths and unique priority requests, apply semantic scope inputs, distinguish
+  the file budget from page rows, assemble complete tree pages at one host boundary,
+  attach snapshots without a stale-delta gap, fail closed on watcher-batch loss, and
+  invalidate projection caches on broad changes.
 
 **Phase 1 exit:** Metabrowser ships with only the Python provider and no fdu dependency.
 Every inventory consumer crosses the provider-neutral coordinator, one handle owns all
@@ -453,8 +468,10 @@ manifest in the same change.
 ## Open Questions
 
 Phase 1 has no unresolved contract question.
-Catalog assembly uses the provider’s bounded continuation together with a version-pinned
-read sequence, so it cannot join pages from different versions.
+Complete catalog and tree assembly use bounded continuations, one version-pinned read
+sequence, and one host-overlay boundary.
+Initial stream attachment adds a per-connection version floor, so an older queued
+invalidation cannot follow a newer snapshot.
 
 Two Phase 2 optimizations remain measurement-gated:
 

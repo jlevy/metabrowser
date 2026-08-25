@@ -12,8 +12,8 @@ filesystem records into ``FsEntry`` records and ``FsChange`` ops; the route laye
 
 Invariants (verified by tests):
 
-* ``RingBuffer`` overflow drops the oldest envelopes; ``Last-Event-ID``
-  resume returns only envelopes strictly newer than the requested id.
+* ``RingBuffer`` overflow drops the oldest envelopes; ``since(id)`` returns only
+  envelopes strictly newer than the requested id.
 * Envelope ids are monotonic per-process from 1 (so ``Last-Event-ID: 0``
   asks for the full buffer).
 * Round-trip: ``encode_sse(envelope)`` emits a single SSE frame; the
@@ -460,8 +460,7 @@ class EventEnvelope:
 
 
 class RingBuffer:
-    """Bounded fifo of ``EventEnvelope`` for short-disconnect
-    resume.
+    """Bounded FIFO of ``EventEnvelope`` values for ids and diagnostics.
 
     Capacity is a soft contract: the buffer holds at most
     ``capacity`` envelopes; oldest are dropped on append once full.
@@ -487,7 +486,7 @@ class RingBuffer:
     @property
     def latest_id(self) -> int:
         """Highest-numbered envelope id that has ever been
-        appended. Useful for ``Last-Event-ID`` resume tests; not
+        appended. Useful for reconnect-window diagnostics; not
         the same as the highest id currently in the buffer (the
         head id may have been dropped)."""
         return self._next_id - 1

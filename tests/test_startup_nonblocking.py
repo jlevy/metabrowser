@@ -11,8 +11,8 @@ from threading import Event
 import pytest
 
 from metabrowser.events import FsEntry
-from metabrowser.inventory_engine.providers import python as python_provider
-from metabrowser.inventory_engine.providers.python import PythonInventoryHandle
+from metabrowser.inventory_engine.providers import python_inventory as python_provider
+from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryHandle
 
 
 def test_inventory_start_offloads_gitignore_build(monkeypatch, tmp_path: Path) -> None:

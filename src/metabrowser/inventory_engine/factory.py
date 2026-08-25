@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 from metabrowser.inventory_engine.contract import InventoryBackend
-from metabrowser.inventory_engine.providers.python import PythonInventoryBackend
+from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
 
 
 class InventoryProvider(StrEnum):

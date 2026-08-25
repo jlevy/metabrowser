@@ -6,6 +6,25 @@
 
 **Status:** Complete
 
+## Implementation Update
+
+[Metabrowser pull request 74](https://github.com/jlevy/metabrowser/pull/74) implements
+the Phase 1 contract described here.
+The maintained design now lives in the
+[inventory-provider architecture](../architecture/arch-inventory-provider.md), and the
+remaining fdu adoption work lives in the
+[implementation plan](../specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md).
+
+The reviewed implementation names the reference module `python_inventory.py`, treats
+`max_files` as a regular-file scope budget, applies the same hidden-name allowlist to
+walking and watching, and rejects unsupported scope policies explicitly.
+Complete tree and snapshot consumers follow bounded continuations at one engine version
+and host overlay boundary.
+Initial stream attachment suppresses changes already represented by that snapshot, and
+an incompletely delivered watcher batch becomes a typed stale gap.
+These details replace the pre-refactor `InventoryIndex` descriptions below where the
+research records the original baseline.
+
 ## Overview
 
 Metabrowser should integrate fdu behind a Metabrowser-owned **inventory engine**

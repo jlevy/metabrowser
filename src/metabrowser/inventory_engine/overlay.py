@@ -11,24 +11,9 @@ from __future__ import annotations
 import threading
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 from types import MappingProxyType
 
-
-def _require_canonical_path(path: str) -> None:
-    """Require the lossless POSIX-relative identity used by inventory providers."""
-
-    if path == "":
-        return
-    pure = PurePosixPath(path)
-    if (
-        "\\" in path
-        or "\x00" in path
-        or pure.is_absolute()
-        or pure.as_posix() != path
-        or ".." in pure.parts
-    ):
-        raise ValueError("overlay paths must be canonical POSIX-relative paths")
+from metabrowser.inventory_engine.contract import require_canonical_inventory_path
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +111,7 @@ class InventoryOverlay:
 
         requested = tuple(dict.fromkeys(paths))
         for path in requested:
-            _require_canonical_path(path)
+            require_canonical_inventory_path(path, "overlay path", allow_root=True)
         with self._lock:
             selected = {
                 path: decoration
@@ -150,7 +135,7 @@ class InventoryOverlay:
         """Atomically apply sparse replacements, incrementing once on a real change."""
 
         for path in replacements:
-            _require_canonical_path(path)
+            require_canonical_inventory_path(path, "overlay path", allow_root=True)
         with self._lock:
             changed = False
             for path, requested in replacements.items():

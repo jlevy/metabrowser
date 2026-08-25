@@ -10,6 +10,7 @@ from watchfiles import Change
 
 from metabrowser.events import EventEnvelope, FsChange, FsUpsert
 from metabrowser.inventory_engine.contract import (
+    MAX_COMMAND_PATHS,
     DirectoryProjection,
     DirectoryQuery,
     EntryPresence,
@@ -101,6 +102,28 @@ def test_backend_batch_is_deduplicated_and_submitted_once(tmp_path: Path) -> Non
     assert requests[0].paths == ("a.txt", "b.txt")
 
 
+def test_backend_batch_uses_the_opened_scope_hidden_allowlist(tmp_path: Path) -> None:
+    requests: list[RefreshRequest] = []
+
+    async def refresh(request: RefreshRequest) -> RefreshReceipt:
+        requests.append(request)
+        return RefreshReceipt(accepted_paths=request.paths)
+
+    asyncio.run(
+        _emit_batch(
+            refresh,
+            tmp_path,
+            {
+                (Change.added, str(tmp_path / ".included" / "kept.txt")),
+                (Change.added, str(tmp_path / ".excluded" / "dropped.txt")),
+            },
+            hidden_allowlist=(".included",),
+        )
+    )
+
+    assert [request.paths for request in requests] == [(".included/kept.txt",)]
+
+
 def _build_fixture(root: Path) -> Path:
     (root / "runs" / "x").mkdir(parents=True)
     return root / "runs" / "x" / "new.jsonl"
@@ -167,7 +190,7 @@ def test_stale_delete_event_reconciles_recreated_directory(tmp_path: Path) -> No
                         DirectoryQuery(
                             query_id="tree",
                             max_depth=harness.runtime.config.max_depth,
-                            max_rows=harness.runtime.config.max_entries,
+                            max_rows=harness.runtime.config.max_files,
                         ),
                         RollupQuery(
                             query_id="rollup",
@@ -256,3 +279,104 @@ def test_watcher_announces_a_failed_watch_instead_of_dying_silently(
 
     statuses = asyncio.run(run())
     assert any(status.state == "failed" for status in statuses)
+
+
+def test_watcher_announces_a_failed_refresh_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metabrowser.watch_backends as watch_backends
+
+    async def yielding_awatch(*_args: object, **_kwargs: object):
+        yield {(Change.added, str(tmp_path / "changed.txt"))}
+
+    async def failing_refresh(_request: RefreshRequest) -> RefreshReceipt:
+        raise OSError("refresh failed")
+
+    monkeypatch.setattr(watch_backends, "awatch", yielding_awatch)
+
+    async def run() -> list[WatcherStatus]:
+        statuses: list[WatcherStatus] = []
+        await run_watcher(
+            root=tmp_path,
+            refresh=failing_refresh,
+            on_status=statuses.append,
+            mode="native",
+        )
+        return statuses
+
+    statuses = asyncio.run(run())
+    assert statuses[-1].state == "failed"
+    assert "refresh failed" in statuses[-1].detail
+
+
+def test_watcher_announces_a_rejected_observation_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metabrowser.watch_backends as watch_backends
+
+    async def yielding_awatch(*_args: object, **_kwargs: object):
+        yield {(Change.added, str(tmp_path / "changed.txt"))}
+
+    async def rejecting_refresh(request: RefreshRequest) -> RefreshReceipt:
+        return RefreshReceipt(accepted_paths=(), rejected_paths=request.paths)
+
+    monkeypatch.setattr(watch_backends, "awatch", yielding_awatch)
+
+    async def run() -> list[WatcherStatus]:
+        statuses: list[WatcherStatus] = []
+        await run_watcher(
+            root=tmp_path,
+            refresh=rejecting_refresh,
+            on_status=statuses.append,
+            mode="native",
+        )
+        return statuses
+
+    statuses = asyncio.run(run())
+    assert statuses[-1].state == "failed"
+    assert "rejected 1 watcher observation" in statuses[-1].detail
+
+
+def test_watcher_stops_after_a_middle_chunk_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metabrowser.watch_backends as watch_backends
+
+    changes = {
+        (Change.added, str(tmp_path / f"changed-{index}.txt"))
+        for index in range(MAX_COMMAND_PATHS * 2 + 1)
+    }
+
+    async def yielding_awatch(*_args: object, **_kwargs: object):
+        yield changes
+
+    requests: list[RefreshRequest] = []
+
+    async def failing_middle_refresh(request: RefreshRequest) -> RefreshReceipt:
+        requests.append(request)
+        if len(requests) == 2:
+            raise OSError("middle chunk failed")
+        return RefreshReceipt(accepted_paths=request.paths)
+
+    monkeypatch.setattr(watch_backends, "awatch", yielding_awatch)
+
+    async def run() -> list[WatcherStatus]:
+        statuses: list[WatcherStatus] = []
+        await run_watcher(
+            root=tmp_path,
+            refresh=failing_middle_refresh,
+            on_status=statuses.append,
+            mode="native",
+        )
+        return statuses
+
+    statuses = asyncio.run(run())
+    assert [len(request.observations) for request in requests] == [
+        MAX_COMMAND_PATHS,
+        MAX_COMMAND_PATHS,
+    ]
+    assert statuses[-1].state == "failed"
+    assert "middle chunk failed" in statuses[-1].detail

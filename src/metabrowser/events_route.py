@@ -5,8 +5,8 @@ This module owns:
 * ``GET /api/events`` — global inventory SSE stream backed by the
   application-owned inventory coordinator. Emits an ``fs.snapshot`` on
   connect, then projects provider invalidations into ``fs.change`` ops.
-  Heartbeat every 15 s. ``Last-Event-ID`` resumes from the event bus's
-  process-wide ring buffer.
+  Heartbeat every 15 s. Reconnects receive a new coherent snapshot boundary;
+  pre-snapshot deltas are never replayed after it.
 * ``GET /api/index/progress`` — lightweight crawl status for the
   left-nav progress footer. Reads in-memory inventory counters
   only; never scans the tree or rebuilds suffix tallies.
@@ -27,7 +27,7 @@ Everything in this module is end-to-end testable via
 The ``aiter_sse_events`` helper at the bottom is the test-side
 parser for the SSE wire format.
 
-The endpoint, replay behavior, and encoder form the realtime event contract.
+The endpoint, snapshot handoff, and encoder form the realtime event contract.
 """
 
 from __future__ import annotations
@@ -95,6 +95,8 @@ from metabrowser.inventory_engine.coordinator import (
     DecoratedInventoryEntry,
     HostChange,
     HostCursor,
+    HostVersion,
+    InventoryConsistencyError,
     InventoryCoordinator,
 )
 from metabrowser.inventory_engine.runtime import (
@@ -102,6 +104,7 @@ from metabrowser.inventory_engine.runtime import (
     default_inventory_config,
     inventory_provider_from_environment,
 )
+from metabrowser.inventory_engine.tree_page_assembly import assemble_tree_pages
 from metabrowser.settings import (
     DEFAULT_EXECUTOR_WORKERS,
     INDEX_PROGRESS_UPDATE_FILES,
@@ -192,9 +195,9 @@ async def build_lifespan(
 
 # ── Process-wide ring buffer ──────────────────────────────────
 #
-# A single ring buffer per process. Every application-projected event is
-# appended here, so Last-Event-ID resume can replay a short disconnect without
-# bouncing the client back to a fresh snapshot.
+# A single ring buffer per process assigns ordered ids and retains short-window
+# diagnostics. A reconnect starts from a fresh coherent snapshot, not an older
+# ring suffix.
 
 
 def _wire_entry(entry: DecoratedInventoryEntry) -> FsEntry:
@@ -257,7 +260,7 @@ class _EventBus:
         self._coordinator = coordinator
         self._config = config
         self._ring = RingBuffer(capacity=RING_BUFFER_CAPACITY)
-        self._connections: set[asyncio.Queue[EventEnvelope]] = set()
+        self._connections: dict[asyncio.Queue[EventEnvelope], HostVersion | None] = {}
         self._relay_task: asyncio.Task[None] | None = None
         self._after: HostCursor | None = None
         self._lock = asyncio.Lock()
@@ -284,29 +287,46 @@ class _EventBus:
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
 
-    async def snapshot(self, scope: _ScopeType) -> FsSnapshot:
-        """Build one scoped initial snapshot through a coherent provider read."""
+    async def _read_snapshot(self, scope: _ScopeType) -> tuple[FsSnapshot, HostVersion]:
+        """Assemble one lossless snapshot from version-pinned bounded pages."""
 
         max_depth = 2 if scope == "root-depth-2" else self._config.max_depth
-        read = await self._coordinator.read(
-            ReadRequest(
-                queries=(
-                    EntryQuery(query_id="snapshot-root", path=""),
-                    DirectoryQuery(
-                        query_id="snapshot-tree",
-                        path="",
-                        max_depth=max_depth,
-                        max_rows=self._config.max_entries,
-                    ),
-                )
-            )
+        assembly = await assemble_tree_pages(
+            self._coordinator,
+            page_query=DirectoryQuery(
+                query_id="snapshot-tree",
+                path="",
+                max_depth=max_depth,
+                max_rows=self._config.max_files,
+            ),
+            companion_queries=(EntryQuery(query_id="snapshot-root", path=""),),
         )
-        entries = tuple(_wire_entry(entry) for entry in read.entries.values())
-        return FsSnapshot(
-            scope=scope,
-            entries=entries,
-            complete=read.result.state.coverage.complete,
+        return (
+            FsSnapshot(
+                scope=scope,
+                entries=tuple(_wire_entry(entry) for entry in assembly.decorated_entries.values()),
+                complete=assembly.final_read.result.state.coverage.complete,
+            ),
+            assembly.final_read.version,
         )
+
+    async def snapshot(self, scope: _ScopeType) -> FsSnapshot:
+        """Build one scoped initial snapshot without attaching a browser."""
+
+        snapshot, _version = await self._read_snapshot(scope)
+        return snapshot
+
+    async def snapshot_and_attach(
+        self,
+        scope: _ScopeType,
+    ) -> tuple[FsSnapshot, asyncio.Queue[EventEnvelope]]:
+        """Attach after a coherent snapshot with no stale-delta or delivery gap."""
+
+        async with self._lock:
+            snapshot, version = await self._read_snapshot(scope)
+            queue: asyncio.Queue[EventEnvelope] = asyncio.Queue(maxsize=PER_CONNECTION_QUEUE_SIZE)
+            self._connections[queue] = version
+            return snapshot, queue
 
     def publish(self, event: StreamEvent) -> None:
         """Publish a host-owned non-inventory event in the same SSE ordering."""
@@ -340,7 +360,8 @@ class _EventBus:
         while True:
             try:
                 async for change in self._coordinator.changes(after=self._after):
-                    await self._project_change(change)
+                    async with self._lock:
+                        await self._project_change(change)
                     self._after = change.cursor
                     backoff = 0.5
             except asyncio.CancelledError:
@@ -358,21 +379,30 @@ class _EventBus:
         # connection can receive the result.
         if not self._connections:
             return
+        if not any(
+            floor is None or not self._change_is_covered(change, floor)
+            for floor in self._connections.values()
+        ):
+            return
         if change.reset or change.all_dirty:
             self._forward_event(
                 FsResyncRequired(
                     reason="coordinator_reset" if change.reset else "inventory_all_dirty"
-                )
+                ),
+                change=change,
             )
             return
         if not change.dirty_paths:
             if change.dirty_queries & {QueryKind.METADATA, QueryKind.DIAGNOSTICS}:
-                await self._project_capability_change()
+                await self._project_capability_change(change)
             return
 
         if change.facts_changed:
             for path in change.dirty_paths:
-                self._forward_event(ProjectionInvalidate(path=path, projection="*"))
+                self._forward_event(
+                    ProjectionInvalidate(path=path, projection="*"),
+                    change=change,
+                )
 
         queries = tuple(
             EntryQuery(query_id=f"change-{index}", path=path)
@@ -385,7 +415,10 @@ class _EventBus:
             if not isinstance(projection, EntryProjection):
                 raise TypeError("an entry query returned a non-entry projection")
             if projection.presence is EntryPresence.UNKNOWN:
-                self._forward_event(FsResyncRequired(reason="inventory_presence_unknown"))
+                self._forward_event(
+                    FsResyncRequired(reason="inventory_presence_unknown"),
+                    change=change,
+                )
                 return
             decorated = read.entries.get(path)
             if decorated is None:
@@ -395,15 +428,15 @@ class _EventBus:
         if not ops:
             return
         fs_change = FsChange(ops=tuple(ops))
-        self._forward_event(fs_change)
+        self._forward_event(fs_change, change=change)
         if QueryKind.CATALOG in change.dirty_queries:
             catalog = _catalog_change(fs_change)
             if catalog is not None:
-                self._forward_event(catalog)
+                self._forward_event(catalog, change=change)
         if change.dirty_queries & {QueryKind.METADATA, QueryKind.DIAGNOSTICS}:
-            await self._project_capability_change()
+            await self._project_capability_change(change)
 
-    async def _project_capability_change(self) -> None:
+    async def _project_capability_change(self, change: HostChange) -> None:
         read = await self._coordinator.read(
             ReadRequest(queries=(DiagnosticsQuery(query_id="capability-change"),))
         )
@@ -428,7 +461,7 @@ class _EventBus:
                     "complete": state.coverage.complete,
                     "truncated": truncated,
                     "indexed_files": _counter_int(diagnostic, "files_indexed"),
-                    "max_files": self._config.max_entries,
+                    "max_files": self._config.max_files,
                     "status": _status_from_phase(
                         state.phase,
                         complete=state.coverage.complete,
@@ -436,17 +469,48 @@ class _EventBus:
                     ),
                 },
                 events={},
-            )
+            ),
+            change=change,
         )
 
-    def _forward_event(self, event: StreamEvent) -> None:
+    @staticmethod
+    def _change_is_covered(change: HostChange, floor: HostVersion) -> bool:
+        engine = change.version.engine
+        return (
+            engine.session == floor.engine.session
+            and engine.sequence <= floor.engine.sequence
+            and change.version.overlay_revision <= floor.overlay_revision
+        )
+
+    def _eligible_connections(
+        self,
+        change: HostChange | None,
+    ) -> tuple[asyncio.Queue[EventEnvelope], ...]:
+        if change is None:
+            return tuple(self._connections)
+        eligible: list[asyncio.Queue[EventEnvelope]] = []
+        for queue, floor in self._connections.items():
+            if floor is not None and self._change_is_covered(change, floor):
+                continue
+            eligible.append(queue)
+            if floor is not None:
+                self._connections[queue] = None
+        return tuple(eligible)
+
+    def _forward_event(
+        self,
+        event: StreamEvent,
+        *,
+        change: HostChange | None = None,
+    ) -> None:
         envelope = self._ring.append(event)
         event_type = getattr(event, "type", type(event).__name__)
-        n_conns = len(self._connections)
+        eligible = self._eligible_connections(change)
+        n_conns = len(eligible)
         if isinstance(event, FsResyncRequired):
-            for queue in tuple(self._connections):
+            for queue in eligible:
                 self._replace_with_resync(queue, envelope, reason=event.reason)
-                self._connections.discard(queue)
+                self._connections.pop(queue, None)
             LOG.debug(
                 "events bus: requested fresh snapshots reason=%s conns=%d",
                 event.reason,
@@ -454,7 +518,7 @@ class _EventBus:
             )
             return
         dead: list[asyncio.Queue[EventEnvelope]] = []
-        for queue in self._connections:
+        for queue in eligible:
             try:
                 queue.put_nowait(envelope)
             except asyncio.QueueFull:
@@ -465,7 +529,7 @@ class _EventBus:
                 envelope,
                 reason="connection_queue_overflow",
             )
-            self._connections.discard(queue)
+            self._connections.pop(queue, None)
         if dead:
             LOG.warning(
                 "events bus: refreshing %d slow browser connection(s) after queue overflow",
@@ -481,14 +545,11 @@ class _EventBus:
 
     def attach_connection(self) -> asyncio.Queue[EventEnvelope]:
         q: asyncio.Queue[EventEnvelope] = asyncio.Queue(maxsize=PER_CONNECTION_QUEUE_SIZE)
-        self._connections.add(q)
+        self._connections[q] = None
         return q
 
     def detach_connection(self, q: asyncio.Queue[EventEnvelope]) -> None:
-        self._connections.discard(q)
-
-    def replay_since(self, last_event_id: int) -> list[EventEnvelope]:
-        return self._ring.since(last_event_id)
+        self._connections.pop(q, None)
 
     def latest_id(self) -> int:
         return self._ring.latest_id
@@ -525,13 +586,11 @@ def _scope_from_query(request: Request) -> _ScopeType:
 
 
 def _parse_last_event_id(request: Request) -> int | None:
-    """Honour ``Last-Event-ID`` header (the EventSource API will
-    set it after a reconnect). Returns None when the header is
-    missing/invalid — the caller treats that as "fresh client" and
-    skips replay, since the snapshot already carries current state.
-    Replaying the ring buffer to a fresh connection floods it with
-    redundant data and pushes live events to the tail of the
-    per-connection queue."""
+    """Parse the EventSource resume id for restart-window diagnostics.
+
+    Every connection receives a new coherent snapshot, so the id is not used to
+    replay pre-snapshot deltas.
+    """
 
     raw = request.headers.get("Last-Event-ID", "")
     if not raw:
@@ -592,7 +651,7 @@ async def _stream_events(
     bus = _event_bus_for(request)
     scope = _scope_from_query(request)
     last_id = _parse_last_event_id(request)
-    queue = bus.attach_connection()
+    snap, queue = await bus.snapshot_and_attach(scope)
     client = getattr(request, "client", None)
     client_str = f"{client.host}:{client.port}" if client else "?"
     LOG.debug(
@@ -605,21 +664,14 @@ async def _stream_events(
 
     try:
         # 1) On connect: emit the snapshot at the requested scope.
-        snap = await bus.snapshot(scope)
-        # The snapshot rides on the next available envelope id by
-        # being the first thing the relay forwards after we're
-        # attached. For deterministic id ordering we synthesize an
-        # envelope locally for the snapshot using a sentinel id of
-        # 0 — clients treat snapshot frames as a "reset point".
+        # A snapshot is a local reset boundary rather than a ring event, so its
+        # sentinel id stays outside the live event-id sequence.
         snap_envelope = EventEnvelope(id=0, event=snap)
         yield encode_sse(snap_envelope)
 
-        # 2) Resume: replay ring-buffer envelopes strictly newer than
-        # the client's last-event-id. Skipped on fresh connects (no
-        # Last-Event-ID header) — the snapshot above already carries
-        # current state, and replaying the walker's startup burst on
-        # every page load floods the per-connection queue and pushes
-        # live events to its tail.
+        # 2) Resume: the coherent snapshot is the new reset boundary. Replaying
+        # pre-snapshot deltas after it can regress browser state, so a reconnect
+        # resumes from the queue atomically attached to that boundary.
         if last_id is not None:
             latest = bus.latest_id()
             if last_id > latest:
@@ -634,25 +686,8 @@ async def _stream_events(
                     last_id,
                     latest,
                 )
-            else:
-                replay = bus.replay_since(last_id)
-                if replay and replay[0].id > last_id + 1:
-                    # The resume window has scrolled out of the ring
-                    # buffer; client has a gap it can't recover from
-                    # without a fresh snapshot.
-                    LOG.warning(
-                        "sse: ring-buffer gap client=%s last_id=%d first_replay_id=%d "
-                        "(buffer scrolled past; client needs re-snapshot)",
-                        client_str,
-                        last_id,
-                        replay[0].id,
-                    )
-                for env in replay:
-                    scoped = _filter_envelope_for_scope(env, scope)
-                    if scoped is not None:
-                        yield encode_sse(scoped)
 
-        # 3) Live: pull from the per-connection queue with a
+        # 3) Live: pull from the atomically attached queue with a
         # heartbeat fallback.
         while True:
             if await request.is_disconnected():
@@ -791,7 +826,7 @@ async def _read_index_progress(
     return IndexProgress(
         status=status,
         indexed_files=_counter_int(diagnostic, "files_indexed"),
-        max_files=runtime.config.max_entries,
+        max_files=runtime.config.max_files,
         truncated=truncated,
         complete=state.coverage.complete or truncated,
         active=state.phase
@@ -878,7 +913,7 @@ async def _read_index_meta(
         status=status,
         indexed_files=files,
         indexed_dirs=dirs,
-        max_files=runtime.config.max_entries,
+        max_files=runtime.config.max_files,
         truncated=truncated,
         complete=state.coverage.complete or truncated,
         oldest_mtime_ns=oldest,
@@ -979,7 +1014,7 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
                     query_id=f"pending-children-{index}",
                     path=path,
                     max_depth=1,
-                    max_rows=runtime.config.max_entries,
+                    max_rows=runtime.config.max_files,
                 ),
             )
         )
@@ -1068,6 +1103,8 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
 # revision moves on every indexed change, so older bodies are dead weight and
 # a full catalog is the largest payload the server produces.
 _CATALOG_BODY_CACHE: dict[str, bytes] = {}
+# A moving provider gets bounded retries before the route reports version churn.
+_CATALOG_ASSEMBLY_ATTEMPTS = 3
 
 
 def _catalog_status(state: IndexState) -> str:
@@ -1125,11 +1162,16 @@ async def _read_catalog(
     # in one scan instead of rescanning and resorting the same index for each 50k page.
     # The continuation loop remains part of the application contract for a provider
     # whose own semantic scope can return more than one bounded page.
-    page_size = runtime.config.max_entries
-    for _attempt in range(3):
+    page_size = runtime.config.max_files
+    last_version_error: VersionUnavailableError | None = None
+    for _attempt in range(_CATALOG_ASSEMBLY_ATTEMPTS):
         pages: list[tuple[CatalogRecord, ...]] = []
         after: str | None = None
         pinned: EngineVersion | None = None
+        expected_total: int | None = None
+        previous_remaining: int | None = None
+        seen_cursors: set[str] = set()
+        returned_rows = 0
         try:
             while True:
                 coordinated = await runtime.coordinator.read(
@@ -1147,45 +1189,54 @@ async def _read_catalog(
                 projection = coordinated.result.projection("catalog")
                 if not isinstance(projection, CatalogProjection):
                     raise TypeError("the catalog read returned the wrong projection")
+                if len(projection.records) > page_size:
+                    raise InventoryConsistencyError("a catalog page exceeded its row bound")
                 if pinned is None:
                     pinned = coordinated.version.engine
+                    expected_total = projection.total_matches
+                    if expected_total != len(projection.records) + projection.remaining_rows:
+                        raise InventoryConsistencyError(
+                            "the first catalog page did not conserve total_matches"
+                        )
+                elif coordinated.version.engine != pinned:
+                    raise InventoryConsistencyError(
+                        "a version-pinned catalog page changed engine version"
+                    )
+                if projection.total_matches != expected_total:
+                    raise InventoryConsistencyError(
+                        "catalog pages changed total_matches within one version"
+                    )
+                if previous_remaining is not None and previous_remaining != (
+                    len(projection.records) + projection.remaining_rows
+                ):
+                    raise InventoryConsistencyError(
+                        "catalog pages did not conserve the exact remaining row count"
+                    )
                 pages.append(projection.records)
+                returned_rows += len(projection.records)
                 after = projection.next_page
                 if after is None:
+                    if returned_rows != expected_total:
+                        raise InventoryConsistencyError(
+                            "catalog page assembly did not return total_matches rows"
+                        )
                     state = coordinated.result.state
                     status = _catalog_status(state)
                     engine = coordinated.version.engine
                     etag = _catalog_etag(engine)
                     return tuple(pages), status, engine.sequence, etag
-        except VersionUnavailableError:
+                if after in seen_cursors:
+                    raise InventoryConsistencyError("catalog page cursor did not advance")
+                seen_cursors.add(after)
+                previous_remaining = projection.remaining_rows
+        except VersionUnavailableError as error:
+            last_version_error = error
             continue
-
-    # A continuously moving cold scan can invalidate each multi-page attempt.
-    # One provider-bounded maximum page is still coherent and cannot exceed the
-    # configured retained-entry budget.
-    coordinated = await runtime.coordinator.read(
-        ReadRequest(
-            queries=(
-                CatalogQuery(
-                    query_id="catalog",
-                    max_rows=runtime.config.max_entries,
-                ),
-            )
-        )
-    )
-    projection = coordinated.result.projection("catalog")
-    if not isinstance(projection, CatalogProjection):
-        raise TypeError("the catalog read returned the wrong projection")
-    state = coordinated.result.state
-    status = _catalog_status(state)
-    engine = coordinated.version.engine
-    etag = _catalog_etag(engine)
-    return (
-        (projection.records,),
-        status,
-        engine.sequence,
-        etag,
-    )
+    if last_version_error is None:
+        raise InventoryConsistencyError("catalog assembly exhausted without a version failure")
+    raise VersionUnavailableError(
+        f"inventory changed during {_CATALOG_ASSEMBLY_ATTEMPTS} bounded catalog attempts"
+    ) from last_version_error
 
 
 async def api_catalog(request: Request) -> Response:

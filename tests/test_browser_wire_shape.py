@@ -3,7 +3,7 @@
 Locks the JSON shape returned by ``/api/tree`` so the two
 producers — :func:`metabrowser.tree._dir_tree` (filesystem
 walk) and :func:`metabrowser.tree._build_inventory_tree`
-(InventoryIndex read) — cannot drift apart.
+(Python inventory read) cannot drift apart.
 
 The SPA's ``renderTreeNodes`` reads the same shape both
 producers emit. Two historical bugs drifted
@@ -149,7 +149,7 @@ def _provider_tree(root: Path, *, depth: int) -> list[dict[str, Any]]:
                             query_id="tree",
                             path="",
                             max_depth=depth,
-                            max_rows=harness.runtime.config.max_entries,
+                            max_rows=harness.runtime.config.max_files,
                         ),
                     )
                 )
@@ -167,13 +167,13 @@ def _provider_tree(root: Path, *, depth: int) -> list[dict[str, Any]]:
 
 
 def test_build_inventory_tree_output_validates_against_typeddict(tmp_path: Path) -> None:
-    """The InventoryIndex-backed builder must produce the same
+    """The Python-inventory-backed builder must produce the same
     wire shape ``_dir_tree`` does. Drift between the two is
     a known source of wire-contract bugs."""
 
     _build_full_fixture(tmp_path)
     nodes = _provider_tree(tmp_path, depth=20)
-    assert nodes, "InventoryIndex returned no entries; walker didn't drive"
+    assert nodes, "Python inventory returned no entries; walker did not drive"
     for node in nodes:
         validate_tree_node(node)
 
@@ -181,7 +181,7 @@ def test_build_inventory_tree_output_validates_against_typeddict(tmp_path: Path)
 def test_build_inventory_tree_dir_always_has_children_key(tmp_path: Path) -> None:
     """Every dir node carries ``children``,
     even if its value is ``None`` (sentinel). Tests the
-    InventoryIndex path specifically because the walker's
+    Python inventory path specifically because the walker's
     finalize ordering used to elide the key."""
 
     _build_full_fixture(tmp_path)
@@ -211,7 +211,7 @@ def test_build_inventory_tree_finalized_empty_dir_mtime_is_finite(tmp_path: Path
     empty = next((n for n in nodes if n["name"] == "empty_dir"), None)
     assert empty is not None
     # Walker has finished; mtime should be concrete (not None).
-    # If the InventoryIndex captures ``newest_mtime_ns=None`` for an
+    # If the Python inventory captures ``newest_mtime_ns=None`` for an
     # empty dir, the wire layer must coerce to a concrete number
     # (or 0 if no descendants).
     mtime = empty["mtime"]

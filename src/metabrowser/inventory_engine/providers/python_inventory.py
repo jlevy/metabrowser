@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import heapq
 import itertools
 import logging
@@ -78,6 +77,7 @@ from metabrowser.file_type_filters import (
     family_for_extension,
 )
 from metabrowser.file_type_registry import load_file_type_registry
+from metabrowser.fs_paths import is_visible_segment
 from metabrowser.inventory_engine.contract import (
     MAX_CHANGE_PATHS,
     CatalogProjection,
@@ -128,6 +128,7 @@ from metabrowser.inventory_engine.contract import (
     SourceKind,
     VersionUnavailableError,
     WorkCounters,
+    inventory_scope_fingerprint,
 )
 from metabrowser.inventory_rollup import (
     RollupOptions,
@@ -219,7 +220,7 @@ class _NavigationTallyBase:
     newest_mtime_ns: int
 
 
-# ── PythonInventoryHandle ──────────────────────────────────────
+# Python inventory handle
 
 
 class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
@@ -340,17 +341,6 @@ class _ReadImage:
     rollup_aggregates: SubtreeAggregateCache
     rollup_epoch: int
     rollup_passes: int
-
-
-def _scope_fingerprint(config: InventoryConfig) -> str:
-    semantic = (
-        config.max_entries,
-        config.max_depth,
-        config.hidden_allowlist,
-        config.follow_symlinks,
-        config.stay_on_filesystem,
-    )
-    return hashlib.sha256(repr(semantic).encode()).hexdigest()[:24]
 
 
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
@@ -489,13 +479,13 @@ class PythonInventoryHandle:
         config: InventoryConfig | None = None,
     ) -> None:
         if config is None:
-            config = InventoryConfig(max_entries=max_files, max_depth=max_depth)
+            config = InventoryConfig(max_files=max_files, max_depth=max_depth)
         else:
-            max_files = config.max_entries
+            max_files = config.max_files
             max_depth = config.max_depth
         self._config = config
         self._session = uuid.uuid4().hex
-        self._scope_fingerprint = _scope_fingerprint(config)
+        self._scope_fingerprint = inventory_scope_fingerprint(config)
         self._closed = False
         self._last_error: str | None = None
         self._root: Path | None = None
@@ -591,7 +581,7 @@ class PythonInventoryHandle:
         # on ``clear()``.
         self._catalog_revision = 0
 
-    # ── Lifecycle ───────────────────────────────────────────
+    # Lifecycle
 
     def start(self, root: Path) -> asyncio.Task[None]:
         """Spawn the walker if not already running. Idempotent —
@@ -636,6 +626,7 @@ class PythonInventoryHandle:
                 refresh=self.refresh,
                 on_status=self._observe_watcher_status,
                 mode=mode,
+                hidden_allowlist=self._config.hidden_allowlist,
             ),
             name="metabrowser-python-inventory-watcher",
         )
@@ -1481,6 +1472,7 @@ class PythonInventoryHandle:
                 records=page,
                 total_matches=len(records),
                 next_page=str(next_offset) if next_offset < len(records) else None,
+                remaining_rows=len(records) - next_offset,
             )
         if isinstance(query, MetadataQuery):
             root = self._root
@@ -1714,6 +1706,7 @@ class PythonInventoryHandle:
             and not path.is_absolute()
             and ".." not in path.parts
             and path.as_posix() == rel
+            and is_visible_segment(rel, self._config.hidden_allowlist)
         )
 
     async def _refresh_path(
@@ -1794,7 +1787,7 @@ class PythonInventoryHandle:
             reset=True,
         )
 
-    # ── Reads ───────────────────────────────────────────────
+    # Reads
 
     def status(self) -> IndexStatus:
         return self._status
@@ -2441,7 +2434,7 @@ class PythonInventoryHandle:
                 return True
         return False
 
-    # ── Writes ──────────────────────────────────────────────
+    # Writes
 
     def invalidate(self, path: str) -> None:
         """Bump the generation counter on *path* and every
@@ -2502,7 +2495,7 @@ class PythonInventoryHandle:
         except OSError:
             return
 
-        # ── Containment + symlink safety ────────────────────────
+        # Containment and symlink safety
         #
         # A rewalk must never escape the served root. ``rel`` is
         # joined onto the root and then ``resolve()``-d, which
@@ -2562,6 +2555,7 @@ class PythonInventoryHandle:
             max_depth=(self._max_depth if max_depth is None else min(self._max_depth, max_depth)),
             max_files=self._max_files,
             gitignore_check=gi_check,
+            hidden_allowlist=self._config.hidden_allowlist,
         ):
             # ``walk_tree`` yields paths relative to *target_resolved*,
             # not the served root. Re-key under the served root so
@@ -2757,7 +2751,17 @@ class PythonInventoryHandle:
             "requested_paths": requested,
         }
 
-    # ── Internals ───────────────────────────────────────────
+    # Internals
+
+    def _mark_discovery_failed(self, error: Exception) -> None:
+        with self._rollup_cache_lock:
+            self._last_error = f"{type(error).__name__}: {error}"
+            self._status = "failed"
+            self._rollup_generation = next(_ROLLUP_REVISIONS)
+        self._done_event.set()
+        self._record_provider_change(
+            dirty_queries=frozenset({QueryKind.METADATA, QueryKind.DIAGNOSTICS})
+        )
 
     async def _run_walker(self, root: Path) -> None:
         """Drive ``walk_tree`` and apply each yielded entry. On
@@ -2784,6 +2788,7 @@ class PythonInventoryHandle:
                 max_depth=self._max_depth,
                 max_files=self._max_files,
                 gitignore_check=gi_check,
+                hidden_allowlist=self._config.hidden_allowlist,
             ):
                 entry = _internal_entry(observation)
                 if entry.type == "dir" and entry.total_files is None:
@@ -2812,29 +2817,18 @@ class PythonInventoryHandle:
             self._status = "idle"
             raise
         except Exception as error:
-            # A walker crash is distinct from "never started". A
-            # ``status()`` of ``failed`` lets capability probes and
-            # the SSE bus surface the broken state instead of
-            # silently returning an empty inventory forever. The
-            # exception is logged with full traceback (lifespan
-            # caught a separate path).
             LOG.exception("inventory walker crashed")
-            with self._rollup_cache_lock:
-                self._last_error = f"{type(error).__name__}: {error}"
-                self._status = "failed"
-                self._rollup_generation = next(_ROLLUP_REVISIONS)
-            self._done_event.set()
-            self._record_provider_change(
-                dirty_queries=frozenset({QueryKind.METADATA, QueryKind.DIAGNOSTICS})
-            )
+            self._mark_discovery_failed(error)
             return
 
         is_truncated = self._files_indexed >= self._max_files
         if not is_truncated:
             try:
                 self._repair_pending_dir_aggregates()
-            except Exception:
+            except Exception as error:
                 LOG.exception("inventory repair of pending dir aggregates failed")
+                self._mark_discovery_failed(error)
+                return
         with self._rollup_cache_lock:
             self._status = "truncated" if is_truncated else "done"
             self._rollup_generation = next(_ROLLUP_REVISIONS)

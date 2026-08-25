@@ -225,6 +225,8 @@ async def _emit_for_path(
     root: Path,
     abs_path: str,
     change_type: Change,
+    *,
+    hidden_allowlist: Collection[str] | None = None,
 ) -> None:
     """Translate one watchfiles event into a verified provider refresh."""
 
@@ -232,12 +234,15 @@ async def _emit_for_path(
         refresh,
         root,
         ((change_type, abs_path),),
+        hidden_allowlist=hidden_allowlist,
     )
 
 
 def _observations_for_batch(
     root: Path,
     changes: Collection[tuple[Change, str]],
+    *,
+    hidden_allowlist: Collection[str] | None = None,
 ) -> tuple[RefreshObservation, ...]:
     """Normalize and deduplicate one backend batch without reading the filesystem."""
 
@@ -250,7 +255,7 @@ def _observations_for_batch(
         if not rel:
             LOG.debug("watcher: drop root metadata change=%s", change_type.name)
             continue
-        if not _is_visible_segment(rel):
+        if not _is_visible_segment(rel, hidden_allowlist):
             LOG.debug("watcher: drop (hidden segment) change=%s rel=%s", change_type.name, rel)
             continue
         by_path[rel] = {
@@ -265,19 +270,33 @@ async def _emit_batch(
     refresh: Callable[[RefreshRequest], Awaitable[RefreshReceipt]],
     root: Path,
     changes: Collection[tuple[Change, str]],
+    *,
+    hidden_allowlist: Collection[str] | None = None,
 ) -> None:
     """Submit one backend batch in contract-sized chunks."""
 
-    observations = _observations_for_batch(root, changes)
+    observations = _observations_for_batch(
+        root,
+        changes,
+        hidden_allowlist=hidden_allowlist,
+    )
     for offset in range(0, len(observations), MAX_COMMAND_PATHS):
         chunk = observations[offset : offset + MAX_COMMAND_PATHS]
         receipt = await refresh(RefreshRequest(observations=chunk))
         accepted = frozenset(receipt.accepted_paths)
+        expected = frozenset(observation.path for observation in chunk)
+        reported = accepted | frozenset(receipt.rejected_paths)
+        if reported != expected:
+            raise RuntimeError(
+                "provider returned an inconsistent watcher receipt "
+                f"(expected={len(expected)}, reported={len(reported)})"
+            )
+        if accepted != expected:
+            raise RuntimeError(
+                f"provider rejected {len(expected - accepted)} watcher observation(s)"
+            )
         for observation in chunk:
             rel = observation.path
-            if rel not in accepted:
-                LOG.debug("watcher: provider rejected rel=%s kind=%s", rel, observation.kind)
-                continue
             LOG.debug("watcher: submitted rel=%s kind=%s", rel, observation.kind)
 
 
@@ -287,15 +306,15 @@ async def run_watcher(
     refresh: Callable[[RefreshRequest], Awaitable[RefreshReceipt]],
     on_status: Callable[[WatcherStatus], None] = lambda _status: None,
     mode: WatchMode | None = None,
+    hidden_allowlist: Collection[str] | None = None,
 ) -> None:
     """Long-running watcher coroutine. Spawn from an opened provider
     handle; cancel and join it when the handle closes.
 
     Selects native vs polling automatically (override via *mode*
-    for tests). A failure to observe one path is logged and the
-    loop keeps running. A failure of the watch itself ends the
-    watch — the backend cannot be trusted to report changes after
-    it — and is announced rather than left silent, because
+    for tests). A watch-backend failure or an incompletely submitted
+    batch ends the watch: the backend cannot prove that later changes
+    form a lossless suffix. The gap is announced rather than left silent, because
     everything downstream reads a still-answering index as a
     current one. Terminating cleanly on cancellation is critical
     so the lifespan teardown completes.
@@ -320,10 +339,13 @@ async def run_watcher(
             recursive=True,
         ):
             LOG.debug("watcher: batch n=%d", len(changes))
-            try:
-                await _emit_batch(refresh, root, changes)
-            except Exception:
-                LOG.exception("watcher batch failed for %d path(s)", len(changes))
+            await _emit_batch(
+                refresh,
+                root,
+                changes,
+                hidden_allowlist=hidden_allowlist,
+            )
+        raise RuntimeError("watch stream ended before provider close")
     except asyncio.CancelledError:
         LOG.debug("watcher cancelled")
         raise

@@ -14,12 +14,14 @@ tests/dom/filter-state-behavior.js.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import re
 from pathlib import Path
 from typing import Any, cast
 
 from metabrowser import server as proc_browser
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.inventory_engine.tree_page_assembly import assemble_tree_pages
 
 
 def _read(name: str) -> str:
@@ -930,22 +932,23 @@ def test_index_wide_tallies_stay_off_the_event_loop() -> None:
     block = _provider_tree_source()
     assert "NavigationQuery(" in block
     assert "RECENT_WINDOW_SECONDS.items()" in block
-    assert "await runtime.coordinator.read(read_request)" in block
+    assert "await assemble_tree_pages(" in block
     assert "asyncio.to_thread" not in block
     assert ".entries(scope=" not in block
 
 
 def test_one_index_snapshot_serves_every_pass_a_request_makes() -> None:
-    """Tree, filter, and navigation projections share one coherent read."""
+    """Tree pages, filters, and navigation share one pinned host boundary."""
 
     block = _provider_tree_source()
-    request = block.index("read_request = ReadRequest(queries=tuple(queries))")
-    read = block.index("await runtime.coordinator.read(read_request)", request)
-    assert "FilteredTreeQuery(" in block[:request]
-    assert "NavigationQuery(" in block[:request]
+    assembly = inspect.getsource(assemble_tree_pages)
+    assert "FilteredTreeQuery(" in block
+    assert "NavigationQuery(" in block
+    assert "companion_queries=tuple(companion_queries)" in block
+    assert "async with coordinator.read_session()" in assembly
+    assert "at_version=pinned" in assembly
     assert ".rollup_revision()" not in block
     assert ".entries(scope=" not in block
-    assert "await" not in block[request:read]
 
 
 def test_reapply_is_skipped_when_nothing_is_filtered() -> None:

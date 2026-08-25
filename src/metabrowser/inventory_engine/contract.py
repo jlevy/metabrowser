@@ -8,11 +8,15 @@ the same observation boundary as its projections.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Literal, Protocol, runtime_checkable
+
+from metabrowser.constants import LOGS_DIR, STATE_DIR
 
 MAX_CHANGE_PATHS = 1_024
 MAX_COMMAND_PATHS = 1_024
@@ -33,13 +37,37 @@ def _require_nonnegative(value: int, name: str) -> None:
         raise ValueError(f"{name} must be nonnegative")
 
 
+def require_canonical_inventory_path(
+    value: str,
+    name: str,
+    *,
+    allow_root: bool,
+) -> None:
+    """Validate the lossless POSIX-relative identity shared by all providers."""
+
+    if value == "":
+        if allow_root:
+            return
+        raise ValueError(f"{name} must be a canonical POSIX-relative path below the root")
+    pure = PurePosixPath(value)
+    if (
+        "\\" in value
+        or "\x00" in value
+        or pure.is_absolute()
+        or pure.as_posix() != value
+        or "." in pure.parts
+        or ".." in pure.parts
+    ):
+        raise ValueError(f"{name} must be a canonical POSIX-relative path")
+
+
 @dataclass(frozen=True, slots=True)
 class InventoryConfig:
     """Semantic scope plus provider execution policy for one root session."""
 
-    max_entries: int = 500_000
+    max_files: int = 500_000
     max_depth: int = 20
-    hidden_allowlist: tuple[str, ...] = ()
+    hidden_allowlist: tuple[str, ...] = (LOGS_DIR, STATE_DIR)
     follow_symlinks: bool = False
     stay_on_filesystem: bool = False
     registry_fingerprint: str = "builtin"
@@ -49,16 +77,58 @@ class InventoryConfig:
     cache_mode: Literal["off", "read", "read_write"] = "off"
 
     def __post_init__(self) -> None:
-        _require_positive(self.max_entries, "max_entries")
+        _require_positive(self.max_files, "max_files")
         _require_positive(self.max_depth, "max_depth")
         _require_positive(self.change_queue_size, "change_queue_size")
         _require_nonempty(self.registry_fingerprint, "registry_fingerprint")
         if self.follow_symlinks:
             raise ValueError("the Metabrowser inventory scope does not follow symlinks")
+        if self.stay_on_filesystem:
+            raise ValueError("the Metabrowser inventory scope cannot stay on one filesystem yet")
+        if self.traversal != "breadth_first":
+            raise ValueError("the Metabrowser inventory scope requires breadth-first traversal")
+        if self.watch_mode not in {"auto", "native", "poll", "off"}:
+            raise ValueError("watch_mode must be auto, native, poll, or off")
+        if self.cache_mode not in {"off", "read", "read_write"}:
+            raise ValueError("cache_mode must be off, read, or read_write")
         if len(set(self.hidden_allowlist)) != len(self.hidden_allowlist):
             raise ValueError("hidden_allowlist entries must be unique")
-        if any(not name or "/" in name or "\\" in name for name in self.hidden_allowlist):
-            raise ValueError("hidden_allowlist entries must be exact path-component names")
+        if any(
+            not name.startswith(".")
+            or name in {".", ".."}
+            or "/" in name
+            or "\\" in name
+            or "\x00" in name
+            for name in self.hidden_allowlist
+        ):
+            raise ValueError("hidden_allowlist entries must be exact hidden path-component names")
+
+
+def inventory_scope_fingerprint(config: InventoryConfig) -> str:
+    """Return the portable digest for filesystem scope semantics.
+
+    The canonical JSON array contains sorted ``[name, value]`` string pairs. Values
+    with internal structure are themselves compact canonical JSON so Rust and Python
+    adapters can reproduce the exact byte sequence without depending on object reprs.
+    """
+
+    components = (
+        ("follow_symlinks", "true" if config.follow_symlinks else "false"),
+        (
+            "hidden_allowlist",
+            json.dumps(
+                sorted(config.hidden_allowlist),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        ),
+        ("max_depth", str(config.max_depth)),
+        ("max_files", str(config.max_files)),
+        ("stay_on_filesystem", "true" if config.stay_on_filesystem else "false"),
+        ("traversal", config.traversal),
+    )
+    payload = json.dumps(sorted(components), ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +275,8 @@ class InventoryIssue:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.detail, "detail")
+        if self.path is not None:
+            require_canonical_inventory_path(self.path, "issue path", allow_root=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +347,17 @@ class InventoryEntry:
     empty: bool | None = None
 
     def __post_init__(self) -> None:
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
+        require_canonical_inventory_path(self.parent, "parent", allow_root=True)
+        if self.path:
+            expected_parent, separator, expected_name = self.path.rpartition("/")
+            if not separator:
+                expected_parent = ""
+                expected_name = self.path
+            if self.parent != expected_parent or self.name != expected_name:
+                raise ValueError("entry path, parent, and name must describe one identity")
+        elif self.parent:
+            raise ValueError("the root entry must have the root as its parent")
         _require_nonnegative(self.size, "size")
 
     @property
@@ -368,6 +451,7 @@ class EntryQuery:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,6 +466,7 @@ class DirectoryQuery:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
         _require_positive(self.max_depth, "max_depth")
         _require_positive(self.max_rows, "max_rows")
 
@@ -419,6 +504,7 @@ class FilteredTreeQuery:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
         _require_positive(self.max_depth, "max_depth")
         _require_positive(self.max_rows, "max_rows")
 
@@ -438,6 +524,7 @@ class RollupQuery:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
         _require_positive(self.max_nodes, "max_nodes")
         for name in ("max_depth", "top", "extension_top", "remaining_top", "filename_top"):
             _require_nonnegative(getattr(self, name), name)
@@ -609,6 +696,12 @@ class DirectoryProjection:
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
         _require_nonnegative(self.remaining_rows, "remaining_rows")
+        if self.next_page is not None:
+            _require_nonempty(self.next_page, "next_page")
+            if not self.entries:
+                raise ValueError("a tree continuation requires a nonempty page")
+        if (self.next_page is None) != (self.remaining_rows == 0):
+            raise ValueError("tree continuation and remaining_rows must describe the same suffix")
 
 
 @dataclass(frozen=True, slots=True)
@@ -627,6 +720,12 @@ class FilteredTreeProjection:
         _require_nonnegative(self.matching_files, "matching_files")
         _require_nonnegative(self.matching_bytes, "matching_bytes")
         _require_nonnegative(self.remaining_rows, "remaining_rows")
+        if self.next_page is not None:
+            _require_nonempty(self.next_page, "next_page")
+            if not self.entries:
+                raise ValueError("a tree continuation requires a nonempty page")
+        if (self.next_page is None) != (self.remaining_rows == 0):
+            raise ValueError("tree continuation and remaining_rows must describe the same suffix")
 
 
 @dataclass(frozen=True, slots=True)
@@ -666,6 +765,10 @@ class RecentProjection:
             raise ValueError("total_matches cannot be smaller than returned entries")
         if self.truncated != (self.total_matches > len(self.entries)):
             raise ValueError("truncated must report whether matching rows were omitted")
+        if len(self.gitignored_directories) != len(set(self.gitignored_directories)):
+            raise ValueError("gitignored_directories entries must be unique")
+        for path in self.gitignored_directories:
+            require_canonical_inventory_path(path, "gitignored directory", allow_root=False)
         if self.valid_until_ns is not None:
             _require_positive(self.valid_until_ns, "valid_until_ns")
 
@@ -678,7 +781,7 @@ class CatalogRecord:
     mtime_ns: int
 
     def __post_init__(self) -> None:
-        _require_nonempty(self.path, "path")
+        require_canonical_inventory_path(self.path, "path", allow_root=False)
         _require_nonnegative(self.size, "size")
         _require_nonnegative(self.mtime_ns, "mtime_ns")
 
@@ -689,12 +792,24 @@ class CatalogProjection:
     records: tuple[CatalogRecord, ...]
     total_matches: int
     next_page: str | None = None
+    remaining_rows: int = 0
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
         _require_nonnegative(self.total_matches, "total_matches")
+        _require_nonnegative(self.remaining_rows, "remaining_rows")
         if self.total_matches < len(self.records):
             raise ValueError("total_matches cannot be smaller than returned records")
+        if self.next_page is not None:
+            _require_nonempty(self.next_page, "next_page")
+            if not self.records:
+                raise ValueError("a catalog continuation requires a nonempty page")
+        if (self.next_page is None) != (self.remaining_rows == 0):
+            raise ValueError(
+                "catalog continuation and remaining_rows must describe the same suffix"
+            )
+        if self.remaining_rows > self.total_matches - len(self.records):
+            raise ValueError("catalog remaining_rows cannot exceed unreturned matches")
 
 
 @dataclass(frozen=True, slots=True)
@@ -781,6 +896,8 @@ class ChangeBatch:
             raise ValueError("a change batch accepts at most 1024 dirty paths")
         if len(self.dirty_paths) != len(set(self.dirty_paths)):
             raise ValueError("change-batch dirty paths must be unique")
+        for path in self.dirty_paths:
+            require_canonical_inventory_path(path, "dirty path", allow_root=True)
 
 
 class RefreshReason(StrEnum):
@@ -808,7 +925,7 @@ class RefreshObservation:
     kind: ObservationKind = ObservationKind.UNKNOWN
 
     def __post_init__(self) -> None:
-        _require_nonempty(self.path, "path")
+        require_canonical_inventory_path(self.path, "path", allow_root=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -835,6 +952,16 @@ class RefreshReceipt:
     accepted_paths: tuple[str, ...]
     rejected_paths: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        if len(self.accepted_paths) != len(set(self.accepted_paths)):
+            raise ValueError("accepted refresh paths must be unique")
+        if len(self.rejected_paths) != len(set(self.rejected_paths)):
+            raise ValueError("rejected refresh paths must be unique")
+        if set(self.accepted_paths) & set(self.rejected_paths):
+            raise ValueError("refresh paths cannot be both accepted and rejected")
+        for path in (*self.accepted_paths, *self.rejected_paths):
+            require_canonical_inventory_path(path, "refresh receipt path", allow_root=False)
+
 
 @dataclass(frozen=True, slots=True)
 class PriorityRequest:
@@ -846,6 +973,10 @@ class PriorityRequest:
             raise ValueError("priority requires at least one path")
         if len(self.paths) > MAX_COMMAND_PATHS:
             raise ValueError("priority accepts at most 1024 paths")
+        if len(self.paths) != len(set(self.paths)):
+            raise ValueError("priority paths must be unique")
+        for path in self.paths:
+            require_canonical_inventory_path(path, "priority path", allow_root=False)
         _require_positive(self.max_depth, "max_depth")
 
 

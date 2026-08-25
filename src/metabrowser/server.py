@@ -122,8 +122,13 @@ from metabrowser.inventory_engine.contract import (
     RollupQuery,
     VersionUnavailableError,
 )
-from metabrowser.inventory_engine.coordinator import HostVersion
+from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostVersion
 from metabrowser.inventory_engine.runtime import InventoryRuntime
+from metabrowser.inventory_engine.tree_page_assembly import (
+    TreePageAssembly,
+    TreePageQuery,
+    assemble_tree_pages,
+)
 from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
 
@@ -1428,41 +1433,38 @@ async def _read_tree_from_provider(
     extensions = tuple(token for token in tree_filter.types if token.startswith("."))
     filenames = tuple(token for token in tree_filter.types if not token.startswith("."))
     as_of_ns = time.time_ns()
-    queries: list[ReadQuery] = [EntryQuery(query_id="tree-parent", path=subpath)]
+    companion_queries: list[ReadQuery] = [EntryQuery(query_id="tree-parent", path=subpath)]
     projection_id = "tree-filtered" if tree_filter.active else "tree-directory"
+    page_query: TreePageQuery | None = None
     if tree_filter.active:
-        queries.append(
-            FilteredTreeQuery(
-                query_id=projection_id,
-                path=subpath,
-                max_depth=max(1, remaining_depth),
-                max_rows=runtime.config.max_entries,
-                filter=InventoryFilter(
-                    extensions=extensions,
-                    filenames=filenames,
-                    recency_seconds=(
-                        float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
-                    ),
-                    minimum_size=tree_filter.min_size or None,
-                    include_ignored=tree_filter.include_ignored,
-                    as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
+        page_query = FilteredTreeQuery(
+            query_id=projection_id,
+            path=subpath,
+            max_depth=max(1, remaining_depth),
+            max_rows=runtime.config.max_files,
+            filter=InventoryFilter(
+                extensions=extensions,
+                filenames=filenames,
+                recency_seconds=(
+                    float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
                 ),
-            )
+                minimum_size=tree_filter.min_size or None,
+                include_ignored=tree_filter.include_ignored,
+                as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
+            ),
         )
     elif remaining_depth > 0:
-        queries.append(
-            DirectoryQuery(
-                query_id=projection_id,
-                path=subpath,
-                max_depth=remaining_depth,
-                max_rows=runtime.config.max_entries,
-            )
+        page_query = DirectoryQuery(
+            query_id=projection_id,
+            path=subpath,
+            max_depth=remaining_depth,
+            max_rows=runtime.config.max_files,
         )
 
     navigation_id: str | None = None
     if not subpath and remaining_depth == 0:
         navigation_id = "tree-navigation"
-        queries.append(
+        companion_queries.append(
             NavigationQuery(
                 query_id=navigation_id,
                 presets=tuple(
@@ -1479,8 +1481,21 @@ async def _read_tree_from_provider(
             )
         )
 
-    read_request = ReadRequest(queries=tuple(queries))
-    read = await runtime.coordinator.read(read_request)
+    async def read_tree() -> tuple[CoordinatedRead, TreePageAssembly | None]:
+        query = page_query
+        if query is None:
+            return (
+                await runtime.coordinator.read(ReadRequest(queries=tuple(companion_queries))),
+                None,
+            )
+        assembly = await assemble_tree_pages(
+            runtime.coordinator,
+            page_query=query,
+            companion_queries=tuple(companion_queries),
+        )
+        return assembly.first_read, assembly
+
+    read, assembly = await read_tree()
     parent = read.result.projection("tree-parent")
     if not isinstance(parent, EntryProjection):
         raise TypeError("the tree parent query returned the wrong projection")
@@ -1492,7 +1507,7 @@ async def _read_tree_from_provider(
         deadline = asyncio.get_running_loop().time() + _TREE_COLD_START_WAIT_S
         while asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.005)
-            read = await runtime.coordinator.read(read_request)
+            read, assembly = await read_tree()
             parent = read.result.projection("tree-parent")
             if not isinstance(parent, EntryProjection):
                 raise TypeError("the tree parent query returned the wrong projection")
@@ -1507,15 +1522,11 @@ async def _read_tree_from_provider(
 
     tree_entries = ()
     filtered_projection: FilteredTreeProjection | None = None
-    if remaining_depth > 0 or tree_filter.active:
-        projection = read.result.projection(projection_id)
+    if assembly is not None:
+        projection = assembly.projection
         if isinstance(projection, FilteredTreeProjection):
             filtered_projection = projection
-            tree_entries = projection.entries
-        elif isinstance(projection, DirectoryProjection):
-            tree_entries = projection.entries
-        else:
-            raise TypeError("the tree query returned the wrong projection")
+        tree_entries = projection.entries
 
     root_dir = _resolved_root_dir()
     tree = (
@@ -1535,7 +1546,7 @@ async def _read_tree_from_provider(
         if not isinstance(candidate, NavigationProjection):
             raise TypeError("the navigation query returned the wrong projection")
         navigation = candidate.payload
-    state = read.result.state
+    state = assembly.final_read.result.state if assembly is not None else read.result.state
     status = _index_status_from_state(
         state.phase,
         complete=state.coverage.complete,
@@ -1555,7 +1566,7 @@ async def _read_tree_from_provider(
                 else None
             ),
             "tally_cache_status": status,
-            "tally_cache_max_files": runtime.config.max_entries,
+            "tally_cache_max_files": runtime.config.max_files,
             "summary": navigation["summary"] if navigation is not None else None,
             "file_type_registry": (
                 navigation["file_type_registry"] if navigation is not None else None
@@ -1707,7 +1718,7 @@ async def api_rollup(request: Request) -> Response:
                     ),
                     "index_status": status,
                     "indexed_files": indexed_files,
-                    "max_files": runtime.config.max_entries,
+                    "max_files": runtime.config.max_files,
                     "truncated": status == "truncated",
                 }
             ).body

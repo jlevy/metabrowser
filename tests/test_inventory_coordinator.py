@@ -52,7 +52,7 @@ from metabrowser.inventory_engine.factory import (
     create_inventory_backend,
 )
 from metabrowser.inventory_engine.overlay import InventoryDecoration
-from metabrowser.inventory_engine.providers.python import PythonInventoryBackend
+from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
 
 
 def _state() -> IndexState:

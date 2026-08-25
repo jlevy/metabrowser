@@ -17,8 +17,8 @@ import threading
 import time
 
 from metabrowser.events import FsEntry
-from metabrowser.inventory_engine.providers.python import (
-    PythonInventoryHandle as InventoryIndex,
+from metabrowser.inventory_engine.providers.python_inventory import (
+    PythonInventoryHandle,
 )
 
 PRESETS: list[tuple[str, list[str]]] = [("code", ["py", "js"])]
@@ -26,8 +26,8 @@ WINDOWS: list[tuple[str, float]] = [("24h", 86_400.0)]
 LIMIT = 200
 
 
-def _index_with(files: int) -> InventoryIndex:
-    index = InventoryIndex()
+def _index_with(files: int) -> PythonInventoryHandle:
+    index = PythonInventoryHandle()
     for i in range(files):
         index.apply_live_entry(
             FsEntry.for_observed_file(

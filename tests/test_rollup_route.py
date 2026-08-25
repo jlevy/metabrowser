@@ -88,7 +88,7 @@ def test_rollup_route_runs_aggregation_off_the_event_loop(
     server._set_root_dir(tmp_path)
 
     async def run() -> list[int]:
-        import metabrowser.inventory_engine.providers.python as provider
+        import metabrowser.inventory_engine.providers.python_inventory as provider
 
         event_loop_thread = threading.get_ident()
         worker_threads: list[int] = []
@@ -246,7 +246,7 @@ def test_simultaneous_identical_rollups_compute_once(
     server._set_root_dir(tmp_path)
 
     async def run() -> tuple[int, list[bytes]]:
-        import metabrowser.inventory_engine.providers.python as provider
+        import metabrowser.inventory_engine.providers.python_inventory as provider
 
         calls = 0
         real_build = provider.build_rollup
@@ -279,7 +279,7 @@ def test_disconnecting_client_does_not_cancel_shared_build(
     server._set_root_dir(tmp_path)
 
     async def run() -> tuple[bytes, bytes]:
-        import metabrowser.inventory_engine.providers.python as provider
+        import metabrowser.inventory_engine.providers.python_inventory as provider
 
         started = threading.Event()
         release = threading.Event()
@@ -316,7 +316,7 @@ def test_rollup_payload_and_etag_share_one_version(
     server._set_root_dir(tmp_path)
 
     async def run() -> tuple[str, int, str, int, int]:
-        import metabrowser.inventory_engine.providers.python as provider
+        import metabrowser.inventory_engine.providers.python_inventory as provider
 
         started = threading.Event()
         release = threading.Event()

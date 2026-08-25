@@ -83,7 +83,7 @@ def test_root_directory_envelope_and_pending_state(
         await asyncio.Event().wait()
 
     monkeypatch.setattr(
-        "metabrowser.inventory_engine.providers.python.walk_tree",
+        "metabrowser.inventory_engine.providers.python_inventory.walk_tree",
         blocked_walk,
     )
     server._set_root_dir(tmp_path)

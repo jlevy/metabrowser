@@ -99,7 +99,7 @@ def test_api_catalog_is_incomplete_while_discovery_is_blocked(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
-    from metabrowser.inventory_engine.providers import python as python_provider
+    from metabrowser.inventory_engine.providers import python_inventory as python_provider
 
     started = asyncio.Event()
     release = asyncio.Event()
@@ -233,7 +233,7 @@ def test_walker_completion_projects_capability_update(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
-    from metabrowser.inventory_engine.providers import python as python_provider
+    from metabrowser.inventory_engine.providers import python_inventory as python_provider
 
     for index in range(30):
         (tmp_path / f"file-{index}.txt").write_text("x")
@@ -334,5 +334,5 @@ def test_catalog_bulk_materialization_stays_in_the_worker() -> None:
     assert '{"p": record.path, "e": record.logical_extension}' in encode_source
     assert "for record in projection.records" not in read_source
     assert "pages.append(projection.records)" in read_source
-    assert "page_size = runtime.config.max_entries" in read_source
+    assert "page_size = runtime.config.max_files" in read_source
     assert "if include_catalog:" in coordinator_source

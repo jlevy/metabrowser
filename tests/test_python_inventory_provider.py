@@ -46,8 +46,8 @@ from metabrowser.inventory_engine.contract import (
     RollupQuery,
     VersionUnavailableError,
 )
-from metabrowser.inventory_engine.providers import python as python_provider
-from metabrowser.inventory_engine.providers.python import PythonInventoryBackend
+from metabrowser.inventory_engine.providers import python_inventory as python_provider
+from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
 
 
 async def _open_settled(
@@ -102,6 +102,7 @@ async def _python_provider_answers_one_coherent_bundled_read(tmp_path: Path) -> 
         assert len(catalog.records) == 1
         assert catalog.total_matches == 2
         assert catalog.next_page is not None
+        assert catalog.remaining_rows == 1
 
         metadata = result.projection("metadata")
         assert isinstance(metadata, MetadataProjection)
@@ -157,6 +158,34 @@ async def _close_is_idempotent_and_refuses_later_reads(tmp_path: Path) -> None:
     await handle.close()
     with pytest.raises(InventoryClosedError):
         await handle.read(ReadRequest(queries=(DiagnosticsQuery(query_id="state"),)))
+
+
+async def _configured_hidden_allowlist_defines_provider_scope(tmp_path: Path) -> None:
+    (tmp_path / ".included").mkdir()
+    (tmp_path / ".included" / "kept.txt").write_text("kept", encoding="utf-8")
+    (tmp_path / ".excluded").mkdir()
+    (tmp_path / ".excluded" / "dropped.txt").write_text("dropped", encoding="utf-8")
+    handle = await _open_settled(
+        tmp_path,
+        InventoryConfig(hidden_allowlist=(".included",), watch_mode="off"),
+    )
+    try:
+        result = await handle.read(
+            ReadRequest(queries=(DirectoryQuery(query_id="tree", max_depth=3, max_rows=20),))
+        )
+        projection = result.projection("tree")
+        assert isinstance(projection, DirectoryProjection)
+        paths = {entry.path for entry in projection.entries}
+        assert {".included", ".included/kept.txt"} <= paths
+        assert ".excluded" not in paths
+        assert ".excluded/dropped.txt" not in paths
+        receipt = await handle.refresh(
+            RefreshRequest(observations=(RefreshObservation(path=".excluded/dropped.txt"),))
+        )
+        assert receipt.accepted_paths == ()
+        assert receipt.rejected_paths == (".excluded/dropped.txt",)
+    finally:
+        await handle.close()
 
 
 async def _python_provider_implements_every_projection(tmp_path: Path) -> None:
@@ -308,22 +337,6 @@ async def _expired_change_cursor_yields_reset(tmp_path: Path) -> None:
         await handle.close()
 
 
-async def _refresh_rejects_noncanonical_paths(tmp_path: Path) -> None:
-    handle = await _open_settled(tmp_path)
-    try:
-        receipt = await handle.refresh(
-            RefreshRequest(
-                observations=tuple(
-                    RefreshObservation(path=path) for path in ("../outside", "a//b", "a\\b")
-                )
-            )
-        )
-        assert receipt.accepted_paths == ()
-        assert receipt.rejected_paths == ("../outside", "a//b", "a\\b")
-    finally:
-        await handle.close()
-
-
 def test_python_provider_answers_one_coherent_bundled_read(tmp_path: Path) -> None:
     asyncio.run(_python_provider_answers_one_coherent_bundled_read(tmp_path))
 
@@ -334,6 +347,10 @@ def test_refresh_advances_version_and_emits_provider_change(tmp_path: Path) -> N
 
 def test_close_is_idempotent_and_refuses_later_reads(tmp_path: Path) -> None:
     asyncio.run(_close_is_idempotent_and_refuses_later_reads(tmp_path))
+
+
+def test_configured_hidden_allowlist_defines_provider_scope(tmp_path: Path) -> None:
+    asyncio.run(_configured_hidden_allowlist_defines_provider_scope(tmp_path))
 
 
 def test_python_provider_implements_every_projection(tmp_path: Path) -> None:
@@ -456,8 +473,10 @@ def test_expired_change_cursor_yields_reset(tmp_path: Path) -> None:
     asyncio.run(_expired_change_cursor_yields_reset(tmp_path))
 
 
-def test_refresh_rejects_noncanonical_paths(tmp_path: Path) -> None:
-    asyncio.run(_refresh_rejects_noncanonical_paths(tmp_path))
+@pytest.mark.parametrize("path", ("../outside", "a//b", "a\\b"))
+def test_refresh_rejects_noncanonical_paths_at_the_contract_boundary(path: str) -> None:
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        RefreshObservation(path=path)
 
 
 def test_python_provider_exposes_progressive_partial_state(

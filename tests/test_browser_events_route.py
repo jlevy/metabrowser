@@ -53,6 +53,7 @@ from metabrowser.events_route import (
     parse_sse_frames,
 )
 from metabrowser.inventory_engine.contract import (
+    InventoryConfig,
     ObservationKind,
     RefreshObservation,
     RefreshRequest,
@@ -230,11 +231,73 @@ def test_api_events_scope_query_param_drives_snapshot_scope(tmp_path: Path) -> N
     assert asyncio.run(_run("garbage")) == "root-depth-2"
 
 
-def test_api_events_replay_returns_envelopes_after_last_id(tmp_path: Path) -> None:
-    """``Last-Event-ID`` resume replays only envelopes strictly
-    newer than the requested id. Walker progress writes envelopes
-    into the ring buffer; the connection then asks for everything
-    above id=2 and must get back ids 3+."""
+def test_all_known_snapshot_pages_directory_heavy_scope_losslessly(tmp_path: Path) -> None:
+    for index in range(7):
+        (tmp_path / f"directory-{index}").mkdir()
+
+    async def run() -> set[str]:
+        async with inventory_harness(
+            tmp_path,
+            config=InventoryConfig(max_files=1, watch_mode="off"),
+        ) as harness:
+            snapshot = await harness.bus.snapshot("all-known")
+            return {entry.path for entry in snapshot.entries}
+
+    assert asyncio.run(run()) == {"", *(f"directory-{index}" for index in range(7))}
+
+
+def test_snapshot_handoff_drops_a_change_already_covered_by_the_snapshot(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "recreated.txt"
+    target.write_text("old", encoding="utf-8")
+
+    async def run() -> tuple[set[str], bool]:
+        async with inventory_harness(tmp_path) as harness:
+            await harness.bus.close()
+            before, _version, _state = await harness.runtime.coordinator.checkpoint()
+            target.unlink()
+            await harness.runtime.coordinator.refresh(
+                RefreshRequest(
+                    observations=(
+                        RefreshObservation(
+                            path="recreated.txt",
+                            kind=ObservationKind.DELETED,
+                        ),
+                    )
+                )
+            )
+            changes = harness.runtime.coordinator.changes(after=before)
+            for _attempt in range(4):
+                stale = await asyncio.wait_for(anext(changes), timeout=1.0)
+                if "recreated.txt" in stale.dirty_paths:
+                    break
+            else:
+                raise AssertionError("delete refresh did not emit its path")
+            await changes.aclose()
+
+            target.write_text("new", encoding="utf-8")
+            await harness.runtime.coordinator.refresh(
+                RefreshRequest(
+                    observations=(
+                        RefreshObservation(
+                            path="recreated.txt",
+                            kind=ObservationKind.CREATED,
+                        ),
+                    )
+                )
+            )
+            snapshot, queue = await harness.bus.snapshot_and_attach("all-known")
+            await harness.bus._project_change(stale)
+            return {entry.path for entry in snapshot.entries}, queue.empty()
+
+    snapshot_paths, queue_is_empty = asyncio.run(run())
+    assert "recreated.txt" in snapshot_paths
+    assert queue_is_empty
+
+
+def test_api_events_snapshot_supersedes_preconnect_ring_entries(tmp_path: Path) -> None:
+    """A reconnect never applies a pre-snapshot ring suffix afterward."""
 
     _build_tree(tmp_path)
 
@@ -252,16 +315,9 @@ def test_api_events_replay_returns_envelopes_after_last_id(tmp_path: Path) -> No
                 return await _drain_sse(stream, max_records=10)
 
     records = asyncio.run(_run())
-    # First record is the snapshot (id=0 sentinel), then the
-    # replay records.
-    snapshot, *replays = records
+    snapshot, *later = records
     assert snapshot["event"] == "fs.snapshot"
-    # Every replay record's id must be > 2.
-    for rec in replays:
-        if rec["event"] == "comment":
-            continue
-        if rec["id"]:
-            assert int(rec["id"]) > 2, f"replay leaked id={rec['id']}"
+    assert all(record["event"] != "heartbeat" for record in later)
 
 
 def test_event_bus_overflow_restarts_slow_connection(tmp_path: Path) -> None:
@@ -485,7 +541,7 @@ def test_api_index_progress_does_not_304_while_active(
     _build_tree(tmp_path)
 
     async def _run() -> tuple[int, str, str]:
-        import metabrowser.inventory_engine.providers.python as python_provider
+        import metabrowser.inventory_engine.providers.python_inventory as python_provider
 
         release = asyncio.Event()
 

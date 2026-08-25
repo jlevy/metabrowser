@@ -15,14 +15,14 @@ from typing import Any
 
 from metabrowser.events import FsEntry
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
-from metabrowser.inventory_engine.providers.python import (
-    PythonInventoryHandle as InventoryIndex,
+from metabrowser.inventory_engine.providers.python_inventory import (
+    PythonInventoryHandle,
 )
 
 
-def _index_for(root: Path) -> InventoryIndex:
-    async def _walk() -> InventoryIndex:
-        index = InventoryIndex()
+def _index_for(root: Path) -> PythonInventoryHandle:
+    async def _walk() -> PythonInventoryHandle:
+        index = PythonInventoryHandle()
         index.start(root)
         await index.wait_until_done(timeout=10.0)
         return index
@@ -197,7 +197,7 @@ def test_navigation_tallies_count_each_recency_window_from_one_snapshot() -> Non
         ),
     ]
 
-    index = InventoryIndex()
+    index = PythonInventoryHandle()
     tallies = index.navigation_tallies(
         [],
         [("live", 90.0), ("1h", 3_600.0), ("24h", 86_400.0)],
@@ -231,7 +231,7 @@ def test_navigation_tallies_are_memoized_per_index_revision() -> None:
     entries were snapshotted at is what lets a repeat request reuse the answer.
     """
 
-    index = InventoryIndex()
+    index = PythonInventoryHandle()
     now_ns = 1_700_000_000_000_000_000
     entries = [_tally_file("a.py"), _tally_file("b.md")]
     passes = 0
@@ -294,7 +294,7 @@ def test_navigation_tallies_share_semantic_family_and_canonical_counts() -> None
         ),
     ]
 
-    tallies = InventoryIndex().navigation_tallies(
+    tallies = PythonInventoryHandle().navigation_tallies(
         [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
         [],
         entries=entries,

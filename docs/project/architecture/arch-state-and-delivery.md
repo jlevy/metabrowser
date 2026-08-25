@@ -296,10 +296,11 @@ Every link is checked except the first, and the first is where the honest limits
   change can be up to that old.
   Unknown types default to polling rather than native, so the failure mode is *late*,
   never *never*.
-- **A failed watch.** If the watch itself fails, live updates end.
+- **A failed watch.** If the watch backend fails or any bounded observation batch cannot
+  reach the provider completely, live updates end.
   Exhausting the inotify watch limit on a large tree lands here.
-  The provider marks coverage with `watcher_gap`, freshness as stale, and reports a
-  typed issue and diagnostics; the coordinator projects that transition as a
+  The provider leaves coverage as measured, marks freshness stale, and reports a typed
+  `watcher_gap` issue and diagnostics; the coordinator projects that transition as a
   `capability.update` with `state: "failed"`. This is necessary because nothing
   downstream can distinguish a quiet filesystem from a dead watch.
 - **Gitignore edits.** `FsEntry.gitignored` is stamped at write time from a checker
@@ -320,6 +321,13 @@ stream. The provider publishes bounded `ChangeBatch` invalidations to the coordi
 the application event bus performs one coherent reread and projects the result to each
 connected browser. With no browser connected, it advances the cursor without building
 wire records; a new connection always begins with a coherent snapshot.
+The event bus assembles bounded directory pages at one engine version and sparse-overlay
+boundary, then attaches the connection while delivery is serialized.
+A per-connection host-version floor suppresses a change already represented by the
+snapshot. Live changes newer than that floor are queued after attachment, so neither a
+stale delta nor an attach gap can occur.
+Because the snapshot is the new reset boundary, pre-snapshot ring entries are not
+replayed after it.
 
 | Event | Carries |
 | --- | --- |
@@ -595,12 +603,11 @@ An attempt to fix this by yielding the event loop per batch made both worse (wal
 23 s, expand p90 166 ms → 211 ms) and was reverted; anything here needs measurement, not
 reasoning.
 
-**A failed watch is announced but not repaired.** The watcher publishes
-`state: "failed"` and stops; nothing retries it, and no surface turns that into
-something a reader sees.
-The information is on the stream for a client that wants it, which is the floor, not the
-finished behavior: a badge, and a bounded retry with backoff, are the obvious next
-steps.
+**A failed watch is announced but not automatically repaired.** A watch-backend error or
+an incompletely submitted observation batch stops the observer.
+The provider marks freshness stale, adds a typed watcher-gap issue, and exposes failed
+watch state through diagnostics and capability updates.
+Nothing retries it yet; a bounded retry with backoff remains future work.
 
 **Truncated scans leave unscanned directories pending.** Past `INVENTORY_MAX_FILES` the
 walker force-finalizes what it scanned and leaves the rest as placeholders.

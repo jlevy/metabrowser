@@ -29,7 +29,7 @@ import asyncio
 import logging
 import os
 from collections import deque
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Collection
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
@@ -138,7 +138,10 @@ class _ScanItem:
         self.mtime_ns = mtime_ns
 
 
-def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
+def _scandir_visible(
+    dirpath: Path,
+    hidden_allowlist: Collection[str] | None = None,
+) -> list[_ScanItem]:
     """One ``os.scandir`` call, filtered to visible names, with
     one stat per file. Symlinks are not followed.
 
@@ -149,7 +152,7 @@ def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
     try:
         with os.scandir(dirpath) as it:
             for raw in it:
-                if not is_visible(raw.name):
+                if not is_visible(raw.name, hidden_allowlist):
                     continue
                 try:
                     raw_is_symlink = raw.is_symlink()
@@ -207,6 +210,7 @@ async def walk_tree(
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
     gitignore_check: Callable[[Path, bool], bool] | None = None,
+    hidden_allowlist: Collection[str] | None = None,
 ) -> AsyncIterator[InventoryEntry]:
     """BFS the filesystem rooted at *root*; yield ``InventoryEntry``
     records as the tree is discovered and as directories finalize.
@@ -384,7 +388,11 @@ async def walk_tree(
 
         # Read directory in a worker thread; blocking call.
         try:
-            child_entries = await asyncio.to_thread(_scandir_visible, abs_path)
+            child_entries = await asyncio.to_thread(
+                _scandir_visible,
+                abs_path,
+                hidden_allowlist,
+            )
         except OSError as exc:
             LOG.debug("walk_tree scandir failed for %s: %s", abs_path, exc)
             child_entries = []

@@ -17,6 +17,8 @@ from metabrowser.inventory_engine.contract import EntryProjection, EntryQuery, R
 from metabrowser.watch_backends import _emit_for_path
 from tests.inventory_harness import InventoryHarness, inventory_harness
 
+_REFRESH_EVENT_TIMEOUT_S = 2.0
+
 
 class _FakeQuery:
     def __init__(self, data: dict[str, str]) -> None:
@@ -80,6 +82,9 @@ async def _observe_refresh(
     root: Path,
     target: Path,
     change: Change,
+    *,
+    expected_upserts: frozenset[str] = frozenset(),
+    expected_removes: frozenset[str] = frozenset(),
 ) -> list[EventEnvelope]:
     queue = harness.bus.attach_connection()
     try:
@@ -89,11 +94,28 @@ async def _observe_refresh(
             str(target),
             change,
         )
-        await asyncio.sleep(0.05)
         events: list[EventEnvelope] = []
-        while not queue.empty():
-            events.append(queue.get_nowait())
-        return events
+        async with asyncio.timeout(_REFRESH_EVENT_TIMEOUT_S):
+            while True:
+                events.append(await queue.get())
+                upserts = {
+                    operation.entry.path
+                    for envelope in events
+                    if isinstance(envelope.event, FsChange)
+                    for operation in envelope.event.ops
+                    if isinstance(operation, FsUpsert)
+                }
+                removes = {
+                    operation.path
+                    for envelope in events
+                    if isinstance(envelope.event, FsChange)
+                    for operation in envelope.event.ops
+                    if isinstance(operation, FsRemove)
+                }
+                if expected_upserts <= upserts and expected_removes <= removes:
+                    while not queue.empty():
+                        events.append(queue.get_nowait())
+                    return events
     finally:
         harness.bus.detach_connection(queue)
 
@@ -129,7 +151,13 @@ def test_touch_existing_file_emits_upsert_and_projection_invalidate(tmp_path: Pa
         async with inventory_harness(tmp_path) as harness:
             target = tmp_path / "file_a.log"
             target.write_bytes(b"a" * 75)
-            envelopes = await _observe_refresh(harness, tmp_path, target, Change.modified)
+            envelopes = await _observe_refresh(
+                harness,
+                tmp_path,
+                target,
+                Change.modified,
+                expected_upserts=frozenset({"file_a.log"}),
+            )
             event_types = {envelope.event.type for envelope in envelopes}
             upserts = {
                 operation.entry.path
@@ -156,7 +184,15 @@ def test_mkdir_with_files_reconciles_subtree_and_root_totals(tmp_path: Path) -> 
             (new_dir / "x.txt").write_bytes(b"x" * 10)
             (new_dir / "nested").mkdir()
             (new_dir / "nested" / "y.txt").write_bytes(b"y" * 20)
-            envelopes = await _observe_refresh(harness, tmp_path, new_dir, Change.added)
+            envelopes = await _observe_refresh(
+                harness,
+                tmp_path,
+                new_dir,
+                Change.added,
+                expected_upserts=frozenset(
+                    {"", "newdir", "newdir/x.txt", "newdir/nested", "newdir/nested/y.txt"}
+                ),
+            )
             upserts = {
                 operation.entry.path
                 for envelope in envelopes
@@ -187,7 +223,13 @@ def test_rm_file_emits_remove_and_updates_root(tmp_path: Path) -> None:
         async with inventory_harness(tmp_path) as harness:
             target = tmp_path / "file_a.log"
             target.unlink()
-            envelopes = await _observe_refresh(harness, tmp_path, target, Change.deleted)
+            envelopes = await _observe_refresh(
+                harness,
+                tmp_path,
+                target,
+                Change.deleted,
+                expected_removes=frozenset({"file_a.log"}),
+            )
             removed = {
                 operation.path
                 for envelope in envelopes
@@ -218,7 +260,13 @@ def test_rm_directory_coalesces_descendant_removals(tmp_path: Path) -> None:
         async with inventory_harness(tmp_path) as harness:
             target = tmp_path / "sub1"
             shutil.rmtree(target)
-            envelopes = await _observe_refresh(harness, tmp_path, target, Change.deleted)
+            envelopes = await _observe_refresh(
+                harness,
+                tmp_path,
+                target,
+                Change.deleted,
+                expected_removes=frozenset({"sub1", "sub1/file_b.log"}),
+            )
             changes = [
                 envelope.event
                 for envelope in envelopes

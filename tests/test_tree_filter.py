@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from metabrowser.events import FsEntry
-from metabrowser.inventory_engine.providers.python import PythonInventoryHandle
+from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryHandle
 from metabrowser.tree import build_filtered_inventory_tree
 from metabrowser.tree_filter import (
     TreeFilter,
@@ -95,7 +95,7 @@ def _by_path(nodes: list[dict[str, object]]) -> dict[str, dict[str, object]]:
 def test_the_filtered_path_reads_structure_from_the_index(tmp_path: Path) -> None:
     """Two reads, two reasons: the rollup needs every entry, the tree shape
     needs one subtree. Grouping the snapshot by parent answers the second with
-    a full index pass, which is the cost `InventoryIndex.children_of` exists to
+    a full index pass, which is the cost ``PythonInventoryHandle.children_of`` exists to
     remove — 63 ms to 7 ms for a folder expansion at 117k entries.
 
     This branch and the child index landed on separate branches, and the
@@ -374,7 +374,7 @@ def test_the_rollup_memo_answers_the_same_question_only_once() -> None:
 
 def test_the_memo_is_reset_through_the_one_test_door() -> None:
     """The key's uniqueness rests on revisions being process-wide, which is
-    InventoryIndex's business rather than this cache's. The reset makes that
+    The Python provider owns this rather than the response cache. The reset makes that
     dependency something a test discharges instead of something that has to
     stay true by luck — and routing it through the server's hook means a test
     resets every response-shaped cache at once.
