@@ -5,7 +5,7 @@ title: "Monitor PR #74 and FDU #44/#47 alignment through adoption readiness"
 kind: task
 status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m0r8xt95921dabcddjjm7csf
 child_order_hints:
   - is-01m0vmz928cewndbdk6gnhbgqz
 created_at: 2026-08-24T22:38:51.537Z
-updated_at: 2026-08-25T05:36:20.389Z
+updated_at: 2026-08-25T05:36:52.417Z
 ---
 Recurring alignment owner for MetaBrowser PR #74 and FDU PRs #44 and #47. Each cycle must sync both tbd stores, inspect exact PR heads, CI, issue comments, formal reviews, inline threads, and current FDU implementation beads, then review material FDU deltas against the implemented InventoryHandle contract and performance/adoption gates. Actionable MetaBrowser feedback is addressed through per-finding beads and a disposition map; FDU defects or drift are deduplicated into fdu-u7vo and published on the appropriate FDU PR. Report only material changes and keep monitoring until the three PRs and adoption handoff reach a terminal state.
 
@@ -33,4 +33,4 @@ FIFTH MONITOR DELTA (2026-08-25). User-directed full tbd/Python and engineering 
 
 CI FOLLOW-UP (2026-08-25). Exact-head run 32811814043 initially had one Python 3.12 failure: the pre-existing active-tracker event-loop sentinel measured 55.0ms against 50ms; Python 3.13/3.14 were canceled by fail-fast. Ten consecutive local focused runs measured 4.9-7.6ms. The exact-head rerun passed the complete suite on Python 3.12, 3.13, and 3.14, plus lint and distribution. mb-k3bm was reclosed with the shared-runner timing-noise evidence; no production change or threshold weakening was made. PR #74 head 1e0f9b5 is mergeable with all five required checks green.
 
-SIXTH MONITOR DELTA (2026-08-25). FDU #47 advanced from fad3d2f to exact reviewed head 7aaaf84 in ten commits; it is draft/mergeable but GitHub reports UNSTABLE while CI runs. The delta correctly lands caller-pinned as_of, typed coherent reads, exact state clocks, bounded retagging, journal-only delivery, reset-versus-provider-recovery semantics, dirty query kinds, watch work foundations, and promoted-plane equivalence. fdu-jxs0 and fdu-fltq are correctly closed. Exact-head review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5015288678 reopened fdu-vfx7 because WatchBatch still has transitions instead of the complete resulting IndexState at its cursor, the v1 feed still pays per-entry PyO3 cost, and public watch work omits binding/model conversion. fdu-91ru was reopened because only child rows have native continuation; filtered-tree and catalog pages cannot meet MetaBrowser's mandatory bounds and lossless remainders without unbounded FFI or Python mirror state. FDU #44 remains exact head 7f18f20, open/clean with 19 green checks and no new feedback. MetaBrowser #74 remains exact head 1e0f9b5, open/clean with all five checks green and no new feedback. Monitoring remains useful until the reopened adoption blockers are addressed.
+SIXTH MONITOR DELTA (2026-08-25). FDU #47 advanced from fad3d2f to exact reviewed head 7aaaf84 in ten commits; it is draft/mergeable and all 19 checks are green. The delta correctly lands caller-pinned as_of, typed coherent reads, exact state clocks, bounded retagging, journal-only delivery, reset-versus-provider-recovery semantics, dirty query kinds, watch work foundations, and promoted-plane equivalence. fdu-jxs0 and fdu-fltq are correctly closed. Exact-head review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5015288678 reopened fdu-vfx7 because WatchBatch still has transitions instead of the complete resulting IndexState at its cursor, the v1 feed still pays per-entry PyO3 cost, and public watch work omits binding/model conversion. fdu-91ru was reopened because only child rows have native continuation; filtered-tree and catalog pages cannot meet MetaBrowser's mandatory bounds and lossless remainders without unbounded FFI or Python mirror state. FDU #44 remains exact head 7f18f20, open/clean with 19 green checks and no new feedback. MetaBrowser #74 remains exact head 1e0f9b5, open/clean with all five checks green and no new feedback. Monitoring remains useful until the reopened adoption blockers are addressed.
