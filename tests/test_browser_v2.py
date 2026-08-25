@@ -239,8 +239,8 @@ def test_api_file_etag_changes_when_file_changes(tmp_path: Path) -> None:
         proc_browser._set_root_dir(Path())
 
 
-def test_api_file_windows_large_text_initial_payload(tmp_path: Path) -> None:
-    """Large text files should not be sent wholesale on first preview."""
+def test_api_file_windows_large_syntax_text_at_highlight_bound(tmp_path: Path) -> None:
+    """Large syntax-known files open as a highlighted bounded prefix."""
     content = "a" * (proc_browser._TEXT_PREVIEW_CHUNK_BYTES + 123)
     fixture = tmp_path / "big.yaml"
     fixture.write_text(content)
@@ -250,9 +250,44 @@ def test_api_file_windows_large_text_initial_payload(tmp_path: Path) -> None:
         payload = json.loads(bytes(resp.body))
         assert payload["type"] == "text"
         assert payload["content_truncated"] is True
+        assert payload["highlight_disabled"] is False
+        assert payload["bytes_read"] == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
+        assert len(payload["content"]) == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
+    finally:
+        proc_browser._set_root_dir(Path())
+
+
+def test_api_file_plain_text_keeps_the_normal_initial_window(tmp_path: Path) -> None:
+    """Grammar-less text should not inherit the smaller syntax-work bound."""
+    content = "a" * (proc_browser._TEXT_PREVIEW_CHUNK_BYTES + 123)
+    fixture = tmp_path / "big.txt"
+    fixture.write_text(content)
+    proc_browser._set_root_dir(tmp_path)
+    try:
+        resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "big.txt"}))))
+        payload = json.loads(bytes(resp.body))
+        assert payload["type"] == "text"
+        assert payload["content_truncated"] is True
         assert payload["highlight_disabled"] is True
         assert payload["bytes_read"] == proc_browser._TEXT_PREVIEW_CHUNK_BYTES
-        assert len(payload["content"]) == proc_browser._TEXT_PREVIEW_CHUNK_BYTES
+    finally:
+        proc_browser._set_root_dir(Path())
+
+
+def test_api_file_windows_large_extensionless_source_at_highlight_bound(tmp_path: Path) -> None:
+    """Known source basenames use the same bounded highlighted prefix."""
+    line = "target:\n\tbuild\n"
+    content = line * (proc_browser._TEXT_PREVIEW_CHUNK_BYTES // len(line) + 10)
+    fixture = tmp_path / "Makefile"
+    fixture.write_text(content)
+    proc_browser._set_root_dir(tmp_path)
+    try:
+        resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "Makefile"}))))
+        payload = json.loads(bytes(resp.body))
+        assert payload["type"] == "text"
+        assert payload["content_truncated"] is True
+        assert payload["highlight_disabled"] is False
+        assert payload["bytes_read"] == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
     finally:
         proc_browser._set_root_dir(Path())
 
@@ -333,6 +368,7 @@ def test_api_file_large_text_chunk_ignores_matching_etag(tmp_path: Path) -> None
         assert payload["type"] == "text_chunk"
         assert payload["content"] == "tail"
         assert payload["content_truncated"] is False
+        assert payload["highlight_disabled"] is True
     finally:
         proc_browser._set_root_dir(Path())
 

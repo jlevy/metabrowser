@@ -298,10 +298,13 @@ function getLogicalName(entry) {
 
 // ── Syntax highlighting (client-side via highlight.js) ──────────
 
-function highlightCode() {
-  // highlight.js is an optional CDN enhancement; if it failed to load (offline,
-  // blocked, or a kpress-rendered doc that never pulled it in), no-op rather
-  // than throwing `hljs is not defined` and aborting the whole render.
+/** @type {WeakSet<Document | Element>} */
+var scheduledHighlightRoots = new WeakSet();
+
+/** @param {Document | Element} root */
+function highlightCode(root = document) {
+  // Highlight.js is a prefetched vendored enhancement. If the optional asset
+  // failed to load, no-op rather than aborting the readable plain-text render.
   if (typeof hljs === "undefined") {
     return;
   }
@@ -309,13 +312,14 @@ function highlightCode() {
   // 1000+ such elements and hljs.highlightElement runs in ~1 ms each,
   // so eager highlighting torpedoes the first paint of a big log file.
   // The toggleEvent handler highlights on first expand instead.
-  var nodes = document.querySelectorAll("pre code:not(.hljs)");
+  var nodes = root.querySelectorAll("pre code:not(.hljs)");
   var meta = { blocks: nodes.length, skipped_collapsed_log_blocks: 0 };
   return _perf.measure(
     "highlightCode",
     () => {
       nodes.forEach((el) => {
-        if (el.closest(".log-event-raw")) {
+        var rawLogHost = el.closest(".log-event-raw");
+        if (rawLogHost && !rawLogHost.closest(".log-event.expanded")) {
           meta.skipped_collapsed_log_blocks += 1;
           return;
         }
@@ -335,6 +339,31 @@ function highlightCode() {
     },
     meta,
   );
+}
+
+/**
+ * Schedule optional syntax work after the next browser paint.
+ * @param {Document | Element} [root]
+ */
+function scheduleHighlightCode(root = document) {
+  if (scheduledHighlightRoots.has(root)) {
+    return;
+  }
+  scheduledHighlightRoots.add(root);
+  var afterFrame = () => {
+    setTimeout(() => {
+      scheduledHighlightRoots.delete(root);
+      if (root !== document && !root.isConnected) {
+        return;
+      }
+      highlightCode(root);
+    }, 0);
+  };
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(afterFrame);
+  } else {
+    afterFrame();
+  }
 }
 
 function formatAge(mtimeSec) {
@@ -4952,7 +4981,7 @@ async function loadMoreCurrentText() {
     cached.content_bytes = (cached.content_bytes || 0) + (chunk.content_bytes || 0);
     cached.bytes_read = chunk.bytes_read || cached.bytes_read;
     cached.content_truncated = !!chunk.content_truncated;
-    cached.highlight_disabled = true;
+    cached.highlight_disabled = !!chunk.highlight_disabled;
     textChunkNextBytes = window.MetabrowserSourceAppend.nextChunkBytes(
       requested,
       TEXT_PREVIEW_MAX_CHUNK_BYTES,
@@ -5453,6 +5482,7 @@ function mountPluginView(container, pluginView, ctx) {
     var maybePromise = pluginView.render(container, ctx);
     Promise.resolve(maybePromise).then(
       (handle) => {
+        scheduleHighlightCode(container);
         if (!handle || typeof handle.dispose !== "function") {
           return;
         }
@@ -5688,7 +5718,7 @@ function renderFile(data, preferredViewId, claim) {
       }
 
       _perf.measure("initTabs", initTabs, filePerfMeta(data));
-      highlightCode();
+      scheduleHighlightCode(preview);
       measureNextPaint("renderFile:nextPaint", filePerfMeta(data));
     },
     filePerfMeta(data),
@@ -5717,12 +5747,7 @@ function toggleEvent(header) {
     ) {
       window.metabrowserAgentLog.mountLogEventRaw(rawEl);
     }
-    if (typeof hljs !== "undefined") {
-      var code = parent.querySelector(".log-event-raw pre code:not(.hljs)");
-      if (code) {
-        hljs.highlightElement(code);
-      }
-    }
+    scheduleHighlightCode(parent);
   }
 }
 
@@ -7390,7 +7415,7 @@ if (typeof window !== "undefined") {
   });
 
   function enhanceCurrentFileAfterOptionalAsset() {
-    highlightCode();
+    scheduleHighlightCode(document);
   }
 
   window.addEventListener(

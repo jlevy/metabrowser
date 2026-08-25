@@ -19,6 +19,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from metabrowser.file_extensions import (
+    SYNTAX_LANGUAGE_BY_BASENAME,
+    SYNTAX_LANGUAGE_BY_EXTENSION,
+)
 from metabrowser.file_type_filters import (
     FILTER_TYPE_PRESETS,
     serialize_distribution_colors,
@@ -65,8 +69,11 @@ TEXT_PREVIEW_MAX_CHUNK_BYTES = 8 * 1024 * 1024
 # Hard clamp on one request, which also bounds the decompression window for a
 # compressed artifact.
 TEXT_PREVIEW_REQUEST_MAX_BYTES = 16 * 1024 * 1024
-# Highlight.js is superlinear in input and is the one genuinely expensive
-# step in this path, so it stays off above this regardless of chunk size.
+# Highlight.js tokenization plus attached-DOM layout creates one span per token.
+# Chromium 141 measurements in docs/large-content-rendering.md put representative
+# 512 KiB sources at 0.34–1.14 s and 29k–170k spans; 2 MiB reaches 1.48–4.45 s
+# and 117k–682k spans. The shell performs this work after first paint and keeps
+# the loaded syntax-highlighted prefix at or below this bound.
 SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024
 
 # ── Inventory provider walker ────────────────────────────────
@@ -315,7 +322,9 @@ GIT_DETAIL_CACHE_SIZE = 200
 # ── Client settings export ───────────────────────────────────
 
 
-def client_settings_dict() -> dict[str, Any]:
+def client_settings_dict(
+    *, syntax_highlight_max_bytes: int = SYNTAX_HIGHLIGHT_MAX_BYTES
+) -> dict[str, Any]:
     """The subset of settings injected into the client via the
     index template. Reading from a single dict keeps the JS
     side from duplicating constants.
@@ -353,6 +362,9 @@ def client_settings_dict() -> dict[str, Any]:
         "ROLLUP_WATCH_DEBOUNCE_MS": ROLLUP_WATCH_DEBOUNCE_MS,
         "DIFF_FOLD_THRESHOLD": DIFF_FOLD_THRESHOLD,
         "DIFF_FOLD_VISIBLE": DIFF_FOLD_VISIBLE,
+        "SYNTAX_HIGHLIGHT_MAX_BYTES": syntax_highlight_max_bytes,
+        "SYNTAX_LANGUAGE_BY_BASENAME": dict(SYNTAX_LANGUAGE_BY_BASENAME),
+        "SYNTAX_LANGUAGE_BY_EXTENSION": dict(SYNTAX_LANGUAGE_BY_EXTENSION),
         "TEXT_PREVIEW_CHUNK_BYTES": TEXT_PREVIEW_CHUNK_BYTES,
         "TEXT_PREVIEW_MAX_CHUNK_BYTES": TEXT_PREVIEW_MAX_CHUNK_BYTES,
     }

@@ -296,6 +296,14 @@ Useful helpers include:
 - `render(template, data)` for auto-escaped Mustache templates;
 - `escapeHtml(value)` for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame;
+- `renderSourceView(container, data)` for the standard bounded, copyable Source surface,
+  including truncation controls and the shared language mapping;
+- `langForExtension(ext)` for the language ID backed by the host’s vendored grammar
+  registry, or an empty string when the source should remain plain;
+- `langForPath(pathOrName, ext)` for the same decision with extensionless names such as
+  `Makefile` and compressed logical names included;
+- `highlightSyntax(source, language, options)` for bounded DOM-free token runs when a
+  custom renderer, such as a diff, must project tokens itself;
 - `formatSize`, `formatInteger`, `formatFileCount`, `formatTimestamp`, and `sizeHtml`;
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
@@ -335,6 +343,14 @@ renderer from the SDK. Already-loaded plugins resolve immediately, and simultane
 callers share one load.
 This keeps cross-kind renderers off the eager shell path without exposing the private
 plugin host.
+
+Use `renderSourceView` when several kinds need the same raw-source presentation; do not
+depend on another kind’s plugin having loaded.
+The shell runs ordinary `<code>` syntax enhancement after both default and lazy-mounted
+renderers settle, and repeats the pass when the prefetched grammar asset arrives.
+A custom Source renderer should preserve exact text, use `langForPath`, and add
+`no-highlight` only when it deliberately applies a host-provided degradation decision.
+Plugins do not read `METABROWSER_SETTINGS` or call the Highlight.js global directly.
 
 `chart(container, type, data, options)` requires that bundle:
 `await metabrowser.ensureAsset("chart")` first, or the call throws.
@@ -636,7 +652,7 @@ Before publishing a plugin:
 
 1. Run `metab --doctor` in a clean environment.
 2. Confirm every manifest view has a matching `registerView` call.
-3. Exercise default and lazy-mounted tabs.
+3. Exercise default and lazy-mounted tabs, including any post-mount syntax enhancement.
 4. Verify `dispose` stops listeners, streams, timers, and chart instances.
 5. Test path validation and malformed data-hook inputs.
 6. Build the wheel and confirm all static assets are present.

@@ -9,6 +9,8 @@ the JSDOM shim end-to-end test (see tests/dom/).
 Surface checked:
 - mb.escapeHtml, mb.formatSize, mb.formatTimestamp (already shipped)
 - mb.countClass, mb.sizeClass, mb.sizeHtml, mb.isLargeTextPreview
+- mb.highlightSyntax (bounded DOM-free Highlight.js token data)
+- mb.renderSourceView (shared generic Source surface)
 - mb.wrapWithCopy (new in 3b)
 - mb.icons proxy (new in 3b — backed by window.MetabrowserIcons)
 - mb.perf.measure (contributes to the shared performance recorder)
@@ -37,6 +39,18 @@ def test_sdk_exports_is_large_text_preview() -> None:
     src = _sdk_source()
     assert "isLargeTextPreview: isLargeTextPreview" in src
     assert "SYNTAX_HIGHLIGHT_MAX_BYTES" in src
+
+
+def test_sdk_exports_highlight_syntax() -> None:
+    src = _sdk_source()
+    assert "highlightSyntax: highlightSyntax" in src
+    assert "async function highlightSyntax" in src
+
+
+def test_sdk_exports_shared_source_renderer() -> None:
+    src = _sdk_source()
+    assert "renderSourceView: renderSourceView" in src
+    assert "function renderSourceView" in src
 
 
 def test_sdk_exports_wrap_with_copy() -> None:

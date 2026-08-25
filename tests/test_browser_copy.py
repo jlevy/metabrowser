@@ -55,7 +55,8 @@ def test_plugin_messages_use_product_language() -> None:
     agent_log = _read(BUILTINS / "agent_log" / "index.js")
     charts = _read(STATIC / "charts.js")
 
-    assert "The source view is unavailable. Refresh the page to try again." in structured
+    assert "mb.renderSourceView(container, raw)" in structured
+    assert "The source view is unavailable" not in structured
     assert "Could not load structured data. Refresh the page to try again." in structured
     assert "Empty or unparseable file." not in structured
     assert "Could not render this document." in markdown

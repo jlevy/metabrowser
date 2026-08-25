@@ -7,6 +7,7 @@ from pathlib import Path
 STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "metabrowser" / "static"
 STYLES_CSS = STATIC_DIR / "styles.css"
 HIGHLIGHT_THEME_CSS = STATIC_DIR / "vendor" / "highlight-github.min.css"
+DIFF_STYLES_CSS = STATIC_DIR.parent / "builtin_plugins" / "diff" / "styles.css"
 
 MINIMUM_TEXT_CONTRAST = 4.5
 HUE_CIRCLE_DEGREES = 360.0
@@ -111,6 +112,10 @@ def _css_rules(css: str) -> tuple[tuple[str, str], ...]:
     )
 
 
+def _rule_body(css: str, selector: str) -> str:
+    return next(body for candidate, body in _css_rules(css) if candidate == selector)
+
+
 OKLCH_RE = re.compile(
     r"oklch\(\s*(?P<lightness>[\d.]+)%?\s+(?P<chroma>[\d.]+)\s+(?P<hue>[\d.]+)\s*\)"
 )
@@ -167,11 +172,29 @@ def _relative_luminance(color: tuple[float, float, float]) -> float:
 
 
 def _contrast_ratio(first: str, second: str) -> float:
-    first_luminance = _relative_luminance(_parse_color(first))
-    second_luminance = _relative_luminance(_parse_color(second))
+    return _contrast_ratio_rgb(_parse_color(first), _parse_color(second))
+
+
+def _contrast_ratio_rgb(
+    first: tuple[float, float, float], second: tuple[float, float, float]
+) -> float:
+    first_luminance = _relative_luminance(first)
+    second_luminance = _relative_luminance(second)
     lighter = max(first_luminance, second_luminance)
     darker = min(first_luminance, second_luminance)
     return (lighter + CONTRAST_LUMINANCE_OFFSET) / (darker + CONTRAST_LUMINANCE_OFFSET)
+
+
+def _mix_srgb(
+    foreground: tuple[float, float, float],
+    background: tuple[float, float, float],
+    foreground_ratio: float,
+) -> tuple[float, float, float]:
+    channels = tuple(
+        foreground_ratio * foreground_channel + (1 - foreground_ratio) * background_channel
+        for foreground_channel, background_channel in zip(foreground, background, strict=True)
+    )
+    return (channels[0], channels[1], channels[2])
 
 
 def _resolved_color(tokens: dict[str, str], token: str) -> str:
@@ -253,3 +276,53 @@ def test_metabrowser_owns_highlight_layout_and_semantic_colors() -> None:
     assert "overflow-x: auto;" in layout_rules["pre code.hljs"]
     assert "padding: 1em;" in layout_rules["pre code.hljs"]
     assert "padding: 3px 5px;" in layout_rules["code.hljs"]
+
+
+def test_syntax_foregrounds_meet_contrast_over_diff_tints() -> None:
+    css = STYLES_CSS.read_text(encoding="utf-8")
+    light_tokens = _tokens(_css_block(css, ":root {"))
+    dark_overrides = _tokens(_css_block(css, '[data-theme="dark"] {'))
+
+    for theme, tokens in (
+        ("light", light_tokens),
+        ("dark", {**light_tokens, **dark_overrides}),
+    ):
+        background = _parse_color(_resolved_color(tokens, "--bg"))
+        surfaces = {
+            "context": background,
+            "addition": _mix_srgb(
+                _parse_color(_resolved_color(tokens, "--status-success")), background, 0.12
+            ),
+            "deletion": _mix_srgb(
+                _parse_color(_resolved_color(tokens, "--status-error")), background, 0.12
+            ),
+        }
+        for foreground_token in SYNTAX_FOREGROUND_TOKENS:
+            foreground = _parse_color(_resolved_color(tokens, foreground_token))
+            for surface_name, surface in surfaces.items():
+                contrast = _contrast_ratio_rgb(foreground, surface)
+                assert contrast >= MINIMUM_TEXT_CONTRAST, (
+                    f"{theme} {foreground_token} has {contrast:.2f}:1 contrast "
+                    f"over the diff {surface_name} surface"
+                )
+
+
+def test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract() -> None:
+    css = DIFF_STYLES_CSS.read_text(encoding="utf-8")
+    token_host = _rule_body(css, ".metabrowser-diff-host .diff-line-text.hljs")
+    assert "background: transparent;" in token_host
+    assert "padding: 0;" in token_host
+    assert "overflow-x: auto;" in _rule_body(css, ".metabrowser-diff-host .diff-file-body")
+    assert "minmax(20em, 1fr) minmax(20em, 1fr)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-split-row"
+    )
+    assert "user-select: none;" in _rule_body(css, ".metabrowser-diff-host .diff-split-empty")
+    assert "user-select: none;" in _rule_body(
+        css,
+        '.metabrowser-diff-host .diff-root[data-selection-side="old"] .diff-split-new .diff-line-text',
+    )
+    assert "user-select: none;" in _rule_body(
+        css,
+        '.metabrowser-diff-host .diff-root[data-selection-side="new"] .diff-split-old .diff-line-text',
+    )
+    assert "@media (prefers-reduced-motion: reduce)" in css

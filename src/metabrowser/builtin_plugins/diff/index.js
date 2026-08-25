@@ -10,17 +10,17 @@
 import { validateDocument } from "./diff-model.js";
 import { mountDiffView, setChangeLoader } from "./diff-view.js";
 
-// The view projects documents; fetching is the plugin's job. This wires
-// the deferred-file loader to the same hook the whole comparison came
-// from, narrowed to one path.
-setChangeLoader((revision, path) =>
-  mb.fetchPluginData("diff", "comparison", { revision, file: path }),
-);
-
 const mb = window.metabrowser;
 if (!mb) {
   throw new Error("metabrowser diff plugin: SDK is unavailable");
 }
+
+// The view projects documents; fetching is the plugin's job. This wires
+// the deferred-file loader to the same hook the whole comparison came
+// from, narrowed to one path.
+setChangeLoader((revision, path, options) =>
+  mb.fetchPluginData("diff", "comparison", { revision, file: path }, options),
+);
 
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
@@ -77,6 +77,6 @@ mb.registerView("diff", "diff", {
     if (!result.ok) {
       return renderFailure(container, `This diff document is not valid: ${result.error}`);
     }
-    return mountDiffView(container, result.document);
+    return mountDiffView(container, result.document, mb);
   },
 });

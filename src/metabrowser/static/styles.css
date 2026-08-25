@@ -517,15 +517,17 @@
 
   /* Syntax colors shared by Highlight.js source views and the structured
      JSON/YAML tree. Every foreground meets WCAG AA against both --bg and
-     --code-bg; diff foregrounds are checked against their own surfaces.
+     --code-bg; these light-theme foregrounds also retain 4.5:1 over
+     the diff view's 12% success and error composites.
+     Diff foregrounds are checked against their own surfaces.
      The async vendor stylesheet supplies layout only: the host mappings in
      the Highlight.js integration block below own every semantic color. */
   --color-syntax-keyword: oklch(51.6% 0.181 22.4);
   --color-syntax-title: oklch(47.03% 0.1915 297.54);
-  --color-syntax-string: oklch(51.7% 0.116 151);
-  --color-syntax-number: oklch(55.55% 0.1261 55.64);
+  --color-syntax-string: oklch(51% 0.116 151);
+  --color-syntax-number: oklch(53% 0.1261 55.64);
   --color-syntax-bool: var(--color-syntax-title);
-  --color-syntax-null: oklch(52.54% 0.0147 244.44);
+  --color-syntax-null: oklch(52% 0.0147 244.44);
   --color-syntax-key: oklch(46.53% 0.1006 248.34);
   --color-syntax-built-in: var(--color-syntax-number);
   --color-syntax-comment: var(--color-syntax-null);

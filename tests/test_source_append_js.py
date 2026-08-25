@@ -57,6 +57,7 @@ def test_shell_appends_rather_than_rerendering() -> None:
     # Appending skips the plugin's render, so the partial-content banner has to
     # be brought back in line or it reports stale byte counts.
     assert "MetabrowserSourceAppend.syncTruncationWarning" in js
+    assert "cached.highlight_disabled = !!chunk.highlight_disabled" in js
 
 
 def test_chunk_size_is_not_duplicated_across_the_boundary() -> None:

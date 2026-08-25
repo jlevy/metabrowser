@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Diff layout bound benchmark</title>
+    <link rel="stylesheet" href="/src/metabrowser/static/styles.css" />
+    <link rel="stylesheet" href="/src/metabrowser/builtin_plugins/diff/styles.css" />
+    <style>
+      body {
+        margin: 0;
+      }
+
+      #result {
+        padding: 1rem;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <pre id="result">Running…</pre>
+    <main id="fixture" class="metabrowser-diff-host"></main>
+    <script>
+      window.METABROWSER_SETTINGS = {
+        DIFF_FOLD_THRESHOLD: 40,
+        DIFF_FOLD_VISIBLE: 20,
+      };
+    </script>
+    <script type="module">
+      import { mountDiffView } from "/src/metabrowser/builtin_plugins/diff/diff-view.js";
+
+      const FILE_COUNT = 1_000;
+      const resultNode = document.querySelector("#result");
+      const fixture = document.querySelector("#fixture");
+
+      function percentile(values, fraction) {
+        const ordered = [...values].sort((left, right) => left - right);
+        return ordered[Math.min(ordered.length - 1, Math.floor(ordered.length * fraction))];
+      }
+
+      try {
+        const response = await fetch(
+          "/src/metabrowser/data/file-diff-format/file-diff-conformance.json",
+        );
+        const corpus = await response.json();
+        const seed = corpus.cases.find(({ name }) => name === "modified-with-heading").document;
+        const seedChange = seed.manifest.files[0];
+        const seedPatch = seed.patches[seedChange.id];
+        const document_ = structuredClone(seed);
+        document_.manifest.files = [];
+        document_.patches = {};
+        for (let index = 0; index < FILE_COUNT; index += 1) {
+          const id = `bound-${index}`;
+          const path = `src/generated/file-${index}.py`;
+          const change = structuredClone(seedChange);
+          change.id = id;
+          if (change.old) {
+            change.old.path = path;
+          }
+          if (change.new) {
+            change.new.path = path;
+          }
+          const patch = structuredClone(seedPatch);
+          patch.file_id = id;
+          document_.manifest.files.push(change);
+          document_.patches[id] = patch;
+        }
+        document_.manifest.totals.files = FILE_COUNT;
+        document_.manifest.totals.additions = FILE_COUNT;
+        document_.manifest.totals.deletions = FILE_COUNT;
+
+        let selectLayout = null;
+        const api = {
+          filterControls: {
+            bind(_control, handlers) {
+              selectLayout = (layout) => handlers.onChange("diff-layout", layout, "one");
+              return () => {};
+            },
+            groupHtml({ value }) {
+              return `<span role="radiogroup" aria-label="Diff layout">${value}</span>`;
+            },
+          },
+          highlightSyntax: async () => null,
+          isLargeTextPreview: () => true,
+          langForPath: () => "python",
+          prefs: {
+            get: (_name, fallback) => fallback,
+            set: () => true,
+          },
+        };
+
+        const mountedAt = performance.now();
+        const handle = mountDiffView(fixture, document_, api);
+        const mountMs = performance.now() - mountedAt;
+        const durations = [];
+        for (const layout of ["split", "unified", "split", "unified", "split", "unified"]) {
+          const startedAt = performance.now();
+          selectLayout(layout);
+          fixture.offsetHeight;
+          const blockingMs = performance.now() - startedAt;
+          while (fixture.querySelector(".diff-root")?.dataset.layoutPending === "true") {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }
+          fixture.offsetHeight;
+          durations.push({
+            blockingMs,
+            layout,
+            settledMs: performance.now() - startedAt,
+          });
+        }
+        const blockingValues = durations.map(({ blockingMs }) => blockingMs);
+        const result = {
+          browser: navigator.userAgent,
+          dom_elements: fixture.querySelectorAll("*").length,
+          file_count: FILE_COUNT,
+          layout_switches_ms: durations.map(({ blockingMs, layout, settledMs }) => ({
+            blocking: Number(blockingMs.toFixed(1)),
+            layout,
+            settled: Number(settledMs.toFixed(1)),
+          })),
+          max_blocking_switch_ms: Number(Math.max(...blockingValues).toFixed(1)),
+          median_blocking_switch_ms: Number(percentile(blockingValues, 0.5).toFixed(1)),
+          mount_ms: Number(mountMs.toFixed(1)),
+          viewport: { height: innerHeight, width: innerWidth },
+        };
+        window.diffLayoutBenchmarkResult = result;
+        resultNode.textContent = JSON.stringify(result, null, 2);
+        handle.dispose();
+      } catch (error) {
+        window.diffLayoutBenchmarkError = String(error?.stack || error);
+        resultNode.textContent = window.diffLayoutBenchmarkError;
+      }
+    </script>
+  </body>
+</html>
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

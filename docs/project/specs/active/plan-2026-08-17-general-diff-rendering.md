@@ -572,9 +572,39 @@ implementation the measurements justify.
   Security Policy, dependency count and update cadence, accessibility, design-token
   integration, and the maintenance surface each leaves behind
 - [ ] Record the decision and its evidence in this document
-- [ ] Split view, intraline refinement, bounded syntax highlighting, and row
-  virtualization on the chosen path
+- [x] Split view and bounded syntax highlighting on the in-house renderer
+- [ ] Intraline refinement and row virtualization on the chosen path
 - [ ] Whitespace and wrap controls, keyboard next-file and next-hunk navigation
+
+#### 2026-08-24 addendum: syntax and split layout
+
+[Diff Syntax Highlighting and Layouts](../done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md)
+completes two Phase 3 items in the in-house renderer.
+Unified and split are projections of one old/new semantic line model.
+They reuse the existing prefetched Highlight.js runtime, grammar registry, semantic
+palette, and 512 KiB per-file syntax bound; no dependency, worker, wire field, route, or
+registered view changed.
+
+Visible Chromium checks covered a three-file JavaScript/TOML fixture, a generated
+near-bound comparison, and a 55-file hydration comparison.
+Four files with 508,038 bytes of combined old/new lexer input highlighted; a fifth at
+528,038 bytes stayed plain.
+The final two near-bound files enhanced over a 74 ms observed interval, with a task
+yield between file units.
+In the 55-file comparison, 50 ready sections and five deferred sections were visible at
+365 ms after selection; hydration finished at 382 ms while the syntax queue continued
+file by file and completed at 750 ms.
+Replacing that comparison at 187 ms, with all five deferred requests pending, left one
+five-file mount and produced no late mutation or console error.
+The renderer records exact per-file and per-lexer durations, input bytes, hunk counts,
+and call counts through `metabrowser.perf`.
+
+Those results retain the shared byte bound and do not justify an aggregate cap or
+worker. `@pierre/diffs` and `@git-diff-view/core` still offer material advantages for
+intraline refinement, virtualization, and worker tokenization, not for this completed
+slice. Intraline refinement, context expansion, whitespace controls, and virtualization
+remain on this plan and `mb-hhmb`; they can trigger another measured dependency review
+if their implementation cost justifies one.
 
 ## The dependency question
 

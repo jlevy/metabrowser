@@ -3,7 +3,7 @@
 // Owns kind "structured" (declared in manifest.toml for the three
 // extensions .json / .yaml / .yml at priority 0). Two views:
 //   ("structured", "tree")   — virtualized YAML-styled tree (default)
-//   ("structured", "source") — raw text via mb.builtins.text.renderSource
+//   ("structured", "source") — raw text via mb.renderSourceView
 //
 // Exports the renderer + helpers at mb.builtins.structured so other
 // plugins (agent-log per-event payloads, future schema-aware
@@ -32,16 +32,17 @@
   // tear down its scroll listener when the preview pane is replaced.
   let _activeTreeHandle = null;
 
-  // Reuse the text plugin's source renderer (syntax-highlighted raw
-  // text). Looked up at render time so we don't depend on the text
-  // plugin loading before structured. Used both for the explicit
-  // Source view and as the fallback when a file can't be parsed.
+  // Use the host's generic Source renderer rather than depending on another
+  // kind's lazily loaded plugin. Used both for the explicit Source view and as
+  // the fallback when a file cannot be parsed.
   function renderSourceFallback(container, ctx) {
-    if (mb.builtins?.text?.renderSource) {
-      return mb.builtins.text.renderSource(container, ctx);
-    }
-    container.innerHTML =
-      '<div class="preview-empty" role="alert">The source view is unavailable. Refresh the page to try again.</div>';
+    const raw =
+      ctx.raw && typeof ctx.raw === "object"
+        ? /** @type {Record<string, unknown> & {content?: string, ext?: string}} */ (ctx.raw)
+        : {};
+    mb.perf.measure("renderStructured:source", () => {
+      mb.renderSourceView(container, raw);
+    });
   }
 
   function renderTree(container, ctx) {
