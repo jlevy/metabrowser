@@ -180,6 +180,7 @@ round.
 | Progressive load | Large or streaming data source; interact while updates arrive | Long Task and frame maxima, Event Timing, blocked share | Completion, final state, dropped/resync signals |
 | Churn and recovery | Burst updates, disconnect, reconnect, and force resynchronization | Convergence time, dropped events, resync count, update coalescing | Interaction latency during churn, final semantic equivalence, bounded caches |
 | Steady interaction | Settled application; repeat one scripted user journey | p50, p95, maximum interaction latency; named handler spans | Correct outcome, DOM and heap before/after |
+| Stateful navigation | Settled application; move between already rendered subjects with trusted input | Intent-to-ready and selection-to-painted-ready time; blank or placeholder frames; server and client phase spans | Exact selected subject, continuous useful content, one mounted owner, bounded preparation, disposal, and heap |
 | Visual stability | Fixed viewport; capture shipped, intermediate, and final states | CLS, direct region movement, visual-state and repaint counts | First usable time and responsiveness do not regress |
 | Endurance | Long-lived session with repeated navigation and updates | Heap slope, DOM ceiling, retained sample counts, listener and cache sizes | Interaction latency stays flat and attribution does not overflow |
 | Backend delivery | Same corpus, with and without an attached client | Scan time, route wall/server time, RSS, payload | Browser hard gates and semantic response equivalence |
@@ -198,6 +199,17 @@ limits, and the decision.
 An overlapping range means no detected difference; it cannot support either a win or a
 regression. A candidate fails when any run crosses a hard gate or when a repeatable
 wrong-way metric lacks an accepted explanation.
+
+Stateful navigation must define useful readiness rather than accept the first paint
+after input. A prompt spinner can shorten Event Timing while the requested content
+arrives later. Keep the prior useful surface observable through the transition, require
+the exact requested subject at a painted boundary, and record blank or placeholder
+frames beside Event Timing.
+Freeze the product build and browsed corpus independently when product commits would
+otherwise change the navigation subjects.
+Use `Server-Timing` for backend work and finite application labels for transfer,
+decoding, mounting, and handoff so a cache or prefetch decision addresses the measured
+layer.
 
 An older release may predate the recorder.
 A measurement-only adapter may supply the current standard observers, provided the

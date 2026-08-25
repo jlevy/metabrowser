@@ -51,6 +51,16 @@ Performance, validated against 0.6.0 side by side:
 
 Browser:
 
+- Git history keeps the current commit and diff visible while the selected revision is
+  prepared, then installs the replacement atomically.
+  Commit metadata, diff assets, and comparison data start together; one replaceable
+  pointer- or focus-intent slot avoids duplicate work without prefetching every visible
+  row. In three interleaved visible browser runs, candidate scenarios record zero blank
+  frames instead of 4–5 and the prepared transition falls from a 209.7 ms median to
+  104.4 ms, while cold-transition ranges overlap and retained heap stays unchanged.
+  The performance loop now records this interaction’s server, client, rendering,
+  paint-continuity, and lifecycle costs.
+
 - Diff views now pair similar removed and added lines monotonically and emphasize the
   changed words or characters in both unified and split layouts.
   Similar replacements use a lighter whole-row tint with a stronger inner range, while

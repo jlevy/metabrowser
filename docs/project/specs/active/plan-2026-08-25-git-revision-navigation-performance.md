@@ -9,7 +9,7 @@ author: Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Approved
+**Status:** Implemented
 
 ## Overview
 
@@ -175,10 +175,35 @@ change. No compatibility layer is needed.
 - [x] Capture at least three baseline scenario runs on the unchanged build
 - [x] Implement revision preparation, prepared diff rendering, performance labels, and
   the atomic visual handoff
-- [ ] Capture at least three candidate scenario runs and record the result as a
+- [x] Capture at least three candidate scenario runs and record the result as a
   performance experiment
-- [ ] Update engineering and performance documentation, run focused tests, exercise the
+- [x] Update engineering and performance documentation, run focused tests, exercise the
   result in a real browser, and run `make format` and `make verify`
+
+## Measured Result
+
+Three interleaved visible-Chrome runs froze both products and the browsed repository:
+control product `4c995e2`, candidate product `00265ed`, and one detached corpus at
+`4c995e2`.
+
+| Measure | Control Median (Range) | Candidate Median (Range) | Result |
+| --- | ---: | ---: | --- |
+| Pointer-prepared transition | 209.7 ms (205.8–245.0) | 104.4 ms (99.6–109.2) | 105.3 ms faster; ranges do not overlap |
+| Blank frames per scenario | 4 (4–5) | 0 | Eliminated |
+| First cold transition | 225.2 ms (219.0–230.1) | 214.2 ms (204.7–225.2) | No detected difference |
+| Second cold transition | 444.8 ms (419.5–476.8) | 383.3 ms (383.1–425.4) | No detected difference |
+| Maximum Long Task | 148 ms (146–177) | 132 ms (126–134) | Lower; ranges do not overlap |
+| Retained heap after GC | 7.0 MB (7.0–7.1) | 7.0 MB (7.0–7.1) | Unchanged |
+
+The prepared candidate issues no request after the click.
+Cold comparison requests are primarily server work, while mounting a heavy diff is a
+separate 153–168 ms client cost; the concurrent path overlaps them but its three-run
+ranges still overlap the control.
+Every candidate scenario ends on the exact selected revision with one mounted diff and
+zero page exceptions.
+See
+[exp-018](../../../../explorations/performance-loop/experiments/exp-018-git-revisions-swap-without-blanking.md)
+for the complete record and caveats.
 
 ## Testing Strategy
 
