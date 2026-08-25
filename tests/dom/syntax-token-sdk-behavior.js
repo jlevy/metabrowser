@@ -108,6 +108,16 @@ async function main() {
   load(ready, "src/metabrowser/static/vendor/highlight.min.js");
   load(ready, "src/metabrowser/static/vendor/highlight-toml.min.js");
   loadSdk(ready);
+  const readySyntaxFallbacks = [];
+  ready.metabrowser.perf = {
+    measure(label, work, metadata) {
+      readySyntaxFallbacks.push({ label, metadata });
+      return work();
+    },
+    measureAsync(_label, work) {
+      return work();
+    },
+  };
 
   for (const [extension, language] of Object.entries(syntaxLanguageByExtension)) {
     check(
@@ -287,6 +297,17 @@ async function main() {
     (await ready.metabrowser.highlightSyntax("plain", "javascript")) === null,
     "lexer exceptions should return null",
   );
+  check(
+    readySyntaxFallbacks.filter(({ label }) => label === "syntaxHighlight:fallback:markup_rejected")
+      .length === malformedMarkup.length,
+    "rejected markup should expose one fixed fallback reason per request",
+  );
+  check(
+    readySyntaxFallbacks.at(-1)?.label === "syntaxHighlight:fallback:lexer_threw" &&
+      readySyntaxFallbacks.at(-1)?.metadata.language === "javascript" &&
+      readySyntaxFallbacks.at(-1)?.metadata.input_bytes === 5,
+    "lexer exceptions should expose bounded diagnostic metadata",
+  );
 
   const bounded = createSandbox();
   bounded.METABROWSER_SETTINGS = {
@@ -296,6 +317,16 @@ async function main() {
   };
   load(bounded, "src/metabrowser/static/vendor/highlight.min.js");
   loadSdk(bounded);
+  const boundedSyntaxFallbacks = [];
+  bounded.metabrowser.perf = {
+    measure(label, work, metadata) {
+      boundedSyntaxFallbacks.push({ label, metadata });
+      return work();
+    },
+    measureAsync(_label, work) {
+      return work();
+    },
+  };
   check(
     Array.isArray(await bounded.metabrowser.highlightSyntax("éé", "javascript")),
     "UTF-8 input at the injected byte bound should highlight",
@@ -303,6 +334,12 @@ async function main() {
   check(
     (await bounded.metabrowser.highlightSyntax("ééx", "javascript")) === null,
     "UTF-8 input beyond the injected byte bound should stay plain",
+  );
+  check(
+    boundedSyntaxFallbacks.length === 1 &&
+      boundedSyntaxFallbacks[0].label === "syntaxHighlight:fallback:over_limit" &&
+      boundedSyntaxFallbacks[0].metadata.input_bytes === 5,
+    "over-limit input should expose its measured fallback reason",
   );
   check(
     bounded.metabrowser.isLargeTextPreview({ content: "éé" }) === false &&
@@ -340,12 +377,32 @@ async function main() {
 
   const unavailable = createSandbox();
   loadSdk(unavailable);
+  const unavailableSyntaxFallbacks = [];
+  unavailable.metabrowser.perf = {
+    measure(label, work, metadata) {
+      unavailableSyntaxFallbacks.push({ label, metadata });
+      return work();
+    },
+    measureAsync(_label, work) {
+      return work();
+    },
+  };
   const missing = unavailable.metabrowser.highlightSyntax("plain", "not-a-language");
   unavailable.dispatchEvent({ type: "metabrowser:optional-assets-loaded" });
   check((await missing) === null, "terminal asset failure should settle to null");
   check(
     (await unavailable.metabrowser.highlightSyntax("plain", "not-a-language")) === null,
     "unknown language after terminal settlement should return null immediately",
+  );
+  check(
+    unavailableSyntaxFallbacks.length === 2 &&
+      unavailableSyntaxFallbacks.every(
+        ({ label, metadata }) =>
+          label === "syntaxHighlight:fallback:no_grammar" &&
+          metadata.language === "not-a-language" &&
+          metadata.input_bytes === 5,
+      ),
+    "unknown grammars should expose a fixed fallback reason before and after settlement",
   );
 
   const aborting = createSandbox();

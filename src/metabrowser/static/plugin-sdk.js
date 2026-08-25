@@ -1445,6 +1445,8 @@
     "&quot;": '"',
     "&#x27;": "'",
   });
+  /** @type {TextEncoder | null} */
+  let syntaxTextEncoder = null;
   let syntaxAssetsSettled = false;
   if (typeof global.addEventListener === "function") {
     global.addEventListener("metabrowser:optional-assets-loaded", () => {
@@ -1463,7 +1465,31 @@
 
   /** @param {string} value */
   function utf8ByteLength(value) {
-    return new global.TextEncoder().encode(value).byteLength;
+    syntaxTextEncoder ??= new global.TextEncoder();
+    return syntaxTextEncoder.encode(value).byteLength;
+  }
+
+  /**
+   * Record one safe plain-text fallback without making diagnostics part of
+   * the syntax service's correctness path. Labels are fixed-cardinality and
+   * metadata never includes source text.
+   * @param {"over_limit" | "no_grammar" | "markup_rejected" | "lexer_threw"} reason
+   * @param {string} language
+   * @param {number} inputBytes
+   */
+  function recordSyntaxFallback(reason, language, inputBytes) {
+    const recorder = global.metabrowser?.perf;
+    if (typeof recorder?.measure !== "function") {
+      return;
+    }
+    try {
+      recorder.measure(`syntaxHighlight:fallback:${reason}`, () => undefined, {
+        input_bytes: inputBytes,
+        language: String(language).slice(0, 80),
+      });
+    } catch (_diagnosticError) {
+      // Plain-text fallback must remain safe when an injected profiler fails.
+    }
   }
 
   /** @param {string} language */
@@ -1634,10 +1660,13 @@
     if (options.signal?.aborted) {
       throw syntaxAbortError();
     }
-    if (utf8ByteLength(source) > syntaxHighlightMaxBytes()) {
+    const inputBytes = utf8ByteLength(source);
+    if (inputBytes > syntaxHighlightMaxBytes()) {
+      recordSyntaxFallback("over_limit", language, inputBytes);
       return null;
     }
     if (!(await waitForSyntaxAssets(language, options.signal))) {
+      recordSyntaxFallback("no_grammar", language, inputBytes);
       return null;
     }
     if (options.signal?.aborted) {
@@ -1646,6 +1675,7 @@
     try {
       const result = global.hljs.highlight(source, { language, ignoreIllegals: true });
       if (!result || typeof result.value !== "string") {
+        recordSyntaxFallback("markup_rejected", language, inputBytes);
         return null;
       }
       const lines = scanHighlightMarkup(result.value);
@@ -1655,10 +1685,12 @@
         lines.length !== sourceLines.length ||
         lines.some((runs, index) => runs.map((run) => run.text).join("") !== sourceLines[index])
       ) {
+        recordSyntaxFallback("markup_rejected", language, inputBytes);
         return null;
       }
       return lines;
     } catch (_error) {
+      recordSyntaxFallback("lexer_threw", language, inputBytes);
       return null;
     }
   }

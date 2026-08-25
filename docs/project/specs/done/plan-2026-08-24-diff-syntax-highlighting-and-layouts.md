@@ -1,6 +1,6 @@
 # Feature: Diff Syntax Highlighting and Layouts
 
-**Date:** 2026-08-24 (last updated 2026-08-24)
+**Date:** 2026-08-24 (last updated 2026-08-25)
 
 **Author:** Metabrowser maintainers
 
@@ -516,6 +516,26 @@ The measurements and durable invariants live in
 [Rendering large content](../../../large-content-rendering.md),
 [Development](../../../development.md#browser-code), and
 [Views, Models, and Routes](../../architecture/arch-views-models-routes.md#shared-source-rendering).
+
+## Final Review Evidence
+
+The shared syntax service records safe plain-text fallbacks under four fixed profiler
+labels: `over_limit`, `no_grammar`, `markup_rejected`, and `lexer_threw`. Records
+contain only the grammar name and UTF-8 byte count.
+The pinned vendored-entity test remains the guard for the scanner vocabulary.
+
+Diff model construction no longer encodes every visible side synchronously.
+Each scheduled file enhancement measures and caches its old and new hunk-side bytes
+once, then carries those counts into diff profiler spans.
+The public syntax helper still measures independently at its trust boundary before
+invoking Highlight.js.
+
+The repeatable 1,000-file Chrome fixture found a 223.7 ms cold split switch in the
+unbatched renderer. Reprojecting 100 files per task reduced the maximum blocking switch
+to 140.3 ms and 133.7 ms in two runs while retaining immediate control state, cached
+tokens, and generation-safe rapid switching.
+Full results and reproduction steps live in
+[Diff layout bound benchmark](../../../../explorations/diff-layout/).
 
 ## Open Questions
 

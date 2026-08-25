@@ -228,10 +228,12 @@ async function main() {
   // hosts receive scanner-produced spans. The unified projection uses
   // old-side tokens for deletions and new-side tokens everywhere else.
   let syntaxCalls = 0;
+  const syntaxOptionKeys = [];
   const syntaxMeasures = [];
   const syntaxApi = {
-    highlightSyntax: async (source) => {
+    highlightSyntax: async (source, _language, options) => {
       syntaxCalls += 1;
+      syntaxOptionKeys.push(Object.keys(options ?? {}).sort());
       const side = syntaxCalls % 2 === 1 ? "old" : "new";
       return source.split("\n").map((text) => [{ classes: [`hljs-${side}`], text }]);
     },
@@ -283,6 +285,10 @@ async function main() {
     deletionHost.children.map((span) => span.textContent).join("") === "    return 1",
   );
   check("one old and one new lexer call serve the hunk", syntaxCalls === 2, String(syntaxCalls));
+  check(
+    "internal byte metadata does not widen the public SDK options",
+    syntaxOptionKeys.every((keys) => JSON.stringify(keys) === '["signal"]'),
+  );
   const lexerMeasures = syntaxMeasures.filter(({ label }) => label === "diffSyntax:lexer");
   const fileMeasure = syntaxMeasures.find(({ label }) => label === "diffSyntax:file");
   check("each lexer call has a measured span", lexerMeasures.length === 2);
@@ -493,6 +499,56 @@ async function main() {
     "selection gate listeners dispose with the view",
     (documentListeners.get("pointerup")?.length ?? 0) === pointerUpListeners - 1,
   );
+
+  // The server can return 1,000 ready files. Large layout changes project one
+  // measured batch synchronously, then yield without allowing a stale switch
+  // to overwrite a newer choice.
+  const boundedDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
+  const boundedSeedChange = boundedDoc.manifest.files[0];
+  const boundedSeedPatch = boundedDoc.patches.f1;
+  boundedDoc.manifest.files = [];
+  boundedDoc.patches = {};
+  for (let index = 0; index < 101; index += 1) {
+    const id = `bound-${index}`;
+    boundedDoc.manifest.files.push({ ...boundedSeedChange, id });
+    boundedDoc.patches[id] = { ...boundedSeedPatch, file_id: id };
+  }
+  boundedDoc.manifest.totals.files = 101;
+  let boundedLayoutChange;
+  const bounded = new FakeElement("div");
+  const boundedHandle = mountDiffView(bounded, boundedDoc, {
+    ...layoutApi,
+    filterControls: {
+      ...layoutApi.filterControls,
+      bind: (_root, handlers) => {
+        boundedLayoutChange = handlers.onChange;
+        return () => {};
+      },
+    },
+    prefs: { ...layoutApi.prefs, get: () => "unified" },
+  });
+  boundedLayoutChange("diff-layout", "split", "one");
+  const boundedRoot = bounded.find("diff-root")[0];
+  check(
+    "large switch updates its control state immediately",
+    boundedRoot.dataset.layout === "split",
+  );
+  check("large switch marks a pending projection", boundedRoot.dataset.layoutPending === "true");
+  check(
+    "large switch yields after its measured synchronous batch",
+    bounded.find("diff-split-row").length === 300 && bounded.find("diff-line").length === 4,
+  );
+  boundedLayoutChange("diff-layout", "unified", "one");
+  await nextTask();
+  check(
+    "a newer large switch wins every remaining batch",
+    bounded.find("diff-split-row").length === 0,
+  );
+  check(
+    "large projection clears its pending marker",
+    boundedRoot.dataset.layoutPending === undefined,
+  );
+  boundedHandle.dispose();
 
   // The per-file bar: the nav tree's own chevron mechanism (leading
   // glyph, expanded/collapsed classes) plus a copy control, with the

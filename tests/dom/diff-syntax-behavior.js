@@ -18,7 +18,7 @@ function tokenLines(source, side) {
 
 async function main() {
   const modulePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-syntax.js");
-  const { buildFileSyntaxModel, highlightFileSyntax } = await import(
+  const { buildFileSyntaxModel, highlightFileSyntax, syntaxInputBytes } = await import(
     pathToFileURL(modulePath).href
   );
 
@@ -97,21 +97,33 @@ async function main() {
       new TextEncoder().encode(hunk.newSource).length,
     0,
   );
-  check("combined UTF-8 input is measured", model.inputBytes === expectedBytes);
+  check("model construction defers UTF-8 measurement", model.inputBytes === null);
+  check(
+    "hunk-side UTF-8 measurement starts empty",
+    model.hunks.every((hunk) => hunk.oldInputBytes === null && hunk.newInputBytes === null),
+  );
+  check("lazy combined UTF-8 input is exact", syntaxInputBytes(model.hunks) === expectedBytes);
 
   const calls = [];
   const highlighted = await highlightFileSyntax(
     model,
     {
       isLargeTextPreview: () => false,
-      async highlightSyntax(source, language) {
-        calls.push({ source, language });
+      async highlightSyntax(source, language, options) {
+        calls.push({ source, language, inputBytes: options?.inputBytes });
         return tokenLines(source, language === "javascript" ? "old" : "new");
       },
     },
     undefined,
   );
   check("two lexer calls per nonempty hunk", calls.length === 4, String(calls.length));
+  check(
+    "each hunk side carries its cached UTF-8 byte count",
+    calls.every(
+      ({ source, inputBytes }) => new TextEncoder().encode(source).byteLength === inputBytes,
+    ),
+  );
+  check("highlight stores the combined byte count", model.inputBytes === expectedBytes);
   check(
     "omitted lexical state never crosses hunk boundaries",
     calls[2].source === "* omitted opener */" && calls[3].source === "* omitted opener */",

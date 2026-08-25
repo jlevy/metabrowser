@@ -191,6 +191,15 @@ on screen.
 **One authority per limit.** Sizes live in `settings.py` and reach the client through
 `window.METABROWSER_SETTINGS`. A constant restated on both sides of the boundary drifts.
 
+**Batch whole-change-set reprojection.** A diff layout switch updates its control and
+root state synchronously.
+Above 100 ready files, the renderer reprojects 100 files per task and invalidates stale
+batches when a newer layout selection arrives.
+This keeps the cold blocking task below the 200 ms interaction budget at the server’s
+1,000-file manifest bound without making ordinary diffs asynchronous.
+The repeatable fixture and measurements live in
+[Diff layout bound benchmark](../explorations/diff-layout/).
+
 **Fingerprint across chunks.** Every chunked response carries `mtime_hash`; a mismatch
 means the file changed, and the view restarts rather than splicing two versions into a
 window that never existed on disk.
@@ -226,6 +235,7 @@ window that never existed on disk.
 | `BINARY_PREVIEW_CHUNK_BYTES` | 1 MiB | Opening latency |
 | `DEFAULT_ACCENT_RUN_BUDGET` | 60,000 runs | Element count across the mounted view |
 | `LINES_PER_BLOCK` | 128 | Deferred layout per scroll-in |
+| `LAYOUT_PROJECTION_BATCH_FILES` | 100 files | Diff layout-switch main-thread work per task |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the
 resource: the degradation has to apply uniformly to everything on screen.

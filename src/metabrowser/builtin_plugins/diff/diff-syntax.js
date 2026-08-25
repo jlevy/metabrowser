@@ -19,10 +19,12 @@
  * @property {string | undefined} heading
  * @property {DiffLineRecord[]} lines
  * @property {number} newCount
+ * @property {number | null} newInputBytes
  * @property {number[]} newLineIndices
  * @property {number} newStart
  * @property {string} newSource
  * @property {number} oldCount
+ * @property {number | null} oldInputBytes
  * @property {number[]} oldLineIndices
  * @property {number} oldStart
  * @property {string} oldSource
@@ -31,7 +33,7 @@
 /**
  * @typedef {object} DiffFileSyntaxModel
  * @property {DiffHunkRecord[]} hunks
- * @property {number} inputBytes
+ * @property {number | null} inputBytes
  * @property {string} newLanguage
  * @property {string} oldLanguage
  */
@@ -39,8 +41,17 @@
 /**
  * @typedef {object} DiffSyntaxApi
  * @property {(data: Record<string, unknown>) => boolean} isLargeTextPreview
- * @property {(source: string, language: string, options?: {signal?: AbortSignal}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
+ * @property {(source: string, language: string, options?: {signal?: AbortSignal, inputBytes?: number}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
  */
+
+/** @type {TextEncoder | null} */
+let syntaxTextEncoder = null;
+
+/** @param {string} source */
+function syntaxInputByteLength(source) {
+  syntaxTextEncoder ??= new TextEncoder();
+  return syntaxTextEncoder.encode(source).byteLength;
+}
 
 /**
  * Assign stable side numbers and source-stream membership to one validated hunk.
@@ -94,10 +105,12 @@ export function buildHunkRecords(hunk) {
     heading: typeof hunk.heading === "string" ? hunk.heading : undefined,
     lines,
     newCount: Number(hunk.new_count),
+    newInputBytes: null,
     newLineIndices,
     newStart: Number(hunk.new_start),
     newSource: newLineIndices.map((index) => lines[index].text).join("\n"),
     oldCount: Number(hunk.old_count),
+    oldInputBytes: null,
     oldLineIndices,
     oldStart: Number(hunk.old_start),
     oldSource: oldLineIndices.map((index) => lines[index].text).join("\n"),
@@ -118,12 +131,13 @@ export function languageForSide(change, sideName, langForPath) {
 
 /** @param {DiffHunkRecord[]} hunks */
 export function syntaxInputBytes(hunks) {
-  const encoder = new TextEncoder();
-  return hunks.reduce(
-    (total, hunk) =>
-      total + encoder.encode(hunk.oldSource).byteLength + encoder.encode(hunk.newSource).byteLength,
-    0,
-  );
+  let total = 0;
+  for (const hunk of hunks) {
+    hunk.oldInputBytes ??= syntaxInputByteLength(hunk.oldSource);
+    hunk.newInputBytes ??= syntaxInputByteLength(hunk.newSource);
+    total += hunk.oldInputBytes + hunk.newInputBytes;
+  }
+  return total;
 }
 
 /**
@@ -139,7 +153,7 @@ export function buildFileSyntaxModel(change, patch, langForPath) {
   const hunks = rawHunks.map(buildHunkRecords);
   return {
     hunks,
-    inputBytes: syntaxInputBytes(hunks),
+    inputBytes: null,
     newLanguage: languageForSide(change, "new", langForPath),
     oldLanguage: languageForSide(change, "old", langForPath),
   };
@@ -189,6 +203,7 @@ export function applySideTokens(hunk, sideName, tokenLines) {
  */
 export async function highlightFileSyntax(model, api, signal) {
   signal?.throwIfAborted();
+  model.inputBytes ??= syntaxInputBytes(model.hunks);
   if (api.isLargeTextPreview({ size: model.inputBytes })) {
     return false;
   }
@@ -196,13 +211,19 @@ export async function highlightFileSyntax(model, api, signal) {
   for (const hunk of model.hunks) {
     if (hunk.oldLineIndices.length > 0 && model.oldLanguage) {
       signal?.throwIfAborted();
-      const oldTokens = await api.highlightSyntax(hunk.oldSource, model.oldLanguage, { signal });
+      const oldTokens = await api.highlightSyntax(hunk.oldSource, model.oldLanguage, {
+        inputBytes: hunk.oldInputBytes ?? undefined,
+        signal,
+      });
       signal?.throwIfAborted();
       enhanced = applySideTokens(hunk, "old", oldTokens) || enhanced;
     }
     if (hunk.newLineIndices.length > 0 && model.newLanguage) {
       signal?.throwIfAborted();
-      const newTokens = await api.highlightSyntax(hunk.newSource, model.newLanguage, { signal });
+      const newTokens = await api.highlightSyntax(hunk.newSource, model.newLanguage, {
+        inputBytes: hunk.newInputBytes ?? undefined,
+        signal,
+      });
       signal?.throwIfAborted();
       enhanced = applySideTokens(hunk, "new", newTokens) || enhanced;
     }

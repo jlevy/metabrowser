@@ -73,6 +73,8 @@ API, observable to plugin authors:
   It uses the same injected byte bound as regular source previews, preserves source text
   exactly, supports cancellation, and falls back to plain text for unavailable,
   unsupported, malformed, or over-limit input.
+  Each fallback contributes one fixed profiler reason with its grammar and byte count,
+  never source text.
 
 - `metabrowser.renderSourceView(container, data)` exposes the standard bounded Source
   surface. `metabrowser.langForExtension(ext)` and

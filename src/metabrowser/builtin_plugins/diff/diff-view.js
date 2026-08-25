@@ -11,12 +11,12 @@
 // conformance corpus and CLI goldens, and this layer only projects it.
 
 import { fileChangeLabel, validateDocument } from "./diff-model.js";
-import { buildFileSyntaxModel, highlightFileSyntax } from "./diff-syntax.js";
+import { buildFileSyntaxModel, highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
 
 /**
  * @typedef {object} DiffViewApi
  * @property {(data: Record<string, unknown>) => boolean} isLargeTextPreview
- * @property {(source: string, language: string, options?: {signal?: AbortSignal}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
+ * @property {(source: string, language: string, options?: {signal?: AbortSignal, inputBytes?: number}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
  * @property {(pathOrName: string) => string} langForPath
  * @property {NonNullable<MetabrowserPublicSdk["filterControls"]> | undefined} [filterControls]
  * @property {Pick<MetabrowserPublicSdk["perf"], "measureAsync"> | undefined} [perf]
@@ -42,6 +42,7 @@ import { buildFileSyntaxModel, highlightFileSyntax } from "./diff-syntax.js";
  * @property {number} generation
  * @property {"unified" | "split"} layout
  * @property {HTMLElement | null} layoutControl
+ * @property {number} layoutGeneration
  * @property {HTMLElement} root
  * @property {Promise<void>} syntaxTail
  * @property {Set<number>} timers
@@ -136,6 +137,10 @@ const SETTINGS = /** @type {Record<string, number>} */ (
 // build still folds sensibly. 0 disables folding.
 const FOLD_THRESHOLD = Number(SETTINGS.DIFF_FOLD_THRESHOLD ?? 40);
 const FOLD_VISIBLE = Number(SETTINGS.DIFF_FOLD_VISIBLE ?? 20);
+// Chrome 151 took 223.7 ms to reproject 1,000 ready files in one pass.
+// One-tenth-sized batches keep the same measured work below the 200 ms
+// interaction budget; explorations/diff-layout/README.md records the fixture.
+const LAYOUT_PROJECTION_BATCH_FILES = 100;
 
 /** @param {string} tag @param {string} className @param {string} [text] */
 function el(tag, className, text) {
@@ -454,6 +459,7 @@ function measureSyntax(api, label, work, metadata) {
  */
 async function enhanceFileSyntax(state, api, signal, isCurrent) {
   try {
+    state.syntax.inputBytes ??= syntaxInputBytes(state.syntax.hunks);
     const metadata = {
       hunk_count: state.syntax.hunks.length,
       input_bytes: state.syntax.inputBytes,
@@ -467,9 +473,9 @@ async function enhanceFileSyntax(state, api, signal, isCurrent) {
           return measureSyntax(
             api,
             "diffSyntax:lexer",
-            () => api.highlightSyntax(source, language, options),
+            () => api.highlightSyntax(source, language, { signal: options?.signal }),
             {
-              input_bytes: new TextEncoder().encode(source).byteLength,
+              input_bytes: options?.inputBytes ?? 0,
               language,
             },
           );
@@ -745,9 +751,45 @@ export function setLayout(view, value, persist = true) {
     view.api?.prefs?.set("diff.layout", layout);
   }
   renderLayoutControl(view);
-  for (const state of view.files) {
-    renderFileBody(state, layout);
+  view.layoutGeneration += 1;
+  const layoutGeneration = view.layoutGeneration;
+  if (view.files.length <= LAYOUT_PROJECTION_BATCH_FILES) {
+    delete view.root.dataset.layoutPending;
+    for (const state of view.files) {
+      renderFileBody(state, layout);
+    }
+    return;
   }
+  view.root.dataset.layoutPending = "true";
+  projectLayoutBatch(view, layout, layoutGeneration, 0);
+}
+
+/**
+ * Reproject one measured file batch and yield before the next. A generation
+ * check makes a rapid second switch authoritative without cancelling shared
+ * hydration or syntax work.
+ * @param {MountedDiffState} view
+ * @param {"unified" | "split"} layout
+ * @param {number} layoutGeneration
+ * @param {number} start
+ */
+function projectLayoutBatch(view, layout, layoutGeneration, start) {
+  if (view.disposed || view.layoutGeneration !== layoutGeneration) {
+    return;
+  }
+  const end = Math.min(start + LAYOUT_PROJECTION_BATCH_FILES, view.files.length);
+  for (let index = start; index < end; index += 1) {
+    renderFileBody(view.files[index], layout);
+  }
+  if (end >= view.files.length) {
+    delete view.root.dataset.layoutPending;
+    return;
+  }
+  const timer = setTimeout(() => {
+    view.timers.delete(timer);
+    projectLayoutBatch(view, layout, layoutGeneration, end);
+  }, 0);
+  view.timers.add(timer);
 }
 
 /**
@@ -948,6 +990,7 @@ export function mountDiffView(container, document_, api) {
     generation: 1,
     layout: readLayoutPreference(api),
     layoutControl: null,
+    layoutGeneration: 0,
     root,
     syntaxTail: Promise.resolve(),
     timers: new Set(),
