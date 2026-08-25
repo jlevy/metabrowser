@@ -71,6 +71,8 @@ from metabrowser.wire_models import validate_rollup_result
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ARCHITECTURE_DOC = REPO_ROOT / "docs/project/architecture/arch-inventory-provider.md"
+# Bound transient watcher churn so this conformance case cannot hang.
+_PROVIDER_PAGE_ATTEMPTS = 3
 
 EXPECTED_QUERIES = {
     "entry": EntryQuery,
@@ -516,37 +518,42 @@ def test_paged_time_dependent_reads_reuse_one_as_of(
         handle = await _open_settled_provider(provider_factory, tmp_path)
         try:
             as_of_ns = 300_000_000_000
-            after: str | None = None
-            version: EngineVersion | None = None
-            paths: list[str] = []
-            while True:
-                result = await handle.read(
-                    ReadRequest(
-                        queries=(
-                            FilteredTreeQuery(
-                                query_id="recent-page",
-                                max_depth=1,
-                                max_rows=1,
-                                after=after,
-                                filter=InventoryFilter(
-                                    recency_seconds=100,
-                                    as_of_ns=as_of_ns,
+            for _attempt in range(_PROVIDER_PAGE_ATTEMPTS):
+                after: str | None = None
+                version: EngineVersion | None = None
+                paths: list[str] = []
+                try:
+                    while True:
+                        result = await handle.read(
+                            ReadRequest(
+                                queries=(
+                                    FilteredTreeQuery(
+                                        query_id="recent-page",
+                                        max_depth=1,
+                                        max_rows=1,
+                                        after=after,
+                                        filter=InventoryFilter(
+                                            recency_seconds=100,
+                                            as_of_ns=as_of_ns,
+                                        ),
+                                    ),
                                 ),
-                            ),
-                        ),
-                        at_version=version,
-                    )
-                )
-                if version is None:
-                    version = result.version
-                projection = cast(
-                    "FilteredTreeProjection",
-                    result.projection("recent-page"),
-                )
-                paths.extend(entry.path for entry in projection.entries)
-                after = projection.next_page
-                if after is None:
-                    return tuple(paths)
+                                at_version=version,
+                            )
+                        )
+                        if version is None:
+                            version = result.version
+                        projection = cast(
+                            "FilteredTreeProjection",
+                            result.projection("recent-page"),
+                        )
+                        paths.extend(entry.path for entry in projection.entries)
+                        after = projection.next_page
+                        if after is None:
+                            return tuple(paths)
+                except VersionUnavailableError:
+                    continue
+            raise AssertionError("the provider version moved during all page attempts")
         finally:
             await handle.close()
 
