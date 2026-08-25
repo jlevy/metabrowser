@@ -117,6 +117,14 @@ _NANOSECONDS_PER_SECOND = 1_000_000_000
 # wide directory without suspending. Yield four times inside each 256-entry
 # delivery batch so request tasks run independently of directory width.
 _WALKER_COOPERATIVE_YIELD_BATCH = 64
+# The first exact v0.7 release comparison found one 928.9 ms tally pass on a
+# 123,658-file corpus and a 291.7 ms unrelated-request delay. At that cold-tail
+# rate, 2,048 entries are about 15 ms of work. A one-microsecond timer-backed
+# pause releases the GIL and prevents the worker from immediately reacquiring
+# it, keeping the request loop independent of the interpreter's ordinary
+# thread-switch interval.
+_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH = 2_048
+_NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
 
 
 # Rollup revisions come from one process-wide sequence rather than a
@@ -726,7 +734,9 @@ class InventoryIndex:
                 (extensions if normalized.startswith(".") else names).add(normalized)
             preset_counts[preset_id] = [0, 0]
             normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
-        for entry in snapshot:
+        for entry_index, entry in enumerate(snapshot):
+            if entry_index > 0 and entry_index % _NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH == 0:
+                time.sleep(_NAVIGATION_TALLY_COOPERATIVE_YIELD_S)
             if entry.type != "file":
                 continue
             ignored_index = 1 if entry.gitignored else 0

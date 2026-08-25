@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import sys
 import threading
 import time
 
@@ -143,6 +144,46 @@ def test_a_freshness_probe_never_waits_for_an_in_flight_tally_pass() -> None:
         holder.join(timeout=1.0)
 
     assert call_ms < 50.0
+    assert heartbeat_ms < 50.0
+
+
+def test_worker_tally_pass_cooperatively_yields_to_the_event_loop() -> None:
+    """Worker CPU must not depend on the interpreter's ordinary switch interval."""
+    index = InventoryIndex()
+    entry = FsEntry.for_observed_file(path="same.py", parent="", name="same.py", size=1, mtime_ns=1)
+    snapshot = [entry] * 80_000
+    previous_switch_interval = sys.getswitchinterval()
+
+    async def scenario() -> float:
+        heartbeat_started = asyncio.Event()
+
+        async def heartbeat() -> float:
+            started = time.perf_counter()
+            heartbeat_started.set()
+            await asyncio.sleep(0.001)
+            return (time.perf_counter() - started) * 1000.0
+
+        heartbeat_task = asyncio.create_task(heartbeat())
+        await heartbeat_started.wait()
+        tally_task = asyncio.create_task(
+            asyncio.to_thread(
+                index.navigation_tallies,
+                PRESETS,
+                WINDOWS,
+                LIMIT,
+                entries=snapshot,
+            )
+        )
+        heartbeat_ms = await heartbeat_task
+        await tally_task
+        return heartbeat_ms
+
+    try:
+        sys.setswitchinterval(0.5)
+        heartbeat_ms = asyncio.run(scenario())
+    finally:
+        sys.setswitchinterval(previous_switch_interval)
+
     assert heartbeat_ms < 50.0
 
 
