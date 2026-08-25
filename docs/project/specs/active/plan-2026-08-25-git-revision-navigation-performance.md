@@ -9,14 +9,13 @@ author: Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Implemented
+**Status:** Implemented; PR handoff in progress
 
 ## Overview
 
 Selecting adjacent commits in the Git history should feel like moving through one
-continuous surface.
-The current path removes the visible commit, shows a blocking loading
-state, fetches commit metadata, and only then loads and renders the comparison.
+continuous surface. The prior path removed the visible commit, showed a blocking loading
+state, fetched commit metadata, and only then loaded and rendered the comparison.
 That ordering creates an avoidable blank transition and serializes work that can run in
 parallel.
 
@@ -51,11 +50,11 @@ server, transfer, client rendering, and paint costs remain separable.
 
 ## Background
 
-The Git panel currently replaces the preview with a spinner before awaiting
-`/api/git/commit/<revision>`. Only after that response does it load the diff plugin,
+The prior Git panel replaced the preview with a spinner before awaiting
+`/api/git/commit/<revision>`. Only after that response did it load the diff plugin,
 request `/api/plugin/diff/comparison`, and mount the comparison.
-A previous diff mount is disposed before any replacement data is ready.
-This produces both the empty visual handoff and a serial request waterfall.
+A previous diff mount was disposed before any replacement data was ready.
+This produced both the empty visual handoff and a serial request waterfall.
 
 Direct measurements against this repository on 2026-08-25 show that settled server work
 is material but not sufficient to explain a long blank screen:
@@ -80,7 +79,7 @@ comparison-specific preparation.
 
 ### Revision Preparation
 
-`git-panel.js` will represent preparation as one revision-scoped operation containing:
+`git-panel.js` represents preparation as one revision-scoped operation containing:
 
 - the bounded commit-detail request
 - eager acquisition of the already registered or on-demand diff assets
@@ -166,19 +165,118 @@ change. No compatibility layer is needed.
 
 ## Implementation Plan
 
-### Phase 1: Measure and Improve Revision Navigation
+Epic `mb-fgcg` owns this plan.
+Its five child beads separate measurement, behavior, presentation, validation, and
+delivery.
+Blockers express only real sequencing; the baseline also feeds final validation
+directly.
 
-- [x] Add behavior tests for shared in-flight detail work, single-slot comparison
-  preparation, concurrent selection work, retained-preview handoff, stale selection,
-  failure, disposal, and reduced motion
-- [x] Add the Git revision scenario and its output validation to the performance loop
-- [x] Capture at least three baseline scenario runs on the unchanged build
-- [x] Implement revision preparation, prepared diff rendering, performance labels, and
-  the atomic visual handoff
-- [x] Capture at least three candidate scenario runs and record the result as a
-  performance experiment
-- [x] Update engineering and performance documentation, run focused tests, exercise the
-  result in a real browser, and run `make format` and `make verify`
+| Phase | Bead | Depends On | Status |
+| --- | --- | --- | --- |
+| Instrument the interaction and capture the baseline | `mb-800q` | None | Closed |
+| Add bounded preparation and the atomic handoff | `mb-32kx` | `mb-800q` | Closed |
+| Polish pending and completed transitions | `mb-tjcl` | `mb-32kx` | Closed |
+| Compare, validate, and document | `mb-8j0r` | `mb-800q`, `mb-tjcl` | Closed |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-8j0r` | In progress |
+
+### Phase 1: Instrument and Baseline (`mb-800q`)
+
+- **Files and functions:** Extend `capture-browser.js` through `parseArgs`, `usage`,
+  `dispatchTrustedClickForSelector`, `dispatchTrustedPointerForSelector`,
+  `startGitBlankFrameMonitor`, `stopGitBlankFrameMonitor`, `waitForGitRevision`,
+  `measureGitTransition`, `runGitRevisionScenario`, and `capture`. Expose the scenario
+  through `run.py` in `cmd_capture` and the capture parser.
+  Update `tests/test_browser_performance_capture.py` and the performance-loop README.
+- **Behavior and invariants:** Warm one commit, select two cold revisions, prepare one
+  revision with trusted pointer intent, and record exact selected and painted-ready
+  revisions, blank frames, request and `Server-Timing` attribution, client phase labels,
+  long work, page exceptions, retained heap, and mounted comparison count.
+  The default initial-load profile keeps its existing schema; the interaction scenario
+  has the separate `git-revision-navigation/v1` envelope and cannot enter the
+  initial-load ledger.
+- **Acceptance:** Argument and output-shape tests pass.
+  The scenario rejects missing rows or readiness, extra mounts, uncaught exceptions, and
+  unknown scenario names.
+  Three visible-Chrome baseline runs use the unchanged product and one frozen corpus.
+
+### Phase 2: Prepare and Swap (`mb-32kx`)
+
+- **Files and functions:** Update `git-panel.js` in `fetchCommitDetail`,
+  `beginDiffPreparation`, `prepareRevision`, `cancelSpeculativePreparation`,
+  `clearPendingState`, `afterNextPaint`, `selectCommit`, `renderCommitDetail`,
+  `mountCommitDiff`, and `disposeCommitDiff`. Add the internal `renderPreviewNode` seam
+  beside `renderPreviewHtml` in `app.js` and declare it in `types.d.ts`. Let the diff
+  plugin `view.render` consume prepared `ctx.raw` in `builtin_plugins/diff/index.js`.
+  Cover the behavior in `tests/dom/git-panel-behavior.js` and the shell contract in
+  `tests/test_browser_loading_delay.py`.
+- **Behavior and invariants:** Share in-flight commit detail, start detail, diff assets,
+  and comparison data concurrently, and retain at most one replaceable speculative
+  comparison. Selection consumes matching prepared data without a duplicate request;
+  direct diff views retain their fetch path.
+  The previous commit and renderer stay mounted until the detached replacement is
+  complete. Exact revision and preview-claim checks guard every await boundary, and stale
+  or replaced renderer handles dispose exactly once.
+- **Acceptance:** Focused tests cover concurrency, duplicate suppression, single-slot
+  replacement and abort, route ownership, selected-revision races, failure recovery,
+  staged continuity, and disposal.
+  Production measures name detail, assets, comparison, markup, mount, and
+  selection-to-ready work.
+  No server route, public SDK, dependency, or compatibility layer changes.
+
+### Phase 3: Polish the Transition (`mb-tjcl`)
+
+- **Files and functions:** Add the Git pending rules and reduced-motion override in
+  `styles.css`; use `clearPendingState` and the 120 ms timer in `git-panel.js`; extend
+  `tests/dom/git-panel-behavior.js` and `tests/test_design_vocabulary.py`.
+- **Behavior and invariants:** Existing content remains visible and becomes
+  `aria-busy="true"` only after the shared 120 ms grace.
+  A progress cursor and existing opacity motion token soften a slow handoff without
+  animating geometry or delaying readiness.
+  `prefers-reduced-motion` removes the transition.
+  A spinner appears only when no prior commit surface exists.
+- **Acceptance:** Pending state clears on success, failure, stale ownership, refresh,
+  and disposal. CSS uses design tokens, keyboard and pointer selection stay usable, and
+  tests pin the reduced-motion and no-blank contracts.
+
+### Phase 4: Compare, Validate, and Document (`mb-8j0r`)
+
+- **Files and functions:** Record
+  [exp-018](../../../../explorations/performance-loop/experiments/exp-018-git-revisions-swap-without-blanking.md),
+  update the performance-loop README, this plan, the load-time hypothesis registry,
+  `web-performance-framework.md`, and `CHANGELOG.md`. Update the architecture registry
+  only if a registered view, route, model, or format changes; this implementation adds
+  none.
+- **Behavior and invariants:** Alternate at least three visible-Chrome control and
+  candidate runs while freezing the product builds and browsed corpus independently.
+  Separate server, transfer and decode, diff mount, useful-ready paint, and continuity
+  costs. Evaluate all-visible-row prefetch from measured payload volume rather than
+  adding it speculatively.
+- **Acceptance:** Candidate blank frames are zero.
+  A target speed claim requires nonoverlapping ranges; overlapping cold ranges are
+  reported as no detected difference.
+  Long work, page exceptions, retained heap, and mounted resources do not regress.
+  Manual browser coverage includes rapid pointer and keyboard traversal, direct and
+  invalid routes, recovery, small and large comparisons, fold state, unified and split
+  layouts, both themes, and reduced motion.
+  Focused tests, `make format`, and `make verify` pass.
+
+### Phase 5: Deliver and Monitor (`mb-j8ni`)
+
+- **Files and functions:** Review the complete branch diff and PR metadata, keep the
+  performance follow-up PR aligned with the implemented scope, and use the original
+  review channel for every finding disposition.
+  This phase makes no product-code change unless review or CI finds a defect.
+- **Behavior and invariants:** The exact pushed head receives another headed Git
+  scenario run. Formal reviews, inline comments, general comments, linked issues,
+  in-repository review documents, and required CI are all audited.
+  The performance follow-up remains stacked on the syntax follow-up for a focused diff;
+  after the base lands, retarget the performance PR to `main` without losing the four
+  implementation commits.
+- **Acceptance:** Every actionable finding has a fixed, rebutted, or deferred
+  disposition, the exact head passes GitHub CI, `make format`, `make verify`, and the
+  real-browser scenario, and the branch is clean and pushed.
+  Close `mb-j8ni` and epic `mb-fgcg` only after those conditions hold, then run
+  `tbd sync`.
 
 ## Measured Result
 
@@ -207,14 +305,14 @@ for the complete record and caveats.
 
 ## Testing Strategy
 
-The fake-DOM Git panel suite will pin request sharing, ordering, stale-operation
-behavior, preview continuity, accessibility state, and exact disposal.
-Diff plugin tests will verify that prepared and fetched documents follow the same
-validation and mount path.
-Static design tests will pin tokenized transitions and reduced-motion behavior.
+The fake-DOM Git panel suite pins request sharing, ordering, stale-operation behavior,
+preview continuity, accessibility state, and exact disposal.
+Diff plugin tests verify that prepared and fetched documents follow the same validation
+and mount path. Static design tests pin tokenized transitions and reduced-motion
+behavior.
 
-The CDP scenario will provide end-to-end evidence on the repository itself.
-Manual real-browser validation will cover fast repeated pointer and keyboard navigation,
+The CDP scenario provides end-to-end evidence on the repository itself.
+Manual real-browser validation covers fast repeated pointer and keyboard navigation,
 error recovery, direct commit routes, large and small comparisons, fold controls, split
 and unified layouts, theme contrast, and absence of flicker.
 
