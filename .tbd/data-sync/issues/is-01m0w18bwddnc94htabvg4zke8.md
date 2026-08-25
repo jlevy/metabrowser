@@ -3,9 +3,9 @@ type: is
 id: is-01m0w18bwddnc94htabvg4zke8
 title: Implement VS Code-derived intraline diff refinement
 kind: epic
-status: open
+status: in_progress
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -21,7 +21,7 @@ child_order_hints:
   - is-01m0w1b43a6zy5a3j7z4yv76v7
   - is-01m0w1bh84kq4t17bjwxyqv5mj
 created_at: 2026-08-25T08:40:42.124Z
-updated_at: 2026-08-25T08:42:25.923Z
+updated_at: 2026-08-25T08:43:56.208Z
 ---
 Implement Phase 4 of the active general diff rendering plan as one focused browser-only refinement slice.
 
