@@ -5,7 +5,7 @@ title: "Monitor PR #74 and FDU #44/#47 alignment through adoption readiness"
 kind: task
 status: in_progress
 priority: 1
-version: 29
+version: 31
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 refs:
   - kind: pr
@@ -41,15 +41,21 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/fdu/pull/47#issuecomment-5412701379
     at: 2026-08-25T15:26:03.294Z
+  - kind: pr
+    url: https://github.com/jlevy/fdu/pull/47#issuecomment-5413222445
+    at: 2026-08-25T16:07:11.536Z
+  - kind: other
+    url: https://github.com/jlevy/fdu/actions/runs/32865588065/job/97860038258
+    at: 2026-08-25T16:07:11.537Z
 labels: []
 dependencies: []
 parent_id: is-01m0r8xt95921dabcddjjm7csf
 child_order_hints:
   - is-01m0vmz928cewndbdk6gnhbgqz
 created_at: 2026-08-24T22:38:51.537Z
-updated_at: 2026-08-25T15:26:03.666Z
+updated_at: 2026-08-25T16:07:11.840Z
 ---
-Recurring alignment owner for MetaBrowser PR 74 and FDU PRs 44 and 47. Current FDU 47 reviewed head (2026-08-25 15:25Z) is 5eb25743f9b7b1a8626bfd1998a5f5ae5bea0e10; 5eb2574 is a one-line Windows lint correction atop the semantic cursor commit b5035e4. Direct FDU-agent handoff https://github.com/jlevy/fdu/pull/47#issuecomment-5412701379 records that the new continuation is version-bound, request-bound, flat-cost, and typed on refusal, but still caller-forgeable because trusted totals and resume state are protected only by a recomputable unkeyed FNV checksum. fdu-91ru remains open for private per-open continuation authority and forged-but-well-checksummed, cross-index, and bounded-input tests. The same handoff maps the still-unfixed exact-head findings fdu-0778, fdu-a7cl, fdu-4ubw, and the fdu-8w5k catalog-predicate adoption gate. Prior formal review: https://github.com/jlevy/fdu/pull/47#pullrequestreview-5020603690. FDU 47 exact-head CI is currently running; continue exact-head review and channel monitoring before any gate closes.
+Recurring alignment owner for MetaBrowser PR 74 and FDU PRs 44 and 47. Reviewed state at 2026-08-25 16:03Z: MetaBrowser 74 is exact head 0577bb125c4a607719befa3f213362f5522d5724, open, clean, mergeable, and 5 of 5 checks green; latest issue-comment cursor 5409452056, with no formal review, inline comment, or review thread. FDU 44 is exact head 7f18f208dbd3ccb2002228bb52ae00c5d4ffcabb, open, clean, mergeable, and 19 of 19 checks green; latest issue-comment cursor 5408704238 and formal-review cursor 5010948152, with no inline comment or review thread. FDU 47 is exact reviewed head 5eb25743f9b7b1a8626bfd1998a5f5ae5bea0e10, draft and mergeable but unstable: 18 checks green and the sole Windows engine job fails scan::tests::the_filesystem_boundary_is_asked_of_the_parent_not_the_entry, confirming fdu-4ubw. Exact CI disposition: https://github.com/jlevy/fdu/pull/47#issuecomment-5413222445 and job https://github.com/jlevy/fdu/actions/runs/32865588065/job/97860038258. Latest FDU 47 issue-comment cursor is 5413222445 and formal-review cursor is 5020603690; there are no inline comments or review threads. No new commit or external feedback arrived since 5eb2574. Open reviewed gates remain fdu-91ru, fdu-0778, fdu-a7cl, fdu-4ubw, fdu-8w5k, fdu-7sou, fdu-97dd, fdu-vfx7, fdu-xyvu, fdu-vfyw, and fdu-kl7r; fdu-jxs0 remains correctly closed.
 
 ## Notes
 
