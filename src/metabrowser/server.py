@@ -67,9 +67,10 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from strif import file_mtime_hash
 
-from metabrowser import kpress_adapter
+from metabrowser import __version__, kpress_adapter
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
+from metabrowser.build_version import display_version_line
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
@@ -929,6 +930,7 @@ async def index(request: Request) -> HTMLResponse:
 
     initial_path = _initial_path_html()
     initial_root = html_escape(_display_root_str(), quote=True)
+    version_line = html_escape(display_version_line("metab", __version__))
     repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
@@ -1235,8 +1237,9 @@ async def index(request: Request) -> HTMLResponse:
              used to sit on its own line above the path is this menu's title,
              which returns that line of the navigation column — the app's
              scarcest width — to the path. Inside: two icon-segment choosers
-             (theme + reading font) and a small font-set dropdown
-             (#app-font-select, options from _FONT_SETS). Choices apply instantly.
+             (theme + reading font), a small font-set dropdown
+             (#app-font-select, options from _FONT_SETS), and the same build
+             version line printed by `metab --version`. Choices apply instantly.
              app.js (initSettingsControl) fills the icon segments and wires
              open/select + the dropdown. The wrapper's aria-expanded drives the
              menu's visibility via CSS.
@@ -1249,7 +1252,7 @@ async def index(request: Request) -> HTMLResponse:
              cannot be reached is not a control. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
-                  aria-haspopup="true" data-tip-text="Metabrowser" aria-label="Metabrowser menu"></button>
+                  aria-haspopup="true" aria-label="Metabrowser menu"></button>
           <div class="settings-menu menu" role="menu" aria-label="Metabrowser">
             <a class="menu-title menu-title-link" href="https://github.com/jlevy/metabrowser"
                target="_blank" rel="noopener noreferrer"
@@ -1268,6 +1271,8 @@ async def index(request: Request) -> HTMLResponse:
             </div>
             <div class="menu-separator"></div>
             <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <div class="menu-separator"></div>
+            <div class="menu-version">{version_line}</div>
           </div>
         </div>
       </header>

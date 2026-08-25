@@ -4,6 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Added:
+
+- The gear menu now ends with the exact build version line reported by
+  `metab --version`, including checkout annotations for unreleased and dirty builds.
+
 Inventory engine:
 
 - Filesystem inventory now crosses one pluggable, provider-neutral contract.
@@ -35,6 +40,15 @@ Inventory engine:
   and JSON materialization stay off the request event loop.
   Catalog decorations are joined only for the activity tracker, the one consumer that
   reads them.
+
+Fixed:
+
+- Opening the first Git commit in a fresh browser session now loads the diff plugin on
+  demand before mounting the commit view, so changed files and lines appear without
+  first opening a `.patch` or `.diff` file.
+
+- Opening the gear menu no longer leaves a redundant “Metabrowser” tooltip over the
+  menu. The gear retains its accessible name.
 
 Performance, validated against 0.6.0 side by side:
 

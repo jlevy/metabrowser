@@ -135,4 +135,10 @@ def display_version(version: str) -> str:
     return f"{version} ({state})" if state else version
 
 
-__all__ = ["build_state", "display_version", "source_checkout"]
+def display_version_line(command_name: str, version: str) -> str:
+    """Return the complete version line shown by a command or browser surface."""
+
+    return f"{command_name} {display_version(version)}"
+
+
+__all__ = ["build_state", "display_version", "display_version_line", "source_checkout"]

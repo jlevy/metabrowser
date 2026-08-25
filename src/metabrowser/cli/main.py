@@ -29,7 +29,7 @@ from typing import TextIO, cast
 import typer
 
 from metabrowser import __version__
-from metabrowser.build_version import display_version
+from metabrowser.build_version import display_version_line
 from metabrowser.cli.common import PipeTrackingStream, silence_broken_pipe, validate_log_level
 from metabrowser.cli.diff_cli import run_diff
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
@@ -128,7 +128,7 @@ def _version_callback(ctx: typer.Context, value: bool) -> None:
         # Annotated when this is a checkout rather than an installed release,
         # so a dev build cannot be mistaken for the tag it is sitting past.
         # See metabrowser.build_version.
-        typer.echo(f"{ctx.info_name or 'metab'} {display_version(__version__)}")
+        typer.echo(display_version_line(ctx.info_name or "metab", __version__))
         raise typer.Exit()
 
 

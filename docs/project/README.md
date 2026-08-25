@@ -35,6 +35,7 @@ links to the document that covers each in depth.
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
 - [Pluggable inventory engine](specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
 - [Inventory provider refactor and fdu adoption](specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md)
+- [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
 
 ## Research
 
