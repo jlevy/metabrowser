@@ -537,6 +537,24 @@ tokens, and generation-safe rapid switching.
 Full results and reproduction steps live in
 [Diff layout bound benchmark](../../../../explorations/diff-layout/).
 
+## Follow-Up: Intraline Refinement
+
+The 2026-08-25 follow-up keeps this completed slice closed and uses its semantic line
+model as the implementation seam.
+Phase 4 of the
+[general diff rendering plan](../active/plan-2026-08-17-general-diff-rendering.md#phase-4-vs-code-derived-intraline-refinement)
+now specifies a focused, attributed port of VS Code’s pure diff refinement: monotonic
+old/new line alignment, readable word and punctuation boundaries, conservative
+whole-line fallback, and stronger changed-range backgrounds over lighter similar-line
+tints.
+
+The refinement remains independent of Highlight.js and File Diff Format v1. The renderer
+intersects browser-local UTF-16 ranges with the token runs established by this plan, so
+syntax foregrounds, exact text, layout switching, folding, hydration, and disposal
+retain one source of truth.
+The supporting product and algorithm review is in the
+[web diff viewer research](../../research/research-2026-07-17-web-diff-viewer-architecture.md#2026-08-25-addendum-intraline-refinement).
+
 ## Open Questions
 
 None for this slice.
@@ -556,6 +574,7 @@ or split layout.
 - [CodeMirror MergeView and unified merge reference](https://codemirror.net/docs/ref/#merge)
 - [Monaco Diff Editor options](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor.IDiffEditorBaseOptions.html)
 - [Git `diff-highlight`](https://github.com/git/git/blob/master/contrib/diff-highlight/README)
+- [VS Code default diff computer at the reviewed revision](https://github.com/microsoft/vscode/tree/77f86f3d3a05cf5d6f765705e816341c918b7dae/src/vs/editor/common/diff/defaultLinesDiffComputer)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -1,6 +1,6 @@
 # Research: Web Diff Viewer Architecture and Intermediate Representations
 
-**Date:** 2026-07-17 (last updated 2026-07-17)
+**Date:** 2026-07-17 (last updated 2026-08-25)
 
 **Author:** Joshua Levy with OpenAI Codex research assistance
 
@@ -677,6 +677,89 @@ punctuation edits. Cap the line length and fall back to whole-line highlighting.
 Moved-code and whitespace views should be toggles, not destructive transformations of
 the patch.
 
+### 2026-08-25 Addendum: Intraline Refinement
+
+The completed syntax and split work made the remaining intraline choice concrete.
+Metabrowser now has a patch-faithful semantic line model, old/new syntax streams, and
+unified/split projections.
+The missing work is a browser-local mapping from each contiguous deleted/added run to
+monotonic line pairs and changed text ranges.
+
+#### Current product behavior
+
+A live inspection of GitHub’s pull-request files UI found separate row and text layers.
+In the observed dark theme, deletion rows used `rgba(248, 81, 73, 0.1)` and their inner
+changed ranges used `rgba(248, 81, 73, 0.4)`; addition rows used
+`rgba(46, 160, 67, 0.15)` and inner ranges used `rgba(46, 160, 67, 0.4)`. The inner `.x`
+spans nested alongside syntax `.pl-*` spans, so foreground token color and change
+background remained independent.
+GitHub publishes unified/split behavior but not its line-pairing implementation.
+These observations support the visual layering only; attributing a specific algorithm to
+GitHub would be inference.
+
+Git’s `diff-highlight` provides the conservative baseline.
+It handles a changed group only when deleted and added line counts match, pairs by
+position, highlights the text between a common prefix and suffix, and suppresses a pair
+whose entire line would be highlighted.
+Its own documentation identifies the tradeoff: this is readable and cheap, but a line
+inserted at one edge of a multi-line replacement can shift every later pairing.
+
+CodeMirror’s merge package uses a diff-match-patch-inspired character algorithm with
+prefix/suffix trimming, half-match splitting, edit cleanup, Unicode-aware word
+boundaries where available, and adjacent-change merging.
+jsdiff offers Myers-based character and word modes plus abortable work limits.
+Both are useful comparison points, but neither solves Metabrowser’s line alignment and
+rendering seam without adaptation; adopting jsdiff would also add a dependency for code
+already available in an audited source tree.
+
+#### VS Code source review
+
+The VS Code repository was checked out sparsely at
+`77f86f3d3a05cf5d6f765705e816341c918b7dae` and the pure diff sources were reviewed
+directly. The relevant behavior is smaller than Monaco:
+
+- `DefaultLinesDiffComputer` uses weighted dynamic-programming alignment below its
+  small-input switch and Myers above it, then refines each changed region at character
+  level.
+- `LinesSliceCharSequence` retains line breaks and scores line, separator, whitespace,
+  word-category, and lower-to-upper boundaries so equal edit scripts prefer readable
+  placement.
+- `heuristicSequenceOptimizations` shifts ranges to stronger boundaries, expands a
+  mostly changed fragment to its containing word, removes misleading very short matches,
+  and absorbs tiny unchanged islands between long changes.
+- Every algorithm accepts a timeout seam and returns a valid coarse change when it
+  cannot finish.
+- `diffEditorDecorations.ts` and the diff-editor stylesheet apply whole-line insertion
+  or deletion colors separately from inner-text colors.
+  The design is the same two-layer composition observed on GitHub.
+
+The sources are MIT licensed, and Metabrowser already carries the VS Code license for
+the Git graph port. A focused port should preserve a source header naming the pinned
+revision and files, expand the `NOTICE.md` attribution, and copy only the sequence,
+boundary, and mapping code required for changed-run refinement.
+Monaco models, editor services, move detection, UI, and workers stay out.
+
+#### Decision
+
+Use a VS Code-derived changed-run refiner behind Metabrowser’s existing renderer.
+Join each run’s old and new lines with explicit line-break sentinels, compute and clean
+character mappings, translate them back to UTF-16 line offsets, and derive monotonic
+split rows without reordering either source.
+Apply the lighter replacement-row tint only when meaningful unchanged text survives
+cleanup; otherwise retain the existing whole-line add/delete background.
+Intersect the resulting ranges with Highlight.js token runs at render time, preserving
+foreground classes and exact text.
+
+Keep this data outside File Diff Format v1. Syntax tokens, intraline ranges, and split
+alignment are replaceable presentation enrichments; none affects source identity, apply
+semantics, or conformance.
+Measure the port against the existing maximum patch shapes before adding a separate
+cutoff or worker. Any timeout or measured bound falls back to the current selectable,
+syntax-colored, whole-line diff.
+
+The file- and function-level implementation contract is Phase 4 of the
+[general diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md).
+
 ### Accessibility and Interaction
 
 The baseline experience needs real selectable text, clear old/new labels, accessible
@@ -1085,10 +1168,16 @@ Metabrowser’s benchmarks.
 - [Diff2Html](https://diff2html.xyz/)
 - [CodeMirror merge reference](https://codemirror.net/docs/ref/#merge)
 - [Monaco diff editor options](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IDiffEditorOptions.html)
+- [VS Code default diff computer at the reviewed revision](https://github.com/microsoft/vscode/tree/77f86f3d3a05cf5d6f765705e816341c918b7dae/src/vs/editor/common/diff/defaultLinesDiffComputer)
+- [VS Code diff decorations at the reviewed revision](https://github.com/microsoft/vscode/blob/77f86f3d3a05cf5d6f765705e816341c918b7dae/src/vs/editor/browser/widget/diffEditor/components/diffEditorDecorations.ts)
+- [Git `diff-highlight`](https://github.com/git/git/tree/master/contrib/diff-highlight)
+- [CodeMirror merge diff algorithm](https://github.com/codemirror/merge/blob/main/src/diff.ts)
+- [jsdiff](https://github.com/kpdecker/jsdiff)
 
 ### Products and Performance
 
 - [GitHub: Reviewing proposed changes](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/reviewing-proposed-changes-in-a-pull-request)
+- [GitHub pull-request files UI reviewed on 2026-08-25](https://github.com/jlevy/metabrowser/pull/76/files)
 - [GitHub: Comparing branches and diff views](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-comparing-branches-in-pull-requests)
 - [GitHub: The uphill climb of making diff lines performant](https://github.blog/engineering/architecture-optimization/the-uphill-climb-of-making-diff-lines-performant/)
 - [GitHub: How we made diff pages three times faster](https://github.blog/engineering/architecture-optimization/how-we-made-diff-pages-3x-faster/)
