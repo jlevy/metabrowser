@@ -5,7 +5,7 @@ title: "Diff P2: intraline, context expansion, whitespace, and virtualization"
 kind: feature
 status: open
 priority: 2
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -16,8 +16,9 @@ parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 child_order_hints:
   - is-01m0tw8haj67tstjassnq9we07
   - is-01m0w062fn61tjrdp37vnga45p
+  - is-01m0w18bwddnc94htabvg4zke8
 created_at: 2026-07-18T01:38:59.628Z
-updated_at: 2026-08-25T08:37:19.136Z
+updated_at: 2026-08-25T08:40:42.124Z
 extensions:
   linear:
     id: be7a39d5-c9b6-4a86-8008-0af0fff8de65
