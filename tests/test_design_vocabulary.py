@@ -120,6 +120,17 @@ def test_row_targets_share_the_hover_token() -> None:
     )
 
 
+def test_git_revision_pending_motion_uses_the_shared_token_and_reduced_motion() -> None:
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+
+    pending = _rule(styles, "#preview-pane.git-revision-pending .git-commit-stage")
+    assert "transition: opacity var(--transition-fast)" in pending
+    assert "opacity:" in pending
+    reduced = styles[styles.rindex("@media (prefers-reduced-motion: reduce)") :]
+    assert "#preview-pane.git-revision-pending .git-commit-stage" in reduced
+    assert "transition: none" in reduced
+
+
 def test_age_is_one_primitive_everywhere() -> None:
     """An age is an age: one formatter, one styling rule, and call sites
     that add positioning only."""

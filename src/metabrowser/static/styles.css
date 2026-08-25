@@ -4893,6 +4893,24 @@ pre.code-block code.hljs {
 
 /* ── Commit detail view ─────────────────────────────────────── */
 
+/* Revision navigation stages the replacement offscreen. When preparation
+   crosses the same 120ms grace as file navigation, soften the retained view
+   without moving it; the fully rendered replacement still swaps atomically. */
+#preview-pane.git-revision-pending {
+  cursor: progress;
+}
+
+#preview-pane.git-revision-pending .git-commit-stage {
+  opacity: 0.78;
+  transition: opacity var(--transition-fast);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #preview-pane.git-revision-pending .git-commit-stage {
+    transition: none;
+  }
+}
+
 .git-commit-view {
   padding: var(--content-padding-y) var(--content-padding-x);
 }

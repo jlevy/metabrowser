@@ -838,6 +838,13 @@ async function run() {
       });
     const comparisonsBefore = comparisonFetches.length;
     const detailsBefore = fetchCount;
+    const previewPane =
+      document.getElementById("preview-pane") ??
+      document.register("preview-pane", document.createElement("div"));
+    const priorCommit = document.createElement("div");
+    priorCommit.className = "git-commit-view";
+    priorCommit.textContent = "prior staged commit";
+    previewPane.replaceChildren(priorCommit);
     rows[0]._hovered = true;
     rows[0].dispatch("mouseenter");
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -848,7 +855,21 @@ async function run() {
     );
 
     const select = internals.selectCommit(SHA_E);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 130));
+    assertEqual(
+      "pending: retained preview is aria-busy",
+      previewPane.getAttribute("aria-busy"),
+      "true",
+    );
+    assertTrue(
+      "pending: retained preview uses the pending class",
+      previewPane.classList.contains("git-revision-pending"),
+    );
+    assertContains(
+      "pending: old commit remains mounted",
+      previewPane.textContent,
+      "prior staged commit",
+    );
     assertEqual(
       "prepare: selection reuses pointer comparison",
       comparisonFetches.length,
@@ -870,6 +891,15 @@ async function run() {
     resolveComparison({ comparison_id: SHA_E });
     await select;
     assertContains("prepare: selected commit is eventually shown", previewHtml, "prepared first");
+    assertEqual(
+      "pending: aria-busy clears after the swap",
+      previewPane.getAttribute("aria-busy"),
+      null,
+    );
+    assertTrue(
+      "pending: class clears after the swap",
+      !previewPane.classList.contains("git-revision-pending"),
+    );
 
     const slotBefore = comparisonFetches.length;
     comparisonResponder = async (revision) => ({ comparison_id: revision });

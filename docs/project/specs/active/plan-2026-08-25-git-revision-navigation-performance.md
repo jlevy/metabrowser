@@ -168,7 +168,7 @@ change. No compatibility layer is needed.
 
 ### Phase 1: Measure and Improve Revision Navigation
 
-- [ ] Add behavior tests for shared in-flight detail work, single-slot comparison
+- [x] Add behavior tests for shared in-flight detail work, single-slot comparison
   preparation, concurrent selection work, retained-preview handoff, stale selection,
   failure, disposal, and reduced motion
 - [x] Add the Git revision scenario and its output validation to the performance loop
