@@ -726,14 +726,25 @@
       return;
     }
     disposeCommitDiff();
-    const view = sdk()?.getRegisteredView?.("diff", "diff");
-    if (!view) {
-      // The diff plugin is absent: the file list above still stands on
-      // its own, so say nothing rather than showing an empty frame.
+    const pluginSdk = sdk();
+    if (!pluginSdk) {
       host.remove();
       return;
     }
     try {
+      await pluginSdk.ensureKindAssets("diff");
+      // Loading the plugin yields to a newer selection, so check the
+      // preview claim before asking the newly registered view to render.
+      if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(claim)) {
+        return;
+      }
+      const view = pluginSdk.getRegisteredView("diff", "diff");
+      if (!view) {
+        // The diff plugin is absent: the file list above still stands on
+        // its own, so say nothing rather than showing an empty frame.
+        host.remove();
+        return;
+      }
       const handle = /** @type {{dispose?: () => void} | null} */ (
         await view.render(host, { revision })
       );
@@ -744,7 +755,9 @@
       }
       commitDiffHandle = handle || null;
     } catch (_error) {
-      host.textContent = "Could not load this commit's diff.";
+      if (state.selectedId === revision && bridge.isPreviewClaimCurrent(claim)) {
+        host.textContent = "Could not load this commit's diff.";
+      }
     }
   }
 

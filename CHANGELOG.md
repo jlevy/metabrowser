@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Fixed:
+
+- Opening the first Git commit in a fresh browser session now loads the diff plugin on
+  demand before mounting the commit view, so changed files and lines appear without
+  first opening a `.patch` or `.diff` file.
+
 Performance, validated against 0.6.0 side by side:
 
 - On the final installed candidate, five interleaved backend pairs over a fingerprinted
