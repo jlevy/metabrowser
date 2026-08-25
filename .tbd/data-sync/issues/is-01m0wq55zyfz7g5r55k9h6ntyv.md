@@ -5,7 +5,7 @@ title: Make Git commit rows follow the nav-list arrow-key contract
 kind: bug
 status: closed
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
@@ -13,13 +13,13 @@ dependencies:
     target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T15:03:26.461Z
-updated_at: 2026-08-25T15:14:18.505Z
+updated_at: 2026-08-25T15:24:13.241Z
 closed_at: 2026-08-25T15:14:18.497Z
 close_reason: Fixed and validated across fake-DOM behavior, design-system enforcement, full repository verification, and a real-browser trading-repository smoke test.
 resolution: null
 duplicate_of: null
 ---
-Finding source: user acceptance testing on the active PR. Files/functions: src/metabrowser/static/git-panel.js renderPanel, appendRows, renderRow, selectCommit, and new focused-row helpers; tests/dom/git-panel-behavior.js fake focus/event support and row-keyboard cases; docs/design-system.md shared nav-like row keyboard contract; tests/test_design_vocabulary.py enforcement registry; docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md goal and implementation phase. Behavior/invariants: a Git history row set has one roving tab stop; unmodified ArrowUp and ArrowDown move focus to the adjacent mounted commit and open it through selectCommit; movement clamps at the first and last row without reopening; click, Enter, Space, pointer/focus preparation, pagination, stale-selection safety, and direct routes remain unchanged. Acceptance: focused failing test first; rows expose one tab stop; arrow movement prevents browser scrolling, focuses and selects the destination, allows repeat, and clamps at boundaries; the design-system rule is documented and statically tied to both the file tree and Git history; focused browser tests, make format, make verify, real-browser trading-repo smoke, push, PR disposition, and CI pass.
+Finding source: user acceptance testing on the active PR. Files/functions: src/metabrowser/static/git-panel.js renderPanel, appendRows, renderRow, selectCommit, and focused-row helpers; tests/dom/git-panel-behavior.js fake focus/event support and row-keyboard cases; docs/design-system.md shared nav-like row keyboard contract; tests/test_design_vocabulary.py enforcement registry; docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md goal and implementation phase; CHANGELOG.md observable behavior. Behavior/invariants: a Git history row set has one roving tab stop; unmodified ArrowUp and ArrowDown move focus to the adjacent mounted commit and open it through selectCommit; movement clamps at the first and last row without reopening; click, Enter, Space, pointer/focus preparation, pagination, stale-selection safety, and direct routes remain unchanged. Acceptance: focused failing test first; rows expose one tab stop; arrow movement prevents browser scrolling, focuses and selects the destination, allows repeat, and clamps at boundaries; the design-system rule is documented and statically tied to both the file tree and Git history; focused browser tests, make format, make verify, real-browser repository smoke, push, and PR disposition pass. Exact-head GitHub CI remains the dedicated mb-j8ni handoff gate.
 
 ## Notes
 
