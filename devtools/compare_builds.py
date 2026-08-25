@@ -334,6 +334,12 @@ def resolve_tree(requested: str) -> Path:
     return tree
 
 
+def resolve_executable(requested: str) -> str | None:
+    """Resolve an executable before benchmark servers change their working directory."""
+    found = shutil.which(requested)
+    return str(Path(found).resolve()) if found is not None else None
+
+
 def differences(left: Any, right: Any, path: str, out: list[str], limit: int = 25) -> None:
     if len(out) >= limit:
         return
@@ -459,7 +465,7 @@ def main(argv: list[str] | None = None) -> int:
         ("candidate", str(args.candidate)),
     )
     for name, given in requested:
-        found: str | None = given if os.path.isabs(given) else shutil.which(given)
+        found = resolve_executable(given)
         if not found:
             print(json.dumps({"error": f"{name} {given!r} is not on PATH"}, indent=1))
             return 2

@@ -12,6 +12,7 @@ from devtools.compare_builds import (
     differences,
     missing_required_fields,
     normalise,
+    resolve_executable,
     resolve_tree,
     write_report,
 )
@@ -48,6 +49,17 @@ def test_relative_tree_is_resolved_before_the_server_changes_directory(
     monkeypatch.chdir(tmp_path)
 
     assert resolve_tree("corpus") == tree.resolve()
+
+
+def test_relative_executable_is_resolved_before_the_server_changes_directory(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    executable = tmp_path / "installed" / "bin" / "metab"
+    executable.parent.mkdir(parents=True)
+    executable.touch(mode=0o755)
+    monkeypatch.chdir(tmp_path)
+
+    assert resolve_executable("installed/bin/metab") == str(executable.resolve())
 
 
 def test_normalise_preserves_list_order_and_nested_contract_fields() -> None:
