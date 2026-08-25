@@ -173,18 +173,40 @@ def test_a_click_joins_an_in_flight_prefetch_instead_of_refetching() -> None:
     assert "request.then(forget, forget)" in fetch_block
 
 
-def test_shell_keeps_the_previous_preview_during_fast_fetches() -> None:
+def test_shell_shares_immediate_claim_owned_preview_feedback() -> None:
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_ROOT / "styles.css").read_text(encoding="utf-8")
     select_file = app[
         app.index("async function selectFile(path, preferredViewId)") : app.index(
             "// ── File rendering"
         )
     ]
 
+    begin = app[app.index("function beginPreviewNavigation") :][:900]
+    end = app[app.index("function endPreviewNavigation") :][:700]
+    assert 'preview.classList.add("preview-navigation-pending")' in begin
+    assert 'preview.setAttribute("aria-busy", "true")' in begin
+    assert "data-preview-pending-claim" in begin
+    assert "isPreviewClaimCurrent(claim)" in begin
+    assert "clearPreviewNavigationState(preview);" in end
+    clear = app[app.index("function clearPreviewNavigationState") :][:500]
+    assert 'preview.classList.remove("preview-navigation-pending")' in clear
+    assert 'preview.removeAttribute("aria-busy")' in clear
+
     assert "var LOADING_INDICATOR_DELAY_MS = 120;" in app
-    assert select_file.index("loadingIndicatorTimer = setTimeout") < select_file.index(
-        "preview.innerHTML"
+    assert "var retainedPreview = beginPreviewNavigation(previewClaim);" in select_file
+    assert select_file.index("beginPreviewNavigation(previewClaim)") < select_file.index(
+        "loadingIndicatorTimer = setTimeout"
     )
+    assert "if (!retainedPreview)" in select_file
+
+    assert "--preview-navigation-pending-opacity:" in css
+    shared_rule = css[css.index("#preview-pane.preview-navigation-pending") :][:600]
+    assert "opacity: var(--preview-navigation-pending-opacity);" in shared_rule
+    assert "transition: opacity var(--transition-fast);" in shared_rule
+    reduced = css[css.index("@media (prefers-reduced-motion: reduce)") :]
+    assert "#preview-pane.preview-navigation-pending" in reduced
+    assert "transition: none;" in reduced
 
 
 def test_git_commit_staging_has_one_shell_owned_atomic_handoff() -> None:

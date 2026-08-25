@@ -51,6 +51,21 @@ Performance, validated against 0.6.0 side by side:
 
 Browser:
 
+- File and Git navigation now acknowledge a selection immediately by gently dimming
+  useful retained preview content until the selected view reaches its painted-readiness
+  boundary. The shared claim-owned state preserves geometry, avoids a progress bar or
+  white frame, clears on stale and error paths, and disables its opacity transition for
+  reduced motion. Empty initial previews retain the delayed neutral spinner.
+
+- Ordinary file navigation now awaits the active plugin renderer, an optional
+  instance-declared initial readiness promise, and a double-animation-frame paint
+  boundary before reporting completion.
+  Production measurements separate selected-kind assets, active-view mounting, and
+  painted readiness instead of ending when the file envelope or empty container arrives.
+  Selecting a file also cancels a matching not-yet-started row-intent prefetch or joins
+  one already in flight, so a cold selection issues one file request and a cached
+  revisit issues none.
+
 - Git history keeps the current commit and diff visible while the selected revision is
   prepared, then installs the replacement atomically.
   Commit metadata, diff assets, and comparison data start together; one replaceable
@@ -106,6 +121,11 @@ Browser:
   full loaded text and normal 2–8 MiB chunk growth.
 
 API, observable to plugin authors:
+
+- A view instance handle may expose an optional `ready: Promise<void>` for a concrete
+  initial useful-content pass that continues after `render` returns.
+  The connected container contract, lazy mounting for inactive tabs, direct async-render
+  support, and existing handles without `ready` are unchanged.
 
 - **`PLUGIN_SDK_VERSION` is `0.5`.** External plugins must set `sdk_version = "0.5"` for
   the selected-kind asset lifecycle.

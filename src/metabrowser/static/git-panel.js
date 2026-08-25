@@ -22,8 +22,8 @@
   const HISTORY_MAX_ROWS = settings.GIT_HISTORY_MAX_ROWS || 500;
   const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS ?? 300;
   const DETAIL_CACHE_SIZE = settings.GIT_DETAIL_CACHE_SIZE || 200;
-  // Mirrors the measured file-navigation grace in app.js: fast local work
-  // should swap directly, while slower work gets a quiet pending state.
+  // Initial empty loads keep the measured quiet period. Retained content uses
+  // the shell's immediate preview-navigation state instead.
   const PENDING_DELAY_MS = 120;
 
   // Distance from the bottom at which the next page is requested. One
@@ -101,6 +101,8 @@
   let hoverRevision = null;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let pendingTimer = null;
+  /** @type {number | null} */
+  let pendingPreviewClaim = null;
   let started = false;
   let refreshing = false;
 
@@ -910,11 +912,9 @@
       clearTimeout(pendingTimer);
       pendingTimer = null;
     }
-    const preview = document.getElementById("preview-pane");
-    preview?.classList.remove("git-revision-pending");
-    if (preview?.getAttribute("data-git-pending") === "true") {
-      preview.removeAttribute("aria-busy");
-      preview.removeAttribute("data-git-pending");
+    if (pendingPreviewClaim !== null) {
+      shell()?.endPreviewNavigation(pendingPreviewClaim);
+      pendingPreviewClaim = null;
     }
   }
 
@@ -938,11 +938,16 @@
     if (!bridge) {
       return;
     }
+    /** @type {number | null} */
+    let selectionClaim = null;
     return measureAsync(
       "gitRevision:selectToReady",
       async () => {
         clearPendingState();
         const previewClaim = bridge.claimPreview("git");
+        selectionClaim = previewClaim;
+        const retainedPreview = bridge.beginPreviewNavigation(previewClaim);
+        pendingPreviewClaim = previewClaim;
         if (state.selectedId !== revision) {
           // Keep the prior DOM as the handoff surface, but stop its deferred
           // hydration and syntax work from competing with the selected diff.
@@ -977,28 +982,25 @@
 
         const preparation = prepareRevision(revision, false);
         if (!preparation) {
+          clearPendingState();
           return;
         }
-        pendingTimer = setTimeout(() => {
-          pendingTimer = null;
-          if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
-            return;
-          }
-          const preview = document.getElementById("preview-pane");
-          if (preview?.querySelector(".git-commit-view")) {
-            preview.classList.add("git-revision-pending");
-            preview.setAttribute("aria-busy", "true");
-            preview.setAttribute("data-git-pending", "true");
-          } else {
+        if (!retainedPreview) {
+          pendingTimer = setTimeout(() => {
+            pendingTimer = null;
+            if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
+              return;
+            }
             const loading = bridge.renderPreviewHtml(
               '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
                 '<span class="sr-only">Loading commit…</span></div>',
               previewClaim,
             );
-            loading?.setAttribute("aria-busy", "true");
-            loading?.setAttribute("data-git-pending", "true");
-          }
-        }, PENDING_DELAY_MS);
+            if (loading) {
+              bridge.beginPreviewNavigation(previewClaim);
+            }
+          }, PENDING_DELAY_MS);
+        }
 
         const detail = await preparation.detail;
         // A different commit or another preview owner won while this request
@@ -1007,22 +1009,25 @@
           return;
         }
         if (!detail) {
-          clearPendingState();
           disposeCommitDiff();
           bridge.renderPreviewHtml(
             '<div class="preview-empty">Could not load this commit.</div>',
             previewClaim,
           );
+          clearPendingState();
           return;
         }
         await renderCommitDetail(detail, previewClaim, preparation);
         if (state.selectedId === revision && bridge.isPreviewClaimCurrent(previewClaim)) {
-          clearPendingState();
           await afterNextPaint();
+          clearPendingState();
         }
       },
       { revision },
     ).finally(() => {
+      if (selectionClaim !== null && pendingPreviewClaim === selectionClaim) {
+        clearPendingState();
+      }
       if (preparationSlot?.revision === revision && !preparationSlot.speculative) {
         preparationSlot = null;
       }

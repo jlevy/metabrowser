@@ -75,6 +75,33 @@ process.stdout.write(JSON.stringify(parsed));
     assert json.loads(result.stdout)["scenario"] == "git-revisions"
 
 
+def test_capture_browser_accepts_the_file_view_scenario() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+const parsed = capture.parseArgs([
+  "--url", "http://127.0.0.1:8411/view/",
+  "--probe", "probe.js",
+  "--output", "profile.json",
+  "--scenario", "file-views"
+]);
+process.stdout.write(JSON.stringify(parsed));
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["scenario"] == "file-views"
+
+
 def test_capture_browser_rejects_an_unknown_scenario() -> None:
     node = shutil.which("node")
     if node is None:
@@ -116,8 +143,93 @@ def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> Non
     assert 'document.querySelectorAll(".git-commit-diff .diff-root")' in source
 
     runner = RUNNER.read_text(encoding="utf-8")
-    assert 'choices=["git-revisions"]' in runner
+    assert 'choices=["git-revisions", "file-views"]' in runner
     assert 'command.extend(["--scenario", scenario])' in runner
+
+
+def test_file_view_scenario_uses_trusted_clicks_and_painted_readiness() -> None:
+    source = CAPTURE.read_text(encoding="utf-8")
+
+    assert "async function runFileViewScenario" in source
+    assert "dispatchTrustedClickForFilePath" in source
+    assert "startFileBlankFrameMonitor" in source
+    assert "waitForFileView" in source
+    assert "assertFileTransitionHealth" in source
+    assert 'schema: "file-view-navigation/v1"' in source
+    assert '"fileNavigation:selectToReady"' in source
+    assert '"fileNavigation:paintReady"' in source
+
+
+def test_file_view_scenario_rejects_blank_stale_or_unmeasured_transitions() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+const healthy = {{
+  path: "src/app.js",
+  selected_path: "src/app.js",
+  route_path: "src/app.js",
+  rendered_path: "src/app.js",
+  rendered_view: "source",
+  active_mounts: 1,
+  active_view_nonempty: true,
+  blank_frames: 0,
+  blank_duration_ms: 0,
+  pending_seen: true,
+  pending_active: false,
+  aria_busy: false,
+  file_fetches: 1,
+  phase_labels: ["fileNavigation:assets", "fileNavigation:activeView",
+    "fileNavigation:paintReady", "fileNavigation:selectToReady"]
+}};
+capture.assertFileTransitionHealth(healthy);
+for (const [field, value] of [
+  ["selected_path", "old.js"],
+  ["route_path", "old.js"],
+  ["rendered_path", "old.js"],
+  ["rendered_view", ""],
+  ["active_mounts", 2],
+  ["active_view_nonempty", false],
+  ["blank_frames", 1],
+  ["pending_seen", false],
+  ["pending_active", true],
+  ["aria_busy", true],
+  ["file_fetches", 2],
+  ["phase_labels", ["fileNavigation:assets"]]
+]) {{
+  try {{
+    capture.assertFileTransitionHealth({{...healthy, [field]: value}});
+  }} catch (error) {{
+    process.stdout.write(`${{field}}:${{String(error.message)}}\n`);
+  }}
+}}
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    for field in (
+        "selected_path",
+        "route_path",
+        "rendered_path",
+        "rendered_view",
+        "active_mounts",
+        "active_view_nonempty",
+        "blank_frames",
+        "pending_seen",
+        "pending_active",
+        "aria_busy",
+        "file_fetches",
+        "phase_labels",
+    ):
+        assert f"{field}:" in result.stdout
 
 
 def test_probe_exports_fetch_concurrency_provenance() -> None:

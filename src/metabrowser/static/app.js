@@ -97,9 +97,9 @@ function responsePerfMeta(resp, path, extra) {
 
 function measureNextPaint(label, meta) {
   if (typeof requestAnimationFrame === "undefined") {
-    return;
+    return Promise.resolve();
   }
-  _perf.measureAsync(
+  return _perf.measureAsync(
     label,
     () =>
       new Promise((resolve) => {
@@ -2476,7 +2476,23 @@ treePane.addEventListener(
 var hoverPrefetchTimer = null;
 var hoverPrefetchPath = "";
 var hoverPrefetchController = null;
+var hoverPrefetchPromise = null;
 var hoverPrefetchInFlight = 0;
+
+async function settleHoverPrefetchForSelection(path) {
+  clearTimeout(hoverPrefetchTimer);
+  hoverPrefetchTimer = null;
+  if (hoverPrefetchPath !== path) {
+    abortHoverPrefetch();
+    return;
+  }
+  if (hoverPrefetchPromise) {
+    await hoverPrefetchPromise;
+    return;
+  }
+  hoverPrefetchPath = "";
+  hoverPrefetchController = null;
+}
 
 function shouldPrefetchFile(item) {
   var path = item.dataset.path;
@@ -2497,6 +2513,7 @@ function abortHoverPrefetch() {
   clearTimeout(hoverPrefetchTimer);
   hoverPrefetchTimer = null;
   hoverPrefetchPath = "";
+  hoverPrefetchPromise = null;
   if (hoverPrefetchController) {
     hoverPrefetchController.abort();
     hoverPrefetchController = null;
@@ -2514,7 +2531,7 @@ function startHoverPrefetch(path) {
   hoverPrefetchInFlight += 1;
   hoverPrefetchController = typeof AbortController !== "undefined" ? new AbortController() : null;
   var options = hoverPrefetchController ? { signal: hoverPrefetchController.signal } : {};
-  fetch(`/api/file?path=${encodeURIComponent(path)}`, options)
+  const request = fetch(`/api/file?path=${encodeURIComponent(path)}`, options)
     .then((resp) =>
       resp.ok
         ? _perf.measureAsync(
@@ -2534,10 +2551,13 @@ function startHoverPrefetch(path) {
     })
     .finally(() => {
       hoverPrefetchInFlight -= 1;
-      if (hoverPrefetchPath === path) {
+      if (hoverPrefetchPath === path && hoverPrefetchPromise === request) {
         hoverPrefetchController = null;
+        hoverPrefetchPath = "";
+        hoverPrefetchPromise = null;
       }
     });
+  hoverPrefetchPromise = request;
 }
 
 // Prefetch small, non-log file content only after hover intent is clear. Large
@@ -3329,6 +3349,15 @@ var navPanels = [];
 var navPanelsShown = new Set();
 var previewClaimGeneration = 0;
 
+/** @param {HTMLElement} preview */
+function clearPreviewNavigationState(preview) {
+  preview.classList.remove("preview-navigation-pending");
+  if (preview.hasAttribute("data-preview-pending-claim")) {
+    preview.removeAttribute("aria-busy");
+    preview.removeAttribute("data-preview-pending-claim");
+  }
+}
+
 /**
  * Claim the shared preview pane for one navigation owner.
  *
@@ -3340,8 +3369,11 @@ var previewClaimGeneration = 0;
  * @returns {number}
  */
 function claimPreview(owner) {
-  previewClaimGeneration += 1;
   const preview = document.getElementById("preview-pane");
+  if (preview) {
+    clearPreviewNavigationState(preview);
+  }
+  previewClaimGeneration += 1;
   if (preview) {
     preview.dataset.previewOwner = owner;
   }
@@ -3351,6 +3383,39 @@ function claimPreview(owner) {
 /** @param {number} claim */
 function isPreviewClaimCurrent(claim) {
   return claim === previewClaimGeneration;
+}
+
+/**
+ * Mark retained preview content as pending for one navigation claim.
+ *
+ * Empty-state chrome is not a useful handoff surface. A delayed initial
+ * spinner may call this again after it has installed its neutral status.
+ *
+ * @param {number} claim
+ * @returns {boolean} Whether the pane contains a surface that can carry pending state.
+ */
+function beginPreviewNavigation(claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return false;
+  }
+  const preview = document.getElementById("preview-pane");
+  const child = preview?.firstElementChild;
+  if (!preview || !child || child.classList.contains("preview-empty")) {
+    return false;
+  }
+  preview.classList.add("preview-navigation-pending");
+  preview.setAttribute("aria-busy", "true");
+  preview.setAttribute("data-preview-pending-claim", String(claim));
+  return true;
+}
+
+/** @param {number} claim */
+function endPreviewNavigation(claim) {
+  const preview = document.getElementById("preview-pane");
+  if (!preview || preview.getAttribute("data-preview-pending-claim") !== String(claim)) {
+    return;
+  }
+  clearPreviewNavigationState(preview);
 }
 
 function registerNavPanel(panel) {
@@ -3492,9 +3557,7 @@ function renderPreviewHtml(html, claim) {
     return null;
   }
   disposeActivePluginViews();
-  preview.classList.remove("git-revision-pending");
-  preview.removeAttribute("aria-busy");
-  preview.removeAttribute("data-git-pending");
+  delete preview.dataset.renderedPath;
   preview.innerHTML = html;
   return preview;
 }
@@ -3511,9 +3574,7 @@ function renderPreviewNode(node, claim) {
     return null;
   }
   disposeActivePluginViews();
-  preview.classList.remove("git-revision-pending");
-  preview.removeAttribute("aria-busy");
-  preview.removeAttribute("data-git-pending");
+  delete preview.dataset.renderedPath;
   preview.replaceChildren(node);
   return preview;
 }
@@ -3527,7 +3588,9 @@ function renderPreviewNode(node, claim) {
 // of app.js instead of adding a thousand lines to it.
 window.MetabrowserShell = Object.freeze({
   activateNavPanel,
+  beginPreviewNavigation,
   claimPreview,
+  endPreviewNavigation,
   isPreviewClaimCurrent,
   registerNavPanel,
   removeNavPanel,
@@ -5022,7 +5085,7 @@ async function loadMoreCurrentText() {
         window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
       );
     } else {
-      renderFile(cached, undefined, previewClaim);
+      await renderFile(cached, undefined, previewClaim);
     }
   } catch (e) {
     console.warn("Failed to load text chunk", e);
@@ -5044,7 +5107,7 @@ var selectFileAbortController = null;
 
 async function renderFileWithPlugins(data, preferredViewId, previewClaim) {
   await _perf.measureAsync(
-    "loadPluginsForKind",
+    "fileNavigation:assets",
     () => window.metabrowser.ensureKindAssets(data.kind),
     { kind: data.kind || "" },
   );
@@ -5055,156 +5118,180 @@ async function renderFileWithPlugins(data, preferredViewId, previewClaim) {
 async function selectFile(path, preferredViewId) {
   var previewClaim = claimPreview("file");
   filePreviewClaim = previewClaim;
-  return _perf.measureAsync(
-    "selectFile",
-    async () => {
-      // Always close any prior live stream — switching files (or reopening
-      // the same file) starts fresh.
-      closeLiveStream();
-      // Chunk growth is per file: a fresh selection starts small again so
-      // opening a file never inherits the last file's appetite.
-      resetTextChunkGrowth();
-      currentPath = path;
-      const preview = document.getElementById("preview-pane");
-      if (!preview) {
-        return {
-          message: "Could not display the file. Refresh the page to try again.",
-          status: "error",
-        };
-      }
-
-      // Three-way cache state:
-      //   - hot: in fileCache and not flagged → serve from cache.
-      //   - revalidate: in fileCache but flagged (file recently changed in
-      //     activity poll) → send If-None-Match, accept 304 to confirm.
-      //   - cold: not in fileCache → unconditional fetch.
-      const cached = fileCache.get(path);
-      const needsRevalidate = fileNeedsRevalidate.has(path);
-      if (cached && !needsRevalidate && !activeFiles.has(path)) {
-        navigationController.canonicalizePath(path, cached.kind === "folder");
-        await renderFileWithPlugins(cached, preferredViewId, previewClaim);
-        maybeOpenLiveStream(path, cached);
-        return openedFileOutcome(path, cached, preview);
-      }
-
-      if (loadingIndicatorTimer) {
-        clearTimeout(loadingIndicatorTimer);
-      }
-      loadingIndicatorTimer = setTimeout(() => {
-        loadingIndicatorTimer = null;
+  var selection = /** @type {Promise<QuickFileOpenOutcome>} */ (
+    _perf.measureAsync(
+      "selectFile",
+      async () => {
+        // Always close any prior live stream — switching files (or reopening
+        // the same file) starts fresh.
+        closeLiveStream();
+        // Chunk growth is per file: a fresh selection starts small again so
+        // opening a file never inherits the last file's appetite.
+        resetTextChunkGrowth();
+        currentPath = path;
+        if (selectFileAbortController) {
+          selectFileAbortController.abort();
+          selectFileAbortController = null;
+        }
+        const preview = document.getElementById("preview-pane");
+        if (!preview) {
+          return {
+            message: "Could not display the file. Refresh the page to try again.",
+            status: "error",
+          };
+        }
+        var retainedPreview = beginPreviewNavigation(previewClaim);
+        await settleHoverPrefetchForSelection(path);
         if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
-          return;
+          return { status: "cancelled" };
         }
-        disposeActivePluginViews();
-        stopFolderHeaderSubscription();
-        preview.innerHTML =
-          '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
-          '<span class="sr-only">Loading file…</span></div>';
-      }, LOADING_INDICATOR_DELAY_MS);
 
-      if (selectFileAbortController) {
-        selectFileAbortController.abort();
-      }
-      selectFileAbortController =
-        typeof AbortController !== "undefined" ? new AbortController() : null;
-      var selectFileSignal = selectFileAbortController
-        ? selectFileAbortController.signal
-        : undefined;
-
-      try {
-        /** @type {Record<string, string>} */
-        const headers = {};
-        if (cached && fileETags.has(path)) {
-          headers["if-none-match"] = fileETags.get(path);
+        // Three-way cache state:
+        //   - hot: in fileCache and not flagged → serve from cache.
+        //   - revalidate: in fileCache but flagged (file recently changed in
+        //     activity poll) → send If-None-Match, accept 304 to confirm.
+        //   - cold: not in fileCache → unconditional fetch.
+        const cached = fileCache.get(path);
+        const needsRevalidate = fileNeedsRevalidate.has(path);
+        if (cached && !needsRevalidate && !activeFiles.has(path)) {
+          navigationController.canonicalizePath(path, cached.kind === "folder");
+          await renderFileWithPlugins(cached, preferredViewId, previewClaim);
+          maybeOpenLiveStream(path, cached);
+          return openedFileOutcome(path, cached, preview);
         }
-        const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
-          headers: headers,
-          signal: selectFileSignal,
-        });
-        if (resp.status === 304 && cached) {
-          // Server confirmed the cached payload is still fresh — zero-byte
-          // body, render from memory.
+
+        if (loadingIndicatorTimer) {
+          clearTimeout(loadingIndicatorTimer);
+        }
+        if (!retainedPreview) {
+          loadingIndicatorTimer = setTimeout(() => {
+            loadingIndicatorTimer = null;
+            if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
+              return;
+            }
+            disposeActivePluginViews();
+            stopFolderHeaderSubscription();
+            delete preview.dataset.renderedPath;
+            preview.innerHTML =
+              '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+              '<span class="sr-only">Loading file…</span></div>';
+            beginPreviewNavigation(previewClaim);
+          }, LOADING_INDICATOR_DELAY_MS);
+        }
+
+        selectFileAbortController =
+          typeof AbortController !== "undefined" ? new AbortController() : null;
+        var selectFileSignal = selectFileAbortController
+          ? selectFileAbortController.signal
+          : undefined;
+
+        try {
+          /** @type {Record<string, string>} */
+          const headers = {};
+          if (cached && fileETags.has(path)) {
+            headers["if-none-match"] = fileETags.get(path);
+          }
+          const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
+            headers: headers,
+            signal: selectFileSignal,
+          });
+          if (resp.status === 304 && cached) {
+            // Server confirmed the cached payload is still fresh — zero-byte
+            // body, render from memory.
+            fileNeedsRevalidate.delete(path);
+            if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
+              if (loadingIndicatorTimer) {
+                clearTimeout(loadingIndicatorTimer);
+                loadingIndicatorTimer = null;
+              }
+              navigationController.canonicalizePath(path, cached.kind === "folder");
+              await renderFileWithPlugins(cached, preferredViewId, previewClaim);
+              maybeOpenLiveStream(path, cached);
+              return openedFileOutcome(path, cached, preview);
+            }
+            return { status: "cancelled" };
+          }
+          if (!resp.ok) {
+            const text = await _perf.measureAsync(
+              "apiFile:errorText",
+              () => resp.text(),
+              responsePerfMeta(resp, path),
+            );
+            throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
+              notFound: resp.status === 404,
+              summary: responseErrorSummary(text, "Could not open this file."),
+            });
+          }
+          const data = await _perf.measureAsync(
+            "apiFile:json",
+            () => resp.json(),
+            responsePerfMeta(resp, path),
+          );
+          if (data.kind !== "folder") {
+            // Folder envelopes are no-store (aggregates move during a
+            // scan): keep them out of the file cache and ETag books.
+            cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
+            const etagHeader = resp.headers.get("etag");
+            if (etagHeader) {
+              fileETags.set(path, etagHeader);
+              boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
+            }
+          }
           fileNeedsRevalidate.delete(path);
           if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
             if (loadingIndicatorTimer) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
-            navigationController.canonicalizePath(path, cached.kind === "folder");
-            await renderFileWithPlugins(cached, preferredViewId, previewClaim);
-            maybeOpenLiveStream(path, cached);
-            return openedFileOutcome(path, cached, preview);
+            navigationController.canonicalizePath(path, data.kind === "folder");
+            await renderFileWithPlugins(data, preferredViewId, previewClaim);
+            maybeOpenLiveStream(path, data);
+            return openedFileOutcome(path, data, preview);
           }
           return { status: "cancelled" };
-        }
-        if (!resp.ok) {
-          const text = await _perf.measureAsync(
-            "apiFile:errorText",
-            () => resp.text(),
-            responsePerfMeta(resp, path),
-          );
-          throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
-            notFound: resp.status === 404,
-            summary: responseErrorSummary(text, "Could not open this file."),
-          });
-        }
-        const data = await _perf.measureAsync(
-          "apiFile:json",
-          () => resp.json(),
-          responsePerfMeta(resp, path),
-        );
-        if (data.kind !== "folder") {
-          // Folder envelopes are no-store (aggregates move during a
-          // scan): keep them out of the file cache and ETag books.
-          cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
-          const etagHeader = resp.headers.get("etag");
-          if (etagHeader) {
-            fileETags.set(path, etagHeader);
-            boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
+        } catch (err) {
+          var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
+          if (caught?.name === "AbortError") {
+            return { status: "cancelled" };
           }
-        }
-        fileNeedsRevalidate.delete(path);
-        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
-          if (loadingIndicatorTimer) {
-            clearTimeout(loadingIndicatorTimer);
-            loadingIndicatorTimer = null;
+          var notFound = caught?.notFound === true;
+          if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
+            if (loadingIndicatorTimer) {
+              clearTimeout(loadingIndicatorTimer);
+              loadingIndicatorTimer = null;
+            }
+            disposeActivePluginViews();
+            stopFolderHeaderSubscription();
+            delete preview.dataset.renderedPath;
+            preview.innerHTML = previewErrorHtml(
+              caught?.summary || "Could not open this file.",
+              errorMessage(err),
+            );
+          } else {
+            return { status: "cancelled" };
           }
-          navigationController.canonicalizePath(path, data.kind === "folder");
-          await renderFileWithPlugins(data, preferredViewId, previewClaim);
-          maybeOpenLiveStream(path, data);
-          return openedFileOutcome(path, data, preview);
+          return notFound
+            ? { message: `${path} is no longer available.`, status: "not-found" }
+            : {
+                message: `Could not open ${path}. Check that the file still exists and is readable.`,
+                status: "error",
+              };
         }
-        return { status: "cancelled" };
-      } catch (err) {
-        var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
-        if (caught?.name === "AbortError") {
-          return { status: "cancelled" };
-        }
-        var notFound = caught?.notFound === true;
-        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
-          if (loadingIndicatorTimer) {
-            clearTimeout(loadingIndicatorTimer);
-            loadingIndicatorTimer = null;
-          }
-          disposeActivePluginViews();
-          stopFolderHeaderSubscription();
-          preview.innerHTML = previewErrorHtml(
-            caught?.summary || "Could not open this file.",
-            errorMessage(err),
-          );
-        } else {
-          return { status: "cancelled" };
-        }
-        return notFound
-          ? { message: `${path} is no longer available.`, status: "not-found" }
-          : {
-              message: `Could not open ${path}. Check that the file still exists and is readable.`,
-              status: "error",
-            };
-      }
-    },
-    { path: path, preferred_view: preferredViewId || "" },
+      },
+      { path: path, preferred_view: preferredViewId || "" },
+    )
   );
+  var readySelection = selection.finally(() => {
+    if (loadingIndicatorTimer && isPreviewClaimCurrent(previewClaim)) {
+      clearTimeout(loadingIndicatorTimer);
+      loadingIndicatorTimer = null;
+    }
+    endPreviewNavigation(previewClaim);
+  });
+  return _perf.measureAsync("fileNavigation:selectToReady", () => readySelection, {
+    path: path,
+    preferred_view: preferredViewId || "",
+  });
 }
 
 /**
@@ -5486,8 +5573,8 @@ function disposeActivePluginViews() {
   }
 }
 
-function mountPluginView(container, pluginView, ctx) {
-  /** @type {{disposed: boolean, handle: {dispose: () => void} | null}} */
+async function mountPluginView(container, pluginView, ctx) {
+  /** @type {{disposed: boolean, handle: {dispose?: () => void, ready?: Promise<void>} | null}} */
   var record = { disposed: false, handle: null };
   activePluginDisposers.push(() => {
     if (record.disposed) {
@@ -5502,36 +5589,34 @@ function mountPluginView(container, pluginView, ctx) {
     }
   });
   try {
-    var maybePromise = pluginView.render(container, ctx);
-    Promise.resolve(maybePromise).then(
-      (handle) => {
-        scheduleHighlightCode(container);
-        if (!handle || typeof handle.dispose !== "function") {
-          return;
-        }
-        if (record.disposed) {
-          handle.dispose();
-        } else {
-          record.handle = handle;
-        }
-      },
-      (err) => {
-        if (record.disposed) {
-          return;
-        }
-        console.error("plugin render error:", err);
-        container.innerHTML =
-          '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
-      },
-    );
+    var rendered = await Promise.resolve(pluginView.render(container, ctx));
+    var handle =
+      rendered && typeof rendered === "object"
+        ? /** @type {{dispose?: () => void, ready?: Promise<void>}} */ (rendered)
+        : null;
+    if (record.disposed) {
+      handle?.dispose?.();
+      return;
+    }
+    record.handle = handle;
+    if (handle?.ready) {
+      await handle.ready;
+    }
+    if (record.disposed) {
+      return;
+    }
+    scheduleHighlightCode(container);
   } catch (err) {
+    if (record.disposed) {
+      return;
+    }
     console.error("plugin render error:", err);
     container.innerHTML =
       '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
   }
 }
 
-function renderFile(data, preferredViewId, claim) {
+async function renderFile(data, preferredViewId, claim) {
   // Ownership, not staleness: the Git panel renders into this same pane, so a
   // file render that lost the pane must not paint over it. currentPath cannot
   // express that, because the owner changed rather than the path.
@@ -5539,9 +5624,9 @@ function renderFile(data, preferredViewId, claim) {
   if (renderClaim === null || !isPreviewClaimCurrent(renderClaim)) {
     return;
   }
-  return _perf.measure(
+  return _perf.measureAsync(
     `renderFile:${data.kind || data.type || "?"}`,
-    () => {
+    async () => {
       const preview = document.getElementById("preview-pane");
       if (!preview) {
         return;
@@ -5699,6 +5784,7 @@ function renderFile(data, preferredViewId, claim) {
         "renderFile:mount",
         () => {
           preview.innerHTML = html;
+          preview.dataset.renderedPath = data.path || "";
         },
         filePerfMeta(data, { html_chars: html.length }),
       );
@@ -5729,20 +5815,27 @@ function renderFile(data, preferredViewId, claim) {
           if (!container) {
             continue;
           }
-          var mount = ((target, pluginView) => () => {
-            mountPluginView(target, pluginView, ctx);
-          })(container, pr.view);
+          var mount = (
+            (target, pluginView) => () =>
+              mountPluginView(target, pluginView, ctx)
+          )(container, pr.view);
           if (initialActiveView && pr.tabId === initialActiveView.id) {
-            mount();
+            await _perf.measureAsync(
+              "fileNavigation:activeView",
+              mount,
+              filePerfMeta(data, { view: pr.tabId }),
+            );
           } else {
-            container._metabrowserMount = mount;
+            container._metabrowserMount = () => {
+              void mount();
+            };
           }
         }
       }
 
       _perf.measure("initTabs", initTabs, filePerfMeta(data));
       scheduleHighlightCode(preview);
-      measureNextPaint("renderFile:nextPaint", filePerfMeta(data));
+      await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
     },
     filePerfMeta(data),
   );

@@ -98,6 +98,9 @@ class FakeElement {
   get parentElement() {
     return this.parentNode;
   }
+  get firstElementChild() {
+    return this.children[0] || null;
+  }
 
   set textContent(value) {
     this._text = String(value);
@@ -341,7 +344,8 @@ sandbox.history = {
   },
 };
 
-// Shell bridge stub. The panel only uses these three.
+// Shell bridge stub. Pending state is shell-owned so file and Git navigation
+// exercise the same claim-scoped lifecycle.
 let previewHtml = "";
 let previewClaim = 0;
 const removedPanels = [];
@@ -352,6 +356,28 @@ sandbox.MetabrowserShell = {
     return previewClaim;
   },
   isPreviewClaimCurrent: (claim) => claim === previewClaim,
+  beginPreviewNavigation: (claim) => {
+    if (claim !== previewClaim) {
+      return false;
+    }
+    const preview = document.getElementById("preview-pane");
+    if (!preview?.firstElementChild || preview.firstElementChild.classList.contains("loading")) {
+      return false;
+    }
+    preview.classList.add("preview-navigation-pending");
+    preview.setAttribute("aria-busy", "true");
+    preview.setAttribute("data-preview-pending-claim", String(claim));
+    return true;
+  },
+  endPreviewNavigation: (claim) => {
+    const preview = document.getElementById("preview-pane");
+    if (preview?.getAttribute("data-preview-pending-claim") !== String(claim)) {
+      return;
+    }
+    preview.classList.remove("preview-navigation-pending");
+    preview.removeAttribute("aria-busy");
+    preview.removeAttribute("data-preview-pending-claim");
+  },
   registerNavPanel: (panel) => {
     registeredPanel = panel;
   },
@@ -1059,15 +1085,15 @@ async function run() {
     );
 
     const select = internals.selectCommit(SHA_E);
-    await new Promise((resolve) => setTimeout(resolve, 130));
+    await Promise.resolve();
     assertEqual(
       "pending: retained preview is aria-busy",
       previewPane.getAttribute("aria-busy"),
       "true",
     );
     assertTrue(
-      "pending: retained preview uses the pending class",
-      previewPane.classList.contains("git-revision-pending"),
+      "pending: retained preview uses the shared pending class",
+      previewPane.classList.contains("preview-navigation-pending"),
     );
     assertContains(
       "pending: old commit remains mounted",
@@ -1102,7 +1128,7 @@ async function run() {
     );
     assertTrue(
       "pending: class clears after the swap",
-      !previewPane.classList.contains("git-revision-pending"),
+      !previewPane.classList.contains("preview-navigation-pending"),
     );
 
     const slotBefore = comparisonFetches.length;

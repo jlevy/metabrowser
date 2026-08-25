@@ -403,6 +403,10 @@
 
   /* Transitions */
   --transition-fast: 150ms ease;
+  /* Immediate selection acknowledgement while useful preview content is
+     retained. The small step is visible in both themes without reading as a
+     disabled surface; readiness, never the transition, ends the state. */
+  --preview-navigation-pending-opacity: 0.9;
   /* Square-ish corner for tag-like chips (branch refs): visibly not a
      pill, still not a hard corner. */
   --radius-tag: 3px;
@@ -4893,20 +4897,20 @@ pre.code-block code.hljs {
 
 /* ── Commit detail view ─────────────────────────────────────── */
 
-/* Revision navigation stages the replacement offscreen. When preparation
-   crosses the same 120ms grace as file navigation, soften the retained view
-   without moving it; the fully rendered replacement still swaps atomically. */
-#preview-pane.git-revision-pending {
+/* File and revision selection acknowledge the click immediately while useful
+   prior content remains in place. The shell owns this modifier under the
+   preview claim, so a stale renderer cannot leave the pane dimmed. */
+#preview-pane.preview-navigation-pending {
   cursor: progress;
 }
 
-#preview-pane.git-revision-pending .git-commit-stage {
-  opacity: 0.78;
+#preview-pane.preview-navigation-pending > * {
+  opacity: var(--preview-navigation-pending-opacity);
   transition: opacity var(--transition-fast);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #preview-pane.git-revision-pending .git-commit-stage {
+  #preview-pane.preview-navigation-pending > * {
     transition: none;
   }
 }

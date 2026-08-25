@@ -120,14 +120,15 @@ def test_row_targets_share_the_hover_token() -> None:
     )
 
 
-def test_git_revision_pending_motion_uses_the_shared_token_and_reduced_motion() -> None:
+def test_preview_navigation_pending_motion_is_shared_and_reduced_motion_safe() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
 
-    pending = _rule(styles, "#preview-pane.git-revision-pending .git-commit-stage")
+    pending = _rule(styles, "#preview-pane.preview-navigation-pending > *")
     assert "transition: opacity var(--transition-fast)" in pending
-    assert "opacity:" in pending
+    assert "opacity: var(--preview-navigation-pending-opacity)" in pending
+    assert "--preview-navigation-pending-opacity:" in styles
     reduced = styles[styles.rindex("@media (prefers-reduced-motion: reduce)") :]
-    assert "#preview-pane.git-revision-pending .git-commit-stage" in reduced
+    assert "#preview-pane.preview-navigation-pending > *" in reduced
     assert "transition: none" in reduced
 
 

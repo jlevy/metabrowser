@@ -48,7 +48,7 @@ function usage() {
     "  --timeout-ms N      Application-settle timeout (default 180000)",
     "  --width N           Viewport width (default 1600)",
     "  --height N          Viewport height (default 900)",
-    "  --scenario NAME     Interaction scenario: git-revisions",
+    "  --scenario NAME     Interaction scenario: git-revisions or file-views",
   ].join("\n");
 }
 
@@ -112,7 +112,7 @@ function parseArgs(argv) {
       throw new Error(`--${field === "timeoutMs" ? "timeout-ms" : field} must be positive`);
     }
   }
-  if (options.scenario && options.scenario !== "git-revisions") {
+  if (options.scenario && !["git-revisions", "file-views"].includes(options.scenario)) {
     throw new Error(`unknown scenario: ${options.scenario}`);
   }
   return options;
@@ -383,6 +383,28 @@ async function dispatchTrustedPointerForSelector(session, selector, index = 0) {
   });
 }
 
+async function dispatchTrustedClickForFilePath(session, filePath) {
+  const point = await evaluate(
+    session,
+    `(async () => {
+      const row = Array.from(document.querySelectorAll(".tree-item.tree-file[data-path]"))
+        .find((candidate) => candidate instanceof HTMLElement &&
+          candidate.dataset.path === ${JSON.stringify(filePath)});
+      if (!(row instanceof HTMLElement)) return null;
+      row.scrollIntoView({block: "center", inline: "nearest"});
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const rect = row.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+    })()`,
+    true,
+  );
+  if (!point) {
+    throw new Error(`could not click file row ${filePath}`);
+  }
+  await dispatchTrustedClickAtPoint(session, point);
+}
+
 async function awaitNextPaint(session) {
   return evaluate(
     session,
@@ -443,6 +465,312 @@ async function stopGitBlankFrameMonitor(session) {
       };
     })()`,
   );
+}
+
+async function startFileBlankFrameMonitor(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const key = "__metabrowserFileBlankMonitor";
+      const previous = window[key];
+      if (previous) {
+        previous.running = false;
+        cancelAnimationFrame(previous.frame || 0);
+        previous.observer?.disconnect();
+      }
+      const state = {
+        blankDurationMs: 0,
+        blankFrames: 0,
+        blankStartedAt: null,
+        frame: 0,
+        observer: null,
+        pendingClearedAt: null,
+        pendingSeenAt: null,
+        running: true,
+        startedAt: performance.now(),
+      };
+      const preview = document.querySelector("#preview-pane");
+      const observePending = () => {
+        const pending = preview?.classList.contains("preview-navigation-pending") === true;
+        const now = performance.now();
+        if (pending && state.pendingSeenAt === null) state.pendingSeenAt = now;
+        if (!pending && state.pendingSeenAt !== null) state.pendingClearedAt = now;
+      };
+      state.observer = new MutationObserver(observePending);
+      if (preview) {
+        state.observer.observe(preview, {
+          attributes: true,
+          attributeFilter: ["aria-busy", "class", "data-preview-pending-claim"],
+        });
+      }
+      const sample = (now) => {
+        if (!state.running) return;
+        observePending();
+        const active = preview?.querySelector('[data-tab-content][data-active-view="true"]');
+        const visible = active instanceof HTMLElement &&
+          (active.childElementCount > 0 || Boolean(active.textContent?.trim()));
+        if (visible) {
+          if (state.blankStartedAt !== null) {
+            state.blankDurationMs += now - state.blankStartedAt;
+            state.blankStartedAt = null;
+          }
+        } else {
+          state.blankFrames += 1;
+          if (state.blankStartedAt === null) state.blankStartedAt = now;
+        }
+        state.frame = requestAnimationFrame(sample);
+      };
+      observePending();
+      state.frame = requestAnimationFrame(sample);
+      window[key] = state;
+      return true;
+    })()`,
+  );
+}
+
+async function stopFileBlankFrameMonitor(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const state = window.__metabrowserFileBlankMonitor;
+      const preview = document.querySelector("#preview-pane");
+      if (!state) return null;
+      state.running = false;
+      cancelAnimationFrame(state.frame);
+      state.observer?.disconnect();
+      if (state.blankStartedAt !== null) {
+        state.blankDurationMs += performance.now() - state.blankStartedAt;
+      }
+      const now = performance.now();
+      return {
+        aria_busy: preview?.getAttribute("aria-busy") === "true",
+        blank_duration_ms: Number(state.blankDurationMs.toFixed(2)),
+        blank_frames: state.blankFrames,
+        pending_active: preview?.classList.contains("preview-navigation-pending") === true,
+        pending_clear_ms: state.pendingClearedAt === null ? null :
+          Number((state.pendingClearedAt - state.startedAt).toFixed(2)),
+        pending_onset_ms: state.pendingSeenAt === null ? null :
+          Number((state.pendingSeenAt - state.startedAt).toFixed(2)),
+        pending_seen: state.pendingSeenAt !== null,
+        stopped_at_ms: Number((now - state.startedAt).toFixed(2)),
+      };
+    })()`,
+  );
+}
+
+async function fileViewCandidates(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const paths = Array.from(document.querySelectorAll(".tree-item.tree-file[data-path]"))
+        .filter((row) => row instanceof HTMLElement &&
+          !row.classList.contains("tree-item-filter-hidden"))
+        .map((row) => row.dataset.path || "");
+      const markdown = paths.find((path) => /\\.(?:md|markdown)$/i.test(path)) || "";
+      const sources = paths.filter((path) =>
+        /\\.(?:css|html?|js|jsx|json|mjs|py|rs|sh|toml|ts|tsx|ya?ml)$/i.test(path));
+      return {markdown, sources: Array.from(new Set(sources)).slice(0, 3)};
+    })()`,
+  );
+}
+
+async function fileViewState(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const preview = document.querySelector("#preview-pane");
+      const active = preview?.querySelector('[data-tab-content][data-active-view="true"]');
+      return {
+        activeMounts: preview?.querySelectorAll(
+          '[data-plugin-view][data-active-view="true"]'
+        ).length || 0,
+        activeViewNonempty: active instanceof HTMLElement &&
+          (active.childElementCount > 0 || Boolean(active.textContent?.trim())),
+        pendingActive: preview?.classList.contains("preview-navigation-pending") === true,
+        renderedPath: preview instanceof HTMLElement ? preview.dataset.renderedPath || "" : "",
+        renderedView: preview instanceof HTMLElement ? preview.dataset.activeView || "" : "",
+        routePath: window.metabrowser.navigation.current()?.path || "",
+        selectedPath: document.querySelector(".tree-item.selected")?.dataset.path || "",
+      };
+    })()`,
+  );
+}
+
+async function waitForFileView(session, filePath, timeoutMs) {
+  const state = await waitFor(
+    async () => {
+      const current = await fileViewState(session);
+      return current.selectedPath === filePath &&
+        current.routePath === filePath &&
+        current.renderedPath === filePath &&
+        current.renderedView &&
+        current.activeMounts === 1 &&
+        current.activeViewNonempty &&
+        !current.pendingActive
+        ? current
+        : null;
+    },
+    timeoutMs,
+    `file view ${filePath} to reach painted readiness`,
+  );
+  const paintedAt = await awaitNextPaint(session);
+  return { paintedAt, state };
+}
+
+function assertFileTransitionHealth(result) {
+  if (!result.path) {
+    throw new Error("path is required for file-view validation");
+  }
+  for (const field of ["selected_path", "route_path", "rendered_path"]) {
+    if (result[field] !== result.path) {
+      throw new Error(
+        `${field} did not converge on ${result.path}; observed ${result[field] || "none"}`,
+      );
+    }
+  }
+  if (!result.rendered_view) {
+    throw new Error("rendered_view must identify the active file view");
+  }
+  if (result.active_mounts !== 1) {
+    throw new Error(`active_mounts must remain one; observed ${result.active_mounts}`);
+  }
+  if (!result.active_view_nonempty) {
+    throw new Error("active_view_nonempty must prove useful painted content");
+  }
+  if (result.blank_frames !== 0 || result.blank_duration_ms !== 0) {
+    throw new Error(
+      `blank_frames and blank_duration_ms must remain zero; observed ` +
+        `${result.blank_frames}/${result.blank_duration_ms}`,
+    );
+  }
+  if (!result.pending_seen) {
+    throw new Error("pending_seen must prove immediate selection feedback");
+  }
+  if (result.pending_active) {
+    throw new Error("pending_active must clear at painted readiness");
+  }
+  if (result.aria_busy) {
+    throw new Error("aria_busy must clear at painted readiness");
+  }
+  if (!Number.isInteger(result.file_fetches) || result.file_fetches > 1) {
+    throw new Error(`file_fetches must be at most one; observed ${result.file_fetches}`);
+  }
+  if (result.name?.startsWith("cached-") && result.file_fetches !== 0) {
+    throw new Error(
+      `file_fetches must be zero for cached navigation; observed ${result.file_fetches}`,
+    );
+  }
+  const requiredLabels = [
+    "fileNavigation:assets",
+    "fileNavigation:activeView",
+    "fileNavigation:paintReady",
+    "fileNavigation:selectToReady",
+  ];
+  for (const label of requiredLabels) {
+    if (!result.phase_labels?.includes(label)) {
+      throw new Error(`phase_labels is missing ${label}`);
+    }
+  }
+}
+
+async function measureFileTransition(session, filePath, name, timeoutMs) {
+  const started = await evaluate(session, `({epoch: Date.now(), now: performance.now()})`);
+  await startFileBlankFrameMonitor(session);
+  await dispatchTrustedClickForFilePath(session, filePath);
+  const ready = await waitForFileView(session, filePath, timeoutMs);
+  const blank = await stopFileBlankFrameMonitor(session);
+  const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const measures = snapshot.raw_measure.filter(
+    (sample) =>
+      sample.ts >= started.epoch &&
+      (sample.label.startsWith("fileNavigation:") || sample.label === "apiFile:json"),
+  );
+  const fetches = snapshot.raw_fetch.filter((sample) => sample.ts >= started.epoch);
+  const fileFetches = fetches.filter((sample) => {
+    const url = new URL(sample.url, "http://localhost");
+    return url.pathname === "/api/file" && url.searchParams.get("path") === filePath;
+  });
+  const result = {
+    name,
+    path: filePath,
+    total_ms: Number((ready.paintedAt - started.now).toFixed(2)),
+    selected_path: ready.state.selectedPath,
+    route_path: ready.state.routePath,
+    rendered_path: ready.state.renderedPath,
+    rendered_view: ready.state.renderedView,
+    active_mounts: ready.state.activeMounts,
+    active_view_nonempty: ready.state.activeViewNonempty,
+    file_fetches: fileFetches.length,
+    ...blank,
+    phase_labels: Array.from(new Set(measures.map((sample) => sample.label))),
+    phases: measures.map((sample) => ({
+      duration_ms: Number(sample.duration_ms.toFixed(2)),
+      kind: sample.meta?.kind || "",
+      label: sample.label,
+      path: sample.meta?.path || "",
+      view: sample.meta?.view || "",
+    })),
+    fetches: fetches
+      .filter((sample) => {
+        const pathname = new URL(sample.url, "http://localhost").pathname;
+        return (
+          pathname === "/api/file" ||
+          pathname.startsWith("/api/plugin/") ||
+          pathname.startsWith("/plugin-static/")
+        );
+      })
+      .map((sample) => ({
+        duration_ms: Number(sample.duration_ms.toFixed(2)),
+        server_ms: sample.server_ms,
+        size_bytes: sample.size_bytes,
+        status: sample.status,
+        url: new URL(sample.url, "http://localhost").pathname,
+      })),
+  };
+  assertFileTransitionHealth(result);
+  return result;
+}
+
+async function runFileViewScenario(session, timeoutMs) {
+  await waitFor(
+    () => pointForSelector(session, '.tab-btn[data-tab="files"]'),
+    timeoutMs,
+    "Files navigation tab",
+  );
+  await dispatchTrustedClickForSelector(session, '.tab-btn[data-tab="files"]');
+  const candidates = await waitFor(
+    async () => {
+      const value = await fileViewCandidates(session);
+      return value.markdown && value.sources.length >= 2 ? value : null;
+    },
+    timeoutMs,
+    "one Markdown and two source file rows",
+  );
+
+  await dispatchTrustedClickForFilePath(session, candidates.sources[0]);
+  await waitForFileView(session, candidates.sources[0], timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+  await evaluate(session, `window.metabrowser.perf.reset()`);
+
+  const transitions = [];
+  transitions.push(
+    await measureFileTransition(session, candidates.sources[1], "cold-source", timeoutMs),
+  );
+  transitions.push(
+    await measureFileTransition(session, candidates.markdown, "cold-markdown", timeoutMs),
+  );
+  transitions.push(
+    await measureFileTransition(session, candidates.sources[1], "cached-source", timeoutMs),
+  );
+  await waitForClientQuiescence(session, timeoutMs);
+  return {
+    schema: "file-view-navigation/v1",
+    generated_at: new Date().toISOString(),
+    scenario: "file-views",
+    warm_path: candidates.sources[0],
+    transitions,
+    profiler: await evaluate(session, `window.metabrowser.perf.snapshot()`),
+  };
 }
 
 async function gitRow(session, index) {
@@ -888,10 +1216,15 @@ async function capture(options) {
       await waitForIndex(options.url, options.timeoutMs);
       await delay(CLIENT_COMPLETION_SETTLE_MS);
       await waitForClientQuiescence(session, options.timeoutMs);
-      const payload = await runGitRevisionScenario(session, options.timeoutMs);
+      const payload =
+        options.scenario === "git-revisions"
+          ? await runGitRevisionScenario(session, options.timeoutMs)
+          : await runFileViewScenario(session, options.timeoutMs);
       payload.page_exceptions = pageExceptions;
       if (pageExceptions !== 0) {
-        throw new Error(`Git scenario observed ${pageExceptions} uncaught page exception(s)`);
+        throw new Error(
+          `${options.scenario} scenario observed ${pageExceptions} uncaught page exception(s)`,
+        );
       }
       await session.send("HeapProfiler.enable");
       await session.send("HeapProfiler.collectGarbage");
@@ -986,11 +1319,13 @@ if (require.main === module) {
 module.exports = {
   assertControlledInputCount,
   assertDeferredHydrationHealth,
+  assertFileTransitionHealth,
   capture,
   chromeExecutable,
   dispatchTrustedClickAtPoint,
   dispatchTrustedClickForSelector,
   parseArgs,
+  runFileViewScenario,
   runGitRevisionScenario,
   startTrustedInputPulse,
   usage,

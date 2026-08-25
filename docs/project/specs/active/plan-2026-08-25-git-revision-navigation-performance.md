@@ -9,7 +9,7 @@ author: Joshua Levy (github.com/jlevy) with LLM assistance
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Implemented; PR handoff in progress
+**Status:** Implemented and locally validated; PR handoff in progress
 
 ## Overview
 
@@ -29,6 +29,10 @@ completions, and selection/render divergence fail validation instead of remainin
 console-only evidence.
 Git history rows also project the selected commit summary into a compact tooltip instead
 of repeating the complete commit description as an unstructured block.
+The final phase extends the same continuity rule to ordinary file navigation: retained
+content dims immediately, each selected view owns a measurable painted-readiness
+boundary, and the performance loop tests file and Git transitions separately without
+pretending that their renderer lifecycles are identical.
 
 ## Goals
 
@@ -54,6 +58,13 @@ of repeating the complete commit description as an unstructured block.
 - Reuse the commit-summary vocabulary in a bounded row tooltip with subject, author,
   revision identity, age, and aggregate change counts, without making the tooltip an
   interactive surface
+- Give retained file and Git previews the same immediate, subtle pending feedback and
+  claim-owned accessibility state
+- Measure ordinary file selection through active-view readiness and a double-frame
+  painted boundary instead of stopping when the response envelope or container arrives
+- Add a trusted regular-file navigation scenario that fails on blank frames, stale
+  path/render state, stuck pending state, missing attribution, or duplicate active
+  mounts
 - Preserve route ownership, rapid-selection correctness, plugin disposal, keyboard and
   pointer behavior, and reduced-motion preferences
 
@@ -65,7 +76,12 @@ of repeating the complete commit description as an unstructured block.
   owns those concerns
 - Adding a server cache before measurements show that server computation dominates
 - Hiding latency with decorative motion or introducing a new animation library
-- Changing comparison semantics, diff highlighting, or the public plugin SDK
+- Requiring arbitrary file plugins to render in a detached container; connected layout
+  remains part of the existing renderer contract
+- Adding adjacent-file prefetch or another cache before repeated measurements isolate a
+  cost that it would address
+- Changing comparison semantics, diff highlighting, or requiring an incompatible public
+  plugin SDK change
 
 ## Background
 
@@ -89,10 +105,15 @@ These figures are machine-specific diagnostic evidence, not product budgets.
 They establish two design facts: independent requests should overlap, and prefetching
 every visible comparison would perform substantial low-confidence work.
 
-The existing file-selection path already uses the desired perceptual rule: keep the
-prior file visible and delay a loading indicator for 120 ms.
-The Git path should follow the same rule while retaining its own lifecycle and
-comparison-specific preparation.
+The existing file-selection path retains the prior file only during the response and
+asset-loading envelope.
+After 120 ms it disposes that view and replaces it with a spinner; after installing the
+next file shell, it can report selection complete before an asynchronous active plugin
+or the next painted frame is ready.
+The Git path instead stages its complete replacement off-DOM and swaps only after the
+comparison mount. The final implementation keeps that ownership difference, but gives
+both paths the same pending vocabulary and the same observable definition of useful
+readiness.
 
 ## Design
 
@@ -146,6 +167,33 @@ A short opacity transition may soften the completed swap using existing motion t
 It must not delay readiness, animate large geometry, or run when
 `prefers-reduced-motion` is enabled.
 
+### Cross-Surface Pending and Readiness
+
+The Git and ordinary file paths share a shell-owned pending lifecycle, not one rendering
+algorithm. Starting a selection against useful retained content immediately applies one
+subtle opacity modifier and `aria-busy="true"` under the new preview claim.
+The content keeps its geometry and remains available while work proceeds.
+Success, failure, stale ownership, preview replacement, and disposal all clear the state
+only for the claim that created it.
+Reduced motion removes the opacity transition, not the immediate state change.
+An initial empty preview may still use the existing delayed neutral spinner.
+
+Git keeps its detached atomic handoff because the shell owns the complete commit and
+comparison surface. Ordinary plugins keep their connected-container contract because a
+renderer may require live layout, observers, or focus state.
+The shell installs the next file surface in the connected preview, awaits the active
+renderer’s direct promise and an optional instance `ready` promise, then waits for a
+double-animation-frame boundary before it clears pending state.
+Inactive tabs stay lazy.
+A stale or disposed async mount must release any late handle and may not regain
+ownership.
+
+The optional `ready` handle is progressive enhancement for a concrete initial-render
+boundary. Synchronous renderers and existing instance handles need no change.
+Built-in renderers whose direct return currently precedes a known initial asynchronous
+pass expose that pass through `ready`; work that intentionally continues after useful
+readiness remains outside it.
+
 ### Performance Attribution
 
 Production instrumentation adds revision-scoped measures for:
@@ -163,6 +211,13 @@ The distinction lets the Git scenario enforce the renderer’s two-request hydra
 without treating the selected revision’s metadata and manifest requests as deferred
 fanout.
 - selection to the first painted ready frame
+
+Ordinary file navigation uses parallel phase labels for response-envelope decoding,
+selected-kind assets, active-view mounting, optional instance readiness, and selection
+to the same double-frame painted boundary.
+Labels carry only bounded path, kind, and view metadata.
+The selection total must not finish merely because the file shell was inserted or
+because a renderer returned a handle whose declared initial work is still pending.
 
 The existing fetch recorder supplies request duration to response headers and
 `Server-Timing` for server attribution.
@@ -188,19 +243,32 @@ A claimed improvement requires nonoverlapping ranges for the target metric, no b
 interval in candidate transitions, no new exception, and no regression in maximum long
 work or retained mounted resources.
 
+A separate trusted `file-views` scenario warms a regular source view, traverses cold
+source and Markdown views, and revisits a cached subject.
+Each transition proves exact selected path, route, active view, and painted content
+convergence; continuous retained content; immediate pending onset and eventual
+clearance; one active mounted owner; and complete server, transfer/decode, assets,
+mount, paint, Long Task, Long Animation Frame, and exception attribution.
+It uses the same acceptance vocabulary as `git-revisions` while retaining its own schema
+and subject-specific validators.
+
 ### API and Compatibility
 
 No server route or external dependency changes.
 The server, shell, and built-in diff plugin ship together, so passing prepared
 comparison data through the existing internal render context is an atomic internal
 change. No compatibility layer is needed.
+An optional `ready` promise on a renderer instance handle is additive: existing plugins
+may continue returning nothing, a direct handle, or a promise for either.
+No renderer is forced into detached mounting, and no fallback compatibility branch is
+introduced.
 
 ## Implementation Plan
 
 Epic `mb-fgcg` owns this plan.
-Its ten child beads separate measurement, behavior, presentation, validation, keyboard
-consistency, commit-header information design, component ownership, retained-work
-cancellation, and delivery.
+Its eighteen child beads separate measurement, behavior, presentation, validation,
+keyboard consistency, commit-header information design, component ownership,
+retained-work cancellation, cross-surface pending and readiness parity, and delivery.
 Blockers express only real sequencing; the baseline also feeds final validation
 directly.
 
@@ -214,8 +282,16 @@ directly.
 | Move the change summary into the commit metadata header | `mb-j0um` | None | Closed |
 | Make the revision a shared copyable identifier | `mb-wchz` | None | Closed |
 | Consolidate the Git commit summary component | `mb-lk26` | None | Closed |
-| Cancel obsolete retained-diff work | `mb-k9a5` | `mb-32kx` | In progress |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-xmkn`, `mb-j0um`, `mb-wchz`, `mb-lk26`, `mb-k9a5` | Blocked |
+| Cancel obsolete retained-diff work | `mb-k9a5` | `mb-32kx` | Closed |
+| Gate deferred request storms | `mb-bb3y` | `mb-k9a5` | Closed |
+| Render bounded commit-summary tooltips | `mb-3j4g` | `mb-lk26` | Closed |
+| Audit preview handoff and readiness parity | `mb-b83r` | None | Closed |
+| Share immediate dimmed preview feedback | `mb-2yd5` | `mb-b83r` | Closed |
+| Measure painted readiness for regular file views | `mb-m23h` | `mb-b83r` | Closed |
+| Gate regular file navigation in the performance loop | `mb-wf52` | `mb-2yd5`, `mb-m23h` | Closed |
+| Deduplicate selected and prefetched file requests | `mb-v4qu` | `mb-wf52` | Closed |
+| Validate preview transition parity | `mb-eh0n` | `mb-2yd5`, `mb-m23h`, `mb-wf52`, `mb-v4qu` | Open |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n` and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -447,21 +523,140 @@ server work a single viewport can start.
   themes, and unchanged row selection and revision-copy behavior.
   `make format` and `make verify` pass.
 
-### Phase 12: Deliver and Monitor (`mb-j8ni`)
+### Phase 12: Audit Preview Handoff and Readiness (`mb-b83r`)
+
+- **Files and functions:** Inspect `claimPreview`, `selectFile`, `renderFile`,
+  `mountPluginView`, and the shell preview bridge in `static/app.js`; `selectCommit`,
+  `renderCommitDetail`, and `mountCommitDiff` in `static/git-panel.js`; and the renderer
+  lifecycle in `docs/plugins.md`. Record the result in this plan and the bead graph.
+- **Behavior and invariants:** Git owns a complete commit-comparison surface and may
+  stage it detached before one atomic replacement.
+  Ordinary plugin views mount in a connected preview and may depend on live layout or
+  complete asynchronous work after their direct return.
+  Both paths need claim-owned pending state and painted readiness, but neither path
+  changes ownership merely to resemble the other.
+- **Acceptance:** The plan names exact lifecycle seams, current measurement gaps, common
+  vocabulary, and deliberate differences.
+  The implementation graph contains no generic off-DOM adapter, speculative cache,
+  compatibility branch, or duplicate bead.
+  `tbd sync` succeeds.
+
+### Phase 13: Share Immediate Dimmed Feedback (`mb-2yd5`)
+
+- **Files and functions:** Add `beginPreviewNavigation` and `endPreviewNavigation`
+  beside `claimPreview`, `renderPreviewHtml`, and `renderPreviewNode` in
+  `static/app.js`; expose the lifecycle through `MetabrowserShell` in
+  `static/types.d.ts`; use it from `selectFile` and `selectCommit`; replace the Git-only
+  pending modifier with one shared rule in `static/styles.css`. Update focused shell and
+  Git DOM tests, `docs/design-system.md`, and `CHANGELOG.md`.
+- **Behavior and invariants:** Selecting from useful retained content immediately dims
+  the preview by one small tokenized opacity step and sets `aria-busy="true"`. The state
+  retains geometry, does not block interaction, has no progress bar or minimum duration,
+  and clears only for its owning preview claim after success, error, replacement,
+  cancellation, or tab ownership change.
+  Empty initial loads keep the delayed neutral spinner.
+  Reduced motion disables the transition while preserving the state change.
+- **Acceptance:** Focused tests fail before and pass after for file and Git selection,
+  rapid replacement, stale cleanup, errors, and initial empty loads.
+  One class and shell lifecycle own both paths.
+  Visible checks cover both themes and reduced motion without a blank frame or stuck dim
+  state.
+
+### Phase 14: Measure Regular-File Painted Readiness (`mb-m23h`)
+
+- **Files and functions:** Make `measureNextPaint`, `selectFile`,
+  `renderFileWithPlugins`, `renderFile`, and `mountPluginView` in `static/app.js` expose
+  one awaitable active-view boundary.
+  Define an optional renderer-instance `ready` promise in `static/types.d.ts` and
+  `docs/plugins.md`. Add it to the built-in Markdown and folder renderers only where
+  their direct return currently precedes a concrete initial asynchronous pass.
+  Update lifecycle, type, and loading-delay tests.
+- **Behavior and invariants:** File selection measures response-envelope decode,
+  selected-kind assets, connected active-view mount, optional instance readiness, and
+  selection-to-double-frame painted readiness.
+  Awaiting an active mount preserves idempotent disposal, cleans up late handles, and
+  cannot let stale work regain preview ownership.
+  Synchronous views remain immediate, existing plugins need not expose `ready`, inactive
+  tabs stay lazy, and arbitrary renderers remain connected.
+- **Acceptance:** Focused tests prove selection cannot report useful-ready before a
+  direct async render or declared `ready` pass settles; synchronous and rejected paths
+  remain correct; stale and disposed mounts cannot leak a handle or mutate the active
+  surface; production labels use bounded path, kind, and view metadata.
+
+### Phase 15: Gate Regular-File Navigation (`mb-wf52`)
+
+- **Files and functions:** Add trusted file-row dispatch, exact file/view convergence,
+  retained-preview monitoring, transition measurement, validation, and
+  `runFileViewScenario` to `explorations/performance-loop/capture-browser.js`. Expose
+  `--scenario file-views` through `run.py`. Update the pure capture tests, performance
+  loop guide, and `docs/web-performance-framework.md`.
+- **Behavior and invariants:** The headed scenario warms a regular source view, visits
+  cold source and Markdown views, and revisits a cached subject through trusted input.
+  It records exact selected path, route, active view, and painted content; blank frames;
+  pending onset and clearance; total, server, decode, assets, mount, ready, and paint
+  phases; payload; Long Tasks; Long Animation Frames; exceptions; and mounted ownership.
+  It fails on stale convergence, a blank retained surface, stuck pending state, missing
+  attribution, duplicate active mounts, or an uncaught exception.
+- **Acceptance:** Pure contract and validator tests fail before and pass after.
+  A fixed-corpus headed run emits the new schema, exercises both cold and cached paths,
+  and separates server, transfer/decode, assets, mount/readiness, and paint cost without
+  changing the initial-load or Git scenario schemas.
+
+### Phase 16: Deduplicate Selected and Prefetched File Requests (`mb-v4qu`)
+
+- **Files and functions:** Reconcile `hoverPrefetchTimer`, `hoverPrefetchPath`,
+  `hoverPrefetchController`, `startHoverPrefetch`, `abortHoverPrefetch`, and
+  `selectFile` through one join-or-cancel helper in `static/app.js`. Add the exact
+  matching-request gate to `measureFileTransition` and `assertFileTransitionHealth` in
+  the performance driver.
+  Update focused navigation and scenario tests, this plan, and `CHANGELOG.md`.
+- **Behavior and invariants:** A selection cancels a matching hover timer that has not
+  started, joins a matching prefetch already in flight, and aborts unrelated speculative
+  work. After a joined success it renders from the populated cache; after a failed
+  prefetch it issues one selected request.
+  A stale selection cannot regain route or preview ownership.
+  Cold transitions issue at most one matching `/api/file` request; cached revisits issue
+  none.
+- **Acceptance:** The scenario fails against the measured two-request race.
+  Focused tests prove the timer, in-flight, unrelated, failure, and stale-selection
+  paths. A headed fixed-corpus rerun records one request for each cold source and
+  Markdown transition, zero for the cached revisit, zero blank frames, exact
+  convergence, and no page exception.
+
+### Phase 17: Validate Parity and Choose Measured Follow-ups (`mb-eh0n`)
+
+- **Files and functions:** Reconcile focused lifecycle tests, both headed scenarios,
+  this plan, `docs/design-system.md`, `docs/plugins.md`,
+  `docs/web-performance-framework.md`, the performance-loop guide, `CHANGELOG.md`, and
+  the pull request metadata.
+- **Behavior and invariants:** Validate cached, cold, error, and rapid-replacement paths
+  for ordinary source, Markdown, direct diff documents, and commit comparisons.
+  Cover both themes and reduced motion.
+  Require exact route, selection, rendered subject, active-view, pending-state, and
+  mount convergence with continuous useful content.
+  Compare phase attribution before proposing prefetch, caching, or another optimization;
+  track any evidence-backed follow-up in a separate bead.
+- **Acceptance:** Focused tests, `make format`, and `make verify` pass.
+  Both headed scenarios pass against the exact commit.
+  Documentation describes the shared user contract and the deliberate
+  connected-versus-detached lifecycle difference, and the PR validation plan gives a
+  zero-context reviewer the evidence needed to reproduce it.
+
+### Phase 18: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
   review channel for every finding disposition.
   This phase makes no product-code change unless review or CI finds a defect.
-- **Behavior and invariants:** The exact pushed head receives another headed Git
-  scenario run. Formal reviews, inline comments, general comments, linked issues,
+- **Behavior and invariants:** The exact pushed head receives both headed navigation
+  scenario runs. Formal reviews, inline comments, general comments, linked issues,
   in-repository review documents, and required CI are all audited.
   The performance follow-up remains stacked on the syntax follow-up for a focused diff;
   after the base lands, retarget the performance PR to `main` without losing its
   implementation commits.
 - **Acceptance:** Every actionable finding has a fixed, rebutted, or deferred
   disposition, the exact head passes GitHub CI, `make format`, `make verify`, and the
-  real-browser scenario, and the branch is clean and pushed.
+  real-browser scenarios, and the branch is clean and pushed.
   Close `mb-j8ni` and epic `mb-fgcg` only after those conditions hold, then run
   `tbd sync`.
 
@@ -490,33 +685,67 @@ See
 [exp-018](../../../../explorations/performance-loop/experiments/exp-018-git-revisions-swap-without-blanking.md)
 for the complete record and caveats.
 
+The first headed `file-views` validation on a settled fixed project corpus found a real
+prefetch interaction defect: cold source selection issued two identical `/api/file`
+requests. The selected request ran for about 454 ms; the 250 ms row-hover timer then
+started a duplicate that ran for about 208 ms, and both completed together.
+This is a single diagnostic reproduction, not a comparative speed claim.
+
+After selection began canceling an unstarted matching timer or joining matching
+in-flight work, the same fixed-corpus gate recorded:
+
+| Transition | Total | Matching File Requests | Blank Frames | Pending Onset / Clear |
+| --- | ---: | ---: | ---: | ---: |
+| Cold source | 104.5 ms | 1 | 0 | 35.6 / 99.6 ms |
+| Cold Markdown | 87.2 ms | 1 | 0 | 16.5 / 86.6 ms |
+| Cached source | 84.8 ms | 0 | 0 | 22.7 / 82.4 ms |
+
+Every transition converged on the exact selected row, route, rendered path, active view,
+and one mounted plugin container, with `aria-busy` and the shared pending state cleared
+and zero page exceptions.
+The profiler recorded envelope decoding, selected-kind assets, active-view readiness,
+and painted readiness separately.
+These one-run values validate the scenario and the request-count fix; any broader
+performance claim still requires interleaved repeated captures.
+
 ## Testing Strategy
 
+The shell and plugin lifecycle suites pin preview-claim ownership, immediate shared
+pending state, direct and instance-declared async readiness, stale late-handle cleanup,
+exact disposal, and the double-frame ready boundary.
 The fake-DOM Git panel suite pins request sharing, ordering, stale-operation behavior,
-preview continuity, accessibility state, retained-work cancellation, exact disposal,
-commit-header ordering, compact tooltip projection and lifecycle, and the full revision
-copy payload. Diff plugin tests verify that prepared and fetched documents follow the
-same validation and mount path and that only direct diff documents retain the toolbar
-summary. Copy delegate and static design tests pin clipboard feedback, tokenized
-transitions, and reduced-motion behavior.
+preview continuity, accessibility state, retained-work cancellation, commit-header
+ordering, compact tooltip projection and lifecycle, and the full revision copy payload.
+Diff plugin tests verify that prepared and fetched documents follow the same validation
+and mount path and that only direct diff documents retain the toolbar summary.
+Copy delegate and static design tests pin clipboard feedback, tokenized transitions, and
+reduced-motion behavior.
 
-The CDP scenario provides end-to-end evidence on the repository itself.
-Its large-comparison phase fails on deferred-request fanout, missing cancellation,
-obsolete successful completions, selection/route/render divergence, or multiple mounted
-comparisons. Manual real-browser validation covers fast repeated pointer and keyboard
-navigation, error recovery, direct commit routes, large and small comparisons, fold
-controls, split and unified layouts, theme contrast, and absence of flicker.
+The two CDP scenarios provide separate end-to-end evidence for Git and regular-file
+navigation on the repository itself.
+The Git scenario’s large-comparison phase fails on deferred-request fanout, missing
+cancellation, obsolete successful completions, selection/route/render divergence, or
+multiple mounted comparisons.
+The file scenario fails on blank retained content, route/path/view divergence, stuck
+pending state, missing painted-readiness attribution, or duplicate active mounts.
+Manual real-browser validation covers fast repeated pointer and keyboard navigation,
+cached and cold source and Markdown files, error recovery, direct commit routes, large
+and small comparisons, fold controls, split and unified layouts, both themes, reduced
+motion, and absence of flicker.
 
 ## Rollout Plan
 
-The shell and built-in plugin ship as one artifact.
-Land the complete client, plugin, scenario, tests, experiment, and documentation change
+The shell and built-in plugins ship as one artifact.
+Land the complete client, plugin, scenarios, tests, experiment, and documentation change
 together. No feature flag or data migration is required.
+The optional renderer-instance readiness promise is additive and does not require a
+compatibility layer.
 
 ## Open Questions
 
-None. Further server caching or adjacent-row background prefetching requires a separate
-measurement showing that the bounded selected-and-intent path is insufficient.
+None. Further server caching, adjacent-row background prefetching, file prefetching, or
+another paint optimization requires repeated phase attribution and a separate bead that
+names the measured bottleneck.
 
 ## References
 

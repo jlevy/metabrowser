@@ -103,6 +103,8 @@ type KpressRenderPayload = {
 
 type DisposableHandle = {
   dispose?: () => void;
+  /** Initial useful content is ready; later progressive work stays outside this boundary. */
+  ready?: Promise<void>;
 };
 
 type MetabrowserRequestErrorRuntime = Readonly<{
@@ -1547,7 +1549,9 @@ declare global {
    */
   type MetabrowserShellRuntime = {
     activateNavPanel(panelId: string): void;
+    beginPreviewNavigation(claim: MetabrowserPreviewClaim): boolean;
     claimPreview(owner: string): MetabrowserPreviewClaim;
+    endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
     isPreviewClaimCurrent(claim: MetabrowserPreviewClaim): boolean;
     registerNavPanel(panel: MetabrowserNavPanel): void;
     removeNavPanel(panelId: string): void;

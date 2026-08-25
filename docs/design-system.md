@@ -1679,21 +1679,30 @@ utility, whose length is `--loading-state-delay` in `styles.css`. The placeholde
 reserves its final layout immediately but stays invisible long enough for synchronous
 work and fast local requests to replace it before paint.
 
-**Nothing announces loading inside the quiet period.** This holds at every grain, not
-only for view- and panel-level placeholders: a subtree expanding under the cursor is
+**Loading chrome does not appear inside the quiet period.** This holds at every grain,
+not only for view- and panel-level placeholders: a subtree expanding under the cursor is
 exactly the case where the request usually beats the eye, and a spinner that appears and
 vanishes reads as a glitch rather than as progress.
 A spinner is the strongest form and has no reason to exist before the quiet period ends;
 below it, the most that may appear is the neutral pulsing block used by the navigation
 tally. Apply the utility rather than adding independent timers at each renderer.
 
-The shell’s own preview swap adds a longer wait on top (`LOADING_INDICATOR_DELAY_MS`),
-keeping the previous file on screen instead of blanking it — a different mechanism for a
-different problem, and not a reason to skip the utility.
+Selection feedback is distinct from loading chrome.
+When file or Git navigation can retain useful preview content, the shell immediately
+adds `.preview-navigation-pending`: the whole preview dims by the small
+`--preview-navigation-pending-opacity` step and becomes `aria-busy` under the current
+preview claim. This acknowledges the action without replacing content, moving geometry,
+blocking interaction, or claiming how long the work will take.
+The state ends at the selected view’s painted-readiness boundary.
+A stale claim cannot clear or retain it.
 
-The shell separately retains the previous preview during a fast file-envelope request.
-Ready content always wins immediately: do not add a minimum spinner duration, crossfade,
-or transition that delays usable content merely to complete an animation.
+An empty initial preview has no useful surface to dim.
+It keeps the longer shell wait (`LOADING_INDICATOR_DELAY_MS`) before installing a
+neutral spinner, which still uses `.mb-delayed-loading`. Ready content always wins
+immediately: do not add a minimum spinner duration, progress bar, crossfade, or
+transition that delays usable content merely to complete an animation.
+Under `prefers-reduced-motion`, the opacity transition is disabled but the immediate
+pending state remains visible.
 
 ### Progress Spinners Stay Neutral
 

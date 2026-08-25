@@ -262,10 +262,39 @@ It also records time to a double-animation-frame ready boundary, frames without 
 commit content, Long Tasks, Long Animation Frames, page exceptions, retained heap, and
 mounted comparison count.
 
+### File View Navigation Scenario
+
+Use the parallel file scenario to measure ordinary connected plugin views rather than
+commit comparisons:
+
+```shell
+$UV explorations/performance-loop/run.py capture --headed \
+  --scenario file-views --output .bench/file-views.json
+```
+
+The scenario warms one regular source file, then uses trusted tree-row clicks for a cold
+source file, a cold Markdown file, and a cached source revisit.
+Each transition must converge on the exact selected row, navigation target, rendered
+path, active view, and single mounted plugin container.
+The prior useful surface must remain continuously visible; the shared pending modifier
+must appear and clear with `aria-busy`; and the active view must contain useful content
+at a double-animation-frame boundary.
+
+The `file-view-navigation/v1` output separates `/api/file` and plugin requests from
+response decoding, selected-kind assets, active-renderer readiness, and paint.
+It also records pending onset and clearance, blank frames, Long Tasks, Long Animation
+Frames, page exceptions, and retained heap.
+A cold transition may issue at most one matching `/api/file` request, and a cached
+revisit may issue none.
+This gate catches selected requests that race the row-hover prefetch as well as ordinary
+duplicate navigation.
+The fixed corpus must expose one Markdown and two source-like file rows; missing
+coverage is an error.
+
 Scenario output stays under `.bench/` and is summarized in the corresponding experiment.
 It is not accepted by `record`: the initial-load ledger and its budgets use a different
 schema. Run at least three visible-Chrome captures for each condition, alternate
-condition order, and keep the repository and revisions unchanged.
+condition order, and keep the repository and selected subjects unchanged.
 
 ```shell
 uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py serve --files 100000

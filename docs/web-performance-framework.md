@@ -217,6 +217,24 @@ selected state, route, rendered subject, and mounted-owner count to converge.
 Waiting for eventual network idle cannot distinguish a bounded handoff from a request
 storm that merely finished before export.
 
+Statefully navigated views do not need identical renderer lifecycles to use this
+acceptance contract.
+A core-owned comparison may stage a complete detached surface and swap atomically; an
+arbitrary plugin may need a connected container and declare useful readiness only after
+its direct render promise or optional instance readiness promise settles.
+Measure each implementation honestly, but require both to retain useful content, expose
+immediate claim-owned pending feedback, and finish at the exact selected subject’s
+painted boundary.
+
+Exercise prefetch interaction rather than measuring selection in isolation.
+Pointer movement before a trusted click can arm speculative work even when the scenario
+did not intend a prepared transition.
+Record exact subject-matching request counts: a selected request must cancel a pending
+matching timer or join matching in-flight work, cold navigation must not duplicate it,
+and a cached revisit must not reach the data route.
+Treat this as a correctness gate because duplicate work can delay the selected response
+and saturate the same server it is meant to accelerate.
+
 An older release may predate the recorder.
 A measurement-only adapter may supply the current standard observers, provided the
 product code being measured stays exact and the result documents the substitution.

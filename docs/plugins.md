@@ -262,6 +262,7 @@ mb.registerView(kind, viewId, {
   render(container, ctx) {
     // Own the contents of container.
     return {
+      ready: initialRender,
       dispose() {
         // Abort this mount's requests and release retained resources.
       },
@@ -282,6 +283,21 @@ can keep state per mounted view instead of using one module-wide slot.
 `render` may return an instance handle with an idempotent `dispose()` method, directly
 or through a promise.
 Prefer that form when one renderer can have multiple mounts.
+The handle may also expose `ready: Promise<void>` when `render` must return before a
+concrete initial useful-content pass finishes.
+The shell awaits the active view’s direct render promise and optional `ready` promise
+before it records painted readiness and restores a pending preview to full opacity.
+Rejecting either path renders the standard view failure state.
+Resolve `ready` after useful initial content or a handled local error is visible; do not
+include polling, live updates, deferred offscreen work, or other progressive enhancement
+that should continue after the view is usable.
+
+The supplied container is connected to the live preview.
+Renderers may use layout, observers, and focus from that fact; they are not required to
+support detached mounting.
+If navigation disposes the view before its direct or declared readiness settles, the
+shell disposes a late handle and does not let that mount regain ownership.
+Nondefault tabs retain their lazy mounting behavior.
 
 The context contains the served-root-relative `path`, selected `kind`, logical `ext`,
 size, frontmatter, body text where applicable, and the raw `/api/file` envelope.

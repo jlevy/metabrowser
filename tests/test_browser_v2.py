@@ -802,7 +802,8 @@ def test_browser_perf_reports_large_file_render_phases() -> None:
     # renderSourceTab → renderText:source via the text built-in plugin.
     assert "renderText:source" in text_plugin
     assert "renderFile:mount" in app_js
-    assert "renderFile:nextPaint" in app_js
+    assert "fileNavigation:activeView" in app_js
+    assert "fileNavigation:paintReady" in app_js
     assert "highlightCode" in app_js
     assert "no-highlight" in app_js
     assert "loadMoreCurrentText" in app_js
