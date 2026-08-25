@@ -55,6 +55,8 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "main_thread_blocked_pct": 1.2,
         "measurement_valid": True,
         "performance_profile_schema": "web-performance-profile/v1",
+        "page_exceptions": 0,
+        "rendered_preview_errors": 0,
         "reserved_region_shift_px": 0,
         "recorded_at": "2026-08-23T12:00:00+00:00",
         "resource_timing_buffer_full": 0,
@@ -232,6 +234,19 @@ def test_fetch_failures_gate_while_abort_semantics_stay_visible() -> None:
     assert {issue.metric for issue in blocking_issues(failure_issues)} == {"fetch_network_errors"}
     assert {issue.metric for issue in abort_issues} == {"fetch_aborts"}
     assert blocking_issues(abort_issues) == []
+
+
+def test_rendered_errors_and_page_exceptions_are_blocking_failures() -> None:
+    config = load_performance_config(BUDGETS)
+    issues = budget_issues(
+        _valid_run(page_exceptions=8, rendered_preview_errors=1),
+        config,
+    )
+
+    assert {issue.metric for issue in blocking_issues(issues)} == {
+        "page_exceptions",
+        "rendered_preview_errors",
+    }
 
 
 def test_eager_plugin_waterfall_is_a_blocking_budget_failure() -> None:

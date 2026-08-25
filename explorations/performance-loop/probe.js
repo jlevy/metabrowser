@@ -114,6 +114,7 @@
     (r) => /\/api\/tree(\?|$)/.test(r.name) && !r.name.includes("path="),
   );
   const treeSrv = treeEntry?.serverTiming?.find((t) => t.name === "srv");
+  const renderedPreviewErrors = document.querySelectorAll("#preview-pane .preview-error").length;
 
   // Render cost, from the app's own spans: what H11 (patch instead of
   // replace) and H7 (row windowing) would move.
@@ -502,6 +503,7 @@
     plugin_view_nonempty: Array.from(document.querySelectorAll("[data-plugin-view]")).filter(
       (container) => container.childElementCount > 0 || container.textContent?.trim(),
     ).length,
+    rendered_preview_errors: renderedPreviewErrors,
     shell_tools_missing: document.documentElement.dataset.shellToolsReady === "true" ? 0 : 1,
     file_catalog_incomplete:
       window.metabrowser?.fileCatalog?.snapshot?.()?.complete === true ? 0 : 1,

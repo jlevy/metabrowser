@@ -46,7 +46,7 @@ def _run(label: str, **overrides: object) -> dict[str, Any]:
         "files": 100,
         "frame_missing_px": 0,
         "index_status_at_probe": "done",
-        "harness_version": 14,
+        "harness_version": 15,
         "interaction_input_coverage_pct": 90,
         "interaction_inputs": 6,
         "interaction_max_ms": 90,
@@ -63,6 +63,8 @@ def _run(label: str, **overrides: object) -> dict[str, Any]:
         "main_thread_blocked_pct": 1.2,
         "measurement_valid": True,
         "performance_profile_schema": "web-performance-profile/v1",
+        "page_exceptions": 0,
+        "rendered_preview_errors": 0,
         "reserved_region_shift_px": 0,
         "recorded_at": "2026-08-23T12:00:00+00:00",
         "resource_timing_buffer_full": 0,
@@ -122,6 +124,15 @@ def test_port_allocation_outlives_the_original_hundred_run_range(
 
     assert module._next_port() == 8700
     assert checked == ["http://127.0.0.1:8700/"]
+
+
+def test_browser_harness_stops_only_the_server_it_started() -> None:
+    source = RUNNER.read_text(encoding="utf-8")
+
+    assert 'subprocess.run(["pkill"' not in source
+    assert 'subprocess.run(["pgrep"' not in source
+    assert '"server_pid": process.pid' in source
+    assert "_stop_pending_server()" in source
 
 
 def test_browser_profile_can_be_loaded_from_a_file(tmp_path: Any) -> None:
@@ -224,6 +235,15 @@ def test_compare_fails_on_one_candidate_freeze_even_when_other_runs_are_clean() 
     assert _compare(module, [*before, *after]) == 1
 
 
+def test_compare_fails_on_one_candidate_rendered_error() -> None:
+    module = _runner()
+    before = [_run("before") for _index in range(3)]
+    after = [_run("after") for _index in range(3)]
+    after[1]["rendered_preview_errors"] = 1
+
+    assert _compare(module, [*before, *after]) == 1
+
+
 def test_compare_fails_before_three_runs_per_condition() -> None:
     module = _runner()
     runs = [_run("before"), _run("before"), _run("after"), _run("after")]
@@ -238,7 +258,7 @@ def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: A
     module.RESULTS = tmp_path / "runs.jsonl"
     module._walk_facts = lambda _port: {
         "walk_elapsed_ms": 1000,
-        "walk_files": 100,
+        "walk_files": 101,
         "walk_status": "done",
     }
     module.PENDING.write_text(
@@ -276,5 +296,6 @@ def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: A
     )
 
     assert result == 1
-    assert len(module.RESULTS.read_text(encoding="utf-8").splitlines()) == 1
+    recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
+    assert recorded["files"] == 101
     assert "hard performance gate failed" in capsys.readouterr().out

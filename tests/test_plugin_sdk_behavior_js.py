@@ -56,3 +56,4 @@ def test_plugin_sdk_behavior_contracts() -> None:
     assert payload["fileCatalog"]["ok"] is True, payload["fileCatalog"]
     assert payload["completeText"]["ok"] is True, payload["completeText"]
     assert payload["pathText"]["ok"] is True, payload["pathText"]
+    assert payload["sameKindOrder"]["ok"] is True, payload["sameKindOrder"]

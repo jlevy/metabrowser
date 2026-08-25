@@ -258,7 +258,9 @@
 
   async function loadPluginsForKind(kind) {
     const descriptors = _pluginAssetsByKind.get(kind) || [];
-    await Promise.all(descriptors.map(_loadPlugin));
+    for (const descriptor of descriptors) {
+      await _loadPlugin(descriptor);
+    }
   }
 
   global.MetabrowserPluginHost = Object.freeze({

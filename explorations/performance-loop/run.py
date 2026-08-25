@@ -39,12 +39,14 @@ import json
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from statistics import median
@@ -84,6 +86,10 @@ PENDING = HERE / "results" / "pending.json"
 # Bumped when a change to run.py or probe.js makes a number incomparable with
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
+#
+# 15: correctness now includes rendered main-panel error states and uncaught
+# page exceptions observed from navigation through settled profile export. A
+# failed renderer cannot count as a successful paint or performance result.
 #
 # 14: JavaScript transfer and startup attribution classify `.js` URL paths too.
 # A preloaded script has a `link` initiator and its later script tag reuses that
@@ -142,7 +148,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 14
+HARNESS_VERSION = 15
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -230,6 +236,8 @@ METRICS = (
     "fetch_aborts",
     "fetch_http_4xx",
     "fetch_http_5xx",
+    "rendered_preview_errors",
+    "page_exceptions",
     "resource_timing_capacity",
     "resource_timing_buffer_full",
     "script_transfer_kb",
@@ -435,7 +443,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         real = Path(args.tree).expanduser().resolve()
         if not real.is_dir():
             raise SystemExit(f"not a directory: {real}")
-        return _serve_root(args, real, _tree_label(real), args.files)
+        return _serve_root(args, real, _tree_label(real), None)
     corpus = _corpus_dir(args.files)
     if not corpus.is_dir():
         print(f"building corpus ({args.files} files) at {corpus} ...", flush=True)
@@ -457,7 +465,54 @@ def _load_probe_payload(json_text: str, json_file: str) -> Any:
     return json.loads(json_text)
 
 
-def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: int) -> int:
+def _stop_pending_server() -> None:
+    """Stop only the prior server this harness recorded starting."""
+    if not PENDING.is_file():
+        return
+    try:
+        loaded: Any = json.loads(PENDING.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(loaded, dict):
+        return
+    pending = cast("dict[str, Any]", loaded)
+    pid = pending.get("server_pid")
+    port = pending.get("port")
+    executable = pending.get("server_executable")
+    root = pending.get("server_root")
+    if (
+        not isinstance(pid, int)
+        or not isinstance(port, int)
+        or not isinstance(executable, str)
+        or not isinstance(root, str)
+    ):
+        return
+    inspected = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "command="],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    command = inspected.stdout.strip()
+    expected = (executable, root, "--no-open", "--port", str(port))
+    if inspected.returncode != 0 or not all(part in command for part in expected):
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.05)
+    with suppress(ProcessLookupError):
+        os.kill(pid, signal.SIGKILL)
+
+
+def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: int | None) -> int:
     requested_build = args.metab or "metab"
     build: MetabBuild = resolve_metab_build(requested_build)
     provenance = _build_provenance(
@@ -465,14 +520,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
         build_ref=args.build_ref,
         external=bool(args.metab),
     )
-    subprocess.run(["pkill", "-f", "metab .*--no-open --port"], check=False)
-    while (
-        subprocess.run(
-            ["pgrep", "-f", "metab .*--no-open --port"], check=False, capture_output=True
-        ).returncode
-        == 0
-    ):
-        time.sleep(0.05)
+    _stop_pending_server()
 
     port = _next_port()
     PORTS_USED.parent.mkdir(parents=True, exist_ok=True)
@@ -480,9 +528,13 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
         handle.write(f"{port}\n")
     log = HERE / "results" / f"server-{port}.log"
     with log.open("w", encoding="utf-8") as handle:
-        subprocess.Popen(
+        process = subprocess.Popen(
             [str(build.executable), str(root), "--no-open", "--port", str(port)],
-            cwd=REPO,
+            # An immutable external build must not import or discover files
+            # from the candidate checkout merely because the harness lives
+            # there. The served root is already an explicit CLI argument and
+            # is the neutral working directory shared by both conditions.
+            cwd=root if args.metab else REPO,
             stdout=handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,
@@ -514,6 +566,9 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "corpus_shape": _corpus_shape(root),
                 **provenance,
                 "note": args.note,
+                "server_executable": str(build.executable),
+                "server_pid": process.pid,
+                "server_root": str(root),
             },
             indent=2,
             sort_keys=True,
@@ -525,7 +580,8 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     print(f"experiment  {args.exp or '(unset)'}   label {args.label or '(unset)'}")
     print(f"build       {build.version}   ref {provenance['commit']}")
     print(f"port        {port}   (unused, so the browser cache starts empty)")
-    print(f"corpus      {corpus_label}  ({files} files)")
+    count = f"{files} files" if files is not None else "file count recorded from completed walk"
+    print(f"corpus      {corpus_label}  ({count})")
     print(f"url         {url}")
     print()
     print("1. size the browser pane to at least 1280x900, keep it visible, and load that URL cold")
@@ -569,12 +625,13 @@ def cmd_record(args: argparse.Namespace) -> int:
     # The harness owns provenance. Put the browser payload first so pasted JSON
     # cannot replace the commit, corpus, timestamp, or other run identity that
     # `serve` established.
+    walk_facts = _walk_facts(port)
     run: dict[str, Any] = {
         **payload,
         "experiment": pending.get("experiment"),
         "label": label,
         "port": port,
-        "files": pending.get("files"),
+        "files": walk_facts.get("walk_files", pending.get("files")),
         "corpus": pending.get("corpus"),
         "commit": pending.get("commit"),
         "build_version": pending.get("build_version"),
@@ -583,7 +640,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         "harness_version": HARNESS_VERSION,
         "corpus_shape": pending.get("corpus_shape"),
         "note": args.note or pending.get("note", ""),
-        **_walk_facts(port),
+        **walk_facts,
     }
     if not is_server_sample:
         config = load_performance_config(Path(args.budgets))

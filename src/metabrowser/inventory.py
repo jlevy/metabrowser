@@ -117,6 +117,14 @@ _NANOSECONDS_PER_SECOND = 1_000_000_000
 # wide directory without suspending. Yield four times inside each 256-entry
 # delivery batch so request tasks run independently of directory width.
 _WALKER_COOPERATIVE_YIELD_BATCH = 64
+# The first exact v0.7 release comparison found one 928.9 ms tally pass on a
+# 123,658-file corpus and a 291.7 ms unrelated-request delay. At that cold-tail
+# rate, 2,048 entries are about 15 ms of work. A one-microsecond timer-backed
+# pause releases the GIL and prevents the worker from immediately reacquiring
+# it, keeping the request loop independent of the interpreter's ordinary
+# thread-switch interval.
+_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH = 2_048
+_NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
 
 
 # Rollup revisions come from one process-wide sequence rather than a
@@ -599,10 +607,12 @@ class InventoryIndex:
     ) -> NavigationTallies | None:
         """The memoized tallies if they are still current, else None.
 
-        Cheap enough for the event loop: a tuple compare and a clock read, no
-        index pass and no snapshot. That is the point of having it separate --
-        the caller can find out whether it needs to pay O(index) *before*
-        paying the O(index) list copy that feeding the pass requires.
+        Cheap enough for the event loop: a nonblocking lock attempt, a tuple
+        compare, and a clock read, with no index pass or snapshot. Contention is
+        a cache miss rather than a wait because the same lock is held across the
+        O(index) worker pass. That is the point of having this separate: the
+        caller can find out whether it needs to pay O(index) *before* paying the
+        O(index) list copy that feeding the pass requires.
 
         Freshness is by age rather than by revision because during a walk
         ``rollup_revision`` advances on every write -- roughly ninety times a
@@ -624,7 +634,9 @@ class InventoryIndex:
         """
 
         key_presets = tuple((preset_id, tuple(sorted(values))) for preset_id, values in presets)
-        with self._navigation_tally_lock:
+        if not self._navigation_tally_lock.acquire(blocking=False):
+            return None
+        try:
             memo = self._navigation_tally_memo
             if memo is None:
                 return None
@@ -648,6 +660,8 @@ class InventoryIndex:
                 bound = max(min_stale_s, self._navigation_tally_cost_s)
                 if time.monotonic() - self._navigation_tally_at > bound:
                     return None
+        finally:
+            self._navigation_tally_lock.release()
         current_ns = time.time_ns() if now_ns is None else now_ns
         return _with_recency(base, recency_windows, current_ns)
 
@@ -720,7 +734,9 @@ class InventoryIndex:
                 (extensions if normalized.startswith(".") else names).add(normalized)
             preset_counts[preset_id] = [0, 0]
             normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
-        for entry in snapshot:
+        for entry_index, entry in enumerate(snapshot):
+            if entry_index > 0 and entry_index % _NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH == 0:
+                time.sleep(_NAVIGATION_TALLY_COOPERATIVE_YIELD_S)
             if entry.type != "file":
                 continue
             ignored_index = 1 if entry.gitignored else 0

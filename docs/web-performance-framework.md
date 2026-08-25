@@ -74,6 +74,9 @@ The loop refuses a record unless it establishes all of these facts:
   their final state. A scenario is not settled merely because its network and render work
   stopped; a missed initialization event can make an incomplete application look
   unusually fast.
+- Rendered main-panel errors and uncaught page exceptions are counted from navigation
+  through export and required to be zero.
+  An error message is content, but it is not a successful paint milestone.
 - Application fetches are idle, so backend completion cannot end the profile while the
   browser is still consuming its result.
 - The viewport clears the application’s declared floor.
@@ -99,7 +102,7 @@ becomes a good zero.
 | Visual stability | Navigation-time LCP and CLS’s maximum session window, plus adapter-defined movement and repaint counts | Improving first paint by assembling or moving the visible page afterwards, or reporting an all-session shift sum under the CLS name |
 | Rendering and memory | Named-span counts, totals, maxima, first completion, `dom_nodes`, optional natural heap, and controlled post-profile-GC retained heap | Moving work into an unmeasured callback, growing the DOM with the corpus, mistaking garbage-collection timing for retained-state growth, including measurement-only collection in UI timing, or losing early attribution to a ring buffer |
 | Network | Request count, in-flight count at capture, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Ending a profile before client work settles, losing failures from a bounded detail ring, or conflating server work with queueing, payload, and client processing |
-| Backend and correctness | Scan completion, adapter-defined feature readiness and final-state checks, route samples, peak RSS, corpus fingerprint, and semantic API comparison | Buying browser speed with a missing feature, incomplete data, a different answer, or cost moved behind the browser boundary |
+| Backend and correctness | Scan completion, rendered main-panel error count, uncaught page-exception count, adapter-defined feature readiness and final-state checks, route samples, peak RSS, corpus fingerprint, and semantic API comparison | Buying browser speed with a missing feature, incomplete data, a renderer failure, a different answer, or cost moved behind the browser boundary |
 
 The detail rings are intentionally bounded.
 Whole-window counts, totals, maxima, milestones, and per-label aggregates are maintained
@@ -199,6 +202,11 @@ wrong-way metric lacks an accepted explanation.
 An older release may predate the recorder.
 A measurement-only adapter may supply the current standard observers, provided the
 product code being measured stays exact and the result documents the substitution.
+The adapter must preserve the release’s namespace and initialization order: creating a
+current product global before an older SDK loads changes the product under observation.
+Run an installed external build from a neutral working directory rather than the
+candidate checkout, and verify both rendered error state and page exceptions before
+accepting its timing fields.
 That adapter is test instrumentation, not a reason to ship a production compatibility
 layer.
 

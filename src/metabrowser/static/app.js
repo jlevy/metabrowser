@@ -1178,7 +1178,7 @@ function reconcileTreeContainer(container, nextNodes, work) {
   for (var nextIndex = 0; nextIndex < nextVisible.length; nextIndex++) {
     var node = nextVisible[nextIndex];
     work.work_items += 1;
-    applyCellPatch(treeNodeAsEntry(node));
+    applyCellPatch(treeNodeAsEntry(node), false);
     var reconciledRow = container.querySelector(
       `:scope > .tree-item[data-path="${escapePathForSelector(node.path)}"]`,
     );
@@ -5997,6 +5997,11 @@ var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
 var catalogFeedCanStart = false;
+// The startup crawl establishes the navigation baseline. Its snapshot and
+// incremental walker upserts are not user-visible file changes, so newly
+// mounted rows stay neutral until the first terminal inventory event. A
+// completed on-connect snapshot arms the same policy after it has been applied.
+var inventoryChangeHighlightingActive = false;
 
 // Instrumented at the batch, not per entry: wrapping applyCellPatch itself
 // would emit one span per file and charge the measurement more than the work.
@@ -6019,7 +6024,7 @@ function fileStoreApplySnapshotInner(scope, entries) {
   fileStore = new Map();
   for (var i = 0; i < entries.length; i++) {
     fileStore.set(entries[i].path, entries[i]);
-    applyCellPatch(entries[i]);
+    applyCellPatch(entries[i], false);
     _mirrorActiveFromFsEntry(entries[i]);
   }
   window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
@@ -6041,7 +6046,7 @@ function fileStoreApplyChangeInner(ops) {
       fileStore.set(op.entry.path, op.entry);
       // Patch any rendered cell for this path; insert a new row if
       // the parent is rendered + expanded. Idempotent.
-      applyCellPatch(op.entry);
+      applyCellPatch(op.entry, inventoryChangeHighlightingActive);
       _mirrorActiveFromFsEntry(op.entry);
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
@@ -6539,11 +6544,12 @@ function _removeDeferredTreePageEntries(path) {
 // Idempotent: if a row with this data-path already exists in the
 // container, do nothing (the patch path will handle updates).
 //
-// The newly-inserted .tree-item gets a `tree-item-flash-in` class
-// to play the pale-yellow → transparent fade defined in styles.css.
-// The class is auto-removed on `animationend` so subsequent layout
-// (selection, hover) doesn't fight a dangling class.
-function _insertRowSorted(container, entry, options) {
+// After the initial inventory settles, the newly-inserted .tree-item gets a
+// `tree-item-flash-in` class to play the pale-yellow → transparent fade defined
+// in styles.css. Startup rows establish baseline state and stay neutral. The
+// class is auto-removed on `animationend` so subsequent layout (selection,
+// hover) doesn't fight a dangling class.
+function _insertRowSorted(container, entry, options, highlightChange) {
   var safe = escapePathForSelector(entry.path);
   var existing = container.querySelector(`:scope > .tree-item[data-path="${safe}"]`);
   if (existing) {
@@ -6606,7 +6612,7 @@ function _insertRowSorted(container, entry, options) {
     // Only flash the .tree-item itself; the sibling .tree-children
     // for folders is empty on insert (lazy placeholder) and would
     // visually double-flash if we styled it too.
-    if (node.classList?.contains("tree-item")) {
+    if (highlightChange && node.classList?.contains("tree-item")) {
       node.classList.add("tree-item-flash-in");
       node.addEventListener(
         "animationend",
@@ -6671,7 +6677,7 @@ function updateRootAggregatePresentation(entry) {
   }
 }
 
-function applyCellPatch(entry) {
+function applyCellPatch(entry, highlightChange) {
   // The root (path "") is the implicit tree container, never a row. The
   // server includes it in the fs.snapshot for its aggregate totals, but
   // patching it here would fall through to the insert branch (its parent
@@ -6787,7 +6793,7 @@ function applyCellPatch(entry) {
   if (!container) {
     return;
   }
-  _insertRowSorted(container, entry, treeRenderOptionsForElement(panel));
+  _insertRowSorted(container, entry, treeRenderOptionsForElement(panel), highlightChange);
   // A freshly inserted row carries no filter classes yet; without this
   // a new file would show up regardless of the active filter.
   scheduleFilterReapply();
@@ -6974,6 +6980,9 @@ function _createInventoryEventSource() {
     try {
       var data = JSON.parse(e.data);
       fileStoreApplySnapshot(data.scope, data.entries || []);
+      if (data.complete === true) {
+        inventoryChangeHighlightingActive = true;
+      }
       _scheduleRecentRecompute();
       // A fresh snapshot after the first one means the connection
       // was rebuilt and catalog deltas may have been dropped; the
@@ -7007,6 +7016,7 @@ function _createInventoryEventSource() {
       // A capped walk remains incomplete for the root even after that repair.
       if (data.index && data.index.complete === true) {
         quickFileCatalogFeed?.onIndexComplete(data.index.truncated === true);
+        inventoryChangeHighlightingActive = true;
       }
     } catch (_e) {
       /* ignore */

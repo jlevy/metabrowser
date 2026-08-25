@@ -66,7 +66,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
-sdk_version = "0.4"
+sdk_version = "0.5"
 
 [[kind]]
 id = "hello-document"
@@ -119,9 +119,23 @@ The `[plugin]` table supports:
 | `version` | no | Plugin version string. |
 | `sdk_version` | no | Strongly recommended. Omission means the original SDK `0.1`, not the host’s current version. The resolved value must equal `PLUGIN_SDK_VERSION`. |
 | `extra_scripts` | no | Plain JavaScript filenames loaded before `index.js`. |
-| `extra_styles` | no | Plain CSS filenames loaded with the page. |
+| `extra_styles` | no | Plain CSS filenames loaded before the plugin’s selected-kind renderer mounts. |
 
 Extra asset entries may not contain slashes, traversal segments, or a leading dot.
+
+### Plugin Asset Lifecycle
+
+SDK 0.5 loads a plugin when the browser first selects any kind declared by its
+`[[kind]]` or `[[view]]` entries, or when another plugin calls `ensureKindAssets(kind)`.
+Plugin CSS and module side effects therefore do not exist on an unrelated page.
+
+For one plugin, the host loads its automatically detected `styles.css` and every
+`extra_styles` entry in parallel and waits for them to settle.
+It then loads `extra_scripts` sequentially in manifest order and evaluates `index.js`
+last. When several plugins declare the same kind, complete plugin descriptors load
+sequentially in stable discovery order.
+A later plugin therefore wins a duplicate `registerView` key deterministically, matching
+the manifest view registry.
 
 ### Kind Rules
 

@@ -193,6 +193,7 @@ async function devtoolsEndpoint(process, timeoutMs) {
 
 class CdpSession {
   constructor(webSocketUrl) {
+    this.listeners = new Map();
     this.nextId = 1;
     this.pending = new Map();
     this.socket = new WebSocket(webSocketUrl);
@@ -203,6 +204,9 @@ class CdpSession {
     this.socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data));
       if (!message.id) {
+        for (const listener of this.listeners.get(message.method) || []) {
+          listener(message.params || {});
+        }
         return;
       }
       const pending = this.pending.get(message.id);
@@ -239,6 +243,12 @@ class CdpSession {
     });
     this.socket.send(JSON.stringify({ id, method, params }));
     return result;
+  }
+
+  on(method, listener) {
+    const listeners = this.listeners.get(method) || [];
+    listeners.push(listener);
+    this.listeners.set(method, listeners);
   }
 
   close() {
@@ -455,6 +465,10 @@ async function capture(options) {
     const target = await pageTarget(browserEndpoint, "about:blank");
     activateHeadedChrome(executable, options.headed);
     session = new CdpSession(target.webSocketDebuggerUrl);
+    let pageExceptions = 0;
+    session.on("Runtime.exceptionThrown", () => {
+      pageExceptions += 1;
+    });
     await session.send("Page.enable");
     await session.send("Runtime.enable");
     await session.send("Emulation.setDeviceMetricsOverride", {
@@ -512,6 +526,7 @@ async function capture(options) {
       throw new Error("CDP interaction did not reach the page as trusted input");
     }
     assertControlledInputCount(payload.interaction_inputs, inputPulseCount);
+    payload.page_exceptions = pageExceptions;
     // Close the responsiveness profile before forcing collection. Otherwise
     // measurement-only GC extends the profile after the input pulse stops,
     // dilutes its loading-window coverage, and can appear as product blocking.

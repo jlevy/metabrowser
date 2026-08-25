@@ -170,8 +170,8 @@ def test_apply_snapshot_rebuilds_store_before_notifying() -> None:
     fn_block = js[fn_start : fn_start + 900]
     # ``fileStore = new Map()`` must appear before the subscribers call.
     assert fn_block.index("fileStore = new Map()") < fn_block.index("notifyFileStoreSubscribers")
-    assert "applyCellPatch(entries[i])" in fn_block
-    assert fn_block.index("applyCellPatch(entries[i])") < fn_block.index(
+    assert "applyCellPatch(entries[i], false)" in fn_block
+    assert fn_block.index("applyCellPatch(entries[i], false)") < fn_block.index(
         "notifyFileStoreSubscribers"
     )
 
@@ -244,7 +244,7 @@ def test_tree_tooltips_omit_duplicative_name() -> None:
 
 def test_apply_cell_patch_targets_data_path_rows_in_dom() -> None:
     js = _read_app_js()
-    fn_start = js.index("function applyCellPatch(entry)")
+    fn_start = js.index("function applyCellPatch(entry, highlightChange)")
     fn_block = js[fn_start : fn_start + 2500]
     # data-path attribute selector lookup
     assert '.tree-folder[data-path="' in fn_block
@@ -262,7 +262,7 @@ def test_apply_cell_patch_uses_subtree_empty_state_for_empty_class() -> None:
     event payloads."""
 
     js = _read_app_js()
-    fn_start = js.index("function applyCellPatch(entry)")
+    fn_start = js.index("function applyCellPatch(entry, highlightChange)")
     fn_block = js[fn_start : js.index("function _removeRenderedRows(path)")]
     assert 'classList.toggle("tree-item-empty"' in fn_block
     assert 'typeof entry.empty === "boolean"' in fn_block
@@ -279,7 +279,7 @@ def test_apply_cell_patch_syncs_gitignored_class() -> None:
     without a hard reload."""
 
     js = _read_app_js()
-    fn_start = js.index("function applyCellPatch(entry)")
+    fn_start = js.index("function applyCellPatch(entry, highlightChange)")
     fn_block = js[fn_start : js.index("function _removeRenderedRows(path)")]
     assert 'classList.toggle("tree-item-gitignored"' in fn_block
 
@@ -291,7 +291,52 @@ def test_apply_cell_patch_called_from_apply_change_upsert() -> None:
     js = _read_app_js()
     fn_start = js.index("function fileStoreApplyChange(ops)")
     fn_block = js[fn_start : fn_start + 1200]
-    assert "applyCellPatch(op.entry)" in fn_block
+    assert "applyCellPatch(op.entry, inventoryChangeHighlightingActive)" in fn_block
+
+
+def test_initial_inventory_upserts_do_not_flash_until_completion() -> None:
+    """The startup crawl establishes the navigation baseline.
+
+    Snapshot rows and walker changes received before its terminal capability event
+    must not look like user-visible file changes.  Once the first crawl completes,
+    later upserts may use the live-change flash.
+    """
+
+    js = _read_app_js()
+    state_start = js.index("var inventoryChangeHighlightingActive")
+    state_block = js[state_start : state_start + 120]
+    assert "= false" in state_block
+
+    snapshot_start = js.index("function fileStoreApplySnapshotInner(scope, entries)")
+    snapshot_block = js[snapshot_start : snapshot_start + 800]
+    assert "applyCellPatch(entries[i], false)" in snapshot_block
+
+    change_start = js.index("function fileStoreApplyChangeInner(ops)")
+    change_block = js[change_start : change_start + 900]
+    assert "applyCellPatch(op.entry, inventoryChangeHighlightingActive)" in change_block
+
+    source_start = js.index("function _createInventoryEventSource()")
+    source_block = js[source_start : source_start + 5000]
+    snapshot_listener = source_block[
+        source_block.index('addEventListener("fs.snapshot"') : source_block.index(
+            'addEventListener("fs.change"'
+        )
+    ]
+    assert snapshot_listener.index("fileStoreApplySnapshot") < snapshot_listener.index(
+        "inventoryChangeHighlightingActive = true"
+    )
+    capability_listener = source_block[
+        source_block.index('addEventListener("capability.update"') : source_block.index(
+            'addEventListener("fs.resync_required"'
+        )
+    ]
+    assert "data.index.complete === true" in capability_listener
+    assert "inventoryChangeHighlightingActive = true" in capability_listener
+
+    insert_start = js.index("function _insertRowSorted(container, entry, options")
+    insert_block = js[insert_start : insert_start + 3200]
+    flash_add = insert_block.index('node.classList.add("tree-item-flash-in")')
+    assert "if (highlightChange" in insert_block[:flash_add]
 
 
 def test_apply_cell_patch_skips_root_entry() -> None:
@@ -303,7 +348,7 @@ def test_apply_cell_patch_skips_root_entry() -> None:
     yellow like a new file on every (re)connect."""
 
     js = _read_app_js()
-    fn_start = js.index("function applyCellPatch(entry)")
+    fn_start = js.index("function applyCellPatch(entry, highlightChange)")
     # The guard must be the first thing the function does, before the
     # data-path selector that would otherwise match nothing and fall
     # through to insertion.
@@ -324,7 +369,7 @@ def test_root_entry_refreshes_summary_and_tooltip_before_row_guard() -> None:
     assert "pathEl.dataset.tipFiles" in helper_block
     assert "pathEl.dataset.tipSize" in helper_block
 
-    patch_start = js.index("function applyCellPatch(entry)")
+    patch_start = js.index("function applyCellPatch(entry, highlightChange)")
     patch_block = js[patch_start : patch_start + 700]
     assert patch_block.index("updateRootAggregatePresentation(entry)") < patch_block.index("return")
 
@@ -550,7 +595,7 @@ def test_lazy_subtree_reports_failures_without_plain_failed_load() -> None:
 
 def test_inserted_rows_clear_lazy_placeholder() -> None:
     js = _read_app_js()
-    fn_start = js.index("function _insertRowSorted(container, entry, options)")
+    fn_start = js.index("function _insertRowSorted(container, entry, options, highlightChange)")
     fn_block = js[fn_start : fn_start + 1000]
     assert 'querySelectorAll(":scope > .tree-lazy-placeholder")' in fn_block
     assert "el.remove()" in fn_block
@@ -567,7 +612,7 @@ def test_snapshot_entries_already_in_a_deferred_page_stay_deferred() -> None:
     assert "deferred.page.nodes.splice(index, 1)" in helper_block
     assert "_synchronizeDeferredTreePage(deferred.pageId, deferred.page)" in helper_block
 
-    insert_start = js.index("function _insertRowSorted(container, entry, options)")
+    insert_start = js.index("function _insertRowSorted(container, entry, options, highlightChange)")
     insert_block = js[insert_start : insert_start + 900]
     assert "_updateDeferredTreePageEntry(container, entry)" in insert_block
     assert insert_block.index("_updateDeferredTreePageEntry") < insert_block.index(
@@ -853,7 +898,7 @@ def test_apply_cell_patch_handles_every_tree_row_type() -> None:
     selector by entry.type so existing file rows update on touch."""
 
     js = _read_app_js()
-    fn_start = js.index("function applyCellPatch(entry)")
+    fn_start = js.index("function applyCellPatch(entry, highlightChange)")
     fn_block = js[fn_start : fn_start + 3000]
     assert ".tree-folder[data-path=" in fn_block
     assert ".tree-symlink[data-path=" in fn_block
@@ -869,7 +914,7 @@ def test_apply_cell_patch_replaces_a_stale_differently_typed_row() -> None:
     """
 
     js = _read_app_js()
-    fn_start = js.index("function applyCellPatch(entry)")
+    fn_start = js.index("function applyCellPatch(entry, highlightChange)")
     fn_block = js[fn_start : fn_start + 1800]
     assert 'queryHtmlAll(`.tree-item[data-path="${safePath}"]`)' in fn_block
     assert "pathRows.length !== rows.length || removingRow" in fn_block
@@ -890,14 +935,17 @@ def test_apply_cell_patch_inserts_new_rows_under_expanded_parent() -> None:
     js = _read_app_js()
     # Helpers exist:
     assert "function _findChildContainerFor(parentRel, panelEl)" in js
-    assert "function _insertRowSorted(container, entry, options)" in js
+    assert "function _insertRowSorted(container, entry, options, highlightChange)" in js
     assert "function _buildRowHtml(entry, options)" in js
     # applyCellPatch references them when no row exists.
-    fn_start = js.index("function applyCellPatch(entry)")
+    fn_start = js.index("function applyCellPatch(entry, highlightChange)")
     fn_block = js[fn_start : js.index("function _removeRenderedRows(path)")]
     assert "_findChildContainerFor" in fn_block
     assert "_insertRowSorted" in fn_block
-    assert "_insertRowSorted(container, entry, treeRenderOptionsForElement(panel))" in fn_block
+    assert (
+        "_insertRowSorted(container, entry, treeRenderOptionsForElement(panel), highlightChange)"
+        in fn_block
+    )
 
 
 def test_remove_rendered_rows_is_called_from_fs_change_remove_branch() -> None:

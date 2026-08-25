@@ -58,6 +58,24 @@ def test_capture_browser_records_controlled_retained_heap() -> None:
     )
 
 
+def test_capture_browser_counts_uncaught_page_exceptions_from_navigation() -> None:
+    source = CAPTURE.read_text(encoding="utf-8")
+
+    listener = source.index('session.on("Runtime.exceptionThrown"')
+    navigation = source.index('session.send("Page.navigate"')
+    export = source.index("payload.page_exceptions")
+
+    assert listener < navigation < export
+    assert 'await session.send("Runtime.enable")' in source
+
+
+def test_probe_counts_rendered_preview_errors() -> None:
+    source = PROBE.read_text(encoding="utf-8")
+
+    assert 'document.querySelectorAll("#preview-pane .preview-error")' in source
+    assert "rendered_preview_errors:" in source
+
+
 def test_capture_browser_pulses_non_product_input_through_loading() -> None:
     source = CAPTURE.read_text(encoding="utf-8")
 
