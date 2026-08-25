@@ -31,6 +31,7 @@ links to the document that covers each in depth.
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
 - [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
+- [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
 
 ## Research
 
