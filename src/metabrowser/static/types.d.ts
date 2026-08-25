@@ -1552,6 +1552,7 @@ declare global {
     registerNavPanel(panel: MetabrowserNavPanel): void;
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;

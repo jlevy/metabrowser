@@ -43,7 +43,9 @@ mb.registerView("diff", "diff", {
     let payload;
     try {
       payload = revision
-        ? await mb.fetchPluginData("diff", "comparison", { revision })
+        ? await (ctx.raw === undefined
+            ? mb.fetchPluginData("diff", "comparison", { revision })
+            : ctx.raw)
         : await mb.fetchPluginData("diff", "document", { path: ctx.path || "" });
       if (revision && payload && typeof payload === "object") {
         // The document is source-agnostic by design, so the revision

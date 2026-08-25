@@ -22,6 +22,9 @@
   const HISTORY_MAX_ROWS = settings.GIT_HISTORY_MAX_ROWS || 500;
   const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS || 300;
   const DETAIL_CACHE_SIZE = settings.GIT_DETAIL_CACHE_SIZE || 200;
+  // Mirrors the measured file-navigation grace in app.js: fast local work
+  // should swap directly, while slower work gets a quiet pending state.
+  const PENDING_DELAY_MS = 120;
 
   // Distance from the bottom at which the next page is requested. One
   // row height would fetch too late to feel seamless; three viewport
@@ -79,8 +82,25 @@
   let refColors = new Map();
   /** @type {Map<string, MetabrowserGitCommitDetail>} */
   const detailCache = new Map();
+  /** @type {Map<string, Promise<MetabrowserGitCommitDetail | null>>} */
+  const detailInFlight = new Map();
+  /**
+   * @typedef {object} RevisionPreparation
+   * @property {string} revision
+   * @property {Promise<MetabrowserGitCommitDetail | null>} detail
+   * @property {Promise<void>} assets
+   * @property {Promise<unknown> | undefined} comparison
+   * @property {AbortController | null} controller
+   * @property {boolean} speculative
+   */
+  /** @type {RevisionPreparation | null} */
+  let preparationSlot = null;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let hoverTimer = null;
+  /** @type {string | null} */
+  let hoverRevision = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let pendingTimer = null;
   let started = false;
   let refreshing = false;
 
@@ -95,6 +115,32 @@
   /** The plugin SDK, which owns the view registry this panel composes. */
   function sdk() {
     return window.metabrowser;
+  }
+
+  function perf() {
+    return window.metabrowser?.perf;
+  }
+
+  /**
+   * @template T
+   * @param {string} label
+   * @param {() => T} work
+   * @param {Record<string, unknown>} [meta]
+   * @returns {T}
+   */
+  function measure(label, work, meta) {
+    return perf()?.measure?.(label, work, meta) ?? work();
+  }
+
+  /**
+   * @template T
+   * @param {string} label
+   * @param {() => Promise<T>} work
+   * @param {Record<string, unknown>} [meta]
+   * @returns {Promise<T>}
+   */
+  function measureAsync(label, work, meta) {
+    return perf()?.measureAsync?.(label, work, meta) ?? work();
   }
 
   /**
@@ -292,28 +338,123 @@
     if (cached) {
       return cached;
     }
-    try {
-      const response = await apiFetch(`/api/git/commit/${revision}`);
-      if (!response.ok) {
-        return null;
-      }
-      const detail = await response.json();
-      if (!detail?.is_repo) {
-        return null;
-      }
-      // Insertion-ordered eviction: Map preserves insertion order, so
-      // the first key is the oldest entry.
-      if (detailCache.size >= DETAIL_CACHE_SIZE) {
-        const oldest = detailCache.keys().next();
-        if (!oldest.done) {
-          detailCache.delete(oldest.value);
+    const existing = detailInFlight.get(revision);
+    if (existing) {
+      return existing;
+    }
+    const request = measureAsync(
+      "gitRevision:detailData",
+      async () => {
+        try {
+          const response = await apiFetch(`/api/git/commit/${revision}`);
+          if (!response.ok) {
+            return null;
+          }
+          const detail = await response.json();
+          if (!detail?.is_repo) {
+            return null;
+          }
+          // Insertion-ordered eviction: Map preserves insertion order, so
+          // the first key is the oldest entry.
+          if (detailCache.size >= DETAIL_CACHE_SIZE) {
+            const oldest = detailCache.keys().next();
+            if (!oldest.done) {
+              detailCache.delete(oldest.value);
+            }
+          }
+          detailCache.set(revision, detail);
+          return detail;
+        } catch {
+          return null;
         }
+      },
+      { revision },
+    );
+    detailInFlight.set(revision, request);
+    try {
+      return await request;
+    } finally {
+      if (detailInFlight.get(revision) === request) {
+        detailInFlight.delete(revision);
       }
-      detailCache.set(revision, detail);
-      return detail;
-    } catch {
+    }
+  }
+
+  /**
+   * Start the independent diff work for one revision.
+   *
+   * @param {string} revision
+   * @param {AbortController | null} controller
+   */
+  function beginDiffPreparation(revision, controller) {
+    const pluginSdk = sdk();
+    const assets = pluginSdk
+      ? measureAsync("gitRevision:diffAssets", () => pluginSdk.ensureKindAssets("diff"), {
+          revision,
+        })
+      : Promise.resolve();
+    const comparison = pluginSdk?.fetchPluginData
+      ? measureAsync(
+          "gitRevision:comparisonData",
+          () =>
+            pluginSdk.fetchPluginData(
+              "diff",
+              "comparison",
+              { revision },
+              { signal: controller?.signal },
+            ),
+          { revision },
+        )
+      : undefined;
+    // Speculative work may be replaced before the diff view awaits it. Attach
+    // a rejection handler immediately while preserving the original promise
+    // for the view's existing error path.
+    void comparison?.catch(() => {});
+    return { assets, comparison };
+  }
+
+  /**
+   * Prepare at most one revision. Pointer/focus work cannot displace an active
+   * selected revision, while a new selection may replace stale work.
+   *
+   * @param {string} revision
+   * @param {boolean} speculative
+   * @returns {RevisionPreparation | null}
+   */
+  function prepareRevision(revision, speculative) {
+    if (preparationSlot?.revision === revision) {
+      if (!speculative) {
+        preparationSlot.speculative = false;
+      }
+      return preparationSlot;
+    }
+    if (speculative && preparationSlot && !preparationSlot.speculative) {
       return null;
     }
+    preparationSlot?.controller?.abort();
+    const controller = typeof AbortController === "undefined" ? null : new AbortController();
+    const diff = beginDiffPreparation(revision, controller);
+    preparationSlot = {
+      revision,
+      detail: fetchCommitDetail(revision),
+      assets: diff.assets,
+      comparison: diff.comparison,
+      controller,
+      speculative,
+    };
+    return preparationSlot;
+  }
+
+  /** @param {string | null} [revision] */
+  function cancelSpeculativePreparation(revision = null) {
+    if (
+      !preparationSlot?.speculative ||
+      (revision !== null && preparationSlot.revision !== revision)
+    ) {
+      return;
+    }
+    preparationSlot.controller?.abort();
+    preparationSlot = null;
   }
 
   // ── Panel rendering ────────────────────────────────────────
@@ -494,7 +635,11 @@
       }
     });
     element.addEventListener("mouseenter", () => scheduleHover(element, commit.id));
-    element.addEventListener("mouseleave", cancelHover);
+    element.addEventListener("mouseleave", () => cancelHover(commit.id));
+    element.addEventListener("focus", () => {
+      prepareRevision(commit.id, true);
+    });
+    element.addEventListener("blur", () => cancelSpeculativePreparation(commit.id));
     return element;
   }
 
@@ -528,10 +673,13 @@
    */
   function scheduleHover(rowElement, revision) {
     cancelHover();
+    hoverRevision = revision;
+    const preparation = prepareRevision(revision, true);
     // Debounced because the hover is backed by a real request: dragging
-    // the pointer down the graph must not fire one per row.
+    // the pointer down the graph must not show one card per row. Data
+    // preparation begins on intent; only the native tooltip waits.
     hoverTimer = setTimeout(async () => {
-      const detail = await fetchCommitDetail(revision);
+      const detail = await (preparation?.detail ?? fetchCommitDetail(revision));
       if (!detail) {
         return;
       }
@@ -543,11 +691,17 @@
     }, HOVER_DEBOUNCE_MS);
   }
 
-  function cancelHover() {
+  /** @param {string | null} [revision] */
+  function cancelHover(revision = null) {
+    if (revision !== null && hoverRevision !== revision) {
+      return;
+    }
     if (hoverTimer !== null) {
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
+    cancelSpeculativePreparation(revision);
+    hoverRevision = null;
   }
 
   /**
@@ -578,10 +732,29 @@
 
   // ── Commit detail view ─────────────────────────────────────
 
-  /**
-   * @param {string} revision
-   * @returns {Promise<void>}
-   */
+  function clearPendingState() {
+    if (pendingTimer !== null) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+    const preview = document.getElementById("preview-pane");
+    preview?.classList.remove("git-revision-pending");
+    if (preview?.getAttribute("data-git-pending") === "true") {
+      preview.removeAttribute("aria-busy");
+      preview.removeAttribute("data-git-pending");
+    }
+  }
+
+  /** @returns {Promise<void>} */
+  function afterNextPaint() {
+    if (typeof requestAnimationFrame !== "function") {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }
+
   /**
    * @param {string} revision
    * @param {{fromRoute?: boolean}} [options] `fromRoute` when the URL is
@@ -592,54 +765,87 @@
     if (!bridge) {
       return;
     }
-    const previewClaim = bridge.claimPreview("git");
-    // Whatever is on screen goes before the next commit's render starts.
-    disposeCommitDiff();
-    // A commit is a selection like any other, so it owns the URL while
-    // it is shown: /commit/<rev> (Browser URL Grammar). Replacing rather
-    // than pushing matches the tree's skim rule — walking a history list
-    // must not bury the reader's entry point.
-    const routes = window.MetabrowserNavigationRoute;
-    if (routes && !options.fromRoute && typeof window.history?.replaceState === "function") {
-      window.history.replaceState(null, "", routes.commitHref(revision));
-    }
-    state.selectedId = revision;
-    for (const element of document.querySelectorAll(".git-graph-row")) {
-      element.classList.toggle(
-        "selected",
-        element instanceof HTMLElement && element.dataset.revision === revision,
-      );
-    }
+    return measureAsync(
+      "gitRevision:selectToReady",
+      async () => {
+        clearPendingState();
+        const previewClaim = bridge.claimPreview("git");
+        // A commit is a selection like any other, so it owns the URL while
+        // it is shown: /commit/<rev> (Browser URL Grammar). Replacing rather
+        // than pushing matches the tree's skim rule — walking a history list
+        // must not bury the reader's entry point.
+        const routes = window.MetabrowserNavigationRoute;
+        if (routes && !options.fromRoute && typeof window.history?.replaceState === "function") {
+          window.history.replaceState(null, "", routes.commitHref(revision));
+        }
+        state.selectedId = revision;
+        for (const element of document.querySelectorAll(".git-graph-row")) {
+          element.classList.toggle(
+            "selected",
+            element instanceof HTMLElement && element.dataset.revision === revision,
+          );
+        }
 
-    const preview = bridge.renderPreviewHtml(
-      '<div class="loading"><div class="spinner"></div>Loading commit…</div>',
-      previewClaim,
-    );
-    if (!preview) {
-      return;
-    }
+        const preparation = prepareRevision(revision, false);
+        if (!preparation) {
+          return;
+        }
+        pendingTimer = setTimeout(() => {
+          pendingTimer = null;
+          if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
+            return;
+          }
+          const preview = document.getElementById("preview-pane");
+          if (preview?.querySelector(".git-commit-view")) {
+            preview.classList.add("git-revision-pending");
+            preview.setAttribute("aria-busy", "true");
+            preview.setAttribute("data-git-pending", "true");
+          } else {
+            const loading = bridge.renderPreviewHtml(
+              '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+                '<span class="sr-only">Loading commit…</span></div>',
+              previewClaim,
+            );
+            loading?.setAttribute("aria-busy", "true");
+            loading?.setAttribute("data-git-pending", "true");
+          }
+        }, PENDING_DELAY_MS);
 
-    const detail = await fetchCommitDetail(revision);
-    // A different commit or another preview owner won while this request
-    // was in flight.
-    if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
-      return;
-    }
-    if (!detail) {
-      bridge.renderPreviewHtml(
-        '<div class="preview-empty">Could not load this commit.</div>',
-        previewClaim,
-      );
-      return;
-    }
-    renderCommitDetail(detail, previewClaim);
+        const detail = await preparation.detail;
+        // A different commit or another preview owner won while this request
+        // was in flight.
+        if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
+          return;
+        }
+        if (!detail) {
+          clearPendingState();
+          disposeCommitDiff();
+          bridge.renderPreviewHtml(
+            '<div class="preview-empty">Could not load this commit.</div>',
+            previewClaim,
+          );
+          return;
+        }
+        await renderCommitDetail(detail, previewClaim, preparation);
+        if (state.selectedId === revision && bridge.isPreviewClaimCurrent(previewClaim)) {
+          clearPendingState();
+          await afterNextPaint();
+        }
+      },
+      { revision },
+    ).finally(() => {
+      if (preparationSlot?.revision === revision && !preparationSlot.speculative) {
+        preparationSlot = null;
+      }
+    });
   }
 
   /**
    * @param {MetabrowserGitCommitDetail} detail
    * @param {number} [claim]
+   * @param {RevisionPreparation | null} [preparation]
    */
-  function renderCommitDetail(detail, claim) {
+  async function renderCommitDetail(detail, claim, preparation = null) {
     const bridge = shell();
     if (!bridge) {
       return;
@@ -649,7 +855,7 @@
     const stats = detail.stats || {};
     const files = detail.files || [];
 
-    let html = '<div class="git-commit-view">';
+    let html = `<div class="git-commit-view" data-revision="${escapeHtml(commit.id)}">`;
     html += '<div class="git-commit-header">';
     html += `<h1 class="git-commit-subject">${escapeHtml(commit.subject)}</h1>`;
     html += '<div class="git-commit-meta">';
@@ -693,13 +899,38 @@
     html += '<div class="git-commit-diff metabrowser-diff-host"></div>';
     html += "</div>";
 
-    const preview = bridge.renderPreviewHtml(html, previewClaim);
-    if (!preview) {
+    const stage = document.createElement("div");
+    stage.className = "git-commit-stage";
+    measure(
+      "gitRevision:commitMarkup",
+      () => {
+        stage.innerHTML = html;
+      },
+      { revision: commit.id },
+    );
+    const diffPreparation = preparation ?? {
+      ...beginDiffPreparation(commit.id, null),
+    };
+    const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation);
+    if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
+      nextHandle?.dispose?.();
       return;
     }
-    mountCommitDiff(preview, commit.id, previewClaim);
 
-    for (const element of preview.querySelectorAll(".git-commit-file[data-path]")) {
+    wireCommitFileNavigation(stage);
+    const preview = bridge.renderPreviewNode(stage, previewClaim);
+    if (!preview) {
+      nextHandle?.dispose?.();
+      return;
+    }
+    const previousHandle = commitDiffHandle;
+    commitDiffHandle = nextHandle || null;
+    previousHandle?.dispose?.();
+  }
+
+  /** @param {HTMLElement} root */
+  function wireCommitFileNavigation(root) {
+    for (const element of root.querySelectorAll(".git-commit-file[data-path]")) {
       element.addEventListener("click", () => {
         const path = element instanceof HTMLElement ? element.dataset.path : null;
         if (path) {
@@ -717,47 +948,40 @@
    *
    * @param {HTMLElement} preview
    * @param {string} revision
-   * @param {number} claim
+   * @param {{assets: Promise<void>, comparison?: Promise<unknown>}} preparation
+   * @returns {Promise<{dispose?: () => void} | null>}
    */
-  async function mountCommitDiff(preview, revision, claim) {
+  async function mountCommitDiff(preview, revision, preparation) {
     const host = preview.querySelector(".git-commit-diff");
     const bridge = shell();
     if (!(host instanceof HTMLElement) || !bridge) {
-      return;
+      return null;
     }
-    disposeCommitDiff();
     const pluginSdk = sdk();
     if (!pluginSdk) {
       host.remove();
-      return;
+      return null;
     }
     try {
-      await pluginSdk.ensureKindAssets("diff");
-      // Loading the plugin yields to a newer selection, so check the
-      // preview claim before asking the newly registered view to render.
-      if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(claim)) {
-        return;
-      }
+      await preparation.assets;
       const view = pluginSdk.getRegisteredView("diff", "diff");
       if (!view) {
         // The diff plugin is absent: the file list above still stands on
         // its own, so say nothing rather than showing an empty frame.
         host.remove();
-        return;
+        return null;
       }
-      const handle = /** @type {{dispose?: () => void} | null} */ (
-        await view.render(host, { revision })
+      return measureAsync(
+        "gitRevision:diffMount",
+        async () =>
+          /** @type {{dispose?: () => void} | null} */ (
+            await view.render(host, { revision, raw: preparation.comparison })
+          ),
+        { revision },
       );
-      // A different commit or preview owner won while this was in flight.
-      if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(claim)) {
-        handle?.dispose?.();
-        return;
-      }
-      commitDiffHandle = handle || null;
     } catch (_error) {
-      if (state.selectedId === revision && bridge.isPreviewClaimCurrent(claim)) {
-        host.textContent = "Could not load this commit's diff.";
-      }
+      host.textContent = "Could not load this commit's diff.";
+      return null;
     }
   }
 
@@ -830,6 +1054,9 @@
     }
 
     refreshing = true;
+    clearPendingState();
+    preparationSlot?.controller?.abort();
+    preparationSlot = null;
     state = emptyState();
     // The detail cache is keyed by object id, but a commit's *payload*
     // is not immutable: its refs move as branches and tags do. Keeping
@@ -890,6 +1117,11 @@
   }
 
   function teardown() {
+    clearPendingState();
+    cancelHover();
+    preparationSlot?.controller?.abort();
+    preparationSlot = null;
+    disposeCommitDiff();
     state = emptyState();
     detailCache.clear();
     refColors = new Map();
@@ -968,6 +1200,7 @@
       renderPanel,
       renderRefBadges,
       selectCommit,
+      wireCommitFileNavigation,
       setStateForTests: (/** @type {PanelState} */ next) => {
         state = next;
       },

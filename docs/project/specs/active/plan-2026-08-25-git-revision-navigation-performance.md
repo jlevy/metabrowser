@@ -173,7 +173,7 @@ change. No compatibility layer is needed.
   failure, disposal, and reduced motion
 - [x] Add the Git revision scenario and its output validation to the performance loop
 - [x] Capture at least three baseline scenario runs on the unchanged build
-- [ ] Implement revision preparation, prepared diff rendering, performance labels, and
+- [x] Implement revision preparation, prepared diff rendering, performance labels, and
   the atomic visual handoff
 - [ ] Capture at least three candidate scenario runs and record the result as a
   performance experiment

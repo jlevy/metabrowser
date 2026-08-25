@@ -109,6 +109,19 @@ class FakeElement {
   set innerHTML(value) {
     this._html = String(value);
     this.children = [];
+    if (this._html.includes("git-commit-diff")) {
+      const diffHost = new FakeElement("div", this.ownerDocument);
+      diffHost.className = "git-commit-diff";
+      this.appendChild(diffHost);
+    }
+    for (const match of this._html.matchAll(
+      /class="[^"]*git-commit-file[^"]*"[^>]*data-path="([^"]+)"/g,
+    )) {
+      const row = new FakeElement("button", this.ownerDocument);
+      row.className = "git-commit-file";
+      row.dataset.path = match[1];
+      this.appendChild(row);
+    }
   }
   get innerHTML() {
     if (this._html) {
@@ -130,6 +143,9 @@ class FakeElement {
   }
   getAttribute(name) {
     return this.attributes.has(name) ? this.attributes.get(name) : null;
+  }
+  removeAttribute(name) {
+    this.attributes.delete(name);
   }
   appendChild(child) {
     if (child.isFragment) {
@@ -265,6 +281,7 @@ sandbox.document = document;
 sandbox.console = console;
 sandbox.setTimeout = setTimeout;
 sandbox.clearTimeout = clearTimeout;
+sandbox.AbortController = AbortController;
 sandbox.Date = Date;
 sandbox.Number = Number;
 sandbox.Math = Math;
@@ -336,6 +353,13 @@ sandbox.MetabrowserShell = {
     }
     return preview;
   },
+  renderPreviewNode: (node, claim) => {
+    if (claim !== undefined && claim !== previewClaim) {
+      return null;
+    }
+    previewHtml = node.innerHTML;
+    return node;
+  },
   activateNavPanel: () => {},
 };
 
@@ -345,6 +369,9 @@ sandbox.MetabrowserShell = {
 let diffAssetsLoaded = false;
 const ensuredKinds = [];
 const renderedDiffRevisions = [];
+const renderedDiffContexts = [];
+const comparisonFetches = [];
+let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
   ensureKindAssets: async (kind) => {
     ensuredKinds.push(kind);
@@ -357,9 +384,18 @@ sandbox.metabrowser = {
     return {
       render: async (_host, context) => {
         renderedDiffRevisions.push(context.revision);
+        renderedDiffContexts.push(context);
         return { dispose: () => {} };
       },
     };
+  },
+  fetchPluginData: async (plugin, route, params, options) => {
+    comparisonFetches.push({ plugin, route, params, signal: options?.signal });
+    return comparisonResponder(params.revision);
+  },
+  perf: {
+    measure: (_label, fn) => fn(),
+    measureAsync: (_label, fn) => fn(),
   },
 };
 
@@ -400,6 +436,7 @@ const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
 const SHA_C = "c".repeat(40);
 const SHA_D = "d".repeat(40);
+const SHA_E = "e".repeat(40);
 
 function commit(id, parents, subject, refs) {
   return {
@@ -519,7 +556,7 @@ async function run() {
     assertContains("hover: deletions", text, "−4");
   }
   internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });
-  internals.renderCommitDetail({
+  await internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [SHA_B], "a commit", [
       { id: "refs/heads/main", name: "main", kind: "branch", is_head: true },
@@ -543,9 +580,12 @@ async function run() {
   assertContains("detail: mounts the diff host", previewHtml, "git-commit-diff");
   assertEqual("detail: loads fresh diff assets", ensuredKinds, ["diff"]);
   assertEqual("detail: renders after loading diff assets", renderedDiffRevisions, [SHA_A]);
+  assertEqual("detail: prepared comparison reaches the view", await renderedDiffContexts[0].raw, {
+    comparison_id: SHA_A,
+  });
   assertNotContains("detail: no duplicate file list", previewHtml, "2 files changed");
   assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
-  internals.renderCommitDetail({
+  await internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [], "outside commit"),
     body: "",
@@ -561,7 +601,7 @@ async function run() {
   assertContains("detail: names files outside the folder", previewHtml, "outside this folder");
   assertContains("detail: lists the outside file", previewHtml, "outside.js");
   assertNotContains("detail: does not relist inside files", previewHtml, "inside.js");
-  internals.renderCommitDetail({
+  await internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [], "big commit"),
     body: "",
@@ -716,7 +756,9 @@ async function run() {
 
     const container = document.getElementById("tab-git");
     const rows = container.querySelectorAll(".git-graph-row");
+    previewHtml = '<div class="git-commit-view">prior commit</div>';
     rows[0].dispatch("click");
+    assertContains("selection: retains prior content while preparing", previewHtml, "prior commit");
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertContains("selection: renders the clicked commit", previewHtml, "first");
     assertTrue("selection: row is marked", rows[0].classList.contains("selected"));
@@ -770,31 +812,89 @@ async function run() {
     assertNotContains("selection: delayed commit is discarded", previewHtml, "delayed commit");
   }
 
+  // ── Preparation overlaps and reuses pointer intent ─────────
+  {
+    internals.setStateForTests(internals.emptyState());
+    responses.clear();
+    const container = document.getElementById("tab-git");
+    internals.appendPage(
+      [commit(SHA_E, [], "prepared first"), commit(SHA_B, [], "prepared second")],
+      null,
+    );
+    internals.renderPanel();
+    const rows = container.querySelectorAll(".git-graph-row");
+    let resolveDetail;
+    let resolveComparison;
+    responses.set(
+      `/api/git/commit/${SHA_E}`,
+      () =>
+        new Promise((resolve) => {
+          resolveDetail = resolve;
+        }),
+    );
+    comparisonResponder = () =>
+      new Promise((resolve) => {
+        resolveComparison = resolve;
+      });
+    const comparisonsBefore = comparisonFetches.length;
+    const detailsBefore = fetchCount;
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual(
+      "prepare: pointer intent starts one comparison",
+      comparisonFetches.length,
+      comparisonsBefore + 1,
+    );
+
+    const select = internals.selectCommit(SHA_E);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual(
+      "prepare: selection reuses pointer comparison",
+      comparisonFetches.length,
+      comparisonsBefore + 1,
+    );
+    assertEqual(
+      "prepare: selection joins the pointer detail request",
+      fetchCount,
+      detailsBefore + 1,
+    );
+    resolveDetail({
+      is_repo: true,
+      commit: commit(SHA_E, [], "prepared first"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    resolveComparison({ comparison_id: SHA_E });
+    await select;
+    assertContains("prepare: selected commit is eventually shown", previewHtml, "prepared first");
+
+    const slotBefore = comparisonFetches.length;
+    comparisonResponder = async (revision) => ({ comparison_id: revision });
+    rows[0].dispatch("mouseenter");
+    const firstSignal = comparisonFetches[slotBefore].signal;
+    rows[1].dispatch("mouseenter");
+    assertTrue("prepare: newer pointer intent aborts the old slot", firstSignal.aborted);
+    assertEqual(
+      "prepare: one replacement request serves the newer intent",
+      comparisonFetches.length,
+      slotBefore + 2,
+    );
+    rows[1].dispatch("mouseleave");
+  }
+
   // ── Changed files navigate through the shell ───────────────
   {
     openedPaths.length = 0;
-    // renderCommitDetail wires listeners on the element the shell
-    // returns, so drive it through the same path the panel uses.
-    let capturedPreview = null;
-    sandbox.MetabrowserShell.renderPreviewHtml = (html) => {
-      previewHtml = html;
-      const preview = new FakeElement("div", document);
-      const row = new FakeElement("div", document);
-      row.classList.add("git-commit-file");
-      row.dataset.path = "one.js";
-      preview.appendChild(row);
-      capturedPreview = preview;
-      return preview;
-    };
-    internals.renderCommitDetail({
-      is_repo: true,
-      commit: commit(SHA_A, [], "nav"),
-      body: "",
-      stats: { files_changed: 1, additions: 1, deletions: 0 },
-      files: [{ path: "one.js", status: "modified", additions: 1, deletions: 0 }],
-      files_truncated: false,
-    });
-    capturedPreview.querySelectorAll(".git-commit-file[data-path]")[0].dispatch("click");
+    const preview = new FakeElement("div", document);
+    const row = new FakeElement("button", document);
+    row.classList.add("git-commit-file");
+    row.dataset.path = "one.js";
+    preview.appendChild(row);
+    internals.wireCommitFileNavigation(preview);
+    row.dispatch("click");
     assertEqual("navigation: opens through the shell event", openedPaths, ["one.js"]);
   }
   responses.clear();

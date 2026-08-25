@@ -3492,7 +3492,29 @@ function renderPreviewHtml(html, claim) {
     return null;
   }
   disposeActivePluginViews();
+  preview.classList.remove("git-revision-pending");
+  preview.removeAttribute("aria-busy");
+  preview.removeAttribute("data-git-pending");
   preview.innerHTML = html;
+  return preview;
+}
+
+// Install a fully staged core view without reparsing its HTML. Git uses this
+// after its comparison renderer has mounted into a detached tree, so the prior
+// revision remains visible until the replacement is complete.
+function renderPreviewNode(node, claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return null;
+  }
+  const preview = document.getElementById("preview-pane");
+  if (!preview) {
+    return null;
+  }
+  disposeActivePluginViews();
+  preview.classList.remove("git-revision-pending");
+  preview.removeAttribute("aria-busy");
+  preview.removeAttribute("data-git-pending");
+  preview.replaceChildren(node);
   return preview;
 }
 
@@ -3510,6 +3532,7 @@ window.MetabrowserShell = Object.freeze({
   registerNavPanel,
   removeNavPanel,
   renderPreviewHtml,
+  renderPreviewNode,
 });
 
 // Toggle the nav chrome's drop shadow based on whether the

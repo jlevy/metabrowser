@@ -185,3 +185,20 @@ def test_shell_keeps_the_previous_preview_during_fast_fetches() -> None:
     assert select_file.index("loadingIndicatorTimer = setTimeout") < select_file.index(
         "preview.innerHTML"
     )
+
+
+def test_git_commit_staging_has_one_shell_owned_atomic_handoff() -> None:
+    app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    git = (STATIC_ROOT / "git-panel.js").read_text(encoding="utf-8")
+    diff = (PLUGIN_ROOT / "diff" / "index.js").read_text(encoding="utf-8")
+
+    node_seam = app[app.index("function renderPreviewNode") :][:500]
+    assert "disposeActivePluginViews()" in node_seam
+    assert "preview.replaceChildren(node)" in node_seam
+
+    select = git[git.index("async function selectCommit") : git.index("function renderFileRow")]
+    assert "disposeCommitDiff();" not in select[: select.index("await preparation.detail")]
+    assert "prepareRevision(revision, false)" in select
+    assert "renderPreviewNode(stage, previewClaim)" in select
+    assert select.index("beginDiffPreparation") < select.index("renderPreviewNode")
+    assert "ctx.raw === undefined" in diff
