@@ -5,15 +5,25 @@ title: "Monitor PR #74 and FDU #44/#47 alignment through adoption readiness"
 kind: task
 status: in_progress
 priority: 1
-version: 14
+version: 16
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
+refs:
+  - kind: pr
+    url: https://github.com/jlevy/metabrowser/pull/74#issuecomment-5408540376
+    at: 2026-08-25T09:57:20.837Z
+  - kind: pr
+    url: https://github.com/jlevy/fdu/pull/47#pullrequestreview-5017522830
+    at: 2026-08-25T09:57:20.838Z
+  - kind: pr
+    url: https://github.com/jlevy/fdu/pull/44#issuecomment-5408704238
+    at: 2026-08-25T09:57:20.838Z
 labels: []
 dependencies: []
 parent_id: is-01m0r8xt95921dabcddjjm7csf
 child_order_hints:
   - is-01m0vmz928cewndbdk6gnhbgqz
 created_at: 2026-08-24T22:38:51.537Z
-updated_at: 2026-08-25T08:04:44.867Z
+updated_at: 2026-08-25T09:57:20.838Z
 ---
 Recurring alignment owner for MetaBrowser PR #74 and FDU PRs #44 and #47. Each cycle must sync both tbd stores, inspect exact PR heads, CI, issue comments, formal reviews, inline threads, and current FDU implementation beads, then review material FDU deltas against the implemented InventoryHandle contract and performance/adoption gates. Actionable MetaBrowser feedback is addressed through per-finding beads and a disposition map; FDU defects or drift are deduplicated into fdu-u7vo and published on the appropriate FDU PR. Report only material changes and keep monitoring until the three PRs and adoption handoff reach a terminal state.
 
@@ -40,3 +50,7 @@ SEVENTH MONITOR DELTA (2026-08-25). FDU #47 advanced from 7aaaf84 through exact 
 EIGHTH MONITOR DELTA (2026-08-25). MetaBrowser PR #74 advanced from 1e0f9b5 through the origin/main merge at d59ab77 to exact pushed head fdb69a0. The tbd address-pr-review workflow tracked and closed every finding from issuecomments 5406736360 and 5407035634 under mb-awvb and mb-pubb. The implementation now has a thin five-method Python handle, expanded provider conformance registry, independent route page and read-query bounds, typed payloads, immutable provider sessions, joined close, honest READY-versus-WATCHING lifecycle, and durable FDU adapter decisions. Full make verify and protected pre-push gates passed with 1,615 tests and 48 golden scenarios. All five exact-head GitHub checks are green and the PR is open/clean. Disposition: https://github.com/jlevy/metabrowser/pull/74#issuecomment-5407326771. Post-CI sweep found no formal reviews, inline comments, or unresolved threads and no newer unaddressed issue comment.
 
 FDU HANDOFF (2026-08-25). PR #47 remains exact head eaae030897ae2f2fdc8253d0c4de9b085d4813c3, draft/clean with all 19 checks green; PR #44 remains 7f18f208dbd3ccb2002228bb52ae00c5d4ffcabb, open/clean with all 19 checks green. MetaBrowser selected the native-budget option for MB74-D2, added READY for direct fdu Ready mapping, and made atomic refresh plus native flat paging explicit adoption gates. fdu-97dd was raised to P1 and updated with the unblocked decision; fdu-nlhl and fdu-91ru remain the native implementation owners. Handoff: https://github.com/jlevy/fdu/pull/47#issuecomment-5407338134. The hourly monitor prompt now requires complete review-channel sweeps, per-finding beads, originating-channel dispositions, thread resolution, exact-head CI, and a second post-CI sweep.
+
+NINTH MONITOR DELTA (2026-08-25). MetaBrowser PR #74 is exact head 0577bb125c4a607719befa3f213362f5522d5724 atop origin/main 41b7050, open/clean/mergeable with all five checks green. The final scope/complexity audit under mb-d5hm removed 348 net lines, closed or rebutted all S1-S18 findings, and found no unrelated dependency, lock, generated, binary, vendored, or compatibility work. Full disposition: https://github.com/jlevy/metabrowser/pull/74#issuecomment-5408540376. Exact-head post-CI sweep cursor: issuecomment 5408540376; zero formal reviews, inline review comments, or review threads.
+
+FDU #47 advanced from b8ead94 to exact reviewed head d19b0ce4ff5466b16a4baaeae3eafbccc0da6ac6, draft/clean with all 19 checks green. Exact review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5017522830 accepts macOS admission, terminal WatchBatch state, and native bounded multi-path refresh; coherent sub-batches plus terminal receipt supersede the earlier one-commit requirement. Adoption gates remain fdu-91ru and fdu-vfx7, with fdu-vfyw still open for exact identity. Reopened fdu-97dd for strict-cap equivalence and fdu-7sou for watching bounded scope; created fdu-bjhy for three-kind special-object exclusion; expanded fdu-kl7r fixtures. FDU #44 remains exact head 7f18f208dbd3ccb2002228bb52ae00c5d4ffcabb, open/clean with all 19 checks green; design correction https://github.com/jlevy/fdu/pull/44#issuecomment-5408704238. No newer review feedback was present at the exact-head sweep. Monitoring remains useful because #44/#47 and the reopened adoption gates remain open.
