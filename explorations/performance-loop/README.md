@@ -249,8 +249,14 @@ $UV explorations/performance-loop/run.py capture --headed \
 
 The scenario warms the on-demand diff assets, resets the navigation-time profiler, and
 then uses trusted Chrome input for two cold selections and one pointer-prepared
-selection.
-Its `git-revision-navigation/v1` output separates request time reported by the
+selection. It then finds a revision with active and queued deferred files, scrolls that
+comparison, and changes revision while hydration is active.
+The run fails if deferred requests exceed two in flight, old-revision file work succeeds
+after selection, active work is not canceled, row/route/view state diverges, or more
+than one comparison remains mounted.
+The corpus must contain at least four revisions and one revision with three deferred
+files among the first history rows; missing stress coverage is an error, not a skipped
+check. Its `git-revision-navigation/v1` output separates request time reported by the
 server from client data and rendering spans.
 It also records time to a double-animation-frame ready boundary, frames without prior
 commit content, Long Tasks, Long Animation Frames, page exceptions, retained heap, and
@@ -409,9 +415,9 @@ adds no automation package or product dependency.
 | `interaction_inputs`, `interaction_input_first_ms`, `interaction_input_last_ms`, `interaction_input_span_ms`, `interaction_input_coverage_pct`, `interactions`, `interaction_p50_ms`, `interaction_p95_ms`, `interaction_max_ms` | Trusted-input count and loading-window coverage, plus interaction-to-next-paint latency from Event Timing grouped by non-zero `interactionId` | Rejects untouched and single-early-click runs, separates fast inputs below Event Timing’s reporting threshold from missing input, and proves that responsiveness was sampled while later updates arrived. One click’s pointer and click events count once; the profiler retains the exact interaction maximum, while percentiles describe the explicitly reported bounded recent sample |
 | `animation_frame_*`, `forced_style_layout_ms_max`, `worst_animation_frames` | Chromium Long Animation Frame duration, attributed blocking, and bounded script/resource detail | Names the callback and rendering cost behind a Long Task without making an optional signal look universal. Attributed blocking is gated; raw duration remains a target because Chromium can report a long initial navigation frame with zero blocking or work attribution |
 | `label_totals` | Per-span count, total and max, never evicted | Attribution. `longtask` says the thread was blocked; this says by what |
-| `*_samples_seen`, `*_samples_retained`, `labels_overflowed`, `resource_timing_buffer_full` | Retention provenance | Proves bounded detail did not silently become a whole-window claim and refuses incomplete attribution or network totals |
+| `*_samples_seen`, `*_samples_retained`, `labels_overflowed`, `fetch_concurrency_keys_overflowed`, `resource_timing_buffer_full` | Retention provenance | Proves bounded detail did not silently become a whole-window claim and refuses incomplete attribution or network totals |
 | `fetch_network_errors`, `fetch_aborts`, `fetch_http_4xx`, `fetch_http_5xx` | Exact whole-window fetch outcomes outside the detail ring | Keeps a failed click from looking like a merely slow one. Rejected non-abort requests and 5xx responses are hard gates; cancellation and expected-not-found semantics remain visible targets |
-| `fetches_in_flight` | Application fetches still unresolved when the profile was taken | Prevents a faster server-completion marker from cutting the browser measurement off while delivery work is still running |
+| `fetches_in_flight`, `fetches_in_flight_max`, `fetches_in_flight_max_by_key` | Application fetches unresolved at capture, the measurement-window maximum, and maxima grouped by request class | Prevents a faster server-completion marker from cutting the browser measurement off, and exposes request fanout even when every request eventually settles |
 | `script_transfer_kb`, `style_transfer_kb`, `image_transfer_kb`, `api_transfer_kb`, `largest_resource_kb` | Transfer split by requested resource path; Resource Timing classifies preloaded JavaScript as a `link` initiator and its later script tag reuses that response | Makes an asset or API trade visible without omitting the preloaded shell or charging it to CSS |
 | `startup_script_requests`, `startup_script_transfer_kb`, `startup_script_last_response_ms`, `startup_script_duration_max_ms`, `startup_scripts_slowest`, `startup_scripts_latest` | Count, transfer, tail, worst duration, and bounded path-only attribution for non-vendor scripts started before `DOMContentLoaded`; attributed rows split response wait, server work, and download time | Catches an eager plugin or feature tier added to every page even when noisy paint timings obscure the waterfall, and distinguishes handler work from queueing or transfer |
 | `shell_tools_missing`, `file_catalog_incomplete`, `plugin_view_containers`, `plugin_view_nonempty` | Application-adapter readiness, final data authority, and selected-view facts after settle | Prevents an asset-tier improvement from passing by silently losing deferred controls, stopping at a partial search catalog, or omitting the requested renderer |

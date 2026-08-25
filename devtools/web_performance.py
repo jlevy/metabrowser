@@ -43,6 +43,7 @@ class PerformanceRequirements:
     minimum_interaction_inputs: int
     minimum_interaction_coverage_pct: float
     require_no_label_overflow: bool
+    require_no_fetch_concurrency_overflow: bool
     require_no_resource_overflow: bool
     required_observers: tuple[str, ...]
     required_fields: tuple[str, ...]
@@ -150,6 +151,9 @@ def load_performance_config(path: Path) -> PerformanceConfig:
         minimum_interaction_inputs=minimum_interaction_inputs,
         minimum_interaction_coverage_pct=float(minimum_interaction_coverage_pct),
         require_no_label_overflow=bool(requirements_raw.get("require_no_label_overflow", True)),
+        require_no_fetch_concurrency_overflow=bool(
+            requirements_raw.get("require_no_fetch_concurrency_overflow", True)
+        ),
         require_no_resource_overflow=bool(
             requirements_raw.get("require_no_resource_overflow", True)
         ),
@@ -309,6 +313,27 @@ def validity_issues(payload: dict[str, Any], config: PerformanceConfig) -> list[
                     code="attribution-overflow",
                     message=(
                         "span-label capacity overflowed, so whole-window attribution is incomplete"
+                    ),
+                )
+            )
+    if required.require_no_fetch_concurrency_overflow:
+        fetch_concurrency_overflow = _number(payload.get("fetch_concurrency_keys_overflowed"))
+        if fetch_concurrency_overflow is None:
+            issues.append(
+                PerformanceIssue(
+                    kind="invalid",
+                    code="fetch-concurrency-retention-missing",
+                    message="request-class concurrency retention provenance is missing",
+                )
+            )
+        elif fetch_concurrency_overflow != 0:
+            issues.append(
+                PerformanceIssue(
+                    kind="invalid",
+                    code="fetch-concurrency-retention-overflow",
+                    message=(
+                        "request-class concurrency capacity overflowed, so fanout "
+                        "attribution is incomplete"
                     ),
                 )
             )

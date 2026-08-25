@@ -66,6 +66,9 @@ Browser:
   Selecting another revision cancels queued and active work while retaining the rendered
   handoff surface, so obsolete per-file requests cannot leave the navigation selection
   ahead of the visible diff.
+  The standard headed Git scenario now exercises that boundary on a deferred comparison
+  and fails on request fanout, missing cancellation, obsolete successful requests,
+  divergent row/route/view state, or multiple mounted comparisons.
 
 - Git history now follows the file tree’s navigational-row keyboard contract.
   The row set contributes one Tab stop; unmodified Arrow Up and Arrow Down focus and

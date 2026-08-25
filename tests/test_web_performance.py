@@ -34,6 +34,9 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "fetch_http_5xx": 0,
         "fetch_network_errors": 0,
         "fetches_in_flight": 0,
+        "fetches_in_flight_max": 2,
+        "fetches_in_flight_max_by_key": {"/api/tree": 2},
+        "fetch_concurrency_keys_overflowed": 0,
         "file_catalog_incomplete": 0,
         "first_row_ms": 300,
         "files": 100,
@@ -204,6 +207,24 @@ def test_missing_retention_provenance_invalidates_the_record() -> None:
     codes = {issue.code for issue in validity_issues(payload, config)}
 
     assert "attribution-retention-missing" in codes
+
+
+def test_fetch_concurrency_attribution_must_be_complete() -> None:
+    config = load_performance_config(BUDGETS)
+    missing = _valid_run()
+    del missing["fetch_concurrency_keys_overflowed"]
+
+    missing_codes = {issue.code for issue in validity_issues(missing, config)}
+    overflow_codes = {
+        issue.code
+        for issue in validity_issues(
+            _valid_run(fetch_concurrency_keys_overflowed=1),
+            config,
+        )
+    }
+
+    assert "fetch-concurrency-retention-missing" in missing_codes
+    assert "fetch-concurrency-retention-overflow" in overflow_codes
 
 
 def test_missing_run_provenance_invalidates_the_record() -> None:

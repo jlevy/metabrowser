@@ -9,6 +9,7 @@ require_interactions = true
 minimum_interaction_inputs = 5
 minimum_interaction_coverage_pct = 80
 require_no_label_overflow = true
+require_no_fetch_concurrency_overflow = true
 require_no_resource_overflow = true
 required_observers = ["longtask", "event"]
 required_fields = [

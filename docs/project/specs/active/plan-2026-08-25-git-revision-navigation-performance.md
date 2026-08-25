@@ -24,6 +24,9 @@ the selected comparison concurrently with commit metadata and plugin assets, and
 bounded intent prefetching.
 It also adds a repeatable real-browser scenario to the existing performance loop so
 server, transfer, client rendering, and paint costs remain separable.
+That scenario includes a large-comparison stress phase so request fanout, obsolete
+completions, and selection/render divergence fail validation instead of remaining
+console-only evidence.
 
 ## Goals
 
@@ -43,6 +46,9 @@ server, transfer, client rendering, and paint costs remain separable.
 - Measure cold and prepared revision transitions in a visible real browser, including
   server time, client data time, mount time, paint readiness, long work, payload size,
   and blank-frame duration
+- Fail the standard Git scenario when deferred hydration exceeds its concurrency bound,
+  an obsolete file request completes after selection, or row, route, and rendered
+  revision diverge
 - Preserve route ownership, rapid-selection correctness, plugin disposal, keyboard and
   pointer behavior, and reduced-motion preferences
 
@@ -143,6 +149,14 @@ Production instrumentation adds revision-scoped measures for:
 - diff-asset readiness
 - comparison-data readiness, including JSON decoding
 - commit markup and diff mounting
+
+The profiler also retains the maximum simultaneous application fetches for the current
+measurement window and per request class.
+Query values are excluded from request-class keys, except that deferred file hydration
+is distinct from its comparison-manifest request.
+The distinction lets the Git scenario enforce the renderer’s two-request hydration bound
+without treating the selected revision’s metadata and manifest requests as deferred
+fanout.
 - selection to the first painted ready frame
 
 The existing fetch recorder supplies request duration to response headers and
@@ -385,7 +399,28 @@ otherwise launch 24 Git comparison requests.
 Two active requests preserve parallel progress if one file is slow while bounding the
 server work a single viewport can start.
 
-### Phase 10: Deliver and Monitor (`mb-j8ni`)
+### Phase 10: Gate Deferred Request Storms (`mb-bb3y`)
+
+- **Files and functions:** Extend the fetch wrapper, `snapshot`, and `reset` in
+  `static/perf.js` with whole-window maximum concurrency and per-request-class maxima.
+  Add a deferred-hydration stress phase and pure health validator to
+  `explorations/performance-loop/capture-browser.js`. Cover the recorder and validator
+  in `tests/dom/perf-behavior.js` and `tests/test_browser_performance_capture.py`;
+  update the performance framework, loop guide, plan, and changelog.
+- **Behavior and invariants:** The headed `git-revisions` scenario finds a revision with
+  at least three deferred files in its real corpus, resets the profiler, scrolls until
+  file hydration is active, and selects an adjacent revision.
+  Deferred requests never exceed two in flight.
+  Active old-revision requests abort; none completes successfully after selection.
+  The selected row, commit route, and rendered revision converge with one mounted
+  comparison. A corpus that cannot exercise deferred and queued work fails the scenario
+  rather than producing a false pass.
+- **Acceptance:** Focused tests fail before and pass after the new signals and
+  validator. A fresh-origin, headed Chrome run exercises a large comparison, records the
+  bounded maximum and cancellation, and exits nonzero when any invariant is violated.
+  `make format` and `make verify` pass.
+
+### Phase 11: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
@@ -439,9 +474,11 @@ Copy delegate and static design tests pin clipboard feedback, tokenized transiti
 reduced-motion behavior.
 
 The CDP scenario provides end-to-end evidence on the repository itself.
-Manual real-browser validation covers fast repeated pointer and keyboard navigation,
-error recovery, direct commit routes, large and small comparisons, fold controls, split
-and unified layouts, theme contrast, and absence of flicker.
+Its large-comparison phase fails on deferred-request fanout, missing cancellation,
+obsolete successful completions, selection/route/render divergence, or multiple mounted
+comparisons. Manual real-browser validation covers fast repeated pointer and keyboard
+navigation, error recovery, direct commit routes, large and small comparisons, fold
+controls, split and unified layouts, theme contrast, and absence of flicker.
 
 ## Rollout Plan
 

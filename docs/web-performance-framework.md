@@ -81,6 +81,7 @@ The loop refuses a record unless it establishes all of these facts:
   browser is still consuming its result.
 - The viewport clears the application’s declared floor.
 - Span-label retention did not overflow.
+- Request-class concurrency attribution did not overflow.
 - The Resource Timing buffer did not fill; truncated network totals are invalid, not
   low.
 - The run carries corpus, build, dirty-tree, harness-version, and timestamp provenance.
@@ -101,7 +102,7 @@ becomes a good zero.
 | Interaction | Trusted-input count, first and last offset, span, loading-window coverage, plus grouped Event Timing interaction count, retained count, percentile scope, p50, p95, and exact maximum | Calling an untouched or single-early-click page responsive, counting one gesture’s several DOM events as several interactions, confusing no slow entry with no input, or reporting a bounded percentile as whole-session evidence |
 | Visual stability | Navigation-time LCP and CLS’s maximum session window, plus adapter-defined movement and repaint counts | Improving first paint by assembling or moving the visible page afterwards, or reporting an all-session shift sum under the CLS name |
 | Rendering and memory | Named-span counts, totals, maxima, first completion, `dom_nodes`, optional natural heap, and controlled post-profile-GC retained heap | Moving work into an unmeasured callback, growing the DOM with the corpus, mistaking garbage-collection timing for retained-state growth, including measurement-only collection in UI timing, or losing early attribution to a ring buffer |
-| Network | Request count, in-flight count at capture, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Ending a profile before client work settles, losing failures from a bounded detail ring, or conflating server work with queueing, payload, and client processing |
+| Network | Request count, in-flight count at capture, whole-window and per-request-class concurrency maxima, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Ending a profile before client work settles, hiding a request storm because it eventually drains, losing failures from a bounded detail ring, or conflating server work with queueing, payload, and client processing |
 | Backend and correctness | Scan completion, rendered main-panel error count, uncaught page-exception count, adapter-defined feature readiness and final-state checks, route samples, peak RSS, corpus fingerprint, and semantic API comparison | Buying browser speed with a missing feature, incomplete data, a renderer failure, a different answer, or cost moved behind the browser boundary |
 
 The detail rings are intentionally bounded.
@@ -209,7 +210,12 @@ Freeze the product build and browsed corpus independently when product commits w
 otherwise change the navigation subjects.
 Use `Server-Timing` for backend work and finite application labels for transfer,
 decoding, mounting, and handoff so a cache or prefetch decision addresses the measured
-layer.
+layer. When navigation retains background work, exercise the cancellation boundary while
+that work is active.
+Record request concurrency by class, reject successful obsolete work, and require
+selected state, route, rendered subject, and mounted-owner count to converge.
+Waiting for eventual network idle cannot distinguish a bounded handoff from a request
+storm that merely finished before export.
 
 An older release may predate the recorder.
 A measurement-only adapter may supply the current standard observers, provided the

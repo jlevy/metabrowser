@@ -18,11 +18,14 @@ const BROWSER_STARTUP_SETTLE_MS = 500;
 const CDP_COMMAND_TIMEOUT_MS = 15_000;
 const CHROME_EXIT_GRACE_MS = 2_000;
 const CLIENT_COMPLETION_SETTLE_MS = 1_000;
+const DEFERRED_CANDIDATE_ROWS = 32;
 const DEVTOOLS_START_TIMEOUT_MS = 15_000;
 const FIRST_ROW_TIMEOUT_MS = 30_000;
 const INPUT_PULSE_INTERVAL_MS = 250;
 const INPUT_SENTINEL_ID = "metabrowser-performance-input-sentinel";
 const INTERACTION_OBSERVER_SETTLE_MS = 100;
+const MAX_DEFERRED_FETCHES_IN_FLIGHT = 2;
+const MIN_DEFERRED_STRESS_FILES = 3;
 const PROFILE_EXPORT_ATTEMPTS = 3;
 const QUIESCENCE_POLL_MS = 100;
 const QUIESCENCE_STABLE_POLLS = 3;
@@ -506,6 +509,170 @@ async function measureGitTransition(session, rowIndex, name, timeoutMs) {
   };
 }
 
+function assertDeferredHydrationHealth(result) {
+  if (!result.candidate_revision) {
+    throw new Error("candidate_revision is required for deferred hydration validation");
+  }
+  if (!result.target_revision) {
+    throw new Error("target_revision is required for deferred hydration validation");
+  }
+  if (!Number.isInteger(result.pending_files) || result.pending_files < MIN_DEFERRED_STRESS_FILES) {
+    throw new Error(
+      `pending_files must exercise active and queued hydration; observed ${result.pending_files}`,
+    );
+  }
+  if (
+    !Number.isInteger(result.max_deferred_fetches_in_flight) ||
+    result.max_deferred_fetches_in_flight > MAX_DEFERRED_FETCHES_IN_FLIGHT
+  ) {
+    throw new Error(
+      "max_deferred_fetches_in_flight exceeded the deferred hydration bound: " +
+        result.max_deferred_fetches_in_flight,
+    );
+  }
+  if (result.fetch_concurrency_keys_overflowed !== 0) {
+    throw new Error(
+      "fetch_concurrency_keys_overflowed must be zero for complete attribution; observed " +
+        result.fetch_concurrency_keys_overflowed,
+    );
+  }
+  if (!Number.isInteger(result.obsolete_successes) || result.obsolete_successes !== 0) {
+    throw new Error(
+      `obsolete_successes must be zero after revision selection; observed ${result.obsolete_successes}`,
+    );
+  }
+  if (!Number.isInteger(result.aborted_requests) || result.aborted_requests < 1) {
+    throw new Error("aborted_requests must prove active retained work was canceled");
+  }
+  if (result.mounted_comparisons !== 1) {
+    throw new Error(`mounted_comparisons must remain one; observed ${result.mounted_comparisons}`);
+  }
+  for (const field of ["selected_revision", "route_revision", "rendered_revision"]) {
+    if (result[field] !== result.target_revision) {
+      throw new Error(
+        `${field} did not converge on ${result.target_revision}; observed ${result[field] || "none"}`,
+      );
+    }
+  }
+}
+
+async function deferredDiffState(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const bodies = Array.from(document.querySelectorAll(".diff-file-body"));
+      const pendingFiles = bodies.filter((body) =>
+        body.children.length === 0 || Boolean(body.querySelector(".diff-progress"))
+      ).length;
+      const snapshot = window.metabrowser.perf.snapshot();
+      return {
+        pendingFiles,
+        progressFiles: document.querySelectorAll(".diff-progress").length,
+        fetchesInFlight: snapshot.fetches_in_flight,
+        maxDeferredFetchesInFlight:
+          snapshot.fetches_in_flight_max_by_key["/api/plugin/diff/comparison?file"] || 0,
+      };
+    })()`,
+  );
+}
+
+async function findDeferredRevision(session, timeoutMs) {
+  const rowCount = await evaluate(session, `document.querySelectorAll(".git-graph-row").length`);
+  const candidateRows = Math.min(rowCount, DEFERRED_CANDIDATE_ROWS);
+  for (let rowIndex = 0; rowIndex < candidateRows; rowIndex += 1) {
+    const row = await gitRow(session, rowIndex);
+    if (!row?.revision) {
+      continue;
+    }
+    await evaluate(session, `window.metabrowser.perf.reset()`);
+    await dispatchTrustedClickForSelector(session, ".git-graph-row", rowIndex);
+    await waitForGitRevision(session, row.revision, timeoutMs);
+    const state = await deferredDiffState(session);
+    if (state.maxDeferredFetchesInFlight > MAX_DEFERRED_FETCHES_IN_FLIGHT) {
+      throw new Error(
+        `Git revision ${row.revision} launched ${state.maxDeferredFetchesInFlight} ` +
+          "simultaneous deferred fetches",
+      );
+    }
+    if (state.pendingFiles >= MIN_DEFERRED_STRESS_FILES) {
+      return { rowCount, rowIndex, revision: row.revision, pendingFiles: state.pendingFiles };
+    }
+    await waitForClientQuiescence(session, timeoutMs);
+  }
+  throw new Error(
+    `Git scenario found no revision with ${MIN_DEFERRED_STRESS_FILES} deferred files ` +
+      `in its first ${candidateRows} rows`,
+  );
+}
+
+async function runDeferredHydrationScenario(session, timeoutMs) {
+  const candidate = await findDeferredRevision(session, timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+  await evaluate(session, `window.metabrowser.perf.reset()`);
+  await evaluate(
+    session,
+    `document.querySelector("#preview-pane")?.scrollTo({
+      top: document.querySelector("#preview-pane")?.scrollHeight || 0,
+      behavior: "instant"
+    })`,
+  );
+  await waitFor(
+    async () => {
+      const state = await deferredDiffState(session);
+      return state.progressFiles > 0 && state.fetchesInFlight > 0 ? state : null;
+    },
+    timeoutMs,
+    "deferred Git file hydration to start",
+  );
+
+  const targetIndex =
+    candidate.rowIndex + 1 < candidate.rowCount ? candidate.rowIndex + 1 : candidate.rowIndex - 1;
+  const target = await gitRow(session, targetIndex);
+  if (!target?.revision) {
+    throw new Error("Git deferred hydration scenario has no adjacent target revision");
+  }
+  const selectedAt = await evaluate(session, `Date.now()`);
+  await dispatchTrustedClickForSelector(session, ".git-graph-row", targetIndex);
+  await waitForGitRevision(session, target.revision, timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+
+  const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const candidateFileFetches = snapshot.raw_fetch.filter((sample) => {
+    const url = new URL(sample.url, "http://localhost");
+    return (
+      url.pathname === "/api/plugin/diff/comparison" &&
+      url.searchParams.get("revision") === candidate.revision &&
+      url.searchParams.has("file")
+    );
+  });
+  const convergence = await evaluate(
+    session,
+    `(() => ({
+      selected: document.querySelector(".git-graph-row.selected")?.dataset.revision || "",
+      rendered: document.querySelector(".git-commit-view")?.dataset.revision || "",
+      route: location.pathname.split("/").pop() || "",
+      mounts: document.querySelectorAll(".git-commit-diff .diff-root").length
+    }))()`,
+  );
+  return {
+    candidate_revision: candidate.revision,
+    target_revision: target.revision,
+    pending_files: candidate.pendingFiles,
+    max_deferred_fetches_in_flight:
+      snapshot.fetches_in_flight_max_by_key["/api/plugin/diff/comparison?file"] || 0,
+    max_application_fetches_in_flight: snapshot.fetches_in_flight_max,
+    fetch_concurrency_keys_overflowed: snapshot.fetch_concurrency_keys_overflowed,
+    obsolete_successes: candidateFileFetches.filter(
+      (sample) => sample.ts >= selectedAt && sample.status >= 200,
+    ).length,
+    aborted_requests: candidateFileFetches.filter((sample) => sample.aborted).length,
+    mounted_comparisons: convergence.mounts,
+    selected_revision: convergence.selected,
+    route_revision: convergence.route,
+    rendered_revision: convergence.rendered,
+  };
+}
+
 async function runGitRevisionScenario(session, timeoutMs) {
   await waitFor(
     () => pointForSelector(session, '.tab-btn[data-tab="git"]'),
@@ -553,6 +720,8 @@ async function runGitRevisionScenario(session, timeoutMs) {
   if (mountedComparisons !== 1) {
     throw new Error(`Git scenario retained ${mountedComparisons} mounted comparisons`);
   }
+  const deferredHydration = await runDeferredHydrationScenario(session, timeoutMs);
+  assertDeferredHydrationHealth(deferredHydration);
   return {
     schema: "git-revision-navigation/v1",
     generated_at: new Date().toISOString(),
@@ -561,6 +730,7 @@ async function runGitRevisionScenario(session, timeoutMs) {
     transitions,
     prefetch_fetches: prefetchFetches,
     mounted_comparisons: mountedComparisons,
+    deferred_hydration: deferredHydration,
     profiler,
   };
 }
@@ -815,6 +985,7 @@ if (require.main === module) {
 
 module.exports = {
   assertControlledInputCount,
+  assertDeferredHydrationHealth,
   capture,
   chromeExecutable,
   dispatchTrustedClickAtPoint,

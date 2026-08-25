@@ -120,6 +120,17 @@ def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> Non
     assert 'command.extend(["--scenario", scenario])' in runner
 
 
+def test_probe_exports_fetch_concurrency_provenance() -> None:
+    source = PROBE.read_text(encoding="utf-8")
+
+    assert "fetches_in_flight_max: perf.fetches_in_flight_max ?? null" in source
+    assert "fetches_in_flight_max_by_key: perf.fetches_in_flight_max_by_key ?? null" in source
+    assert (
+        "fetch_concurrency_keys_overflowed: perf.fetch_concurrency_keys_overflowed ?? null"
+        in source
+    )
+
+
 def test_capture_browser_records_controlled_retained_heap() -> None:
     source = CAPTURE.read_text(encoding="utf-8")
 
@@ -191,6 +202,82 @@ try {{
 
     assert result.returncode == 0, result.stderr
     assert "differs from the controlled CDP pulse count" in result.stdout
+
+
+def test_git_revision_scenario_rejects_deferred_request_storms() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+const healthy = {{
+  candidate_revision: "old",
+  target_revision: "new",
+  pending_files: 3,
+  max_deferred_fetches_in_flight: 2,
+  fetch_concurrency_keys_overflowed: 0,
+  obsolete_successes: 0,
+  aborted_requests: 2,
+  mounted_comparisons: 1,
+  selected_revision: "new",
+  route_revision: "new",
+  rendered_revision: "new"
+}};
+capture.assertDeferredHydrationHealth(healthy);
+for (const [field, value] of [
+  ["candidate_revision", ""],
+  ["target_revision", ""],
+  ["pending_files", 2],
+  ["max_deferred_fetches_in_flight", 3],
+  ["fetch_concurrency_keys_overflowed", 1],
+  ["obsolete_successes", 1],
+  ["aborted_requests", 0],
+  ["mounted_comparisons", 2],
+  ["route_revision", "old"],
+  ["rendered_revision", "old"]
+]) {{
+  try {{
+    capture.assertDeferredHydrationHealth({{...healthy, [field]: value}});
+  }} catch (error) {{
+    process.stdout.write(`${{field}}:${{String(error.message)}}\n`);
+  }}
+}}
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    for field in (
+        "candidate_revision",
+        "target_revision",
+        "pending_files",
+        "max_deferred_fetches_in_flight",
+        "fetch_concurrency_keys_overflowed",
+        "obsolete_successes",
+        "aborted_requests",
+        "mounted_comparisons",
+        "route_revision",
+        "rendered_revision",
+    ):
+        assert f"{field}:" in result.stdout
+
+
+def test_git_revision_scenario_exercises_deferred_hydration() -> None:
+    source = CAPTURE.read_text(encoding="utf-8")
+
+    assert "async function runDeferredHydrationScenario" in source
+    assert 'document.querySelectorAll(".diff-file-body")' in source
+    assert 'document.querySelectorAll(".diff-progress")' in source
+    assert 'fetches_in_flight_max_by_key["/api/plugin/diff/comparison?file"]' in source
+    assert "window.metabrowser.perf.reset()" in source
+    assert "assertDeferredHydrationHealth(deferredHydration)" in source
+    assert "deferred_hydration: deferredHydration" in source
 
 
 def test_probe_freezes_product_responsiveness_before_diagnostic_work() -> None:
