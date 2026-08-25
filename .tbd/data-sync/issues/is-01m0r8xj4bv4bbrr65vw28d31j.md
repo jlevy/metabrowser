@@ -5,7 +5,7 @@ title: Extract and ship the Python inventory reference provider
 kind: epic
 status: closed
 priority: 1
-version: 20
+version: 21
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 labels: []
 dependencies:
@@ -27,8 +27,9 @@ child_order_hints:
   - is-01m0rbqspkv8et5wzmchk9c5mv
   - is-01m0rbqt1448pdt09sadn5xdpa
   - is-01m0rbqtbt3mjghbxhcryzjewp
+  - is-01m0vcsh5mt08cfhzztanzt880
 created_at: 2026-08-23T21:37:38.952Z
-updated_at: 2026-08-24T03:12:25.445Z
+updated_at: 2026-08-25T02:43:04.499Z
 closed_at: 2026-08-24T03:12:25.444Z
 close_reason: Phase 1 is complete. MetaBrowser now ships the behavior-preserving Python reference provider behind the sealed InventoryBackend and InventoryHandle contract, one coordinator and sparse overlay own application state, every production consumer is migrated, the singleton is deleted, provider-aware performance evidence is integrated, make verify and GitHub CI pass, and no fdu dependency is present.
 resolution: null
