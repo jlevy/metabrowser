@@ -19,6 +19,7 @@ import { buildFileSyntaxModel, highlightFileSyntax } from "./diff-syntax.js";
  * @property {(source: string, language: string, options?: {signal?: AbortSignal}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
  * @property {(extension: string) => string} langForExtension
  * @property {NonNullable<MetabrowserPublicSdk["filterControls"]> | undefined} [filterControls]
+ * @property {Pick<MetabrowserPublicSdk["perf"], "measureAsync"> | undefined} [perf]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  */
 
@@ -430,6 +431,20 @@ export function renderFileBody(state, layout) {
 }
 
 /**
+ * Record diff syntax work when the host profiler is present without
+ * making progressive enhancement depend on diagnostics.
+ * @template T
+ * @param {DiffViewApi} api
+ * @param {string} label
+ * @param {() => Promise<T>} work
+ * @param {Record<string, unknown>} metadata
+ * @returns {Promise<T>}
+ */
+function measureSyntax(api, label, work, metadata) {
+  return api.perf ? api.perf.measureAsync(label, work, metadata) : work();
+}
+
+/**
  * Enhance only the text hosts from the current projection. Token data
  * stays on the semantic records for later projections.
  * @param {FileViewState} state
@@ -439,7 +454,34 @@ export function renderFileBody(state, layout) {
  */
 async function enhanceFileSyntax(state, api, signal, isCurrent) {
   try {
-    const enhanced = await highlightFileSyntax(state.syntax, api, signal);
+    const metadata = {
+      hunk_count: state.syntax.hunks.length,
+      input_bytes: state.syntax.inputBytes,
+      lexer_calls: 0,
+    };
+    const measuredApi = {
+      ...api,
+      highlightSyntax: /** @type {DiffViewApi["highlightSyntax"]} */ (
+        (source, language, options) => {
+          metadata.lexer_calls += 1;
+          return measureSyntax(
+            api,
+            "diffSyntax:lexer",
+            () => api.highlightSyntax(source, language, options),
+            {
+              input_bytes: new TextEncoder().encode(source).byteLength,
+              language,
+            },
+          );
+        }
+      ),
+    };
+    const enhanced = await measureSyntax(
+      api,
+      "diffSyntax:file",
+      () => highlightFileSyntax(state.syntax, measuredApi, signal),
+      metadata,
+    );
     if (!enhanced || !isCurrent()) {
       return;
     }

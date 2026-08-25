@@ -228,6 +228,7 @@ async function main() {
   // hosts receive scanner-produced spans. The unified projection uses
   // old-side tokens for deletions and new-side tokens everywhere else.
   let syntaxCalls = 0;
+  const syntaxMeasures = [];
   const syntaxApi = {
     highlightSyntax: async (source) => {
       syntaxCalls += 1;
@@ -236,6 +237,13 @@ async function main() {
     },
     isLargeTextPreview: () => false,
     langForExtension: () => "python",
+    perf: {
+      measureAsync: async (label, work, metadata) => {
+        const result = await work();
+        syntaxMeasures.push({ label, metadata: { ...metadata } });
+        return result;
+      },
+    },
   };
   const highlighted = new FakeElement("div");
   const highlightedHandle = mountDiffView(
@@ -275,6 +283,21 @@ async function main() {
     deletionHost.children.map((span) => span.textContent).join("") === "    return 1",
   );
   check("one old and one new lexer call serve the hunk", syntaxCalls === 2, String(syntaxCalls));
+  const lexerMeasures = syntaxMeasures.filter(({ label }) => label === "diffSyntax:lexer");
+  const fileMeasure = syntaxMeasures.find(({ label }) => label === "diffSyntax:file");
+  check("each lexer call has a measured span", lexerMeasures.length === 2);
+  check(
+    "lexer measurements record language and UTF-8 input",
+    lexerMeasures.every(
+      ({ metadata }) => metadata.language === "python" && Number(metadata.input_bytes) > 0,
+    ),
+  );
+  check(
+    "file measurement records bounded input and calls",
+    fileMeasure?.metadata.lexer_calls === 2 &&
+      fileMeasure.metadata.hunk_count === 1 &&
+      Number(fileMeasure.metadata.input_bytes) > 0,
+  );
   highlightedHandle.dispose();
 
   const unsafeDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
