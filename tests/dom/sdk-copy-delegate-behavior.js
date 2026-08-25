@@ -3,9 +3,10 @@
 // Loads the real SDK into a vm sandbox whose document stub captures the
 // delegated click listener, then drives it with fake DOM nodes: a
 // wrapWithCopy-style button inside a .content-copy-wrap with a <code>
-// child. Asserts clipboard writes, copied-state feedback, rejection
-// handling, and that the delegate never touches a shell copyContent
-// global and ignores buttons without the data-mb-copy marker.
+// child, plus an explicit-value identifier button. Asserts clipboard
+// writes, control-specific copied-state feedback, rejection handling,
+// and that the delegate never touches a shell copyContent global or a
+// button without the data-mb-copy marker.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -76,7 +77,9 @@ if (typeof clickHandler !== "function") {
     const codeNode = { textContent: "visible segment" };
     const copyPayload = { textContent: "print('hi')\n# complete source" };
     const btn = {
-      dataset: { tipText: "Copy content" },
+      dataset: withMarker
+        ? { mbCopy: "wrap", tipText: "Copy content" }
+        : { tipText: "Copy content" },
       classList: {
         add: (c) => classes.add(c),
         remove: (c) => classes.delete(c),
@@ -94,10 +97,25 @@ if (typeof clickHandler !== "function") {
       },
     };
     btn.closest = (sel) => (sel === ".content-copy-wrap" ? wrap : null);
-    const target = {
-      closest: (sel) => (sel === ".content-copy-btn[data-mb-copy]" && withMarker ? btn : null),
-    };
+    const target = { closest: (sel) => (sel === "[data-mb-copy]" && withMarker ? btn : null) };
     return { btn, target };
+  }
+
+  function makeTextButton(text, label) {
+    const classes = new Set();
+    const btn = {
+      dataset: { mbCopy: "text", mbCopyText: text, mbCopyLabel: label, tipText: label },
+      classList: {
+        add: (c) => classes.add(c),
+        remove: (c) => classes.delete(c),
+        has: (c) => classes.has(c),
+      },
+      _classes: classes,
+    };
+    return {
+      btn,
+      target: { closest: (sel) => (sel === "[data-mb-copy]" ? btn : null) },
+    };
   }
 
   // Case 1: marked button prefers an explicit whole-source payload over a
@@ -122,20 +140,42 @@ if (typeof clickHandler !== "function") {
         failures.push("copied state did not reset after the feedback timer");
       }
 
-      // Case 2: rejected clipboard promise reports failure, no copied class.
-      clipboardShouldReject = true;
-      const second = makeButton(true);
-      clickHandler({ target: second.target });
-      return Promise.resolve()
-        .then(() => {})
-        .then(() => {
-          if (second.btn.dataset.tipText !== "Copy failed" || second.btn.classList.has("copied")) {
-            failures.push(`expected rejection feedback, got tip=${second.btn.dataset.tipText}`);
-          }
-        });
+      // Case 2: an explicit-text button copies its exact hidden payload and
+      // restores its control-specific resting label.
+      const direct = makeTextButton("0123456789abcdef", "Copy revision");
+      clickHandler({ target: direct.target });
+      return Promise.resolve().then(() => {
+        if (clipboardWrites[1] !== "0123456789abcdef") {
+          failures.push(`expected explicit text write, got ${JSON.stringify(clipboardWrites)}`);
+        }
+        if (!direct.btn.classList.has("copied") || direct.btn.dataset.tipText !== "Copied!") {
+          failures.push(`expected direct copied feedback, got tip=${direct.btn.dataset.tipText}`);
+        }
+        for (const fn of timers.splice(0)) {
+          fn();
+        }
+        if (direct.btn.classList.has("copied") || direct.btn.dataset.tipText !== "Copy revision") {
+          failures.push("direct copied state did not restore its resting label");
+        }
+
+        // Case 3: rejected clipboard promises report failure without a copied class.
+        clipboardShouldReject = true;
+        const second = makeButton(true);
+        clickHandler({ target: second.target });
+        return Promise.resolve()
+          .then(() => {})
+          .then(() => {
+            if (
+              second.btn.dataset.tipText !== "Copy failed" ||
+              second.btn.classList.has("copied")
+            ) {
+              failures.push(`expected rejection feedback, got tip=${second.btn.dataset.tipText}`);
+            }
+          });
+      });
     })
     .then(() => {
-      // Case 3: unmarked buttons are ignored entirely.
+      // Case 4: unmarked buttons are ignored entirely.
       const third = makeButton(false);
       const before = clipboardWrites.length;
       clickHandler({ target: third.target });

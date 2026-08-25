@@ -1802,30 +1802,39 @@
     container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
   }
 
-  // Delegated click handler for the copy buttons wrapWithCopy emits.
-  // Fully SDK-owned: no reference to shell globals, so the documented
-  // wrapWithCopy behavior cannot change when app.js internals do. Scoped
-  // to buttons carrying data-mb-copy so plugin- or shell-built copy
-  // buttons with their own listeners are never double-handled.
+  // Delegated click handler for copyable content and explicit identifiers.
+  // Fully SDK-owned: no reference to shell globals, so paths, revisions,
+  // and wrapWithCopy surfaces share one clipboard and feedback contract.
   /** @param {Element & {classList?: DOMTokenList, dataset?: DOMStringMap}} btn */
   function _handleCopyClick(btn) {
-    var wrap = typeof btn.closest === "function" ? btn.closest(".content-copy-wrap") : null;
-    if (!wrap) {
-      return;
-    }
-    var code =
-      typeof wrap.querySelector === "function"
-        ? wrap.querySelector("[data-mb-copy-payload]") || wrap.querySelector("code")
-        : null;
-    var text = code ? code.textContent || "" : "";
-    if (!text) {
-      // No <code> child: copy the wrap's text minus the button's label.
-      const nodes = wrap.childNodes || [];
-      for (let ci = 0; ci < nodes.length; ci++) {
-        if (nodes[ci] !== btn) {
-          text += nodes[ci].textContent || "";
+    var mode = btn.dataset?.mbCopy || "";
+    var restingTip = btn.dataset?.mbCopyLabel || "Copy content";
+    var text = "";
+    var wrap = null;
+    var code = null;
+    if (mode === "text") {
+      text = btn.dataset?.mbCopyText || "";
+    } else if (mode === "wrap") {
+      wrap = typeof btn.closest === "function" ? btn.closest(".content-copy-wrap") : null;
+      if (!wrap) {
+        return;
+      }
+      code =
+        typeof wrap.querySelector === "function"
+          ? wrap.querySelector("[data-mb-copy-payload]") || wrap.querySelector("code")
+          : null;
+      text = code ? code.textContent || "" : "";
+      if (!text) {
+        // No <code> child: copy the wrap's text minus the button's label.
+        const nodes = wrap.childNodes || [];
+        for (let ci = 0; ci < nodes.length; ci++) {
+          if (nodes[ci] !== btn) {
+            text += nodes[ci].textContent || "";
+          }
         }
       }
+    } else {
+      return;
     }
     var clipboard = global.navigator?.clipboard;
     if (!clipboard || typeof clipboard.writeText !== "function") {
@@ -1844,7 +1853,7 @@
           btn.classList.remove("copied");
         }
         if (btn.dataset) {
-          btn.dataset.tipText = "Copy content";
+          btn.dataset.tipText = restingTip;
         }
       }, 1500);
     }
@@ -1863,7 +1872,7 @@
         if (!target || typeof target.closest !== "function") {
           return;
         }
-        var btn = target.closest(".content-copy-btn[data-mb-copy]");
+        var btn = target.closest("[data-mb-copy]");
         if (btn) {
           _handleCopyClick(btn);
         }

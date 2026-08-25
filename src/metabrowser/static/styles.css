@@ -4935,6 +4935,31 @@ pre.code-block code.hljs {
   font-family: var(--font-mono);
 }
 
+.git-commit-revision {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text);
+}
+
+.git-commit-revision-copy {
+  --icon-btn-size: 20px;
+}
+
+.git-commit-revision:hover .git-commit-revision-copy,
+.git-commit-revision:focus-within .git-commit-revision-copy {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.git-commit-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
 .git-commit-refs {
   display: flex;
   flex-wrap: wrap;

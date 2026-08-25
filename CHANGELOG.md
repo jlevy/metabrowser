@@ -66,6 +66,15 @@ Browser:
   open the adjacent commit, allow key repeat, and clamp without reopening at either
   edge.
 
+- Git commit details now place changed-file, addition, and deletion totals beside the
+  revision, author, and age above the commit description.
+  The hosted comparison keeps its layout control without repeating that aggregate
+  summary.
+
+- Git commit details now present the short revision as a path-like identifier with a
+  copy control that writes the full commit ID. Revision, file-header, and diff-file
+  copies share one delegated clipboard and feedback contract.
+
 - Diff views now pair similar removed and added lines monotonically and emphasize the
   changed words or characters in both unified and split layouts.
   Similar replacements use a lighter whole-row tint with a stronger inner range, while

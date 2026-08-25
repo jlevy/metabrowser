@@ -79,6 +79,8 @@ mb.registerView("diff", "diff", {
     if (!result.ok) {
       return renderFailure(container, `This diff document is not valid: ${result.error}`);
     }
-    return mountDiffView(container, result.document, mb);
+    // A commit comparison already carries these totals beside its revision,
+    // author, and age. Direct diff documents own their aggregate summary.
+    return mountDiffView(container, result.document, mb, { showSummary: !revision });
   },
 });

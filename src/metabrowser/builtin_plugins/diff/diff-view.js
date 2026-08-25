@@ -3,7 +3,7 @@
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
 // heading), change notes, the inline +N −N stat pair, and a copy-path
-// control riding the shell's [data-copy-path] delegation. Sections
+// control riding the shared [data-mb-copy] delegation. Sections
 // start expanded; the bar collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
@@ -790,7 +790,10 @@ function renderFileBar(change, toggleId, bodyId) {
   if (side !== undefined) {
     const copy = el("button", "icon-btn icon-btn-reveal diff-file-copy");
     copy.setAttribute("type", "button");
-    copy.setAttribute("data-copy-path", String(side.path));
+    copy.setAttribute("data-mb-copy", "text");
+    copy.setAttribute("data-mb-copy-text", String(side.path));
+    copy.setAttribute("data-mb-copy-label", "Copy path");
+    copy.setAttribute("data-tip-text", "Copy path");
     copy.setAttribute("title", "Copy path");
     copy.setAttribute("aria-label", "Copy path");
     const svg = shellIcon("copy");
@@ -935,11 +938,12 @@ function projectLayoutBatch(view, layout, layoutGeneration, start) {
  * share its toolbar; single-file views avoid repeating their file bar.
  * @param {Record<string, unknown>} totals
  * @param {MountedDiffState} view
+ * @param {boolean} showSummary
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
-function renderDiffToolbar(totals, view) {
+function renderDiffToolbar(totals, view, showSummary) {
   const toolbar = el("div", "diff-toolbar");
-  if (Number(totals.files) !== 1) {
+  if (showSummary && Number(totals.files) !== 1) {
     const plus = totals.additions === null ? "?" : String(totals.additions);
     const minus = totals.deletions === null ? "?" : String(totals.deletions);
     const summary = el("div", "diff-summary");
@@ -1072,7 +1076,7 @@ function renderFileSection(change, patch, context, view) {
   let expanded = true;
   bar.addEventListener("click", (event) => {
     const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
-    if (typeof origin?.closest === "function" && origin.closest("[data-copy-path]")) {
+    if (typeof origin?.closest === "function" && origin.closest("[data-mb-copy]")) {
       return;
     }
     expanded = !expanded;
@@ -1115,9 +1119,10 @@ function renderFileSection(change, patch, context, view) {
  * @param {HTMLElement} container
  * @param {Record<string, unknown>} document_
  * @param {DiffViewApi} [api]
+ * @param {{showSummary?: boolean}} [options]
  * @returns {{dispose: () => void}}
  */
-export function mountDiffView(container, document_, api) {
+export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
   /** @type {MountedDiffState} */
   const view = {
@@ -1142,7 +1147,7 @@ export function mountDiffView(container, document_, api) {
     );
   const patches = /** @type {Record<string, Record<string, unknown>>} */ (document_.patches);
   const totals = manifest.totals;
-  const { toolbar, unbind } = renderDiffToolbar(totals, view);
+  const { toolbar, unbind } = renderDiffToolbar(totals, view, options.showSummary !== false);
   root.append(toolbar);
   const context = { revision: String(document_.__revision ?? "") };
   for (const change of manifest.files) {

@@ -390,6 +390,7 @@ const renderedDiffContexts = [];
 const comparisonFetches = [];
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
+  icons: { copy: '<svg data-icon="copy"></svg>' },
   ensureKindAssets: async (kind) => {
     ensuredKinds.push(kind);
     diffAssetsLoaded = true;
@@ -606,8 +607,37 @@ async function run() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   assertContains("detail: subject", previewHtml, "a commit");
   assertContains("detail: short sha", previewHtml, SHA_A.slice(0, 7));
+  assertContains(
+    "detail: revision uses the copyable identifier group",
+    previewHtml,
+    "git-commit-revision",
+  );
+  assertContains(
+    "detail: revision uses the shared copy delegate",
+    previewHtml,
+    'data-mb-copy="text"',
+  );
+  assertContains(
+    "detail: revision copies the full sha",
+    previewHtml,
+    `data-mb-copy-text="${SHA_A}"`,
+  );
+  assertContains(
+    "detail: revision copy has an accessible name",
+    previewHtml,
+    'aria-label="Copy revision"',
+  );
+  assertContains("detail: revision uses the shared copy icon", previewHtml, 'data-icon="copy"');
   assertContains("detail: body", previewHtml, "explanatory body");
   assertContains("detail: ref badge", previewHtml, "main");
+  assertContains("detail: summary sits in commit chrome", previewHtml, "git-commit-summary");
+  assertContains("detail: summary counts files", previewHtml, "2 changed files");
+  assertContains("detail: summary counts additions", previewHtml, "+5");
+  assertContains("detail: summary counts deletions", previewHtml, "−1");
+  assertTrue(
+    "detail: summary precedes the description",
+    previewHtml.indexOf("git-commit-summary") < previewHtml.indexOf("git-commit-body"),
+  );
   // The commit's files are presented by the diff view mounted below, so
   // the panel keeps only what that view cannot show: a host for it, the
   // files outside the served root, and any bound on the comparison.
@@ -617,7 +647,6 @@ async function run() {
   assertEqual("detail: prepared comparison reaches the view", await renderedDiffContexts[0].raw, {
     comparison_id: SHA_A,
   });
-  assertNotContains("detail: no duplicate file list", previewHtml, "2 files changed");
   assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
   await internals.renderCommitDetail({
     is_repo: true,

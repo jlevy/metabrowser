@@ -149,6 +149,28 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
         assert 'setAttribute("tabindex"' in source
 
 
+def test_copyable_identifiers_share_the_copy_contract() -> None:
+    """Paths and revisions use one explicit-value copy delegate."""
+    design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    sdk = (STATIC / "plugin-sdk.js").read_text(encoding="utf-8")
+    git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    diff = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/diff-view.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "### Copyable Identifiers Use One Delegate" in design
+    assert "test_copyable_identifiers_share_the_copy_contract" in design
+    assert 'target.closest("[data-mb-copy]")' in sdk
+    assert 'mode === "text"' in sdk and 'mode === "wrap"' in sdk
+    assert 'data-mb-copy="text"' in app
+    assert 'setAttribute("data-mb-copy", "text")' in diff
+    assert 'data-mb-copy="text"' in git and "commit.id" in git
+    assert "git-commit-revision-copy" in git
+    for source in (app, diff, git):
+        assert "data-copy-path" not in source, "a local path-copy contract reappeared"
+
+
 def test_age_is_one_primitive_everywhere() -> None:
     """An age is an age: one formatter, one styling rule, and call sites
     that add positioning only."""

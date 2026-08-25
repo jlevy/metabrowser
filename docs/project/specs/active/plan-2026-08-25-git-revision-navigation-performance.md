@@ -33,6 +33,10 @@ server, transfer, client rendering, and paint costs remain separable.
   request
 - Give Git history rows the file tree’s one-stop Tab order and Arrow Up/Arrow Down
   focus-and-open behavior
+- Put aggregate file, addition, and deletion counts with the commit identity above the
+  commit description, without repeating them in the hosted diff
+- Present the revision as a path-like copyable identifier that displays the short ID and
+  copies the full commit ID through the shared copy affordance
 - Keep speculative work bounded to one comparison and cancel or replace stale intent
 - Measure cold and prepared revision transitions in a visible real browser, including
   server time, client data time, mount time, paint readiness, long work, payload size,
@@ -168,8 +172,8 @@ change. No compatibility layer is needed.
 ## Implementation Plan
 
 Epic `mb-fgcg` owns this plan.
-Its six child beads separate measurement, behavior, presentation, validation, keyboard
-consistency, and delivery.
+Its eight child beads separate measurement, behavior, presentation, validation, keyboard
+consistency, commit-header information design, and delivery.
 Blockers express only real sequencing; the baseline also feeds final validation
 directly.
 
@@ -180,7 +184,9 @@ directly.
 | Polish pending and completed transitions | `mb-tjcl` | `mb-32kx` | Closed |
 | Compare, validate, and document | `mb-8j0r` | `mb-800q`, `mb-tjcl` | Closed |
 | Enforce navigational-row keyboard parity | `mb-xmkn` | `mb-8j0r` | Closed |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-xmkn` | In progress |
+| Move the change summary into the commit metadata header | `mb-j0um` | None | Closed |
+| Make the revision a shared copyable identifier | `mb-wchz` | None | Closed |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-xmkn`, `mb-j0um`, `mb-wchz` | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -282,7 +288,44 @@ directly.
   A visible-browser smoke test traverses a real repository by keyboard before the full
   format and verification gates pass.
 
-### Phase 6: Deliver and Monitor (`mb-j8ni`)
+### Phase 6: Move the Change Summary (`mb-j0um`)
+
+- **Files and functions:** Add a focused aggregate-summary projection beside
+  `renderCommitDetail` in `git-panel.js`; let revision-hosted mounts select a
+  summary-free toolbar through `mountDiffView` and `renderDiffToolbar` in
+  `builtin_plugins/diff/diff-view.js` and the revision path in
+  `builtin_plugins/diff/index.js`. Update the Git header rules in `styles.css` and the
+  focused Git and diff DOM suites.
+- **Behavior and invariants:** The number of changed files and `+N −N` totals sit with
+  the revision, author, and age before the commit body.
+  A comparison mounted under a commit omits its lower duplicate but keeps the layout
+  control. Direct `.diff` and `.patch` documents retain their normal summary.
+  Unknown totals remain visibly unknown, and bounded or estimated data is not presented
+  as exact.
+- **Acceptance:** Tests prove DOM ordering, exact stat text, and one visible aggregate
+  summary per commit surface while preserving the direct diff summary and both layout
+  modes. Narrow layouts wrap without obscuring metadata, and both themes retain the
+  semantic addition and deletion colors.
+
+### Phase 7: Make the Revision Copyable (`mb-wchz`)
+
+- **Files and functions:** Render a path-like revision group in `renderCommitDetail` in
+  `git-panel.js`. Extend the explicit-text copy mode in `plugin-sdk.js`, migrate the
+  file header in `app.js` and `renderFileBar` in `builtin_plugins/diff/diff-view.js` to
+  that shared delegate, and update `styles.css`, `docs/design-system.md`, the
+  copy-delegate, Git-panel and diff-view DOM suites, and the static design checks.
+- **Behavior and invariants:** The visible label remains the short revision; the copy
+  payload is the full commit ID. Revision and file-path buttons use the same
+  icon-button, delegated clipboard, success, failure, and reset behavior, with
+  control-specific accessible labels.
+  Values ride in escaped data attributes, never inline JavaScript.
+  The diff file bar continues excluding its copy button from disclosure activation.
+- **Acceptance:** Focused tests cover the full revision payload, icon and accessible
+  label, successful and rejected clipboard writes, feedback reset, existing path-copy
+  behavior, and the shared design-system vocabulary.
+  Pointer, keyboard, and screen-reader operation work in a visible browser.
+
+### Phase 8: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
@@ -328,10 +371,12 @@ for the complete record and caveats.
 ## Testing Strategy
 
 The fake-DOM Git panel suite pins request sharing, ordering, stale-operation behavior,
-preview continuity, accessibility state, and exact disposal.
+preview continuity, accessibility state, exact disposal, commit-header ordering, and the
+full revision copy payload.
 Diff plugin tests verify that prepared and fetched documents follow the same validation
-and mount path. Static design tests pin tokenized transitions and reduced-motion
-behavior.
+and mount path and that only direct diff documents retain the toolbar summary.
+Copy delegate and static design tests pin clipboard feedback, tokenized transitions, and
+reduced-motion behavior.
 
 The CDP scenario provides end-to-end evidence on the repository itself.
 Manual real-browser validation covers fast repeated pointer and keyboard navigation,

@@ -5567,7 +5567,7 @@ function renderFile(data, preferredViewId, claim) {
         html +=
           '<span class="file-header-path folder-breadcrumb">' +
           headerAddressHtml(data.path, true) +
-          `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-copy-path="${esc(data.path)}" data-tip-text="Copy path" aria-label="Copy path">` +
+          `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(data.path)}" data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
           ICON_COPY +
           "</button>" +
           "</span>";
@@ -5776,22 +5776,9 @@ function toggleEvent(header) {
 
 // ── Charts loading + rendering ──────────────────────────────────
 
-function copyPath(btn, path) {
-  navigator.clipboard.writeText(path).then(() => {
-    btn.classList.add("copied");
-    btn.dataset.tipText = "Copied!";
-    setTimeout(() => {
-      btn.classList.remove("copied");
-      btn.dataset.tipText = "Copy path";
-    }, 1500);
-  });
-}
-
-// Delegated handlers for header controls. Paths ride in data-*
-// attributes (HTML-escaped at render, decoded by dataset) instead of
-// inline onclick handlers, which HTML-decode their attribute before
-// compiling JavaScript and therefore cannot safely carry filenames
-// containing quotes.
+// Delegated handlers for header navigation controls. Copyable values use
+// the SDK-owned data-mb-copy contract, so path and revision identifiers
+// share clipboard and feedback behavior without inline handlers.
 document.addEventListener("click", (e) => {
   var origin = eventTargetElement(e);
   if (!origin) {
@@ -5809,10 +5796,6 @@ document.addEventListener("click", (e) => {
   if (fileBtn && !fileBtn.hasAttribute("disabled")) {
     void navigateToPath(fileBtn.dataset.navFile ?? "");
     return;
-  }
-  var copyBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-copy-path]"));
-  if (copyBtn && typeof copyBtn.dataset.copyPath === "string") {
-    copyPath(copyBtn, copyBtn.dataset.copyPath);
   }
 });
 

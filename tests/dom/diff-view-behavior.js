@@ -660,7 +660,11 @@ async function main() {
     toggle.getAttribute("aria-controls") === body.getAttribute("id"),
   );
   const copy = container.find("diff-file-copy")[0];
-  check("copy control rides the shell delegation", Boolean(copy.getAttribute("data-copy-path")));
+  check("copy control rides the shared delegation", copy.getAttribute("data-mb-copy") === "text");
+  check(
+    "copy control carries an explicit path payload",
+    copy.getAttribute("data-mb-copy-text") === "a.py",
+  );
   check("copy control is an icon button", copy.classList.contains("icon-btn"));
   check(
     "stats sit beside the filename",
@@ -742,6 +746,13 @@ async function main() {
   };
   mountDiffView(many, twoFiles);
   check("change sets keep the summary", many.find("diff-summary").length === 1);
+  const hosted = new FakeElement("div");
+  mountDiffView(hosted, twoFiles, undefined, { showSummary: false });
+  check(
+    "revision-hosted change sets leave the aggregate summary to their commit header",
+    hosted.find("diff-summary").length === 0,
+  );
+  check("revision-hosted change sets keep their toolbar", hosted.find("diff-toolbar").length === 1);
 
   // A long contiguous run folds behind an expander; ordinary runs do not.
   const longDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));

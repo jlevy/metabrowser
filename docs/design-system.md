@@ -548,8 +548,8 @@ These defaults are not saved as user preferences.
 The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
 same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
 `expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, hovers with
-`--hover-bg`, and reveals its `[data-copy-path]` copy control on row hover or focus —
-the file-header copy affordance, present wherever a filename is.
+`--hover-bg`, and reveals its `[data-mb-copy]` copy control on row hover or focus — the
+file-header copy affordance, present wherever a filename is.
 Its content is left-aligned reading order — chevron, kind letter, filename in the
 shell’s file-path typography, then the stat pair beside the name — and the whole bar is
 one activation surface, the folder-row rule applied to a section header: clicking
@@ -882,6 +882,26 @@ adds weight without adding information.
 
 The one sanctioned resting surface is `.icon-btn-overlay`, for a button that floats
 above content: a bare glyph over source text is unreadable, so it needs an opaque plate.
+
+### Copyable Identifiers Use One Delegate
+
+A copyable path, revision, or other exact identifier pairs its visible monospace value
+with an adjacent `.icon-btn.icon-btn-reveal` using the registry’s `copy` icon.
+The visible value may be abbreviated when its meaning remains clear, but the copy
+payload must preserve the complete identifier.
+The Git commit header therefore shows the short revision and copies the full commit ID.
+
+Explicit values use `data-mb-copy="text"`, carry their escaped payload in
+`data-mb-copy-text`, and name the resting action in `data-mb-copy-label`,
+`data-tip-text`, and `aria-label`. Source blocks use the same SDK delegate in `wrap`
+mode. Do not add a component-local clipboard listener or inline handler.
+The shared delegate owns successful, failed, and reset feedback, while the containing
+row owns when an `.icon-btn-reveal` becomes visible.
+Keep the button in the Tab order even while it is visually quiet.
+
+`test_copyable_identifiers_share_the_copy_contract` maintains the registered path,
+diff-file, and Git-revision consumers.
+Add each new exact-identifier copy surface to that check.
 
 ### Parent Navigation Is a Bordered Button
 
