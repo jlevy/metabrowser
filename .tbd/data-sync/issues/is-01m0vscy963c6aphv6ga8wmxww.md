@@ -5,7 +5,8 @@ title: Implement a bounded virtual window for Git history rows
 kind: task
 status: open
 priority: 1
-version: 2
+version: 5
+spec_path: docs/project/specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md
 labels:
   - release:v0.8.0
 dependencies:
@@ -13,6 +14,6 @@ dependencies:
     target: is-01m0vsd8dnak6hw2b87x5awch6
 parent_id: is-01m0ghvrnps0hh3m8d28xvfn2j
 created_at: 2026-08-25T06:23:23.429Z
-updated_at: 2026-08-25T06:23:33.811Z
+updated_at: 2026-08-25T07:04:13.558Z
 ---
-Render only a measured window around the viewport while preserving scroll geometry with spacers. Keep row identity, graph lane continuity, ref colors, focus, selection, hover detail, and commit routes correct when rows mount, unmount, and remount. Give all observers and listeners disposal paths. Test bounded mounted-row counts, window transitions, focus recovery, and replacement without depending on timing.
+Render only a measured fixed-height window around the viewport, backed by a bounded decoded-page cache and page-boundary graph checkpoints. Add spacers and scroll-segment rebasing before the browser height clamp; preserve row identity, graph lanes, ref colors, focus, selection, hover detail, and commit routes through mount, eviction, replay, and remount. Give observers, requests, tooltips, and listeners disposal paths and assert structural resource bounds without timing thresholds.
