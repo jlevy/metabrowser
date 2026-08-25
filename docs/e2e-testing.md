@@ -107,6 +107,8 @@ Open the printed URL and verify:
 - a binary file above the preview ceiling reports the cutoff instead of loading;
 - changing and deleting files updates tree and recent views;
 - a direct hash path opens independently of the tree crawl;
+- when the served root is in a Git repository, opening a commit that changes the root
+  renders its changed-file diff in a fresh browser session;
 - light and dark themes, narrow panes, keyboard focus, and print output remain usable;
 - the console and Network panel contain no unexpected errors or missing assets.
 

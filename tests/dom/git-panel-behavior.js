@@ -4,7 +4,9 @@
 // these assertions cover the parts that are easy to get wrong and
 // invisible in a screenshot: which rows are navigable, what the hover
 // card says, whether a truncated file list admits it, and whether a
-// stale in-flight request can overwrite a newer selection.
+// stale in-flight request can overwrite a newer selection, and whether
+// the first commit opened in a fresh shell loads the diff plugin before
+// asking it to render.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -327,9 +329,38 @@ sandbox.MetabrowserShell = {
     previewHtml = html;
     const preview = new FakeElement("div", document);
     preview.innerHTML = html;
+    if (html.includes("git-commit-diff")) {
+      const diffHost = new FakeElement("div", document);
+      diffHost.className = "git-commit-diff";
+      preview.appendChild(diffHost);
+    }
     return preview;
   },
   activateNavPanel: () => {},
+};
+
+// A fresh directory shell has configured plugin descriptors but has not
+// evaluated the diff plugin yet. The view appears only after its kind
+// assets load, matching the on-demand browser lifecycle.
+let diffAssetsLoaded = false;
+const ensuredKinds = [];
+const renderedDiffRevisions = [];
+sandbox.metabrowser = {
+  ensureKindAssets: async (kind) => {
+    ensuredKinds.push(kind);
+    diffAssetsLoaded = true;
+  },
+  getRegisteredView: (kind, view) => {
+    if (!diffAssetsLoaded || kind !== "diff" || view !== "diff") {
+      return null;
+    }
+    return {
+      render: async (_host, context) => {
+        renderedDiffRevisions.push(context.revision);
+        return { dispose: () => {} };
+      },
+    };
+  },
 };
 
 // Stubbed network. Each entry is url-prefix -> payload.
@@ -487,6 +518,7 @@ async function run() {
     assertContains("hover: additions", text, "+10");
     assertContains("hover: deletions", text, "−4");
   }
+  internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });
   internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [SHA_B], "a commit", [
@@ -500,6 +532,7 @@ async function run() {
     ],
     files_truncated: false,
   });
+  await new Promise((resolve) => setTimeout(resolve, 0));
   assertContains("detail: subject", previewHtml, "a commit");
   assertContains("detail: short sha", previewHtml, SHA_A.slice(0, 7));
   assertContains("detail: body", previewHtml, "explanatory body");
@@ -508,6 +541,8 @@ async function run() {
   // the panel keeps only what that view cannot show: a host for it, the
   // files outside the served root, and any bound on the comparison.
   assertContains("detail: mounts the diff host", previewHtml, "git-commit-diff");
+  assertEqual("detail: loads fresh diff assets", ensuredKinds, ["diff"]);
+  assertEqual("detail: renders after loading diff assets", renderedDiffRevisions, [SHA_A]);
   assertNotContains("detail: no duplicate file list", previewHtml, "2 files changed");
   assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
   internals.renderCommitDetail({
