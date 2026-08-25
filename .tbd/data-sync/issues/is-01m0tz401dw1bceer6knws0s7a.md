@@ -3,9 +3,9 @@ type: is
 id: is-01m0tz401dw1bceer6knws0s7a
 title: "Spec: Diff syntax highlighting and layouts"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels:
   - diff
@@ -22,6 +22,10 @@ child_order_hints:
   - is-01m0tz6rzhc67fjtt1s523kjzz
   - is-01m0tz71r3yrzst7qv06kzyssx
 created_at: 2026-08-24T22:44:07.340Z
-updated_at: 2026-08-25T00:07:05.887Z
+updated_at: 2026-08-25T00:16:41.896Z
+closed_at: 2026-08-25T00:16:41.895Z
+close_reason: "All nine file/function-level implementation beads and the reviewed focused spec are complete; PR #76 exact head is green."
+resolution: null
+duplicate_of: null
 ---
 Implement the reviewed focused spec end-to-end: a shared bounded Highlight.js token service, independent old/new hunk streams, progressively highlighted unified and split projections over one semantic model, immediate persisted layout switching, lifecycle-safe deferred hydration, accessible styling, measured browser validation, documentation reconciliation, and final green CI. No new dependency, wire-format change, speculative compatibility layer, or duplicated grammar/palette.

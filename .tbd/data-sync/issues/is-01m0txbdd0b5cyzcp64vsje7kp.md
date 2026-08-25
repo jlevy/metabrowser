@@ -5,8 +5,8 @@ title: "Address review: PR #76 — diff syntax and layouts design"
 kind: task
 status: closed
 priority: 1
-version: 11
-spec_path: docs/project/specs/active/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
+version: 12
+spec_path: docs/project/specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels:
   - diff
   - review
@@ -21,7 +21,7 @@ child_order_hints:
   - is-01m0tyg2swey0g3p8vzq9t0e8e
   - is-01m0tyg366m3yajmwpzj34jdhz
 created_at: 2026-08-24T22:13:13.155Z
-updated_at: 2026-08-24T22:41:54.004Z
+updated_at: 2026-08-25T00:16:38.683Z
 closed_at: 2026-08-24T22:41:54.003Z
 close_reason: "All R1-R7 findings fixed in 5604e04, disposition map published on PR #76, and local handoff gate passed."
 resolution: null
