@@ -184,6 +184,32 @@ function renderedText(host) {
 
 async function main() {
   const documentListeners = new Map();
+  let hydrationObserver = null;
+  global.IntersectionObserver = class IntersectionObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.observed = new Set();
+      hydrationObserver = this;
+    }
+
+    observe(target) {
+      this.observed.add(target);
+    }
+
+    unobserve(target) {
+      this.observed.delete(target);
+    }
+
+    disconnect() {
+      this.observed.clear();
+    }
+
+    intersect(target) {
+      if (this.observed.has(target)) {
+        this.callback([{ isIntersecting: true, target }], this);
+      }
+    }
+  };
   global.document = {
     createElement: (tag) => new FakeElement(tag),
     addEventListener(type, handler) {
@@ -811,6 +837,33 @@ async function main() {
   // allowed to mutate state after disposal.
   const deferredDoc = JSON.parse(JSON.stringify(byName.get("deferred-manifest-only")));
   deferredDoc.__revision = "revision-1";
+  const manyDeferredDoc = JSON.parse(JSON.stringify(deferredDoc));
+  manyDeferredDoc.manifest.files = [0, 1, 2].map((index) => {
+    const change = JSON.parse(JSON.stringify(deferredDoc.manifest.files[0]));
+    change.id = `f${index + 1}`;
+    change.old.path = `old-${index}.txt`;
+    change.new.path = `new-${index}.txt`;
+    return change;
+  });
+  manyDeferredDoc.manifest.totals.files = 3;
+  let viewportLoads = 0;
+  setChangeLoader(() => {
+    viewportLoads += 1;
+    return new Promise(() => {});
+  });
+  const manyDeferred = new FakeElement("div");
+  const manyDeferredHandle = mountDiffView(manyDeferred, manyDeferredDoc, layoutApi);
+  const deferredBodies = manyDeferred.find("diff-file-body");
+  check("mounting many deferred files starts no requests", viewportLoads === 0);
+  check("all deferred bodies wait for visibility", hydrationObserver.observed.size === 3);
+  for (const body of deferredBodies) {
+    hydrationObserver.intersect(body.parentNode);
+  }
+  check("visible deferred work is concurrency-bounded", viewportLoads === 2);
+  manyDeferredHandle.cancelPending();
+  check("cancellation drops every queued observation", hydrationObserver.observed.size === 0);
+  manyDeferredHandle.dispose();
+
   let deferredResolve;
   let deferredSignal;
   let deferredLoads = 0;
@@ -823,6 +876,9 @@ async function main() {
   });
   const hydrated = new FakeElement("div");
   mountDiffView(hydrated, deferredDoc, layoutApi);
+  const deferredBody = hydrated.find("diff-file-body")[0];
+  check("offscreen deferred files do not start requests", deferredLoads === 0);
+  hydrationObserver.intersect(deferredBody.parentNode);
   const deferredLayoutChange = layoutChange;
   check("deferred loader receives the mount signal", deferredSignal instanceof AbortSignal);
   deferredLayoutChange("diff-layout", "unified", "one");
@@ -842,13 +898,21 @@ async function main() {
   const disposedFetch = new FakeElement("div");
   const disposedFetchHandle = mountDiffView(disposedFetch, deferredDoc, layoutApi);
   const detachedBody = disposedFetch.find("diff-file-body")[0];
-  disposedFetchHandle.dispose();
-  check("dispose aborts deferred fetches", disposedFetchSignal?.aborted === true);
+  check("replacement test starts with deferred work idle", disposedFetchSignal === undefined);
+  hydrationObserver.intersect(detachedBody.parentNode);
+  disposedFetchHandle.cancelPending();
+  check("pending-work cancellation aborts deferred fetches", disposedFetchSignal?.aborted === true);
+  check("pending-work cancellation retains the rendered root", disposedFetch.children.length === 1);
   disposedFetchResolve(JSON.parse(JSON.stringify(byName.get("modified-with-heading"))));
   await nextTask();
   check(
-    "late fetch completion cannot mutate detached DOM",
+    "late fetch completion cannot mutate retained stale DOM",
     detachedBody.find("diff-progress").length === 1 && detachedBody.find("diff-line").length === 0,
+  );
+  disposedFetchHandle.dispose();
+  check(
+    "disposal removes the retained root after cancellation",
+    disposedFetch.children.length === 0,
   );
 
   let tokenResolve;

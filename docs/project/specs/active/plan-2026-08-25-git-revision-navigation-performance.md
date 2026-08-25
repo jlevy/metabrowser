@@ -38,6 +38,8 @@ server, transfer, client rendering, and paint costs remain separable.
 - Present the revision as a path-like copyable identifier that displays the short ID and
   copies the full commit ID through the shared copy affordance
 - Keep speculative work bounded to one comparison and cancel or replace stale intent
+- Stop deferred hydration and syntax work from a retained revision as soon as another
+  revision is selected
 - Measure cold and prepared revision transitions in a visible real browser, including
   server time, client data time, mount time, paint readiness, long work, payload size,
   and blank-frame duration
@@ -112,6 +114,11 @@ transport ordering rather than the comparison model or renderer.
 
 Selecting a revision immediately updates row selection and the commit route, but the
 existing preview and mounted diff remain alive while the replacement prepares.
+Deferred file sections begin hydration only when they enter the visible scroll area.
+The mounted handle cancels queued observations, active hydration, syntax, timer, and
+yielding work at that point while leaving its rendered DOM intact.
+Obsolete work therefore cannot saturate the server or client while the selected
+comparison prepares.
 After 120 ms, the preview receives a lightweight pending state and `aria-busy="true"`;
 it is not replaced by a spinner.
 When commit metadata and the validated comparison surface are ready, one preview
@@ -172,8 +179,9 @@ change. No compatibility layer is needed.
 ## Implementation Plan
 
 Epic `mb-fgcg` owns this plan.
-Its nine child beads separate measurement, behavior, presentation, validation, keyboard
-consistency, commit-header information design, component ownership, and delivery.
+Its ten child beads separate measurement, behavior, presentation, validation, keyboard
+consistency, commit-header information design, component ownership, retained-work
+cancellation, and delivery.
 Blockers express only real sequencing; the baseline also feeds final validation
 directly.
 
@@ -187,7 +195,8 @@ directly.
 | Move the change summary into the commit metadata header | `mb-j0um` | None | Closed |
 | Make the revision a shared copyable identifier | `mb-wchz` | None | Closed |
 | Consolidate the Git commit summary component | `mb-lk26` | None | Closed |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-xmkn`, `mb-j0um`, `mb-wchz`, `mb-lk26` | Blocked |
+| Cancel obsolete retained-diff work | `mb-k9a5` | `mb-32kx` | In progress |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-xmkn`, `mb-j0um`, `mb-wchz`, `mb-lk26`, `mb-k9a5` | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -346,7 +355,37 @@ directly.
   renderer and CSS. Focused tests, `make format`, `make verify`, and a visible-browser
   smoke test pass.
 
-### Phase 9: Deliver and Monitor (`mb-j8ni`)
+### Phase 9: Cancel Obsolete Retained-Diff Work (`mb-k9a5`)
+
+- **Files and functions:** Add `queueDeferredHydration` and a pending-work cancellation
+  operation to `mountDiffView` in `builtin_plugins/diff/diff-view.js`; invoke the
+  cancellation operation for a different selected revision in `selectCommit` in
+  `git-panel.js`. Extend the lifecycle cases in `tests/dom/diff-view-behavior.js` and
+  the retained-handoff cases in `tests/dom/git-panel-behavior.js`.
+- **Behavior and invariants:** A selected revision keeps the prior diff DOM visible but
+  immediately aborts that diff’s active file fetches and syntax waits, disconnects
+  queued viewport observations, and clears its timers and yielders.
+  Deferred files do not issue requests before their sections intersect the visible
+  scroll area, and at most two visible deferred sections hydrate concurrently.
+  Cancellation is idempotent and does not remove the root.
+  The atomic swap still transfers ownership to the replacement before disposing the
+  prior handle; stale selections cannot cancel the replacement.
+- **Acceptance:** Focused tests prove that multiple offscreen deferred files issue no
+  requests, three intersecting files start only two concurrent requests, and
+  cancellation aborts pending work, blocks late DOM mutation, retains the old root, and
+  still permits exact final disposal.
+  A visible-browser stress pass over a large real comparison keeps the selected row,
+  route, and mounted revision convergent without obsolete file-hydration requests
+  delaying the selected comparison.
+  Focused tests, `make format`, and `make verify` pass.
+
+Chrome 151 validation on an 88-file comparison found 36 deferred sections.
+Jumping a 900 px preview to the bottom made 24 sections visible together, which would
+otherwise launch 24 Git comparison requests.
+Two active requests preserve parallel progress if one file is slow while bounding the
+server work a single viewport can start.
+
+### Phase 10: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
@@ -392,8 +431,8 @@ for the complete record and caveats.
 ## Testing Strategy
 
 The fake-DOM Git panel suite pins request sharing, ordering, stale-operation behavior,
-preview continuity, accessibility state, exact disposal, commit-header ordering, and the
-full revision copy payload.
+preview continuity, accessibility state, retained-work cancellation, exact disposal,
+commit-header ordering, and the full revision copy payload.
 Diff plugin tests verify that prepared and fetched documents follow the same validation
 and mount path and that only direct diff documents retain the toolbar summary.
 Copy delegate and static design tests pin clipboard feedback, tokenized transitions, and

@@ -61,6 +61,12 @@ Browser:
   The performance loop now records this interaction’s server, client, rendering,
   paint-continuity, and lifecycle costs.
 
+- Large Git comparisons now hydrate deferred file sections only as they enter the
+  visible scroll area, with at most two active requests.
+  Selecting another revision cancels queued and active work while retaining the rendered
+  handoff surface, so obsolete per-file requests cannot leave the navigation selection
+  ahead of the visible diff.
+
 - Git history now follows the file tree’s navigational-row keyboard contract.
   The row set contributes one Tab stop; unmodified Arrow Up and Arrow Down focus and
   open the adjacent commit, allow key repeat, and clamp without reopening at either

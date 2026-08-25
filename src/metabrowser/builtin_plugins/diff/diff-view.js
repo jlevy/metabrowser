@@ -37,15 +37,19 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
 /**
  * @typedef {object} MountedDiffState
  * @property {DiffViewApi | undefined} api
+ * @property {number} activeHydrations
  * @property {AbortController} controller
  * @property {boolean} disposed
  * @property {FileViewState[]} files
  * @property {number} generation
+ * @property {IntersectionObserver | null} hydrationObserver
  * @property {"unified" | "split"} layout
  * @property {HTMLElement | null} layoutControl
  * @property {number} layoutGeneration
  * @property {HTMLElement} root
  * @property {Promise<void>} enhancementTail
+ * @property {Map<HTMLElement, {body: HTMLElement, change: Record<string, unknown>, revision: string}>} pendingHydrations
+ * @property {{body: HTMLElement, change: Record<string, unknown>, revision: string}[]} queuedHydrations
  * @property {Set<number>} timers
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  */
@@ -99,6 +103,11 @@ const INTRALINE_WORK_BUDGET = 1_000_000;
 // A load this slow is worth a console record even when it eventually
 // succeeds: a reader watching a spinner deserves a diagnosable stall.
 const SLOW_LOAD_MS = 4000;
+
+// Chrome 151 on an 88-file comparison: a bottom jump made 24 deferred
+// sections visible together. Two active requests preserve parallel progress
+// without letting one viewport turn into a Git subprocess fanout.
+const MAX_CONCURRENT_HYDRATIONS = 2;
 
 /**
  * The app's standard progress box: hidden until --loading-state-delay,
@@ -1052,6 +1061,70 @@ async function hydrateDeferred(body, change, revision, view) {
   }
 }
 
+/** @param {MountedDiffState} view */
+function drainDeferredHydrations(view) {
+  if (view.disposed || view.controller.signal.aborted) {
+    return;
+  }
+  while (view.activeHydrations < MAX_CONCURRENT_HYDRATIONS && view.queuedHydrations.length > 0) {
+    const pending = view.queuedHydrations.shift();
+    if (!pending) {
+      return;
+    }
+    const generation = view.generation;
+    view.activeHydrations += 1;
+    void hydrateDeferred(pending.body, pending.change, pending.revision, view).finally(() => {
+      if (!mountIsCurrent(view, generation)) {
+        return;
+      }
+      view.activeHydrations -= 1;
+      drainDeferredHydrations(view);
+    });
+  }
+}
+
+/**
+ * Defer one file request until its section reaches the visible scroll area.
+ * The comparison payload already hydrates the leading files; observing the
+ * remainder prevents a large commit from launching an unbounded request fanout.
+ *
+ * @param {HTMLElement} section
+ * @param {HTMLElement} body
+ * @param {Record<string, unknown>} change
+ * @param {string} revision
+ * @param {MountedDiffState} view
+ */
+function queueDeferredHydration(section, body, change, revision, view) {
+  view.pendingHydrations.set(section, { body, change, revision });
+  if (view.hydrationObserver === null) {
+    view.hydrationObserver = new IntersectionObserver((entries, observer) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) {
+          continue;
+        }
+        const target = /** @type {HTMLElement} */ (entry.target);
+        const pending = view.pendingHydrations.get(target);
+        if (!pending) {
+          continue;
+        }
+        view.pendingHydrations.delete(target);
+        observer.unobserve(target);
+        if (!view.disposed && !view.controller.signal.aborted) {
+          view.queuedHydrations.push(pending);
+          drainDeferredHydrations(view);
+        }
+      }
+      if (view.pendingHydrations.size === 0) {
+        observer.disconnect();
+        if (view.hydrationObserver === observer) {
+          view.hydrationObserver = null;
+        }
+      }
+    });
+  }
+  view.hydrationObserver.observe(section);
+}
+
 /**
  * @param {Record<string, unknown>} change
  * @param {Record<string, unknown> | undefined} patch
@@ -1089,9 +1162,7 @@ function renderFileSection(change, patch, context, view) {
 
   const availability = String(change.availability);
   if (availability === "deferred" && context.revision) {
-    // Deferred is progress, not a state to explain: show the standard
-    // progress box and fetch this file's hunks.
-    void hydrateDeferred(body, change, context.revision, view);
+    queueDeferredHydration(section, body, change, context.revision, view);
     return section;
   }
   if (availability !== "ready" || patch === undefined) {
@@ -1120,22 +1191,26 @@ function renderFileSection(change, patch, context, view) {
  * @param {Record<string, unknown>} document_
  * @param {DiffViewApi} [api]
  * @param {{showSummary?: boolean}} [options]
- * @returns {{dispose: () => void}}
+ * @returns {{cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
   /** @type {MountedDiffState} */
   const view = {
+    activeHydrations: 0,
     api,
     controller: new AbortController(),
     disposed: false,
     files: [],
     generation: 1,
+    hydrationObserver: null,
     layout: readLayoutPreference(api),
     layoutControl: null,
     layoutGeneration: 0,
     root,
     enhancementTail: Promise.resolve(),
+    pendingHydrations: new Map(),
+    queuedHydrations: [],
     timers: new Set(),
     yielders: new Set(),
   };
@@ -1157,23 +1232,37 @@ export function mountDiffView(container, document_, api, options = {}) {
     root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
   }
   container.append(root);
+
+  function cancelPendingWork() {
+    view.generation += 1;
+    view.controller.abort();
+    view.hydrationObserver?.disconnect();
+    view.hydrationObserver = null;
+    view.pendingHydrations.clear();
+    view.queuedHydrations.length = 0;
+    for (const timer of view.timers) {
+      clearTimeout(timer);
+    }
+    view.timers.clear();
+    for (const waiter of view.yielders) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(false);
+    }
+    view.yielders.clear();
+  }
+
   return {
+    cancelPending() {
+      if (!view.disposed) {
+        cancelPendingWork();
+      }
+    },
     dispose() {
       if (view.disposed) {
         return;
       }
       view.disposed = true;
-      view.generation += 1;
-      view.controller.abort();
-      for (const timer of view.timers) {
-        clearTimeout(timer);
-      }
-      view.timers.clear();
-      for (const waiter of view.yielders) {
-        clearTimeout(waiter.timer);
-        waiter.resolve(false);
-      }
-      view.yielders.clear();
+      cancelPendingWork();
       unbind();
       removeSelectionGate();
       root.remove();

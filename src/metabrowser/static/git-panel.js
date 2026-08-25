@@ -67,7 +67,7 @@
 
   /** @type {PanelState} */
   let state = emptyState();
-  /** @type {{dispose?: () => void} | null} The mounted commit diff. */
+  /** @type {{cancelPending?: () => void, dispose?: () => void} | null} The mounted commit diff. */
   let commitDiffHandle = null;
   /**
    * The commit named by the URL this page was opened with, if any. Read
@@ -935,6 +935,11 @@
       async () => {
         clearPendingState();
         const previewClaim = bridge.claimPreview("git");
+        if (state.selectedId !== revision) {
+          // Keep the prior DOM as the handoff surface, but stop its deferred
+          // hydration and syntax work from competing with the selected diff.
+          commitDiffHandle?.cancelPending?.();
+        }
         // A commit is a selection like any other, so it owns the URL while
         // it is shown: /commit/<rev> (Browser URL Grammar). Replacing rather
         // than pushing matches the tree's skim rule — walking a history list
@@ -1110,7 +1115,7 @@
    * @param {HTMLElement} preview
    * @param {string} revision
    * @param {{assets: Promise<void>, comparison?: Promise<unknown>}} preparation
-   * @returns {Promise<{dispose?: () => void} | null>}
+   * @returns {Promise<{cancelPending?: () => void, dispose?: () => void} | null>}
    */
   async function mountCommitDiff(preview, revision, preparation) {
     const host = preview.querySelector(".git-commit-diff");
@@ -1135,7 +1140,7 @@
       return measureAsync(
         "gitRevision:diffMount",
         async () =>
-          /** @type {{dispose?: () => void} | null} */ (
+          /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */ (
             await view.render(host, { revision, raw: preparation.comparison })
           ),
         { revision },

@@ -387,6 +387,8 @@ let diffAssetsLoaded = false;
 const ensuredKinds = [];
 const renderedDiffRevisions = [];
 const renderedDiffContexts = [];
+const canceledDiffRevisions = [];
+const disposedDiffRevisions = [];
 const comparisonFetches = [];
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
@@ -403,7 +405,10 @@ sandbox.metabrowser = {
       render: async (_host, context) => {
         renderedDiffRevisions.push(context.revision);
         renderedDiffContexts.push(context);
-        return { dispose: () => {} };
+        return {
+          cancelPending: () => canceledDiffRevisions.push(context.revision),
+          dispose: () => disposedDiffRevisions.push(context.revision),
+        };
       },
     };
   },
@@ -853,7 +858,13 @@ async function run() {
     // Two selections in flight: the later one must win regardless of
     // which response lands first.
     const before = fetchCount;
+    const canceledBefore = canceledDiffRevisions.length;
     rows[1].dispatch("click");
+    assertEqual(
+      "selection: cancels obsolete diff work while retaining its DOM",
+      canceledDiffRevisions.slice(canceledBefore),
+      [SHA_A],
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertContains("selection: switches to the newer commit", previewHtml, "second");
     assertTrue("selection: issued a request", fetchCount > before);
