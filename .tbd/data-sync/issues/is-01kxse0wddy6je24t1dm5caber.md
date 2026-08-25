@@ -5,7 +5,7 @@ title: "Diff P2: intraline, context expansion, whitespace, and virtualization"
 kind: feature
 status: open
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -16,7 +16,7 @@ parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 child_order_hints:
   - is-01m0tw8haj67tstjassnq9we07
 created_at: 2026-07-18T01:38:59.628Z
-updated_at: 2026-08-25T00:06:57.061Z
+updated_at: 2026-08-25T07:29:06.778Z
 extensions:
   linear:
     id: be7a39d5-c9b6-4a86-8008-0af0fff8de65
@@ -26,4 +26,4 @@ Intraline word spans, bounded context expansion through content references, whit
 
 ## Notes
 
-Unified/split layout and syntax highlighting completed by mb-sj1s. Remaining scope is intraline emphasis, context expansion, whitespace controls, and virtualization/worker evaluation only.
+Unified/split layout and syntax highlighting completed by mb-sj1s. Remaining scope is intraline emphasis, context expansion, whitespace controls, and virtualization/worker evaluation. PR #76 review finding 76-6 also records the accepted hunk-boundary lexical-confidence limitation: defer any reader cue until full-source tokenization or context expansion can replace the per-hunk reset honestly.
