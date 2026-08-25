@@ -15,7 +15,11 @@ from metabrowser.file_extensions import (
     BROWSER_IMAGE_EXTS,
     BROWSER_TEXT_EXTS,
     BROWSER_TRACKABLE_EXTS,
+    SYNTAX_LANGUAGE_BY_BASENAME,
+    SYNTAX_LANGUAGE_BY_EXTENSION,
+    syntax_language_for_path,
 )
+from metabrowser.settings import client_settings_dict
 
 
 def test_browser_text_and_image_sets_are_disjoint() -> None:
@@ -30,6 +34,28 @@ def test_browser_text_includes_arbitrary_text_formats() -> None:
     `foo.html.gz` should open as HTML in the source view."""
     for ext in (".html", ".xml", ".sql", ".log", ".tsv", ".rst"):
         assert ext in BROWSER_TEXT_EXTS, f"{ext} should be browser-readable"
+
+
+def test_syntax_language_extensions_are_always_browser_text() -> None:
+    """Every shipped syntax mapping must route to a Source view at any size."""
+    assert set(SYNTAX_LANGUAGE_BY_EXTENSION) <= BROWSER_TEXT_EXTS
+    assert SYNTAX_LANGUAGE_BY_EXTENSION[".yaml"] == "yaml"
+    assert SYNTAX_LANGUAGE_BY_EXTENSION[".md"] == "markdown"
+    assert SYNTAX_LANGUAGE_BY_EXTENSION[".rs"] == "rust"
+    assert SYNTAX_LANGUAGE_BY_EXTENSION[".cpp"] == "cpp"
+    assert SYNTAX_LANGUAGE_BY_BASENAME["makefile"] == "makefile"
+    assert syntax_language_for_path("nested/Makefile") == "makefile"
+    assert syntax_language_for_path("nested/Gemfile.zlib") == "ruby"
+    assert syntax_language_for_path("nested/example.rs") == "rust"
+
+
+def test_client_settings_export_the_syntax_registry_and_bound() -> None:
+    """The browser receives both syntax decisions from Python's authority."""
+    settings = client_settings_dict()
+    assert settings["SYNTAX_LANGUAGE_BY_BASENAME"] == dict(SYNTAX_LANGUAGE_BY_BASENAME)
+    assert settings["SYNTAX_LANGUAGE_BY_EXTENSION"] == dict(SYNTAX_LANGUAGE_BY_EXTENSION)
+    assert settings["SYNTAX_HIGHLIGHT_MAX_BYTES"] > 0
+    assert client_settings_dict(syntax_highlight_max_bytes=7)["SYNTAX_HIGHLIGHT_MAX_BYTES"] == 7
 
 
 def test_browser_trackable_excludes_gz() -> None:

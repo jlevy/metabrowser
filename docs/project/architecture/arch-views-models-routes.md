@@ -53,6 +53,27 @@ Two kinds are also **containers** — folder-like entries whose children are add
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
 folders) and `diff` (children are the files a patch changes).
 
+### Shared Source rendering
+
+`text`, `structured`, and `markdown` all expose raw source from the file envelope.
+Generic text and structured views use the SDK’s shared Source renderer; Markdown keeps
+its custom frontmatter split but follows the same language and size decisions.
+A source view never embeds another kind’s renderer, because nondefault plugins mount on
+demand and may not be loaded.
+
+The server owns the logical-extension and basename grammar maps plus the syntax byte
+bound and injects them with the file envelope settings.
+A renderer emits exact escaped text and a host language class.
+The shell enhances the mounted subtree after the renderer settles and after first paint,
+whether the tab was initially visible or mounted later.
+Diff views need tokens in their semantic line model rather than markup, so they call the
+bounded SDK token service but use the same injected registry, prefetched grammars, and
+palette.
+
+The registry-to-vendored-grammar and registry-to-text-routing checks live in
+`test_plugin_sdk_syntax_token_contracts` and
+`test_syntax_language_extensions_are_always_browser_text`.
+
 ## Documented data formats
 
 Formats with a schema, a conformance corpus, and implementations bound by it.

@@ -73,7 +73,8 @@ if (typeof clickHandler !== "function") {
   // Build the fake wrap/button/code structure.
   function makeButton(withMarker) {
     const classes = new Set();
-    const codeNode = { textContent: "print('hi')" };
+    const codeNode = { textContent: "visible segment" };
+    const copyPayload = { textContent: "print('hi')\n# complete source" };
     const btn = {
       dataset: { tipText: "Copy content" },
       classList: {
@@ -84,8 +85,13 @@ if (typeof clickHandler !== "function") {
       _classes: classes,
     };
     const wrap = {
-      childNodes: [btn, codeNode],
-      querySelector: (sel) => (sel === "code" ? codeNode : null),
+      childNodes: [btn, copyPayload, codeNode],
+      querySelector: (sel) => {
+        if (sel === "[data-mb-copy-payload]") {
+          return copyPayload;
+        }
+        return sel === "code" ? codeNode : null;
+      },
     };
     btn.closest = (sel) => (sel === ".content-copy-wrap" ? wrap : null);
     const target = {
@@ -94,12 +100,13 @@ if (typeof clickHandler !== "function") {
     return { btn, target };
   }
 
-  // Case 1: marked button copies the code text and shows feedback.
+  // Case 1: marked button prefers an explicit whole-source payload over a
+  // visible segment and shows feedback.
   const first = makeButton(true);
   clickHandler({ target: first.target });
   Promise.resolve()
     .then(() => {
-      if (clipboardWrites.length !== 1 || clipboardWrites[0] !== "print('hi')") {
+      if (clipboardWrites.length !== 1 || clipboardWrites[0] !== "print('hi')\n# complete source") {
         failures.push(`expected one code write, got ${JSON.stringify(clipboardWrites)}`);
       }
       if (!first.btn.classList.has("copied") || first.btn.dataset.tipText !== "Copied!") {

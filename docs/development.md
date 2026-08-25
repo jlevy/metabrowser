@@ -472,6 +472,15 @@ Extract existing behavior when a change has contract coverage and a clear bounda
 not combine an unrelated rewrite with a release fix.
 
 - Plugins use `window.metabrowser`, not private variables in `app.js`.
+- Generic source tabs render through `metabrowser.renderSourceView`; custom source
+  renderers emit the language class returned by `langForPath`. The shell enhances every
+  default or lazy-mounted view after its render settles and after first paint, so
+  plugins do not call Highlight.js directly.
+  The extension and basename registries in `file_extensions.py` and the measured bound
+  in `settings.py` are injected together as the browser authority.
+  `test_plugin_sdk_syntax_token_contracts` checks every mapping against the vendored
+  grammar registry, and `test_syntax_language_extensions_are_always_browser_text` checks
+  that every mapped extension reaches a Source view at any file size.
 - New renderer state must have an explicit disposal path.
 - Colors come from design tokens.
 - Large collections need lazy mounting, virtualization, or a bounded display.

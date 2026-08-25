@@ -86,6 +86,7 @@ from metabrowser.build_version import display_version_line
 from metabrowser.charts import clear_charts_cache
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
+from metabrowser.file_extensions import syntax_language_for_path
 from metabrowser.file_kinds import (
     FILE_KIND_DETECTORS,
     VIEW_REGISTRY,
@@ -972,7 +973,7 @@ async def index(_request: Request) -> HTMLResponse:
     # runs so JS can read window.METABROWSER_SETTINGS.* without
     # duplicating constants in the source.
     settings_block = (
-        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};</script>"
+        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES))};</script>"
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
@@ -2137,10 +2138,17 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         else _compression_identity_fields(artifact)
     )
     requested_text_offset = max(0, _query_int(request, "offset", 0))
+    default_text_limit = _TEXT_PREVIEW_CHUNK_BYTES
+    if (
+        requested_text_offset == 0
+        and syntax_language_for_path(artifact.logical_name, ext)
+        and _SYNTAX_HIGHLIGHT_MAX_BYTES > 0
+    ):
+        default_text_limit = min(default_text_limit, _SYNTAX_HIGHLIGHT_MAX_BYTES)
     text_limit = max(
         1,
         min(
-            _query_int(request, "limit", _TEXT_PREVIEW_CHUNK_BYTES),
+            _query_int(request, "limit", default_text_limit),
             _TEXT_PREVIEW_MAX_CHUNK_BYTES,
         ),
     )
@@ -2224,7 +2232,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             if (
                 artifact.is_compressed
                 or text_offset > 0
-                or (logical_size is not None and logical_size > _TEXT_PREVIEW_CHUNK_BYTES)
+                or (logical_size is not None and logical_size > text_limit)
             ):
                 content, content_bytes, bytes_read, content_has_more = await asyncio.to_thread(
                     _read_artifact_text_chunk,
@@ -2284,7 +2292,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     or (logical_size is not None and bytes_read < logical_size),
                     "content_preview_limit": text_limit,
                     "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
-                    "highlight_disabled": True,
+                    "highlight_disabled": (
+                        _SYNTAX_HIGHLIGHT_MAX_BYTES <= 0 or bytes_read > _SYNTAX_HIGHLIGHT_MAX_BYTES
+                    ),
                     **compression_fields,
                 },
                 headers=etag_headers,
@@ -2324,10 +2334,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "content_preview_limit": text_limit,
             "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
             "highlight_disabled": (
-                content_has_more
-                or (logical_size is not None and bytes_read < logical_size)
-                or (logical_size is not None and logical_size > _SYNTAX_HIGHLIGHT_MAX_BYTES)
-                or bytes_read > _SYNTAX_HIGHLIGHT_MAX_BYTES
+                _SYNTAX_HIGHLIGHT_MAX_BYTES <= 0 or bytes_read > _SYNTAX_HIGHLIGHT_MAX_BYTES
             ),
             **compression_fields,
         }
