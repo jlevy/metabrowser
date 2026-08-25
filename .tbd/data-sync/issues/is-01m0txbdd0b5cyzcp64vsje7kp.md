@@ -3,9 +3,9 @@ type: is
 id: is-01m0txbdd0b5cyzcp64vsje7kp
 title: "Address review: PR #76 — diff syntax and layouts design"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 18
+version: 19
 spec_path: docs/project/specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels:
   - diff
@@ -26,9 +26,9 @@ child_order_hints:
   - is-01m0vx58a67fstf9xv3bd930tw
   - is-01m0vx58kkhk4cjjk8xfexxq0r
 created_at: 2026-08-24T22:13:13.155Z
-updated_at: 2026-08-25T07:29:06.162Z
-closed_at: null
-close_reason: null
+updated_at: 2026-08-25T08:01:51.529Z
+closed_at: 2026-08-25T08:01:51.528Z
+close_reason: "Completed PR #76 review lifecycle. R1-R10 were previously addressed. For findings 76-1 through 76-6: 76-1, 76-2, and 76-5 fixed in 90d812a; 76-3 and 76-4 rebutted with architecture evidence; 76-6 explicitly deferred to existing open follow-up mb-hhmb. The full disposition map is published at PR comment 5407300979, no inline threads or newer actionable feedback remain, all five required checks pass on exact head 90d812a1b49f9100ec3bfa3ee5a3333663db6b33, and the PR is mergeable."
 resolution: null
 duplicate_of: null
 ---
