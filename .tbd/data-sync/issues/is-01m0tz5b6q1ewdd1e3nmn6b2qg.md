@@ -5,8 +5,8 @@ title: "Step 3: Render progressively highlighted unified diffs"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels:
   - diff
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0tw8haj67tstjassnq9we07
 parent_id: is-01m0tz401dw1bceer6knws0s7a
 created_at: 2026-08-24T22:44:51.542Z
-updated_at: 2026-08-24T23:12:28.352Z
+updated_at: 2026-08-25T00:07:06.893Z
 closed_at: 2026-08-24T23:12:28.351Z
 close_reason: Refactored unified diff projection over cached side-specific records; implemented plain-first asynchronous token enhancement with correct old/new selection, createElement/textContent spans, safe failure fallback, global enhancer exclusion, and transparent token hosts. Focused tests, strict TypeScript, make format, and make verify pass (1512 pytest, 48 golden).
 resolution: null

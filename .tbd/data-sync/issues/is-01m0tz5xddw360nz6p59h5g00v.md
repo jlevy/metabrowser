@@ -5,8 +5,8 @@ title: "Step 5: Integrate hydration, scheduling, folds, and disposal"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels:
   - diff
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0tz6g44qzh76psm0gg91ays
 parent_id: is-01m0tz401dw1bceer6knws0s7a
 created_at: 2026-08-24T22:45:10.188Z
-updated_at: 2026-08-24T23:35:13.733Z
+updated_at: 2026-08-25T00:07:07.364Z
 closed_at: 2026-08-24T23:35:13.720Z
 close_reason: Integrated one mount AbortController and generation guard across deferred fetches and syntax work; passed the signal through the plugin loader; serialized file enhancement with event-loop yields; guarded uncooperative late results; cleared timers/control binding on disposal; preserved current layout, collapsed sections, stable paired-run folds, and token state across hydration/reprojection. Focused lifecycle tests and make verify pass (1512 pytest, 48 golden).
 resolution: null

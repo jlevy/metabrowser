@@ -5,8 +5,8 @@ title: "Step 1: Add bounded DOM-free syntax token SDK"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels:
   - diff
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0dmjfnekkf22fb5zhmj1nke
 parent_id: is-01m0tz401dw1bceer6knws0s7a
 created_at: 2026-08-24T22:44:30.811Z
-updated_at: 2026-08-24T22:55:39.812Z
+updated_at: 2026-08-25T00:07:06.415Z
 closed_at: 2026-08-24T22:55:39.811Z
 close_reason: Implemented bounded, abortable mb.highlightSyntax with shared injected UTF-8 limit, terminal asset settlement, strict DOM-free token scanning, typed public contract, and focused ready/delayed/failure/entity/malformed/boundary tests; make verify passed with 1,511 tests.
 resolution: null

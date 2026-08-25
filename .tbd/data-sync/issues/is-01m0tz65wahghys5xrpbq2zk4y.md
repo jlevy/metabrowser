@@ -5,8 +5,8 @@ title: "Step 6: Finish split interaction, styling, and contrast"
 kind: task
 status: closed
 priority: 2
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels:
   - diff
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0tz6g44qzh76psm0gg91ays
 parent_id: is-01m0tz401dw1bceer6knws0s7a
 created_at: 2026-08-24T22:45:18.856Z
-updated_at: 2026-08-24T23:44:51.926Z
+updated_at: 2026-08-25T00:07:07.612Z
 closed_at: 2026-08-24T23:44:51.926Z
 close_reason: Acceptance criteria pass; interaction, styling, and contrast contracts are covered.
 resolution: null

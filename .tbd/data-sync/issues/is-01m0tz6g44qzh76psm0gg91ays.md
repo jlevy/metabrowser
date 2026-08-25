@@ -5,8 +5,8 @@ title: "Step 7: Validate integration in a real browser and measure cost"
 kind: task
 status: closed
 priority: 2
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels:
   - diff
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0tz6rzhc67fjtt1s523kjzz
 parent_id: is-01m0tz401dw1bceer6knws0s7a
 created_at: 2026-08-24T22:45:29.347Z
-updated_at: 2026-08-25T00:03:09.007Z
+updated_at: 2026-08-25T00:07:07.842Z
 closed_at: 2026-08-25T00:03:09.006Z
 close_reason: Real-browser behavior, bounds, yield, hydration, replacement, theme, layout, overflow, and diagnostics validation passed; measured evidence recorded in the bead.
 resolution: null

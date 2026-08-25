@@ -5,8 +5,8 @@ title: "Step 2: Build side-specific diff syntax model"
 kind: feature
 status: closed
 priority: 1
-version: 7
-spec_path: docs/project/specs/active/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md
 labels:
   - diff
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0tz5b6q1ewdd1e3nmn6b2qg
 parent_id: is-01m0tz401dw1bceer6knws0s7a
 created_at: 2026-08-19T18:29:40.141Z
-updated_at: 2026-08-24T23:03:41.104Z
+updated_at: 2026-08-25T00:07:06.651Z
 closed_at: 2026-08-24T23:03:41.103Z
 close_reason: Implemented strict side-specific diff syntax model in diff-syntax.js with independent old/new hunk reconstruction, path-specific language resolution, stable line records, whole-file UTF-8 measurement, exact token round-trip validation, safe plain-text fallback, and focused DOM behavior coverage. make format and make verify pass (1512 pytest, 48 golden).
 resolution: null
