@@ -5,7 +5,7 @@ title: "Monitor PR #74 and FDU #44/#47 alignment through adoption readiness"
 kind: task
 status: in_progress
 priority: 1
-version: 27
+version: 29
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 refs:
   - kind: pr
@@ -38,15 +38,18 @@ refs:
   - kind: pr
     url: https://github.com/jlevy/fdu/pull/47#pullrequestreview-5020603690
     at: 2026-08-25T15:11:39.712Z
+  - kind: pr
+    url: https://github.com/jlevy/fdu/pull/47#issuecomment-5412701379
+    at: 2026-08-25T15:26:03.294Z
 labels: []
 dependencies: []
 parent_id: is-01m0r8xt95921dabcddjjm7csf
 child_order_hints:
   - is-01m0vmz928cewndbdk6gnhbgqz
 created_at: 2026-08-24T22:38:51.537Z
-updated_at: 2026-08-25T15:11:39.713Z
+updated_at: 2026-08-25T15:26:03.666Z
 ---
-Recurring alignment owner for MetaBrowser PR #74 and FDU PRs #44 and #47. Current reviewed heads (2026-08-25 15:10Z): MetaBrowser #74 0577bb125c4a607719befa3f213362f5522d5724, open/clean with 5 green checks and no feedback; FDU #44 7f18f208dbd3ccb2002228bb52ae00c5d4ffcabb, open/clean with 19 green checks and no feedback; FDU #47 353d48f6c795b72e1c4c94ed8f95b8e08b815c9b, draft/unstable with 18 green and one Windows failure. Exact review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5020603690 accepts the improved fixtures, live admission direction, coherent refusal state, and reference invalidations path, but reopens fdu-0778 for lost hidden-control-file rebinds and tracks unclocked cap-refusal mutations in fdu-a7cl plus one-filesystem fail-open/Windows portability in fdu-4ubw. Existing adoption gates fdu-91ru, fdu-8w5k, fdu-7sou, fdu-97dd, fdu-vfx7, fdu-xyvu, fdu-vfyw, and fdu-kl7r remain open. Last FDU #47 channel cursors are issue comment 5411478671 and formal review 5020603690; no inline comments or unresolved threads. Continue exact-head diffing and act on material feedback until all three PRs and adoption handoff are terminal.
+Recurring alignment owner for MetaBrowser PR 74 and FDU PRs 44 and 47. Current FDU 47 reviewed head (2026-08-25 15:25Z) is 5eb25743f9b7b1a8626bfd1998a5f5ae5bea0e10; 5eb2574 is a one-line Windows lint correction atop the semantic cursor commit b5035e4. Direct FDU-agent handoff https://github.com/jlevy/fdu/pull/47#issuecomment-5412701379 records that the new continuation is version-bound, request-bound, flat-cost, and typed on refusal, but still caller-forgeable because trusted totals and resume state are protected only by a recomputable unkeyed FNV checksum. fdu-91ru remains open for private per-open continuation authority and forged-but-well-checksummed, cross-index, and bounded-input tests. The same handoff maps the still-unfixed exact-head findings fdu-0778, fdu-a7cl, fdu-4ubw, and the fdu-8w5k catalog-predicate adoption gate. Prior formal review: https://github.com/jlevy/fdu/pull/47#pullrequestreview-5020603690. FDU 47 exact-head CI is currently running; continue exact-head review and channel monitoring before any gate closes.
 
 ## Notes
 
