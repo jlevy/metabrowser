@@ -3,9 +3,9 @@ type: is
 id: is-01m0w18bwddnc94htabvg4zke8
 title: Implement VS Code-derived intraline diff refinement
 kind: epic
-status: in_progress
+status: closed
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -21,7 +21,11 @@ child_order_hints:
   - is-01m0w1b43a6zy5a3j7z4yv76v7
   - is-01m0w1bh84kq4t17bjwxyqv5mj
 created_at: 2026-08-25T08:40:42.124Z
-updated_at: 2026-08-25T08:43:56.208Z
+updated_at: 2026-08-25T09:32:42.078Z
+closed_at: 2026-08-25T09:32:42.077Z
+close_reason: "Focused Phase 4 implementation complete in PR #81: all eight child beads closed; VS Code-derived intraline refinement, shared render model, syntax composition, unified/split lifecycle, semantic palette, browser measurement, attribution/docs, and exact-head delivery acceptance criteria are satisfied. Parent mb-hhmb intentionally remains open for context expansion, whitespace controls, and virtualization/worker evaluation."
+resolution: null
+duplicate_of: null
 ---
 Implement Phase 4 of the active general diff rendering plan as one focused browser-only refinement slice.
 
