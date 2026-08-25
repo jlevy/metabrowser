@@ -5,14 +5,16 @@ title: Git commit diffs disappear when the diff plugin has not been loaded
 kind: bug
 status: closed
 priority: 1
-version: 3
+version: 5
 labels:
   - git
   - regression
   - browser
+  - release:v0.7.1
 dependencies: []
+parent_id: is-01m0vs8cjjpcz1h53bz34290n5
 created_at: 2026-08-25T05:20:07.496Z
-updated_at: 2026-08-25T05:34:03.949Z
+updated_at: 2026-08-25T06:21:49.601Z
 closed_at: 2026-08-25T05:34:03.935Z
 close_reason: Fixed by loading diff kind assets before resolving the commit renderer, with fresh-shell regression coverage, live v0.6.0 comparison, full verification, and passing PR CI.
 resolution: null
