@@ -34,6 +34,7 @@ from metabrowser.inventory_engine.contract import (
     InventoryHandle,
     LifecyclePhase,
     PriorityRequest,
+    ProviderDiagnostics,
     QueryKind,
     ReadRequest,
     ReadResult,
@@ -75,9 +76,11 @@ class _FakeHandle:
         self.entries: dict[str, InventoryEntry] = {}
         self.history: list[ChangeBatch] = []
         self.subscribers: set[asyncio.Queue[ChangeBatch | None]] = set()
+        self.changes_started = asyncio.Event()
         self.closed = False
         self.close_count = 0
         self.refreshes: list[RefreshRequest] = []
+        self.refresh_receipt: RefreshReceipt | None = None
         self.priorities: list[PriorityRequest] = []
         self.read_gate: asyncio.Event | None = None
         self.read_error: Exception | None = None
@@ -116,7 +119,20 @@ class _FakeHandle:
             for query in request.queries:
                 if isinstance(query, DiagnosticsQuery):
                     projections.append(
-                        DiagnosticsProjection(query_id=query.query_id, counters={"fake": True})
+                        DiagnosticsProjection(
+                            query_id=query.query_id,
+                            payload=ProviderDiagnostics(
+                                provider="fake",
+                                contract="inventory-provider-v1",
+                                files_indexed=0,
+                                directories_indexed=0,
+                                watch_mode="off",
+                                watch_state="off",
+                                watch_reason="disabled",
+                                read_requests=0,
+                                cumulative_work=WorkCounters(),
+                            ),
+                        )
                     )
                 elif isinstance(query, EntryQuery):
                     entry = self.entries.get(query.path)
@@ -173,6 +189,7 @@ class _FakeHandle:
     async def _changes(self, *, after: ChangeCursor | None) -> AsyncIterator[ChangeBatch]:
         queue: asyncio.Queue[ChangeBatch | None] = asyncio.Queue()
         self.subscribers.add(queue)
+        self.changes_started.set()
         try:
             sequence = after.sequence if after is not None and after.session == self.session else -1
             for batch in self.history:
@@ -211,7 +228,10 @@ class _FakeHandle:
 
     async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
         self.refreshes.append(request)
-        return RefreshReceipt(accepted_paths=request.paths)
+        return self.refresh_receipt or RefreshReceipt(
+            version=self.version(),
+            accepted_paths=request.paths,
+        )
 
     async def prioritize(self, request: PriorityRequest) -> None:
         self.priorities.append(request)
@@ -620,6 +640,62 @@ def test_provider_session_drift_fails_reads_and_resets_stream_consumers(
     asyncio.run(_run())
 
 
+def test_provider_fingerprint_drift_fails_reads_and_resets_stream_consumers(
+    tmp_path: Path,
+) -> None:
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        cursor, _version, _state_value = await coordinator.checkpoint()
+        changes = coordinator.changes(after=cursor)
+        pending = asyncio.create_task(anext(changes))
+        await asyncio.sleep(0)
+
+        handle.config = InventoryConfig(registry_fingerprint="illegal-replacement-semantics")
+        handle.emit(dirty_paths=("changed",))
+        reset = await asyncio.wait_for(pending, timeout=1)
+        assert reset.reset is True
+        with pytest.raises(InventoryConsistencyError, match="changed provider fingerprints"):
+            await coordinator.read(ReadRequest())
+
+        await changes.aclose()
+        await coordinator.close()
+
+    asyncio.run(_run())
+
+
+def test_nonmonotonic_provider_batches_reset_stream_consumers(tmp_path: Path) -> None:
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        cursor, _version, _state_value = await coordinator.checkpoint()
+        changes = coordinator.changes(after=cursor)
+        pending = asyncio.create_task(anext(changes))
+        await asyncio.wait_for(handle.changes_started.wait(), timeout=1)
+
+        first = handle.emit(dirty_paths=("first",))
+        duplicate = ChangeBatch(
+            cursor=first.cursor,
+            version=first.version,
+            state=first.state,
+            dirty_paths=("duplicate",),
+        )
+        for queue in tuple(handle.subscribers):
+            queue.put_nowait(duplicate)
+
+        change = await asyncio.wait_for(pending, timeout=1)
+        reset = change if change.reset else await asyncio.wait_for(anext(changes), timeout=1)
+        assert reset.reset is True
+        await changes.aclose()
+        await coordinator.close()
+
+    asyncio.run(_run())
+
+
 def test_refresh_and_priority_are_provider_neutral(tmp_path: Path) -> None:
     async def _run() -> None:
         backend = _FakeBackend()
@@ -630,9 +706,40 @@ def test_refresh_and_priority_are_provider_neutral(tmp_path: Path) -> None:
         priority = PriorityRequest(paths=("b",), max_depth=3)
         receipt = await coordinator.refresh(refresh)
         await coordinator.prioritize(priority)
-        assert receipt == RefreshReceipt(accepted_paths=("a",))
+        assert receipt == RefreshReceipt(version=handle.version(), accepted_paths=("a",))
         assert handle.refreshes == [refresh]
         assert handle.priorities == [priority]
+        await coordinator.close()
+
+    asyncio.run(_run())
+
+
+def test_refresh_rejects_incomplete_receipts_and_provider_identity_drift(
+    tmp_path: Path,
+) -> None:
+    async def _run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        refresh = RefreshRequest(observations=(RefreshObservation(path="a"),))
+
+        handle.refresh_receipt = RefreshReceipt(version=handle.version(), accepted_paths=())
+        with pytest.raises(InventoryConsistencyError, match="every requested path"):
+            await coordinator.refresh(refresh)
+
+        version = handle.version()
+        handle.refresh_receipt = RefreshReceipt(
+            version=EngineVersion(
+                session=version.session,
+                sequence=version.sequence,
+                scope_fingerprint="wrong-scope",
+                semantic_fingerprint=version.semantic_fingerprint,
+            ),
+            accepted_paths=("a",),
+        )
+        with pytest.raises(InventoryConsistencyError, match="provider fingerprints"):
+            await coordinator.refresh(refresh)
         await coordinator.close()
 
     asyncio.run(_run())

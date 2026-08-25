@@ -10,12 +10,11 @@
 // app.js keeps what genuinely needs the DOM: reading row state off elements and
 // writing the verdicts back as classes.
 //
-// Where filtering happens at all is a separate question, answered in
-// metabrowser/tree_filter.py: the /api/tree source is pruned server-side over
-// the whole index, because whether a collapsed folder holds a match is not
-// something a client that was never sent its contents can know. The cluster
-// verdicts below apply only to the /api/recent source, whose folders are built
-// out of the matching files themselves and are therefore complete.
+// The inventory provider answers /api/tree through a FilteredTreeQuery over the
+// whole retained index, because a client cannot judge a collapsed folder whose
+// contents it never received. The cluster verdicts below apply only to the
+// /api/recent source, whose folders are built from the matching files themselves
+// and are therefore complete.
 
 (() => {
   /**

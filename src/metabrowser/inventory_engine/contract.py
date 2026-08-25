@@ -22,6 +22,10 @@ from metabrowser.wire_models import NavigationTallies, RollupResult
 MAX_CHANGE_PATHS = 1_024
 MAX_COMMAND_PATHS = 1_024
 MAX_QUERIES_PER_READ = 1_024
+# Keep lifecycle diagnostics within the same fixed envelope as change delivery.
+MAX_INVENTORY_ISSUES = MAX_CHANGE_PATHS
+# Bound provider-supplied diagnostic text before it crosses an FFI boundary.
+MAX_ISSUE_DETAIL_BYTES = 4_096
 
 
 def _require_nonempty(value: str, name: str) -> None:
@@ -287,6 +291,8 @@ class InventoryIssue:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.detail, "detail")
+        if len(self.detail.encode("utf-8")) > MAX_ISSUE_DETAIL_BYTES:
+            raise ValueError(f"issue detail must be at most {MAX_ISSUE_DETAIL_BYTES} UTF-8 bytes")
         if self.path is not None:
             require_canonical_inventory_path(self.path, "issue path", allow_root=True)
 
@@ -299,6 +305,10 @@ class IndexState:
     source: SourceKind
     progress: IndexProgress = field(default_factory=IndexProgress)
     issues: tuple[InventoryIssue, ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.issues) > MAX_INVENTORY_ISSUES:
+            raise ValueError(f"index state accepts at most {MAX_INVENTORY_ISSUES} issues")
 
     def can_transition_to(self, other: IndexState) -> bool:
         """Whether *other* is a legal next lifecycle state for this session."""
@@ -332,11 +342,31 @@ class WorkCounters:
             _require_nonnegative(self.cpu_time_ns, "cpu_time_ns")
 
 
+@dataclass(frozen=True, slots=True)
+class ProviderDiagnostics:
+    """Constant-size provider facts consumed by the host and performance tools."""
+
+    provider: str
+    contract: str
+    files_indexed: int
+    directories_indexed: int
+    watch_mode: str
+    watch_state: str
+    watch_reason: str
+    read_requests: int
+    cumulative_work: WorkCounters
+
+    def __post_init__(self) -> None:
+        for name in ("provider", "contract", "watch_mode", "watch_state", "watch_reason"):
+            _require_nonempty(getattr(self, name), name)
+        for name in ("files_indexed", "directories_indexed", "read_requests"):
+            _require_nonnegative(getattr(self, name), name)
+
+
 class EntryType(StrEnum):
     FILE = "file"
     DIRECTORY = "dir"
     SYMLINK = "symlink"
-    OTHER = "other"
 
 
 @dataclass(frozen=True, slots=True)
@@ -451,7 +481,6 @@ class QueryKind(StrEnum):
     NAVIGATION = "navigation"
     RECENT = "recent"
     CATALOG = "catalog"
-    METADATA = "metadata"
     DIAGNOSTICS = "diagnostics"
 
 
@@ -615,15 +644,6 @@ class CatalogQuery:
 
 
 @dataclass(frozen=True, slots=True)
-class MetadataQuery:
-    query_id: str
-    kind: Literal[QueryKind.METADATA] = field(init=False, default=QueryKind.METADATA)
-
-    def __post_init__(self) -> None:
-        _require_nonempty(self.query_id, "query_id")
-
-
-@dataclass(frozen=True, slots=True)
 class DiagnosticsQuery:
     query_id: str
     kind: Literal[QueryKind.DIAGNOSTICS] = field(init=False, default=QueryKind.DIAGNOSTICS)
@@ -640,7 +660,6 @@ type ReadQuery = (
     | NavigationQuery
     | RecentQuery
     | CatalogQuery
-    | MetadataQuery
     | DiagnosticsQuery
 )
 
@@ -652,7 +671,6 @@ REGISTERED_QUERY_TYPES: tuple[type[ReadQuery], ...] = (
     NavigationQuery,
     RecentQuery,
     CatalogQuery,
-    MetadataQuery,
     DiagnosticsQuery,
 )
 
@@ -664,7 +682,6 @@ QUERY_TYPE_BY_KIND: Mapping[str, type[ReadQuery]] = {
     QueryKind.NAVIGATION.value: NavigationQuery,
     QueryKind.RECENT.value: RecentQuery,
     QueryKind.CATALOG.value: CatalogQuery,
-    QueryKind.METADATA.value: MetadataQuery,
     QueryKind.DIAGNOSTICS.value: DiagnosticsQuery,
 }
 
@@ -800,7 +817,6 @@ class CatalogRecord:
     def __post_init__(self) -> None:
         require_canonical_inventory_path(self.path, "path", allow_root=False)
         _require_nonnegative(self.size, "size")
-        _require_nonnegative(self.mtime_ns, "mtime_ns")
 
 
 @dataclass(frozen=True, slots=True)
@@ -830,23 +846,9 @@ class CatalogProjection:
 
 
 @dataclass(frozen=True, slots=True)
-class MetadataProjection:
-    query_id: str
-    provider: str
-    contract: str
-    root: str
-
-    def __post_init__(self) -> None:
-        _require_nonempty(self.query_id, "query_id")
-        _require_nonempty(self.provider, "provider")
-        _require_nonempty(self.contract, "contract")
-        _require_nonempty(self.root, "root")
-
-
-@dataclass(frozen=True, slots=True)
 class DiagnosticsProjection:
     query_id: str
-    counters: Mapping[str, int | float | str | bool | None]
+    payload: ProviderDiagnostics
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
@@ -860,7 +862,6 @@ type ProjectionResult = (
     | NavigationProjection
     | RecentProjection
     | CatalogProjection
-    | MetadataProjection
     | DiagnosticsProjection
 )
 
@@ -966,10 +967,13 @@ class RefreshRequest:
 
 @dataclass(frozen=True, slots=True)
 class RefreshReceipt:
+    version: EngineVersion
     accepted_paths: tuple[str, ...]
     rejected_paths: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if len(self.accepted_paths) + len(self.rejected_paths) > MAX_COMMAND_PATHS:
+            raise ValueError(f"refresh receipt accepts at most {MAX_COMMAND_PATHS} paths")
         if len(self.accepted_paths) != len(set(self.accepted_paths)):
             raise ValueError("accepted refresh paths must be unique")
         if len(self.rejected_paths) != len(set(self.rejected_paths)):

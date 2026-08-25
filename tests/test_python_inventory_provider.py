@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import inspect
+import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, cast
@@ -32,8 +33,6 @@ from metabrowser.inventory_engine.contract import (
     InventoryHandle,
     IssueCode,
     LifecyclePhase,
-    MetadataProjection,
-    MetadataQuery,
     NavigationProjection,
     NavigationQuery,
     PriorityRequest,
@@ -87,7 +86,6 @@ async def _python_provider_answers_one_coherent_bundled_read(tmp_path: Path) -> 
                         max_rows=20,
                     ),
                     CatalogQuery(query_id="catalog", max_rows=1),
-                    MetadataQuery(query_id="metadata"),
                     DiagnosticsQuery(query_id="diagnostics"),
                 )
             )
@@ -111,14 +109,10 @@ async def _python_provider_answers_one_coherent_bundled_read(tmp_path: Path) -> 
         assert catalog.next_page is not None
         assert catalog.remaining_rows == 1
 
-        metadata = result.projection("metadata")
-        assert isinstance(metadata, MetadataProjection)
-        assert metadata.provider == "python"
-        assert metadata.contract == "inventory-provider-v1"
-
         diagnostics = result.projection("diagnostics")
         assert isinstance(diagnostics, DiagnosticsProjection)
-        assert diagnostics.counters["provider"] == "python"
+        assert diagnostics.payload.provider == "python"
+        assert diagnostics.payload.contract == "inventory-provider-v1"
         assert result.work.rows_returned >= 6
     finally:
         await handle.close()
@@ -136,6 +130,8 @@ async def _refresh_advances_version_and_emits_provider_change(tmp_path: Path) ->
             RefreshRequest(observations=(RefreshObservation(path="b.txt"),))
         )
         assert receipt.accepted_paths == ("b.txt",)
+        assert receipt.version.session == before.version.session
+        assert receipt.version.sequence > before.version.sequence
 
         for _attempt in range(4):
             batch = await asyncio.wait_for(anext(changes), timeout=1)
@@ -154,6 +150,40 @@ async def _refresh_advances_version_and_emits_provider_change(tmp_path: Path) ->
                     at_version=before.version,
                 )
             )
+    finally:
+        await handle.close()
+
+
+async def _special_objects_stay_outside_the_provider_contract(tmp_path: Path) -> None:
+    special = tmp_path / "pipe"
+    os.mkfifo(special)
+    handle = await _open_settled(tmp_path)
+    try:
+        boot = await handle.read(ReadRequest(queries=(EntryQuery(query_id="boot", path="pipe"),)))
+        boot_entry = boot.projection("boot")
+        assert isinstance(boot_entry, EntryProjection)
+        assert boot_entry.presence is EntryPresence.ABSENT
+
+        special.unlink()
+        special.write_text("regular", encoding="utf-8")
+        await handle.refresh(RefreshRequest(observations=(RefreshObservation(path="pipe"),)))
+        regular = await handle.read(
+            ReadRequest(queries=(EntryQuery(query_id="regular", path="pipe"),))
+        )
+        regular_entry = regular.projection("regular")
+        assert isinstance(regular_entry, EntryProjection)
+        assert regular_entry.entry is not None
+        assert regular_entry.entry.type.value == "file"
+
+        special.unlink()
+        os.mkfifo(special)
+        await handle.refresh(RefreshRequest(observations=(RefreshObservation(path="pipe"),)))
+        refreshed = await handle.read(
+            ReadRequest(queries=(EntryQuery(query_id="refreshed", path="pipe"),))
+        )
+        refreshed_entry = refreshed.projection("refreshed")
+        assert isinstance(refreshed_entry, EntryProjection)
+        assert refreshed_entry.presence is EntryPresence.ABSENT
     finally:
         await handle.close()
 
@@ -261,6 +291,103 @@ async def _targeted_read_reports_bounded_work(tmp_path: Path) -> None:
         await handle.close()
 
 
+async def _tree_continuations_reuse_the_first_projection(tmp_path: Path) -> None:
+    file_count = 5
+    page_rows = 2
+    for index in range(file_count):
+        (tmp_path / f"file-{index}.txt").write_text(str(index), encoding="utf-8")
+
+    handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+    try:
+        directory_query = DirectoryQuery(
+            query_id="directory-page",
+            max_depth=1,
+            max_rows=page_rows,
+        )
+        first_directory = await handle.read(ReadRequest(queries=(directory_query,)))
+        directory_page = first_directory.projection(directory_query.query_id)
+        assert isinstance(directory_page, DirectoryProjection)
+        assert directory_page.next_page is not None
+        second_directory = await handle.read(
+            ReadRequest(
+                queries=(
+                    DirectoryQuery(
+                        query_id=directory_query.query_id,
+                        max_depth=directory_query.max_depth,
+                        max_rows=directory_query.max_rows,
+                        after=directory_page.next_page,
+                    ),
+                ),
+                at_version=first_directory.version,
+            )
+        )
+        assert first_directory.work.entries_visited == file_count
+        assert second_directory.work.entries_visited == 0
+
+        filtered_query = FilteredTreeQuery(
+            query_id="filtered-page",
+            max_depth=1,
+            max_rows=page_rows,
+            filter=InventoryFilter(extensions=(".txt",)),
+        )
+        first_filtered = await handle.read(ReadRequest(queries=(filtered_query,)))
+        filtered_page = first_filtered.projection(filtered_query.query_id)
+        assert isinstance(filtered_page, FilteredTreeProjection)
+        assert filtered_page.next_page is not None
+        second_filtered = await handle.read(
+            ReadRequest(
+                queries=(
+                    FilteredTreeQuery(
+                        query_id=filtered_query.query_id,
+                        max_depth=filtered_query.max_depth,
+                        max_rows=filtered_query.max_rows,
+                        after=filtered_page.next_page,
+                        filter=filtered_query.filter,
+                    ),
+                ),
+                at_version=first_filtered.version,
+            )
+        )
+        assert first_filtered.work.entries_visited == file_count + 1
+        assert second_filtered.work.entries_visited == 0
+    finally:
+        await handle.close()
+
+
+async def _filtered_directory_newest_time_uses_regular_files(tmp_path: Path) -> None:
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    epoch_file = folder / "epoch.txt"
+    epoch_file.write_text("epoch", encoding="utf-8")
+    os.utime(epoch_file, ns=(0, 0))
+    try:
+        (folder / "link").symlink_to("epoch.txt")
+    except OSError as error:  # pragma: no cover - unsupported Windows policy
+        pytest.skip(f"symlinks are unavailable: {error}")
+
+    handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+    try:
+        result = await handle.read(
+            ReadRequest(
+                queries=(
+                    FilteredTreeQuery(
+                        query_id="filtered",
+                        max_depth=2,
+                        max_rows=20,
+                    ),
+                )
+            )
+        )
+        projection = result.projection("filtered")
+        assert isinstance(projection, FilteredTreeProjection)
+        directory = next(entry for entry in projection.entries if entry.path == "folder")
+        assert directory.total_files == 1
+        assert directory.total_size == len("epoch")
+        assert directory.newest_mtime_ns == 0
+    finally:
+        await handle.close()
+
+
 async def _navigation_poll_reuses_one_coherent_read_boundary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -352,6 +479,11 @@ def test_refresh_advances_version_and_emits_provider_change(tmp_path: Path) -> N
     asyncio.run(_refresh_advances_version_and_emits_provider_change(tmp_path))
 
 
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFOs are unavailable")
+def test_special_objects_stay_outside_the_provider_contract(tmp_path: Path) -> None:
+    asyncio.run(_special_objects_stay_outside_the_provider_contract(tmp_path))
+
+
 def test_close_is_idempotent_and_refuses_later_reads(tmp_path: Path) -> None:
     asyncio.run(_close_is_idempotent_and_refuses_later_reads(tmp_path))
 
@@ -364,8 +496,16 @@ def test_python_provider_implements_every_projection(tmp_path: Path) -> None:
     asyncio.run(_python_provider_implements_every_projection(tmp_path))
 
 
+def test_filtered_directory_newest_time_uses_regular_files(tmp_path: Path) -> None:
+    asyncio.run(_filtered_directory_newest_time_uses_regular_files(tmp_path))
+
+
 def test_targeted_read_reports_bounded_work(tmp_path: Path) -> None:
     asyncio.run(_targeted_read_reports_bounded_work(tmp_path))
+
+
+def test_tree_continuations_reuse_the_first_projection(tmp_path: Path) -> None:
+    asyncio.run(_tree_continuations_reuse_the_first_projection(tmp_path))
 
 
 def test_navigation_poll_reuses_one_coherent_read_boundary(
@@ -614,7 +754,7 @@ def test_python_provider_surfaces_watcher_gap(
                         reason,
                         result.state.freshness.value,
                         tuple(issue.code for issue in result.state.issues),
-                        str(diagnostic.counters["watch_state"]),
+                        diagnostic.payload.watch_state,
                     )
                 await asyncio.sleep(0.005)
             raise AssertionError("provider did not surface the failed watcher")

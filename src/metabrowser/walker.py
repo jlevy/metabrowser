@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import stat as stat_module
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Collection
 from dataclasses import replace
@@ -114,7 +115,7 @@ def build_gitignore_check_for(
 
 class _ScanItem:
     """A single visible entry from one directory's scan. Carries
-    ``size`` / ``mtime_ns`` for files (from ``DirEntry.stat``) so
+    ``size`` / ``mtime_ns`` for leaf entries (from ``DirEntry.stat``) so
     the walker doesn't re-stat. For dirs, only ``name`` / ``abs_path``
     / ``is_dir`` matter; size/mtime are populated via the
     aggregate-rollup path."""
@@ -174,6 +175,11 @@ def _scandir_visible(
                     try:
                         st = raw.stat(follow_symlinks=False)
                     except OSError:
+                        continue
+                    if not raw_is_symlink and not stat_module.S_ISREG(st.st_mode):
+                        # The browser wire has no special-object kind. Exclude
+                        # sockets, FIFOs, and devices instead of misrepresenting
+                        # them as files.
                         continue
                     items.append(
                         _ScanItem(

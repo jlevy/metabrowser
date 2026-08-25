@@ -83,11 +83,6 @@ class FileActivityTracker:
             missing=tuple(missing),
         )
 
-    def poll(self, paths: list[Path]) -> list[str]:
-        """Return recently changed paths for callers that need only activity."""
-
-        return list(self.poll_observations(paths).active)
-
     @staticmethod
     def check_pid_alive(pid_path: Path) -> bool:
         """Whether the process named by *pid_path* is currently addressable."""

@@ -205,8 +205,6 @@ def _wire_entry(entry: DecoratedInventoryEntry) -> FsEntry:
     """Join provider facts and host decorations into the existing SSE record."""
 
     facts = entry.facts
-    if facts.type is EntryType.OTHER:
-        raise ValueError(f"the browser event wire cannot represent special entry {facts.path!r}")
     entry_type = facts.type.value
     return FsEntry(
         path=facts.path,
@@ -394,7 +392,7 @@ class _EventBus:
             )
             return
         if not change.dirty_paths:
-            if change.dirty_queries & {QueryKind.METADATA, QueryKind.DIAGNOSTICS}:
+            if QueryKind.DIAGNOSTICS in change.dirty_queries:
                 await self._project_capability_change(change)
             return
 
@@ -434,7 +432,7 @@ class _EventBus:
             catalog = _catalog_change(fs_change)
             if catalog is not None:
                 self._forward_event(catalog, change=change)
-        if change.dirty_queries & {QueryKind.METADATA, QueryKind.DIAGNOSTICS}:
+        if QueryKind.DIAGNOSTICS in change.dirty_queries:
             await self._project_capability_change(change)
 
     async def _project_capability_change(self, change: HostChange) -> None:
@@ -444,6 +442,7 @@ class _EventBus:
         diagnostic = read.result.projection("capability-change")
         if not isinstance(diagnostic, DiagnosticsProjection):
             raise TypeError("the capability read returned the wrong projection")
+        diagnostics = diagnostic.payload
         state = read.result.state
         truncated = not state.coverage.complete and any(
             issue.code.value == "resource_budget" for issue in state.issues
@@ -453,15 +452,15 @@ class _EventBus:
                 backends=(
                     {
                         "kind": "fs-watch",
-                        "mode": _counter_str(diagnostic, "watch_mode"),
-                        "state": _counter_str(diagnostic, "watch_state"),
-                        "reason": _counter_str(diagnostic, "watch_reason"),
+                        "mode": diagnostics.watch_mode,
+                        "state": diagnostics.watch_state,
+                        "reason": diagnostics.watch_reason,
                     },
                 ),
                 index={
                     "complete": state.coverage.complete,
                     "truncated": truncated,
-                    "indexed_files": _counter_int(diagnostic, "files_indexed"),
+                    "indexed_files": diagnostics.files_indexed,
                     "max_files": self._config.max_files,
                     "status": _status_from_phase(
                         state.phase,
@@ -765,7 +764,7 @@ class IndexMeta:
 
 
 @dataclass(slots=True, frozen=True)
-class IndexProgress:
+class IndexProgressEnvelope:
     """Small crawl-progress envelope for frequent UI polling."""
 
     status: str
@@ -795,25 +794,16 @@ def _status_from_phase(
     return "scanning"
 
 
-def _counter_int(projection: DiagnosticsProjection, key: str) -> int:
-    value = projection.counters.get(key, 0)
-    return value if isinstance(value, int) else 0
-
-
-def _counter_str(projection: DiagnosticsProjection, key: str) -> str:
-    value = projection.counters.get(key, "")
-    return value if isinstance(value, str) else ""
-
-
 async def _read_index_progress(
     runtime: InventoryRuntime,
-) -> tuple[IndexProgress, str]:
+) -> tuple[IndexProgressEnvelope, str]:
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(DiagnosticsQuery(query_id="progress"),))
     )
     diagnostic = coordinated.result.projection("progress")
     if not isinstance(diagnostic, DiagnosticsProjection):
         raise TypeError("the progress read returned the wrong projection")
+    diagnostics = diagnostic.payload
     state = coordinated.result.state
     truncated = not state.coverage.complete and any(
         issue.code.value == "resource_budget" for issue in state.issues
@@ -824,9 +814,9 @@ async def _read_index_progress(
         truncated=truncated,
     )
     engine = coordinated.version.engine
-    return IndexProgress(
+    return IndexProgressEnvelope(
         status=status,
-        indexed_files=_counter_int(diagnostic, "files_indexed"),
+        indexed_files=diagnostics.files_indexed,
         max_files=runtime.config.max_files,
         truncated=truncated,
         complete=state.coverage.complete or truncated,
@@ -836,12 +826,12 @@ async def _read_index_progress(
             LifecyclePhase.DISCOVERING,
             LifecyclePhase.RECONCILING,
         },
-        provider=_counter_str(diagnostic, "provider"),
-        contract=_counter_str(diagnostic, "contract"),
+        provider=diagnostics.provider,
+        contract=diagnostics.contract,
     ), engine.session
 
 
-def _progress_etag(progress: IndexProgress) -> str:
+def _progress_etag(progress: IndexProgressEnvelope) -> str:
     # While scanning, expose coarse buckets so the browser can poll
     # cheaply without receiving a 200 for every discovered file.
     count_key = (
@@ -878,9 +868,10 @@ async def _read_index_meta(
         raise TypeError("the metadata read returned the wrong projections")
 
     payload = navigation.payload
+    diagnostics = diagnostic.payload
     summary = payload["summary"]
     files = summary["files"] + summary["ignored_files"]
-    dirs = _counter_int(diagnostic, "directories_indexed")
+    dirs = diagnostics.directories_indexed
     oldest = payload["oldest_mtime_ns"]
     newest = payload["newest_mtime_ns"]
     suffixes: list[dict[str, int | str]] = []
@@ -911,11 +902,11 @@ async def _read_index_meta(
         oldest_mtime_ns=oldest,
         newest_mtime_ns=newest,
         suffixes=suffixes,
-        provider=_counter_str(diagnostic, "provider"),
-        contract=_counter_str(diagnostic, "contract"),
-        watch_mode=_counter_str(diagnostic, "watch_mode"),
-        watch_state=_counter_str(diagnostic, "watch_state"),
-        watch_reason=_counter_str(diagnostic, "watch_reason"),
+        provider=diagnostics.provider,
+        contract=diagnostics.contract,
+        watch_mode=diagnostics.watch_mode,
+        watch_state=diagnostics.watch_state,
+        watch_reason=diagnostics.watch_reason,
     ), build_scoped_etag(
         f"index-meta-{engine.session}-{engine.sequence}-{engine.scope_fingerprint}-"
         f"{engine.semantic_fingerprint}-{suffix_limit}"
@@ -1014,6 +1005,7 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
     diagnostic = coordinated.result.projection("pending-diagnostics")
     if not isinstance(diagnostic, DiagnosticsProjection):
         raise TypeError("the pending-tally read returned the wrong projection")
+    diagnostics = diagnostic.payload
     path_state: list[dict[str, object]] = []
     for index, path in enumerate(requested_paths):
         entry_projection = coordinated.result.projection(f"pending-entry-{index}")
@@ -1066,8 +1058,8 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
             }
             else status
         ),
-        "provider": _counter_str(diagnostic, "provider"),
-        "contract": _counter_str(diagnostic, "contract"),
+        "provider": diagnostics.provider,
+        "contract": diagnostics.contract,
         "version": coordinated.version.engine.sequence,
         "requested_paths": path_state,
     }

@@ -58,10 +58,8 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_engine.providers.python_inventory import (
     _PythonInventoryStore as PythonInventoryStore,
 )
-from metabrowser.inventory_engine.providers.python_inventory import (
-    walk_tree,
-)
 from metabrowser.walker import depth_of as _depth_of
+from metabrowser.walker import walk_tree
 
 
 class _SlowValuesEntries(dict[str, FsEntry]):

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.file_type_registry import load_file_type_registry
-from metabrowser.inventory_engine.contract import InventoryBackend, InventoryConfig
+from metabrowser.inventory_engine.contract import InventoryConfig
 from metabrowser.inventory_engine.coordinator import (
     HostChange,
     HostVersion,
@@ -54,11 +54,10 @@ class InventoryRuntime:
         *,
         provider: InventoryProvider | str = InventoryProvider.PYTHON,
         config: InventoryConfig | None = None,
-        backend: InventoryBackend | None = None,
     ) -> None:
         self.config = config if config is not None else default_inventory_config()
         self.coordinator = InventoryCoordinator(
-            backend=backend if backend is not None else create_inventory_backend(provider),
+            backend=create_inventory_backend(provider),
             config=self.config,
         )
         self._root: Path | None = None

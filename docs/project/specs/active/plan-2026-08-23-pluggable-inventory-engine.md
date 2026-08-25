@@ -153,8 +153,11 @@ lifecycle state and diagnostics and selects the documented polling policy.
 `open()` returns an immediately readable handle while cold discovery or warm
 revalidation continues.
 `close()` owns cancellation and joins every backend worker.
-`refresh()` submits a hint; the backend verifies filesystem state and applies changes
-through its one mutation path.
+`refresh()` submits a hint; the backend verifies filesystem state, accounts for every
+requested path, applies accepted changes through its one mutation path, then returns the
+terminal engine version after every accepted observation is incorporated.
+Coherent sub-batches are allowed; the receipt is a completion boundary rather than a
+cross-path transaction guarantee.
 `prioritize()` changes scheduling without changing scope or cache identity.
 
 ### Coherent Read Algebra
@@ -173,6 +176,10 @@ Every `ReadResult` contains:
 - scope and semantic-configuration fingerprints;
 - lock wait, entries and directories visited, rows returned, wall time, exact CPU time
   when measured, and bytes copied across the binding.
+
+Issue count and detail bytes are bounded contract values.
+Provider diagnostics are one fixed typed record containing the host and performance
+fields; implementations do not extend it with arbitrary keys.
 
 The result is coherent as a whole.
 A backend may use a shared guard, an immutable read image, or checked retry internally,
@@ -348,8 +355,8 @@ The deterministic CI gates are:
   states, issues, and route wire goldens;
 - observation replay after every mutation barrier;
 - filesystem scenarios for hidden and gitignored paths, path encodings, symlinks,
-  special objects, permission failures, replacement races, overflow, cancellation, cache
-  mismatch, and watch-to-poll transitions;
+  special-object exclusion, permission failures, replacement races, overflow,
+  cancellation, cache mismatch, and watch-to-poll transitions;
 - forced interleavings proving coherent multi-projection reads, atomic ETags, cursor
   resume, no-gap baseline handoff, prompt close, and no GIL-held native work;
 - conservation and declared-bound assertions at every complete published version;

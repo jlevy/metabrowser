@@ -195,7 +195,7 @@ the plan.
 | Trust transitions | Cached-to-revalidated transitions are poll-only and do not advance the change clock | Data and trust transitions share a cursor and can wake a subscribed client |
 | Change feed | Effective entry operations and a resumable clock | Enriched entries, dirty aggregate paths, state/progress changes, explicit gap, and one query-comparable version |
 | Watch integration | Blocking, native-only iterator; whole-root Python refresh | Async adapter, native and poll policies, scoped refresh, and a proved no-gap boot-to-watch handoff |
-| Entry kinds | File, directory, symlink, and other exist in fdu | Shared four-kind semantics; special objects never masquerade as regular files |
+| Entry kinds | File, directory, symlink, and other exist in fdu | The shared contract carries the three browser-representable kinds; each provider excludes special objects rather than reclassifying them as regular files |
 | Empty directories | Rollup counts cannot distinguish a subtree containing only symlinks from an empty subtree | A maintained non-directory leaf count or equivalent exact `empty` fact |
 | Query consistency | Individual Rust reads are coherent, but no Metabrowser result/version contract exists | One atomic result containing its state version, registry identity, coverage, and payload |
 | Paths | Rust and PyO3 preserve native identity; rendered strings can be lossy unless raw identity accompanies them | Native identity through the provider and one documented lossless encoding at the host wire boundary |
@@ -256,8 +256,8 @@ the current Python implementation.
 | Hard links | Each directory entry counts independently. Inode identity supports change detection; it does not deduplicate apparent bytes. |
 | Depth and entry budgets | The normal profile has no implicit correctness cap. An explicit resource budget may stop a session, but every affected result reports partial coverage and its cause. Query output bounds are independent of inventory coverage. |
 | Measures | Regular files contribute count, apparent bytes, optional allocated bytes, and mtime. Directory inode blocks do not contribute. Arithmetic is checked; overflow becomes an explicit failure rather than wrapping. |
-| Newest time | The maximum mtime among descendant regular files. Directory, symlink, and special-object mtimes do not contribute. |
-| Empty | A complete subtree is empty when it contains no regular-file, symlink, or other leaves. A partial subtree cannot claim emptiness. |
+| Newest time | The maximum mtime among descendant regular files. Directory and symlink mtimes do not contribute. |
+| Empty | A complete subtree is empty when it contains no regular-file or symlink leaves. A partial subtree cannot claim emptiness. |
 | File classification | Basename, logical extension, matching precedence, registry validation, registry fingerprint, grouping, populations, bounds, and conservation follow File Rollup Format and its conformance corpus. |
 | Registry lifetime | The registry is immutable during a session. A new registry starts a new session/cache identity rather than retagging live values under the same version. |
 | Populations | The interactive profile maintains `all` and `unignored`. `all` means all entries inside the scan scope, not hidden paths. Arbitrary selections are query predicates, not permanent rollup planes. |
@@ -575,7 +575,7 @@ The filesystem scenarios should include:
 - hidden paths and the allowed hidden names;
 - gitignore directory rules, negations, and `.gitignore` edits;
 - regular files, sparse files where supported, hard links, symlinks, broken symlinks,
-  and special objects where safe;
+  and special-object exclusion;
 - non-Unicode native names on supported platforms;
 - permission denial, disappearance during discovery, file-to-directory replacement, root
   removal, and mount-boundary behavior;

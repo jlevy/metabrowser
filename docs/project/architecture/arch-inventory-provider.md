@@ -46,10 +46,10 @@ The application constructs the backend in its lifespan composition root.
 A root change closes the old handle, invalidates host caches and cursors, opens the
 replacement, and then makes the new coordinator state visible.
 Tasks belonging to a closed session cannot publish into the replacement session.
-The provider session is immutable for the life of a handle.
-A read carrying a different session raises `InventoryConsistencyError`; the change relay
-treats the same violation as provider failure and publishes a host reset so stream
-consumers recover coherently.
+The provider session, scope fingerprint, and semantic fingerprint are immutable for the
+life of a handle. A read or refresh carrying different identity raises
+`InventoryConsistencyError`; the change relay treats the same violation as provider
+failure and publishes a host reset so stream consumers recover coherently.
 Every concurrent `close()` caller joins the same shutdown before returning.
 
 `METABROWSER_INVENTORY_PROVIDER` selects the sealed in-tree factory entry.
@@ -149,8 +149,7 @@ must not traverse inventory entries or manufacture a diagnostics dependency.
 | `navigation` | `NavigationQuery` | Positive tally-row count | Typed population, extension, family, preset, and recency record |
 | `recent` | `RecentQuery` | Positive row count and explicit observation time | Newest matching files and pre-bound match count; truncation is derived |
 | `catalog` | `CatalogQuery` | Positive page size; optional terminal-extension, ancestor-name, and size predicates | Matching file identities, logical extensions, continuation, and exact known remainder from one pinned version |
-| `metadata` | `MetadataQuery` | Constant-size session record | Provider, contract, root, and identity facts |
-| `diagnostics` | `DiagnosticsQuery` | Constant-size counter record | Provider state, progress, cache, watch, and queue diagnostics |
+| `diagnostics` | `DiagnosticsQuery` | Fixed `ProviderDiagnostics` record | Provider identity, indexed counts, watch state, request count, and cumulative work |
 
 Recency filters carry `as_of_ns`; an unchanged engine version does not freeze a
 time-dependent answer.
@@ -186,10 +185,12 @@ A lookup distinguishes:
 - `absent`: complete coverage proves it is not present
 - `unknown`: current coverage cannot prove either state
 
-Symlinks and special objects are visible leaves but do not contribute to regular-file
-totals. Hidden components outside the exact-name allowlist are pruned from scope.
-Gitignored visible entries remain in the `all` population and are excluded from the
-`unignored` population.
+Symlinks are visible leaves but do not contribute to regular-file totals.
+The contract does not expose special filesystem objects because the current browser wire
+cannot represent them; every provider must exclude them rather than reclassifying them
+as regular files. Hidden components outside the exact-name allowlist are pruned from
+scope. Gitignored visible entries remain in the `all` population and are excluded from
+the `unignored` population.
 File Rollup classification and conservation follow the
 [File Rollup Format](file-rollup-format/file-rollup-format.md).
 
@@ -234,6 +235,10 @@ coverage changes only if reconciliation discovers or cannot resolve an enumerati
 Typed issues also distinguish permission failures, disappearance, invalid metadata,
 filesystem-boundary skips, resource stops, and provider failures.
 Providers preserve the original path and cause when the current layer can handle them.
+`IndexState` contains at most `MAX_INVENTORY_ISSUES` records, and each issue detail is
+at most `MAX_ISSUE_DETAIL_BYTES` UTF-8 bytes.
+A provider coalesces or summarizes larger failure sets before constructing the state
+record.
 
 The Phase 2 fdu adapter uses the following total mappings; it does not infer them from
 strings at individual call sites:
@@ -265,6 +270,11 @@ Each batch has a resulting version and cursor, state, work counters, and one of:
 - `reset` when the requested cursor or consumer queue has a gap
 - a state-only transition
 
+Batches from one handle retain the opened scope and semantic fingerprints and have
+strictly increasing sequences.
+The coordinator rejects a mixed-identity or nonmonotonic group before it coalesces any
+dirtiness or work.
+
 The coordinator rereads the affected visible projections, resumes from the read’s
 cursor, and projects results into browser events.
 A slow consumer causes a reset and coherent reread; it cannot block discovery or receive
@@ -279,9 +289,13 @@ Refresh and priority requests contain at most `MAX_COMMAND_PATHS` unique canonic
 and cannot be empty.
 Refresh adds a typed reason; priority adds a positive depth.
 A notification remains a hint: a provider verifies filesystem state before applying a
-mutation.
-One refresh request is one atomic provider operation with one resulting cursor;
-an adapter cannot implement a batch as independently committed single-path refreshes.
+mutation. A completed refresh accounts for every requested path as accepted or rejected
+and returns the terminal `EngineVersion` after every accepted observation has passed
+through the provider’s mutation path.
+A provider may publish coherent sub-batches while it works; the receipt is a completion
+boundary, not a claim that the whole request was one transaction.
+An adapter cannot return before it can name that terminal version or fan a bounded
+request into untracked background work.
 The primary native-or-polling watcher belongs to the opened provider so baseline
 discovery, observation capture, reconciliation, and freshness share one lifecycle.
 `refresh()` also accepts bounded external hints from activity probes or application
@@ -295,7 +309,9 @@ Every read and change reports nonnegative counts for entries visited, directorie
 visited, rows returned, bytes copied across the binding, lock wait, and wall time.
 CPU time is an exact nonnegative measurement when present and is unavailable otherwise;
 a provider never substitutes zero or infers CPU from wall time.
-Diagnostics identify the selected provider and contract.
+Diagnostics use the fixed `ProviderDiagnostics` record rather than a provider-defined
+mapping. They identify the selected provider and contract, indexed counts, watch state,
+read count, and cumulative work.
 The serving benchmark records the same identities so Python-before, Python-after, and
 fdu runs differ by a declared provider axis rather than by separate harnesses.
 
@@ -319,7 +335,7 @@ and
 | Initial browser stream | A lossless version-pinned snapshot assembled before atomic queue attachment; covered older changes are suppressed per connection |
 | Live browser stream | `changes()` plus coherent rereads |
 | Activity discovery | Provider-filtered catalog reads by terminal extension, ancestor name, and size; results update the host overlay |
-| Index metadata and capabilities | `MetadataQuery` and `DiagnosticsQuery` |
+| Index metadata and capabilities | `NavigationQuery`, lifecycle state, engine identity, and `DiagnosticsQuery` |
 
 Safe-path validation and file-content reads remain above the engine.
 No inventory-serving route performs a second filesystem walk or reads a concrete
@@ -328,6 +344,11 @@ Every provider implements flat filtered-tree and catalog continuations
 natively with the requested version, mandatory row bound, and exact remainder.
 An adapter cannot materialize an unbounded result, retain a mirror solely to page it, or
 claim a truncated first page is terminal.
+The Python reference provider may retain one coherent tree projection when it returns a
+continuation, then discard or replace that memo when another projection wins the slot.
+This avoids repeating a full Python subtree pass for every page without creating a
+coordinator cache or an fdu adapter index.
+The fdu provider uses its native cursor and indexes instead.
 
 ## Provider Conformance Registry
 

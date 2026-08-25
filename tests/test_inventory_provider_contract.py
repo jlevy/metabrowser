@@ -15,6 +15,9 @@ import pytest
 
 from metabrowser.inventory_engine.contract import (
     ALLOWED_PHASE_TRANSITIONS,
+    MAX_COMMAND_PATHS,
+    MAX_INVENTORY_ISSUES,
+    MAX_ISSUE_DETAIL_BYTES,
     QUERY_TYPE_BY_KIND,
     REGISTERED_QUERY_TYPES,
     CatalogProjection,
@@ -24,6 +27,7 @@ from metabrowser.inventory_engine.contract import (
     ChangeCursor,
     Coverage,
     CoverageReason,
+    DiagnosticsProjection,
     DiagnosticsQuery,
     DirectoryProjection,
     DirectoryQuery,
@@ -45,8 +49,6 @@ from metabrowser.inventory_engine.contract import (
     InventoryIssue,
     IssueCode,
     LifecyclePhase,
-    MetadataProjection,
-    MetadataQuery,
     NavigationProjection,
     NavigationQuery,
     ObservationKind,
@@ -82,7 +84,6 @@ EXPECTED_QUERIES = {
     "navigation": NavigationQuery,
     "recent": RecentQuery,
     "catalog": CatalogQuery,
-    "metadata": MetadataQuery,
     "diagnostics": DiagnosticsQuery,
 }
 
@@ -203,7 +204,7 @@ def test_read_request_defaults_to_a_checkpoint_and_rejects_duplicate_projection_
         ReadRequest(
             queries=(
                 EntryQuery(query_id="same", path="a"),
-                MetadataQuery(query_id="same"),
+                DiagnosticsQuery(query_id="same"),
             )
         )
 
@@ -248,6 +249,16 @@ def test_catalog_predicates_are_canonical_and_bounded() -> None:
         CatalogQuery(query_id="q", max_rows=1, ancestor_names=("runs/.logs",))
     with pytest.raises(ValueError, match="positive"):
         CatalogQuery(query_id="q", max_rows=1, size_less_than=0)
+
+
+def test_catalog_records_preserve_signed_filesystem_mtimes() -> None:
+    record = CatalogRecord(
+        path="old.txt",
+        logical_extension=".txt",
+        size=1,
+        mtime_ns=-1,
+    )
+    assert record.mtime_ns == -1
 
 
 def test_state_requires_an_explanation_for_partial_coverage() -> None:
@@ -362,6 +373,12 @@ def test_path_bearing_contract_records_reject_noncanonical_paths(path: str) -> N
 
 
 def test_entry_identity_and_refresh_receipts_are_self_consistent() -> None:
+    version = EngineVersion(
+        session="session-a",
+        sequence=1,
+        scope_fingerprint="scope",
+        semantic_fingerprint="semantics",
+    )
     with pytest.raises(ValueError, match="one identity"):
         InventoryEntry(
             path="directory/file.txt",
@@ -373,7 +390,34 @@ def test_entry_identity_and_refresh_receipts_are_self_consistent() -> None:
             mtime_ns=0,
         )
     with pytest.raises(ValueError, match="both accepted and rejected"):
-        RefreshReceipt(accepted_paths=("same",), rejected_paths=("same",))
+        RefreshReceipt(
+            version=version,
+            accepted_paths=("same",),
+            rejected_paths=("same",),
+        )
+    with pytest.raises(ValueError, match="at most"):
+        RefreshReceipt(
+            version=version,
+            accepted_paths=tuple(f"path-{index}" for index in range(MAX_COMMAND_PATHS + 1)),
+        )
+
+
+def test_lifecycle_diagnostics_are_bounded_before_crossing_provider_boundaries() -> None:
+    with pytest.raises(ValueError, match="UTF-8 bytes"):
+        InventoryIssue(
+            code=IssueCode.PROVIDER_FAILURE,
+            detail="x" * (MAX_ISSUE_DETAIL_BYTES + 1),
+        )
+
+    issue = InventoryIssue(code=IssueCode.PROVIDER_FAILURE, detail="failed")
+    with pytest.raises(ValueError, match="at most"):
+        IndexState(
+            phase=LifecyclePhase.FAILED,
+            coverage=Coverage(complete=False, reason=CoverageReason.FAILED),
+            freshness=Freshness.PARTIAL,
+            source=SourceKind.SCANNED,
+            issues=(issue,) * (MAX_INVENTORY_ISSUES + 1),
+        )
 
 
 def test_change_batches_are_bounded_and_reset_dominates_dirtiness() -> None:
@@ -447,7 +491,15 @@ class _Handle:
             yield
 
     async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
-        return RefreshReceipt(accepted_paths=request.paths)
+        return RefreshReceipt(
+            version=EngineVersion(
+                session="protocol",
+                sequence=0,
+                scope_fingerprint="scope",
+                semantic_fingerprint="semantics",
+            ),
+            accepted_paths=request.paths,
+        )
 
     async def prioritize(self, request: PriorityRequest) -> None:
         return None
@@ -632,7 +684,7 @@ def test_provider_semantic_digest(
                             max_rows=20,
                             include_ignored=False,
                         ),
-                        MetadataQuery(query_id="metadata"),
+                        DiagnosticsQuery(query_id="diagnostics"),
                     )
                 )
             )
@@ -643,7 +695,10 @@ def test_provider_semantic_digest(
             navigation = cast("NavigationProjection", result.projection("navigation"))
             recent = cast("RecentProjection", result.projection("recent"))
             catalog = cast("CatalogProjection", result.projection("catalog"))
-            metadata = cast("MetadataProjection", result.projection("metadata"))
+            diagnostics = cast(
+                "DiagnosticsProjection",
+                result.projection("diagnostics"),
+            )
 
             assert link.presence is EntryPresence.PRESENT
             assert link.entry is not None
@@ -706,7 +761,10 @@ def test_provider_semantic_digest(
                     (record.path, record.logical_extension, record.size)
                     for record in catalog.records
                 ),
-                "metadata": (metadata.provider, metadata.contract),
+                "diagnostics": (
+                    diagnostics.payload.provider,
+                    diagnostics.payload.contract,
+                ),
             }
         finally:
             await handle.close()
@@ -756,7 +814,7 @@ def test_provider_semantic_digest(
             ("tracked/README", "", 6),
             ("tracked/bundle.min.js", ".min.js", 4),
         ),
-        "metadata": ("python", "inventory-provider-v1"),
+        "diagnostics": ("python", "inventory-provider-v1"),
     }
     assert actual == expected, actual
 
@@ -920,6 +978,8 @@ def test_provider_version_pins_fail_instead_of_moving(
                 RefreshRequest(observations=(RefreshObservation(path="later.txt"),))
             )
             assert receipt.accepted_paths == ("later.txt",)
+            assert receipt.version.session == pinned.version.session
+            assert receipt.version.sequence > pinned.version.sequence
             with pytest.raises(VersionUnavailableError):
                 await handle.read(ReadRequest(at_version=pinned.version))
         finally:
@@ -984,6 +1044,7 @@ def test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint(
         )
         try:
             (tmp_path / "observed.txt").write_text("present", encoding="utf-8")
+            (tmp_path / "also-observed.txt").write_text("also present", encoding="utf-8")
             receipt = await handle.refresh(
                 RefreshRequest(
                     observations=(
@@ -991,16 +1052,27 @@ def test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint(
                             path="observed.txt",
                             kind=ObservationKind.DELETED,
                         ),
+                        RefreshObservation(
+                            path="also-observed.txt",
+                            kind=ObservationKind.DELETED,
+                        ),
                     )
                 )
             )
-            assert receipt.accepted_paths == ("observed.txt",)
+            assert receipt.accepted_paths == ("observed.txt", "also-observed.txt")
             result = await handle.read(
-                ReadRequest(queries=(EntryQuery(query_id="observed", path="observed.txt"),))
+                ReadRequest(
+                    queries=(
+                        EntryQuery(query_id="observed", path="observed.txt"),
+                        EntryQuery(query_id="also-observed", path="also-observed.txt"),
+                    )
+                )
             )
-            projection = result.projection("observed")
-            assert isinstance(projection, EntryProjection)
-            assert projection.presence is EntryPresence.PRESENT
+            assert result.version == receipt.version
+            for query_id in ("observed", "also-observed"):
+                projection = result.projection(query_id)
+                assert isinstance(projection, EntryProjection)
+                assert projection.presence is EntryPresence.PRESENT
         finally:
             await handle.close()
 
@@ -1019,8 +1091,16 @@ def test_provider_close_joins_change_delivery_and_is_idempotent(
         waiting = asyncio.ensure_future(anext(stream))
         await asyncio.sleep(0)
         await asyncio.gather(handle.close(), handle.close())
-        result = await asyncio.gather(waiting, return_exceptions=True)
-        assert isinstance(result[0], StopAsyncIteration)
+
+        async def wait_for_stream_end() -> None:
+            try:
+                await waiting
+            except StopAsyncIteration:
+                return
+            async for _queued_batch in stream:
+                pass
+
+        await asyncio.wait_for(wait_for_stream_end(), timeout=1)
         with pytest.raises(InventoryClosedError):
             await handle.read(ReadRequest())
 

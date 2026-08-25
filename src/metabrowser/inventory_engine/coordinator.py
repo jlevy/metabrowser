@@ -23,7 +23,6 @@ from metabrowser.inventory_engine.contract import (
     CatalogProjection,
     ChangeBatch,
     ChangeCursor,
-    DiagnosticsQuery,
     DirectoryProjection,
     EngineVersion,
     EntryProjection,
@@ -53,7 +52,6 @@ from metabrowser.inventory_engine.overlay import (
 
 LOG = logging.getLogger(__name__)
 
-_COORDINATOR_STATE_QUERY_ID = "__metabrowser_coordinator_state__"
 _DECORATED_QUERY_KINDS = frozenset(
     {
         QueryKind.ENTRY,
@@ -70,6 +68,21 @@ class InventoryNotOpenError(InventoryContractError):
 
 class InventoryConsistencyError(InventoryContractError):
     """A provider returned mutually inconsistent values in one coherent read."""
+
+
+def _require_same_provider_identity(
+    current: EngineVersion,
+    observed: EngineVersion,
+) -> None:
+    """Reject identity drift from one opened provider handle."""
+
+    if observed.session != current.session:
+        raise InventoryConsistencyError("an opened inventory handle changed provider session")
+    if (
+        observed.scope_fingerprint != current.scope_fingerprint
+        or observed.semantic_fingerprint != current.semantic_fingerprint
+    ):
+        raise InventoryConsistencyError("an opened inventory handle changed provider fingerprints")
 
 
 @dataclass(frozen=True, slots=True)
@@ -353,7 +366,20 @@ class InventoryCoordinator:
 
         handle = await self._begin_operation()
         try:
-            return await _drain_provider_operation_on_cancel(handle.refresh(request))
+            receipt = await _drain_provider_operation_on_cancel(handle.refresh(request))
+            receipt_paths = frozenset((*receipt.accepted_paths, *receipt.rejected_paths))
+            if receipt_paths != frozenset(request.paths):
+                raise InventoryConsistencyError(
+                    "the provider refresh receipt did not account for every requested path"
+                )
+            async with self._lock:
+                if handle is not self._handle:
+                    raise InventoryConsistencyError(
+                        "the served root changed during a coordinated refresh"
+                    )
+                current = self._require_engine_version_locked()
+                _require_same_provider_identity(current, receipt.version)
+            return receipt
         finally:
             await asyncio.shield(self._end_operation())
 
@@ -506,9 +532,7 @@ class InventoryCoordinator:
 
         handle = await self._backend.open(root, self._config)
         try:
-            initial = await handle.read(
-                ReadRequest(queries=(DiagnosticsQuery(query_id=_COORDINATOR_STATE_QUERY_ID),))
-            )
+            initial = await handle.read(ReadRequest())
         except BaseException:
             await handle.close()
             raise
@@ -571,7 +595,13 @@ class InventoryCoordinator:
         try:
             async with asyncio.TaskGroup() as tasks:
                 tasks.create_task(self._pump_provider_changes(handle, after, queue))
-                tasks.create_task(self._dispatch_provider_changes(handle, queue))
+                tasks.create_task(
+                    self._dispatch_provider_changes(
+                        handle,
+                        queue,
+                        after_sequence=after.sequence,
+                    )
+                )
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -609,7 +639,10 @@ class InventoryCoordinator:
         self,
         handle: InventoryHandle,
         queue: asyncio.Queue[ChangeBatch | None],
+        *,
+        after_sequence: int,
     ) -> None:
+        previous_sequence = after_sequence
         while True:
             first = await queue.get()
             if first is None:
@@ -626,6 +659,12 @@ class InventoryCoordinator:
                     ended = True
                     break
                 batches.append(batch)
+            for batch in batches:
+                if batch.version.sequence <= previous_sequence:
+                    raise InventoryConsistencyError(
+                        "provider change batches must have strictly increasing sequences"
+                    )
+                previous_sequence = batch.version.sequence
             await self._publish_provider_batches(handle, tuple(batches))
             if ended:
                 return
@@ -635,16 +674,14 @@ class InventoryCoordinator:
         handle: InventoryHandle,
         batches: tuple[ChangeBatch, ...],
     ) -> None:
-        merged = self._merge_provider_batches(batches)
         published: HostChange | None = None
         async with self._lock:
             if handle is not self._handle or self._closed:
                 return
             current = self._require_engine_version_locked()
-            if merged.version.session != current.session:
-                raise InventoryConsistencyError(
-                    "an opened inventory handle changed provider session"
-                )
+            for batch in batches:
+                _require_same_provider_identity(current, batch.version)
+            merged = self._merge_provider_batches(batches)
             if merged.version.sequence >= current.sequence:
                 self._engine_version = merged.version
                 self._engine_cursor = merged.cursor
@@ -789,8 +826,8 @@ class InventoryCoordinator:
 
     def _observe_read_locked(self, result: ReadResult) -> None:
         current = self._engine_version
-        if current is not None and result.version.session != current.session:
-            raise InventoryConsistencyError("an opened inventory handle changed provider session")
+        if current is not None:
+            _require_same_provider_identity(current, result.version)
         if current is None or result.version.sequence >= current.sequence:
             self._engine_version = result.version
             self._engine_cursor = result.cursor

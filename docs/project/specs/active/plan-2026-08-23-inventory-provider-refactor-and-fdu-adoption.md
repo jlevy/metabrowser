@@ -1,6 +1,6 @@
 # Feature: Inventory Provider Refactor and fdu Adoption
 
-**Date:** 2026-08-23 (last updated 2026-08-24)
+**Date:** 2026-08-23 (last updated 2026-08-25)
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
@@ -153,6 +153,10 @@ Every `ReadResult` returns the following values from one read boundary:
   CPU time is unavailable when the provider cannot measure it exactly; zero never means
   unavailable.
 
+Lifecycle issue count and detail bytes are bounded before they cross the provider
+boundary. `DiagnosticsQuery` returns the fixed `ProviderDiagnostics` record used by the
+host and performance harness, not an extensible provider-defined mapping.
+
 Metabrowser derives a host version from the returned engine version and overlay
 revision.
 Routes derive validators and retained-body keys from that host version plus the
@@ -207,6 +211,10 @@ Reset and all-dirty changes clear every projection cache; bounded changes invali
 only their canonical dirty paths.
 A failed watcher batch is a watcher gap and stops the observer rather than losing a
 suffix while freshness remains green.
+A completed refresh accounts for every requested path and returns the provider version
+after every accepted observation has passed through that provider’s mutation path.
+Providers may publish coherent sub-batches while processing one request; callers use the
+receipt as the terminal completion boundary and do not assume a cross-path transaction.
 
 ### Behavior Preserved by the Python Provider
 
@@ -319,6 +327,10 @@ new filename.
   the file budget from page rows, assemble complete tree pages at one host boundary,
   attach snapshots without a stale-delta gap, fail closed on watcher-batch loss, and
   invalidate projection caches on broad changes.
+- [x] Remove the superseded Python-only filtered-tree reducer and unused metadata query,
+  replace open-ended diagnostics with a typed record, bound lifecycle issues, return a
+  terminal version from refresh, and avoid repeating full Python tree projection work
+  across continuation pages.
 
 **Phase 1 exit:** Metabrowser ships with only the Python provider and no fdu dependency.
 Every inventory consumer crosses the provider-neutral coordinator, one handle owns all
@@ -365,11 +377,14 @@ counts or statuses.
   [Inventory Provider](../../architecture/arch-inventory-provider.md#state-and-failures),
   including the distinct open-idle `ready` phase; never infer a later state from a
   second read.
-- [ ] Add one native bounded fdu refresh batch with one commit, cursor, and per-path
-  receipt. The adapter must not turn it into independently committed single-path calls.
+- [ ] Add one native bounded fdu refresh operation with per-path disposition and a
+  terminal version after all accepted observations are incorporated.
+  One native commit is a useful optimization, not a semantic requirement; the adapter
+  must neither return early nor launch untracked per-path work.
 - [ ] Add native version-pinned flat paging with exact remainders for filtered trees and
   catalogs. The adapter must not retain a mirror, materialize an unbounded result, or
   report a truncated page as complete.
+  Continuations must not repeat a full projection pass merely to advance one page.
 - [ ] Add forced `python` and `fdu` selection through the composition root and benchmark
   CLI. An explicit unavailable or incompatible fdu selection fails with provider,
   platform, build, and contract details; it never falls back silently.
@@ -404,7 +419,8 @@ Phase 2 adds fdu to the same parametrized harness rather than creating an fdu-on
 suite.
 
 - **Contract tests:** query bounds, coherent version and cursor capture, lifecycle,
-  typed errors, refresh, change resume, overflow/reset, prompt close, and work records.
+  bounded typed issues and diagnostics, terminal refresh receipts, change resume,
+  overflow/reset, prompt close, and work records.
 - **Preservation tests:** normalized route and SSE goldens, existing DOM behavior,
   plugin hooks, root replacement, progress, partial and failure states, active overlays,
   and HTTP caching.

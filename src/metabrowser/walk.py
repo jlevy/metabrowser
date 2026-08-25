@@ -288,9 +288,9 @@ def filtered_walk_report(
 
     This is the CLI answer to the two questions the nav panel raises and a
     screenshot cannot settle: which folders a filter leaves standing, and what
-    each of them rolls up to. Both come from
-    :func:`metabrowser.tree.build_filtered_inventory_tree`, the same call the
-    ``/api/tree`` route makes, so what this prints is what the panel paints.
+    each of them rolls up to. Both come from the provider's
+    :class:`~metabrowser.inventory_engine.contract.FilteredTreeQuery` and the same pure
+    tree builder used by ``/api/tree``, so what this prints is what the panel paints.
     """
 
     if detail not in DETAIL_LEVELS:

@@ -1,43 +1,8 @@
 """Python reference provider for filesystem inventory and rollups.
 
-``_PythonInventoryStore`` is the retained owner of filesystem-entry
-metadata in the browser process. The server lifespan eagerly populates
-it, ``/api/tree`` and ``/api/activity`` read from it, and writes emit
-``fs.change`` events on a single shared SSE channel so the client
-fills in skeleton cells without manual reload.
-
-There is at most one discovery task per opened handle. Concurrent
-``/api/tree`` requests do **not** trigger walks — they read whatever
-is currently in the index and return ``None`` for fields the walker
-has not yet finalized. The backend calls ``_PythonInventoryStore.start(root)``
-once; the call is idempotent.
-
-The inventory contract covers cold start, subtree invalidation, and realtime updates.
-
-Walker semantics (verified by tests):
-
-* **Strict level-order BFS.** Every directory at depth N is scanned
-  before any at depth N+1, so the layers the nav tree shows — and the
-  ones a reader expands first — are complete long before the deep
-  tail, and a request landing early in the boot scan finds them
-  already populated.
-* **Post-order finalize.** A directory's ``FsEntry`` is replaced with
-  populated ``total_files`` / ``total_size`` / ``newest_mtime_ns``
-  only after every descendant has been walked. Implementation:
-  per-directory ``pending_children_count`` decrements as children
-  finalize; when it hits zero, the directory finalizes and
-  decrements its own parent.
-* **Generation counters.** Invalidation walks the ancestor chain
-  and bumps each path's generation. The walker only writes a
-  result if the generation it started with is still current; stale
-  writes lose. This makes invalidation race-free without locks.
-* **Safety caps.** ``max_files`` (default 500 000) and ``max_depth``
-  (default 20). Hitting either flips ``status`` to ``"truncated"``;
-  the walker stops emission past the cap.
-
-The :func:`walk_tree` generator is decoupled from the
-``_PythonInventoryStore`` object so implementation tests can drive it directly with
-``async for``.
+The public backend opens one five-method provider handle. Its private store is the sole
+owner of retained filesystem facts, aggregate indexes, discovery, watcher translation,
+and coherent read projections for that root.
 """
 
 from __future__ import annotations
@@ -80,6 +45,7 @@ from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.fs_paths import is_visible_segment
 from metabrowser.inventory_engine.contract import (
     MAX_CHANGE_PATHS,
+    MAX_ISSUE_DETAIL_BYTES,
     CatalogProjection,
     CatalogQuery,
     CatalogRecord,
@@ -107,13 +73,12 @@ from metabrowser.inventory_engine.contract import (
     InventoryIssue,
     IssueCode,
     LifecyclePhase,
-    MetadataProjection,
-    MetadataQuery,
     NavigationProjection,
     NavigationQuery,
     ObservationKind,
     PriorityRequest,
     ProjectionResult,
+    ProviderDiagnostics,
     QueryKind,
     ReadQuery,
     ReadRequest,
@@ -142,9 +107,6 @@ from metabrowser.settings import (
     ROLLUP_MAX_NODES,
 )
 from metabrowser.walker import (
-    DEFAULT_MAX_DEPTH,
-    DEFAULT_MAX_FILES,
-    DEFAULT_REFRESH_TTL_S,
     WALKER_EMIT_BATCH,
     walk_tree,
 )
@@ -180,6 +142,17 @@ _NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
 _WALKER_COOPERATIVE_YIELD_BATCH = 64
 _NAVIGATION_TALLY_REFRESH_FLOOR_S = 0.5
 _CONTRACT_ID = "inventory-provider-v1"
+
+
+def _bounded_issue_detail(detail: str) -> str:
+    """Keep provider diagnostics inside the contract's UTF-8 envelope."""
+
+    encoded = detail.encode("utf-8")
+    if len(encoded) <= MAX_ISSUE_DETAIL_BYTES:
+        return detail
+    suffix = b"..."
+    prefix = encoded[: MAX_ISSUE_DETAIL_BYTES - len(suffix)].decode("utf-8", errors="ignore")
+    return f"{prefix}{suffix.decode()}"
 
 
 # Rollup revisions come from one process-wide sequence rather than a
@@ -337,10 +310,47 @@ class _ReadImage:
     version: EngineVersion
     cursor: ChangeCursor
     state: IndexState
-    diagnostics: dict[str, int | float | str | bool | None]
+    diagnostics: ProviderDiagnostics
     rollup_aggregates: SubtreeAggregateCache
     rollup_epoch: int
     rollup_passes: int
+
+
+@dataclass(frozen=True, slots=True)
+class _DirectoryPageMemo:
+    """One multi-page directory projection at a coherent provider version."""
+
+    version: EngineVersion
+    state: IndexState
+    path: str
+    max_depth: int
+    include_ignored: bool
+    rows: tuple[FsEntry, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _FilteredTreePageMemo:
+    """One multi-page filtered projection at a coherent provider version."""
+
+    version: EngineVersion
+    state: IndexState
+    query: FilteredTreeQuery
+    rows: tuple[InventoryEntry, ...]
+    matching_leaves: int
+    matching_files: int
+    matching_bytes: int
+
+
+type _TreePageMemo = _DirectoryPageMemo | _FilteredTreePageMemo
+
+
+@dataclass(slots=True)
+class _SelectedDirectoryTotals:
+    """Regular-file totals for one directory in a filtered projection."""
+
+    file_count: int = 0
+    size: int = 0
+    newest_mtime_ns: int | None = None
 
 
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
@@ -365,12 +375,10 @@ def _semantic_entry(entry: FsEntry) -> InventoryEntry:
 
 
 def _internal_entry(entry: InventoryEntry | FsEntry) -> FsEntry:
-    """Adapt a semantic walker observation to the transitional retained record."""
+    """Convert a contract entry to the Python store's retained record."""
 
     if isinstance(entry, FsEntry):
         return entry
-    if entry.type is EntryType.OTHER:
-        raise ValueError("the Python walker cannot retain special objects yet")
     entry_type = entry.type.value
     return FsEntry(
         path=entry.path,
@@ -474,15 +482,10 @@ class _PythonInventoryStore:
     def __init__(
         self,
         *,
-        max_files: int = DEFAULT_MAX_FILES,
-        max_depth: int = DEFAULT_MAX_DEPTH,
         config: InventoryConfig | None = None,
     ) -> None:
         if config is None:
-            config = InventoryConfig(max_files=max_files, max_depth=max_depth)
-        else:
-            max_files = config.max_files
-            max_depth = config.max_depth
+            config = InventoryConfig()
         self._config = config
         self._session = uuid.uuid4().hex
         self._scope_fingerprint = inventory_scope_fingerprint(config)
@@ -526,6 +529,11 @@ class _PythonInventoryStore:
         # return the older version honestly instead of pairing stale tallies with the
         # provider's current version and state.
         self._navigation_read_memo: _NavigationReadMemo | None = None
+        # Complete tree projections are retained only when a response has another
+        # page. One entry avoids repeating a full subtree pass for each continuation
+        # while keeping provider-owned paging memory bounded.
+        self._tree_page_lock = threading.Lock()
+        self._tree_page_memo: _TreePageMemo | None = None
         self._rollup_generation = next(_ROLLUP_REVISIONS)
         # Per-directory subtree aggregates, retained across rollup requests.
         # Without this, every ``/api/rollup`` re-walked every file under the
@@ -573,8 +581,8 @@ class _PythonInventoryStore:
         self._priority_paths: set[str] = set()
         self._done_event: asyncio.Event = asyncio.Event()
         self._status: IndexStatus = "idle"
-        self._max_files = max_files
-        self._max_depth = max_depth
+        self._max_files = config.max_files
+        self._max_depth = config.max_depth
         self._files_indexed = 0
         self._directories_indexed = 0
         self._started_at_ns: int = 0
@@ -647,9 +655,7 @@ class _PythonInventoryStore:
         self._watcher_detail = status.detail
         with self._rollup_cache_lock:
             self._rollup_generation = next(_ROLLUP_REVISIONS)
-        self._record_provider_change(
-            dirty_queries=frozenset({QueryKind.METADATA, QueryKind.DIAGNOSTICS})
-        )
+        self._record_provider_change(dirty_queries=frozenset({QueryKind.DIAGNOSTICS}))
 
     def clear(self) -> None:
         """Drop all state and stop the walker. Called by
@@ -694,6 +700,8 @@ class _PythonInventoryStore:
             self._navigation_tally_cost_s = 0.0
             self._navigation_tally_memo = None
             self._navigation_read_memo = None
+        with self._tree_page_lock:
+            self._tree_page_memo = None
         self._emit(FsResyncRequired(reason="root_swap"))
 
     async def wait_until_done(self, timeout: float | None = None) -> None:
@@ -760,7 +768,11 @@ class _PythonInventoryStore:
             else:
                 rejected.append(observation.path)
         if not valid:
-            return RefreshReceipt(accepted_paths=(), rejected_paths=tuple(rejected))
+            return RefreshReceipt(
+                version=self._current_version(),
+                accepted_paths=(),
+                rejected_paths=tuple(rejected),
+            )
         root = self._root
         if root is None:
             raise InventoryClosedError("the Python inventory handle has no open root")
@@ -775,6 +787,7 @@ class _PythonInventoryStore:
             await self._refresh_path(observation, gitignore_check=gitignore_check)
             accepted.append(rel)
         return RefreshReceipt(
+            version=self._current_version(),
             accepted_paths=tuple(accepted),
             rejected_paths=tuple(rejected),
         )
@@ -887,6 +900,12 @@ class _PythonInventoryStore:
             semantic_fingerprint=self._config.registry_fingerprint,
         )
 
+    def _current_version(self) -> EngineVersion:
+        """Capture the provider boundary after a completed command."""
+
+        with self._rollup_cache_lock:
+            return self._version(self._rollup_generation)
+
     def _settled_phase(self) -> LifecyclePhase:
         """Report whether the settled store has a live observation task."""
 
@@ -929,7 +948,7 @@ class _PythonInventoryStore:
             issues = (
                 InventoryIssue(
                     code=IssueCode.PROVIDER_FAILURE,
-                    detail=self._last_error or "the Python walker failed",
+                    detail=_bounded_issue_detail(self._last_error or "the Python walker failed"),
                 ),
             )
         else:
@@ -941,7 +960,9 @@ class _PythonInventoryStore:
             issues += (
                 InventoryIssue(
                     code=IssueCode.WATCHER_GAP,
-                    detail=self._watcher_detail or "filesystem observation stopped",
+                    detail=_bounded_issue_detail(
+                        self._watcher_detail or "filesystem observation stopped"
+                    ),
                     transient=True,
                 ),
             )
@@ -955,6 +976,26 @@ class _PythonInventoryStore:
                 directories_observed=directory_count,
             ),
             issues=issues,
+        )
+
+    def _provider_diagnostics(
+        self,
+        *,
+        files_indexed: int,
+        directory_count: int,
+        read_requests: int,
+        cumulative_work: WorkCounters,
+    ) -> ProviderDiagnostics:
+        return ProviderDiagnostics(
+            provider="python",
+            contract=_CONTRACT_ID,
+            files_indexed=files_indexed,
+            directories_indexed=max(0, directory_count - 1),
+            watch_mode=self._watcher_mode,
+            watch_state=self._watcher_state,
+            watch_reason=self._watcher_reason,
+            read_requests=read_requests,
+            cumulative_work=cumulative_work,
         )
 
     def _capture_image(self, request: ReadRequest) -> _ReadImage:
@@ -976,7 +1017,6 @@ class _PythonInventoryStore:
                         EntryQuery,
                         DirectoryQuery,
                         CatalogQuery,
-                        MetadataQuery,
                         DiagnosticsQuery,
                     ),
                 )
@@ -1027,21 +1067,15 @@ class _PythonInventoryStore:
             status = self._status
             files_indexed = self._files_indexed
             directory_count = self._directories_indexed
-            pending_directories = len(self._pending_dirs)
-            catalog_revision = self._catalog_revision
             rollup_passes = sum(isinstance(query, RollupQuery) for query in request.queries)
             rollup_aggregates = dict(self._subtree_aggregates) if rollup_passes else {}
             rollup_epoch = self._aggregate_epoch
             self._rollup_passes_in_flight += rollup_passes
-        root = self._root
         state = self._state_for(
             status,
             entries_observed=total_entries,
             files_indexed=files_indexed,
             directory_count=directory_count,
-        )
-        elapsed_ms = (
-            (time.monotonic_ns() - self._started_at_ns) // 1_000_000 if self._started_at_ns else 0
         )
         return _ReadImage(
             entries=entries,
@@ -1051,37 +1085,21 @@ class _PythonInventoryStore:
             version=version,
             cursor=version.cursor,
             state=state,
-            diagnostics={
-                "provider": "python",
-                "contract": _CONTRACT_ID,
-                "root": str(root) if root is not None else "",
-                "status": status,
-                "elapsed_ms": elapsed_ms,
-                "files_indexed": files_indexed,
-                "directories_indexed": max(0, directory_count - 1),
-                "entries": total_entries,
-                "pending_dirs": pending_directories,
-                "watch_mode": self._watcher_mode,
-                "watch_state": self._watcher_state,
-                "watch_reason": self._watcher_reason,
-                "watch_detail": self._watcher_detail,
-                "catalog_revision": catalog_revision,
-                "version": sequence,
-                "read_requests": read_requests,
-                "work_entries_visited": work_totals.entries_visited,
-                "work_directories_visited": work_totals.directories_visited,
-                "work_rows_returned": work_totals.rows_returned,
-                "work_bytes_copied": work_totals.bytes_copied,
-                "work_lock_wait_ns": work_totals.lock_wait_ns,
-                "work_cpu_time_ns": work_totals.cpu_time_ns,
-                "work_wall_time_ns": work_totals.wall_time_ns,
-            },
+            diagnostics=self._provider_diagnostics(
+                files_indexed=files_indexed,
+                directory_count=directory_count,
+                read_requests=read_requests,
+                cumulative_work=work_totals,
+            ),
             rollup_aggregates=rollup_aggregates,
             rollup_epoch=rollup_epoch,
             rollup_passes=rollup_passes,
         )
 
     def _read_sync(self, request: ReadRequest) -> ReadResult:
+        cached_tree_page = self._read_cached_tree_page_sync(request)
+        if cached_tree_page is not None:
+            return cached_tree_page
         navigation_shape = self._navigation_read_shape(request)
         if navigation_shape is not None:
             return self._read_navigation_sync(request, navigation_shape)
@@ -1091,6 +1109,86 @@ class _PythonInventoryStore:
             return self._read_rollup_sync(request)
 
         return self._read_snapshot_sync(request)
+
+    def _read_cached_tree_page_sync(self, request: ReadRequest) -> ReadResult | None:
+        """Serve a continuation without rebuilding its complete projection."""
+
+        if (
+            len(request.queries) != 1
+            or request.at_version is None
+            or not isinstance(request.queries[0], (DirectoryQuery, FilteredTreeQuery))
+            or request.queries[0].after is None
+        ):
+            return None
+
+        wall_started = time.monotonic_ns()
+        cpu_started = time.thread_time_ns()
+        lock_started = time.monotonic_ns()
+        with self._rollup_cache_lock:
+            lock_wait_ns = time.monotonic_ns() - lock_started
+            current_version = self._version(self._rollup_generation)
+        if request.at_version != current_version:
+            raise VersionUnavailableError(
+                "the requested Python inventory version is no longer retained"
+            )
+
+        query = request.queries[0]
+        lock_started = time.monotonic_ns()
+        with self._tree_page_lock:
+            memo = self._tree_page_memo
+        lock_wait_ns += time.monotonic_ns() - lock_started
+        if isinstance(query, DirectoryQuery):
+            if not isinstance(memo, _DirectoryPageMemo) or not (
+                memo.version == current_version
+                and memo.path == query.path
+                and memo.max_depth == query.max_depth
+                and memo.include_ignored == query.include_ignored
+            ):
+                return None
+            offset = _page_offset(query.after, len(memo.rows))
+            rows = memo.rows[offset : offset + query.max_rows]
+            next_offset = offset + len(rows)
+            projection: ProjectionResult = DirectoryProjection(
+                query_id=query.query_id,
+                entries=tuple(_semantic_entry(entry) for entry in rows),
+                next_page=str(next_offset) if next_offset < len(memo.rows) else None,
+                remaining_rows=len(memo.rows) - next_offset,
+            )
+        else:
+            if not isinstance(memo, _FilteredTreePageMemo) or not (
+                memo.version == current_version
+                and memo.query.path == query.path
+                and memo.query.max_depth == query.max_depth
+                and memo.query.filter == query.filter
+            ):
+                return None
+            offset = _page_offset(query.after, len(memo.rows))
+            rows = memo.rows[offset : offset + query.max_rows]
+            next_offset = offset + len(rows)
+            projection = FilteredTreeProjection(
+                query_id=query.query_id,
+                entries=rows,
+                matching_leaves=memo.matching_leaves,
+                matching_files=memo.matching_files,
+                matching_bytes=memo.matching_bytes,
+                next_page=str(next_offset) if next_offset < len(memo.rows) else None,
+                remaining_rows=len(memo.rows) - next_offset,
+            )
+
+        work = WorkCounters(
+            rows_returned=self._projection_rows(projection),
+            lock_wait_ns=lock_wait_ns,
+            cpu_time_ns=time.thread_time_ns() - cpu_started,
+            wall_time_ns=time.monotonic_ns() - wall_started,
+        )
+        self._record_read_work(work)
+        return ReadResult(
+            version=memo.version,
+            cursor=memo.version.cursor,
+            state=memo.state,
+            projections=(projection,),
+            work=work,
+        )
 
     def _read_snapshot_sync(self, request: ReadRequest) -> ReadResult:
         """Answer from one immutable image when a query needs broad traversal."""
@@ -1309,36 +1407,12 @@ class _PythonInventoryStore:
                 files_indexed=files_indexed,
                 directory_count=directory_count,
             )
-            elapsed_ms = (
-                (time.monotonic_ns() - self._started_at_ns) // 1_000_000
-                if self._started_at_ns
-                else 0
+            diagnostics = self._provider_diagnostics(
+                files_indexed=files_indexed,
+                directory_count=directory_count,
+                read_requests=read_requests,
+                cumulative_work=work_totals,
             )
-            diagnostics: dict[str, int | float | str | bool | None] = {
-                "provider": "python",
-                "contract": _CONTRACT_ID,
-                "root": str(self._root) if self._root is not None else "",
-                "status": status,
-                "elapsed_ms": elapsed_ms,
-                "files_indexed": files_indexed,
-                "directories_indexed": max(0, directory_count - 1),
-                "entries": total_entries,
-                "pending_dirs": len(self._pending_dirs),
-                "watch_mode": self._watcher_mode,
-                "watch_state": self._watcher_state,
-                "watch_reason": self._watcher_reason,
-                "watch_detail": self._watcher_detail,
-                "catalog_revision": self._catalog_revision,
-                "version": sequence,
-                "read_requests": read_requests,
-                "work_entries_visited": work_totals.entries_visited,
-                "work_directories_visited": work_totals.directories_visited,
-                "work_rows_returned": work_totals.rows_returned,
-                "work_bytes_copied": work_totals.bytes_copied,
-                "work_lock_wait_ns": work_totals.lock_wait_ns,
-                "work_cpu_time_ns": work_totals.cpu_time_ns,
-                "work_wall_time_ns": work_totals.wall_time_ns,
-            }
 
         projections: list[ProjectionResult] = []
         for query in request.queries:
@@ -1346,7 +1420,7 @@ class _PythonInventoryStore:
                 projections.append(
                     DiagnosticsProjection(
                         query_id=query.query_id,
-                        counters=diagnostics,
+                        payload=diagnostics,
                     )
                 )
                 continue
@@ -1430,9 +1504,9 @@ class _PythonInventoryStore:
             )
             return EntryProjection(query_id=query.query_id, presence=presence, entry=None)
         if isinstance(query, DirectoryQuery):
-            return self._directory_projection(query, children)
+            return self._directory_projection(query, children, image=image)
         if isinstance(query, FilteredTreeQuery):
-            return self._filtered_tree_projection(query, image.entries, children)
+            return self._filtered_tree_projection(query, image.entries, children, image=image)
         if isinstance(query, RollupQuery):
             options = RollupOptions(
                 depth=query.max_depth,
@@ -1493,25 +1567,17 @@ class _PythonInventoryStore:
                 next_page=str(next_offset) if next_offset < len(records) else None,
                 remaining_rows=len(records) - next_offset,
             )
-        if isinstance(query, MetadataQuery):
-            root = self._root
-            if root is None:
-                raise InventoryClosedError("the Python inventory handle has no open root")
-            return MetadataProjection(
-                query_id=query.query_id,
-                provider="python",
-                contract=_CONTRACT_ID,
-                root=str(root),
-            )
         return DiagnosticsProjection(
             query_id=query.query_id,
-            counters=image.diagnostics,
+            payload=image.diagnostics,
         )
 
     def _directory_projection(
         self,
         query: DirectoryQuery,
         children: Mapping[str, Sequence[FsEntry]],
+        *,
+        image: _ReadImage,
     ) -> DirectoryProjection:
         rows = _directory_rows(
             children,
@@ -1522,6 +1588,16 @@ class _PythonInventoryStore:
         offset = _page_offset(query.after, len(rows))
         page = rows[offset : offset + query.max_rows]
         next_offset = offset + len(page)
+        if query.after is None and next_offset < len(rows):
+            with self._tree_page_lock:
+                self._tree_page_memo = _DirectoryPageMemo(
+                    version=image.version,
+                    state=image.state,
+                    path=query.path,
+                    max_depth=query.max_depth,
+                    include_ignored=query.include_ignored,
+                    rows=tuple(rows),
+                )
         return DirectoryProjection(
             query_id=query.query_id,
             entries=tuple(_semantic_entry(entry) for entry in page),
@@ -1534,12 +1610,14 @@ class _PythonInventoryStore:
         query: FilteredTreeQuery,
         entries: Sequence[FsEntry],
         children: Mapping[str, Sequence[FsEntry]],
+        *,
+        image: _ReadImage,
     ) -> FilteredTreeProjection:
         ignored_dirs = self._effective_ignored_directories(entries)
         matched: list[FsEntry] = []
         matching_files = 0
         matching_bytes = 0
-        directory_totals: dict[str, list[int]] = {}
+        directory_totals: dict[str, _SelectedDirectoryTotals] = {}
         prefix = f"{query.path}/" if query.path else ""
         for entry in entries:
             if entry.path == query.path or (prefix and not entry.path.startswith(prefix)):
@@ -1556,11 +1634,15 @@ class _PythonInventoryStore:
                 matching_bytes += entry.size
             cursor = entry.parent
             while True:
-                bucket = directory_totals.setdefault(cursor, [0, 0, 0])
+                bucket = directory_totals.setdefault(cursor, _SelectedDirectoryTotals())
                 if entry.type == "file":
-                    bucket[0] += 1
-                    bucket[1] += entry.size
-                bucket[2] = max(bucket[2], entry.mtime_ns)
+                    bucket.file_count += 1
+                    bucket.size += entry.size
+                    bucket.newest_mtime_ns = (
+                        entry.mtime_ns
+                        if bucket.newest_mtime_ns is None
+                        else max(bucket.newest_mtime_ns, entry.mtime_ns)
+                    )
                 if cursor == query.path or not cursor:
                     break
                 cursor = cursor.rpartition("/")[0]
@@ -1581,9 +1663,9 @@ class _PythonInventoryStore:
                 selected.append(
                     replace(
                         _semantic_entry(entry),
-                        total_files=totals[0],
-                        total_size=totals[1],
-                        newest_mtime_ns=totals[2] or None,
+                        total_files=totals.file_count,
+                        total_size=totals.size,
+                        newest_mtime_ns=totals.newest_mtime_ns,
                         empty=False,
                     )
                 )
@@ -1592,6 +1674,17 @@ class _PythonInventoryStore:
         offset = _page_offset(query.after, len(selected))
         page = selected[offset : offset + query.max_rows]
         next_offset = offset + len(page)
+        if query.after is None and next_offset < len(selected):
+            with self._tree_page_lock:
+                self._tree_page_memo = _FilteredTreePageMemo(
+                    version=image.version,
+                    state=image.state,
+                    query=query,
+                    rows=tuple(selected),
+                    matching_leaves=len(matched),
+                    matching_files=matching_files,
+                    matching_bytes=matching_bytes,
+                )
         return FilteredTreeProjection(
             query_id=query.query_id,
             entries=tuple(page),
@@ -1774,7 +1867,7 @@ class _PythonInventoryStore:
                 gitignore_prepared=True,
                 max_depth=max_depth,
             )
-        else:
+        elif stat_module.S_ISREG(stat_result.st_mode):
             self.apply_live_entry(
                 FsEntry.for_stat(
                     path=rel,
@@ -1785,6 +1878,10 @@ class _PythonInventoryStore:
                     existing=existing,
                 )
             )
+        else:
+            # Keep refresh semantics aligned with the boot walker: the browser
+            # wire cannot represent sockets, FIFOs, or device nodes.
+            self.remove(rel)
 
     def _reset_batch(self) -> ChangeBatch:
         with self._rollup_cache_lock:
@@ -1813,18 +1910,6 @@ class _PythonInventoryStore:
     def get(self, path: str) -> FsEntry | None:
         return self._entries.get(path)
 
-    def children_of(self, parent: str) -> tuple[FsEntry, ...]:
-        """Direct children of *parent*, or an empty tuple.
-
-        Served from the index maintained on write, so a caller that walks a
-        subtree pays for that subtree rather than for the whole index. The
-        served root is excluded from its own children.
-        """
-
-        with self._rollup_cache_lock:
-            bucket = self._children_index.get(parent)
-            return tuple(bucket.values()) if bucket is not None else ()
-
     def has_direct_child(self, path: str) -> bool:
         """Return whether *path* has a child already present in the index."""
 
@@ -1832,9 +1917,7 @@ class _PythonInventoryStore:
 
     def entries(
         self,
-        scope: Literal[
-            "root-depth-2", "recent-top-N", "expanded-prefixes", "all-known"
-        ] = "all-known",
+        scope: Literal["root-depth-2", "all-known"] = "all-known",
         *,
         max_depth: int | None = None,
     ) -> list[FsEntry]:
@@ -1843,9 +1926,6 @@ class _PythonInventoryStore:
         ``root-depth-2`` returns entries at depth 0–2 (matches the
         default ``/api/tree`` first-paint).
         ``all-known`` returns everything currently in the index.
-        ``recent-top-N`` and ``expanded-prefixes`` are accepted wire
-        scopes that currently return the same complete snapshot as
-        ``all-known``.
         """
 
         if scope == "all-known":
@@ -1853,21 +1933,12 @@ class _PythonInventoryStore:
         elif scope == "root-depth-2":
             depth_cap = 2 if max_depth is None else max_depth
             base = [e for e in self._entries.values() if _depth_of(e.path) <= depth_cap]
-        elif scope in ("recent-top-N", "expanded-prefixes"):
-            # These wire scopes currently request the complete snapshot.
-            base = list(self._entries.values())
         else:  # pragma: no cover — type-checked at the boundary
             raise ValueError(f"unknown scope: {scope!r}")
         return base
 
     def files_indexed(self) -> int:
         return self._files_indexed
-
-    def max_files(self) -> int:
-        return self._max_files
-
-    def catalog_revision(self) -> int:
-        return self._catalog_revision
 
     def rollup_revision(self) -> int:
         """Counter that advances on every index write.
@@ -1882,16 +1953,6 @@ class _PythonInventoryStore:
 
         with self._rollup_cache_lock:
             return self._rollup_generation
-
-    def catalog_files(self) -> list[tuple[str, str]]:
-        """``(path, logical_ext)`` for every non-gitignored file in
-        the index — the Quick File catalog universe. List-of-tuples
-        rather than wire dicts so the route owns serialization and
-        can run it off the event loop."""
-
-        return [
-            (e.path, e.ext) for e in self._entries.values() if e.type == "file" and not e.gitignored
-        ]
 
     def root_summary(
         self,
@@ -2714,9 +2775,7 @@ class _PythonInventoryStore:
             self._status = "failed"
             self._rollup_generation = next(_ROLLUP_REVISIONS)
         self._done_event.set()
-        self._record_provider_change(
-            dirty_queries=frozenset({QueryKind.METADATA, QueryKind.DIAGNOSTICS})
-        )
+        self._record_provider_change(dirty_queries=frozenset({QueryKind.DIAGNOSTICS}))
 
     async def _run_walker(self, root: Path) -> None:
         """Drive ``walk_tree`` and apply each yielded entry. On
@@ -3250,9 +3309,7 @@ class _PythonInventoryStore:
                 ),
             )
         elif isinstance(event, CapabilityUpdate):
-            self._record_provider_change(
-                dirty_queries=frozenset({QueryKind.METADATA, QueryKind.DIAGNOSTICS})
-            )
+            self._record_provider_change(dirty_queries=frozenset({QueryKind.DIAGNOSTICS}))
 
     def _record_provider_change(
         self,
@@ -3336,13 +3393,7 @@ class PythonInventoryBackend:
         return PythonInventoryHandle(store)
 
 
-# Re-export the non-trivial helpers used by tests and inventory consumers.
 __all__ = [
-    "DEFAULT_MAX_DEPTH",
-    "DEFAULT_MAX_FILES",
-    "DEFAULT_REFRESH_TTL_S",
-    "IndexStatus",
     "PythonInventoryBackend",
     "PythonInventoryHandle",
-    "walk_tree",
 ]

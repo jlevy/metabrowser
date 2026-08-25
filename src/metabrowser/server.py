@@ -198,7 +198,6 @@ from metabrowser.tree_filter import (
     parse_recency,
     parse_size_floor,
     parse_types,
-    reset_rollup_cache_for_tests,
 )
 from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
@@ -285,7 +284,6 @@ def reset_response_caches_for_tests() -> None:
 
     _ROLLUP_BODY_CACHE.clear()
     _ROLLUP_IN_FLIGHT.clear()
-    reset_rollup_cache_for_tests()
 
 
 def _release_rollup_flight(etag: str, task: asyncio.Task[bytes]) -> None:
@@ -1706,8 +1704,7 @@ async def api_rollup(request: Request) -> Response:
             raise TypeError("the rollup read returned the wrong projections")
         payload = rollup.payload
         state = coordinated.result.state
-        indexed_value = diagnostic.counters.get("files_indexed", 0)
-        indexed_files = indexed_value if isinstance(indexed_value, int) else 0
+        indexed_files = diagnostic.payload.files_indexed
         status = _index_status_from_state(
             state.phase,
             complete=state.coverage.complete,
@@ -3291,32 +3288,25 @@ async def _debug_inventory(request: Request) -> JSONResponse:
     diagnostic = coordinated.result.projection("debug-inventory")
     if not isinstance(diagnostic, DiagnosticsProjection):
         raise TypeError("the inventory diagnostic returned the wrong projection")
-    counters = diagnostic.counters
-
-    def counter(name: str) -> int:
-        value = counters.get(name, 0)
-        return value if isinstance(value, int) else 0
-
-    def optional_counter(name: str) -> int | None:
-        value = counters.get(name)
-        return value if isinstance(value, int) else None
+    diagnostics = diagnostic.payload
+    work = diagnostics.cumulative_work
 
     return JSONResponse(
         {
-            "provider": str(counters.get("provider", "")),
-            "contract": str(counters.get("contract", "")),
+            "provider": diagnostics.provider,
+            "contract": diagnostics.contract,
             "phase": coordinated.result.state.phase.value,
             "complete": coordinated.result.state.coverage.complete,
             "version": coordinated.version.engine.sequence,
             "work": {
-                "read_requests": counter("read_requests"),
-                "entries_visited": counter("work_entries_visited"),
-                "directories_visited": counter("work_directories_visited"),
-                "rows_returned": counter("work_rows_returned"),
-                "binding_bytes_copied": counter("work_bytes_copied"),
-                "lock_wait_ns": counter("work_lock_wait_ns"),
-                "cpu_time_ns": optional_counter("work_cpu_time_ns"),
-                "wall_time_ns": counter("work_wall_time_ns"),
+                "read_requests": diagnostics.read_requests,
+                "entries_visited": work.entries_visited,
+                "directories_visited": work.directories_visited,
+                "rows_returned": work.rows_returned,
+                "binding_bytes_copied": work.bytes_copied,
+                "lock_wait_ns": work.lock_wait_ns,
+                "cpu_time_ns": work.cpu_time_ns,
+                "wall_time_ns": work.wall_time_ns,
             },
         }
     )

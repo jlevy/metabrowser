@@ -795,8 +795,8 @@ var QUICK_FILE_RESULT_LIMIT = 100;
 // to, are both questions about a whole subtree — including the parts
 // this client has never been sent. Only the server can answer them, so
 // the filter travels with the request instead of being applied to the
-// rows that come back. See metabrowser/tree_filter.py for the projection
-// and static/tree-filter-model.js for how a selection becomes a request.
+// rows that come back. The inventory provider owns the projection;
+// static/tree-filter-model.js turns a selection into request parameters.
 var treeFilterModel = /** @type {any} */ (window).MetabrowserTreeFilterModel;
 
 function currentFilterSnapshot() {

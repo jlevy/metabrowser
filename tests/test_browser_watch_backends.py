@@ -13,6 +13,7 @@ from metabrowser.inventory_engine.contract import (
     MAX_COMMAND_PATHS,
     DirectoryProjection,
     DirectoryQuery,
+    EngineVersion,
     EntryPresence,
     EntryProjection,
     EntryQuery,
@@ -33,6 +34,13 @@ from metabrowser.watch_backends import (
     select_watch_mode,
 )
 from tests.inventory_harness import inventory_harness
+
+_WATCH_VERSION = EngineVersion(
+    session="watch-test",
+    sequence=0,
+    scope_fingerprint="scope",
+    semantic_fingerprint="semantics",
+)
 
 
 def test_native_set_includes_ext4_apfs() -> None:
@@ -84,7 +92,7 @@ def test_backend_batch_is_deduplicated_and_submitted_once(tmp_path: Path) -> Non
 
     async def refresh(request: RefreshRequest) -> RefreshReceipt:
         requests.append(request)
-        return RefreshReceipt(accepted_paths=request.paths)
+        return RefreshReceipt(version=_WATCH_VERSION, accepted_paths=request.paths)
 
     asyncio.run(
         _emit_batch(
@@ -107,7 +115,7 @@ def test_backend_batch_uses_the_opened_scope_hidden_allowlist(tmp_path: Path) ->
 
     async def refresh(request: RefreshRequest) -> RefreshReceipt:
         requests.append(request)
-        return RefreshReceipt(accepted_paths=request.paths)
+        return RefreshReceipt(version=_WATCH_VERSION, accepted_paths=request.paths)
 
     asyncio.run(
         _emit_batch(
@@ -320,7 +328,11 @@ def test_watcher_announces_a_rejected_observation_batch(
         yield {(Change.added, str(tmp_path / "changed.txt"))}
 
     async def rejecting_refresh(request: RefreshRequest) -> RefreshReceipt:
-        return RefreshReceipt(accepted_paths=(), rejected_paths=request.paths)
+        return RefreshReceipt(
+            version=_WATCH_VERSION,
+            accepted_paths=(),
+            rejected_paths=request.paths,
+        )
 
     monkeypatch.setattr(watch_backends, "awatch", yielding_awatch)
 
@@ -359,7 +371,7 @@ def test_watcher_stops_after_a_middle_chunk_failure(
         requests.append(request)
         if len(requests) == 2:
             raise OSError("middle chunk failed")
-        return RefreshReceipt(accepted_paths=request.paths)
+        return RefreshReceipt(version=_WATCH_VERSION, accepted_paths=request.paths)
 
     monkeypatch.setattr(watch_backends, "awatch", yielding_awatch)
 
