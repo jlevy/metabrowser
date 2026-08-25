@@ -17,7 +17,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any, cast
 
+from metabrowser import __version__
 from metabrowser import server as proc_browser
+from metabrowser.build_version import display_version_line
 
 
 def _read_app_js() -> str:
@@ -95,6 +97,23 @@ def test_index_template_renders_index_progress_footer() -> None:
     assert 'id="index-progress"' in html
     assert 'class="index-progress-spinner"' in html
     assert 'aria-live="polite"' in html
+
+
+def test_settings_menu_ends_with_the_cli_formatted_version() -> None:
+    html = _render_index_html()
+    expected = display_version_line("metab", __version__)
+    markup = f'<div class="menu-version">{expected}</div>'
+
+    assert markup in html
+    assert html.index('id="app-font-select"') < html.index(markup)
+
+    css = _read_styles_css()
+    start = css.index(".menu-version {")
+    rule = css[start : css.index("}", start)]
+    assert "color: var(--muted);" in rule
+    assert "font-size: var(--ui-small-font-size);" in rule
+    assert "letter-spacing: 0;" in rule
+    assert "text-transform: none;" in rule
 
 
 def test_index_template_versions_core_static_assets() -> None:

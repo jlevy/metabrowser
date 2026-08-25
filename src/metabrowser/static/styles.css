@@ -1435,14 +1435,14 @@ body {
 
 /* ── Settings toggle (gear → theme + reading-font choosers) ───────
    The gear at the end of the nav header opens a .menu holding the product
-   name and two segmented choosers (theme, reading font). Click-to-open-
-   then-pick, never click-to-cycle. It sits in the header's flex row rather
-   than pinned over it, so it shares the row's vertical centring with the
-   path the way .file-header's controls share theirs. `relative` is what
-   the menu below anchors against. The button itself is the .icon-btn
-   primitive above; only the trigger's placement and the menu's anchored
-   positioning live here, the menu surface comes from the .menu primitive,
-   and the segments from the .menu-chooser primitive below. */
+   name, two segmented choosers (theme, reading font), and a muted version
+   footer. Click-to-open-then-pick, never click-to-cycle. It sits in the
+   header's flex row rather than pinned over it, so it shares the row's
+   vertical centring with the path the way .file-header's controls share
+   theirs. `relative` is what the menu below anchors against. The button
+   itself is the .icon-btn primitive above; only the trigger's placement and
+   the menu's anchored positioning live here. The menu surface comes from the
+   .menu primitive, and the segments from the .menu-chooser primitive below. */
 .settings-toggle {
   position: relative;
   flex: 0 0 auto;
@@ -1468,7 +1468,7 @@ body {
    identically. Styling only — positioning, keyboard nav, and dismissal
    live in the JS that opens each menu.
 
-   Two content primitives sit inside a .menu:
+   Content primitives inside a .menu:
      .menu-item       a full-width text row (icon slot + label), for
                       vertical lists. Slots: .menu-item-icon /
                       .menu-item-label; states: [aria-disabled],
@@ -1479,6 +1479,7 @@ body {
                       theme and reading-font pickers.
      .menu-select     a small native <select> for a short list that may grow
                       (the font-set picker), styled as a recessed field.
+     .menu-version    the command-formatted build identity at the menu's foot.
      .menu-separator  a divider between groups.
      .menu-section-label a quiet heading for a semantic group of rows. */
 .menu {
@@ -1550,6 +1551,16 @@ body {
   height: 1px;
   margin: 4px 0;
   background: var(--border);
+}
+.menu-version {
+  padding: 2px 8px;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-normal);
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: none;
 }
 /* The menu's own name, at its top. Metabrowser's wordmark lives here now:
    the gear is the product's menu, and a menu that names itself does not

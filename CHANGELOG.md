@@ -4,6 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Added:
+
+- The gear menu now ends with the exact build version line reported by
+  `metab --version`, including checkout annotations for unreleased and dirty builds.
+
 Fixed:
 
 - Opening the first Git commit in a fresh browser session now loads the diff plugin on
