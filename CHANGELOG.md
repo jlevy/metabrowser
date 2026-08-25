@@ -15,6 +15,9 @@ Fixed:
   demand before mounting the commit view, so changed files and lines appear without
   first opening a `.patch` or `.diff` file.
 
+- Opening the gear menu no longer leaves a redundant “Metabrowser” tooltip over the
+  menu. The gear retains its accessible name.
+
 Performance, validated against 0.6.0 side by side:
 
 - On the final installed candidate, five interleaved backend pairs over a fingerprinted

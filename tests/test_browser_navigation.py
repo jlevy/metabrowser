@@ -189,6 +189,24 @@ def test_header_shows_the_root_folder_name_and_keeps_the_whole_path(tmp_path: Pa
     assert "title=" not in header_anchor
 
 
+def test_settings_menu_trigger_has_an_accessible_name_without_a_tooltip(
+    tmp_path: Path,
+) -> None:
+    """The menu title makes a second product-name tooltip redundant."""
+
+    server._set_root_dir(tmp_path)
+    try:
+        response = TestClient(server.app).get("/view/")
+    finally:
+        server._set_root_dir(Path())
+
+    settings_button = response.text[response.text.index('id="settings-btn"') :][:300]
+    assert 'aria-haspopup="true"' in settings_button
+    assert 'aria-label="Metabrowser menu"' in settings_button
+    assert "data-tip-text=" not in settings_button
+    assert "title=" not in settings_button
+
+
 def test_serve_cli_emits_segment_encoded_direct_view_url(tmp_path: Path) -> None:
     target = tmp_path / "docs" / "雪 #1%.md"
     target.parent.mkdir()
