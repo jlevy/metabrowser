@@ -45,6 +45,7 @@ function usage() {
     "  --timeout-ms N      Application-settle timeout (default 180000)",
     "  --width N           Viewport width (default 1600)",
     "  --height N          Viewport height (default 900)",
+    "  --scenario NAME     Interaction scenario: git-revisions",
   ].join("\n");
 }
 
@@ -55,6 +56,7 @@ function parseArgs(argv) {
     height: DEFAULT_VIEWPORT.height,
     output: "",
     probe: "",
+    scenario: "",
     timeoutMs: DEFAULT_TIMEOUT_MS,
     url: "",
     width: DEFAULT_VIEWPORT.width,
@@ -82,6 +84,8 @@ function parseArgs(argv) {
       options.output = value;
     } else if (argument === "--probe") {
       options.probe = value;
+    } else if (argument === "--scenario") {
+      options.scenario = value;
     } else if (argument === "--timeout-ms") {
       options.timeoutMs = Number(value);
     } else if (argument === "--url") {
@@ -104,6 +108,9 @@ function parseArgs(argv) {
     if (!Number.isFinite(options[field]) || options[field] <= 0) {
       throw new Error(`--${field === "timeoutMs" ? "timeout-ms" : field} must be positive`);
     }
+  }
+  if (options.scenario && options.scenario !== "git-revisions") {
+    throw new Error(`unknown scenario: ${options.scenario}`);
   }
   return options;
 }
@@ -340,6 +347,224 @@ async function dispatchTrustedClickAtPoint(session, point) {
   });
 }
 
+async function pointForSelector(session, selector, index = 0) {
+  return evaluate(
+    session,
+    `(() => {
+      const element = document.querySelectorAll(${JSON.stringify(selector)})[${index}];
+      if (!(element instanceof HTMLElement)) return null;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+    })()`,
+  );
+}
+
+async function dispatchTrustedClickForSelector(session, selector, index = 0) {
+  const point = await pointForSelector(session, selector, index);
+  if (!point) {
+    throw new Error(`could not click ${selector}[${index}]`);
+  }
+  await dispatchTrustedClickAtPoint(session, point);
+}
+
+async function dispatchTrustedPointerForSelector(session, selector, index = 0) {
+  const point = await pointForSelector(session, selector, index);
+  if (!point) {
+    throw new Error(`could not point at ${selector}[${index}]`);
+  }
+  await session.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: point.x,
+    y: point.y,
+  });
+}
+
+async function awaitNextPaint(session) {
+  return evaluate(
+    session,
+    `new Promise((resolve) => requestAnimationFrame(() =>
+      requestAnimationFrame(() => resolve(performance.now()))))`,
+    true,
+  );
+}
+
+async function startGitBlankFrameMonitor(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const key = "__metabrowserGitBlankMonitor";
+      cancelAnimationFrame(window[key]?.frame || 0);
+      const state = {
+        blankDurationMs: 0,
+        blankFrames: 0,
+        blankStartedAt: null,
+        frame: 0,
+        running: true,
+      };
+      const sample = (now) => {
+        if (!state.running) return;
+        const visible = Boolean(document.querySelector("#preview-pane .git-commit-view"));
+        if (visible) {
+          if (state.blankStartedAt !== null) {
+            state.blankDurationMs += now - state.blankStartedAt;
+            state.blankStartedAt = null;
+          }
+        } else {
+          state.blankFrames += 1;
+          if (state.blankStartedAt === null) state.blankStartedAt = now;
+        }
+        state.frame = requestAnimationFrame(sample);
+      };
+      state.frame = requestAnimationFrame(sample);
+      window[key] = state;
+      return true;
+    })()`,
+  );
+}
+
+async function stopGitBlankFrameMonitor(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const state = window.__metabrowserGitBlankMonitor;
+      if (!state) return null;
+      state.running = false;
+      cancelAnimationFrame(state.frame);
+      if (state.blankStartedAt !== null) {
+        state.blankDurationMs += performance.now() - state.blankStartedAt;
+      }
+      return {
+        blank_duration_ms: Number(state.blankDurationMs.toFixed(2)),
+        blank_frames: state.blankFrames,
+      };
+    })()`,
+  );
+}
+
+async function gitRow(session, index) {
+  return evaluate(
+    session,
+    `(() => {
+      const row = document.querySelectorAll(".git-graph-row")[${index}];
+      if (!(row instanceof HTMLElement)) return null;
+      return {revision: row.dataset.revision || "", subject: row.textContent || ""};
+    })()`,
+  );
+}
+
+async function waitForGitRevision(session, revision, timeoutMs) {
+  await waitFor(
+    async () =>
+      evaluate(
+        session,
+        `(() => {
+          const selected = document.querySelector(".git-graph-row.selected");
+          const sha = document.querySelector("#preview-pane .git-commit-sha")?.textContent?.trim();
+          return selected instanceof HTMLElement && selected.dataset.revision ===
+            ${JSON.stringify(revision)} && Boolean(sha) &&
+            ${JSON.stringify(revision)}.startsWith(sha) &&
+            Boolean(document.querySelector(".git-commit-diff .diff-root"));
+        })()`,
+      ),
+    timeoutMs,
+    `Git revision ${revision} to render`,
+  );
+  return awaitNextPaint(session);
+}
+
+async function measureGitTransition(session, rowIndex, name, timeoutMs) {
+  const row = await gitRow(session, rowIndex);
+  if (!row?.revision) {
+    throw new Error(`Git row ${rowIndex} is unavailable`);
+  }
+  const started = await evaluate(session, `({epoch: Date.now(), now: performance.now()})`);
+  await startGitBlankFrameMonitor(session);
+  await dispatchTrustedClickForSelector(session, ".git-graph-row", rowIndex);
+  const paintedAt = await waitForGitRevision(session, row.revision, timeoutMs);
+  const blank = await stopGitBlankFrameMonitor(session);
+  const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const fetches = snapshot.raw_fetch.filter((sample) => sample.ts >= started.epoch);
+  return {
+    name,
+    revision: row.revision,
+    total_ms: Number((paintedAt - started.now).toFixed(2)),
+    ...blank,
+    fetches: fetches
+      .filter(
+        (sample) =>
+          sample.url.includes("/api/git/commit/") ||
+          sample.url.includes("/api/plugin/diff/comparison"),
+      )
+      .map((sample) => ({
+        duration_ms: Number(sample.duration_ms.toFixed(2)),
+        server_ms: sample.server_ms,
+        size_bytes: sample.size_bytes,
+        status: sample.status,
+        url: new URL(sample.url, "http://localhost").pathname,
+      })),
+  };
+}
+
+async function runGitRevisionScenario(session, timeoutMs) {
+  await waitFor(
+    () => pointForSelector(session, '.tab-btn[data-tab="git"]'),
+    timeoutMs,
+    "Git navigation tab",
+  );
+  await dispatchTrustedClickForSelector(session, '.tab-btn[data-tab="git"]');
+  await waitFor(
+    async () => evaluate(session, `document.querySelectorAll(".git-graph-row").length >= 4`),
+    timeoutMs,
+    "four Git history rows",
+  );
+
+  // Warm the renderer and its on-demand assets before measuring revision-to-revision
+  // navigation. Startup asset cost belongs to the load profile, not this scenario.
+  const warm = await gitRow(session, 0);
+  await dispatchTrustedClickForSelector(session, ".git-graph-row", 0);
+  await waitForGitRevision(session, warm.revision, timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+  await evaluate(session, `window.metabrowser.perf.reset()`);
+
+  const transitions = [];
+  transitions.push(await measureGitTransition(session, 1, "cold-1", timeoutMs));
+  transitions.push(await measureGitTransition(session, 2, "cold-2", timeoutMs));
+
+  const prepared = await gitRow(session, 3);
+  const prefetchStartedAt = await evaluate(session, `Date.now()`);
+  await dispatchTrustedPointerForSelector(session, ".git-graph-row", 3);
+  await delay(450);
+  const preparedTransition = await measureGitTransition(session, 3, "pointer-prepared", timeoutMs);
+  transitions.push(preparedTransition);
+  await waitForClientQuiescence(session, timeoutMs);
+  const profiler = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const prefetchFetches = profiler.raw_fetch.filter(
+    (sample) =>
+      sample.ts >= prefetchStartedAt &&
+      sample.ts < prefetchStartedAt + 450 &&
+      (sample.url.includes("/api/git/commit/") ||
+        sample.url.includes("/api/plugin/diff/comparison")),
+  );
+  const mountedComparisons = await evaluate(
+    session,
+    `document.querySelectorAll(".git-commit-diff .diff-root").length`,
+  );
+  if (mountedComparisons !== 1) {
+    throw new Error(`Git scenario retained ${mountedComparisons} mounted comparisons`);
+  }
+  return {
+    schema: "git-revision-navigation/v1",
+    generated_at: new Date().toISOString(),
+    scenario: "git-revisions",
+    prepared_revision: prepared.revision,
+    transitions,
+    prefetch_fetches: prefetchFetches,
+    mounted_comparisons: mountedComparisons,
+    profiler,
+  };
+}
+
 async function removeInputSentinel(session) {
   await evaluate(
     session,
@@ -489,6 +714,24 @@ async function capture(options) {
       FIRST_ROW_TIMEOUT_MS,
       "application first row and performance recorder",
     );
+    if (options.scenario) {
+      await waitForIndex(options.url, options.timeoutMs);
+      await delay(CLIENT_COMPLETION_SETTLE_MS);
+      await waitForClientQuiescence(session, options.timeoutMs);
+      const payload = await runGitRevisionScenario(session, options.timeoutMs);
+      payload.page_exceptions = pageExceptions;
+      if (pageExceptions !== 0) {
+        throw new Error(`Git scenario observed ${pageExceptions} uncaught page exception(s)`);
+      }
+      await session.send("HeapProfiler.enable");
+      await session.send("HeapProfiler.collectGarbage");
+      const heapUsage = await session.send("Runtime.getHeapUsage");
+      payload.js_heap_after_gc_mb = Number((heapUsage.usedSize / (1024 * 1024)).toFixed(1));
+      fs.mkdirSync(path.dirname(options.output), { recursive: true });
+      fs.writeFileSync(options.output, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+      process.stdout.write(`${options.output}\n`);
+      return payload;
+    }
     // A single early interaction can miss the exact update storm this loop is
     // meant to catch. Pulse a one-pixel, non-product sentinel from first usable
     // state through client quiescence. The click toggles only its own paint, so
@@ -575,7 +818,9 @@ module.exports = {
   capture,
   chromeExecutable,
   dispatchTrustedClickAtPoint,
+  dispatchTrustedClickForSelector,
   parseArgs,
+  runGitRevisionScenario,
   startTrustedInputPulse,
   usage,
   waitForClientQuiescence,

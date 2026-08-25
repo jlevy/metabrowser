@@ -237,6 +237,30 @@ exp-003 is the worked example of why: the route got 40% faster server-side and t
 first row did not move at all, because the first request of a page load misses a cache
 by construction.
 
+### Git Revision Navigation Scenario
+
+Use the built-in interaction scenario when the hypothesis concerns moving between commit
+comparisons rather than initial page load:
+
+```shell
+$UV explorations/performance-loop/run.py capture --headed \
+  --scenario git-revisions --output .bench/git-revisions.json
+```
+
+The scenario warms the on-demand diff assets, resets the navigation-time profiler, and
+then uses trusted Chrome input for two cold selections and one pointer-prepared
+selection.
+Its `git-revision-navigation/v1` output separates request time reported by the
+server from client data and rendering spans.
+It also records time to a double-animation-frame ready boundary, frames without prior
+commit content, Long Tasks, Long Animation Frames, page exceptions, retained heap, and
+mounted comparison count.
+
+Scenario output stays under `.bench/` and is summarized in the corresponding experiment.
+It is not accepted by `record`: the initial-load ledger and its budgets use a different
+schema. Run at least three visible-Chrome captures for each condition, alternate
+condition order, and keep the repository and revisions unchanged.
+
 ```shell
 uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py serve --files 100000
 ```

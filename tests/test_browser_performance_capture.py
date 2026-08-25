@@ -12,6 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 CAPTURE = ROOT / "explorations" / "performance-loop" / "capture-browser.js"
 PROBE = ROOT / "explorations" / "performance-loop" / "probe.js"
+RUNNER = ROOT / "explorations" / "performance-loop" / "run.py"
 
 
 def test_capture_browser_argument_contract() -> None:
@@ -47,13 +48,87 @@ process.stdout.write(JSON.stringify(parsed));
     assert parsed["url"] == "http://127.0.0.1:8411/view/"
 
 
+def test_capture_browser_accepts_the_git_revision_scenario() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+const parsed = capture.parseArgs([
+  "--url", "http://127.0.0.1:8411/view/",
+  "--probe", "probe.js",
+  "--output", "profile.json",
+  "--scenario", "git-revisions"
+]);
+process.stdout.write(JSON.stringify(parsed));
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["scenario"] == "git-revisions"
+
+
+def test_capture_browser_rejects_an_unknown_scenario() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+try {{
+  capture.parseArgs([
+    "--url", "http://127.0.0.1:8411/view/",
+    "--probe", "probe.js",
+    "--output", "profile.json",
+    "--scenario", "unknown"
+  ]);
+}} catch (error) {{
+  process.stdout.write(String(error.message));
+}}
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "unknown scenario" in result.stdout
+
+
+def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> None:
+    source = CAPTURE.read_text(encoding="utf-8")
+
+    assert "async function runGitRevisionScenario" in source
+    assert "dispatchTrustedClickForSelector" in source
+    assert "startGitBlankFrameMonitor" in source
+    assert "awaitNextPaint" in source
+    assert 'schema: "git-revision-navigation/v1"' in source
+    assert 'document.querySelectorAll(".git-commit-diff .diff-root")' in source
+
+    runner = RUNNER.read_text(encoding="utf-8")
+    assert 'choices=["git-revisions"]' in runner
+    assert 'command.extend(["--scenario", scenario])' in runner
+
+
 def test_capture_browser_records_controlled_retained_heap() -> None:
     source = CAPTURE.read_text(encoding="utf-8")
 
     assert 'session.send("HeapProfiler.collectGarbage")' in source
     assert 'session.send("Runtime.getHeapUsage")' in source
     assert "payload.js_heap_after_gc_mb" in source
-    assert source.index("const probe = fs.readFileSync") < source.index(
+    # The default load profile and the Git interaction scenario each collect only
+    # after their product snapshot. The default path is the final collection.
+    assert source.index("const probe = fs.readFileSync") < source.rindex(
         'session.send("HeapProfiler.collectGarbage")'
     )
 
