@@ -149,7 +149,7 @@ def test_a_freshness_probe_never_waits_for_an_in_flight_tally_pass() -> None:
 
 def test_worker_tally_pass_cooperatively_yields_to_the_event_loop() -> None:
     """Worker CPU must not depend on the interpreter's ordinary switch interval."""
-    index = InventoryIndex()
+    index = PythonInventoryHandle()
     entry = FsEntry.for_observed_file(path="same.py", parent="", name="same.py", size=1, mtime_ns=1)
     snapshot = [entry] * 80_000
     previous_switch_interval = sys.getswitchinterval()

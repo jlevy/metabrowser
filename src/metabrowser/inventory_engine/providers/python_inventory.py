@@ -1897,9 +1897,7 @@ class PythonInventoryHandle:
 
         snapshot = self.entries(scope="all-known") if entries is None else entries
         files = size = ignored_files = ignored_size = 0
-        for entry_index, entry in enumerate(snapshot):
-            if entry_index > 0 and entry_index % _NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH == 0:
-                time.sleep(_NAVIGATION_TALLY_COOPERATIVE_YIELD_S)
+        for entry in snapshot:
             if entry.type != "file":
                 continue
             if entry.gitignored:
@@ -1984,10 +1982,12 @@ class PythonInventoryHandle:
     ) -> NavigationTallies | None:
         """The memoized tallies if they are still current, else None.
 
-        Cheap enough for the event loop: a tuple compare and a clock read, no
-        index pass and no snapshot. That is the point of having it separate --
-        the caller can find out whether it needs to pay O(index) *before*
-        paying the O(index) list copy that feeding the pass requires.
+        Cheap enough for the event loop: a nonblocking lock attempt, a tuple
+        compare, and a clock read, with no index pass or snapshot. Contention is
+        a cache miss rather than a wait because the same lock is held across the
+        O(index) worker pass. That is the point of having this separate: the
+        caller can find out whether it needs to pay O(index) *before* paying the
+        O(index) list copy that feeding the pass requires.
 
         Freshness is by age rather than by revision because during a walk
         ``rollup_revision`` advances on every write -- roughly ninety times a
@@ -2009,7 +2009,9 @@ class PythonInventoryHandle:
         """
 
         key_presets = tuple((preset_id, tuple(sorted(values))) for preset_id, values in presets)
-        with self._navigation_tally_lock:
+        if not self._navigation_tally_lock.acquire(blocking=False):
+            return None
+        try:
             memo = self._navigation_tally_memo
             if memo is None:
                 return None
@@ -2033,6 +2035,8 @@ class PythonInventoryHandle:
                 bound = max(min_stale_s, self._navigation_tally_cost_s)
                 if time.monotonic() - self._navigation_tally_at > bound:
                     return None
+        finally:
+            self._navigation_tally_lock.release()
         current_ns = time.time_ns() if now_ns is None else now_ns
         return _with_recency(base, recency_windows, current_ns)
 
@@ -2105,7 +2109,9 @@ class PythonInventoryHandle:
                 (extensions if normalized.startswith(".") else names).add(normalized)
             preset_counts[preset_id] = [0, 0]
             normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
-        for entry in snapshot:
+        for entry_index, entry in enumerate(snapshot):
+            if entry_index > 0 and entry_index % _NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH == 0:
+                time.sleep(_NAVIGATION_TALLY_COOPERATIVE_YIELD_S)
             if entry.type != "file":
                 continue
             ignored_index = 1 if entry.gitignored else 0
