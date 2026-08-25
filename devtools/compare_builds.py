@@ -59,6 +59,7 @@ a known shape to point this at.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import contextlib
 import json
 import os
@@ -66,6 +67,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -89,6 +91,12 @@ ROW_ENDPOINT = "/api/tree"
 # that computes them; a row request carries them only from a fresh memo, and
 # the client guards every tally field individually.
 TALLY_ENDPOINT = "/api/tree?depth=0"
+PROGRESS_ENDPOINT = "/api/index/progress"
+# The fixed implementation records 61.5-109.9 ms on the 123,657-file project
+# corpus; c123ae6 records 317.4 ms because the request loop waits on the worker's
+# lock. Two hundred milliseconds matches the browser responsiveness boundary and
+# separates those mechanisms while retaining headroom for host scheduling noise.
+TALLY_OVERLAP_PROGRESS_BUDGET_MS = 200.0
 
 # Since #66, the row endpoint deliberately omits navigation tallies unless a
 # fresh memo already exists. Compare the row contract that the tree consumes,
@@ -111,6 +119,79 @@ def free_port() -> int:
 def get(port: int, path: str, timeout: float = 60.0) -> Any:
     with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=timeout) as r:
         return json.loads(r.read())
+
+
+def timed_get(port: int, path: str, timeout: float = 60.0) -> tuple[Any, float]:
+    """Return one JSON response and its wall time in milliseconds."""
+    started = time.monotonic()
+    payload = get(port, path, timeout)
+    return payload, (time.monotonic() - started) * 1000.0
+
+
+def measure_tally_overlap(port: int, timeout: float = 60.0) -> dict[str, Any]:
+    """Measure server-loop availability while a full tally is in flight.
+
+    A tally computes in a worker, but another tally request still consults its memo on
+    the request loop. Repeating the depth-0 channel makes that overlap deterministic
+    without adding the settled depth-2 tree builder as a second O(index) cost. The
+    lightweight progress endpoint reports whether unrelated request work can keep
+    running while the overlap happens.
+    """
+    stop_competing_tallies = threading.Event()
+    competing_tally_latencies: list[float] = []
+    competing_tally_errors: list[str] = []
+    progress_latencies: list[float] = []
+    tally_elapsed_ms: float | None = None
+
+    def competing_tally_pressure() -> None:
+        while not stop_competing_tallies.is_set():
+            try:
+                _, elapsed_ms = timed_get(port, TALLY_ENDPOINT, timeout)
+                competing_tally_latencies.append(elapsed_ms)
+            except Exception as exc:  # pragma: no cover - reported by the real comparator
+                competing_tally_errors.append(f"{type(exc).__name__}: {exc}")
+                return
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        tally_future = pool.submit(timed_get, port, TALLY_ENDPOINT, timeout)
+        # Let the tally request snapshot the index and enter its worker before the
+        # competing channel starts. The loop repeats, so an overlap is not dependent
+        # on one precisely timed request.
+        time.sleep(0.01)
+        competing_tally_future = pool.submit(competing_tally_pressure)
+        error: str | None = None
+        try:
+            while not tally_future.done():
+                _, elapsed_ms = timed_get(port, PROGRESS_ENDPOINT, timeout)
+                progress_latencies.append(elapsed_ms)
+            _, tally_elapsed_ms = tally_future.result()
+        except Exception as exc:  # pragma: no cover - reported by the real comparator
+            error = f"{type(exc).__name__}: {exc}"
+        finally:
+            stop_competing_tallies.set()
+            try:
+                competing_tally_future.result(timeout=timeout)
+            except Exception as exc:  # pragma: no cover - reported by the real comparator
+                competing_tally_errors.append(f"{type(exc).__name__}: {exc}")
+
+    result: dict[str, Any] = {
+        "tally_overlap_tally_ms": (
+            round(tally_elapsed_ms, 1) if tally_elapsed_ms is not None else None
+        ),
+        "tally_overlap_progress_max_ms": (
+            round(max(progress_latencies), 1) if progress_latencies else None
+        ),
+        "tally_overlap_progress_samples": len(progress_latencies),
+        "tally_overlap_competing_tally_max_ms": (
+            round(max(competing_tally_latencies), 1) if competing_tally_latencies else None
+        ),
+        "tally_overlap_competing_tally_samples": len(competing_tally_latencies),
+    }
+    if error is not None:
+        result["tally_overlap_error"] = error
+    if competing_tally_errors:
+        result["tally_overlap_competing_tally_errors"] = competing_tally_errors
+    return result
 
 
 def fingerprint(tree: Path) -> dict[str, Any]:
@@ -164,7 +245,9 @@ def run_once(command: list[str], tree: str, poll: float, deadline_s: float) -> d
                 break
             except Exception:
                 if process.poll() is not None:
-                    out["error"] = f"server exited rc={process.returncode}"
+                    err = process.stderr.read() if process.stderr is not None else b""
+                    stderr_tail = err.decode("utf8", "replace")[-400:]
+                    out["error"] = f"server exited rc={process.returncode} stderr={stderr_tail!r}"
                     return out
         if serving is None:
             out["error"] = "server never accepted a connection"
@@ -200,6 +283,7 @@ def run_once(command: list[str], tree: str, poll: float, deadline_s: float) -> d
             out["error"] = f"never settled within {deadline_s}s"
 
         out["peak_rss_mb"] = round(peak_rss_mb(process.pid, out["peak_rss_mb"]), 1)
+        out.update(measure_tally_overlap(port))
         out["final"] = {"rows": get(port, ROW_ENDPOINT), "tallies": get(port, TALLY_ENDPOINT)}
         err = b""
         if process.stderr is not None and process.poll() is not None:
@@ -293,6 +377,35 @@ def stats(values: list[float]) -> dict[str, Any]:
 def comparison_failures(report: dict[str, Any]) -> list[str]:
     """Return every condition that makes the printed timings inadmissible."""
     failures = [f"run failed: {error}" for error in report.get("errors", [])]
+    runs_raw = report.get("runs")
+    runs = cast("dict[str, Any]", runs_raw) if isinstance(runs_raw, dict) else {}
+    candidate_runs_raw = runs.get("candidate")
+    if not isinstance(candidate_runs_raw, list) or not candidate_runs_raw:
+        failures.append("candidate tally-overlap progress measurements are missing")
+    else:
+        for run_raw in cast("list[Any]", candidate_runs_raw):
+            if not isinstance(run_raw, dict):
+                failures.append("candidate tally-overlap progress measurement is malformed")
+                continue
+            run = cast("dict[str, Any]", run_raw)
+            overlap_error = run.get("tally_overlap_error")
+            if isinstance(overlap_error, str):
+                failures.append(f"candidate tally-overlap measurement failed: {overlap_error}")
+            competing_errors = run.get("tally_overlap_competing_tally_errors")
+            if isinstance(competing_errors, list) and competing_errors:
+                failures.append("candidate competing tally request failed")
+            samples = run.get("tally_overlap_progress_samples")
+            maximum = run.get("tally_overlap_progress_max_ms")
+            if not isinstance(samples, int) or isinstance(samples, bool) or samples < 1:
+                failures.append("candidate tally-overlap progress measurement has no samples")
+            elif not isinstance(maximum, (int, float)) or isinstance(maximum, bool):
+                failures.append("candidate tally-overlap progress latency is missing")
+            elif maximum >= TALLY_OVERLAP_PROGRESS_BUDGET_MS:
+                failures.append(
+                    "candidate tally-overlap progress latency "
+                    f"{float(maximum):.1f} ms exceeds "
+                    f"{TALLY_OVERLAP_PROGRESS_BUDGET_MS:g} ms"
+                )
     if report.get("corpus_unchanged") is not True:
         failures.append("corpus changed during comparison")
     equivalence_raw = report.get("equivalence")
@@ -408,7 +521,9 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"  run {index + 1} {name:9s} "
                 f"start={run.get('spawn_to_serving')}s first_row={run.get('first_row')}s "
-                f"index_done={run.get('index_done')}s rss={run.get('peak_rss_mb')}MB"
+                f"index_done={run.get('index_done')}s rss={run.get('peak_rss_mb')}MB "
+                f"tally_overlap_progress_max="
+                f"{run.get('tally_overlap_progress_max_ms')}ms"
                 f"{' ERROR=' + run['error'] if 'error' in run else ''}",
                 flush=True,
             )
@@ -428,7 +543,15 @@ def main(argv: list[str] | None = None) -> int:
         "timings": {},
         "errors": [r.get("error") for rs in results.values() for r in rs if r.get("error")],
     }
-    for metric in ("spawn_to_serving", "first_row", "index_done", "peak_rss_mb"):
+    for metric in (
+        "spawn_to_serving",
+        "first_row",
+        "index_done",
+        "peak_rss_mb",
+        "tally_overlap_tally_ms",
+        "tally_overlap_progress_max_ms",
+        "tally_overlap_competing_tally_max_ms",
+    ):
         for name, runs in results.items():
             values = [r[metric] for r in runs if isinstance(r.get(metric), (int, float))]
             if values:

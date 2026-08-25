@@ -2,7 +2,7 @@
 name = "folder"
 display_name = "Folder"
 version = "0.0.1"
-sdk_version = "0.4"
+sdk_version = "0.5"
 extra_styles = ["overview.css", "file_type_summary.css"]
 
 # `folder` is the directory kind. A manifest [[kind]] predicate cannot
