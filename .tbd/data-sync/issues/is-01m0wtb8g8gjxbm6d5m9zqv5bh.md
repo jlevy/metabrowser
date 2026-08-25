@@ -5,15 +5,17 @@ title: Consolidate the Git commit summary component
 kind: task
 status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0w542g2gzak7th85hx2bdz8
+  - type: blocks
+    target: is-01m0x2ayvesqex8163ch5n72s5
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T15:59:11.367Z
-updated_at: 2026-08-25T16:21:38.399Z
+updated_at: 2026-08-25T18:18:50.093Z
 closed_at: 2026-08-25T16:21:38.399Z
 close_reason: "The Git commit summary now has one renderer, semantic root, named change-stats child, documented design-system contract, maintained tests, and green focused/full/browser acceptance. Commit 6edbb58 is pushed to PR #82."
 resolution: null

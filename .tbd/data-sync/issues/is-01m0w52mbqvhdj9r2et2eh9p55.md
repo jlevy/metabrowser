@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 19
+version: 22
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -20,8 +20,9 @@ child_order_hints:
   - is-01m0wtb8g8gjxbm6d5m9zqv5bh
   - is-01m0ww2gzdqqmkx8gjfjd5gct0
   - is-01m0wycyj5gpp5gh1eyczfcrcp
+  - is-01m0x2ayvesqex8163ch5n72s5
   - is-01m0w542g2gzak7th85hx2bdz8
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-25T17:17:52.387Z
+updated_at: 2026-08-25T18:19:04.633Z
 ---
-Deliver the eleven-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: trusted interaction instrumentation and baseline, bounded preparation and atomic handoff, pending-state polish, fixed-corpus validation and documentation, shared navigational-row keyboard parity, commit-summary placement, shared copyable revision identity, consolidated commit-summary component ownership, obsolete retained-work cancellation, automatic deferred-request-storm validation, and final PR review and CI delivery. Keep useful content visible, retain at most one speculative comparison, cancel background hydration and syntax work as soon as its retained revision becomes obsolete, fail standard validation on request fanout or state divergence, separate server/client/paint attribution, give file-tree and Git-history rows one enforced focus-and-open contract, keep commit identity and aggregate totals together in one maintained component, preserve lifecycle safety, and close the epic only after PR #82 has exact-head green CI.
+Deliver the twelve-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: trusted interaction instrumentation and baseline, bounded preparation and atomic handoff, pending-state polish, fixed-corpus validation and documentation, shared navigational-row keyboard parity, commit-summary placement, shared copyable revision identity, consolidated commit-summary component ownership, obsolete retained-work cancellation, automatic deferred-request-storm validation, bounded commit-summary tooltips, and final PR review and CI delivery. Keep useful content visible, retain at most one speculative comparison, cancel background hydration and syntax work as soon as its retained revision becomes obsolete, fail standard validation on request fanout or state divergence, separate server/client/paint attribution, give file-tree and Git-history rows one enforced focus-and-open contract, keep commit identity and aggregate totals together in one maintained component and its bounded noninteractive tooltip projection, preserve lifecycle safety, and close the epic only after PR #82 has exact-head green CI.
