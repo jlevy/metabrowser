@@ -86,6 +86,7 @@ class FakeElement {
     this._text = "";
     this._html = "";
     this._hovered = false;
+    this.scrollCalls = [];
   }
 
   set className(value) {
@@ -93,6 +94,9 @@ class FakeElement {
   }
   get className() {
     return Array.from(this.classNames).join(" ");
+  }
+  get parentElement() {
+    return this.parentNode;
   }
 
   set textContent(value) {
@@ -188,6 +192,18 @@ class FakeElement {
       handler(event);
     }
   }
+  focus() {
+    const previous = this.ownerDocument.activeElement;
+    if (previous === this) {
+      return;
+    }
+    previous?.dispatch("blur", { target: previous, relatedTarget: this });
+    this.ownerDocument.activeElement = this;
+    this.dispatch("focus", { target: this, relatedTarget: previous });
+  }
+  scrollIntoView(options) {
+    this.scrollCalls.push(options);
+  }
   matches(selector) {
     if (selector === ":hover") {
       return this._hovered;
@@ -238,6 +254,7 @@ class FakeDocument {
   constructor() {
     this.byId = new Map();
     this.root = new FakeElement("body", this);
+    this.activeElement = null;
   }
   createElement(tagName) {
     return new FakeElement(tagName, this);
@@ -448,6 +465,23 @@ function commit(id, parents, subject, refs) {
     committed_at: Date.now() / 1000 - 3600,
     subject,
     ...(refs ? { refs } : {}),
+  };
+}
+
+function keyboardEvent(key, options = {}) {
+  return {
+    key,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    isComposing: false,
+    defaultPrevented: false,
+    repeat: false,
+    ...options,
+    preventDefault() {
+      this.defaultPrevented = true;
+    },
   };
 }
 
@@ -729,8 +763,9 @@ async function run() {
     );
     assertContains("rows: subject rendered", rows[0].innerHTML, "tip commit");
     assertContains("rows: badge rendered", rows[0].innerHTML, "main");
-    // Keyboard reachable — the rows are the panel's primary control.
-    assertEqual("rows: focusable", rows[0].getAttribute("tabindex"), "0");
+    // A row set is one Tab stop, not one stop per mounted commit.
+    assertEqual("rows: first row is the roving anchor", rows[0].getAttribute("tabindex"), "0");
+    assertEqual("rows: other rows leave the Tab order", rows[1].getAttribute("tabindex"), "-1");
     assertEqual("rows: exposed as buttons", rows[0].getAttribute("role"), "button");
   }
 
@@ -810,6 +845,55 @@ async function run() {
     await delayedSelection;
     assertContains("selection: newer preview owner wins", previewHtml, "file preview wins");
     assertNotContains("selection: delayed commit is discarded", previewHtml, "delayed commit");
+  }
+
+  // ── Nav-like row keyboard contract ─────────────────────────
+  {
+    const container = document.getElementById("tab-git");
+    internals.setStateForTests(internals.emptyState());
+    internals.appendPage(
+      [commit(SHA_A, [SHA_B], "keyboard first"), commit(SHA_B, [], "keyboard second")],
+      null,
+    );
+    internals.renderPanel();
+    const rows = container.querySelectorAll(".git-graph-row");
+
+    rows[0].focus();
+    const down = keyboardEvent("ArrowDown");
+    rows[0].dispatch("keydown", down);
+    assertTrue("keyboard: handled down prevents page scroll", down.defaultPrevented);
+    assertTrue("keyboard: down focuses the next commit", document.activeElement === rows[1]);
+    assertEqual(
+      "keyboard: down opens the next commit",
+      internals.stateForTests().selectedId,
+      SHA_B,
+    );
+    assertEqual("keyboard: prior row leaves the Tab order", rows[0].getAttribute("tabindex"), "-1");
+    assertEqual("keyboard: destination becomes the anchor", rows[1].getAttribute("tabindex"), "0");
+    assertEqual("keyboard: destination scrolls into view", rows[1].scrollCalls, [
+      { block: "nearest" },
+    ]);
+
+    const routeCountAtEdge = replacedRoutes.length;
+    const clamped = keyboardEvent("ArrowDown");
+    rows[1].dispatch("keydown", clamped);
+    assertTrue("keyboard: clamped down still prevents page scroll", clamped.defaultPrevented);
+    assertTrue("keyboard: clamped down keeps focus", document.activeElement === rows[1]);
+    assertEqual("keyboard: clamped edge does not reopen", replacedRoutes.length, routeCountAtEdge);
+
+    const up = keyboardEvent("ArrowUp", { repeat: true });
+    rows[1].dispatch("keydown", up);
+    assertTrue("keyboard: repeated up is handled", up.defaultPrevented);
+    assertTrue("keyboard: up focuses the prior commit", document.activeElement === rows[0]);
+    assertEqual("keyboard: up opens the prior commit", internals.stateForTests().selectedId, SHA_A);
+
+    const modified = keyboardEvent("ArrowDown", { altKey: true });
+    rows[0].dispatch("keydown", modified);
+    assertTrue("keyboard: modified arrow is ignored", !modified.defaultPrevented);
+    assertTrue("keyboard: ignored arrow leaves focus alone", document.activeElement === rows[0]);
+    // Let the final focus-following selection release its single active
+    // preparation slot before the next independent preparation case.
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   // ── Preparation overlaps and reuses pointer intent ─────────

@@ -753,6 +753,27 @@ leaves the user unable to reach the start or end of what they typed.
 When a list needs first-item and last-item reach behind an editable control, its
 movement commands wrap instead of borrowing the caret keys.
 
+### Navigational Row Collections
+
+A row collection whose primary action replaces the main content behaves as one keyboard
+control. Exactly one mounted row participates in the Tab order: the current row when one
+exists, otherwise the first row.
+All other rows remain programmatically focusable with `tabindex="-1"`, so Tab enters and
+leaves the collection once instead of stopping on every item.
+
+While a row has focus, unmodified Arrow Up and Arrow Down move to the adjacent mounted
+row and open it. Key repeat remains enabled for fast traversal.
+Movement clamps at the first and last row, prevents page scrolling, and does not reopen
+the row at a clamped edge.
+Activation updates the roving anchor without stealing focus.
+Enter, Space, and pointer activation retain the control’s ordinary behavior.
+
+The component owns this focused behavior; it is not a document-level application
+shortcut. The maintained registry in
+`test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree and
+Git history. Register every new navigational row collection in that check so its Tab
+order and vertical navigation cannot silently fork this contract.
+
 ### Descriptor Contract
 
 Every presented command declares:

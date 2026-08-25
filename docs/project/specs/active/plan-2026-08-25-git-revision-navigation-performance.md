@@ -31,6 +31,8 @@ server, transfer, client rendering, and paint costs remain separable.
 - Start independent commit-detail, diff-asset, and comparison work concurrently
 - Reuse a comparison prepared by pointer or keyboard intent without issuing a duplicate
   request
+- Give Git history rows the file tree’s one-stop Tab order and Arrow Up/Arrow Down
+  focus-and-open behavior
 - Keep speculative work bounded to one comparison and cancel or replace stale intent
 - Measure cold and prepared revision transitions in a visible real browser, including
   server time, client data time, mount time, paint readiness, long work, payload size,
@@ -166,8 +168,8 @@ change. No compatibility layer is needed.
 ## Implementation Plan
 
 Epic `mb-fgcg` owns this plan.
-Its five child beads separate measurement, behavior, presentation, validation, and
-delivery.
+Its six child beads separate measurement, behavior, presentation, validation, keyboard
+consistency, and delivery.
 Blockers express only real sequencing; the baseline also feeds final validation
 directly.
 
@@ -177,7 +179,8 @@ directly.
 | Add bounded preparation and the atomic handoff | `mb-32kx` | `mb-800q` | Closed |
 | Polish pending and completed transitions | `mb-tjcl` | `mb-32kx` | Closed |
 | Compare, validate, and document | `mb-8j0r` | `mb-800q`, `mb-tjcl` | Closed |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-8j0r` | In progress |
+| Enforce navigational-row keyboard parity | `mb-xmkn` | `mb-8j0r` | Closed |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-xmkn` | In progress |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -260,7 +263,26 @@ directly.
   layouts, both themes, and reduced motion.
   Focused tests, `make format`, and `make verify` pass.
 
-### Phase 5: Deliver and Monitor (`mb-j8ni`)
+### Phase 5: Enforce Navigational-Row Keyboard Parity (`mb-xmkn`)
+
+- **Files and functions:** Add focused-row helpers beside `appendRows`, `renderRow`, and
+  `selectCommit` in `git-panel.js`. Extend the fake focus and event model plus row cases
+  in `tests/dom/git-panel-behavior.js`. State the shared contract in
+  `docs/design-system.md` and maintain the surface registry in
+  `tests/test_design_vocabulary.py`.
+- **Behavior and invariants:** A mounted Git history contributes exactly one Tab stop.
+  Unmodified Arrow Up and Arrow Down focus and open the adjacent mounted commit through
+  `selectCommit`, allow repeat, prevent page scrolling, and clamp without reopening at
+  either edge. Click, Enter, Space, pointer and focus preparation, append-only paging,
+  stale-selection checks, and direct routes retain their behavior.
+  Selection updates the roving anchor and `aria-current` without forcing pointer focus.
+- **Acceptance:** Focused tests prove the prior all-tabbable behavior fails, then cover
+  both directions, repeat, modifier exclusion, boundary clamping, focus, selection,
+  scrolling, and the design-system registry.
+  A visible-browser smoke test traverses a real repository by keyboard before the full
+  format and verification gates pass.
+
+### Phase 6: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
@@ -270,7 +292,7 @@ directly.
   scenario run. Formal reviews, inline comments, general comments, linked issues,
   in-repository review documents, and required CI are all audited.
   The performance follow-up remains stacked on the syntax follow-up for a focused diff;
-  after the base lands, retarget the performance PR to `main` without losing the four
+  after the base lands, retarget the performance PR to `main` without losing its
   implementation commits.
 - **Acceptance:** Every actionable finding has a fixed, rebutted, or deferred
   disposition, the exact head passes GitHub CI, `make format`, `make verify`, and the

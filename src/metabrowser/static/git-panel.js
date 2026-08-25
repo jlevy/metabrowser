@@ -497,6 +497,104 @@
       fragment.appendChild(renderRow(row));
     }
     list.appendChild(fragment);
+    synchronizeCommitRowFocus(list);
+  }
+
+  /**
+   * @param {HTMLElement} list
+   * @returns {HTMLElement[]}
+   */
+  function commitRows(list) {
+    return Array.from(list.querySelectorAll(".git-graph-row")).filter(
+      (element) => element instanceof HTMLElement,
+    );
+  }
+
+  /**
+   * Make a row collection one Tab stop while keeping every row
+   * programmatically focusable for vertical navigation.
+   *
+   * @param {HTMLElement} list
+   * @param {HTMLElement} anchor
+   */
+  function setCommitRowAnchor(list, anchor) {
+    for (const row of commitRows(list)) {
+      row.setAttribute("tabindex", row === anchor ? "0" : "-1");
+    }
+  }
+
+  /** @param {HTMLElement} list */
+  function synchronizeCommitRowFocus(list) {
+    const rows = commitRows(list);
+    const selected = rows.find((row) => row.dataset.revision === state.selectedId);
+    const existing = rows.find((row) => row.getAttribute("tabindex") === "0");
+    const anchor = selected ?? existing ?? rows[0];
+    if (anchor) {
+      setCommitRowAnchor(list, anchor);
+    }
+  }
+
+  /**
+   * @param {HTMLElement} row
+   * @param {-1 | 1} delta
+   * @returns {boolean} Whether the row belongs to a mounted commit list.
+   */
+  function moveCommitRowFocus(row, delta) {
+    const list = row.parentElement;
+    if (!(list instanceof HTMLElement)) {
+      return false;
+    }
+    const rows = commitRows(list);
+    const currentIndex = rows.indexOf(row);
+    if (currentIndex < 0) {
+      return false;
+    }
+    const nextIndex = Math.max(0, Math.min(rows.length - 1, currentIndex + delta));
+    const next = rows[nextIndex];
+    if (!next || next === row) {
+      return true;
+    }
+    setCommitRowAnchor(list, next);
+    next.focus({ preventScroll: true });
+    next.scrollIntoView({ block: "nearest" });
+    const revision = next.dataset.revision;
+    if (revision) {
+      void selectCommit(revision);
+    }
+    return true;
+  }
+
+  /**
+   * @param {KeyboardEvent} event
+   * @param {HTMLElement} row
+   * @param {string} revision
+   */
+  function handleCommitRowKeydown(event, row, revision) {
+    if (
+      !event.defaultPrevented &&
+      !event.isComposing &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
+      switch (event.key) {
+        case "ArrowUp":
+          if (moveCommitRowFocus(row, -1)) {
+            event.preventDefault();
+          }
+          return;
+        case "ArrowDown":
+          if (moveCommitRowFocus(row, 1)) {
+            event.preventDefault();
+          }
+          return;
+      }
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      void selectCommit(revision);
+    }
   }
 
   /**
@@ -597,9 +695,10 @@
     element.className = "git-graph-row";
     element.dataset.revision = commit.id;
     element.setAttribute("role", "button");
-    element.setAttribute("tabindex", "0");
+    element.setAttribute("tabindex", "-1");
     if (commit.id === state.selectedId) {
       element.classList.add("selected");
+      element.setAttribute("aria-current", "true");
     }
 
     const gutter = document.createElement("div");
@@ -628,15 +727,16 @@
     element.appendChild(body);
 
     element.addEventListener("click", () => selectCommit(commit.id));
-    element.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        selectCommit(commit.id);
-      }
-    });
+    element.addEventListener("keydown", (event) =>
+      handleCommitRowKeydown(event, element, commit.id),
+    );
     element.addEventListener("mouseenter", () => scheduleHover(element, commit.id));
     element.addEventListener("mouseleave", () => cancelHover(commit.id));
     element.addEventListener("focus", () => {
+      const list = element.parentElement;
+      if (list instanceof HTMLElement) {
+        setCommitRowAnchor(list, element);
+      }
       prepareRevision(commit.id, true);
     });
     element.addEventListener("blur", () => cancelSpeculativePreparation(commit.id));
@@ -779,11 +879,22 @@
           window.history.replaceState(null, "", routes.commitHref(revision));
         }
         state.selectedId = revision;
+        let selectedRow = null;
         for (const element of document.querySelectorAll(".git-graph-row")) {
-          element.classList.toggle(
-            "selected",
-            element instanceof HTMLElement && element.dataset.revision === revision,
-          );
+          if (!(element instanceof HTMLElement)) {
+            continue;
+          }
+          const selected = element.dataset.revision === revision;
+          element.classList.toggle("selected", selected);
+          if (selected) {
+            element.setAttribute("aria-current", "true");
+            selectedRow = element;
+          } else {
+            element.removeAttribute("aria-current");
+          }
+        }
+        if (selectedRow?.parentElement instanceof HTMLElement) {
+          setCommitRowAnchor(selectedRow.parentElement, selectedRow);
         }
 
         const preparation = prepareRevision(revision, false);

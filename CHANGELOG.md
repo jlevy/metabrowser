@@ -61,6 +61,11 @@ Browser:
   The performance loop now records this interaction’s server, client, rendering,
   paint-continuity, and lifecycle costs.
 
+- Git history now follows the file tree’s navigational-row keyboard contract.
+  The row set contributes one Tab stop; unmodified Arrow Up and Arrow Down focus and
+  open the adjacent commit, allow key repeat, and clamp without reopening at either
+  edge.
+
 - Diff views now pair similar removed and added lines monotonically and emphasize the
   changed words or characters in both unified and split layouts.
   Similar replacements use a lighter whole-row tint with a stronger inner range, while

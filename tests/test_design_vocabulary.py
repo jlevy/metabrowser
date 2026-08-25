@@ -131,6 +131,24 @@ def test_git_revision_pending_motion_uses_the_shared_token_and_reduced_motion() 
     assert "transition: none" in reduced
 
 
+def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
+    """The maintained surface registry keeps row navigation from drifting."""
+    design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
+    tree = (STATIC / "tree-keyboard-navigation.js").read_text(encoding="utf-8")
+    git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+
+    assert "### Navigational Row Collections" in design
+    assert "test_nav_like_row_sets_share_the_vertical_keyboard_contract" in design
+    for source, movement_helper in (
+        (tree, "focusAndOpen"),
+        (git, "moveCommitRowFocus"),
+    ):
+        assert movement_helper in source
+        assert '"ArrowUp"' in source
+        assert '"ArrowDown"' in source
+        assert 'setAttribute("tabindex"' in source
+
+
 def test_age_is_one_primitive_everywhere() -> None:
     """An age is an age: one formatter, one styling rule, and call sites
     that add positioning only."""
