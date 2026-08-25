@@ -697,45 +697,45 @@ copyable marker; only the nonempty changed side receives an inner background.
 
 #### Files and functions
 
-- [ ] Add `src/metabrowser/builtin_plugins/diff/diff-intraline.js` as the strict,
+- [x] Add `src/metabrowser/builtin_plugins/diff/diff-intraline.js` as the strict,
   DOM-free port. Keep the minimal `SequenceDiff`, dynamic-programming, Myers,
   boundary-scoring, and cleanup code needed by
   `refineChangedRun(oldLines, newLines, budget)`. Name the upstream files and pinned
   commit in the header, preserve the MIT notice, and update `NOTICE.md` so the existing
   VS Code license also covers this use.
-- [ ] Move the semantic record construction out of syntax-specific ownership into
+- [x] Move the semantic record construction out of syntax-specific ownership into
   `src/metabrowser/builtin_plugins/diff/diff-render-model.js`. Rename
   `buildFileSyntaxModel` to `buildFileRenderModel`, move `buildHunkRecords`, and add
   `refineHunkChangedRuns` plus private intraline/split-row fields.
   Update every co-shipped import in one commit; add no compatibility alias.
-- [ ] Keep `src/metabrowser/builtin_plugins/diff/diff-syntax.js` responsible only for
+- [x] Keep `src/metabrowser/builtin_plugins/diff/diff-syntax.js` responsible only for
   side-stream byte measurement, language resolution, token validation, and
   `highlightFileSyntax`. Syntax and intraline must be independently optional and must
   never recompute each other.
-- [ ] Replace positional `pairChangedRun` in
+- [x] Replace positional `pairChangedRun` in
   `src/metabrowser/builtin_plugins/diff/diff-view.js` with the cached refinement rows.
   Add `composeTextRuns(text, tokenRuns, intralineRanges)` and make `renderTextHost`
   intersect syntax classes with intraline boundaries without `innerHTML`. Unified and
   split projections consume the same composed runs.
-- [ ] Extend the file-sized progressive-enrichment queue so intraline work yields
+- [x] Extend the file-sized progressive-enrichment queue so intraline work yields
   between files, is abortable on replacement/disposal, and settles before that file’s
   syntax work when both are pending.
   Unified hosts update in place; a changed split-row alignment reprojects only that file
   while preserving fold state and the mount/layout generation guards.
-- [ ] Add semantic CSS tokens in `src/metabrowser/builtin_plugins/diff/styles.css` for
+- [x] Add semantic CSS tokens in `src/metabrowser/builtin_plugins/diff/styles.css` for
   normal add/delete rows, refined replacement rows, and inner changed text.
   Pure changes retain the current 12% status mix.
   Similar replacements start from a lighter candidate row mix and a stronger candidate
-  inner mix; settle the exact values through light, dark, and high-contrast browser
-  review and token-palette contrast checks.
+  inner mix; settle the exact values through supported light/dark browser review and
+  token-palette contrast checks.
   Syntax spans remain foreground-only.
 
 #### Bounds and fallback
 
 Do not copy a product limit or add an artificially small cutoff.
-Measure changed-run character count, edit distance, elapsed main-thread time, and peak
-allocation across ordinary code, unequal runs, unrelated text, minified long lines, and
-the existing maximum patch shapes.
+Measure changed-run character count, edit distance, elapsed main-thread time, and
+available allocation or retained-heap evidence across ordinary code, unequal runs,
+unrelated text, minified long lines, and the existing maximum patch shapes.
 The current patch truncation and file-hydration bounds are the first candidate boundary.
 Add a separate intraline bound only if the browser trace shows a long task or
 pathological Myers work; record the fixture and measurement beside any constant.
@@ -746,25 +746,34 @@ Refinement failure is contained to one changed run and never changes file availa
 No worker or dependency is added unless the measured synchronous/yielded implementation
 misses the interaction budget.
 
+Five Chrome 151 runs selected a deterministic 1,000,000-work-unit bound per changed run.
+Ordinary code completed in at most 1.2 ms, an 8 MiB mostly-equal line in at most 20.5
+ms, and unrelated 8 MiB lines reached the bound in at most 32.6 ms.
+The latter retained no additional heap in the available `performance.memory` reading;
+the largest positive retained-heap delta was 9,470,076 bytes for the similar 8 MiB case.
+This keeps the existing patch boundary for similar input and adds no smaller size
+cutoff. The reproducible fixture and full table are in the
+[diff intraline bound benchmark](../../../../explorations/diff-intraline/).
+
 #### Tests and acceptance
 
-- [ ] Add a DOM-free `diff-intraline-behavior.js` suite for single-word changes,
+- [x] Add a DOM-free `diff-intraline-behavior.js` suite for single-word changes,
   multiple edits, punctuation, indentation-only edits, camel-case boundaries, shifted
   and unequal lines, pure one-sided runs, unrelated replacements, missing final
   newlines, empty lines, CRLF projections, non-ASCII text, emoji/surrogate boundaries,
   long-line fallback, timeout injection, stable ordering, and exact text round trips.
-- [ ] Extend `diff-view-behavior.js` and `diff-syntax-behavior.js` for token/range
+- [x] Extend `diff-view-behavior.js` and `diff-syntax-behavior.js` for token/range
   intersection, safe text-node construction, lighter refined rows, stronger changed
   spans, unified source order, improved split alignment, fold persistence, rapid layout
   switches, deferred hydration, replacement, and disposal during refinement.
-- [ ] Extend `test_syntax_palette.py` to calculate every syntax foreground against
+- [x] Extend `test_syntax_palette.py` to calculate every syntax foreground against
   context, ordinary add/delete, refined add/delete, and inner changed backgrounds in all
   supported themes. Markers and line numbers remain the non-color indication.
-- [ ] Add real-browser fixtures comparing unified and split rendering for JavaScript,
+- [x] Add real-browser fixtures comparing unified and split rendering for JavaScript,
   YAML, Markdown source, long lines, unequal runs, and a large comparison.
   Check copy and selection text, horizontal overflow, narrow layout, no layout-state
   loss, no late mutation, no console error, and measured fallback behavior.
-- [ ] Reconcile this plan, the completed syntax/layout addendum, the diff research, File
+- [x] Reconcile this plan, the completed syntax/layout addendum, the diff research, File
   Diff Format architecture, Views/Models/Routes, `CHANGELOG.md`, and `NOTICE.md`. Run
   `make format` and `make verify`, then review the complete diff.
 
@@ -772,6 +781,22 @@ Phase 4 is complete when similar lines receive readable non-whole-line emphasis 
 layouts; unmatched lines remain visually honest; syntax, copy, selection, folding,
 hydration, and disposal are unchanged; the exact text round trip is proven; any bound is
 backed by a recorded browser measurement; and the repository handoff gate passes.
+
+#### Implementation outcome
+
+Phase 4 ships the attributed browser-only port, the syntax-neutral render model, and one
+composed projection path for unified and split layouts.
+Similar replacement rows use a 4% status-token mix; their inner changed ranges add an 8%
+mix, while unrelated and one-sided changes retain the prior 12% whole-line mix.
+Palette tests keep every syntax foreground at or above 4.5:1 against context, ordinary,
+refined, and inner surfaces in the supported light and dark themes.
+Markers and line numbers remain the non-color signal.
+
+Real-browser validation covered JavaScript, YAML, Markdown, an unknown grammar, unequal
+alignment, persisted layout choice, folding across reprojection, narrow split-pane
+overflow, exact line text, and diff-specific console diagnostics.
+No runtime dependency, worker, schema field, compatibility alias, or new loading tier
+was added.
 
 ## The dependency question
 

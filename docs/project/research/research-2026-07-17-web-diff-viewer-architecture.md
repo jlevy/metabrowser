@@ -682,7 +682,7 @@ the patch.
 The completed syntax and split work made the remaining intraline choice concrete.
 Metabrowser now has a patch-faithful semantic line model, old/new syntax streams, and
 unified/split projections.
-The missing work is a browser-local mapping from each contiguous deleted/added run to
+The follow-up work is a browser-local mapping from each contiguous deleted/added run to
 monotonic line pairs and changed text ranges.
 
 #### Current product behavior
@@ -759,6 +759,28 @@ syntax-colored, whole-line diff.
 
 The file- and function-level implementation contract is Phase 4 of the
 [general diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md).
+
+#### Implementation outcome
+
+The implementation follows that decision without a runtime dependency or worker.
+`diff-intraline.js` adapts the pinned dynamic-programming, Myers, boundary, and cleanup
+primitives; `diff-render-model.js` owns the cached monotonic rows and per-side UTF-16
+ranges; and `diff-view.js` intersects those ranges with syntax runs using text nodes.
+One semantic model therefore survives unified/split reprojection, while syntax and
+intraline failure remain independent.
+
+Five Chrome 151 runs found a 20.5 ms maximum for a similar line at the 8 MiB patch
+boundary and a 32.6 ms maximum for unrelated maximum-size input reaching a deterministic
+one-million-work-unit fallback.
+The result keeps the existing patch size policy for similar text and bounds
+edit-distance work rather than adding a smaller file-size cutoff.
+The reproducible table, including retained-heap evidence and its measurement limits, is
+in the [diff intraline benchmark](../../../../explorations/diff-intraline/).
+
+The visual implementation uses shared success/error tokens: 12% for ordinary whole-line
+changes, 4% for similar replacement rows, and another 8% on inner changed ranges.
+Syntax foregrounds remain at or above 4.5:1 in the supported light and dark palettes,
+while line markers and numbers remain the non-color signal.
 
 ### Accessibility and Interaction
 

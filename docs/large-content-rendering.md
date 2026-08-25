@@ -200,6 +200,16 @@ This keeps the cold blocking task below the 200 ms interaction budget at the ser
 The repeatable fixture and measurements live in
 [Diff layout bound benchmark](../explorations/diff-layout/).
 
+**Bound diff edit-distance work, not input size.** Intraline refinement counts
+deterministic dynamic-programming or Myers work per changed run and falls back to the
+existing positional rows when that work exceeds 1,000,000 units.
+Similar text still refines at the existing 8 MiB patch boundary; unrelated maximum-size
+text reaches the bound in at most 32.6 ms across five Chrome 151 runs.
+The limit therefore contains the pathological cost without creating a second,
+artificially small file-size category.
+The fixture and retained-heap evidence live in the
+[diff intraline bound benchmark](../explorations/diff-intraline/).
+
 **Fingerprint across chunks.** Every chunked response carries `mtime_hash`; a mismatch
 means the file changed, and the view restarts rather than splicing two versions into a
 window that never existed on disk.

@@ -4,6 +4,15 @@
    section-disclosure and icon-button primitives from the design
    system; the title is styled as a filename, not a heading. */
 
+.metabrowser-diff-host {
+  --diff-add-row-bg: color-mix(in srgb, var(--status-success) 12%, transparent);
+  --diff-del-row-bg: color-mix(in srgb, var(--status-error) 12%, transparent);
+  --diff-add-refined-bg: color-mix(in srgb, var(--status-success) 4%, transparent);
+  --diff-del-refined-bg: color-mix(in srgb, var(--status-error) 4%, transparent);
+  --diff-add-inner-bg: color-mix(in srgb, var(--status-success) 8%, transparent);
+  --diff-del-inner-bg: color-mix(in srgb, var(--status-error) 8%, transparent);
+}
+
 .metabrowser-diff-host .diff-toolbar {
   display: flex;
   align-items: center;
@@ -233,11 +242,27 @@
 }
 
 .metabrowser-diff-host .diff-line-add {
-  background: color-mix(in srgb, var(--status-success) 12%, transparent);
+  background: var(--diff-add-row-bg);
 }
 
 .metabrowser-diff-host .diff-line-del {
-  background: color-mix(in srgb, var(--status-error) 12%, transparent);
+  background: var(--diff-del-row-bg);
+}
+
+.metabrowser-diff-host .diff-line-add.diff-line-refined {
+  background: var(--diff-add-refined-bg);
+}
+
+.metabrowser-diff-host .diff-line-del.diff-line-refined {
+  background: var(--diff-del-refined-bg);
+}
+
+.metabrowser-diff-host .diff-line-add .diff-intraline-change {
+  background: var(--diff-add-inner-bg);
+}
+
+.metabrowser-diff-host .diff-line-del .diff-intraline-change {
+  background: var(--diff-del-inner-bg);
 }
 
 .metabrowser-diff-host .diff-line-no-newline {

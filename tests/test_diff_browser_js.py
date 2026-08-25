@@ -44,3 +44,11 @@ def test_diff_view_projects_the_model() -> None:
 
 def test_diff_syntax_builds_independent_side_streams() -> None:
     _run("diff-syntax-behavior.js", "diff syntax OK")
+
+
+def test_diff_intraline_refines_changed_runs() -> None:
+    _run("diff-intraline-behavior.js", "diff intraline OK")
+
+
+def test_diff_render_model_caches_progressive_refinement() -> None:
+    _run("diff-render-model-behavior.js", "diff render model OK")

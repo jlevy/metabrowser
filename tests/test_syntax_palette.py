@@ -10,6 +10,9 @@ HIGHLIGHT_THEME_CSS = STATIC_DIR / "vendor" / "highlight-github.min.css"
 DIFF_STYLES_CSS = STATIC_DIR.parent / "builtin_plugins" / "diff" / "styles.css"
 
 MINIMUM_TEXT_CONTRAST = 4.5
+ORDINARY_DIFF_MIX = 0.12
+REFINED_DIFF_MIX = 0.04
+INNER_DIFF_MIX = 0.08
 HUE_CIRCLE_DEGREES = 360.0
 PERCENT_SCALE = 100.0
 SRGB_LINEAR_THRESHOLD = 0.04045
@@ -288,14 +291,18 @@ def test_syntax_foregrounds_meet_contrast_over_diff_tints() -> None:
         ("dark", {**light_tokens, **dark_overrides}),
     ):
         background = _parse_color(_resolved_color(tokens, "--bg"))
-        surfaces = {
+        success = _parse_color(_resolved_color(tokens, "--status-success"))
+        error = _parse_color(_resolved_color(tokens, "--status-error"))
+        refined_addition = _mix_srgb(success, background, REFINED_DIFF_MIX)
+        refined_deletion = _mix_srgb(error, background, REFINED_DIFF_MIX)
+        surfaces: dict[str, tuple[float, float, float]] = {
             "context": background,
-            "addition": _mix_srgb(
-                _parse_color(_resolved_color(tokens, "--status-success")), background, 0.12
-            ),
-            "deletion": _mix_srgb(
-                _parse_color(_resolved_color(tokens, "--status-error")), background, 0.12
-            ),
+            "addition": _mix_srgb(success, background, ORDINARY_DIFF_MIX),
+            "deletion": _mix_srgb(error, background, ORDINARY_DIFF_MIX),
+            "refined addition": refined_addition,
+            "refined deletion": refined_deletion,
+            "inner addition": _mix_srgb(success, refined_addition, INNER_DIFF_MIX),
+            "inner deletion": _mix_srgb(error, refined_deletion, INNER_DIFF_MIX),
         }
         for foreground_token in SYNTAX_FOREGROUND_TOKENS:
             foreground = _parse_color(_resolved_color(tokens, foreground_token))
@@ -324,5 +331,24 @@ def test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract() -> None:
     assert "user-select: none;" in _rule_body(
         css,
         '.metabrowser-diff-host .diff-root[data-selection-side="new"] .diff-split-old .diff-line-text',
+    )
+    host_tokens = _rule_body(css, ".metabrowser-diff-host")
+    assert "--diff-add-row-bg:" in host_tokens
+    assert "--diff-del-row-bg:" in host_tokens
+    assert "--diff-add-refined-bg:" in host_tokens
+    assert "--diff-del-refined-bg:" in host_tokens
+    assert "--diff-add-inner-bg:" in host_tokens
+    assert "--diff-del-inner-bg:" in host_tokens
+    assert "var(--diff-add-refined-bg)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-add.diff-line-refined"
+    )
+    assert "var(--diff-del-refined-bg)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-del.diff-line-refined"
+    )
+    assert "var(--diff-add-inner-bg)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-add .diff-intraline-change"
+    )
+    assert "var(--diff-del-inner-bg)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-del .diff-intraline-change"
     )
     assert "@media (prefers-reduced-motion: reduce)" in css

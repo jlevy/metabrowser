@@ -51,6 +51,14 @@ Performance, validated against 0.6.0 side by side:
 
 Browser:
 
+- Diff views now pair similar removed and added lines monotonically and emphasize the
+  changed words or characters in both unified and split layouts.
+  Similar replacements use a lighter whole-row tint with a stronger inner range, while
+  syntax foregrounds, exact selectable text, unmatched-line treatment, folding, and
+  persisted layout state remain intact.
+  Pathological changed runs fall back to ordinary whole-line rendering at a measured
+  deterministic work bound.
+
 - Raw Source tabs now use syntax highlighting consistently for every extension backed by
   the shipped Highlight.js registry, including lazy Markdown, YAML, and JSON Source
   views. Structured Source no longer depends on the generic text plugin already being

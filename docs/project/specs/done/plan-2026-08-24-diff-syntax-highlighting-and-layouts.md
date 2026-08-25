@@ -539,14 +539,15 @@ Full results and reproduction steps live in
 
 ## Follow-Up: Intraline Refinement
 
-The 2026-08-25 follow-up keeps this completed slice closed and uses its semantic line
+The 2026-08-25 follow-up kept this completed slice closed and used its semantic line
 model as the implementation seam.
 Phase 4 of the
 [general diff rendering plan](../active/plan-2026-08-17-general-diff-rendering.md#phase-4-vs-code-derived-intraline-refinement)
-now specifies a focused, attributed port of VS Code’s pure diff refinement: monotonic
+delivered a focused, attributed port of VS Code’s pure diff refinement: monotonic
 old/new line alignment, readable word and punctuation boundaries, conservative
 whole-line fallback, and stronger changed-range backgrounds over lighter similar-line
-tints.
+tints. Its one-million-unit changed-run work bound comes from the
+[Chrome benchmark](../../../../explorations/diff-intraline/), not an input-size guess.
 
 The refinement remains independent of Highlight.js and File Diff Format v1. The renderer
 intersects browser-local UTF-16 ranges with the token runs established by this plan, so
@@ -558,9 +559,8 @@ The supporting product and algorithm review is in the
 ## Open Questions
 
 None for this slice.
-Full-source hydration, intraline emphasis, whitespace handling, context expansion, and
-virtualization remain explicit later decisions rather than hidden dependencies of syntax
-or split layout.
+Full-source hydration, whitespace handling, context expansion, and virtualization remain
+explicit later decisions rather than hidden dependencies of syntax or split layout.
 
 ## References
 

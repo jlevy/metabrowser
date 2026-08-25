@@ -11,7 +11,8 @@
 // conformance corpus and CLI goldens, and this layer only projects it.
 
 import { fileChangeLabel, validateDocument } from "./diff-model.js";
-import { buildFileSyntaxModel, highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
+import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
+import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
 
 /**
  * @typedef {object} DiffViewApi
@@ -29,8 +30,8 @@ import { buildFileSyntaxModel, highlightFileSyntax, syntaxInputBytes } from "./d
  * @property {HTMLElement} body
  * @property {Set<string>} expandedFolds
  * @property {Record<string, unknown>} patch
- * @property {ReturnType<typeof buildFileSyntaxModel>} syntax
- * @property {{host: HTMLElement, line: ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number], side: "old" | "new"}[]} textHosts
+ * @property {ReturnType<typeof buildFileRenderModel>} renderModel
+ * @property {{host: HTMLElement, line: ReturnType<typeof buildFileRenderModel>["hunks"][number]["lines"][number], side: "old" | "new"}[]} textHosts
  */
 
 /**
@@ -44,7 +45,7 @@ import { buildFileSyntaxModel, highlightFileSyntax, syntaxInputBytes } from "./d
  * @property {HTMLElement | null} layoutControl
  * @property {number} layoutGeneration
  * @property {HTMLElement} root
- * @property {Promise<void>} syntaxTail
+ * @property {Promise<void>} enhancementTail
  * @property {Set<number>} timers
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  */
@@ -87,6 +88,13 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   stale: "The comparison changed underneath this file. Refresh to reload it.",
   unsupported: "This change cannot be shown as a text diff.",
 });
+
+// Chrome 151, five runs of explorations/diff-intraline/benchmark.html:
+// ordinary edits completed in <= 1.2 ms, an 8 MiB mostly-equal line in
+// <= 20.5 ms, and unrelated 8 MiB lines reached this bound in <= 32.6 ms.
+// This deterministic limit caps edit-distance work; it does not impose a
+// smaller input-size cutoff than the existing patch bound.
+const INTRALINE_WORK_BUDGET = 1_000_000;
 
 // A load this slow is worth a console record even when it eventually
 // succeeds: a reader watching a spinner deserves a diagnosable stall.
@@ -166,12 +174,73 @@ function shellIcon(name) {
 }
 
 /**
- * Put scanner-validated token data into an existing text host.
- * @param {HTMLElement} host
- * @param {MetabrowserSyntaxTokenRun[]} runs
+ * @typedef {object} ComposedTextRun
+ * @property {string[]} classes
+ * @property {string} text
  */
-export function appendTokenRuns(host, runs) {
-  const spans = runs.map((run) => {
+
+/**
+ * Intersect syntax and intraline boundaries while preserving the source exactly.
+ * @param {string} text
+ * @param {MetabrowserSyntaxTokenRun[] | null} tokenRuns
+ * @param {import("./diff-intraline.js").IntralineRange[]} intralineRanges
+ * @returns {ComposedTextRun[]}
+ */
+export function composeTextRuns(text, tokenRuns, intralineRanges) {
+  const boundaries = new Set([0, text.length]);
+  /** @type {{start: number, end: number, classes: string[]}[]} */
+  const tokens = [];
+  let tokenOffset = 0;
+  for (const run of tokenRuns ?? [{ classes: [], text }]) {
+    const end = tokenOffset + run.text.length;
+    boundaries.add(tokenOffset);
+    boundaries.add(end);
+    tokens.push({ classes: run.classes, end, start: tokenOffset });
+    tokenOffset = end;
+  }
+  const ranges = intralineRanges.filter(
+    (range) => 0 <= range.start && range.start < range.end && range.end <= text.length,
+  );
+  for (const range of ranges) {
+    boundaries.add(range.start);
+    boundaries.add(range.end);
+  }
+  const offsets = [...boundaries].sort((left, right) => left - right);
+  /** @type {ComposedTextRun[]} */
+  const result = [];
+  let tokenIndex = 0;
+  let rangeIndex = 0;
+  for (let index = 0; index + 1 < offsets.length; index += 1) {
+    const start = offsets[index];
+    const end = offsets[index + 1];
+    if (start === end) {
+      continue;
+    }
+    while (tokenIndex + 1 < tokens.length && tokens[tokenIndex].end <= start) {
+      tokenIndex += 1;
+    }
+    while (rangeIndex + 1 < ranges.length && ranges[rangeIndex].end <= start) {
+      rangeIndex += 1;
+    }
+    const classes = [...(tokens[tokenIndex]?.classes ?? [])];
+    const range = ranges[rangeIndex];
+    if (range !== undefined && range.start <= start && end <= range.end) {
+      classes.push("diff-intraline-change");
+    }
+    result.push({ classes, text: text.slice(start, end) });
+  }
+  return result;
+}
+
+/**
+ * Put composed scanner and intraline runs into an existing text host.
+ * @param {HTMLElement} host
+ * @param {string} text
+ * @param {MetabrowserSyntaxTokenRun[] | null} tokenRuns
+ * @param {import("./diff-intraline.js").IntralineRange[]} intralineRanges
+ */
+function renderComposedText(host, text, tokenRuns, intralineRanges) {
+  const spans = composeTextRuns(text, tokenRuns, intralineRanges).map((run) => {
     const span = el("span", run.classes.join(" "));
     span.textContent = run.text;
     return span;
@@ -179,8 +248,8 @@ export function appendTokenRuns(host, runs) {
   host.replaceChildren(...spans);
 }
 
-/** @typedef {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number]} DiffLine */
-/** @typedef {{changedRun: number | null, old: DiffLine | null, new: DiffLine | null}} SplitRow */
+/** @typedef {ReturnType<typeof buildFileRenderModel>["hunks"][number]["lines"][number]} DiffLine */
+/** @typedef {import("./diff-render-model.js").DiffSplitRow} SplitRow */
 
 /**
  * @param {DiffLine} line
@@ -188,6 +257,14 @@ export function appendTokenRuns(host, runs) {
  */
 function sideTokens(line, side) {
   return side === "old" ? line.oldTokens : line.newTokens;
+}
+
+/**
+ * @param {DiffLine} line
+ * @param {"old" | "new"} side
+ */
+function sideIntralineRanges(line, side) {
+  return side === "old" ? line.oldIntralineRanges : line.newIntralineRanges;
 }
 
 /**
@@ -201,14 +278,15 @@ function renderTextHost(state, line, side) {
   // `pre code:not(.hljs)` enhancer cannot select this span.
   const host = el("span", "diff-line-text hljs", line.text);
   const runs = sideTokens(line, side);
-  if (runs !== null) {
-    appendTokenRuns(host, runs);
+  const intralineRanges = sideIntralineRanges(line, side);
+  if (runs !== null || intralineRanges.length > 0) {
+    renderComposedText(host, line.text, runs, intralineRanges);
   }
   state.textHosts.push({ host, line, side });
   return host;
 }
 
-/** @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk */
+/** @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk */
 function renderHunkHeader(hunk) {
   const heading = hunk.heading ? ` ${hunk.heading}` : "";
   return el(
@@ -218,13 +296,13 @@ function renderHunkHeader(hunk) {
   );
 }
 
-/** @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk */
+/** @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk */
 export function projectUnifiedHunk(hunk) {
   return hunk.lines.slice();
 }
 
 /** @param {DiffLine[]} lines @returns {SplitRow[]} */
-export function pairChangedRun(lines) {
+function positionalChangedRunRows(lines) {
   const oldLines = lines.filter((line) => line.op === "del");
   const newLines = lines.filter((line) => line.op === "add");
   const changedRun = lines[0]?.changedRun ?? null;
@@ -232,12 +310,13 @@ export function pairChangedRun(lines) {
     changedRun,
     new: newLines[index] ?? null,
     old: oldLines[index] ?? null,
+    refined: false,
   }));
 }
 
 /**
  * Duplicate context and positionally pair each contiguous changed run.
- * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
  * @returns {SplitRow[]}
  */
 export function projectSplitHunk(hunk) {
@@ -246,7 +325,7 @@ export function projectSplitHunk(hunk) {
   for (let index = 0; index < hunk.lines.length; ) {
     const line = hunk.lines[index];
     if (line.op === "context") {
-      rows.push({ changedRun: null, new: line, old: line });
+      rows.push({ changedRun: null, new: line, old: line, refined: false });
       index += 1;
       continue;
     }
@@ -255,7 +334,11 @@ export function projectSplitHunk(hunk) {
     while (end < hunk.lines.length && hunk.lines[end].changedRun === run) {
       end += 1;
     }
-    rows.push(...pairChangedRun(hunk.lines.slice(index, end)));
+    rows.push(
+      ...(run === null
+        ? []
+        : (hunk.changedRunRows.get(run) ?? positionalChangedRunRows(hunk.lines.slice(index, end)))),
+    );
     index = end;
   }
   return rows;
@@ -266,7 +349,8 @@ export function projectSplitHunk(hunk) {
  * @param {DiffLine} line
  */
 function renderUnifiedLine(state, line) {
-  const row = el("div", `diff-line diff-line-${line.op}`);
+  const refined = line.intralineRefined ? " diff-line-refined" : "";
+  const row = el("div", `diff-line diff-line-${line.op}${refined}`);
   row.append(
     el("span", "diff-line-number", line.oldNumber === null ? "" : String(line.oldNumber)),
     el("span", "diff-line-number", line.newNumber === null ? "" : String(line.newNumber)),
@@ -293,7 +377,8 @@ function renderSplitSide(state, line, side) {
   }
   const op = line.op === "context" ? "context" : side === "old" ? "del" : "add";
   const number = side === "old" ? line.oldNumber : line.newNumber;
-  const cell = el("div", `diff-split-side diff-split-${side} diff-line-${op}`);
+  const refined = line.intralineRefined ? " diff-line-refined" : "";
+  const cell = el("div", `diff-split-side diff-split-${side} diff-line-${op}${refined}`);
   cell.append(
     el("span", "diff-line-number", number === null ? "" : String(number)),
     el("span", "diff-line-marker", op === "del" ? "-" : op === "add" ? "+" : " "),
@@ -308,7 +393,10 @@ function renderSplitSide(state, line, side) {
 
 /** @param {FileViewState} state @param {SplitRow} row */
 function renderSplitLine(state, row) {
-  const className = row.changedRun === null ? "diff-split-context" : "diff-split-change";
+  const className =
+    row.changedRun === null
+      ? "diff-split-context"
+      : `diff-split-change${row.refined ? " diff-line-refined" : ""}`;
   const element = el("div", `diff-split-row ${className}`);
   element.append(renderSplitSide(state, row.old, "old"), renderSplitSide(state, row.new, "new"));
   return element;
@@ -357,7 +445,7 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
 }
 
 /**
- * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
  * @param {FileViewState} state
  * @param {number} hunkIndex
  */
@@ -377,7 +465,7 @@ function renderUnifiedHunk(hunk, state, hunkIndex) {
 }
 
 /**
- * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
  * @param {FileViewState} state
  * @param {number} hunkIndex
  */
@@ -410,7 +498,7 @@ export function createFileState(change, patch, api, body) {
     change,
     expandedFolds: new Set(),
     patch,
-    syntax: buildFileSyntaxModel(change, patch, api.langForPath),
+    renderModel: buildFileRenderModel(change, patch, api.langForPath),
     textHosts: [],
   };
 }
@@ -423,7 +511,7 @@ export function createFileState(change, patch, api, body) {
 export function renderFileBody(state, layout) {
   state.body.replaceChildren();
   state.textHosts = [];
-  for (const [hunkIndex, hunk] of state.syntax.hunks.entries()) {
+  for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
     state.body.append(
       layout === "split"
         ? renderSplitHunk(hunk, state, hunkIndex)
@@ -436,7 +524,7 @@ export function renderFileBody(state, layout) {
 }
 
 /**
- * Record diff syntax work when the host profiler is present without
+ * Record progressive diff work when the host profiler is present without
  * making progressive enhancement depend on diagnostics.
  * @template T
  * @param {DiffViewApi} api
@@ -445,8 +533,55 @@ export function renderFileBody(state, layout) {
  * @param {Record<string, unknown>} metadata
  * @returns {Promise<T>}
  */
-function measureSyntax(api, label, work, metadata) {
+function measureEnhancement(api, label, work, metadata) {
   return api.perf ? api.perf.measureAsync(label, work, metadata) : work();
+}
+
+/**
+ * Refresh current text hosts without changing unified row order or fold DOM.
+ * @param {FileViewState} state
+ */
+function refreshTextHosts(state) {
+  for (const { host, line, side } of state.textHosts) {
+    const runs = sideTokens(line, side);
+    const ranges = sideIntralineRanges(line, side);
+    renderComposedText(host, line.text, runs, ranges);
+    const row = host.closest(".diff-line");
+    row?.classList.toggle("diff-line-refined", line.intralineRefined);
+  }
+}
+
+/**
+ * Attach browser-local changed ranges before syntax for the same file.
+ * @param {FileViewState} state
+ * @param {DiffViewApi} api
+ * @param {AbortSignal} signal
+ * @param {() => boolean} isCurrent
+ * @param {() => "unified" | "split"} currentLayout
+ */
+async function enhanceFileIntraline(state, api, signal, isCurrent, currentLayout) {
+  try {
+    const enhanced = await measureEnhancement(
+      api,
+      "diffIntraline:file",
+      async () =>
+        refineFileChangedRuns(state.renderModel, { maxWork: INTRALINE_WORK_BUDGET }, signal),
+      { hunk_count: state.renderModel.hunks.length },
+    );
+    if (!enhanced || !isCurrent()) {
+      return;
+    }
+    if (currentLayout() === "split") {
+      renderFileBody(state, "split");
+    } else {
+      refreshTextHosts(state);
+    }
+  } catch (error) {
+    if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      return;
+    }
+    console.warn("metabrowser diff: intraline enhancement failed", error);
+  }
 }
 
 /**
@@ -459,10 +594,10 @@ function measureSyntax(api, label, work, metadata) {
  */
 async function enhanceFileSyntax(state, api, signal, isCurrent) {
   try {
-    state.syntax.inputBytes ??= syntaxInputBytes(state.syntax.hunks);
+    state.renderModel.inputBytes ??= syntaxInputBytes(state.renderModel.hunks);
     const metadata = {
-      hunk_count: state.syntax.hunks.length,
-      input_bytes: state.syntax.inputBytes,
+      hunk_count: state.renderModel.hunks.length,
+      input_bytes: state.renderModel.inputBytes,
       lexer_calls: 0,
     };
     const measuredApi = {
@@ -470,7 +605,7 @@ async function enhanceFileSyntax(state, api, signal, isCurrent) {
       highlightSyntax: /** @type {DiffViewApi["highlightSyntax"]} */ (
         (source, language, options) => {
           metadata.lexer_calls += 1;
-          return measureSyntax(
+          return measureEnhancement(
             api,
             "diffSyntax:lexer",
             () => api.highlightSyntax(source, language, { signal: options?.signal }),
@@ -482,10 +617,10 @@ async function enhanceFileSyntax(state, api, signal, isCurrent) {
         }
       ),
     };
-    const enhanced = await measureSyntax(
+    const enhanced = await measureEnhancement(
       api,
       "diffSyntax:file",
-      () => highlightFileSyntax(state.syntax, measuredApi, signal),
+      () => highlightFileSyntax(state.renderModel, measuredApi, signal),
       metadata,
     );
     if (!enhanced || !isCurrent()) {
@@ -494,7 +629,7 @@ async function enhanceFileSyntax(state, api, signal, isCurrent) {
     for (const { host, line, side } of state.textHosts) {
       const runs = sideTokens(line, side);
       if (runs !== null) {
-        appendTokenRuns(host, runs);
+        renderComposedText(host, line.text, runs, sideIntralineRanges(line, side));
       }
     }
   } catch (error) {
@@ -516,7 +651,7 @@ function mountIsCurrent(view, generation) {
  * @param {MountedDiffState} view
  * @param {number} generation
  */
-function yieldForSyntax(view, generation) {
+function yieldForEnhancement(view, generation) {
   return new Promise((resolve) => {
     if (!mountIsCurrent(view, generation)) {
       resolve(false);
@@ -532,21 +667,24 @@ function yieldForSyntax(view, generation) {
 }
 
 /**
- * Serialize syntax enhancement in document order. Each file failure is
- * contained by enhanceFileSyntax, so the tail always reaches later files.
+ * Serialize file-sized enrichment in document order, with intraline first.
  * @param {MountedDiffState} view
  * @param {FileViewState} state
  */
-function scheduleSyntaxEnhancement(view, state) {
-  if (!view.api) {
-    return;
-  }
-  const api = view.api;
+function scheduleFileEnhancement(view, state) {
+  const api = view.api ?? plainSyntaxApi();
   const generation = view.generation;
-  view.syntaxTail = view.syntaxTail.then(async () => {
-    if (!(await yieldForSyntax(view, generation))) {
+  view.enhancementTail = view.enhancementTail.then(async () => {
+    if (!(await yieldForEnhancement(view, generation))) {
       return;
     }
+    await enhanceFileIntraline(
+      state,
+      api,
+      view.controller.signal,
+      () => mountIsCurrent(view, generation),
+      () => view.layout,
+    );
     await enhanceFileSyntax(state, api, view.controller.signal, () =>
       mountIsCurrent(view, generation),
     );
@@ -887,7 +1025,7 @@ async function hydrateDeferred(body, change, revision, view) {
       const state = createFileState(only, patch, renderApi, body);
       view.files.push(state);
       renderFileBody(state, view.layout);
-      scheduleSyntaxEnhancement(view, state);
+      scheduleFileEnhancement(view, state);
     }
   } catch (error) {
     if (
@@ -967,7 +1105,7 @@ function renderFileSection(change, patch, context, view) {
   const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body);
   view.files.push(state);
   renderFileBody(state, view.layout);
-  scheduleSyntaxEnhancement(view, state);
+  scheduleFileEnhancement(view, state);
   return section;
 }
 
@@ -992,7 +1130,7 @@ export function mountDiffView(container, document_, api) {
     layoutControl: null,
     layoutGeneration: 0,
     root,
-    syntaxTail: Promise.resolve(),
+    enhancementTail: Promise.resolve(),
     timers: new Set(),
     yielders: new Set(),
   };

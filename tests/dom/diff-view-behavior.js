@@ -176,6 +176,12 @@ function tokenLines(source, className) {
   return source.split("\n").map((text) => [{ classes: [`hljs-${className}`], text }]);
 }
 
+function renderedText(host) {
+  return host.children.length === 0
+    ? host.textContent
+    : host.children.map((child) => child.textContent).join("");
+}
+
 async function main() {
   const documentListeners = new Map();
   global.document = {
@@ -198,7 +204,9 @@ async function main() {
     }
   };
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
-  const { mountDiffView, setChangeLoader } = await import(pathToFileURL(viewPath).href);
+  const { composeTextRuns, mountDiffView, setChangeLoader } = await import(
+    pathToFileURL(viewPath).href
+  );
   const corpus = JSON.parse(
     fs.readFileSync(
       path.join(repoRoot, "src/metabrowser/data/file-diff-format/file-diff-conformance.json"),
@@ -211,6 +219,29 @@ async function main() {
     await Promise.resolve();
     await nextTask();
   };
+
+  const composed = composeTextRuns(
+    "const oldName = true;",
+    [
+      { classes: ["hljs-keyword"], text: "const" },
+      { classes: [], text: " oldName = " },
+      { classes: ["hljs-literal"], text: "true" },
+      { classes: [], text: ";" },
+    ],
+    [{ start: 6, end: 13 }],
+  );
+  check(
+    "syntax and intraline boundaries compose without text loss",
+    composed.map((run) => run.text).join("") === "const oldName = true;" &&
+      composed.some(
+        (run) =>
+          run.text === "oldName" &&
+          run.classes.includes("diff-intraline-change") &&
+          run.classes.length === 1,
+      ) &&
+      composed.some((run) => run.text === "true" && run.classes.includes("hljs-literal")),
+    JSON.stringify(composed),
+  );
 
   // A modified file renders numbered rows with the right ops.
   const container = new FakeElement("div");
@@ -281,6 +312,22 @@ async function main() {
     additionHost.children[0].classList.contains("hljs-new"),
   );
   check(
+    "unified similar replacements use refined row classes",
+    highlightedLines[1].classList.contains("diff-line-refined") &&
+      highlightedLines[2].classList.contains("diff-line-refined"),
+  );
+  check(
+    "syntax and changed-range classes coexist",
+    deletionHost.children.some(
+      (span) =>
+        span.classList.contains("hljs-old") && span.classList.contains("diff-intraline-change"),
+    ) &&
+      additionHost.children.some(
+        (span) =>
+          span.classList.contains("hljs-new") && span.classList.contains("diff-intraline-change"),
+      ),
+  );
+  check(
     "enhancement preserves visible text",
     deletionHost.children.map((span) => span.textContent).join("") === "    return 1",
   );
@@ -328,9 +375,19 @@ async function main() {
     highlightSyntax: async () => null,
   });
   await nextSyntaxUnit();
+  const failedHosts = failed.find("diff-line-text");
+  const expectedFailedText = byName
+    .get("modified-with-heading")
+    .patches.f1.hunks[0].lines.map((line) => line.text);
   check(
-    "failed enhancement leaves complete plain text",
-    failed.find("diff-line-text").every((host) => host.children.length === 0),
+    "failed syntax leaves exact text and independent intraline refinement",
+    JSON.stringify(
+      failedHosts.map((host) =>
+        host.children.length === 0
+          ? host.textContent
+          : host.children.map((span) => span.textContent).join(""),
+      ),
+    ) === JSON.stringify(expectedFailedText) && failed.find("diff-intraline-change").length > 0,
   );
 
   // Split is a second projection of the same records. The host control
@@ -399,7 +456,7 @@ async function main() {
     split.find("diff-layout-control")[0].innerHTML.includes('role="radiogroup"'),
   );
   await nextSyntaxUnit();
-  const splitContextSides = splitContext.find("diff-split-side");
+  const splitContextSides = split.find("diff-split-context")[0].find("diff-split-side");
   check(
     "split context keeps each side's tokens",
     splitContextSides[0].find("diff-line-text")[0].children[0].classList.contains("hljs-old") &&
@@ -461,6 +518,43 @@ async function main() {
   check(
     "no-newline marker stays on its source side",
     unequalRows[1].find("diff-split-old")[0].find("diff-line-no-newline").length === 1,
+  );
+
+  const shiftedDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
+  shiftedDoc.patches.f1.hunks[0].lines = [
+    { op: "del", text: "alpha = one;" },
+    { op: "del", text: "beta = two;" },
+    { op: "del", text: "gamma = three;" },
+    { op: "add", text: "inserted = zero;" },
+    { op: "add", text: "alpha = 1;" },
+    { op: "add", text: "beta = 2;" },
+    { op: "add", text: "gamma = 3;" },
+  ];
+  shiftedDoc.patches.f1.hunks[0].old_count = 3;
+  shiftedDoc.patches.f1.hunks[0].new_count = 4;
+  const shifted = new FakeElement("div");
+  mountDiffView(shifted, shiftedDoc, layoutApi);
+  check(
+    "split first paint retains positional fallback",
+    shifted.find("diff-split-row")[0].find("diff-split-empty").length === 0,
+  );
+  await nextSyntaxUnit();
+  const shiftedRows = shifted.find("diff-split-row");
+  const shiftedText = (rowIndex, side) =>
+    renderedText(shiftedRows[rowIndex].find(`diff-split-${side}`)[0].find("diff-line-text")[0]);
+  check(
+    "refinement reprojects only the file with monotonic shifted alignment",
+    shiftedRows[0].find("diff-split-old")[0].classList.contains("diff-split-empty") &&
+      shiftedText(0, "new") === "inserted = zero;" &&
+      shiftedText(1, "old") === "alpha = one;" &&
+      shiftedText(1, "new") === "alpha = 1;",
+    JSON.stringify(
+      shiftedRows.map((row) =>
+        row
+          .find("diff-split-side")
+          .map((side) => ({ className: side.className, text: side.text() })),
+      ),
+    ),
   );
 
   const invalidPreference = new FakeElement("div");
@@ -774,13 +868,14 @@ async function main() {
   const detachedHosts = disposedSyntax.find("diff-line-text");
   await nextSyntaxUnit();
   check("syntax work starts after plain paint", tokenCalls === 1, String(tokenCalls));
+  const detachedChildCounts = detachedHosts.map((host) => host.children.length);
   disposedSyntaxHandle.dispose();
   check("dispose aborts syntax waits", tokenSignal?.aborted === true);
   tokenResolve(tokenLines(tokenSource, "late"));
   await nextTask();
   check(
     "late syntax completion cannot mutate detached hosts",
-    detachedHosts.every((host) => host.children.length === 0),
+    detachedHosts.every((host, index) => host.children.length === detachedChildCounts[index]),
   );
 
   const queuedDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
