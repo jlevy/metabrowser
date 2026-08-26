@@ -3,9 +3,9 @@ type: is
 id: is-01m0y5hv6gtfrqs4ch40740tfr
 title: "Phase 4.8.1: Pin the VS Code-derived three-layer visual contract"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,7 +14,11 @@ dependencies:
     target: is-01m0y5hvk0rrcn98h6rv5d7dje
 parent_id: is-01m0y5h1kk1waq5baqsvmqcx6k
 created_at: 2026-08-26T04:34:15.876Z
-updated_at: 2026-08-26T04:34:26.948Z
+updated_at: 2026-08-26T04:37:06.939Z
+closed_at: 2026-08-26T04:37:06.933Z
+close_reason: Pinned the VS Code three-layer decoration model in the active spec, research record, and design-system contract; documented the CSS-only, semantic-token, layout-neutral implementation boundary and formatted the docs.
+resolution: null
+duplicate_of: null
 ---
 Files/functions:
 - Update docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md with Phase 4.8 source findings, exact files/functions, invariants, tests, and acceptance.

@@ -3,9 +3,9 @@ type: is
 id: is-01m0y5hvk0rrcn98h6rv5d7dje
 title: "Phase 4.8.2: Test and implement pale rows, strong intraline spans, and gutter bars"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0y5hvxah44e9kdbnmpq97hs
 parent_id: is-01m0y5h1kk1waq5baqsvmqcx6k
 created_at: 2026-08-26T04:34:16.287Z
-updated_at: 2026-08-26T04:34:16.617Z
+updated_at: 2026-08-26T04:37:07.199Z
 ---
 Files/functions:
 - Update tests/test_syntax_palette.py constants plus test_syntax_foregrounds_meet_contrast_over_diff_tints and test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract.
