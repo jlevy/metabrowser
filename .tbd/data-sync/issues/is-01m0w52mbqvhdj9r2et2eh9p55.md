@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 33
+version: 35
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -31,6 +31,10 @@ child_order_hints:
   - is-01m0xp9057jb8f0pcjhch592qd
   - is-01m0xp910y4k86s1emzcn93rz0
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-26T00:07:18.301Z
+updated_at: 2026-08-26T01:04:36.072Z
 ---
-Deliver the eighteen-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: trusted Git interaction instrumentation and baseline, bounded preparation and atomic handoff, transition polish, fixed-corpus validation, shared navigational-row keyboard parity, commit-summary placement, shared copyable revision identity, consolidated commit-summary ownership, obsolete retained-work cancellation, deferred-request-storm validation, bounded commit-summary tooltips, a file/Git preview-ownership audit, shared immediate dimmed feedback, painted-readiness measurement for ordinary files, a trusted file-navigation performance scenario, deduplication between selected file loads and hover prefetch, cross-surface parity validation, and final PR review and CI delivery. Keep useful content visible; distinguish Git's detached atomic staging from connected arbitrary plugin mounts; retain at most one speculative comparison; cancel obsolete background work; fail validation on request fanout, duplicate selected work, blank frames, stuck pending state, or route/render divergence; measure server, transfer/decode, assets, mount, and painted readiness consistently across file and diff views; do not add unmeasured caching or speculative compatibility; and close the epic only after PR #82 has exact-head green CI.
+Deliver the twenty-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: the reviewed Git revision navigation implementation and its later file/Git parity, request-deduplication, visible pending-sheet, stable-hover, O(1) selection-feedback, standard performance-instrumentation, and final PR/CI phases. Keep useful content visible; use one compositor-friendly pointer-transparent pending sheet over the preview only; keep row interaction work proportional to the changed rows; distinguish immediate selection feedback from selection-to-painted-ready and Event Timing; retain at most one speculative comparison; cancel obsolete work; fail standard scenarios on fanout, duplicate selected work, blank frames, stuck pending state, missing phase attribution, or route/render divergence; do not add unmeasured caching, dependencies, or speculative compatibility; close only after PR #82 has exact-head green CI.
+
+## Notes
+
+Twenty-phase implementation now includes the user-acceptance refinements: a single 60 ms compositor-friendly pending sheet, stable-hover network intent, instant row backgrounds, old/new-only selected-row mutation, post-readiness roving Tab finalization, gitRevision:selectionFeedback and gitRevision:rowAnchor attribution, and stricter headed Git health validation. Final fixed-corpus capture shows immediate feedback at 4.5 ms or less with pending onset in 11.4–16.1 ms, zero blank frames, exact selected/route/rendered convergence, one mount, bounded deferred hydration, and zero obsolete successes. Await final full verification, commit/push, PR review/CI, and exact-build handoff before closing.
