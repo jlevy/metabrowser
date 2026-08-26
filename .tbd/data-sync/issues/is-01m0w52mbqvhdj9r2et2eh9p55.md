@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 54
+version: 55
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -41,10 +41,10 @@ child_order_hints:
   - is-01m0yjwamztrrcqs6e5gf1x9wn
   - is-01m0yjwbybpt8r9bf1pjehswr0
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-26T08:27:12.201Z
+updated_at: 2026-08-26T08:59:44.605Z
 ---
 Deliver the complete phased plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: reviewed Git revision navigation, file/Git readiness parity, request deduplication, stable hover, O(1) selection feedback, standard interaction attribution, corrected input-relative driver timing, performance instrumentation, live-folder panel-state repair, and the final no-fade foreground-arrival contract. Keep useful retained content and the light/dark pane canvas visually unchanged while loading; preserve one claim-owned nonvisual busy lifecycle; animate only incoming foreground content from 0.98 to 1 over 50 ms; keep row work proportional to changed rows; distinguish selection feedback from painted readiness and Event Timing; exclude driver preparation from application timing; retain at most one speculative comparison; cancel obsolete work; and fail standard scenarios on fanout, duplicate selected work, blank frames, stuck busy state, missing attribution, route/render divergence, folder-state freezing, exceptions, or forced layout. Add no unmeasured cache, dependency, or speculative compatibility. Close only after PR #82 is retargeted from its stack and the final exact-head CI is green.
 
 ## Notes
 
-All implementation phases are complete through exact pushed PR #82 head 301b450. This includes retained file/Git navigation, connected inert async file staging with atomic handoff and claim-owned stale cleanup, pointer-only navigation tooltips, corrected strong-pure/pale-paired/strong-intraline diff hierarchy, semantic gutter bars, Split-first layout order and default, shared design-system contracts, and standard browser performance gates. make verify passes 1,562 tests plus 48 golden scenarios; exact-headed file and Git scenarios have zero blank frames or state divergence; all current GitHub checks are green. The final globally installed build is metabrowser 0.7.2.dev48+301b450 and serves the large representative repository at http://127.0.0.1:8770/view/. Epic remains open only for the explicit stacked delivery gate: land PR #81, retarget PR #82 to main without losing commits, repeat exact-head validation and final CI, then close.
+All implementation phases are complete through exact pushed PR #82 head e080629, including retained file/Git navigation, connected inert async file staging, pointer-only navigation tooltips, three-depth diff hierarchy and gutter bars, Split-first layout, shared full/compact commit summaries with M/A/D and line totals, and standard-size sans multiline commit descriptions. make verify passes 1,564 tests plus 48 golden scenarios; exact-headed file and Git scenarios have zero blank frames or state divergence; all current GitHub checks are green. The final globally installed build is metabrowser 0.7.2.dev50+e080629 and serves the large representative repository at http://127.0.0.1:8772/view/. Epic remains open only for the explicit stacked delivery gate: land PR #81, retarget PR #82 to main without losing commits, repeat exact-head validation and final CI, then close.

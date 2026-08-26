@@ -5,13 +5,15 @@ title: Render commit descriptions as standard prose
 kind: feature
 status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-26T08:27:10.868Z
-updated_at: 2026-08-26T08:46:48.088Z
+updated_at: 2026-08-26T08:59:44.048Z
 closed_at: 2026-08-26T08:46:48.087Z
 close_reason: Commit descriptions render as standard-size sans-serif prose with preserved newlines; focused, browser, and full verification are green.
 resolution: null
