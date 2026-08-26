@@ -316,7 +316,7 @@ sandbox.HTMLElement = FakeElement;
 sandbox.METABROWSER_SETTINGS = {
   GIT_LOG_LIMIT: 2,
   GIT_HISTORY_MAX_ROWS: 3,
-  GIT_HOVER_DEBOUNCE_MS: 0,
+  GIT_HOVER_DEBOUNCE_MS: 5,
   GIT_DETAIL_CACHE_SIZE: 3,
 };
 
@@ -417,6 +417,7 @@ const canceledDiffRevisions = [];
 const disposedDiffRevisions = [];
 const comparisonFetches = [];
 const shownTooltips = [];
+const measuredLabels = [];
 let tooltipHideCount = 0;
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
@@ -451,8 +452,14 @@ sandbox.metabrowser = {
     return comparisonResponder(params.revision);
   },
   perf: {
-    measure: (_label, fn) => fn(),
-    measureAsync: (_label, fn) => fn(),
+    measure: (label, fn) => {
+      measuredLabels.push(label);
+      return fn();
+    },
+    measureAsync: (label, fn) => {
+      measuredLabels.push(label);
+      return fn();
+    },
   },
 };
 
@@ -884,7 +891,7 @@ async function run() {
     const hidesBefore = tooltipHideCount;
     rows[0]._hovered = true;
     rows[0].dispatch("mouseenter");
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     assertEqual("tooltip lifecycle: hover shows one anchored summary", shownTooltips.length, 1);
     assertTrue("tooltip lifecycle: row is the anchor", shownTooltips[0].anchor === rows[0]);
     assertContains(
@@ -1014,6 +1021,19 @@ async function run() {
       internals.stateForTests().selectedId,
       SHA_B,
     );
+    assertEqual(
+      "keyboard: input task leaves the prior Tab anchor untouched",
+      rows[0].getAttribute("tabindex"),
+      "0",
+    );
+    assertEqual(
+      "keyboard: input task does not promote the destination Tab anchor",
+      rows[1].getAttribute("tabindex"),
+      "-1",
+    );
+    // Focus and selection move in the input task; the focus-order write waits
+    // for the selected view boundary so a retained diff cannot delay feedback.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     assertEqual("keyboard: prior row leaves the Tab order", rows[0].getAttribute("tabindex"), "-1");
     assertEqual("keyboard: destination becomes the anchor", rows[1].getAttribute("tabindex"), "0");
     assertEqual("keyboard: destination scrolls into view", rows[1].scrollCalls, [
@@ -1077,7 +1097,29 @@ async function run() {
     previewPane.replaceChildren(priorCommit);
     rows[0]._hovered = true;
     rows[0].dispatch("mouseenter");
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual(
+      "prepare: entering a row does not start comparison work before stable intent",
+      comparisonFetches.length,
+      comparisonsBefore,
+    );
+    assertEqual(
+      "prepare: entering a row does not start detail work before stable intent",
+      fetchCount,
+      detailsBefore,
+    );
+    rows[0]._hovered = false;
+    rows[0].dispatch("mouseleave");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual(
+      "prepare: scrolling past a row starts no comparison work",
+      comparisonFetches.length,
+      comparisonsBefore,
+    );
+    assertEqual("prepare: scrolling past a row starts no detail work", fetchCount, detailsBefore);
+
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
     assertEqual(
       "prepare: pointer intent starts one comparison",
       comparisonFetches.length,
@@ -1134,14 +1176,24 @@ async function run() {
     const slotBefore = comparisonFetches.length;
     comparisonResponder = async (revision) => ({ comparison_id: revision });
     rows[0].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
     const firstSignal = comparisonFetches[slotBefore].signal;
+    rows[0]._hovered = false;
+    rows[1]._hovered = true;
     rows[1].dispatch("mouseenter");
     assertTrue("prepare: newer pointer intent aborts the old slot", firstSignal.aborted);
+    assertEqual(
+      "prepare: replacement waits for stable intent",
+      comparisonFetches.length,
+      slotBefore + 1,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
     assertEqual(
       "prepare: one replacement request serves the newer intent",
       comparisonFetches.length,
       slotBefore + 2,
     );
+    rows[1]._hovered = false;
     rows[1].dispatch("mouseleave");
   }
 
@@ -1237,6 +1289,14 @@ async function run() {
     files_truncated: false,
   });
   await internals.selectCommit(SHA_B);
+  assertTrue(
+    "performance: selection records immediate feedback separately",
+    measuredLabels.includes("gitRevision:selectionFeedback"),
+  );
+  assertTrue(
+    "performance: selection retains the painted-ready total",
+    measuredLabels.includes("gitRevision:selectToReady"),
+  );
   const primedCache = fetchCount;
   await internals.selectCommit(SHA_B);
   assertEqual("head: the detail cache serves a repeat select", fetchCount, primedCache);

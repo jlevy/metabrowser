@@ -126,8 +126,12 @@ readiness.
 - one comparison-data promise from the diff plugin’s existing data hook
 
 Selection starts all independent work together.
-Pointer entry and keyboard focus start the same operation immediately; the native hover
-text retains its debounce, but data preparation does not wait for the tooltip timer.
+Pointer entry and unselected keyboard focus wait for the same stable-intent interval as
+the hover card before starting speculative detail and comparison work.
+A click or Arrow-key selection starts immediately and may reuse preparation that already
+crossed that boundary.
+This keeps fast pointer traversal and scrolling network-free while an intentional pause
+still prepares the likely selection.
 An in-flight detail request is shared with the existing bounded detail cache.
 
 Comparison preparation uses a single replaceable slot rather than an entry-count cache.
@@ -151,8 +155,8 @@ The mounted handle cancels queued observations, active hydration, syntax, timer,
 yielding work at that point while leaving its rendered DOM intact.
 Obsolete work therefore cannot saturate the server or client while the selected
 comparison prepares.
-After 120 ms, the preview receives a lightweight pending state and `aria-busy="true"`;
-it is not replaced by a spinner.
+The preview immediately receives a lightweight pending state and `aria-busy="true"`; it
+is not replaced by a spinner.
 When commit metadata and the validated comparison surface are ready, one preview
 replacement installs the new commit and transfers lifecycle ownership to its diff
 handle. Only then is the prior handle disposed.
@@ -171,11 +175,11 @@ It must not delay readiness, animate large geometry, or run when
 
 The Git and ordinary file paths share a shell-owned pending lifecycle, not one rendering
 algorithm. Starting a selection against useful retained content immediately applies one
-subtle opacity modifier and `aria-busy="true"` under the new preview claim.
+tokenized translucent neutral sheet and `aria-busy="true"` under the new preview claim.
 The content keeps its geometry and remains available while work proceeds.
 Success, failure, stale ownership, preview replacement, and disposal all clear the state
 only for the claim that created it.
-Reduced motion removes the opacity transition, not the immediate state change.
+Reduced motion removes the sheet’s opacity transition, not the immediate state change.
 An initial empty preview may still use the existing delayed neutral spinner.
 
 Git keeps its detached atomic handoff because the shell owns the complete commit and
@@ -198,10 +202,13 @@ readiness remains outside it.
 
 Production instrumentation adds revision-scoped measures for:
 
+- immediate selection feedback: pending-sheet activation, route ownership, and the old
+  and new row mutations
 - commit-detail data readiness, including JSON decoding
 - diff-asset readiness
 - comparison-data readiness, including JSON decoding
 - commit markup and diff mounting
+- selection to the first painted ready frame
 
 The profiler also retains the maximum simultaneous application fetches for the current
 measurement window and per request class.
@@ -209,8 +216,9 @@ Query values are excluded from request-class keys, except that deferred file hyd
 is distinct from its comparison-manifest request.
 The distinction lets the Git scenario enforce the renderer’s two-request hydration bound
 without treating the selected revision’s metadata and manifest requests as deferred
-fanout.
-- selection to the first painted ready frame
+fanout. `gitRevision:selectionFeedback` isolates the synchronous main-thread
+acknowledgement; `gitRevision:selectToReady` retains the end-to-end boundary, and Event
+Timing remains the interaction-to-next-paint signal.
 
 Ordinary file navigation uses parallel phase labels for response-envelope decoding,
 selected-kind assets, active-view mounting, optional instance readiness, and selection
@@ -266,7 +274,7 @@ introduced.
 ## Implementation Plan
 
 Epic `mb-fgcg` owns this plan.
-Its eighteen child beads separate measurement, behavior, presentation, validation,
+Its twenty-one child beads separate measurement, behavior, presentation, validation,
 keyboard consistency, commit-header information design, component ownership,
 retained-work cancellation, cross-surface pending and readiness parity, and delivery.
 Blockers express only real sequencing; the baseline also feeds final validation
@@ -291,7 +299,10 @@ directly.
 | Gate regular file navigation in the performance loop | `mb-wf52` | `mb-2yd5`, `mb-m23h` | Closed |
 | Deduplicate selected and prefetched file requests | `mb-v4qu` | `mb-wf52` | Closed |
 | Validate preview transition parity | `mb-eh0n` | `mb-2yd5`, `mb-m23h`, `mb-wf52`, `mb-v4qu` | Open |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n` and completed prior phases | Blocked |
+| Make retained preview dimming visibly cover the main view | `mb-rnr7` | None | Closed |
+| Delay Git hover preparation until stable intent | `mb-ues1` | None | Closed |
+| Gate Git pending timing and row-anchor attribution | `mb-f43i` | None | Closed |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -550,10 +561,11 @@ server work a single viewport can start.
   pending modifier with one shared rule in `static/styles.css`. Update focused shell and
   Git DOM tests, `docs/design-system.md`, and `CHANGELOG.md`.
 - **Behavior and invariants:** Selecting from useful retained content immediately dims
-  the preview by one small tokenized opacity step and sets `aria-busy="true"`. The state
-  retains geometry, does not block interaction, has no progress bar or minimum duration,
-  and clears only for its owning preview claim after success, error, replacement,
-  cancellation, or tab ownership change.
+  the preview under one tokenized translucent neutral sheet, then sets
+  `aria-busy="true"`. The sheet does not filter or restyle the rendered document.
+  The state retains geometry, does not block interaction, has no progress bar or minimum
+  duration, and clears only for its owning preview claim after success, error,
+  replacement, cancellation, or tab ownership change.
   Empty initial loads keep the delayed neutral spinner.
   Reduced motion disables the transition while preserving the state change.
 - **Acceptance:** Focused tests fail before and pass after for file and Git selection,
@@ -642,7 +654,65 @@ server work a single viewport can start.
   connected-versus-detached lifecycle difference, and the PR validation plan gives a
   zero-context reviewer the evidence needed to reproduce it.
 
-### Phase 18: Deliver and Monitor (`mb-j8ni`)
+### Phase 18: Make Pending Feedback Unmistakable (`mb-rnr7`)
+
+- **Files and functions:** Refine the shared `.preview-navigation-pending` rules and
+  component tokens in `static/styles.css`; update
+  `test_shell_shares_immediate_claim_owned_preview_feedback` in
+  `tests/test_browser_loading_delay.py`, this plan, `docs/design-system.md`, and
+  `CHANGELOG.md`.
+- **Behavior and invariants:** One fixed, pointer-transparent sheet covers the visible
+  main-view scrollport as soon as a retained navigation begins.
+  It does not filter or restyle the syntax-highlighted or diff DOM below it.
+  The nav panel remains at full contrast, geometry stays fixed, pointer input stays
+  available, and the owning preview claim clears the state only after painted readiness.
+  A dedicated 60 ms ease-out reaches the neutral treatment materially faster than the
+  general 150 ms control transition.
+  Reduced motion removes the interpolation but not the visible state.
+- **Acceptance:** Focused tests pin the shared overlay token, fixed scrollport geometry,
+  pointer transparency, opacity transition, and reduced-motion behavior.
+  Real-browser checks cover both themes, a scrolled diff, rapid replacement, and
+  pending-state clearance.
+
+### Phase 19: Keep Scroll-Through Hover Network-Free (`mb-ues1`)
+
+- **Files and functions:** Change `scheduleHover` and its interaction with
+  `prepareRevision` and `cancelHover`, and make `setCommitRowAnchor`,
+  `moveCommitRowFocus`, and `selectCommit` mutate only the previous and selected rows in
+  `static/git-panel.js`. Extend `measureGitTransition` and add
+  `assertGitTransitionHealth` in `explorations/performance-loop/capture-browser.js`.
+  Extend the preparation and tooltip cases in `tests/dom/git-panel-behavior.js`, the
+  maintained design contract in `tests/test_design_vocabulary.py`, and the performance
+  driver contract in `tests/test_browser_performance_capture.py`; update this plan,
+  `docs/design-system.md`, `docs/web-performance-framework.md`, the performance-loop
+  README, and `CHANGELOG.md`.
+- **Behavior and invariants:** Entering a row schedules but does not start speculative
+  commit-detail or comparison work.
+  Leaving before stable intent cancels the timer with zero requests.
+  A stable hover or focus starts one bounded preparation, while click and Arrow-key
+  selection still update row, scroll position, route, and pending feedback immediately
+  and reuse matching work without duplication.
+  Interaction-time selection updates touch only the old and new rows, regardless of
+  mounted history length.
+  Git row backgrounds change without a transition so the visible selection does not ease
+  in behind the input.
+  The new row is already focused and programmatically focusable; its one-row Tab anchor
+  finalizes after painted readiness so focus-order recalculation across a large retained
+  diff does not block the input task.
+  The synchronous block is measured as `gitRevision:selectionFeedback`, separately from
+  the existing selection-to-painted-ready span and browser Event Timing.
+- **Acceptance:** Focused tests fail before and pass after for rapid enter/leave, stable
+  intent, selected reuse, replacement abort, request counts, tooltip lifecycle, and the
+  absence of collection-wide interaction mutations.
+  Every headed transition records the selection-feedback, painted-ready, and row-anchor
+  phase labels, observes ordered pending onset and clearance timing, and fails on a
+  stale selected row, route, rendered revision, stuck busy state, blank frame, or
+  multiple mounted comparison.
+  A headed scroll-through check confirms that transient rows issue no detail or
+  comparison requests and that the selected row and pending main view update without
+  waiting for the replacement diff.
+
+### Phase 20: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
@@ -708,6 +778,23 @@ and painted readiness separately.
 These one-run values validate the scenario and the request-count fix; any broader
 performance claim still requires interleaved repeated captures.
 
+A later settled headed Git capture on fixed corpus `tree-a01f4187` isolated a cold
+267–398 ms forced-layout interval to changing the newly focused row from `tabindex="-1"`
+to `tabindex="0"` while a large diff remained mounted.
+Lookup, selected state, pending state, route state, and the internal anchor marker each
+measured 0–4 ms. After both the selection path and its synchronous focus handler stopped
+changing the Tab anchor before paint, three repeated settled captures recorded
+selection-feedback spans of 0.3–4.6 ms, pending onset at 7.7–18.8 ms, and separate
+post-readiness anchor spans of 0.5–7.9 ms.
+Maximum forced style and layout time was zero in all three runs.
+Every transition retained useful content, cleared its pending state, and converged
+exactly, with zero blank frames, at most two deferred file requests, zero obsolete
+successes, and zero page exceptions.
+Event Timing still recorded 344–456 ms maxima and the longest tasks were 326–434 ms,
+principally around cold comparison data and rendering; those remain visible follow-up
+costs rather than being misreported as solved input-handler work.
+This is repeated attribution and acceptance evidence, not a comparative speed claim.
+
 ## Testing Strategy
 
 The shell and plugin lifecycle suites pin preview-claim ownership, immediate shared
@@ -726,6 +813,9 @@ navigation on the repository itself.
 The Git scenario’s large-comparison phase fails on deferred-request fanout, missing
 cancellation, obsolete successful completions, selection/route/render divergence, or
 multiple mounted comparisons.
+Each ordinary Git transition also fails on a blank retained surface, missing or stuck
+pending feedback, missing immediate or painted-ready phase attribution, or
+selection/route/render divergence.
 The file scenario fails on blank retained content, route/path/view divergence, stuck
 pending state, missing painted-readiness attribution, or duplicate active mounts.
 Manual real-browser validation covers fast repeated pointer and keyboard navigation,

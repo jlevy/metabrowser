@@ -123,12 +123,15 @@ def test_row_targets_share_the_hover_token() -> None:
 def test_preview_navigation_pending_motion_is_shared_and_reduced_motion_safe() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
 
-    pending = _rule(styles, "#preview-pane.preview-navigation-pending > *")
-    assert "transition: opacity var(--transition-fast)" in pending
-    assert "opacity: var(--preview-navigation-pending-opacity)" in pending
-    assert "--preview-navigation-pending-opacity:" in styles
+    overlay = _rule(styles, "#preview-pane::after")
+    assert "background: var(--preview-navigation-pending-overlay)" in overlay
+    assert "transition: opacity var(--preview-navigation-pending-transition)" in overlay
+    assert "pointer-events: none" in overlay
+    assert "--preview-navigation-pending-overlay:" in styles
+    pending = _rule(styles, "#preview-pane.preview-navigation-pending::after")
+    assert "opacity: 1" in pending
     reduced = styles[styles.rindex("@media (prefers-reduced-motion: reduce)") :]
-    assert "#preview-pane.preview-navigation-pending > *" in reduced
+    assert "#preview-pane::after" in reduced
     assert "transition: none" in reduced
 
 
@@ -148,6 +151,33 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
         assert '"ArrowUp"' in source
         assert '"ArrowDown"' in source
         assert 'setAttribute("tabindex"' in source
+
+
+def test_git_row_selection_avoids_full_collection_mutation() -> None:
+    """Immediate Git feedback mutates only the old and new row."""
+    git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    anchor = git[
+        git.index("function setCommitRowAnchor") : git.index("/** @param {HTMLElement} list */")
+    ]
+    selection = git[git.index("async function selectCommit") : git.index("function renderFileRow")]
+
+    assert 'querySelector(".git-graph-row[data-roving-anchor]")' in anchor
+    assert "commitRows(list)" not in anchor
+    assert "options.rowElement" in selection
+    assert 'mountedPanel.querySelector(".git-graph-row.selected")' in selection
+    assert 'document.querySelector(".git-graph-row.selected")' not in selection
+    assert 'querySelectorAll(".git-graph-row")' not in selection
+    assert '"gitRevision:selectionFeedback"' in selection
+    assert '"gitRevision:rowAnchor"' in selection
+    assert selection.index('"gitRevision:selectionFeedback"') < selection.index(
+        '"gitRevision:rowAnchor"'
+    )
+    focus_handler = git[git.index('element.addEventListener("focus"') :][:500]
+    assert "setCommitRowAnchor" not in focus_handler
+    enter_handler = git[git.index('if (event.key === "Enter"') :][:250]
+    assert "{ rowElement: row }" in enter_handler
+    assert "transition:" not in _rule(styles, ".git-graph-row")
 
 
 def test_copyable_identifiers_share_the_copy_contract() -> None:

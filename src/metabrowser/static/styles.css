@@ -403,10 +403,13 @@
 
   /* Transitions */
   --transition-fast: 150ms ease;
+  /* Selection acknowledgement should settle within a few frames; the general
+     control transition is intentionally slower and would make loading feel late. */
+  --preview-navigation-pending-transition: 60ms ease-out;
   /* Immediate selection acknowledgement while useful preview content is
-     retained. The small step is visible in both themes without reading as a
-     disabled surface; readiness, never the transition, ends the state. */
-  --preview-navigation-pending-opacity: 0.9;
+     retained. One neutral translucent sheet covers the visible preview
+     scrollport without filtering or restyling the document below it. */
+  --preview-navigation-pending-overlay: oklch(55% 0 0 / 0.18);
   /* Square-ish corner for tag-like chips (branch refs): visibly not a
      pill, still not a hard corner. */
   --radius-tag: 3px;
@@ -4725,7 +4728,6 @@ pre.code-block code.hljs {
   cursor: pointer;
   user-select: var(--toggle-user-select);
   font-size: var(--nav-font-size);
-  transition: background var(--transition-fast);
 }
 
 .git-graph-row:hover {
@@ -4904,13 +4906,23 @@ pre.code-block code.hljs {
   cursor: progress;
 }
 
-#preview-pane.preview-navigation-pending > * {
-  opacity: var(--preview-navigation-pending-opacity);
-  transition: opacity var(--transition-fast);
+#preview-pane::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-overlay) - 1);
+  pointer-events: none;
+  background: var(--preview-navigation-pending-overlay);
+  opacity: 0;
+  transition: opacity var(--preview-navigation-pending-transition);
+}
+
+#preview-pane.preview-navigation-pending::after {
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #preview-pane.preview-navigation-pending > * {
+  #preview-pane::after {
     transition: none;
   }
 }

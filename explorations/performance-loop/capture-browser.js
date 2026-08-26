@@ -421,14 +421,33 @@ async function startGitBlankFrameMonitor(session) {
       const key = "__metabrowserGitBlankMonitor";
       cancelAnimationFrame(window[key]?.frame || 0);
       const state = {
+        observer: null,
         blankDurationMs: 0,
         blankFrames: 0,
         blankStartedAt: null,
         frame: 0,
+        pendingClearedAt: null,
+        pendingSeenAt: null,
         running: true,
+        startedAt: performance.now(),
       };
+      const preview = document.querySelector("#preview-pane");
+      const observePending = () => {
+        const pending = preview?.classList.contains("preview-navigation-pending") === true;
+        const now = performance.now();
+        if (pending && state.pendingSeenAt === null) state.pendingSeenAt = now;
+        if (!pending && state.pendingSeenAt !== null) state.pendingClearedAt = now;
+      };
+      state.observer = new MutationObserver(observePending);
+      if (preview) {
+        state.observer.observe(preview, {
+          attributes: true,
+          attributeFilter: ["aria-busy", "class", "data-preview-pending-claim"],
+        });
+      }
       const sample = (now) => {
         if (!state.running) return;
+        observePending();
         const visible = Boolean(document.querySelector("#preview-pane .git-commit-view"));
         if (visible) {
           if (state.blankStartedAt !== null) {
@@ -441,6 +460,7 @@ async function startGitBlankFrameMonitor(session) {
         }
         state.frame = requestAnimationFrame(sample);
       };
+      observePending();
       state.frame = requestAnimationFrame(sample);
       window[key] = state;
       return true;
@@ -456,12 +476,21 @@ async function stopGitBlankFrameMonitor(session) {
       if (!state) return null;
       state.running = false;
       cancelAnimationFrame(state.frame);
+      state.observer?.disconnect();
       if (state.blankStartedAt !== null) {
         state.blankDurationMs += performance.now() - state.blankStartedAt;
       }
+      const preview = document.querySelector("#preview-pane");
       return {
+        aria_busy: preview?.getAttribute("aria-busy") === "true",
         blank_duration_ms: Number(state.blankDurationMs.toFixed(2)),
         blank_frames: state.blankFrames,
+        pending_active: preview?.classList.contains("preview-navigation-pending") === true,
+        pending_clear_ms: state.pendingClearedAt === null ? null :
+          Number((state.pendingClearedAt - state.startedAt).toFixed(2)),
+        pending_onset_ms: state.pendingSeenAt === null ? null :
+          Number((state.pendingSeenAt - state.startedAt).toFixed(2)),
+        pending_seen: state.pendingSeenAt !== null,
       };
     })()`,
   );
@@ -795,13 +824,66 @@ async function waitForGitRevision(session, revision, timeoutMs) {
           return selected instanceof HTMLElement && selected.dataset.revision ===
             ${JSON.stringify(revision)} && Boolean(sha) &&
             ${JSON.stringify(revision)}.startsWith(sha) &&
-            Boolean(document.querySelector(".git-commit-diff .diff-root"));
+            Boolean(document.querySelector(".git-commit-diff .diff-root")) &&
+            !document.querySelector("#preview-pane")?.classList.contains(
+              "preview-navigation-pending"
+            );
         })()`,
       ),
     timeoutMs,
     `Git revision ${revision} to render`,
   );
   return awaitNextPaint(session);
+}
+
+function assertGitTransitionHealth(result) {
+  if (!result.revision) {
+    throw new Error("revision is required for Git transition validation");
+  }
+  for (const field of ["selected_revision", "route_revision", "rendered_revision"]) {
+    if (result[field] !== result.revision) {
+      throw new Error(
+        `${field} did not converge on ${result.revision}; observed ${result[field] || "none"}`,
+      );
+    }
+  }
+  if (result.mounted_comparisons !== 1) {
+    throw new Error(`mounted_comparisons must remain one; observed ${result.mounted_comparisons}`);
+  }
+  if (result.blank_frames !== 0 || result.blank_duration_ms !== 0) {
+    throw new Error(
+      `blank_frames and blank_duration_ms must remain zero; observed ` +
+        `${result.blank_frames}/${result.blank_duration_ms}`,
+    );
+  }
+  if (!result.pending_seen) {
+    throw new Error("pending_seen must prove immediate Git selection feedback");
+  }
+  if (result.pending_active) {
+    throw new Error("pending_active must clear at Git painted readiness");
+  }
+  if (result.aria_busy) {
+    throw new Error("aria_busy must clear at Git painted readiness");
+  }
+  if (!Number.isFinite(result.pending_onset_ms)) {
+    throw new Error("pending_onset_ms must record Git selection acknowledgement");
+  }
+  if (!Number.isFinite(result.pending_clear_ms)) {
+    throw new Error("pending_clear_ms must record Git painted readiness");
+  }
+  if (result.pending_clear_ms < result.pending_onset_ms) {
+    throw new Error("pending_clear_ms must not precede pending_onset_ms");
+  }
+  const requiredLabels = [
+    "gitRevision:selectionFeedback",
+    "gitRevision:selectToReady",
+    "gitRevision:rowAnchor",
+  ];
+  for (const label of requiredLabels) {
+    if (!result.phase_labels?.includes(label)) {
+      throw new Error(`phase_labels is missing ${label}`);
+    }
+  }
 }
 
 async function measureGitTransition(session, rowIndex, name, timeoutMs) {
@@ -815,12 +897,34 @@ async function measureGitTransition(session, rowIndex, name, timeoutMs) {
   const paintedAt = await waitForGitRevision(session, row.revision, timeoutMs);
   const blank = await stopGitBlankFrameMonitor(session);
   const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const measures = snapshot.raw_measure.filter(
+    (sample) => sample.ts >= started.epoch && sample.label.startsWith("gitRevision:"),
+  );
   const fetches = snapshot.raw_fetch.filter((sample) => sample.ts >= started.epoch);
-  return {
+  const state = await evaluate(
+    session,
+    `(() => ({
+      selectedRevision: document.querySelector(".git-graph-row.selected")?.dataset.revision || "",
+      routeRevision: location.pathname.split("/").pop() || "",
+      renderedRevision: document.querySelector(".git-commit-view")?.dataset.revision || "",
+      mountedComparisons: document.querySelectorAll(".git-commit-diff .diff-root").length
+    }))()`,
+  );
+  const result = {
     name,
     revision: row.revision,
     total_ms: Number((paintedAt - started.now).toFixed(2)),
+    selected_revision: state.selectedRevision,
+    route_revision: state.routeRevision,
+    rendered_revision: state.renderedRevision,
+    mounted_comparisons: state.mountedComparisons,
     ...blank,
+    phase_labels: Array.from(new Set(measures.map((sample) => sample.label))),
+    phases: measures.map((sample) => ({
+      duration_ms: Number(sample.duration_ms.toFixed(2)),
+      label: sample.label,
+      revision: sample.meta?.revision || "",
+    })),
     fetches: fetches
       .filter(
         (sample) =>
@@ -835,6 +939,8 @@ async function measureGitTransition(session, rowIndex, name, timeoutMs) {
         url: new URL(sample.url, "http://localhost").pathname,
       })),
   };
+  assertGitTransitionHealth(result);
+  return result;
 }
 
 function assertDeferredHydrationHealth(result) {
@@ -1320,6 +1426,7 @@ module.exports = {
   assertControlledInputCount,
   assertDeferredHydrationHealth,
   assertFileTransitionHealth,
+  assertGitTransitionHealth,
   capture,
   chromeExecutable,
   dispatchTrustedClickAtPoint,

@@ -51,11 +51,15 @@ Performance, validated against 0.6.0 side by side:
 
 Browser:
 
-- File and Git navigation now acknowledge a selection immediately by gently dimming
-  useful retained preview content until the selected view reaches its painted-readiness
-  boundary. The shared claim-owned state preserves geometry, avoids a progress bar or
-  white frame, clears on stale and error paths, and disables its opacity transition for
-  reduced motion. Empty initial previews retain the delayed neutral spinner.
+- File and Git navigation now acknowledge a selection immediately with one translucent
+  neutral sheet over useful retained preview content until the selected view reaches its
+  painted-readiness boundary, while leaving the nav panel at full contrast.
+  The sheet reaches its pending treatment through a dedicated 60 ms transition rather
+  than the slower general control animation.
+  The shared claim-owned state does not filter or restyle the document below it,
+  preserves geometry, avoids a progress bar or white frame, clears on stale and error
+  paths, and disables its transition for reduced motion.
+  Empty initial previews retain the delayed neutral spinner.
 
 - Ordinary file navigation now awaits the active plugin renderer, an optional
   instance-declared initial readiness promise, and a double-animation-frame paint
@@ -70,7 +74,17 @@ Browser:
   prepared, then installs the replacement atomically.
   Commit metadata, diff assets, and comparison data start together; one replaceable
   pointer- or focus-intent slot avoids duplicate work without prefetching every visible
-  row. In three interleaved visible browser runs, candidate scenarios record zero blank
+  row. Speculative work waits for stable hover or focus intent, so scrolling through rows
+  starts no transient detail or comparison requests; click and Arrow-key selection
+  remain immediate and mutate only the previous and next row instead of rewriting the
+  mounted history. The performance loop records that synchronous selection feedback
+  separately from the complete selection-to-painted-ready span and fails if pending
+  onset, clearance, exact revision convergence, or either phase label is missing.
+  Git row backgrounds update without a per-row transition, so the visible selection does
+  not ease in behind the input.
+  The focused row’s one-row Tab anchor finalizes after painted readiness rather than
+  recalculating focus order across the retained diff in the input task.
+  In three interleaved visible browser runs, candidate scenarios record zero blank
   frames instead of 4–5 and the prepared transition falls from a 209.7 ms median to
   104.4 ms, while cold-transition ranges overlap and retained heap stays unchanged.
   The performance loop now records this interaction’s server, client, rendering,

@@ -212,6 +212,11 @@ Use `Server-Timing` for backend work and finite application labels for transfer,
 decoding, mounting, and handoff so a cache or prefetch decision addresses the measured
 layer. When navigation retains background work, exercise the cancellation boundary while
 that work is active.
+For retained-preview navigation, record a small synchronous selection-feedback span
+around pending-state activation, route ownership, and the exact old/new row mutations.
+Keep it separate from selection-to-painted-ready and Event Timing: the first attributes
+handler work, the second captures the complete content handoff, and the third proves
+when the browser painted a response to trusted input.
 Record request concurrency by class, reject successful obsolete work, and require
 selected state, route, rendered subject, and mounted-owner count to converge.
 Waiting for eventual network idle cannot distinguish a bounded handoff from a request

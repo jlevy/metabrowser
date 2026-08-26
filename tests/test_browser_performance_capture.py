@@ -139,12 +139,88 @@ def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> Non
     assert "dispatchTrustedClickForSelector" in source
     assert "startGitBlankFrameMonitor" in source
     assert "awaitNextPaint" in source
+    assert "assertGitTransitionHealth" in source
     assert 'schema: "git-revision-navigation/v1"' in source
+    assert '"gitRevision:selectionFeedback"' in source
+    assert '"gitRevision:selectToReady"' in source
     assert 'document.querySelectorAll(".git-commit-diff .diff-root")' in source
 
     runner = RUNNER.read_text(encoding="utf-8")
     assert 'choices=["git-revisions", "file-views"]' in runner
     assert 'command.extend(["--scenario", scenario])' in runner
+
+
+def test_git_revision_scenario_rejects_stale_or_unmeasured_transitions() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+const healthy = {{
+  revision: "new",
+  selected_revision: "new",
+  route_revision: "new",
+  rendered_revision: "new",
+  mounted_comparisons: 1,
+  blank_frames: 0,
+  blank_duration_ms: 0,
+  pending_seen: true,
+  pending_active: false,
+  aria_busy: false,
+  pending_onset_ms: 5,
+  pending_clear_ms: 15,
+  phase_labels: [
+    "gitRevision:selectionFeedback",
+    "gitRevision:selectToReady",
+    "gitRevision:rowAnchor"
+  ]
+}};
+capture.assertGitTransitionHealth(healthy);
+for (const [field, value] of [
+  ["selected_revision", "old"],
+  ["route_revision", "old"],
+  ["rendered_revision", "old"],
+  ["mounted_comparisons", 2],
+  ["blank_frames", 1],
+  ["pending_seen", false],
+  ["pending_active", true],
+  ["aria_busy", true],
+  ["pending_onset_ms", null],
+  ["pending_clear_ms", null],
+  ["pending_clear_ms", 4],
+  ["phase_labels", ["gitRevision:selectionFeedback", "gitRevision:selectToReady"]]
+]) {{
+  try {{
+    capture.assertGitTransitionHealth({{...healthy, [field]: value}});
+  }} catch (error) {{
+    process.stdout.write(`${{field}}:${{String(error.message)}}\n`);
+  }}
+}}
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    for field in (
+        "selected_revision",
+        "route_revision",
+        "rendered_revision",
+        "mounted_comparisons",
+        "blank_frames",
+        "pending_seen",
+        "pending_active",
+        "aria_busy",
+        "pending_onset_ms",
+        "pending_clear_ms",
+        "phase_labels",
+    ):
+        assert f"{field}:" in result.stdout
 
 
 def test_file_view_scenario_uses_trusted_clicks_and_painted_readiness() -> None:

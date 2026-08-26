@@ -200,12 +200,20 @@ def test_shell_shares_immediate_claim_owned_preview_feedback() -> None:
     )
     assert "if (!retainedPreview)" in select_file
 
-    assert "--preview-navigation-pending-opacity:" in css
-    shared_rule = css[css.index("#preview-pane.preview-navigation-pending") :][:600]
-    assert "opacity: var(--preview-navigation-pending-opacity);" in shared_rule
-    assert "transition: opacity var(--transition-fast);" in shared_rule
+    assert "--preview-navigation-pending-overlay:" in css
+    assert "--preview-navigation-pending-transition: 60ms ease-out;" in css
+    overlay_rule = css[css.index("#preview-pane::after") :][:700]
+    assert 'content: "";' in overlay_rule
+    assert "position: fixed;" in overlay_rule
+    assert "inset: 0;" in overlay_rule
+    assert "pointer-events: none;" in overlay_rule
+    assert "background: var(--preview-navigation-pending-overlay);" in overlay_rule
+    assert "opacity: 0;" in overlay_rule
+    assert "transition: opacity var(--preview-navigation-pending-transition);" in overlay_rule
+    pending_rule = css[css.index("#preview-pane.preview-navigation-pending::after") :][:150]
+    assert "opacity: 1;" in pending_rule
     reduced = css[css.index("@media (prefers-reduced-motion: reduce)") :]
-    assert "#preview-pane.preview-navigation-pending" in reduced
+    assert "#preview-pane::after" in reduced
     assert "transition: none;" in reduced
 
 

@@ -605,9 +605,13 @@
    * @param {HTMLElement} anchor
    */
   function setCommitRowAnchor(list, anchor) {
-    for (const row of commitRows(list)) {
-      row.setAttribute("tabindex", row === anchor ? "0" : "-1");
+    const previous = list.querySelector(".git-graph-row[data-roving-anchor]");
+    if (previous instanceof HTMLElement && previous !== anchor) {
+      previous.setAttribute("tabindex", "-1");
+      delete previous.dataset.rovingAnchor;
     }
+    anchor.setAttribute("tabindex", "0");
+    anchor.dataset.rovingAnchor = "";
   }
 
   /** @param {HTMLElement} list */
@@ -641,12 +645,11 @@
     if (!next || next === row) {
       return true;
     }
-    setCommitRowAnchor(list, next);
     next.focus({ preventScroll: true });
     next.scrollIntoView({ block: "nearest" });
     const revision = next.dataset.revision;
     if (revision) {
-      void selectCommit(revision);
+      void selectCommit(revision, { rowElement: next });
     }
     return true;
   }
@@ -680,7 +683,7 @@
     }
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      void selectCommit(revision);
+      void selectCommit(revision, { rowElement: row });
     }
   }
 
@@ -813,7 +816,7 @@
       `${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
     element.appendChild(body);
 
-    element.addEventListener("click", () => selectCommit(commit.id));
+    element.addEventListener("click", () => selectCommit(commit.id, { rowElement: element }));
     element.addEventListener("keydown", (event) =>
       handleCommitRowKeydown(event, element, commit.id),
     );
@@ -824,10 +827,10 @@
       }
     });
     element.addEventListener("focus", () => {
-      const list = element.parentElement;
-      if (list instanceof HTMLElement) {
-        setCommitRowAnchor(list, element);
-      }
+      // Programmatic focus is enough for Arrow-key continuation while the
+      // selected comparison loads. Changing the roving Tab anchor here can
+      // synchronously force layout across a large retained diff; selection
+      // finalizes that accessibility bookkeeping after painted readiness.
       scheduleHover(element, commit.id);
     });
     element.addEventListener("blur", () => {
@@ -873,11 +876,12 @@
       clearTimeout(hoverTimer);
     }
     hoverRevision = revision;
-    const preparation = prepareRevision(revision, true);
-    // Detail preparation begins on intent, while presentation waits for a
-    // stable target so dragging down the graph does not flash one card per row.
+    // Both preparation and presentation wait for a stable target. Starting
+    // detail and comparison requests on every pointer crossing made scrolling
+    // the history compete with the commit the reader actually selected.
     hoverTimer = setTimeout(async () => {
       hoverTimer = null;
+      const preparation = prepareRevision(revision, true);
       const detail = await (preparation?.detail ?? fetchCommitDetail(revision));
       if (!detail) {
         return;
@@ -930,8 +934,10 @@
 
   /**
    * @param {string} revision
-   * @param {{fromRoute?: boolean}} [options] `fromRoute` when the URL is
-   *   already this commit (restore on load), so the route is not rewritten.
+   * @param {{fromRoute?: boolean, rowElement?: HTMLElement}} [options]
+   *   `fromRoute` when the URL is already this commit (restore on load), so
+   *   the route is not rewritten. Pointer and keyboard paths pass their row
+   *   so immediate feedback does not search the mounted history.
    */
   async function selectCommit(revision, options = {}) {
     const bridge = shell();
@@ -940,44 +946,85 @@
     }
     /** @type {number | null} */
     let selectionClaim = null;
+    /** @type {HTMLElement | null} */
+    let selectedRowForAnchor = null;
     return measureAsync(
       "gitRevision:selectToReady",
       async () => {
-        clearPendingState();
-        const previewClaim = bridge.claimPreview("git");
-        selectionClaim = previewClaim;
-        const retainedPreview = bridge.beginPreviewNavigation(previewClaim);
-        pendingPreviewClaim = previewClaim;
-        if (state.selectedId !== revision) {
+        const feedback = measure(
+          "gitRevision:selectionFeedback",
+          () => {
+            const { previewClaim, retainedPreview } = measure(
+              "gitRevision:selectionFeedback:pending",
+              () => {
+                clearPendingState();
+                const claim = bridge.claimPreview("git");
+                selectionClaim = claim;
+                const retained = bridge.beginPreviewNavigation(claim);
+                pendingPreviewClaim = claim;
+                return { previewClaim: claim, retainedPreview: retained };
+              },
+              { revision },
+            );
+            selectionClaim = previewClaim;
+            const revisionChanged = state.selectedId !== revision;
+            measure(
+              "gitRevision:selectionFeedback:route",
+              () => {
+                // A commit is a selection like any other, so it owns the URL while
+                // it is shown: /commit/<rev> (Browser URL Grammar). Replacing rather
+                // than pushing matches the tree's skim rule — walking a history list
+                // must not bury the reader's entry point.
+                const routes = window.MetabrowserNavigationRoute;
+                if (
+                  routes &&
+                  !options.fromRoute &&
+                  typeof window.history?.replaceState === "function"
+                ) {
+                  window.history.replaceState(null, "", routes.commitHref(revision));
+                }
+                state.selectedId = revision;
+              },
+              { revision },
+            );
+            measure(
+              "gitRevision:selectionFeedback:rows",
+              () => {
+                const mountedPanel = panelElement();
+                const priorRow =
+                  mountedPanel instanceof HTMLElement
+                    ? mountedPanel.querySelector(".git-graph-row.selected")
+                    : null;
+                const matchedRow =
+                  options.rowElement?.dataset.revision === revision
+                    ? options.rowElement
+                    : mountedPanel
+                      ? commitRows(mountedPanel).find((row) => row.dataset.revision === revision)
+                      : null;
+                const selectedRow = matchedRow instanceof HTMLElement ? matchedRow : null;
+                selectedRowForAnchor = selectedRow;
+                if (priorRow instanceof HTMLElement && priorRow !== selectedRow) {
+                  priorRow.classList.remove("selected");
+                  priorRow.removeAttribute("aria-current");
+                }
+                if (selectedRow) {
+                  selectedRow.classList.add("selected");
+                  selectedRow.setAttribute("aria-current", "true");
+                }
+              },
+              { revision },
+            );
+            return { previewClaim, retainedPreview, revisionChanged };
+          },
+          { revision },
+        );
+        const { previewClaim, retainedPreview, revisionChanged } = feedback;
+        if (revisionChanged) {
           // Keep the prior DOM as the handoff surface, but stop its deferred
           // hydration and syntax work from competing with the selected diff.
+          // Pointer and keyboard paths have already updated their exact two
+          // rows and the pending sheet before this bounded cancellation work.
           commitDiffHandle?.cancelPending?.();
-        }
-        // A commit is a selection like any other, so it owns the URL while
-        // it is shown: /commit/<rev> (Browser URL Grammar). Replacing rather
-        // than pushing matches the tree's skim rule — walking a history list
-        // must not bury the reader's entry point.
-        const routes = window.MetabrowserNavigationRoute;
-        if (routes && !options.fromRoute && typeof window.history?.replaceState === "function") {
-          window.history.replaceState(null, "", routes.commitHref(revision));
-        }
-        state.selectedId = revision;
-        let selectedRow = null;
-        for (const element of document.querySelectorAll(".git-graph-row")) {
-          if (!(element instanceof HTMLElement)) {
-            continue;
-          }
-          const selected = element.dataset.revision === revision;
-          element.classList.toggle("selected", selected);
-          if (selected) {
-            element.setAttribute("aria-current", "true");
-            selectedRow = element;
-          } else {
-            element.removeAttribute("aria-current");
-          }
-        }
-        if (selectedRow?.parentElement instanceof HTMLElement) {
-          setCommitRowAnchor(selectedRow.parentElement, selectedRow);
         }
 
         const preparation = prepareRevision(revision, false);
@@ -1025,6 +1072,20 @@
       },
       { revision },
     ).finally(() => {
+      if (
+        state.selectedId === revision &&
+        selectedRowForAnchor?.parentElement instanceof HTMLElement
+      ) {
+        measure(
+          "gitRevision:rowAnchor",
+          () => {
+            if (selectedRowForAnchor?.parentElement instanceof HTMLElement) {
+              setCommitRowAnchor(selectedRowForAnchor.parentElement, selectedRowForAnchor);
+            }
+          },
+          { revision },
+        );
+      }
       if (selectionClaim !== null && pendingPreviewClaim === selectionClaim) {
         clearPendingState();
       }

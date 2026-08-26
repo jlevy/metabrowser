@@ -802,11 +802,24 @@ the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.
 Enter, Space, and pointer activation retain the control’s ordinary behavior.
 
+Interaction work is proportional to the change, not the collection size.
+Moving or selecting mutates only the prior and next anchor or selected row; a mounted
+list may scan all rows when it is first synchronized, but an Arrow-key or pointer
+activation must not rewrite every row before the main view can acknowledge the
+selection. When a retained view contains many focusable controls, the newly focused row
+may remain programmatically focusable at `tabindex="-1"` during the pending interval.
+Its visible focus, selected state, route, and pending sheet update in the input task;
+the component finalizes the one-row Tab anchor after painted readiness.
+This avoids a whole-document focus-order recalculation before the browser can paint the
+acknowledgement.
+
 The component owns this focused behavior; it is not a document-level application
 shortcut. The maintained registry in
 `test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree and
-Git history. Register every new navigational row collection in that check so its Tab
-order and vertical navigation cannot silently fork this contract.
+Git history. The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins
+Git’s interaction cost.
+Register every new navigational row collection in the shared check so its Tab order and
+vertical navigation cannot silently fork this contract.
 
 ### Descriptor Contract
 
@@ -1689,10 +1702,14 @@ tally. Apply the utility rather than adding independent timers at each renderer.
 
 Selection feedback is distinct from loading chrome.
 When file or Git navigation can retain useful preview content, the shell immediately
-adds `.preview-navigation-pending`: the whole preview dims by the small
-`--preview-navigation-pending-opacity` step and becomes `aria-busy` under the current
-preview claim. This acknowledges the action without replacing content, moving geometry,
-blocking interaction, or claiming how long the work will take.
+adds `.preview-navigation-pending`: the rendered main view moves toward a visibly
+inactive neutral treatment under one fixed, pointer-transparent sheet using
+`--preview-navigation-pending-overlay`, while the nav panel stays at full contrast.
+Its dedicated `--preview-navigation-pending-transition` reaches the pending treatment in
+60 ms; the general 150 ms control transition is too slow for input acknowledgement.
+The preview becomes `aria-busy` under the current claim.
+This acknowledges the action without replacing content, moving geometry, blocking
+interaction, or claiming how long the work will take.
 The state ends at the selected view’s painted-readiness boundary.
 A stale claim cannot clear or retain it.
 
@@ -1701,8 +1718,19 @@ It keeps the longer shell wait (`LOADING_INDICATOR_DELAY_MS`) before installing 
 neutral spinner, which still uses `.mb-delayed-loading`. Ready content always wins
 immediately: do not add a minimum spinner duration, progress bar, crossfade, or
 transition that delays usable content merely to complete an animation.
-Under `prefers-reduced-motion`, the opacity transition is disabled but the immediate
-pending state remains visible.
+Under `prefers-reduced-motion`, the sheet’s opacity transition is disabled but the
+immediate pending state remains visible.
+
+Navigation implementations measure this acknowledgement separately from content
+readiness. The synchronous selection-feedback span contains only the pending sheet,
+route, and old/new selected-row mutations; it does not include cancellation, roving Tab
+order, network, parsing, syntax work, or rendering.
+The standard headed scenario requires that span and pending onset/clearance, while
+browser Event Timing remains the authority for the next painted response.
+
+High-churn navigational rows update hover, focus, and selection backgrounds without a
+transition so the visible answer does not ease in behind the input.
+Motion belongs on the single preview sheet, not on each row crossed while scrolling.
 
 ### Progress Spinners Stay Neutral
 
