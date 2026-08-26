@@ -592,7 +592,7 @@ Challenging an existing rule from first principles is ordinary work, not an over
 
 ## Issue Tracking
 
-The repository uses tbd v0.4.0 for git-native issues and plans:
+The repository uses tbd v0.8.1 for git-native issues and plans:
 
 ```shell
 tbd prime
@@ -607,20 +607,15 @@ close issues only after validation.
 Run `tbd sync` before the final push.
 
 The tracker is a first-party package with an audited cool-off exception; see
-[supply-chain security](../SUPPLY-CHAIN-SECURITY.md) for the reviewed version and the
-rationale. Two things make an upgrade more than an `npm install -g`. Node version
-managers keep a separate global package tree per Node version, so install the same
-release into every Node version used with this repository — at minimum the manager’s
-default and the version pinned in `.node-version`. A stale copy under another Node
-version silently reverts caches and forked documents written by the newer one.
-`tbd setup --auto` also rewrites files this repository hardens deliberately:
-root-anchored hook commands, the exact pinned version in the agent skill files, the
-graceful unsupported-platform skip in the GitHub CLI helper, and the cool-off exemption
-passed to the pinned fallback invocations.
-Re-apply those after running setup and bump the version in
-`tests/test_public_hygiene.py`, which enforces them.
-Prefer upstream documents over local forks; unfork one once upstream covers the same
-guidance.
+[supply-chain security](../SUPPLY-CHAIN-SECURITY.md) for the rationale.
+Node version managers keep a separate global package tree per Node version, so install
+the same release into every Node version used with this repository—at minimum the
+manager’s default and the version pinned in `.node-version`. A stale copy under another
+Node version can silently revert caches and forked documents written by the newer one.
+After upgrading, run `tbd setup --auto` and commit its generated hook configs, session
+scripts, skills, and configuration exactly as generated.
+Fix generator defects upstream rather than hand-patching outputs that the next setup run
+will replace.
 
 ## Shared Working Tree
 

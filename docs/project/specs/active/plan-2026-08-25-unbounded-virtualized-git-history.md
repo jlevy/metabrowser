@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft; targeted for v0.8.0
+**Status:** Draft; targeted for v0.9.0
 
 ## Overview
 
@@ -14,7 +14,7 @@ The cutoff prevents the browser from retaining an ever-growing DOM and graph, ye
 also makes older history inaccessible.
 Raising it to 1,000 only moves the same failure.
 
-The v0.8 design removes the numerical history ceiling.
+The v0.9 design removes the numerical history ceiling.
 History continues on demand until Git reports its real end.
 A virtual list mounts only the visible rows plus a measured overscan window, and a
 bounded client page cache retains only the working set.
@@ -27,9 +27,8 @@ server sessions all remain bounded.
 Temporary session storage may grow with history actually visited; it is released on
 expiry or disposal and is never read into memory as one object.
 
-This is a v0.8 feature.
-The v0.7.1 patch release remains limited to the commit-diff loading regression, the
-gear-menu tooltip correction, and version display.
+This work begins from the v0.8.0 release, which retains the bounded 500-commit panel.
+The complete continuation and virtualization design targets v0.9.0.
 
 ## Goals
 
@@ -105,7 +104,7 @@ the start of the current page.
 
 The server, browser shell, and built-in Git panel ship together.
 The `/api/git/log` cursor and `METABROWSER_SETTINGS` values are internal contracts, so
-v0.8 changes both sides together and removes the old skip cursor rather than adding a
+v0.9 changes both sides together and removes the old skip cursor rather than adding a
 compatibility shim. The observable paging behavior is recorded in `CHANGELOG.md`.
 
 ### Complexity assessment
@@ -291,7 +290,7 @@ Compatibility audit:
   scope, lane continuity, retry, empty, and real-end states.
 - Remove `GIT_HISTORY_MAX_ROWS`, the capped message, and skip-cursor code and tests.
 
-### Phase 5: Validate v0.8 (`mb-0ev5`)
+### Phase 5: Validate v0.9 (`mb-0ev5`)
 
 - Run the deterministic structural suite and real-browser profiles at all measured
   sizes, including repeated down/up traversal after cache eviction and a history deep
@@ -332,15 +331,15 @@ The feature is accepted when:
 - revisiting an evicted page preserves commit order and graph lanes;
 - selection, keyboard focus, direct commit detail, scope, errors, and end-of-history
   behavior pass their regression tests; and
-- `make verify` and the v0.8 release comparison pass.
+- `make verify` and the v0.9 release comparison pass.
 
 ## Rollout
 
-The feature ships as the Git panel behavior in v0.8.0, without a compatibility flag.
+The feature ships as the Git panel behavior in v0.9.0, without a compatibility flag.
 The client and server are one artifact, and a flag would double an internal contract
 without providing a separately updatable consumer.
 If measurement rejects the session prototype, `mb-abu2` remains blocked until a
-continuation design meets the same acceptance criteria; the fallback is the honest v0.7
+continuation design meets the same acceptance criteria; the fallback is the honest v0.8
 bounded panel, not an unmeasured higher cutoff.
 
 ## References
