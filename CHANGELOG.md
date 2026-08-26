@@ -51,7 +51,9 @@ Performance, validated against 0.6.0 side by side:
   separates synchronous acknowledgement, complete painted readiness, and Event Timing;
   it audits the full input task and Long Animation Frame forced-layout evidence when
   those clocks disagree.
-  Recording exits nonzero as soon as any run crosses a hard budget.
+  The interaction driver resolves target scrolling and click geometry before starting
+  the application clock, so its own layout preparation is not reported as pending-state
+  delay. Recording exits nonzero as soon as any run crosses a hard budget.
 
 Browser:
 

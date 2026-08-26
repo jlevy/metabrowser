@@ -150,6 +150,29 @@ def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> Non
     assert 'command.extend(["--scenario", scenario])' in runner
 
 
+def test_navigation_scenarios_prepare_click_coordinates_before_timing() -> None:
+    source = CAPTURE.read_text(encoding="utf-8")
+    file_transition = source.split("async function measureFileTransition", 1)[1].split(
+        "async function", 1
+    )[0]
+    git_transition = source.split("async function measureGitTransition", 1)[1].split(
+        "async function", 1
+    )[0]
+
+    assert file_transition.index("const point = await pointForFilePath") < file_transition.index(
+        "const started = await evaluate"
+    )
+    assert file_transition.index("startFileBlankFrameMonitor") < file_transition.index(
+        "dispatchTrustedClickAtPoint(session, point)"
+    )
+    assert git_transition.index("const point = await pointForSelector") < git_transition.index(
+        "const started = await evaluate"
+    )
+    assert git_transition.index("startGitBlankFrameMonitor") < git_transition.index(
+        "dispatchTrustedClickAtPoint(session, point)"
+    )
+
+
 def test_git_revision_scenario_rejects_stale_or_unmeasured_transitions() -> None:
     node = shutil.which("node")
     if node is None:

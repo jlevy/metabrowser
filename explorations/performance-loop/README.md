@@ -303,6 +303,9 @@ phase looks fast:
 
 1. Freeze the exact product build, corpus fingerprint, selected subjects, viewport, and
    foreground visibility.
+   Resolve driver-owned scrolling and click coordinates before starting the transition
+   clock or pending monitor; otherwise the harness can charge its own layout preparation
+   to application response time.
    A single run can validate scenario wiring, but a performance conclusion needs at
    least three runs per condition.
    Interleave control and candidate runs when making a comparative claim.

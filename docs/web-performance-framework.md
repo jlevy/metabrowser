@@ -218,6 +218,8 @@ Keep it separate from selection-to-painted-ready and Event Timing: the first att
 handler work, the second captures the complete content handoff, and the third proves
 when the browser painted a response to trusted input.
 Pending-state mutation time is state-onset evidence, not paint evidence.
+An interaction driver resolves target scrolling and click coordinates before the common
+clock starts, so driver-induced layout preparation cannot masquerade as input delay.
 When the local span is short but Event Timing is long, inspect the complete browser
 input task, including focus handlers, default actions, other event listeners,
 synchronous observers, and work before the next paint.

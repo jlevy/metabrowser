@@ -383,8 +383,8 @@ async function dispatchTrustedPointerForSelector(session, selector, index = 0) {
   });
 }
 
-async function dispatchTrustedClickForFilePath(session, filePath) {
-  const point = await evaluate(
+async function pointForFilePath(session, filePath) {
+  return evaluate(
     session,
     `(async () => {
       const row = Array.from(document.querySelectorAll(".tree-item.tree-file[data-path]"))
@@ -399,6 +399,10 @@ async function dispatchTrustedClickForFilePath(session, filePath) {
     })()`,
     true,
   );
+}
+
+async function dispatchTrustedClickForFilePath(session, filePath) {
+  const point = await pointForFilePath(session, filePath);
   if (!point) {
     throw new Error(`could not click file row ${filePath}`);
   }
@@ -703,9 +707,13 @@ function assertFileTransitionHealth(result) {
 }
 
 async function measureFileTransition(session, filePath, name, timeoutMs) {
+  const point = await pointForFilePath(session, filePath);
+  if (!point) {
+    throw new Error(`could not click file row ${filePath}`);
+  }
   const started = await evaluate(session, `({epoch: Date.now(), now: performance.now()})`);
   await startFileBlankFrameMonitor(session);
-  await dispatchTrustedClickForFilePath(session, filePath);
+  await dispatchTrustedClickAtPoint(session, point);
   const ready = await waitForFileView(session, filePath, timeoutMs);
   const blank = await stopFileBlankFrameMonitor(session);
   const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);
@@ -891,9 +899,13 @@ async function measureGitTransition(session, rowIndex, name, timeoutMs) {
   if (!row?.revision) {
     throw new Error(`Git row ${rowIndex} is unavailable`);
   }
+  const point = await pointForSelector(session, ".git-graph-row", rowIndex);
+  if (!point) {
+    throw new Error(`could not click .git-graph-row[${rowIndex}]`);
+  }
   const started = await evaluate(session, `({epoch: Date.now(), now: performance.now()})`);
   await startGitBlankFrameMonitor(session);
-  await dispatchTrustedClickForSelector(session, ".git-graph-row", rowIndex);
+  await dispatchTrustedClickAtPoint(session, point);
   const paintedAt = await waitForGitRevision(session, row.revision, timeoutMs);
   const blank = await stopGitBlankFrameMonitor(session);
   const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);

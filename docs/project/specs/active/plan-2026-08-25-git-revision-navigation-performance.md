@@ -274,7 +274,7 @@ introduced.
 ## Implementation Plan
 
 Epic `mb-fgcg` owns this plan.
-Its twenty-two child beads separate measurement, behavior, presentation, validation,
+Its twenty-three child beads separate measurement, behavior, presentation, validation,
 keyboard consistency, commit-header information design, component ownership,
 retained-work cancellation, cross-surface pending and readiness parity, and delivery.
 Blockers express only real sequencing; the baseline also feeds final validation
@@ -303,7 +303,8 @@ directly.
 | Delay Git hover preparation until stable intent | `mb-ues1` | None | Closed |
 | Gate Git pending timing and row-anchor attribution | `mb-f43i` | None | Closed |
 | Standardize retained-navigation interaction attribution | `mb-1xm2` | `mb-f43i` | Closed |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-1xm2`, and completed prior phases | Blocked |
+| Exclude driver coordinate lookup from navigation timing | `mb-gv44` | `mb-1xm2` | Closed |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -735,7 +736,26 @@ server work a single viewport can start.
   continuity, convergence, request bounds, or cancellation health fail closed.
   Documentation tests, focused performance tests, `make format`, and `make verify` pass.
 
-### Phase 21: Deliver and Monitor (`mb-j8ni`)
+### Phase 21: Exclude Driver Preparation from Interaction Timing (`mb-gv44`)
+
+- **Files and functions:** Extract `pointForFilePath` and update `measureFileTransition`
+  and `measureGitTransition` in `capture-browser.js` so target scrolling and coordinate
+  lookup precede the common transition timestamp and pending monitor.
+  Pin that order in `tests/test_browser_performance_capture.py`; reconcile the
+  performance-loop procedure, framework, experiment, this plan, and `CHANGELOG.md`.
+- **Behavior and invariants:** Driver-owned `scrollIntoView()` and
+  `getBoundingClientRect()` work is not part of application input response.
+  The target point is ready before timing begins; the pending and blank monitor is then
+  armed; and only the trusted click follows.
+  Git and ordinary file scenarios share this ordering, while phase, fetch, continuity,
+  readiness, and convergence collection keeps the same input-relative boundary.
+- **Acceptance:** A focused regression test fails on the old ordering and passes on the
+  corrected one. A settled headed Git validation records pending onset from the trusted
+  input boundary, all required phase labels, zero blank frames, exact convergence,
+  bounded request cancellation, one mounted comparison, and zero page exceptions.
+  Focused tests, `make format`, and `make verify` pass.
+
+### Phase 22: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original

@@ -198,6 +198,19 @@ Pending mutation timestamps establish state onset only.
 The scenario fails closed on missing phase attribution, stuck pending state, blank
 frames, stale convergence, duplicate mounts, request fanout, or obsolete success.
 
+The exact-head follow-up also exposed a driver boundary error: the pending monitor began
+before the driver scrolled to the target row and called `getBoundingClientRect()` to
+prepare trusted input.
+One run therefore reported 48.8–205.9 ms pending onset even though the application
+feedback spans were 0.4–1.6 ms.
+The driver now resolves click geometry before the transition clock and monitor start,
+while dispatching the trusted input afterwards.
+A settled validation run recorded 6.2–17.9 ms pending onset and 0.4–1.4 ms feedback,
+with zero blank frames, exact convergence, bounded cancellation, zero page exceptions,
+and zero forced layout.
+This corrects measurement attribution; it does not establish a comparative product-speed
+result.
+
 ## Decision
 
 Accept atomic staging and one-slot pointer or focus preparation.
