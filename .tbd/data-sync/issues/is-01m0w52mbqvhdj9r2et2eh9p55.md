@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 41
+version: 42
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -34,10 +34,10 @@ child_order_hints:
   - is-01m0xvd71f9wvm3127ewrytsjd
   - is-01m0xwh9tfjnqf5rfb3dpap7cb
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-26T02:02:49.469Z
+updated_at: 2026-08-26T02:09:23.716Z
 ---
 Deliver the twenty-two-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: the reviewed Git revision navigation implementation and its later file/Git parity, request-deduplication, visible pending-sheet, stable-hover, O(1) selection-feedback, standard interaction-attribution procedure, correctly input-relative driver timing, performance instrumentation, and final PR/CI phases. Keep useful content visible; use one compositor-friendly pointer-transparent pending sheet over the preview only; keep row interaction work proportional to the changed rows; distinguish immediate selection feedback from selection-to-painted-ready and Event Timing; exclude driver scroll/coordinate preparation from application timing; retain at most one speculative comparison; cancel obsolete work; fail standard scenarios on fanout, duplicate selected work, blank frames, stuck pending state, missing phase attribution, or route/render divergence; do not add unmeasured caching, dependencies, or speculative compatibility; close only after PR #82 has exact-head green CI.
 
 ## Notes
 
-All twenty-two implementation phases and twenty-three child beads are implemented; only the PR/CI handoff remains open. Standardization mb-1xm2 and timing-origin correction mb-gv44 are closed. The performance loop now requires separate synchronous acknowledgement, painted-ready, and Event Timing clocks; audits the complete input task and Long Animation Frame attribution when they disagree; and resolves driver scroll/click geometry before the measurement origin. Corrected settled Git validation recorded 6.2–17.9 ms pending onset and 0.4–1.4 ms feedback; file validation recorded 10.6–20.4 ms onset, correct cold/cached request counts, and 24 ms maximum Event Timing. Both scenarios retained exact convergence, zero blank frames, one mount, and zero exceptions. make verify passes with 1557 tests plus 48 golden. PR #82 remains stacked on open #81 pending retargeting and final exact-head CI.
+All twenty-two implementation phases and twenty-three child beads are implemented; only the PR/CI handoff remains open. Standardization mb-1xm2 and timing-origin correction mb-gv44 are closed. The documented standard loop separates synchronous acknowledgement, painted-ready, and Event Timing clocks, audits the complete input task and Long Animation Frame attribution when they disagree, and excludes driver scroll/click geometry from the application clock. Exact pushed head cdc6376 passes Git and file scenarios with zero blank frames, exact convergence, bounded cancellation, zero exceptions, and zero forced layout. Git pending onset is 11.9–16.6 ms with 0.3–1.4 ms synchronous feedback; file onset is 12.3–26.7 ms with correct cold/cached request counts. make verify passes with 1557 tests plus 48 golden. PR #82 remains stacked on open #81 pending retargeting and final exact-head CI.
