@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 39
+version: 41
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -32,11 +32,12 @@ child_order_hints:
   - is-01m0xp910y4k86s1emzcn93rz0
   - is-01m0xtc5n71qyfhgd9p1nzxcws
   - is-01m0xvd71f9wvm3127ewrytsjd
+  - is-01m0xwh9tfjnqf5rfb3dpap7cb
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-26T01:44:59.246Z
+updated_at: 2026-08-26T02:02:49.469Z
 ---
-Deliver the twenty-one-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: the reviewed Git revision navigation implementation and its later file/Git parity, request-deduplication, visible pending-sheet, stable-hover, O(1) selection-feedback, standard interaction-attribution procedure, performance instrumentation, and final PR/CI phases. Keep useful content visible; use one compositor-friendly pointer-transparent pending sheet over the preview only; keep row interaction work proportional to the changed rows; distinguish immediate selection feedback from selection-to-painted-ready and Event Timing; retain at most one speculative comparison; cancel obsolete work; fail standard scenarios on fanout, duplicate selected work, blank frames, stuck pending state, missing phase attribution, or route/render divergence; do not add unmeasured caching, dependencies, or speculative compatibility; close only after PR #82 has exact-head green CI.
+Deliver the twenty-two-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: the reviewed Git revision navigation implementation and its later file/Git parity, request-deduplication, visible pending-sheet, stable-hover, O(1) selection-feedback, standard interaction-attribution procedure, correctly input-relative driver timing, performance instrumentation, and final PR/CI phases. Keep useful content visible; use one compositor-friendly pointer-transparent pending sheet over the preview only; keep row interaction work proportional to the changed rows; distinguish immediate selection feedback from selection-to-painted-ready and Event Timing; exclude driver scroll/coordinate preparation from application timing; retain at most one speculative comparison; cancel obsolete work; fail standard scenarios on fanout, duplicate selected work, blank frames, stuck pending state, missing phase attribution, or route/render divergence; do not add unmeasured caching, dependencies, or speculative compatibility; close only after PR #82 has exact-head green CI.
 
 ## Notes
 
-All twenty-one implementation phases and twenty-two child beads are implemented; only the PR/CI handoff remains open. User-acceptance refinements are closed in mb-rnr7 and mb-ues1, precommit timing finding mb-f43i is closed, and the standard profiling procedure/evidence bead mb-1xm2 is closed. The performance loop now requires separate synchronous acknowledgement, painted-ready, and Event Timing clocks; audits the complete input task and Long Animation Frame forced-layout attribution when they disagree; and retains residual cold data/render costs honestly. Exact pushed product head 947c447 passed make verify, hooks, and headed Git validation; the documentation follow-up also passes focused tests and make verify. PR #82 remains stacked on open #81 pending retargeting and final GitHub CI.
+All twenty-two implementation phases and twenty-three child beads are implemented; only the PR/CI handoff remains open. Standardization mb-1xm2 and timing-origin correction mb-gv44 are closed. The performance loop now requires separate synchronous acknowledgement, painted-ready, and Event Timing clocks; audits the complete input task and Long Animation Frame attribution when they disagree; and resolves driver scroll/click geometry before the measurement origin. Corrected settled Git validation recorded 6.2–17.9 ms pending onset and 0.4–1.4 ms feedback; file validation recorded 10.6–20.4 ms onset, correct cold/cached request counts, and 24 ms maximum Event Timing. Both scenarios retained exact convergence, zero blank frames, one mount, and zero exceptions. make verify passes with 1557 tests plus 48 golden. PR #82 remains stacked on open #81 pending retargeting and final exact-head CI.
