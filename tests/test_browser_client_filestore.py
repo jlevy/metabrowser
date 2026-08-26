@@ -529,7 +529,7 @@ def test_enhance_after_optional_asset_only_schedules_highlight() -> None:
 def test_plugin_mount_schedules_scoped_post_paint_highlighting() -> None:
     """Default and lazy views share one post-mount enhancement lifecycle."""
     js = _read_app_js()
-    mount_start = js.index("async function mountPluginView(container, pluginView, ctx)")
+    mount_start = js.index("async function mountPluginView(container, pluginView, ctx,")
     mount_block = js[mount_start : mount_start + 2600]
     assert "async function mountPluginView" in mount_block
     assert "await Promise.resolve(pluginView.render(container, ctx))" in mount_block
@@ -543,7 +543,7 @@ def test_plugin_mount_schedules_scoped_post_paint_highlighting() -> None:
 
     render_start = js.index("async function renderFile(data, preferredViewId, claim)")
     render_block = js[render_start : render_start + 12_000]
-    assert "mountPluginView(target, pluginView, ctx)" in render_block
+    assert "mountPluginView(target, pluginView, ctx, stagedPluginDisposers)" in render_block
     assert '"fileNavigation:activeView"' in render_block
     assert "await _perf.measureAsync(" in render_block
     assert 'await measureNextPaint("fileNavigation:paintReady"' in render_block

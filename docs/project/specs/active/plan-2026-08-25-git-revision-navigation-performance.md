@@ -323,7 +323,8 @@ directly.
 | Exclude driver coordinate lookup from navigation timing | `mb-gv44` | `mb-1xm2` | Closed |
 | Repair live folder disclosure after a Git round trip | `mb-j72n` | None | In progress |
 | Keep navigation tooltips pointer-owned | `mb-iert` | None | In progress |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, `mb-iert`, and completed prior phases | Blocked |
+| Keep retained file content through async plugin readiness | `mb-sfl2` | `mb-wf52` | In progress |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, `mb-iert`, `mb-sfl2`, and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -844,7 +845,35 @@ continuity, and measurement lifecycle remain.
   Visible-browser pointer and keyboard smoke tests, `make format`, and `make verify`
   pass.
 
-### Phase 25: Deliver and Monitor (`mb-j8ni`)
+### Phase 25: Keep Retained File Content Through Async Plugin Readiness (`mb-sfl2`)
+
+- **Files and functions:** Stage ordinary file replacements through
+  `createFilePreviewStage`, `renderFile`, `mountPluginView`, scoped disposer ownership,
+  and rooted `initTabs` in `src/metabrowser/static/app.js`; define the connected inert
+  stage in `src/metabrowser/static/styles.css`; make `fileViewCandidates` and
+  `runFileViewScenario` in `explorations/performance-loop/capture-browser.js` include a
+  deterministic JSON or YAML transition.
+  Update focused lifecycle and capture tests, `docs/design-system.md`,
+  `docs/plugins.md`, the performance documentation, this plan, and `CHANGELOG.md`.
+- **Behavior and invariants:** A new file view mounts in a connected, transparent, inert
+  stage while the prior useful preview remains visible.
+  The shell waits for the active renderer and optional instance `ready` promise, rejects
+  a stale claim, then transfers the staged children and their disposal ownership into
+  the preview in one replacement.
+  The old active renderer remains owned until that handoff; stale staged renderers are
+  disposed immediately at the next shared preview claim without changing the visible
+  preview, and late instance handles cannot regain ownership.
+  Header state, folder subscription, highlighting, incoming-content motion, and painted
+  readiness begin from the installed replacement, not the hidden stage.
+- **Acceptance:** Focused tests pin connected staging, swap ordering, scoped disposal,
+  stale cleanup, and the absence of a stage transition.
+  The standard headed `file-views` scenario deterministically exercises cold source,
+  structured, Markdown, and cached source transitions with zero blank frames, exact
+  convergence, one active mount, bounded requests, and no page exception.
+  The exact candidate also passes the headed `git-revisions` scenario, `make format`,
+  and `make verify`.
+
+### Phase 26: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
@@ -910,6 +939,19 @@ and painted readiness separately.
 These one-run values validate the scenario and the request-count fix; any broader
 performance claim still requires interleaved repeated captures.
 
+The final `ad7c8b7` file-view gate exposed a separate asynchronous handoff defect that
+the earlier source and Markdown candidate order had not guaranteed: a cold structured
+view replaced the retained preview with an empty connected container while awaiting its
+parsed-data request.
+Two reproductions observed one to two blank frames, or 8.3–16.7 ms.
+After connected inert staging and deterministic structured-view coverage, the same
+headed corpus recorded cold source, structured, Markdown, and cached source transitions
+of 81.7, 173.4, 172.6, and 73.5 ms respectively, all with zero blank frames, exact
+selection/route/view convergence, one active mount, and no page exception.
+A companion Git run retained zero blank frames and exact convergence, confirming that
+the shared preview change did not regress commit navigation.
+These are single-run acceptance measurements, not a comparative speed claim.
+
 A later settled headed Git capture on fixed corpus `tree-a01f4187` isolated a cold
 267–398 ms forced-layout interval to changing the newly focused row from `tabindex="-1"`
 to `tabindex="0"` while a large diff remained mounted.
@@ -954,10 +996,12 @@ pending feedback, missing immediate or painted-ready phase attribution, or
 selection/route/render divergence.
 The file scenario fails on blank retained content, route/path/view divergence, stuck
 pending state, missing painted-readiness attribution, or duplicate active mounts.
-Manual real-browser validation covers fast repeated pointer and keyboard navigation,
-cached and cold source and Markdown files, error recovery, direct commit routes, large
-and small comparisons, fold controls, split and unified layouts, both themes, reduced
-motion, and absence of flicker.
+Its deterministic cold structured transition ensures an asynchronous renderer crosses
+the same retained-content gate instead of relying only on synchronous source and cached
+paths. Manual real-browser validation covers fast repeated pointer and keyboard
+navigation, cached and cold source and Markdown files, error recovery, direct commit
+routes, large and small comparisons, fold controls, split and unified layouts, both
+themes, reduced motion, and absence of flicker.
 
 ## Rollout Plan
 

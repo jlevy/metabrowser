@@ -210,6 +210,9 @@ after input. A prompt spinner can shorten Event Timing while the requested conte
 arrives later. Keep the prior useful surface observable through the transition, require
 the exact requested subject at a painted boundary, and record blank or placeholder
 frames beside Event Timing.
+When a product has both synchronous and asynchronous renderers, the standard journey
+must include at least one cold asynchronous structured view; source-only or cached
+transitions cannot prove that the old surface survives renderer readiness.
 Freeze the product build and browsed corpus independently when product commits would
 otherwise change the navigation subjects.
 Use `Server-Timing` for backend work and finite application labels for transfer,

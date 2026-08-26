@@ -344,6 +344,9 @@ pending onset and clearance, blank-frame and convergence checks, mounted-owner c
 request bounds, and obsolete-work cancellation.
 The `file-views` scenario enforces the same useful-readiness and convergence contract
 for connected plugin renderers.
+It deterministically traverses a cold source file, a cold JSON or YAML structured view,
+a cold Markdown view, and a cached source revisit so an asynchronously ready renderer
+cannot disappear behind otherwise synchronous cases.
 
 ```shell
 uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py serve --files 100000

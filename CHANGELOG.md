@@ -11,6 +11,14 @@ Added:
 
 Fixed:
 
+- File-to-file navigation now keeps the prior useful preview visible while an
+  asynchronous structured renderer becomes ready.
+  The replacement mounts in a connected, inert stage and swaps in atomically, so YAML
+  and JSON views no longer expose a blank frame without weakening plugins’
+  connected-container contract.
+  The standard file-navigation performance scenario now always covers a cold structured
+  view alongside source, Markdown, and cached transitions.
+
 - Folders discovered while the Files panel is inactive now use the same class-driven
   disclosure state as fetched folders, so returning from a Git comparison during an
   active inventory scan can expand them without reloading the page.
@@ -168,8 +176,11 @@ API, observable to plugin authors:
 
 - A view instance handle may expose an optional `ready: Promise<void>` for a concrete
   initial useful-content pass that continues after `render` returns.
-  The connected container contract, lazy mounting for inactive tabs, direct async-render
-  support, and existing handles without `ready` are unchanged.
+  During retained navigation, that connected container is transparent and inert until
+  the active renderer is ready and the shell installs it atomically; initial rendering
+  must not move focus.
+  Lazy mounting for inactive tabs, direct async-render support, and existing handles
+  without `ready` are unchanged.
 
 - **`PLUGIN_SDK_VERSION` is `0.5`.** External plugins must set `sdk_version = "0.5"` for
   the selected-kind asset lifecycle.

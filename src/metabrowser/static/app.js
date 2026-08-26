@@ -3355,6 +3355,15 @@ var navPanels = [];
 /** @type {Set<string>} */
 var navPanelsShown = new Set();
 var previewClaimGeneration = 0;
+/** @type {(() => void) | null} */
+var pendingFilePreviewStageCleanup = null;
+
+function cancelPendingFilePreviewStage() {
+  const cleanup = pendingFilePreviewStageCleanup;
+  pendingFilePreviewStageCleanup = null;
+  cleanup?.();
+}
+
 // Completed replacements ease only compositor opacity. Retained content is
 // never animated while work is pending.
 var PREVIEW_ARRIVAL_DURATION_MS = 50;
@@ -3405,6 +3414,7 @@ function clearPreviewNavigationState(preview) {
  * @returns {number}
  */
 function claimPreview(owner) {
+  cancelPendingFilePreviewStage();
   const preview = document.getElementById("preview-pane");
   if (preview) {
     clearPreviewNavigationState(preview);
@@ -5533,7 +5543,7 @@ function updatePrintButton(printable) {
   btn.setAttribute("aria-hidden", printable ? "false" : "true");
 }
 
-function setActivePreviewView(tabId, preview) {
+function setActivePreviewView(tabId, preview, syncShell = true) {
   preview = preview || document.getElementById("preview-pane");
   if (!preview) {
     return;
@@ -5560,7 +5570,9 @@ function setActivePreviewView(tabId, preview) {
     preview.dataset.printProfile = "plain";
     delete preview.dataset.renderRuntime;
     delete preview.dataset.kpressEnabled;
-    updatePrintButton(false);
+    if (syncShell) {
+      updatePrintButton(false);
+    }
     return;
   }
   var printable = boolData(active.dataset.printable);
@@ -5577,7 +5589,9 @@ function setActivePreviewView(tabId, preview) {
   } else {
     delete preview.dataset.kpressEnabled;
   }
-  updatePrintButton(printable);
+  if (syncShell) {
+    updatePrintButton(printable);
+  }
 }
 
 function printActiveView() {
@@ -5597,10 +5611,8 @@ document.addEventListener("metabrowser:view-print-state", () => {
 
 var activePluginDisposers = [];
 
-function disposeActivePluginViews() {
-  stopFolderHeaderSubscription();
-  var disposers = activePluginDisposers;
-  activePluginDisposers = [];
+/** @param {Array<() => void>} disposers */
+function disposePluginViews(disposers) {
   for (var i = 0; i < disposers.length; i++) {
     try {
       disposers[i]();
@@ -5610,10 +5622,17 @@ function disposeActivePluginViews() {
   }
 }
 
-async function mountPluginView(container, pluginView, ctx) {
+function disposeActivePluginViews() {
+  stopFolderHeaderSubscription();
+  var disposers = activePluginDisposers;
+  activePluginDisposers = [];
+  disposePluginViews(disposers);
+}
+
+async function mountPluginView(container, pluginView, ctx, disposers = activePluginDisposers) {
   /** @type {{disposed: boolean, handle: {dispose?: () => void, ready?: Promise<void>} | null}} */
   var record = { disposed: false, handle: null };
-  activePluginDisposers.push(() => {
+  disposers.push(() => {
     if (record.disposed) {
       return;
     }
@@ -5653,6 +5672,16 @@ async function mountPluginView(container, pluginView, ctx) {
   }
 }
 
+/** @param {HTMLElement} preview */
+function createFilePreviewStage(preview) {
+  const stage = document.createElement("div");
+  stage.className = "preview-file-stage";
+  stage.setAttribute("aria-hidden", "true");
+  stage.inert = true;
+  preview.appendChild(stage);
+  return stage;
+}
+
 async function renderFile(data, preferredViewId, claim) {
   // Ownership, not staleness: the Git panel renders into this same pane, so a
   // file render that lost the pane must not paint over it. currentPath cannot
@@ -5668,217 +5697,251 @@ async function renderFile(data, preferredViewId, claim) {
       if (!preview) {
         return;
       }
-
-      // Drain any disposers from a previously mounted view; we're about to
-      // replace preview.innerHTML below, which detaches their containers.
-      disposeActivePluginViews();
-
-      // Build header — folders get breadcrumb chrome (renderFolderHeader),
-      // files the path/badges/size strip.
-      let html = "";
-      if (data.kind === "folder") {
-        html = renderFolderHeader(data);
-        window.metabrowser?.folderContext?.seed(data.path, data);
-        startFolderHeaderSubscription(data.path);
-      } else {
-        stopFolderHeaderSubscription();
-      }
-      if (data.kind !== "folder") {
-        var badges = renderBadges(data);
-        html = '<div class="file-header">';
-        html +=
-          '<span class="file-header-path folder-breadcrumb">' +
-          headerAddressHtml(data.path, true) +
-          `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(data.path)}" data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
-          ICON_COPY +
-          "</button>" +
-          "</span>";
-        html += badges;
-        html += sizeHtml(data.size, "file-header-size");
-        html +=
-          '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
-          (ICONS.print || "") +
-          "</button>";
-        html += "</div>";
-      }
-
-      // Data-driven tab rendering from server views.
-      //
-      // Every (kind, viewId) goes through the plugin registry: built-in
-      // plugins (markdown, agent-log, unknown-jsonl, text) own their own
-      // kinds; entry-point plugins own theirs. The shell here
-      // builds the empty containers; each plugin's render(container, ctx)
-      // fires below once the DOM is in place. If no plugin claims a
-      // (kind, viewId) we paint an unavailable-view message — never a
-      // fallback that pulls renderers out of the shell. This is the
-      // contract: every kind is a plugin.
-      var views = data.views;
-      var initialActiveView = null;
-      if (views?.length) {
-        // Plugin navigation can preserve a working mode across resources.
-        // An unavailable preference falls through to the server default.
-        initialActiveView =
-          views.find((view) => view.id === preferredViewId) ||
-          views.find((view) => view.default) ||
-          views[0];
-      }
-      var pluginRenders = [];
-      if (views && views.length > 0) {
-        if (views.length > 1) {
-          html += '<div class="tab-bar">';
-          for (let i = 0; i < views.length; i++) {
-            const view = views[i];
-            var active = view.id === initialActiveView?.id ? " active" : "";
-            html +=
-              '<button class="tab-btn' +
-              active +
-              '" type="button" data-tab="' +
-              esc(view.id) +
-              '"' +
-              viewMetaAttrs(view) +
-              ">" +
-              esc(view.label) +
-              "</button>";
-          }
+      const stage = createFilePreviewStage(preview);
+      const stagedPluginDisposers = [];
+      let installed = false;
+      let stageCleaned = false;
+      const cleanupStage = () => {
+        if (stageCleaned) {
+          return;
+        }
+        stageCleaned = true;
+        disposePluginViews(stagedPluginDisposers);
+        stage.remove();
+      };
+      cancelPendingFilePreviewStage();
+      pendingFilePreviewStageCleanup = cleanupStage;
+      try {
+        // Build header — folders get breadcrumb chrome (renderFolderHeader),
+        // files the path/badges/size strip.
+        let html = "";
+        if (data.kind === "folder") {
+          html = renderFolderHeader(data);
+          window.metabrowser?.folderContext?.seed(data.path, data);
+        }
+        if (data.kind !== "folder") {
+          var badges = renderBadges(data);
+          html = '<div class="file-header">';
+          html +=
+            '<span class="file-header-path folder-breadcrumb">' +
+            headerAddressHtml(data.path, true) +
+            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(data.path)}" data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
+            ICON_COPY +
+            "</button>" +
+            "</span>";
+          html += badges;
+          html += sizeHtml(data.size, "file-header-size");
+          html +=
+            '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
+            (ICONS.print || "") +
+            "</button>";
           html += "</div>";
         }
-        for (let i = 0; i < views.length; i++) {
-          const view = views[i];
-          var pluginView =
-            window.metabrowser && data.kind
-              ? window.metabrowser.getRegisteredView(data.kind, view.id)
-              : null;
-          // container_class can be set per-view in the plugin manifest as
-          // [[view]].container_class; defaults to "content-body".
-          var containerClass = view.container_class || "content-body";
-          var hidden = view.id === initialActiveView?.id ? "" : ' style="display:none;"';
-          var noPadding = view.id === "raw" || view.id === "source" ? "padding:0;" : "";
-          if (noPadding && !hidden) {
-            hidden = ` style="${noPadding}"`;
-          } else if (noPadding && hidden) {
-            hidden = ` style="display:none;${noPadding}"`;
-          }
 
-          if (pluginView) {
-            // Empty container; plugin renders into it after innerHTML lands.
-            html +=
-              '<div class="' +
-              containerClass +
-              '" data-tab-content="' +
-              view.id +
-              '" data-plugin-view="' +
-              esc(view.id) +
-              '"' +
-              viewMetaAttrs(view) +
-              ' data-active-view="false"' +
-              hidden +
-              "></div>";
-            pluginRenders.push({ tabId: view.id, view: pluginView });
-          } else {
-            // No plugin registered for this (kind, viewId). Defensive
-            // empty-state — should not fire in practice because every
-            // kind+view declared in any loaded plugin's manifest is
-            // expected to have a matching registerView call.
-            html +=
-              '<div class="' +
-              containerClass +
-              '" data-tab-content="' +
-              view.id +
-              '"' +
-              viewMetaAttrs(view) +
-              ' data-active-view="false"' +
-              hidden +
-              '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
+        // Data-driven tab rendering from server views.
+        //
+        // Every (kind, viewId) goes through the plugin registry: built-in
+        // plugins (markdown, agent-log, unknown-jsonl, text) own their own
+        // kinds; entry-point plugins own theirs. The shell here
+        // builds the empty containers; each plugin's render(container, ctx)
+        // fires below once the DOM is in place. If no plugin claims a
+        // (kind, viewId) we paint an unavailable-view message — never a
+        // fallback that pulls renderers out of the shell. This is the
+        // contract: every kind is a plugin.
+        var views = data.views;
+        var initialActiveView = null;
+        if (views?.length) {
+          // Plugin navigation can preserve a working mode across resources.
+          // An unavailable preference falls through to the server default.
+          initialActiveView =
+            views.find((view) => view.id === preferredViewId) ||
+            views.find((view) => view.default) ||
+            views[0];
+        }
+        var pluginRenders = [];
+        if (views && views.length > 0) {
+          if (views.length > 1) {
+            html += '<div class="tab-bar">';
+            for (let i = 0; i < views.length; i++) {
+              const view = views[i];
+              var active = view.id === initialActiveView?.id ? " active" : "";
+              html +=
+                '<button class="tab-btn' +
+                active +
+                '" type="button" data-tab="' +
+                esc(view.id) +
+                '"' +
+                viewMetaAttrs(view) +
+                ">" +
+                esc(view.label) +
+                "</button>";
+            }
+            html += "</div>";
+          }
+          for (let i = 0; i < views.length; i++) {
+            const view = views[i];
+            var pluginView =
+              window.metabrowser && data.kind
+                ? window.metabrowser.getRegisteredView(data.kind, view.id)
+                : null;
+            // container_class can be set per-view in the plugin manifest as
+            // [[view]].container_class; defaults to "content-body".
+            var containerClass = view.container_class || "content-body";
+            var hidden = view.id === initialActiveView?.id ? "" : ' style="display:none;"';
+            var noPadding = view.id === "raw" || view.id === "source" ? "padding:0;" : "";
+            if (noPadding && !hidden) {
+              hidden = ` style="${noPadding}"`;
+            } else if (noPadding && hidden) {
+              hidden = ` style="display:none;${noPadding}"`;
+            }
+
+            if (pluginView) {
+              // Empty container; plugin renders into it after innerHTML lands.
+              html +=
+                '<div class="' +
+                containerClass +
+                '" data-tab-content="' +
+                view.id +
+                '" data-plugin-view="' +
+                esc(view.id) +
+                '"' +
+                viewMetaAttrs(view) +
+                ' data-active-view="false"' +
+                hidden +
+                "></div>";
+              pluginRenders.push({ tabId: view.id, view: pluginView });
+            } else {
+              // No plugin registered for this (kind, viewId). Defensive
+              // empty-state — should not fire in practice because every
+              // kind+view declared in any loaded plugin's manifest is
+              // expected to have a matching registerView call.
+              html +=
+                '<div class="' +
+                containerClass +
+                '" data-tab-content="' +
+                view.id +
+                '"' +
+                viewMetaAttrs(view) +
+                ' data-active-view="false"' +
+                hidden +
+                '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
+            }
+          }
+        } else if (data.type === "image") {
+          // No tab bar — the browser renders the image directly via /raw,
+          // which already returns the right mimetype. The .content-body
+          // wrapper gives the same outer padding a plain text view has.
+          html +=
+            '<div class="content-body"><img class="file-image" src="/raw?path=' +
+            encodeURIComponent(data.path) +
+            '" alt="' +
+            esc(data.path) +
+            '"></div>';
+        } else if (data.type === "binary") {
+          html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
+        } else if (data.type === "jsonl_too_large") {
+          html +=
+            '<div class="content-body"><div class="preview-empty">' +
+            "<strong>This JSONL file is too large to preview.</strong><br><br>" +
+            "File size: " +
+            formatSize(data.size || 0) +
+            "<br>Preview limit: " +
+            formatSize(data.max_size || 0) +
+            "<br><br>Open it with a tool that can stream large files." +
+            "</div></div>";
+        } else if (data.type === "error") {
+          html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
+        }
+
+        _perf.measure(
+          "renderFile:mount",
+          () => {
+            stage.innerHTML = html;
+            stage.dataset.renderedPath = data.path || "";
+          },
+          filePerfMeta(data, { html_chars: html.length }),
+        );
+        if (initialActiveView) {
+          setActivePreviewView(initialActiveView.id, stage, false);
+        } else {
+          setActivePreviewView(null, stage, false);
+        }
+
+        // The stage is connected so renderers can measure layout, but remains
+        // transparent and inert while the prior useful surface stays visible.
+        // The active renderer and its optional readiness promise settle before
+        // the shell transfers the stage's children into the preview.
+        if (pluginRenders?.length) {
+          var ctx = {
+            path: data.path,
+            kind: data.kind,
+            ext: data.ext,
+            size: data.size,
+            frontmatter: data.frontmatter || {},
+            body: typeof data.content === "string" ? data.content : data.body || "",
+            raw: data,
+            fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
+          };
+          for (var pi = 0; pi < pluginRenders.length; pi++) {
+            var pr = pluginRenders[pi];
+            var container = stage.querySelector(`[data-plugin-view="${pr.tabId}"]`);
+            if (!container) {
+              continue;
+            }
+            var mount = (
+              (target, pluginView) => () =>
+                mountPluginView(target, pluginView, ctx, stagedPluginDisposers)
+            )(container, pr.view);
+            if (initialActiveView && pr.tabId === initialActiveView.id) {
+              await _perf.measureAsync(
+                "fileNavigation:activeView",
+                mount,
+                filePerfMeta(data, { view: pr.tabId }),
+              );
+            } else {
+              container._metabrowserMount = () => {
+                void mount();
+              };
+            }
           }
         }
-      } else if (data.type === "image") {
-        // No tab bar — the browser renders the image directly via /raw,
-        // which already returns the right mimetype. The .content-body
-        // wrapper gives the same outer padding a plain text view has.
-        html +=
-          '<div class="content-body"><img class="file-image" src="/raw?path=' +
-          encodeURIComponent(data.path) +
-          '" alt="' +
-          esc(data.path) +
-          '"></div>';
-      } else if (data.type === "binary") {
-        html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
-      } else if (data.type === "jsonl_too_large") {
-        html +=
-          '<div class="content-body"><div class="preview-empty">' +
-          "<strong>This JSONL file is too large to preview.</strong><br><br>" +
-          "File size: " +
-          formatSize(data.size || 0) +
-          "<br>Preview limit: " +
-          formatSize(data.max_size || 0) +
-          "<br><br>Open it with a tool that can stream large files." +
-          "</div></div>";
-      } else if (data.type === "error") {
-        html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
-      }
 
-      _perf.measure(
-        "renderFile:mount",
-        () => {
-          preview.innerHTML = html;
-          preview.dataset.renderedPath = data.path || "";
-        },
-        filePerfMeta(data, { html_chars: html.length }),
-      );
-      if (initialActiveView) {
-        setActivePreviewView(initialActiveView.id, preview);
-      } else {
-        setActivePreviewView(null, preview);
-      }
-
-      // Now that the DOM is in place, run any deferred plugin renderers.
-      // Each plugin's render(container, ctx) mutates the container directly
-      // — async work (fetches, charts) is fine; the spinner stays visible
-      // until the plugin's render resolves.
-      if (pluginRenders?.length) {
-        var ctx = {
-          path: data.path,
-          kind: data.kind,
-          ext: data.ext,
-          size: data.size,
-          frontmatter: data.frontmatter || {},
-          body: typeof data.content === "string" ? data.content : data.body || "",
-          raw: data,
-          fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
-        };
-        for (var pi = 0; pi < pluginRenders.length; pi++) {
-          var pr = pluginRenders[pi];
-          var container = preview.querySelector(`[data-plugin-view="${pr.tabId}"]`);
-          if (!container) {
-            continue;
+        _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
+        const arrivalContent =
+          stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
+        if (!isPreviewClaimCurrent(renderClaim)) {
+          return;
+        }
+        const replacementNodes = Array.from(stage.childNodes);
+        disposeActivePluginViews();
+        preview.replaceChildren(...replacementNodes);
+        activePluginDisposers = stagedPluginDisposers;
+        installed = true;
+        if (pendingFilePreviewStageCleanup === cleanupStage) {
+          pendingFilePreviewStageCleanup = null;
+        }
+        preview.dataset.renderedPath = data.path || "";
+        if (initialActiveView) {
+          setActivePreviewView(initialActiveView.id, preview);
+        } else {
+          setActivePreviewView(null, preview);
+        }
+        if (data.kind === "folder") {
+          startFolderHeaderSubscription(data.path);
+        }
+        scheduleHighlightCode(preview);
+        if (arrivalContent instanceof HTMLElement) {
+          animatePreviewContentArrival(arrivalContent);
+        }
+        await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
+      } finally {
+        if (!installed) {
+          if (pendingFilePreviewStageCleanup === cleanupStage) {
+            pendingFilePreviewStageCleanup = null;
           }
-          var mount = (
-            (target, pluginView) => () =>
-              mountPluginView(target, pluginView, ctx)
-          )(container, pr.view);
-          if (initialActiveView && pr.tabId === initialActiveView.id) {
-            await _perf.measureAsync(
-              "fileNavigation:activeView",
-              mount,
-              filePerfMeta(data, { view: pr.tabId }),
-            );
-          } else {
-            container._metabrowserMount = () => {
-              void mount();
-            };
-          }
+          cleanupStage();
         }
       }
-
-      _perf.measure("initTabs", initTabs, filePerfMeta(data));
-      scheduleHighlightCode(preview);
-      const arrivalContent =
-        preview.querySelector('[data-active-view="true"]') ??
-        preview.querySelector(".content-body");
-      if (arrivalContent instanceof HTMLElement) {
-        animatePreviewContentArrival(arrivalContent);
-      }
-      await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
     },
     filePerfMeta(data),
   );
@@ -5952,8 +6015,9 @@ function copyContent(btn) {
 
 // ── Tab switching ───────────────────────────────────────────────
 
-function initTabs() {
-  queryHtmlAll(".tab-btn").forEach((btn) => {
+/** @param {ParentNode} [root] */
+function initTabs(root = document) {
+  queryHtmlAll(".tab-btn", root).forEach((btn) => {
     btn.addEventListener("click", () => {
       var tabId = btn.dataset.tab;
       var bar = /** @type {HTMLElement | null} */ (btn.closest(".tab-bar"));

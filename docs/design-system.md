@@ -1770,6 +1770,15 @@ It adds no sheet, filter, cursor, per-element styling, or animation while work i
 pending. The state ends at the selected view’s painted-readiness boundary.
 A stale claim cannot clear or retain it.
 
+An asynchronously rendered replacement mounts in a connected, transparent, inert stage
+while the prior useful surface remains visible.
+After the active renderer and its declared readiness settle, the shell transfers the
+staged content into the preview in one replacement and transfers disposal ownership with
+it. This preserves the connected-container plugin contract without exposing an empty
+active container, duplicate interaction surface, or intermediate blank frame.
+A newer preview claim immediately disposes and removes a stale stage without touching
+the current preview.
+
 An empty initial preview has no useful surface to retain.
 It keeps the longer shell wait (`LOADING_INDICATOR_DELAY_MS`) before installing a
 neutral spinner, which still uses `.mb-delayed-loading`. Ready content always wins

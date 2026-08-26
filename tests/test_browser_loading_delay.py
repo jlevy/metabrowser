@@ -221,8 +221,37 @@ def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None
         "animatePreviewContentArrival(node)"
     )
     file_render = app[app.index("async function renderFile(data") :][:12_000]
+    assert "createFilePreviewStage(preview)" in file_render
+    assert "stagedPluginDisposers" in file_render
+    assert "pendingFilePreviewStageCleanup = cleanupStage" in file_render
+    assert "cleanupStage()" in file_render
+    assert "preview.replaceChildren(...replacementNodes)" in file_render
+    assert "activePluginDisposers = stagedPluginDisposers" in file_render
+    assert file_render.index("await _perf.measureAsync(") < file_render.index(
+        "preview.replaceChildren(...replacementNodes)"
+    )
+    assert "preview.innerHTML = html" not in file_render
     assert "animatePreviewContentArrival(arrivalContent)" in file_render
     assert "preview.animate(" not in file_render
+
+    stage = app[app.index("function createFilePreviewStage") :][:1_000]
+    assert 'stage.className = "preview-file-stage"' in stage
+    assert 'stage.setAttribute("aria-hidden", "true")' in stage
+    assert "stage.inert = true" in stage
+    assert "preview.appendChild(stage)" in stage
+
+    assert ".preview-file-stage {" in css
+    stage_css = css[css.index(".preview-file-stage {") :][:600]
+    assert "position: absolute;" in stage_css
+    assert "opacity: 0;" in stage_css
+    assert "pointer-events: none;" in stage_css
+    assert "transition:" not in stage_css
+
+    claim = app[app.index("function claimPreview(owner)") :][:700]
+    assert "cancelPendingFilePreviewStage();" in claim
+    cancel = app[app.index("function cancelPendingFilePreviewStage()") :][:500]
+    assert "pendingFilePreviewStageCleanup = null" in cancel
+    assert "cleanup?.();" in cancel
 
 
 def test_git_commit_staging_has_one_shell_owned_atomic_handoff() -> None:

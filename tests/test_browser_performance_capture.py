@@ -347,6 +347,8 @@ def test_file_view_scenario_uses_trusted_clicks_and_painted_readiness() -> None:
     assert 'schema: "file-view-navigation/v1"' in source
     assert '"fileNavigation:selectToReady"' in source
     assert '"fileNavigation:paintReady"' in source
+    assert 'candidates.structured, "cold-structured"' in source
+    assert "candidates.structured" in source
 
 
 def test_file_view_scenario_rejects_blank_stale_or_unmeasured_transitions() -> None:

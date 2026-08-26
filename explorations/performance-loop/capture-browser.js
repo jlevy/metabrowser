@@ -602,10 +602,15 @@ async function fileViewCandidates(session) {
         .filter((row) => row instanceof HTMLElement &&
           !row.classList.contains("tree-item-filter-hidden"))
         .map((row) => row.dataset.path || "");
-      const markdown = paths.find((path) => /\\.(?:md|markdown)$/i.test(path)) || "";
+      const markdown = paths.filter((path) => /\\.(?:md|markdown)$/i.test(path)).sort()[0] || "";
       const sources = paths.filter((path) =>
-        /\\.(?:css|html?|js|jsx|json|mjs|py|rs|sh|toml|ts|tsx|ya?ml)$/i.test(path));
-      return {markdown, sources: Array.from(new Set(sources)).slice(0, 3)};
+        /\\.(?:css|html?|js|jsx|mjs|py|rs|sh|toml|ts|tsx)$/i.test(path));
+      const structured = paths.filter((path) => /\\.(?:json|ya?ml)$/i.test(path)).sort()[0] || "";
+      return {
+        markdown,
+        sources: Array.from(new Set(sources)).sort().slice(0, 3),
+        structured,
+      };
     })()`,
   );
 }
@@ -781,10 +786,10 @@ async function runFileViewScenario(session, timeoutMs) {
   const candidates = await waitFor(
     async () => {
       const value = await fileViewCandidates(session);
-      return value.markdown && value.sources.length >= 2 ? value : null;
+      return value.markdown && value.structured && value.sources.length >= 2 ? value : null;
     },
     timeoutMs,
-    "one Markdown and two source file rows",
+    "one Markdown, one structured, and two source file rows",
   );
 
   await dispatchTrustedClickForFilePath(session, candidates.sources[0]);
@@ -795,6 +800,9 @@ async function runFileViewScenario(session, timeoutMs) {
   const transitions = [];
   transitions.push(
     await measureFileTransition(session, candidates.sources[1], "cold-source", timeoutMs),
+  );
+  transitions.push(
+    await measureFileTransition(session, candidates.structured, "cold-structured", timeoutMs),
   );
   transitions.push(
     await measureFileTransition(session, candidates.markdown, "cold-markdown", timeoutMs),
