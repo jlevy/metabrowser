@@ -217,6 +217,14 @@ around pending-state activation, route ownership, and the exact old/new row muta
 Keep it separate from selection-to-painted-ready and Event Timing: the first attributes
 handler work, the second captures the complete content handoff, and the third proves
 when the browser painted a response to trusted input.
+Pending-state mutation time is state-onset evidence, not paint evidence.
+When the local span is short but Event Timing is long, inspect the complete browser
+input task, including focus handlers, default actions, other event listeners,
+synchronous observers, and work before the next paint.
+Correlate finite application spans with Long Tasks and Long Animation Frame
+forced-layout attribution; do not treat work moved just outside a measured function as
+an improvement. The standard repeatability and attribution sequence is in
+[Attributing Stateful-Navigation Delay](../explorations/performance-loop/README.md#attributing-stateful-navigation-delay).
 Record request concurrency by class, reject successful obsolete work, and require
 selected state, route, rendered subject, and mounted-owner count to converge.
 Waiting for eventual network idle cannot distinguish a bounded handoff from a request

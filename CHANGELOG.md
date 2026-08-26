@@ -47,6 +47,10 @@ Performance, validated against 0.6.0 side by side:
   gates startup request count and transfer size.
   Rendered main-panel error states and uncaught browser exceptions are hard failures, so
   an error panel cannot count as a successful paint milestone.
+  Stateful-navigation profiling now follows one documented attribution sequence that
+  separates synchronous acknowledgement, complete painted readiness, and Event Timing;
+  it audits the full input task and Long Animation Frame forced-layout evidence when
+  those clocks disagree.
   Recording exits nonzero as soon as any run crosses a hard budget.
 
 Browser:

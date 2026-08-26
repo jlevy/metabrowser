@@ -296,6 +296,44 @@ It is not accepted by `record`: the initial-load ledger and its budgets use a di
 schema. Run at least three visible-Chrome captures for each condition, alternate
 condition order, and keep the repository and selected subjects unchanged.
 
+### Attributing Stateful-Navigation Delay
+
+Use this sequence when an interaction feels late even though one measured application
+phase looks fast:
+
+1. Freeze the exact product build, corpus fingerprint, selected subjects, viewport, and
+   foreground visibility.
+   A single run can validate scenario wiring, but a performance conclusion needs at
+   least three runs per condition.
+   Interleave control and candidate runs when making a comparative claim.
+2. Record three separate clocks: the small synchronous acknowledgement phase, the full
+   selection-to-painted-ready handoff, and browser Event Timing.
+   Pending-state mutation time proves that application state changed; it does not prove
+   that the browser painted the change.
+3. If acknowledgement is fast but Event Timing is slow, inspect the complete input task.
+   Include capture and bubble listeners, synchronous focus handlers, browser default
+   actions, route/history updates, mutation observers, and work scheduled before the
+   next paint. Moving work immediately outside the named application span does not make
+   the interaction faster.
+4. Subdivide only the unexplained interval with finite, stable operation labels.
+   Match their timestamps to Long Tasks and Long Animation Frames, and use
+   forced-style/layout attribution to identify synchronous layout triggers.
+   Remove diagnostic labels that do not separate competing explanations.
+5. Exercise cold, prepared, rapid-replacement, and active-background-work paths.
+   Require exact selection, route, rendered subject, mounted owner, pending-state
+   clearance, continuous useful content, bounded request concurrency, and cancellation
+   of obsolete work before accepting any timing.
+6. Report the narrow result the evidence supports.
+   A handler-level cost can be fixed while input-to-next-paint or cold data and render
+   work remains slow; keep those residual costs visible as follow-up evidence rather
+   than folding them into the local win.
+
+The standard `git-revisions` scenario enforces the required phase labels, ordered
+pending onset and clearance, blank-frame and convergence checks, mounted-owner count,
+request bounds, and obsolete-work cancellation.
+The `file-views` scenario enforces the same useful-readiness and convergence contract
+for connected plugin renderers.
+
 ```shell
 uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py serve --files 100000
 ```
@@ -445,6 +483,7 @@ adds no automation package or product dependency.
 | `animation_frame_*`, `forced_style_layout_ms_max`, `worst_animation_frames` | Chromium Long Animation Frame duration, attributed blocking, and bounded script/resource detail | Names the callback and rendering cost behind a Long Task without making an optional signal look universal. Attributed blocking is gated; raw duration remains a target because Chromium can report a long initial navigation frame with zero blocking or work attribution |
 | `label_totals` | Per-span count, total and max, never evicted | Attribution. `longtask` says the thread was blocked; this says by what |
 | `gitRevision:selectionFeedback` | Synchronous pending-sheet, route, and selected-row work for one Git revision choice | Separates immediate main-thread acknowledgement from fetch/render time; the Git scenario requires this phase but leaves paint responsiveness to Event Timing |
+| `gitRevision:selectToReady` | Complete Git selection-to-painted-ready handoff | Keeps data, decoding, mounting, and paint latency visible after synchronous acknowledgement |
 | `gitRevision:rowAnchor` | Post-readiness update of the focused Git row’s one-row Tab anchor | Keeps focus-order cost visible without charging it to immediate selection feedback |
 | `*_samples_seen`, `*_samples_retained`, `labels_overflowed`, `fetch_concurrency_keys_overflowed`, `resource_timing_buffer_full` | Retention provenance | Proves bounded detail did not silently become a whole-window claim and refuses incomplete attribution or network totals |
 | `fetch_network_errors`, `fetch_aborts`, `fetch_http_4xx`, `fetch_http_5xx` | Exact whole-window fetch outcomes outside the detail ring | Keeps a failed click from looking like a merely slow one. Rejected non-abort requests and 5xx responses are hard gates; cancellation and expected-not-found semantics remain visible targets |

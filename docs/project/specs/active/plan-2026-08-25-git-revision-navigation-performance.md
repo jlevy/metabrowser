@@ -274,7 +274,7 @@ introduced.
 ## Implementation Plan
 
 Epic `mb-fgcg` owns this plan.
-Its twenty-one child beads separate measurement, behavior, presentation, validation,
+Its twenty-two child beads separate measurement, behavior, presentation, validation,
 keyboard consistency, commit-header information design, component ownership,
 retained-work cancellation, cross-surface pending and readiness parity, and delivery.
 Blockers express only real sequencing; the baseline also feeds final validation
@@ -302,7 +302,8 @@ directly.
 | Make retained preview dimming visibly cover the main view | `mb-rnr7` | None | Closed |
 | Delay Git hover preparation until stable intent | `mb-ues1` | None | Closed |
 | Gate Git pending timing and row-anchor attribution | `mb-f43i` | None | Closed |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, and completed prior phases | Blocked |
+| Standardize retained-navigation interaction attribution | `mb-1xm2` | `mb-f43i` | Closed |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-1xm2`, and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -712,7 +713,29 @@ server work a single viewport can start.
   comparison requests and that the selected row and pending main view update without
   waiting for the replacement diff.
 
-### Phase 20: Deliver and Monitor (`mb-j8ni`)
+### Phase 20: Standardize Interaction Attribution (`mb-1xm2`)
+
+- **Files and functions:** Reconcile the stateful-navigation procedure and metric table
+  in `explorations/performance-loop/README.md`, the maintained contract in
+  `docs/web-performance-framework.md`, the follow-up evidence in
+  `explorations/performance-loop/experiments/exp-018-git-revisions-swap-without-blanking.md`,
+  this implementation map, and `CHANGELOG.md`. Confirm that `measureGitTransition` and
+  `assertGitTransitionHealth` in `capture-browser.js` and their focused contract tests
+  enforce the documented phase, pending, continuity, convergence, and request gates.
+- **Behavior and invariants:** The standard procedure freezes build, corpus, subjects,
+  viewport, and foreground visibility; repeats captures; separates synchronous
+  acknowledgement, complete painted readiness, and Event Timing; treats pending
+  mutations as state-onset rather than paint proof; audits the complete input task when
+  clocks disagree; and correlates finite application phases with Long Tasks and Long
+  Animation Frame forced-layout attribution.
+  Conclusions retain unresolved costs rather than broadening a local improvement claim.
+- **Acceptance:** Durable guidance links to one authoritative procedure instead of
+  duplicating it. The experiment records the focus-handler attribution finding and
+  repeated evidence. Existing scenario tests prove that missing phases, pending timing,
+  continuity, convergence, request bounds, or cancellation health fail closed.
+  Documentation tests, focused performance tests, `make format`, and `make verify` pass.
+
+### Phase 21: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original

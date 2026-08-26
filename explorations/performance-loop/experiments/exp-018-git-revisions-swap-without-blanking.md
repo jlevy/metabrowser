@@ -173,6 +173,31 @@ low-confidence server and memory work.
 The accepted design retains one replaceable intent slot and aborts stale work where the
 transport allows it.
 
+## Follow-Up: Input-Task Attribution
+
+A later fixed-corpus investigation found that a fast application span did not imply a
+fast interaction. The synchronous selection-feedback span was only a few milliseconds,
+but Event Timing and Long Tasks still reached several hundred milliseconds.
+Long Animation Frame attribution isolated a 267–398 ms forced-layout interval to
+changing the focused row’s Tab anchor while a large retained diff was mounted.
+A synchronous focus handler performed that mutation outside the original selection span.
+
+After both paths deferred the one-row anchor update until painted readiness, three
+visible headed captures recorded 0.3–4.6 ms selection-feedback spans, 7.7–18.8 ms
+pending onset, 0.5–7.9 ms post-readiness anchor work, and zero forced style or layout.
+Every transition retained useful content, converged on the exact selection, route, and
+rendered revision, cleared pending state, and passed the request and cancellation gates.
+Event Timing still reached 344–456 ms and the longest tasks reached 326–434 ms around
+cold comparison data and rendering, so the evidence supports an input-handler fix, not a
+claim that cold revision navigation is fully fast.
+
+The standard performance-loop procedure now requires three distinct clocks—synchronous
+acknowledgement, selection-to-painted-ready, and Event Timing—and an audit of the
+complete input task when they disagree.
+Pending mutation timestamps establish state onset only.
+The scenario fails closed on missing phase attribution, stuck pending state, blank
+frames, stale convergence, duplicate mounts, request fanout, or obsolete success.
+
 ## Decision
 
 Accept atomic staging and one-slot pointer or focus preparation.
