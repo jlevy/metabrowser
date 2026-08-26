@@ -409,7 +409,7 @@
   /* Immediate selection acknowledgement while useful preview content is
      retained. One neutral translucent sheet covers the visible preview
      scrollport without filtering or restyling the document below it. */
-  --preview-navigation-pending-overlay: oklch(55% 0 0 / 0.18);
+  --preview-navigation-pending-overlay: oklch(55% 0 0 / 0.07);
   /* Square-ish corner for tag-like chips (branch refs): visibly not a
      pill, still not a hard corner. */
   --radius-tag: 3px;

@@ -127,7 +127,7 @@ def test_preview_navigation_pending_motion_is_shared_and_reduced_motion_safe() -
     assert "background: var(--preview-navigation-pending-overlay)" in overlay
     assert "transition: opacity var(--preview-navigation-pending-transition)" in overlay
     assert "pointer-events: none" in overlay
-    assert "--preview-navigation-pending-overlay:" in styles
+    assert "--preview-navigation-pending-overlay: oklch(55% 0 0 / 0.07);" in styles
     pending = _rule(styles, "#preview-pane.preview-navigation-pending::after")
     assert "opacity: 1" in pending
     reduced = styles[styles.rindex("@media (prefers-reduced-motion: reduce)") :]

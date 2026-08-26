@@ -787,7 +787,24 @@ server work a single viewport can start.
   Focused tests, both standard headed navigation scenarios, `make format`, and
   `make verify` pass on the exact candidate build.
 
-### Phase 23: Deliver and Monitor (`mb-j8ni`)
+### Phase 23: Subdue Retained-View Feedback (`mb-facq`)
+
+- **Files and functions:** Lower `--preview-navigation-pending-overlay` in
+  `src/metabrowser/static/styles.css`; pin the semantic token in
+  `test_shell_shares_immediate_claim_owned_preview_feedback` and
+  `test_preview_navigation_pending_motion_is_shared_and_reduced_motion_safe`; reconcile
+  `docs/design-system.md`, this plan, `CHANGELOG.md`, and the performance follow-up pull
+  request.
+- **Behavior and invariants:** The fixed pending sheet uses 7% neutral alpha so retained
+  syntax, diff emphasis, and document contrast remain visually dominant.
+  Keep the 60 ms ease-out, immediate reduced-motion state, fixed scrollport coverage,
+  pointer transparency, preview-only scope, and claim-owned readiness boundary.
+- **Acceptance:** Focused tests fail at the former alpha and pass at 7%. Real-browser
+  file and Git transitions show immediate but restrained feedback in both themes, retain
+  exact state convergence, and clear the sheet at painted readiness.
+  `make format` and `make verify` pass on the exact candidate build.
+
+### Phase 24: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original

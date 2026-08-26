@@ -200,7 +200,7 @@ def test_shell_shares_immediate_claim_owned_preview_feedback() -> None:
     )
     assert "if (!retainedPreview)" in select_file
 
-    assert "--preview-navigation-pending-overlay:" in css
+    assert "--preview-navigation-pending-overlay: oklch(55% 0 0 / 0.07);" in css
     assert "--preview-navigation-pending-transition: 60ms ease-out;" in css
     overlay_rule = css[css.index("#preview-pane::after") :][:700]
     assert 'content: "";' in overlay_rule

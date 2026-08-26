@@ -64,6 +64,8 @@ Browser:
 - File and Git navigation now acknowledge a selection immediately with one translucent
   neutral sheet over useful retained preview content until the selected view reaches its
   painted-readiness boundary, while leaving the nav panel at full contrast.
+  The sheet uses 7% neutral alpha so syntax, diff emphasis, and document contrast stay
+  visually dominant while the replacement loads.
   The sheet reaches its pending treatment through a dedicated 60 ms transition rather
   than the slower general control animation.
   The shared claim-owned state does not filter or restyle the document below it,

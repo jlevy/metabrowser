@@ -1714,6 +1714,8 @@ When file or Git navigation can retain useful preview content, the shell immedia
 adds `.preview-navigation-pending`: the rendered main view moves toward a visibly
 inactive neutral treatment under one fixed, pointer-transparent sheet using
 `--preview-navigation-pending-overlay`, while the nav panel stays at full contrast.
+The neutral sheet uses 7% alpha: enough to acknowledge the selection without obscuring
+syntax, diff emphasis, or document contrast while the replacement loads.
 Its dedicated `--preview-navigation-pending-transition` reaches the pending treatment in
 60 ms; the general 150 ms control transition is too slow for input acknowledgement.
 The preview becomes `aria-busy` under the current claim.
