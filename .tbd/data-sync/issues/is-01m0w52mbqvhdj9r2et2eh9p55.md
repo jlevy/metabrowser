@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 35
+version: 36
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -30,8 +30,9 @@ child_order_hints:
   - is-01m0w542g2gzak7th85hx2bdz8
   - is-01m0xp9057jb8f0pcjhch592qd
   - is-01m0xp910y4k86s1emzcn93rz0
+  - is-01m0xtc5n71qyfhgd9p1nzxcws
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-26T01:04:36.072Z
+updated_at: 2026-08-26T01:18:55.654Z
 ---
 Deliver the twenty-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: the reviewed Git revision navigation implementation and its later file/Git parity, request-deduplication, visible pending-sheet, stable-hover, O(1) selection-feedback, standard performance-instrumentation, and final PR/CI phases. Keep useful content visible; use one compositor-friendly pointer-transparent pending sheet over the preview only; keep row interaction work proportional to the changed rows; distinguish immediate selection feedback from selection-to-painted-ready and Event Timing; retain at most one speculative comparison; cancel obsolete work; fail standard scenarios on fanout, duplicate selected work, blank frames, stuck pending state, missing phase attribution, or route/render divergence; do not add unmeasured caching, dependencies, or speculative compatibility; close only after PR #82 has exact-head green CI.
 
