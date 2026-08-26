@@ -356,7 +356,17 @@
       err.payload = payload;
       throw err;
     }
-    const data = await resp.json();
+    const responseBytes = Number(resp.headers?.get?.("content-length"));
+    const decode = () => resp.json();
+    const recorder = global.metabrowser?.perf;
+    const data =
+      typeof recorder?.measureAsync === "function"
+        ? await recorder.measureAsync("pluginData:decode", decode, {
+            plugin,
+            response_bytes: Number.isFinite(responseBytes) ? responseBytes : null,
+            route,
+          })
+        : await decode();
     if (data && data.type === "plugin_error") {
       /** @type {Error & {status?: number, payload?: unknown}} */
       const err = new Error(
@@ -1551,10 +1561,14 @@
     if (!data) {
       return false;
     }
-    return (
-      !!data.highlight_disabled ||
-      (typeof data.content === "string" && utf8ByteLength(data.content) > syntaxHighlightMaxBytes())
-    );
+    if (data.highlight_disabled) {
+      return true;
+    }
+    if (typeof data.content === "string") {
+      return utf8ByteLength(data.content) > syntaxHighlightMaxBytes();
+    }
+    const size = Number(data.size);
+    return Number.isFinite(size) && size >= 0 && size > syntaxHighlightMaxBytes();
   }
 
   /**

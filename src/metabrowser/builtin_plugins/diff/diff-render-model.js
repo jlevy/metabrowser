@@ -172,6 +172,14 @@ export function refineHunkChangedRuns(hunk, budget, signal) {
     const run = hunk.lines.slice(index, end);
     const oldLines = run.filter((record) => record.op === "del");
     const newLines = run.filter((record) => record.op === "add");
+    if (oldLines.length === 0 || newLines.length === 0) {
+      // A one-sided run has nothing to align or refine. Split projection can
+      // synthesize its empty-side rows on demand; caching thousands of
+      // positional objects here only delays an otherwise plain first paint.
+      hunk.refinementStatusByRun.set(changedRun, "plain");
+      index = end;
+      continue;
+    }
     let result;
     try {
       result = refineChangedRun(

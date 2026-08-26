@@ -155,6 +155,9 @@ The deferred tools and their authoritative file catalog carry separate readiness
 so transfer cannot improve by losing controls or stopping at partial data.
 Rejected non-abort fetches and HTTP 5xx responses must also remain zero; aborts and 4xx
 responses stay visible as targets until a scenario can declare them intentional.
+Rows beneath a collapsed diff fold must remain absent from the DOM; the required
+`collapsed_diff_rows_materialized` metric turns a visually hidden but fully mounted
+comparison into a hard failure.
 The comparison checks every candidate run, not its median: one six-second freeze is a
 failure even if two clean runs would hide it statistically.
 
@@ -182,6 +185,7 @@ round.
 | Churn and recovery | Burst updates, disconnect, reconnect, and force resynchronization | Convergence time, dropped events, resync count, update coalescing | Interaction latency during churn, final semantic equivalence, bounded caches |
 | Steady interaction | Settled application; repeat one scripted user journey | p50, p95, maximum interaction latency; named handler spans | Correct outcome, DOM and heap before/after |
 | Stateful navigation | Settled application; move between already rendered subjects with trusted input | Intent-to-ready and selection-to-painted-ready time; blank or placeholder frames; server and client phase spans | Exact selected subject, continuous useful content, one mounted owner, bounded preparation, disposal, and heap |
+| Large retained view | Open a bounded but DOM-heavy source such as a large comparison; exercise collapse, expansion, and replacement | Projection spans, Long Tasks, DOM and heap before/after | Hidden content is not mounted, expansion yields, cancellation and final content are exact |
 | Visual stability | Fixed viewport; capture shipped, intermediate, and final states | CLS, direct region movement, visual-state and repaint counts | First usable time and responsiveness do not regress |
 | Endurance | Long-lived session with repeated navigation and updates | Heap slope, DOM ceiling, retained sample counts, listener and cache sizes | Interaction latency stays flat and attribution does not overflow |
 | Backend delivery | Same corpus, with and without an attached client | Scan time, route wall/server time, RSS, payload | Browser hard gates and semantic response equivalence |

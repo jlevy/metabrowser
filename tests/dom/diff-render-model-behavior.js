@@ -105,6 +105,35 @@ async function main() {
   check("aborted file refinement throws AbortError", abortName === "AbortError", abortName);
   check("aborted hunk remains retryable", abortedModel.hunks[0].refinementComplete === false);
 
+  const oneSidedModel = buildFileRenderModel(
+    { old: null, new: { path: "generated.json" } },
+    {
+      hunks: [
+        {
+          old_start: 0,
+          old_count: 0,
+          new_start: 1,
+          new_count: 10_000,
+          lines: Array.from({ length: 10_000 }, (_, index) => ({
+            op: "add",
+            text: `line ${index}`,
+          })),
+        },
+      ],
+    },
+    () => "json",
+  );
+  check(
+    "one-sided refinement has no visual work",
+    refineFileChangedRuns(oneSidedModel, {}) === false,
+  );
+  check(
+    "one-sided refinement does not allocate positional row caches",
+    oneSidedModel.hunks[0].refinementComplete === true &&
+      oneSidedModel.hunks[0].changedRunRows.size === 0,
+    String(oneSidedModel.hunks[0].changedRunRows.size),
+  );
+
   const containedModel = buildFileRenderModel(
     { old: { path: "a.js" }, new: { path: "b.js" } },
     {
