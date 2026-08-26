@@ -323,8 +323,23 @@ KPress’s own tooltip inside an embedded document is not this tooltip and keeps
 ramp; see the note beside the radius bridge in `styles.css` for why the app flattens
 KPress’s radii but not its type scale.
 
-`data-tip-text` is read by a delegated listener on the document, so it works on markup
-that does not exist yet, including a plugin’s, and on focus as well as hover.
+`data-tip-text` is read by a delegated pointer listener on the document, so it works on
+markup that does not exist yet, including a plugin’s.
+
+### Tooltip Input Modality
+
+**Navigation tooltips are pointer-only.** Keyboard focus already communicates the active
+row or control through focus treatment, selection state, its accessible name, and the
+content it opens.
+A tooltip must not cover that content or repeat it merely because focus
+moved.
+
+Pointer hover may open supplementary tooltip detail.
+Pointer leave or any focus transition dismisses it, and focus alone never opens or
+retains it. This contract applies to delegated `data-tip-text` tooltips and rich
+navigation tooltips such as Git commit summaries.
+Tooltip content therefore cannot be the only source of an accessible name, instruction,
+or state.
 
 This is not a rule about accessible names.
 `aria-label` is unaffected and still required wherever it was: a screen reader does not
@@ -710,13 +725,17 @@ It uses the shared inline-change-stat colors and weight, renders a true minus si
 wraps with the metadata row rather than truncating.
 Missing totals remain visibly unknown; a bounded file list never becomes an exact count.
 
-Git history rows use `.git-commit-summary-compact` as the tooltip projection of this
-component. It retains the subject, author, short revision, age, and change stats, while
-omitting refs and the commit description.
+Pointer hover on a Git history row uses `.git-commit-summary-compact` as the tooltip
+projection of this component.
+It retains the subject, author, short revision, age, and change stats, while omitting
+refs and the commit description.
 The subject is clamped to two lines so one message cannot take over the viewport.
 The familiar mark beside the revision is a noninteractive copy glyph, not a control:
 tooltips remain supplementary and never own actions.
 Selecting the commit exposes the real copy button in the full summary.
+Keyboard focus does not open or retain the compact tooltip.
+Arrow, Enter, and Space selection dismisses any pending or visible pointer-owned tooltip
+before navigation.
 
 The component owns commit identity and message only.
 The comparison, files outside the served root, and truncation notice are siblings under
@@ -769,10 +788,12 @@ is `--status-error` — and no diff surface introduces a local green or red.
 
 A changed diff line has three visual layers with separate jobs:
 
-1. A pale whole-line fill establishes the added or deleted region without competing with
-   syntax color.
-2. A stronger intraline fill identifies the exact text that changed when refinement
-   finds meaningful unchanged text.
+1. The whole-line fill establishes the added or deleted region.
+   A wholly added or deleted line uses the stronger semantic fill.
+   When refinement finds meaningful unchanged text, the row uses a pale fill so the
+   unchanged portion recedes.
+2. A stronger intraline fill restores emphasis to the exact text that changed within a
+   refined row.
 3. A solid status-colored inset at the leading edge of the line-number gutter marks
    every added or deleted line, including whole-line and unrefined changes.
 
@@ -787,6 +808,13 @@ and `.diff-intraline-change` vocabulary.
 The line marker and line numbers continue to state change direction without color.
 The gutter is a persistent structural cue, not the only cue, and syntax foregrounds must
 retain at least 4.5:1 contrast over every line and intraline surface in both themes.
+
+### Diff Layout Control
+
+The joined layout control always orders **Split** on the left and **Unified** on the
+right. A reader without a valid stored `diff.layout` preference starts in Split.
+Either valid stored choice remains authoritative, and switching layouts reprojects the
+shared semantic model without re-fetching or re-running syntax highlighting.
 
 Section headings use `--section-heading-divider-gap` between their content and the
 divider. Components consume the token instead of choosing local bottom padding, so the
@@ -1590,7 +1618,7 @@ difference between a tooltip, menu, and dialog.
 
 | Pattern | Purpose and semantics | Focus and dismissal |
 | --- | --- | --- |
-| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls; anchored to the element it describes and fixed once shown | Opens for pointer hover and keyboard focus; closes on pointer leave, blur, or Escape |
+| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls; anchored to the element it describes and fixed once shown | Opens for pointer hover; closes on pointer leave, any focus transition, or Escape; keyboard focus never opens it |
 | Anchored popup | A menu, listbox, or other pattern anchored to a trigger or pointer; the content role defines its semantics | Uses that pattern’s focus model; closes on Escape and outside interaction |
 | Modal dialog | A labelled task or information surface with `role="dialog"` and `aria-modal="true"` | Moves focus inside, contains Tab, makes background content inert, and closes through Escape, an explicit control, or the scrim |
 

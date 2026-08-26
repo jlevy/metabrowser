@@ -5,8 +5,10 @@
    system; the title is styled as a filename, not a heading. */
 
 .metabrowser-diff-host {
-  --diff-add-row-bg: color-mix(in srgb, var(--status-success) 3%, transparent);
-  --diff-del-row-bg: color-mix(in srgb, var(--status-error) 3%, transparent);
+  --diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);
+  --diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);
+  --diff-add-refined-row-bg: color-mix(in srgb, var(--status-success) 3%, transparent);
+  --diff-del-refined-row-bg: color-mix(in srgb, var(--status-error) 3%, transparent);
   --diff-add-inner-bg: color-mix(in srgb, var(--status-success) 9%, transparent);
   --diff-del-inner-bg: color-mix(in srgb, var(--status-error) 9%, transparent);
   --diff-add-gutter: var(--status-success);
@@ -253,6 +255,14 @@
 
 .metabrowser-diff-host .diff-line-del {
   background: var(--diff-del-row-bg);
+}
+
+.metabrowser-diff-host .diff-line-add.diff-line-refined {
+  background: var(--diff-add-refined-row-bg);
+}
+
+.metabrowser-diff-host .diff-line-del.diff-line-refined {
+  background: var(--diff-del-refined-row-bg);
 }
 
 .metabrowser-diff-host .diff-line-add .diff-intraline-change {

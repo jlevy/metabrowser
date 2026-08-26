@@ -531,7 +531,7 @@ is a claim about cost.
 
 ## Implementation Plan
 
-Five phases.
+Five primary phases, with focused 4.x follow-ups that refine the shipped browser view.
 The first two each end at something usable; the third establishes the shared
 syntax/layout model and carries the renderer decision; the fourth adds focused intraline
 refinement without reopening the wire contract; the fifth makes visual folding a real
@@ -799,11 +799,11 @@ overflow, exact line text, and diff-specific console diagnostics.
 No runtime dependency, worker, schema field, compatibility alias, or new loading tier
 was added.
 
-### Phase 4.8: Intraline Visual Hierarchy and Change Gutters
+### Phase 4.8: Intraline Visual Hierarchy and Change Gutters (`mb-qqnl`, `mb-l00d`)
 
 Ends with: every added or deleted line has a persistent status-colored gutter bar;
-whole-line fills remain pale; and a refined line uses a substantially stronger fill only
-for the text range that changed.
+wholly added or deleted lines use a strong status fill; and a refined line uses a pale
+fill for unchanged text with a substantially stronger fill on the range that changed.
 Unified and split layouts use the same classes, tokens, and contrast contract.
 
 #### Source Findings
@@ -824,11 +824,11 @@ JavaScript, or a second render path.
 
 #### Files and Functions
 
-- [x] Update `src/metabrowser/builtin_plugins/diff/styles.css` so ordinary and refined
-  added or deleted rows share a pale status-token fill, refined `.diff-intraline-change`
-  spans use a clearly stronger status-token fill, and the first `.diff-line-number` cell
-  carries a fixed-width inset gutter bar.
-  The bar must not change grid geometry or text alignment.
+- [x] Update `src/metabrowser/builtin_plugins/diff/styles.css` so an unrefined added or
+  deleted row uses the stronger status-token fill, a refined row uses a pale
+  status-token fill for its unchanged text, refined `.diff-intraline-change` spans use
+  the stronger fill, and the first `.diff-line-number` cell carries a fixed-width inset
+  gutter bar. The bar must not change grid geometry or text alignment.
 - [x] Extend
   `tests/test_syntax_palette.py::test_syntax_foregrounds_meet_contrast_over_diff_tints`
   and `test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract` to prove the
@@ -853,9 +853,9 @@ real browser.
 
 #### Implementation Outcome
 
-Ordinary and refined rows now use the same 3% status-token fill.
-A refined changed span adds a 9% overlay, producing an effective 11.7% mix, about four
-times the row accent.
+An unrefined row now uses a 9% status-token fill because its complete text is new or
+removed. A refined row uses a 3% fill so its unchanged portion recedes, while a changed
+span adds a 9% overlay, producing an effective 11.7% mix.
 Every added or deleted line applies a solid three-pixel success or error border to its
 first line-number cell.
 `box-sizing: border-box` keeps that border inside the fixed grid cell, so unified and
@@ -868,6 +868,28 @@ real browser. Every changed row had a gutter in unified and split layouts, with 
 line-number alignment mismatches or diff console diagnostics.
 The change adds CSS only; the semantic model, renderer, selection, folding, layout
 persistence, and main-thread work are unchanged.
+
+### Phase 4.9: Default Split Layout and Control Order (`mb-k2h1`)
+
+Ends with: a first-time diff opens in Split, and the joined control presents Split on
+the left and Unified on the right.
+Existing valid preferences remain authoritative.
+
+- [x] Update `readLayoutPreference` in
+  `src/metabrowser/builtin_plugins/diff/diff-view.js` so a missing or invalid
+  `diff.layout` value resolves to `split`, while explicit `split` and `unified` values
+  remain valid.
+- [x] Update `renderLayoutControl` so its joined options are ordered Split, then
+  Unified.
+- [x] Extend `tests/dom/diff-view-behavior.js` to cover the initial default, invalid
+  fallback, persisted Unified choice, option order, immediate reprojection, lexer reuse,
+  and disposal.
+- [x] Record the shared layout convention in `docs/design-system.md` and `CHANGELOG.md`.
+
+Phase 4.9 is complete when direct and revision-hosted diffs share the same initial and
+persisted behavior, switching remains a projection of one semantic model, focused and
+full verification pass, and a visible-browser check confirms both the control order and
+the two layouts.
 
 ### Phase 5: Large Folded-Comparison Responsiveness
 

@@ -5,7 +5,7 @@ author: Joshua Levy (github.com/jlevy) with LLM assistance
 ---
 # Feature: Git Revision Navigation Performance
 
-**Date:** 2026-08-25 (last updated 2026-08-25)
+**Date:** 2026-08-25 (last updated 2026-08-26)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
@@ -27,11 +27,13 @@ server, transfer, client rendering, and paint costs remain separable.
 That scenario includes a large-comparison stress phase so request fanout, obsolete
 completions, and selection/render divergence fail validation instead of remaining
 console-only evidence.
-Git history rows also project the selected commit summary into a compact tooltip instead
-of repeating the complete commit description as an unstructured block.
-The final phase extends the same continuity rule to ordinary file navigation: retained
-content stays visually unchanged, each selected view owns a measurable painted-readiness
-boundary, and one minimal incoming-view animation softens the completed replacement.
+Pointer hover on a Git history row also projects the selected commit summary into a
+compact tooltip instead of repeating the complete commit description as an unstructured
+block. Keyboard focus and selection remain unobscured and dismiss pointer-owned tooltip
+presentation. The final phase extends the same continuity rule to ordinary file
+navigation: retained content stays visually unchanged, each selected view owns a
+measurable painted-readiness boundary, and one minimal incoming-view animation softens
+the completed replacement.
 The performance loop tests file and Git transitions separately without pretending that
 their renderer lifecycles are identical.
 The Git scenario also crosses from Files to Git and back while inventory is still
@@ -43,7 +45,7 @@ a settled-page check.
 
 - Remove blank frames when moving between already rendered Git revisions
 - Start independent commit-detail, diff-asset, and comparison work concurrently
-- Reuse a comparison prepared by pointer or keyboard intent without issuing a duplicate
+- Reuse a comparison prepared by stable pointer intent without issuing a duplicate
   request
 - Give Git history rows the file tree’s one-stop Tab order and Arrow Up/Arrow Down
   focus-and-open behavior
@@ -63,6 +65,8 @@ a settled-page check.
 - Reuse the commit-summary vocabulary in a bounded row tooltip with subject, author,
   revision identity, age, and aggregate change counts, without making the tooltip an
   interactive surface
+- Keep navigation tooltips pointer-only and dismiss pending or visible tooltip
+  presentation as soon as keyboard focus or selection moves
 - Keep retained file and Git previews at full opacity while preserving the same
   claim-owned accessibility and instrumentation state
 - Soften only the completed replacement with one fast compositor animation that does not
@@ -318,7 +322,8 @@ directly.
 | Standardize retained-navigation interaction attribution | `mb-1xm2` | `mb-f43i` | Closed |
 | Exclude driver coordinate lookup from navigation timing | `mb-gv44` | `mb-1xm2` | Closed |
 | Repair live folder disclosure after a Git round trip | `mb-j72n` | None | In progress |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, and completed prior phases | Blocked |
+| Keep navigation tooltips pointer-owned | `mb-iert` | None | In progress |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, `mb-iert`, and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -535,19 +540,19 @@ server work a single viewport can start.
   `cancelHover`. Add the modifier styles in `static/styles.css` and focused contracts in
   `tests/dom/git-panel-behavior.js` and `tests/test_design_vocabulary.py`. Reconcile the
   design system and changelog.
-- **Behavior and invariants:** Hovering or focusing a history row shows subject, author,
-  short revision with the familiar copy glyph, age, changed-file count, additions, and
+- **Behavior and invariants:** Hovering a history row shows subject, author, short
+  revision with the familiar copy glyph, age, changed-file count, additions, and
   deletions through the shared tooltip controller.
   The tooltip omits the commit body and refs, clamps the subject to a small fixed line
   count, escapes all content, preserves unknown totals, and remains supplementary and
   noninteractive. The actual copy button remains in the selected commit summary.
-  Pointer and keyboard intent share cached detail preparation, and leaving one modality
-  does not dismiss the tooltip while the other still owns the row.
+  Stable pointer intent may prepare cached detail; keyboard selection uses the selected
+  request path and dismisses pointer-owned tooltip presentation.
 - **Acceptance:** Focused tests fail before and pass after the compact projection and
-  hover/focus lifecycle.
+  pointer-hover lifecycle.
   A maintained design-system test binds the documented modifier, renderer, and styles.
-  Real-browser checks cover long messages, unknown totals, hover, focus, dismissal, both
-  themes, and unchanged row selection and revision-copy behavior.
+  Real-browser checks cover long messages, unknown totals, pointer hover, keyboard
+  dismissal, both themes, and unchanged row selection and revision-copy behavior.
   `make format` and `make verify` pass.
 
 ### Phase 12: Audit Preview Handoff and Readiness (`mb-b83r`)
@@ -706,9 +711,9 @@ continuity, and measurement lifecycle remain.
 - **Behavior and invariants:** Entering a row schedules but does not start speculative
   commit-detail or comparison work.
   Leaving before stable intent cancels the timer with zero requests.
-  A stable hover or focus starts one bounded preparation, while click and Arrow-key
-  selection still update row, scroll position, route, and pending feedback immediately
-  and reuse matching work without duplication.
+  A stable hover starts one bounded preparation, while click and Arrow-key selection
+  still update row, scroll position, route, and pending feedback immediately and reuse
+  matching work without duplication.
   Interaction-time selection updates touch only the old and new rows, regardless of
   mounted history length.
   Git row backgrounds change without a transition so the visible selection does not ease
@@ -818,7 +823,28 @@ continuity, and measurement lifecycle remain.
   incoming view, and clear claim-owned busy state at painted readiness.
   `make format` and `make verify` pass on the exact candidate build.
 
-### Phase 24: Deliver and Monitor (`mb-j8ni`)
+### Phase 24: Keep Navigation Tooltips Pointer-Owned (`mb-iert`)
+
+- **Files and functions:** Separate tooltip dismissal from speculative preparation in
+  `renderRow`, `handleCommitRowKeydown`, `scheduleHover`, and `cancelHover` in
+  `src/metabrowser/static/git-panel.js`; make the delegated tooltip controller in
+  `src/metabrowser/static/app.js` pointer-open and focus-dismissed; extend the Git DOM
+  suite and design-system contract tests; reconcile `docs/design-system.md`, this plan,
+  and `CHANGELOG.md`.
+- **Behavior and invariants:** Stable pointer hover may prepare and show the bounded
+  commit summary. Focus alone never starts or retains a tooltip.
+  Arrow Up, Arrow Down, Enter, and Space dismiss pending or visible tooltip presentation
+  before selection, and an async detail response from older pointer intent cannot reopen
+  it. Keyboard dismissal does not discard reusable selected preparation, and accessible
+  names, roving focus, route ownership, and file-tree pointer tooltips remain unchanged.
+- **Acceptance:** Focused tests cover pointer show and leave, focus suppression,
+  immediate keyboard dismissal, stale async completion, and unchanged keyboard
+  selection. The design-system check binds pointer-only tooltip modality to both the
+  shell controller and Git rows.
+  Visible-browser pointer and keyboard smoke tests, `make format`, and `make verify`
+  pass.
+
+### Phase 25: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original

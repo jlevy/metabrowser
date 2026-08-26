@@ -2285,8 +2285,9 @@ if (typeof window !== "undefined") {
  * so a glyph-only control needs both.
  *
  * Delegated from the document, so it covers markup that does not exist yet,
- * including a plugin's. Focus is included because a keyboard user gets no
- * hover, and a native `title` never gave them one either.
+ * including a plugin's. Tooltips are pointer-only supplementary detail;
+ * keyboard focus uses the element's accessible name and dismisses any tooltip
+ * left under a stationary pointer.
  */
 function tipTextAnchor(event) {
   var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
@@ -2308,12 +2309,12 @@ function hideTipText(e) {
   }
 }
 
-// mouseenter/mouseleave do not bubble, so these listen in the capture phase;
-// focus does bubble as focusin/focusout, so those do not need it.
+// mouseenter/mouseleave do not bubble, so these listen in the capture phase.
+// Any focus transition ends pointer-owned tooltip presentation without
+// creating a second visual layer around keyboard navigation.
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
-document.addEventListener("focusin", showTipText);
-document.addEventListener("focusout", hideTipText);
+document.addEventListener("focusin", hideTooltip);
 
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,

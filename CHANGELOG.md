@@ -93,13 +93,13 @@ Browser:
 - Git history keeps the current commit and diff visible while the selected revision is
   prepared, then installs the replacement atomically.
   Commit metadata, diff assets, and comparison data start together; one replaceable
-  pointer- or focus-intent slot avoids duplicate work without prefetching every visible
-  row. Speculative work waits for stable hover or focus intent, so scrolling through rows
-  starts no transient detail or comparison requests; click and Arrow-key selection
-  remain immediate and mutate only the previous and next row instead of rewriting the
-  mounted history. The performance loop records that synchronous selection feedback
-  separately from the complete selection-to-painted-ready span and fails if pending
-  onset, clearance, exact revision convergence, or either phase label is missing.
+  pointer-intent slot avoids duplicate work without prefetching every visible row.
+  Speculative work waits for stable hover intent, so scrolling through rows starts no
+  transient detail or comparison requests; click and Arrow-key selection remain
+  immediate and mutate only the previous and next row instead of rewriting the mounted
+  history. The performance loop records that synchronous selection feedback separately
+  from the complete selection-to-painted-ready span and fails if pending onset,
+  clearance, exact revision convergence, or either phase label is missing.
   Git row backgrounds update without a per-row transition, so the visible selection does
   not ease in behind the input.
   The focused row’s one-row Tab anchor finalizes after painted readiness rather than
@@ -133,21 +133,29 @@ Browser:
   copy control that writes the full commit ID. Revision, file-header, and diff-file
   copies share one delegated clipboard and feedback contract.
 
-- Git history hover and focus tooltips now reuse a compact commit-summary projection
-  with author, short revision, age, and aggregate change counts.
+- Git history pointer tooltips now reuse a compact commit-summary projection with
+  author, short revision, age, and aggregate change counts.
   They omit the long commit description and refs, clamp the subject to two lines, and
   keep the copy glyph noninteractive while the real copy action remains in the selected
-  commit summary.
+  commit summary. Keyboard focus does not open or retain navigation tooltips; focus
+  movement and Arrow, Enter, or Space selection dismiss pending and visible tooltip
+  presentation before navigation.
 
 - Diff views now pair similar removed and added lines monotonically and emphasize the
   changed words or characters in both unified and split layouts.
-  Every added or deleted line uses a pale whole-row tint and a solid status-colored bar
-  at the leading edge of its line-number gutter.
-  Similar replacements use a substantially stronger inner range, while syntax
-  foregrounds, exact selectable text, unmatched-line treatment, folding, and persisted
-  layout state remain intact.
+  A wholly added or deleted line uses the stronger semantic background.
+  Similar replacements use a pale row background for unchanged text and the stronger
+  background on changed ranges.
+  Every changed line retains a solid status-colored bar at the leading edge of its
+  line-number gutter, while syntax foregrounds, exact selectable text, unmatched-line
+  treatment, folding, and persisted layout state remain intact.
   Pathological changed runs fall back to ordinary whole-line rendering at a measured
   deterministic work bound.
+
+- A first-time diff opens in Split, with Split on the left and Unified on the right of
+  the joined layout control.
+  A valid stored layout choice remains authoritative, and switching continues to
+  reproject the shared model without fetching or lexing again.
 
 - Raw Source tabs now use syntax highlighting consistently for every extension backed by
   the shipped Highlight.js registry, including lazy Markdown, YAML, and JSON Source
@@ -458,8 +466,8 @@ Design system:
 
 - **One tooltip, and it is Metabrowser’s own.** The navigation heading used to show two
   at once — the app’s, anchored and styled, and the browser’s, from a `title` attribute.
-  Every tooltip the app owns now goes through its own, on focus as well as hover, which
-  a native `title` never did.
+  Every tooltip the app owns now goes through its own pointer-hover controller; keyboard
+  focus uses the control’s accessible name and dismisses tooltip presentation.
   `devtools/check_tooltips.py` fails the build on a `title` attribute anywhere the app
   owns the markup, because a rule with no check is how this one was lost.
   `aria-label` is untouched: it is the accessible name, not a tooltip.

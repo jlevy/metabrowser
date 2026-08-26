@@ -501,6 +501,7 @@ const SHA_B = "b".repeat(40);
 const SHA_C = "c".repeat(40);
 const SHA_D = "d".repeat(40);
 const SHA_E = "e".repeat(40);
+const SHA_F = "f".repeat(40);
 
 function commit(id, parents, subject, refs) {
   return {
@@ -860,13 +861,14 @@ async function run() {
           { id: "refs/heads/main", name: "main", kind: "branch", is_head: true },
         ]),
         commit(SHA_B, [], "root commit"),
+        commit(SHA_F, [], "tooltip-only commit"),
       ],
       null,
     );
     internals.renderPanel();
 
     const rows = container.querySelectorAll(".git-graph-row");
-    assertEqual("rows: one per commit", rows.length, 2);
+    assertEqual("rows: one per commit", rows.length, 3);
     assertEqual("rows: revision on the element", rows[0].dataset.revision, SHA_A);
     assertTrue(
       "rows: gutter holds an svg",
@@ -889,6 +891,10 @@ async function run() {
     });
     shownTooltips.length = 0;
     const hidesBefore = tooltipHideCount;
+    rows[0].focus();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual("tooltip lifecycle: keyboard focus stays silent", shownTooltips.length, 0);
+
     rows[0]._hovered = true;
     rows[0].dispatch("mouseenter");
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -900,20 +906,49 @@ async function run() {
       "git-commit-summary-compact",
     );
 
-    rows[0].focus();
-    const hidesWhileFocused = tooltipHideCount;
+    const hidesBeforePointerLeave = tooltipHideCount;
     rows[0]._hovered = false;
     rows[0].dispatch("mouseleave");
-    assertEqual(
-      "tooltip lifecycle: pointer leave keeps a focused tooltip",
-      tooltipHideCount,
-      hidesWhileFocused,
-    );
-    rows[1].focus();
     assertTrue(
-      "tooltip lifecycle: blur hides an unhovered tooltip",
-      tooltipHideCount > hidesBefore,
+      "tooltip lifecycle: pointer leave dismisses despite keyboard focus",
+      tooltipHideCount > hidesBeforePointerLeave,
     );
+
+    let resolveDelayedTooltip;
+    responses.set(
+      `/api/git/commit/${SHA_F}`,
+      () =>
+        new Promise((resolve) => {
+          resolveDelayedTooltip = resolve;
+        }),
+    );
+    rows[2]._hovered = true;
+    rows[2].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    rows[2].focus();
+    const tooltipCountBeforeKeyboardSelection = shownTooltips.length;
+    const hidesBeforeKeyboardSelection = tooltipHideCount;
+    rows[2].dispatch("keydown", keyboardEvent("Enter"));
+    assertTrue(
+      "tooltip lifecycle: keyboard selection dismisses immediately",
+      tooltipHideCount > hidesBeforeKeyboardSelection,
+    );
+    resolveDelayedTooltip({
+      is_repo: true,
+      commit: commit(SHA_F, [], "tooltip-only commit"),
+      body: "",
+      stats: { files_changed: 1, additions: 1, deletions: 1 },
+      files: [],
+      files_truncated: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual(
+      "tooltip lifecycle: stale pointer detail cannot reopen after keyboard selection",
+      shownTooltips.length,
+      tooltipCountBeforeKeyboardSelection,
+    );
+    rows[2]._hovered = false;
+    assertTrue("tooltip lifecycle: dismissal remains observable", tooltipHideCount > hidesBefore);
   }
 
   // ── Selection and stale-response handling ──────────────────

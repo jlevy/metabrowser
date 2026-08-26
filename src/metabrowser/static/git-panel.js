@@ -670,11 +670,13 @@
     ) {
       switch (event.key) {
         case "ArrowUp":
+          dismissHoverTooltip();
           if (moveCommitRowFocus(row, -1)) {
             event.preventDefault();
           }
           return;
         case "ArrowDown":
+          dismissHoverTooltip();
           if (moveCommitRowFocus(row, 1)) {
             event.preventDefault();
           }
@@ -682,6 +684,7 @@
       }
     }
     if (event.key === "Enter" || event.key === " ") {
+      dismissHoverTooltip();
       event.preventDefault();
       void selectCommit(revision, { rowElement: row });
     }
@@ -821,23 +824,7 @@
       handleCommitRowKeydown(event, element, commit.id),
     );
     element.addEventListener("mouseenter", () => scheduleHover(element, commit.id));
-    element.addEventListener("mouseleave", () => {
-      if (document.activeElement !== element) {
-        cancelHover(commit.id);
-      }
-    });
-    element.addEventListener("focus", () => {
-      // Programmatic focus is enough for Arrow-key continuation while the
-      // selected comparison loads. Changing the roving Tab anchor here can
-      // synchronously force layout across a large retained diff; selection
-      // finalizes that accessibility bookkeeping after painted readiness.
-      scheduleHover(element, commit.id);
-    });
-    element.addEventListener("blur", () => {
-      if (!element.matches(":hover")) {
-        cancelHover(commit.id);
-      }
-    });
+    element.addEventListener("mouseleave", () => cancelHover(commit.id));
     return element;
   }
 
@@ -886,13 +873,20 @@
       if (!detail) {
         return;
       }
-      // Either pointer or keyboard focus can own the same tooltip while data
-      // loads. The other modality may have left without ending that ownership.
-      if (!rowElement.matches(":hover") && document.activeElement !== rowElement) {
+      if (hoverRevision !== revision || !rowElement.matches(":hover")) {
         return;
       }
       sdk()?.tooltip?.show(renderCommitTooltip(detail), rowElement);
     }, HOVER_DEBOUNCE_MS);
+  }
+
+  function dismissHoverTooltip() {
+    if (hoverTimer !== null) {
+      clearTimeout(hoverTimer);
+      hoverTimer = null;
+    }
+    sdk()?.tooltip?.hide();
+    hoverRevision = null;
   }
 
   /** @param {string | null} [revision] */
@@ -900,13 +894,8 @@
     if (revision !== null && hoverRevision !== revision) {
       return;
     }
-    if (hoverTimer !== null) {
-      clearTimeout(hoverTimer);
-      hoverTimer = null;
-    }
-    sdk()?.tooltip?.hide();
+    dismissHoverTooltip();
     cancelSpeculativePreparation(revision);
-    hoverRevision = null;
   }
 
   // ── Commit detail view ─────────────────────────────────────

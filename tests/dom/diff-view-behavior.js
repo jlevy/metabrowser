@@ -230,9 +230,19 @@ async function main() {
     }
   };
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
-  const { composeTextRuns, mountDiffView, setChangeLoader } = await import(
-    pathToFileURL(viewPath).href
-  );
+  const {
+    composeTextRuns,
+    mountDiffView: mountDiffViewImpl,
+    setChangeLoader,
+  } = await import(pathToFileURL(viewPath).href);
+  const defaultTestApi = {
+    highlightSyntax: async () => null,
+    isLargeTextPreview: () => true,
+    langForPath: () => "",
+    prefs: { get: () => "unified" },
+  };
+  const mountDiffView = (container, document, api = {}, options) =>
+    mountDiffViewImpl(container, document, { ...defaultTestApi, ...api }, options);
   const corpus = JSON.parse(
     fs.readFileSync(
       path.join(repoRoot, "src/metabrowser/data/file-diff-format/file-diff-conformance.json"),
@@ -436,6 +446,13 @@ async function main() {
   // primitives own radiogroup markup and keyboard behavior; this view
   // supplies the exclusive joined-group contract and reprojects on the
   // reported value without fetching or lexing again.
+  const defaultLayout = new FakeElement("div");
+  mountDiffViewImpl(defaultLayout, byName.get("modified-with-heading"));
+  check(
+    "missing layout preference defaults to split",
+    defaultLayout.find("diff-root")[0].dataset.layout === "split",
+  );
+
   let layoutChange = null;
   let layoutSyntaxCalls = 0;
   const preferenceWrites = [];
@@ -492,6 +509,11 @@ async function main() {
     layoutSpecs[0].select === "one" &&
       layoutSpecs[0].layout === "joined" &&
       layoutSpecs[0].value === "split",
+  );
+  check(
+    "layout control orders Split before Unified",
+    JSON.stringify(layoutSpecs[0].options.map((option) => option.value)) ===
+      JSON.stringify(["split", "unified"]),
   );
   check(
     "layout control is always present",
@@ -605,8 +627,17 @@ async function main() {
     prefs: { ...layoutApi.prefs, get: () => "future-layout" },
   });
   check(
-    "invalid layout preference falls back to unified",
-    invalidPreference.find("diff-root")[0].dataset.layout === "unified",
+    "invalid layout preference falls back to split",
+    invalidPreference.find("diff-root")[0].dataset.layout === "split",
+  );
+  const persistedUnified = new FakeElement("div");
+  mountDiffView(persistedUnified, byName.get("modified-with-heading"), {
+    ...layoutApi,
+    prefs: { ...layoutApi.prefs, get: () => "unified" },
+  });
+  check(
+    "persisted unified preference remains authoritative",
+    persistedUnified.find("diff-root")[0].dataset.layout === "unified",
   );
   const pureAdd = new FakeElement("div");
   mountDiffView(pureAdd, byName.get("added-text-file"), layoutApi);

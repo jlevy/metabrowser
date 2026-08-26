@@ -912,8 +912,8 @@ function renderFileBar(change, toggleId, bodyId) {
 
 /** @param {DiffViewApi | undefined} api @returns {"unified" | "split"} */
 export function readLayoutPreference(api) {
-  const value = api?.prefs?.get("diff.layout", /** @type {unknown} */ ("unified"));
-  return value === "split" ? "split" : "unified";
+  const value = api?.prefs?.get("diff.layout", /** @type {unknown} */ ("split"));
+  return value === "unified" ? "unified" : "split";
 }
 
 /**
@@ -967,8 +967,8 @@ function renderLayoutControl(view) {
     label: "Diff layout",
     layout: "joined",
     options: [
-      { label: "Unified", value: "unified" },
       { label: "Split", value: "split" },
+      { label: "Unified", value: "unified" },
     ],
     select: "one",
     value: view.layout,

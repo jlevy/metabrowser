@@ -172,8 +172,8 @@ def test_git_row_selection_avoids_full_collection_mutation() -> None:
     assert selection.index('"gitRevision:selectionFeedback"') < selection.index(
         '"gitRevision:rowAnchor"'
     )
-    focus_handler = git[git.index('element.addEventListener("focus"') :][:500]
-    assert "setCommitRowAnchor" not in focus_handler
+    render_row = git[git.index("function renderRow") : git.index("function renderRefBadges")]
+    assert 'element.addEventListener("focus"' not in render_row
     enter_handler = git[git.index('if (event.key === "Enter"') :][:250]
     assert "{ rowElement: row }" in enter_handler
     assert "transition:" not in _rule(styles, ".git-graph-row")
@@ -378,6 +378,22 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "max-width:" in compact
     assert "line-clamp:" in compact_subject
     assert "noninteractive copy glyph" in doc
+
+
+def test_navigation_tooltips_are_pointer_only() -> None:
+    """Navigation focus already exposes the selected item and must not add a tooltip."""
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+
+    assert "Navigation tooltips are pointer-only" in doc
+    assert 'document.addEventListener("mouseenter", showTipText, true)' in app
+    assert 'document.addEventListener("mouseleave", hideTipText, true)' in app
+    assert 'document.addEventListener("focusin", showTipText)' not in app
+    assert 'document.addEventListener("focusout", hideTipText)' not in app
+    assert 'document.addEventListener("focusin", hideTooltip)' in app
+    assert 'element.addEventListener("focus", () =>' not in panel
+    assert "dismissHoverTooltip();" in panel
 
 
 def test_one_document_surface_has_one_set_of_breakpoints() -> None:
