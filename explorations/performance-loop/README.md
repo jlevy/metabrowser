@@ -251,10 +251,18 @@ The scenario warms the on-demand diff assets, resets the navigation-time profile
 then uses trusted Chrome input for two cold selections and one pointer-prepared
 selection. It then finds a revision with active and queued deferred files, scrolls that
 comparison, and changes revision while hydration is active.
+Before waiting for inventory completion, it also switches from Files to Git, opens a
+comparison, waits for a nonempty folder to arrive in the inactive Files tree, returns,
+and expands the folder with trusted input.
+The preflight fails if collapsed class, ARIA, inline style, computed visibility, or the
+first expanded state disagree.
+It records `git_files_roundtrip.return_to_files_ms` and `folder_expand_ms`, then reloads
+the application document so the established revision measurements start without
+preflight cache or mount state.
 The run fails if deferred requests exceed two in flight, old-revision file work succeeds
 after selection, active work is not canceled, row/route/view state diverges, or more
 than one comparison remains mounted.
-The corpus must contain at least four revisions and one revision with three deferred
+The corpus must contain at least five revisions and one revision with three deferred
 files among the first history rows; missing stress coverage is an error, not a skipped
 check. Its `git-revision-navigation/v1` output separates request time reported by the
 server from client data and rendering spans.

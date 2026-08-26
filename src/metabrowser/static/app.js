@@ -1395,6 +1395,16 @@ function treeDepthStyle(depth) {
   return ` style="--tree-depth:${Math.max(1, Number(depth) || 1)}"`;
 }
 
+// Every tree disclosure uses this exact child-group shape. The keyboard
+// navigator derives aria-expanded and visibility from the collapsed class, so
+// an inline display override is not an equivalent hiding mechanism.
+function treeChildGroupStartHtml(groupId, depth, expanded) {
+  return (
+    `<div class="tree-children${expanded ? "" : " tree-children-collapsed"}"` +
+    ` id="${esc(groupId)}" role="group"${treeDepthStyle(depth)}>`
+  );
+}
+
 // Container kinds by extension, injected by the server from the loaded
 // plugin manifests (arch-nav-containers.md). A file whose extension is
 // listed plays the folder-like role in addition to its own.
@@ -1603,9 +1613,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         "</div>",
       );
       if (hasPotentialChildren) {
-        parts.push(
-          `<div class="tree-children${expanded ? "" : " tree-children-collapsed"}" id="${groupId}" role="group"${treeDepthStyle(level + 1)}>`,
-        );
+        parts.push(treeChildGroupStartHtml(groupId, level + 1, expanded));
         if (Array.isArray(node.children) && expanded) {
           parts.push(
             renderTreeNodes(node.children, false, {
@@ -1731,9 +1739,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         "</div>",
       );
       if (container) {
-        parts.push(
-          `<div class="tree-children tree-children-collapsed" id="${containerGroupId}" role="group"${treeDepthStyle(level + 1)}></div>`,
-        );
+        parts.push(treeChildGroupStartHtml(containerGroupId, level + 1, false), "</div>");
       }
     }
   }
@@ -6448,11 +6454,7 @@ function _buildRowHtml(entry, options) {
       dirChip +
       "</div>" +
       (hasPotentialChildren
-        ? '<div class="tree-children" id="' +
-          groupId +
-          '" role="group" style="display:none;--tree-depth:' +
-          (level + 1) +
-          '">' +
+        ? treeChildGroupStartHtml(groupId, level + 1, false) +
           '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
           ' role="status" aria-label="Loading">' +
           '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
@@ -6873,9 +6875,11 @@ function applyCellPatch(entry, highlightChange) {
             var groupId = treeDomId("tree-group", entry.path);
             row.insertAdjacentHTML(
               "afterend",
-              `<div class="tree-children tree-children-collapsed" id="${groupId}" role="group"` +
-                treeDepthStyle(Number(row.getAttribute("aria-level") || 1) + 1) +
-                ">" +
+              treeChildGroupStartHtml(
+                groupId,
+                Number(row.getAttribute("aria-level") || 1) + 1,
+                false,
+              ) +
                 '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
                 ' role="status" aria-label="Loading">' +
                 '<span class="spinner spinner-sm" aria-hidden="true"></span></div></div>',

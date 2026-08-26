@@ -18,9 +18,12 @@ const BROWSER_STARTUP_SETTLE_MS = 500;
 const CDP_COMMAND_TIMEOUT_MS = 15_000;
 const CHROME_EXIT_GRACE_MS = 2_000;
 const CLIENT_COMPLETION_SETTLE_MS = 1_000;
-const DEFERRED_CANDIDATE_ROWS = 32;
+// Keep the hydration probe bounded while allowing a moving history to put a
+// suitable multi-file revision beyond the first screenful between releases.
+const DEFERRED_CANDIDATE_ROWS = 64;
 const DEVTOOLS_START_TIMEOUT_MS = 15_000;
 const FIRST_ROW_TIMEOUT_MS = 30_000;
+const GIT_ROUNDTRIP_ROW_INDEX = 4;
 const INPUT_PULSE_INTERVAL_MS = 250;
 const INPUT_SENTINEL_ID = "metabrowser-performance-input-sentinel";
 const INTERACTION_OBSERVER_SETTLE_MS = 100;
@@ -1119,6 +1122,186 @@ async function runDeferredHydrationScenario(session, timeoutMs) {
   };
 }
 
+function assertGitFilesCollapsedFolderHealth(state) {
+  if (!state?.row_collapsed || state.row_expanded || !state.group_collapsed) {
+    throw new Error("folder must begin with one coherent collapsed state");
+  }
+  if (state.aria_expanded !== "false") {
+    throw new Error("collapsed folder must expose aria-expanded=false");
+  }
+  if (state.group_inline_display === "none") {
+    throw new Error("collapsed folder must not retain an inline display:none override");
+  }
+  if (state.group_visibility !== "hidden") {
+    throw new Error("collapsed folder child group must be hidden by the shared class");
+  }
+}
+
+function assertGitFilesRoundTripHealth(result) {
+  if (!result.path) {
+    throw new Error("path is required for Git-to-Files round-trip validation");
+  }
+  if (!Number.isFinite(result.return_to_files_ms) || !Number.isFinite(result.folder_expand_ms)) {
+    throw new Error("Git-to-Files round-trip timings must be finite");
+  }
+  assertGitFilesCollapsedFolderHealth(result.before);
+  if (!result.after?.row_expanded || result.after.row_collapsed || result.after.group_collapsed) {
+    throw new Error("folder must become visibly expanded on the first open action");
+  }
+  if (result.after.aria_expanded !== "true") {
+    throw new Error("expanded folder must expose aria-expanded=true");
+  }
+  if (
+    result.after.group_inline_display === "none" ||
+    result.after.group_display === "none" ||
+    result.after.group_visibility === "hidden"
+  ) {
+    throw new Error("expanded folder child group remained hidden");
+  }
+}
+
+async function gitFilesFolderState(session, rowIndex) {
+  return evaluate(
+    session,
+    `(() => {
+      const row = document.querySelectorAll(
+        "#tab-files .tree-folder:not(.tree-item-empty)"
+      )[${rowIndex}];
+      const group = row?.nextElementSibling;
+      if (!(row instanceof HTMLElement) ||
+          !(group instanceof HTMLElement) ||
+          !group.classList.contains("tree-children")) return null;
+      const groupStyle = getComputedStyle(group);
+      return {
+        aria_expanded: row.getAttribute("aria-expanded"),
+        group_collapsed: group.classList.contains("tree-children-collapsed"),
+        group_display: groupStyle.display,
+        group_inline_display: group.style.display,
+        group_visibility: groupStyle.visibility,
+        path: row.dataset.path || "",
+        row_collapsed: row.classList.contains("collapsed"),
+        row_expanded: row.classList.contains("expanded")
+      };
+    })()`,
+  );
+}
+
+// Run before the inventory completion wait. A large root can populate Files
+// through live inserts while Git owns the nav panel; returning from a rendered
+// diff must leave those folders interactive without a page reload.
+async function runGitFilesRoundTrip(session, timeoutMs) {
+  await waitFor(
+    () => pointForSelector(session, '.tab-btn[data-tab="git"]'),
+    timeoutMs,
+    "Git navigation tab during indexing",
+  );
+  await dispatchTrustedClickForSelector(session, '.tab-btn[data-tab="git"]');
+  await waitFor(
+    async () =>
+      evaluate(
+        session,
+        `document.querySelectorAll(".git-graph-row").length > ${GIT_ROUNDTRIP_ROW_INDEX}`,
+      ),
+    timeoutMs,
+    "Git history rows during indexing",
+  );
+  // Leave row zero untouched for the settled scenario's warm transition. The
+  // round trip changes the route to a folder; re-clicking an already-selected
+  // revision is not a representative revision transition and can retain the
+  // intentionally replaced preview instead of reloading it.
+  const revision = await gitRow(session, GIT_ROUNDTRIP_ROW_INDEX);
+  await dispatchTrustedClickForSelector(session, ".git-graph-row", GIT_ROUNDTRIP_ROW_INDEX);
+  await waitForGitRevision(session, revision.revision, timeoutMs);
+
+  const folderCandidate = await waitFor(
+    async () =>
+      evaluate(
+        session,
+        `(() => {
+          const rows = Array.from(document.querySelectorAll(
+            "#tab-files .tree-folder:not(.tree-item-empty)"
+          ));
+          const index = rows.findIndex((row) =>
+            row.nextElementSibling?.classList.contains("tree-children")
+          );
+          return index >= 0 ? {index} : null;
+        })()`,
+      ),
+    timeoutMs,
+    "a Files folder while the Git diff is visible",
+  );
+  const folderIndex = folderCandidate.index;
+
+  const returnStarted = await evaluate(session, `performance.now()`);
+  await dispatchTrustedClickForSelector(session, '.tab-btn[data-tab="files"]');
+  const returnedAt = await awaitNextPaint(session);
+  let before = await gitFilesFolderState(session, folderIndex);
+  if (!before) {
+    throw new Error("Files folder disappeared during the Git round trip");
+  }
+  // A regular fetched tree may have opened this row through the viewport-bound
+  // default planner. Normalize that healthy state to collapsed before testing
+  // the one-click open contract. A corrupted live insert is already marked
+  // collapsed but has an uncollapsed, inline-hidden group, so it fails below
+  // without being normalized away.
+  if (
+    before.row_expanded &&
+    !before.group_collapsed &&
+    before.group_display !== "none" &&
+    before.group_visibility !== "hidden"
+  ) {
+    await dispatchTrustedClickForSelector(
+      session,
+      "#tab-files .tree-folder:not(.tree-item-empty)",
+      folderIndex,
+    );
+    before = await waitFor(
+      async () => {
+        const state = await gitFilesFolderState(session, folderIndex);
+        return state?.row_collapsed && state.group_collapsed ? state : null;
+      },
+      timeoutMs,
+      "the round-trip folder to collapse",
+    );
+  }
+
+  const expandStarted = await evaluate(session, `performance.now()`);
+  const partial = {
+    path: before.path,
+    return_to_files_ms: Number((returnedAt - returnStarted).toFixed(2)),
+    before,
+  };
+  // Reject incoherent disclosure before clicking: this is the exact frozen
+  // shape produced by the former live-insert markup.
+  assertGitFilesCollapsedFolderHealth(before);
+  await dispatchTrustedClickForSelector(
+    session,
+    "#tab-files .tree-folder:not(.tree-item-empty)",
+    folderIndex,
+  );
+  const after = await waitFor(
+    async () => {
+      const state = await gitFilesFolderState(session, folderIndex);
+      return state?.row_expanded &&
+        !state.group_collapsed &&
+        state.group_display !== "none" &&
+        state.group_visibility !== "hidden"
+        ? state
+        : null;
+    },
+    timeoutMs,
+    "the round-trip folder to expand",
+  );
+  const expandedAt = await awaitNextPaint(session);
+  const result = {
+    ...partial,
+    folder_expand_ms: Number((expandedAt - expandStarted).toFixed(2)),
+    after,
+  };
+  assertGitFilesRoundTripHealth(result);
+  return result;
+}
+
 async function runGitRevisionScenario(session, timeoutMs) {
   await waitFor(
     () => pointForSelector(session, '.tab-btn[data-tab="git"]'),
@@ -1324,12 +1507,39 @@ async function capture(options) {
         evaluate(
           session,
           `document.readyState === "complete" &&
-            typeof window.metabrowser?.perf?.snapshot === "function" &&
-            Boolean(document.querySelector('[role="treeitem"]'))`,
+            typeof window.metabrowser?.perf?.snapshot === "function"`,
         ),
       FIRST_ROW_TIMEOUT_MS,
-      "application first row and performance recorder",
+      "application shell and performance recorder",
     );
+    let gitFilesRoundTrip = null;
+    if (options.scenario === "git-revisions") {
+      gitFilesRoundTrip = await runGitFilesRoundTrip(session, options.timeoutMs);
+      // The preflight deliberately navigates away from Git into Files while the
+      // index is active. Reload the application document before the established
+      // revision timing and deferred-hydration gates so its prepared-comparison
+      // and mounted-view state cannot warm or otherwise perturb those samples.
+      const preflightTimeOrigin = await evaluate(session, `performance.timeOrigin`);
+      await session.send("Page.navigate", { url: options.url });
+      await waitFor(
+        async () =>
+          evaluate(
+            session,
+            `performance.timeOrigin !== ${JSON.stringify(preflightTimeOrigin)} &&
+              document.readyState === "complete" &&
+              typeof window.metabrowser?.perf?.snapshot === "function" &&
+              Boolean(document.querySelector('[role="treeitem"]'))`,
+          ),
+        FIRST_ROW_TIMEOUT_MS,
+        "fresh application row after the Git-to-Files preflight",
+      );
+    } else {
+      await waitFor(
+        async () => evaluate(session, `Boolean(document.querySelector('[role="treeitem"]'))`),
+        FIRST_ROW_TIMEOUT_MS,
+        "application first row",
+      );
+    }
     if (options.scenario) {
       await waitForIndex(options.url, options.timeoutMs);
       await delay(CLIENT_COMPLETION_SETTLE_MS);
@@ -1338,6 +1548,9 @@ async function capture(options) {
         options.scenario === "git-revisions"
           ? await runGitRevisionScenario(session, options.timeoutMs)
           : await runFileViewScenario(session, options.timeoutMs);
+      if (gitFilesRoundTrip) {
+        payload.git_files_roundtrip = gitFilesRoundTrip;
+      }
       payload.page_exceptions = pageExceptions;
       if (pageExceptions !== 0) {
         throw new Error(
@@ -1438,6 +1651,7 @@ module.exports = {
   assertControlledInputCount,
   assertDeferredHydrationHealth,
   assertFileTransitionHealth,
+  assertGitFilesRoundTripHealth,
   assertGitTransitionHealth,
   capture,
   chromeExecutable,
@@ -1445,6 +1659,7 @@ module.exports = {
   dispatchTrustedClickForSelector,
   parseArgs,
   runFileViewScenario,
+  runGitFilesRoundTrip,
   runGitRevisionScenario,
   startTrustedInputPulse,
   usage,

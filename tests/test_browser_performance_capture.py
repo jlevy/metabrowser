@@ -135,6 +135,7 @@ try {{
 def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> None:
     source = CAPTURE.read_text(encoding="utf-8")
 
+    assert "async function runGitFilesRoundTrip" in source
     assert "async function runGitRevisionScenario" in source
     assert "dispatchTrustedClickForSelector" in source
     assert "startGitBlankFrameMonitor" in source
@@ -144,10 +145,99 @@ def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> Non
     assert '"gitRevision:selectionFeedback"' in source
     assert '"gitRevision:selectToReady"' in source
     assert 'document.querySelectorAll(".git-commit-diff .diff-root")' in source
+    assert "git_files_roundtrip" in source
+
+    capture_flow = source.split("async function capture", 1)[1]
+    assert capture_flow.index("runGitFilesRoundTrip") < capture_flow.index("waitForIndex")
+    post_preflight = capture_flow.split("gitFilesRoundTrip = await runGitFilesRoundTrip", 1)[1]
+    assert post_preflight.index("const preflightTimeOrigin") < post_preflight.index(
+        'session.send("Page.navigate"'
+    )
+    assert "performance.timeOrigin !==" in post_preflight
 
     runner = RUNNER.read_text(encoding="utf-8")
     assert 'choices=["git-revisions", "file-views"]' in runner
     assert 'command.extend(["--scenario", scenario])' in runner
+
+
+def test_git_files_roundtrip_rejects_frozen_folder_disclosure() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+const healthy = {{
+  path: "docs",
+  return_to_files_ms: 5,
+  folder_expand_ms: 8,
+  before: {{
+    aria_expanded: "false",
+    group_collapsed: true,
+    group_display: "none",
+    group_inline_display: "",
+    group_visibility: "hidden",
+    row_collapsed: true,
+    row_expanded: false
+  }},
+  after: {{
+    aria_expanded: "true",
+    group_collapsed: false,
+    group_display: "block",
+    group_inline_display: "",
+    group_visibility: "visible",
+    row_collapsed: false,
+    row_expanded: true
+  }}
+}};
+capture.assertGitFilesRoundTripHealth(healthy);
+for (const [field, mutate] of [
+  ["before.row_expanded", (value) => value.before.row_expanded = true],
+  ["before.group_collapsed", (value) => value.before.group_collapsed = false],
+  ["before.group_inline_display", (value) => value.before.group_inline_display = "none"],
+  ["before.group_visibility", (value) => value.before.group_visibility = "visible"],
+  ["before.aria_expanded", (value) => value.before.aria_expanded = "true"],
+  ["after.row_expanded", (value) => value.after.row_expanded = false],
+  ["after.row_collapsed", (value) => value.after.row_collapsed = true],
+  ["after.group_collapsed", (value) => value.after.group_collapsed = true],
+  ["after.group_display", (value) => value.after.group_display = "none"],
+  ["after.group_inline_display", (value) => value.after.group_inline_display = "none"],
+  ["after.group_visibility", (value) => value.after.group_visibility = "hidden"],
+  ["after.aria_expanded", (value) => value.after.aria_expanded = "false"]
+]) {{
+  const candidate = structuredClone(healthy);
+  mutate(candidate);
+  try {{
+    capture.assertGitFilesRoundTripHealth(candidate);
+  }} catch (error) {{
+    process.stdout.write(`${{field}}:${{String(error.message)}}\n`);
+  }}
+}}
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    for field in (
+        "before.row_expanded",
+        "before.group_collapsed",
+        "before.group_inline_display",
+        "before.group_visibility",
+        "before.aria_expanded",
+        "after.row_expanded",
+        "after.row_collapsed",
+        "after.group_collapsed",
+        "after.group_display",
+        "after.group_inline_display",
+        "after.group_visibility",
+        "after.aria_expanded",
+    ):
+        assert f"{field}:" in result.stdout
 
 
 def test_navigation_scenarios_prepare_click_coordinates_before_timing() -> None:

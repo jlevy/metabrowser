@@ -33,6 +33,10 @@ The final phase extends the same continuity rule to ordinary file navigation: re
 content dims immediately, each selected view owns a measurable painted-readiness
 boundary, and the performance loop tests file and Git transitions separately without
 pretending that their renderer lifecycles are identical.
+The Git scenario also crosses from Files to Git and back while inventory is still
+arriving, then opens a live-inserted folder.
+This makes panel-state continuity part of the same maintained gate instead of relying on
+a settled-page check.
 
 ## Goals
 
@@ -65,6 +69,9 @@ pretending that their renderer lifecycles are identical.
 - Add a trusted regular-file navigation scenario that fails on blank frames, stale
   path/render state, stuck pending state, missing attribution, or duplicate active
   mounts
+- Preserve one coherent disclosure state when folders arrive while another navigation
+  panel is active, and fail the Git scenario if the first folder open after returning to
+  Files needs a reload
 - Preserve route ownership, rapid-selection correctness, plugin disposal, keyboard and
   pointer behavior, and reduced-motion preferences
 
@@ -274,9 +281,9 @@ introduced.
 ## Implementation Plan
 
 Epic `mb-fgcg` owns this plan.
-Its twenty-three child beads separate measurement, behavior, presentation, validation,
-keyboard consistency, commit-header information design, component ownership,
-retained-work cancellation, cross-surface pending and readiness parity, and delivery.
+Its child beads separate measurement, behavior, presentation, validation, keyboard
+consistency, commit-header information design, component ownership, retained-work
+cancellation, cross-surface pending and readiness parity, and delivery.
 Blockers express only real sequencing; the baseline also feeds final validation
 directly.
 
@@ -304,7 +311,8 @@ directly.
 | Gate Git pending timing and row-anchor attribution | `mb-f43i` | None | Closed |
 | Standardize retained-navigation interaction attribution | `mb-1xm2` | `mb-f43i` | Closed |
 | Exclude driver coordinate lookup from navigation timing | `mb-gv44` | `mb-1xm2` | Closed |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, and completed prior phases | Blocked |
+| Repair live folder disclosure after a Git round trip | `mb-j72n` | None | In progress |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -755,7 +763,31 @@ server work a single viewport can start.
   bounded request cancellation, one mounted comparison, and zero page exceptions.
   Focused tests, `make format`, and `make verify` pass.
 
-### Phase 22: Deliver and Monitor (`mb-j8ni`)
+### Phase 22: Preserve Live Folder Disclosure Across Panels (`mb-j72n`)
+
+- **Files and functions:** Route every file-tree child group through
+  `treeChildGroupStartHtml` in `src/metabrowser/static/app.js`, including
+  `renderTreeNodes`, `_buildRowHtml`, and `applyCellPatch`. Extend
+  `runGitFilesRoundTrip`, `gitFilesFolderState`, `assertGitFilesRoundTripHealth`, and
+  `capture` in `explorations/performance-loop/capture-browser.js`. Cover the markup
+  contract in `tests/test_tree_keyboard_integration.py` and the headed gate in
+  `tests/test_browser_performance_capture.py`.
+- **Behavior and invariants:** A nonempty folder has one child group whose collapsed
+  class, row class, and `aria-expanded` value describe the same state.
+  Live inventory insertion, fetched tree rendering, and nonempty cell restoration use
+  that contract; inline `display:none` never competes with it.
+  Before waiting for inventory completion, the Git scenario switches to Git, opens a
+  comparison, waits for a folder to arrive in Files, returns, and expands it with
+  trusted input. The established revision measurements then start from a fresh
+  application document so this preflight does not warm their client state.
+- **Acceptance:** The cold-scan sequence Files to Git comparison to Files expands the
+  folder on its first activation without reload.
+  The preflight rejects an incoherent collapsed class, ARIA mismatch, inline hiding
+  override, invisible expanded group, or nonfinite return and expansion timing.
+  Focused tests, both standard headed navigation scenarios, `make format`, and
+  `make verify` pass on the exact candidate build.
+
+### Phase 23: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original
@@ -853,6 +885,10 @@ reduced-motion behavior.
 
 The two CDP scenarios provide separate end-to-end evidence for Git and regular-file
 navigation on the repository itself.
+Before the Git scenario waits for indexing to settle, it opens a commit comparison,
+returns to Files after a folder arrives, and expands that folder with trusted input.
+This preflight fails on a class, ARIA, or computed-visibility mismatch and records the
+return-to-Files and folder-expansion timings.
 The Git scenario’s large-comparison phase fails on deferred-request fanout, missing
 cancellation, obsolete successful completions, selection/route/render divergence, or
 multiple mounted comparisons.

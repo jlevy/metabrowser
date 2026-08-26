@@ -11,6 +11,10 @@ Added:
 
 Fixed:
 
+- Folders discovered while the Files panel is inactive now use the same class-driven
+  disclosure state as fetched folders, so returning from a Git comparison during an
+  active inventory scan can expand them without reloading the page.
+
 - Opening the first Git commit in a fresh browser session now loads the diff plugin on
   demand before mounting the commit view, so changed files and lines appear without
   first opening a `.patch` or `.diff` file.

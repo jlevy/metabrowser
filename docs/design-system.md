@@ -510,6 +510,15 @@ so they cannot drift.
 Shift-activation applies the same open or close direction recursively, while still
 selecting the folder and opening Overview.
 
+Every nonempty folder controls one adjacent `.tree-children[role="group"]` element.
+Server-rendered rows, live inventory inserts, and restored rows use the same child-group
+markup contract: the row’s `expanded` or `collapsed` class, `aria-expanded`, and the
+group’s `tree-children-collapsed` class always agree.
+An inline display rule must not hide the group because it would outlive later class and
+ARIA updates. `test_live_folder_insert_uses_the_canonical_collapsed_group_contract`
+enforces the shared renderer path, and the headed Git revision scenario opens a folder
+that arrived while the Files panel was inactive.
+
 ### Container Rows
 
 A file whose kind declares the container capability keeps its file identity — icon,
