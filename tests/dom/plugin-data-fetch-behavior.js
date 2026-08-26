@@ -97,6 +97,7 @@ const mb = sandbox.metabrowser;
 
 function jsonResponse(status, body) {
   return Promise.resolve({
+    headers: { get: (name) => (name.toLowerCase() === "content-length" ? "1234" : null) },
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
@@ -105,11 +106,27 @@ function jsonResponse(status, body) {
 
 (async () => {
   check("SDK initialized", !!mb, "window.metabrowser missing");
+  const decodeMeasures = [];
+  mb.perf = {
+    measureAsync: async (label, work, metadata) => {
+      const result = await work();
+      decodeMeasures.push({ label, metadata });
+      return result;
+    },
+  };
 
   // ── Params and success ──────────────────────────────────────────
   nextResponse = () => jsonResponse(200, { type: "binary_chunk", bytes_read: 4 });
   const ok = await mb.fetchPluginData("binary", "chunk", { path: "a.bin", offset: 0 });
   check("successful payload is returned", ok.bytes_read === 4, JSON.stringify(ok));
+  check(
+    "successful JSON decode is attributed separately from transport",
+    decodeMeasures[0]?.label === "pluginData:decode" &&
+      decodeMeasures[0]?.metadata?.plugin === "binary" &&
+      decodeMeasures[0]?.metadata?.route === "chunk" &&
+      decodeMeasures[0]?.metadata?.response_bytes === 1234,
+    JSON.stringify(decodeMeasures),
+  );
   check(
     "params are encoded onto the query string",
     calls[0].url === "http://localhost/api/plugin/binary/chunk?path=a.bin&offset=0",

@@ -103,6 +103,8 @@ type KpressRenderPayload = {
 
 type DisposableHandle = {
   dispose?: () => void;
+  /** Initial useful content is ready; later progressive work stays outside this boundary. */
+  ready?: Promise<void>;
 };
 
 type MetabrowserRequestErrorRuntime = Readonly<{
@@ -1461,6 +1463,9 @@ declare global {
 
   type MetabrowserGitCommitStats = {
     files_changed: number;
+    files_modified: number;
+    files_added: number;
+    files_deleted: number;
     additions: number;
     deletions: number;
   };
@@ -1547,11 +1552,14 @@ declare global {
    */
   type MetabrowserShellRuntime = {
     activateNavPanel(panelId: string): void;
+    beginPreviewNavigation(claim: MetabrowserPreviewClaim): boolean;
     claimPreview(owner: string): MetabrowserPreviewClaim;
+    endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
     isPreviewClaimCurrent(claim: MetabrowserPreviewClaim): boolean;
     registerNavPanel(panel: MetabrowserNavPanel): void;
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;

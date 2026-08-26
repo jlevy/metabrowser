@@ -94,6 +94,13 @@ Semantic invariants beyond the schema, checked by both implementations:
 - `manifest.cursor` is non-null exactly when `truncated` is true.
 - A patch’s `file_id` matches a manifest entry.
 
+Syntax tokens, intraline ranges, moved-block matches, fold state, and unified/split row
+pairings are not patch fields.
+They are replaceable renderer enrichments derived from the exact line records, and
+failure or truncation of one cannot change a file’s availability or apply semantics.
+A future producer-supplied enrichment would need its own versioned contract and
+conformance decision; it must not appear as an undeclared v1 property.
+
 ## The Apply Oracle
 
 “Fully modeled” is testable: applying a hydrated document to its base tree must

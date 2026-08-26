@@ -97,9 +97,9 @@ function responsePerfMeta(resp, path, extra) {
 
 function measureNextPaint(label, meta) {
   if (typeof requestAnimationFrame === "undefined") {
-    return;
+    return Promise.resolve();
   }
-  _perf.measureAsync(
+  return _perf.measureAsync(
     label,
     () =>
       new Promise((resolve) => {
@@ -1395,6 +1395,16 @@ function treeDepthStyle(depth) {
   return ` style="--tree-depth:${Math.max(1, Number(depth) || 1)}"`;
 }
 
+// Every tree disclosure uses this exact child-group shape. The keyboard
+// navigator derives aria-expanded and visibility from the collapsed class, so
+// an inline display override is not an equivalent hiding mechanism.
+function treeChildGroupStartHtml(groupId, depth, expanded) {
+  return (
+    `<div class="tree-children${expanded ? "" : " tree-children-collapsed"}"` +
+    ` id="${esc(groupId)}" role="group"${treeDepthStyle(depth)}>`
+  );
+}
+
 // Container kinds by extension, injected by the server from the loaded
 // plugin manifests (arch-nav-containers.md). A file whose extension is
 // listed plays the folder-like role in addition to its own.
@@ -1603,9 +1613,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         "</div>",
       );
       if (hasPotentialChildren) {
-        parts.push(
-          `<div class="tree-children${expanded ? "" : " tree-children-collapsed"}" id="${groupId}" role="group"${treeDepthStyle(level + 1)}>`,
-        );
+        parts.push(treeChildGroupStartHtml(groupId, level + 1, expanded));
         if (Array.isArray(node.children) && expanded) {
           parts.push(
             renderTreeNodes(node.children, false, {
@@ -1731,9 +1739,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         "</div>",
       );
       if (container) {
-        parts.push(
-          `<div class="tree-children tree-children-collapsed" id="${containerGroupId}" role="group"${treeDepthStyle(level + 1)}></div>`,
-        );
+        parts.push(treeChildGroupStartHtml(containerGroupId, level + 1, false), "</div>");
       }
     }
   }
@@ -2279,8 +2285,9 @@ if (typeof window !== "undefined") {
  * so a glyph-only control needs both.
  *
  * Delegated from the document, so it covers markup that does not exist yet,
- * including a plugin's. Focus is included because a keyboard user gets no
- * hover, and a native `title` never gave them one either.
+ * including a plugin's. Tooltips are pointer-only supplementary detail;
+ * keyboard focus uses the element's accessible name and dismisses any tooltip
+ * left under a stationary pointer.
  */
 function tipTextAnchor(event) {
   var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
@@ -2302,12 +2309,12 @@ function hideTipText(e) {
   }
 }
 
-// mouseenter/mouseleave do not bubble, so these listen in the capture phase;
-// focus does bubble as focusin/focusout, so those do not need it.
+// mouseenter/mouseleave do not bubble, so these listen in the capture phase.
+// Any focus transition ends pointer-owned tooltip presentation without
+// creating a second visual layer around keyboard navigation.
 document.addEventListener("mouseenter", showTipText, true);
 document.addEventListener("mouseleave", hideTipText, true);
-document.addEventListener("focusin", showTipText);
-document.addEventListener("focusout", hideTipText);
+document.addEventListener("focusin", hideTooltip);
 
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,
@@ -2476,7 +2483,23 @@ treePane.addEventListener(
 var hoverPrefetchTimer = null;
 var hoverPrefetchPath = "";
 var hoverPrefetchController = null;
+var hoverPrefetchPromise = null;
 var hoverPrefetchInFlight = 0;
+
+async function settleHoverPrefetchForSelection(path) {
+  clearTimeout(hoverPrefetchTimer);
+  hoverPrefetchTimer = null;
+  if (hoverPrefetchPath !== path) {
+    abortHoverPrefetch();
+    return;
+  }
+  if (hoverPrefetchPromise) {
+    await hoverPrefetchPromise;
+    return;
+  }
+  hoverPrefetchPath = "";
+  hoverPrefetchController = null;
+}
 
 function shouldPrefetchFile(item) {
   var path = item.dataset.path;
@@ -2497,6 +2520,7 @@ function abortHoverPrefetch() {
   clearTimeout(hoverPrefetchTimer);
   hoverPrefetchTimer = null;
   hoverPrefetchPath = "";
+  hoverPrefetchPromise = null;
   if (hoverPrefetchController) {
     hoverPrefetchController.abort();
     hoverPrefetchController = null;
@@ -2514,7 +2538,7 @@ function startHoverPrefetch(path) {
   hoverPrefetchInFlight += 1;
   hoverPrefetchController = typeof AbortController !== "undefined" ? new AbortController() : null;
   var options = hoverPrefetchController ? { signal: hoverPrefetchController.signal } : {};
-  fetch(`/api/file?path=${encodeURIComponent(path)}`, options)
+  const request = fetch(`/api/file?path=${encodeURIComponent(path)}`, options)
     .then((resp) =>
       resp.ok
         ? _perf.measureAsync(
@@ -2534,10 +2558,13 @@ function startHoverPrefetch(path) {
     })
     .finally(() => {
       hoverPrefetchInFlight -= 1;
-      if (hoverPrefetchPath === path) {
+      if (hoverPrefetchPath === path && hoverPrefetchPromise === request) {
         hoverPrefetchController = null;
+        hoverPrefetchPath = "";
+        hoverPrefetchPromise = null;
       }
     });
+  hoverPrefetchPromise = request;
 }
 
 // Prefetch small, non-log file content only after hover intent is clear. Large
@@ -3328,6 +3355,53 @@ var navPanels = [];
 /** @type {Set<string>} */
 var navPanelsShown = new Set();
 var previewClaimGeneration = 0;
+/** @type {(() => void) | null} */
+var pendingFilePreviewStageCleanup = null;
+
+function cancelPendingFilePreviewStage() {
+  const cleanup = pendingFilePreviewStageCleanup;
+  pendingFilePreviewStageCleanup = null;
+  cleanup?.();
+}
+
+// Completed replacements ease only compositor opacity. Retained content is
+// never animated while work is pending.
+var PREVIEW_ARRIVAL_DURATION_MS = 50;
+var PREVIEW_ARRIVAL_START_OPACITY = 0.98;
+/** @type {Animation | null} */
+var previewArrivalAnimation = null;
+
+/** @param {HTMLElement} content */
+function animatePreviewContentArrival(content) {
+  previewArrivalAnimation?.cancel();
+  previewArrivalAnimation = null;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+  const animation = content.animate([{ opacity: PREVIEW_ARRIVAL_START_OPACITY }, { opacity: 1 }], {
+    duration: PREVIEW_ARRIVAL_DURATION_MS,
+    easing: "ease-out",
+  });
+  previewArrivalAnimation = animation;
+  animation.addEventListener(
+    "finish",
+    () => {
+      if (previewArrivalAnimation === animation) {
+        previewArrivalAnimation = null;
+      }
+    },
+    { once: true },
+  );
+}
+
+/** @param {HTMLElement} preview */
+function clearPreviewNavigationState(preview) {
+  preview.classList.remove("preview-navigation-pending");
+  if (preview.hasAttribute("data-preview-pending-claim")) {
+    preview.removeAttribute("aria-busy");
+    preview.removeAttribute("data-preview-pending-claim");
+  }
+}
 
 /**
  * Claim the shared preview pane for one navigation owner.
@@ -3340,8 +3414,12 @@ var previewClaimGeneration = 0;
  * @returns {number}
  */
 function claimPreview(owner) {
-  previewClaimGeneration += 1;
+  cancelPendingFilePreviewStage();
   const preview = document.getElementById("preview-pane");
+  if (preview) {
+    clearPreviewNavigationState(preview);
+  }
+  previewClaimGeneration += 1;
   if (preview) {
     preview.dataset.previewOwner = owner;
   }
@@ -3351,6 +3429,39 @@ function claimPreview(owner) {
 /** @param {number} claim */
 function isPreviewClaimCurrent(claim) {
   return claim === previewClaimGeneration;
+}
+
+/**
+ * Mark retained preview content as pending for one navigation claim.
+ *
+ * Empty-state chrome is not a useful handoff surface. A delayed initial
+ * spinner may call this again after it has installed its neutral status.
+ *
+ * @param {number} claim
+ * @returns {boolean} Whether the pane contains a surface that can carry pending state.
+ */
+function beginPreviewNavigation(claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return false;
+  }
+  const preview = document.getElementById("preview-pane");
+  const child = preview?.firstElementChild;
+  if (!preview || !child || child.classList.contains("preview-empty")) {
+    return false;
+  }
+  preview.classList.add("preview-navigation-pending");
+  preview.setAttribute("aria-busy", "true");
+  preview.setAttribute("data-preview-pending-claim", String(claim));
+  return true;
+}
+
+/** @param {number} claim */
+function endPreviewNavigation(claim) {
+  const preview = document.getElementById("preview-pane");
+  if (!preview || preview.getAttribute("data-preview-pending-claim") !== String(claim)) {
+    return;
+  }
+  clearPreviewNavigationState(preview);
 }
 
 function registerNavPanel(panel) {
@@ -3492,7 +3603,26 @@ function renderPreviewHtml(html, claim) {
     return null;
   }
   disposeActivePluginViews();
+  delete preview.dataset.renderedPath;
   preview.innerHTML = html;
+  return preview;
+}
+
+// Install a fully staged core view without reparsing its HTML. Git uses this
+// after its comparison renderer has mounted into a detached tree, so the prior
+// revision remains visible until the replacement is complete.
+function renderPreviewNode(node, claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return null;
+  }
+  const preview = document.getElementById("preview-pane");
+  if (!preview) {
+    return null;
+  }
+  disposeActivePluginViews();
+  delete preview.dataset.renderedPath;
+  preview.replaceChildren(node);
+  animatePreviewContentArrival(node);
   return preview;
 }
 
@@ -3505,11 +3635,14 @@ function renderPreviewHtml(html, claim) {
 // of app.js instead of adding a thousand lines to it.
 window.MetabrowserShell = Object.freeze({
   activateNavPanel,
+  beginPreviewNavigation,
   claimPreview,
+  endPreviewNavigation,
   isPreviewClaimCurrent,
   registerNavPanel,
   removeNavPanel,
   renderPreviewHtml,
+  renderPreviewNode,
 });
 
 // Toggle the nav chrome's drop shadow based on whether the
@@ -4999,7 +5132,7 @@ async function loadMoreCurrentText() {
         window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
       );
     } else {
-      renderFile(cached, undefined, previewClaim);
+      await renderFile(cached, undefined, previewClaim);
     }
   } catch (e) {
     console.warn("Failed to load text chunk", e);
@@ -5021,7 +5154,7 @@ var selectFileAbortController = null;
 
 async function renderFileWithPlugins(data, preferredViewId, previewClaim) {
   await _perf.measureAsync(
-    "loadPluginsForKind",
+    "fileNavigation:assets",
     () => window.metabrowser.ensureKindAssets(data.kind),
     { kind: data.kind || "" },
   );
@@ -5032,156 +5165,180 @@ async function renderFileWithPlugins(data, preferredViewId, previewClaim) {
 async function selectFile(path, preferredViewId) {
   var previewClaim = claimPreview("file");
   filePreviewClaim = previewClaim;
-  return _perf.measureAsync(
-    "selectFile",
-    async () => {
-      // Always close any prior live stream — switching files (or reopening
-      // the same file) starts fresh.
-      closeLiveStream();
-      // Chunk growth is per file: a fresh selection starts small again so
-      // opening a file never inherits the last file's appetite.
-      resetTextChunkGrowth();
-      currentPath = path;
-      const preview = document.getElementById("preview-pane");
-      if (!preview) {
-        return {
-          message: "Could not display the file. Refresh the page to try again.",
-          status: "error",
-        };
-      }
-
-      // Three-way cache state:
-      //   - hot: in fileCache and not flagged → serve from cache.
-      //   - revalidate: in fileCache but flagged (file recently changed in
-      //     activity poll) → send If-None-Match, accept 304 to confirm.
-      //   - cold: not in fileCache → unconditional fetch.
-      const cached = fileCache.get(path);
-      const needsRevalidate = fileNeedsRevalidate.has(path);
-      if (cached && !needsRevalidate && !activeFiles.has(path)) {
-        navigationController.canonicalizePath(path, cached.kind === "folder");
-        await renderFileWithPlugins(cached, preferredViewId, previewClaim);
-        maybeOpenLiveStream(path, cached);
-        return openedFileOutcome(path, cached, preview);
-      }
-
-      if (loadingIndicatorTimer) {
-        clearTimeout(loadingIndicatorTimer);
-      }
-      loadingIndicatorTimer = setTimeout(() => {
-        loadingIndicatorTimer = null;
+  var selection = /** @type {Promise<QuickFileOpenOutcome>} */ (
+    _perf.measureAsync(
+      "selectFile",
+      async () => {
+        // Always close any prior live stream — switching files (or reopening
+        // the same file) starts fresh.
+        closeLiveStream();
+        // Chunk growth is per file: a fresh selection starts small again so
+        // opening a file never inherits the last file's appetite.
+        resetTextChunkGrowth();
+        currentPath = path;
+        if (selectFileAbortController) {
+          selectFileAbortController.abort();
+          selectFileAbortController = null;
+        }
+        const preview = document.getElementById("preview-pane");
+        if (!preview) {
+          return {
+            message: "Could not display the file. Refresh the page to try again.",
+            status: "error",
+          };
+        }
+        var retainedPreview = beginPreviewNavigation(previewClaim);
+        await settleHoverPrefetchForSelection(path);
         if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
-          return;
+          return { status: "cancelled" };
         }
-        disposeActivePluginViews();
-        stopFolderHeaderSubscription();
-        preview.innerHTML =
-          '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
-          '<span class="sr-only">Loading file…</span></div>';
-      }, LOADING_INDICATOR_DELAY_MS);
 
-      if (selectFileAbortController) {
-        selectFileAbortController.abort();
-      }
-      selectFileAbortController =
-        typeof AbortController !== "undefined" ? new AbortController() : null;
-      var selectFileSignal = selectFileAbortController
-        ? selectFileAbortController.signal
-        : undefined;
-
-      try {
-        /** @type {Record<string, string>} */
-        const headers = {};
-        if (cached && fileETags.has(path)) {
-          headers["if-none-match"] = fileETags.get(path);
+        // Three-way cache state:
+        //   - hot: in fileCache and not flagged → serve from cache.
+        //   - revalidate: in fileCache but flagged (file recently changed in
+        //     activity poll) → send If-None-Match, accept 304 to confirm.
+        //   - cold: not in fileCache → unconditional fetch.
+        const cached = fileCache.get(path);
+        const needsRevalidate = fileNeedsRevalidate.has(path);
+        if (cached && !needsRevalidate && !activeFiles.has(path)) {
+          navigationController.canonicalizePath(path, cached.kind === "folder");
+          await renderFileWithPlugins(cached, preferredViewId, previewClaim);
+          maybeOpenLiveStream(path, cached);
+          return openedFileOutcome(path, cached, preview);
         }
-        const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
-          headers: headers,
-          signal: selectFileSignal,
-        });
-        if (resp.status === 304 && cached) {
-          // Server confirmed the cached payload is still fresh — zero-byte
-          // body, render from memory.
+
+        if (loadingIndicatorTimer) {
+          clearTimeout(loadingIndicatorTimer);
+        }
+        if (!retainedPreview) {
+          loadingIndicatorTimer = setTimeout(() => {
+            loadingIndicatorTimer = null;
+            if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
+              return;
+            }
+            disposeActivePluginViews();
+            stopFolderHeaderSubscription();
+            delete preview.dataset.renderedPath;
+            preview.innerHTML =
+              '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+              '<span class="sr-only">Loading file…</span></div>';
+            beginPreviewNavigation(previewClaim);
+          }, LOADING_INDICATOR_DELAY_MS);
+        }
+
+        selectFileAbortController =
+          typeof AbortController !== "undefined" ? new AbortController() : null;
+        var selectFileSignal = selectFileAbortController
+          ? selectFileAbortController.signal
+          : undefined;
+
+        try {
+          /** @type {Record<string, string>} */
+          const headers = {};
+          if (cached && fileETags.has(path)) {
+            headers["if-none-match"] = fileETags.get(path);
+          }
+          const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
+            headers: headers,
+            signal: selectFileSignal,
+          });
+          if (resp.status === 304 && cached) {
+            // Server confirmed the cached payload is still fresh — zero-byte
+            // body, render from memory.
+            fileNeedsRevalidate.delete(path);
+            if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
+              if (loadingIndicatorTimer) {
+                clearTimeout(loadingIndicatorTimer);
+                loadingIndicatorTimer = null;
+              }
+              navigationController.canonicalizePath(path, cached.kind === "folder");
+              await renderFileWithPlugins(cached, preferredViewId, previewClaim);
+              maybeOpenLiveStream(path, cached);
+              return openedFileOutcome(path, cached, preview);
+            }
+            return { status: "cancelled" };
+          }
+          if (!resp.ok) {
+            const text = await _perf.measureAsync(
+              "apiFile:errorText",
+              () => resp.text(),
+              responsePerfMeta(resp, path),
+            );
+            throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
+              notFound: resp.status === 404,
+              summary: responseErrorSummary(text, "Could not open this file."),
+            });
+          }
+          const data = await _perf.measureAsync(
+            "apiFile:json",
+            () => resp.json(),
+            responsePerfMeta(resp, path),
+          );
+          if (data.kind !== "folder") {
+            // Folder envelopes are no-store (aggregates move during a
+            // scan): keep them out of the file cache and ETag books.
+            cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
+            const etagHeader = resp.headers.get("etag");
+            if (etagHeader) {
+              fileETags.set(path, etagHeader);
+              boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
+            }
+          }
           fileNeedsRevalidate.delete(path);
           if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
             if (loadingIndicatorTimer) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
-            navigationController.canonicalizePath(path, cached.kind === "folder");
-            await renderFileWithPlugins(cached, preferredViewId, previewClaim);
-            maybeOpenLiveStream(path, cached);
-            return openedFileOutcome(path, cached, preview);
+            navigationController.canonicalizePath(path, data.kind === "folder");
+            await renderFileWithPlugins(data, preferredViewId, previewClaim);
+            maybeOpenLiveStream(path, data);
+            return openedFileOutcome(path, data, preview);
           }
           return { status: "cancelled" };
-        }
-        if (!resp.ok) {
-          const text = await _perf.measureAsync(
-            "apiFile:errorText",
-            () => resp.text(),
-            responsePerfMeta(resp, path),
-          );
-          throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
-            notFound: resp.status === 404,
-            summary: responseErrorSummary(text, "Could not open this file."),
-          });
-        }
-        const data = await _perf.measureAsync(
-          "apiFile:json",
-          () => resp.json(),
-          responsePerfMeta(resp, path),
-        );
-        if (data.kind !== "folder") {
-          // Folder envelopes are no-store (aggregates move during a
-          // scan): keep them out of the file cache and ETag books.
-          cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
-          const etagHeader = resp.headers.get("etag");
-          if (etagHeader) {
-            fileETags.set(path, etagHeader);
-            boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
+        } catch (err) {
+          var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
+          if (caught?.name === "AbortError") {
+            return { status: "cancelled" };
           }
-        }
-        fileNeedsRevalidate.delete(path);
-        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
-          if (loadingIndicatorTimer) {
-            clearTimeout(loadingIndicatorTimer);
-            loadingIndicatorTimer = null;
+          var notFound = caught?.notFound === true;
+          if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
+            if (loadingIndicatorTimer) {
+              clearTimeout(loadingIndicatorTimer);
+              loadingIndicatorTimer = null;
+            }
+            disposeActivePluginViews();
+            stopFolderHeaderSubscription();
+            delete preview.dataset.renderedPath;
+            preview.innerHTML = previewErrorHtml(
+              caught?.summary || "Could not open this file.",
+              errorMessage(err),
+            );
+          } else {
+            return { status: "cancelled" };
           }
-          navigationController.canonicalizePath(path, data.kind === "folder");
-          await renderFileWithPlugins(data, preferredViewId, previewClaim);
-          maybeOpenLiveStream(path, data);
-          return openedFileOutcome(path, data, preview);
+          return notFound
+            ? { message: `${path} is no longer available.`, status: "not-found" }
+            : {
+                message: `Could not open ${path}. Check that the file still exists and is readable.`,
+                status: "error",
+              };
         }
-        return { status: "cancelled" };
-      } catch (err) {
-        var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
-        if (caught?.name === "AbortError") {
-          return { status: "cancelled" };
-        }
-        var notFound = caught?.notFound === true;
-        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
-          if (loadingIndicatorTimer) {
-            clearTimeout(loadingIndicatorTimer);
-            loadingIndicatorTimer = null;
-          }
-          disposeActivePluginViews();
-          stopFolderHeaderSubscription();
-          preview.innerHTML = previewErrorHtml(
-            caught?.summary || "Could not open this file.",
-            errorMessage(err),
-          );
-        } else {
-          return { status: "cancelled" };
-        }
-        return notFound
-          ? { message: `${path} is no longer available.`, status: "not-found" }
-          : {
-              message: `Could not open ${path}. Check that the file still exists and is readable.`,
-              status: "error",
-            };
-      }
-    },
-    { path: path, preferred_view: preferredViewId || "" },
+      },
+      { path: path, preferred_view: preferredViewId || "" },
+    )
   );
+  var readySelection = selection.finally(() => {
+    if (loadingIndicatorTimer && isPreviewClaimCurrent(previewClaim)) {
+      clearTimeout(loadingIndicatorTimer);
+      loadingIndicatorTimer = null;
+    }
+    endPreviewNavigation(previewClaim);
+  });
+  return _perf.measureAsync("fileNavigation:selectToReady", () => readySelection, {
+    path: path,
+    preferred_view: preferredViewId || "",
+  });
 }
 
 /**
@@ -5386,7 +5543,7 @@ function updatePrintButton(printable) {
   btn.setAttribute("aria-hidden", printable ? "false" : "true");
 }
 
-function setActivePreviewView(tabId, preview) {
+function setActivePreviewView(tabId, preview, syncShell = true) {
   preview = preview || document.getElementById("preview-pane");
   if (!preview) {
     return;
@@ -5413,7 +5570,9 @@ function setActivePreviewView(tabId, preview) {
     preview.dataset.printProfile = "plain";
     delete preview.dataset.renderRuntime;
     delete preview.dataset.kpressEnabled;
-    updatePrintButton(false);
+    if (syncShell) {
+      updatePrintButton(false);
+    }
     return;
   }
   var printable = boolData(active.dataset.printable);
@@ -5430,7 +5589,9 @@ function setActivePreviewView(tabId, preview) {
   } else {
     delete preview.dataset.kpressEnabled;
   }
-  updatePrintButton(printable);
+  if (syncShell) {
+    updatePrintButton(printable);
+  }
 }
 
 function printActiveView() {
@@ -5450,10 +5611,8 @@ document.addEventListener("metabrowser:view-print-state", () => {
 
 var activePluginDisposers = [];
 
-function disposeActivePluginViews() {
-  stopFolderHeaderSubscription();
-  var disposers = activePluginDisposers;
-  activePluginDisposers = [];
+/** @param {Array<() => void>} disposers */
+function disposePluginViews(disposers) {
   for (var i = 0; i < disposers.length; i++) {
     try {
       disposers[i]();
@@ -5463,10 +5622,17 @@ function disposeActivePluginViews() {
   }
 }
 
-function mountPluginView(container, pluginView, ctx) {
-  /** @type {{disposed: boolean, handle: {dispose: () => void} | null}} */
+function disposeActivePluginViews() {
+  stopFolderHeaderSubscription();
+  var disposers = activePluginDisposers;
+  activePluginDisposers = [];
+  disposePluginViews(disposers);
+}
+
+async function mountPluginView(container, pluginView, ctx, disposers = activePluginDisposers) {
+  /** @type {{disposed: boolean, handle: {dispose?: () => void, ready?: Promise<void>} | null}} */
   var record = { disposed: false, handle: null };
-  activePluginDisposers.push(() => {
+  disposers.push(() => {
     if (record.disposed) {
       return;
     }
@@ -5479,36 +5645,44 @@ function mountPluginView(container, pluginView, ctx) {
     }
   });
   try {
-    var maybePromise = pluginView.render(container, ctx);
-    Promise.resolve(maybePromise).then(
-      (handle) => {
-        scheduleHighlightCode(container);
-        if (!handle || typeof handle.dispose !== "function") {
-          return;
-        }
-        if (record.disposed) {
-          handle.dispose();
-        } else {
-          record.handle = handle;
-        }
-      },
-      (err) => {
-        if (record.disposed) {
-          return;
-        }
-        console.error("plugin render error:", err);
-        container.innerHTML =
-          '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
-      },
-    );
+    var rendered = await Promise.resolve(pluginView.render(container, ctx));
+    var handle =
+      rendered && typeof rendered === "object"
+        ? /** @type {{dispose?: () => void, ready?: Promise<void>}} */ (rendered)
+        : null;
+    if (record.disposed) {
+      handle?.dispose?.();
+      return;
+    }
+    record.handle = handle;
+    if (handle?.ready) {
+      await handle.ready;
+    }
+    if (record.disposed) {
+      return;
+    }
+    scheduleHighlightCode(container);
   } catch (err) {
+    if (record.disposed) {
+      return;
+    }
     console.error("plugin render error:", err);
     container.innerHTML =
       '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
   }
 }
 
-function renderFile(data, preferredViewId, claim) {
+/** @param {HTMLElement} preview */
+function createFilePreviewStage(preview) {
+  const stage = document.createElement("div");
+  stage.className = "preview-file-stage";
+  stage.setAttribute("aria-hidden", "true");
+  stage.inert = true;
+  preview.appendChild(stage);
+  return stage;
+}
+
+async function renderFile(data, preferredViewId, claim) {
   // Ownership, not staleness: the Git panel renders into this same pane, so a
   // file render that lost the pane must not paint over it. currentPath cannot
   // express that, because the owner changed rather than the path.
@@ -5516,210 +5690,258 @@ function renderFile(data, preferredViewId, claim) {
   if (renderClaim === null || !isPreviewClaimCurrent(renderClaim)) {
     return;
   }
-  return _perf.measure(
+  return _perf.measureAsync(
     `renderFile:${data.kind || data.type || "?"}`,
-    () => {
+    async () => {
       const preview = document.getElementById("preview-pane");
       if (!preview) {
         return;
       }
-
-      // Drain any disposers from a previously mounted view; we're about to
-      // replace preview.innerHTML below, which detaches their containers.
-      disposeActivePluginViews();
-
-      // Build header — folders get breadcrumb chrome (renderFolderHeader),
-      // files the path/badges/size strip.
-      let html = "";
-      if (data.kind === "folder") {
-        html = renderFolderHeader(data);
-        window.metabrowser?.folderContext?.seed(data.path, data);
-        startFolderHeaderSubscription(data.path);
-      } else {
-        stopFolderHeaderSubscription();
-      }
-      if (data.kind !== "folder") {
-        var badges = renderBadges(data);
-        html = '<div class="file-header">';
-        html +=
-          '<span class="file-header-path folder-breadcrumb">' +
-          headerAddressHtml(data.path, true) +
-          `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-copy-path="${esc(data.path)}" data-tip-text="Copy path" aria-label="Copy path">` +
-          ICON_COPY +
-          "</button>" +
-          "</span>";
-        html += badges;
-        html += sizeHtml(data.size, "file-header-size");
-        html +=
-          '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
-          (ICONS.print || "") +
-          "</button>";
-        html += "</div>";
-      }
-
-      // Data-driven tab rendering from server views.
-      //
-      // Every (kind, viewId) goes through the plugin registry: built-in
-      // plugins (markdown, agent-log, unknown-jsonl, text) own their own
-      // kinds; entry-point plugins own theirs. The shell here
-      // builds the empty containers; each plugin's render(container, ctx)
-      // fires below once the DOM is in place. If no plugin claims a
-      // (kind, viewId) we paint an unavailable-view message — never a
-      // fallback that pulls renderers out of the shell. This is the
-      // contract: every kind is a plugin.
-      var views = data.views;
-      var initialActiveView = null;
-      if (views?.length) {
-        // Plugin navigation can preserve a working mode across resources.
-        // An unavailable preference falls through to the server default.
-        initialActiveView =
-          views.find((view) => view.id === preferredViewId) ||
-          views.find((view) => view.default) ||
-          views[0];
-      }
-      var pluginRenders = [];
-      if (views && views.length > 0) {
-        if (views.length > 1) {
-          html += '<div class="tab-bar">';
-          for (let i = 0; i < views.length; i++) {
-            const view = views[i];
-            var active = view.id === initialActiveView?.id ? " active" : "";
-            html +=
-              '<button class="tab-btn' +
-              active +
-              '" type="button" data-tab="' +
-              esc(view.id) +
-              '"' +
-              viewMetaAttrs(view) +
-              ">" +
-              esc(view.label) +
-              "</button>";
-          }
+      const stage = createFilePreviewStage(preview);
+      const stagedPluginDisposers = [];
+      let installed = false;
+      let stageCleaned = false;
+      const cleanupStage = () => {
+        if (stageCleaned) {
+          return;
+        }
+        stageCleaned = true;
+        disposePluginViews(stagedPluginDisposers);
+        stage.remove();
+      };
+      cancelPendingFilePreviewStage();
+      pendingFilePreviewStageCleanup = cleanupStage;
+      try {
+        // Build header — folders get breadcrumb chrome (renderFolderHeader),
+        // files the path/badges/size strip.
+        let html = "";
+        if (data.kind === "folder") {
+          html = renderFolderHeader(data);
+          window.metabrowser?.folderContext?.seed(data.path, data);
+        }
+        if (data.kind !== "folder") {
+          var badges = renderBadges(data);
+          html = '<div class="file-header">';
+          html +=
+            '<span class="file-header-path folder-breadcrumb">' +
+            headerAddressHtml(data.path, true) +
+            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(data.path)}" data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
+            ICON_COPY +
+            "</button>" +
+            "</span>";
+          html += badges;
+          html += sizeHtml(data.size, "file-header-size");
+          html +=
+            '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
+            (ICONS.print || "") +
+            "</button>";
           html += "</div>";
         }
-        for (let i = 0; i < views.length; i++) {
-          const view = views[i];
-          var pluginView =
-            window.metabrowser && data.kind
-              ? window.metabrowser.getRegisteredView(data.kind, view.id)
-              : null;
-          // container_class can be set per-view in the plugin manifest as
-          // [[view]].container_class; defaults to "content-body".
-          var containerClass = view.container_class || "content-body";
-          var hidden = view.id === initialActiveView?.id ? "" : ' style="display:none;"';
-          var noPadding = view.id === "raw" || view.id === "source" ? "padding:0;" : "";
-          if (noPadding && !hidden) {
-            hidden = ` style="${noPadding}"`;
-          } else if (noPadding && hidden) {
-            hidden = ` style="display:none;${noPadding}"`;
-          }
 
-          if (pluginView) {
-            // Empty container; plugin renders into it after innerHTML lands.
-            html +=
-              '<div class="' +
-              containerClass +
-              '" data-tab-content="' +
-              view.id +
-              '" data-plugin-view="' +
-              esc(view.id) +
-              '"' +
-              viewMetaAttrs(view) +
-              ' data-active-view="false"' +
-              hidden +
-              "></div>";
-            pluginRenders.push({ tabId: view.id, view: pluginView });
-          } else {
-            // No plugin registered for this (kind, viewId). Defensive
-            // empty-state — should not fire in practice because every
-            // kind+view declared in any loaded plugin's manifest is
-            // expected to have a matching registerView call.
-            html +=
-              '<div class="' +
-              containerClass +
-              '" data-tab-content="' +
-              view.id +
-              '"' +
-              viewMetaAttrs(view) +
-              ' data-active-view="false"' +
-              hidden +
-              '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
+        // Data-driven tab rendering from server views.
+        //
+        // Every (kind, viewId) goes through the plugin registry: built-in
+        // plugins (markdown, agent-log, unknown-jsonl, text) own their own
+        // kinds; entry-point plugins own theirs. The shell here
+        // builds the empty containers; each plugin's render(container, ctx)
+        // fires below once the DOM is in place. If no plugin claims a
+        // (kind, viewId) we paint an unavailable-view message — never a
+        // fallback that pulls renderers out of the shell. This is the
+        // contract: every kind is a plugin.
+        var views = data.views;
+        var initialActiveView = null;
+        if (views?.length) {
+          // Plugin navigation can preserve a working mode across resources.
+          // An unavailable preference falls through to the server default.
+          initialActiveView =
+            views.find((view) => view.id === preferredViewId) ||
+            views.find((view) => view.default) ||
+            views[0];
+        }
+        var pluginRenders = [];
+        if (views && views.length > 0) {
+          if (views.length > 1) {
+            html += '<div class="tab-bar">';
+            for (let i = 0; i < views.length; i++) {
+              const view = views[i];
+              var active = view.id === initialActiveView?.id ? " active" : "";
+              html +=
+                '<button class="tab-btn' +
+                active +
+                '" type="button" data-tab="' +
+                esc(view.id) +
+                '"' +
+                viewMetaAttrs(view) +
+                ">" +
+                esc(view.label) +
+                "</button>";
+            }
+            html += "</div>";
+          }
+          for (let i = 0; i < views.length; i++) {
+            const view = views[i];
+            var pluginView =
+              window.metabrowser && data.kind
+                ? window.metabrowser.getRegisteredView(data.kind, view.id)
+                : null;
+            // container_class can be set per-view in the plugin manifest as
+            // [[view]].container_class; defaults to "content-body".
+            var containerClass = view.container_class || "content-body";
+            var hidden = view.id === initialActiveView?.id ? "" : ' style="display:none;"';
+            var noPadding = view.id === "raw" || view.id === "source" ? "padding:0;" : "";
+            if (noPadding && !hidden) {
+              hidden = ` style="${noPadding}"`;
+            } else if (noPadding && hidden) {
+              hidden = ` style="display:none;${noPadding}"`;
+            }
+
+            if (pluginView) {
+              // Empty container; plugin renders into it after innerHTML lands.
+              html +=
+                '<div class="' +
+                containerClass +
+                '" data-tab-content="' +
+                view.id +
+                '" data-plugin-view="' +
+                esc(view.id) +
+                '"' +
+                viewMetaAttrs(view) +
+                ' data-active-view="false"' +
+                hidden +
+                "></div>";
+              pluginRenders.push({ tabId: view.id, view: pluginView });
+            } else {
+              // No plugin registered for this (kind, viewId). Defensive
+              // empty-state — should not fire in practice because every
+              // kind+view declared in any loaded plugin's manifest is
+              // expected to have a matching registerView call.
+              html +=
+                '<div class="' +
+                containerClass +
+                '" data-tab-content="' +
+                view.id +
+                '"' +
+                viewMetaAttrs(view) +
+                ' data-active-view="false"' +
+                hidden +
+                '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
+            }
+          }
+        } else if (data.type === "image") {
+          // No tab bar — the browser renders the image directly via /raw,
+          // which already returns the right mimetype. The .content-body
+          // wrapper gives the same outer padding a plain text view has.
+          html +=
+            '<div class="content-body"><img class="file-image" src="/raw?path=' +
+            encodeURIComponent(data.path) +
+            '" alt="' +
+            esc(data.path) +
+            '"></div>';
+        } else if (data.type === "binary") {
+          html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
+        } else if (data.type === "jsonl_too_large") {
+          html +=
+            '<div class="content-body"><div class="preview-empty">' +
+            "<strong>This JSONL file is too large to preview.</strong><br><br>" +
+            "File size: " +
+            formatSize(data.size || 0) +
+            "<br>Preview limit: " +
+            formatSize(data.max_size || 0) +
+            "<br><br>Open it with a tool that can stream large files." +
+            "</div></div>";
+        } else if (data.type === "error") {
+          html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
+        }
+
+        _perf.measure(
+          "renderFile:mount",
+          () => {
+            stage.innerHTML = html;
+            stage.dataset.renderedPath = data.path || "";
+          },
+          filePerfMeta(data, { html_chars: html.length }),
+        );
+        if (initialActiveView) {
+          setActivePreviewView(initialActiveView.id, stage, false);
+        } else {
+          setActivePreviewView(null, stage, false);
+        }
+
+        // The stage is connected so renderers can measure layout, but remains
+        // transparent and inert while the prior useful surface stays visible.
+        // The active renderer and its optional readiness promise settle before
+        // the shell transfers the stage's children into the preview.
+        if (pluginRenders?.length) {
+          var ctx = {
+            path: data.path,
+            kind: data.kind,
+            ext: data.ext,
+            size: data.size,
+            frontmatter: data.frontmatter || {},
+            body: typeof data.content === "string" ? data.content : data.body || "",
+            raw: data,
+            fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
+          };
+          for (var pi = 0; pi < pluginRenders.length; pi++) {
+            var pr = pluginRenders[pi];
+            var container = stage.querySelector(`[data-plugin-view="${pr.tabId}"]`);
+            if (!container) {
+              continue;
+            }
+            var mount = (
+              (target, pluginView) => () =>
+                mountPluginView(target, pluginView, ctx, stagedPluginDisposers)
+            )(container, pr.view);
+            if (initialActiveView && pr.tabId === initialActiveView.id) {
+              await _perf.measureAsync(
+                "fileNavigation:activeView",
+                mount,
+                filePerfMeta(data, { view: pr.tabId }),
+              );
+            } else {
+              container._metabrowserMount = () => {
+                void mount();
+              };
+            }
           }
         }
-      } else if (data.type === "image") {
-        // No tab bar — the browser renders the image directly via /raw,
-        // which already returns the right mimetype. The .content-body
-        // wrapper gives the same outer padding a plain text view has.
-        html +=
-          '<div class="content-body"><img class="file-image" src="/raw?path=' +
-          encodeURIComponent(data.path) +
-          '" alt="' +
-          esc(data.path) +
-          '"></div>';
-      } else if (data.type === "binary") {
-        html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
-      } else if (data.type === "jsonl_too_large") {
-        html +=
-          '<div class="content-body"><div class="preview-empty">' +
-          "<strong>This JSONL file is too large to preview.</strong><br><br>" +
-          "File size: " +
-          formatSize(data.size || 0) +
-          "<br>Preview limit: " +
-          formatSize(data.max_size || 0) +
-          "<br><br>Open it with a tool that can stream large files." +
-          "</div></div>";
-      } else if (data.type === "error") {
-        html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
-      }
 
-      _perf.measure(
-        "renderFile:mount",
-        () => {
-          preview.innerHTML = html;
-        },
-        filePerfMeta(data, { html_chars: html.length }),
-      );
-      if (initialActiveView) {
-        setActivePreviewView(initialActiveView.id, preview);
-      } else {
-        setActivePreviewView(null, preview);
-      }
-
-      // Now that the DOM is in place, run any deferred plugin renderers.
-      // Each plugin's render(container, ctx) mutates the container directly
-      // — async work (fetches, charts) is fine; the spinner stays visible
-      // until the plugin's render resolves.
-      if (pluginRenders?.length) {
-        var ctx = {
-          path: data.path,
-          kind: data.kind,
-          ext: data.ext,
-          size: data.size,
-          frontmatter: data.frontmatter || {},
-          body: typeof data.content === "string" ? data.content : data.body || "",
-          raw: data,
-          fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
-        };
-        for (var pi = 0; pi < pluginRenders.length; pi++) {
-          var pr = pluginRenders[pi];
-          var container = preview.querySelector(`[data-plugin-view="${pr.tabId}"]`);
-          if (!container) {
-            continue;
+        _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
+        const arrivalContent =
+          stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
+        if (!isPreviewClaimCurrent(renderClaim)) {
+          return;
+        }
+        const replacementNodes = Array.from(stage.childNodes);
+        disposeActivePluginViews();
+        preview.replaceChildren(...replacementNodes);
+        activePluginDisposers = stagedPluginDisposers;
+        installed = true;
+        if (pendingFilePreviewStageCleanup === cleanupStage) {
+          pendingFilePreviewStageCleanup = null;
+        }
+        preview.dataset.renderedPath = data.path || "";
+        if (initialActiveView) {
+          setActivePreviewView(initialActiveView.id, preview);
+        } else {
+          setActivePreviewView(null, preview);
+        }
+        if (data.kind === "folder") {
+          startFolderHeaderSubscription(data.path);
+        }
+        scheduleHighlightCode(preview);
+        if (arrivalContent instanceof HTMLElement) {
+          animatePreviewContentArrival(arrivalContent);
+        }
+        await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
+      } finally {
+        if (!installed) {
+          if (pendingFilePreviewStageCleanup === cleanupStage) {
+            pendingFilePreviewStageCleanup = null;
           }
-          var mount = ((target, pluginView) => () => {
-            mountPluginView(target, pluginView, ctx);
-          })(container, pr.view);
-          if (initialActiveView && pr.tabId === initialActiveView.id) {
-            mount();
-          } else {
-            container._metabrowserMount = mount;
-          }
+          cleanupStage();
         }
       }
-
-      _perf.measure("initTabs", initTabs, filePerfMeta(data));
-      scheduleHighlightCode(preview);
-      measureNextPaint("renderFile:nextPaint", filePerfMeta(data));
     },
     filePerfMeta(data),
   );
@@ -5753,22 +5975,9 @@ function toggleEvent(header) {
 
 // ── Charts loading + rendering ──────────────────────────────────
 
-function copyPath(btn, path) {
-  navigator.clipboard.writeText(path).then(() => {
-    btn.classList.add("copied");
-    btn.dataset.tipText = "Copied!";
-    setTimeout(() => {
-      btn.classList.remove("copied");
-      btn.dataset.tipText = "Copy path";
-    }, 1500);
-  });
-}
-
-// Delegated handlers for header controls. Paths ride in data-*
-// attributes (HTML-escaped at render, decoded by dataset) instead of
-// inline onclick handlers, which HTML-decode their attribute before
-// compiling JavaScript and therefore cannot safely carry filenames
-// containing quotes.
+// Delegated handlers for header navigation controls. Copyable values use
+// the SDK-owned data-mb-copy contract, so path and revision identifiers
+// share clipboard and feedback behavior without inline handlers.
 document.addEventListener("click", (e) => {
   var origin = eventTargetElement(e);
   if (!origin) {
@@ -5786,10 +5995,6 @@ document.addEventListener("click", (e) => {
   if (fileBtn && !fileBtn.hasAttribute("disabled")) {
     void navigateToPath(fileBtn.dataset.navFile ?? "");
     return;
-  }
-  var copyBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-copy-path]"));
-  if (copyBtn && typeof copyBtn.dataset.copyPath === "string") {
-    copyPath(copyBtn, copyBtn.dataset.copyPath);
   }
 });
 
@@ -5810,8 +6015,9 @@ function copyContent(btn) {
 
 // ── Tab switching ───────────────────────────────────────────────
 
-function initTabs() {
-  queryHtmlAll(".tab-btn").forEach((btn) => {
+/** @param {ParentNode} [root] */
+function initTabs(root = document) {
+  queryHtmlAll(".tab-btn", root).forEach((btn) => {
     btn.addEventListener("click", () => {
       var tabId = btn.dataset.tab;
       var bar = /** @type {HTMLElement | null} */ (btn.closest(".tab-bar"));
@@ -6349,11 +6555,7 @@ function _buildRowHtml(entry, options) {
       dirChip +
       "</div>" +
       (hasPotentialChildren
-        ? '<div class="tree-children" id="' +
-          groupId +
-          '" role="group" style="display:none;--tree-depth:' +
-          (level + 1) +
-          '">' +
+        ? treeChildGroupStartHtml(groupId, level + 1, false) +
           '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
           ' role="status" aria-label="Loading">' +
           '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
@@ -6774,9 +6976,11 @@ function applyCellPatch(entry, highlightChange) {
             var groupId = treeDomId("tree-group", entry.path);
             row.insertAdjacentHTML(
               "afterend",
-              `<div class="tree-children tree-children-collapsed" id="${groupId}" role="group"` +
-                treeDepthStyle(Number(row.getAttribute("aria-level") || 1) + 1) +
-                ">" +
+              treeChildGroupStartHtml(
+                groupId,
+                Number(row.getAttribute("aria-level") || 1) + 1,
+                false,
+              ) +
                 '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
                 ' role="status" aria-label="Loading">' +
                 '<span class="spinner spinner-sm" aria-hidden="true"></span></div></div>',

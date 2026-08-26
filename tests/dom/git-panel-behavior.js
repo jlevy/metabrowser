@@ -86,6 +86,7 @@ class FakeElement {
     this._text = "";
     this._html = "";
     this._hovered = false;
+    this.scrollCalls = [];
   }
 
   set className(value) {
@@ -93,6 +94,12 @@ class FakeElement {
   }
   get className() {
     return Array.from(this.classNames).join(" ");
+  }
+  get parentElement() {
+    return this.parentNode;
+  }
+  get firstElementChild() {
+    return this.children[0] || null;
   }
 
   set textContent(value) {
@@ -109,6 +116,19 @@ class FakeElement {
   set innerHTML(value) {
     this._html = String(value);
     this.children = [];
+    if (this._html.includes("git-commit-diff")) {
+      const diffHost = new FakeElement("div", this.ownerDocument);
+      diffHost.className = "git-commit-diff";
+      this.appendChild(diffHost);
+    }
+    for (const match of this._html.matchAll(
+      /class="[^"]*git-commit-file[^"]*"[^>]*data-path="([^"]+)"/g,
+    )) {
+      const row = new FakeElement("button", this.ownerDocument);
+      row.className = "git-commit-file";
+      row.dataset.path = match[1];
+      this.appendChild(row);
+    }
   }
   get innerHTML() {
     if (this._html) {
@@ -130,6 +150,9 @@ class FakeElement {
   }
   getAttribute(name) {
     return this.attributes.has(name) ? this.attributes.get(name) : null;
+  }
+  removeAttribute(name) {
+    this.attributes.delete(name);
   }
   appendChild(child) {
     if (child.isFragment) {
@@ -171,6 +194,18 @@ class FakeElement {
     for (const handler of this.listeners.get(type) ?? []) {
       handler(event);
     }
+  }
+  focus() {
+    const previous = this.ownerDocument.activeElement;
+    if (previous === this) {
+      return;
+    }
+    previous?.dispatch("blur", { target: previous, relatedTarget: this });
+    this.ownerDocument.activeElement = this;
+    this.dispatch("focus", { target: this, relatedTarget: previous });
+  }
+  scrollIntoView(options) {
+    this.scrollCalls.push(options);
   }
   matches(selector) {
     if (selector === ":hover") {
@@ -222,6 +257,7 @@ class FakeDocument {
   constructor() {
     this.byId = new Map();
     this.root = new FakeElement("body", this);
+    this.activeElement = null;
   }
   createElement(tagName) {
     return new FakeElement(tagName, this);
@@ -265,6 +301,7 @@ sandbox.document = document;
 sandbox.console = console;
 sandbox.setTimeout = setTimeout;
 sandbox.clearTimeout = clearTimeout;
+sandbox.AbortController = AbortController;
 sandbox.Date = Date;
 sandbox.Number = Number;
 sandbox.Math = Math;
@@ -279,7 +316,7 @@ sandbox.HTMLElement = FakeElement;
 sandbox.METABROWSER_SETTINGS = {
   GIT_LOG_LIMIT: 2,
   GIT_HISTORY_MAX_ROWS: 3,
-  GIT_HOVER_DEBOUNCE_MS: 0,
+  GIT_HOVER_DEBOUNCE_MS: 5,
   GIT_DETAIL_CACHE_SIZE: 3,
 };
 
@@ -307,7 +344,8 @@ sandbox.history = {
   },
 };
 
-// Shell bridge stub. The panel only uses these three.
+// Shell bridge stub. Pending state is shell-owned so file and Git navigation
+// exercise the same claim-scoped lifecycle.
 let previewHtml = "";
 let previewClaim = 0;
 const removedPanels = [];
@@ -318,6 +356,28 @@ sandbox.MetabrowserShell = {
     return previewClaim;
   },
   isPreviewClaimCurrent: (claim) => claim === previewClaim,
+  beginPreviewNavigation: (claim) => {
+    if (claim !== previewClaim) {
+      return false;
+    }
+    const preview = document.getElementById("preview-pane");
+    if (!preview?.firstElementChild || preview.firstElementChild.classList.contains("loading")) {
+      return false;
+    }
+    preview.classList.add("preview-navigation-pending");
+    preview.setAttribute("aria-busy", "true");
+    preview.setAttribute("data-preview-pending-claim", String(claim));
+    return true;
+  },
+  endPreviewNavigation: (claim) => {
+    const preview = document.getElementById("preview-pane");
+    if (preview?.getAttribute("data-preview-pending-claim") !== String(claim)) {
+      return;
+    }
+    preview.classList.remove("preview-navigation-pending");
+    preview.removeAttribute("aria-busy");
+    preview.removeAttribute("data-preview-pending-claim");
+  },
   registerNavPanel: (panel) => {
     registeredPanel = panel;
   },
@@ -336,6 +396,13 @@ sandbox.MetabrowserShell = {
     }
     return preview;
   },
+  renderPreviewNode: (node, claim) => {
+    if (claim !== undefined && claim !== previewClaim) {
+      return null;
+    }
+    previewHtml = node.innerHTML;
+    return node;
+  },
   activateNavPanel: () => {},
 };
 
@@ -345,7 +412,22 @@ sandbox.MetabrowserShell = {
 let diffAssetsLoaded = false;
 const ensuredKinds = [];
 const renderedDiffRevisions = [];
+const renderedDiffContexts = [];
+const canceledDiffRevisions = [];
+const disposedDiffRevisions = [];
+const comparisonFetches = [];
+const shownTooltips = [];
+const measuredLabels = [];
+let tooltipHideCount = 0;
+let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
+  icons: { copy: '<svg data-icon="copy"></svg>' },
+  tooltip: {
+    show: (html, anchor) => shownTooltips.push({ html, anchor }),
+    hide: () => {
+      tooltipHideCount += 1;
+    },
+  },
   ensureKindAssets: async (kind) => {
     ensuredKinds.push(kind);
     diffAssetsLoaded = true;
@@ -357,9 +439,27 @@ sandbox.metabrowser = {
     return {
       render: async (_host, context) => {
         renderedDiffRevisions.push(context.revision);
-        return { dispose: () => {} };
+        renderedDiffContexts.push(context);
+        return {
+          cancelPending: () => canceledDiffRevisions.push(context.revision),
+          dispose: () => disposedDiffRevisions.push(context.revision),
+        };
       },
     };
+  },
+  fetchPluginData: async (plugin, route, params, options) => {
+    comparisonFetches.push({ plugin, route, params, signal: options?.signal });
+    return comparisonResponder(params.revision);
+  },
+  perf: {
+    measure: (label, fn) => {
+      measuredLabels.push(label);
+      return fn();
+    },
+    measureAsync: (label, fn) => {
+      measuredLabels.push(label);
+      return fn();
+    },
   },
 };
 
@@ -400,6 +500,8 @@ const SHA_A = "a".repeat(40);
 const SHA_B = "b".repeat(40);
 const SHA_C = "c".repeat(40);
 const SHA_D = "d".repeat(40);
+const SHA_E = "e".repeat(40);
+const SHA_F = "f".repeat(40);
 
 function commit(id, parents, subject, refs) {
   return {
@@ -411,6 +513,23 @@ function commit(id, parents, subject, refs) {
     committed_at: Date.now() / 1000 - 3600,
     subject,
     ...(refs ? { refs } : {}),
+  };
+}
+
+function keyboardEvent(key, options = {}) {
+  return {
+    key,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    isComposing: false,
+    defaultPrevented: false,
+    repeat: false,
+    ...options,
+    preventDefault() {
+      this.defaultPrevented = true;
+    },
   };
 }
 
@@ -505,27 +624,92 @@ async function run() {
     assertContains("file row: rename arrow", renamed, "→");
   }
 
-  // ── Hover card ─────────────────────────────────────────────
+  // ── Commit-summary tooltip ─────────────────────────────────
   {
-    const text = internals.hoverText({
-      commit: commit(SHA_A, [], "the subject"),
-      body: "the body",
-      stats: { files_changed: 3, additions: 10, deletions: 4 },
+    const detail = {
+      commit: commit(SHA_A, [], "the <subject>", [
+        { id: "refs/heads/main", name: "main", kind: "branch" },
+        { id: "refs/tags/v1", name: "v1", kind: "tag" },
+      ]),
+      body: "the long body must stay out of a bounded tooltip",
+      stats: {
+        files_changed: 32,
+        files_modified: 28,
+        files_added: 4,
+        files_deleted: 0,
+        additions: 1921,
+        deletions: 160,
+      },
+      files: [],
+      files_truncated: false,
+    };
+    const html = internals.renderCommitTooltip(detail);
+    assertContains("tooltip: compact summary root", html, "git-commit-summary-compact");
+    assertContains("tooltip: escaped subject", html, "the &lt;subject&gt;");
+    assertContains("tooltip: author", html, "Author");
+    assertContains("tooltip: short revision", html, SHA_A.slice(0, 7));
+    assertContains("tooltip: copy identity glyph", html, 'data-icon="copy"');
+    assertContains("tooltip: refs use the history badge", html, "git-ref-branch");
+    assertContains("tooltip: tags use the history badge", html, "git-ref-tag");
+    assertContains("tooltip: refs stay beside the revision", html, "main");
+    const identityStart = html.indexOf('<span class="git-commit-identity">');
+    const identityEnd = html.indexOf("</span>", html.indexOf("git-commit-refs", identityStart));
+    assertTrue(
+      "tooltip: identity owns revision and refs",
+      identityStart >= 0 &&
+        html.indexOf("git-commit-revision", identityStart) < identityEnd &&
+        html.indexOf("git-commit-refs", identityStart) < identityEnd,
+    );
+    assertContains("tooltip: modified files", html, "28 M");
+    assertContains("tooltip: added files", html, "4 A");
+    assertNotContains("tooltip: zero deleted files are omitted", html, "0 D");
+    assertContains("tooltip: file unit", html, 'git-commit-stat-unit">files');
+    assertContains("tooltip: additions", html, "+1921");
+    assertContains("tooltip: deletions", html, "−160");
+    assertContains("tooltip: line unit", html, 'git-commit-stat-unit">lines');
+    const metaStart = html.indexOf('<div class="git-commit-meta">');
+    const metaEnd = html.indexOf("</div>", metaStart);
+    const statsStart = html.indexOf('<div class="git-commit-change-stats">');
+    const fileStatsStart = html.indexOf('<div class="git-commit-file-statuses"', statsStart);
+    const lineStatsStart = html.indexOf('<div class="git-commit-line-stats"', statsStart);
+    assertTrue(
+      "tooltip: change statistics are two rows below identity metadata",
+      metaStart >= 0 &&
+        metaEnd > metaStart &&
+        statsStart > metaEnd &&
+        fileStatsStart > statsStart &&
+        lineStatsStart > fileStatsStart,
+    );
+    assertNotContains("tooltip: omits long body", html, "long body");
+    assertNotContains("tooltip: has no interactive copy button", html, "<button");
+    assertNotContains("tooltip: has no copy behavior", html, "data-mb-copy");
+
+    const unknown = internals.renderCommitTooltip({
+      ...detail,
+      stats: {},
+      files_truncated: true,
     });
-    assertContains("hover: subject", text, "the subject");
-    assertContains("hover: body", text, "the body");
-    assertContains("hover: file count", text, "3 file(s) changed");
-    assertContains("hover: additions", text, "+10");
-    assertContains("hover: deletions", text, "−4");
+    assertContains("tooltip: unknown modified count stays unknown", unknown, "? M");
+    assertContains("tooltip: unknown added count stays unknown", unknown, "? A");
+    assertContains("tooltip: unknown deleted count stays unknown", unknown, "? D");
+    assertContains("tooltip: unknown additions stay unknown", unknown, "+?");
+    assertContains("tooltip: unknown deletions stay unknown", unknown, "−?");
   }
   internals.setStateForTests({ ...internals.emptyState(), selectedId: SHA_A });
-  internals.renderCommitDetail({
+  await internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [SHA_B], "a commit", [
       { id: "refs/heads/main", name: "main", kind: "branch", is_head: true },
     ]),
-    body: "explanatory body",
-    stats: { files_changed: 2, additions: 5, deletions: 1 },
+    body: "explanatory body\n\nsecond paragraph",
+    stats: {
+      files_changed: 2,
+      files_modified: 1,
+      files_added: 1,
+      files_deleted: 0,
+      additions: 5,
+      deletions: 1,
+    },
     files: [
       { path: "one.js", status: "modified", additions: 5, deletions: 1 },
       { path: "two.js", status: "added", additions: 0, deletions: 0 },
@@ -535,17 +719,69 @@ async function run() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   assertContains("detail: subject", previewHtml, "a commit");
   assertContains("detail: short sha", previewHtml, SHA_A.slice(0, 7));
-  assertContains("detail: body", previewHtml, "explanatory body");
+  assertContains(
+    "detail: revision uses the copyable identifier group",
+    previewHtml,
+    "git-commit-revision",
+  );
+  assertContains(
+    "detail: revision uses the shared copy delegate",
+    previewHtml,
+    'data-mb-copy="text"',
+  );
+  assertContains(
+    "detail: revision copies the full sha",
+    previewHtml,
+    `data-mb-copy-text="${SHA_A}"`,
+  );
+  assertContains(
+    "detail: revision copy has an accessible name",
+    previewHtml,
+    'aria-label="Copy revision"',
+  );
+  assertContains("detail: revision uses the shared copy icon", previewHtml, 'data-icon="copy"');
+  assertContains(
+    "detail: body preserves authored newlines",
+    previewHtml,
+    "explanatory body\n\nsecond paragraph",
+  );
   assertContains("detail: ref badge", previewHtml, "main");
+  assertContains(
+    "detail: summary has one component root",
+    previewHtml,
+    '<section class="git-commit-summary"',
+  );
+  assertContains(
+    "detail: summary gives change stats their own child",
+    previewHtml,
+    "git-commit-change-stats",
+  );
+  assertContains("detail: summary counts modified files", previewHtml, "1 M");
+  assertContains("detail: summary counts added files", previewHtml, "1 A");
+  assertNotContains("detail: summary omits zero deleted files", previewHtml, "0 D");
+  assertContains("detail: summary counts additions", previewHtml, "+5");
+  assertContains("detail: summary counts deletions", previewHtml, "−1");
+  const summaryStart = previewHtml.indexOf('<section class="git-commit-summary"');
+  const summaryEnd = previewHtml.indexOf("</section>", summaryStart);
+  assertTrue(
+    "detail: component owns subject, metadata, refs, and description",
+    summaryStart >= 0 &&
+      previewHtml.indexOf("git-commit-subject", summaryStart) < summaryEnd &&
+      previewHtml.indexOf("git-commit-meta", summaryStart) < summaryEnd &&
+      previewHtml.indexOf("git-commit-refs", summaryStart) < summaryEnd &&
+      previewHtml.indexOf("git-commit-body", summaryStart) < summaryEnd,
+  );
   // The commit's files are presented by the diff view mounted below, so
   // the panel keeps only what that view cannot show: a host for it, the
   // files outside the served root, and any bound on the comparison.
   assertContains("detail: mounts the diff host", previewHtml, "git-commit-diff");
   assertEqual("detail: loads fresh diff assets", ensuredKinds, ["diff"]);
   assertEqual("detail: renders after loading diff assets", renderedDiffRevisions, [SHA_A]);
-  assertNotContains("detail: no duplicate file list", previewHtml, "2 files changed");
+  assertEqual("detail: prepared comparison reaches the view", await renderedDiffContexts[0].raw, {
+    comparison_id: SHA_A,
+  });
   assertNotContains("detail: no truncation note", previewHtml, "the diff below is bounded");
-  internals.renderCommitDetail({
+  await internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [], "outside commit"),
     body: "",
@@ -561,7 +797,7 @@ async function run() {
   assertContains("detail: names files outside the folder", previewHtml, "outside this folder");
   assertContains("detail: lists the outside file", previewHtml, "outside.js");
   assertNotContains("detail: does not relist inside files", previewHtml, "inside.js");
-  internals.renderCommitDetail({
+  await internals.renderCommitDetail({
     is_repo: true,
     commit: commit(SHA_A, [], "big commit"),
     body: "",
@@ -675,13 +911,14 @@ async function run() {
           { id: "refs/heads/main", name: "main", kind: "branch", is_head: true },
         ]),
         commit(SHA_B, [], "root commit"),
+        commit(SHA_F, [], "tooltip-only commit"),
       ],
       null,
     );
     internals.renderPanel();
 
     const rows = container.querySelectorAll(".git-graph-row");
-    assertEqual("rows: one per commit", rows.length, 2);
+    assertEqual("rows: one per commit", rows.length, 3);
     assertEqual("rows: revision on the element", rows[0].dataset.revision, SHA_A);
     assertTrue(
       "rows: gutter holds an svg",
@@ -689,9 +926,79 @@ async function run() {
     );
     assertContains("rows: subject rendered", rows[0].innerHTML, "tip commit");
     assertContains("rows: badge rendered", rows[0].innerHTML, "main");
-    // Keyboard reachable — the rows are the panel's primary control.
-    assertEqual("rows: focusable", rows[0].getAttribute("tabindex"), "0");
+    // A row set is one Tab stop, not one stop per mounted commit.
+    assertEqual("rows: first row is the roving anchor", rows[0].getAttribute("tabindex"), "0");
+    assertEqual("rows: other rows leave the Tab order", rows[1].getAttribute("tabindex"), "-1");
     assertEqual("rows: exposed as buttons", rows[0].getAttribute("role"), "button");
+
+    responses.set(`/api/git/commit/${SHA_A}`, {
+      is_repo: true,
+      commit: commit(SHA_A, [SHA_B], "first"),
+      body: "verbose tooltip body",
+      stats: { files_changed: 2, additions: 7, deletions: 3 },
+      files: [],
+      files_truncated: false,
+    });
+    shownTooltips.length = 0;
+    const hidesBefore = tooltipHideCount;
+    rows[0].focus();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual("tooltip lifecycle: keyboard focus stays silent", shownTooltips.length, 0);
+
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual("tooltip lifecycle: hover shows one anchored summary", shownTooltips.length, 1);
+    assertTrue("tooltip lifecycle: row is the anchor", shownTooltips[0].anchor === rows[0]);
+    assertContains(
+      "tooltip lifecycle: rich summary reaches shared tooltip",
+      shownTooltips[0].html,
+      "git-commit-summary-compact",
+    );
+
+    const hidesBeforePointerLeave = tooltipHideCount;
+    rows[0]._hovered = false;
+    rows[0].dispatch("mouseleave");
+    assertTrue(
+      "tooltip lifecycle: pointer leave dismisses despite keyboard focus",
+      tooltipHideCount > hidesBeforePointerLeave,
+    );
+
+    let resolveDelayedTooltip;
+    responses.set(
+      `/api/git/commit/${SHA_F}`,
+      () =>
+        new Promise((resolve) => {
+          resolveDelayedTooltip = resolve;
+        }),
+    );
+    rows[2]._hovered = true;
+    rows[2].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    rows[2].focus();
+    const tooltipCountBeforeKeyboardSelection = shownTooltips.length;
+    const hidesBeforeKeyboardSelection = tooltipHideCount;
+    rows[2].dispatch("keydown", keyboardEvent("Enter"));
+    assertTrue(
+      "tooltip lifecycle: keyboard selection dismisses immediately",
+      tooltipHideCount > hidesBeforeKeyboardSelection,
+    );
+    resolveDelayedTooltip({
+      is_repo: true,
+      commit: commit(SHA_F, [], "tooltip-only commit"),
+      body: "",
+      stats: { files_changed: 1, additions: 1, deletions: 1 },
+      files: [],
+      files_truncated: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual(
+      "tooltip lifecycle: stale pointer detail cannot reopen after keyboard selection",
+      shownTooltips.length,
+      tooltipCountBeforeKeyboardSelection,
+    );
+    rows[2]._hovered = false;
+    assertTrue("tooltip lifecycle: dismissal remains observable", tooltipHideCount > hidesBefore);
   }
 
   // ── Selection and stale-response handling ──────────────────
@@ -716,7 +1023,9 @@ async function run() {
 
     const container = document.getElementById("tab-git");
     const rows = container.querySelectorAll(".git-graph-row");
+    previewHtml = '<div class="git-commit-view">prior commit</div>';
     rows[0].dispatch("click");
+    assertContains("selection: retains prior content while preparing", previewHtml, "prior commit");
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertContains("selection: renders the clicked commit", previewHtml, "first");
     assertTrue("selection: row is marked", rows[0].classList.contains("selected"));
@@ -732,7 +1041,13 @@ async function run() {
     // Two selections in flight: the later one must win regardless of
     // which response lands first.
     const before = fetchCount;
+    const canceledBefore = canceledDiffRevisions.length;
     rows[1].dispatch("click");
+    assertEqual(
+      "selection: cancels obsolete diff work while retaining its DOM",
+      canceledDiffRevisions.slice(canceledBefore),
+      [SHA_A],
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertContains("selection: switches to the newer commit", previewHtml, "second");
     assertTrue("selection: issued a request", fetchCount > before);
@@ -770,31 +1085,213 @@ async function run() {
     assertNotContains("selection: delayed commit is discarded", previewHtml, "delayed commit");
   }
 
+  // ── Nav-like row keyboard contract ─────────────────────────
+  {
+    const container = document.getElementById("tab-git");
+    internals.setStateForTests(internals.emptyState());
+    internals.appendPage(
+      [commit(SHA_A, [SHA_B], "keyboard first"), commit(SHA_B, [], "keyboard second")],
+      null,
+    );
+    internals.renderPanel();
+    const rows = container.querySelectorAll(".git-graph-row");
+
+    rows[0].focus();
+    const down = keyboardEvent("ArrowDown");
+    rows[0].dispatch("keydown", down);
+    assertTrue("keyboard: handled down prevents page scroll", down.defaultPrevented);
+    assertTrue("keyboard: down focuses the next commit", document.activeElement === rows[1]);
+    assertEqual(
+      "keyboard: down opens the next commit",
+      internals.stateForTests().selectedId,
+      SHA_B,
+    );
+    assertEqual(
+      "keyboard: input task leaves the prior Tab anchor untouched",
+      rows[0].getAttribute("tabindex"),
+      "0",
+    );
+    assertEqual(
+      "keyboard: input task does not promote the destination Tab anchor",
+      rows[1].getAttribute("tabindex"),
+      "-1",
+    );
+    // Focus and selection move in the input task; the focus-order write waits
+    // for the selected view boundary so a retained diff cannot delay feedback.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertEqual("keyboard: prior row leaves the Tab order", rows[0].getAttribute("tabindex"), "-1");
+    assertEqual("keyboard: destination becomes the anchor", rows[1].getAttribute("tabindex"), "0");
+    assertEqual("keyboard: destination scrolls into view", rows[1].scrollCalls, [
+      { block: "nearest" },
+    ]);
+
+    const routeCountAtEdge = replacedRoutes.length;
+    const clamped = keyboardEvent("ArrowDown");
+    rows[1].dispatch("keydown", clamped);
+    assertTrue("keyboard: clamped down still prevents page scroll", clamped.defaultPrevented);
+    assertTrue("keyboard: clamped down keeps focus", document.activeElement === rows[1]);
+    assertEqual("keyboard: clamped edge does not reopen", replacedRoutes.length, routeCountAtEdge);
+
+    const up = keyboardEvent("ArrowUp", { repeat: true });
+    rows[1].dispatch("keydown", up);
+    assertTrue("keyboard: repeated up is handled", up.defaultPrevented);
+    assertTrue("keyboard: up focuses the prior commit", document.activeElement === rows[0]);
+    assertEqual("keyboard: up opens the prior commit", internals.stateForTests().selectedId, SHA_A);
+
+    const modified = keyboardEvent("ArrowDown", { altKey: true });
+    rows[0].dispatch("keydown", modified);
+    assertTrue("keyboard: modified arrow is ignored", !modified.defaultPrevented);
+    assertTrue("keyboard: ignored arrow leaves focus alone", document.activeElement === rows[0]);
+    // Let the final focus-following selection release its single active
+    // preparation slot before the next independent preparation case.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  // ── Preparation overlaps and reuses pointer intent ─────────
+  {
+    internals.setStateForTests(internals.emptyState());
+    responses.clear();
+    const container = document.getElementById("tab-git");
+    internals.appendPage(
+      [commit(SHA_E, [], "prepared first"), commit(SHA_B, [], "prepared second")],
+      null,
+    );
+    internals.renderPanel();
+    const rows = container.querySelectorAll(".git-graph-row");
+    let resolveDetail;
+    let resolveComparison;
+    responses.set(
+      `/api/git/commit/${SHA_E}`,
+      () =>
+        new Promise((resolve) => {
+          resolveDetail = resolve;
+        }),
+    );
+    comparisonResponder = () =>
+      new Promise((resolve) => {
+        resolveComparison = resolve;
+      });
+    const comparisonsBefore = comparisonFetches.length;
+    const detailsBefore = fetchCount;
+    const previewPane =
+      document.getElementById("preview-pane") ??
+      document.register("preview-pane", document.createElement("div"));
+    const priorCommit = document.createElement("div");
+    priorCommit.className = "git-commit-view";
+    priorCommit.textContent = "prior staged commit";
+    previewPane.replaceChildren(priorCommit);
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    assertEqual(
+      "prepare: entering a row does not start comparison work before stable intent",
+      comparisonFetches.length,
+      comparisonsBefore,
+    );
+    assertEqual(
+      "prepare: entering a row does not start detail work before stable intent",
+      fetchCount,
+      detailsBefore,
+    );
+    rows[0]._hovered = false;
+    rows[0].dispatch("mouseleave");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual(
+      "prepare: scrolling past a row starts no comparison work",
+      comparisonFetches.length,
+      comparisonsBefore,
+    );
+    assertEqual("prepare: scrolling past a row starts no detail work", fetchCount, detailsBefore);
+
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual(
+      "prepare: pointer intent starts one comparison",
+      comparisonFetches.length,
+      comparisonsBefore + 1,
+    );
+
+    const select = internals.selectCommit(SHA_E);
+    await Promise.resolve();
+    assertEqual(
+      "pending: retained preview is aria-busy",
+      previewPane.getAttribute("aria-busy"),
+      "true",
+    );
+    assertTrue(
+      "pending: retained preview uses the shared pending class",
+      previewPane.classList.contains("preview-navigation-pending"),
+    );
+    assertContains(
+      "pending: old commit remains mounted",
+      previewPane.textContent,
+      "prior staged commit",
+    );
+    assertEqual(
+      "prepare: selection reuses pointer comparison",
+      comparisonFetches.length,
+      comparisonsBefore + 1,
+    );
+    assertEqual(
+      "prepare: selection joins the pointer detail request",
+      fetchCount,
+      detailsBefore + 1,
+    );
+    resolveDetail({
+      is_repo: true,
+      commit: commit(SHA_E, [], "prepared first"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    resolveComparison({ comparison_id: SHA_E });
+    await select;
+    assertContains("prepare: selected commit is eventually shown", previewHtml, "prepared first");
+    assertEqual(
+      "pending: aria-busy clears after the swap",
+      previewPane.getAttribute("aria-busy"),
+      null,
+    );
+    assertTrue(
+      "pending: class clears after the swap",
+      !previewPane.classList.contains("preview-navigation-pending"),
+    );
+
+    const slotBefore = comparisonFetches.length;
+    comparisonResponder = async (revision) => ({ comparison_id: revision });
+    rows[0].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const firstSignal = comparisonFetches[slotBefore].signal;
+    rows[0]._hovered = false;
+    rows[1]._hovered = true;
+    rows[1].dispatch("mouseenter");
+    assertTrue("prepare: newer pointer intent aborts the old slot", firstSignal.aborted);
+    assertEqual(
+      "prepare: replacement waits for stable intent",
+      comparisonFetches.length,
+      slotBefore + 1,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual(
+      "prepare: one replacement request serves the newer intent",
+      comparisonFetches.length,
+      slotBefore + 2,
+    );
+    rows[1]._hovered = false;
+    rows[1].dispatch("mouseleave");
+  }
+
   // ── Changed files navigate through the shell ───────────────
   {
     openedPaths.length = 0;
-    // renderCommitDetail wires listeners on the element the shell
-    // returns, so drive it through the same path the panel uses.
-    let capturedPreview = null;
-    sandbox.MetabrowserShell.renderPreviewHtml = (html) => {
-      previewHtml = html;
-      const preview = new FakeElement("div", document);
-      const row = new FakeElement("div", document);
-      row.classList.add("git-commit-file");
-      row.dataset.path = "one.js";
-      preview.appendChild(row);
-      capturedPreview = preview;
-      return preview;
-    };
-    internals.renderCommitDetail({
-      is_repo: true,
-      commit: commit(SHA_A, [], "nav"),
-      body: "",
-      stats: { files_changed: 1, additions: 1, deletions: 0 },
-      files: [{ path: "one.js", status: "modified", additions: 1, deletions: 0 }],
-      files_truncated: false,
-    });
-    capturedPreview.querySelectorAll(".git-commit-file[data-path]")[0].dispatch("click");
+    const preview = new FakeElement("div", document);
+    const row = new FakeElement("button", document);
+    row.classList.add("git-commit-file");
+    row.dataset.path = "one.js";
+    preview.appendChild(row);
+    internals.wireCommitFileNavigation(preview);
+    row.dispatch("click");
     assertEqual("navigation: opens through the shell event", openedPaths, ["one.js"]);
   }
   responses.clear();
@@ -877,6 +1374,14 @@ async function run() {
     files_truncated: false,
   });
   await internals.selectCommit(SHA_B);
+  assertTrue(
+    "performance: selection records immediate feedback separately",
+    measuredLabels.includes("gitRevision:selectionFeedback"),
+  );
+  assertTrue(
+    "performance: selection retains the painted-ready total",
+    measuredLabels.includes("gitRevision:selectToReady"),
+  );
   const primedCache = fetchCount;
   await internals.selectCommit(SHA_B);
   assertEqual("head: the detail cache serves a repeat select", fetchCount, primedCache);

@@ -157,7 +157,7 @@
        file paths, including parent paths and ancestor segments, in the
        tree, the header, the file header, and search results; key names
        and shortcut hints; labels, metadata, chips, tooltips, notes,
-       counts, and status text.
+       counts, status text, and commit-message prose.
        A path is navigation, not code. It reads in the same face as the
        Navigator row it points at, at --nav-font-size.
 
@@ -2071,6 +2071,17 @@ html[data-prose-font="sans"] {
   outline: 2px solid var(--link);
   outline-offset: -2px;
 }
+.preview-file-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
 .preview-empty {
   display: flex;
   align-items: center;
@@ -2278,10 +2289,10 @@ html[data-prose-font="sans"] {
 .age-old {
   --file-age-current: var(--file-age-old);
 }
-/* Every age anywhere — file rows, commit rows, commit detail — reads
-   the same: the tier hue, the shared weight, tabular numerals so
-   columns of ages line up. Call sites add positioning only, never
-   colour or weight, exactly as they do for `.size`. */
+/* Every age anywhere — file rows, commit rows, commit detail — uses
+   the same tier hue, shared weight, and tabular numerals. Call sites
+   may adopt their container's type size and positioning, but never
+   override colour or weight, exactly as they do for `.size`. */
 :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   color: var(--file-age-current);
   font-weight: var(--file-age-weight);
@@ -4721,7 +4732,6 @@ pre.code-block code.hljs {
   cursor: pointer;
   user-select: var(--toggle-user-select);
   font-size: var(--nav-font-size);
-  transition: background var(--transition-fast);
 }
 
 .git-graph-row:hover {
@@ -4910,18 +4920,122 @@ pre.code-block code.hljs {
   align-items: center;
   gap: 10px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-sha {
   font-family: var(--font-mono);
+  font-size: var(--body-font-size);
+}
+
+.git-commit-revision {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text);
+}
+
+.git-commit-identity,
+.git-commit-refs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-commit-revision-copy {
+  --icon-btn-size: 20px;
+}
+
+.git-commit-revision:hover .git-commit-revision-copy,
+.git-commit-revision:focus-within .git-commit-revision-copy {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.git-commit-change-stats {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.git-commit-file-statuses,
+.git-commit-line-stats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-commit-stat-unit {
+  color: var(--text);
+  font-size: var(--body-font-size);
+}
+
+.git-commit-file-status {
+  color: var(--text);
+  font-variant-numeric: var(--tabular-numerals);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+
+.git-commit-file-status-added {
+  color: var(--status-success);
+}
+
+.git-commit-file-status-deleted {
+  color: var(--status-error-strong);
+}
+
+.git-commit-summary .git-ref {
+  font-size: var(--body-font-size);
+  line-height: 20px;
+}
+
+.git-commit-summary .git-commit-age {
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary :is(.git-stat-add, .git-stat-del) {
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary-compact {
+  max-width: min(340px, calc(100vw - 32px));
+}
+
+.git-commit-summary-compact .git-commit-subject {
+  display: -webkit-box;
+  margin: 0 0 6px;
+  overflow: hidden;
+  font-size: var(--body-font-size);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.git-commit-summary-compact .git-commit-meta {
+  gap: 6px;
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary-compact .git-commit-revision-copy-preview {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.git-commit-summary-compact .git-commit-revision-copy-preview svg {
+  width: 100%;
+  height: 100%;
 }
 
 .git-commit-refs {
-  display: flex;
-  flex-wrap: wrap;
   gap: 4px;
-  margin-top: 8px;
 }
 
 .git-commit-body {
@@ -4931,8 +5045,8 @@ pre.code-block code.hljs {
   background: var(--code-bg);
   white-space: pre-wrap;
   overflow-x: auto;
-  font-family: var(--font-mono);
-  font-size: var(--mono-block-font-size);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-files {

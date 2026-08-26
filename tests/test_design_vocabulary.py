@@ -120,6 +120,87 @@ def test_row_targets_share_the_hover_token() -> None:
     )
 
 
+def test_preview_navigation_arrival_motion_is_shared_and_reduced_motion_safe() -> None:
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+
+    assert "--preview-navigation-pending-overlay" not in styles
+    assert "#preview-pane::after" not in styles
+    arrival = app[app.index("function animatePreviewContentArrival") :][:1_500]
+    assert "content.animate(" in arrival
+    assert "preview.animate(" not in arrival
+    assert "PREVIEW_ARRIVAL_START_OPACITY" in arrival
+    assert "PREVIEW_ARRIVAL_DURATION_MS" in arrival
+    assert "prefers-reduced-motion: reduce" in arrival
+
+
+def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
+    """The maintained surface registry keeps row navigation from drifting."""
+    design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
+    tree = (STATIC / "tree-keyboard-navigation.js").read_text(encoding="utf-8")
+    git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+
+    assert "### Navigational Row Collections" in design
+    assert "test_nav_like_row_sets_share_the_vertical_keyboard_contract" in design
+    for source, movement_helper in (
+        (tree, "focusAndOpen"),
+        (git, "moveCommitRowFocus"),
+    ):
+        assert movement_helper in source
+        assert '"ArrowUp"' in source
+        assert '"ArrowDown"' in source
+        assert 'setAttribute("tabindex"' in source
+
+
+def test_git_row_selection_avoids_full_collection_mutation() -> None:
+    """Immediate Git feedback mutates only the old and new row."""
+    git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    anchor = git[
+        git.index("function setCommitRowAnchor") : git.index("/** @param {HTMLElement} list */")
+    ]
+    selection = git[git.index("async function selectCommit") : git.index("function renderFileRow")]
+
+    assert 'querySelector(".git-graph-row[data-roving-anchor]")' in anchor
+    assert "commitRows(list)" not in anchor
+    assert "options.rowElement" in selection
+    assert 'mountedPanel.querySelector(".git-graph-row.selected")' in selection
+    assert 'document.querySelector(".git-graph-row.selected")' not in selection
+    assert 'querySelectorAll(".git-graph-row")' not in selection
+    assert '"gitRevision:selectionFeedback"' in selection
+    assert '"gitRevision:rowAnchor"' in selection
+    assert selection.index('"gitRevision:selectionFeedback"') < selection.index(
+        '"gitRevision:rowAnchor"'
+    )
+    render_row = git[git.index("function renderRow") : git.index("function renderRefBadges")]
+    assert 'element.addEventListener("focus"' not in render_row
+    enter_handler = git[git.index('if (event.key === "Enter"') :][:250]
+    assert "{ rowElement: row }" in enter_handler
+    assert "transition:" not in _rule(styles, ".git-graph-row")
+
+
+def test_copyable_identifiers_share_the_copy_contract() -> None:
+    """Paths and revisions use one explicit-value copy delegate."""
+    design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    sdk = (STATIC / "plugin-sdk.js").read_text(encoding="utf-8")
+    git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    diff = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/diff-view.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert "### Copyable Identifiers Use One Delegate" in design
+    assert "test_copyable_identifiers_share_the_copy_contract" in design
+    assert 'target.closest("[data-mb-copy]")' in sdk
+    assert 'mode === "text"' in sdk and 'mode === "wrap"' in sdk
+    assert 'data-mb-copy="text"' in app
+    assert 'setAttribute("data-mb-copy", "text")' in diff
+    assert 'data-mb-copy="text"' in git and "commit.id" in git
+    assert "git-commit-revision-copy" in git
+    for source in (app, diff, git):
+        assert "data-copy-path" not in source, "a local path-copy contract reappeared"
+
+
 def test_age_is_one_primitive_everywhere() -> None:
     """An age is an age: one formatter, one styling rule, and call sites
     that add positioning only."""
@@ -266,6 +347,81 @@ def test_git_history_vocabulary_is_documented() -> None:
         assert styles.count(f"--git-lane-{lane}:") == 1, (
             f"--git-lane-{lane} is defined per theme; the lane set is one set"
         )
+
+
+def test_git_commit_summary_is_one_component() -> None:
+    """Commit identity and description have one maintained component boundary."""
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+
+    assert "### Git Commit Summary" in doc
+    assert "test_git_commit_summary_is_one_component" in doc
+    assert "function renderCommitSummary(detail, options = {})" in panel
+    assert "function renderCommitTooltip(detail)" in panel
+    assert "function renderCommitChangeStats(" in panel
+    assert '"git-commit-summary git-commit-summary-compact"' in panel
+    assert 'class="git-commit-change-stats"' in panel
+    assert "html += renderCommitSummary(detail);" in panel
+    assert "renderCommitSummary(detail, { compact: true })" in panel
+    for component_part in (
+        'class="git-commit-subject"',
+        'class="git-commit-meta"',
+        'class="git-commit-identity"',
+        'class="git-commit-file-statuses"',
+        'class="git-commit-change-stats"',
+        'class="git-commit-refs"',
+        'class="git-commit-body"',
+    ):
+        assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
+    change_stats = _rule(styles, ".git-commit-change-stats")
+    stats_rows = _rule(styles, ".git-commit-file-statuses,\n.git-commit-line-stats")
+    compact = _rule(styles, ".git-commit-summary-compact")
+    meta = _rule(styles, ".git-commit-meta")
+    summary_sha = _rule(styles, ".git-commit-sha")
+    compact_subject = _rule(styles, ".git-commit-summary-compact .git-commit-subject")
+    compact_meta = _rule(styles, ".git-commit-summary-compact .git-commit-meta")
+    summary_age = _rule(styles, ".git-commit-summary .git-commit-age")
+    summary_body = _rule(styles, ".git-commit-body")
+    summary_refs = _rule(styles, ".git-commit-summary .git-ref")
+    summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
+    assert "max-width:" in compact
+    assert "line-clamp:" in compact_subject
+    assert "display: grid" in change_stats
+    assert "white-space: nowrap" in change_stats
+    assert "display: inline-flex" in stats_rows
+    assert "font-family: var(--font-sans)" in summary_body
+    assert "font-size: var(--body-font-size)" in summary_body
+    assert "white-space: pre-wrap" in summary_body
+    for rule in (
+        meta,
+        summary_sha,
+        compact_subject,
+        compact_meta,
+        summary_age,
+        summary_refs,
+        summary_lines,
+    ):
+        assert "font-size: var(--body-font-size)" in rule
+        assert "font-size: var(--ui-small-font-size)" not in rule
+        assert "font-size: var(--tooltip-detail-font-size)" not in rule
+    assert "noninteractive copy glyph" in doc
+
+
+def test_navigation_tooltips_are_pointer_only() -> None:
+    """Navigation focus already exposes the selected item and must not add a tooltip."""
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+
+    assert "Navigation tooltips are pointer-only" in doc
+    assert 'document.addEventListener("mouseenter", showTipText, true)' in app
+    assert 'document.addEventListener("mouseleave", hideTipText, true)' in app
+    assert 'document.addEventListener("focusin", showTipText)' not in app
+    assert 'document.addEventListener("focusout", hideTipText)' not in app
+    assert 'document.addEventListener("focusin", hideTooltip)' in app
+    assert 'element.addEventListener("focus", () =>' not in panel
+    assert "dismissHoverTooltip();" in panel
 
 
 def test_one_document_surface_has_one_set_of_breakpoints() -> None:

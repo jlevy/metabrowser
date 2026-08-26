@@ -68,7 +68,10 @@ The shell enhances the mounted subtree after the renderer settles and after firs
 whether the tab was initially visible or mounted later.
 Diff views need tokens in their semantic line model rather than markup, so they call the
 bounded SDK token service but use the same injected registry, prefetched grammars, and
-palette.
+palette. Diff intraline ranges follow the same ownership rule: they are browser-local
+enrichment over exact line text, composed with syntax runs in the renderer and shared by
+unified and split projections.
+Neither enrichment extends File Diff Format v1.
 
 The registry-to-vendored-grammar and registry-to-text-routing checks live in
 `test_plugin_sdk_syntax_token_contracts` and

@@ -18,11 +18,17 @@ const BROWSER_STARTUP_SETTLE_MS = 500;
 const CDP_COMMAND_TIMEOUT_MS = 15_000;
 const CHROME_EXIT_GRACE_MS = 2_000;
 const CLIENT_COMPLETION_SETTLE_MS = 1_000;
+// Keep the hydration probe bounded while allowing a moving history to put a
+// suitable multi-file revision beyond the first screenful between releases.
+const DEFERRED_CANDIDATE_ROWS = 64;
 const DEVTOOLS_START_TIMEOUT_MS = 15_000;
 const FIRST_ROW_TIMEOUT_MS = 30_000;
+const GIT_ROUNDTRIP_ROW_INDEX = 4;
 const INPUT_PULSE_INTERVAL_MS = 250;
 const INPUT_SENTINEL_ID = "metabrowser-performance-input-sentinel";
 const INTERACTION_OBSERVER_SETTLE_MS = 100;
+const MAX_DEFERRED_FETCHES_IN_FLIGHT = 2;
+const MIN_DEFERRED_STRESS_FILES = 3;
 const PROFILE_EXPORT_ATTEMPTS = 3;
 const QUIESCENCE_POLL_MS = 100;
 const QUIESCENCE_STABLE_POLLS = 3;
@@ -45,6 +51,7 @@ function usage() {
     "  --timeout-ms N      Application-settle timeout (default 180000)",
     "  --width N           Viewport width (default 1600)",
     "  --height N          Viewport height (default 900)",
+    "  --scenario NAME     Interaction scenario: git-revisions or file-views",
   ].join("\n");
 }
 
@@ -55,6 +62,7 @@ function parseArgs(argv) {
     height: DEFAULT_VIEWPORT.height,
     output: "",
     probe: "",
+    scenario: "",
     timeoutMs: DEFAULT_TIMEOUT_MS,
     url: "",
     width: DEFAULT_VIEWPORT.width,
@@ -82,6 +90,8 @@ function parseArgs(argv) {
       options.output = value;
     } else if (argument === "--probe") {
       options.probe = value;
+    } else if (argument === "--scenario") {
+      options.scenario = value;
     } else if (argument === "--timeout-ms") {
       options.timeoutMs = Number(value);
     } else if (argument === "--url") {
@@ -104,6 +114,9 @@ function parseArgs(argv) {
     if (!Number.isFinite(options[field]) || options[field] <= 0) {
       throw new Error(`--${field === "timeoutMs" ? "timeout-ms" : field} must be positive`);
     }
+  }
+  if (options.scenario && !["git-revisions", "file-views"].includes(options.scenario)) {
+    throw new Error(`unknown scenario: ${options.scenario}`);
   }
   return options;
 }
@@ -340,6 +353,1025 @@ async function dispatchTrustedClickAtPoint(session, point) {
   });
 }
 
+async function pointForSelector(session, selector, index = 0) {
+  return evaluate(
+    session,
+    `(() => {
+      const element = document.querySelectorAll(${JSON.stringify(selector)})[${index}];
+      if (!(element instanceof HTMLElement)) return null;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+    })()`,
+  );
+}
+
+async function dispatchTrustedClickForSelector(session, selector, index = 0) {
+  const point = await pointForSelector(session, selector, index);
+  if (!point) {
+    throw new Error(`could not click ${selector}[${index}]`);
+  }
+  await dispatchTrustedClickAtPoint(session, point);
+}
+
+async function dispatchTrustedPointerForSelector(session, selector, index = 0) {
+  const point = await pointForSelector(session, selector, index);
+  if (!point) {
+    throw new Error(`could not point at ${selector}[${index}]`);
+  }
+  await session.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: point.x,
+    y: point.y,
+  });
+}
+
+async function pointForFilePath(session, filePath) {
+  return evaluate(
+    session,
+    `(async () => {
+      const row = Array.from(document.querySelectorAll(".tree-item.tree-file[data-path]"))
+        .find((candidate) => candidate instanceof HTMLElement &&
+          candidate.dataset.path === ${JSON.stringify(filePath)});
+      if (!(row instanceof HTMLElement)) return null;
+      row.scrollIntoView({block: "center", inline: "nearest"});
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const rect = row.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+    })()`,
+    true,
+  );
+}
+
+async function dispatchTrustedClickForFilePath(session, filePath) {
+  const point = await pointForFilePath(session, filePath);
+  if (!point) {
+    throw new Error(`could not click file row ${filePath}`);
+  }
+  await dispatchTrustedClickAtPoint(session, point);
+}
+
+async function awaitNextPaint(session) {
+  return evaluate(
+    session,
+    `new Promise((resolve) => requestAnimationFrame(() =>
+      requestAnimationFrame(() => resolve(performance.now()))))`,
+    true,
+  );
+}
+
+async function startGitBlankFrameMonitor(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const key = "__metabrowserGitBlankMonitor";
+      cancelAnimationFrame(window[key]?.frame || 0);
+      const state = {
+        observer: null,
+        blankDurationMs: 0,
+        blankFrames: 0,
+        blankStartedAt: null,
+        frame: 0,
+        pendingClearedAt: null,
+        pendingSeenAt: null,
+        running: true,
+        startedAt: performance.now(),
+      };
+      const preview = document.querySelector("#preview-pane");
+      const observePending = () => {
+        const pending = preview?.classList.contains("preview-navigation-pending") === true;
+        const now = performance.now();
+        if (pending && state.pendingSeenAt === null) state.pendingSeenAt = now;
+        if (!pending && state.pendingSeenAt !== null) state.pendingClearedAt = now;
+      };
+      state.observer = new MutationObserver(observePending);
+      if (preview) {
+        state.observer.observe(preview, {
+          attributes: true,
+          attributeFilter: ["aria-busy", "class", "data-preview-pending-claim"],
+        });
+      }
+      const sample = (now) => {
+        if (!state.running) return;
+        observePending();
+        const visible = Boolean(document.querySelector("#preview-pane .git-commit-view"));
+        if (visible) {
+          if (state.blankStartedAt !== null) {
+            state.blankDurationMs += now - state.blankStartedAt;
+            state.blankStartedAt = null;
+          }
+        } else {
+          state.blankFrames += 1;
+          if (state.blankStartedAt === null) state.blankStartedAt = now;
+        }
+        state.frame = requestAnimationFrame(sample);
+      };
+      observePending();
+      state.frame = requestAnimationFrame(sample);
+      window[key] = state;
+      return true;
+    })()`,
+  );
+}
+
+async function stopGitBlankFrameMonitor(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const state = window.__metabrowserGitBlankMonitor;
+      if (!state) return null;
+      state.running = false;
+      cancelAnimationFrame(state.frame);
+      state.observer?.disconnect();
+      if (state.blankStartedAt !== null) {
+        state.blankDurationMs += performance.now() - state.blankStartedAt;
+      }
+      const preview = document.querySelector("#preview-pane");
+      return {
+        aria_busy: preview?.getAttribute("aria-busy") === "true",
+        blank_duration_ms: Number(state.blankDurationMs.toFixed(2)),
+        blank_frames: state.blankFrames,
+        pending_active: preview?.classList.contains("preview-navigation-pending") === true,
+        pending_clear_ms: state.pendingClearedAt === null ? null :
+          Number((state.pendingClearedAt - state.startedAt).toFixed(2)),
+        pending_onset_ms: state.pendingSeenAt === null ? null :
+          Number((state.pendingSeenAt - state.startedAt).toFixed(2)),
+        pending_seen: state.pendingSeenAt !== null,
+      };
+    })()`,
+  );
+}
+
+async function startFileBlankFrameMonitor(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const key = "__metabrowserFileBlankMonitor";
+      const previous = window[key];
+      if (previous) {
+        previous.running = false;
+        cancelAnimationFrame(previous.frame || 0);
+        previous.observer?.disconnect();
+      }
+      const state = {
+        blankDurationMs: 0,
+        blankFrames: 0,
+        blankStartedAt: null,
+        frame: 0,
+        observer: null,
+        pendingClearedAt: null,
+        pendingSeenAt: null,
+        running: true,
+        startedAt: performance.now(),
+      };
+      const preview = document.querySelector("#preview-pane");
+      const observePending = () => {
+        const pending = preview?.classList.contains("preview-navigation-pending") === true;
+        const now = performance.now();
+        if (pending && state.pendingSeenAt === null) state.pendingSeenAt = now;
+        if (!pending && state.pendingSeenAt !== null) state.pendingClearedAt = now;
+      };
+      state.observer = new MutationObserver(observePending);
+      if (preview) {
+        state.observer.observe(preview, {
+          attributes: true,
+          attributeFilter: ["aria-busy", "class", "data-preview-pending-claim"],
+        });
+      }
+      const sample = (now) => {
+        if (!state.running) return;
+        observePending();
+        const active = preview?.querySelector('[data-tab-content][data-active-view="true"]');
+        const visible = active instanceof HTMLElement &&
+          (active.childElementCount > 0 || Boolean(active.textContent?.trim()));
+        if (visible) {
+          if (state.blankStartedAt !== null) {
+            state.blankDurationMs += now - state.blankStartedAt;
+            state.blankStartedAt = null;
+          }
+        } else {
+          state.blankFrames += 1;
+          if (state.blankStartedAt === null) state.blankStartedAt = now;
+        }
+        state.frame = requestAnimationFrame(sample);
+      };
+      observePending();
+      state.frame = requestAnimationFrame(sample);
+      window[key] = state;
+      return true;
+    })()`,
+  );
+}
+
+async function stopFileBlankFrameMonitor(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const state = window.__metabrowserFileBlankMonitor;
+      const preview = document.querySelector("#preview-pane");
+      if (!state) return null;
+      state.running = false;
+      cancelAnimationFrame(state.frame);
+      state.observer?.disconnect();
+      if (state.blankStartedAt !== null) {
+        state.blankDurationMs += performance.now() - state.blankStartedAt;
+      }
+      const now = performance.now();
+      return {
+        aria_busy: preview?.getAttribute("aria-busy") === "true",
+        blank_duration_ms: Number(state.blankDurationMs.toFixed(2)),
+        blank_frames: state.blankFrames,
+        pending_active: preview?.classList.contains("preview-navigation-pending") === true,
+        pending_clear_ms: state.pendingClearedAt === null ? null :
+          Number((state.pendingClearedAt - state.startedAt).toFixed(2)),
+        pending_onset_ms: state.pendingSeenAt === null ? null :
+          Number((state.pendingSeenAt - state.startedAt).toFixed(2)),
+        pending_seen: state.pendingSeenAt !== null,
+        stopped_at_ms: Number((now - state.startedAt).toFixed(2)),
+      };
+    })()`,
+  );
+}
+
+async function fileViewCandidates(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const paths = Array.from(document.querySelectorAll(".tree-item.tree-file[data-path]"))
+        .filter((row) => row instanceof HTMLElement &&
+          !row.classList.contains("tree-item-filter-hidden"))
+        .map((row) => row.dataset.path || "");
+      const markdown = paths.filter((path) => /\\.(?:md|markdown)$/i.test(path)).sort()[0] || "";
+      const sources = paths.filter((path) =>
+        /\\.(?:css|html?|js|jsx|mjs|py|rs|sh|toml|ts|tsx)$/i.test(path));
+      const structured = paths.filter((path) => /\\.(?:json|ya?ml)$/i.test(path)).sort()[0] || "";
+      return {
+        markdown,
+        sources: Array.from(new Set(sources)).sort().slice(0, 3),
+        structured,
+      };
+    })()`,
+  );
+}
+
+async function fileViewState(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const preview = document.querySelector("#preview-pane");
+      const active = preview?.querySelector('[data-tab-content][data-active-view="true"]');
+      return {
+        activeMounts: preview?.querySelectorAll(
+          '[data-plugin-view][data-active-view="true"]'
+        ).length || 0,
+        activeViewNonempty: active instanceof HTMLElement &&
+          (active.childElementCount > 0 || Boolean(active.textContent?.trim())),
+        pendingActive: preview?.classList.contains("preview-navigation-pending") === true,
+        renderedPath: preview instanceof HTMLElement ? preview.dataset.renderedPath || "" : "",
+        renderedView: preview instanceof HTMLElement ? preview.dataset.activeView || "" : "",
+        routePath: window.metabrowser.navigation.current()?.path || "",
+        selectedPath: document.querySelector(".tree-item.selected")?.dataset.path || "",
+      };
+    })()`,
+  );
+}
+
+async function waitForFileView(session, filePath, timeoutMs) {
+  const state = await waitFor(
+    async () => {
+      const current = await fileViewState(session);
+      return current.selectedPath === filePath &&
+        current.routePath === filePath &&
+        current.renderedPath === filePath &&
+        current.renderedView &&
+        current.activeMounts === 1 &&
+        current.activeViewNonempty &&
+        !current.pendingActive
+        ? current
+        : null;
+    },
+    timeoutMs,
+    `file view ${filePath} to reach painted readiness`,
+  );
+  const paintedAt = await awaitNextPaint(session);
+  return { paintedAt, state };
+}
+
+function assertFileTransitionHealth(result) {
+  if (!result.path) {
+    throw new Error("path is required for file-view validation");
+  }
+  for (const field of ["selected_path", "route_path", "rendered_path"]) {
+    if (result[field] !== result.path) {
+      throw new Error(
+        `${field} did not converge on ${result.path}; observed ${result[field] || "none"}`,
+      );
+    }
+  }
+  if (!result.rendered_view) {
+    throw new Error("rendered_view must identify the active file view");
+  }
+  if (result.active_mounts !== 1) {
+    throw new Error(`active_mounts must remain one; observed ${result.active_mounts}`);
+  }
+  if (!result.active_view_nonempty) {
+    throw new Error("active_view_nonempty must prove useful painted content");
+  }
+  if (result.blank_frames !== 0 || result.blank_duration_ms !== 0) {
+    throw new Error(
+      `blank_frames and blank_duration_ms must remain zero; observed ` +
+        `${result.blank_frames}/${result.blank_duration_ms}`,
+    );
+  }
+  if (!result.pending_seen) {
+    throw new Error("pending_seen must prove immediate selection feedback");
+  }
+  if (result.pending_active) {
+    throw new Error("pending_active must clear at painted readiness");
+  }
+  if (result.aria_busy) {
+    throw new Error("aria_busy must clear at painted readiness");
+  }
+  if (!Number.isInteger(result.file_fetches) || result.file_fetches > 1) {
+    throw new Error(`file_fetches must be at most one; observed ${result.file_fetches}`);
+  }
+  if (result.name?.startsWith("cached-") && result.file_fetches !== 0) {
+    throw new Error(
+      `file_fetches must be zero for cached navigation; observed ${result.file_fetches}`,
+    );
+  }
+  const requiredLabels = [
+    "fileNavigation:assets",
+    "fileNavigation:activeView",
+    "fileNavigation:paintReady",
+    "fileNavigation:selectToReady",
+  ];
+  for (const label of requiredLabels) {
+    if (!result.phase_labels?.includes(label)) {
+      throw new Error(`phase_labels is missing ${label}`);
+    }
+  }
+}
+
+async function measureFileTransition(session, filePath, name, timeoutMs) {
+  const point = await pointForFilePath(session, filePath);
+  if (!point) {
+    throw new Error(`could not click file row ${filePath}`);
+  }
+  const started = await evaluate(session, `({epoch: Date.now(), now: performance.now()})`);
+  await startFileBlankFrameMonitor(session);
+  await dispatchTrustedClickAtPoint(session, point);
+  const ready = await waitForFileView(session, filePath, timeoutMs);
+  const blank = await stopFileBlankFrameMonitor(session);
+  const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const measures = snapshot.raw_measure.filter(
+    (sample) =>
+      sample.ts >= started.epoch &&
+      (sample.label.startsWith("fileNavigation:") || sample.label === "apiFile:json"),
+  );
+  const fetches = snapshot.raw_fetch.filter((sample) => sample.ts >= started.epoch);
+  const fileFetches = fetches.filter((sample) => {
+    const url = new URL(sample.url, "http://localhost");
+    return url.pathname === "/api/file" && url.searchParams.get("path") === filePath;
+  });
+  const result = {
+    name,
+    path: filePath,
+    total_ms: Number((ready.paintedAt - started.now).toFixed(2)),
+    selected_path: ready.state.selectedPath,
+    route_path: ready.state.routePath,
+    rendered_path: ready.state.renderedPath,
+    rendered_view: ready.state.renderedView,
+    active_mounts: ready.state.activeMounts,
+    active_view_nonempty: ready.state.activeViewNonempty,
+    file_fetches: fileFetches.length,
+    ...blank,
+    phase_labels: Array.from(new Set(measures.map((sample) => sample.label))),
+    phases: measures.map((sample) => ({
+      duration_ms: Number(sample.duration_ms.toFixed(2)),
+      kind: sample.meta?.kind || "",
+      label: sample.label,
+      path: sample.meta?.path || "",
+      view: sample.meta?.view || "",
+    })),
+    fetches: fetches
+      .filter((sample) => {
+        const pathname = new URL(sample.url, "http://localhost").pathname;
+        return (
+          pathname === "/api/file" ||
+          pathname.startsWith("/api/plugin/") ||
+          pathname.startsWith("/plugin-static/")
+        );
+      })
+      .map((sample) => ({
+        duration_ms: Number(sample.duration_ms.toFixed(2)),
+        server_ms: sample.server_ms,
+        size_bytes: sample.size_bytes,
+        status: sample.status,
+        url: new URL(sample.url, "http://localhost").pathname,
+      })),
+  };
+  assertFileTransitionHealth(result);
+  return result;
+}
+
+async function runFileViewScenario(session, timeoutMs) {
+  await waitFor(
+    () => pointForSelector(session, '.tab-btn[data-tab="files"]'),
+    timeoutMs,
+    "Files navigation tab",
+  );
+  await dispatchTrustedClickForSelector(session, '.tab-btn[data-tab="files"]');
+  const candidates = await waitFor(
+    async () => {
+      const value = await fileViewCandidates(session);
+      return value.markdown && value.structured && value.sources.length >= 2 ? value : null;
+    },
+    timeoutMs,
+    "one Markdown, one structured, and two source file rows",
+  );
+
+  await dispatchTrustedClickForFilePath(session, candidates.sources[0]);
+  await waitForFileView(session, candidates.sources[0], timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+  await evaluate(session, `window.metabrowser.perf.reset()`);
+
+  const transitions = [];
+  transitions.push(
+    await measureFileTransition(session, candidates.sources[1], "cold-source", timeoutMs),
+  );
+  transitions.push(
+    await measureFileTransition(session, candidates.structured, "cold-structured", timeoutMs),
+  );
+  transitions.push(
+    await measureFileTransition(session, candidates.markdown, "cold-markdown", timeoutMs),
+  );
+  transitions.push(
+    await measureFileTransition(session, candidates.sources[1], "cached-source", timeoutMs),
+  );
+  await waitForClientQuiescence(session, timeoutMs);
+  return {
+    schema: "file-view-navigation/v1",
+    generated_at: new Date().toISOString(),
+    scenario: "file-views",
+    warm_path: candidates.sources[0],
+    transitions,
+    profiler: await evaluate(session, `window.metabrowser.perf.snapshot()`),
+  };
+}
+
+async function gitRow(session, index) {
+  return evaluate(
+    session,
+    `(() => {
+      const row = document.querySelectorAll(".git-graph-row")[${index}];
+      if (!(row instanceof HTMLElement)) return null;
+      return {revision: row.dataset.revision || "", subject: row.textContent || ""};
+    })()`,
+  );
+}
+
+async function waitForGitRevision(session, revision, timeoutMs) {
+  await waitFor(
+    async () =>
+      evaluate(
+        session,
+        `(() => {
+          const selected = document.querySelector(".git-graph-row.selected");
+          const sha = document.querySelector("#preview-pane .git-commit-sha")?.textContent?.trim();
+          return selected instanceof HTMLElement && selected.dataset.revision ===
+            ${JSON.stringify(revision)} && Boolean(sha) &&
+            ${JSON.stringify(revision)}.startsWith(sha) &&
+            Boolean(document.querySelector(".git-commit-diff .diff-root")) &&
+            !document.querySelector("#preview-pane")?.classList.contains(
+              "preview-navigation-pending"
+            );
+        })()`,
+      ),
+    timeoutMs,
+    `Git revision ${revision} to render`,
+  );
+  return awaitNextPaint(session);
+}
+
+function assertGitTransitionHealth(result) {
+  if (!result.revision) {
+    throw new Error("revision is required for Git transition validation");
+  }
+  for (const field of ["selected_revision", "route_revision", "rendered_revision"]) {
+    if (result[field] !== result.revision) {
+      throw new Error(
+        `${field} did not converge on ${result.revision}; observed ${result[field] || "none"}`,
+      );
+    }
+  }
+  if (result.mounted_comparisons !== 1) {
+    throw new Error(`mounted_comparisons must remain one; observed ${result.mounted_comparisons}`);
+  }
+  if (result.blank_frames !== 0 || result.blank_duration_ms !== 0) {
+    throw new Error(
+      `blank_frames and blank_duration_ms must remain zero; observed ` +
+        `${result.blank_frames}/${result.blank_duration_ms}`,
+    );
+  }
+  if (!result.pending_seen) {
+    throw new Error("pending_seen must prove immediate Git selection feedback");
+  }
+  if (result.pending_active) {
+    throw new Error("pending_active must clear at Git painted readiness");
+  }
+  if (result.aria_busy) {
+    throw new Error("aria_busy must clear at Git painted readiness");
+  }
+  if (!Number.isFinite(result.pending_onset_ms)) {
+    throw new Error("pending_onset_ms must record Git selection acknowledgement");
+  }
+  if (!Number.isFinite(result.pending_clear_ms)) {
+    throw new Error("pending_clear_ms must record Git painted readiness");
+  }
+  if (result.pending_clear_ms < result.pending_onset_ms) {
+    throw new Error("pending_clear_ms must not precede pending_onset_ms");
+  }
+  const requiredLabels = [
+    "gitRevision:selectionFeedback",
+    "gitRevision:selectToReady",
+    "gitRevision:rowAnchor",
+  ];
+  for (const label of requiredLabels) {
+    if (!result.phase_labels?.includes(label)) {
+      throw new Error(`phase_labels is missing ${label}`);
+    }
+  }
+}
+
+async function measureGitTransition(session, rowIndex, name, timeoutMs) {
+  const row = await gitRow(session, rowIndex);
+  if (!row?.revision) {
+    throw new Error(`Git row ${rowIndex} is unavailable`);
+  }
+  const point = await pointForSelector(session, ".git-graph-row", rowIndex);
+  if (!point) {
+    throw new Error(`could not click .git-graph-row[${rowIndex}]`);
+  }
+  const started = await evaluate(session, `({epoch: Date.now(), now: performance.now()})`);
+  await startGitBlankFrameMonitor(session);
+  await dispatchTrustedClickAtPoint(session, point);
+  const paintedAt = await waitForGitRevision(session, row.revision, timeoutMs);
+  const blank = await stopGitBlankFrameMonitor(session);
+  const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const measures = snapshot.raw_measure.filter(
+    (sample) => sample.ts >= started.epoch && sample.label.startsWith("gitRevision:"),
+  );
+  const fetches = snapshot.raw_fetch.filter((sample) => sample.ts >= started.epoch);
+  const state = await evaluate(
+    session,
+    `(() => ({
+      selectedRevision: document.querySelector(".git-graph-row.selected")?.dataset.revision || "",
+      routeRevision: location.pathname.split("/").pop() || "",
+      renderedRevision: document.querySelector(".git-commit-view")?.dataset.revision || "",
+      mountedComparisons: document.querySelectorAll(".git-commit-diff .diff-root").length
+    }))()`,
+  );
+  const result = {
+    name,
+    revision: row.revision,
+    total_ms: Number((paintedAt - started.now).toFixed(2)),
+    selected_revision: state.selectedRevision,
+    route_revision: state.routeRevision,
+    rendered_revision: state.renderedRevision,
+    mounted_comparisons: state.mountedComparisons,
+    ...blank,
+    phase_labels: Array.from(new Set(measures.map((sample) => sample.label))),
+    phases: measures.map((sample) => ({
+      duration_ms: Number(sample.duration_ms.toFixed(2)),
+      label: sample.label,
+      revision: sample.meta?.revision || "",
+    })),
+    fetches: fetches
+      .filter(
+        (sample) =>
+          sample.url.includes("/api/git/commit/") ||
+          sample.url.includes("/api/plugin/diff/comparison"),
+      )
+      .map((sample) => ({
+        duration_ms: Number(sample.duration_ms.toFixed(2)),
+        server_ms: sample.server_ms,
+        size_bytes: sample.size_bytes,
+        status: sample.status,
+        url: new URL(sample.url, "http://localhost").pathname,
+      })),
+  };
+  assertGitTransitionHealth(result);
+  return result;
+}
+
+function assertDeferredHydrationHealth(result) {
+  if (!result.candidate_revision) {
+    throw new Error("candidate_revision is required for deferred hydration validation");
+  }
+  if (!result.target_revision) {
+    throw new Error("target_revision is required for deferred hydration validation");
+  }
+  if (!Number.isInteger(result.pending_files) || result.pending_files < MIN_DEFERRED_STRESS_FILES) {
+    throw new Error(
+      `pending_files must exercise active and queued hydration; observed ${result.pending_files}`,
+    );
+  }
+  if (
+    !Number.isInteger(result.max_deferred_fetches_in_flight) ||
+    result.max_deferred_fetches_in_flight > MAX_DEFERRED_FETCHES_IN_FLIGHT
+  ) {
+    throw new Error(
+      "max_deferred_fetches_in_flight exceeded the deferred hydration bound: " +
+        result.max_deferred_fetches_in_flight,
+    );
+  }
+  if (result.fetch_concurrency_keys_overflowed !== 0) {
+    throw new Error(
+      "fetch_concurrency_keys_overflowed must be zero for complete attribution; observed " +
+        result.fetch_concurrency_keys_overflowed,
+    );
+  }
+  if (!Number.isInteger(result.obsolete_successes) || result.obsolete_successes !== 0) {
+    throw new Error(
+      `obsolete_successes must be zero after revision selection; observed ${result.obsolete_successes}`,
+    );
+  }
+  if (!Number.isInteger(result.aborted_requests) || result.aborted_requests < 1) {
+    throw new Error("aborted_requests must prove active retained work was canceled");
+  }
+  if (result.mounted_comparisons !== 1) {
+    throw new Error(`mounted_comparisons must remain one; observed ${result.mounted_comparisons}`);
+  }
+  for (const field of ["selected_revision", "route_revision", "rendered_revision"]) {
+    if (result[field] !== result.target_revision) {
+      throw new Error(
+        `${field} did not converge on ${result.target_revision}; observed ${result[field] || "none"}`,
+      );
+    }
+  }
+}
+
+async function deferredDiffState(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const bodies = Array.from(document.querySelectorAll(".diff-file-body"));
+      const pendingFiles = bodies.filter((body) =>
+        body.children.length === 0 || Boolean(body.querySelector(".diff-progress"))
+      ).length;
+      const snapshot = window.metabrowser.perf.snapshot();
+      return {
+        pendingFiles,
+        progressFiles: document.querySelectorAll(".diff-progress").length,
+        fetchesInFlight: snapshot.fetches_in_flight,
+        maxDeferredFetchesInFlight:
+          snapshot.fetches_in_flight_max_by_key["/api/plugin/diff/comparison?file"] || 0,
+      };
+    })()`,
+  );
+}
+
+async function findDeferredRevision(session, timeoutMs) {
+  const rowCount = await evaluate(session, `document.querySelectorAll(".git-graph-row").length`);
+  const candidateRows = Math.min(rowCount, DEFERRED_CANDIDATE_ROWS);
+  for (let rowIndex = 0; rowIndex < candidateRows; rowIndex += 1) {
+    const row = await gitRow(session, rowIndex);
+    if (!row?.revision) {
+      continue;
+    }
+    await evaluate(session, `window.metabrowser.perf.reset()`);
+    await dispatchTrustedClickForSelector(session, ".git-graph-row", rowIndex);
+    await waitForGitRevision(session, row.revision, timeoutMs);
+    const state = await deferredDiffState(session);
+    if (state.maxDeferredFetchesInFlight > MAX_DEFERRED_FETCHES_IN_FLIGHT) {
+      throw new Error(
+        `Git revision ${row.revision} launched ${state.maxDeferredFetchesInFlight} ` +
+          "simultaneous deferred fetches",
+      );
+    }
+    if (state.pendingFiles >= MIN_DEFERRED_STRESS_FILES) {
+      return { rowCount, rowIndex, revision: row.revision, pendingFiles: state.pendingFiles };
+    }
+    await waitForClientQuiescence(session, timeoutMs);
+  }
+  throw new Error(
+    `Git scenario found no revision with ${MIN_DEFERRED_STRESS_FILES} deferred files ` +
+      `in its first ${candidateRows} rows`,
+  );
+}
+
+async function runDeferredHydrationScenario(session, timeoutMs) {
+  const candidate = await findDeferredRevision(session, timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+  await evaluate(session, `window.metabrowser.perf.reset()`);
+  await evaluate(
+    session,
+    `document.querySelector("#preview-pane")?.scrollTo({
+      top: document.querySelector("#preview-pane")?.scrollHeight || 0,
+      behavior: "instant"
+    })`,
+  );
+  await waitFor(
+    async () => {
+      const state = await deferredDiffState(session);
+      return state.progressFiles > 0 && state.fetchesInFlight > 0 ? state : null;
+    },
+    timeoutMs,
+    "deferred Git file hydration to start",
+  );
+
+  const targetIndex =
+    candidate.rowIndex + 1 < candidate.rowCount ? candidate.rowIndex + 1 : candidate.rowIndex - 1;
+  const target = await gitRow(session, targetIndex);
+  if (!target?.revision) {
+    throw new Error("Git deferred hydration scenario has no adjacent target revision");
+  }
+  const selectedAt = await evaluate(session, `Date.now()`);
+  await dispatchTrustedClickForSelector(session, ".git-graph-row", targetIndex);
+  await waitForGitRevision(session, target.revision, timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+
+  const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const candidateFileFetches = snapshot.raw_fetch.filter((sample) => {
+    const url = new URL(sample.url, "http://localhost");
+    return (
+      url.pathname === "/api/plugin/diff/comparison" &&
+      url.searchParams.get("revision") === candidate.revision &&
+      url.searchParams.has("file")
+    );
+  });
+  const convergence = await evaluate(
+    session,
+    `(() => ({
+      selected: document.querySelector(".git-graph-row.selected")?.dataset.revision || "",
+      rendered: document.querySelector(".git-commit-view")?.dataset.revision || "",
+      route: location.pathname.split("/").pop() || "",
+      mounts: document.querySelectorAll(".git-commit-diff .diff-root").length
+    }))()`,
+  );
+  return {
+    candidate_revision: candidate.revision,
+    target_revision: target.revision,
+    pending_files: candidate.pendingFiles,
+    max_deferred_fetches_in_flight:
+      snapshot.fetches_in_flight_max_by_key["/api/plugin/diff/comparison?file"] || 0,
+    max_application_fetches_in_flight: snapshot.fetches_in_flight_max,
+    fetch_concurrency_keys_overflowed: snapshot.fetch_concurrency_keys_overflowed,
+    obsolete_successes: candidateFileFetches.filter(
+      (sample) => sample.ts >= selectedAt && sample.status >= 200,
+    ).length,
+    aborted_requests: candidateFileFetches.filter((sample) => sample.aborted).length,
+    mounted_comparisons: convergence.mounts,
+    selected_revision: convergence.selected,
+    route_revision: convergence.route,
+    rendered_revision: convergence.rendered,
+  };
+}
+
+function assertGitFilesCollapsedFolderHealth(state) {
+  if (!state?.row_collapsed || state.row_expanded || !state.group_collapsed) {
+    throw new Error("folder must begin with one coherent collapsed state");
+  }
+  if (state.aria_expanded !== "false") {
+    throw new Error("collapsed folder must expose aria-expanded=false");
+  }
+  if (state.group_inline_display === "none") {
+    throw new Error("collapsed folder must not retain an inline display:none override");
+  }
+  if (state.group_visibility !== "hidden") {
+    throw new Error("collapsed folder child group must be hidden by the shared class");
+  }
+}
+
+function assertGitFilesRoundTripHealth(result) {
+  if (!result.path) {
+    throw new Error("path is required for Git-to-Files round-trip validation");
+  }
+  if (!Number.isFinite(result.return_to_files_ms) || !Number.isFinite(result.folder_expand_ms)) {
+    throw new Error("Git-to-Files round-trip timings must be finite");
+  }
+  assertGitFilesCollapsedFolderHealth(result.before);
+  if (!result.after?.row_expanded || result.after.row_collapsed || result.after.group_collapsed) {
+    throw new Error("folder must become visibly expanded on the first open action");
+  }
+  if (result.after.aria_expanded !== "true") {
+    throw new Error("expanded folder must expose aria-expanded=true");
+  }
+  if (
+    result.after.group_inline_display === "none" ||
+    result.after.group_display === "none" ||
+    result.after.group_visibility === "hidden"
+  ) {
+    throw new Error("expanded folder child group remained hidden");
+  }
+}
+
+async function gitFilesFolderState(session, rowIndex) {
+  return evaluate(
+    session,
+    `(() => {
+      const row = document.querySelectorAll(
+        "#tab-files .tree-folder:not(.tree-item-empty)"
+      )[${rowIndex}];
+      const group = row?.nextElementSibling;
+      if (!(row instanceof HTMLElement) ||
+          !(group instanceof HTMLElement) ||
+          !group.classList.contains("tree-children")) return null;
+      const groupStyle = getComputedStyle(group);
+      return {
+        aria_expanded: row.getAttribute("aria-expanded"),
+        group_collapsed: group.classList.contains("tree-children-collapsed"),
+        group_display: groupStyle.display,
+        group_inline_display: group.style.display,
+        group_visibility: groupStyle.visibility,
+        path: row.dataset.path || "",
+        row_collapsed: row.classList.contains("collapsed"),
+        row_expanded: row.classList.contains("expanded")
+      };
+    })()`,
+  );
+}
+
+// Run before the inventory completion wait. A large root can populate Files
+// through live inserts while Git owns the nav panel; returning from a rendered
+// diff must leave those folders interactive without a page reload.
+async function runGitFilesRoundTrip(session, timeoutMs) {
+  await waitFor(
+    () => pointForSelector(session, '.tab-btn[data-tab="git"]'),
+    timeoutMs,
+    "Git navigation tab during indexing",
+  );
+  await dispatchTrustedClickForSelector(session, '.tab-btn[data-tab="git"]');
+  await waitFor(
+    async () =>
+      evaluate(
+        session,
+        `document.querySelectorAll(".git-graph-row").length > ${GIT_ROUNDTRIP_ROW_INDEX}`,
+      ),
+    timeoutMs,
+    "Git history rows during indexing",
+  );
+  // Leave row zero untouched for the settled scenario's warm transition. The
+  // round trip changes the route to a folder; re-clicking an already-selected
+  // revision is not a representative revision transition and can retain the
+  // intentionally replaced preview instead of reloading it.
+  const revision = await gitRow(session, GIT_ROUNDTRIP_ROW_INDEX);
+  await dispatchTrustedClickForSelector(session, ".git-graph-row", GIT_ROUNDTRIP_ROW_INDEX);
+  await waitForGitRevision(session, revision.revision, timeoutMs);
+
+  const folderCandidate = await waitFor(
+    async () =>
+      evaluate(
+        session,
+        `(() => {
+          const rows = Array.from(document.querySelectorAll(
+            "#tab-files .tree-folder:not(.tree-item-empty)"
+          ));
+          const index = rows.findIndex((row) =>
+            row.nextElementSibling?.classList.contains("tree-children")
+          );
+          return index >= 0 ? {index} : null;
+        })()`,
+      ),
+    timeoutMs,
+    "a Files folder while the Git diff is visible",
+  );
+  const folderIndex = folderCandidate.index;
+
+  const returnStarted = await evaluate(session, `performance.now()`);
+  await dispatchTrustedClickForSelector(session, '.tab-btn[data-tab="files"]');
+  const returnedAt = await awaitNextPaint(session);
+  let before = await gitFilesFolderState(session, folderIndex);
+  if (!before) {
+    throw new Error("Files folder disappeared during the Git round trip");
+  }
+  // A regular fetched tree may have opened this row through the viewport-bound
+  // default planner. Normalize that healthy state to collapsed before testing
+  // the one-click open contract. A corrupted live insert is already marked
+  // collapsed but has an uncollapsed, inline-hidden group, so it fails below
+  // without being normalized away.
+  if (
+    before.row_expanded &&
+    !before.group_collapsed &&
+    before.group_display !== "none" &&
+    before.group_visibility !== "hidden"
+  ) {
+    await dispatchTrustedClickForSelector(
+      session,
+      "#tab-files .tree-folder:not(.tree-item-empty)",
+      folderIndex,
+    );
+    before = await waitFor(
+      async () => {
+        const state = await gitFilesFolderState(session, folderIndex);
+        return state?.row_collapsed && state.group_collapsed ? state : null;
+      },
+      timeoutMs,
+      "the round-trip folder to collapse",
+    );
+  }
+
+  const expandStarted = await evaluate(session, `performance.now()`);
+  const partial = {
+    path: before.path,
+    return_to_files_ms: Number((returnedAt - returnStarted).toFixed(2)),
+    before,
+  };
+  // Reject incoherent disclosure before clicking: this is the exact frozen
+  // shape produced by the former live-insert markup.
+  assertGitFilesCollapsedFolderHealth(before);
+  await dispatchTrustedClickForSelector(
+    session,
+    "#tab-files .tree-folder:not(.tree-item-empty)",
+    folderIndex,
+  );
+  const after = await waitFor(
+    async () => {
+      const state = await gitFilesFolderState(session, folderIndex);
+      return state?.row_expanded &&
+        !state.group_collapsed &&
+        state.group_display !== "none" &&
+        state.group_visibility !== "hidden"
+        ? state
+        : null;
+    },
+    timeoutMs,
+    "the round-trip folder to expand",
+  );
+  const expandedAt = await awaitNextPaint(session);
+  const result = {
+    ...partial,
+    folder_expand_ms: Number((expandedAt - expandStarted).toFixed(2)),
+    after,
+  };
+  assertGitFilesRoundTripHealth(result);
+  return result;
+}
+
+async function runGitRevisionScenario(session, timeoutMs) {
+  await waitFor(
+    () => pointForSelector(session, '.tab-btn[data-tab="git"]'),
+    timeoutMs,
+    "Git navigation tab",
+  );
+  await dispatchTrustedClickForSelector(session, '.tab-btn[data-tab="git"]');
+  await waitFor(
+    async () => evaluate(session, `document.querySelectorAll(".git-graph-row").length >= 4`),
+    timeoutMs,
+    "four Git history rows",
+  );
+
+  // Warm the renderer and its on-demand assets before measuring revision-to-revision
+  // navigation. Startup asset cost belongs to the load profile, not this scenario.
+  const warm = await gitRow(session, 0);
+  await dispatchTrustedClickForSelector(session, ".git-graph-row", 0);
+  await waitForGitRevision(session, warm.revision, timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+  await evaluate(session, `window.metabrowser.perf.reset()`);
+
+  const transitions = [];
+  transitions.push(await measureGitTransition(session, 1, "cold-1", timeoutMs));
+  transitions.push(await measureGitTransition(session, 2, "cold-2", timeoutMs));
+
+  const prepared = await gitRow(session, 3);
+  const prefetchStartedAt = await evaluate(session, `Date.now()`);
+  await dispatchTrustedPointerForSelector(session, ".git-graph-row", 3);
+  await delay(450);
+  const preparedTransition = await measureGitTransition(session, 3, "pointer-prepared", timeoutMs);
+  transitions.push(preparedTransition);
+  await waitForClientQuiescence(session, timeoutMs);
+  const profiler = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const prefetchFetches = profiler.raw_fetch.filter(
+    (sample) =>
+      sample.ts >= prefetchStartedAt &&
+      sample.ts < prefetchStartedAt + 450 &&
+      (sample.url.includes("/api/git/commit/") ||
+        sample.url.includes("/api/plugin/diff/comparison")),
+  );
+  const mountedComparisons = await evaluate(
+    session,
+    `document.querySelectorAll(".git-commit-diff .diff-root").length`,
+  );
+  if (mountedComparisons !== 1) {
+    throw new Error(`Git scenario retained ${mountedComparisons} mounted comparisons`);
+  }
+  const deferredHydration = await runDeferredHydrationScenario(session, timeoutMs);
+  assertDeferredHydrationHealth(deferredHydration);
+  return {
+    schema: "git-revision-navigation/v1",
+    generated_at: new Date().toISOString(),
+    scenario: "git-revisions",
+    prepared_revision: prepared.revision,
+    transitions,
+    prefetch_fetches: prefetchFetches,
+    mounted_comparisons: mountedComparisons,
+    deferred_hydration: deferredHydration,
+    profiler,
+  };
+}
+
 async function removeInputSentinel(session) {
   await evaluate(
     session,
@@ -483,12 +1515,65 @@ async function capture(options) {
         evaluate(
           session,
           `document.readyState === "complete" &&
-            typeof window.metabrowser?.perf?.snapshot === "function" &&
-            Boolean(document.querySelector('[role="treeitem"]'))`,
+            typeof window.metabrowser?.perf?.snapshot === "function"`,
         ),
       FIRST_ROW_TIMEOUT_MS,
-      "application first row and performance recorder",
+      "application shell and performance recorder",
     );
+    let gitFilesRoundTrip = null;
+    if (options.scenario === "git-revisions") {
+      gitFilesRoundTrip = await runGitFilesRoundTrip(session, options.timeoutMs);
+      // The preflight deliberately navigates away from Git into Files while the
+      // index is active. Reload the application document before the established
+      // revision timing and deferred-hydration gates so its prepared-comparison
+      // and mounted-view state cannot warm or otherwise perturb those samples.
+      const preflightTimeOrigin = await evaluate(session, `performance.timeOrigin`);
+      await session.send("Page.navigate", { url: options.url });
+      await waitFor(
+        async () =>
+          evaluate(
+            session,
+            `performance.timeOrigin !== ${JSON.stringify(preflightTimeOrigin)} &&
+              document.readyState === "complete" &&
+              typeof window.metabrowser?.perf?.snapshot === "function" &&
+              Boolean(document.querySelector('[role="treeitem"]'))`,
+          ),
+        FIRST_ROW_TIMEOUT_MS,
+        "fresh application row after the Git-to-Files preflight",
+      );
+    } else {
+      await waitFor(
+        async () => evaluate(session, `Boolean(document.querySelector('[role="treeitem"]'))`),
+        FIRST_ROW_TIMEOUT_MS,
+        "application first row",
+      );
+    }
+    if (options.scenario) {
+      await waitForIndex(options.url, options.timeoutMs);
+      await delay(CLIENT_COMPLETION_SETTLE_MS);
+      await waitForClientQuiescence(session, options.timeoutMs);
+      const payload =
+        options.scenario === "git-revisions"
+          ? await runGitRevisionScenario(session, options.timeoutMs)
+          : await runFileViewScenario(session, options.timeoutMs);
+      if (gitFilesRoundTrip) {
+        payload.git_files_roundtrip = gitFilesRoundTrip;
+      }
+      payload.page_exceptions = pageExceptions;
+      if (pageExceptions !== 0) {
+        throw new Error(
+          `${options.scenario} scenario observed ${pageExceptions} uncaught page exception(s)`,
+        );
+      }
+      await session.send("HeapProfiler.enable");
+      await session.send("HeapProfiler.collectGarbage");
+      const heapUsage = await session.send("Runtime.getHeapUsage");
+      payload.js_heap_after_gc_mb = Number((heapUsage.usedSize / (1024 * 1024)).toFixed(1));
+      fs.mkdirSync(path.dirname(options.output), { recursive: true });
+      fs.writeFileSync(options.output, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+      process.stdout.write(`${options.output}\n`);
+      return payload;
+    }
     // A single early interaction can miss the exact update storm this loop is
     // meant to catch. Pulse a one-pixel, non-product sentinel from first usable
     // state through client quiescence. The click toggles only its own paint, so
@@ -572,10 +1657,18 @@ if (require.main === module) {
 
 module.exports = {
   assertControlledInputCount,
+  assertDeferredHydrationHealth,
+  assertFileTransitionHealth,
+  assertGitFilesRoundTripHealth,
+  assertGitTransitionHealth,
   capture,
   chromeExecutable,
   dispatchTrustedClickAtPoint,
+  dispatchTrustedClickForSelector,
   parseArgs,
+  runFileViewScenario,
+  runGitFilesRoundTrip,
+  runGitRevisionScenario,
   startTrustedInputPulse,
   usage,
   waitForClientQuiescence,

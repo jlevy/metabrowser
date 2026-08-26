@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Diff intraline bound benchmark</title>
+    <link rel="stylesheet" href="/src/metabrowser/static/styles.css" />
+    <style>
+      body {
+        margin: 0;
+      }
+
+      #result {
+        padding: 1rem;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <pre id="result">Running…</pre>
+    <script type="module">
+      import { refineChangedRun } from "/src/metabrowser/builtin_plugins/diff/diff-intraline.js";
+
+      const INTRALINE_WORK_BUDGET = 1_000_000;
+      const PATCH_BOUND_SIDE_CHARACTERS = 4 * 1024 * 1024;
+      const resultNode = document.querySelector("#result");
+
+      const cases = [
+        {
+          name: "ordinary code",
+          makeLines: () => [
+            ["const color = 'red';", "return oldValue;"],
+            ["const color = 'blue';", "return newValue;"],
+          ],
+        },
+        {
+          name: "shifted unequal lines",
+          makeLines: () => [
+            ["alpha = one;", "beta = two;", "gamma = three;"],
+            ["inserted = zero;", "alpha = 1;", "beta = 2;", "gamma = 3;"],
+          ],
+        },
+        {
+          name: "minified similar long line",
+          makeLines: () => {
+            const prefix = "a".repeat(100_000);
+            const suffix = "b".repeat(100_000);
+            return [[`${prefix}old${suffix}`], [`${prefix}new${suffix}`]];
+          },
+        },
+        {
+          name: "unrelated long lines",
+          makeLines: () => [["a".repeat(100_000)], ["b".repeat(100_000)]],
+        },
+        {
+          name: "8 MiB patch-bound similar line",
+          makeLines: () => {
+            const side = "a".repeat(PATCH_BOUND_SIDE_CHARACTERS);
+            return [[`${side}old`], [`${side}new`]];
+          },
+        },
+        {
+          name: "8 MiB patch-bound unrelated lines",
+          makeLines: () => [
+            ["a".repeat(PATCH_BOUND_SIDE_CHARACTERS)],
+            ["b".repeat(PATCH_BOUND_SIDE_CHARACTERS)],
+          ],
+        },
+      ];
+
+      try {
+        const samples = [];
+        for (const benchmarkCase of cases) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          const [oldLines, newLines] = benchmarkCase.makeLines();
+          let metrics = null;
+          const heapBefore = performance.memory?.usedJSHeapSize ?? null;
+          const startedAt = performance.now();
+          const refinement = refineChangedRun(oldLines, newLines, {
+            maxWork: INTRALINE_WORK_BUDGET,
+            onMetrics(value) {
+              metrics = value;
+            },
+          });
+          const elapsed = performance.now() - startedAt;
+          const heapAfter = performance.memory?.usedJSHeapSize ?? null;
+          samples.push({
+            elapsed_ms: Number(elapsed.toFixed(2)),
+            heap_delta_bytes:
+              heapBefore === null || heapAfter === null ? null : heapAfter - heapBefore,
+            metrics,
+            name: benchmarkCase.name,
+            status: refinement.status,
+          });
+        }
+        const result = {
+          browser: navigator.userAgent,
+          samples,
+          viewport: { height: innerHeight, width: innerWidth },
+          work_budget: INTRALINE_WORK_BUDGET,
+        };
+        window.diffIntralineBenchmarkResult = result;
+        resultNode.textContent = JSON.stringify(result, null, 2);
+      } catch (error) {
+        window.diffIntralineBenchmarkError = String(error?.stack || error);
+        resultNode.textContent = window.diffIntralineBenchmarkError;
+      }
+    </script>
+  </body>
+</html>
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

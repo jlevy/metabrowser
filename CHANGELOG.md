@@ -11,6 +11,27 @@ Added:
 
 Fixed:
 
+- Commit summaries keep the revision at the standard interface type size and place
+  file-status totals and line totals on two dedicated rows below the identity, author,
+  and age. The rows include their “files” and “lines” units instead of running all counts
+  into the metadata line.
+
+- File Overview no longer says “Show ignored” when its selected scope contains only
+  ignored files. The existing checkbox already provides that action, so the redundant
+  distribution body now stays empty instead of pointing readers at another control.
+
+- File-to-file navigation now keeps the prior useful preview visible while an
+  asynchronous structured renderer becomes ready.
+  The replacement mounts in a connected, inert stage and swaps in atomically, so YAML
+  and JSON views no longer expose a blank frame without weakening plugins’
+  connected-container contract.
+  The standard file-navigation performance scenario now always covers a cold structured
+  view alongside source, Markdown, and cached transitions.
+
+- Folders discovered while the Files panel is inactive now use the same class-driven
+  disclosure state as fetched folders, so returning from a Git comparison during an
+  active inventory scan can expand them without reloading the page.
+
 - Opening the first Git commit in a fresh browser session now loads the diff plugin on
   demand before mounting the commit view, so changed files and lines appear without
   first opening a `.patch` or `.diff` file.
@@ -19,6 +40,15 @@ Fixed:
   menu. The gear retains its accessible name.
 
 Performance, validated against 0.6.0 side by side:
+
+- Collapsed diff runs now mount only their visible prefix and materialize expanded rows
+  in cancellable 100-row tasks.
+  On the reproduced 19,654-line comparison, total DOM size fell from 182,686 to 6,476
+  nodes and the longest main-thread task from 552 ms to 127 ms, with no task or
+  attributed frame blocking above 200 ms.
+  The browser performance profile now hard-gates rows mounted beneath collapsed folds at
+  zero and attributes diff decode, validation, model construction, projection, and
+  attachment separately.
 
 - On the final installed candidate, five interleaved backend pairs over a fingerprinted
   123,658-file project corpus return the first navigation row in 0.571 s instead of
@@ -47,9 +77,114 @@ Performance, validated against 0.6.0 side by side:
   gates startup request count and transfer size.
   Rendered main-panel error states and uncaught browser exceptions are hard failures, so
   an error panel cannot count as a successful paint milestone.
-  Recording exits nonzero as soon as any run crosses a hard budget.
+  Stateful-navigation profiling now follows one documented attribution sequence that
+  separates synchronous acknowledgement, complete painted readiness, and Event Timing;
+  it audits the full input task and Long Animation Frame forced-layout evidence when
+  those clocks disagree.
+  The interaction driver resolves target scrolling and click geometry before starting
+  the application clock, so its own layout preparation is not reported as pending-state
+  delay. Recording exits nonzero as soon as any run crosses a hard budget.
 
 Browser:
+
+- File and Git navigation keep useful retained preview content unchanged at full opacity
+  until the selected view reaches its painted-readiness boundary.
+  The shared pending class and `aria-busy` remain claim-owned accessibility and
+  instrumentation state, but no longer add a gray sheet, cursor, filter, or per-element
+  styling. After replacement, one compositor animation takes only the incoming foreground
+  content from 0.98 to full opacity over 50 ms, softening the paint boundary without
+  delaying usable content, fading out the prior view, or animating the pane’s light or
+  dark theme background.
+  Reduced motion skips the animation, and empty initial previews retain the delayed
+  neutral spinner.
+
+- Ordinary file navigation now awaits the active plugin renderer, an optional
+  instance-declared initial readiness promise, and a double-animation-frame paint
+  boundary before reporting completion.
+  Production measurements separate selected-kind assets, active-view mounting, and
+  painted readiness instead of ending when the file envelope or empty container arrives.
+  Selecting a file also cancels a matching not-yet-started row-intent prefetch or joins
+  one already in flight, so a cold selection issues one file request and a cached
+  revisit issues none.
+
+- Git history keeps the current commit and diff visible while the selected revision is
+  prepared, then installs the replacement atomically.
+  Commit metadata, diff assets, and comparison data start together; one replaceable
+  pointer-intent slot avoids duplicate work without prefetching every visible row.
+  Speculative work waits for stable hover intent, so scrolling through rows starts no
+  transient detail or comparison requests; click and Arrow-key selection remain
+  immediate and mutate only the previous and next row instead of rewriting the mounted
+  history. The performance loop records that synchronous selection feedback separately
+  from the complete selection-to-painted-ready span and fails if pending onset,
+  clearance, exact revision convergence, or either phase label is missing.
+  Git row backgrounds update without a per-row transition, so the visible selection does
+  not ease in behind the input.
+  The focused row’s one-row Tab anchor finalizes after painted readiness rather than
+  recalculating focus order across the retained diff in the input task.
+  In three interleaved visible browser runs, candidate scenarios record zero blank
+  frames instead of 4–5 and the prepared transition falls from a 209.7 ms median to
+  104.4 ms, while cold-transition ranges overlap and retained heap stays unchanged.
+  The performance loop now records this interaction’s server, client, rendering,
+  paint-continuity, and lifecycle costs.
+
+- Large Git comparisons now hydrate deferred file sections only as they enter the
+  visible scroll area, with at most two active requests.
+  Selecting another revision cancels queued and active work while retaining the rendered
+  handoff surface, so obsolete per-file requests cannot leave the navigation selection
+  ahead of the visible diff.
+  The standard headed Git scenario now exercises that boundary on a deferred comparison
+  and fails on request fanout, missing cancellation, obsolete successful requests,
+  divergent row/route/view state, or multiple mounted comparisons.
+
+- Git history now follows the file tree’s navigational-row keyboard contract.
+  The row set contributes one Tab stop; unmodified Arrow Up and Arrow Down focus and
+  open the adjacent commit, allow key repeat, and clamp without reopening at either
+  edge.
+
+- Git commit details now place one shared, standard-size summary above the description:
+  subject; copyable short revision with the same refs and tags as Git history; author;
+  age; exact modified, added, and deleted file counts using `M`, `A`, and `D`; and line
+  additions and deletions.
+  Renames and type changes count as modified, while copies count as added, so every file
+  status contributes exactly once even when the returned file list is bounded.
+  Optional commit descriptions use standard-size sans-serif prose while preserving
+  authored newlines. The hosted comparison keeps its layout control without repeating
+  that aggregate summary.
+
+- Git commit details now present the short revision as a path-like identifier with a
+  copy control that writes the full commit ID. Revision, file-header, and diff-file
+  copies share one delegated clipboard and feedback contract.
+
+- Git history pointer tooltips now reuse the same commit-summary projection, including
+  subject, author, short revision, refs and tags, age, `M`/`A`/`D` file counts, and line
+  counts at the standard body size.
+  They omit the long commit description, clamp the subject to two lines, and keep the
+  copy glyph noninteractive while the real copy action remains in the selected commit
+  summary. Keyboard focus does not open or retain navigation tooltips; focus movement and
+  Arrow, Enter, or Space selection dismiss pending and visible tooltip presentation
+  before navigation.
+
+- Diff views now pair similar removed and added lines monotonically and emphasize the
+  changed words or characters in both unified and split layouts.
+  A wholly added or deleted line uses the stronger semantic background.
+  Similar replacements use a 3% row mix for unchanged text and a 20% overlay on changed
+  ranges, producing a 22.4% composite accent.
+  Changed ranges use the standard text foreground to retain at least 4.5:1 contrast over
+  the stronger light-theme surface.
+  When any pair in a contiguous changed run has meaningful unchanged text, wholly
+  changed neighboring lines join the same pale-row hierarchy and receive the stronger
+  fill across their complete text.
+  Independent new or removed paragraphs and files keep the ordinary whole-line
+  treatment. Every changed line retains a solid status-colored bar at the leading edge of
+  its line-number gutter, while syntax foregrounds, exact selectable text,
+  unmatched-line treatment, folding, and persisted layout state remain intact.
+  Pathological changed runs fall back to ordinary whole-line rendering at a measured
+  deterministic work bound.
+
+- A first-time diff opens in Split, with Split on the left and Unified on the right of
+  the joined layout control.
+  A valid stored layout choice remains authoritative, and switching continues to
+  reproject the shared model without fetching or lexing again.
 
 - Raw Source tabs now use syntax highlighting consistently for every extension backed by
   the shipped Highlight.js registry, including lazy Markdown, YAML, and JSON Source
@@ -59,6 +194,14 @@ Browser:
   full loaded text and normal 2–8 MiB chunk growth.
 
 API, observable to plugin authors:
+
+- A view instance handle may expose an optional `ready: Promise<void>` for a concrete
+  initial useful-content pass that continues after `render` returns.
+  During retained navigation, that connected container is transparent and inert until
+  the active renderer is ready and the shell installs it atomically; initial rendering
+  must not move focus.
+  Lazy mounting for inactive tabs, direct async-render support, and existing handles
+  without `ready` are unchanged.
 
 - **`PLUGIN_SDK_VERSION` is `0.5`.** External plugins must set `sdk_version = "0.5"` for
   the selected-kind asset lifecycle.
@@ -355,8 +498,8 @@ Design system:
 
 - **One tooltip, and it is Metabrowser’s own.** The navigation heading used to show two
   at once — the app’s, anchored and styled, and the browser’s, from a `title` attribute.
-  Every tooltip the app owns now goes through its own, on focus as well as hover, which
-  a native `title` never did.
+  Every tooltip the app owns now goes through its own pointer-hover controller; keyboard
+  focus uses the control’s accessible name and dismisses tooltip presentation.
   `devtools/check_tooltips.py` fails the build on a `title` attribute anywhere the app
   owns the markup, because a rule with no check is how this one was lost.
   `aria-label` is untouched: it is the accessible name, not a tooltip.

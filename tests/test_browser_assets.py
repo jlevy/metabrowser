@@ -59,13 +59,15 @@ def test_generated_html_handlers_keep_their_global_names() -> None:
     # app.js. That split is exactly what this check exists to catch.
     assert 'loadMoreCurrentText()"' in sdk
     assert "async function loadMoreCurrentText()" in app
-    # Header copy/navigation buttons carry paths in data-* attributes
-    # consumed by a delegated listener (inline onclick would HTML-decode
-    # quotes back into the JavaScript string).
-    assert "data-copy-path=" in app
+    # Header copy/navigation buttons carry values in data-* attributes
+    # consumed by the SDK's delegated listener (inline onclick would
+    # HTML-decode quotes back into the JavaScript string).
+    assert 'data-mb-copy="text"' in app
+    assert "data-mb-copy-text=" in app
     assert "data-nav-dir=" in app
-    assert "function copyPath(btn, path)" in app
+    assert "function copyPath(btn, path)" not in app
     assert "content-copy-btn" in sdk
+    assert 'target.closest("[data-mb-copy]")' in sdk
     assert "_copyDelegationInstalled" in sdk
     assert "function copyContent(btn)" in app
     assert 'onclick="toggleEvent(this)"' in agent_log

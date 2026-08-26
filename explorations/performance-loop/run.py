@@ -127,6 +127,9 @@ PENDING = HERE / "results" / "pending.json"
 # separating retained state from the runtime-dependent collection timing in
 # `performance.memory`.
 #
+# 16: collapsed diff rows become a required zero-cost rendering invariant in
+# every browser profile. A visual fold cannot hide an unbounded DOM subtree.
+#
 # 5: inventory delivery adds whole-window callback count, work-item volume,
 # maximum duration, total duration, and window share. These fields make an
 # event storm visible even when every individual callback stays below the
@@ -148,7 +151,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 15
+HARNESS_VERSION = 16
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -173,6 +176,7 @@ METRICS = (
     "subtree_requests",
     "tree_items",
     "lazy_stubs",
+    "collapsed_diff_rows_materialized",
     "dom_nodes",
     "transferred_kb",
     "vendor_first_start_ms",
@@ -681,8 +685,11 @@ def cmd_record(args: argparse.Namespace) -> int:
 
 def cmd_capture(args: argparse.Namespace) -> int:
     """Capture one Chrome profile with trusted input, then optionally record it."""
+    scenario = getattr(args, "scenario", "")
     if args.record and not args.headed:
         raise SystemExit("--headed is required when --record creates acceptance evidence")
+    if args.record and scenario:
+        raise SystemExit("interaction scenarios are experiment evidence and cannot use --record")
     pending = _read_pending()
     port = pending.get("port")
     if not isinstance(port, int):
@@ -711,6 +718,8 @@ def cmd_capture(args: argparse.Namespace) -> int:
         command.extend(["--chrome", args.chrome])
     if args.headed:
         command.append("--headed")
+    if scenario:
+        command.extend(["--scenario", scenario])
     result = subprocess.run(command, cwd=REPO, check=False)
     if result.returncode != 0 or not args.record:
         return result.returncode
@@ -1227,6 +1236,12 @@ def main(argv: list[str] | None = None) -> int:
     capture.add_argument("--timeout-ms", type=int, default=180_000)
     capture.add_argument("--width", type=int, default=1600)
     capture.add_argument("--height", type=int, default=900)
+    capture.add_argument(
+        "--scenario",
+        choices=["git-revisions", "file-views"],
+        default="",
+        help="capture an interaction scenario instead of the initial-load profile",
+    )
     capture.add_argument(
         "--record",
         action="store_true",

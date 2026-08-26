@@ -1,6 +1,6 @@
 # Research: File Patch Formats
 
-**Date:** 2026-08-19
+**Date:** 2026-08-19 (last updated 2026-08-25)
 
 **Author:** Claude (research agent), directed by Joshua Levy
 
@@ -540,6 +540,17 @@ In every viewer, intraline emphasis is an orthogonal second pass — pair remove
 lines, compute character- or word-level changed spans, render as background styling on
 top of whatever token colors exist (Monaco `innerChanges`, delta’s edit inference, jj’s
 `--color-words`).
+
+A 2026-08-25 follow-up reviewed the current Metabrowser implementation and pinned VS
+Code source. File Diff Format v1 does not contain intraline spans, syntax tokens, or
+split-row pairings, and it should not gain them for this feature.
+They are derived browser enrichments: the patch remains the exact source record, while
+the active renderer can replace or discard enrichment after an algorithm, theme, layout,
+timeout, or size-policy change.
+The VS Code-derived algorithm and ownership decision are recorded in the
+[web diff viewer research](research-2026-07-17-web-diff-viewer-architecture.md#2026-08-25-addendum-intraline-refinement)
+and Phase 4 of the
+[general diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md#phase-4-vs-code-derived-intraline-refinement).
 
 Implications for the Metabrowser viewer:
 

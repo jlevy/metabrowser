@@ -81,6 +81,7 @@ The loop refuses a record unless it establishes all of these facts:
   browser is still consuming its result.
 - The viewport clears the application’s declared floor.
 - Span-label retention did not overflow.
+- Request-class concurrency attribution did not overflow.
 - The Resource Timing buffer did not fill; truncated network totals are invalid, not
   low.
 - The run carries corpus, build, dirty-tree, harness-version, and timestamp provenance.
@@ -101,7 +102,7 @@ becomes a good zero.
 | Interaction | Trusted-input count, first and last offset, span, loading-window coverage, plus grouped Event Timing interaction count, retained count, percentile scope, p50, p95, and exact maximum | Calling an untouched or single-early-click page responsive, counting one gesture’s several DOM events as several interactions, confusing no slow entry with no input, or reporting a bounded percentile as whole-session evidence |
 | Visual stability | Navigation-time LCP and CLS’s maximum session window, plus adapter-defined movement and repaint counts | Improving first paint by assembling or moving the visible page afterwards, or reporting an all-session shift sum under the CLS name |
 | Rendering and memory | Named-span counts, totals, maxima, first completion, `dom_nodes`, optional natural heap, and controlled post-profile-GC retained heap | Moving work into an unmeasured callback, growing the DOM with the corpus, mistaking garbage-collection timing for retained-state growth, including measurement-only collection in UI timing, or losing early attribution to a ring buffer |
-| Network | Request count, in-flight count at capture, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Ending a profile before client work settles, losing failures from a bounded detail ring, or conflating server work with queueing, payload, and client processing |
+| Network | Request count, in-flight count at capture, whole-window and per-request-class concurrency maxima, exact rejection/abort/4xx/5xx totals, transfer by resource class, largest and slowest resources, endpoint timings, and `Server-Timing` | Ending a profile before client work settles, hiding a request storm because it eventually drains, losing failures from a bounded detail ring, or conflating server work with queueing, payload, and client processing |
 | Backend and correctness | Scan completion, rendered main-panel error count, uncaught page-exception count, adapter-defined feature readiness and final-state checks, route samples, peak RSS, corpus fingerprint, and semantic API comparison | Buying browser speed with a missing feature, incomplete data, a renderer failure, a different answer, or cost moved behind the browser boundary |
 
 The detail rings are intentionally bounded.
@@ -154,6 +155,9 @@ The deferred tools and their authoritative file catalog carry separate readiness
 so transfer cannot improve by losing controls or stopping at partial data.
 Rejected non-abort fetches and HTTP 5xx responses must also remain zero; aborts and 4xx
 responses stay visible as targets until a scenario can declare them intentional.
+Rows beneath a collapsed diff fold must remain absent from the DOM; the required
+`collapsed_diff_rows_materialized` metric turns a visually hidden but fully mounted
+comparison into a hard failure.
 The comparison checks every candidate run, not its median: one six-second freeze is a
 failure even if two clean runs would hide it statistically.
 
@@ -180,6 +184,8 @@ round.
 | Progressive load | Large or streaming data source; interact while updates arrive | Long Task and frame maxima, Event Timing, blocked share | Completion, final state, dropped/resync signals |
 | Churn and recovery | Burst updates, disconnect, reconnect, and force resynchronization | Convergence time, dropped events, resync count, update coalescing | Interaction latency during churn, final semantic equivalence, bounded caches |
 | Steady interaction | Settled application; repeat one scripted user journey | p50, p95, maximum interaction latency; named handler spans | Correct outcome, DOM and heap before/after |
+| Stateful navigation | Settled application; move between already rendered subjects with trusted input | Intent-to-ready and selection-to-painted-ready time; blank or placeholder frames; server and client phase spans | Exact selected subject, continuous useful content, one mounted owner, bounded preparation, disposal, and heap |
+| Large retained view | Open a bounded but DOM-heavy source such as a large comparison; exercise collapse, expansion, and replacement | Projection spans, Long Tasks, DOM and heap before/after | Hidden content is not mounted, expansion yields, cancellation and final content are exact |
 | Visual stability | Fixed viewport; capture shipped, intermediate, and final states | CLS, direct region movement, visual-state and repaint counts | First usable time and responsiveness do not regress |
 | Endurance | Long-lived session with repeated navigation and updates | Heap slope, DOM ceiling, retained sample counts, listener and cache sizes | Interaction latency stays flat and attribution does not overflow |
 | Backend delivery | Same corpus, with and without an attached client | Scan time, route wall/server time, RSS, payload | Browser hard gates and semantic response equivalence |
@@ -198,6 +204,58 @@ limits, and the decision.
 An overlapping range means no detected difference; it cannot support either a win or a
 regression. A candidate fails when any run crosses a hard gate or when a repeatable
 wrong-way metric lacks an accepted explanation.
+
+Stateful navigation must define useful readiness rather than accept the first paint
+after input. A prompt spinner can shorten Event Timing while the requested content
+arrives later. Keep the prior useful surface observable through the transition, require
+the exact requested subject at a painted boundary, and record blank or placeholder
+frames beside Event Timing.
+When a product has both synchronous and asynchronous renderers, the standard journey
+must include at least one cold asynchronous structured view; source-only or cached
+transitions cannot prove that the old surface survives renderer readiness.
+Freeze the product build and browsed corpus independently when product commits would
+otherwise change the navigation subjects.
+Use `Server-Timing` for backend work and finite application labels for transfer,
+decoding, mounting, and handoff so a cache or prefetch decision addresses the measured
+layer. When navigation retains background work, exercise the cancellation boundary while
+that work is active.
+For retained-preview navigation, record a small synchronous selection-feedback span
+around pending-state activation, route ownership, and the exact old/new row mutations.
+Keep it separate from selection-to-painted-ready and Event Timing: the first attributes
+handler work, the second captures the complete content handoff, and the third proves
+when the browser painted a response to trusted input.
+Pending-state mutation time is state-onset evidence, not paint evidence.
+An interaction driver resolves target scrolling and click coordinates before the common
+clock starts, so driver-induced layout preparation cannot masquerade as input delay.
+When the local span is short but Event Timing is long, inspect the complete browser
+input task, including focus handlers, default actions, other event listeners,
+synchronous observers, and work before the next paint.
+Correlate finite application spans with Long Tasks and Long Animation Frame
+forced-layout attribution; do not treat work moved just outside a measured function as
+an improvement. The standard repeatability and attribution sequence is in
+[Attributing Stateful-Navigation Delay](../explorations/performance-loop/README.md#attributing-stateful-navigation-delay).
+Record request concurrency by class, reject successful obsolete work, and require
+selected state, route, rendered subject, and mounted-owner count to converge.
+Waiting for eventual network idle cannot distinguish a bounded handoff from a request
+storm that merely finished before export.
+
+Statefully navigated views do not need identical renderer lifecycles to use this
+acceptance contract.
+A core-owned comparison may stage a complete detached surface and swap atomically; an
+arbitrary plugin may need a connected container and declare useful readiness only after
+its direct render promise or optional instance readiness promise settles.
+Measure each implementation honestly, but require both to retain useful content, expose
+immediate claim-owned pending feedback, and finish at the exact selected subject’s
+painted boundary.
+
+Exercise prefetch interaction rather than measuring selection in isolation.
+Pointer movement before a trusted click can arm speculative work even when the scenario
+did not intend a prepared transition.
+Record exact subject-matching request counts: a selected request must cancel a pending
+matching timer or join matching in-flight work, cold navigation must not duplicate it,
+and a cached revisit must not reach the data route.
+Treat this as a correctness gate because duplicate work can delay the selected response
+and saturate the same server it is meant to accelerate.
 
 An older release may predate the recorder.
 A measurement-only adapter may supply the current standard observers, provided the
