@@ -629,9 +629,17 @@ async function run() {
     const detail = {
       commit: commit(SHA_A, [], "the <subject>", [
         { id: "refs/heads/main", name: "main", kind: "branch" },
+        { id: "refs/tags/v1", name: "v1", kind: "tag" },
       ]),
       body: "the long body must stay out of a bounded tooltip",
-      stats: { files_changed: 3, additions: 10, deletions: 4 },
+      stats: {
+        files_changed: 3,
+        files_modified: 1,
+        files_added: 2,
+        files_deleted: 0,
+        additions: 10,
+        deletions: 4,
+      },
       files: [],
       files_truncated: false,
     };
@@ -641,11 +649,23 @@ async function run() {
     assertContains("tooltip: author", html, "Author");
     assertContains("tooltip: short revision", html, SHA_A.slice(0, 7));
     assertContains("tooltip: copy identity glyph", html, 'data-icon="copy"');
-    assertContains("tooltip: file count", html, "3 changed files");
+    assertContains("tooltip: refs use the history badge", html, "git-ref-branch");
+    assertContains("tooltip: tags use the history badge", html, "git-ref-tag");
+    assertContains("tooltip: refs stay beside the revision", html, "main");
+    const identityStart = html.indexOf('<span class="git-commit-identity">');
+    const identityEnd = html.indexOf("</span>", html.indexOf("git-commit-refs", identityStart));
+    assertTrue(
+      "tooltip: identity owns revision and refs",
+      identityStart >= 0 &&
+        html.indexOf("git-commit-revision", identityStart) < identityEnd &&
+        html.indexOf("git-commit-refs", identityStart) < identityEnd,
+    );
+    assertContains("tooltip: modified files", html, "1 M");
+    assertContains("tooltip: added files", html, "2 A");
+    assertNotContains("tooltip: zero deleted files are omitted", html, "0 D");
     assertContains("tooltip: additions", html, "+10");
     assertContains("tooltip: deletions", html, "−4");
     assertNotContains("tooltip: omits long body", html, "long body");
-    assertNotContains("tooltip: omits refs", html, "main");
     assertNotContains("tooltip: has no interactive copy button", html, "<button");
     assertNotContains("tooltip: has no copy behavior", html, "data-mb-copy");
 
@@ -654,7 +674,9 @@ async function run() {
       stats: {},
       files_truncated: true,
     });
-    assertContains("tooltip: unknown file count stays unknown", unknown, "? changed files");
+    assertContains("tooltip: unknown modified count stays unknown", unknown, "? M");
+    assertContains("tooltip: unknown added count stays unknown", unknown, "? A");
+    assertContains("tooltip: unknown deleted count stays unknown", unknown, "? D");
     assertContains("tooltip: unknown additions stay unknown", unknown, "+?");
     assertContains("tooltip: unknown deletions stay unknown", unknown, "−?");
   }
@@ -665,7 +687,14 @@ async function run() {
       { id: "refs/heads/main", name: "main", kind: "branch", is_head: true },
     ]),
     body: "explanatory body",
-    stats: { files_changed: 2, additions: 5, deletions: 1 },
+    stats: {
+      files_changed: 2,
+      files_modified: 1,
+      files_added: 1,
+      files_deleted: 0,
+      additions: 5,
+      deletions: 1,
+    },
     files: [
       { path: "one.js", status: "modified", additions: 5, deletions: 1 },
       { path: "two.js", status: "added", additions: 0, deletions: 0 },
@@ -708,7 +737,9 @@ async function run() {
     previewHtml,
     "git-commit-change-stats",
   );
-  assertContains("detail: summary counts files", previewHtml, "2 changed files");
+  assertContains("detail: summary counts modified files", previewHtml, "1 M");
+  assertContains("detail: summary counts added files", previewHtml, "1 A");
+  assertNotContains("detail: summary omits zero deleted files", previewHtml, "0 D");
   assertContains("detail: summary counts additions", previewHtml, "+5");
   assertContains("detail: summary counts deletions", previewHtml, "−1");
   const summaryStart = previewHtml.indexOf('<section class="git-commit-summary"');

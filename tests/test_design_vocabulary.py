@@ -367,16 +367,34 @@ def test_git_commit_summary_is_one_component() -> None:
     for component_part in (
         'class="git-commit-subject"',
         'class="git-commit-meta"',
+        'class="git-commit-identity"',
+        'class="git-commit-file-statuses"',
         'class="git-commit-change-stats"',
-        'class="git-commit-change-files"',
+        'class="git-commit-refs"',
         'class="git-commit-body"',
     ):
         assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
     assert "white-space: nowrap" in _rule(styles, ".git-commit-change-stats")
     compact = _rule(styles, ".git-commit-summary-compact")
+    meta = _rule(styles, ".git-commit-meta")
     compact_subject = _rule(styles, ".git-commit-summary-compact .git-commit-subject")
+    compact_meta = _rule(styles, ".git-commit-summary-compact .git-commit-meta")
+    summary_age = _rule(styles, ".git-commit-summary .git-commit-age")
+    summary_refs = _rule(styles, ".git-commit-summary .git-ref")
+    summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
     assert "max-width:" in compact
     assert "line-clamp:" in compact_subject
+    for rule in (
+        meta,
+        compact_subject,
+        compact_meta,
+        summary_age,
+        summary_refs,
+        summary_lines,
+    ):
+        assert "font-size: var(--body-font-size)" in rule
+        assert "font-size: var(--ui-small-font-size)" not in rule
+        assert "font-size: var(--tooltip-detail-font-size)" not in rule
     assert "noninteractive copy glyph" in doc
 
 

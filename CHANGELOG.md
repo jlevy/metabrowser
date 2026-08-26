@@ -132,8 +132,12 @@ Browser:
   open the adjacent commit, allow key repeat, and clamp without reopening at either
   edge.
 
-- Git commit details now place changed-file, addition, and deletion totals beside the
-  revision, author, and age above the commit description.
+- Git commit details now place one shared, standard-size summary above the description:
+  subject; copyable short revision with the same refs and tags as Git history; author;
+  age; exact modified, added, and deleted file counts using `M`, `A`, and `D`; and line
+  additions and deletions.
+  Renames and type changes count as modified, while copies count as added, so every file
+  status contributes exactly once even when the returned file list is bounded.
   The hosted comparison keeps its layout control without repeating that aggregate
   summary.
 
@@ -141,13 +145,14 @@ Browser:
   copy control that writes the full commit ID. Revision, file-header, and diff-file
   copies share one delegated clipboard and feedback contract.
 
-- Git history pointer tooltips now reuse a compact commit-summary projection with
-  author, short revision, age, and aggregate change counts.
-  They omit the long commit description and refs, clamp the subject to two lines, and
-  keep the copy glyph noninteractive while the real copy action remains in the selected
-  commit summary. Keyboard focus does not open or retain navigation tooltips; focus
-  movement and Arrow, Enter, or Space selection dismiss pending and visible tooltip
-  presentation before navigation.
+- Git history pointer tooltips now reuse the same commit-summary projection, including
+  subject, author, short revision, refs and tags, age, `M`/`A`/`D` file counts, and line
+  counts at the standard body size.
+  They omit the long commit description, clamp the subject to two lines, and keep the
+  copy glyph noninteractive while the real copy action remains in the selected commit
+  summary. Keyboard focus does not open or retain navigation tooltips; focus movement and
+  Arrow, Enter, or Space selection dismiss pending and visible tooltip presentation
+  before navigation.
 
 - Diff views now pair similar removed and added lines monotonically and emphasize the
   changed words or characters in both unified and split layouts.

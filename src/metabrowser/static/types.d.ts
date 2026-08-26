@@ -1463,6 +1463,9 @@ declare global {
 
   type MetabrowserGitCommitStats = {
     files_changed: number;
+    files_modified: number;
+    files_added: number;
+    files_deleted: number;
     additions: number;
     deletions: number;
   };

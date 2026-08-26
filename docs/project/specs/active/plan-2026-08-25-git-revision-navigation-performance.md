@@ -324,7 +324,8 @@ directly.
 | Repair live folder disclosure after a Git round trip | `mb-j72n` | None | Closed |
 | Keep navigation tooltips pointer-owned | `mb-iert` | None | Closed |
 | Keep retained file content through async plugin readiness | `mb-sfl2` | `mb-wf52` | Closed |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, `mb-iert`, `mb-sfl2`, and completed prior phases | Blocked |
+| Complete the shared Git commit summary | `mb-efos` | `mb-lk26`, `mb-3j4g` | Closed |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, `mb-iert`, `mb-sfl2`, `mb-efos`, and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -873,7 +874,41 @@ continuity, and measurement lifecycle remain.
   The exact candidate also passes the headed `git-revisions` scenario, `make format`,
   and `make verify`.
 
-### Phase 26: Deliver and Monitor (`mb-j8ni`)
+### Phase 26: Complete the Shared Git Commit Summary (`mb-efos`)
+
+- **Files and functions:** Extend `GitCommitStats` and `validate_git_commit_detail` in
+  `src/metabrowser/git/wire.py`; compute exact status-family counts in
+  `parse_commit_detail` in `src/metabrowser/git/detail.py` before applying the file-list
+  bound; mirror the fields in `src/metabrowser/static/types.d.ts`; and extend
+  `renderCommitSummary` and `renderCommitChangeStats` in
+  `src/metabrowser/static/git-panel.js`. Update the component rules in
+  `src/metabrowser/static/styles.css`, focused Python and browser tests,
+  `docs/design-system.md`, this plan, and `CHANGELOG.md`.
+- **Behavior and invariants:** The selected commit and pointer tooltip are two
+  projections of one `.git-commit-summary` component.
+  Both show the subject, short revision, refs and tags using the Git-history badge form,
+  author, age, exact `M`, `A`, and `D` file counts, and line additions and deletions.
+  Modified, renamed, and type-changed files count under `M`; added and copied files
+  count under `A`; deleted files count under `D`, so every supported file status
+  contributes exactly once.
+  Zero status categories are omitted.
+  Counts describe the complete commit even when the returned file list is bounded.
+  The full projection keeps the copyable revision and optional description; the compact
+  projection remains noninteractive and omits the description.
+  Subject, identity, ref badges, author, age, file counts, and line counts use the
+  ordinary body size in both projections; refs retain the history badge’s shape, color,
+  and weight.
+- **Acceptance:** Parser and wire tests cover all six file statuses, truncation, and
+  required aggregate fields.
+  Git-panel tests prove identical summary data in the full and compact projections, ref
+  placement, zero-category omission, escaping, full-only copy behavior and description,
+  and unknown line totals.
+  Design-vocabulary tests keep the subject, identity, ref badges, author, age, file
+  counts, and line counts at the standard body size in both projections.
+  Focused tests, `make format`, `make verify`, and visible light/dark tooltip and Git
+  comparison checks pass.
+
+### Phase 27: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original

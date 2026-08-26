@@ -2289,10 +2289,10 @@ html[data-prose-font="sans"] {
 .age-old {
   --file-age-current: var(--file-age-old);
 }
-/* Every age anywhere — file rows, commit rows, commit detail — reads
-   the same: the tier hue, the shared weight, tabular numerals so
-   columns of ages line up. Call sites add positioning only, never
-   colour or weight, exactly as they do for `.size`. */
+/* Every age anywhere — file rows, commit rows, commit detail — uses
+   the same tier hue, shared weight, and tabular numerals. Call sites
+   may adopt their container's type size and positioning, but never
+   override colour or weight, exactly as they do for `.size`. */
 :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   color: var(--file-age-current);
   font-weight: var(--file-age-weight);
@@ -4920,7 +4920,7 @@ pre.code-block code.hljs {
   align-items: center;
   gap: 10px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-sha {
@@ -4932,6 +4932,16 @@ pre.code-block code.hljs {
   align-items: center;
   gap: 2px;
   color: var(--text);
+}
+
+.git-commit-identity,
+.git-commit-refs,
+.git-commit-file-statuses,
+.git-commit-line-stats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .git-commit-revision-copy {
@@ -4952,6 +4962,34 @@ pre.code-block code.hljs {
   white-space: nowrap;
 }
 
+.git-commit-file-status {
+  color: var(--text);
+  font-variant-numeric: var(--tabular-numerals);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+
+.git-commit-file-status-added {
+  color: var(--status-success);
+}
+
+.git-commit-file-status-deleted {
+  color: var(--status-error-strong);
+}
+
+.git-commit-summary .git-ref {
+  font-size: var(--body-font-size);
+  line-height: 20px;
+}
+
+.git-commit-summary .git-commit-age {
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary :is(.git-stat-add, .git-stat-del) {
+  font-size: var(--body-font-size);
+}
+
 .git-commit-summary-compact {
   max-width: min(340px, calc(100vw - 32px));
 }
@@ -4960,7 +4998,7 @@ pre.code-block code.hljs {
   display: -webkit-box;
   margin: 0 0 6px;
   overflow: hidden;
-  font-size: var(--tooltip-font-size);
+  font-size: var(--body-font-size);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -4968,7 +5006,7 @@ pre.code-block code.hljs {
 
 .git-commit-summary-compact .git-commit-meta {
   gap: 6px;
-  font-size: var(--tooltip-detail-font-size);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-summary-compact .git-commit-revision-copy-preview {
@@ -4984,10 +5022,7 @@ pre.code-block code.hljs {
 }
 
 .git-commit-refs {
-  display: flex;
-  flex-wrap: wrap;
   gap: 4px;
-  margin-top: 8px;
 }
 
 .git-commit-body {

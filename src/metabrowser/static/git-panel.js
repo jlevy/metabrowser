@@ -165,20 +165,35 @@
 
   /**
    * @param {Record<string, unknown>} stats
-   * @param {number} fallbackFiles
-   * @param {boolean} filesTruncated
    * @returns {string}
    */
-  function renderCommitChangeStats(stats, fallbackFiles, filesTruncated) {
-    const fileCount = stats.files_changed ?? (filesTruncated ? "?" : fallbackFiles);
+  function renderCommitChangeStats(stats) {
+    const fileStatuses = [
+      [stats.files_modified ?? "?", "M", "modified", "git-commit-file-status-modified"],
+      [stats.files_added ?? "?", "A", "added", "git-commit-file-status-added"],
+      [stats.files_deleted ?? "?", "D", "deleted", "git-commit-file-status-deleted"],
+    ]
+      .filter(([count]) => count !== 0)
+      .map(([count, code, label, className]) => {
+        const fileLabel = count === 1 ? "file" : "files";
+        return (
+          `<span class="git-commit-file-status ${className}"` +
+          ` aria-label="${escapeHtml(String(count))} ${label} ${fileLabel}">` +
+          `${escapeHtml(String(count))} ${code}</span>`
+        );
+      })
+      .join("");
     const additions = stats.additions ?? "?";
     const deletions = stats.deletions ?? "?";
-    const fileLabel = Number(fileCount) === 1 ? "file" : "files";
     return (
       '<span class="git-commit-change-stats">' +
-      `<span class="git-commit-change-files">${escapeHtml(String(fileCount))} changed ${fileLabel}</span>` +
-      `<span class="git-stat-add">+${escapeHtml(String(additions))}</span>` +
-      `<span class="git-stat-del">−${escapeHtml(String(deletions))}</span>` +
+      `<span class="git-commit-file-statuses">${fileStatuses}</span>` +
+      '<span class="git-commit-line-stats" aria-label="Line changes">' +
+      `<span class="git-stat-add" aria-label="${escapeHtml(String(additions))} lines added">` +
+      `+${escapeHtml(String(additions))}</span>` +
+      `<span class="git-stat-del" aria-label="${escapeHtml(String(deletions))} lines deleted">` +
+      `−${escapeHtml(String(deletions))}</span>` +
+      "</span>" +
       "</span>"
     );
   }
@@ -195,7 +210,6 @@
   function renderCommitSummary(detail, options = {}) {
     const commit = detail.commit;
     const stats = detail.stats || {};
-    const files = detail.files || [];
     const compact = options.compact === true;
     const summaryClass = compact
       ? "git-commit-summary git-commit-summary-compact"
@@ -205,6 +219,7 @@
     html += '<div class="git-commit-header">';
     html += `<${subjectTag} class="git-commit-subject">${escapeHtml(commit.subject)}</${subjectTag}>`;
     html += '<div class="git-commit-meta">';
+    html += '<span class="git-commit-identity">';
     html += '<span class="git-commit-revision">';
     html += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
     if (compact) {
@@ -219,14 +234,15 @@
         ` aria-label="Copy revision">${copyIcon()}</button>`;
     }
     html += "</span>";
-    html += `<span>${escapeHtml(commit.author?.name || "")}</span>`;
-    html += `<span class="${escapeHtml(ageClass(commit.committed_at))}">`;
-    html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
-    html += renderCommitChangeStats(stats, files.length, detail.files_truncated);
-    html += "</div>";
-    if (!compact && commit.refs?.length) {
-      html += `<div class="git-commit-refs">${renderRefBadges(commit.refs)}</div>`;
+    if (commit.refs?.length) {
+      html += `<span class="git-commit-refs">${renderRefBadges(commit.refs)}</span>`;
     }
+    html += "</span>";
+    html += `<span class="git-commit-author">${escapeHtml(commit.author?.name || "")}</span>`;
+    html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
+    html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
+    html += renderCommitChangeStats(stats);
+    html += "</div>";
     html += "</div>";
     if (!compact && detail.body) {
       html += `<pre class="git-commit-body">${escapeHtml(detail.body)}</pre>`;

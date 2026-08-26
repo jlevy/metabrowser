@@ -715,20 +715,34 @@ The selected commit begins with one `.git-commit-summary` component rendered by
 `renderCommitSummary` in `static/git-panel.js`. Its anatomy has one order:
 
 1. subject;
-2. metadata containing the copyable revision, author, age, and
-   `.git-commit-change-stats`;
-3. refs, when present; and
-4. the commit description, when present.
+2. metadata containing an identity group with the short revision and refs, followed by
+   author, age, and `.git-commit-change-stats`; and
+3. the commit description, when present.
 
-The change-stats child reports changed files before additions and deletions.
-It uses the shared inline-change-stat colors and weight, renders a true minus sign, and
-wraps with the metadata row rather than truncating.
-Missing totals remain visibly unknown; a bounded file list never becomes an exact count.
+The identity group uses the same branch, remote, tag, trunk, and HEAD badge forms as the
+Git history row. The full summary makes the revision copyable; the compact summary keeps
+the familiar copy glyph noninteractive.
+
+The change-stats child first reports exact file-status families with Git’s letters, then
+line additions and deletions.
+`M` contains modified, renamed, and type-changed files; `A` contains added and copied
+files; `D` contains deleted files.
+These families cover every supported file status exactly once.
+A zero family is omitted.
+The server computes all counts before bounding the returned file list, so a large commit
+remains exact. Line totals use the shared semantic colors and weight and render a true
+minus sign. Missing totals remain visibly unknown.
+
+The subject, revision, ref badges, author, age, file-status counts, and line counts use
+`--body-font-size` in both projections.
+The compact tooltip is bounded by width and subject line count, not made denser with
+smaller type.
 
 Pointer hover on a Git history row uses `.git-commit-summary-compact` as the tooltip
 projection of this component.
 It retains the subject, author, short revision, age, and change stats, while omitting
-refs and the commit description.
+the commit description.
+Refs remain beside the revision just as they do in the full summary and Git history.
 The subject is clamped to two lines so one message cannot take over the viewport.
 The familiar mark beside the revision is a noninteractive copy glyph, not a control:
 tooltips remain supplementary and never own actions.
@@ -749,10 +763,11 @@ the renderer, root, child, styling, and documentation contract.
 
 ### Branch Chips
 
-Git ref badges (`.git-ref`) are their own vocabulary, not filter chips: at
-`--micro-font-size` the name carries the meaning, so it is always `--weight-bold`, and
-the corner is `--radius-tag` (square-ish) so “a ref” and “a filter” never read as the
-same control.
+Git ref badges (`.git-ref`) are their own vocabulary, not filter chips.
+In the dense Git history row they use `--micro-font-size`; in the commit-summary
+component they use `--body-font-size` with the same form.
+The name carries the meaning, so it is always `--weight-bold`, and the corner is
+`--radius-tag` (square-ish) so “a ref” and a “filter” never read as the same control.
 
 A chip answers two independent questions, and each has its own signal:
 
@@ -779,7 +794,8 @@ The `+N` / `−N` pair that rides beside a filename wherever a surface reports c
 size: `.diff-stat-add` in `--status-success`, `.diff-stat-del` in `--status-error`,
 always in that order, using the true minus sign, at the local small-text size, and
 always `--weight-bold` — the pair is data, and it must read at a glance.
-The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same rule.
+The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same color and weight
+rule but use the commit summary’s standard body size.
 The same pair is the summary line’s vocabulary, so a change set and its files read
 identically. Kind letters reuse the same mapping — added is `--status-success`, deleted
 is `--status-error` — and no diff surface introduces a local green or red.
