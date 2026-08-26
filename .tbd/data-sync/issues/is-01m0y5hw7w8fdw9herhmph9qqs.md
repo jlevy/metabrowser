@@ -3,16 +3,16 @@ type: is
 id: is-01m0y5hw7w8fdw9herhmph9qqs
 title: "Phase 4.8.4: Verify and deliver the intraline visual follow-up"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
 dependencies: []
 parent_id: is-01m0y5h1kk1waq5baqsvmqcx6k
 created_at: 2026-08-26T04:34:16.955Z
-updated_at: 2026-08-26T04:34:16.955Z
+updated_at: 2026-08-26T04:42:28.631Z
 ---
 Files/functions:
 - Review the full branch diff against docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md Phase 4.8.
