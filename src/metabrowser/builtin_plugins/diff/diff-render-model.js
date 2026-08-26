@@ -209,9 +209,29 @@ export function refineHunkChangedRuns(hunk, budget, signal) {
         newLine.newIntralineRanges = newRanges;
         newLine.intralineRefined = refined;
       }
-      enhanced = refined || enhanced;
       return { changedRun, new: newLine, old: oldLine, refined };
     });
+    const refinedRun = rows.some((row) => row.refined);
+    if (refinedRun) {
+      // One similar pair makes the contiguous changed run one visual unit.
+      // Full or unpaired neighbors receive a full-text range over the pale row.
+      for (const row of rows) {
+        row.refined = true;
+        if (row.old !== null) {
+          row.old.intralineRefined = true;
+          if (row.old.oldIntralineRanges.length === 0 && row.old.text.length > 0) {
+            row.old.oldIntralineRanges = [{ start: 0, end: row.old.text.length }];
+          }
+        }
+        if (row.new !== null) {
+          row.new.intralineRefined = true;
+          if (row.new.newIntralineRanges.length === 0 && row.new.text.length > 0) {
+            row.new.newIntralineRanges = [{ start: 0, end: row.new.text.length }];
+          }
+        }
+      }
+    }
+    enhanced = refinedRun || enhanced;
     hunk.changedRunRows.set(changedRun, rows);
     index = end;
   }

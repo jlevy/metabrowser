@@ -788,6 +788,18 @@ The worst syntax foreground remains above 4.5:1, and the gutter remains above 3:
 against its line surface in the supported light and dark palettes.
 This VS Code-style third layer changes no browser-local model or algorithm.
 
+#### 2026-08-26 addendum: intraline intensity
+
+The current palette retains the 3% refined-row mix and increases the inner overlay to
+20%, producing an effective 22.4% changed-range mix.
+Changed spans use the standard text foreground so the stronger light-theme overlay
+retains at least 4.5:1 text contrast.
+The stronger overlay remains a CSS token change.
+The semantic projection applies the hierarchy per contiguous changed run: if any pair
+has meaningful unchanged text, wholly changed or unpaired neighboring lines use the
+light row and a full-text inner range.
+A run without a refined pair retains ordinary whole-line treatment.
+
 ### Accessibility and Interaction
 
 The baseline experience needs real selectable text, clear old/new labels, accessible

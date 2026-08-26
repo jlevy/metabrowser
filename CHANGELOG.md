@@ -158,11 +158,17 @@ Browser:
 - Diff views now pair similar removed and added lines monotonically and emphasize the
   changed words or characters in both unified and split layouts.
   A wholly added or deleted line uses the stronger semantic background.
-  Similar replacements use a pale row background for unchanged text and the stronger
-  background on changed ranges.
-  Every changed line retains a solid status-colored bar at the leading edge of its
-  line-number gutter, while syntax foregrounds, exact selectable text, unmatched-line
-  treatment, folding, and persisted layout state remain intact.
+  Similar replacements use a 3% row mix for unchanged text and a 20% overlay on changed
+  ranges, producing a 22.4% composite accent.
+  Changed ranges use the standard text foreground to retain at least 4.5:1 contrast over
+  the stronger light-theme surface.
+  When any pair in a contiguous changed run has meaningful unchanged text, wholly
+  changed neighboring lines join the same pale-row hierarchy and receive the stronger
+  fill across their complete text.
+  Independent new or removed paragraphs and files keep the ordinary whole-line
+  treatment. Every changed line retains a solid status-colored bar at the leading edge of
+  its line-number gutter, while syntax foregrounds, exact selectable text,
+  unmatched-line treatment, folding, and persisted layout state remain intact.
   Pathological changed runs fall back to ordinary whole-line rendering at a measured
   deterministic work bound.
 

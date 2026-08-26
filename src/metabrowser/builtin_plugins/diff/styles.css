@@ -9,8 +9,8 @@
   --diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);
   --diff-add-refined-row-bg: color-mix(in srgb, var(--status-success) 3%, transparent);
   --diff-del-refined-row-bg: color-mix(in srgb, var(--status-error) 3%, transparent);
-  --diff-add-inner-bg: color-mix(in srgb, var(--status-success) 9%, transparent);
-  --diff-del-inner-bg: color-mix(in srgb, var(--status-error) 9%, transparent);
+  --diff-add-inner-bg: color-mix(in srgb, var(--status-success) 20%, transparent);
+  --diff-del-inner-bg: color-mix(in srgb, var(--status-error) 20%, transparent);
   --diff-add-gutter: var(--status-success);
   --diff-del-gutter: var(--status-error);
   --diff-change-gutter-width: 3px;
@@ -267,10 +267,12 @@
 
 .metabrowser-diff-host .diff-line-add .diff-intraline-change {
   background: var(--diff-add-inner-bg);
+  color: var(--text);
 }
 
 .metabrowser-diff-host .diff-line-del .diff-intraline-change {
   background: var(--diff-del-inner-bg);
+  color: var(--text);
 }
 
 .metabrowser-diff-host .diff-line-add > .diff-line-number:first-child {

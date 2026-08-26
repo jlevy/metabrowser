@@ -13,6 +13,7 @@ MINIMUM_TEXT_CONTRAST = 4.5
 MINIMUM_GUTTER_CONTRAST = 3.0
 PALE_DIFF_MIX = 0.03
 STRONG_DIFF_MIX = 0.09
+INNER_DIFF_MIX = 0.20
 HUE_CIRCLE_DEGREES = 360.0
 PERCENT_SCALE = 100.0
 SRGB_LINEAR_THRESHOLD = 0.04045
@@ -297,19 +298,23 @@ def test_syntax_foregrounds_meet_contrast_over_diff_tints() -> None:
         strong_deletion = _mix_srgb(error, background, STRONG_DIFF_MIX)
         refined_addition = _mix_srgb(success, background, PALE_DIFF_MIX)
         refined_deletion = _mix_srgb(error, background, PALE_DIFF_MIX)
+        inner_foreground = _parse_color(_resolved_color(tokens, "--text"))
         surfaces: dict[str, tuple[float, float, float]] = {
             "context": background,
             "addition": strong_addition,
             "deletion": strong_deletion,
             "refined addition": refined_addition,
             "refined deletion": refined_deletion,
-            "inner addition": _mix_srgb(success, refined_addition, STRONG_DIFF_MIX),
-            "inner deletion": _mix_srgb(error, refined_deletion, STRONG_DIFF_MIX),
+            "inner addition": _mix_srgb(success, refined_addition, INNER_DIFF_MIX),
+            "inner deletion": _mix_srgb(error, refined_deletion, INNER_DIFF_MIX),
         }
         for foreground_token in SYNTAX_FOREGROUND_TOKENS:
             foreground = _parse_color(_resolved_color(tokens, foreground_token))
             for surface_name, surface in surfaces.items():
-                contrast = _contrast_ratio_rgb(foreground, surface)
+                rendered_foreground = (
+                    inner_foreground if surface_name.startswith("inner ") else foreground
+                )
+                contrast = _contrast_ratio_rgb(rendered_foreground, surface)
                 assert contrast >= MINIMUM_TEXT_CONTRAST, (
                     f"{theme} {foreground_token} has {contrast:.2f}:1 contrast "
                     f"over the diff {surface_name} surface"
@@ -359,11 +364,11 @@ def test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract() -> None:
         in host_tokens
     )
     assert (
-        "--diff-add-inner-bg: color-mix(in srgb, var(--status-success) 9%, transparent);"
+        "--diff-add-inner-bg: color-mix(in srgb, var(--status-success) 20%, transparent);"
         in host_tokens
     )
     assert (
-        "--diff-del-inner-bg: color-mix(in srgb, var(--status-error) 9%, transparent);"
+        "--diff-del-inner-bg: color-mix(in srgb, var(--status-error) 20%, transparent);"
         in host_tokens
     )
     assert "--diff-add-gutter: var(--status-success);" in host_tokens
@@ -375,12 +380,12 @@ def test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract() -> None:
     assert "var(--diff-del-refined-row-bg)" in _rule_body(
         css, ".metabrowser-diff-host .diff-line-del.diff-line-refined"
     )
-    assert "var(--diff-add-inner-bg)" in _rule_body(
-        css, ".metabrowser-diff-host .diff-line-add .diff-intraline-change"
-    )
-    assert "var(--diff-del-inner-bg)" in _rule_body(
-        css, ".metabrowser-diff-host .diff-line-del .diff-intraline-change"
-    )
+    add_inner = _rule_body(css, ".metabrowser-diff-host .diff-line-add .diff-intraline-change")
+    assert "var(--diff-add-inner-bg)" in add_inner
+    assert "color: var(--text);" in add_inner
+    del_inner = _rule_body(css, ".metabrowser-diff-host .diff-line-del .diff-intraline-change")
+    assert "var(--diff-del-inner-bg)" in del_inner
+    assert "color: var(--text);" in del_inner
     first_number = _rule_body(css, ".metabrowser-diff-host .diff-line-number:first-child")
     assert "box-sizing: border-box;" in first_number
     assert "border-inline-start: var(--diff-change-gutter-width) solid transparent;" in first_number

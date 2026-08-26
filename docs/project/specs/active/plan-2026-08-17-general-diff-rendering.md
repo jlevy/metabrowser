@@ -855,9 +855,15 @@ real browser.
 
 An unrefined row now uses a 9% status-token fill because its complete text is new or
 removed. A refined row uses a 3% fill so its unchanged portion recedes, while a changed
-span adds a 9% overlay, producing an effective 11.7% mix.
-Every added or deleted line applies a solid three-pixel success or error border to its
-first line-number cell.
+span adds a 20% overlay, producing an effective 22.4% mix.
+Changed spans use the standard text foreground because the stronger light-theme surface
+does not preserve the 4.5:1 floor for every syntax accent.
+The hierarchy is run-scoped: if any pair in a contiguous changed run refines, every row
+in that run uses the pale background, and a wholly changed or unpaired neighboring line
+receives a full-text inner range.
+One-sided runs and runs with no meaningful refined pair retain the ordinary whole-line
+treatment. Every added or deleted line applies a solid three-pixel success or error
+border to its first line-number cell.
 `box-sizing: border-box` keeps that border inside the fixed grid cell, so unified and
 split text remain aligned without a new column or element.
 

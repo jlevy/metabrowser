@@ -816,9 +816,22 @@ A changed diff line has three visual layers with separate jobs:
    every added or deleted line, including whole-line and unrefined changes.
 
 The backgrounds form three perceived depths.
-An unrefined whole-line change uses the medium depth.
-A refined pair uses only the lightest depth for unchanged text and the darkest composite
-depth for the changed intraline ranges; it does not also show the medium depth.
+An unrefined whole-line change uses the medium 9% status-token mix.
+A refined pair uses only the lightest 3% mix for unchanged text and a 20% overlay for
+the changed intraline ranges, producing the darkest 22.4% composite depth; it does not
+also show the medium depth.
+The changed range uses the standard text foreground because several syntax accents do
+not retain 4.5:1 contrast over the darkest light-theme surface.
+
+Depth selection applies to one contiguous changed run.
+A run with no refined pair keeps the medium treatment for its wholly added or deleted
+rows.
+Once any old/new pair has meaningful unchanged text, every row in that run uses the
+lightest background.
+Exact changed ranges use the darkest fill, and a wholly added, deleted, or unpaired
+neighboring row treats its complete text as the changed range.
+This keeps a mixed rewritten paragraph coherent without making an independent new or
+removed paragraph look intraline-refined.
 
 All three layers derive from `--status-success` or `--status-error`. The diff plugin may
 define compositional custom properties for opacity, but it must not introduce local
@@ -829,8 +842,10 @@ alignment. Unified and split layouts consume the same `.diff-line-add`/`.diff-li
 and `.diff-intraline-change` vocabulary.
 
 The line marker and line numbers continue to state change direction without color.
-The gutter is a persistent structural cue, not the only cue, and syntax foregrounds must
-retain at least 4.5:1 contrast over every line and intraline surface in both themes.
+The gutter is a persistent structural cue, not the only cue.
+Syntax foregrounds retain at least 4.5:1 contrast over line surfaces in both themes, and
+intraline ranges use the standard text foreground to meet the same floor over their
+stronger overlay.
 
 ### Diff Layout Control
 

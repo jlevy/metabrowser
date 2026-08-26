@@ -922,10 +922,11 @@ continuity, and measurement lifecycle remain.
   It uses the application sans face and standard body size, wraps naturally, preserves
   authored newlines, and remains HTML-escaped.
   Empty descriptions produce no block, and compact pointer tooltips continue to omit
-  descriptions. The adjacent palette clarification required no implementation: `mb-l00d`
-  already provides the requested three depths—a medium pure-row fill, the lightest fill
-  for unchanged text in a refined pair, and the darkest composite fill for its changed
-  intraline ranges. `mb-y2km` records that deduplication.
+  descriptions. The diff hierarchy uses a medium pure-row fill, the lightest fill for
+  unchanged text in a refined run, and the darkest composite fill for changed intraline
+  ranges. When one pair refines, wholly changed neighboring lines join the same pale-row
+  and full-text-dark hierarchy; independent one-sided runs stay medium.
+  `mb-y2km` records the original depth clarification.
 - **Acceptance:** Focused typography, design-system, and Git-panel DOM tests pass.
   A headed browser check uses a commit with a non-empty multiline body and confirms the
   sans face, standard size, preserved newlines, and the existing light/medium/dark diff

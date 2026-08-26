@@ -68,8 +68,11 @@ async function main() {
     hunk.lines[1].oldIntralineRanges.length > 0 && hunk.lines[5].newIntralineRanges.length > 0,
   );
   check(
-    "unmatched line stays unrefined",
-    hunk.lines[4].intralineRefined === false && hunk.lines[4].newIntralineRanges.length === 0,
+    "unmatched line joins the refined run hierarchy",
+    hunk.lines[4].intralineRefined === true &&
+      hunk.changedRunRows.get(hunk.lines[4].changedRun)?.[0]?.refined === true &&
+      JSON.stringify(hunk.lines[4].newIntralineRanges) ===
+        JSON.stringify([{ start: 0, end: hunk.lines[4].text.length }]),
   );
   check(
     "repeated hunk refinement is idempotent",
@@ -132,6 +135,12 @@ async function main() {
     oneSidedModel.hunks[0].refinementComplete === true &&
       oneSidedModel.hunks[0].changedRunRows.size === 0,
     String(oneSidedModel.hunks[0].changedRunRows.size),
+  );
+  check(
+    "one-sided file additions retain ordinary row treatment",
+    oneSidedModel.hunks[0].lines.every(
+      (line) => line.intralineRefined === false && line.newIntralineRanges.length === 0,
+    ),
   );
 
   const containedModel = buildFileRenderModel(
