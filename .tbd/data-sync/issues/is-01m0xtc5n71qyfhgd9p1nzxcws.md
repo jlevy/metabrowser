@@ -5,13 +5,15 @@ title: Gate Git pending timing and row-anchor attribution
 kind: bug
 status: closed
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m0xvd71f9wvm3127ewrytsjd
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-26T01:18:55.654Z
-updated_at: 2026-08-26T01:22:11.618Z
+updated_at: 2026-08-26T01:37:38.066Z
 closed_at: 2026-08-26T01:22:11.606Z
 close_reason: The standard headed Git scenario now requires finite ordered pending onset/clear timing and the post-readiness gitRevision:rowAnchor phase. Focused regression tests cover missing onset, missing clearance, reversed timing, and missing anchor attribution; make verify passes.
 resolution: null

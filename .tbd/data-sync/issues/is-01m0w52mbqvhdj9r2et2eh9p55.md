@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 37
+version: 39
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -31,11 +31,12 @@ child_order_hints:
   - is-01m0xp9057jb8f0pcjhch592qd
   - is-01m0xp910y4k86s1emzcn93rz0
   - is-01m0xtc5n71qyfhgd9p1nzxcws
+  - is-01m0xvd71f9wvm3127ewrytsjd
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-26T01:31:45.407Z
+updated_at: 2026-08-26T01:44:59.246Z
 ---
-Deliver the twenty-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: the reviewed Git revision navigation implementation and its later file/Git parity, request-deduplication, visible pending-sheet, stable-hover, O(1) selection-feedback, standard performance-instrumentation, and final PR/CI phases. Keep useful content visible; use one compositor-friendly pointer-transparent pending sheet over the preview only; keep row interaction work proportional to the changed rows; distinguish immediate selection feedback from selection-to-painted-ready and Event Timing; retain at most one speculative comparison; cancel obsolete work; fail standard scenarios on fanout, duplicate selected work, blank frames, stuck pending state, missing phase attribution, or route/render divergence; do not add unmeasured caching, dependencies, or speculative compatibility; close only after PR #82 has exact-head green CI.
+Deliver the twenty-one-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: the reviewed Git revision navigation implementation and its later file/Git parity, request-deduplication, visible pending-sheet, stable-hover, O(1) selection-feedback, standard interaction-attribution procedure, performance instrumentation, and final PR/CI phases. Keep useful content visible; use one compositor-friendly pointer-transparent pending sheet over the preview only; keep row interaction work proportional to the changed rows; distinguish immediate selection feedback from selection-to-painted-ready and Event Timing; retain at most one speculative comparison; cancel obsolete work; fail standard scenarios on fanout, duplicate selected work, blank frames, stuck pending state, missing phase attribution, or route/render divergence; do not add unmeasured caching, dependencies, or speculative compatibility; close only after PR #82 has exact-head green CI.
 
 ## Notes
 
-All twenty implementation phases and twenty-one child beads are implemented; only the PR/CI handoff remains open. User-acceptance refinements are closed in mb-rnr7, mb-ues1, and precommit finding mb-f43i. Exact pushed head 947c447 passed make verify, hooks, and the headed Git scenario with one pending sheet, immediate exact-row feedback, stable hover, deferred Tab anchoring, strict timing/phase gates, zero blank frames, zero forced layout, exact convergence, bounded hydration, and no page exceptions. PR #82 is cleanly documented and all review channels are clear, but remains stacked on open #81 pending retargeting and final GitHub CI.
+All twenty-one implementation phases and twenty-two child beads are implemented; only the PR/CI handoff remains open. User-acceptance refinements are closed in mb-rnr7 and mb-ues1, precommit timing finding mb-f43i is closed, and the standard profiling procedure/evidence bead mb-1xm2 is closed. The performance loop now requires separate synchronous acknowledgement, painted-ready, and Event Timing clocks; audits the complete input task and Long Animation Frame forced-layout attribution when they disagree; and retains residual cold data/render costs honestly. Exact pushed product head 947c447 passed make verify, hooks, and headed Git validation; the documentation follow-up also passes focused tests and make verify. PR #82 remains stacked on open #81 pending retargeting and final GitHub CI.
