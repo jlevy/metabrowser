@@ -566,6 +566,20 @@ function familyRow() {
   );
   check("empty state copy", handle.body.children[0].textContent === "No files to summarize.");
 
+  view.updateDistributionView(handle, {
+    state: "ignored-only",
+    rows: [],
+    allFilesText: "4 files",
+  });
+  check(
+    "ignored-only state stays quiet beside the existing Show ignored control",
+    handle.rows.size === 0 &&
+      handle.groups.size === 0 &&
+      handle.table === null &&
+      handle.body.children.length === 0,
+    `children=${handle.body.children.length}`,
+  );
+
   if (failures.length) {
     console.error(`file type summary FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);

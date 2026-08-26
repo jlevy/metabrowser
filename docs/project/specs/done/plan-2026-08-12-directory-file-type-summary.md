@@ -586,7 +586,7 @@ The panel supports these states explicitly:
 | Complete index miss | “This folder is not in the current file index.” rather than a persistent loading skeleton |
 | Truncated | Keep rows and a persistent warning with indexed and configured-cap counts |
 | Empty complete folder | “No files to summarize.” inside the File types panel, with no bars, percentages, or table |
-| Active scope has only ignored files | “No included files. Show ignored to include N files.” rather than claiming the folder itself is empty |
+| Active scope has only ignored files | Keep the distribution body empty; the existing Show ignored control remains the action |
 | All files are zero bytes | Render the Files column normally; Size shows neutral zero tracks and `0 B` values |
 | Request failure | “Could not load file types.” with Retry for a transient failure or the relevant corrective action for a permanent one; the live watch remains able to recover |
 

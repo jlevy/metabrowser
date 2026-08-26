@@ -11,6 +11,10 @@ Added:
 
 Fixed:
 
+- File Overview no longer says “Show ignored” when its selected scope contains only
+  ignored files. The existing checkbox already provides that action, so the redundant
+  distribution body now stays empty instead of pointing readers at another control.
+
 - File-to-file navigation now keeps the prior useful preview visible while an
   asynchronous structured renderer becomes ready.
   The replacement mounts in a connected, inert stage and swaps in atomically, so YAML

@@ -951,6 +951,20 @@ continuity, and measurement lifecycle remain.
   Close `mb-j8ni` and epic `mb-fgcg` only after those conditions hold, then run
   `tbd sync`.
 
+### Phase 29: Remove Passive Empty-State Instructions (`mb-fkqp`)
+
+- **Files and functions:** Remove the ignored-only instruction from
+  `distribution-view.js`, cover the quiet state in the browser DOM behavior test, and
+  record the reusable copy rule in the design system and original folder-summary spec.
+- **Behavior and invariants:** The ignored-only model state remains distinct from a
+  genuinely empty folder, and the existing **Show ignored** checkbox remains available.
+  The distribution body adds no sentence that directs the reader to that separate
+  control.
+- **Acceptance:** The focused file-type-summary browser test, documentation checks,
+  `make format`, and `make verify` pass.
+  The exact committed build is pushed, globally installed, and served for end-to-end
+  testing.
+
 ## Measured Result
 
 Three interleaved visible-Chrome runs froze both products and the browsed repository:

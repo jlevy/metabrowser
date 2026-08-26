@@ -1451,6 +1451,9 @@ If one metric is zero while another is not, the zero metric uses the neutral tra
 the populated metric remains meaningful.
 If the whole population is empty, the parent surface renders its explicit empty state
 instead of the distribution body.
+If the selected scope contains only ignored files, the distribution body stays empty:
+the adjacent **Show ignored** checkbox already exposes the relevant action, so the body
+does not repeat it as passive instructions.
 
 ### Folder Treemap
 
@@ -1895,6 +1898,10 @@ Adjacent text elements must not repeat the same information.
 
 If removing a sentence loses no information because an adjacent label, control, or
 visual state already communicates it, remove the sentence.
+Instructional copy that asks the reader to change interface state must carry the
+relevant action in the same component; it must not direct the reader to a control
+somewhere else. When an adjacent control already makes the action clear and no
+explanation is needed, omit the instructional copy.
 
 ### State Language
 
