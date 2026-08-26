@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 55
+version: 57
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -40,8 +40,10 @@ child_order_hints:
   - is-01m0yh4s21r569a73k1kaz8p35
   - is-01m0yjwamztrrcqs6e5gf1x9wn
   - is-01m0yjwbybpt8r9bf1pjehswr0
+  - is-01m0zqfazjyrvqqfjv9g46qswb
+  - is-01m0zqsbmb9fs2wg9n34wem42v
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-26T08:59:44.605Z
+updated_at: 2026-08-26T19:12:10.885Z
 ---
 Deliver the complete phased plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: reviewed Git revision navigation, file/Git readiness parity, request deduplication, stable hover, O(1) selection feedback, standard interaction attribution, corrected input-relative driver timing, performance instrumentation, live-folder panel-state repair, and the final no-fade foreground-arrival contract. Keep useful retained content and the light/dark pane canvas visually unchanged while loading; preserve one claim-owned nonvisual busy lifecycle; animate only incoming foreground content from 0.98 to 1 over 50 ms; keep row work proportional to changed rows; distinguish selection feedback from painted readiness and Event Timing; exclude driver preparation from application timing; retain at most one speculative comparison; cancel obsolete work; and fail standard scenarios on fanout, duplicate selected work, blank frames, stuck busy state, missing attribution, route/render divergence, folder-state freezing, exceptions, or forced layout. Add no unmeasured cache, dependency, or speculative compatibility. Close only after PR #82 is retargeted from its stack and the final exact-head CI is green.
 
