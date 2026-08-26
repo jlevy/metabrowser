@@ -374,9 +374,11 @@ def test_git_commit_summary_is_one_component() -> None:
         'class="git-commit-body"',
     ):
         assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
-    assert "white-space: nowrap" in _rule(styles, ".git-commit-change-stats")
+    change_stats = _rule(styles, ".git-commit-change-stats")
+    stats_rows = _rule(styles, ".git-commit-file-statuses,\n.git-commit-line-stats")
     compact = _rule(styles, ".git-commit-summary-compact")
     meta = _rule(styles, ".git-commit-meta")
+    summary_sha = _rule(styles, ".git-commit-sha")
     compact_subject = _rule(styles, ".git-commit-summary-compact .git-commit-subject")
     compact_meta = _rule(styles, ".git-commit-summary-compact .git-commit-meta")
     summary_age = _rule(styles, ".git-commit-summary .git-commit-age")
@@ -385,11 +387,15 @@ def test_git_commit_summary_is_one_component() -> None:
     summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
     assert "max-width:" in compact
     assert "line-clamp:" in compact_subject
+    assert "display: grid" in change_stats
+    assert "white-space: nowrap" in change_stats
+    assert "display: inline-flex" in stats_rows
     assert "font-family: var(--font-sans)" in summary_body
     assert "font-size: var(--body-font-size)" in summary_body
     assert "white-space: pre-wrap" in summary_body
     for rule in (
         meta,
+        summary_sha,
         compact_subject,
         compact_meta,
         summary_age,

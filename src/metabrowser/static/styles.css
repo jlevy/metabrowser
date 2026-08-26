@@ -4925,6 +4925,7 @@ pre.code-block code.hljs {
 
 .git-commit-sha {
   font-family: var(--font-mono);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-revision {
@@ -4935,9 +4936,7 @@ pre.code-block code.hljs {
 }
 
 .git-commit-identity,
-.git-commit-refs,
-.git-commit-file-statuses,
-.git-commit-line-stats {
+.git-commit-refs {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
@@ -4955,11 +4954,25 @@ pre.code-block code.hljs {
 }
 
 .git-commit-change-stats {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  margin-top: 6px;
   color: var(--text);
   white-space: nowrap;
+}
+
+.git-commit-file-statuses,
+.git-commit-line-stats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-commit-stat-unit {
+  color: var(--text);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-file-status {

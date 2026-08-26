@@ -633,12 +633,12 @@ async function run() {
       ]),
       body: "the long body must stay out of a bounded tooltip",
       stats: {
-        files_changed: 3,
-        files_modified: 1,
-        files_added: 2,
+        files_changed: 32,
+        files_modified: 28,
+        files_added: 4,
         files_deleted: 0,
-        additions: 10,
-        deletions: 4,
+        additions: 1921,
+        deletions: 160,
       },
       files: [],
       files_truncated: false,
@@ -660,11 +660,26 @@ async function run() {
         html.indexOf("git-commit-revision", identityStart) < identityEnd &&
         html.indexOf("git-commit-refs", identityStart) < identityEnd,
     );
-    assertContains("tooltip: modified files", html, "1 M");
-    assertContains("tooltip: added files", html, "2 A");
+    assertContains("tooltip: modified files", html, "28 M");
+    assertContains("tooltip: added files", html, "4 A");
     assertNotContains("tooltip: zero deleted files are omitted", html, "0 D");
-    assertContains("tooltip: additions", html, "+10");
-    assertContains("tooltip: deletions", html, "−4");
+    assertContains("tooltip: file unit", html, 'git-commit-stat-unit">files');
+    assertContains("tooltip: additions", html, "+1921");
+    assertContains("tooltip: deletions", html, "−160");
+    assertContains("tooltip: line unit", html, 'git-commit-stat-unit">lines');
+    const metaStart = html.indexOf('<div class="git-commit-meta">');
+    const metaEnd = html.indexOf("</div>", metaStart);
+    const statsStart = html.indexOf('<div class="git-commit-change-stats">');
+    const fileStatsStart = html.indexOf('<div class="git-commit-file-statuses"', statsStart);
+    const lineStatsStart = html.indexOf('<div class="git-commit-line-stats"', statsStart);
+    assertTrue(
+      "tooltip: change statistics are two rows below identity metadata",
+      metaStart >= 0 &&
+        metaEnd > metaStart &&
+        statsStart > metaEnd &&
+        fileStatsStart > statsStart &&
+        lineStatsStart > fileStatsStart,
+    );
     assertNotContains("tooltip: omits long body", html, "long body");
     assertNotContains("tooltip: has no interactive copy button", html, "<button");
     assertNotContains("tooltip: has no copy behavior", html, "data-mb-copy");

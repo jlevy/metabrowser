@@ -965,6 +965,25 @@ continuity, and measurement lifecycle remain.
   The exact committed build is pushed, globally installed, and served for end-to-end
   testing.
 
+### Phase 30: Stack Commit-Summary Statistics (`mb-lgp1`)
+
+- **Files and functions:** Keep `renderCommitSummary` and `renderCommitChangeStats` as
+  the shared full/compact component boundary, but move the change-stats child after the
+  identity metadata. Render file-status families and line totals as two semantic rows,
+  and update their CSS, browser behavior tests, design-vocabulary check, design system,
+  and changelog together.
+- **Behavior and invariants:** The subject remains first.
+  The next row contains the standard-size short revision and refs, author, and age.
+  A file row such as `28 M 4 A files` and a line row such as `+1921 −160 lines` follow.
+  Singular totals use “file” or “line.”
+  The full summary retains its copy action and optional description; the compact pointer
+  tooltip remains noninteractive and uses the same order.
+- **Acceptance:** Focused browser and design-vocabulary tests pin the row order, units,
+  zero-category omission, unknown totals, and standard revision size.
+  `make format` and `make verify` pass.
+  The exact commit is pushed, globally installed, and served for light/dark end-to-end
+  testing, and GitHub CI is green.
+
 ## Measured Result
 
 Three interleaved visible-Chrome runs froze both products and the browsed repository:

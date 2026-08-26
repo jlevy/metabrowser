@@ -716,25 +716,27 @@ The selected commit begins with one `.git-commit-summary` component rendered by
 
 1. subject;
 2. metadata containing an identity group with the short revision and refs, followed by
-   author, age, and `.git-commit-change-stats`; and
-3. the commit description, when present.
+   author and age;
+3. `.git-commit-change-stats`, with one file-status row and one line-total row; and
+4. the commit description, when present.
 
 The identity group uses the same branch, remote, tag, trunk, and HEAD badge forms as the
 Git history row. The full summary makes the revision copyable; the compact summary keeps
 the familiar copy glyph noninteractive.
 
-The change-stats child first reports exact file-status families with Git’s letters, then
-line additions and deletions.
-`M` contains modified, renamed, and type-changed files; `A` contains added and copied
-files; `D` contains deleted files.
+The change-stats child sits below the identity metadata.
+Its first row reports exact file-status families with Git’s letters and ends in “file”
+or “files.” Its second row reports line additions and deletions and ends in “line” or
+“lines.” `M` contains modified, renamed, and type-changed files; `A` contains added and
+copied files; `D` contains deleted files.
 These families cover every supported file status exactly once.
 A zero family is omitted.
 The server computes all counts before bounding the returned file list, so a large commit
 remains exact. Line totals use the shared semantic colors and weight and render a true
 minus sign. Missing totals remain visibly unknown.
 
-The subject, revision, ref badges, author, age, file-status counts, and line counts use
-`--body-font-size` in both projections.
+The subject, revision, ref badges, author, age, file-status counts, units, and line
+counts use `--body-font-size` in both projections.
 The compact tooltip is bounded by width and subject line count, not made denser with
 smaller type. The optional full-summary description is prose: it uses `--font-sans` at
 `--body-font-size`, wraps naturally, and preserves the newlines authored in the commit
@@ -742,8 +744,8 @@ message.
 
 Pointer hover on a Git history row uses `.git-commit-summary-compact` as the tooltip
 projection of this component.
-It retains the subject, author, short revision, age, and change stats, while omitting
-the commit description.
+It retains the subject, author, short revision, age, and two-row change stats, while
+omitting the commit description.
 Refs remain beside the revision just as they do in the full summary and Git history.
 The subject is clamped to two lines so one message cannot take over the viewport.
 The familiar mark beside the revision is a noninteractive copy glyph, not a control:

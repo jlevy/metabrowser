@@ -183,18 +183,26 @@
         );
       })
       .join("");
+    const filesChanged = stats.files_changed ?? "?";
+    const fileUnit = filesChanged === 1 ? "file" : "files";
     const additions = stats.additions ?? "?";
     const deletions = stats.deletions ?? "?";
+    const lineTotal =
+      typeof additions === "number" && typeof deletions === "number" ? additions + deletions : null;
+    const lineUnit = lineTotal === 1 ? "line" : "lines";
     return (
-      '<span class="git-commit-change-stats">' +
-      `<span class="git-commit-file-statuses">${fileStatuses}</span>` +
-      '<span class="git-commit-line-stats" aria-label="Line changes">' +
+      '<div class="git-commit-change-stats">' +
+      '<div class="git-commit-file-statuses" aria-label="File changes">' +
+      `${fileStatuses}<span class="git-commit-stat-unit">${fileUnit}</span>` +
+      "</div>" +
+      '<div class="git-commit-line-stats" aria-label="Line changes">' +
       `<span class="git-stat-add" aria-label="${escapeHtml(String(additions))} lines added">` +
       `+${escapeHtml(String(additions))}</span>` +
       `<span class="git-stat-del" aria-label="${escapeHtml(String(deletions))} lines deleted">` +
       `−${escapeHtml(String(deletions))}</span>` +
-      "</span>" +
-      "</span>"
+      `<span class="git-commit-stat-unit">${lineUnit}</span>` +
+      "</div>" +
+      "</div>"
     );
   }
 
@@ -241,8 +249,8 @@
     html += `<span class="git-commit-author">${escapeHtml(commit.author?.name || "")}</span>`;
     html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
     html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
-    html += renderCommitChangeStats(stats);
     html += "</div>";
+    html += renderCommitChangeStats(stats);
     html += "</div>";
     if (!compact && detail.body) {
       html += `<pre class="git-commit-body">${escapeHtml(detail.body)}</pre>`;

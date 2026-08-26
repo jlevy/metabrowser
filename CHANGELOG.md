@@ -11,6 +11,11 @@ Added:
 
 Fixed:
 
+- Commit summaries keep the revision at the standard interface type size and place
+  file-status totals and line totals on two dedicated rows below the identity, author,
+  and age. The rows include their “files” and “lines” units instead of running all counts
+  into the metadata line.
+
 - File Overview no longer says “Show ignored” when its selected scope contains only
   ignored files. The existing checkbox already provides that action, so the redundant
   distribution body now stays empty instead of pointing readers at another control.
