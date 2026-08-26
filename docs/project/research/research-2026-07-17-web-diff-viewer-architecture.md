@@ -729,9 +729,13 @@ directly. The relevant behavior is smaller than Monaco:
   and absorbs tiny unchanged islands between long changes.
 - Every algorithm accepts a timeout seam and returns a valid coarse change when it
   cannot finish.
-- `diffEditorDecorations.ts` and the diff-editor stylesheet apply whole-line insertion
-  or deletion colors separately from inner-text colors.
-  The design is the same two-layer composition observed on GitHub.
+- `registrations.contribution.ts` registers whole-line insertion or deletion classes,
+  inner-text classes, and independent margin classes.
+  The diff-editor stylesheet maps those three layers to line, text, and gutter theme
+  colors. Dedicated gutter colors fall back through the line and text colors, while
+  `editorColors.ts` requires the line and text colors to remain translucent.
+  The result adds a persistent structural edge to the two-layer fill composition
+  observed on GitHub.
 
 The sources are MIT licensed, and Metabrowser already carries the VS Code license for
 the Git graph port. A focused port should preserve a source header naming the pinned
@@ -777,10 +781,12 @@ edit-distance work rather than adding a smaller file-size cutoff.
 The reproducible table, including retained-heap evidence and its measurement limits, is
 in the [diff intraline benchmark](../../../../explorations/diff-intraline/).
 
-The visual implementation uses shared success/error tokens: 12% for ordinary whole-line
-changes, 4% for similar replacement rows, and another 8% on inner changed ranges.
-Syntax foregrounds remain at or above 4.5:1 in the supported light and dark palettes,
-while line markers and numbers remain the non-color signal.
+The final visual hierarchy uses shared success/error tokens: a 3% whole-line mix, a 9%
+inner overlay for an effective 11.7% changed-range mix, and a solid three-pixel gutter
+bar. The inner range is therefore about four times as accented as its surrounding line.
+The worst syntax foreground remains above 4.5:1, and the gutter remains above 3:1
+against its line surface in the supported light and dark palettes.
+This VS Code-style third layer changes no browser-local model or algorithm.
 
 ### Accessibility and Interaction
 

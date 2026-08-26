@@ -141,9 +141,11 @@ Browser:
 
 - Diff views now pair similar removed and added lines monotonically and emphasize the
   changed words or characters in both unified and split layouts.
-  Similar replacements use a lighter whole-row tint with a stronger inner range, while
-  syntax foregrounds, exact selectable text, unmatched-line treatment, folding, and
-  persisted layout state remain intact.
+  Every added or deleted line uses a pale whole-row tint and a solid status-colored bar
+  at the leading edge of its line-number gutter.
+  Similar replacements use a substantially stronger inner range, while syntax
+  foregrounds, exact selectable text, unmatched-line treatment, folding, and persisted
+  layout state remain intact.
   Pathological changed runs fall back to ordinary whole-line rendering at a measured
   deterministic work bound.
 

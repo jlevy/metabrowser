@@ -765,6 +765,29 @@ The same pair is the summary line’s vocabulary, so a change set and its files 
 identically. Kind letters reuse the same mapping — added is `--status-success`, deleted
 is `--status-error` — and no diff surface introduces a local green or red.
 
+### Diff Change Surfaces
+
+A changed diff line has three visual layers with separate jobs:
+
+1. A pale whole-line fill establishes the added or deleted region without competing with
+   syntax color.
+2. A stronger intraline fill identifies the exact text that changed when refinement
+   finds meaningful unchanged text.
+3. A solid status-colored inset at the leading edge of the line-number gutter marks
+   every added or deleted line, including whole-line and unrefined changes.
+
+All three layers derive from `--status-success` or `--status-error`. The diff plugin may
+define compositional custom properties for opacity, but it must not introduce local
+green or red literals.
+The gutter is an inset decoration on the first line-number cell, not a grid column or
+added element, so context and changed rows retain identical line number and text
+alignment. Unified and split layouts consume the same `.diff-line-add`/`.diff-line-del`
+and `.diff-intraline-change` vocabulary.
+
+The line marker and line numbers continue to state change direction without color.
+The gutter is a persistent structural cue, not the only cue, and syntax foregrounds must
+retain at least 4.5:1 contrast over every line and intraline surface in both themes.
+
 Section headings use `--section-heading-divider-gap` between their content and the
 divider. Components consume the token instead of choosing local bottom padding, so the
 divider remains equally close to headings with and without disclosure controls.

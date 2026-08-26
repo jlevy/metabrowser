@@ -5,12 +5,13 @@
    system; the title is styled as a filename, not a heading. */
 
 .metabrowser-diff-host {
-  --diff-add-row-bg: color-mix(in srgb, var(--status-success) 12%, transparent);
-  --diff-del-row-bg: color-mix(in srgb, var(--status-error) 12%, transparent);
-  --diff-add-refined-bg: color-mix(in srgb, var(--status-success) 4%, transparent);
-  --diff-del-refined-bg: color-mix(in srgb, var(--status-error) 4%, transparent);
-  --diff-add-inner-bg: color-mix(in srgb, var(--status-success) 8%, transparent);
-  --diff-del-inner-bg: color-mix(in srgb, var(--status-error) 8%, transparent);
+  --diff-add-row-bg: color-mix(in srgb, var(--status-success) 3%, transparent);
+  --diff-del-row-bg: color-mix(in srgb, var(--status-error) 3%, transparent);
+  --diff-add-inner-bg: color-mix(in srgb, var(--status-success) 9%, transparent);
+  --diff-del-inner-bg: color-mix(in srgb, var(--status-error) 9%, transparent);
+  --diff-add-gutter: var(--status-success);
+  --diff-del-gutter: var(--status-error);
+  --diff-change-gutter-width: 3px;
 }
 
 .metabrowser-diff-host .diff-toolbar {
@@ -217,6 +218,11 @@
   user-select: none;
 }
 
+.metabrowser-diff-host .diff-line-number:first-child {
+  box-sizing: border-box;
+  border-inline-start: var(--diff-change-gutter-width) solid transparent;
+}
+
 .metabrowser-diff-host .diff-line-marker {
   user-select: none;
   text-align: center;
@@ -249,20 +255,20 @@
   background: var(--diff-del-row-bg);
 }
 
-.metabrowser-diff-host .diff-line-add.diff-line-refined {
-  background: var(--diff-add-refined-bg);
-}
-
-.metabrowser-diff-host .diff-line-del.diff-line-refined {
-  background: var(--diff-del-refined-bg);
-}
-
 .metabrowser-diff-host .diff-line-add .diff-intraline-change {
   background: var(--diff-add-inner-bg);
 }
 
 .metabrowser-diff-host .diff-line-del .diff-intraline-change {
   background: var(--diff-del-inner-bg);
+}
+
+.metabrowser-diff-host .diff-line-add > .diff-line-number:first-child {
+  border-inline-start-color: var(--diff-add-gutter);
+}
+
+.metabrowser-diff-host .diff-line-del > .diff-line-number:first-child {
+  border-inline-start-color: var(--diff-del-gutter);
 }
 
 .metabrowser-diff-host .diff-line-no-newline {

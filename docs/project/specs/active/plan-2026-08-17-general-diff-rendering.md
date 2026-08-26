@@ -799,6 +799,76 @@ overflow, exact line text, and diff-specific console diagnostics.
 No runtime dependency, worker, schema field, compatibility alias, or new loading tier
 was added.
 
+### Phase 4.8: Intraline Visual Hierarchy and Change Gutters
+
+Ends with: every added or deleted line has a persistent status-colored gutter bar;
+whole-line fills remain pale; and a refined line uses a substantially stronger fill only
+for the text range that changed.
+Unified and split layouts use the same classes, tokens, and contrast contract.
+
+#### Source Findings
+
+VS Code models diff emphasis as three independent decorations.
+At the reviewed revision, `registrations.contribution.ts` attaches `line-insert` or
+`line-delete` to every changed line, `char-insert` or `char-delete` to refined text
+ranges, and `gutter-insert` or `gutter-delete` to the editor margin.
+`style.css` maps those classes to separate line, text, and gutter theme colors.
+The gutter colors fall back through the line and text colors, so the structural marker
+remains present when a theme does not provide a dedicated value.
+`editorColors.ts` keeps line and text backgrounds translucent so they do not hide syntax
+or other editor decorations.
+
+Metabrowser already emits the equivalent semantic row and range classes in both layouts.
+The visual correction therefore belongs in CSS. It must not add line wrappers, per-row
+JavaScript, or a second render path.
+
+#### Files and Functions
+
+- [x] Update `src/metabrowser/builtin_plugins/diff/styles.css` so ordinary and refined
+  added or deleted rows share a pale status-token fill, refined `.diff-intraline-change`
+  spans use a clearly stronger status-token fill, and the first `.diff-line-number` cell
+  carries a fixed-width inset gutter bar.
+  The bar must not change grid geometry or text alignment.
+- [x] Extend
+  `tests/test_syntax_palette.py::test_syntax_foregrounds_meet_contrast_over_diff_tints`
+  and `test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract` to prove the
+  fill hierarchy, text contrast, semantic token ownership, gutter placement, and
+  layout-neutral inset treatment.
+- [x] Extend the unified and split assertions in `tests/dom/diff-view-behavior.js` only
+  if the existing row-class contract does not already prove that the selectors reach
+  every changed line. The existing assertions already pin the shared classes and direct
+  line-number children, so no DOM test or renderer change was necessary.
+- [x] Reconcile the visual contract in `docs/design-system.md`, the VS Code source
+  findings in the diff research, the implementation outcome below, and `CHANGELOG.md`.
+- [x] Validate representative refined, unrelated, addition-only, and deletion-only lines
+  in light and dark themes in a real browser.
+  Confirm that the bar remains aligned in unified and split layouts, selection and
+  syntax remain readable, and no new DOM or scripting cost appears.
+
+Phase 4.8 is complete when a changed line remains identifiable without relying on its
+fill, changed text has a clear visual priority over unchanged text within a refined
+line, the treatment is identical across layouts, computed syntax contrast remains at
+least 4.5:1, focused and full verification pass, and the exact build is inspected in a
+real browser.
+
+#### Implementation Outcome
+
+Ordinary and refined rows now use the same 3% status-token fill.
+A refined changed span adds a 9% overlay, producing an effective 11.7% mix, about four
+times the row accent.
+Every added or deleted line applies a solid three-pixel success or error border to its
+first line-number cell.
+`box-sizing: border-box` keeps that border inside the fixed grid cell, so unified and
+split text remain aligned without a new column or element.
+
+The computed palette keeps the worst syntax foreground above 4.5:1 and each gutter above
+3:1 against its line surface in light and dark themes.
+A representative large-repository commit exercised refined and unrefined changes in a
+real browser. Every changed row had a gutter in unified and split layouts, with no
+line-number alignment mismatches or diff console diagnostics.
+The change adds CSS only; the semantic model, renderer, selection, folding, layout
+persistence, and main-thread work are unchanged.
+
 ### Phase 5: Large Folded-Comparison Responsiveness
 
 Ends with: a collapsed changed run costs only its visible prefix in the DOM, expanding
