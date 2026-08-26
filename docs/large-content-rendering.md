@@ -200,6 +200,14 @@ This keeps the cold blocking task below the 200 ms interaction budget at the ser
 The repeatable fixture and measurements live in
 [Diff layout bound benchmark](../explorations/diff-layout/).
 
+**A visual fold must also be a DOM fold.** A collapsed diff run mounts only its visible
+prefix. Expansion adds 100 rows per task, and collapse, reprojection, replacement, and
+disposal cancel pending batches and remove their text hosts.
+A measured 19,654-line comparison fell from 182,686 to 6,476 total DOM nodes and from a
+552 ms longest task to 127 ms.
+The browser profile hard-gates `collapsed_diff_rows_materialized` at zero so a CSS-only
+fold cannot return unnoticed.
+
 **Bound diff edit-distance work, not input size.** Intraline refinement counts
 deterministic dynamic-programming or Myers work per changed run and falls back to the
 existing positional rows when that work exceeds 1,000,000 units.
@@ -246,6 +254,7 @@ window that never existed on disk.
 | `DEFAULT_ACCENT_RUN_BUDGET` | 60,000 runs | Element count across the mounted view |
 | `LINES_PER_BLOCK` | 128 | Deferred layout per scroll-in |
 | `LAYOUT_PROJECTION_BATCH_FILES` | 100 files | Diff layout-switch main-thread work per task |
+| `FOLD_MATERIALIZATION_BATCH_ROWS` | 100 rows | Diff fold-expansion main-thread work per task |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the
 resource: the degradation has to apply uniformly to everything on screen.

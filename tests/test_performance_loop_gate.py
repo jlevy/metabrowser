@@ -30,6 +30,7 @@ def _run(label: str, **overrides: object) -> dict[str, Any]:
         "animation_frames_over_200ms": 0,
         "animation_frames_blocking_over_200ms": 0,
         "cls": 0.01,
+        "collapsed_diff_rows_materialized": 0,
         "commit": "abc1234",
         "corpus": "test-corpus",
         "dom_nodes": 5000,
@@ -243,6 +244,15 @@ def test_compare_fails_on_one_candidate_rendered_error() -> None:
     before = [_run("before") for _index in range(3)]
     after = [_run("after") for _index in range(3)]
     after[1]["rendered_preview_errors"] = 1
+
+    assert _compare(module, [*before, *after]) == 1
+
+
+def test_compare_fails_when_collapsed_diff_rows_are_in_the_dom() -> None:
+    module = _runner()
+    before = [_run("before") for _index in range(3)]
+    after = [_run("after") for _index in range(3)]
+    after[1]["collapsed_diff_rows_materialized"] = 18_191
 
     assert _compare(module, [*before, *after]) == 1
 

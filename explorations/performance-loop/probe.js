@@ -115,6 +115,10 @@
   );
   const treeSrv = treeEntry?.serverTiming?.find((t) => t.name === "srv");
   const renderedPreviewErrors = document.querySelectorAll("#preview-pane .preview-error").length;
+  const collapsedDiffRowsMaterialized = document.querySelectorAll(
+    ".diff-fold-group.diff-fold-collapsed .diff-line, " +
+      ".diff-fold-group.diff-fold-collapsed .diff-split-row",
+  ).length;
 
   // Render cost, from the app's own spans: what H11 (patch instead of
   // replace) and H7 (row windowing) would move.
@@ -510,6 +514,7 @@
     shell_tools_missing: document.documentElement.dataset.shellToolsReady === "true" ? 0 : 1,
     file_catalog_incomplete:
       window.metabrowser?.fileCatalog?.snapshot?.()?.complete === true ? 0 : 1,
+    collapsed_diff_rows_materialized: collapsedDiffRowsMaterialized,
     dom_nodes: document.getElementsByTagName("*").length,
     // The tail is the point on a large tree: the sweep that warms collapsed
     // folders keeps requesting long after the page looks finished.

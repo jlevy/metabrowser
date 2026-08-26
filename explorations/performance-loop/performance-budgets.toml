@@ -147,6 +147,13 @@ policy = "gate"
 required = true
 description = "Uncaught browser exceptions observed from navigation through settled profile export."
 
+[metrics.collapsed_diff_rows_materialized]
+category = "rendering"
+maximum = 0
+policy = "gate"
+required = true
+description = "Rows hidden by a collapsed diff fold must not occupy the DOM."
+
 # Targets stay visible on every comparison but do not block unrelated work
 # until the application reaches them. Once reached, promote the policy to gate.
 [metrics.fetch_aborts]

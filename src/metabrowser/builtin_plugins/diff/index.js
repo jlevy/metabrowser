@@ -75,7 +75,11 @@ mb.registerView("diff", "diff", {
       );
       return renderFailure(container, message);
     }
-    const result = validateDocument(payload);
+    const result = mb.perf?.measure
+      ? mb.perf.measure("diffDocument:validate", () => validateDocument(payload), {
+          source: revision ? "revision" : "path",
+        })
+      : validateDocument(payload);
     if (!result.ok) {
       return renderFailure(container, `This diff document is not valid: ${result.error}`);
     }
