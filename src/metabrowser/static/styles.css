@@ -157,7 +157,7 @@
        file paths, including parent paths and ancestor segments, in the
        tree, the header, the file header, and search results; key names
        and shortcut hints; labels, metadata, chips, tooltips, notes,
-       counts, and status text.
+       counts, status text, and commit-message prose.
        A path is navigation, not code. It reads in the same face as the
        Navigator row it points at, at --nav-font-size.
 
@@ -5032,8 +5032,8 @@ pre.code-block code.hljs {
   background: var(--code-bg);
   white-space: pre-wrap;
   overflow-x: auto;
-  font-family: var(--font-mono);
-  font-size: var(--mono-block-font-size);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-files {

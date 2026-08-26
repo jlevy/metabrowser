@@ -736,7 +736,9 @@ minus sign. Missing totals remain visibly unknown.
 The subject, revision, ref badges, author, age, file-status counts, and line counts use
 `--body-font-size` in both projections.
 The compact tooltip is bounded by width and subject line count, not made denser with
-smaller type.
+smaller type. The optional full-summary description is prose: it uses `--font-sans` at
+`--body-font-size`, wraps naturally, and preserves the newlines authored in the commit
+message.
 
 Pointer hover on a Git history row uses `.git-commit-summary-compact` as the tooltip
 projection of this component.
@@ -812,6 +814,11 @@ A changed diff line has three visual layers with separate jobs:
    refined row.
 3. A solid status-colored inset at the leading edge of the line-number gutter marks
    every added or deleted line, including whole-line and unrefined changes.
+
+The backgrounds form three perceived depths.
+An unrefined whole-line change uses the medium depth.
+A refined pair uses only the lightest depth for unchanged text and the darkest composite
+depth for the changed intraline ranges; it does not also show the medium depth.
 
 All three layers derive from `--status-success` or `--status-error`. The diff plugin may
 define compositional custom properties for opacity, but it must not introduce local

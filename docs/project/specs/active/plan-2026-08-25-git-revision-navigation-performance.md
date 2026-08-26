@@ -325,7 +325,9 @@ directly.
 | Keep navigation tooltips pointer-owned | `mb-iert` | None | Closed |
 | Keep retained file content through async plugin readiness | `mb-sfl2` | `mb-wf52` | Closed |
 | Complete the shared Git commit summary | `mb-efos` | `mb-lk26`, `mb-3j4g` | Closed |
-| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, `mb-iert`, `mb-sfl2`, `mb-efos`, and completed prior phases | Blocked |
+| Render commit descriptions as standard prose | `mb-gu4a` | `mb-efos` | Closed |
+| Confirm the three-depth diff palette | `mb-y2km` | `mb-l00d` | Closed as duplicate of `mb-l00d` |
+| Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, `mb-iert`, `mb-sfl2`, `mb-efos`, `mb-gu4a`, and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
 
@@ -908,7 +910,29 @@ continuity, and measurement lifecycle remain.
   Focused tests, `make format`, `make verify`, and visible light/dark tooltip and Git
   comparison checks pass.
 
-### Phase 27: Deliver and Monitor (`mb-j8ni`)
+### Phase 27: Render Commit Descriptions as Standard Prose (`mb-gu4a`)
+
+- **Files and functions:** Update `.git-commit-body` in
+  `src/metabrowser/static/styles.css`; strengthen the typography and summary contracts
+  in `tests/test_chrome_typography.py`, `tests/test_design_vocabulary.py`, and
+  `tests/dom/git-panel-behavior.js`; and reconcile `docs/design-system.md`, this plan,
+  and `CHANGELOG.md`.
+- **Behavior and invariants:** A non-empty commit body remains an optional,
+  full-summary-only description block.
+  It uses the application sans face and standard body size, wraps naturally, preserves
+  authored newlines, and remains HTML-escaped.
+  Empty descriptions produce no block, and compact pointer tooltips continue to omit
+  descriptions. The adjacent palette clarification required no implementation: `mb-l00d`
+  already provides the requested three depths—a medium pure-row fill, the lightest fill
+  for unchanged text in a refined pair, and the darkest composite fill for its changed
+  intraline ranges. `mb-y2km` records that deduplication.
+- **Acceptance:** Focused typography, design-system, and Git-panel DOM tests pass.
+  A headed browser check uses a commit with a non-empty multiline body and confirms the
+  sans face, standard size, preserved newlines, and the existing light/medium/dark diff
+  hierarchy in light and dark Split and Unified layouts.
+  `make format` and `make verify` pass.
+
+### Phase 28: Deliver and Monitor (`mb-j8ni`)
 
 - **Files and functions:** Review the complete branch diff and PR metadata, keep the
   performance follow-up PR aligned with the implemented scope, and use the original

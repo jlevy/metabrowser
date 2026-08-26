@@ -686,7 +686,7 @@ async function run() {
     commit: commit(SHA_A, [SHA_B], "a commit", [
       { id: "refs/heads/main", name: "main", kind: "branch", is_head: true },
     ]),
-    body: "explanatory body",
+    body: "explanatory body\n\nsecond paragraph",
     stats: {
       files_changed: 2,
       files_modified: 1,
@@ -725,7 +725,11 @@ async function run() {
     'aria-label="Copy revision"',
   );
   assertContains("detail: revision uses the shared copy icon", previewHtml, 'data-icon="copy"');
-  assertContains("detail: body", previewHtml, "explanatory body");
+  assertContains(
+    "detail: body preserves authored newlines",
+    previewHtml,
+    "explanatory body\n\nsecond paragraph",
+  );
   assertContains("detail: ref badge", previewHtml, "main");
   assertContains(
     "detail: summary has one component root",

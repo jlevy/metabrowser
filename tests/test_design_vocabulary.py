@@ -380,10 +380,14 @@ def test_git_commit_summary_is_one_component() -> None:
     compact_subject = _rule(styles, ".git-commit-summary-compact .git-commit-subject")
     compact_meta = _rule(styles, ".git-commit-summary-compact .git-commit-meta")
     summary_age = _rule(styles, ".git-commit-summary .git-commit-age")
+    summary_body = _rule(styles, ".git-commit-body")
     summary_refs = _rule(styles, ".git-commit-summary .git-ref")
     summary_lines = _rule(styles, ".git-commit-summary :is(.git-stat-add, .git-stat-del)")
     assert "max-width:" in compact
     assert "line-clamp:" in compact_subject
+    assert "font-family: var(--font-sans)" in summary_body
+    assert "font-size: var(--body-font-size)" in summary_body
+    assert "white-space: pre-wrap" in summary_body
     for rule in (
         meta,
         compact_subject,

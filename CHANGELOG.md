@@ -138,8 +138,9 @@ Browser:
   additions and deletions.
   Renames and type changes count as modified, while copies count as added, so every file
   status contributes exactly once even when the returned file list is bounded.
-  The hosted comparison keeps its layout control without repeating that aggregate
-  summary.
+  Optional commit descriptions use standard-size sans-serif prose while preserving
+  authored newlines. The hosted comparison keeps its layout control without repeating
+  that aggregate summary.
 
 - Git commit details now present the short revision as a path-like identifier with a
   copy control that writes the full commit ID. Revision, file-header, and diff-file
