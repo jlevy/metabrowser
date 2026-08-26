@@ -23,6 +23,7 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "animation_frames_over_200ms": 0,
         "animation_frames_blocking_over_200ms": 0,
         "cls": 0.01,
+        "collapsed_diff_rows_materialized": 0,
         "commit": "abc1234",
         "corpus": "test-corpus",
         "dom_nodes": 5000,

@@ -127,6 +127,9 @@ PENDING = HERE / "results" / "pending.json"
 # separating retained state from the runtime-dependent collection timing in
 # `performance.memory`.
 #
+# 16: collapsed diff rows become a required zero-cost rendering invariant in
+# every browser profile. A visual fold cannot hide an unbounded DOM subtree.
+#
 # 5: inventory delivery adds whole-window callback count, work-item volume,
 # maximum duration, total duration, and window share. These fields make an
 # event storm visible even when every individual callback stays below the
@@ -148,7 +151,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 15
+HARNESS_VERSION = 16
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -173,6 +176,7 @@ METRICS = (
     "subtree_requests",
     "tree_items",
     "lazy_stubs",
+    "collapsed_diff_rows_materialized",
     "dom_nodes",
     "transferred_kb",
     "vendor_first_start_ms",

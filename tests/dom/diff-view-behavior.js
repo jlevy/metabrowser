@@ -271,6 +271,11 @@ async function main() {
     isLargeTextPreview: () => false,
     langForPath: () => "python",
     perf: {
+      measure: (label, work, metadata) => {
+        const result = work();
+        syntaxMeasures.push({ label, metadata: { ...metadata } });
+        return result;
+      },
       measureAsync: async (label, work, metadata) => {
         const result = await work();
         syntaxMeasures.push({ label, metadata: { ...metadata } });
@@ -338,6 +343,17 @@ async function main() {
   );
   const lexerMeasures = syntaxMeasures.filter(({ label }) => label === "diffSyntax:lexer");
   const fileMeasure = syntaxMeasures.find(({ label }) => label === "diffSyntax:file");
+  const mountLabels = new Set(syntaxMeasures.map(({ label }) => label));
+  check(
+    "mount phases separate model, projection, and attachment cost",
+    [
+      "diffMount:model",
+      "diffMount:fileProjection",
+      "diffMount:projection",
+      "diffMount:attach",
+    ].every((label) => mountLabels.has(label)),
+    JSON.stringify([...mountLabels]),
+  );
   check("each lexer call has a measured span", lexerMeasures.length === 2);
   check(
     "lexer measurements record language and UTF-8 input",
@@ -760,31 +776,69 @@ async function main() {
   check("the expander states the hidden count", control.text().includes("40 more changed lines"));
   const group = folded.find("diff-fold-group")[0];
   check("hidden lines start collapsed", group.classList.contains("diff-fold-collapsed"));
-  check("the visible head stays outside the group", folded.find("diff-line").length === 61);
-  check("the group holds exactly the surplus", group.find("diff-line").length === 40);
+  check("the visible head stays outside the group", folded.find("diff-line").length === 21);
+  check("collapsed surplus rows are not materialized", group.find("diff-line").length === 0);
   const sectionBody = folded.find("diff-file-body")[0];
   control.click();
   check("expanding reveals the group", !group.classList.contains("diff-fold-collapsed"));
+  check("expansion feedback precedes row construction", group.find("diff-line").length === 0);
   check(
     "expanding does not also collapse the file",
     !sectionBody.classList.contains("diff-file-body-collapsed"),
   );
+  await nextTask();
+  check("expansion materializes the surplus cooperatively", group.find("diff-line").length === 40);
   control.click();
   check("collapsing hides it again", group.classList.contains("diff-fold-collapsed"));
+  check("collapsing releases surplus row DOM", group.find("diff-line").length === 0);
   check("short runs do not fold", container.find("diff-fold-control").length === 0);
+
+  const hugeDoc = JSON.parse(JSON.stringify(longDoc));
+  const hugeHunk = hugeDoc.patches.f1.hunks[0];
+  hugeHunk.lines = Array.from({ length: 2_020 }, (_, index) => ({
+    op: "add",
+    text: `large line ${index}`,
+  }));
+  hugeHunk.old_count = 0;
+  hugeHunk.new_count = hugeHunk.lines.length;
+  const hugeFold = new FakeElement("div");
+  const hugeHandle = mountDiffView(hugeFold, hugeDoc);
+  const hugeControl = hugeFold.find("diff-fold-control")[0];
+  const hugeGroup = hugeFold.find("diff-fold-group")[0];
+  check(
+    "large collapsed runs mount only their visible prefix",
+    hugeFold.find("diff-line").length === 20,
+  );
+  hugeControl.click();
+  await nextTask();
+  check(
+    "large expansion yields after one bounded row batch",
+    hugeGroup.find("diff-line").length === 100,
+    String(hugeGroup.find("diff-line").length),
+  );
+  hugeControl.click();
+  await nextTask();
+  check("collapsed expansion cancels later batches", hugeGroup.find("diff-line").length === 0);
+  hugeHandle.dispose();
 
   const switchingFold = new FakeElement("div");
   mountDiffView(switchingFold, longDoc, layoutApi);
   const switchingControl = switchingFold.find("diff-fold-control")[0];
   const splitFoldGroup = switchingFold.find("diff-fold-group")[0];
   check(
+    "collapsed split surplus starts unmaterialized",
+    splitFoldGroup.find("diff-split-row").length === 0,
+  );
+  switchingControl.click();
+  await nextTask();
+  check(
     "split fold hides one paired interval across unequal sides",
     splitFoldGroup.find("diff-split-row").length === 40 &&
       splitFoldGroup.find("diff-split-empty").length === 40,
   );
-  switchingControl.click();
   layoutChange("diff-layout", "unified", "one");
   layoutChange("diff-layout", "split", "one");
+  await nextTask();
   const restoredControl = switchingFold.find("diff-fold-control")[0];
   check(
     "expanded fold state survives reprojection",

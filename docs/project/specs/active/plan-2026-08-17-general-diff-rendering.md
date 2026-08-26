@@ -531,10 +531,11 @@ is a claim about cost.
 
 ## Implementation Plan
 
-Four phases.
+Five phases.
 The first two each end at something usable; the third establishes the shared
 syntax/layout model and carries the renderer decision; the fourth adds focused intraline
-refinement without reopening the wire contract.
+refinement without reopening the wire contract; the fifth makes visual folding a real
+DOM and main-thread bound.
 
 ### Phase 1: Comparison model, patch-file source, and unified renderer
 
@@ -797,6 +798,44 @@ alignment, persisted layout choice, folding across reprojection, narrow split-pa
 overflow, exact line text, and diff-specific console diagnostics.
 No runtime dependency, worker, schema field, compatibility alias, or new loading tier
 was added.
+
+### Phase 5: Large Folded-Comparison Responsiveness
+
+Ends with: a collapsed changed run costs only its visible prefix in the DOM, expanding
+it yields between bounded batches, and the standard browser profile rejects any hidden
+rows retained under a collapsed fold.
+
+- [x] In `diff-view.js`, keep only `FOLD_VISIBLE` rows mounted for a collapsed run.
+  Materialize an expanded run in `FOLD_MATERIALIZATION_BATCH_ROWS` batches, cancel a
+  stale batch on collapse, layout reprojection, replacement, or disposal, and remove its
+  text hosts with its DOM.
+- [x] In `diff-render-model.js`, treat one-sided additions and deletions as already
+  plain. Do not allocate cached positional split rows for work that has no old/new
+  alignment or intraline refinement to compute.
+- [x] In `plugin-sdk.js`, the diff plugin entry point, and `diff-view.js`, attribute
+  JSON decode, validation, semantic-model construction, file projection,
+  whole-comparison projection, and DOM attachment separately through `metabrowser.perf`.
+- [x] Keep syntax and intraline behavior intact for lazily materialized rows.
+  Their semantic records receive enrichment independently of DOM presence, and
+  `renderRow` composes any available token and intraline ranges when a batch mounts.
+- [x] Extend the standard DOM suite with a 2,020-line changed run.
+  Assert a 20-row collapsed prefix, one 100-row batch after a task yield, cancellation
+  on collapse, state restoration across unified/split reprojection, and no one-sided
+  alignment cache.
+- [x] Add `collapsed_diff_rows_materialized` to the browser performance profile as a
+  required zero hard gate.
+  A visual fold that hides an unbounded subtree now fails the same comparison gate as a
+  Long Task or rendered error.
+
+The reproduced comparison contained 10 files, 19,654 changed lines, and a 1.26 MB JSON
+response.
+The installed control mounted 182,686 DOM nodes, recorded a 552 ms longest task
+and two tasks over 200 ms, and attributed 282 ms to the diff mount.
+The candidate mounted 6,476 total DOM nodes, including 195 diff rows and no collapsed
+hidden rows. Its longest task was 127 ms, no task or attributed frame blocking crossed
+200 ms, JSON decode took 6 ms, validation 7 ms, whole-comparison projection 5 ms, and
+the largest remaining span was the bounded syntax lexer at 120 ms.
+Both profiles used the same payload, viewport, profiler, and settled server.
 
 ## The dependency question
 

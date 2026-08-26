@@ -76,6 +76,14 @@ def test_probe_counts_rendered_preview_errors() -> None:
     assert "rendered_preview_errors:" in source
 
 
+def test_probe_counts_rows_materialized_inside_collapsed_diff_folds() -> None:
+    source = PROBE.read_text(encoding="utf-8")
+
+    assert ".diff-fold-group.diff-fold-collapsed .diff-line" in source
+    assert ".diff-fold-group.diff-fold-collapsed .diff-split-row" in source
+    assert "collapsed_diff_rows_materialized:" in source
+
+
 def test_capture_browser_pulses_non_product_input_through_loading() -> None:
     source = CAPTURE.read_text(encoding="utf-8")
 

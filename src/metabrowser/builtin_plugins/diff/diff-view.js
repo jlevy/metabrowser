@@ -20,7 +20,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {(source: string, language: string, options?: {signal?: AbortSignal, inputBytes?: number}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
  * @property {(pathOrName: string) => string} langForPath
  * @property {NonNullable<MetabrowserPublicSdk["filterControls"]> | undefined} [filterControls]
- * @property {Pick<MetabrowserPublicSdk["perf"], "measureAsync"> | undefined} [perf]
+ * @property {Pick<MetabrowserPublicSdk["perf"], "measure" | "measureAsync"> | undefined} [perf]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  */
 
@@ -29,7 +29,9 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Record<string, unknown>} change
  * @property {HTMLElement} body
  * @property {Set<string>} expandedFolds
+ * @property {Map<string, {timer: number}>} foldTasks
  * @property {Record<string, unknown>} patch
+ * @property {DiffViewApi} api
  * @property {ReturnType<typeof buildFileRenderModel>} renderModel
  * @property {{host: HTMLElement, line: ReturnType<typeof buildFileRenderModel>["hunks"][number]["lines"][number], side: "old" | "new"}[]} textHosts
  */
@@ -145,6 +147,11 @@ const SETTINGS = /** @type {Record<string, number>} */ (
 // build still folds sensibly. 0 disables folding.
 const FOLD_THRESHOLD = Number(SETTINGS.DIFF_FOLD_THRESHOLD ?? 40);
 const FOLD_VISIBLE = Number(SETTINGS.DIFF_FOLD_VISIBLE ?? 20);
+// The existing measured layout projection batch creates at least three row
+// elements per file. Keeping fold expansion to 100 rows is the stricter of
+// the two projection budgets and gives the browser a task boundary between
+// chunks of a very large changed run.
+const FOLD_MATERIALIZATION_BATCH_ROWS = 100;
 // Chrome 151 took 223.7 ms to reproject 1,000 ready files in one pass.
 // One-tenth-sized batches keep the same measured work below the 200 ms
 // interaction budget; explorations/diff-layout/README.md records the fixture.
@@ -432,14 +439,12 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
       continue;
     }
     section.append(...run.slice(0, FOLD_VISIBLE).map(renderRow));
-    const hidden = run.length - FOLD_VISIBLE;
     const key = `${String(state.change.id)}:${hunkIndex}:${changedRun}`;
     const expanded = state.expandedFolds.has(key);
     foldSequence += 1;
     const group = el("div", `diff-fold-group${expanded ? "" : " diff-fold-collapsed"}`);
     group.setAttribute("id", `diff-fold-group-${foldSequence}`);
-    group.append(...run.slice(FOLD_VISIBLE).map(renderRow));
-    section.append(renderFoldControl(group, hidden, state, key), group);
+    section.append(renderFoldControl(group, run.slice(FOLD_VISIBLE), renderRow, state, key), group);
     index = end;
   }
 }
@@ -493,12 +498,26 @@ function renderSplitHunk(hunk, state, hunkIndex) {
  * @returns {FileViewState}
  */
 export function createFileState(change, patch, api, body) {
+  const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
   return {
+    api,
     body,
     change,
     expandedFolds: new Set(),
+    foldTasks: new Map(),
     patch,
-    renderModel: buildFileRenderModel(change, patch, api.langForPath),
+    renderModel: measureProjection(
+      api,
+      "diffMount:model",
+      () => buildFileRenderModel(change, patch, api.langForPath),
+      {
+        hunk_count: hunks.length,
+        line_count: hunks.reduce(
+          (total, hunk) => total + (Array.isArray(hunk.lines) ? hunk.lines.length : 0),
+          0,
+        ),
+      },
+    ),
     textHosts: [],
   };
 }
@@ -509,18 +528,45 @@ export function createFileState(change, patch, api, body) {
  * @param {"unified" | "split"} layout
  */
 export function renderFileBody(state, layout) {
-  state.body.replaceChildren();
-  state.textHosts = [];
-  for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
-    state.body.append(
-      layout === "split"
-        ? renderSplitHunk(hunk, state, hunkIndex)
-        : renderUnifiedHunk(hunk, state, hunkIndex),
-    );
-  }
-  if (state.patch.truncated) {
-    state.body.append(el("div", "diff-availability", "This patch was truncated at its bounds."));
-  }
+  cancelFoldMaterializations(state);
+  return measureProjection(
+    state.api,
+    "diffMount:fileProjection",
+    () => {
+      state.body.replaceChildren();
+      state.textHosts = [];
+      for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
+        state.body.append(
+          layout === "split"
+            ? renderSplitHunk(hunk, state, hunkIndex)
+            : renderUnifiedHunk(hunk, state, hunkIndex),
+        );
+      }
+      if (state.patch.truncated) {
+        state.body.append(
+          el("div", "diff-availability", "This patch was truncated at its bounds."),
+        );
+      }
+    },
+    {
+      hunk_count: state.renderModel.hunks.length,
+      layout,
+      line_count: state.renderModel.hunks.reduce((total, hunk) => total + hunk.lines.length, 0),
+    },
+  );
+}
+
+/**
+ * Record synchronous projection work when the host profiler is present.
+ * @template T
+ * @param {DiffViewApi | undefined} api
+ * @param {string} label
+ * @param {() => T} work
+ * @param {Record<string, unknown>} metadata
+ * @returns {T}
+ */
+function measureProjection(api, label, work, metadata) {
+  return api?.perf?.measure ? api.perf.measure(label, work, metadata) : work();
 }
 
 /**
@@ -695,14 +741,17 @@ function scheduleFileEnhancement(view, state) {
  * The fold expander: the tree's disclosure vocabulary on a full-width
  * row, stating the count it holds so the reader knows what is hidden.
  *
+ * @template T
  * @param {HTMLElement} group
- * @param {number} hidden
+ * @param {T[]} hiddenRows
+ * @param {(row: T) => HTMLElement} renderRow
  * @param {FileViewState} state
  * @param {string} key
  * @returns {HTMLElement}
  */
-function renderFoldControl(group, hidden, state, key) {
+function renderFoldControl(group, hiddenRows, renderRow, state, key) {
   let expanded = state.expandedFolds.has(key);
+  const hidden = hiddenRows.length;
   const control = el("button", "diff-fold-control");
   control.setAttribute("type", "button");
   control.setAttribute("aria-expanded", String(expanded));
@@ -723,6 +772,38 @@ function renderFoldControl(group, hidden, state, key) {
       : `${hidden} more changed line${hidden === 1 ? "" : "s"}`,
   );
   control.append(chevron, label);
+
+  function cancelMaterialization() {
+    const task = state.foldTasks.get(key);
+    if (task) {
+      clearTimeout(task.timer);
+      state.foldTasks.delete(key);
+    }
+    state.textHosts = state.textHosts.filter(({ host }) => !group.contains(host));
+    group.replaceChildren();
+  }
+
+  function scheduleMaterialization() {
+    cancelMaterialization();
+    let index = 0;
+    const task = { timer: 0 };
+    const appendBatch = () => {
+      if (state.foldTasks.get(key) !== task || !state.expandedFolds.has(key)) {
+        return;
+      }
+      const end = Math.min(index + FOLD_MATERIALIZATION_BATCH_ROWS, hiddenRows.length);
+      group.append(...hiddenRows.slice(index, end).map(renderRow));
+      index = end;
+      if (index >= hiddenRows.length) {
+        state.foldTasks.delete(key);
+        return;
+      }
+      task.timer = setTimeout(appendBatch, 0);
+    };
+    task.timer = setTimeout(appendBatch, 0);
+    state.foldTasks.set(key, task);
+  }
+
   control.addEventListener("click", (event) => {
     // The bar above owns clicks on the file section; a fold is its own
     // control and must not also collapse the whole file.
@@ -730,8 +811,10 @@ function renderFoldControl(group, hidden, state, key) {
     expanded = !expanded;
     if (expanded) {
       state.expandedFolds.add(key);
+      scheduleMaterialization();
     } else {
       state.expandedFolds.delete(key);
+      cancelMaterialization();
     }
     control.setAttribute("aria-expanded", String(expanded));
     control.classList.toggle("expanded", expanded);
@@ -740,7 +823,18 @@ function renderFoldControl(group, hidden, state, key) {
       ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
       : `${hidden} more changed line${hidden === 1 ? "" : "s"}`;
   });
+  if (expanded) {
+    scheduleMaterialization();
+  }
   return control;
+}
+
+/** @param {FileViewState} state */
+function cancelFoldMaterializations(state) {
+  for (const task of state.foldTasks.values()) {
+    clearTimeout(task.timer);
+  }
+  state.foldTasks.clear();
 }
 
 /**
@@ -1145,13 +1239,22 @@ export function mountDiffView(container, document_, api) {
   const { toolbar, unbind } = renderDiffToolbar(totals, view);
   root.append(toolbar);
   const context = { revision: String(document_.__revision ?? "") };
-  for (const change of manifest.files) {
-    root.append(renderFileSection(change, patches[String(change.id)], context, view));
-  }
-  if (manifest.truncated) {
-    root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
-  }
-  container.append(root);
+  measureProjection(
+    api,
+    "diffMount:projection",
+    () => {
+      for (const change of manifest.files) {
+        root.append(renderFileSection(change, patches[String(change.id)], context, view));
+      }
+      if (manifest.truncated) {
+        root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
+      }
+    },
+    { file_count: manifest.files.length },
+  );
+  measureProjection(api, "diffMount:attach", () => container.append(root), {
+    file_count: manifest.files.length,
+  });
   return {
     dispose() {
       if (view.disposed) {
@@ -1160,6 +1263,9 @@ export function mountDiffView(container, document_, api) {
       view.disposed = true;
       view.generation += 1;
       view.controller.abort();
+      for (const file of view.files) {
+        cancelFoldMaterializations(file);
+      }
       for (const timer of view.timers) {
         clearTimeout(timer);
       }

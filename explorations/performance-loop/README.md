@@ -376,6 +376,7 @@ adds no automation package or product dependency.
 | `last_resource_ms` | End of the last request the page made | The tail. A page can look finished and still be requesting |
 | `subtree_requests` | `/api/tree?path=…` count | The folder-warming sweep, which is invisible in a page that looks idle |
 | `tree_items`, `lazy_stubs`, `dom_nodes` | Rendered size | What row windowing has to bound |
+| `collapsed_diff_rows_materialized` | Unified or split rows mounted beneath a collapsed diff fold | Hard-gates visual folding as a real DOM bound; the value must be zero |
 | `transferred_kb`, `vendor_first_start_ms` | Payload and when the prefetched tier starts | The asset tiers |
 | `long_task_max_ms` | The longest single main-thread block | The one a reader feels. A total cannot tell sixty 100 ms hitches from one six-second freeze, and only one of those is a broken product |
 | `long_task_max_ms_first_5s` | The same, restricted to the first five seconds | Event rate peaks right after load, so the naive design is worst exactly when the reader is deciding whether the app is alive |

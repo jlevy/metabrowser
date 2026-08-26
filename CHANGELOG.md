@@ -20,6 +20,15 @@ Fixed:
 
 Performance, validated against 0.6.0 side by side:
 
+- Collapsed diff runs now mount only their visible prefix and materialize expanded rows
+  in cancellable 100-row tasks.
+  On the reproduced 19,654-line comparison, total DOM size fell from 182,686 to 6,476
+  nodes and the longest main-thread task from 552 ms to 127 ms, with no task or
+  attributed frame blocking above 200 ms.
+  The browser performance profile now hard-gates rows mounted beneath collapsed folds at
+  zero and attributes diff decode, validation, model construction, projection, and
+  attachment separately.
+
 - On the final installed candidate, five interleaved backend pairs over a fingerprinted
   123,658-file project corpus return the first navigation row in 0.571 s instead of
   1.075 s and complete indexing in 3.998 s instead of 7.859 s. Peak RSS is 123.5 MB
