@@ -66,6 +66,7 @@ from metabrowser.inventory_engine.contract import (
     SourceKind,
     VersionUnavailableError,
     WorkCounters,
+    catalog_terminal_suffix,
     inventory_scope_fingerprint,
 )
 from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
@@ -96,6 +97,7 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
         "test_provider_semantic_digest",
         "test_provider_budget_stop_is_explicit_and_absence_remains_unknown",
         "test_directory_pages_are_lossless_when_directories_outnumber_file_budget",
+        "test_catalog_predicate_semantics_are_runtime_independent_and_exact",
         "test_catalog_pages_report_exact_lossless_remainders",
         "test_provider_version_pins_fail_instead_of_moving",
         "test_provider_changes_resume_and_report_history_gaps_as_reset",
@@ -245,10 +247,28 @@ def test_catalog_predicates_are_canonical_and_bounded() -> None:
         CatalogQuery(query_id="q", max_rows=1, terminal_extensions=(".JSONL",))
     with pytest.raises(ValueError, match="canonical terminal suffixes"):
         CatalogQuery(query_id="q", max_rows=1, terminal_extensions=(".run.jsonl",))
+    with pytest.raises(ValueError, match="unique"):
+        CatalogQuery(query_id="q", max_rows=1, terminal_extensions=(".jsonl", ".jsonl"))
     with pytest.raises(ValueError, match="exact path-component"):
         CatalogQuery(query_id="q", max_rows=1, ancestor_names=("runs/.logs",))
+    with pytest.raises(ValueError, match="exact path-component"):
+        CatalogQuery(query_id="q", max_rows=1, ancestor_names=("runs\\logs",))
+    with pytest.raises(ValueError, match="exact path-component"):
+        CatalogQuery(query_id="q", max_rows=1, ancestor_names=(".",))
+    with pytest.raises(ValueError, match="exact path-component"):
+        CatalogQuery(query_id="q", max_rows=1, ancestor_names=("..",))
+    with pytest.raises(ValueError, match="unique"):
+        CatalogQuery(query_id="q", max_rows=1, ancestor_names=("runs", "runs"))
     with pytest.raises(ValueError, match="positive"):
         CatalogQuery(query_id="q", max_rows=1, size_less_than=0)
+
+
+def test_catalog_terminal_suffix_has_one_explicit_cross_provider_rule() -> None:
+    assert catalog_terminal_suffix("notes.txt") == ".txt"
+    assert catalog_terminal_suffix("archive.tar.gz") == ".gz"
+    assert catalog_terminal_suffix("..foo") == ".foo"
+    assert catalog_terminal_suffix(".foo") == ""
+    assert catalog_terminal_suffix("foo.") == ""
 
 
 def test_catalog_records_preserve_signed_filesystem_mtimes() -> None:
@@ -907,6 +927,44 @@ def test_directory_pages_are_lossless_when_directories_outnumber_file_budget(
     seen, remaining = asyncio.run(run())
     assert seen == expected
     assert remaining == (5, 3, 1, 0)
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_catalog_predicate_semantics_are_runtime_independent_and_exact(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    for name in (".foo", "..foo", "foo.", "plain.foo"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+
+    async def run() -> set[str]:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(
+                hidden_allowlist=(".foo", "..foo"),
+                watch_mode="off",
+            ),
+        )
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=(
+                        CatalogQuery(
+                            query_id="catalog",
+                            max_rows=10,
+                            terminal_extensions=(".foo",),
+                        ),
+                    )
+                )
+            )
+            projection = result.projection("catalog")
+            assert isinstance(projection, CatalogProjection)
+            return {record.path for record in projection.records}
+        finally:
+            await handle.close()
+
+    assert asyncio.run(run()) == {"..foo", "plain.foo"}
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)

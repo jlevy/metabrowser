@@ -93,6 +93,7 @@ from metabrowser.inventory_engine.contract import (
     SourceKind,
     VersionUnavailableError,
     WorkCounters,
+    catalog_terminal_suffix,
     inventory_scope_fingerprint,
 )
 from metabrowser.inventory_rollup import (
@@ -457,7 +458,7 @@ def _catalog_entry_matches(entry: FsEntry, query: CatalogQuery) -> bool:
     if query.size_less_than is not None and entry.size >= query.size_less_than:
         return False
     if query.terminal_extensions:
-        terminal = PurePosixPath(entry.name).suffix.lower()
+        terminal = catalog_terminal_suffix(entry.name)
         if terminal not in query.terminal_extensions:
             return False
     if query.ancestor_names:

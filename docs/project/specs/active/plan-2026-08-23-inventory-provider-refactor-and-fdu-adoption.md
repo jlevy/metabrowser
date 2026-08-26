@@ -326,7 +326,8 @@ new filename.
   canonical paths and unique priority requests, apply semantic scope inputs, distinguish
   the file budget from page rows, assemble complete tree pages at one host boundary,
   attach snapshots without a stale-delta gap, fail closed on watcher-batch loss, and
-  invalidate projection caches on broad changes.
+  invalidate projection caches on broad changes, and define catalog predicate semantics
+  independently of the host Python version.
 - [x] Remove the superseded Python-only filtered-tree reducer and unused metadata query,
   replace open-ended diagnostics with a typed record, bound lifecycle issues, return a
   terminal version from refresh, and avoid repeating full Python tree projection work

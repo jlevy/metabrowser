@@ -159,10 +159,13 @@ retained-body keys. A caller assembling a time-dependent result from several
 version-pinned pages chooses one `as_of_ns` before the first page and reuses it for
 every page in that assembly.
 
-Catalog terminal extensions use one lowercase terminal suffix including its leading dot;
-matching is case-insensitive against the file name.
-Ancestor names are exact, case-sensitive path components, and `size_less_than` is an
-exclusive byte bound.
+Catalog terminal extensions use the lowercase substring beginning at the final dot when
+that dot is neither the first nor final character.
+Thus `archive.tar.gz` has `.gz`, `..foo` has `.foo`, and `.gitignore` and `notes.` have
+no terminal suffix. This explicit rule keeps every provider independent of path-library
+versions. Predicate lists contain unique values.
+Ancestor names are nonempty, case-sensitive path components other than `.` and `..` and
+contain neither separator; `size_less_than` is an exclusive byte bound.
 These rules are provider semantics, not Python implementation details.
 
 The algebra has no generic report name, provider command, HTTP status, response header,
@@ -364,6 +367,7 @@ verifies that every row resolves to a provider-parametrized test in
 | `test_provider_semantic_digest` |
 | `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` |
 | `test_directory_pages_are_lossless_when_directories_outnumber_file_budget` |
+| `test_catalog_predicate_semantics_are_runtime_independent_and_exact` |
 | `test_catalog_pages_report_exact_lossless_remainders` |
 | `test_provider_version_pins_fail_instead_of_moving` |
 | `test_provider_changes_resume_and_report_history_gaps_as_reset` |

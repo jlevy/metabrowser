@@ -67,6 +67,21 @@ def require_canonical_inventory_path(
         raise ValueError(f"{name} must be a canonical POSIX-relative path")
 
 
+def catalog_terminal_suffix(name: str) -> str:
+    """Return the lowercase terminal suffix defined by the provider contract.
+
+    The final dot starts a suffix only when it is neither the first nor final
+    character. Thus `.gitignore` and `notes.` have no suffix, while `..foo` has
+    `.foo`. Spelling the rule here keeps provider answers independent of path-library
+    versions.
+    """
+
+    dot = name.rfind(".")
+    if dot <= 0 or dot + 1 == len(name):
+        return ""
+    return name[dot:].lower()
+
+
 @dataclass(frozen=True, slots=True)
 class InventoryConfig:
     """Semantic scope plus provider execution policy for one root session."""
@@ -637,7 +652,10 @@ class CatalogQuery:
             raise ValueError("terminal_extensions entries must be canonical terminal suffixes")
         if len(set(self.ancestor_names)) != len(self.ancestor_names):
             raise ValueError("ancestor_names entries must be unique")
-        if any(not name or "/" in name or "\\" in name for name in self.ancestor_names):
+        if any(
+            not name or name in {".", ".."} or "/" in name or "\\" in name
+            for name in self.ancestor_names
+        ):
             raise ValueError("ancestor_names entries must be exact path-component names")
         if self.size_less_than is not None:
             _require_positive(self.size_less_than, "size_less_than")
