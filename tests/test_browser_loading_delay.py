@@ -173,7 +173,7 @@ def test_a_click_joins_an_in_flight_prefetch_instead_of_refetching() -> None:
     assert "request.then(forget, forget)" in fetch_block
 
 
-def test_shell_shares_immediate_claim_owned_preview_feedback() -> None:
+def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None:
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
     css = (STATIC_ROOT / "styles.css").read_text(encoding="utf-8")
     select_file = app[
@@ -200,21 +200,29 @@ def test_shell_shares_immediate_claim_owned_preview_feedback() -> None:
     )
     assert "if (!retainedPreview)" in select_file
 
-    assert "--preview-navigation-pending-overlay: oklch(55% 0 0 / 0.07);" in css
-    assert "--preview-navigation-pending-transition: 60ms ease-out;" in css
-    overlay_rule = css[css.index("#preview-pane::after") :][:700]
-    assert 'content: "";' in overlay_rule
-    assert "position: fixed;" in overlay_rule
-    assert "inset: 0;" in overlay_rule
-    assert "pointer-events: none;" in overlay_rule
-    assert "background: var(--preview-navigation-pending-overlay);" in overlay_rule
-    assert "opacity: 0;" in overlay_rule
-    assert "transition: opacity var(--preview-navigation-pending-transition);" in overlay_rule
-    pending_rule = css[css.index("#preview-pane.preview-navigation-pending::after") :][:150]
-    assert "opacity: 1;" in pending_rule
-    reduced = css[css.index("@media (prefers-reduced-motion: reduce)") :]
-    assert "#preview-pane::after" in reduced
-    assert "transition: none;" in reduced
+    assert "--preview-navigation-pending-overlay" not in css
+    assert "--preview-navigation-pending-transition" not in css
+    assert "#preview-pane::after" not in css
+    assert "#preview-pane.preview-navigation-pending" not in css
+
+    arrival = app[app.index("function animatePreviewContentArrival") :][:1_500]
+    assert "var PREVIEW_ARRIVAL_DURATION_MS = 50;" in app
+    assert "var PREVIEW_ARRIVAL_START_OPACITY = 0.98;" in app
+    assert 'window.matchMedia("(prefers-reduced-motion: reduce)").matches' in arrival
+    assert "previewArrivalAnimation?.cancel();" in arrival
+    assert "content.animate(" in arrival
+    assert "preview.animate(" not in arrival
+    assert "duration: PREVIEW_ARRIVAL_DURATION_MS" in arrival
+    assert 'easing: "ease-out"' in arrival
+    assert "getComputedStyle" not in arrival
+
+    node_mount = app[app.index("function renderPreviewNode") :][:700]
+    assert node_mount.index("preview.replaceChildren(node)") < node_mount.index(
+        "animatePreviewContentArrival(node)"
+    )
+    file_render = app[app.index("async function renderFile(data") :][:12_000]
+    assert "animatePreviewContentArrival(arrivalContent)" in file_render
+    assert "preview.animate(" not in file_render
 
 
 def test_git_commit_staging_has_one_shell_owned_atomic_handoff() -> None:

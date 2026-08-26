@@ -1023,7 +1023,8 @@
           // Keep the prior DOM as the handoff surface, but stop its deferred
           // hydration and syntax work from competing with the selected diff.
           // Pointer and keyboard paths have already updated their exact two
-          // rows and the pending sheet before this bounded cancellation work.
+          // rows and the claim-owned busy state before this bounded cancellation
+          // work.
           commitDiffHandle?.cancelPending?.();
         }
 

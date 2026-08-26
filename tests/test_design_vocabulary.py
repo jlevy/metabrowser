@@ -120,19 +120,18 @@ def test_row_targets_share_the_hover_token() -> None:
     )
 
 
-def test_preview_navigation_pending_motion_is_shared_and_reduced_motion_safe() -> None:
+def test_preview_navigation_arrival_motion_is_shared_and_reduced_motion_safe() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
 
-    overlay = _rule(styles, "#preview-pane::after")
-    assert "background: var(--preview-navigation-pending-overlay)" in overlay
-    assert "transition: opacity var(--preview-navigation-pending-transition)" in overlay
-    assert "pointer-events: none" in overlay
-    assert "--preview-navigation-pending-overlay: oklch(55% 0 0 / 0.07);" in styles
-    pending = _rule(styles, "#preview-pane.preview-navigation-pending::after")
-    assert "opacity: 1" in pending
-    reduced = styles[styles.rindex("@media (prefers-reduced-motion: reduce)") :]
-    assert "#preview-pane::after" in reduced
-    assert "transition: none" in reduced
+    assert "--preview-navigation-pending-overlay" not in styles
+    assert "#preview-pane::after" not in styles
+    arrival = app[app.index("function animatePreviewContentArrival") :][:1_500]
+    assert "content.animate(" in arrival
+    assert "preview.animate(" not in arrival
+    assert "PREVIEW_ARRIVAL_START_OPACITY" in arrival
+    assert "PREVIEW_ARRIVAL_DURATION_MS" in arrival
+    assert "prefers-reduced-motion: reduce" in arrival
 
 
 def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:

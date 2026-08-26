@@ -3354,6 +3354,35 @@ var navPanels = [];
 /** @type {Set<string>} */
 var navPanelsShown = new Set();
 var previewClaimGeneration = 0;
+// Completed replacements ease only compositor opacity. Retained content is
+// never animated while work is pending.
+var PREVIEW_ARRIVAL_DURATION_MS = 50;
+var PREVIEW_ARRIVAL_START_OPACITY = 0.98;
+/** @type {Animation | null} */
+var previewArrivalAnimation = null;
+
+/** @param {HTMLElement} content */
+function animatePreviewContentArrival(content) {
+  previewArrivalAnimation?.cancel();
+  previewArrivalAnimation = null;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+  const animation = content.animate([{ opacity: PREVIEW_ARRIVAL_START_OPACITY }, { opacity: 1 }], {
+    duration: PREVIEW_ARRIVAL_DURATION_MS,
+    easing: "ease-out",
+  });
+  previewArrivalAnimation = animation;
+  animation.addEventListener(
+    "finish",
+    () => {
+      if (previewArrivalAnimation === animation) {
+        previewArrivalAnimation = null;
+      }
+    },
+    { once: true },
+  );
+}
 
 /** @param {HTMLElement} preview */
 function clearPreviewNavigationState(preview) {
@@ -3582,6 +3611,7 @@ function renderPreviewNode(node, claim) {
   disposeActivePluginViews();
   delete preview.dataset.renderedPath;
   preview.replaceChildren(node);
+  animatePreviewContentArrival(node);
   return preview;
 }
 
@@ -5841,6 +5871,12 @@ async function renderFile(data, preferredViewId, claim) {
 
       _perf.measure("initTabs", initTabs, filePerfMeta(data));
       scheduleHighlightCode(preview);
+      const arrivalContent =
+        preview.querySelector('[data-active-view="true"]') ??
+        preview.querySelector(".content-body");
+      if (arrivalContent instanceof HTMLElement) {
+        animatePreviewContentArrival(arrivalContent);
+      }
       await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
     },
     filePerfMeta(data),

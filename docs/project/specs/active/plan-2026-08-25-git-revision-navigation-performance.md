@@ -30,9 +30,10 @@ console-only evidence.
 Git history rows also project the selected commit summary into a compact tooltip instead
 of repeating the complete commit description as an unstructured block.
 The final phase extends the same continuity rule to ordinary file navigation: retained
-content dims immediately, each selected view owns a measurable painted-readiness
-boundary, and the performance loop tests file and Git transitions separately without
-pretending that their renderer lifecycles are identical.
+content stays visually unchanged, each selected view owns a measurable painted-readiness
+boundary, and one minimal incoming-view animation softens the completed replacement.
+The performance loop tests file and Git transitions separately without pretending that
+their renderer lifecycles are identical.
 The Git scenario also crosses from Files to Git and back while inventory is still
 arriving, then opens a live-inserted folder.
 This makes panel-state continuity part of the same maintained gate instead of relying on
@@ -62,8 +63,10 @@ a settled-page check.
 - Reuse the commit-summary vocabulary in a bounded row tooltip with subject, author,
   revision identity, age, and aggregate change counts, without making the tooltip an
   interactive surface
-- Give retained file and Git previews the same immediate, subtle pending feedback and
-  claim-owned accessibility state
+- Keep retained file and Git previews at full opacity while preserving the same
+  claim-owned accessibility and instrumentation state
+- Soften only the completed replacement with one fast compositor animation that does not
+  delay usable content
 - Measure ordinary file selection through active-view readiness and a double-frame
   painted boundary instead of stopping when the response envelope or container arrives
 - Add a trusted regular-file navigation scenario that fails on blank frames, stale
@@ -120,7 +123,7 @@ or the next painted frame is ready.
 The Git path instead stages its complete replacement off-DOM and swaps only after the
 comparison mount. The final implementation keeps that ownership difference, but gives
 both paths the same pending vocabulary and the same observable definition of useful
-readiness.
+readiness, with one shared incoming-view treatment after replacement.
 
 ## Design
 
@@ -162,8 +165,8 @@ The mounted handle cancels queued observations, active hydration, syntax, timer,
 yielding work at that point while leaving its rendered DOM intact.
 Obsolete work therefore cannot saturate the server or client while the selected
 comparison prepares.
-The preview immediately receives a lightweight pending state and `aria-busy="true"`; it
-is not replaced by a spinner.
+The preview immediately receives a nonvisual pending marker and `aria-busy="true"`; it
+stays at full opacity and is not replaced by a spinner.
 When commit metadata and the validated comparison surface are ready, one preview
 replacement installs the new commit and transfers lifecycle ownership to its diff
 handle. Only then is the prior handle disposed.
@@ -174,19 +177,22 @@ replace the preview or own the mounted diff.
 A failed selected operation replaces the retained preview with an explicit failure state
 and clears pending accessibility state.
 
-A short opacity transition may soften the completed swap using existing motion tokens.
-It must not delay readiness, animate large geometry, or run when
+A single 50 ms `ease-out` compositor animation takes the incoming foreground content
+root from 0.98 to full opacity after replacement.
+The prior preview never fades out, and the animation does not delay readiness, animate
+the theme background or geometry, traverse rendered content, or run when
 `prefers-reduced-motion` is enabled.
 
-### Cross-Surface Pending and Readiness
+### Cross-Surface Readiness and Arrival
 
 The Git and ordinary file paths share a shell-owned pending lifecycle, not one rendering
-algorithm. Starting a selection against useful retained content immediately applies one
-tokenized translucent neutral sheet and `aria-busy="true"` under the new preview claim.
-The content keeps its geometry and remains available while work proceeds.
+algorithm. Starting a selection against useful retained content applies a nonvisual
+pending marker and `aria-busy="true"` under the new preview claim.
+The content keeps its geometry, appearance, and availability while work proceeds.
 Success, failure, stale ownership, preview replacement, and disposal all clear the state
 only for the claim that created it.
-Reduced motion removes the sheet’s opacity transition, not the immediate state change.
+The shared replacement seams animate only the incoming preview; reduced motion skips
+that animation without changing the lifecycle state.
 An initial empty preview may still use the existing delayed neutral spinner.
 
 Git keeps its detached atomic handoff because the shell owns the complete commit and
@@ -209,8 +215,8 @@ readiness remains outside it.
 
 Production instrumentation adds revision-scoped measures for:
 
-- immediate selection feedback: pending-sheet activation, route ownership, and the old
-  and new row mutations
+- immediate selection feedback: claim-owned busy-state activation, route ownership, and
+  the old and new row mutations
 - commit-detail data readiness, including JSON decoding
 - diff-asset readiness
 - comparison-data readiness, including JSON decoding
@@ -301,12 +307,12 @@ directly.
 | Gate deferred request storms | `mb-bb3y` | `mb-k9a5` | Closed |
 | Render bounded commit-summary tooltips | `mb-3j4g` | `mb-lk26` | Closed |
 | Audit preview handoff and readiness parity | `mb-b83r` | None | Closed |
-| Share immediate dimmed preview feedback | `mb-2yd5` | `mb-b83r` | Closed |
+| Share the claim-owned preview pending lifecycle | `mb-2yd5` | `mb-b83r` | Closed |
 | Measure painted readiness for regular file views | `mb-m23h` | `mb-b83r` | Closed |
 | Gate regular file navigation in the performance loop | `mb-wf52` | `mb-2yd5`, `mb-m23h` | Closed |
 | Deduplicate selected and prefetched file requests | `mb-v4qu` | `mb-wf52` | Closed |
 | Validate preview transition parity | `mb-eh0n` | `mb-2yd5`, `mb-m23h`, `mb-wf52`, `mb-v4qu` | Open |
-| Make retained preview dimming visibly cover the main view | `mb-rnr7` | None | Closed |
+| Validate a visible retained-preview pending treatment | `mb-rnr7` | None | Closed |
 | Delay Git hover preparation until stable intent | `mb-ues1` | None | Closed |
 | Gate Git pending timing and row-anchor attribution | `mb-f43i` | None | Closed |
 | Standardize retained-navigation interaction attribution | `mb-1xm2` | `mb-f43i` | Closed |
@@ -562,27 +568,25 @@ server work a single viewport can start.
   compatibility branch, or duplicate bead.
   `tbd sync` succeeds.
 
-### Phase 13: Share Immediate Dimmed Feedback (`mb-2yd5`)
+### Phase 13: Share the Preview Pending Lifecycle (`mb-2yd5`)
 
 - **Files and functions:** Add `beginPreviewNavigation` and `endPreviewNavigation`
   beside `claimPreview`, `renderPreviewHtml`, and `renderPreviewNode` in
   `static/app.js`; expose the lifecycle through `MetabrowserShell` in
   `static/types.d.ts`; use it from `selectFile` and `selectCommit`; replace the Git-only
-  pending modifier with one shared rule in `static/styles.css`. Update focused shell and
-  Git DOM tests, `docs/design-system.md`, and `CHANGELOG.md`.
-- **Behavior and invariants:** Selecting from useful retained content immediately dims
-  the preview under one tokenized translucent neutral sheet, then sets
-  `aria-busy="true"`. The sheet does not filter or restyle the rendered document.
-  The state retains geometry, does not block interaction, has no progress bar or minimum
-  duration, and clears only for its owning preview claim after success, error,
-  replacement, cancellation, or tab ownership change.
+  pending modifier with one shared state.
+  Update focused shell and Git DOM tests, `docs/design-system.md`, and `CHANGELOG.md`.
+- **Behavior and invariants:** Selecting from useful retained content immediately sets
+  the shared pending marker and `aria-busy="true"`. The state retains appearance and
+  geometry, does not block interaction, has no progress bar or minimum duration, and
+  clears only for its owning preview claim after success, error, replacement,
+  cancellation, or tab ownership change.
   Empty initial loads keep the delayed neutral spinner.
-  Reduced motion disables the transition while preserving the state change.
 - **Acceptance:** Focused tests fail before and pass after for file and Git selection,
   rapid replacement, stale cleanup, errors, and initial empty loads.
   One class and shell lifecycle own both paths.
-  Visible checks cover both themes and reduced motion without a blank frame or stuck dim
-  state.
+  Visible checks cover both themes and reduced motion without a blank frame or stuck
+  busy state.
 
 ### Phase 14: Measure Regular-File Painted Readiness (`mb-m23h`)
 
@@ -665,6 +669,9 @@ server work a single viewport can start.
   zero-context reviewer the evidence needed to reproduce it.
 
 ### Phase 18: Make Pending Feedback Unmistakable (`mb-rnr7`)
+
+This phase’s visual sheet was later removed by Phase 23; its claim-owned accessibility,
+continuity, and measurement lifecycle remain.
 
 - **Files and functions:** Refine the shared `.preview-navigation-pending` rules and
   component tokens in `static/styles.css`; update
@@ -787,21 +794,28 @@ server work a single viewport can start.
   Focused tests, both standard headed navigation scenarios, `make format`, and
   `make verify` pass on the exact candidate build.
 
-### Phase 23: Subdue Retained-View Feedback (`mb-facq`)
+### Phase 23: Replace Pending Fading with Minimal Arrival Motion (`mb-facq`)
 
-- **Files and functions:** Lower `--preview-navigation-pending-overlay` in
-  `src/metabrowser/static/styles.css`; pin the semantic token in
-  `test_shell_shares_immediate_claim_owned_preview_feedback` and
-  `test_preview_navigation_pending_motion_is_shared_and_reduced_motion_safe`; reconcile
+- **Files and functions:** Remove the pending overlay tokens and rules from
+  `src/metabrowser/static/styles.css`; add `animatePreviewContentArrival` at the shared
+  file and Git replacement seams in `src/metabrowser/static/app.js`; pin the contract in
+  `test_shell_keeps_retained_preview_steady_and_animates_only_arrival` and
+  `test_preview_navigation_arrival_motion_is_shared_and_reduced_motion_safe`; reconcile
   `docs/design-system.md`, this plan, `CHANGELOG.md`, and the performance follow-up pull
   request.
-- **Behavior and invariants:** The fixed pending sheet uses 7% neutral alpha so retained
-  syntax, diff emphasis, and document contrast remain visually dominant.
-  Keep the 60 ms ease-out, immediate reduced-motion state, fixed scrollport coverage,
-  pointer transparency, preview-only scope, and claim-owned readiness boundary.
-- **Acceptance:** Focused tests fail at the former alpha and pass at 7%. Real-browser
-  file and Git transitions show immediate but restrained feedback in both themes, retain
-  exact state convergence, and clear the sheet at painted readiness.
+- **Behavior and invariants:** Retained previews stay unchanged at full opacity while
+  work is pending. The pending class and `aria-busy` remain claim-owned lifecycle and
+  measurement state but have no visual CSS. After a successful replacement, one Web
+  Animations API call eases the incoming foreground content root from 0.98 to full
+  opacity over 50 ms without animating the theme background or geometry, traversing the
+  rendered document, forcing layout, imposing a minimum duration, or delaying readiness.
+  Reduced motion skips the animation.
+- **Acceptance:** Focused tests fail while the sheet exists and pass only when the
+  overlay, cursor, and pending transition are absent and the shared arrival function is
+  wired after both file and Git replacement.
+  Real-browser file and Git transitions in both themes retain exact state convergence,
+  keep the old view steady while pending, schedule one compositor animation for the
+  incoming view, and clear claim-owned busy state at painted readiness.
   `make format` and `make verify` pass on the exact candidate build.
 
 ### Phase 24: Deliver and Monitor (`mb-j8ni`)

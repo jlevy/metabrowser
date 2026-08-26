@@ -817,8 +817,8 @@ list may scan all rows when it is first synchronized, but an Arrow-key or pointe
 activation must not rewrite every row before the main view can acknowledge the
 selection. When a retained view contains many focusable controls, the newly focused row
 may remain programmatically focusable at `tabindex="-1"` during the pending interval.
-Its visible focus, selected state, route, and pending sheet update in the input task;
-the component finalizes the one-row Tab anchor after painted readiness.
+Its visible focus, selected state, route, and claim-owned busy state update in the input
+task; the component finalizes the one-row Tab anchor after painted readiness.
 This avoids a whole-document focus-order recalculation before the browser can paint the
 acknowledgement.
 
@@ -1711,37 +1711,39 @@ tally. Apply the utility rather than adding independent timers at each renderer.
 
 Selection feedback is distinct from loading chrome.
 When file or Git navigation can retain useful preview content, the shell immediately
-adds `.preview-navigation-pending`: the rendered main view moves toward a visibly
-inactive neutral treatment under one fixed, pointer-transparent sheet using
-`--preview-navigation-pending-overlay`, while the nav panel stays at full contrast.
-The neutral sheet uses 7% alpha: enough to acknowledge the selection without obscuring
-syntax, diff emphasis, or document contrast while the replacement loads.
-Its dedicated `--preview-navigation-pending-transition` reaches the pending treatment in
-60 ms; the general 150 ms control transition is too slow for input acknowledgement.
-The preview becomes `aria-busy` under the current claim.
-This acknowledges the action without replacing content, moving geometry, blocking
-interaction, or claiming how long the work will take.
-The state ends at the selected view’s painted-readiness boundary.
+updates the selected navigation row and route while leaving the retained preview
+unchanged at full opacity.
+The shell still adds `.preview-navigation-pending` and `aria-busy` under the current
+claim, but this is an accessibility and instrumentation state, not a visual treatment.
+It adds no sheet, filter, cursor, per-element styling, or animation while work is
+pending. The state ends at the selected view’s painted-readiness boundary.
 A stale claim cannot clear or retain it.
 
-An empty initial preview has no useful surface to dim.
+An empty initial preview has no useful surface to retain.
 It keeps the longer shell wait (`LOADING_INDICATOR_DELAY_MS`) before installing a
 neutral spinner, which still uses `.mb-delayed-loading`. Ready content always wins
-immediately: do not add a minimum spinner duration, progress bar, crossfade, or
-transition that delays usable content merely to complete an animation.
-Under `prefers-reduced-motion`, the sheet’s opacity transition is disabled but the
-immediate pending state remains visible.
+immediately: do not add a minimum spinner duration, progress bar, or transition that
+delays usable content merely to complete an animation.
+
+After a successful atomic replacement, `animatePreviewContentArrival` applies one
+compositor opacity animation to the incoming foreground content root, from 0.98 to 1
+over 50 ms with `ease-out`. The preview pane’s theme background never animates, so the
+handoff cannot pulse white in light mode or flash pale in dark mode.
+The old preview never fades out, the new preview is usable immediately, and the shell
+does not traverse or restyle the rendered document.
+This small incoming-view treatment softens the paint boundary without reading as a
+loading effect. `prefers-reduced-motion` skips it entirely.
 
 Navigation implementations measure this acknowledgement separately from content
-readiness. The synchronous selection-feedback span contains only the pending sheet,
-route, and old/new selected-row mutations; it does not include cancellation, roving Tab
-order, network, parsing, syntax work, or rendering.
+readiness. The synchronous selection-feedback span contains only the claim-owned busy
+state, route, and old/new selected-row mutations; it does not include cancellation,
+roving Tab order, network, parsing, syntax work, or rendering.
 The standard headed scenario requires that span and pending onset/clearance, while
 browser Event Timing remains the authority for the next painted response.
 
 High-churn navigational rows update hover, focus, and selection backgrounds without a
 transition so the visible answer does not ease in behind the input.
-Motion belongs on the single preview sheet, not on each row crossed while scrolling.
+Motion belongs on the single incoming preview, not on each row crossed while scrolling.
 
 ### Progress Spinners Stay Neutral
 
