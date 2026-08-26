@@ -5,7 +5,7 @@ title: "Monitor PR #74 and FDU #44/#47 alignment through adoption readiness"
 kind: task
 status: in_progress
 priority: 1
-version: 36
+version: 37
 spec_path: docs/project/specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md
 refs:
   - kind: pr
@@ -58,8 +58,9 @@ dependencies: []
 parent_id: is-01m0r8xt95921dabcddjjm7csf
 child_order_hints:
   - is-01m0vmz928cewndbdk6gnhbgqz
+  - is-01m0xpnb8g9pt21egbbxd68zee
 created_at: 2026-08-24T22:38:51.537Z
-updated_at: 2026-08-25T17:19:04.512Z
+updated_at: 2026-08-26T00:14:01.987Z
 ---
 Recurring alignment owner for MetaBrowser PR #74 and FDU PRs #44/#47. Reviewed state at 2026-08-25 17:19Z: MetaBrowser #74 remains exact head 0577bb125c4a607719befa3f213362f5522d5724, open/clean/mergeable with 5/5 checks green; latest issue comment 5409452056 and no formal/inline/thread feedback. FDU #44 remains 7f18f208dbd3ccb2002228bb52ae00c5d4ffcabb, open/clean/mergeable with 19/19 green; latest issue comment 5408704238, formal review 5010948152, no inline/thread feedback. FDU #47 advanced to exact reviewed head d58d9c5036818f33fe390c31453eb7548ba7abfa; it is draft/open/clean/mergeable with all 19 exact-head checks green. Agent disposition comment 5414020372 was inspected. Exact review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5021835489 keeps fdu-0778 open because last-control-file deletion retags without a clocked batch and the monotonic control-dir registry can outgrow the snapshot reader bound; it keeps fdu-a7cl open because the journal records the refused leaf upsert rather than the actual ancestor inserts/removal. Prior exact review https://github.com/jlevy/fdu/pull/47#pullrequestreview-5021788526 keeps fdu-8w5k and fdu-91ru open for catalog exactness, token self-roundtrip, and cloned continuation authority; fdu-4ubw is verified closed. Latest FDU #47 issue-comment cursor is 5414020372 and formal-review cursor is 5021835489; no inline comments or review threads. Other reviewed adoption gates remain fdu-7sou, fdu-97dd, fdu-vfx7, fdu-xyvu, fdu-vfyw, and fdu-kl7r; fdu-jxs0 remains correctly closed.
 
