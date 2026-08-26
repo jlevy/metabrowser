@@ -315,15 +315,15 @@ directly.
 | Measure painted readiness for regular file views | `mb-m23h` | `mb-b83r` | Closed |
 | Gate regular file navigation in the performance loop | `mb-wf52` | `mb-2yd5`, `mb-m23h` | Closed |
 | Deduplicate selected and prefetched file requests | `mb-v4qu` | `mb-wf52` | Closed |
-| Validate preview transition parity | `mb-eh0n` | `mb-2yd5`, `mb-m23h`, `mb-wf52`, `mb-v4qu` | Open |
+| Validate preview transition parity | `mb-eh0n` | `mb-2yd5`, `mb-m23h`, `mb-wf52`, `mb-v4qu` | Closed |
 | Validate a visible retained-preview pending treatment | `mb-rnr7` | None | Closed |
 | Delay Git hover preparation until stable intent | `mb-ues1` | None | Closed |
 | Gate Git pending timing and row-anchor attribution | `mb-f43i` | None | Closed |
 | Standardize retained-navigation interaction attribution | `mb-1xm2` | `mb-f43i` | Closed |
 | Exclude driver coordinate lookup from navigation timing | `mb-gv44` | `mb-1xm2` | Closed |
-| Repair live folder disclosure after a Git round trip | `mb-j72n` | None | In progress |
-| Keep navigation tooltips pointer-owned | `mb-iert` | None | In progress |
-| Keep retained file content through async plugin readiness | `mb-sfl2` | `mb-wf52` | In progress |
+| Repair live folder disclosure after a Git round trip | `mb-j72n` | None | Closed |
+| Keep navigation tooltips pointer-owned | `mb-iert` | None | Closed |
+| Keep retained file content through async plugin readiness | `mb-sfl2` | `mb-wf52` | Closed |
 | Complete the PR and CI handoff | `mb-j8ni` | `mb-eh0n`, `mb-rnr7`, `mb-ues1`, `mb-gv44`, `mb-j72n`, `mb-iert`, `mb-sfl2`, and completed prior phases | Blocked |
 
 ### Phase 1: Instrument and Baseline (`mb-800q`)
@@ -944,9 +944,9 @@ the earlier source and Markdown candidate order had not guaranteed: a cold struc
 view replaced the retained preview with an empty connected container while awaiting its
 parsed-data request.
 Two reproductions observed one to two blank frames, or 8.3–16.7 ms.
-After connected inert staging and deterministic structured-view coverage, the same
-headed corpus recorded cold source, structured, Markdown, and cached source transitions
-of 81.7, 173.4, 172.6, and 73.5 ms respectively, all with zero blank frames, exact
+After connected inert staging and deterministic structured-view coverage, exact commit
+`4d45e0d` recorded cold source, structured, Markdown, and cached source transitions of
+79.3, 97.7, 264.7, and 142.6 ms respectively, all with zero blank frames, exact
 selection/route/view convergence, one active mount, and no page exception.
 A companion Git run retained zero blank frames and exact convergence, confirming that
 the shared preview change did not regress commit navigation.
