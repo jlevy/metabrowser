@@ -3,9 +3,9 @@ type: is
 id: is-01m0y5hvk0rrcn98h6rv5d7dje
 title: "Phase 4.8.2: Test and implement pale rows, strong intraline spans, and gutter bars"
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,7 +14,11 @@ dependencies:
     target: is-01m0y5hvxah44e9kdbnmpq97hs
 parent_id: is-01m0y5h1kk1waq5baqsvmqcx6k
 created_at: 2026-08-26T04:34:16.287Z
-updated_at: 2026-08-26T04:37:07.199Z
+updated_at: 2026-08-26T04:38:25.565Z
+closed_at: 2026-08-26T04:38:25.564Z
+close_reason: Added failing palette/CSS contract coverage, then implemented a CSS-only 3% pale line fill, 9% intraline overlay, and solid 3px semantic gutter on the first line-number cell. Unified/split row classes need no DOM change; 29 focused palette, diff, and design-vocabulary tests pass.
+resolution: null
+duplicate_of: null
 ---
 Files/functions:
 - Update tests/test_syntax_palette.py constants plus test_syntax_foregrounds_meet_contrast_over_diff_tints and test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract.

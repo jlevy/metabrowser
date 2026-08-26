@@ -3,9 +3,9 @@ type: is
 id: is-01m0y5hvxah44e9kdbnmpq97hs
 title: "Phase 4.8.3: Validate diff visual hierarchy in a real browser and reconcile release docs"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0y5hw7w8fdw9herhmph9qqs
 parent_id: is-01m0y5h1kk1waq5baqsvmqcx6k
 created_at: 2026-08-26T04:34:16.617Z
-updated_at: 2026-08-26T04:34:16.955Z
+updated_at: 2026-08-26T04:38:25.824Z
 ---
 Files/functions:
 - Exercise the existing diff browser fixture and/or exact installed build with representative refined, unrelated, addition-only, and deletion-only rows in unified and split layouts.
