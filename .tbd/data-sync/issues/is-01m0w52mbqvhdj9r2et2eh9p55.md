@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 47
+version: 48
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -36,10 +36,10 @@ child_order_hints:
   - is-01m0xyc7gj5qhj6w8sz58qdf4m
   - is-01m0y2pmcc6nvcze73d3s39jm3
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-26T04:28:25.786Z
+updated_at: 2026-08-26T06:26:37.067Z
 ---
 Deliver the complete phased plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: reviewed Git revision navigation, file/Git readiness parity, request deduplication, stable hover, O(1) selection feedback, standard interaction attribution, corrected input-relative driver timing, performance instrumentation, live-folder panel-state repair, and the final no-fade foreground-arrival contract. Keep useful retained content and the light/dark pane canvas visually unchanged while loading; preserve one claim-owned nonvisual busy lifecycle; animate only incoming foreground content from 0.98 to 1 over 50 ms; keep row work proportional to changed rows; distinguish selection feedback from painted readiness and Event Timing; exclude driver preparation from application timing; retain at most one speculative comparison; cancel obsolete work; and fail standard scenarios on fanout, duplicate selected work, blank frames, stuck busy state, missing attribution, route/render divergence, folder-state freezing, exceptions, or forced layout. Add no unmeasured cache, dependency, or speculative compatibility. Close only after PR #82 is retargeted from its stack and the final exact-head CI is green.
 
 ## Notes
 
-All implementation phases remain complete. Final exact pushed head 1e1f5d8 removes the superseded pending sheet and animates only incoming foreground content over 50 ms; the theme canvas never animates. make verify passes with 1,559 tests plus 48 golden scenarios; pre-commit/pre-push and all exact-head GitHub CI checks pass. Exact global 0.7.2.dev40+1e1f5d8 install and doctor pass. Exact-head git-revisions and file-views pass with zero blank frames, exceptions, or forced layout; Git feedback is 0.4-0.9 ms and Event Timing max 24 ms. PR #82 remains cleanly stacked on open, green PR #81 pending retargeting and final post-stack CI.
+All implementation phases are complete through current PR #82 head 5caa1e0, with exact-head CI green and final stack-tip browser validation passing. The severe large-folded-diff regression discovered during handoff is fixed under mb-t44x on the base branch and merged into this head; it reduces the exact 19,654-line comparison from 182,686 to 6,476-6,679 DOM nodes and from a 552 ms to 127 ms longest task, with zero collapsed hidden rows. The final globally installed stack tip is metab 0.7.2.dev44+0bd3d5b and all plugins pass doctor. The epic remains open only because its explicit acceptance requires #81 to land, #82 to be retargeted to main, and final post-stack CI to pass.

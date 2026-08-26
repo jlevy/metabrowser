@@ -5,14 +5,14 @@ title: "Phase 4.8.4: Verify and deliver the intraline visual follow-up"
 kind: task
 status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
 dependencies: []
 parent_id: is-01m0y5h1kk1waq5baqsvmqcx6k
 created_at: 2026-08-26T04:34:16.955Z
-updated_at: 2026-08-26T04:42:28.631Z
+updated_at: 2026-08-26T06:26:37.451Z
 ---
 Files/functions:
 - Review the full branch diff against docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md Phase 4.8.
@@ -23,3 +23,7 @@ Files/functions:
 Acceptance:
 - Every Phase 4.8 criterion and child bead is complete.
 - Worktree is clean, tbd sync succeeds, commits are pushed, exact-head CI is green, and the validated build is available for end-to-end testing.
+
+## Notes
+
+Phase 4.8 implementation and delivery are complete on pushed tip 0bd3d5b. Focused 63-test suite, make format, make verify with 1,561 tests plus 48 golden scenarios, pre-commit, and pre-push pass. Exact tip is globally installed as metab 0.7.2.dev44+0bd3d5b; doctor passes all eight plugins. Headed git-revisions and exact 19,654-line browser validation pass with one mount, zero blank frames, exact convergence, bounded/cancelled hydration, zero page/render errors, 195 visible rows, zero collapsed hidden rows, and no main-thread warning. PR #84 has a refreshed zero-context description and no review feedback. It remains open because stacked PR #84 has no standalone GitHub workflow until the lower branches land/retarget; PR #81 and #82 exact heads are green.
