@@ -5,7 +5,7 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: open
 priority: 1
-version: 31
+version: 33
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -28,7 +28,9 @@ child_order_hints:
   - is-01m0x52zqfhdqp9jdg82p4299j
   - is-01m0x3skec67w78kafbez3xj2d
   - is-01m0w542g2gzak7th85hx2bdz8
+  - is-01m0xp9057jb8f0pcjhch592qd
+  - is-01m0xp910y4k86s1emzcn93rz0
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-25T19:10:55.990Z
+updated_at: 2026-08-26T00:07:18.301Z
 ---
 Deliver the eighteen-phase plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: trusted Git interaction instrumentation and baseline, bounded preparation and atomic handoff, transition polish, fixed-corpus validation, shared navigational-row keyboard parity, commit-summary placement, shared copyable revision identity, consolidated commit-summary ownership, obsolete retained-work cancellation, deferred-request-storm validation, bounded commit-summary tooltips, a file/Git preview-ownership audit, shared immediate dimmed feedback, painted-readiness measurement for ordinary files, a trusted file-navigation performance scenario, deduplication between selected file loads and hover prefetch, cross-surface parity validation, and final PR review and CI delivery. Keep useful content visible; distinguish Git's detached atomic staging from connected arbitrary plugin mounts; retain at most one speculative comparison; cancel obsolete background work; fail validation on request fanout, duplicate selected work, blank frames, stuck pending state, or route/render divergence; measure server, transfer/decode, assets, mount, and painted readiness consistently across file and diff views; do not add unmeasured caching or speculative compatibility; and close the epic only after PR #82 has exact-head green CI.
