@@ -40,11 +40,11 @@ links to the document that covers each in depth.
 
 - [Web diff viewer architecture and intermediate representations](research/research-2026-07-17-web-diff-viewer-architecture.md)
 - [Fuzzy file ranking contract and measurements](research/research-2026-07-31-fuzzy-file-ranking.md)
+- [Git status and dirty working-tree browsing](research/research-2026-08-26-git-status-and-dirty-working-trees.md)
 - [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
 - [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
 - [Repository cache and open from a Git URL](research/research-2026-08-11-repo-cache-and-git-url-open.md)
-- [Git status and dirty working-tree browsing](research/research-2026-08-26-git-status-and-dirty-working-trees.md)
 
 ## Reviews
 

@@ -58,7 +58,7 @@ reuse, explicit refresh, and provider-owned metadata namespaces.
 Later phases add a repository chooser and GitHub pull-request records and views.
 
 That active plan supersedes this research where they differ on the exact cache layout,
-directory slug, CLI surface, refresh behavior, and rollout phases.
+directory slug, CLI surface, refresh behavior, source normalization, and rollout phases.
 In particular, the cache path now includes a digest-derived suffix rather than relying
 on a readable URL slug alone.
 The evidence and tradeoffs below remain useful inputs; they are not the current
@@ -67,11 +67,23 @@ implementation contract.
 The rewrite also closes four contradictions found in review of the original plan.
 The CLI keeps `ROOT` as a raw string until URL classification instead of asking Typer to
 construct a `Path`; production clone policy allows HTTPS and SSH while an injected
-test-only policy enables local `file://` fixtures; provider-aware normalization happens
-before digest-based identity, so GitHub case aliases converge without weakening generic
-host identity; and full-clone fallback is chosen before publication.
-A failed post-publication backfill leaves an honestly partial entry to retry rather than
-replacing a live checkout.
+test-only policy enables local `file://` fixtures; source normalization no longer
+applies GitHub-shaped equivalence to arbitrary hosts; and full-clone fallback is chosen
+before publication. A failed post-publication backfill leaves an honestly partial entry
+to retry rather than replacing a live checkout.
+
+**Normalization changed direction after that fix, and this research is out of date on
+it.** The interim answer was provider-aware normalization ahead of digest identity, so
+that GitHub case aliases would converge on one entry.
+The active plan does not do that.
+Generic normalization is now conservative — it lowercases the scheme and DNS host and
+removes a default port, but preserves path case, a terminal `.git`, and SSH versus HTTPS
+spelling — because equivalence that is true for GitHub is false for other Git servers,
+and a wrong equivalence serves content from one source under another source’s identity.
+Two spellings of the same GitHub repository therefore produce two cache entries.
+A later provider binding may record proven aliases, but it does not merge existing
+entries. Anywhere below that assumes case-folded or otherwise canonicalized cache keys —
+including the slug and eviction discussions — describes the superseded design.
 
 ## Questions to Answer
 

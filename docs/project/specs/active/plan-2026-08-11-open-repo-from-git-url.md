@@ -131,9 +131,23 @@ As of v0.8.0:
   fetched content may not.
 - Metabrowser already depends on Pydantic, JSON Schema, ruamel.yaml, PyYAML, and
   frontmatter-format. SoftSchema v0.7.0 is a first-party package over the same boundary,
-  but adopting it also raises the frontmatter-format minimum from 0.3 to 0.4. Phase 1A
-  must review that upgrade, update `uv.lock`, and run the full supply-chain and
-  distribution gates rather than treating the overlap as proof of compatibility.
+  but adopting it also raises the frontmatter-format minimum from 0.3 to 0.4 — a claim
+  Phase 1A verifies against the released package metadata rather than carrying forward
+  from this plan. Phase 1A must review that upgrade, update `uv.lock`, and run the full
+  supply-chain and distribution gates rather than treating the overlap as proof of
+  compatibility.
+- Being first-party does not by itself exempt SoftSchema from the release cool-off.
+  [`SUPPLY-CHAIN-SECURITY.md`](../../../../SUPPLY-CHAIN-SECURITY.md) is explicit that
+  first-party identifies the publisher and does not retire the threat the cool-off
+  exists for, which is a compromised publishing account.
+  What earns `get-tbd` its exemption is reach: nothing in the build, CI, test, or
+  publishing path runs it, so a bad release costs a developer’s session.
+  SoftSchema does not inherit that argument — it validates cache records on a runtime
+  path, inside the shipped wheel, so a bad release reaches every user.
+  Phase 1A therefore either adds a `softschema` row to *Audited First-Party Exceptions*
+  with its own reviewed-against release and blast-radius statement, or applies the
+  ordinary 14-day cool-off.
+  It does not proceed on the overlap with existing dependencies.
 
 The v0.8.0 revision click starts a comparison that needs blobs.
 Blobless clone followed by background backfill remains the leading acquisition strategy,
@@ -180,12 +194,42 @@ A later phase may add `<entry>/providers/<provider-name>/` without changing the 
 of `repository.yml`, `state.yml`, or `gitroot`.
 
 `METABROWSER_HOME` overrides the application home for tests and advanced operation.
-If the existing cache-root override is retained, startup rejects a combination that
-would split the config and cache authorities.
+It is the only application-home override; Metabrowser has no cache-root setting today,
+and Phase 1A does not add a second one.
 Paths in config expand a leading `~` against the operator’s home and resolve relative
 paths against the application home.
 Config parsing never performs shell expansion or evaluates environment syntax stored in
 YAML.
+
+### Why one `~/.metabrowser/` rather than XDG directories
+
+`f01` names directory semantics, so this choice is expensive to revisit and belongs in
+the record rather than in whoever implements it first.
+
+The XDG-conformant split would be `$XDG_CONFIG_HOME/metabrowser` for `config.yml` and
+`$XDG_CACHE_HOME/metabrowser` for the repository cache, with
+`~/Library/Application Support` and `~/Library/Caches` as the macOS equivalents.
+That split has one genuine advantage: a cache under a platform cache directory is
+already excluded by backup and cleanup tools that understand the convention.
+
+One application home wins anyway, for reasons specific to this cache:
+
+- The cache is not disposable in the way a platform cache directory implies.
+  An entry may be the only local copy of a source that is now offline or deleted, which
+  is why purge and migration are explicit operations here and why quarantine retains
+  damaged entries rather than discarding them.
+  Filing it where the platform advertises “safe to delete at any time” would misdescribe
+  it.
+- Config and cache must agree about identity and format.
+  `f01` versions the two together and migration publishes `config.yml` last; splitting
+  them across two roots with independent lifetimes creates exactly the divided authority
+  this layout avoids.
+- One root is one thing to point `METABROWSER_HOME` at, and one thing for a user to
+  inspect, back up, or remove.
+
+`CACHEDIR.TAG` is what recovers the backup-exclusion benefit without the split, which is
+why Phase 1A writes it when the cache root is created rather than leaving it to a later
+phase.
 
 ### Layout format versus record contracts
 
@@ -245,7 +289,31 @@ A source may be offline or gone.
 Unknown and damaged entries move to quarantine or recoverable trash with a diagnostic
 that names the retained path.
 
-## SoftSchema Contract Policy
+### Reclaiming `staging/`, `trash/`, and quarantine
+
+Retaining data is the right default here, but retention without a reclamation rule is
+how a cache silently becomes the largest directory in a home folder.
+Each of the three gets its rule in Phase 1A, when the directories are created, rather
+than in Phase 2 when someone notices the disk:
+
+| Directory | Retained because | Reclaimed by |
+| --- | --- | --- |
+| `staging/` | An in-progress clone must be invisible until it is complete | Age-based sweep at startup under the application-home lock, skipping any staging path whose lock is currently held |
+| `trash/` | Purge should be recoverable for a moment, not forever | Purge deletes it at the end of its own run; the startup sweep removes anything a crashed purge left |
+| Quarantine | The entry may be the only local copy of an unavailable source | Never automatically. Explicit inspect and purge only |
+
+`staging/` is the one that actually leaks: an interrupted clone leaves a tree behind,
+and the publication guarantee is only that no *visible incomplete entry* results, which
+is a weaker property than “nothing is left on disk”.
+A user who cancels two clones of a large repository has paid for both.
+
+Quarantine is deliberately exempt from automatic reclamation, because the whole reason
+an entry is quarantined is that Metabrowser could not establish what it is.
+Deleting it on a timer would discard exactly the cases that most need a human to look.
+What quarantine does owe the user is visibility, and Phase 1B is the first release that
+can produce one: whichever open or migration path quarantines an entry says so and names
+the retained path, so the directory is never a silent accumulation waiting for Phase 2’s
+`--repo-inspect` to reveal it.
 
 SoftSchema v0.7.0 is the proposed record boundary.
 The reviewed source is `jlevy/softschema` release `v0.7.0`; later commits on its `main`
@@ -390,6 +458,19 @@ Separating the files keeps source identity immutable and prevents frequent
 Catalog scanning validates both files and reports a missing or mismatched pair as an
 incomplete entry.
 
+`last_opened_at` does mean that an otherwise offline, read-only cache hit still writes
+to disk, so that write must not be able to fail the open.
+A `state.yml` update that fails — read-only home, full disk, a lock held by another
+process — is logged and the open proceeds against the validated `gitroot`. The
+consequence of dropping it is a stale bookkeeping timestamp; the consequence of treating
+it as fatal is refusing to serve a repository that is present, valid, and pinned.
+Nothing in serving depends on `last_opened_at`, and the recency ordering it feeds is a
+Phase 3 chooser affordance, not a correctness input.
+
+This is a listed Phase 1B acceptance case, beside interrupted clone and unavailable
+network: a cache hit against an application home the process cannot write must still
+serve.
+
 ### Pinned checkout
 
 `gitroot` is an ordinary checkout pinned to `active_revision`. Metabrowser never edits,
@@ -459,6 +540,40 @@ This rule is observable and tested.
 A failed backfill leaves the published entry usable and honestly marked partial; it does
 not turn a successful open into a fatal error.
 
+### Git version gates
+
+Phase 1B detects the Git version once and gates three separate things on it.
+They are listed separately because they have different floors and different
+consequences, and a single unnumbered “supported Git” would hide that:
+
+| Gate | Floor | Below the floor |
+| --- | --- | --- |
+| Acquisition | **2.26** | URL opening is refused with a typed `unsupported_git_version` state naming the detected and required versions. Local-path browsing is unaffected |
+| Blobless acquisition (`--filter=blob:none`) | **2.26** | Falls back to full clone |
+| `git backfill` | **2.49** | Falls back to full clone at acquisition time; a published blobless entry is never left waiting for a command that does not exist |
+| Cache integrity (`is_clean`) | **2.36** | Reported unavailable, never inferred clean — see the [Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md) |
+
+The 2.26 floor makes protocol v2 the default and is the version the
+[acquisition research](../../research/research-2026-08-11-repo-cache-and-git-url-open.md)
+proposes; Phase 0 confirms it against the platforms this project supports.
+`git backfill` gates separately at 2.49, is stamped experimental upstream, and is
+treated as a pure optimization: the blobless-plus-backfill strategy is chosen only when
+both the clone filter and the backfill command are available, so the fallback decision
+happens before publication rather than stranding an entry in `backfilling` forever.
+The same fallback applies when a remote refuses a partial clone.
+
+Version detection degrades rather than refuses: an unparseable `git version` string is
+treated as below every floor, which selects the conservative full-clone path, and the
+detected string is recorded in `repository.yml` under `acquisition.git_version` so a
+later entry can be explained.
+
+Separately from these capability floors, acquisition requires a Git release carrying the
+fixes for the known clone-time vulnerabilities in submodule handling and symlinked
+`.git` directories.
+That floor tracks upstream advisories rather than a feature, so Phase
+0 pins the exact version alongside the transport allowlist and records it beside this
+table; it is not satisfied by 2.26 alone.
+
 ## Generic Cache Operations
 
 Phase 2 builds a catalog by scanning validated repository entries.
@@ -496,6 +611,56 @@ Phase 4 models the complete v1 browsing set before Phase 5 performs an API reque
 It lands Pydantic models, compiled SoftSchema contracts, field documentation, normalized
 fixtures, invalid fixtures, relationship tests, and a format inventory.
 No renderer reads a provider record that the inventory does not register.
+
+### The corpus needs a coverage oracle, not just fixtures
+
+Writing the model before the adapter is the right order, and the reason is in the
+[design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md):
+if the first fixture corpus comes from one API query, that response shape becomes the
+model. Hand-authored normalized fixtures avoid that.
+
+They also cannot answer a different question.
+A fixture proves the model is self-consistent and that validation rejects what it
+should. It cannot prove that GitHub actually supplies a modeled field, or supplies it
+over the transport Phase 5 chooses.
+Nothing in a hand-written corpus fails when a field turns out to be unobtainable, so the
+discovery lands in Phase 5, after roughly sixteen contracts and their fixtures are
+frozen.
+
+Phase 4 therefore validates its inventory against a small set of **recorded, scrubbed**
+real responses, used only as a coverage oracle:
+
+- captured once, from public repositories, with tokens, rate-limit headers, and volatile
+  transport metadata removed;
+- kept outside the fixture corpus and never loaded by a renderer, an adapter, or a
+  contract test — it is not authoritative and does not become a second model; and
+- consumed by exactly one check, which asserts that every field in the contract
+  inventory is present in at least one recorded response, and reports the transport that
+  supplied it.
+
+A field that no recorded response supplies is not automatically wrong — it may be
+derived, or intentionally Metabrowser-owned like `PullRequestStack/v1`. It just has to
+be labeled as such deliberately rather than by omission.
+
+This keeps the review’s ordering (the model leads) while removing its blind spot (the
+model is unfalsifiable until Phase 5).
+
+### Transport is already partly decided, and the model should say so
+
+The example below records `review_decision` and `counts.reviews`. Both are GraphQL
+fields with no REST equivalent — REST returns neither a review decision nor a review
+count — so the browsing model as written presumes GraphQL as the primary source for pull
+requests, with REST filling gaps.
+
+That is a reasonable choice and it is not what
+[Decisions Deferred to Their Evidence Phase](#decisions-deferred-to-their-evidence-phase)
+currently claims. What remains open for Phase 5 is which transport serves each
+*acquisition*, and that stays open.
+What is already settled is that some modeled fields are GraphQL-only, and the durable
+record still must not expose that.
+Phase 4 marks each such field so the constraint is visible: either the field is
+obtainable and the oracle proves it, or it is optional with an explicit `not_requested`
+state rather than a hole discovered during adapter work.
 
 ### Record families
 
@@ -719,8 +884,10 @@ capabilities. Repository files cannot configure the application; a fetched
 
 Clone inputs are untrusted.
 The transport allowlist, option separator, no-prompt environment, timeout and output
-bounds, no submodules, disabled hooks, patched-Git floor, and atomic publication are
-security requirements, not convenience flags.
+bounds, no submodules, disabled hooks, the patched-Git floor in
+[Git version gates](#git-version-gates), and atomic publication are security
+requirements, not convenience flags.
+Each has a stated version or value there; “recent enough Git” is not a security control.
 
 Provider records are validated before publication and bounded by file, field, and
 collection limits established from fixtures and browser measurements.
@@ -749,12 +916,18 @@ containment checks.
 
 - [ ] Add the application-home resolver, `config.yml`, `cache/layout.yml`, format
   history, future-format failure, and sequential migration harness.
-- [ ] Adopt the released SoftSchema package after dependency and lock review; register
-  the config, layout, repository identity, and repository state contracts.
+- [ ] Adopt the released SoftSchema package after dependency and lock review; verify the
+  `frontmatter-format` minimum against released package metadata; record the
+  supply-chain decision as an *Audited First-Party Exceptions* row with a blast-radius
+  statement or apply the ordinary cool-off; register the config, layout, repository
+  identity, and repository state contracts.
 - [ ] Package deterministic compiled schemas and add compile-drift, corpus-validation,
   schema-inventory, and installed-wheel checks.
 - [ ] Add atomic YAML reads/writes, application-home locking, quarantine, and
   recoverable-trash primitives without cloning or serving a URL.
+- [ ] Write `CACHEDIR.TAG` when the cache root is created, and add the startup
+  `staging/`/`trash/` reclamation sweep, so no released phase accumulates unreclaimed or
+  backed-up cache data.
 - [ ] Prove config preserves unknown settings while machine records reject unknown
   fields and cache-controlled schema paths cannot redirect validation.
 
@@ -766,15 +939,20 @@ containment checks.
   slug, collision verification, and per-source locking.
 - [ ] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
   environment controls, and explicit acquisition/background policies.
+- [ ] Enforce the acquisition, blobless, and `git backfill` floors from
+  [Git version gates](#git-version-gates); select full clone before publication when any
+  is unmet, and return a typed `unsupported_git_version` state below the acquisition
+  floor.
 - [ ] Clone to same-filesystem staging, resolve and pin HEAD, validate records and
   checkout, and publish with no replacement.
 - [ ] Reuse a valid cache hit without network access, provider detection, or credential
-  lookup.
+  lookup, including against an application home the process cannot write.
 - [ ] Start measured object backfill only after serving; persist honest partial,
   backfilling, complete, and failed states.
 - [ ] Force the untrusted profile for URL-opened roots once `mb-vib1` lands.
 - [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
-  interrupted clone, and repair guidance.
+  interrupted clone, read-only application home, unsupported Git version, and repair
+  guidance.
 
 ### Phase 2: Generic catalog, refresh, and cache management
 
@@ -784,8 +962,9 @@ containment checks.
   refuse to replace a live root.
 - [ ] Add coordinated job progress, cancellation, stage outcomes, and process-safe races
   among open, refresh, promote, repair, and purge.
-- [ ] Add size accounting and `CACHEDIR.TAG`; select no automatic eviction policy until
-  measured usage justifies one.
+- [ ] Add size accounting, including quarantined and staged bytes; select no automatic
+  eviction policy until measured usage justifies one.
+  `CACHEDIR.TAG` and the reclamation sweep already landed in Phase 1A.
 
 ### Phase 3: Repository chooser and session switching
 
@@ -808,6 +987,9 @@ containment checks.
 - [ ] Build representative normalized fixtures for open, closed, merged, draft, forked,
   deleted, inaccessible, partial, paginated, outdated-anchor, unknown-enum, and stacked
   cases.
+- [ ] Capture the scrubbed recorded-response oracle and add the check that every modeled
+  field is either present in a recorded response, or explicitly marked derived or
+  optional with a `not_requested` state.
 - [ ] Measure the proposed immutable-object and atomic-manifest layout; freeze or revise
   it before released provider data is written.
 - [ ] Register every record and view surface in the architecture map and add an
@@ -864,7 +1046,7 @@ containment checks.
 | Phase | Depends on | Does not depend on | User-visible result |
 | --- | --- | --- | --- |
 | 1A format foundation | Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
-| 1B generic Git cache | 1A, untrusted-profile gate for serving | GitHub API or schemas | Any supported clone URL opens or reuses one local read-only entry |
+| 1B generic Git cache | 1A, untrusted-profile gate for serving, Git-status Phase 1 (`mb-u4mf`) for `is_clean` | GitHub API or schemas | Any supported clone URL opens or reuses one local read-only entry |
 | 2 cache operations | 1B | Provider support | Generic list, inspect, refresh, and purge |
 | 3 chooser | 2 catalog | GitHub | Instant switching among cached repositories |
 | 4 GitHub model | 1A format rules; may proceed alongside 2–3 | Network credentials, UI | Reviewed contract corpus for the full browsing domain |
@@ -876,6 +1058,17 @@ containment checks.
 Phase 4 may run in parallel with generic chooser work because it writes only schemas,
 fixtures, and design registrations.
 Phase 5 waits for both the model and the generic job and storage primitives.
+
+The one dependency that leaves this plan is Phase 1B on Git-status Phase 1 (`mb-u4mf`),
+which owns the `is_clean` predicate cache integrity calls.
+It is a hard ordering constraint rather than a convenience: landing 1B first would leave
+integrity either unchecked or served by a second porcelain parser, which is the outcome
+both plans exist to prevent.
+The dependency is recorded in the bead graph as well as here, because a constraint that
+lives only in prose is one nobody is reminded of.
+
+Below Git 2.36 the status service reports `unsupported_git_version`, so the predicate is
+absent and cache integrity reports its check as unavailable rather than inferring clean.
 
 ## Testing Strategy
 
@@ -939,8 +1132,13 @@ above.
   measurements.
 - Phase 4 selects the physical snapshot sharding after fixture counts and parse costs
   are measured. Its logical contracts and atomic-publication invariants are not open.
-- Phase 5 selects REST, GraphQL, or a hybrid per acquisition need.
-  Durable records do not expose that transport choice.
+- Phase 5 selects REST, GraphQL, or a hybrid per acquisition need, and durable records
+  do not expose that transport choice.
+  This is narrower than it first reads: the v1 model already contains GraphQL-only
+  fields such as `review_decision`, so GraphQL is presumed for pull requests and what
+  stays open is which transport serves each acquisition.
+  See
+  [Transport is already partly decided, and the model should say so](#transport-is-already-partly-decided-and-the-model-should-say-so).
 - Automatic eviction waits for Phase 2 size data and remains absent unless a defensible
   default follows.
 - A live session either retains its pinned root until reopen or explicitly accepts a

@@ -144,6 +144,19 @@ clean. The status feature remains independent:
 - cache integrity calls the status service’s `is_clean` predicate so the definition of
   clean cannot drift between two parsers.
 
+That last point is a real ordering constraint, not just a shared helper.
+`is_clean` ships in Git-status Phase 1 (`mb-u4mf`), so repository-library Phase 1B
+depends on it and is tracked that way in both the
+[repository-library plan](plan-2026-08-11-open-repo-from-git-url.md) and the bead graph.
+Landing Phase 1B first would leave cache integrity either unchecked or served by the
+second porcelain parser both plans exist to prevent.
+
+The predicate is also gated: below Git 2.36 the status service returns
+`unsupported_git_version` and there is no predicate to call.
+Cache integrity then reports its check as **unavailable**. It must not infer clean from
+the absence of a result — an unverified entry and a verified-clean entry are different
+states, and only one of them justifies serving the cached root without a warning.
+
 The status API contains no cache-entry ID, source URL, GitHub identity, or provider
 metadata.
 
@@ -199,7 +212,7 @@ The status letters are:
 | Modified | `M` |
 | Deleted | `D` |
 | Renamed | `R` |
-| Copied | `C` |
+| Copied | `C` — parser only; unreachable under the baseline rename policy |
 | Type changed | `T` |
 | Untracked | `?` |
 | Unmerged | `U` |
@@ -228,6 +241,19 @@ lossy route identity.
 `MetabrowserRoutes.statusHref` and `parseStatus` are the only codec.
 They validate the scope and full digest and reject extra or malformed segments.
 
+This is a deliberate departure from the URL grammar and must be registered as one.
+[`docs/architecture.md`](../../../architecture.md) states the grammar as an address
+space plus a path within it, which is why `/view/<path>` and `/commit/<rev>/<file>` read
+as “the same grammar over two address spaces”.
+`/status/<scope>/<entry-id>` substitutes an opaque digest for that trailing path,
+because a status row has no addressable path in the grammar’s sense: two rows can share
+one display path, and a path need not be valid UTF-8. A path-shaped alternative would
+need a second codec for the cases the first cannot express, which is worse than one
+exact codec.
+
+When Phase 2 registers the route, add that reasoning to the grammar table rather than
+letting a reader discover an apparent inconsistency and assume it was an oversight.
+
 On reload, the Git panel fetches current status and resolves `entry-id`. If the entry no
 longer exists, the panel keeps the current status list, presents a concise stale
 selection notice, and does not substitute a different row with the same display path.
@@ -243,8 +269,7 @@ data, then swaps atomically through the existing preview readiness lifecycle.
 `GitStatusService` acquires one repository snapshot with a command equivalent to:
 
 ```shell
-git --no-optional-locks \
-  -c core.quotepath=false \
+git <common-hardening-args> \
   -c core.fsmonitor=false \
   -c core.hooksPath=<package-owned-no-hooks-directory> \
   status \
@@ -252,15 +277,48 @@ git --no-optional-locks \
   -z \
   --branch \
   --untracked-files=all \
-  --find-renames=50% \
+  --find-renames=<measured-threshold> \
   --ignored=no \
   <explicit-submodule-policy>
 ```
 
 The actual argument vector is fixed in Python and contains no shell.
-The current Git environment hardening remains authoritative.
+`<common-hardening-args>` is `metabrowser.git.process._COMMON_ARGS`, which already
+supplies `--no-optional-locks` and `core.quotepath=false`; status does not restate them,
+because a second copy of a centrally owned flag is a second thing to keep correct.
+(`core.quotepath` is additionally inert under `-z`, which emits raw path bytes without
+quoting.) The current Git environment hardening remains authoritative.
 The submodule option is finalized by the Phase 1 measurement gate; it must be explicit
 and recorded beside the result rather than inherited from user config.
+
+### Rename and copy policy
+
+The baseline policy is **renames only**, and that is a deliberate limit rather than an
+omission:
+
+- `git status` has no `--find-copies` option.
+  Copy detection is reachable only through `status.renames=copies`.
+- `--find-renames=<n>` on the command line overrides `status.renames` entirely.
+  Passing it is what keeps a user’s `status.renames=false` or `status.renames=copies`
+  from reaching a machine-facing command, which is the behavior this plan wants — but it
+  also means the two settings cannot be combined.
+
+So under the baseline argv a `2 C...` record cannot occur, and a copied file is reported
+as an addition. That is what Git does by default and what VS Code shows.
+
+The consequence to accept knowingly: the immutable diff adapter runs `-M -C`, so the
+same file can render as `copied` under `/commit/<rev>` and as `added` under `/status/`.
+The alternative costs more than it returns right now — enabling
+`-c status.renames=copies` forfeits explicit similarity control, since the threshold can
+then only come from Git’s default, and copy detection scans candidate sources on every
+acquisition.
+
+Phase 1 therefore measures copy-detection cost as a third evidence gate (see
+[Open Decisions](#open-decisions)) and records the decision beside the measurement.
+Until that gate says otherwise, `C` is parser-level coverage only: the porcelain parser
+must accept and normalize `2 C...` records so a future policy change is a one-line argv
+edit, but no badge, comparison mapping, or design-system row may present copies as a
+state the shipped policy can produce.
 
 The status capability requires Git 2.36 or newer.
 The floor is not for porcelain v2; that format is older.
@@ -342,6 +400,23 @@ The same raw porcelain record may produce two `GitStatusEntry` values with disti
 scopes and IDs. Conflicts produce one conflict entry and are not also projected through
 ordinary `X` and `Y` rules.
 
+“Available” above is a real distinction with a specific encoding, because porcelain v2
+does not omit an absent layer — it emits a placeholder.
+An intent-to-add entry is:
+
+```text
+1 .A N... 000000 000000 100644 000…0 000…0 newfile.txt
+```
+
+The all-zero object ID and mode `000000` mean *this layer has no object*, not *this
+object is all zeros*. Normalization maps both to an absent mode and an absent object ID,
+which is what lets the staged side resolve to an `empty` File Diff Format snapshot
+rather than a bogus one.
+A validator that checks object IDs for 40 lowercase hex characters without this rule
+will either reject a legitimate record or promote a null OID into a `git cat-file`
+argument, so the rule belongs in the validator and in the parser tests, with
+intent-to-add as the named case.
+
 `git/wire.py` adds TypedDict definitions and runtime validators.
 Required-key gate sets, enum checks, object-ID validation, group-order validation,
 unique-ID validation, raw path/base64 consistency, and count reconciliation follow the
@@ -393,8 +468,8 @@ The mappings are:
 
 | Scope | Left | Right | Git/file acquisition |
 | --- | --- | --- | --- |
-| Staged | `HEAD` or empty | index | Path-limited diff for ordinary entries; bounded complete-scope selection for rename/copy |
-| Unstaged | index | worktree | Path-limited diff for ordinary entries; bounded complete-scope selection for rename/copy |
+| Staged | `HEAD` or empty | index | Path-limited diff for ordinary entries; bounded complete-scope selection for renames |
+| Unstaged | index | worktree | Path-limited diff for ordinary entries; bounded complete-scope selection for renames |
 | Untracked | empty | worktree | bounded safe-path read and an all-addition hunk |
 | Conflict | stage 1 or empty | worktree result | bounded Git-object plus safe-path reads, with an unmerged warning |
 
@@ -480,8 +555,22 @@ The corpus must cover:
 - additions, deletions, renames, copies, and type changes;
 - binary and large files;
 - conflicted states;
-- a repository with submodules; and
+- a repository with submodules;
+- a large stat-dirty but content-identical population, as a working tree looks after a
+  branch switch, a rebase, or a build that touches tracked files; and
 - UTF-8 and raw-byte path edge cases.
+
+The stat-dirty case is not a variant of ordinary modifications and must not be dropped
+as one. `GIT_OPTIONAL_LOCKS=0` is what makes this feature observational — it is why
+status never writes the user’s index, which the Phase 1 acceptance boundary requires —
+but it also means the refreshed stat cache is never persisted.
+Git re-hashes every stat-dirty file on every acquisition, and that cost does not
+amortize the way it does for an ordinary `git status` at the terminal.
+
+That matters here specifically because Phase 2 refreshes on filesystem-change bursts, so
+the worst case is a repeating cost on exactly the workflows that generate the most
+events. Pick the debounce and the status timeout from this measurement, not from the
+clean-tree number.
 
 Measurements record:
 
@@ -957,10 +1046,19 @@ None is authorized by the read-only status service.
 ## Open Decisions
 
 The product and model decisions are closed by this plan.
-Phase 1 has two evidence gates whose outcomes become recorded implementation facts:
+Phase 1 has three evidence gates whose outcomes become recorded implementation facts:
 
-1. the explicit submodule inspection option; and
-2. the status entry, byte, timeout, debounce, and browser row budgets.
+1. the explicit submodule inspection option;
+2. the status entry, byte, timeout, debounce, and browser row budgets; and
+3. the rename similarity threshold, plus whether copy detection is worth its cost.
+
+Gate 3 has a fixed default and a narrow question.
+The default is renames only, for the reasons in
+[Rename and copy policy](#rename-and-copy-policy).
+The question is whether `-c status.renames=copies` measures cheaply enough on the corpus
+to be worth losing explicit similarity control and accepting a per-acquisition candidate
+scan. If it does not, `C` stays parser-level coverage and the `/commit` versus `/status`
+difference is documented rather than closed.
 
 If measurement cannot support a complete `--untracked-files=all` status within a useful
 bound, the phase must return to design review.
