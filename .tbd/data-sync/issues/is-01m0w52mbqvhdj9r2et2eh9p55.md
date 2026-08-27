@@ -3,9 +3,9 @@ type: is
 id: is-01m0w52mbqvhdj9r2et2eh9p55
 title: "Spec: Git revision navigation performance"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 59
+version: 60
 spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
@@ -45,7 +45,11 @@ child_order_hints:
   - is-01m0zrp4gpq3x8hq9vdr9vj8k7
   - is-01m0zsbh067m10y39fcbk88teg
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-26T19:39:34.789Z
+updated_at: 2026-08-27T00:43:35.519Z
+closed_at: 2026-08-27T00:43:35.518Z
+close_reason: All 34 delivery children are complete; Git revision navigation landed, passed final exact-head validation and CI, and shipped in the public v0.8.0 release.
+resolution: null
+duplicate_of: null
 ---
 Deliver the complete phased plan in docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md: reviewed Git revision navigation, file/Git readiness parity, request deduplication, stable hover, O(1) selection feedback, standard interaction attribution, corrected input-relative driver timing, performance instrumentation, live-folder panel-state repair, and the final no-fade foreground-arrival contract. Keep useful retained content and the light/dark pane canvas visually unchanged while loading; preserve one claim-owned nonvisual busy lifecycle; animate only incoming foreground content from 0.98 to 1 over 50 ms; keep row work proportional to changed rows; distinguish selection feedback from painted readiness and Event Timing; exclude driver preparation from application timing; retain at most one speculative comparison; cancel obsolete work; and fail standard scenarios on fanout, duplicate selected work, blank frames, stuck busy state, missing attribution, route/render divergence, folder-state freezing, exceptions, or forced layout. Add no unmeasured cache, dependency, or speculative compatibility. Close only after PR #82 is retargeted from its stack and the final exact-head CI is green.
 
