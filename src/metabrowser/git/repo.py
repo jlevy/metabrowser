@@ -34,6 +34,7 @@ from metabrowser.git.process import (
     GitCommandError,
     GitError,
     GitUnavailableError,
+    failure_detail,
     git_executable,
     run_git,
 )
@@ -131,7 +132,7 @@ async def _discover(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]
         # this one is genuinely unusual and worth seeing — but still
         # report the ordinary negative envelope rather than a 500: the
         # browser's only recourse either way is to hide the tab.
-        log.warning("git repository discovery failed in %s: %s", served_root, exc)
+        log.warning("git repository discovery failed in %s: %s", served_root, failure_detail(exc))
         return None, _negative("git_failed")
 
     toplevel = raw.decode("utf-8", errors="replace").strip()
@@ -148,7 +149,7 @@ async def _discover(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]
     try:
         head = await _resolve_head(served_root)
     except GitError as exc:
-        log.warning("git HEAD resolution failed in %s: %s", served_root, exc)
+        log.warning("git HEAD resolution failed in %s: %s", served_root, failure_detail(exc))
         return None, _negative("git_failed")
 
     context = RepoContext(git_root=git_root, served_root=served_root, head=head)

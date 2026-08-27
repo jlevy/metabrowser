@@ -4,6 +4,25 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Fixes:
+
+- Ctrl-C stops the server on the first press and reports exit 130 whatever the timing of
+  any that follow. A repeat interrupt arriving while the process exited used to land on
+  Python’s default handler and print an `Exception ignored on threading shutdown`
+  traceback, or kill the process outright for exit `-2`. The first interrupt now prints
+  `Stopping Metabrowser.` so the press is visibly registered rather than reading as a
+  hang.
+
+- Serving a directory that is not a Git repository no longer repeats
+  `git rev-parse --show-toplevel exited 128` every few seconds, and opening the Git tab
+  no longer logs one line per history ref that does not resolve.
+  These are questions the browser asks git by exit code, so they are DEBUG detail; git
+  failures that are failures still log at WARNING, now including git’s own message.
+
+- The inventory boot walk reports its summary only when the result is worth reading — a
+  truncated index, or a walk slow enough to have been noticed.
+  `--log-level debug` still shows every completion.
+
 ## 0.8.0
 
 Features:

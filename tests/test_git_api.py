@@ -14,6 +14,7 @@ guards the tree contract.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 import subprocess
@@ -38,6 +39,8 @@ from metabrowser.git.process import (
     _REPO_PINNING_GIT_VARS,
     GitCommandError,
     GitOutputTooLargeError,
+    GitTimeoutError,
+    failure_detail,
     run_git,
 )
 from metabrowser.git.repo import repo_info
@@ -697,6 +700,47 @@ def test_run_git_raises_on_a_non_zero_exit(repo: Path) -> None:
     with pytest.raises(GitCommandError) as excinfo:
         asyncio.run(run_git(["rev-parse", "--verify", "definitely-not-a-ref"], cwd=repo))
     assert excinfo.value.returncode != 0
+
+
+def test_run_git_keeps_an_expected_non_zero_exit_out_of_the_default_log(
+    plain_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Discovery, HEAD resolution, and history scope all ask git questions
+    whose answer is an exit code. Ranking each refusal as INFO put a line in
+    the terminal every few seconds for anyone browsing a plain directory."""
+    with (
+        caplog.at_level(logging.DEBUG, logger="metabrowser.git.process"),
+        pytest.raises(GitCommandError),
+    ):
+        asyncio.run(run_git(["rev-parse", "--show-toplevel"], cwd=plain_dir))
+
+    records = [record for record in caplog.records if "exited" in record.getMessage()]
+    assert [record.levelno for record in records] == [logging.DEBUG]
+    assert "not a git repository" in records[0].getMessage()
+
+
+def test_failure_detail_carries_stderr_that_the_exception_message_withholds() -> None:
+    """The route-level warning is where git's own diagnosis has to survive;
+    ``str(exc)`` stays free of the absolute paths git writes into it."""
+    failure = GitCommandError(["show", "beef"], 128, "fatal: /srv/example/repo is corrupt")
+
+    assert "/srv/example/repo" not in str(failure)
+    assert "/srv/example/repo" in failure_detail(failure)
+    assert failure_detail(GitTimeoutError("git log exceeded 5s")) == "git log exceeded 5s"
+
+
+def test_route_failure_warning_reports_git_stderr(
+    repo: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    failure = GitCommandError(["log"], 128, "fatal: bad object HEAD")
+    with (
+        caplog.at_level(logging.WARNING, logger="metabrowser.git.routes"),
+        mock.patch("metabrowser.git.routes.read_log_page", side_effect=failure),
+    ):
+        response = asyncio.run(api_git_log(_FakeRequest()))  # pyright: ignore[reportArgumentType]
+
+    assert response.status_code == 500
+    assert "fatal: bad object HEAD" in caplog.text
 
 
 def test_run_git_enforces_the_output_cap(repo: Path) -> None:
