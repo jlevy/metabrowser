@@ -1454,6 +1454,13 @@ declare global {
     scope?: "default" | "all";
     scope_refs?: Array<string>;
     scope_fingerprint?: string;
+    graph_checkpoint?: {
+      version: 1;
+      prior_swimlanes: Array<MetabrowserGitGraphLane>;
+      color_index: number;
+      head_revision: string | null;
+      scope_fingerprint: string;
+    };
   };
 
   type MetabrowserGitGraphCheckpoint = {
@@ -1759,7 +1766,6 @@ declare global {
         values: Array<string>;
       }>;
       GIT_DETAIL_CACHE_SIZE?: number;
-      GIT_HISTORY_MAX_ROWS?: number;
       GIT_HISTORY_PAGE_CACHE_PAGES?: number;
       GIT_HISTORY_SEGMENT_REBASE_PX?: number;
       GIT_HISTORY_WINDOW_MAX_ROWS?: number;

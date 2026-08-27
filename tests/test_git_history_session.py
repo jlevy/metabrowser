@@ -73,6 +73,16 @@ def test_one_walk_pages_are_contiguous_and_replayable(tmp_path: Path) -> None:
             validate_git_log_page(dict(first))
             assert first.get("page") == 0
             assert first.get("previous_cursor") is None
+            first_scope_fingerprint = first.get("scope_fingerprint")
+            first_checkpoint = first.get("graph_checkpoint")
+            assert first_scope_fingerprint is not None
+            assert first_checkpoint == {
+                "version": 1,
+                "prior_swimlanes": [],
+                "color_index": -1,
+                "head_revision": expected[0],
+                "scope_fingerprint": first_scope_fingerprint,
+            }
             first_cursor = first["cursor"]
             first_page_cursor = first.get("page_cursor")
             assert first_cursor is not None
@@ -120,10 +130,48 @@ def test_one_walk_pages_are_contiguous_and_replayable(tmp_path: Path) -> None:
             assert combined == expected[:12]
             assert replayed_first["commits"] == first["commits"]
             assert replayed_second["commits"] == second["commits"]
+            replayed_first_checkpoint = replayed_first.get("graph_checkpoint")
+            replayed_second_checkpoint = replayed_second.get("graph_checkpoint")
+            second_checkpoint = second.get("graph_checkpoint")
+            assert replayed_first_checkpoint == first_checkpoint
+            assert replayed_second_checkpoint == second_checkpoint
+            assert second_checkpoint is not None
+            assert second_checkpoint["prior_swimlanes"] == [
+                {"id": second["commits"][0]["id"], "color": "var(--git-ref-local)"}
+            ]
         finally:
             await registry.close_all()
 
         assert not spool_path.exists()
+
+    asyncio.run(scenario())
+
+
+def test_merge_page_checkpoint_preserves_converging_lane_colors(tmp_path: Path) -> None:
+    root = tmp_path / "merge-history"
+    build_history_corpus(root, shape="merge-heavy", commit_count=17)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=True, limit=4, cursor=None)
+            assert first["cursor"] is not None
+            second = await registry.read_page(
+                root,
+                wants_all=True,
+                limit=4,
+                cursor=first["cursor"],
+            )
+            checkpoint = second.get("graph_checkpoint")
+            assert checkpoint is not None
+            boundary_revision = second["commits"][0]["id"]
+            assert checkpoint["prior_swimlanes"] == [
+                {"id": boundary_revision, "color": "var(--git-ref-local)"},
+                {"id": boundary_revision, "color": "var(--git-lane-2)"},
+            ]
+            assert checkpoint["color_index"] == 1
+        finally:
+            await registry.close_all()
 
     asyncio.run(scenario())
 
@@ -174,6 +222,29 @@ def test_default_scope_expires_when_its_head_moves(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+def test_session_expires_when_head_switches_refs_at_the_same_commit(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=8)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=False, limit=2, cursor=None)
+            assert first["cursor"] is not None
+            await run_git(["checkout", "-q", "-b", "same-tip"], cwd=root)
+            with pytest.raises(StaleHistorySessionError):
+                await registry.read_page(
+                    root,
+                    wants_all=None,
+                    limit=2,
+                    cursor=first["cursor"],
+                )
+            assert registry.session_count == 0
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
 def test_registry_evicts_the_least_recent_session_at_its_entry_bound(tmp_path: Path) -> None:
     first_root = _history(tmp_path / "first", commits=8)
     second_root = _history(tmp_path / "second", commits=8)
@@ -192,6 +263,33 @@ def test_registry_evicts_the_least_recent_session_at_its_entry_bound(tmp_path: P
                     limit=2,
                     cursor=first["cursor"],
                 )
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_walk_eviction_drains_a_full_stdout_pipe_before_reaping(tmp_path: Path) -> None:
+    root = tmp_path / "deep-history"
+    build_history_corpus(root, shape="linear", commit_count=10_000)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(max_entries=2, max_walks=1, idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            assert first["cursor"] is not None
+            decoded = decode_history_cursor(first["cursor"])
+            assert decoded is not None
+            assert registry._sessions[decoded.session_id].walk_active is True
+            # Starting another walk evicts the first while Git still has far
+            # more than one pipe buffer of history left to write. The second
+            # page must not wait forever for the killed producer to be reaped.
+            second = await asyncio.wait_for(
+                registry.read_page(root, wants_all=True, limit=2, cursor=None),
+                timeout=5,
+            )
+            assert len(second["commits"]) == 2
+            assert registry.session_count == 1
         finally:
             await registry.close_all()
 

@@ -34,7 +34,13 @@ from metabrowser.git.process import (
     spawn_git_process,
     terminate_git_process,
 )
-from metabrowser.git.wire import GitCommit, GitLogPage, is_full_revision
+from metabrowser.git.wire import (
+    GitCommit,
+    GitGraphCheckpoint,
+    GitGraphLane,
+    GitLogPage,
+    is_full_revision,
+)
 from metabrowser.settings import (
     GIT_HISTORY_SESSION_IDLE_TTL_S,
     GIT_HISTORY_SESSION_MAX_ENTRIES,
@@ -58,6 +64,8 @@ _FRAME_HEADER = struct.Struct(">Q")
 _READ_CHUNK_BYTES = 64 * 1024
 _STDERR_RETAIN_BYTES = 64 * 1024
 _REAPER_MAX_INTERVAL_S = 30.0
+_HEAD_LANE_COLOR = "var(--git-ref-local)"
+_LANE_COLORS = tuple(f"var(--git-lane-{index})" for index in range(1, 6))
 
 
 class HistorySessionError(Exception):
@@ -103,6 +111,20 @@ class HistoryScope:
     arguments: tuple[str, ...]
     display_refs: tuple[str, ...]
     fingerprint: str
+    head_revision: str | None = None
+    head_ref: str | None = None
+
+
+@dataclass(frozen=True)
+class _GraphLane:
+    id: str
+    color: str
+
+
+@dataclass(frozen=True)
+class _GraphCheckpoint:
+    prior_swimlanes: tuple[_GraphLane, ...]
+    color_index: int
 
 
 @dataclass(frozen=True)
@@ -111,6 +133,7 @@ class _Frame:
     length: int
     commit_count: int
     has_more: bool
+    graph_checkpoint: _GraphCheckpoint
 
 
 def encode_history_cursor(cursor: HistoryCursor) -> str:
@@ -184,6 +207,15 @@ async def _resolved_revision(root: Path, revision: str) -> str | None:
     return candidate if is_full_revision(candidate) else None
 
 
+async def _symbolic_head(root: Path) -> str | None:
+    try:
+        raw = await run_git(["symbolic-ref", "--quiet", "HEAD"], cwd=root)
+    except GitCommandError:
+        return None
+    candidate = raw.decode("utf-8", errors="replace").strip()
+    return candidate if candidate.startswith("refs/") else None
+
+
 async def resolve_history_scope(root: Path, *, wants_all: bool) -> HistoryScope:
     """Resolve a stable scope and fingerprint its externally mutable ref state."""
     root = root.resolve()
@@ -193,6 +225,11 @@ async def resolve_history_scope(root: Path, *, wants_all: bool) -> HistoryScope:
         .strip()
     )
     material = bytearray(f"history-scope-v1\0{object_format}\0".encode())
+    head_revision = await _resolved_revision(root, "HEAD")
+    head_ref = await _symbolic_head(root)
+    material.extend(b"HEAD-REF\0")
+    material.extend((head_ref or "").encode("utf-8"))
+    material.extend(b"\0")
 
     if wants_all:
         refs = await run_git(
@@ -204,10 +241,9 @@ async def resolve_history_scope(root: Path, *, wants_all: bool) -> HistoryScope:
             ],
             cwd=root,
         )
-        head = await _resolved_revision(root, "HEAD")
         material.extend(refs)
         material.extend(b"\0HEAD\0")
-        material.extend((head or "").encode("ascii"))
+        material.extend((head_revision or "").encode("ascii"))
         targets: list[str] = []
         seen_targets: set[str] = set()
         for record in refs.splitlines():
@@ -225,8 +261,8 @@ async def resolve_history_scope(root: Path, *, wants_all: bool) -> HistoryScope:
             ):
                 targets.append(decoded)
                 seen_targets.add(decoded)
-        if head is not None and head not in seen_targets:
-            targets.append(head)
+        if head_revision is not None and head_revision not in seen_targets:
+            targets.append(head_revision)
         arguments = tuple(targets)
         display_refs: tuple[str, ...] = ()
         name: HistoryScopeName = "all"
@@ -254,6 +290,79 @@ async def resolve_history_scope(root: Path, *, wants_all: bool) -> HistoryScope:
         arguments=arguments,
         display_refs=display_refs,
         fingerprint=fingerprint,
+        head_revision=head_revision,
+        head_ref=head_ref,
+    )
+
+
+def _label_color(commit: GitCommit, head_ref: str | None) -> str | None:
+    if head_ref is None:
+        return None
+    for ref in commit.get("refs", []):
+        if ref["id"] == head_ref:
+            return _HEAD_LANE_COLOR
+    return None
+
+
+def _advance_graph_checkpoint(
+    checkpoint: _GraphCheckpoint,
+    commits: Sequence[GitCommit],
+    *,
+    head_ref: str | None,
+) -> _GraphCheckpoint:
+    """Advance the browser's lane algorithm without retaining row models."""
+    previous_output = list(checkpoint.prior_swimlanes)
+    color_index = checkpoint.color_index
+    by_revision = {commit["id"]: commit for commit in commits}
+
+    for commit in commits:
+        output: list[_GraphLane] = []
+        first_parent_added = False
+        for lane in previous_output:
+            if lane.id == commit["id"]:
+                if commit["parent_ids"] and not first_parent_added:
+                    output.append(
+                        _GraphLane(
+                            id=commit["parent_ids"][0],
+                            color=_label_color(commit, head_ref) or lane.color,
+                        )
+                    )
+                    first_parent_added = True
+                continue
+            output.append(lane)
+
+        start = 1 if first_parent_added else 0
+        for index in range(start, len(commit["parent_ids"])):
+            color: str | None = None
+            if index == 0:
+                color = _label_color(commit, head_ref)
+            else:
+                parent = by_revision.get(commit["parent_ids"][index])
+                if parent is not None:
+                    color = _label_color(parent, head_ref)
+            if color is None:
+                color_index = (color_index + 1) % len(_LANE_COLORS)
+                color = _LANE_COLORS[color_index]
+            output.append(_GraphLane(id=commit["parent_ids"][index], color=color))
+        previous_output = output
+
+    return _GraphCheckpoint(tuple(previous_output), color_index)
+
+
+def _wire_graph_checkpoint(
+    checkpoint: _GraphCheckpoint,
+    *,
+    scope: HistoryScope,
+) -> GitGraphCheckpoint:
+    lanes: list[GitGraphLane] = [
+        GitGraphLane(id=lane.id, color=lane.color) for lane in checkpoint.prior_swimlanes
+    ]
+    return GitGraphCheckpoint(
+        version=1,
+        prior_swimlanes=lanes,
+        color_index=checkpoint.color_index,
+        head_revision=scope.head_revision,
+        scope_fingerprint=scope.fingerprint,
     )
 
 
@@ -268,6 +377,14 @@ async def _drain_stderr(stream: asyncio.StreamReader | None) -> bytes:
         remaining = _STDERR_RETAIN_BYTES - len(retained)
         if remaining > 0:
             retained.extend(chunk[:remaining])
+
+
+async def _discard_stream(stream: asyncio.StreamReader | None) -> None:
+    """Drain a killed producer so ``Process.wait`` cannot block on its pipe."""
+    if stream is None:
+        return
+    while await stream.read(_READ_CHUNK_BYTES):
+        pass
 
 
 class HistorySession:
@@ -299,6 +416,7 @@ class HistorySession:
         self._buffer = bytearray()
         self._lookahead: tuple[bytes, GitCommit] | None = None
         self._frames: list[_Frame] = []
+        self._graph_checkpoint = _GraphCheckpoint((), -1)
         self._storage_bytes = 0
         self._closed = False
         self._lock = asyncio.Lock()
@@ -437,7 +555,18 @@ class HistorySession:
         has_more = self._lookahead is not None
         if not commits and self._frames:
             raise InvalidHistoryCursorError("cursor points past the end of history")
-        frame = await self._append_frame(bytes(records), len(commits), has_more)
+        checkpoint = self._graph_checkpoint
+        frame = await self._append_frame(
+            bytes(records),
+            len(commits),
+            has_more,
+            graph_checkpoint=checkpoint,
+        )
+        self._graph_checkpoint = _advance_graph_checkpoint(
+            checkpoint,
+            commits,
+            head_ref=self.scope.head_ref,
+        )
         return frame, commits
 
     async def _read_next_commit(self, page_bytes: int) -> tuple[bytes, GitCommit] | None:
@@ -482,6 +611,8 @@ class HistorySession:
         payload: bytes,
         commit_count: int,
         has_more: bool,
+        *,
+        graph_checkpoint: _GraphCheckpoint,
     ) -> _Frame:
         frame_bytes = _FRAME_HEADER.size + len(payload)
         if self._storage_bytes + frame_bytes > self.storage_max_bytes:
@@ -510,6 +641,7 @@ class HistorySession:
             length=len(payload),
             commit_count=commit_count,
             has_more=has_more,
+            graph_checkpoint=graph_checkpoint,
         )
 
     async def _replay_frame(self, frame: _Frame) -> list[GitCommit]:
@@ -563,6 +695,10 @@ class HistorySession:
             scope=self.scope.name,
             scope_refs=list(self.scope.display_refs),
             scope_fingerprint=self.scope.fingerprint,
+            graph_checkpoint=_wire_graph_checkpoint(
+                frame.graph_checkpoint,
+                scope=self.scope,
+            ),
         )
 
     async def close(self) -> None:
@@ -577,7 +713,20 @@ class HistorySession:
         process = self._process
         self._process = None
         if process is not None:
-            await terminate_git_process(process)
+            # A demand-driven walk normally leaves unread history in stdout.
+            # On platforms where the asyncio transport waits for pipe EOF,
+            # reaping a killed child before draining that buffered output can
+            # deadlock session eviction. Start the discard first so it runs
+            # concurrently with ``Process.wait`` inside the shared terminator.
+            stdout_task = asyncio.create_task(
+                _discard_stream(process.stdout),
+                name=f"metabrowser-git-history-stdout-{self.id}",
+            )
+            try:
+                await terminate_git_process(process)
+            finally:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await stdout_task
         if self._stderr_task is not None:
             with contextlib.suppress(asyncio.CancelledError):
                 self._stderr = await self._stderr_task

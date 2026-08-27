@@ -32,11 +32,11 @@ Convention
 What is deliberately absent
 ---------------------------
 
-No swimlane, lane color, or row-geometry field appears here. Lane
-assignment is a pure function of the commit list and its ordering and is
-naturally incremental across pages, so it belongs to the rendering layer
-— the same call :mod:`metabrowser.recent` made when it left cluster
-construction to the browser. See ``static/git-graph.js``.
+Row geometry stays in the browser. Session pages do carry one graph
+checkpoint, because replaying an evicted page cannot reconstruct its
+incoming lanes from that page alone. The checkpoint is page-sized state,
+not rendered rows, and lets the browser retain only its measured page
+cache while preserving exact graph continuity.
 """
 
 from __future__ import annotations
@@ -120,6 +120,23 @@ class GitCommit(TypedDict):
     refs: NotRequired[list[GitRef]]
 
 
+class GitGraphLane(TypedDict):
+    """One pending ancestry lane at a history-page boundary."""
+
+    id: str
+    color: str
+
+
+class GitGraphCheckpoint(TypedDict):
+    """Versioned graph state immediately before one session page."""
+
+    version: Literal[1]
+    prior_swimlanes: list[GitGraphLane]
+    color_index: int
+    head_revision: str | None
+    scope_fingerprint: str
+
+
 class GitHead(TypedDict):
     """Where HEAD points.
 
@@ -181,6 +198,7 @@ class GitLogPage(TypedDict):
     scope: NotRequired[Literal["default", "all"]]
     scope_refs: NotRequired[list[str]]
     scope_fingerprint: NotRequired[str]
+    graph_checkpoint: NotRequired[GitGraphCheckpoint]
 
 
 class GitFileChange(TypedDict):
@@ -368,6 +386,27 @@ def validate_git_log_page(page: Mapping[str, Any]) -> None:
         assert isinstance(page.get("scope_fingerprint"), str), (
             "session log page scope_fingerprint not a string"
         )
+        checkpoint = page.get("graph_checkpoint")
+        assert isinstance(checkpoint, dict), "session log page graph checkpoint not a dict"
+        assert checkpoint.get("version") == 1, "session graph checkpoint version is unsupported"
+        assert checkpoint.get("scope_fingerprint") == page["scope_fingerprint"], (
+            "session graph checkpoint scope does not match its page"
+        )
+        assert isinstance(checkpoint.get("color_index"), int), (
+            "session graph checkpoint color_index not an int"
+        )
+        head_revision = checkpoint.get("head_revision")
+        assert head_revision is None or is_full_revision(head_revision), (
+            "session graph checkpoint head_revision is invalid"
+        )
+        lanes = checkpoint.get("prior_swimlanes")
+        assert isinstance(lanes, list), "session graph checkpoint prior_swimlanes not a list"
+        for index, lane in enumerate(lanes):
+            assert isinstance(lane, dict), f"session graph lane {index} not a dict"
+            assert is_full_revision(lane.get("id", "")), f"session graph lane {index} id is invalid"
+            assert isinstance(lane.get("color"), str) and lane["color"], (
+                f"session graph lane {index} color is invalid"
+            )
 
 
 def validate_git_file_change(change: Mapping[str, Any], *, _where: str = "") -> None:
@@ -478,6 +517,8 @@ __all__ = [
     "GitCommitDetail",
     "GitCommitStats",
     "GitFileChange",
+    "GitGraphCheckpoint",
+    "GitGraphLane",
     "GitHead",
     "GitLogPage",
     "GitRefList",

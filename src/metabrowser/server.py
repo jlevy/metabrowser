@@ -3198,7 +3198,10 @@ def _build_plugin_asset_config_block() -> str:
         styles: list[str] = []
         if plugin.static_root.joinpath("styles.css").is_file():
             styles.append(f"{prefix}/styles.css")
-        styles.extend(f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_styles)
+        for extra in plugin.manifest.plugin.extra_styles:
+            url = f"{prefix}/{extra}"
+            if url not in styles:
+                styles.append(url)
         descriptor: dict[str, object] = {
             "name": plugin.name,
             "module": f"{prefix}/index.js",

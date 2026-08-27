@@ -279,12 +279,6 @@ GIT_SUBPROCESS_MAX_BYTES = 32 * 1024 * 1024
 GIT_LOG_DEFAULT_LIMIT = 250
 GIT_LOG_MAX_LIMIT = 1_000
 
-# Temporary v0.8 product-history ceiling retained until server replay is joined
-# to bidirectional browser paging. Mounted rows are already bounded independently
-# by ``GIT_HISTORY_WINDOW_MAX_ROWS``; this remaining ceiling is removed only when
-# every evicted page can be recovered without a false end.
-GIT_HISTORY_MAX_ROWS = 500
-
 # Budgets for the v0.9 continuous-history implementation. The evidence and
 # derivation live in ``explorations/git-history/README.md``. They are frozen
 # before the continuation and virtual-window mechanisms so neither phase can
@@ -298,14 +292,6 @@ GIT_HISTORY_SESSION_MAX_ENTRIES = 8
 GIT_HISTORY_SESSION_MAX_WALKS = 2
 GIT_HISTORY_SESSION_PARSER_MAX_BYTES = 128 * 1024
 GIT_HISTORY_SESSION_MAX_STORAGE_BYTES = 64 * 1024 * 1024
-
-# Largest ``--skip`` offset a page cursor may carry. Cursors are opaque
-# and server-issued, and the panel stops paging at GIT_HISTORY_MAX_ROWS,
-# so no legitimate cursor comes near this; it is ~400 pages at the default
-# limit. Without the bound, a well-formed cursor carrying an arbitrary
-# offset makes git walk and discard that whole prefix of history on every
-# request, spending the subprocess timeout budget to return nothing.
-GIT_LOG_MAX_SKIP = 100_000
 
 # Changed files returned by ``/api/git/commit/{revision}``. A commit that
 # touches more than this reports ``files_truncated`` rather than being
@@ -359,7 +345,6 @@ def client_settings_dict(
         "TREE_AUTO_EXPAND_FALLBACK_ROWS": TREE_AUTO_EXPAND_FALLBACK_ROWS,
         "SSE_HEARTBEAT_INTERVAL_S": SSE_HEARTBEAT_INTERVAL_S,
         "GIT_LOG_LIMIT": GIT_LOG_DEFAULT_LIMIT,
-        "GIT_HISTORY_MAX_ROWS": GIT_HISTORY_MAX_ROWS,
         "GIT_HISTORY_WINDOW_MAX_ROWS": GIT_HISTORY_WINDOW_MAX_ROWS,
         "GIT_HISTORY_WINDOW_OVERSCAN_ROWS": GIT_HISTORY_WINDOW_OVERSCAN_ROWS,
         "GIT_HISTORY_PAGE_CACHE_PAGES": GIT_HISTORY_PAGE_CACHE_PAGES,
@@ -391,7 +376,6 @@ __all__ = [
     "FOLDER_DISCOVERY_MAX_ENTRIES",
     "GIT_COMMIT_MAX_FILES",
     "GIT_DETAIL_CACHE_SIZE",
-    "GIT_HISTORY_MAX_ROWS",
     "GIT_HISTORY_PAGE_CACHE_PAGES",
     "GIT_HISTORY_SEGMENT_REBASE_PX",
     "GIT_HISTORY_SESSION_IDLE_TTL_S",
@@ -404,7 +388,6 @@ __all__ = [
     "GIT_HOVER_DEBOUNCE_MS",
     "GIT_LOG_DEFAULT_LIMIT",
     "GIT_LOG_MAX_LIMIT",
-    "GIT_LOG_MAX_SKIP",
     "GIT_REPO_INFO_TTL_S",
     "GIT_SUBPROCESS_MAX_BYTES",
     "GIT_SUBPROCESS_TIMEOUT_S",

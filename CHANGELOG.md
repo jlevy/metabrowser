@@ -14,9 +14,11 @@ Features:
 
 - The Git panel now stores decoded history pages in a bounded LRU and mounts only a
   fixed-height row window with measured overscan.
-  Graph checkpoints preserve lane continuity without retaining expanded rows, spacers
-  preserve logical scroll geometry, and long histories rebase before the browser height
-  clamp while keeping selection and logical focus independent of row mounting.
+  Versioned server checkpoints make evicted pages independently replayable without
+  retaining expanded rows or a complete ordinal map.
+  Continuous paging reaches Git’s real end instead of stopping after 500 commits;
+  spacers preserve logical scroll geometry, and long histories rebase before the browser
+  height clamp while keeping selection and logical focus independent of row mounting.
 
 ## 0.8.0
 

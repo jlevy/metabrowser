@@ -4735,6 +4735,19 @@ pre.code-block code.hljs {
   pointer-events: none;
 }
 
+.git-history-page-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+.git-history-retry {
+  min-height: var(--button-height-compact);
+}
+
 .git-graph-row {
   display: flex;
   align-items: center;

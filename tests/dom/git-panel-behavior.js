@@ -325,7 +325,6 @@ sandbox.CustomEvent = class CustomEvent {
 sandbox.HTMLElement = FakeElement;
 sandbox.METABROWSER_SETTINGS = {
   GIT_LOG_LIMIT: 2,
-  GIT_HISTORY_MAX_ROWS: 3,
   GIT_HISTORY_WINDOW_MAX_ROWS: 3,
   GIT_HISTORY_WINDOW_OVERSCAN_ROWS: 1,
   GIT_HISTORY_PAGE_CACHE_PAGES: 2,
@@ -531,6 +530,78 @@ function commit(id, parents, subject, refs) {
     subject,
     ...(refs ? { refs } : {}),
   };
+}
+
+function historyPage(page, commits, total, headRevision) {
+  const nextPage = page + 1;
+  const hasMore = nextPage * sandbox.METABROWSER_SETTINGS.GIT_LOG_LIMIT < total;
+  return {
+    is_repo: true,
+    page,
+    commits,
+    cursor: hasMore ? `history:${nextPage}` : null,
+    has_more: hasMore,
+    page_cursor: `history:${page}`,
+    previous_cursor: page > 0 ? `history:${page - 1}` : null,
+    scope: "all",
+    scope_refs: [],
+    scope_fingerprint: "deep-scope",
+    graph_checkpoint: {
+      version: 1,
+      prior_swimlanes: page > 0 ? [{ id: commits[0].id, color: "var(--git-ref-local)" }] : [],
+      color_index: -1,
+      head_revision: headRevision,
+      scope_fingerprint: "deep-scope",
+    },
+  };
+}
+
+/**
+ * Append a synthetic page while preserving the production checkpoint
+ * contract. Tests that call appendPage directly still have to provide the
+ * exact boundary state the server would have emitted.
+ */
+function appendTestPage(commits, cursor) {
+  const current = internals.stateForTests();
+  const page = current.nextPageNumber;
+  let priorSwimlanes = [];
+  let colorIndex = -1;
+  if (page > 0) {
+    const previous = current.pageCache.peek(page - 1);
+    if (!previous) {
+      throw new Error(`Test page ${page} has no cached predecessor`);
+    }
+    const result = sandbox.MetabrowserGitGraph.computeSwimlanes(previous.commits, {
+      priorSwimlanes: previous.checkpoint.priorSwimlanes,
+      colorIndex: previous.checkpoint.colorIndex,
+      headRevision: current.headRevision,
+      refColors: new Map(),
+      rowStart: previous.commits.length,
+      rowEnd: previous.commits.length,
+    });
+    priorSwimlanes = result.trailingSwimlanes;
+    colorIndex = result.colorIndex;
+  }
+  const scopeFingerprint = current.scopeFingerprint || "test-scope";
+  internals.appendPage(commits, cursor, {
+    is_repo: true,
+    page,
+    commits,
+    cursor,
+    has_more: cursor !== null,
+    page_cursor: `test:${page}`,
+    previous_cursor: page > 0 ? `test:${page - 1}` : null,
+    scope: "all",
+    scope_refs: [],
+    scope_fingerprint: scopeFingerprint,
+    graph_checkpoint: {
+      version: 1,
+      prior_swimlanes: priorSwimlanes,
+      color_index: colorIndex,
+      head_revision: current.headRevision,
+      scope_fingerprint: scopeFingerprint,
+    },
+  });
 }
 
 function keyboardEvent(key, options = {}) {
@@ -830,17 +901,11 @@ async function run() {
   // ── Paging appends and keeps lanes continuous ──────────────
   {
     internals.setStateForTests(internals.emptyState());
-    internals.appendPage(
-      [commit(SHA_A, [SHA_B], "tip"), commit(SHA_B, [SHA_C], "middle")],
-      "cursor-1",
-    );
+    appendTestPage([commit(SHA_A, [SHA_B], "tip"), commit(SHA_B, [SHA_C], "middle")], "cursor-1");
     const afterFirst = internals.stateForTests();
     assertEqual("paging: first page rows", afterFirst.rows.length, 2);
     assertEqual("paging: cursor stored", afterFirst.cursor, "cursor-1");
-    const trailing = afterFirst.trailingSwimlanes.map((lane) => lane.id);
-    assertEqual("paging: trailing lane leads to the next commit", trailing, [SHA_C]);
-
-    internals.appendPage([commit(SHA_C, [], "root")], null);
+    appendTestPage([commit(SHA_C, [], "root")], null);
     const afterSecond = internals.stateForTests();
     assertEqual("paging: rows accumulate", afterSecond.rows.length, 3);
     assertEqual("paging: end of history clears the cursor", afterSecond.cursor, null);
@@ -864,34 +929,145 @@ async function run() {
       internals.rowsForRange(2, 3).length,
       1,
     );
-    internals.appendPage([commit(SHA_D, [])], null);
-    assertEqual("paging: a rejected page reports no rows", internals.rowsForRange(3, 4).length, 0);
   }
 
   // ── History retention is explicitly bounded ───────────────
   {
     internals.setStateForTests(internals.emptyState());
-    internals.appendPage(
-      [commit(SHA_A, [SHA_B], "one"), commit(SHA_B, [SHA_C], "two")],
-      "cursor-1",
-    );
-    internals.appendPage([commit(SHA_C, [SHA_D], "three"), commit(SHA_D, [], "four")], "cursor-2");
-    const bounded = internals.stateForTests();
-    assertEqual("bounded: row cap", bounded.rows.length, 3);
-    assertEqual("bounded: commit cap", bounded.commits.length, 3);
-    assertEqual("bounded: pagination stops", bounded.cursor, null);
-    assertTrue("bounded: truncation is explicit", bounded.capped);
+    appendTestPage([commit(SHA_A, [SHA_B], "one"), commit(SHA_B, [SHA_C], "two")], "cursor-1");
+    appendTestPage([commit(SHA_C, [SHA_D], "three"), commit(SHA_D, [], "four")], "cursor-2");
+    const continuous = internals.stateForTests();
+    assertEqual("continuous: every discovered row remains logical", continuous.rowCount, 4);
+    assertEqual("continuous: decoded pages stay bounded", continuous.pageCache.size, 2);
+    assertEqual("continuous: pagination continues", continuous.cursor, "cursor-2");
 
     const container =
       document.getElementById("tab-git") ??
       document.register("tab-git", document.createElement("div"));
     internals.renderPanel();
     assertEqual(
-      "bounded: only capped rows mount",
+      "continuous: mounted rows stay bounded",
       container.querySelectorAll(".git-graph-row").length,
       3,
     );
-    assertContains("bounded: cap is disclosed", container.textContent, "newest 3 commits");
+    assertNotContains(
+      "continuous: no product cutoff is disclosed",
+      container.textContent,
+      "newest",
+    );
+  }
+
+  // ── Deep history reaches its real end and replays after eviction ──
+  {
+    const total = 1003;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 1).toString(16).padStart(40, "0"),
+    );
+    const deepCommits = revisions.map((revision, index) =>
+      commit(
+        revision,
+        index + 1 < total ? [revisions[index + 1]] : [],
+        `deep commit ${index}`,
+        index === 0
+          ? [{ id: "refs/heads/main", name: "main", kind: "branch", is_head: true }]
+          : undefined,
+      ),
+    );
+    const deep = internals.emptyState();
+    deep.headRevision = revisions[0];
+    internals.setStateForTests(deep);
+    for (let page = 0; page * 2 < total; page += 1) {
+      const commits = deepCommits.slice(page * 2, page * 2 + 2);
+      const wire = historyPage(page, commits, total, revisions[0]);
+      internals.appendPage(commits, wire.cursor, wire);
+    }
+    assertEqual("deep: logical history crosses one thousand rows", deep.rowCount, total);
+    assertTrue("deep: real end is distinct from an omitted page", deep.endReached);
+    assertEqual(
+      "deep: final commit is reachable",
+      internals.rowsForRange(1002, 1003)[0].row.commit.id,
+      revisions[1002],
+    );
+    assertEqual("deep: decoded cache remains bounded at the real end", deep.pageCache.size, 2);
+
+    const requestStart = fetchRequests.length;
+    responses.clear();
+    responses.set("/api/git/log", (url) => {
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      const commits = deepCommits.slice(page * 2, page * 2 + 2);
+      return historyPage(page, commits, total, revisions[0]);
+    });
+    const panelContainer = document.byId.get("tab-git");
+    document.byId.delete("tab-git");
+    try {
+      assertTrue("deep: evicted first page replays", await internals.ensurePageLoaded(0));
+    } finally {
+      if (panelContainer) {
+        document.byId.set("tab-git", panelContainer);
+      }
+    }
+    assertEqual(
+      "deep: replay restores the first exact commit",
+      internals.rowsForRange(0, 1)[0].row.commit.id,
+      revisions[0],
+    );
+    assertEqual("deep: replay still keeps the decoded cache bounded", deep.pageCache.size, 2);
+    assertTrue(
+      "deep: replay walks page handles rather than offset cursors",
+      fetchRequests.slice(requestStart).every((request) => !request.url.includes("skip=")),
+    );
+  }
+
+  // ── A missing visible page is replayed in place ──────────────
+  {
+    const container = document.getElementById("tab-git");
+    container.clientHeight = 44;
+    container.scrollTop = 0;
+    const total = 6;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 2000).toString(16).padStart(40, "0"),
+    );
+    const commits = revisions.map((revision, index) =>
+      commit(
+        revision,
+        index + 1 < total ? [revisions[index + 1]] : [],
+        `replay commit ${index}`,
+        index === 0
+          ? [{ id: "refs/heads/main", name: "main", kind: "branch", is_head: true }]
+          : undefined,
+      ),
+    );
+    const replayed = internals.emptyState();
+    replayed.headRevision = revisions[0];
+    internals.setStateForTests(replayed);
+    for (let page = 0; page < 3; page += 1) {
+      const pageCommits = commits.slice(page * 2, page * 2 + 2);
+      const wire = historyPage(page, pageCommits, total, revisions[0]);
+      internals.appendPage(pageCommits, wire.cursor, wire);
+    }
+    assertTrue("replay window: first page begins evicted", !replayed.pageCache.peek(0));
+    responses.clear();
+    responses.set("/api/git/log", (url) => {
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      const page = Number(cursor?.split(":")[1] ?? 0);
+      const pageCommits = commits.slice(page * 2, page * 2 + 2);
+      return historyPage(page, pageCommits, total, revisions[0]);
+    });
+    internals.renderPanel();
+    assertContains(
+      "replay window: missing rows disclose loading",
+      container.textContent,
+      "Loading history",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const rows = container.querySelectorAll(".git-graph-row");
+    assertEqual("replay window: exact first row returns", rows[0].dataset.revision, revisions[0]);
+    assertEqual("replay window: visible range fills after replay", rows.length, 3);
+    assertEqual("replay window: decoded cache stays bounded", replayed.pageCache.size, 2);
+    container.clientHeight = undefined;
+    container.scrollTop = 0;
   }
 
   // ── The panel mounts a logical window, not its decoded working set ──
@@ -1020,7 +1196,7 @@ async function run() {
   {
     const container = document.getElementById("tab-git");
     internals.setStateForTests(internals.emptyState());
-    internals.appendPage(
+    appendTestPage(
       [
         commit(SHA_A, [SHA_B], "tip commit", [
           { id: "refs/heads/main", name: "main", kind: "branch", is_head: true },
@@ -1204,7 +1380,7 @@ async function run() {
   {
     const container = document.getElementById("tab-git");
     internals.setStateForTests(internals.emptyState());
-    internals.appendPage(
+    appendTestPage(
       [commit(SHA_A, [SHA_B], "keyboard first"), commit(SHA_B, [], "keyboard second")],
       null,
     );
@@ -1267,7 +1443,7 @@ async function run() {
     internals.setStateForTests(internals.emptyState());
     responses.clear();
     const container = document.getElementById("tab-git");
-    internals.appendPage(
+    appendTestPage(
       [commit(SHA_E, [], "prepared first"), commit(SHA_B, [], "prepared second")],
       null,
     );
@@ -1432,12 +1608,22 @@ async function run() {
   await new Promise((resolve) => setTimeout(resolve, 0));
   assertTrue("show: initial history failure is retained", internals.stateForTests().failed);
 
-  responses.set("/api/git/log", {
-    is_repo: true,
-    commits: [commit(SHA_A, [], "retry succeeded")],
-    cursor: null,
-    has_more: false,
-  });
+  const malformedInitialPage = historyPage(0, [commit(SHA_A, [], "missing checkpoint")], 1, SHA_A);
+  delete malformedInitialPage.graph_checkpoint;
+  responses.set("/api/git/log", malformedInitialPage);
+  registeredPanel.onShow();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertTrue(
+    "show: malformed initial history remains a visible failure",
+    internals.stateForTests().failed,
+  );
+  assertContains(
+    "show: malformed initial history offers recovery",
+    document.getElementById("tab-git").textContent,
+    "Could not read",
+  );
+
+  responses.set("/api/git/log", historyPage(0, [commit(SHA_A, [], "retry succeeded")], 1, SHA_A));
   registeredPanel.onShow();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assertEqual("show: reopening retries history", internals.stateForTests().rows.length, 1);
@@ -1448,6 +1634,7 @@ async function run() {
   internals.setStateForTests({
     ...internals.stateForTests(),
     cursor: "bad-cursor",
+    endReached: false,
     failed: true,
   });
   responses.set("/api/git/log", { httpStatus: 400 });
@@ -1463,12 +1650,10 @@ async function run() {
     1,
   );
 
-  responses.set("/api/git/log", {
-    is_repo: true,
-    commits: [commit(SHA_B, [], "cursor recovery succeeded")],
-    cursor: null,
-    has_more: false,
-  });
+  responses.set(
+    "/api/git/log",
+    historyPage(0, [commit(SHA_B, [], "cursor recovery succeeded")], 1, SHA_A),
+  );
   registeredPanel.onShow();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assertEqual("cursor: reopening restarts at page one", internals.stateForTests().rows.length, 1);
@@ -1506,12 +1691,10 @@ async function run() {
     root: "",
     head: { ref: "refs/heads/other", revision: SHA_C, detached: false, unborn: false },
   });
-  responses.set("/api/git/log", {
-    is_repo: true,
-    commits: [commit(SHA_C, [], "after checkout"), commit(SHA_B, [], "older")],
-    cursor: null,
-    has_more: false,
-  });
+  responses.set(
+    "/api/git/log",
+    historyPage(0, [commit(SHA_C, [], "after checkout"), commit(SHA_B, [], "older")], 2, SHA_C),
+  );
   registeredPanel.onShow();
   await new Promise((resolve) => setTimeout(resolve, 0));
   assertEqual("head: a moved HEAD recomputes the graph", internals.stateForTests().rows.length, 2);

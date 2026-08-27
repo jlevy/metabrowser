@@ -303,16 +303,29 @@ geometry. The pure window model rebases before 8,000,000 px without moving the l
 top row or its intra-row pixel offset.
 Pointer work is cancelled on unmount; logical selection survives independently; and
 roving focus transfers to the scroller until its row remounts.
-Phase 4 retains the v0.8 history ceiling until server replay and bidirectional page
-recovery are connected.
+At this phase boundary, the v0.8 history ceiling remains until server replay and
+bidirectional page recovery are connected in Phase 4.
 
-### Phase 4: Integrate continuous scrolling (`mb-vieq`)
+### Phase 4: Integrate continuous scrolling (`mb-vieq`, completed)
 
 - Join bidirectional page loading to the virtual window and recover stale sessions
   without presenting partial history as complete.
 - Preserve direct commit routes, hover/detail caching, keyboard boundary movement,
   scope, lane continuity, retry, empty, and real-end states.
 - Remove `GIT_HISTORY_MAX_ROWS`, the capped message, and skip-cursor code and tests.
+
+Session pages now carry their versioned graph-boundary checkpoint, so the eight-page
+browser LRU can discard every commit-sized representation and still replay in either
+direction from neighboring opaque page handles.
+The panel grows logical history until the session reports its real end, keeps missing
+ranges as explicit loading or actionable retry placeholders, restores keyboard focus
+after page replay, and rebuilds invalid or expired sessions without replacing the
+selected commit detail.
+The retired offset cursor and 500-row product cutoff no longer exist.
+The headed 10,000-commit integration gate reached the exact final revision, replayed
+evicted windows in both directions within the mounted-row bound, restored its deep
+route, and found a full-stdout subprocess cleanup deadlock that is now covered by a
+resource-eviction regression.
 
 ### Phase 5: Validate v0.9 (`mb-0ev5`)
 

@@ -12,8 +12,9 @@ window work.
 The Phase 3 implementation now applies the browser budgets directly: decoded pages use
 an eight-entry LRU, at most 256 graph rows are expanded and mounted, overscan is bounded
 to 64 rows per edge, and the physical scroll segment rebases before 8,000,000 px.
-The 500-row product ceiling remains until Phase 4 connects eviction replay and
-continuous bidirectional loading; it no longer determines retained DOM size.
+Phase 4 removes the 500-row product ceiling: each session page now carries the versioned
+graph-boundary checkpoint that makes an evicted page independently replayable, and the
+virtual window follows neighboring page handles in either direction.
 
 Machine timings below describe one development machine.
 They explain the chosen structures but are not CI thresholds and do not support a
@@ -41,10 +42,11 @@ The backend measurement records the released `--skip` page cost and a prototype 
 - retains only the current input chunk and page in the parser; and
 - replays a page by one indexed seek without touching its prefix.
 
-The `git-history-depth` headed-browser scenario forces the all-ref scope only inside the
-measurement document, raises the released row cutoff to the target depth, and records
-page payloads, append-to-paint intervals, DOM and serialized HTML, retained heap after
-collection, scrolling, deepest-row selection, and a fresh deep route.
+The original `git-history-depth` baseline forced the all-ref scope and raised the
+released row cutoff only inside the measurement document.
+The integrated scenario still forces that scope, but now follows the product’s logical
+row count to the real end while checking the mounted-row bound, independent page replay,
+deepest-row selection, and a fresh deep route.
 The product’s normal default ref scope is unchanged.
 
 The accepted mechanism is implemented in `metabrowser.git.history` for Phase 2.
@@ -100,7 +102,7 @@ depth through the cursor.
 Even where this 10,000-commit corpus does not produce dramatic timing growth, that work
 shape fails the design requirement: replaying a prior page still walks its prefix again.
 
-## Browser Result
+## Released v0.8 Browser Result
 
 | Shape | Rows | List DOM nodes | Serialized list | Retained JS heap | API payload | Maximum append | Maximum scroll |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -127,6 +129,26 @@ The 10,000-row list was only 220,008 px, but a truly unbounded fixed-height list
 eventually hit that browser limit.
 The virtual scroller must therefore rebase its local segment before 8,000,000 px rather
 than depending on one repository-length spacer.
+
+## Phase 4 Integration Result
+
+The integrated headed profile reached the exact final row of the 10,000-commit linear
+corpus through 40 sequential pages, then replayed uncached windows at the start,
+quartiles, midpoint, and end.
+Every replay removed its loading placeholder, the mounted window stayed at or below 165
+rows against the 256-row bound, and the final selection and fresh route converged on the
+same revision with zero blank frames and page exceptions.
+
+| Logical rows | Mounted rows at end | List DOM nodes | Serialized list | Retained JS heap | Maximum append | Maximum replay | Deep route |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10,000 | 100 | 1,003 | 74.7 KiB | 3.3 MiB | 148.7 ms | 1,300.1 ms | 888 ms |
+
+The profile also exposed a server cleanup defect before acceptance: evicting a live Git
+walk could wait on a killed child whose stdout pipe was still full.
+Session shutdown now drains that pipe while reaping the child, and a 10,000-commit
+resource-eviction regression covers the bound.
+Phase 5 repeats the matrix across every measured shape and size and adds a corpus deep
+enough to force physical scroll-segment rebasing.
 
 ## Frozen Structural Budgets
 

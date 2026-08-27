@@ -19,7 +19,6 @@
 (() => {
   const settings = (typeof window !== "undefined" && window.METABROWSER_SETTINGS) || {};
   const LOG_LIMIT = settings.GIT_LOG_LIMIT || 250;
-  const HISTORY_MAX_ROWS = settings.GIT_HISTORY_MAX_ROWS || 500;
   const WINDOW_MAX_ROWS = settings.GIT_HISTORY_WINDOW_MAX_ROWS || 256;
   const WINDOW_OVERSCAN_ROWS = settings.GIT_HISTORY_WINDOW_OVERSCAN_ROWS || 64;
   const PAGE_CACHE_PAGES = settings.GIT_HISTORY_PAGE_CACHE_PAGES || 8;
@@ -45,15 +44,19 @@
    * @property {MetabrowserGitHistoryVirtualWindow} virtualWindow Logical row coordinates.
    * @property {number} rowCount Number of sequential rows loaded in this session.
    * @property {number} nextPageNumber Page expected from the next append.
-   * @property {MetabrowserGitGraphLane[]} trailingSwimlanes Lane state after the last row.
-   * @property {number} colorIndex Palette cursor after the last row.
    * @property {string | null} cursor Next-page cursor, null at the end.
    * @property {boolean} loading A page request is in flight.
+   * @property {number | null} loadingPage Logical page currently requested.
    * @property {boolean} failed The last page request failed.
-   * @property {boolean} capped Older commits were omitted at the client row cap.
+   * @property {number | null} failedPage Logical page whose request failed.
+   * @property {string | null} retryCursor Cursor retained for an in-place retry.
+   * @property {boolean} retryInitial Whether the failed request starts a session.
+   * @property {boolean} endReached Git reported the real end of this session.
    * @property {string | null} headRevision
+   * @property {string | null} headRef
    * @property {string | null} selectedId
    * @property {number | null} focusedOrdinal Logical roving-focus target.
+   * @property {number | null} pendingSelectionOrdinal Keyboard target awaiting its page.
    * @property {boolean} focusSuspended The scroller temporarily owns DOM focus.
    * @property {MetabrowserGitHistoryWindowRange | null} mountedRange
    * @property {string} scopeFingerprint
@@ -72,15 +75,19 @@
       }),
       rowCount: 0,
       nextPageNumber: 0,
-      trailingSwimlanes: [],
-      colorIndex: -1,
       cursor: null,
       loading: false,
+      loadingPage: null,
       failed: false,
-      capped: false,
+      failedPage: null,
+      retryCursor: null,
+      retryInitial: false,
+      endReached: false,
       headRevision: null,
+      headRef: null,
       selectedId: null,
       focusedOrdinal: null,
+      pendingSelectionOrdinal: null,
       focusSuspended: false,
       mountedRange: null,
       scopeFingerprint: "",
@@ -127,6 +134,12 @@
   let pendingPreviewClaim = null;
   let started = false;
   let refreshing = false;
+  /** @type {{start: number, end: number} | null} */
+  let wantedRange = null;
+  /** @type {Promise<void> | null} */
+  let rangeLoadPromise = null;
+  let historyGeneration = 0;
+  let historyAbortController = new AbortController();
   /** @type {HTMLElement | null} */
   let scrollOwner = null;
 
@@ -368,124 +381,265 @@
   }
 
   /**
-   * Load the next page and append it to the panel.
+   * Validate and translate the server checkpoint. A session page without one
+   * cannot be replayed exactly, so it invalidates the session instead of
+   * drawing a plausible graph from empty lanes.
    *
-   * Re-entrancy is guarded on `state.loading` rather than by cancelling:
-   * pages are append-only and ordered, so a second concurrent request
-   * would append out of order and corrupt lane continuity.
-   *
-   * @param {boolean} initial
-   * @returns {Promise<void>}
+   * @param {Partial<MetabrowserGitLogPage>} wirePage
+   * @param {number} pageNumber
+   * @returns {MetabrowserGitGraphCheckpoint}
    */
-  async function loadNextPage(initial) {
-    if (state.loading) {
-      return;
+  function checkpointFromWire(wirePage, pageNumber) {
+    const checkpoint = wirePage.graph_checkpoint;
+    if (!checkpoint) {
+      throw new Error(`Git history page ${pageNumber} omitted its graph checkpoint`);
     }
-    if (!initial && !state.cursor) {
-      return;
+    const fingerprint = wirePage.scope_fingerprint ?? "";
+    if (
+      !fingerprint ||
+      checkpoint.version !== 1 ||
+      checkpoint.scope_fingerprint !== fingerprint ||
+      checkpoint.head_revision !== state.headRevision ||
+      !Number.isSafeInteger(checkpoint.color_index) ||
+      !Array.isArray(checkpoint.prior_swimlanes) ||
+      checkpoint.prior_swimlanes.some(
+        (lane) =>
+          !lane || typeof lane.id !== "string" || typeof lane.color !== "string" || !lane.color,
+      )
+    ) {
+      throw new Error(`Git history page ${pageNumber} has an invalid graph checkpoint`);
     }
-    state.loading = true;
-    state.failed = false;
-    renderPanel();
-
-    try {
-      /** @type {Record<string, string>} */
-      const params = { limit: String(LOG_LIMIT) };
-      if (!initial && state.cursor) {
-        params.cursor = state.cursor;
-      }
-      const response = await apiFetch("/api/git/log", params);
-      if (!response.ok) {
-        if (!initial && response.status === 400) {
-          // A rejected opaque cursor means the append-only paging state is
-          // no longer usable. Drop the partial graph so the normal refresh
-          // state can restart at page one instead of retrying the same bad
-          // cursor every time the tab is shown.
-          const headRevision = state.headRevision;
-          disposeHistoryState(state);
-          state = emptyState();
-          state.headRevision = headRevision;
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const page = await response.json();
-      if (!page.is_repo) {
-        teardown();
-        return;
-      }
-      appendPage(page.commits || [], page.cursor ?? null, page);
-    } catch {
-      state.failed = true;
-    } finally {
-      state.loading = false;
-      renderPanel();
-    }
+    return {
+      version: 1,
+      priorSwimlanes: checkpoint.prior_swimlanes.map((lane) => ({ ...lane })),
+      colorIndex: checkpoint.color_index,
+      headRevision: checkpoint.head_revision,
+      scopeFingerprint: checkpoint.scope_fingerprint,
+    };
   }
 
   /**
+   * Store a sequential or replayed page. Only a newly discovered tail page
+   * extends logical height; replay replaces one cache entry in place.
+   *
    * @param {MetabrowserGitCommit[]} commits
    * @param {string | null} cursor
-   * @param {Partial<MetabrowserGitLogPage>} [wirePage]
+   * @param {MetabrowserGitLogPage} wirePage
    * @returns {void}
    */
-  function appendPage(commits, cursor, wirePage = {}) {
-    const remaining = Math.max(0, HISTORY_MAX_ROWS - state.rowCount);
-    const accepted = commits.slice(0, remaining);
-    const reachesCap = state.rowCount + accepted.length >= HISTORY_MAX_ROWS;
-    const omitted = commits.length > accepted.length || (reachesCap && cursor !== null);
-    if (accepted.length === 0) {
-      state.capped = state.capped || omitted;
-      state.cursor = null;
-      return;
+  function appendPage(commits, cursor, wirePage) {
+    if (wirePage.page === undefined) {
+      throw new Error("Git history session page omitted its page number");
     }
-
-    const graph = graphModule();
-    const pageNumber = wirePage.page ?? state.nextPageNumber;
-    if (pageNumber !== state.nextPageNumber) {
-      throw new Error(`Expected Git history page ${state.nextPageNumber}, received ${pageNumber}`);
+    const pageNumber = wirePage.page;
+    if (pageNumber > state.nextPageNumber) {
+      throw new Error(
+        `Expected Git history page at most ${state.nextPageNumber}, received ${pageNumber}`,
+      );
     }
-    if (
-      state.scopeFingerprint &&
-      wirePage.scope_fingerprint &&
-      wirePage.scope_fingerprint !== state.scopeFingerprint
-    ) {
-      throw new Error("Git history scope changed while appending a page");
+    const fingerprint = wirePage.scope_fingerprint ?? state.scopeFingerprint;
+    if (state.scopeFingerprint && fingerprint !== state.scopeFingerprint) {
+      throw new Error("Git history scope changed while storing a page");
     }
-    const startOrdinal = state.rowCount;
-    /** @type {MetabrowserGitGraphCheckpoint} */
-    const checkpoint = {
-      version: 1,
-      priorSwimlanes: state.trailingSwimlanes.map((lane) => ({ ...lane })),
-      colorIndex: state.colorIndex,
-      headRevision: state.headRevision,
-      scopeFingerprint: wirePage.scope_fingerprint ?? state.scopeFingerprint,
-    };
-    const result = graph.computeSwimlanes(accepted, {
-      priorSwimlanes: checkpoint.priorSwimlanes,
-      colorIndex: checkpoint.colorIndex,
-      headRevision: checkpoint.headRevision,
-      refColors,
-      rowStart: accepted.length,
-      rowEnd: accepted.length,
-    });
-
+    const checkpoint = checkpointFromWire(wirePage, pageNumber);
+    const startOrdinal = pageNumber * LOG_LIMIT;
     state.pageCache.put({
       page: pageNumber,
       startOrdinal,
-      commits: accepted,
+      commits,
       checkpoint,
       pageCursor: wirePage.page_cursor ?? `loaded-page-${pageNumber}`,
       nextCursor: cursor,
       previousCursor: wirePage.previous_cursor ?? null,
     });
-    state.rowCount += accepted.length;
-    state.virtualWindow.setRowCount(state.rowCount);
-    state.nextPageNumber = pageNumber + 1;
-    state.trailingSwimlanes = result.trailingSwimlanes;
-    state.colorIndex = result.colorIndex;
-    state.scopeFingerprint = wirePage.scope_fingerprint ?? state.scopeFingerprint;
-    state.capped = state.capped || omitted;
-    state.cursor = state.capped ? null : cursor;
+    state.scopeFingerprint = fingerprint;
+
+    if (pageNumber === state.nextPageNumber) {
+      state.rowCount = startOrdinal + commits.length;
+      state.virtualWindow.setRowCount(state.rowCount);
+      state.nextPageNumber = pageNumber + 1;
+      state.cursor = cursor;
+      state.endReached = cursor === null;
+    }
+  }
+
+  /**
+   * @param {string | null} cursor
+   * @param {number} expectedPage
+   * @param {{initial?: boolean}} [options]
+   * @returns {Promise<boolean>}
+   */
+  async function loadPage(cursor, expectedPage, options = {}) {
+    if (state.loading || (!options.initial && !cursor)) {
+      return false;
+    }
+    state.loading = true;
+    state.loadingPage = expectedPage;
+    state.failed = false;
+    state.failedPage = null;
+    renderPanel();
+    const requestGeneration = historyGeneration;
+    const requestState = state;
+    let recoverSession = false;
+    let loaded = false;
+    try {
+      /** @type {Record<string, string>} */
+      const params = { limit: String(LOG_LIMIT) };
+      if (!options.initial && cursor) {
+        params.cursor = cursor;
+      }
+      const response = await apiFetch("/api/git/log", params, {
+        signal: historyAbortController.signal,
+      });
+      if (requestGeneration !== historyGeneration || state !== requestState) {
+        return false;
+      }
+      if (!response.ok) {
+        recoverSession =
+          !options.initial &&
+          (response.status === 400 || response.status === 409 || response.status === 410);
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const page = /** @type {MetabrowserGitLogPage} */ (await response.json());
+      if (!page.is_repo) {
+        teardown();
+        return false;
+      }
+      if (page.page !== undefined && page.page !== expectedPage) {
+        recoverSession = !options.initial;
+        throw new Error(`Expected Git history page ${expectedPage}, received ${page.page}`);
+      }
+      try {
+        const commits = page.commits || [];
+        if (page.page === undefined && commits.length === 0 && page.cursor == null) {
+          state.cursor = null;
+          state.endReached = true;
+          state.virtualWindow.setRowCount(0);
+        } else {
+          appendPage(commits, page.cursor ?? null, page);
+        }
+      } catch (error) {
+        // A malformed continuation invalidates an established walk, but an
+        // invalid first page has no older session to recover. Keep that first
+        // failure visible so reopening or Refresh can retry from scratch.
+        recoverSession = !options.initial;
+        throw error;
+      }
+      state.retryCursor = null;
+      state.retryInitial = false;
+      loaded = true;
+    } catch {
+      if (requestGeneration === historyGeneration && state === requestState && !recoverSession) {
+        state.failed = true;
+        state.failedPage = expectedPage;
+        state.retryCursor = cursor;
+        state.retryInitial = Boolean(options.initial);
+      }
+    } finally {
+      if (requestGeneration === historyGeneration && state === requestState) {
+        state.loading = false;
+        state.loadingPage = null;
+        renderPanel();
+      }
+    }
+    if (recoverSession && requestGeneration === historyGeneration && state === requestState) {
+      await recoverHistorySession();
+    }
+    return loaded;
+  }
+
+  /** @param {boolean} initial @returns {Promise<boolean>} */
+  async function loadNextPage(initial) {
+    if (!initial && (!state.cursor || state.endReached)) {
+      return false;
+    }
+    return loadPage(initial ? null : state.cursor, state.nextPageNumber, { initial });
+  }
+
+  /**
+   * Find the nearest cached page that can replay one step toward target.
+   * @param {number} targetPage
+   * @returns {{cursor: string, page: number} | null}
+   */
+  function replayStep(targetPage) {
+    let best = null;
+    for (const pageNumber of state.pageCache.keys()) {
+      const page = state.pageCache.peek(pageNumber);
+      if (!page) {
+        continue;
+      }
+      let candidate = null;
+      if (pageNumber < targetPage && page.nextCursor) {
+        candidate = { cursor: page.nextCursor, page: pageNumber + 1 };
+      } else if (pageNumber > targetPage && page.previousCursor) {
+        candidate = { cursor: page.previousCursor, page: pageNumber - 1 };
+      }
+      if (
+        candidate &&
+        (!best || Math.abs(candidate.page - targetPage) < Math.abs(best.page - targetPage))
+      ) {
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  /** @param {number} targetPage @returns {Promise<boolean>} */
+  async function ensurePageLoaded(targetPage) {
+    while (!state.pageCache.peek(targetPage)) {
+      const step = replayStep(targetPage);
+      if (!step || !(await loadPage(step.cursor, step.page))) {
+        return false;
+      }
+    }
+    state.pageCache.get(targetPage);
+    return true;
+  }
+
+  /** @param {number} start @param {number} end @returns {Promise<void>} */
+  async function ensureRangeLoaded(start, end) {
+    if (end <= start) {
+      return;
+    }
+    const firstPage = Math.floor(start / LOG_LIMIT);
+    const lastPage = Math.floor((end - 1) / LOG_LIMIT);
+    for (let page = firstPage; page <= lastPage; page += 1) {
+      if (!(await ensurePageLoaded(page))) {
+        return;
+      }
+    }
+  }
+
+  /** @param {{start: number, end: number}} range */
+  function scheduleRangeLoad(range) {
+    wantedRange = { start: range.start, end: range.end };
+    if (rangeLoadPromise) {
+      return;
+    }
+    const generation = historyGeneration;
+    const loading = (async () => {
+      while (wantedRange) {
+        if (generation !== historyGeneration) {
+          return;
+        }
+        const target = wantedRange;
+        wantedRange = null;
+        await ensureRangeLoaded(target.start, target.end);
+        if (generation !== historyGeneration) {
+          return;
+        }
+        renderVirtualRows(true);
+        if (state.failed) {
+          wantedRange = null;
+        }
+      }
+    })();
+    rangeLoadPromise = loading;
+    void loading.finally(() => {
+      if (rangeLoadPromise === loading) {
+        rangeLoadPromise = null;
+      }
+    });
   }
 
   /**
@@ -714,15 +868,47 @@
   }
 
   /**
+   * Preserve every logical row's fixed-height coordinate while one or more
+   * evicted pages are being replayed. A placeholder is an honest loading or
+   * retry state; it never lets a partial window read as the complete history.
+   *
    * @param {HTMLElement} host
    * @param {Array<{ordinal: number, row: MetabrowserGitGraphRow}>} rows
+   * @param {number} start
+   * @param {number} end
    */
-  function appendRows(host, rows) {
-    const fragment = document.createDocumentFragment();
-    for (const item of rows) {
-      fragment.appendChild(renderRow(item.row, item.ordinal));
+  function appendWindowContents(host, rows, start, end) {
+    const byOrdinal = new Map(rows.map((item) => [item.ordinal, item]));
+    let ordinal = start;
+    while (ordinal < end) {
+      const item = byOrdinal.get(ordinal);
+      if (item) {
+        host.appendChild(renderRow(item.row, item.ordinal));
+        ordinal += 1;
+        continue;
+      }
+      const missingStart = ordinal;
+      while (ordinal < end && !byOrdinal.has(ordinal)) {
+        ordinal += 1;
+      }
+      const placeholder = document.createElement("div");
+      placeholder.className = "git-history-page-placeholder";
+      placeholder.style.height = `${(ordinal - missingStart) * graphModule().SWIMLANE_HEIGHT}px`;
+      placeholder.setAttribute("role", "status");
+      if (state.failed && state.failedPage !== null) {
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "btn git-history-retry";
+        retry.textContent = "Retry loading history";
+        retry.addEventListener("click", () => {
+          void retryFailedPage();
+        });
+        placeholder.appendChild(retry);
+      } else {
+        placeholder.textContent = "Loading history…";
+      }
+      host.appendChild(placeholder);
     }
-    host.appendChild(fragment);
   }
 
   /**
@@ -824,12 +1010,15 @@
     top.setAttribute("aria-hidden", "true");
     const host = document.createElement("div");
     host.className = "git-history-window";
-    appendRows(host, mounted);
+    appendWindowContents(host, mounted, range.start, range.end);
     const bottom = document.createElement("div");
     bottom.className = "git-history-spacer git-history-spacer-bottom";
     bottom.style.height = `${range.bottomSpacerPx}px`;
     bottom.setAttribute("aria-hidden", "true");
     list.replaceChildren(top, host, bottom);
+    list.dataset.historyEnd = state.endReached ? "true" : "false";
+    list.dataset.historyRows = String(state.rowCount);
+    list.setAttribute("aria-busy", state.loading ? "true" : "false");
     state.mountedRange = range;
     synchronizeCommitRowFocus(list);
     renderTrailingState();
@@ -845,6 +1034,19 @@
       scroller.setAttribute("tabindex", "-1");
       scroller.focus({ preventScroll: true });
       state.focusSuspended = true;
+    }
+    if (mounted.length < range.end - range.start && !state.loading && !state.failed) {
+      scheduleRangeLoad(range);
+    }
+    if (
+      focusedRow instanceof HTMLElement &&
+      state.pendingSelectionOrdinal === state.focusedOrdinal
+    ) {
+      state.pendingSelectionOrdinal = null;
+      const revision = focusedRow.dataset.revision;
+      if (revision) {
+        void selectCommit(revision, { rowElement: focusedRow });
+      }
     }
   }
 
@@ -862,11 +1064,37 @@
     if (!Number.isSafeInteger(currentOrdinal)) {
       return false;
     }
-    const nextOrdinal = Math.max(0, Math.min(state.rowCount - 1, currentOrdinal + delta));
+    const requestedOrdinal = currentOrdinal + delta;
+    if (requestedOrdinal >= state.rowCount && delta > 0 && state.cursor && !state.loading) {
+      const nextOrdinal = state.rowCount;
+      state.focusedOrdinal = nextOrdinal;
+      state.pendingSelectionOrdinal = nextOrdinal;
+      void loadNextPage(false).then((loaded) => {
+        if (!loaded || nextOrdinal >= state.rowCount) {
+          state.focusedOrdinal = currentOrdinal;
+          state.pendingSelectionOrdinal = null;
+          return;
+        }
+        const scroller = historyScroller();
+        if (!scroller) {
+          return;
+        }
+        scroller.scrollTop = state.virtualWindow.scrollTopForOrdinal(
+          nextOrdinal,
+          viewportHeight(scroller),
+          "nearest",
+        );
+        state.mountedRange = null;
+        renderVirtualRows(true);
+      });
+      return true;
+    }
+    const nextOrdinal = Math.max(0, Math.min(state.rowCount - 1, requestedOrdinal));
     if (nextOrdinal === currentOrdinal) {
       return true;
     }
     state.focusedOrdinal = nextOrdinal;
+    state.pendingSelectionOrdinal = nextOrdinal;
     let next = list.querySelector(`.git-graph-row[data-ordinal="${nextOrdinal}"]`);
     if (!(next instanceof HTMLElement)) {
       const scroller = historyScroller();
@@ -883,10 +1111,11 @@
       next = list.querySelector(`.git-graph-row[data-ordinal="${nextOrdinal}"]`);
     }
     if (!(next instanceof HTMLElement)) {
-      return false;
+      return true;
     }
     next.focus({ preventScroll: true });
     next.scrollIntoView({ block: "nearest" });
+    state.pendingSelectionOrdinal = null;
     const revision = next.dataset.revision;
     if (revision) {
       void selectCommit(revision, { rowElement: next });
@@ -962,12 +1191,17 @@
     renderVirtualRows(true);
   }
 
+  /** Retry the exact failed append or replay request. */
+  async function retryFailedPage() {
+    if (!state.failed || state.failedPage === null) {
+      return;
+    }
+    await loadPage(state.retryCursor, state.failedPage, { initial: state.retryInitial });
+  }
+
   /**
-   * Put the one trailing row — loading, failed, or capped — at the end
-   * of the list, replacing whatever was there.
-   *
-   * Separate from the row rendering because it changes on its own
-   * schedule: a page append leaves every row alone and only moves this.
+   * Put the trailing append state at the end of the list. Replay state is
+   * rendered at its missing logical rows, where its retry action belongs.
    */
   function renderTrailingState() {
     const list = panelElement()?.querySelector(".git-graph-list");
@@ -978,18 +1212,21 @@
       previous.remove();
     }
     let trailing = null;
-    if (state.loading) {
+    if (state.loading && state.loadingPage === state.nextPageNumber) {
       trailing = document.createElement("div");
       trailing.className = "git-graph-more";
       trailing.textContent = "Loading…";
-    } else if (state.failed) {
+    } else if (state.failed && state.failedPage === state.nextPageNumber) {
       trailing = document.createElement("div");
       trailing.className = "git-graph-more git-graph-more-failed";
-      trailing.textContent = "Could not load more history.";
-    } else if (state.capped) {
-      trailing = document.createElement("div");
-      trailing.className = "git-graph-more";
-      trailing.textContent = `Showing the newest ${HISTORY_MAX_ROWS} commits.`;
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn git-history-retry";
+      retry.textContent = "Retry loading history";
+      retry.addEventListener("click", () => {
+        void retryFailedPage();
+      });
+      trailing.appendChild(retry);
     }
     if (trailing) {
       list.appendChild(trailing);
@@ -1491,7 +1728,7 @@
       return;
     }
     renderVirtualRows();
-    if (state.loading || !state.cursor) {
+    if (state.loading || state.failed || !state.cursor) {
       return;
     }
     const remaining = content.scrollHeight - content.scrollTop - content.clientHeight;
@@ -1508,23 +1745,67 @@
     current.virtualWindow.dispose();
   }
 
-  /** @returns {Promise<void>} */
-  async function refreshHistory() {
+  function resetHistoryRequests() {
+    historyAbortController.abort();
+    historyAbortController = new AbortController();
+    historyGeneration += 1;
+    wantedRange = null;
+    rangeLoadPromise = null;
+  }
+
+  /**
+   * Rebuild an invalid or expired server session without replacing the
+   * already-rendered selected commit detail. Partial rows are discarded
+   * before the new walk starts, and the prior logical position is rebuilt.
+   */
+  async function recoverHistorySession() {
+    const selectedId = state.selectedId;
+    const restoreOrdinal = Math.max(
+      0,
+      state.focusedOrdinal ?? state.mountedRange?.visibleStart ?? 0,
+    );
+    await refreshHistory({ preserveDetail: true, selectedId });
+    while (state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
+      await loadNextPage(false);
+    }
+    const scroller = historyScroller();
+    if (scroller && state.rowCount > 0) {
+      const ordinal = Math.min(restoreOrdinal, state.rowCount - 1);
+      scroller.scrollTop = state.virtualWindow.scrollTopForOrdinal(
+        ordinal,
+        viewportHeight(scroller),
+        "start",
+      );
+      state.focusedOrdinal = ordinal;
+      state.mountedRange = null;
+      renderVirtualRows(true);
+    }
+  }
+
+  /**
+   * @param {{preserveDetail?: boolean, selectedId?: string | null}} [options]
+   * @returns {Promise<void>}
+   */
+  async function refreshHistory(options = {}) {
     if (state.loading || refreshing) {
       return;
     }
 
     refreshing = true;
+    resetHistoryRequests();
     clearPendingState();
     abortPreparation(preparationSlot);
     preparationSlot = null;
     disposeHistoryState(state);
     state = emptyState();
+    state.selectedId = options.selectedId ?? null;
     // The detail cache is keyed by object id, but a commit's *payload*
     // is not immutable: its refs move as branches and tags do. Keeping
     // the cache across a refresh would let the hover card and detail
     // view serve pre-refresh refs for a row the graph just redrew.
-    detailCache.clear();
+    if (!options.preserveDetail) {
+      detailCache.clear();
+    }
     state.loading = true;
     renderPanel();
     try {
@@ -1536,6 +1817,7 @@
         return;
       }
       state.headRevision = info.head?.revision ?? null;
+      state.headRef = info.head?.ref ?? null;
 
       // Ref colors are an input to lane assignment, so they must settle
       // before the first page is laid out.
@@ -1550,6 +1832,10 @@
   /** @returns {Promise<void>} */
   async function ensureHistory() {
     if (state.loading) {
+      return;
+    }
+    if (state.rowCount === 0 && state.endReached) {
+      renderPanel();
       return;
     }
     if (state.rowCount === 0) {
@@ -1568,19 +1854,27 @@
       teardown();
       return;
     }
-    if ((info.head?.revision ?? null) !== state.headRevision) {
+    if (
+      (info.head?.revision ?? null) !== state.headRevision ||
+      (info.head?.ref ?? null) !== state.headRef
+    ) {
       await refreshHistory();
       return;
     }
 
-    if (state.failed && state.cursor) {
-      await loadNextPage(false);
+    if (state.failed) {
+      if (state.failedPage !== null) {
+        await retryFailedPage();
+      } else if (state.cursor) {
+        await loadNextPage(false);
+      }
       return;
     }
     renderVirtualRows(true);
   }
 
   function teardown() {
+    resetHistoryRequests();
     clearPendingState();
     cancelHover();
     abortPreparation(preparationSlot);
@@ -1620,6 +1914,7 @@
       return;
     }
     state.headRevision = info.head?.revision ?? null;
+    state.headRef = info.head?.ref ?? null;
 
     bridge.registerNavPanel({
       id: "git",
@@ -1659,6 +1954,7 @@
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,
+      ensurePageLoaded,
       emptyState,
       ageClass,
       relativeAge,
@@ -1670,6 +1966,8 @@
       renderVirtualRows,
       renderRefBadges,
       rowsForRange,
+      loadNextPage,
+      retryFailedPage,
       selectCommit,
       wireCommitFileNavigation,
       setStateForTests: (/** @type {PanelState} */ next) => {

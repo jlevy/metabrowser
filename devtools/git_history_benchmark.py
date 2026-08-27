@@ -10,7 +10,6 @@ rejects the mechanism.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import os
 import struct
@@ -24,7 +23,7 @@ from typing import Any, Literal, TypedDict, cast
 
 import psutil
 
-from metabrowser.git.log import LOG_FORMAT, parse_log_output, read_log_page
+from metabrowser.git.log import LOG_FORMAT, parse_log_output
 from metabrowser.git.process import GIT_COMMON_ARGS, git_environment, git_executable
 from metabrowser.git.wire import GitCommit
 
@@ -360,6 +359,29 @@ def _ordered_revisions(root: Path) -> list[str]:
     return raw.decode("ascii").splitlines()
 
 
+def _released_offset_page(root: Path, *, skip: int, limit: int) -> dict[str, Any]:
+    """Reproduce the v0.8 offset request for the historical comparison."""
+    raw = _run_git(
+        root,
+        "log",
+        "-z",
+        f"--format={LOG_FORMAT}",
+        "--decorate=full",
+        "--date-order",
+        "--all",
+        f"--skip={skip}",
+        f"--max-count={limit + 1}",
+    )
+    commits = parse_log_output(raw)
+    has_more = len(commits) > limit
+    return {
+        "is_repo": True,
+        "commits": commits[:limit],
+        "cursor": "released-offset" if has_more else None,
+        "has_more": has_more,
+    }
+
+
 def _round_ms(value: float) -> float:
     return round(value, 3)
 
@@ -384,7 +406,7 @@ def measure_history_corpus(
             continue
         rss_before = _sample_rss(process)
         started = time.perf_counter()
-        page = asyncio.run(read_log_page(root, skip=skip, limit=page_size, refs=None))
+        page = _released_offset_page(root, skip=skip, limit=page_size)
         elapsed_ms = (time.perf_counter() - started) * 1_000
         payload_bytes = len(
             json.dumps(dict(page), ensure_ascii=False, separators=(",", ":")).encode("utf-8")
