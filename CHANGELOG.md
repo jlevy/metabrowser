@@ -68,6 +68,18 @@ Development:
   and fails on deferred-diff request fanout, obsolete successful requests, or multiple
   mounted comparisons.
 
+Validation:
+
+- Five interleaved backend pairs against v0.7.1 return identical ordered rows and
+  tallies on an unchanged 148,581-file corpus; first-row, index-completion, and peak-RSS
+  ranges overlap.
+
+- All three visible-browser candidate profiles pass every hard correctness and
+  responsiveness gate with no Long Task, blocking time, failed fetch, rendered error,
+  page exception, or collapsed row mounted beneath a closed fold.
+  One cold-start tail misses roadmap targets but does not repeat or separate the
+  candidate interval from v0.7.1.
+
 ## 0.7.1
 
 Fixes:
