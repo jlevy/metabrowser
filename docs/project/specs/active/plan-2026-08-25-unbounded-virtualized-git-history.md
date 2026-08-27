@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft; targeted for v0.9.0
+**Status:** In progress; Phase 1 accepted on 2026-08-26 and targeted for v0.9.0
 
 ## Overview
 
@@ -254,7 +254,7 @@ Compatibility audit:
 
 ## Implementation Plan
 
-### Phase 1: Measure and freeze structural budgets (`mb-t875`)
+### Phase 1: Measure and freeze structural budgets (`mb-t875`, completed)
 
 - Build deterministic linear, branch-heavy, and merge-heavy repositories at 250, 1,000,
   10,000, and at least one depth that exercises deep continuation.
@@ -265,6 +265,13 @@ Compatibility audit:
   Reject it or freeze its resource constants against the acceptance criteria above.
 - Commit the measurement report and place each chosen constant beside the evidence that
   supports it.
+
+The accepted measurements, reproduction commands, and frozen structural budgets are in
+[Continuous Git History Measurements](../../../../explorations/git-history/README.md).
+The deterministic backend matrix covered 250, 1,000, and 10,000 commits in all three
+history shapes. The headed-browser matrix established the need for the virtual window,
+and the one-walk prototype proved exact ordering and indexed page replay without prefix
+work. Phase 2 and Phase 3 may now proceed against those recorded budgets.
 
 ### Phase 2: Scalable continuation (`mb-abu2`)
 

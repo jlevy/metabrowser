@@ -102,6 +102,66 @@ process.stdout.write(JSON.stringify(parsed));
     assert json.loads(result.stdout)["scenario"] == "file-views"
 
 
+def test_capture_browser_accepts_the_git_history_depth_scenario() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+const parsed = capture.parseArgs([
+  "--url", "http://127.0.0.1:8411/view/",
+  "--probe", "probe.js",
+  "--output", "profile.json",
+  "--scenario", "git-history-depth",
+  "--history-rows", "10000"
+]);
+process.stdout.write(JSON.stringify(parsed));
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    parsed = json.loads(result.stdout)
+    assert parsed["scenario"] == "git-history-depth"
+    assert parsed["historyRows"] == 10_000
+
+
+def test_capture_browser_requires_rows_for_the_git_history_depth_scenario() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+try {{
+  capture.parseArgs([
+    "--url", "http://127.0.0.1:8411/view/",
+    "--probe", "probe.js",
+    "--output", "profile.json",
+    "--scenario", "git-history-depth"
+  ]);
+}} catch (error) {{
+  process.stdout.write(String(error.message));
+}}
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--history-rows is required" in result.stdout
+
+
 def test_capture_browser_rejects_an_unknown_scenario() -> None:
     node = shutil.which("node")
     if node is None:
@@ -156,8 +216,9 @@ def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> Non
     assert "performance.timeOrigin !==" in post_preflight
 
     runner = RUNNER.read_text(encoding="utf-8")
-    assert 'choices=["git-revisions", "file-views"]' in runner
+    assert 'choices=["git-revisions", "file-views", "git-history-depth"]' in runner
     assert 'command.extend(["--scenario", scenario])' in runner
+    assert 'command.extend(["--history-rows", str(args.history_rows)])' in runner
 
 
 def test_git_files_roundtrip_rejects_frozen_folder_disclosure() -> None:

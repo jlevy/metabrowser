@@ -708,7 +708,7 @@ def test_run_git_ignores_a_hook_exported_git_dir(repo: Path, tmp_path: Path) -> 
     """A leaked ``GIT_DIR`` must not redirect commands away from ``cwd``.
 
     Githooks run with ``GIT_DIR`` exported, and it outranks the working
-    directory. Without the scrub in ``_git_env`` this exact scenario
+    directory. Without the scrub in ``git_environment`` this exact scenario
     re-initialized the served repository as bare from inside the pre-push
     gate: the fixture's ``git init`` landed on the hook's repository
     instead of the fixture directory.

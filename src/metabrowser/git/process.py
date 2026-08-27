@@ -53,7 +53,7 @@ _STDERR_MAX_BYTES = 64 * 1024
 # ``core.quotepath=false`` makes git emit UTF-8 paths directly instead of
 # octal-escaping every non-ASCII byte, which would otherwise have to be
 # unescaped in each parser.
-_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
+GIT_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
 
 
 class GitError(Exception):
@@ -129,7 +129,7 @@ _REPO_PINNING_GIT_VARS: tuple[str, ...] = (
 )
 
 
-def _git_env() -> dict[str, str]:
+def git_environment() -> dict[str, str]:
     """Environment for a git child process.
 
     Strips the repository-pinning variables above, then:
@@ -197,14 +197,14 @@ async def run_git(
     if exe is None:
         raise GitUnavailableError("git executable not found on PATH")
 
-    argv = (exe, *_COMMON_ARGS, *args)
+    argv = (exe, *GIT_COMMON_ARGS, *args)
     try:
         proc = await asyncio.create_subprocess_exec(
             *argv,
             cwd=cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=_git_env(),
+            env=git_environment(),
         )
     except OSError as exc:
         # Spawn itself failed — a missing cwd, a permissions problem, or

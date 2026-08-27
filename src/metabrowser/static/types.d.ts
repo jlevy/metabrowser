@@ -1678,6 +1678,10 @@ declare global {
       }>;
       GIT_DETAIL_CACHE_SIZE?: number;
       GIT_HISTORY_MAX_ROWS?: number;
+      GIT_HISTORY_PAGE_CACHE_PAGES?: number;
+      GIT_HISTORY_SEGMENT_REBASE_PX?: number;
+      GIT_HISTORY_WINDOW_MAX_ROWS?: number;
+      GIT_HISTORY_WINDOW_OVERSCAN_ROWS?: number;
       GIT_HOVER_DEBOUNCE_MS?: number;
       GIT_LOG_LIMIT?: number;
       INDEX_PROGRESS_POLL_MS?: number;

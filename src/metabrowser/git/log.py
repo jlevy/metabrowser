@@ -45,9 +45,9 @@ from metabrowser.settings import GIT_LOG_MAX_SKIP
 # block, which git never emits itself in these fields.
 _FIELD_SEP = "\x1f"
 
-# Field order in _LOG_FORMAT. The subject is last on purpose; see the
+# Field order in LOG_FORMAT. The subject is last on purpose; see the
 # module docstring.
-_LOG_FORMAT = _FIELD_SEP.join(
+LOG_FORMAT = _FIELD_SEP.join(
     ["%H", "%h", "%an", "%ae", "%at", "%ct", "%P", "%D", "%s"],
 )
 _LOG_FIELD_COUNT = 9
@@ -108,7 +108,7 @@ def _log_args(*, skip: int, limit: int, refs: Sequence[str] | None = None) -> li
     return [
         "log",
         "-z",
-        f"--format={_LOG_FORMAT}",
+        f"--format={LOG_FORMAT}",
         "--decorate=full",
         "--date-order",
         *scope,
