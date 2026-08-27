@@ -49,7 +49,13 @@ from metabrowser.git.process import (
     run_git,
 )
 from metabrowser.git.repo import repo_info
-from metabrowser.git.routes import api_git_commit, api_git_log, api_git_refs, api_git_repo
+from metabrowser.git.routes import (
+    api_git_commit,
+    api_git_log,
+    api_git_refs,
+    api_git_repo,
+    api_git_summary,
+)
 from metabrowser.git.wire import (
     GitFileChange,
     is_full_revision,
@@ -788,8 +794,37 @@ def test_route_repo_returns_the_gate_envelope(repo: Path) -> None:
     assert payload["is_repo"] is True
 
 
+def test_summary_reports_commit_count_and_first_commit_date(repo: Path) -> None:
+    expected_count = int(
+        asyncio.run(run_git(["rev-list", "--count", "HEAD"], cwd=repo)).decode().strip()
+    )
+    expected_first = float(
+        asyncio.run(run_git(["log", "--max-parents=0", "--format=%ct", "HEAD"], cwd=repo))
+        .decode()
+        .strip()
+    )
+
+    response = asyncio.run(api_git_summary(_FakeRequest()))  # pyright: ignore[reportArgumentType]
+
+    assert response.status_code == 200
+    payload = _json(response)
+    assert payload["is_repo"] is True
+    assert payload["commit_count"] == expected_count
+    assert payload["first_commit_at"] == expected_first
+
+
+def test_summary_of_an_unborn_head_is_zero_commits(tmp_path: Path) -> None:
+    root = tmp_path / "empty"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    with _served(root):
+        response = asyncio.run(api_git_summary(_FakeRequest()))  # pyright: ignore[reportArgumentType]
+    payload = _json(response)
+    assert payload == {"is_repo": True, "commit_count": 0, "first_commit_at": None}
+
+
 def test_routes_return_the_negative_envelope_outside_a_repository(plain_dir: Path) -> None:
-    for handler in (api_git_repo, api_git_refs, api_git_log):
+    for handler in (api_git_repo, api_git_refs, api_git_summary, api_git_log):
         response = asyncio.run(handler(_FakeRequest()))  # pyright: ignore[reportArgumentType]
         payload = _json(response)
         # 200, not 4xx: "not a repository" is an ordinary state of the

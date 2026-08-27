@@ -1439,6 +1439,13 @@ declare global {
     reason?: string;
   };
 
+  type MetabrowserGitHistorySummary = {
+    is_repo: boolean;
+    commit_count?: number;
+    /** Committer date of the oldest root commit in scope; null when unborn. */
+    first_commit_at?: number | null;
+  };
+
   type MetabrowserGitLogPage = {
     is_repo: boolean;
     commits?: Array<MetabrowserGitCommit>;

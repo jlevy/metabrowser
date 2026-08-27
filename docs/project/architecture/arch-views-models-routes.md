@@ -116,7 +116,7 @@ reservation and its invariants, is in
 | `/api/file` | The file or folder envelope: kind, views, content window |
 | `/api/tree`, `/api/rollup`, `/api/recent` | Navigation: subtrees, rollups, the recency window. `/api/tree` also resolves the nav filter (`types`, `recency`, `min_size`, `include_ignored`), returning only subtrees that contain a match and folder aggregates rolled up from those matches |
 | `/api/activity`, `/api/stream` | Live inventory and activity events |
-| `/api/git/repo`, `/api/git/refs`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
+| `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
 | `/raw` | Bounded raw bytes for embedded media |

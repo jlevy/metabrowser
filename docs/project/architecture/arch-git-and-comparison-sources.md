@@ -202,13 +202,21 @@ Four read-only routes, registered as `GIT_ROUTES` in `metabrowser/git/routes.py`
 | --- | --- |
 | `/api/git/repo` | Repository presence and `HEAD`; the gate for everything else |
 | `/api/git/refs` | Branches and tags |
+| `/api/git/summary` | History depth for the panel header: reachable commit count and oldest root-commit date |
 | `/api/git/log` | One page of history, cursor-paginated |
 | `/api/git/commit/{revision}` | One commit’s detail and change set |
 
 `tests/test_git_arch_doc.py` compares this table to `GIT_ROUTES`, so the document fails
 the build rather than drifting.
-The routes also appear in the [views/models/routes map](arch-views-models-routes.md),
-which `tests/test_views_models_routes.py` checks.
+It has already earned its place: `/api/git/summary` landed after this document was
+written, and the check failed the build rather than letting the table quietly go stale.
+
+`/api/git/summary` runs one graph traversal, so the panel loads it lazily after the
+first history page paints — the same deferral the file tree’s tally row uses.
+A route whose cost scales with history depth does not belong on the path that renders
+the first screen. The routes also appear in the
+[views/models/routes map](arch-views-models-routes.md), which
+`tests/test_views_models_routes.py` checks.
 
 Four rules hold across all of them:
 

@@ -4718,6 +4718,32 @@ pre.code-block code.hljs {
    git-graph.js, and each row's SVG is drawn to exactly that height.
    Changing one without the other misaligns every lane against its row. */
 
+/* Header tally above the graph — the same recipe as .tree-summary on the
+   Files tab so the two tabs read identically, but under its own class:
+   app.js live-patches the document's first .tree-summary with file
+   totals, and this row must never be that target. Same one-line-box
+   floor too, for the same reason: the row paints pending and must not
+   grow when the numbers land. */
+.git-history-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--nav-font-size);
+  color: var(--text);
+  min-height: calc(1.5 * var(--nav-font-size) + 13px);
+}
+
+/* "begun 3mo ago": word gaps only — the age value inside carries the
+   shared age primitive (hue, weight, size, numerals), the words keep
+   the row's own type, and baseline alignment joins the two sizes. */
+.git-history-summary-first {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
 .git-graph-list {
   display: flex;
   flex-direction: column;
@@ -4797,10 +4823,10 @@ pre.code-block code.hljs {
 /* Ref chips shrink last, not first. Flex distributes shrinkage in
    proportion to each item's shrink factor, so the subject's factor
    below is large enough that it absorbs essentially all of it: chips
-   keep their full names until the subject has collapsed entirely,
-   which is the only point at which clipping a ref beats clipping the
-   message. Without this the chips shrank alongside the subject and a
-   single short branch name was cut in half on a half-empty row. */
+   keep their full names until the subject is down to its readable
+   floor, and only then does clipping a ref beat clipping the message.
+   Without this the chips shrank alongside the subject and a single
+   short branch name was cut in half on a half-empty row. */
 .git-graph-refs {
   display: flex;
   align-items: center;
@@ -4814,10 +4840,17 @@ pre.code-block code.hljs {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
-  flex-grow: 1;
   /* Absorbs the row's shrinkage so the ref chips beside it do not; an
-     ellipsized message still reads, a halved branch name does not. */
+     ellipsized message still reads, a halved branch name does not.
+
+     But absorbing ALL of it let the subject collapse to zero width: a
+     merge row's converging lanes widen the gutter, chips and the
+     author/age column keep their size, and the message vanished
+     entirely — read as "this commit has no message". The floor keeps
+     the start of the message visible; only past it do the chips (which
+     clip, min-width: 0 above) start yielding. */
+  min-width: 8ch;
+  flex-grow: 1;
   flex-shrink: 1000;
 }
 
@@ -4950,7 +4983,11 @@ pre.code-block code.hljs {
 
 .git-commit-sha {
   font-family: var(--font-mono);
-  font-size: var(--body-font-size);
+  /* One step below the sans metadata beside it: SF Mono's x-height and
+     advance run visually larger than SF Pro at the same nominal size,
+     so body-size mono read as a bigger hash next to the age, refs, and
+     stat text it sits among. */
+  font-size: var(--nav-font-size);
 }
 
 .git-commit-revision {

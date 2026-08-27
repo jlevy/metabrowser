@@ -179,6 +179,20 @@ class GitRefList(TypedDict):
     refs: list[GitRef]
 
 
+class GitHistorySummary(TypedDict):
+    """Response shape for ``GET /api/git/summary``.
+
+    The Git panel's header tally: how deep the history it is scrolling
+    actually is, and how old the repository is. ``first_commit_at`` is
+    the committer date of the oldest root commit in scope, ``None`` when
+    the scope is empty (an unborn branch).
+    """
+
+    is_repo: bool
+    commit_count: int
+    first_commit_at: float | None
+
+
 class GitLogPage(TypedDict):
     """Response shape for ``GET /api/git/log``.
 
@@ -520,6 +534,7 @@ __all__ = [
     "GitGraphCheckpoint",
     "GitGraphLane",
     "GitHead",
+    "GitHistorySummary",
     "GitLogPage",
     "GitRefList",
     "GitRef",

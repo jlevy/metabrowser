@@ -1794,6 +1794,48 @@ async function run() {
     );
   }
 
+  // ── History header tally ───────────────────────────────────
+  //
+  // The Git tab's counterpart of the file tree's "N files (size)" row:
+  // rendered pending with the first page, filled by a later request.
+  {
+    document.activeElement = null;
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    responses.set("/api/git/log", historyPage(0, [commit(SHA_A, [], "tally commit")], 1, SHA_A));
+    let summaryRequested = false;
+    responses.set("/api/git/summary", () => {
+      summaryRequested = true;
+      return {
+        is_repo: true,
+        commit_count: 10345,
+        first_commit_at: nowSeconds - 2 * 365 * 24 * 60 * 60,
+      };
+    });
+    internals.setStateForTests(internals.emptyState());
+    registeredPanel.onShow();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assertTrue("tally: the summary loads on its own request", summaryRequested);
+    const container = document.getElementById("tab-git");
+    assertContains("tally: commit count renders", container.textContent, "10,345 commits");
+    assertContains("tally: begun wording renders", container.textContent, "begun");
+    const tallyAge = container.querySelector(".git-history-summary-age");
+    assertTrue("tally: age value is present", tallyAge !== null);
+    assertEqual("tally: age value uses the shared formatter", tallyAge?.textContent, "2y");
+    assertContains(
+      "tally: age value carries the shared freshness tier",
+      tallyAge?.className,
+      "age-old",
+    );
+    responses.delete("/api/git/summary");
+  }
+
   // ── Relative age ───────────────────────────────────────────
   {
     const now = Date.now() / 1000;

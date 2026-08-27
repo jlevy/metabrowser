@@ -61,6 +61,7 @@
    * @property {MetabrowserGitHistoryWindowRange | null} mountedRange
    * @property {string} scopeFingerprint
    * @property {Map<number, string>} cursorByPage Replay cursor for every visited page.
+   * @property {{commitCount: number, firstCommitAt: number | null} | null} summary
    */
 
   /** @returns {PanelState} */
@@ -97,6 +98,9 @@
       // single request. Growth is one entry per LOG_LIMIT rows walked —
       // about 1 MiB at the validated 1,454,667-row corpus — not per row.
       cursorByPage: new Map(),
+      // The header tally, loaded off the render path like the file
+      // tree's summary row; null renders the pending shimmer.
+      summary: null,
     };
   }
 
@@ -1200,13 +1204,100 @@
 
     let list = panel.querySelector(".git-graph-list");
     if (!(list instanceof HTMLElement)) {
+      const summary = document.createElement("div");
+      summary.className = "git-history-summary";
       list = document.createElement("div");
       list.className = "git-graph-list";
       list.addEventListener("focusin", handleCommitListFocus);
-      panel.replaceChildren(list);
+      panel.replaceChildren(summary, list);
     }
+    renderHistorySummary(panel);
     state.mountedRange = null;
     renderVirtualRows(true);
+  }
+
+  /**
+   * The header tally above the graph — the Git tab's counterpart of the
+   * file tree's summary row, deliberately under its own class names:
+   * app.js live-patches the document's first `.tree-summary`, so this
+   * row must not present itself as one. Pending until the summary
+   * response lands.
+   *
+   * @param {HTMLElement} panel
+   */
+  function renderHistorySummary(panel) {
+    const row = panel.querySelector(".git-history-summary");
+    if (!(row instanceof HTMLElement)) {
+      return;
+    }
+    if (!state.summary) {
+      const pending = document.createElement("span");
+      pending.className = "count tally-pending";
+      row.replaceChildren(pending);
+      return;
+    }
+    const count = state.summary.commitCount;
+    const countSpan = document.createElement("span");
+    countSpan.className = "git-history-summary-count";
+    countSpan.textContent = `${count.toLocaleString()} ${count === 1 ? "commit" : "commits"}`;
+    const firstCommitAt = state.summary.firstCommitAt;
+    const firstAge = firstCommitAt === null ? "" : relativeAge(firstCommitAt);
+    if (!firstAge || firstCommitAt === null) {
+      row.replaceChildren(countSpan);
+      return;
+    }
+    // "begun 3mo ago" — the age value carries the shared age primitive
+    // (tier hue, weight, tabular numerals) exactly as commit rows do;
+    // the words around it stay ordinary row text.
+    const firstSpan = document.createElement("span");
+    firstSpan.className = "git-history-summary-first";
+    const begun = document.createElement("span");
+    begun.textContent = "begun";
+    const ageSpan = document.createElement("span");
+    ageSpan.className = `git-history-summary-age ${ageClass(firstCommitAt)}`;
+    ageSpan.textContent = firstAge;
+    const ago = document.createElement("span");
+    ago.textContent = "ago";
+    firstSpan.replaceChildren(begun, ageSpan, ago);
+    row.replaceChildren(countSpan, firstSpan);
+  }
+
+  /**
+   * Load the header tally the way the file tree loads its own numbers:
+   * after first paint, off the render path, replacing a pending shimmer.
+   * A failed load keeps the shimmer; the next refresh retries.
+   *
+   * @returns {Promise<void>}
+   */
+  async function loadHistorySummary() {
+    const requestGeneration = historyGeneration;
+    const requestState = state;
+    try {
+      const response = await apiFetch("/api/git/summary", undefined, {
+        signal: historyAbortController.signal,
+      });
+      if (!response.ok) {
+        return;
+      }
+      const summary = /** @type {MetabrowserGitHistorySummary} */ (await response.json());
+      if (requestGeneration !== historyGeneration || state !== requestState) {
+        return;
+      }
+      if (!summary.is_repo || typeof summary.commit_count !== "number") {
+        return;
+      }
+      state.summary = {
+        commitCount: summary.commit_count,
+        firstCommitAt: typeof summary.first_commit_at === "number" ? summary.first_commit_at : null,
+      };
+      const panel = panelElement();
+      if (panel) {
+        renderHistorySummary(panel);
+      }
+    } catch {
+      // Leave the pending shimmer rather than blanking a number the
+      // user may be reading; refreshHistory issues the retry.
+    }
   }
 
   /** Retry the exact failed append or replay request. */
@@ -1863,6 +1954,9 @@
       await loadRefColors();
       state.loading = false;
       await loadNextPage(true);
+      // Fired, not awaited: the tally walks the whole graph server-side
+      // and must never hold up the first page of history.
+      void loadHistorySummary();
     } finally {
       refreshing = false;
     }

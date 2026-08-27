@@ -38,8 +38,9 @@ from metabrowser.git.history import (
     HistoryStorageError,
     InvalidHistoryCursorError,
     StaleHistorySessionError,
+    resolve_history_scope,
 )
-from metabrowser.git.log import read_refs
+from metabrowser.git.log import read_history_summary, read_refs
 from metabrowser.git.process import GitError, GitTimeoutError, failure_detail
 from metabrowser.git.repo import RepoContext, repo_info
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
@@ -105,6 +106,41 @@ async def api_git_refs(_request: Request) -> JSONResponse:
         return _git_failure_response(exc)
 
     return JSONResponse({"is_repo": True, "refs": refs})
+
+
+async def api_git_summary(request: Request) -> JSONResponse:
+    """``GET /api/git/summary`` — history depth for the panel header.
+
+    Total commits reachable from the requested scope and the committer
+    date of the oldest root commit. Loaded lazily by the panel after the
+    first page paints — the same pattern as the file tree's tally row —
+    so its one graph traversal never blocks history rendering.
+
+    ``scope`` follows ``/api/git/log``: ``all`` counts every ref, the
+    default counts the same refs the panel walks.
+    """
+    served_root = _resolved_root_dir()
+    context, info = await _resolve(served_root)
+    if context is None:
+        return JSONResponse(_negative_payload(info))
+    if context.head.get("unborn"):
+        return JSONResponse({"is_repo": True, "commit_count": 0, "first_commit_at": None})
+
+    wants_all = request.query_params.get("scope") == "all"
+    try:
+        scope = await resolve_history_scope(served_root, wants_all=wants_all)
+        commit_count, first_commit_at = await read_history_summary(
+            served_root,
+            revisions=scope.arguments,
+            all_refs=wants_all,
+        )
+    except GitError as exc:
+        log.warning("git summary failed: %s", failure_detail(exc))
+        return _git_failure_response(exc)
+
+    return JSONResponse(
+        {"is_repo": True, "commit_count": commit_count, "first_commit_at": first_commit_at}
+    )
 
 
 async def api_git_log(request: Request) -> JSONResponse:
@@ -232,6 +268,7 @@ def _clamped_limit(raw: str) -> int:
 GIT_ROUTES: list[Route] = [
     Route("/api/git/repo", api_git_repo),
     Route("/api/git/refs", api_git_refs),
+    Route("/api/git/summary", api_git_summary),
     Route("/api/git/log", api_git_log),
     Route("/api/git/commit/{revision}", api_git_commit),
 ]

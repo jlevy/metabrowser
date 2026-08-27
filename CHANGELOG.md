@@ -20,7 +20,23 @@ Features:
   spacers preserve logical scroll geometry, and long histories rebase before the browser
   height clamp while keeping selection and logical focus independent of row mounting.
 
+- The Git tab opens with a header tally — the total commits in the panel’s scope and the
+  age of the repository’s first commit, e.g. `142 commits begun 1mo ago`, the age value
+  carrying the shared age hue and numerals exactly as commit rows do — styled like the
+  file tree’s summary row and loaded the same way: off the render path, after the first
+  page of history paints.
+
 Fixes:
+
+- A history row can no longer render with an invisible commit message.
+  The subject used to absorb all of a row’s flex shrinkage and could collapse to zero
+  width — most often on merge rows, whose converging lanes widen the graph gutter —
+  reading as a commit with no message.
+  The subject now keeps a readable floor and ref chips clip beyond it.
+
+- The commit page’s abbreviated revision no longer reads larger than the author, age,
+  and stat text beside it: monospace at body size renders optically larger than the sans
+  text, so the hash now sits one step down the size ramp.
 
 - A Git history page at the route’s maximum `limit` no longer fails with HTTP 500. The
   measured parser budget now scales with the requested page size instead of holding
