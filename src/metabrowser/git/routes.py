@@ -40,7 +40,7 @@ from metabrowser.git.history import (
     StaleHistorySessionError,
 )
 from metabrowser.git.log import read_refs
-from metabrowser.git.process import GitError, GitTimeoutError
+from metabrowser.git.process import GitError, GitTimeoutError, failure_detail
 from metabrowser.git.repo import RepoContext, repo_info
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
 from metabrowser.paths_safe import _resolved_root_dir
@@ -64,7 +64,7 @@ async def _resolve(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]:
     try:
         return await repo_info(served_root)
     except GitError as exc:
-        log.warning("git repository resolution failed: %s", exc)
+        log.warning("git repository resolution failed: %s", failure_detail(exc))
         return None, GitRepoInfo(is_repo=False, root=None, head=None, reason="git_failed")
 
 
@@ -101,7 +101,7 @@ async def api_git_refs(_request: Request) -> JSONResponse:
     try:
         refs = await read_refs(served_root, head_ref=context.head["ref"])
     except GitError as exc:
-        log.warning("git refs failed: %s", exc)
+        log.warning("git refs failed: %s", failure_detail(exc))
         return _git_failure_response(exc)
 
     return JSONResponse({"is_repo": True, "refs": refs})
@@ -179,7 +179,7 @@ async def api_git_log(request: Request) -> JSONResponse:
             status_code=507,
         )
     except GitError as exc:
-        log.warning("git log failed: %s", exc)
+        log.warning("git log failed: %s", failure_detail(exc))
         return _git_failure_response(exc)
 
     return JSONResponse(dict(page))
@@ -208,7 +208,7 @@ async def api_git_commit(request: Request) -> JSONResponse:
     try:
         detail = await read_commit_detail(context, revision)
     except GitError as exc:
-        log.warning("git commit detail failed for %s: %s", revision, exc)
+        log.warning("git commit detail failed for %s: %s", revision, failure_detail(exc))
         return _git_failure_response(exc)
 
     if detail is None:

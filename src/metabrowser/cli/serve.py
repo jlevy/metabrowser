@@ -9,6 +9,7 @@ implementation.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -74,6 +75,26 @@ def _shutdown_noise_filter(record: logging.LogRecord) -> bool:
     return "timeout graceful shutdown exceeded" not in record.getMessage()
 
 
+# Acknowledgement for the first Ctrl-C, so the interrupt is visibly
+# registered. Without it the terminal shows a bare ``^C`` and nothing
+# else while the server takes a couple of hundred milliseconds to stop,
+# which reads as a hang and invites a second Ctrl-C.
+_STOPPING_NOTICE = b"Stopping Metabrowser.\n"
+
+
+def _write_stopping_notice() -> None:
+    """Announce the interrupt with a raw write to stderr.
+
+    Called from a signal handler, which runs between bytecodes in the
+    main thread while it may be part-way through a buffered write of its
+    own. ``sys.stderr.write`` would take that same non-reentrant stream
+    lock and deadlock; a bare ``os.write`` takes no Python-level lock.
+    A closed or full stderr is not worth failing a shutdown over.
+    """
+    with contextlib.suppress(OSError):
+        os.write(2, _STOPPING_NOTICE)
+
+
 class _QuietForceExitServer(uvicorn.Server):
     """Uvicorn server that exits immediately after a forced interrupt."""
 
@@ -81,11 +102,51 @@ class _QuietForceExitServer(uvicorn.Server):
 
     @override
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
-        if sig == signal.SIGINT:
+        if sig == signal.SIGINT and not self.interrupted:
             self.interrupted = True
+            _write_stopping_notice()
         super().handle_exit(sig, frame)
         if self.force_exit:
             os._exit(INTERRUPTED_EXIT_CODE)
+
+
+def _run_until_interrupted(uvicorn_server: _QuietForceExitServer) -> bool:
+    """Serve until the server stops. True when a Ctrl-C stopped it.
+
+    SIGINT is held at ``SIG_IGN`` around the run. Uvicorn's
+    ``capture_signals`` saves whichever handler is installed when
+    ``Server.run()`` starts, restores it on the way out, and then
+    re-raises the signal it captured (uvicorn 0.49). Handing it
+    ``SIG_IGN`` to save makes that re-raise a no-op, which settles two
+    things:
+
+    * The interrupt is reported by ``Server.interrupted`` rather than by
+      a ``KeyboardInterrupt`` raised from inside ``run()``, so serve mode
+      picks its own exit code instead of inheriting one.
+    * Nothing is left to catch a repeat Ctrl-C during the couple of
+      hundred milliseconds between that restore and process exit. With
+      the default handler back in place, one arriving there raises
+      ``KeyboardInterrupt`` inside ``threading._shutdown`` — measured as
+      an "Exception ignored on threading shutdown" traceback, since an
+      AnyIO worker thread is non-daemon and gets joined there — or, a
+      little later, kills the process outright for exit ``-2`` instead
+      of ``130``.
+
+    The previous handler is put back only when serving ended for some
+    other reason. After an interrupt the process is milliseconds from
+    exiting and a further Ctrl-C has nothing left to interrupt, so
+    restoring it there would reopen the window this closes.
+    """
+    previous = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        uvicorn_server.run()
+    finally:
+        # This flag is a protocol boolean. Do not treat foreign truthy
+        # sentinel values as proof that a signal was observed.
+        if uvicorn_server.interrupted is not True:
+            signal.signal(signal.SIGINT, previous)
+    return uvicorn_server.interrupted is True
 
 
 def run_serve(
@@ -202,10 +263,7 @@ def run_serve(
                 timeout_graceful_shutdown=0,
             )
         )
-        uvicorn_server.run()
-        # This flag is a protocol boolean. Do not treat foreign truthy sentinel
-        # values as proof that a signal was observed.
-        if uvicorn_server.interrupted is True:
+        if _run_until_interrupted(uvicorn_server):
             raise typer.Exit(code=INTERRUPTED_EXIT_CODE)
     finally:
         uvicorn_logger.removeFilter(_shutdown_noise_filter)

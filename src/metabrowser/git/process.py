@@ -97,6 +97,18 @@ class GitOutputTooLargeError(GitError):
     """``git`` produced more than :data:`GIT_SUBPROCESS_MAX_BYTES` on stdout."""
 
 
+def failure_detail(exc: GitError) -> str:
+    """Log text for a git failure, including git's own stderr.
+
+    Separate from ``str(exc)`` so the stderr text — which routinely
+    carries absolute local paths — reaches a log line and only a log
+    line. A caller that puts an exception message into a response body
+    still gets the path-free form.
+    """
+    summary = getattr(exc, "stderr_summary", "")
+    return f"{exc}: {summary}" if summary else str(exc)
+
+
 @cache
 def git_executable() -> str | None:
     """Absolute path to ``git``, or ``None`` when it is not installed.
@@ -229,8 +241,16 @@ async def run_git(
 
     if returncode != 0:
         stderr_summary = stderr.decode("utf-8", errors="replace").strip()
-        # Logged, not returned: git writes absolute local paths here.
-        log.info("git %s exited %s: %s", " ".join(args), returncode, stderr_summary)
+        # DEBUG, because a non-zero exit is a result this layer hands back,
+        # not an event it can rank. Most of them are deliberate probes:
+        # discovery asks whether the served root is a repository at all,
+        # HEAD resolution distinguishes detached from unborn by exit code,
+        # and the history scope tries every candidate ref and keeps the ones
+        # that resolve. Ranking each of those as INFO put a line in the
+        # terminal every few seconds for anyone browsing a directory that is
+        # not a repository. Callers that treat a failure as a failure log it
+        # themselves, with :func:`failure_detail` for this same text.
+        log.debug("git %s exited %s: %s", " ".join(args), returncode, stderr_summary)
         raise GitCommandError(args, returncode, stderr_summary)
 
     return stdout
@@ -296,6 +316,7 @@ __all__ = [
     "GitOutputTooLargeError",
     "GitTimeoutError",
     "GitUnavailableError",
+    "failure_detail",
     "git_executable",
     "spawn_git_process",
     "terminate_git_process",
