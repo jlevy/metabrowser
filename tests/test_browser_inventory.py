@@ -389,6 +389,43 @@ def test_inventory_start_is_idempotent(tmp_path: Path) -> None:
     assert status in ("done", "truncated")
 
 
+def test_completed_walk_summary_stays_out_of_the_default_log(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Serving a small tree is the common case, and its walk finishes before
+    the first paint. Announcing it put a diagnostic line under every
+    ``metab .`` for no decision the user could act on."""
+    _build_tree(tmp_path)
+
+    with caplog.at_level(logging.DEBUG, logger="metabrowser.inventory"):
+        asyncio.run(_drive_inventory(tmp_path))
+
+    completions = [r for r in caplog.records if "walker complete" in r.getMessage()]
+    assert [r.levelno for r in completions] == [logging.DEBUG]
+    assert "status=done" in completions[0].getMessage()
+
+
+def test_truncated_walk_summary_is_reported(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A capped index means the browser is showing part of the tree, which
+    is the one completion worth a line in the terminal."""
+    _build_tree(tmp_path)
+
+    async def _run() -> None:
+        inv = InventoryIndex(max_files=2)
+        inv.start(tmp_path)
+        await inv.wait_until_done(timeout=5.0)
+        assert inv.status() == "truncated"
+
+    with caplog.at_level(logging.DEBUG, logger="metabrowser.inventory"):
+        asyncio.run(_run())
+
+    completions = [r for r in caplog.records if "walker complete" in r.getMessage()]
+    assert [r.levelno for r in completions] == [logging.INFO]
+    assert "status=truncated" in completions[0].getMessage()
+
+
 def test_inventory_entries_root_depth_2_filter(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
