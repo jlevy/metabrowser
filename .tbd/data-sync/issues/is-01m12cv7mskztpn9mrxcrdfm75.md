@@ -3,9 +3,9 @@ type: is
 id: is-01m12cv7mskztpn9mrxcrdfm75
 title: "Address review: PR #86 — continuous virtualized Git history"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 11
+version: 12
 labels: []
 dependencies: []
 child_order_hints:
@@ -20,5 +20,9 @@ child_order_hints:
   - is-01m12cvwcv35chhky1s2c774fd
   - is-01m12cvwsz03zkqawxncj018v0
 created_at: 2026-08-27T19:58:41.304Z
-updated_at: 2026-08-27T19:59:02.974Z
+updated_at: 2026-08-27T20:21:20.480Z
+closed_at: 2026-08-27T20:21:20.479Z
+close_reason: "All ten findings fixed in 3ad9113; disposition map posted to PR #86"
+resolution: null
+duplicate_of: null
 ---
