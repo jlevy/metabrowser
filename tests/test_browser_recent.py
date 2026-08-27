@@ -72,7 +72,7 @@ def test_collect_recent_entries_window_filters_by_mtime(tmp_path: Path) -> None:
     old_ns = int((__import__("time").time() - 60 * 60 * 48) * 1_000_000_000)
     e = inv.get("docs.md")
     assert e is not None
-    inv._entries["docs.md"] = replace(e, mtime_ns=old_ns)
+    inv.apply_live_entry(replace(e, mtime_ns=old_ns))
 
     # 24h window excludes docs.md (now 48h old).
     result = collect_recent_entries(root=tmp_path, window="24h", limit=200)
@@ -96,8 +96,8 @@ def test_live_is_one_ninety_second_window_for_every_file(tmp_path: Path) -> None
     agent_log = inv.get("runs/x/a.jsonl")
     assert docs is not None
     assert agent_log is not None
-    inv._entries["docs.md"] = replace(docs, mtime_ns=recent_ns)
-    inv._entries["runs/x/a.jsonl"] = replace(agent_log, mtime_ns=stale_ns)
+    inv.apply_live_entry(replace(docs, mtime_ns=recent_ns))
+    inv.apply_live_entry(replace(agent_log, mtime_ns=stale_ns))
 
     result = collect_recent_entries(root=tmp_path, window="live", limit=200)
     paths = {entry["path"] for entry in result.entries_flat}
@@ -260,6 +260,51 @@ def test_api_recent_response_envelope_shape(tmp_path: Path) -> None:
     # Newest-first ordering invariant — the SPA cluster relies on it.
     mtimes = [e["mtime"] for e in body["entries_flat"]]
     assert mtimes == sorted(mtimes, reverse=True)
+
+
+def test_api_recent_status_describes_the_pre_worker_snapshot(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """A walk finishing during collection must leave this response scanning.
+
+    Otherwise a partial recent result can be labeled done and the browser has no
+    reason to request the final inventory snapshot.
+    """
+
+    _build_fixture(tmp_path)
+
+    async def _run() -> dict[str, Any]:
+        original_root = paths_safe._resolved_root_dir
+        paths_safe._resolved_root_dir = lambda: tmp_path  # type: ignore[assignment]
+        try:
+            await _drive_walker(tmp_path)
+            inventory = get_instance()
+            inventory._status = "scanning"
+            original_to_thread = asyncio.to_thread
+
+            async def finish_inventory_during_collection(
+                function: Any,
+                /,
+                *args: Any,
+                **kwargs: Any,
+            ) -> Any:
+                result = await original_to_thread(function, *args, **kwargs)
+                inventory._status = "done"
+                return result
+
+            monkeypatch.setattr(
+                proc_browser.asyncio,
+                "to_thread",
+                finish_inventory_during_collection,
+            )
+            response = await proc_browser.api_recent(cast(Any, _FakeRequest()))
+        finally:
+            paths_safe._resolved_root_dir = original_root  # type: ignore[assignment]
+        return json.loads(bytes(response.body))
+
+    body = asyncio.run(_run())
+    assert body["tally_cache_status"] == "scanning"
 
 
 def test_api_recent_invalid_window_returns_400(tmp_path: Path) -> None:

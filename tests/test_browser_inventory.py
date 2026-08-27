@@ -37,6 +37,8 @@ from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
 
+import pytest
+
 import metabrowser.inventory as inventory_module
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.events import (
@@ -51,7 +53,6 @@ from metabrowser.events import (
 from metabrowser.fs_paths import derive_ext as _ext_of
 from metabrowser.fs_paths import is_visible, is_visible_segment
 from metabrowser.inventory import (
-    DEFAULT_FIRST_RENDER_DEPTH,
     InventoryIndex,
     walk_tree,
 )
@@ -98,7 +99,6 @@ async def _collect(
     *,
     max_depth: int = 20,
     max_files: int = 20_000,
-    first_render_depth: int = 2,
 ) -> list[FsEntry]:
     return [
         e
@@ -106,7 +106,6 @@ async def _collect(
             root,
             max_depth=max_depth,
             max_files=max_files,
-            first_render_depth=first_render_depth,
         )
     ]
 
@@ -219,21 +218,33 @@ def test_walk_tree_skips_dotfiles_except_logs_state(tmp_path: Path) -> None:
     assert "visible.txt" in paths
 
 
-def test_walk_tree_first_render_depth_does_not_change_yield_set(tmp_path: Path) -> None:
-    """Changing first_render_depth changes BFS *order* but not
-    the *set* of yielded entries."""
-    _build_tree(tmp_path)
+def test_walk_tree_discovers_strictly_in_level_order(tmp_path: Path) -> None:
+    """Every directory at depth N is scanned before any at depth N+1.
 
-    def _signature(frd: int) -> set[tuple[str, str]]:
-        out = asyncio.run(_collect(tmp_path, first_render_depth=frd))
-        # Use (path, type, has_aggregates) so we count
-        # placeholder-vs-final correctly.
-        return {(e.path, e.type) for e in out}
+    This is what makes the nav tree usable during a crawl: the shallow
+    layers a reader sees and expands first are complete early, instead of
+    the walker following one branch to the bottom before looking at its
+    siblings. A wide, deep fixture makes the difference observable — a
+    depth-first walker would emit ``wide0/d0/d0`` before ``wide9``.
+    """
 
-    sig_a = _signature(0)
-    sig_b = _signature(DEFAULT_FIRST_RENDER_DEPTH)
-    sig_c = _signature(10)
-    assert sig_a == sig_b == sig_c
+    for top in range(10):
+        branch = tmp_path / f"wide{top}"
+        (branch / "d0" / "d0").mkdir(parents=True)
+        (branch / "d0" / "d0" / "leaf.txt").write_bytes(b"x")
+
+    entries = asyncio.run(_collect(tmp_path))
+    # Placeholders are emitted at discovery time; finalized dir entries come
+    # later by design (post-order), so order is judged on first sighting.
+    first_seen: list[str] = []
+    for entry in entries:
+        if entry.type == "dir" and entry.path not in first_seen:
+            first_seen.append(entry.path)
+
+    depths = [_depth_of(path) for path in first_seen]
+    assert depths == sorted(depths), f"not level-order: {first_seen}"
+    # And the whole first level really does precede the second.
+    assert set(first_seen[1:11]) == {f"wide{i}" for i in range(10)}
 
 
 # ── path helpers ─────────────────────────────────────────────
@@ -246,16 +257,21 @@ def test_depth_of_root_and_subpaths() -> None:
     assert _depth_of("a/b/c") == 3
 
 
-def test_ext_of_compound_tail() -> None:
+def test_ext_of_bounded_compound_tail() -> None:
     assert _ext_of("foo.runbook.md") == ".runbook.md"
     assert _ext_of("archive.tar.gz") == ".tar.gz"
+    assert _ext_of("bundle.js.map") == ".js.map"
+    assert _ext_of("bundle.map") == ".map"
+    assert _ext_of("bundle.umd.min.js.map") == ".js.map"
+    assert _ext_of("types.d.ts.map") == ".ts.map"
+    assert _ext_of("bundle.umd.min.js") == ".min.js"
     assert _ext_of("plain.txt") == ".txt"
     assert _ext_of("Makefile") == ""
     assert _ext_of(".dotfile") == ""
-    assert _ext_of("Foo.With.Dots.Txt") == ""
+    assert _ext_of("Foo.With.Dots.Txt") == ".dots.txt"
 
 
-def test_fs_entry_factory_uses_compound_ext_for_file_observations() -> None:
+def test_fs_entry_factory_uses_bounded_compound_ext_for_file_observations() -> None:
     """Both the walker (boot scan / rewalk_subtree) and the watcher
     (file-event handler) construct entries via
     :meth:`FsEntry.for_observed_file` / :meth:`FsEntry.for_stat`. The
@@ -437,6 +453,77 @@ def test_inventory_direct_child_index_tracks_stores_and_removals() -> None:
     assert inv.has_direct_child("runs") is False
 
 
+def test_live_empty_state_tracks_subtree_leaves_separately_from_file_totals() -> None:
+    inv = InventoryIndex()
+    root = FsEntry(
+        path="",
+        parent="",
+        name="root",
+        type="dir",
+        ext="",
+        kind="dir",
+        size=0,
+        mtime_ns=0,
+        mtime_hash="",
+        active=False,
+        total_files=0,
+        total_size=0,
+        newest_mtime_ns=0,
+    )
+    assert inv.apply_walker_entries([root]) == 1
+    indexed_root = inv.get("")
+    assert indexed_root is not None
+    assert indexed_root.empty is True
+
+    inv.apply_live_entry(
+        FsEntry(
+            path="nested",
+            parent="",
+            name="nested",
+            type="dir",
+            ext="",
+            kind="dir",
+            size=0,
+            mtime_ns=0,
+            mtime_hash="",
+            active=False,
+            total_files=0,
+            total_size=0,
+            newest_mtime_ns=0,
+        )
+    )
+    with_empty_subfolder = inv.get("")
+    assert with_empty_subfolder is not None
+    assert with_empty_subfolder.total_files == 0
+    assert with_empty_subfolder.empty is True
+
+    inv.apply_live_entry(
+        FsEntry.for_observed_symlink(
+            path="nested/shortcut",
+            parent="nested",
+            name="shortcut",
+            size=8,
+            mtime_ns=1,
+        )
+    )
+    with_link = inv.get("")
+    assert with_link is not None
+    assert with_link.total_files == 0
+    assert with_link.empty is False
+    nested_with_link = inv.get("nested")
+    assert nested_with_link is not None
+    assert nested_with_link.empty is False
+
+    inv.remove("nested/shortcut")
+    without_link = inv.get("")
+    assert without_link is not None
+    assert without_link.total_files == 0
+    assert without_link.empty is True
+    nested_without_link = inv.get("nested")
+    assert nested_without_link is not None
+    assert nested_without_link.empty is True
+
+
 def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
@@ -474,10 +561,39 @@ def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
 
     after_insert, after_remove, changes = asyncio.run(_run())
     assert (after_insert.total_files, after_insert.total_size) == (5, 303)
+    assert (after_insert.unignored_files, after_insert.unignored_size) == (5, 303)
     assert (after_remove.total_files, after_remove.total_size) == (4, 250)
+    assert (after_remove.unignored_files, after_remove.unignored_size) == (4, 250)
     assert (after_remove.newest_mtime_ns or 0) < (after_insert.newest_mtime_ns or 0)
     for change in changes:
         assert any(isinstance(op, FsUpsert) and op.entry.path == "" for op in change.ops)
+
+
+def test_live_ignore_state_flip_updates_only_unignored_ancestor_totals(tmp_path: Path) -> None:
+    _build_tree(tmp_path)
+
+    async def _run() -> tuple[FsEntry, FsEntry, FsEntry]:
+        inv = await _drive_inventory(tmp_path)
+        file_entry = inv.get("file_a.log")
+        assert file_entry is not None
+        before = inv.get("")
+        assert before is not None
+        inv.apply_live_entry(replace(file_entry, gitignored=True))
+        ignored = inv.get("")
+        assert ignored is not None
+        inv.apply_live_entry(replace(file_entry, gitignored=False))
+        restored = inv.get("")
+        assert restored is not None
+        return before, ignored, restored
+
+    before, ignored, restored = asyncio.run(_run())
+    assert (ignored.total_files, ignored.total_size) == (before.total_files, before.total_size)
+    assert ignored.unignored_files == (before.unignored_files or 0) - 1
+    assert ignored.unignored_size == (before.unignored_size or 0) - len(b"a" * 50)
+    assert (restored.unignored_files, restored.unignored_size) == (
+        before.unignored_files,
+        before.unignored_size,
+    )
 
 
 def test_live_change_during_boot_invalidates_stale_directory_finalization(
@@ -979,6 +1095,46 @@ def test_inventory_slow_subscriber_gets_resync_without_blocking(tmp_path: Path) 
     assert slow_event.reason == "subscriber_queue_overflow"
 
 
+def test_inventory_overflow_warning_is_rate_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now_ns = 1
+    monkeypatch.setattr(inventory_module.time, "monotonic_ns", lambda: now_ns)
+
+    class _RecordHandler(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__(level=logging.WARNING)
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    logger = logging.getLogger("metabrowser.inventory")
+    original_level = logger.level
+    handler = _RecordHandler()
+    logger.addHandler(handler)
+
+    try:
+        logger.setLevel(logging.WARNING)
+        inv = InventoryIndex()
+        inv.subscribe(max_queue=1)
+        inv._emit(FsChange(ops=()))  # fill the queue
+        inv._emit(FsChange(ops=()))  # first overflow logs immediately
+        inv._emit(FsChange(ops=()))  # repeated overflow stays quiet
+
+        now_ns += inventory_module._SUBSCRIBER_OVERFLOW_LOG_INTERVAL_NS
+        inv._emit(FsChange(ops=()))
+    finally:
+        logger.setLevel(original_level)
+        logger.removeHandler(handler)
+
+    messages = [record.getMessage() for record in handler.records]
+    assert messages == [
+        "inventory subscriber backlog overflowed; requested resync for 1 subscriber(s)",
+        "inventory subscriber backlog overflowed; requested resync for 2 subscriber(s)",
+    ]
+
+
 def test_inventory_clear_emits_resync(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
@@ -1242,3 +1398,30 @@ def test_walker_populates_gitignored_on_files_and_dirs(tmp_path: Path) -> None:
         "directory gitignore must propagate via FsEntry.gitignored "
         "so recent.py can compose `gitignored_dirs` from inventory reads"
     )
+
+
+def test_walker_finalizes_unignored_directory_aggregates(tmp_path: Path) -> None:
+    """Final directory entries carry both all-file and tracked totals.
+
+    Folder views can therefore paint stable totals from the live inventory
+    without waiting for a second rollup request or scanning descendants in the
+    browser.
+    """
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".gitignore").write_text("ignored/\n*.log\n", encoding="utf-8")
+    (tmp_path / "kept.py").write_bytes(b"abc")
+    (tmp_path / "debug.log").write_bytes(b"12345")
+    ignored = tmp_path / "ignored"
+    ignored.mkdir()
+    (ignored / "bundle.js").write_bytes(b"1234567")
+
+    async def _run() -> tuple[FsEntry, FsEntry]:
+        inv = await _drive_inventory(tmp_path)
+        return inv._entries[""], inv._entries["ignored"]
+
+    root, ignored_dir = asyncio.run(_run())
+    assert (root.total_files, root.total_size) == (3, 15)
+    assert (root.unignored_files, root.unignored_size) == (1, 3)
+    assert (ignored_dir.total_files, ignored_dir.total_size) == (1, 7)
+    assert (ignored_dir.unignored_files, ignored_dir.unignored_size) == (0, 0)

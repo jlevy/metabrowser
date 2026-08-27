@@ -1,0 +1,1106 @@
+# Recommended definitions for File Rollup Format classifiers and display rollups.
+# The complete field, matching, validation, and evolution rules are documented at:
+# docs/project/architecture/file-rollup-format/file-rollup-format.md
+#
+# This registry is versioned independently from the overall format and is intentionally
+# selective rather than exhaustive. Maintainers edit this packaged source, increment
+# registry_revision for definition changes, and regenerate the checked artifacts with
+# devtools/file_type_contract.py --write. Do not edit the generated documentation copy.
+# devtools/check_file_type_colors.py checks the colour rules below.
+
+# A family declares one colour number: `hue`, in degrees. A consuming theme owns the
+# lightness and chroma, which it states as a band rather than as one value.
+#
+# Where `linguist` names a language, `linguist_color` is that language's colour in
+# GitHub's linguist and the hue is that colour converted to oklch — unchanged,
+# including where two of GitHub's own colours are close together. Families without a
+# `linguist` name take a hue that clears every other declared hue. Nothing else moves
+# a hue.
+#
+# `linguist_color` is not provenance alone: a theme also reads a family's lightness
+# and chroma *rank* among the other upstream colours off it, and paints the family at
+# that place in its band. Hue at one fixed tone cannot separate 56 families — GitHub's
+# own colours are told apart mostly by the two dimensions a fixed tone discards.
+# devtools/check_file_type_colors.py holds these rules and reports the measurements.
+
+schema_version = 3
+registry_revision = 3
+max_extension_components = 2
+
+[[group]]
+id = "code"
+label = "Code"
+order = 10
+
+[[group]]
+id = "docs"
+label = "Documentation"
+order = 20
+
+[[group]]
+id = "data"
+label = "Data"
+order = 30
+
+[[group]]
+id = "archives"
+label = "Archives"
+order = 40
+
+[[group]]
+id = "media"
+label = "Media"
+order = 50
+
+[[group]]
+id = "other"
+label = "Other"
+order = 60
+
+[[family]]
+id = "python"
+label = "Python"
+group = "code"
+order = 100
+linguist = "Python"
+linguist_color = "#3572a5"
+hue = 246.50
+
+[[family]]
+id = "javascript"
+label = "JavaScript"
+group = "code"
+order = 110
+linguist = "JavaScript"
+linguist_color = "#f1e05a"
+hue = 102.08
+
+[[family]]
+id = "typescript"
+label = "TypeScript"
+group = "code"
+order = 120
+linguist = "TypeScript"
+linguist_color = "#3178c6"
+hue = 253.30
+
+[[family]]
+id = "css"
+label = "CSS"
+group = "code"
+order = 130
+linguist = "CSS"
+linguist_color = "#663399"
+hue = 303.37
+
+[[family]]
+id = "html"
+label = "HTML"
+group = "code"
+order = 140
+linguist = "HTML"
+linguist_color = "#e34c26"
+hue = 34.85
+
+[[family]]
+id = "rust"
+label = "Rust"
+group = "code"
+order = 150
+linguist = "Rust"
+linguist_color = "#dea584"
+hue = 51.20
+
+[[family]]
+id = "go"
+label = "Go"
+group = "code"
+order = 160
+linguist = "Go"
+linguist_color = "#00add8"
+hue = 223.85
+
+[[family]]
+id = "java"
+label = "Java"
+group = "code"
+order = 170
+linguist = "Java"
+linguist_color = "#b07219"
+hue = 69.41
+
+[[family]]
+id = "kotlin"
+label = "Kotlin"
+group = "code"
+order = 180
+linguist = "Kotlin"
+linguist_color = "#a97bff"
+hue = 297.24
+
+[[family]]
+id = "swift"
+label = "Swift"
+group = "code"
+order = 190
+linguist = "Swift"
+linguist_color = "#f05138"
+hue = 31.62
+
+[[family]]
+id = "c-cpp"
+label = "C/C++"
+group = "code"
+order = 200
+linguist = "C++"
+linguist_color = "#f34b7d"
+hue = 6.90
+
+[[family]]
+id = "csharp"
+label = "C#"
+group = "code"
+order = 210
+linguist = "C#"
+linguist_color = "#7355dd"
+hue = 288.37
+
+[[family]]
+id = "ruby"
+label = "Ruby"
+group = "code"
+order = 220
+linguist = "Ruby"
+linguist_color = "#701516"
+hue = 25.77
+
+[[family]]
+id = "php"
+label = "PHP"
+group = "code"
+order = 230
+linguist = "PHP"
+linguist_color = "#4f5d95"
+hue = 272.03
+
+[[family]]
+id = "scala"
+label = "Scala"
+group = "code"
+order = 240
+linguist = "Scala"
+linguist_color = "#c22d40"
+hue = 19.52
+
+[[family]]
+id = "clojure"
+label = "Clojure"
+group = "code"
+order = 250
+linguist = "Clojure"
+linguist_color = "#db5855"
+hue = 24.35
+
+[[family]]
+id = "elixir"
+label = "Elixir"
+group = "code"
+order = 260
+linguist = "Elixir"
+linguist_color = "#6e4a7e"
+hue = 314.93
+
+[[family]]
+id = "erlang"
+label = "Erlang"
+group = "code"
+order = 270
+linguist = "Erlang"
+linguist_color = "#b83998"
+hue = 339.55
+
+[[family]]
+id = "haskell"
+label = "Haskell"
+group = "code"
+order = 280
+linguist = "Haskell"
+linguist_color = "#5e5086"
+hue = 294.76
+
+[[family]]
+id = "lua"
+label = "Lua"
+group = "code"
+order = 290
+linguist = "Lua"
+linguist_color = "#000080"
+hue = 264.05
+
+[[family]]
+id = "julia"
+label = "Julia"
+group = "code"
+order = 300
+linguist = "Julia"
+linguist_color = "#a270ba"
+hue = 314.22
+
+[[family]]
+id = "dart"
+label = "Dart"
+group = "code"
+order = 310
+linguist = "Dart"
+linguist_color = "#00b4ab"
+hue = 188.48
+
+[[family]]
+id = "vue"
+label = "Vue"
+group = "code"
+order = 320
+linguist = "Vue"
+linguist_color = "#41b883"
+hue = 160.49
+
+[[family]]
+id = "svelte"
+label = "Svelte"
+group = "code"
+order = 330
+linguist = "Svelte"
+linguist_color = "#ff3e00"
+hue = 34.20
+
+[[family]]
+id = "shell"
+label = "Shell"
+group = "code"
+order = 340
+linguist = "Shell"
+linguist_color = "#89e051"
+hue = 135.27
+
+[[family]]
+id = "powershell"
+label = "PowerShell"
+group = "code"
+order = 350
+linguist = "PowerShell"
+linguist_color = "#012456"
+hue = 258.14
+
+[[family]]
+id = "sql"
+label = "SQL"
+group = "code"
+order = 360
+linguist = "SQL"
+linguist_color = "#e38c00"
+hue = 67.02
+
+[[family]]
+id = "markdown"
+label = "Markdown"
+group = "docs"
+order = 100
+linguist = "Markdown"
+linguist_color = "#083fa1"
+hue = 276.0
+lightness_rank = -0.5
+deviation = """GitHub puts Markdown at 261.42, inside a seven-family run -- python 246.50, xml \
+251.44, typescript 253.30, powershell 258.14, markdown, lua 264.05, php 272.03 -- and it \
+read as Python's blue. Markdown is the most-viewed family in the app and Python's colour \
+is the better known of the two, so Markdown is the one that moves. 276.0 clears every \
+other family by 0.0355 rather than 0.0149 and is still plainly a blue rather than a \
+violet. The rank puts it below the band, which is the deliberate part: at its upstream \
+rank it painted 0.571 against Python's 0.599, and no hue move makes a lighter blue read \
+as a darker one. #083fa1 is a dark navy, so this paints closer to the colour GitHub \
+chose than the band alone allowed."""
+
+[[family]]
+id = "plain-text"
+label = "Plain text"
+group = "docs"
+order = 110
+hue = 206.20
+
+[[family]]
+id = "restructured-text"
+label = "reStructuredText"
+group = "docs"
+order = 120
+hue = 118.70
+
+[[family]]
+id = "asciidoc"
+label = "AsciiDoc"
+group = "docs"
+order = 130
+linguist = "AsciiDoc"
+linguist_color = "#73a0c5"
+hue = 243.94
+
+[[family]]
+id = "org"
+label = "Org"
+group = "docs"
+order = 140
+linguist = "Org"
+linguist_color = "#77aa99"
+hue = 171.76
+
+[[family]]
+id = "pdf"
+label = "PDF"
+group = "docs"
+order = 150
+hue = 85.70
+
+[[family]]
+id = "word"
+label = "Word"
+group = "docs"
+order = 160
+hue = 327.20
+
+[[family]]
+id = "rich-text"
+label = "Rich Text"
+group = "docs"
+order = 170
+hue = 233.90
+
+[[family]]
+id = "open-document"
+label = "OpenDocument"
+group = "docs"
+order = 180
+hue = 144.90
+
+[[family]]
+id = "epub"
+label = "EPUB"
+group = "docs"
+order = 190
+hue = 357.90
+
+[[family]]
+id = "json"
+label = "JSON"
+group = "data"
+order = 100
+hue = 197.30
+
+[[family]]
+id = "yaml"
+label = "YAML"
+group = "data"
+order = 110
+linguist = "YAML"
+linguist_color = "#cb171e"
+hue = 26.90
+
+[[family]]
+id = "toml"
+label = "TOML"
+group = "data"
+order = 120
+linguist = "TOML"
+linguist_color = "#9c4221"
+hue = 39.62
+
+[[family]]
+id = "ini"
+label = "INI"
+group = "data"
+order = 130
+hue = 215.00
+
+[[family]]
+id = "delimited-text"
+label = "Delimited text"
+group = "data"
+order = 140
+linguist = "CSV"
+linguist_color = "#237346"
+hue = 154.61
+
+[[family]]
+id = "xml"
+label = "XML"
+group = "data"
+order = 150
+linguist = "XML"
+linguist_color = "#0060ac"
+hue = 251.44
+
+[[family]]
+id = "parquet"
+label = "Parquet"
+group = "data"
+order = 160
+hue = 180.10
+
+[[family]]
+id = "arrow"
+label = "Arrow"
+group = "data"
+order = 170
+hue = 110.40
+
+[[family]]
+id = "avro"
+label = "Avro"
+group = "data"
+order = 180
+hue = 127.00
+
+[[family]]
+id = "orc"
+label = "ORC"
+group = "data"
+order = 190
+hue = 93.90
+
+[[family]]
+id = "protocol-buffers"
+label = "Protocol Buffers"
+group = "data"
+order = 200
+hue = 280.20
+
+[[family]]
+id = "graphql"
+label = "GraphQL"
+group = "data"
+order = 210
+linguist = "GraphQL"
+linguist_color = "#e10098"
+hue = 348.88
+
+[[family]]
+id = "sqlite"
+label = "SQLite"
+group = "data"
+order = 220
+hue = 77.60
+
+[[family]]
+id = "log-files"
+label = "Log files"
+group = "other"
+order = 100
+hue = 166.10
+
+[[family]]
+id = "archives"
+label = "Archives"
+group = "archives"
+order = 100
+hue = 59.10
+
+[[family]]
+id = "images"
+label = "Images"
+group = "media"
+order = 100
+hue = 13.20
+
+[[family]]
+id = "videos"
+label = "Videos"
+group = "media"
+order = 110
+hue = 333.40
+
+[[family]]
+id = "audio"
+label = "Audio"
+group = "media"
+order = 120
+hue = 321.10
+
+[[family]]
+id = "fonts"
+label = "Fonts"
+group = "media"
+order = 130
+hue = 45.40
+
+[[kind]]
+id = "python"
+family = "python"
+content_family = "code"
+extensions = ["py", "pyi"]
+filenames = []
+shebangs = ["python", "python3"]
+priority = 100
+
+[[kind]]
+id = "javascript"
+family = "javascript"
+content_family = "code"
+extensions = ["js", "mjs", "cjs", "jsx"]
+filenames = []
+shebangs = ["node", "deno", "bun"]
+priority = 100
+
+[[kind]]
+id = "typescript"
+family = "typescript"
+content_family = "code"
+extensions = ["ts", "mts", "cts", "tsx"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "css"
+family = "css"
+content_family = "code"
+extensions = ["css", "scss", "less"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "html"
+family = "html"
+content_family = "markup"
+extensions = ["html", "htm"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "rust"
+family = "rust"
+content_family = "code"
+extensions = ["rs"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "go"
+family = "go"
+content_family = "code"
+extensions = ["go"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "java"
+family = "java"
+content_family = "code"
+extensions = ["java"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "kotlin"
+family = "kotlin"
+content_family = "code"
+extensions = ["kt", "kts"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "swift"
+family = "swift"
+content_family = "code"
+extensions = ["swift"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "c"
+family = "c-cpp"
+content_family = "code"
+extensions = ["c", "h"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "cpp"
+family = "c-cpp"
+content_family = "code"
+extensions = ["cc", "cpp", "hpp"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "csharp"
+family = "csharp"
+content_family = "code"
+extensions = ["cs"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "ruby"
+family = "ruby"
+content_family = "code"
+extensions = ["rb"]
+filenames = []
+shebangs = ["ruby"]
+priority = 100
+
+[[kind]]
+id = "php"
+family = "php"
+content_family = "code"
+extensions = ["php"]
+filenames = []
+shebangs = ["php"]
+priority = 100
+
+[[kind]]
+id = "scala"
+family = "scala"
+content_family = "code"
+extensions = ["scala"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "clojure"
+family = "clojure"
+content_family = "code"
+extensions = ["clj"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "elixir"
+family = "elixir"
+content_family = "code"
+extensions = ["ex", "exs"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "erlang"
+family = "erlang"
+content_family = "code"
+extensions = ["erl"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "haskell"
+family = "haskell"
+content_family = "code"
+extensions = ["hs"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "lua"
+family = "lua"
+content_family = "code"
+extensions = ["lua"]
+filenames = []
+shebangs = ["lua"]
+priority = 100
+
+[[kind]]
+id = "julia"
+family = "julia"
+content_family = "code"
+extensions = ["jl"]
+filenames = []
+shebangs = ["julia"]
+priority = 100
+
+[[kind]]
+id = "dart"
+family = "dart"
+content_family = "code"
+extensions = ["dart"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "vue"
+family = "vue"
+content_family = "markup"
+extensions = ["vue"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "svelte"
+family = "svelte"
+content_family = "markup"
+extensions = ["svelte"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "shell"
+family = "shell"
+content_family = "code"
+extensions = ["sh", "bash", "zsh", "fish"]
+filenames = []
+shebangs = ["sh", "bash", "zsh", "fish"]
+priority = 100
+
+[[kind]]
+id = "powershell"
+family = "powershell"
+content_family = "code"
+extensions = ["ps1"]
+filenames = []
+shebangs = ["pwsh", "powershell"]
+priority = 100
+
+[[kind]]
+id = "sql"
+family = "sql"
+content_family = "code"
+extensions = ["sql"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "markdown"
+family = "markdown"
+content_family = "markup"
+extensions = ["md"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "plain-text"
+family = "plain-text"
+content_family = "prose"
+extensions = ["txt"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "restructured-text"
+family = "restructured-text"
+content_family = "markup"
+extensions = ["rst"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "asciidoc"
+family = "asciidoc"
+content_family = "markup"
+extensions = ["adoc"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "org"
+family = "org"
+content_family = "markup"
+extensions = ["org"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "pdf"
+family = "pdf"
+content_family = "binary"
+extensions = ["pdf"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "word"
+family = "word"
+content_family = "binary"
+extensions = ["doc", "docx"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "rich-text"
+family = "rich-text"
+content_family = "prose"
+extensions = ["rtf"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "open-document"
+family = "open-document"
+content_family = "binary"
+extensions = ["odt"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "epub"
+family = "epub"
+content_family = "binary"
+extensions = ["epub"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "json"
+family = "json"
+content_family = "data"
+extensions = ["json"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "yaml"
+family = "yaml"
+content_family = "data"
+extensions = ["yaml", "yml"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "toml"
+family = "toml"
+content_family = "data"
+extensions = ["toml"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "ini"
+family = "ini"
+content_family = "data"
+extensions = ["ini"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "delimited-text"
+family = "delimited-text"
+content_family = "data"
+extensions = ["csv", "tsv", "psv"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "xml"
+family = "xml"
+content_family = "markup"
+extensions = ["xml"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "parquet"
+family = "parquet"
+content_family = "data"
+extensions = ["parquet"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "arrow"
+family = "arrow"
+content_family = "data"
+extensions = ["arrow", "feather"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "avro"
+family = "avro"
+content_family = "data"
+extensions = ["avro"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "orc"
+family = "orc"
+content_family = "data"
+extensions = ["orc"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "protocol-buffers"
+family = "protocol-buffers"
+content_family = "data"
+extensions = ["proto"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "graphql"
+family = "graphql"
+content_family = "data"
+extensions = ["graphql"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "sqlite"
+family = "sqlite"
+content_family = "data"
+extensions = ["sqlite"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "log"
+family = "log-files"
+content_family = "prose"
+extensions = ["log"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "json-lines"
+family = "log-files"
+content_family = "data"
+extensions = ["jsonl", "ndjson"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "archives"
+family = "archives"
+content_family = "binary"
+extensions = ["zip", "tar", "tar.gz", "tgz", "gz", "tar.bz2", "bz2", "tar.xz", "xz", "tar.zst", "zst", "7z", "rar"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "raster-image"
+family = "images"
+content_family = "binary"
+extensions = ["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "ico", "tif", "tiff", "heic"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "svg"
+family = "images"
+content_family = "markup"
+extensions = ["svg"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "video"
+family = "videos"
+content_family = "binary"
+extensions = ["mp4", "mov", "m4v", "mkv", "webm", "avi"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "audio"
+family = "audio"
+content_family = "binary"
+extensions = ["mp3", "wav", "flac", "m4a", "aac", "ogg", "opus"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "font"
+family = "fonts"
+content_family = "binary"
+extensions = ["ttf", "otf", "woff", "woff2"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "documentation-file"
+group = "docs"
+content_family = "prose"
+extensions = []
+filenames = ["readme", "license", "licence", "copying", "notice", "changelog", "authors", "contributors", "contributing", "codeowners"]
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "build-file"
+group = "code"
+content_family = "code"
+extensions = []
+filenames = ["makefile", "dockerfile", "justfile", "rakefile", "gemfile", "procfile"]
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "ambiguous-code"
+group = "code"
+content_family = "code"
+extensions = ["m", "mm", "ml", "pl", "r"]
+filenames = []
+shebangs = []
+priority = 10
+
+[[kind]]
+id = "configuration"
+group = "data"
+content_family = "data"
+extensions = ["cfg", "conf", "properties", "db"]
+filenames = []
+shebangs = []
+priority = 100
+
+[[kind]]
+id = "source-map"
+group = "data"
+content_family = "data"
+extensions = ["map"]
+filenames = []
+shebangs = []
+priority = 100

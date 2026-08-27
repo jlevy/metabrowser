@@ -26,7 +26,8 @@ def _make_plugin(parent: Path, name: str = "local-demo") -> Path:
     plug = parent / name
     plug.mkdir(parents=True)
     (plug / "manifest.toml").write_text(
-        f'[plugin]\nname = "{name}"\n[[kind]]\nid = "demo"\nmatch = {{ ext = ".demo" }}\n'
+        f'[plugin]\nname = "{name}"\nsdk_version = "0.5"\n'
+        '[[kind]]\nid = "demo"\nmatch = { ext = ".demo" }\n'
     )
     (plug / "index.js").write_text("// stub\n")
     return plug

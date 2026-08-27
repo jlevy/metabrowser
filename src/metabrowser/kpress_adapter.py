@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from kpress import runtime as _kpress_runtime
 from kpress.models import KPressAsset, KPressExportRequest
@@ -73,8 +73,14 @@ def render_kpress_view(
     frontmatter: dict[str, Any] | None = None,
     frontmatter_error: str | None = None,
     profile: str | None = None,
+    include_toc: Literal["auto", "on", "off"] = "auto",
 ) -> dict[str, Any]:
-    """Render a Metabrowser file through KPress."""
+    """Render a Metabrowser file through KPress.
+
+    ``include_toc="off"`` suppresses the table of contents for a document
+    embedded inside Metabrowser's own navigation; see the README panel in the
+    folder Overview.
+    """
 
     runtime = _kpress_runtime
     # KPress defaults to font_mode="custom", which uses vendored PT Serif /
@@ -96,6 +102,7 @@ def render_kpress_view(
         # metabrowser shows the file path in its own file-header, so suppress
         # KPress's rendered <h1> doc header rather than hiding it with host CSS.
         show_doc_header=False,
+        include_toc=include_toc,
         toc_collapse_depth=_TOC_COLLAPSE_DEPTH,
         # A browser shows one document after another, so the reading column has
         # to land in the same place every time. KPress's wide band gives a

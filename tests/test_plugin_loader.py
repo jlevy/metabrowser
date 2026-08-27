@@ -40,6 +40,7 @@ from metabrowser.plugin_loader.discovery import (
     discover_plugins,
 )
 from metabrowser.plugin_loader.manifest import (
+    PLUGIN_SDK_VERSION,
     DataHookSpec,
     KindMatch,
     KindRule,
@@ -70,12 +71,18 @@ def make_plugin_dir(tmp_path: Path):
 # ── Manifest validation ─────────────────────────────────────
 
 
+def test_deferred_plugin_asset_lifecycle_is_sdk_0_5() -> None:
+    """Selected-kind loading is a released lifecycle break, not an additive 0.4 change."""
+    assert PLUGIN_SDK_VERSION == "0.5"
+
+
 def test_manifest_minimum_fields(make_plugin_dir) -> None:
     plugin_dir = make_plugin_dir(
         "p1",
         """
 [plugin]
 name = "p1"
+sdk_version = "0.5"
 
 [[kind]]
 id = "myk"
@@ -94,12 +101,73 @@ default = true
     assert manifest.view[0].id == "main"
 
 
+def test_manifest_without_sdk_version_targets_the_original_sdk(make_plugin_dir) -> None:
+    """Omission resolves to the original SDK, so it ages out with every bump.
+
+    A 0.4.0-era manifest that omits the field targets ``0.1`` and nothing later.
+    Once the host moves past ``0.1`` that resolved value fails the ordinary
+    mismatch gate, which is the point: omission must not silently follow the
+    host forward onto a contract the plugin was never written against.
+    """
+
+    plugin_dir = make_plugin_dir(
+        "sdk-default",
+        """
+[plugin]
+name = "sdk-default"
+
+[[kind]]
+id = "myk"
+match = { ext = ".myk" }
+""",
+    )
+    with pytest.raises(ValueError, match=r"targets browser SDK '0\.1'"):
+        load_manifest(plugin_dir / "manifest.toml")
+
+
+def test_manifest_rejects_a_foreign_sdk_version(make_plugin_dir) -> None:
+    """An SDK break is refused at load time rather than absorbed by a shim."""
+
+    plugin_dir = make_plugin_dir(
+        "sdk-stale",
+        """
+[plugin]
+name = "sdk-stale"
+sdk_version = "0.0"
+
+[[kind]]
+id = "myk"
+match = { ext = ".myk" }
+""",
+    )
+    with pytest.raises(ValueError, match="targets browser SDK"):
+        load_manifest(plugin_dir / "manifest.toml")
+
+
+def test_manifest_rejects_the_eager_asset_lifecycle_sdk(make_plugin_dir) -> None:
+    plugin_dir = make_plugin_dir(
+        "sdk-eager-assets",
+        """
+[plugin]
+name = "sdk-eager-assets"
+sdk_version = "0.4"
+
+[[kind]]
+id = "myk"
+match = { ext = ".myk" }
+""",
+    )
+    with pytest.raises(ValueError, match=r"targets browser SDK '0\.4'.*provides '0\.5'"):
+        load_manifest(plugin_dir / "manifest.toml")
+
+
 def test_manifest_rejects_empty_match(make_plugin_dir) -> None:
     plugin_dir = make_plugin_dir(
         "p2",
         """
 [plugin]
 name = "p2"
+sdk_version = "0.5"
 
 [[kind]]
 id = "myk"
@@ -116,6 +184,7 @@ def test_manifest_rejects_duplicate_view_ids(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p3"
+sdk_version = "0.5"
 
 [[kind]]
 id = "myk"
@@ -141,6 +210,7 @@ def test_manifest_rejects_multiple_defaults(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p4"
+sdk_version = "0.5"
 
 [[kind]]
 id = "myk"
@@ -168,6 +238,7 @@ def test_manifest_rejects_bad_sidekick(make_plugin_dir) -> None:
         """
 [plugin]
 name = "p5"
+sdk_version = "0.5"
 
 [[kind]]
 id = "myk"
@@ -186,14 +257,14 @@ def test_manifest_rejects_invalid_plugin_name() -> None:
     # Plugin name pattern is enforced by Pydantic at construction time.
     with pytest.raises(ValidationError):
         PluginManifest(
-            plugin=PluginInfo(name="Bad-Name"),  # uppercase rejected
+            plugin=PluginInfo(name="Bad-Name", sdk_version=PLUGIN_SDK_VERSION),
             kind=[KindRule(id="x", match=KindMatch(ext=".x"))],
         )
 
 
 def test_manifest_rejects_slashed_route() -> None:
     manifest = PluginManifest(
-        plugin=PluginInfo(name="p"),
+        plugin=PluginInfo(name="p", sdk_version=PLUGIN_SDK_VERSION),
         kind=[KindRule(id="x", match=KindMatch(ext=".x"))],
         data_hook=[DataHookSpec(route="not/ok", sidekick="m:fn")],
     )
@@ -203,7 +274,7 @@ def test_manifest_rejects_slashed_route() -> None:
 
 def test_manifest_rejects_duplicate_data_hook_routes() -> None:
     manifest = PluginManifest(
-        plugin=PluginInfo(name="p"),
+        plugin=PluginInfo(name="p", sdk_version=PLUGIN_SDK_VERSION),
         kind=[KindRule(id="x", match=KindMatch(ext=".x"))],
         data_hook=[
             DataHookSpec(route="same", sidekick="m:first"),
@@ -232,6 +303,7 @@ def test_discovery_reports_manifest_missing_index_js(make_plugin_dir, tmp_path: 
         """
 [plugin]
 name = "broken"
+sdk_version = "0.5"
 
 [[kind]]
 id = "x"
@@ -257,6 +329,7 @@ def test_discovery_finds_extra_dir_plugin(make_plugin_dir, tmp_path: Path) -> No
         """
 [plugin]
 name = "myplug"
+sdk_version = "0.5"
 
 [[kind]]
 id = "myk"
@@ -277,6 +350,7 @@ def test_entry_point_calls_documented_plugin_dir_factory(
         """
 [plugin]
 name = "entrypoint-plugin"
+sdk_version = "0.5"
 
 [[kind]]
 id = "entrypoint-kind"
@@ -492,7 +566,7 @@ def test_classifier_exts_list_match(tmp_path: Path) -> None:
 def test_manifest_rejects_ext_and_exts_both_set() -> None:
     """Setting match.ext and match.exts on the same rule is a manifest error."""
     manifest = PluginManifest(
-        plugin=PluginInfo(name="x"),
+        plugin=PluginInfo(name="x", sdk_version=PLUGIN_SDK_VERSION),
         kind=[KindRule(id="x", match=KindMatch(ext=".json", exts=[".json"]))],
     )
     problems = manifest.validate_consistency()
@@ -501,7 +575,7 @@ def test_manifest_rejects_ext_and_exts_both_set() -> None:
 
 def test_manifest_rejects_empty_exts_list() -> None:
     manifest = PluginManifest(
-        plugin=PluginInfo(name="x"),
+        plugin=PluginInfo(name="x", sdk_version=PLUGIN_SDK_VERSION),
         kind=[KindRule(id="x", match=KindMatch(exts=[]))],
     )
     problems = manifest.validate_consistency()
@@ -512,7 +586,7 @@ def test_manifest_rejects_empty_exts_list() -> None:
 
 def test_manifest_rejects_exts_entry_without_dot() -> None:
     manifest = PluginManifest(
-        plugin=PluginInfo(name="x"),
+        plugin=PluginInfo(name="x", sdk_version=PLUGIN_SDK_VERSION),
         kind=[KindRule(id="x", match=KindMatch(exts=["json"]))],
     )
     problems = manifest.validate_consistency()
@@ -790,7 +864,7 @@ def test_classify_path_glob_rejects_outside_subtree(tmp_path: Path) -> None:
 
 def test_manifest_rejects_yaml_value_prefix_without_key() -> None:
     manifest = PluginManifest(
-        plugin=PluginInfo(name="x"),
+        plugin=PluginInfo(name="x", sdk_version=PLUGIN_SDK_VERSION),
         kind=[KindRule(id="x", match=KindMatch(ext=".yaml", yaml_value_prefix="Foo/"))],
     )
     problems = manifest.validate_consistency()

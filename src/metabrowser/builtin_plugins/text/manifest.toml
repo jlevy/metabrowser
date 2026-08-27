@@ -2,6 +2,7 @@
 name = "text"
 display_name = "Text"
 version = "0.0.1"
+sdk_version = "0.5"
 
 # `text` is the catch-all kind — used by classify_file_kind when no
 # other rule matches. There's no manifest [[kind]] match predicate

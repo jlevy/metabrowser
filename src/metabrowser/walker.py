@@ -9,10 +9,11 @@ event bus.
 Walker semantics (verified by tests in
 ``metabrowser/tests/test_browser_inventory.py``):
 
-* **BFS for queueing.** First-render-depth (``DEFAULT_FIRST_RENDER_DEPTH``)
-  directories are scanned before deeper ones, so a request landing
-  ~500 ms into boot finds the visible part of the tree already
-  populated.
+* **Strict level-order BFS.** Every directory at depth N is scanned
+  before any at depth N+1, so the layers the nav tree shows — and the
+  ones a reader expands first — are complete long before the deep
+  tail, and a request landing early in the boot scan finds them
+  already populated.
 * **Post-order finalize.** A directory's ``FsEntry`` is replaced with
   populated ``total_files`` / ``total_size`` / ``newest_mtime_ns``
   only after every descendant has been walked.
@@ -26,20 +27,18 @@ Walker semantics (verified by tests in
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections import deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
-from functools import partial
 from pathlib import Path
 from threading import Event
 
-from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import FsEntry
 from metabrowser.fs_paths import is_visible
 from metabrowser.settings import (
-    INVENTORY_FIRST_RENDER_DEPTH,
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_FILES,
     INVENTORY_REFRESH_TTL_S,
@@ -53,7 +52,6 @@ LOG = logging.getLogger(__name__)
 # :mod:`metabrowser.settings`; these names exist so callers
 # (InventoryIndex, tests) can reference them without reaching into
 # settings directly.
-DEFAULT_FIRST_RENDER_DEPTH = INVENTORY_FIRST_RENDER_DEPTH
 DEFAULT_MAX_DEPTH = INVENTORY_MAX_DEPTH
 DEFAULT_MAX_FILES = INVENTORY_MAX_FILES
 DEFAULT_REFRESH_TTL_S = INVENTORY_REFRESH_TTL_S
@@ -123,27 +121,26 @@ class _ScanItem:
     / ``is_dir`` matter; size/mtime are populated via the
     aggregate-rollup path."""
 
-    __slots__ = ("abs_path", "is_dir", "mtime_ns", "name", "size")
+    __slots__ = ("abs_path", "is_dir", "is_symlink", "mtime_ns", "name", "size")
 
     def __init__(
         self,
         name: str,
         abs_path: Path,
         is_dir: bool,
+        is_symlink: bool,
         size: int,
         mtime_ns: int,
     ) -> None:
         self.name = name
         self.abs_path = abs_path
         self.is_dir = is_dir
+        self.is_symlink = is_symlink
         self.size = size
         self.mtime_ns = mtime_ns
 
 
-def _scandir_visible(
-    dirpath: Path,
-    cancel_event: Event | None = None,
-) -> list[_ScanItem]:
+def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
     """One ``os.scandir`` call, filtered to visible names, with
     one stat per file. Symlinks are not followed.
 
@@ -154,11 +151,10 @@ def _scandir_visible(
     try:
         with os.scandir(dirpath) as it:
             for raw in it:
-                if cancel_event is not None and cancel_event.is_set():
-                    break
                 if not is_visible(raw.name):
                     continue
                 try:
+                    raw_is_symlink = raw.is_symlink()
                     raw_is_dir = raw.is_dir(follow_symlinks=False)
                 except OSError:
                     continue
@@ -168,6 +164,7 @@ def _scandir_visible(
                             name=raw.name,
                             abs_path=Path(raw.path),
                             is_dir=True,
+                            is_symlink=False,
                             size=0,
                             mtime_ns=0,
                         )
@@ -182,6 +179,7 @@ def _scandir_visible(
                             name=raw.name,
                             abs_path=Path(raw.path),
                             is_dir=False,
+                            is_symlink=raw_is_symlink,
                             size=st.st_size,
                             mtime_ns=st.st_mtime_ns,
                         )
@@ -210,7 +208,6 @@ async def walk_tree(
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
-    first_render_depth: int = DEFAULT_FIRST_RENDER_DEPTH,
     gitignore_check: Callable[[Path, bool], bool] | None = None,
 ) -> AsyncIterator[FsEntry]:
     """BFS the filesystem rooted at *root*; yield ``FsEntry``
@@ -228,11 +225,8 @@ async def walk_tree(
        their aggregate-populated form. Aggregates propagate up
        the parent chain; the root yields its finalized form last.
 
-    The *first_render_depth* parameter is informational — BFS
-    naturally walks shallower dirs first; first_render_depth is
-    used for the BFS queue priority (``deque.popleft`` for
-    shallow, ``deque.append`` for deeper) but does not change the
-    final yield set.
+    The queue is strict FIFO, so discovery runs in level order and
+    shallow directories always finalize before deeper ones.
 
     *gitignore_check* is the same callable produced by
     ``tree.build_gitignore_check`` — when provided, the walker sets
@@ -279,6 +273,8 @@ async def walk_tree(
     # they themselves finalize.
     accum_files: dict[str, int] = {}
     accum_size: dict[str, int] = {}
+    accum_unignored_files: dict[str, int] = {}
+    accum_unignored_size: dict[str, int] = {}
     accum_newest: dict[str, int] = {}
     # Placeholder entries we'll need to replace at finalize-time.
     placeholders: dict[str, FsEntry] = {}
@@ -292,6 +288,8 @@ async def walk_tree(
     parent_of[root_rel] = ""
     accum_files[root_rel] = 0
     accum_size[root_rel] = 0
+    accum_unignored_files[root_rel] = 0
+    accum_unignored_size[root_rel] = 0
     accum_newest[root_rel] = 0
 
     root_gitignored = _gi(root, True)
@@ -326,11 +324,15 @@ async def walk_tree(
                 break
             tf = accum_files[cursor]
             ts = accum_size[cursor]
+            uf = accum_unignored_files[cursor]
+            us = accum_unignored_size[cursor]
             nm = accum_newest[cursor]
             final = replace(
                 ph,
                 total_files=tf,
                 total_size=ts,
+                unignored_files=uf,
+                unignored_size=us,
                 newest_mtime_ns=nm,
                 mtime_ns=nm,
             )
@@ -345,6 +347,8 @@ async def walk_tree(
                 break
             accum_files[parent] = accum_files.get(parent, 0) + tf
             accum_size[parent] = accum_size.get(parent, 0) + ts
+            accum_unignored_files[parent] = accum_unignored_files.get(parent, 0) + uf
+            accum_unignored_size[parent] = accum_unignored_size.get(parent, 0) + us
             if nm > accum_newest.get(parent, 0):
                 accum_newest[parent] = nm
             pending[parent] = pending.get(parent, 0) - 1
@@ -382,7 +386,7 @@ async def walk_tree(
 
         # Read directory in a worker thread; blocking call.
         try:
-            child_entries = await run_cancellable_thread(partial(_scandir_visible, abs_path))
+            child_entries = await asyncio.to_thread(_scandir_visible, abs_path)
         except OSError as exc:
             LOG.debug("walk_tree scandir failed for %s: %s", abs_path, exc)
             child_entries = []
@@ -420,16 +424,29 @@ async def walk_tree(
                 parent_of[child_rel] = rel_path_cur
                 accum_files[child_rel] = 0
                 accum_size[child_rel] = 0
+                accum_unignored_files[child_rel] = 0
+                accum_unignored_size[child_rel] = 0
                 accum_newest[child_rel] = 0
                 yield placeholder
-                # First-render-depth dirs go to the front of the
-                # queue so they finalize before deeper ones; deeper
-                # dirs go to the back. This keeps tally-fill order
-                # roughly aligned with what the user sees first.
-                if depth + 1 <= first_render_depth:
-                    queue.appendleft((ce.abs_path, child_rel, depth + 1))
-                else:
-                    queue.append((ce.abs_path, child_rel, depth + 1))
+                # Strict FIFO, so the queue drains in level order: every
+                # directory at depth N is scanned before any at depth N+1.
+                # Pushing shallow directories to the front instead would make
+                # this band depth-first — the walker would follow one level-1
+                # directory all the way down before looking at its siblings,
+                # leaving the rest of the first level (the part the nav tree
+                # shows, and the part a reader expands first) unscanned for
+                # most of the crawl.
+                queue.append((ce.abs_path, child_rel, depth + 1))
+            elif ce.is_symlink:
+                link_gi = parent_ignored or _gi(ce.abs_path, False)
+                yield FsEntry.for_observed_symlink(
+                    path=child_rel,
+                    parent=rel_path_cur,
+                    name=ce.name,
+                    size=ce.size,
+                    mtime_ns=ce.mtime_ns,
+                    gitignored=link_gi,
+                )
             else:
                 files_indexed += 1
                 # Files inherit gitignored from parent the same way dirs do.
@@ -445,6 +462,13 @@ async def walk_tree(
                 yield file_entry
                 accum_files[rel_path_cur] = accum_files.get(rel_path_cur, 0) + 1
                 accum_size[rel_path_cur] = accum_size.get(rel_path_cur, 0) + ce.size
+                if not file_gi:
+                    accum_unignored_files[rel_path_cur] = (
+                        accum_unignored_files.get(rel_path_cur, 0) + 1
+                    )
+                    accum_unignored_size[rel_path_cur] = (
+                        accum_unignored_size.get(rel_path_cur, 0) + ce.size
+                    )
                 if ce.mtime_ns > accum_newest.get(rel_path_cur, 0):
                     accum_newest[rel_path_cur] = ce.mtime_ns
 
@@ -462,7 +486,6 @@ async def walk_tree(
 
 
 __all__ = [
-    "DEFAULT_FIRST_RENDER_DEPTH",
     "DEFAULT_MAX_DEPTH",
     "DEFAULT_MAX_FILES",
     "DEFAULT_REFRESH_TTL_S",

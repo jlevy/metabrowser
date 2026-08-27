@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GIT_CHECK_IGNORE_TIMEOUT_SECONDS = 30
 SKIP_PARTS = {".git", ".venv", "dist", "node_modules", "__pycache__"}
-SKIP_ROOTS = (ROOT / ".tbd" / "docs",)
+SKIP_ROOTS = (
+    ROOT / ".tbd" / "docs",
+    # Machine-generated issue exports used by tbd sync-failure recovery.
+    ROOT / ".tbd" / "workspaces",
+)
 COMMON_DOC_FOOTER = "This document follows common-doc-guidelines.md."
 COMMON_DOC_EXEMPT_ROOTS = (
     ROOT / ".agents" / "skills",
@@ -41,6 +47,15 @@ TOKEN_PATTERN = re.compile(r"[a-z][a-z0-9_-]*", re.IGNORECASE)
 ISSUE_ID_PATTERN = re.compile(r"\b([a-z][a-z0-9]{1,15})-[a-z0-9]{4,}\b", re.IGNORECASE)
 PRIVATE_ISSUE_PREFIX_HASHES = frozenset(
     {"0035e3bed3a10ebe81bc85bbf80cc092871ba344926efa491f195e36cc7e003b"}
+)
+GIT_LOCAL_ENV_FALLBACK = frozenset(
+    {
+        "GIT_COMMON_DIR",
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_PREFIX",
+        "GIT_WORK_TREE",
+    }
 )
 BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
@@ -81,6 +96,30 @@ def _is_implementation_source(source: str) -> bool:
     )
 
 
+@lru_cache(maxsize=1)
+def _git_local_env_names() -> frozenset[str]:
+    """Environment variables git considers repository-local.
+
+    Invariant for the life of the process, and this is now asked once per
+    walked directory rather than once per run, so it is answered from a cache:
+    the walk below prunes to the tracked tree, which is hundreds of directories
+    on a real checkout and was hundreds of redundant `git` spawns.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"],
+            capture_output=True,
+            text=True,
+            timeout=GIT_CHECK_IGNORE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return GIT_LOCAL_ENV_FALLBACK
+    if result.returncode != 0:
+        return GIT_LOCAL_ENV_FALLBACK
+    return frozenset(result.stdout.splitlines())
+
+
 def _git_ignored(paths: list[Path]) -> set[Path]:
     """Return the subset of ``paths`` that git ignores.
 
@@ -97,6 +136,10 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
         return set()
     stdin = "".join(f"{path.relative_to(ROOT)}\0" for path in paths)
     try:
+        env = os.environ.copy()
+        local_env_names = _git_local_env_names()
+        for name in local_env_names:
+            env.pop(name, None)
         result = subprocess.run(
             ["git", "-C", str(ROOT), "check-ignore", "--stdin", "-z"],
             input=stdin,
@@ -104,6 +147,7 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
             text=True,
             timeout=GIT_CHECK_IGNORE_TIMEOUT_SECONDS,
             check=False,
+            env=env,
         )
     except (OSError, subprocess.SubprocessError):
         return set()
@@ -115,19 +159,40 @@ def _git_ignored(paths: list[Path]) -> set[Path]:
 
 
 def _text_files() -> list[Path]:
+    """Every candidate file in the work tree, ignored trees never descended into.
+
+    Pruning rather than filtering is the point. Walking first and discarding
+    afterwards means reading a gitignored tree in full before deciding it was
+    out of scope, and ``devtools/bench_serving.py`` puts a benchmark corpus of
+    up to a million files at ``.bench/`` by default -- an ordinary developer's
+    checkout, on which the scan stopped finishing.
+    """
+    self_path = Path(__file__).resolve()
     files: list[Path] = []
-    for path in ROOT.rglob("*"):
-        if path == Path(__file__).resolve():
-            continue
-        if any(path.is_relative_to(skip_root) for skip_root in SKIP_ROOTS):
-            continue
-        if not path.is_file() or any(part in SKIP_PARTS for part in path.parts):
-            continue
-        try:
-            path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        files.append(path)
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        here = Path(dirpath)
+        # A skip root's own ancestors stay walkable: only the root itself and
+        # what is under it drop out, which is how `.tbd/docs` is skipped
+        # without skipping `.tbd`.
+        candidates = [
+            here / name
+            for name in dirnames
+            if name not in SKIP_PARTS
+            and not any((here / name).is_relative_to(skip_root) for skip_root in SKIP_ROOTS)
+        ]
+        ignored_dirs = _git_ignored(candidates)
+        dirnames[:] = [directory.name for directory in candidates if directory not in ignored_dirs]
+        for name in filenames:
+            path = here / name
+            if path == self_path or name in SKIP_PARTS:
+                continue
+            if any(path.is_relative_to(skip_root) for skip_root in SKIP_ROOTS):
+                continue
+            try:
+                path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            files.append(path)
     ignored = _git_ignored(files)
     return [path for path in files if path not in ignored]
 

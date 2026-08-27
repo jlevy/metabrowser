@@ -15,6 +15,7 @@ def _read(path: Path) -> str:
 
 def test_shell_messages_explain_state_and_recovery() -> None:
     app = _read(STATIC / "app.js")
+    styles = _read(STATIC / "styles.css")
 
     assert "Could not load files. Refresh the page to try again." in app
     assert "File list incomplete." in app
@@ -27,6 +28,12 @@ def test_shell_messages_explain_state_and_recovery() -> None:
     assert "function responseErrorDetail(body, status)" in app
     assert "new Error(responseErrorDetail(text, resp.status))" in app
     assert "Could not display this view. Refresh the page to try again." in app
+    assert "function previewErrorHtml(summary, detail)" in app
+    assert 'class="preview-error-title"' in app
+    assert 'class="preview-error-detail"' in app
+    assert ".preview-error {" in styles
+    assert "flex-direction: column;" in styles
+    assert "max-width: var(--preview-message-max-width);" in styles
 
     for internal_wording in (
         "Failed to load tree",
@@ -42,11 +49,14 @@ def test_shell_messages_explain_state_and_recovery() -> None:
 
 def test_plugin_messages_use_product_language() -> None:
     structured = _read(BUILTINS / "structured" / "index.js")
-    markdown = _read(BUILTINS / "markdown" / "index.js")
+    markdown = _read(BUILTINS / "markdown" / "index.js") + _read(
+        BUILTINS / "markdown" / "rendered.js"
+    )
     agent_log = _read(BUILTINS / "agent_log" / "index.js")
     charts = _read(STATIC / "charts.js")
 
-    assert "The source view is unavailable. Refresh the page to try again." in structured
+    assert "mb.renderSourceView(container, raw)" in structured
+    assert "The source view is unavailable" not in structured
     assert "Could not load structured data. Refresh the page to try again." in structured
     assert "Empty or unparseable file." not in structured
     assert "Could not render this document." in markdown
@@ -57,20 +67,26 @@ def test_plugin_messages_use_product_language() -> None:
 
 
 def test_search_copy_explains_incomplete_indexing() -> None:
-    palette = _read(STATIC / "search_palette.js")
-    controller = _read(STATIC / "search_controller.js")
+    palette = _read(STATIC / "search-palette.js")
+    controller = _read(STATIC / "search-controller.js")
     copy = palette + controller
 
-    assert "More files may appear as scanning continues." in copy
-    assert "No files match your search." in copy
-    assert "Showing only the top matches." in copy
+    assert "Search includes ${scope}." in palette
+    assert "No matches in ${searchScope}." in controller
+    assert "Scanning continues." in copy
+    assert "Showing the top matches." in copy
+    assert "Type a filename to search" not in copy
+    assert "No files match your search." not in copy
+    assert "files are searchable" not in copy
+    assert "More files may appear as scanning continues." not in copy
+    assert "stale result" not in palette
     assert "Local coverage is incomplete." not in copy
     assert "observed files" not in copy
 
 
 def test_live_filter_exposes_its_exact_cutoff() -> None:
     app = _read(STATIC / "app.js")
-    controls = _read(STATIC / "filter_controls.js")
+    controls = _read(STATIC / "filter-controls.js")
 
     assert "Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds" in app
-    assert 'const title = opt.title ? ` title="${esc(opt.title)}"` : "";' in controls
+    assert 'const tip = opt.tip ? ` data-tip-text="${esc(opt.tip)}"` : "";' in controls

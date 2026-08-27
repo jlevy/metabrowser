@@ -2,6 +2,8 @@
 name = "markdown"
 display_name = "Markdown"
 version = "0.0.1"
+sdk_version = "0.5"
+extra_styles = ["markdown.css"]
 
 # Generic Markdown handling. Higher-priority plugin classifiers may claim
 # specialized document kinds; this plugin handles every other Markdown file.

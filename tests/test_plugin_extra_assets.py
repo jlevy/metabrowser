@@ -8,8 +8,7 @@ exercises:
 
 1. The manifest schema accepts the new fields.
 2. The loader rejects malformed entries (slashes, traversal).
-3. The index template emits one tag per manifest entry, in declared
-   order, before the plugin's ``index.js``.
+3. The shell configures assets by kind without fetching them eagerly.
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ import pytest
 
 from metabrowser import server
 from metabrowser.plugin_loader.discovery import LoadedPlugin
-from metabrowser.plugin_loader.manifest import PluginManifest
+from metabrowser.plugin_loader.manifest import PLUGIN_SDK_VERSION, PluginManifest
 
 
 def _build_manifest(
@@ -33,6 +32,7 @@ def _build_manifest(
     return {
         "plugin": {
             "name": "fixture",
+            "sdk_version": PLUGIN_SDK_VERSION,
             "extra_scripts": extra_scripts or [],
             "extra_styles": extra_styles or [],
         },
@@ -72,16 +72,18 @@ def test_manifest_rejects_slashed_extra_style() -> None:
     assert any("extra_styles" in p for p in problems), problems
 
 
-def test_index_emits_extra_scripts_in_declared_order(tmp_path: Path) -> None:
-    """Loader emits one <script> tag per extra_scripts entry, in order, before index.js."""
+def test_index_configures_plugin_assets_for_on_demand_loading(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     fake_manifest = PluginManifest.model_validate(
         {
             "plugin": {
                 "name": "fixture",
+                "sdk_version": PLUGIN_SDK_VERSION,
                 "extra_scripts": ["alpha.js", "beta.js"],
                 "extra_styles": ["palette.css"],
-            }
+            },
+            "kind": [{"id": "fixture-kind", "match": {"ext": ".fixture"}}],
+            "view": [{"kind": "fixture-kind", "id": "source", "label": "Source"}],
         }
     )
     fake = LoadedPlugin(
@@ -95,18 +97,30 @@ def test_index_emits_extra_scripts_in_declared_order(tmp_path: Path) -> None:
         response = asyncio.run(server.index(Mock()))
     body = bytes(response.body).decode("utf-8")
 
-    alpha_idx = body.index("/plugin-static/fixture/alpha.js")
-    beta_idx = body.index("/plugin-static/fixture/beta.js")
-    index_idx = body.index("/plugin-static/fixture/index.js")
-    palette_idx = body.index("/plugin-static/fixture/palette.css")
+    config_idx = body.index("MetabrowserPluginHost.configureAssets")
+    app_idx = body.index('<script src="/static/app.js')
+    assert config_idx < app_idx
+    assert body.index("/plugin-static/fixture/alpha.js") < body.index(
+        "/plugin-static/fixture/beta.js"
+    )
+    assert '"fixture-kind"' in body
+    assert '<script src="/plugin-static/fixture/' not in body
+    assert '<script type="module" src="/plugin-static/fixture/' not in body
+    assert '<link rel="stylesheet" href="/plugin-static/fixture/' not in body
 
-    # Order: extras BEFORE index.js
-    assert alpha_idx < index_idx
-    assert beta_idx < index_idx
-    # Order: alpha before beta (declared order preserved)
-    assert alpha_idx < beta_idx
-    # Order: stylesheet in <head> before script in <body>
-    assert palette_idx < alpha_idx
+
+def test_file_render_waits_for_the_selected_kind_plugin() -> None:
+    app = (server.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    helper = app[
+        app.index("async function renderFileWithPlugins") : app.index(
+            "/** @returns {Promise<QuickFileOpenOutcome>} */"
+        )
+    ]
+
+    assert "ensureKindAssets(data.kind)" in helper
+    assert "MetabrowserPluginHost" not in helper
+    assert "await _perf.measureAsync" in helper
+    assert "return renderFile(data, preferredViewId, previewClaim)" in helper
 
 
 def test_server_no_hardcoded_optional_asset_paths() -> None:

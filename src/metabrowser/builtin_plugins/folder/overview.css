@@ -1,0 +1,228 @@
+.folder-overview-host {
+  /* KPress's own inline padding on the article in its narrow band. Overview
+     zeroes that padding (see the .kpress rule below) and insets the panel
+     instead, so the inset has to be the same length or the README's text ends
+     up narrower here than the standalone page by twice the difference — it was
+     1.25rem, and the text ran 24px short. */
+  --folder-overview-narrow-document-gutter: 0.5rem;
+  /* Mirror KPress's visible regular-band content card, not its wider article
+     frame: the frame reserves 2rem per side for the floating TOC control. */
+  --folder-overview-regular-card-width: min(calc(100% - 4rem), calc(var(--kpress-measure) - 2rem));
+  --folder-overview-wide-document-gutter: 1rem;
+  --folder-overview-wide-toc-width: 15rem;
+  --folder-overview-wide-toc-gap: 3rem;
+  /* The wide column is KPress's wide-band content track, not the reading
+     measure alone: 48rem of text plus the 2.5rem KPress insets on each side.
+     Sized to the measure instead, the column is right but the text inside it
+     is not — KPress still pads .kpress-long-text by 2.5rem in this band, so
+     the README rendered at 43rem here against 48rem when the same file is
+     opened on its own. Text width is what a reader compares between the two,
+     so it is the thing that has to match; every panel still shares one edge,
+     which is now that track's edge. */
+  --folder-overview-wide-toc-inset: 2.5rem;
+  --folder-overview-wide-card-width: calc(
+    var(--kpress-measure) +
+    2 *
+    var(--folder-overview-wide-toc-inset)
+  );
+
+  container-type: inline-size;
+}
+
+.folder-overview-stack {
+  display: grid;
+  gap: 28px;
+  width: 100%;
+}
+
+.folder-overview-panel {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+
+.folder-overview-panel-heading {
+  margin: 0 0 14px;
+  padding: 0 0 var(--section-heading-divider-gap);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  line-height: 1.25;
+  text-transform: var(--label-text-transform);
+}
+
+.folder-overview-panel-toggle {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.folder-overview-panel-toggle:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+.folder-overview-panel-body {
+  min-width: 0;
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: hidden;
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
+}
+
+.folder-overview-panel-body-collapsed {
+  height: 0;
+  visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folder-overview-panel-body {
+    transition-duration: 1ms;
+  }
+}
+
+/* A collapsed panel is a heading and nothing else. The rule underlines content
+   that is not there, and the heading's trailing space is sized to stand a
+   heading off from its own body, not from the next heading — together they read
+   as an empty section rather than a closed one. The panel grid's own gap is
+   the whole separation between two collapsed headings. Expanded panels are
+   untouched. */
+.folder-overview-panel-collapsed > .folder-overview-panel-heading {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* Total sums the two disjoint rows above it rather than being a third
+   population beside them, so a hairline separates it the way a sum is set off
+   from its addends. It is the row the type distribution below counts against
+   while Show ignored is on. */
+.folder-totals-row-all > td {
+  border-top: 1px solid var(--border);
+}
+
+.folder-rollup-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 12px;
+}
+
+.folder-overview-panel-surface > .folder-overview-panel-heading,
+.folder-overview-panel-surface > .folder-overview-panel-body,
+.folder-overview-panel-document > .folder-overview-panel-heading,
+.folder-overview-panel-document > .folder-overview-panel-body {
+  width: var(--folder-overview-regular-card-width);
+  margin-inline: auto;
+}
+
+/* KPress's article frame reserves 2rem per side for the floating table-of-
+   contents control. The Overview renders the README with the contents off, so
+   that reservation holds nothing and only pushes the visible prose card in from
+   the column every other panel sits on.
+
+   Only the reservation is dropped. The card keeps the padding KPress computes
+   between its border and the text, which is what the same file gets opened on
+   its own — recomputing that here is what flattened the text against the box the
+   first time this was tried. */
+.folder-overview-panel-document > .folder-overview-panel-body > .kpress {
+  padding-inline: 0;
+}
+
+.folder-overview-loading {
+  min-height: 44px;
+  background: var(--tally-skeleton-bg);
+  opacity: 0.5;
+}
+
+.folder-overview-panel-error {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  color: var(--muted);
+}
+
+/* Both bands query `kpress-doc`, the container KPress names on the preview
+   pane, rather than this host. They are nearly the same width, and that was
+   the trap: the host is the pane minus its padding, so the two crossed 75rem
+   about 25px apart and there was a band of window widths where KPress had
+   switched and Overview had not — the README's text jumped while every other
+   panel stayed put. One document surface, one set of breakpoints. */
+@container kpress-doc (max-width: 47.99rem) {
+  .folder-overview-panel-surface > .folder-overview-panel-heading,
+  .folder-overview-panel-surface > .folder-overview-panel-body,
+  .folder-overview-panel-document > .folder-overview-panel-heading,
+  .folder-overview-panel-document > .folder-overview-panel-body {
+    width: calc(100% - 2 * var(--folder-overview-narrow-document-gutter));
+  }
+}
+
+@container kpress-doc (min-width: 75rem) {
+  /* KPress's own reading-measure cap, lifted for the same reason KPress lifts
+     it in this band: the cap and the 2.5rem inset it pads the prose with are
+     sized for different boxes. KPress reaches its wide band here — the nearest
+     container is this host, not the panel — but the README renders with no
+     table of contents, so it stays a single column and keeps the cap. The
+     inset is then measured against the cap instead of against the 53rem track
+     it was written for, and eats 5rem of measure: the README read at 43rem
+     where the same file opened on its own reads at 48rem.
+
+     KPress documents this fallback and offers `toc_rail: reserved` as the way
+     out, which holds a 15rem rail open. Overview has no use for a rail it
+     deliberately does not fill, so it lifts the cap instead and lets the
+     column be the track: 53rem of card, 48rem of text, the same two numbers
+     the standalone page produces.
+
+     Both caps, not one. KPress carries the measure on two elements — the
+     article at measure + 2rem and the layout at the measure — and warns that
+     lifting only the outer one leaves the inner still centred at the measure,
+     which reads as a wide left margin with the content spilling past its right
+     edge. */
+  .folder-overview-panel-document > .folder-overview-panel-body > .kpress,
+  .folder-overview-panel-document .kpress-doc-layout {
+    max-width: none;
+  }
+
+  .folder-overview-panel-surface > .folder-overview-panel-heading,
+  .folder-overview-panel-surface > .folder-overview-panel-body,
+  .folder-overview-panel-document > .folder-overview-panel-heading,
+  .folder-overview-panel-document > .folder-overview-panel-body {
+    width: var(--folder-overview-wide-card-width);
+    margin-inline-start: calc(
+      var(--folder-overview-wide-document-gutter) +
+      var(--folder-overview-wide-toc-width) +
+      var(--folder-overview-wide-toc-gap)
+    );
+    margin-inline-end: auto;
+  }
+}
+
+@media print {
+  .folder-overview-panel-surface,
+  .folder-overview-panel-error,
+  .folder-overview-loading {
+    display: none;
+  }
+
+  .folder-overview-stack {
+    display: block;
+    width: auto;
+  }
+
+  .folder-overview-panel-body-collapsed {
+    display: block;
+  }
+}

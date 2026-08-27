@@ -26,7 +26,7 @@ import pytest
 
 from metabrowser import paths_safe
 from metabrowser.git import repo as git_repo
-from metabrowser.git.detail import read_commit_detail, translate_repo_path
+from metabrowser.git.detail import _summarize_changes, read_commit_detail, translate_repo_path
 from metabrowser.git.log import (
     decode_cursor,
     encode_cursor,
@@ -43,6 +43,7 @@ from metabrowser.git.process import (
 from metabrowser.git.repo import repo_info
 from metabrowser.git.routes import api_git_commit, api_git_log, api_git_refs, api_git_repo
 from metabrowser.git.wire import (
+    GitFileChange,
     is_full_revision,
     validate_git_commit,
     validate_git_commit_detail,
@@ -565,8 +566,31 @@ def test_commit_detail_reports_binary_files_with_null_counts(repo: Path) -> None
 def test_commit_detail_stats_exclude_binary_line_counts(repo: Path) -> None:
     detail = _detail_for(repo, "rename and binary")
     assert detail["stats"]["files_changed"] == 2
+    assert detail["stats"]["files_modified"] == 2
+    assert detail["stats"]["files_added"] == 0
+    assert detail["stats"]["files_deleted"] == 0
     assert detail["stats"]["additions"] == 1
     assert detail["stats"]["deletions"] == 0
+
+
+def test_commit_detail_buckets_every_file_status_exactly_once() -> None:
+    changes: list[GitFileChange] = [
+        GitFileChange(path="modified", status="modified", additions=1, deletions=1),
+        GitFileChange(path="renamed", status="renamed", additions=2, deletions=0),
+        GitFileChange(path="typechanged", status="typechanged", additions=0, deletions=0),
+        GitFileChange(path="added", status="added", additions=3, deletions=0),
+        GitFileChange(path="copied", status="copied", additions=4, deletions=0),
+        GitFileChange(path="deleted", status="deleted", additions=0, deletions=5),
+    ]
+
+    assert _summarize_changes(changes) == {
+        "files_changed": 6,
+        "files_modified": 3,
+        "files_added": 2,
+        "files_deleted": 1,
+        "additions": 10,
+        "deletions": 6,
+    }
 
 
 def test_merge_commit_diffs_against_its_first_parent(repo: Path) -> None:
@@ -606,6 +630,9 @@ def test_commit_detail_reports_truncation_without_understating_stats(repo: Path)
     assert len(payload["files"]) == 2
     # Stats describe the whole commit, so the count must survive the cut.
     assert payload["stats"]["files_changed"] == 6
+    assert payload["stats"]["files_modified"] == 0
+    assert payload["stats"]["files_added"] == 6
+    assert payload["stats"]["files_deleted"] == 0
 
 
 # ── Path translation ─────────────────────────────────────────
@@ -881,11 +908,46 @@ def test_validator_rejects_a_binary_file_with_numeric_counts() -> None:
             "subject": "s",
         },
         "body": "",
-        "stats": {"files_changed": 1, "additions": 0, "deletions": 0},
+        "stats": {
+            "files_changed": 1,
+            "files_modified": 1,
+            "files_added": 0,
+            "files_deleted": 0,
+            "additions": 0,
+            "deletions": 0,
+        },
         "files": [
             {"path": "b.dat", "status": "modified", "additions": 0, "deletions": 0, "binary": True}
         ],
         "files_truncated": False,
     }
     with pytest.raises(AssertionError, match="binary"):
+        validate_git_commit_detail(detail)
+
+
+def test_validator_requires_exhaustive_file_status_counts() -> None:
+    detail = {
+        "is_repo": True,
+        "commit": {
+            "id": "0" * 40,
+            "short_id": "0000000",
+            "parent_ids": [],
+            "author": {"name": "n", "email": "e"},
+            "authored_at": 0.0,
+            "committed_at": 0.0,
+            "subject": "s",
+        },
+        "body": "",
+        "stats": {
+            "files_changed": 1,
+            "files_modified": 0,
+            "files_added": 0,
+            "files_deleted": 0,
+            "additions": 0,
+            "deletions": 0,
+        },
+        "files": [],
+        "files_truncated": True,
+    }
+    with pytest.raises(AssertionError, match="status counts"):
         validate_git_commit_detail(detail)

@@ -196,3 +196,19 @@ cython_debug/
 
 # Read-only third-party source checkouts used for research.
 attic/
+
+# Benchmark corpora, server logs, and result JSON from devtools/bench_serving.py.
+# The corpus is large and regenerable from --files, so none of it is committed.
+.bench/
+
+# Server logs from a loop's run.py. The measured runs are committed
+# (results/runs.jsonl); the logs beside them carry absolute paths
+# and belong to one machine.
+explorations/performance-loop/results/server-*.log
+# What `serve` last set up, so `record` can find it. One machine's in-flight
+# state, not a result.
+explorations/performance-loop/results/pending.json
+# Ports this machine has handed out. Per-machine session state, not a result:
+# runs.jsonl already records the port of every run that produced one, and that
+# is the half worth carrying between checkouts.
+explorations/performance-loop/results/ports-used.txt

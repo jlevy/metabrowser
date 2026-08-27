@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-FILE_FUZZY_MATCH_TEST_JS = Path(__file__).resolve().parent / "dom" / "file_fuzzy_match_behavior.js"
+FILE_FUZZY_MATCH_TEST_JS = Path(__file__).resolve().parent / "dom" / "file-fuzzy-match-behavior.js"
 FILE_FUZZY_MATCH_PROFILE_JS = (
-    Path(__file__).resolve().parent / "dom" / "file_fuzzy_match_profile.js"
+    Path(__file__).resolve().parent / "dom" / "file-fuzzy-match-profile.js"
 )
 
 

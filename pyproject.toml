@@ -43,7 +43,7 @@ dependencies = [
     "funlog>=0.2.1",
     "json5>=0.15.0",
     "jsonschema>=4.26.0",
-    "kpress==0.3.2",
+    "kpress==0.3.3",
     "pathspec>=1.1.1",
     "prettyfmt>=0.4.1",
     "psutil>=7.2.2",
@@ -203,7 +203,8 @@ executionEnvironments = [
 known-first-party = ["metabrowser"]
 
 [tool.codespell]
-ignore-words-list = "browseable,fo,ue,unparseable"
+# "rouge" is GitLab's syntax highlighter (a proper noun), not a typo of rogue.
+ignore-words-list = "browseable,fo,rouge,ue,unparseable"
 # Vendored third-party browser bundles are minified upstream artifacts;
 # their identifiers are not prose to spell-check. attic/ holds read-only
 # third-party checkouts kept for research (gitignored, never shipped); this

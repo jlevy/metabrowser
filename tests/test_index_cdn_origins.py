@@ -34,12 +34,50 @@ def _index_html() -> str:
 
 
 def test_no_external_asset_origins_in_index() -> None:
-    """The page must be loadable fully offline: no external src/href."""
+    """The page must be loadable fully offline: no external asset is fetched.
+
+    An asset is something the page needs in order to render — a script, an
+    image, a stylesheet. A hyperlink is not: an ``<a href>`` to the project's
+    own page costs nothing until someone clicks it, and the page renders
+    identically with no network at all.
+
+    Stated as "assets" rather than as "any absolute URL" because the two are
+    not the same rule, and only the first one is about being loadable offline.
+    """
+
     html = _index_html()
-    external = re.findall(r'(?:src|href)="(https?://[^"]+)"', html)
-    assert external == [], f"external asset references remain: {external}"
+    fetched = re.findall(r'src="(https?://[^"]+)"', html)
+    fetched += [
+        match.group(1)
+        for tag in re.findall(r"<link\b[^>]*>", html, re.IGNORECASE)
+        for match in re.finditer(r'href="(https?://[^"]+)"', tag)
+    ]
+    assert fetched == [], f"external asset references remain: {fetched}"
     assert "cdn.jsdelivr.net" not in html
     assert "cdnjs.cloudflare.com" not in html
+
+
+def test_outbound_links_are_anchors_to_the_project() -> None:
+    """The page may link out, and only as a link the reader chooses to follow.
+
+    This is the other half of the rule above: absolute URLs are permitted, but
+    each one has to be an anchor, so a future asset cannot arrive by being
+    spelled as an href.
+    """
+
+    html = _index_html()
+    anchors = {
+        match.group(1)
+        for tag in re.findall(r"<a\b[^>]*>", html, re.IGNORECASE)
+        for match in re.finditer(r'href="(https?://[^"]+)"', tag)
+    }
+    every_absolute = set(re.findall(r'(?:src|href)="(https?://[^"]+)"', html))
+    assert every_absolute == anchors, (
+        f"absolute URLs that are not anchors: {sorted(every_absolute - anchors)}"
+    )
+    assert anchors <= {"https://github.com/jlevy/metabrowser"}, (
+        f"unexpected outbound link: {sorted(anchors)}"
+    )
 
 
 def test_vendored_assets_match_manifest() -> None:
@@ -81,13 +119,92 @@ def test_vendored_toml_is_the_official_hljs_ini_grammar() -> None:
     assert 'hljs.registerLanguage("ini"' in text
 
 
+def test_chart_js_is_published_on_demand_rather_than_loaded_eagerly() -> None:
+    """Chart.js is 297,531 bytes read by one view.
+
+    Eager loading measured about 374 ms of every document's load event whether
+    or not that view was ever opened, so the shell must publish it as a bundle
+    for asset-loader.js and must not put it in the chain that runs on load.
+    See docs/development.md "Asset Loading Tiers".
+    """
+    html = _index_html()
+    bundles_start = html.index("window.METABROWSER_ASSET_BUNDLES=")
+    bundles = html[bundles_start : html.index("</script>", bundles_start)]
+    chain_start = html.index("var assets = ")
+    chain = html[chain_start : html.index("</script>", chain_start)]
+
+    for name in (
+        "vendor/chart.umd.min.js",
+        "vendor/chartjs-plugin-annotation.min.js",
+        "vendor/chartjs-adapter-date-fns.bundle.min.js",
+    ):
+        assert name in bundles, f"on-demand asset missing from the bundle map: {name}"
+        assert name not in chain, f"on-demand asset is still loaded on every page: {name}"
+
+    # The prefetched tier still runs on load: a source view that highlights a
+    # beat late is visible, and these are small.
+    for name in ("vendor/highlight.min.js", "vendor/mustache.min.js"):
+        assert name in chain, f"prefetched asset missing from the load chain: {name}"
+
+    # The loader has to be present before anything can ask it for a bundle.
+    assert "/static/asset-loader.js" in html
+
+
+def test_prefetched_assets_wait_for_idle_rather_than_dom_content_loaded() -> None:
+    """The prefetched tier must not run inside the DOMContentLoaded window.
+
+    Starting the chain there puts it in the same window as the tree fetch and
+    keeps the ``load`` event open until it finishes: measured on the 100,000-file
+    bench corpus, median of three cold loads, ``load`` was 3,883 ms with the
+    chain on DOMContentLoaded and 750 ms with it on the first idle callback.
+    The timeout is the floor, so a busy main thread cannot defer highlighting
+    forever. See docs/development.md "Asset Loading Tiers".
+    """
+    html = _index_html()
+    chain_start = html.index("var assets = ")
+    chain = html[chain_start : html.index("</script>", chain_start)]
+
+    assert "requestIdleCallback" in chain, "the prefetched chain no longer waits for idle"
+    assert f"timeout: {server.PREFETCH_IDLE_TIMEOUT_MS}" in chain
+    assert f"setTimeout(start, {server.PREFETCH_FALLBACK_DELAY_MS})" in chain
+    # DOMContentLoaded may still be the earliest point the chain is *scheduled*
+    # from, but it must schedule rather than start.
+    assert 'addEventListener("DOMContentLoaded", schedule' in chain
+    assert 'addEventListener("DOMContentLoaded", start' not in chain
+
+
 def test_local_core_scripts_load_before_optional_assets() -> None:
     """The shell must not wait on optional libraries before registering its app."""
     html = _index_html()
-    app_pos = html.index("/static/app.js")
+    app_pos = html.index('<script src="/static/app.js')
     optional_pos = html.index("vendor/highlight.min.js")
     assert app_pos < optional_pos
     assert "metabrowser:optional-assets-loaded" in html
+
+
+def test_strict_sdk_dependencies_load_before_the_legacy_adapter() -> None:
+    html = _index_html()
+    sdk_position = html.index("/static/plugin-sdk.js")
+    for name in (
+        "request-error.js",
+        "formatters.js",
+        "inventory-scope.js",
+        "contribution-registry.js",
+        "resource-context.js",
+        "view-state.js",
+    ):
+        assert html.index(f"/static/{name}") < sdk_position
+
+
+def test_performance_recorder_uses_the_sdk_namespace_before_application_work() -> None:
+    """The console profiler must attach to the one public browser namespace."""
+    html = _index_html()
+    sdk_position = html.index("/static/plugin-sdk.js")
+    perf_position = html.index("/static/perf.js")
+    app_position = html.index('<script src="/static/app.js')
+
+    assert html.count("/static/perf.js") == 1
+    assert sdk_position < perf_position < app_position
 
 
 def test_duplicate_markdown_assets_are_absent() -> None:
@@ -96,8 +213,8 @@ def test_duplicate_markdown_assets_are_absent() -> None:
     assert "marked.min.js" not in html
 
 
-def test_index_seeds_root_readme_for_immediate_preview(tmp_path: Path) -> None:
-    """The root README preview is chosen without waiting for the tree index."""
+def test_index_starts_at_root_overview_even_when_readme_exists(tmp_path: Path) -> None:
+    """No-hash startup leaves README discovery to the root Overview."""
     previous_root = server._resolved_root_dir()
     try:
         (tmp_path / "README.md").write_text("# Fast first paint\n")
@@ -106,4 +223,4 @@ def test_index_seeds_root_readme_for_immediate_preview(tmp_path: Path) -> None:
     finally:
         server._set_root_dir(previous_root)
 
-    assert 'window.METABROWSER_INITIAL_PATH="README.md"' in html
+    assert "METABROWSER_INITIAL_PATH" not in html

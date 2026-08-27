@@ -280,8 +280,9 @@ def test_zlib_bomb_preview_and_render_stay_within_endpoint_limits(tmp_path: Path
     )
     file_body = _json_response(file_response)
     assert file_body["type"] == "text"
-    assert file_body["content_bytes"] == server._TEXT_PREVIEW_CHUNK_BYTES
+    assert file_body["content_bytes"] == server._SYNTAX_HIGHLIGHT_MAX_BYTES
     assert file_body["content_truncated"] is True
+    assert file_body["highlight_disabled"] is False
 
     render_response = asyncio.run(
         server.api_kpress_render(  # pyright: ignore[reportArgumentType]

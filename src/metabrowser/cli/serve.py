@@ -17,11 +17,11 @@ import webbrowser
 from pathlib import Path
 from types import FrameType
 from typing import override
-from urllib.parse import quote
 
 import typer
 import uvicorn
 
+from metabrowser.build_version import build_state
 from metabrowser.cli.common import apply_log_level, validate_contained_path
 from metabrowser.cli.exit_codes import INTERRUPTED_EXIT_CODE
 from metabrowser.cli.http_readiness import wait_for_http_ok_then
@@ -29,6 +29,7 @@ from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import find_available_local_port, port_search_range
+from metabrowser.view_routes import format_view_href
 
 
 def _open_browser(url: str) -> None:
@@ -74,15 +75,7 @@ def _shutdown_noise_filter(record: logging.LogRecord) -> bool:
 
 
 class _QuietForceExitServer(uvicorn.Server):
-    """Uvicorn server that silences teardown logging once exit is forced.
-
-    A second Ctrl-C forces exit before the ASGI lifespan finishes shutting
-    down; the interpreter then cancels the pending lifespan task and the
-    cancellation is reported as a pre-formatted traceback string with no
-    ``exc_info``, which :func:`_shutdown_noise_filter` cannot match without
-    fragile text parsing. After the operator forces exit, no teardown record
-    is actionable, so drop them all at the logger level instead.
-    """
+    """Uvicorn server that exits immediately after a forced interrupt."""
 
     interrupted: bool = False
 
@@ -92,7 +85,6 @@ class _QuietForceExitServer(uvicorn.Server):
             self.interrupted = True
         super().handle_exit(sig, frame)
         if self.force_exit:
-            logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
             os._exit(INTERRUPTED_EXIT_CODE)
 
 
@@ -144,8 +136,7 @@ def run_serve(
         str(plugin_dir) for plugin_dir in extra_plugin_dirs
     )
 
-    if path:
-        validate_contained_path(resolved, path)
+    selected_path = validate_contained_path(resolved, path) if path else None
 
     # Server import performs logging setup and plugin discovery. Keep it after
     # dotenv loading, CLI log-level application, and plugin-dir merging so all
@@ -167,11 +158,20 @@ def run_serve(
     server._register_allowed_host(host)
     display_host = "127.0.0.1" if host in server._WILDCARD_BIND_HOSTS else host
 
-    url = f"http://{display_host}:{actual_port}"
-    if path:
-        url += f"#{quote(path)}"
+    # Always print a canonical `/view/` URL. The bare origin only redirects
+    # there, so emitting it would hand out a second spelling of the root.
+    logical_path = ""
+    if selected_path is not None:
+        logical_path = selected_path.relative_to(resolved).as_posix()
+        if selected_path.is_dir() and logical_path:
+            logical_path += "/"
+    url = f"http://{display_host}:{actual_port}{format_view_href(logical_path)}"
 
-    typer.echo(f"Serving {resolved} at {url}")
+    # A checkout says so here too. This is the line someone reads while
+    # deciding which build they are looking at — during a side-by-side
+    # comparison it is the only line on screen that can say.
+    state = build_state()
+    typer.echo(f"Serving {resolved} at {url}" + (f"  [dev build: {state}]" if state else ""))
     if server._LOADED_PLUGINS:
         names = ", ".join(p.name for p in server._LOADED_PLUGINS)
         typer.echo(f"Plugins: {names}")
@@ -203,6 +203,8 @@ def run_serve(
             )
         )
         uvicorn_server.run()
+        # This flag is a protocol boolean. Do not treat foreign truthy sentinel
+        # values as proof that a signal was observed.
         if uvicorn_server.interrupted is True:
             raise typer.Exit(code=INTERRUPTED_EXIT_CODE)
     finally:

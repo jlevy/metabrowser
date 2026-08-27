@@ -19,9 +19,11 @@ stable; the absolute checkout prefix of each plugin’s `static_root` is elided 
 ```console
 $ metab --plugins
 NAME           SOURCE   KINDS       VIEWS  HOOKS
--------------  -------  ----------  -----  ------
+-------------  -------  ----------  -----  ----------------------------
 agent-log      builtin  agent-log   3      charts
-binary         builtin  -           0      -
+binary         builtin  -           1      chunk
+diff           builtin  diff        1      document,children,comparison
+folder         builtin  -           2      -
 markdown       builtin  markdown    2      -
 structured     builtin  structured  2      parsed
 text           builtin  -           1      -
@@ -62,8 +64,47 @@ $ metab --plugins --json
       "source": "builtin",
       "static_root": "[BUILTIN]/binary",
       "kinds": [],
-      "views": [],
-      "view_count": 0,
+      "views": [
+        "bytes"
+      ],
+      "view_count": 1,
+      "data_hooks": [
+        "chunk"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "diff",
+      "display_name": "Diff",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/diff",
+      "kinds": [
+        "diff"
+      ],
+      "views": [
+        "diff"
+      ],
+      "view_count": 1,
+      "data_hooks": [
+        "document",
+        "children",
+        "comparison"
+      ],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "folder",
+      "display_name": "Folder",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/folder",
+      "kinds": [],
+      "views": [
+        "overview",
+        "treemap"
+      ],
+      "view_count": 2,
       "data_hooks": [],
       "disabled_data_hooks": []
     },
@@ -145,7 +186,7 @@ $ metab --plugin markdown
 name:         markdown
 display_name: Markdown
 version:      0.0.1
-sdk_version:  0.1
+sdk_version:  0.5
 source:       builtin
 static_root:  [BUILTIN]/markdown
 
@@ -160,8 +201,21 @@ data hooks:
   (none)
 
 assets in static_root:
+  - github-localizer.js
+  - graph-analysis.js
   - index.js
+  - link-enhancer.js
+  - link-scanner.js
+  - links.js
   - manifest.toml
+  - markdown.css
+  - project-adapters.js
+  - rendered.js
+  - source.js
+  - transclusion.js
+  - wiki-enhancer.js
+  - wiki-parser.js
+  - wiki-resolver.js
 ? 0
 ```
 
@@ -174,7 +228,7 @@ $ metab --plugin markdown --json
     "name": "markdown",
     "display_name": "Markdown",
     "version": "0.0.1",
-    "sdk_version": "0.1",
+    "sdk_version": "0.5",
     "source": "builtin",
     "static_root": "[BUILTIN]/markdown",
     "kinds": [
@@ -211,8 +265,21 @@ $ metab --plugin markdown --json
     "data_hooks": [],
     "disabled_data_hooks": [],
     "assets": [
+      "github-localizer.js",
+      "graph-analysis.js",
       "index.js",
-      "manifest.toml"
+      "link-enhancer.js",
+      "link-scanner.js",
+      "links.js",
+      "manifest.toml",
+      "markdown.css",
+      "project-adapters.js",
+      "rendered.js",
+      "source.js",
+      "transclusion.js",
+      "wiki-enhancer.js",
+      "wiki-parser.js",
+      "wiki-resolver.js"
     ]
   },
   "errors": []
@@ -224,7 +291,7 @@ $ metab --plugin markdown --json
 
 ```console
 $ metab --doctor
-metab --doctor: 6 plugin(s) OK
+metab --doctor: 8 plugin(s) OK
 ? 0
 ```
 
@@ -234,7 +301,7 @@ metab --doctor: 6 plugin(s) OK
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 6,
+  "plugin_count": 8,
   "problems": []
 }
 ? 0

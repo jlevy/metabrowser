@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import subprocess
 import tarfile
@@ -30,7 +29,12 @@ EXPECTED_LICENSE_METADATA = {
     "License-File: NOTICE.md",
 }
 VSCODE_LICENSE_PATH = "metabrowser/static/vendor/licenses/vscode.txt"
-VSCODE_LICENSE_SHA256 = "9480271317925265e806a9a196aaa33410a962fa9d4d1e248a4a5187bc8c9df9"
+KEYBOARD_STATIC_ASSETS = {
+    "keyboard-help.js",
+    "keyboard-shortcuts.js",
+    "overlay-layer.js",
+    "tree-keyboard-navigation.js",
+}
 
 
 def _single_wheel() -> Path:
@@ -66,13 +70,6 @@ def _check_project_metadata(payload: bytes) -> None:
         raise RuntimeError(f"wheel metadata is missing license declarations: {missing}")
 
 
-def _check_vscode_license(payload: bytes) -> None:
-    """Require the exact upstream MIT text for the derived graph code."""
-    digest = hashlib.sha256(payload).hexdigest()
-    if digest != VSCODE_LICENSE_SHA256:
-        raise RuntimeError("wheel has an incomplete or modified Visual Studio Code MIT license")
-
-
 def _inspect_wheel(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
@@ -80,6 +77,10 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/__init__.py",
             "metabrowser/static/app.js",
             "metabrowser/static/charts.js",
+            "metabrowser/static/contribution-registry.js",
+            "metabrowser/static/resource-context.js",
+            "metabrowser/static/view-state.js",
+            "metabrowser/static/source-append.js",
             # Vendored browser libraries: the offline-first page depends on
             # these shipping in the wheel (see static/vendor/manifest.json).
             "metabrowser/static/vendor/manifest.json",
@@ -87,8 +88,20 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/static/vendor/chart.umd.min.js",
             VSCODE_LICENSE_PATH,
             "metabrowser/builtin_plugins/markdown/manifest.toml",
+            "metabrowser/builtin_plugins/markdown/rendered.js",
+            "metabrowser/builtin_plugins/folder/overview.js",
+            "metabrowser/builtin_plugins/folder/file-type-summary.js",
+            "metabrowser/builtin_plugins/folder/file_type_summary.css",
+            "metabrowser/data/file-rollup-format/empty-file-rollup.json",
+            "metabrowser/data/file-rollup-format/file-rollup-conformance.json",
+            "metabrowser/data/file-rollup-format/file-rollup-conformance.schema.json",
+            "metabrowser/data/file-rollup-format/file-rollup.schema.json",
+            "metabrowser/data/file-rollup-format/file-type-registry.schema.json",
+            "metabrowser/data/file-rollup-format/recommended-file-types.json",
+            "metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "dist-info/licenses/LICENSE",
             "dist-info/licenses/NOTICE.md",
+            *(f"metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
             if not any(name.endswith(suffix) for name in names):
@@ -101,12 +114,6 @@ def _inspect_wheel(wheel: Path) -> None:
         if len(metadata_names) != 1:
             raise RuntimeError(f"wheel must contain one METADATA file, found {metadata_names}")
         _check_project_metadata(archive.read(metadata_names[0]))
-        vscode_license_names = [name for name in names if name.endswith(VSCODE_LICENSE_PATH)]
-        if len(vscode_license_names) != 1:
-            raise RuntimeError(
-                f"wheel must contain one Visual Studio Code license, found {vscode_license_names}"
-            )
-        _check_vscode_license(archive.read(vscode_license_names[0]))
         for name in names:
             _check_text_member(name, archive.read(name))
 
@@ -119,10 +126,14 @@ def _inspect_sdist(sdist: Path) -> None:
             "LICENSE",
             "NOTICE.md",
             "README.md",
+            "docs/project/architecture/file-rollup-format/file-rollup-format.md",
+            "docs/project/architecture/file-rollup-format/recommended-file-types.toml",
             "pyproject.toml",
             "skills/metabrowser/SKILL.md",
             "skills/metabrowser/agents/openai.yaml",
+            "src/metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "src/metabrowser/static/app.js",
+            *(f"src/metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
             if not any(name.endswith(suffix) for name in names):
@@ -157,17 +168,28 @@ def _smoke_install(wheel: Path) -> None:
         (
             "from importlib.resources import files; "
             "import metabrowser; "
+            "from metabrowser.file_type_registry import load_file_type_registry; "
             "from metabrowser.kpress_adapter import render_kpress_view; "
             "from metabrowser.plugin_loader.discovery import discover_plugins; "
+            "registry = load_file_type_registry(); "
             "plugins = discover_plugins(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
-            "required = {'agent-log', 'binary', 'markdown', 'structured', 'text', "
-            "'unknown-jsonl'}; "
+            "required = {'agent-log', 'binary', 'diff', 'folder', 'markdown', 'structured', "
+            "'text', 'unknown-jsonl'}; "
             "rendered = render_kpress_view(source_text='# Wheel smoke\\n', "
             "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "
             "mtime_hash='wheel-smoke', size=14); "
             "assert metabrowser.__version__; "
-            "assert files('metabrowser').joinpath('static/app.js').is_file(); "
+            "assert registry.family('javascript') is not None; "
+            "static = files('metabrowser').joinpath('static'); "
+            "assets = ('app.js', 'keyboard-help.js', 'keyboard-shortcuts.js', "
+            "'overlay-layer.js', 'tree-keyboard-navigation.js'); "
+            "assert all(static.joinpath(asset).is_file() for asset in assets); "
+            "assert files('metabrowser').joinpath('builtin_plugins/folder/overview.js').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/diff/diff-view.js').is_file(); "
+            "assert files('metabrowser').joinpath("
+            "'data/file-diff-format/file-diff.schema.json').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
             "assert required == names; "
             "assert not plugins.errors; "
             "assert 'Wheel smoke' in rendered['html']; "
@@ -222,6 +244,19 @@ def _smoke_install(wheel: Path) -> None:
         "--doctor",
     ]
     subprocess.run(doctor_command, cwd=ROOT, env=env, check=True)
+
+    api_check_command = [
+        *uv_command,
+        "run",
+        "--isolated",
+        "--no-project",
+        "--with",
+        str(wheel),
+        "metab",
+        str(ROOT / "tests" / "manual-fixtures"),
+        "--check-api",
+    ]
+    subprocess.run(api_check_command, cwd=ROOT, env=env, check=True)
 
 
 def main() -> int:

@@ -19,17 +19,28 @@ The `metab` CLI starts a Starlette application with four main layers:
    classifiers, serves plugin assets, and mounts optional Python data hooks.
 4. **Browser shell.** `static/app.js` owns navigation, the tree, recent files, tabs,
    caching, and view mounting.
-   `static/plugin_sdk.js` exposes the supported renderer API under `window.metabrowser`.
+   `static/plugin-sdk.js` exposes the supported renderer API under `window.metabrowser`.
 
 The browser loads critical local assets first.
 Optional third-party assets enhance syntax highlighting, charts, or specialized
 renderers after the shell can already paint a useful first view.
 
+The server and the browser shell are one deployable unit, not two independently
+versioned peers. The index route is served uncached, `_static_asset_url` stamps every
+script with a content-derived `?v=` token, and `client_settings_dict` inlines the
+browser’s configuration into that same response.
+An upgraded server therefore always serves the matching shell, settings, and built-in
+plugins together; a browser cannot pair an old asset with a new route.
+This is why internal contracts change in one commit and why compatibility shims between
+the two halves are forbidden — see
+[Compatibility and Legacy Code](development.md#compatibility-and-legacy-code).
+
 ## Request Flow
 
 Opening a file follows this sequence:
 
-1. The URL hash or tree selection supplies a served-root-relative path.
+1. The canonical `/view/<path>` URL or tree selection supplies a served-root-relative
+   path. A URL fragment identifies a location inside that document, never a file.
 2. `/api/file` safely resolves the path, determines its logical extension, and runs
    plugin classifiers before built-in fallbacks.
 3. The response includes the chosen kind and the ordered view descriptors contributed by
@@ -44,6 +55,24 @@ Opening a file follows this sequence:
 Replacing the preview pane disposes mounted plugin views.
 Switching tabs does not: their DOM and captured state remain available until a different
 file replaces the pane.
+
+The built-in Markdown plugin resolves standard relative and leading-slash destinations
+exactly from the source document.
+It gives internal anchors canonical `/view/` URLs and maps embedded local resources
+through the bounded `/raw` endpoint.
+Its source-aware Obsidian adapter preserves escaped and code contexts, maps wiki links
+to exact paths or completion-aware unique inventory results, and creates stable heading
+and named-block anchors before rendering.
+Missing and ambiguous wiki targets remain visible; media wiki embeds reuse `/raw`, and
+note, heading, and named-block transclusion returns through KPress with shared depth,
+document, source-byte, elapsed-time, cycle, abort, and disposal limits.
+The plugin also exposes bounded immutable graph analysis through the SDK; visualization
+remains outside the resolver.
+The shell remains Markdown-dialect agnostic: the plugin intercepts only plain primary
+activation through the public navigation SDK, while modifier clicks, new tabs,
+downloads, external URLs, and ordinary not-found handling retain browser behavior.
+Fragment scrolling runs only after the matching asynchronous Markdown mount completes
+and ends with that mount’s disposer.
 
 ## Git
 
@@ -61,9 +90,189 @@ Revisions are validated against a full-SHA pattern before they can reach an argu
 vector. Git’s stderr is logged and dropped: it contains absolute local paths.
 
 Swimlane layout is a browser concern.
-The server returns commits, parents, and references; `static/git_graph.js` assigns lanes
+The server returns commits, parents, and references; `static/git-graph.js` assigns lanes
 and draws them, carrying lane state across pages.
 This is the same split `recent.py` makes, where clustering belongs to the renderer.
+
+## Folder Views and Overview Composition
+
+Folder views extend the same request and registry flow to directories.
+`/api/file` returns `kind: "folder"`, an ordered set of top-level folder view
+descriptors, folder aggregates, and bounded direct-child discovery facts such as
+`readme_path`. The served root and selected nested folders use the same envelope and
+rendering path.
+
+Folder information is divided by interaction level:
+
+```text
+folder
+├── Overview                         default top-level view
+│   ├── Files                        always-present file-type summary panel
+│   ├── README                       conditional document panel
+│   └── License and other panels     future plugin contributions
+├── Treemap                          peer top-level view
+└── Files listing                    future peer top-level view
+```
+
+Top-level views answer “which mode am I using?”
+and continue to use manifests plus the `(kind, view)` renderer registry.
+Overview panels answer “which useful facts apply to this folder?”
+and use a separate public panel registry.
+A future Files listing belongs beside Overview and Treemap; it does not become a large
+panel inside Overview.
+
+The built-in folder plugin owns the Overview composer, but not a hard-coded list of
+panels. It publishes the documented `mb.folderOverview` registry facade; built-in and
+installed plugins register stable panel IDs with a named placement band, accessible
+label, surface or document presentation, bounded resolver, keyed instance mount,
+disposer, and print eligibility.
+The composer validates descriptors, establishes deterministic order before asynchronous
+work finishes, and gives every contribution an independent loading, error, recovery,
+abort, and disposal boundary.
+A panel never reaches into sibling DOM or private shell state.
+The composer also renders every panel label as the same visible `h2` and aligns host
+content to the responsive Markdown document boundary.
+Each `h2` contains the shared trailing-chevron disclosure button.
+Each descriptor declares its initial disclosure state.
+File Overview and README begin expanded.
+Toggling a heading changes only body visibility, so live rollup watches, rendered
+Markdown state, TOC state, and keyed panel mounts remain intact.
+In Overview, the Markdown mount keeps its ordinary document semantics, TOC, and card.
+The card retains its border and shadow at regular and wide document bands, then follows
+KPress’s standard borderless narrow layout.
+The File Overview summary remains a flat chrome section; its edges follow the README
+card when present and the README prose edge when the card collapses.
+
+Core supplies only generic contribution-registry, resource-context, request, formatter,
+and view-state primitives.
+The folder plugin supplies the folder-panel schema and registry facade.
+A plugin owns its panel’s domain data, optional data hook, renderer, and styles.
+The visible **File Overview** heading belongs to `folder.file-overview`. It answers what
+a folder holds at two resolutions in one section: the inventory-backed Files and Ignored
+tallies, which need no rollup and so paint immediately, and beneath them the
+rollup-backed type table built from the packaged recommended definitions in File Rollup
+Format v0.1. Each tally row is its own complete population: Files means unignored files,
+Ignored means excluded files, and Total is their sum.
+A nonzero row therefore has a full-width composition track and no percentage label.
+Total is what the type distribution counts against while Show ignored is on, so it is
+the track whose segment shares match the distribution’s percentages in that state; Files
+is that track when Show ignored is off.
+
+The section owns one control row above both bodies, carrying the shared Files / Bytes
+chooser and the Show ignored checkbox.
+They are the same kind of choice about the same numbers, and while they sat in separate
+sections each silently moved the other’s figures.
+One folder-rollup state stands behind them, so the row updates both bodies and Treemap.
+
+Show ignored changes the population the distribution counts and nothing else.
+The three tally rows are fixed populations, and `buildFolderTotalsComposition` does not
+accept the flag, so the checkbox cannot reach them.
+
+The two bodies stay separate modules because their data lifecycles differ.
+The type table owns the only Overview rollup watch and publishes each validated terminal
+envelope through a ref-counted, per-directory projection pool.
+The tallies subscribe to that projection and use the same palette pool, which adds
+composition detail without a sibling DOM dependency or another request.
+Rollups aggregate every known family and its complete canonical children before
+independently bounding only No extension basenames and Other types extensions.
+The comparison table follows registry order across Code, Documentation, Data, Archives,
+Media, and Other; Log files is a semantic family within Other.
+Every nonempty family can disclose exact extension rows, including a family with one
+contributing extension, without adding group subtotals.
+No extension discloses exact basenames and Other types discloses raw extensions; both
+cap at 20 children and conserve their omitted values in an exact Others row.
+Each type-table row renders the selected count or byte share as an inline bar beside its
+exact value and percentage.
+The two-row tally summary always leads with unignored Files and follows with Ignored.
+The rows are disjoint and conserve the complete directory population.
+Each composition track normalizes its own row to 100% and segments it by the same
+top-level semantic file-type families shown in the type table.
+Segment order also matches the type table: registry group order first, then descending
+selected-metric value within each group for the active Show ignored scope.
+Both tracks use this one order so Files and Ignored remain directly comparable.
+Hovering a segment uses the shared body-portaled navigation tooltip with the semantic
+family name in bold and its exact disjoint-population file count and byte size below.
+The whole Ignored row uses the shared dimmed-content opacity applied to ignored
+navigation and Treemap entries.
+README is another contribution whose resolver checks the folder envelope and whose
+renderer delegates to the instance-safe built-in Markdown mount.
+Using the same mount keeps Overview’s README structurally and behaviorally aligned with
+the ordinary rendered Markdown view instead of creating a second Markdown rendering
+path. Inside either Markdown mount, Frontmatter and Diagnostics remain native `details`
+disclosures, use the same trailing-chevron design, and begin closed.
+
+Treemap consumes the same bounded rollup as a peer view but has one fixed spatial model:
+`treemap-layout.js` packs directory children, recurses only into sufficiently large
+folder cells, and conserves any culled or capped tail in a neutral remainder cell.
+The renderer flattens parent and descendant rectangles into positioned siblings;
+geometry expresses containment, while hover leaves their paint order unchanged.
+Its pure model persists only the Bytes/Files metric and the boolean ignored-file scope;
+the controller renders those through the shared segmented-control and labelled-checkbox
+primitives. The scope selects total or unignored rollup weights without another fetch.
+Layout geometry also derives bounded label and value sizes and reserves the resulting
+folder-header height before nesting children.
+
+Treemap and File types acquire leases from the same per-directory category-palette pool.
+File cells and folder `dominant_ext` values pass through the catalog’s
+`distributionKeyForExtension` helper, so known members share a stable `family:<id>` key;
+raw extensions remain exact and remainder cells use the neutral Other key.
+This shares semantic identity without coupling either renderer to sibling DOM. Visible
+byte and file values route through the public SDK formatters.
+File cells and exact extension rows also resolve their icon and subtype class through
+the public `fileTypeIcon()` SDK helper, the same matcher used by navigation.
+The shared `.file-identity-icon` primitive owns their geometry and subtype color.
+File cells use ordinary `mb.navigation.open({ path })` navigation; folder and parent
+navigation pass Treemap as the optional preferred destination view.
+The shell activates that view only when the destination declares it and otherwise uses
+the destination’s default.
+
+The folder-view shell refreshes a selected folder envelope for live aggregate header
+data. That one multiplexed refresh is exposed through a supported subscription so
+Overview can re-resolve panel availability when direct-child facts change without
+starting one folder request per panel.
+Aggregate panels retain their own bounded watchers when their data plane differs, and
+every subscription ends when the selected path is replaced.
+
+Tree disclosure and folder navigation share one row-activation path.
+The activation selects the folder and starts its ordinary `/api/file` request while
+synchronously toggling the row’s direct-child container.
+Repeated activation can therefore collapse the tree branch without changing the selected
+folder or replacing its Overview.
+
+Overview exists even when no optional panel applies.
+File types remains mounted for a complete empty folder and renders an explicit
+zero-total state without bars, a table, or a synthetic README region.
+Pending inventory remains a progress state, so an incomplete scan cannot be mistaken for
+an empty folder.
+
+## File Rollup Format
+
+`data/file-rollup-format/recommended-file-types.toml` is the reviewed declaration for
+classifier kinds, display families, display groups, analyzer content families, and
+metadata evidence. `file_type_registry.py` parses and validates it once into immutable
+Python values. The server injects the matching immutable JSON projection into browser
+settings; `static/file-type-taxonomy.js` supplies the same public classification helpers
+to navigation, Overview, Treemap, and plugins.
+The generated conformance corpus runs against both implementations, so a file cannot
+quietly change family between the server and browser.
+
+Inventory entries retain observations rather than registry-derived presentation:
+basename, a normalized logical extension of at most two components, apparent bytes, and
+ignore state. `inventory_rollup.py` classifies those facts against the active registry
+while building a response.
+It emits exact `all` and `unignored` populations for files and bytes, the definition
+registry identity, and the current file-rollup hierarchy.
+A breakdown is rejected when its registry identity differs from the loaded projection or
+when any root, family, fallback, or Others conservation invariant fails.
+
+This boundary deliberately avoids persistent classification caches in the inventory.
+A registry revision changes one immutable loader value and subsequent rollups rather
+than requiring every indexed entry to be rewritten.
+The rollup response carries exactly one representation of file types; a definition
+change updates the server, the browser, and the tests together rather than adding a
+parallel shape. The reusable semantics, recommended type definitions, schemas,
+conformance cases, and export boundary are documented in
+[File Rollup Format v0.1](project/architecture/file-rollup-format/file-rollup-format.md).
 
 ## Plugin Boundary
 
@@ -90,7 +299,151 @@ Plugins own:
 
 The stable browser-side boundary is the `window.metabrowser` API. Plugins should not
 reach into variables or functions defined privately by `app.js`. Cross-view navigation
-uses `openPath`, and plugin HTTP calls use `fetchPluginData`.
+uses `navigation.open({ path, query?, fragment? }, { viewId? })`; the optional `viewId`
+preserves a working mode when the destination offers that view without changing resource
+identity or history semantics.
+`navigation.href()` supplies canonical `/view/` links, and `navigation.current()`
+exposes the selected target without leaking shell state.
+Plugin HTTP calls use `fetchPluginData`.
+
+## Browser URL Grammar
+
+> [Views, models, and routes](project/architecture/arch-views-models-routes.md) maps
+> every kind, view, model, and route in one table; this section is the grammar behind
+> the route column.
+
+A browser URL answers four separate questions, and each component answers exactly one:
+
+| Component | Question | Owned by |
+| --- | --- | --- |
+| Route | Which kind of thing is selected | Metabrowser |
+| Path | Which one, within that kind | That kind’s address space |
+| Query | How it is presented | The link author |
+| Fragment | Where inside the rendered document | The document |
+
+### Routes: one per address space
+
+Everything the shell can select is addressable, and the leading segment names the
+address space its path is written in.
+There is exactly one route per space, because a path only means something once you know
+which space it belongs to:
+
+| Route | Selects | Path is |
+| --- | --- | --- |
+| `/view/<path>` | Content in the served tree | A served-root-relative path |
+| `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
+| `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
+| `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
+| `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
+
+Revisions are not paths in the served tree, so they get their own route rather than a
+sigil inside `/view/`: a commit named as a `/view/` path would either collide with a
+real file or need an escape that every path handler would then have to know about.
+
+The shape after the route is deliberately uniform —
+**`<container address>/<inner path>`** — because it is the
+[container contract](project/architecture/arch-nav-containers.md) written as a URL. A
+patch file and a commit are both containers whose children are file changes; only the
+container’s own address differs, so `/view/changes.patch/src/app.py` and
+`/commit/abc123/src/app.py` are the same grammar over two address spaces.
+A future archive or pull-request container needs no new rule.
+
+Route invariants:
+
+- A route without a path selects that space’s root: `/view/` is the served root,
+  `/commit/<rev>` is the whole change set.
+- Every selection the shell can make has a URL, and reloading it restores that
+  selection. A panel that changes what the main pane shows changes the URL.
+- Query and fragment mean the same thing in every route: presentation and in-document
+  location. The `_mb_` reservation below applies unchanged.
+- Unknown routes are ordinary not-found responses, never a silent redirect to `/view/`.
+
+Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
+selection in the Git panel.
+`/compare/` is specified here and not yet built.
+
+The query slot is currently carried verbatim and never interpreted: it exists so a query
+an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.
+
+That makes the query the one component with two authorities in it, so it is the one
+component that needs a reserved namespace.
+**Metabrowser reserves query keys beginning with `_mb_`**; every other key belongs to
+the document and is passed through untouched.
+Reserved keys are `snake_case`, matching this server’s existing query parameters such as
+`include_ignored` and every key on the JSON wire.
+Plugins must not read or write `_mb_` keys except through the navigation SDK.
+
+```text
+/view/docs/guide.md?_mb_view=source&plain=1#setup
+                    └── reserved ──┘ └ doc ┘
+```
+
+The seam holds under one invariant, which any future parameter must preserve:
+
+> Removing every `_mb_` key from a URL yields exactly that content’s canonical URL.
+
+The prefix carries two signals because each one alone is ambiguous here.
+A leading `_` is the familiar mark for a reserved system field, but this codebase
+already spends a bare `_` on the opposite meaning: `/_debug/tasks` and Python privates
+mark surfaces that are deliberately not a contract, while view parameters are a
+documented surface people bookmark and share.
+Adding `mb` names the owner and removes that clash.
+Keeping `_` as the only separator also matches the `snake_case` keys, where a dotted
+prefix such as `mb.folder_overview` would mix two separators in one name and invite the
+occasional tooling that rewrites `.` in query keys.
+Parameters elsewhere need no sigil because they are namespaced by route: every key on
+`/api/*` is unambiguously the server’s, and only `/view/` shares its query with a
+document.
+
+Three rules keep the namespace honest as entries are added:
+
+- A key is reserved only when the **sender** should decide it for the recipient.
+  Viewer-owned settings such as theme and reading font stay in host-only cookies;
+  putting them in a link would override a choice the recipient made deliberately.
+- Reserved keys are sorted for one canonical spelling, but a key is never dropped for
+  matching a default. Defaults are viewer-dependent, so an omitted key means “viewer’s
+  choice” while a present one means “pinned”.
+- An unrecognized `_mb_` key is a visible diagnostic, never silent and never passed
+  through as document metadata.
+
+Planned entries are tracked with their features rather than reserved in advance;
+[the extensions plan](project/specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
+maps the first of them.
+
+## Markdown Link Resolution
+
+The Markdown plugin decides *what* an authored link points at; the shell decides *how*
+that target is spelled as a `/view/` URL. The resolvers are pure — no I/O, no preflight
+— so every decision is testable against a catalog snapshot, and route knowledge never
+leaks into the plugin nor dialect knowledge into the shell.
+
+One authored target passes through these layers in order:
+
+1. **Scheme dispatch** (`builtin_plugins/markdown/links.js`). `http`, `https`, `mailto`,
+   and `tel` stay external; unsafe schemes are disabled with a visible reason rather
+   than removed silently.
+2. **Exact standard resolution** (same module).
+   Relative, `./`, `../`, and leading-slash targets resolve GitHub-style from the source
+   document. A missing target keeps its exact URL and falls through to the ordinary
+   not-found state — nothing guesses by basename.
+   Embedded media routes through the bounded `/raw` endpoint.
+3. **Verified GitHub localization** (`github-localizer.js`). An absolute
+   `github.com/<owner>/<name>/blob|tree/<ref>/<path>` URL opens locally only when
+   repository identity proves it names the served working tree: origin remote, branch or
+   exact revision, and served subdirectory must all match.
+   Identity comes from `repository_context.py`, a bounded read of Git metadata at first
+   paint that never invokes Git and exposes no local paths.
+   Anything unproven stays an ordinary outbound link.
+4. **Published-route adapters** (`project-adapters.js`). When an MkDocs, Docusaurus, or
+   Jekyll config sits at the served root, a root-relative published-site route such as
+   `/guide/` falls back to the source document behind it — only after exact resolution
+   fails, so a real file at that path always wins.
+5. **Wiki resolution** (`wiki-resolver.js`), for `[[...]]` targets: exact path, then the
+   source directory, then a *unique* catalog match.
+   Ambiguous and missing notes render visibly and keyboard-reachable with their
+   candidate paths; a name that is unique in a half-built catalog stays `pending` until
+   completeness proves it, because resolving by catalog order would make link targets
+   depend on walk order.
 
 ## Startup and First Paint
 
@@ -98,13 +451,19 @@ The CLI binds before beginning expensive recursive work.
 Inventory walking, ignore-file parsing, and watcher setup run without blocking the event
 loop’s first response.
 
-When a URL names an initial file, `/api/file` begins independently of tree indexing.
-Without a hash, the server may seed a root `README.md` preview.
+When a `/view/` URL names an initial file, `/api/file` begins independently of tree
+indexing. `/view/` selects the served root, and the bare `/` URL is not a second landing
+view: it redirects there with a temporary 307 so the served root has exactly one URL.
+URL fragments identify document locations and never file paths.
+The root folder’s default Overview replaces the former server-picked initial README,
+which remains reachable as an ordinary file view.
 Inventory endpoints return current partial state plus progress metadata instead of
 waiting for a complete walk.
 
-The CLI opens a browser only after the index route returns an HTTP success response.
-A free TCP port alone is not considered ready.
+The CLI opens a browser only after the canonical route returns an HTTP success response.
+A free TCP port alone is not considered ready, and neither is a redirect, so every
+startup URL the CLI prints, probes, and opens is a `/view/` route rather than the
+redirecting origin.
 
 ## Live Update Model
 
@@ -113,10 +472,29 @@ Producers attach generation-aware write tokens so an observation made before
 invalidation cannot overwrite newer state.
 The event stream carries snapshot, change, and resynchronization events.
 
+Inventory entries have three shapes: directories, regular files, and symbolic links.
+A symbolic link is always a typed leaf, even when its target is a directory: walkers do
+not follow it, directory child containers are never created for it, and file aggregates
+exclude it. A live upsert may replace any shape with another at the same path, so both
+the index and browser remove the old shape before installing the new one.
+
+Regular files receive one logical extension from `fs_paths.derive_ext` at their shared
+walker/watcher construction boundary.
+The value retains at most the final two eligible suffix components: `bundle.js.map` and
+`archive.tar.gz` keep `.js.map` and `.tar.gz`, while `bundle.umd.min.js.map` and
+`types.d.ts.map` become `.js.map` and `.ts.map`. A component must be lowercase,
+alphanumeric, nonempty, and bounded in length; dotfiles remain extensionless.
+The fixed component cap prevents filenames from creating an unbounded vocabulary in
+navigation and rollup tallies while preserving common compound formats.
+Browser consumers use the indexed value instead of reparsing the full filename.
+
 The browser keeps a normalized file store.
 Tree panels and recent-file views subscribe to that store rather than maintaining
-independent copies. If a client falls behind the bounded event buffer, it requests a
-fresh snapshot.
+independent copies.
+If a client falls behind the bounded event buffer, it reconnects with
+exponential backoff and requests a fresh snapshot.
+Backoff resets only after the replacement connection remains stable, which prevents an
+overloaded subscriber from creating a reconnect loop.
 
 ## Where Filtering Happens
 
@@ -137,9 +515,13 @@ source instead of decorating it.
 Gitignored visibility rides along as a request parameter because it changes what the
 response cap is spent on, not just which rows are painted.
 
-The extension tally behind the type menu comes from the index too
-(`InventoryIndex.extension_tally`), because the Quick File catalog excludes gitignored
-entries and a menu built from it would undercount everything the tree still shows.
+The category, family, canonical-extension, and raw tallies behind the type menu come
+from one complete-index pass too.
+The Quick File catalog excludes gitignored entries and a menu built from it would
+undercount everything the tree still shows.
+The chooser orders broad categories, present semantic families, and canonical/raw
+children as distinct tiers; all selections use the same longest-declared-suffix
+predicate as the rollup.
 
 ### Response Caps Are a Ranking Problem
 
@@ -188,6 +570,16 @@ Expensive projections use mtime-aware caches whose keys change when file size or
 modification time changes.
 Changing the served root clears root-scoped caches.
 
+Inventory-derived responses validate against the index revision instead of file
+metadata, because their bodies summarize many files rather than reproducing one.
+`/api/rollup` and `/api/catalog` both answer conditionally on that revision and retain
+their encoded body for a client that arrives without the tag.
+Structures proportional to the tree — the parent/child index, per-directory subtree
+aggregates — are maintained as entries arrive rather than rebuilt per request.
+[State and delivery](project/architecture/arch-state-and-delivery.md) is the detailed
+account of both halves — server state, client stores, what crosses the wire — including
+the invalidation rules and the invariants that enforce them.
+
 Plugins should keep domain caches on their own side of the boundary.
 Core provides no global plugin payload cache.
 
@@ -214,8 +606,11 @@ route stack.
 ## Related Documentation
 
 - [Security policy and content trust model](../SECURITY.md)
+- [State and delivery](project/architecture/arch-state-and-delivery.md)
 - [Plugin authoring](plugins.md)
 - [Design system](design-system.md)
+- [Rendering large content](large-content-rendering.md)
+- [Folder Overview panels and file-type summary](project/specs/done/plan-2026-08-12-directory-file-type-summary.md)
 - [End-to-end testing](e2e-testing.md)
 - [Real-time debugging](realtime-debugging.md)
 - [Development](development.md)

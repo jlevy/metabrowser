@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-PATH_SELECTOR_TEST_JS = Path(__file__).resolve().parent / "dom" / "path_selector_escaping.js"
+PATH_SELECTOR_TEST_JS = Path(__file__).resolve().parent / "dom" / "path-selector-escaping.js"
 
 
 def test_path_selector_escaping_round_trips() -> None:

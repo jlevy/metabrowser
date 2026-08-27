@@ -9,8 +9,16 @@ independent of Metabrowser’s license.
 - **Visual Studio Code Source Control Graph**
   ([MIT License](src/metabrowser/static/vendor/licenses/vscode.txt),
   [Visual Studio Code](https://github.com/microsoft/vscode)). The commit-graph swimlane
-  implementation in `src/metabrowser/static/git_graph.js` is derived from Visual Studio
-  Code’s `scmHistory.ts`.
+  implementation in `src/metabrowser/static/git-graph.js` is derived from Visual Studio
+  Code’s `scmHistory.ts`, copied at upstream commit
+  `9245212c26af8113b3b96392c04563623cd99811` (2026-08-07).
+- **Visual Studio Code Diff Algorithms**
+  ([MIT License](src/metabrowser/static/vendor/licenses/vscode.txt),
+  [Visual Studio Code](https://github.com/microsoft/vscode)). The browser-local
+  changed-run refiner in `src/metabrowser/builtin_plugins/diff/diff-intraline.js` adapts
+  the sequence diff, dynamic-programming, Myers, boundary-scoring, and cleanup code from
+  `defaultLinesDiffComputer` at upstream commit
+  `77f86f3d3a05cf5d6f765705e816341c918b7dae`.
 - **Mustache.js** v4.2.0
   ([MIT License](src/metabrowser/static/vendor/licenses/mustache.txt),
   [mustache.js](https://github.com/janl/mustache.js)). The browser runtime is vendored

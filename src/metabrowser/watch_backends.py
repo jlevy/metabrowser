@@ -52,7 +52,7 @@ from typing import Literal
 from watchfiles import Change, awatch
 
 from metabrowser.cancellable_thread import run_cancellable_thread
-from metabrowser.events import FsEntry, ProjectionInvalidate
+from metabrowser.events import CapabilityUpdate, FsEntry, ProjectionInvalidate
 from metabrowser.fs_paths import is_visible_segment as _is_visible_segment
 from metabrowser.inventory import InventoryIndex
 from metabrowser.inventory import get_instance as get_inventory
@@ -233,20 +233,6 @@ async def _emit_for_path(
     # repaired from the current inventory instead of overwriting this event.
     inventory.invalidate(rel)
 
-    if change_type == Change.deleted:
-        existing = inventory.get(rel)
-        if existing is None:
-            LOG.debug("watcher: delete-noop (not in index) rel=%s", rel)
-            return
-        # Real remove + emit an FsRemove op so subscribers can drop
-        # the row(s) — the SPA, the bus's ring buffer, and any
-        # downstream consumer. ``inventory.remove`` walks
-        # descendants under a deleted directory and emits one batch
-        # covering every path removed.
-        inventory.remove(rel)
-        LOG.debug("watcher: delete remove rel=%s", rel)
-        return
-
     # Created / modified: stat and update the FsEntry. ``lstat`` so a
     # symlink is described by the link itself, not its target — the
     # boot walker uses ``follow_symlinks=False`` and records symlinks
@@ -254,14 +240,24 @@ async def _emit_for_path(
     # boot tree (and, for a symlinked directory, trigger a rewalk that
     # grafts the link target's whole subtree under the link path).
     p = Path(abs_path)
+    existing = inventory.get(rel)
     try:
         st = await asyncio.to_thread(os.lstat, p)
+    except FileNotFoundError as exc:
+        if existing is None:
+            LOG.debug("watcher: absent-noop rel=%s change=%s err=%s", rel, change_type.name, exc)
+            return
+        # Watch backends may coalesce a remove/recreate burst into stale or
+        # out-of-order labels. The filesystem is authoritative at handling
+        # time, so an absent path is a removal regardless of its event label.
+        inventory.remove(rel)
+        LOG.debug("watcher: absent remove rel=%s change=%s", rel, change_type.name)
+        return
     except OSError as exc:
         LOG.debug("watcher: stat-failed rel=%s err=%s", rel, exc)
         return
 
     is_symlink = stat_module.S_ISLNK(st.st_mode)
-    existing = inventory.get(rel)
     # For non-symlinks the threaded lstat above already describes the entry
     # itself, so reuse its mode instead of a second synchronous ``is_dir``
     # stat on the event loop.
@@ -274,6 +270,11 @@ async def _emit_for_path(
         # containment and refuses to follow symlinks, so a link that
         # slips past the ``is_symlink`` check above (e.g. a symlinked
         # *ancestor* of ``rel``) still can't escape the served root.
+        if change_type == Change.deleted and existing is not None:
+            # A delete label for a directory that currently exists means the
+            # directory was replaced. Drop the old descendants before the
+            # rewalk so files from the previous incarnation cannot survive.
+            inventory.remove(rel)
         await inventory.rewalk_subtree(rel)
         LOG.debug("watcher: dir rewalk rel=%s", rel)
         return
@@ -308,14 +309,24 @@ async def _emit_for_path(
         except Exception:
             gitignored = False
 
-    entry = FsEntry.for_stat(
-        path=rel,
-        parent=parent_rel,
-        name=name,
-        stat=st,
-        gitignored=gitignored,
-        existing=existing,
-    )
+    if is_symlink:
+        entry = FsEntry.for_observed_symlink(
+            path=rel,
+            parent=parent_rel,
+            name=name,
+            size=st.st_size,
+            mtime_ns=st.st_mtime_ns,
+            gitignored=gitignored,
+        )
+    else:
+        entry = FsEntry.for_stat(
+            path=rel,
+            parent=parent_rel,
+            name=name,
+            stat=st,
+            gitignored=gitignored,
+            existing=existing,
+        )
     inventory.apply_live_entry(entry)
     # Drop the projection caches' entry for this path and tell
     # subscribers the derived view is stale. ``MtimeCache.read``
@@ -342,12 +353,17 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
     hook; cancel on shutdown.
 
     Selects native vs polling automatically (override via *mode*
-    for tests). All errors are logged; the loop keeps running.
-    Terminating cleanly on cancellation is critical so the
-    lifespan teardown completes.
+    for tests). A failure to observe one path is logged and the
+    loop keeps running. A failure of the watch itself ends the
+    watch — the backend cannot be trusted to report changes after
+    it — and is announced rather than left silent, because
+    everything downstream reads a still-answering index as a
+    current one. Terminating cleanly on cancellation is critical
+    so the lifespan teardown completes.
     """
 
     inventory = get_inventory()
+    reason = "override"
     if mode is None:
         mode, reason = await asyncio.to_thread(select_watch_mode, root)
         LOG.debug("watcher starting at %s mode=%s reason=%s", root, mode, reason)
@@ -356,6 +372,13 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
 
     force_polling = mode == "polling"
     poll_delay_ms = 2000 if force_polling else 50
+    inventory.emit_event(
+        CapabilityUpdate(
+            backends=({"kind": "fs-watch", "mode": mode, "reason": reason, "state": "running"},),
+            index={},
+            events={},
+        )
+    )
 
     try:
         async for changes in awatch(
@@ -373,6 +396,29 @@ async def run_watcher(*, root: Path, mode: WatchMode | None = None) -> None:
     except asyncio.CancelledError:
         LOG.debug("watcher cancelled")
         raise
+    except Exception as error:
+        # The index is only current because this loop keeps it current, and
+        # nothing downstream can tell a quiet filesystem from a dead watch:
+        # requests keep being answered, and conditional ones keep answering
+        # "not modified" — truthfully about the index, which has stopped
+        # being about the filesystem. Exhausting the inotify watch limit on
+        # a large tree lands here. Say so loudly and on the event stream.
+        LOG.exception("watcher stopped at %s mode=%s; live updates have ended", root, mode)
+        inventory.emit_event(
+            CapabilityUpdate(
+                backends=(
+                    {
+                        "kind": "fs-watch",
+                        "mode": mode,
+                        "state": "failed",
+                        "detail": f"{type(error).__name__}: {error}",
+                    },
+                ),
+                index={},
+                events={},
+            )
+        )
+        return
 
 
 __all__ = [

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jlevy/metabrowser/schemas/file-rollup-conformance.schema.json",
+  "title": "File Rollup Conformance Cases",
+  "type": "object",
+  "required": [
+    "schema",
+    "registry",
+    "metadata_cases",
+    "invalid_registry_cases",
+    "aggregate_cases"
+  ],
+  "properties": {
+    "schema": { "const": "file-type-conformance-v1" },
+    "registry": {
+      "type": "object",
+      "required": ["schema_version", "revision", "fingerprint"],
+      "properties": {
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "revision": { "type": "integer", "minimum": 1 },
+        "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "metadata_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "logical_extension", "expected"],
+        "properties": {
+          "name": { "type": "string" },
+          "logical_extension": { "type": ["string", "null"] },
+          "expected": { "type": "object" }
+        }
+      }
+    },
+    "invalid_registry_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "toml", "error_code"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "toml": { "type": "string" },
+          "error_code": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "aggregate_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "facts", "expected"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "facts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["basename", "apparent_bytes", "ignored"],
+              "properties": {
+                "basename": { "type": "string", "minLength": 1 },
+                "apparent_bytes": { "type": "integer", "minimum": 0 },
+                "ignored": { "type": "boolean" }
+              }
+            }
+          },
+          "expected": { "type": "object" }
+        }
+      }
+    }
+  }
+}

@@ -36,7 +36,7 @@ No swimlane, lane color, or row-geometry field appears here. Lane
 assignment is a pure function of the commit list and its ordering and is
 naturally incremental across pages, so it belongs to the rendering layer
 — the same call :mod:`metabrowser.recent` made when it left cluster
-construction to the browser. See ``static/git_graph.js``.
+construction to the browser. See ``static/git-graph.js``.
 """
 
 from __future__ import annotations
@@ -81,6 +81,11 @@ class GitRef(TypedDict):
     # Conditional: true for the ref HEAD is currently on. At most one ref
     # in a response carries it, and never when HEAD is detached.
     is_head: NotRequired[bool]
+    # Conditional: true for the branch the repository merges into — main
+    # or master, local or on a tracked remote. Decided server-side from
+    # the same names that scope the history walk, so "what counts as
+    # trunk" has one definition rather than one per surface.
+    is_trunk: NotRequired[bool]
     # Conditional: remote name ("origin") when kind == "remote".
     remote: NotRequired[str]
 
@@ -196,14 +201,17 @@ class GitFileChange(TypedDict):
 
 
 class GitCommitStats(TypedDict):
-    """Aggregate line counts for a commit.
+    """Aggregate file-status and line counts for a commit.
 
     Counts come from the same numstat pass that produces the file list,
     so they always agree with it. Binary files contribute to
-    ``files_changed`` but not to the line counts.
+    ``files_changed`` and one status family but not to the line counts.
     """
 
     files_changed: int
+    files_modified: int
+    files_added: int
+    files_deleted: int
     additions: int
     deletions: int
 
@@ -238,7 +246,16 @@ _COMMIT_REQUIRED: frozenset[str] = frozenset(
     {"id", "short_id", "parent_ids", "author", "authored_at", "committed_at", "subject"}
 )
 _FILE_CHANGE_REQUIRED: frozenset[str] = frozenset({"path", "status", "additions", "deletions"})
-_STATS_REQUIRED: frozenset[str] = frozenset({"files_changed", "additions", "deletions"})
+_STATS_REQUIRED: frozenset[str] = frozenset(
+    {
+        "files_changed",
+        "files_modified",
+        "files_added",
+        "files_deleted",
+        "additions",
+        "deletions",
+    }
+)
 
 _REF_KINDS: frozenset[str] = frozenset({"branch", "remote", "tag"})
 _FILE_STATUSES: frozenset[str] = frozenset(
@@ -373,6 +390,12 @@ def validate_git_commit_detail(detail: Mapping[str, Any]) -> None:
     assert not missing, f"commit detail stats missing keys: {sorted(missing)}"
     for key in sorted(_STATS_REQUIRED):
         assert isinstance(stats[key], int), f"commit detail stats.{key} not int: {stats[key]!r}"
+        assert stats[key] >= 0, f"commit detail stats.{key} is negative: {stats[key]!r}"
+    status_total = stats["files_modified"] + stats["files_added"] + stats["files_deleted"]
+    assert status_total == stats["files_changed"], (
+        "commit detail status counts do not cover files_changed: "
+        f"{status_total} != {stats['files_changed']}"
+    )
 
     files = detail.get("files")
     assert isinstance(files, list), "commit detail 'files' not a list"

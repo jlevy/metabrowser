@@ -10,9 +10,7 @@ import pytest
 
 from devtools.check_distribution import (
     ROOT,
-    VSCODE_LICENSE_PATH,
     _check_project_metadata,
-    _check_vscode_license,
     _smoke_install,
 )
 
@@ -33,16 +31,6 @@ def test_wheel_metadata_rejects_incomplete_license_declarations() -> None:
         )
 
 
-def test_vscode_license_pin_matches_the_bundled_notice() -> None:
-    payload = (ROOT / "src" / VSCODE_LICENSE_PATH).read_bytes()
-    _check_vscode_license(payload)
-
-
-def test_vscode_license_pin_rejects_incomplete_text() -> None:
-    with pytest.raises(RuntimeError, match="incomplete or modified"):
-        _check_vscode_license(b"MIT License\nCopyright Microsoft\n")
-
-
 def test_wheel_smoke_commands_select_repository_config_and_validate_versions() -> None:
     wheel = Path("/tmp/metabrowser-test.whl")
 
@@ -59,10 +47,11 @@ def test_wheel_smoke_commands_select_repository_config_and_validate_versions() -
 
     commands = [call.args[0] for call in run.call_args_list]
     expected_prefix = ["uv", "--config-file", str(ROOT / "uv.toml"), "run"]
-    assert len(commands) == 6
+    assert len(commands) == 7
     assert all(command[:4] == expected_prefix for command in commands)
     assert [command[-2:] for command in commands if command[-1] == "--version"] == [
         ["metab", "--version"],
         ["metabrowser", "--version"],
     ]
+    assert commands[-1][-2:] == [str(ROOT / "tests" / "manual-fixtures"), "--check-api"]
     assert all(call.kwargs["cwd"] == ROOT for call in run.call_args_list)

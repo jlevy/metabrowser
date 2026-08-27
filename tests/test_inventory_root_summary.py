@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
+from metabrowser.events import FsEntry
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.inventory import InventoryIndex
 
@@ -150,9 +152,169 @@ def test_file_type_tallies_match_preset_filter_semantics(tmp_path: Path) -> None
     assert extension_rows[".md"] == (1, 0)
     assert extension_rows[".py"] == (1, 1)
     assert preset_rows == {
-        "docs": (2, 1),
         "code": (1, 1),
+        "docs": (2, 1),
         "data": (0, 1),
+        "archives": (0, 0),
+        "media": (0, 0),
+    }
+
+
+def test_navigation_tallies_count_each_recency_window_from_one_snapshot() -> None:
+    now_ns = 10_000_000_000_000
+    second_ns = 1_000_000_000
+    entries = [
+        FsEntry.for_observed_file(
+            path="live.py",
+            parent="",
+            name="live.py",
+            size=1,
+            mtime_ns=now_ns - 10 * second_ns,
+        ),
+        FsEntry.for_observed_file(
+            path="hour-boundary.py",
+            parent="",
+            name="hour-boundary.py",
+            size=1,
+            mtime_ns=now_ns - 3_600 * second_ns,
+        ),
+        FsEntry.for_observed_file(
+            path="ignored.log",
+            parent="",
+            name="ignored.log",
+            size=1,
+            mtime_ns=now_ns - 1_800 * second_ns,
+            gitignored=True,
+        ),
+        FsEntry.for_observed_file(
+            path="older.md",
+            parent="",
+            name="older.md",
+            size=1,
+            mtime_ns=now_ns - 7_200 * second_ns,
+        ),
+    ]
+
+    index = InventoryIndex()
+    tallies = index.navigation_tallies(
+        [],
+        [("live", 90.0), ("1h", 3_600.0), ("24h", 86_400.0)],
+        now_ns=now_ns,
+        entries=entries,
+    )
+
+    assert tallies["recency_tallies"] == [
+        ["live", 1, 0],
+        ["1h", 2, 1],
+        ["24h", 3, 1],
+    ]
+
+
+def _tally_file(name: str) -> FsEntry:
+    return FsEntry.for_observed_file(
+        path=name,
+        parent="",
+        name=name,
+        size=1,
+        mtime_ns=1_700_000_000_000_000_000,
+    )
+
+
+def test_navigation_tallies_are_memoized_per_index_revision() -> None:
+    """The pass costs one visit per file entry, so it runs once per revision.
+
+    Every root ``/api/tree`` request needs these tallies, and recomputing them
+    is proportional to the index rather than to the response: measured at 486ms
+    for 100,000 files, paid again by every open tab. Passing the revision the
+    entries were snapshotted at is what lets a repeat request reuse the answer.
+    """
+
+    index = InventoryIndex()
+    now_ns = 1_700_000_000_000_000_000
+    entries = [_tally_file("a.py"), _tally_file("b.md")]
+    passes = 0
+    real_compute = index._compute_navigation_tallies
+
+    def counting_compute(*args: Any, **kwargs: Any) -> Any:
+        nonlocal passes
+        passes += 1
+        return real_compute(*args, **kwargs)
+
+    index._compute_navigation_tallies = counting_compute  # type: ignore[method-assign]
+
+    def tally(revision: int, snapshot: list[FsEntry]) -> Any:
+        return index.navigation_tallies(
+            [], [("live", 90.0)], now_ns=now_ns, entries=snapshot, revision=revision
+        )
+
+    first = tally(1, entries)
+    assert passes == 1
+    assert tally(1, entries) == first
+    assert passes == 1, "an unchanged revision recomputed the tallies"
+
+    # A write moves the revision, so the memo must not answer for it. Nothing
+    # else here changes; the revision alone has to be enough to invalidate.
+    grown = [*entries, _tally_file("c.py")]
+    after = tally(2, grown)
+    assert passes == 2
+    assert after["summary"]["files"] == 3
+    assert first["summary"]["files"] == 2, "the memoized answer was mutated in place"
+
+    # Without a revision the caller has asked for a self-contained tally, and
+    # gets one rather than whatever the memo happens to hold.
+    index.navigation_tallies([], [("live", 90.0)], now_ns=now_ns, entries=grown)
+    assert passes == 3
+
+
+def test_navigation_tallies_share_semantic_family_and_canonical_counts() -> None:
+    entries = [
+        FsEntry.for_observed_file(
+            path="app.min.js",
+            parent="",
+            name="app.min.js",
+            size=4,
+            mtime_ns=1,
+        ),
+        FsEntry.for_observed_file(
+            path="worker.mjs",
+            parent="",
+            name="worker.mjs",
+            size=5,
+            mtime_ns=1,
+            gitignored=True,
+        ),
+        FsEntry.for_observed_file(
+            path="notes.odd",
+            parent="",
+            name="notes.odd",
+            size=6,
+            mtime_ns=1,
+        ),
+    ]
+
+    tallies = InventoryIndex().navigation_tallies(
+        [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS],
+        [],
+        entries=entries,
+    )
+
+    assert {row[0]: row[1:] for row in tallies["extensions"]} == {
+        ".min.js": [1, 0],
+        ".mjs": [0, 1],
+        ".odd": [1, 0],
+    }
+    assert {row[0]: row[1:] for row in tallies["canonical_extensions"]} == {
+        ".js": [1, 0],
+        ".mjs": [0, 1],
+        ".odd": [1, 0],
+    }
+    assert {row[0]: row[1:] for row in tallies["type_families"]} == {"javascript": [1, 1]}
+    assert {row[0]: row[1:] for row in tallies["type_presets"]} == {
+        "code": [1, 1],
+        "docs": [0, 0],
+        "data": [0, 0],
+        "archives": [0, 0],
+        "media": [0, 0],
     }
 
 

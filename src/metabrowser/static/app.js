@@ -20,12 +20,17 @@ const TREE_AUTO_EXPAND_ROW_HEIGHT_PROPERTY = "--tree-auto-expand-row-height";
 const FILE_PREFETCH_HOVER_DELAY_MS = 250;
 const FILE_PREFETCH_MAX_BYTES = 512 * 1024;
 const FILE_PREFETCH_MAX_CONCURRENT = 1;
-const TEXT_PREVIEW_CHUNK_BYTES = 128 * 1024;
+// Chunking comes from settings.py so the two planes cannot drift; see
+// docs/large-content-rendering.md for the measurements behind the sizes.
+const TEXT_PREVIEW_CHUNK_BYTES =
+  window.METABROWSER_SETTINGS?.TEXT_PREVIEW_CHUNK_BYTES || 2 * 1024 * 1024;
+const TEXT_PREVIEW_MAX_CHUNK_BYTES =
+  window.METABROWSER_SETTINGS?.TEXT_PREVIEW_MAX_CHUNK_BYTES || 8 * 1024 * 1024;
 
-// Optional perf instrumentation. perf.js installs window.metabrowserPerf
-// with measure/measureAsync helpers and a fetch wrapper; if it isn't
-// loaded these calls fall through to plain invocation.
-var _perf = (typeof window !== "undefined" && window.metabrowserPerf) || {
+// perf.js installs window.metabrowser.perf with measure/measureAsync helpers
+// and a fetch wrapper before production application work starts. The fallback
+// keeps isolated app.js harnesses usable without recreating the recorder.
+var _perf = (typeof window !== "undefined" && window.metabrowser?.perf) || {
   measure: (_label, fn) => fn(),
   measureAsync: (_label, fn) => fn(),
 };
@@ -92,9 +97,9 @@ function responsePerfMeta(resp, path, extra) {
 
 function measureNextPaint(label, meta) {
   if (typeof requestAnimationFrame === "undefined") {
-    return;
+    return Promise.resolve();
   }
-  _perf.measureAsync(
+  return _perf.measureAsync(
     label,
     () =>
       new Promise((resolve) => {
@@ -162,14 +167,10 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Size-weight convention — single source of truth. Anything displaying a
-// byte count anywhere in the SPA (file tree, file header, app header,
-// drawer, tooltip) reaches for these helpers so "big = bold, small =
-// normal" is identical everywhere. Threshold is 1 MiB; to change it,
-// change here and nowhere else.
-var SIZE_LARGE_THRESHOLD = 1024 * 1024;
+// Size-weight convention — every shell surface delegates to the shared
+// formatter runtime so plugins and core use the same threshold.
 function sizeClass(bytes) {
-  return (bytes || 0) > SIZE_LARGE_THRESHOLD ? "size-large" : "";
+  return window.MetabrowserFormatters.sizeClass(Number(bytes) || 0);
 }
 function sizeHtml(bytes, extraClass) {
   // Walker emits ``null`` aggregates while a directory is still
@@ -189,10 +190,7 @@ function sizeHtml(bytes, extraClass) {
 // consistent rendering of "N files" / "1 file" anywhere a count shows up
 // (app header, tooltip, drawer). Keep formatting decisions (thousands
 // separator, singular/plural) here so every call site agrees. Counts
-// above COUNT_LARGE_THRESHOLD bold up the same way sizes above
-// SIZE_LARGE_THRESHOLD do — the two helpers share the same visual
-// scale because they describe the same data category.
-var COUNT_LARGE_THRESHOLD = 1000;
+// above the shared count boundary bold up the same way large sizes do.
 function isPendingNumber(n) {
   return n === null || n === undefined || Number.isNaN(n);
 }
@@ -210,7 +208,7 @@ function formatCount(n) {
   return `${(n || 0).toLocaleString()} ${n === 1 ? "file" : "files"}`;
 }
 function countClass(n) {
-  return (n || 0) >= COUNT_LARGE_THRESHOLD ? "count-large" : "";
+  return window.MetabrowserFormatters.countClass(Number(n) || 0);
 }
 function countHtml(n, extraClass) {
   if (isPendingNumber(n)) {
@@ -221,21 +219,62 @@ function countHtml(n, extraClass) {
   return `<span class="${cls}">${formatCount(n)}</span>`;
 }
 
-// Path-styling convention — split at the final slash and render the
-// directory portion muted, the basename in the inherited (typically
-// bold) style. Use anywhere a path is shown in a context where the
-// last segment is the focus (app header, file header, drawer titles).
-function pathHtml(path, extraClass) {
-  var raw = String(path == null ? "" : path);
-  var trimmed = raw.replace(/\/+$/, "");
-  var cls = `path ${extraClass || ""}`.trim();
-  var i = trimmed.lastIndexOf("/");
-  if (i < 0) {
-    return `<span class="${cls}"><span class="path-base">${esc(trimmed || raw)}</span></span>`;
+/**
+ * Just the last component of `path`, wrapped in `.path`/`.path-base` so it
+ * inherits whatever emphasis its container declares. This is what the
+ * navigation heading shows: the directories above the served root never
+ * change, and the column they would spend width on is the narrowest in the
+ * app. Where a whole path is wanted the file header renders it as an
+ * address of controls instead — see headerAddressHtml.
+ */
+function pathBaseHtml(path) {
+  var trimmed = String(path == null ? "" : path).replace(/\/+$/, "");
+  var base = trimmed.slice(trimmed.lastIndexOf("/") + 1);
+  return `<span class="path"><span class="path-base">${esc(base || trimmed)}</span></span>`;
+}
+
+// The served root, absolute, from the one element that carries it.
+function servedRoot() {
+  return queryHtml(".header-path")?.dataset.servedRoot || "";
+}
+
+/**
+ * The main view's address: the served root dimmed, the root slash, then one
+ * control per component beneath it.
+ *
+ * The prefix is dim because it is identical on every page — context, not
+ * content — and everything from the slash rightward is live. The final
+ * component is a control too. On the page you are already looking at it
+ * changes nothing, but a run of links with one dead segment in the middle
+ * reads as a bug rather than as a rule.
+ *
+ * Each crumb carries the path it navigates to as its tooltip, because a narrow
+ * pane ellipsizes the crumbs themselves and the hover is then the only place
+ * the whole component is legible.
+ *
+ * @param {string} path served-root-relative path; "" is the root itself
+ * @param {boolean} isFile whether the last component names a file
+ */
+function headerAddressHtml(path, isFile) {
+  var root = servedRoot();
+  // <bdi> isolates the path from the start-truncation direction on the
+  // wrapper; see .file-header-root. It carries no style of its own.
+  var prefix = root ? `<span class="file-header-root"><bdi>${esc(root)}</bdi></span>` : "";
+  var rootCrumb =
+    '<button type="button" class="folder-crumb folder-crumb-root" data-nav-dir="" data-tip-text="Served root">/</button>';
+  var segments = path ? path.split("/") : [];
+  var crumbs = [];
+  var walked = "";
+  for (var i = 0; i < segments.length; i++) {
+    walked = walked ? `${walked}/${segments[i]}` : segments[i];
+    var last = i === segments.length - 1;
+    var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
+    var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
+    crumbs.push(
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}" data-tip-text="${esc(walked)}">${esc(segments[i])}</button>`,
+    );
   }
-  var dir = trimmed.slice(0, i + 1);
-  var base = trimmed.slice(i + 1);
-  return `<span class="${cls}"><span class="path-dir">${esc(dir)}</span><span class="path-base">${esc(base)}</span></span>`;
+  return prefix + rootCrumb + crumbs.join('<span class="folder-crumb-sep">/</span>');
 }
 
 function getExt(name) {
@@ -259,10 +298,13 @@ function getLogicalName(entry) {
 
 // ── Syntax highlighting (client-side via highlight.js) ──────────
 
-function highlightCode() {
-  // highlight.js is an optional CDN enhancement; if it failed to load (offline,
-  // blocked, or a kpress-rendered doc that never pulled it in), no-op rather
-  // than throwing `hljs is not defined` and aborting the whole render.
+/** @type {WeakSet<Document | Element>} */
+var scheduledHighlightRoots = new WeakSet();
+
+/** @param {Document | Element} root */
+function highlightCode(root = document) {
+  // Highlight.js is a prefetched vendored enhancement. If the optional asset
+  // failed to load, no-op rather than aborting the readable plain-text render.
   if (typeof hljs === "undefined") {
     return;
   }
@@ -270,13 +312,14 @@ function highlightCode() {
   // 1000+ such elements and hljs.highlightElement runs in ~1 ms each,
   // so eager highlighting torpedoes the first paint of a big log file.
   // The toggleEvent handler highlights on first expand instead.
-  var nodes = document.querySelectorAll("pre code:not(.hljs)");
+  var nodes = root.querySelectorAll("pre code:not(.hljs)");
   var meta = { blocks: nodes.length, skipped_collapsed_log_blocks: 0 };
   return _perf.measure(
     "highlightCode",
     () => {
       nodes.forEach((el) => {
-        if (el.closest(".log-event-raw")) {
+        var rawLogHost = el.closest(".log-event-raw");
+        if (rawLogHost && !rawLogHost.closest(".log-event.expanded")) {
           meta.skipped_collapsed_log_blocks += 1;
           return;
         }
@@ -298,47 +341,45 @@ function highlightCode() {
   );
 }
 
+/**
+ * Schedule optional syntax work after the next browser paint.
+ * @param {Document | Element} [root]
+ */
+function scheduleHighlightCode(root = document) {
+  if (scheduledHighlightRoots.has(root)) {
+    return;
+  }
+  scheduledHighlightRoots.add(root);
+  var afterFrame = () => {
+    setTimeout(() => {
+      scheduledHighlightRoots.delete(root);
+      if (root !== document && !root.isConnected) {
+        return;
+      }
+      highlightCode(root);
+    }, 0);
+  };
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(afterFrame);
+  } else {
+    afterFrame();
+  }
+}
+
 function formatAge(mtimeSec) {
   // Walker emits ``null`` newest-mtime while finalizing.
   // Render skeleton; applyCellPatch fills it from fs.change.
   if (mtimeSec === null) {
     return '<span class="tally-pending tally-pending-narrow"></span>';
   }
-  if (!mtimeSec) {
+  // One age primitive for the whole product (formatters.js): same
+  // abbreviations, same freshness tiers, same colours, wherever an age
+  // appears.
+  var age = window.MetabrowserFormatters.age(mtimeSec);
+  if (!age.label) {
     return "";
   }
-  var diffMs = Date.now() - mtimeSec * 1000;
-  var absMs = Math.abs(diffMs);
-  /** @type {Array<[string, number]>} */
-  var steps = [
-    ["y", 365 * 24 * 60 * 60 * 1000],
-    ["mo", 30 * 24 * 60 * 60 * 1000],
-    ["w", 7 * 24 * 60 * 60 * 1000],
-    ["d", 24 * 60 * 60 * 1000],
-    ["h", 60 * 60 * 1000],
-    ["m", 60 * 1000],
-  ];
-  var label = "<1m";
-  for (var i = 0; i < steps.length; i++) {
-    if (absMs >= steps[i][1]) {
-      label = Math.round(absMs / steps[i][1]) + steps[i][0];
-      break;
-    }
-  }
-  // Color code by freshness
-  var cls = "age-old";
-  if (absMs < 60 * 1000) {
-    cls = "age-sec";
-  } else if (absMs < 60 * 60 * 1000) {
-    cls = "age-min";
-  } else if (absMs < 24 * 60 * 60 * 1000) {
-    cls = "age-hr";
-  } else if (absMs < 7 * 24 * 60 * 60 * 1000) {
-    cls = "age-day";
-  } else if (absMs < 30 * 24 * 60 * 60 * 1000) {
-    cls = "age-wk";
-  }
-  return `<span class="${cls}">${label}</span>`;
+  return `<span class="${age.className}">${age.label}</span>`;
 }
 
 function formatTimestamp(mtimeSec) {
@@ -354,9 +395,12 @@ function formatExactSize(bytes) {
 
 // ── SVG Icons ───────────────────────────────────────────────────
 
-// Lucide `copy` (v1.17.0, ISC), used by clipboard actions.
-var ICON_COPY =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+// Lucide `copy` from the shared registry (icons.js loads first);
+// aliased so call sites keep the established name.
+var _iconRegistry = /** @type {Record<string, string>} */ (
+  (typeof window !== "undefined" && window.MetabrowserIcons) || {}
+);
+var ICON_COPY = _iconRegistry.copy || "";
 
 // ── Icon registry ──────────────────────────────────────────────
 // All SVG markup lives in static/icons.js, loaded before this file
@@ -423,17 +467,9 @@ function resolveTheme(mode) {
 }
 
 function getStoredThemeMode() {
-  // Cookie is the store (shared across ports); fall back to a pre-existing
-  // localStorage value so an upgrade carries the user's prior choice forward.
-  var fromCookie = readPrefCookie(THEME_MODE_KEY);
-  if (fromCookie) {
-    return normalizeThemeMode(fromCookie);
-  }
-  try {
-    return normalizeThemeMode(localStorage.getItem(THEME_MODE_KEY) || "system");
-  } catch (_e) {
-    return "system";
-  }
+  // The cookie is the only store; it has been since before the first
+  // release, so there is no prior localStorage value to carry forward.
+  return normalizeThemeMode(readPrefCookie(THEME_MODE_KEY) || "system");
 }
 
 function themeModeIcon(mode) {
@@ -744,101 +780,257 @@ var knownFileCatalog = null;
 var quickFileSearchController = null;
 var quickFilePalette = null;
 var quickFileCatalogFeed = null;
+var shortcutRegistry = null;
+var keyboardHelp = null;
+var treeKeyboard = null;
+var applicationFocusRegion = null;
+var applicationFocusListener = null;
 var QUICK_FILE_RESULT_LIMIT = 100;
 
 // ── Tree ────────────────────────────────────────────────────────
 
+// The filter, as /api/tree understands it.
+//
+// Which folders a filter leaves standing, and what those folders add up
+// to, are both questions about a whole subtree — including the parts
+// this client has never been sent. Only the server can answer them, so
+// the filter travels with the request instead of being applied to the
+// rows that come back. See metabrowser/tree_filter.py for the projection
+// and static/tree-filter-model.js for how a selection becomes a request.
+var treeFilterModel = /** @type {any} */ (window).MetabrowserTreeFilterModel;
+
+function currentFilterSnapshot() {
+  return filterState ? filterState.get() : null;
+}
+
+function treeFilterSizeFloors() {
+  return filterState ? filterState.SIZE_MIN_BYTES : {};
+}
+
+function treeFilterKey() {
+  return treeFilterModel.requestKey(currentFilterSnapshot(), treeFilterSizeFloors());
+}
+
+function treeUrl(path, extraParams) {
+  return treeFilterModel.treeUrl(
+    path,
+    currentFilterSnapshot(),
+    treeFilterSizeFloors(),
+    extraParams,
+  );
+}
+
+// The rows the shell inlined, painted before the first fetch is even sent.
+// Consumed once: after that the fetched payload is authoritative, and a second
+// paint from a snapshot the server took at page-render time would be a
+// regression, not a shortcut.
+let _inlineTreeRows = window.METABROWSER_INITIAL_TREE?.tree ?? null;
+// The exact rows that reached the DOM from the shell. The first /api/tree
+// response reconciles against this snapshot instead of replacing the root,
+// which preserves the first paint while still converging to the newer index.
+let _inlineTreeBaseline = null;
+let _rootTreeRequestsInFlight = 0;
+
+/**
+ * Paint the inlined rows, if the shell carried any and nothing has painted yet.
+ *
+ * Only for the unfiltered default view. A filter is client state the server did
+ * not have when it rendered the page, so these rows do not describe it.
+ *
+ * @returns {boolean} whether rows were painted
+ */
+function renderInitialTreeRows() {
+  const rows = _inlineTreeRows;
+  _inlineTreeRows = null;
+  if (!Array.isArray(rows) || rows.length === 0 || _lastTreeRender) {
+    return false;
+  }
+  // treeFilterKey() is the same key the request carries, and it is empty when
+  // nothing is filtered — so this asks exactly the question the server was
+  // answering when it rendered these rows.
+  if (treeFilterKey() || filesPanelUsesRecentSource()) {
+    return false;
+  }
+  // The tally row is rendered in its pending state rather than omitted. It
+  // carries no numbers this payload can supply, but it holds a line of the
+  // height the real one needs, so the rows below it are laid out close to
+  // where they will stay. Omitting it cost 43 px of downward shift the moment
+  // the fetch returned -- a jump this inline had itself introduced, since
+  // before it there were no rows in place to push.
+  _lastTreeRender = {
+    tree: rows,
+    chromeHtml: treeSummaryHtml(null, null, null),
+    tallyCacheStatus: "scanning",
+  };
+  // Measured here rather than around the call, so the span exists only when
+  // this path actually paints. Every return above declined to — no inlined
+  // rows, something already on screen, a filter the server did not know about
+  // — and a span recorded for one of those reports work on a region nothing
+  // touched, which is what the repaint and render-span counts read.
+  const painted = _perf.measure("renderTreeNodes:inline", () => renderFilesFromTree());
+  _inlineTreeBaseline = painted ? rows : null;
+  // Not authoritative — the fetch that follows reconciles newer values into it.
+  _lastTreeRender = null;
+  return painted;
+}
+
 async function loadTree() {
-  return _perf.measureAsync("loadTree", async () => {
-    const resp = await fetch("/api/tree");
-    if (!resp.ok) {
-      console.warn(`loadTree: HTTP ${resp.status}`);
-      const treeEl = document.getElementById("tree-content");
-      if (treeEl) {
-        treeEl.innerHTML =
-          '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
-      }
-      return;
-    }
-    const data = await _perf.measureAsync(
-      "apiTree:json",
-      () => resp.json(),
-      responsePerfMeta(resp, ""),
-    );
-    knownFileCatalog?.observeInitialTree(data.tree);
-    var pathEl = queryHtml(".header-path");
-    if (pathEl) {
-      pathEl.innerHTML = pathHtml(data.root);
-    }
-    // Aggregate root size + file count + newest-mtime from top-level
-    // children. Same shape as a folder tooltip — the served root reads
-    // as "just another folder", the top-most one.
-    var totalSize = 0;
-    var totalFiles = 0;
-    var newestMtime = 0;
-    var hasPendingAggregate = false;
-    for (var i = 0; i < data.tree.length; i++) {
-      var n = data.tree[i];
-      if (n.type === "dir") {
-        if (
-          n.total_size === null ||
-          n.total_size === undefined ||
-          n.total_files === null ||
-          n.total_files === undefined
-        ) {
-          hasPendingAggregate = true;
-        } else {
-          totalSize += n.total_size;
-          totalFiles += n.total_files;
+  _rootTreeRequestsInFlight += 1;
+  try {
+    return await _perf.measureAsync("loadTree", async () => {
+      renderInitialTreeRows();
+
+      /** Replace whatever is on screen with a failure the reader can act on. */
+      function failTree(reason) {
+        console.warn(`loadTree: ${reason}`);
+        const treeEl = document.getElementById("tree-content");
+        if (treeEl) {
+          treeEl.innerHTML =
+            '<div class="preview-empty" role="alert">Could not load files. Refresh the page to try again.</div>';
         }
-      } else {
-        totalSize += n.size || 0;
-        totalFiles += 1;
       }
-      if ((n.mtime || 0) > newestMtime) {
-        newestMtime = n.mtime || 0;
+
+      let resp;
+      let data;
+      try {
+        resp = await fetch(treeUrl(""));
+        if (!resp.ok) {
+          failTree(`HTTP ${resp.status}`);
+          return;
+        }
+        data = await _perf.measureAsync(
+          "apiTree:json",
+          () => resp.json(),
+          responsePerfMeta(resp, ""),
+        );
+      } catch (error) {
+        // A throw has to land here for the same reason a non-ok status does, and
+        // more urgently since the inline rows are already painted: a dropped
+        // connection or a malformed body would otherwise leave the reader
+        // looking at two hundred rows with no chrome, no counts, and no error --
+        // a tree that appears complete and is not. Before those rows were
+        // inlined the same failure left an empty pane, which at least read as
+        // broken.
+        failTree(String(error));
+        return;
       }
-    }
-    var summaryFiles = hasPendingAggregate ? null : totalFiles;
-    var summarySize = hasPendingAggregate ? null : totalSize;
-    // Per-entry pending check above isn't enough: a partial scan can finalize
-    // every visible top-level dir before the walker is done, leaving the
-    // summary at a stale "known but incomplete" value. The envelope-level
-    // tally_cache_status is the authoritative scan-state flag — defer the
-    // header/summary numbers until the walker reports "done" or "truncated".
-    if (data.tally_cache_status === "scanning") {
-      summaryFiles = null;
-      summarySize = null;
-    }
-    // Carry aggregates on the path link so the header tooltip handler
-    // can pull them on hover without rebuilding from DOM.
-    if (pathEl) {
-      pathEl.dataset.tipName = data.root;
-      pathEl.dataset.tipFiles = nullableDataValue(summaryFiles);
-      pathEl.dataset.tipSize = nullableDataValue(summarySize);
-      pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
-    }
-    // Summary row sits at the top of the scrollable tree listing, not
-    // in the sticky header — visible on first paint, scrolls away with
-    // the rest of the tree. Keeps the upper nav header clean.
-    var summaryHtml = treeSummaryHtml(data.summary, summaryFiles, summarySize);
-    // Cached so the recency source, which paints over the whole panel,
-    // can keep the same tally row above its own filtered count.
-    _lastTreeSummaryHtml = summaryHtml;
-    // Walker truncation banner. The InventoryIndex
-    // walker stops at INVENTORY_MAX_FILES; finalized dirs still
-    // emit accumulated totals so the UI is usable, but the user
-    // had no signal that the tree was incomplete.
-    var truncationHtml = "";
-    if (data.tally_cache_status === "truncated") {
-      truncationHtml = treeTruncationNoteHtml(data.tally_cache_max_files);
-    }
-    if (updateFileTypeTallies(data)) {
-      renderNavFilterBar();
-    }
-    _lastTreeRender = { tree: data.tree, chromeHtml: truncationHtml + summaryHtml };
-    renderFilesFromTree();
-  });
+      knownFileCatalog?.observeInitialTree(data.tree);
+      var pathEl = queryHtml(".header-path");
+      if (pathEl) {
+        pathEl.innerHTML = pathBaseHtml(data.root);
+      }
+      // Aggregate root size + file count + newest-mtime from top-level
+      // children. Same shape as a folder tooltip — the served root reads
+      // as "just another folder", the top-most one.
+      var totalSize = 0;
+      var totalFiles = 0;
+      var newestMtime = 0;
+      var hasPendingAggregate = false;
+      for (var i = 0; i < data.tree.length; i++) {
+        var n = data.tree[i];
+        if (n.type === "dir") {
+          if (
+            n.total_size === null ||
+            n.total_size === undefined ||
+            n.total_files === null ||
+            n.total_files === undefined
+          ) {
+            hasPendingAggregate = true;
+          } else {
+            totalSize += n.total_size;
+            totalFiles += n.total_files;
+          }
+        } else if (n.type === "file") {
+          totalSize += n.size || 0;
+          totalFiles += 1;
+        }
+        if ((n.mtime || 0) > newestMtime) {
+          newestMtime = n.mtime || 0;
+        }
+      }
+      var summaryFiles = hasPendingAggregate ? null : totalFiles;
+      var summarySize = hasPendingAggregate ? null : totalSize;
+      // Per-entry pending check above isn't enough: a partial scan can finalize
+      // every visible top-level dir before the walker is done, leaving the
+      // summary at a stale "known but incomplete" value. The envelope-level
+      // tally_cache_status is the authoritative scan-state flag — defer the
+      // header/summary numbers until the walker reports "done" or "truncated".
+      if (data.tally_cache_status === "scanning") {
+        summaryFiles = null;
+        summarySize = null;
+        // The progress request that began before this tree fetch can observe
+        // completion and stop while this slower, conservatively labeled response
+        // is still in flight. Restarting is idempotent and guarantees one final
+        // tree refresh instead of leaving these new pending cells to the watchdog.
+        startIndexProgressPolling();
+      }
+      // Carry aggregates on the path link so the header tooltip handler
+      // can pull them on hover without rebuilding from DOM.
+      if (pathEl) {
+        // The display form, so the tooltip and the file header's prefix say the
+        // same thing about the root — one of them abbreviating the home
+        // directory and the other not would read as two different roots.
+        pathEl.dataset.tipName = pathEl.dataset.servedRoot || data.root;
+        pathEl.dataset.tipFiles = nullableDataValue(summaryFiles);
+        pathEl.dataset.tipSize = nullableDataValue(summarySize);
+        pathEl.dataset.tipMtime = nullableDataValue(newestMtime);
+      }
+      // Summary row sits at the top of the scrollable tree listing, not
+      // in the sticky header — visible on first paint, scrolls away with
+      // the rest of the tree. Keeps the upper nav header clean.
+      // The index-wide tracked/ignored split is partial while scanning just
+      // like the visible-tree fallback. Gate the summary object itself; passing
+      // it through would make treeSummaryHtml prefer concrete partial values
+      // over the pending fallback we selected above.
+      var stableSummary = data.tally_cache_status === "scanning" ? null : data.summary;
+      var summaryHtml = treeSummaryHtml(stableSummary, summaryFiles, summarySize);
+      // Cached so the recency source, which paints over the whole panel,
+      // can keep the same tally row above its own filtered count.
+      _lastTreeSummaryHtml = summaryHtml;
+      // Walker truncation banner. The InventoryIndex
+      // walker stops at INVENTORY_MAX_FILES; finalized dirs still
+      // emit accumulated totals so the UI is usable, but the user
+      // had no signal that the tree was incomplete.
+      var truncationHtml = "";
+      if (data.tally_cache_status === "truncated") {
+        truncationHtml = treeTruncationNoteHtml(data.tally_cache_max_files);
+      }
+      if (updateFilterTallies(data)) {
+        renderNavFilterBar();
+      }
+      // How many files the filter selected across the whole subtree. Only the
+      // server can say: the payload is capped by depth and paged by the
+      // renderer, so counting the rows in it would report how much has been
+      // mounted rather than how much matched.
+      _filteredTreeTotals = data.filtered || null;
+      _lastTreeRender = {
+        tree: data.tree,
+        chromeHtml: truncationHtml + summaryHtml,
+        tallyCacheStatus: data.tally_cache_status,
+      };
+      // A recency request may have started while this tree request was in
+      // flight. Keep the authoritative cache current without painting over the
+      // newer source selection.
+      if (!filesPanelUsesRecentSource()) {
+        if (_inlineTreeBaseline) {
+          reconcileInlineTree(data.tree, truncationHtml + summaryHtml);
+        } else {
+          renderFilesFromTree();
+        }
+      }
+      _inlineTreeBaseline = null;
+      // Rows are on screen; now go get the numbers that ride beside them. The
+      // server answers a row request from its tally memo or not at all, so that
+      // the reader never waits on a pass over every entry in the index to see a
+      // tree. This is the request that is allowed to pay for it, and it runs
+      // after the render rather than in front of it.
+      if (!data.summary) {
+        scheduleRootSummaryRefresh();
+      }
+    });
+  } finally {
+    _rootTreeRequestsInFlight -= 1;
+  }
 }
 
 // Nav header tally. Tracked and ignored are counted separately —
@@ -881,7 +1073,16 @@ function treeSummaryHtml(summary, fallbackFiles, fallbackSize) {
 // root aggregate is patched repeatedly while the walk converges.
 var _summaryRefreshHandle = null;
 function scheduleRootSummaryRefresh() {
-  if (_summaryRefreshHandle || !document.querySelector(".tree-summary-split")) {
+  // Either summary row, not just the split one. A first paint that
+  // landed before the index could answer renders the plain fallback
+  // row, and gating on the split row means the refresh that would
+  // replace it can never run — so the filter tallies keep whatever
+  // partial counts they were built with, for the life of the page,
+  // while the totals beside them stay live because
+  // updateRootAggregatePresentation patches those directly. Selecting
+  // the shared class lets the fallback be upgraded once the index has
+  // something to say.
+  if (_summaryRefreshHandle || !document.querySelector(".tree-summary")) {
     return;
   }
   _summaryRefreshHandle = setTimeout(() => {
@@ -892,7 +1093,7 @@ function scheduleRootSummaryRefresh() {
         if (!data?.summary || !_lastTreeRender) {
           return;
         }
-        var row = document.querySelector(".tree-summary-split");
+        var row = document.querySelector(".tree-summary");
         if (!row) {
           return;
         }
@@ -900,8 +1101,12 @@ function scheduleRootSummaryRefresh() {
         // its DOM mid-poll would drop focus out of a menu the user
         // is arrowing through, and this runs repeatedly while the
         // index warms up.
-        if (updateFileTypeTallies(data) && filterOpenMenu === null) {
-          renderNavFilterBar();
+        if (updateFilterTallies(data)) {
+          if (filterOpenMenu === null) {
+            renderNavFilterBar();
+          } else {
+            patchOpenRecencyTallyCounts();
+          }
         }
         var html = treeSummaryHtml(data.summary, null, null);
         row.outerHTML = html;
@@ -911,7 +1116,7 @@ function scheduleRootSummaryRefresh() {
         // showing first-paint figures under a recency filter.
         _lastTreeSummaryHtml = html;
         _lastTreeRender.chromeHtml = _lastTreeRender.chromeHtml.replace(
-          /<div class="tree-summary tree-summary-split">.*?<\/div>$/,
+          /<div class="tree-summary(?: tree-summary-split)?">.*?<\/div>$/,
           html,
         );
       })
@@ -926,6 +1131,9 @@ function scheduleRootSummaryRefresh() {
 // clearing a recency filter can restore the full tree from memory
 // instead of refetching on every chip click.
 var _lastTreeRender = null;
+// Match totals from the last filtered /api/tree response, or null when
+// nothing is filtered. Shape: {files, size, entries}.
+var _filteredTreeTotals = null;
 // The tally row alone, so the recency source can reuse it verbatim.
 var _lastTreeSummaryHtml = "";
 
@@ -936,6 +1144,7 @@ function renderFilesFromTree() {
     return false;
   }
   var snapshot = _lastTreeRender;
+  treeKeyboard?.prepareForMutation();
   _perf.measure(
     "renderTreeNodes:root",
     () => {
@@ -949,7 +1158,134 @@ function renderFilesFromTree() {
     { nodes: snapshot.tree ? snapshot.tree.length : 0 },
   );
   applyTreeFilters();
+  reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
+  scheduleSubtreePrefetch();
   return true;
+}
+
+// Convert an /api/tree node to the FsEntry-shaped fields consumed by the live
+// patch path. The two wire surfaces intentionally differ on time units:
+// trees carry seconds while inventory events carry nanoseconds.
+function treeNodeAsEntry(node) {
+  var slash = node.path.lastIndexOf("/");
+  return {
+    ...node,
+    parent: slash >= 0 ? node.path.substring(0, slash) : "",
+    mtime_ns: node.mtime ? node.mtime * 1e9 : 0,
+    newest_mtime_ns: node.mtime ? node.mtime * 1e9 : 0,
+  };
+}
+
+function removeDeferredPageForContainer(container) {
+  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
+  if (!sentinel) {
+    return;
+  }
+  pendingTreePages.delete(sentinel.dataset.pageId);
+  sentinel.remove();
+}
+
+// Reconcile one mounted tree container without replacing it. Every container
+// pages independently, while collapsed descendants stay in subtreeCache
+// rather than becoming hidden DOM. The initial expansion planner bounds the
+// only recursive path through this function to what the viewport can show.
+function reconcileTreeContainer(container, nextNodes, work) {
+  var nextVisible = nextNodes.slice(0, TREE_PAGE_SIZE);
+  var visiblePaths = new Set(nextVisible.map((node) => node.path));
+  var currentRows = Array.from(
+    container.querySelectorAll(":scope > .tree-item:not(.tree-page-more)"),
+  );
+  for (var currentIndex = 0; currentIndex < currentRows.length; currentIndex++) {
+    var currentPath = currentRows[currentIndex].dataset.path;
+    if (currentPath && !visiblePaths.has(currentPath)) {
+      _removeRenderedRowsImmediately(currentPath);
+    }
+  }
+
+  removeDeferredPageForContainer(container);
+  for (var nextIndex = 0; nextIndex < nextVisible.length; nextIndex++) {
+    var node = nextVisible[nextIndex];
+    work.work_items += 1;
+    applyCellPatch(treeNodeAsEntry(node), false);
+    var reconciledRow = container.querySelector(
+      `:scope > .tree-item[data-path="${escapePathForSelector(node.path)}"]`,
+    );
+    if (!reconciledRow) {
+      continue;
+    }
+    reconciledRow.classList.remove("tree-item-flash-in");
+    reconciledRow.dataset.treeLevel = String(treeLevelForContainer(container));
+    reconciledRow.dataset.treePosition = String(nextIndex + 1);
+    reconciledRow.dataset.treeSetSize = String(nextNodes.length);
+    if (node.type !== "dir" || !Array.isArray(node.children)) {
+      continue;
+    }
+    subtreeCache.set(subtreeCacheKey(node.path), node.children);
+    var children = reconciledRow.nextElementSibling;
+    if (
+      reconciledRow.classList.contains("expanded") &&
+      children?.classList.contains("tree-children")
+    ) {
+      reconcileTreeContainer(children, node.children, work);
+    }
+  }
+
+  var tail = nextNodes.slice(TREE_PAGE_SIZE);
+  if (tail.length > 0) {
+    container.insertAdjacentHTML(
+      "beforeend",
+      deferredTreePageHtml(tail, {
+        level: treeLevelForContainer(container),
+        positionOffset: TREE_PAGE_SIZE,
+        setSize: nextNodes.length,
+      }),
+    );
+  }
+}
+
+// The shell's inline tree is already useful and visible. Reconcile the first
+// fetched answer into that keyed DOM instead of assigning panel.innerHTML a
+// second time. Mounted work is bounded by the root page and viewport expansion
+// plan; unmounted descendants remain data until the reader asks for them.
+function reconcileInlineTree(nextTree, chromeHtml) {
+  const panel = document.getElementById("tab-files");
+  const root = treeRootForPanel(panel);
+  if (!panel || !root) {
+    renderFilesFromTree();
+    return;
+  }
+
+  var work = { work_items: 0 };
+  _perf.measure(
+    "reconcileTreeNodes:root",
+    () => {
+      treeKeyboard?.prepareForMutation();
+      reconcileTreeContainer(root, nextTree, work);
+
+      var chrome = document.createElement("div");
+      chrome.innerHTML = chromeHtml;
+      var summary = panel.querySelector(":scope > .tree-summary");
+      var nextSummary = chrome.querySelector(":scope > .tree-summary");
+      if (summary && nextSummary) {
+        summary.replaceWith(nextSummary);
+      }
+      var truncation = panel.querySelector(":scope > .tree-truncation-note");
+      var nextTruncation = chrome.querySelector(":scope > .tree-truncation-note");
+      if (truncation && nextTruncation) {
+        truncation.replaceWith(nextTruncation);
+      } else if (truncation) {
+        truncation.remove();
+      } else if (nextTruncation) {
+        panel.insertBefore(nextTruncation, panel.firstChild);
+      }
+    },
+    work,
+  );
+  applyTreeFilters();
+  reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
+  scheduleSubtreePrefetch();
 }
 
 function treeTruncationNoteHtml(maxFiles) {
@@ -981,22 +1317,26 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!headerPath) {
     return;
   }
-  headerPath.addEventListener("mouseenter", (e) => {
+  headerPath.addEventListener("mouseenter", () => {
     var d = headerPath.dataset;
+    // The heading shows the folder name alone, so the whole served root lives
+    // here — as one tooltip. It used to be here and in a native `title` as
+    // well, which showed the reader two tooltips saying the same thing.
     if (!d.tipName) {
+      showTooltip(
+        `${esc(d.servedRoot || "")}<div class="tip-detail">Jump to root</div>`,
+        headerPath,
+      );
       return;
     }
-    showTooltip(
-      folderTooltipHtml(
-        d.tipName,
-        parseTipNumber(d.tipFiles),
-        parseTipNumber(d.tipSize),
-        parseTipNumber(d.tipMtime),
-      ),
-      e,
+    var folderTip = folderTooltipHtml(
+      d.tipName,
+      parseTipNumber(d.tipFiles),
+      parseTipNumber(d.tipSize),
+      parseTipNumber(d.tipMtime),
     );
+    showTooltip(`${folderTip}<div class="tip-detail">Jump to root</div>`, headerPath);
   });
-  headerPath.addEventListener("mousemove", positionTooltip);
   headerPath.addEventListener("mouseleave", hideTooltip);
 });
 
@@ -1036,6 +1376,154 @@ function treeDirChipHtml(totalFiles, totalSize, options) {
   return sizeHtml(totalSize, "tree-item-size");
 }
 
+function treeDomId(prefix, identity) {
+  return `metabrowser-${prefix}-${encodeURIComponent(String(identity))}`;
+}
+
+function treeRootHtml(content) {
+  return `<div class="tree-root" role="tree" aria-label="Files"${treeDepthStyle(1)}>${content}</div>`;
+}
+
+// Nesting depth as a custom property on the group, not as a margin on it.
+// A row's box has to span the whole panel at every level — the selection
+// and hover backgrounds are the reader's "you are here", and an inset box
+// makes them read as a different, narrower control at each level. The group
+// therefore keeps no box of its own and publishes the depth its children
+// paint their own left inset from, which also indents the lazy-load and
+// empty-folder notes without them needing a row of their own.
+function treeDepthStyle(depth) {
+  return ` style="--tree-depth:${Math.max(1, Number(depth) || 1)}"`;
+}
+
+// Every tree disclosure uses this exact child-group shape. The keyboard
+// navigator derives aria-expanded and visibility from the collapsed class, so
+// an inline display override is not an equivalent hiding mechanism.
+function treeChildGroupStartHtml(groupId, depth, expanded) {
+  return (
+    `<div class="tree-children${expanded ? "" : " tree-children-collapsed"}"` +
+    ` id="${esc(groupId)}" role="group"${treeDepthStyle(depth)}>`
+  );
+}
+
+// Container kinds by extension, injected by the server from the loaded
+// plugin manifests (arch-nav-containers.md). A file whose extension is
+// listed plays the folder-like role in addition to its own.
+var CONTAINER_EXTS = window.METABROWSER_CONTAINER_EXTS || {};
+
+function containerForNode(node) {
+  var name = String(node?.name || "");
+  var dot = name.lastIndexOf(".");
+  if (dot <= 0) {
+    return null;
+  }
+  return CONTAINER_EXTS[name.slice(dot).toLowerCase()] || null;
+}
+
+// Child entries of a container render as ordinary item-like rows: the
+// same selection path, the same keyboard model, no new machinery.
+function renderContainerChildren(rows, options) {
+  var level = options.level;
+  var parts = [];
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var labelId = treeDomId("tree-label", `container-child:${row.path}`);
+    var attributes = treeItemAttributes({
+      kind: "file",
+      path: row.path,
+      level: level,
+      position: i + 1,
+      setSize: rows.length,
+      selected: currentPath === row.path,
+      labelId: labelId,
+    });
+    parts.push(
+      `<div class="tree-item tree-file tree-container-child${row.muted ? " tree-item-muted" : ""}"${attributes} data-action="select" data-path="${esc(row.path)}" data-tip-type="file" data-tip-name="${esc(row.name)}">`,
+      row.badge
+        ? `<span class="tree-container-badge" aria-hidden="true">${esc(row.badge)}</span>`
+        : '<span class="tree-item-icon"></span>',
+      `<span class="tree-item-name" id="${labelId}">`,
+      esc(row.name),
+      "</span>",
+      "</div>",
+    );
+  }
+  return parts.join("");
+}
+
+function treeItemAttributes(options) {
+  var identity =
+    options.kind === "page" ? `page:${options.pageId}` : `${options.kind}:${options.path || ""}`;
+  var attributes =
+    ' role="treeitem" tabindex="-1"' +
+    ` data-tree-kind="${esc(options.kind)}"` +
+    ` data-tree-id="${esc(identity)}"` +
+    ` data-tree-level="${options.level}"` +
+    ` data-tree-position="${options.position}"` +
+    ` data-tree-set-size="${options.setSize}"` +
+    ` aria-level="${options.level}"` +
+    ` aria-posinset="${options.position}"` +
+    ` aria-setsize="${options.setSize}"` +
+    ` aria-labelledby="${esc(options.labelId)}"`;
+  if (typeof options.expanded === "boolean") {
+    attributes += ` aria-expanded="${options.expanded}"`;
+  }
+  if (typeof options.selected === "boolean") {
+    attributes += ` aria-selected="${options.selected}"`;
+  }
+  if (options.ownedGroupId) {
+    attributes += ` aria-owns="${esc(options.ownedGroupId)}"`;
+  }
+  if (options.pageId) {
+    attributes += ` data-page-id="${esc(options.pageId)}"`;
+  }
+  return attributes;
+}
+
+function treeRootForPanel(panel) {
+  return panel?.querySelector(":scope > .tree-root") || null;
+}
+
+function treeLevelForContainer(container) {
+  if (container?.getAttribute("role") === "tree") {
+    return 1;
+  }
+  var owner = container?.previousElementSibling;
+  var ownerLevel = owner ? Number(owner.getAttribute("aria-level")) : 0;
+  return Number.isFinite(ownerLevel) && ownerLevel > 0 ? ownerLevel + 1 : 1;
+}
+
+function deferredTreePageHtml(nodes, options) {
+  if (!nodes.length) {
+    return "";
+  }
+  var pageId = String(++pendingTreePageId);
+  var pageLabelId = treeDomId("tree-label", `page:${pageId}`);
+  pendingTreePages.set(pageId, {
+    nodes: nodes,
+    options: options,
+  });
+  var pageAttributes = treeItemAttributes({
+    kind: "page",
+    path: "",
+    pageId: pageId,
+    level: options.level,
+    position: options.positionOffset + 1,
+    setSize: options.setSize,
+    labelId: pageLabelId,
+  });
+  return (
+    `<div class="tree-item tree-page-more"${pageAttributes} data-action="page-more">` +
+    `<span id="${pageLabelId}">` +
+    "Show " +
+    String(nodes.length) +
+    " more (" +
+    String(options.setSize) +
+    " total)" +
+    "</span>" +
+    "</div>"
+  );
+}
+
 // `options` is a small bag of render-mode flags forwarded into
 // recursive calls. Currently:
 //   options.dirMetric — "size" (default, Files panel) renders
@@ -1065,6 +1553,9 @@ function renderTreeNodes(nodes, isRoot, options) {
     );
   }
   var defaultExpandedPaths = options.defaultExpandedPaths || new Set();
+  var level = options.level || 1;
+  var positionOffset = options.positionOffset || 0;
+  var setSize = options.setSize || nodes.length;
   // Array-of-strings + join() is O(n); naive `+=` against a growing
   // string was hot on big trees because every concat copied the whole
   // accumulator. With ~35 k files at depth=4 this drops a frame's
@@ -1076,11 +1567,15 @@ function renderTreeNodes(nodes, isRoot, options) {
   var hidden = nodes.length - visibleCount;
   for (var ni = 0; ni < visibleCount; ni++) {
     var node = nodes[ni];
+    var position = positionOffset + ni + 1;
     var mutedCls = "";
     if (node.gitignored) {
       mutedCls += " tree-item-gitignored";
     }
-    if (node.type === "dir" && node.empty) {
+    if (
+      node.type === "dir" &&
+      (node.empty || (Array.isArray(node.children) && node.children.length === 0))
+    ) {
       mutedCls += " tree-item-empty";
     }
     if (node.type === "dir") {
@@ -1091,10 +1586,24 @@ function renderTreeNodes(nodes, isRoot, options) {
       var stateClass = expanded ? "expanded" : "collapsed";
       var dirAge = formatAge(node.mtime);
       var dirChip = treeDirChipHtml(node.total_files, node.total_size, options);
+      var hasPotentialChildren =
+        !node.empty && (!Array.isArray(node.children) || node.children.length > 0);
+      var folderLabelId = treeDomId("tree-label", `folder:${node.path}`);
+      var groupId = hasPotentialChildren ? treeDomId("tree-group", node.path) : "";
+      var folderAttributes = treeItemAttributes({
+        kind: "folder",
+        path: node.path,
+        level: level,
+        position: position,
+        setSize: setSize,
+        expanded: hasPotentialChildren ? expanded : undefined,
+        ownedGroupId: groupId,
+        labelId: folderLabelId,
+      });
       parts.push(
-        `<div class="tree-item tree-folder ${stateClass}${mutedCls}" data-action="toggle" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(node.name)}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
-        ICONS.toggle,
-        '<span class="tree-item-name">',
+        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(node.name)}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
+        `<span class="tree-toggle">${ICONS.toggle}</span>`,
+        `<span class="tree-item-name" id="${folderLabelId}">`,
         esc(node.name),
         "</span>",
         '<span class="tree-item-age-inline">',
@@ -1102,50 +1611,125 @@ function renderTreeNodes(nodes, isRoot, options) {
         "</span>",
         dirChip,
         "</div>",
-        '<div class="tree-children" style="display:',
-        expanded ? "block" : "none",
-        '">',
       );
-      if (Array.isArray(node.children)) {
-        parts.push(renderTreeNodes(node.children, false, options));
-      } else {
-        // Lazy stub: server emits `children: null` past the depth
-        // cap. Render a placeholder; click-to-expand fetches the
-        // subtree via /api/tree?path=...
-        parts.push(
-          '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
-            '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
-            "</div>",
-        );
+      if (hasPotentialChildren) {
+        parts.push(treeChildGroupStartHtml(groupId, level + 1, expanded));
+        if (Array.isArray(node.children) && expanded) {
+          parts.push(
+            renderTreeNodes(node.children, false, {
+              ...options,
+              level: level + 1,
+              positionOffset: 0,
+              setSize: node.children.length,
+            }),
+          );
+        } else if (Array.isArray(node.children)) {
+          // The response already contains this subtree, but a collapsed folder
+          // does not need it in the DOM. Cache the data and leave the same lazy
+          // stub the expansion path understands; opening the folder mounts one
+          // bounded page from memory without another request.
+          subtreeCache.set(subtreeCacheKey(node.path), node.children);
+          parts.push(
+            '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+              ' role="status" aria-label="Loading">' +
+              '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
+              "</div>",
+          );
+        } else {
+          // Lazy stub: server emits `children: null` past the depth
+          // cap. Render a placeholder; click-to-expand fetches the
+          // subtree via /api/tree?path=...
+          parts.push(
+            '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+              ' role="status" aria-label="Loading">' +
+              '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
+              "</div>",
+          );
+        }
+        parts.push("</div>");
       }
-      parts.push("</div>");
+    } else if (node.type === "symlink") {
+      var linkAge = formatAge(node.mtime);
+      var linkLabelId = treeDomId("tree-label", `symlink:${node.path}`);
+      var linkAttributes = treeItemAttributes({
+        kind: "symlink",
+        path: node.path,
+        level: level,
+        position: position,
+        setSize: setSize,
+        selected: currentPath === node.path,
+        labelId: linkLabelId,
+      });
+      parts.push(
+        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(node.name)}" data-tip-mtime="${node.mtime || 0}">`,
+        '<span class="tree-item-icon">',
+        ICONS.fileSymlink,
+        "</span>",
+        `<span class="tree-item-name" id="${linkLabelId}">`,
+        esc(node.name),
+        "</span>",
+        '<span class="tree-item-age-inline"><span class="tree-item-age">',
+        linkAge,
+        '</span><span class="tree-item-activity"></span></span>',
+        "</div>",
+      );
     } else {
       // Icon dispatch keys off the *logical* name so subtype matchers
       // (`.process.md`, `.runbook.md`, etc.) work on `foo.process.md.gz`.
       var fi = getFileIcon(getLogicalName(node));
       var fileAge = formatAge(node.mtime);
       var compressed = !!node.compressed;
-      var iconCls = `tree-item-icon ${fi.cls}${compressed ? " is-compressed" : ""}`;
+      var iconCls = `tree-item-icon file-identity-icon ${fi.cls}${compressed ? " is-compressed" : ""}`;
       var compressionName = node.compression || "compressed";
       var compressionGlyph = compressionName === "gzip" ? "G" : "Z";
       var compressionBadge = compressed
-        ? `<span class="compression-badge" title="${esc(compressionName)} compressed">${compressionGlyph}</span>`
+        ? `<span class="compression-badge" data-tip-text="${esc(compressionName)} compressed">${compressionGlyph}</span>`
         : "";
       var logicalExtAttr = node.logical_ext ? ` data-logical-ext="${esc(node.logical_ext)}"` : "";
-      // The index's compound-tail extension, which the type filter
+      // The index's bounded compound-tail extension, which the type filter
       // matches on. Separate from data-logical-ext, which means "inner
       // extension of a compressed artifact" and drives icon dispatch.
       var extAttr = node.ext ? ` data-ext="${esc(node.ext)}"` : "";
       var compressedAttr = compressed ? ' data-compressed="1"' : "";
+      var fileLabelId = treeDomId("tree-label", `file:${node.path}`);
+      var fileAttributes = treeItemAttributes({
+        kind: "file",
+        path: node.path,
+        level: level,
+        position: position,
+        setSize: setSize,
+        selected: currentPath === node.path,
+        labelId: fileLabelId,
+      });
+      // A file whose kind declares the container capability is
+      // folder-like too (arch-nav-containers.md): it keeps its file
+      // identity and views, and gains a chevron that discloses the
+      // entries inside it, fetched on first expand.
+      var container = containerForNode(node);
+      var containerGroupId = container ? treeDomId("tree-group", `container:${node.path}`) : "";
+      if (container) {
+        fileAttributes = treeItemAttributes({
+          kind: "file",
+          path: node.path,
+          level: level,
+          position: position,
+          setSize: setSize,
+          selected: currentPath === node.path,
+          labelId: fileLabelId,
+          expanded: false,
+          ownedGroupId: containerGroupId,
+        });
+      }
       parts.push(
-        `<div class="tree-item tree-file${mutedCls}" data-action="select" data-path="${esc(node.path)}"${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        container ? `<span class="tree-toggle">${ICONS.toggle}</span>` : "",
         '<span class="',
         iconCls,
         '">',
         fi.svg,
         compressionBadge,
         "</span>",
-        '<span class="tree-item-name">',
+        `<span class="tree-item-name" id="${fileLabelId}">`,
         esc(node.name),
         "</span>",
         '<span class="tree-item-age-inline"><span class="tree-item-age">',
@@ -1154,41 +1738,46 @@ function renderTreeNodes(nodes, isRoot, options) {
         sizeHtml(node.size, "tree-item-size"),
         "</div>",
       );
+      if (container) {
+        parts.push(treeChildGroupStartHtml(containerGroupId, level + 1, false), "</div>");
+      }
     }
   }
   if (hidden > 0) {
-    var pageId = String(++pendingTreePageId);
-    pendingTreePages.set(pageId, {
-      nodes: nodes.slice(visibleCount),
-      options: options,
-    });
     parts.push(
-      '<div class="tree-page-more" data-action="page-more" data-page-id="',
-      pageId,
-      '">',
-      "Show ",
-      String(hidden),
-      " more (",
-      String(nodes.length),
-      " total)",
-      "</div>",
+      deferredTreePageHtml(nodes.slice(visibleCount), {
+        ...options,
+        level: level,
+        positionOffset: positionOffset + visibleCount,
+        setSize: setSize,
+      }),
     );
   }
-  return parts.join("");
+  var content = parts.join("");
+  return isRoot ? treeRootHtml(content) : content;
 }
 
 // ── Lazy subtree loading ──────────────────────────────────────
 
+// Keyed by path *and* the filter it was fetched under: a subtree fetched
+// while the filter was wider is not an answer for a narrower one.
 const subtreeCache = new Map();
 const subtreeRetryTimers = new WeakMap();
 
+function subtreeCacheKey(path) {
+  var filter = treeFilterKey();
+  return filter ? `${path}\u0000${filter}` : path;
+}
+
+// A spinner alone says "loading"; the surrounding row already says what
+// is loading, so the generic label is left to screen readers. Callers
+// pass visible copy only for a state a spinner cannot express on its own
+// (see the still-scanning case in loadSubtree).
 function treeLazyLoadingHtml(message) {
   return (
-    '<div class="tree-lazy-placeholder" role="status" aria-live="polite">' +
+    '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-live="polite">' +
     '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
-    "<span>" +
-    esc(message || "Loading folder…") +
-    "</span>" +
+    (message ? `<span>${esc(message)}</span>` : '<span class="sr-only">Loading folder…</span>') +
     "</div>"
   );
 }
@@ -1224,6 +1813,33 @@ function responseErrorDetail(body, status) {
   return `The request failed (HTTP ${status}).`;
 }
 
+function responseErrorSummary(body, fallback) {
+  var text = String(body || "").trim();
+  if (text) {
+    try {
+      var parsed = JSON.parse(text);
+      if (typeof parsed?.summary === "string" && parsed.summary.trim()) {
+        return parsed.summary.trim();
+      }
+    } catch (_error) {
+      // Plain-text responses use the caller's stable summary.
+    }
+  }
+  return fallback;
+}
+
+function previewErrorHtml(summary, detail) {
+  return (
+    '<div class="preview-empty preview-error" role="alert">' +
+    '<strong class="preview-error-title">' +
+    esc(summary) +
+    "</strong>" +
+    '<span class="preview-error-detail">' +
+    esc(detail) +
+    "</span></div>"
+  );
+}
+
 function subtreeIsExpanded(childrenEl) {
   if (!childrenEl?.parentNode) {
     return false;
@@ -1233,7 +1849,7 @@ function subtreeIsExpanded(childrenEl) {
     !!folder &&
     folder.classList.contains("tree-folder") &&
     folder.classList.contains("expanded") &&
-    childrenEl.style.display !== "none"
+    !childrenEl.classList.contains("tree-children-collapsed")
   );
 }
 
@@ -1260,25 +1876,33 @@ function clearSubtreeRetry(childrenEl) {
   subtreeRetryTimers.delete(childrenEl);
 }
 
-async function loadSubtree(path, childrenEl, options) {
-  options = options || treeRenderOptionsForElement(childrenEl);
-  if (subtreeCache.has(path)) {
-    clearSubtreeRetry(childrenEl);
-    _perf.measure(
-      "renderTreeNodes:subtreeCache",
-      () => {
-        childrenEl.innerHTML = renderTreeNodes(subtreeCache.get(path), false, options);
-      },
-      { path: path, nodes: subtreeCache.get(path).length },
-    );
+function markFolderKnownEmpty(childrenEl) {
+  var folder = childrenEl.previousElementSibling;
+  if (!folder?.classList.contains("tree-folder")) {
     return;
   }
-  childrenEl.innerHTML = treeLazyLoadingHtml("Loading folder…");
-  try {
-    const resp = await fetch(
-      `/api/tree?path=${encodeURIComponent(path)}&depth=${TREE_SUBTREE_FETCH_DEPTH}`,
-      { cache: "no-store" },
-    );
+  folder.classList.add("tree-item-empty", "collapsed");
+  folder.classList.remove("expanded");
+  folder.removeAttribute("aria-expanded");
+  folder.removeAttribute("aria-owns");
+  childrenEl.remove();
+}
+
+// One request per path, shared by the click that expands a folder and the
+// idle sweep that warms it. A click landing on a prefetch already in flight
+// joins it instead of racing a second identical fetch.
+const subtreeRequests = new Map();
+
+function fetchSubtree(path) {
+  const key = subtreeCacheKey(path);
+  const existing = subtreeRequests.get(key);
+  if (existing) {
+    return existing;
+  }
+  const request = (async () => {
+    const resp = await fetch(treeUrl(path, [`depth=${TREE_SUBTREE_FETCH_DEPTH}`]), {
+      cache: "no-store",
+    });
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status}`);
     }
@@ -1290,36 +1914,259 @@ async function loadSubtree(path, childrenEl, options) {
     if (!Array.isArray(data.tree)) {
       throw new Error("Malformed tree response");
     }
-    var tree = data.tree;
-    knownFileCatalog?.observeLazyTree(tree);
-    if (tree.length === 0 && data.tally_cache_status === "scanning") {
+    _perf.measure(
+      "knownFileCatalog:observeLazyTree",
+      () => knownFileCatalog?.observeLazyTree(data.tree),
+      { path: path, nodes: data.tree.length },
+    );
+    // A folder whose scan has not reached it yet reports empty; caching that
+    // would answer every later expansion with a folder that has contents.
+    const scanning = data.tree.length === 0 && data.tally_cache_status === "scanning";
+    if (!scanning) {
+      subtreeCache.set(key, data.tree);
+    }
+    return { tree: data.tree, scanning: scanning };
+  })();
+  subtreeRequests.set(key, request);
+  const forget = () => {
+    if (subtreeRequests.get(key) === request) {
+      subtreeRequests.delete(key);
+    }
+  };
+  request.then(forget, forget);
+  return request;
+}
+
+async function loadSubtree(path, childrenEl, options) {
+  options = options || treeRenderOptionsForElement(childrenEl);
+  treeKeyboard?.prepareForMutation();
+  var cacheKey = subtreeCacheKey(path);
+  if (subtreeCache.has(cacheKey)) {
+    clearSubtreeRetry(childrenEl);
+    _perf.measure(
+      "renderTreeNodes:subtreeCache",
+      () => {
+        var cachedTree = subtreeCache.get(cacheKey);
+        childrenEl.innerHTML = renderTreeNodes(cachedTree, false, {
+          ...options,
+          level: treeLevelForContainer(childrenEl),
+          positionOffset: 0,
+          setSize: cachedTree.length,
+        });
+      },
+      { path: path, nodes: subtreeCache.get(cacheKey).length },
+    );
+    if (subtreeCache.get(cacheKey).length === 0) {
+      markFolderKnownEmpty(childrenEl);
+    }
+    applyTreeFilters();
+    synchronizeTreeNow();
+    scheduleSubtreePrefetch();
+    return;
+  }
+  childrenEl.innerHTML = treeLazyLoadingHtml();
+  synchronizeTreeNow();
+  try {
+    const result = await fetchSubtree(path);
+    var tree = result.tree;
+    if (result.scanning) {
+      treeKeyboard?.prepareForMutation();
       childrenEl.innerHTML = treeLazyLoadingHtml("Still scanning this folder…");
       startIndexProgressPolling();
       scheduleSubtreeRetry(path, childrenEl);
+      synchronizeTreeNow();
       return;
     }
     clearSubtreeRetry(childrenEl);
-    subtreeCache.set(path, tree);
+    treeKeyboard?.prepareForMutation();
     _perf.measure(
       "renderTreeNodes:subtree",
       () => {
         childrenEl.innerHTML = tree.length
-          ? renderTreeNodes(tree, false, options)
+          ? renderTreeNodes(tree, false, {
+              ...options,
+              level: treeLevelForContainer(childrenEl),
+              positionOffset: 0,
+              setSize: tree.length,
+            })
           : '<div class="tree-lazy-placeholder">This folder is empty.</div>';
       },
       { path: path, nodes: tree.length },
     );
+    if (tree.length === 0) {
+      markFolderKnownEmpty(childrenEl);
+    }
     // Newly rendered children carry no filter classes yet, so without
     // this an expand under an active filter reveals the whole folder.
     applyTreeFilters();
+    reconcilePendingTallyDiagnostics();
+    synchronizeTreeNow();
+    scheduleSubtreePrefetch();
   } catch (e) {
     console.warn(`loadSubtree failed for ${path}`, e);
     clearSubtreeRetry(childrenEl);
+    treeKeyboard?.prepareForMutation();
     childrenEl.innerHTML = treeLazyFailureHtml(
       "Could not load this folder. Collapse and reopen it to try again.",
     );
+    synchronizeTreeNow();
   }
 }
+
+// ── Subtree prefetch ────────────────────────────────────────────
+//
+// Expanding a folder should be instant, which means the subtree is
+// already in hand before the click (see "Everything is effortlessly
+// fast" in docs/design-system.md). The rendered tree names its own
+// candidates: every unexpanded folder past the server's depth cap
+// carries a lazy stub. The sweep runs when the browser is idle, a few
+// at a time, so warming the tree never competes with the request a
+// reader is actually waiting on.
+//
+// "The folders a reader can open next" is a claim about the screen, not
+// about the DOM. A stub inside a collapsed branch belongs to a folder
+// that is two clicks away, and one below the fold is behind a scroll, so
+// neither is next. Taking stubs in DOM order instead sent 32 requests
+// for folders nobody could see on a 100,000-file tree, where the root
+// render mounts 121 stubs with no folder expanded — measured in
+// explorations/performance-loop/experiments/exp-002. Candidates are the stubs whose
+// folder row is on screen, plus one screen of lookahead, and the sweep
+// re-arms on scroll so the next screen warms as it arrives.
+const SUBTREE_PREFETCH_MAX_CONCURRENT = 3;
+const SUBTREE_PREFETCH_MAX_PER_SWEEP = 32;
+const SUBTREE_PREFETCH_IDLE_TIMEOUT_MS = 2000;
+// A reader who just opened a folder has said where they are, so warming its
+// children is not speculation about which folder — only about the next click.
+// That earns a timer instead of an idle callback: long enough for the
+// expansion's own render to finish, short enough to beat the click after it.
+// An idle callback is the wrong instrument here twice over, because a browser
+// is free to defer one indefinitely when it decides the page is not busy in a
+// way it cares about.
+const SUBTREE_PREFETCH_AFTER_EXPAND_MS = 50;
+// Screens of lookahead past the visible nav area. One is a scroll gesture's
+// worth: far enough that a reader scrolling steadily stays ahead of the
+// fetches, near enough that it is still a folder they are heading toward.
+const SUBTREE_PREFETCH_LOOKAHEAD_SCREENS = 1;
+let subtreePrefetchScheduled = false;
+
+function pendingSubtreePaths() {
+  const paths = [];
+  const stubs = treePane.querySelectorAll("[data-tree-lazy-stub]");
+  // One layout read for the scroller, then one per stub owner, all inside the
+  // idle callback that already owns this work. Without a scroller — a shell
+  // that has not mounted the tree yet — every mounted stub is a candidate,
+  // which is the old behavior and the safe direction to fail in.
+  const scroller = document.getElementById("tree-content");
+  const measured = scroller ? scroller.getBoundingClientRect() : null;
+  // A zero-height scroller is a shell that has not laid out, not a viewport
+  // with nothing in it. Bounding against it would reject every candidate and
+  // silently disable the prefetch, so it falls back to the unbounded sweep.
+  const view = measured && measured.height > 0 ? measured : null;
+  const lookahead = view ? view.height * SUBTREE_PREFETCH_LOOKAHEAD_SCREENS : 0;
+  for (let index = 0; index < stubs.length; index += 1) {
+    if (paths.length >= SUBTREE_PREFETCH_MAX_PER_SWEEP) {
+      break;
+    }
+    // Stub -> .tree-children -> the .tree-folder row that owns the path.
+    const folder = /** @type {HTMLElement | null} */ (
+      stubs[index].parentElement?.previousElementSibling ?? null
+    );
+    const path = folder?.dataset?.path;
+    const key = path ? subtreeCacheKey(path) : "";
+    if (!path || subtreeCache.has(key) || subtreeRequests.has(key)) {
+      continue;
+    }
+    if (view && !isNearNavViewport(folder, view, lookahead)) {
+      continue;
+    }
+    paths.push(path);
+  }
+  return paths;
+}
+
+/**
+ * Is this row on screen in the nav, or within `lookahead` pixels of it?
+ *
+ * Two ways to be off screen, and only one of them is scrolling. A collapsed
+ * branch clips its children with `overflow: hidden` rather than removing them,
+ * so those rows keep full-height boxes stacked at the branch's own position —
+ * a rect test alone reads them as visible and on screen. The branch is checked
+ * first for that reason.
+ *
+ * @param {HTMLElement | null} row
+ * @param {DOMRect} view
+ * @param {number} lookahead
+ * @returns {boolean}
+ */
+function isNearNavViewport(row, view, lookahead) {
+  if (!row || row.closest(".tree-children-collapsed")) {
+    return false;
+  }
+  const rect = row.getBoundingClientRect();
+  if (rect.height === 0) {
+    return false;
+  }
+  return rect.bottom >= view.top - lookahead && rect.top <= view.bottom + lookahead;
+}
+
+async function prefetchPendingSubtrees() {
+  const paths = pendingSubtreePaths();
+  let next = 0;
+  const worker = async () => {
+    while (next < paths.length) {
+      const path = paths[next];
+      next += 1;
+      try {
+        await fetchSubtree(path);
+      } catch (_error) {
+        // Best-effort: a failed warm-up costs nothing, and the expansion
+        // that needs this folder reports its own failure.
+      }
+    }
+  };
+  const lanes = Math.min(SUBTREE_PREFETCH_MAX_CONCURRENT, paths.length);
+  await Promise.all(Array.from({ length: lanes }, worker));
+}
+
+/**
+ * Arm one sweep, if one is not already armed.
+ *
+ * @param {{ afterExpand?: boolean }} [options] `afterExpand` marks a sweep a
+ *   reader asked for by opening a folder, which runs on a short timer rather
+ *   than waiting for idle.
+ */
+function scheduleSubtreePrefetch(options) {
+  if (subtreePrefetchScheduled) {
+    return;
+  }
+  subtreePrefetchScheduled = true;
+  const run = () => {
+    subtreePrefetchScheduled = false;
+    void prefetchPendingSubtrees();
+  };
+  if (options?.afterExpand) {
+    setTimeout(run, SUBTREE_PREFETCH_AFTER_EXPAND_MS);
+    return;
+  }
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(run, { timeout: SUBTREE_PREFETCH_IDLE_TIMEOUT_MS });
+  } else {
+    setTimeout(run, 200);
+  }
+}
+
+// Scrolling is what makes a folder next, so it is what re-arms the sweep. The
+// scheduled flag and the idle callback already collapse a burst of scroll
+// events into one pass, so this needs no debounce of its own.
+document.getElementById("tree-content")?.addEventListener(
+  "scroll",
+  () => {
+    // Wrapped rather than passed directly: a listener receives the event, and
+    // an Event is not this function's options object.
+    scheduleSubtreePrefetch();
+  },
+  { passive: true },
+);
 
 // ── Custom tooltip ──────────────────────────────────────────────
 //
@@ -1332,6 +2179,15 @@ async function loadSubtree(path, childrenEl, options) {
 
 var tooltipEl = null;
 var tooltipTimer = null;
+// The element the visible tooltip belongs to. It is what makes a tooltip hold
+// still: position is read from this once, when the tooltip appears, and never
+// again while it is up.
+var tooltipAnchor = null;
+
+var TOOLTIP_ANCHOR_GAP = 6;
+var TOOLTIP_VIEWPORT_MARGIN = 8;
+var TOOLTIP_APPEAR_DELAY = 300;
+var TOOLTIP_FADE_OUT = 150;
 
 function initTooltip() {
   tooltipEl = document.createElement("div");
@@ -1339,52 +2195,126 @@ function initTooltip() {
   document.body.appendChild(tooltipEl);
 }
 
-function showTooltip(html, e) {
+/**
+ * Show `html` anchored to `anchor`, the element the tooltip describes.
+ *
+ * Calling again with the same anchor is how a surface says "still here" — it
+ * cancels a pending hide and leaves the tooltip exactly where it is. That is
+ * what lets a delegated listener fire on every descendant the pointer crosses
+ * without the tooltip flickering or drifting.
+ */
+function showTooltip(html, anchor) {
+  var element = anchor && anchor.nodeType === 1 ? anchor : null;
+  if (element && element === tooltipAnchor && tooltipEl.style.display === "block") {
+    clearTimeout(tooltipTimer);
+    tooltipEl.classList.add("visible");
+    return;
+  }
+  tooltipAnchor = element;
   clearTimeout(tooltipTimer);
   // Small delay before appearing so tooltips don't flash when moving across items
   tooltipTimer = setTimeout(() => {
     tooltipEl.innerHTML = html;
     tooltipEl.style.display = "block";
-    positionTooltip(e);
+    positionTooltip(element);
     // Trigger fade-in on next frame
     requestAnimationFrame(() => {
       tooltipEl.classList.add("visible");
     });
-  }, 300);
+  }, TOOLTIP_APPEAR_DELAY);
 }
 
-function positionTooltip(e) {
-  var x = e.clientX + 12;
-  var y = e.clientY + 16;
+/**
+ * Place the tooltip under its anchor, centered on it, flipping above when
+ * there is no room below and clamping to the viewport either way.
+ *
+ * Anchored to the element rather than the pointer, and read once rather than
+ * on every mousemove: a tooltip that tracks the cursor jitters, and one placed
+ * where the pointer happened to enter tells the reader nothing about which
+ * thing it describes.
+ */
+function positionTooltip(anchor) {
+  if (!anchor?.getBoundingClientRect) {
+    return;
+  }
+  var target = anchor.getBoundingClientRect();
   var rect = tooltipEl.getBoundingClientRect();
-  if (x + rect.width > window.innerWidth - 8) {
-    x = e.clientX - rect.width - 8;
+  var maxX = window.innerWidth - rect.width - TOOLTIP_VIEWPORT_MARGIN;
+  var x = target.left + (target.width - rect.width) / 2;
+  var y = target.bottom + TOOLTIP_ANCHOR_GAP;
+  if (y + rect.height > window.innerHeight - TOOLTIP_VIEWPORT_MARGIN) {
+    y = target.top - rect.height - TOOLTIP_ANCHOR_GAP;
   }
-  if (y + rect.height > window.innerHeight - 8) {
-    y = e.clientY - rect.height - 8;
-  }
-  tooltipEl.style.left = `${x}px`;
-  tooltipEl.style.top = `${y}px`;
+  tooltipEl.style.left = `${Math.max(TOOLTIP_VIEWPORT_MARGIN, Math.min(x, Math.max(TOOLTIP_VIEWPORT_MARGIN, maxX)))}px`;
+  tooltipEl.style.top = `${Math.max(TOOLTIP_VIEWPORT_MARGIN, y)}px`;
 }
 
 function hideTooltip() {
   clearTimeout(tooltipTimer);
   tooltipEl.classList.remove("visible");
-  // Let the fade-out transition finish before hiding
+  // The anchor survives the fade on purpose: a surface that re-announces the
+  // same element mid-fade gets its tooltip back rather than a fresh delay.
   tooltipTimer = setTimeout(() => {
     tooltipEl.style.display = "none";
-  }, 150);
+    tooltipAnchor = null;
+  }, TOOLTIP_FADE_OUT);
 }
 
 if (typeof window !== "undefined") {
   window.MetabrowserTooltip = {
-    show: (html, e) => {
-      showTooltip(html, e);
+    show: (html, anchor) => {
+      showTooltip(html, anchor);
     },
-    move: positionTooltip,
     hide: hideTooltip,
   };
 }
+
+/**
+ * The plain-text half of the one tooltip: anything carrying `data-tip-text`
+ * gets the app's tooltip, and nothing in the app uses the browser's own.
+ *
+ * A native `title` is a second tooltip system running beside this one. It
+ * cannot be styled or placed, it appears on the platform's timer rather than
+ * ours, and on a surface that already announces a tooltip it shows a second
+ * one alongside — which is the bug that produced this rule. `data-tip-text`
+ * exists so that having something to say is never a reason to reach for
+ * `title`: the common case is a short string, and it should be one attribute.
+ *
+ * `aria-label` is untouched and still required where it was. It is the
+ * accessible name, not a tooltip; a screen reader never reads this attribute,
+ * so a glyph-only control needs both.
+ *
+ * Delegated from the document, so it covers markup that does not exist yet,
+ * including a plugin's. Tooltips are pointer-only supplementary detail;
+ * keyboard focus uses the element's accessible name and dismisses any tooltip
+ * left under a stationary pointer.
+ */
+function tipTextAnchor(event) {
+  var anchor = eventTargetElement(event)?.closest("[data-tip-text]");
+  return anchor instanceof HTMLElement ? anchor : null;
+}
+
+/** @param {Event} e */
+function showTipText(e) {
+  var anchor = tipTextAnchor(e);
+  if (anchor) {
+    showTooltip(esc(anchor.dataset.tipText || ""), anchor);
+  }
+}
+
+/** @param {Event} e */
+function hideTipText(e) {
+  if (tipTextAnchor(e)) {
+    hideTooltip();
+  }
+}
+
+// mouseenter/mouseleave do not bubble, so these listen in the capture phase.
+// Any focus transition ends pointer-owned tooltip presentation without
+// creating a second visual layer around keyboard navigation.
+document.addEventListener("mouseenter", showTipText, true);
+document.addEventListener("mouseleave", hideTipText, true);
+document.addEventListener("focusin", hideTooltip);
 
 // Tooltip size/count rows reuse the shared .size / .count classes so
 // they match the hue of the same data everywhere else (tree column,
@@ -1421,6 +2351,16 @@ function fileTooltipHtml(name, size, mtime, includeName) {
   );
 }
 
+function symlinkTooltipHtml(name, mtime, includeName) {
+  return (
+    treeTooltipNameHtml(name, includeName) +
+    '<div class="tip-detail">Symbolic link</div>' +
+    '<div class="tip-detail">' +
+    formatTimestamp(mtime) +
+    "</div>"
+  );
+}
+
 function folderTooltipHtml(name, totalFiles, totalSize, mtime, includeName) {
   return (
     treeTooltipNameHtml(name, includeName) +
@@ -1441,6 +2381,55 @@ function folderTooltipHtml(name, totalFiles, totalSize, mtime, includeName) {
 const treePane = /** @type {HTMLElement} */ (document.getElementById("tree-pane"));
 if (!treePane) {
   throw new Error("Metabrowser shell is missing #tree-pane");
+}
+
+// Coalesced roving-focus and ARIA repair for event-driven tree mutations.
+//
+// treeKeyboard.synchronize() rewrites level, position, set-size, expansion,
+// and selection on every rendered row and then re-derives the visible row
+// list, so it costs one walk of the painted tree. That is the right price for
+// a user action, but the inventory stream calls into the tree once per entry:
+// a reconnect replays a whole snapshot through applyCellPatch, and the walker
+// pushes changes for as long as it runs. Paying a full walk per event is the
+// same hazard scheduleFilterReapply() already guards against for filters.
+//
+// Bursts therefore collapse into one repair on the next task. The earliest
+// pending focus snapshot wins, because that is the one describing the tree as
+// the user last saw it; a later burst must not overwrite the anchor lineage
+// captured before the first mutation.
+var _treeSynchronizeHandle = null;
+/** @type {ReturnType<NonNullable<typeof treeKeyboard>["prepareForMutation"]> | null} */
+var _treeSynchronizeMutation = null;
+
+/** @param {ReturnType<NonNullable<typeof treeKeyboard>["prepareForMutation"]> | null} [mutationSnapshot] */
+function scheduleTreeSynchronize(mutationSnapshot) {
+  if (!treeKeyboard) {
+    return;
+  }
+  if (mutationSnapshot && !_treeSynchronizeMutation) {
+    _treeSynchronizeMutation = mutationSnapshot;
+  }
+  if (_treeSynchronizeHandle !== null) {
+    return;
+  }
+  _treeSynchronizeHandle = setTimeout(() => {
+    _treeSynchronizeHandle = null;
+    var snapshot = _treeSynchronizeMutation;
+    _treeSynchronizeMutation = null;
+    treeKeyboard?.synchronize(snapshot || undefined);
+  }, 0);
+}
+
+// A user action repairs focus in its own turn, so it must not land behind a
+// queued burst repair — and running both would walk the tree twice.
+function synchronizeTreeNow() {
+  if (_treeSynchronizeHandle !== null) {
+    clearTimeout(_treeSynchronizeHandle);
+    _treeSynchronizeHandle = null;
+  }
+  var snapshot = _treeSynchronizeMutation;
+  _treeSynchronizeMutation = null;
+  treeKeyboard?.synchronize(snapshot || undefined);
 }
 
 treePane.addEventListener(
@@ -1464,6 +2453,8 @@ treePane.addEventListener(
         parseTipNumber(d.tipMtime),
         includeName,
       );
+    } else if (d.tipType === "symlink") {
+      html = symlinkTooltipHtml(d.tipName, parseTipNumber(d.tipMtime), includeName);
     } else {
       html = fileTooltipHtml(
         d.tipName,
@@ -1472,7 +2463,7 @@ treePane.addEventListener(
         includeName,
       );
     }
-    showTooltip(html, e);
+    showTooltip(html, item);
   },
   true,
 );
@@ -1492,7 +2483,23 @@ treePane.addEventListener(
 var hoverPrefetchTimer = null;
 var hoverPrefetchPath = "";
 var hoverPrefetchController = null;
+var hoverPrefetchPromise = null;
 var hoverPrefetchInFlight = 0;
+
+async function settleHoverPrefetchForSelection(path) {
+  clearTimeout(hoverPrefetchTimer);
+  hoverPrefetchTimer = null;
+  if (hoverPrefetchPath !== path) {
+    abortHoverPrefetch();
+    return;
+  }
+  if (hoverPrefetchPromise) {
+    await hoverPrefetchPromise;
+    return;
+  }
+  hoverPrefetchPath = "";
+  hoverPrefetchController = null;
+}
 
 function shouldPrefetchFile(item) {
   var path = item.dataset.path;
@@ -1513,6 +2520,7 @@ function abortHoverPrefetch() {
   clearTimeout(hoverPrefetchTimer);
   hoverPrefetchTimer = null;
   hoverPrefetchPath = "";
+  hoverPrefetchPromise = null;
   if (hoverPrefetchController) {
     hoverPrefetchController.abort();
     hoverPrefetchController = null;
@@ -1530,7 +2538,7 @@ function startHoverPrefetch(path) {
   hoverPrefetchInFlight += 1;
   hoverPrefetchController = typeof AbortController !== "undefined" ? new AbortController() : null;
   var options = hoverPrefetchController ? { signal: hoverPrefetchController.signal } : {};
-  fetch(`/api/file?path=${encodeURIComponent(path)}`, options)
+  const request = fetch(`/api/file?path=${encodeURIComponent(path)}`, options)
     .then((resp) =>
       resp.ok
         ? _perf.measureAsync(
@@ -1550,10 +2558,13 @@ function startHoverPrefetch(path) {
     })
     .finally(() => {
       hoverPrefetchInFlight -= 1;
-      if (hoverPrefetchPath === path) {
+      if (hoverPrefetchPath === path && hoverPrefetchPromise === request) {
         hoverPrefetchController = null;
+        hoverPrefetchPath = "";
+        hoverPrefetchPromise = null;
       }
     });
+  hoverPrefetchPromise = request;
 }
 
 // Prefetch small, non-log file content only after hover intent is clear. Large
@@ -1604,92 +2615,255 @@ async function expandAllDescendants(container) {
     if (!ch?.classList.contains("tree-children")) {
       continue;
     }
-    ch.style.display = "block";
-    folder.classList.remove("collapsed");
-    folder.classList.add("expanded");
-    if (ch.querySelector(":scope > .tree-lazy-placeholder")) {
-      await loadSubtree(folder.dataset.path, ch);
-    }
+    await setFolderExpanded(folder, true, { synchronize: false });
     await expandAllDescendants(ch);
   }
 }
 
 function collapseAllDescendants(container) {
   container.querySelectorAll(".tree-children").forEach((ch) => {
-    ch.style.display = "none";
     var folder = ch.previousElementSibling;
     if (folder?.classList.contains("tree-folder")) {
-      folder.classList.remove("expanded");
-      folder.classList.add("collapsed");
+      setFolderExpanded(folder, false, { synchronize: false });
     }
   });
 }
 
-treePane.addEventListener("click", (e) => {
-  // Pagination "Show N more" sentinel is its own row (not .tree-item)
-  // so it doesn't accidentally pick up tree-item click semantics like
-  // hover-prefetch or selection.
-  var target = eventTargetElement(e);
-  if (!target) {
+function setFolderExpanded(row, expanded, options) {
+  options = options || {};
+  var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  if (
+    !row.classList.contains("tree-folder") ||
+    row.classList.contains("tree-item-empty") ||
+    !children?.classList.contains("tree-children")
+  ) {
     return;
   }
-  var pageRow = /** @type {HTMLElement | null} */ (target.closest(".tree-page-more"));
-  if (pageRow) {
-    var pageId = pageRow.dataset.pageId;
-    var page = pendingTreePages.get(pageId);
-    var nextBatch = page?.nodes;
-    if (nextBatch) {
-      pendingTreePages.delete(pageId);
-      pageRow.outerHTML = renderTreeNodes(nextBatch, false, page.options);
-      // Same reason as loadSubtree: a deferred page arrives unfiltered.
-      applyTreeFilters();
+  window.MetabrowserTreeExpansion.setFolderExpanded(row, children, expanded);
+  row.setAttribute("aria-expanded", String(expanded));
+  if (options.synchronize !== false) {
+    synchronizeTreeNow();
+  }
+  if (expanded) {
+    // Opening a folder is what puts its children on screen, so it is the other
+    // thing that makes a stub a candidate. Without this the viewport bound
+    // would warm nothing after the first screen: the newly revealed rows are
+    // visible, but nothing had re-armed the sweep to notice.
+    scheduleSubtreePrefetch({ afterExpand: true });
+  }
+  if (expanded && children.querySelector(":scope > .tree-lazy-placeholder")) {
+    return loadSubtree(row.dataset.path, children).then(() => {
+      if (options.synchronize !== false) {
+        synchronizeTreeNow();
+      }
+    });
+  }
+}
+
+async function toggleTreeFolder(row, options) {
+  options = options || {};
+  var expanded = row.getAttribute("aria-expanded") === "true";
+  var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  if (!children?.classList.contains("tree-children")) {
+    return row;
+  }
+  // Recursive walks defer every per-folder repair to the single synchronize
+  // below. Expand and collapse pay the same price: one walk of the visible
+  // tree for the whole operation, not one per descendant folder.
+  if (options.recursive && expanded) {
+    collapseAllDescendants(children);
+    setFolderExpanded(row, false, { synchronize: false });
+  } else if (options.recursive) {
+    await setFolderExpanded(row, true, { synchronize: false });
+    await expandAllDescendants(children);
+  } else {
+    await setFolderExpanded(row, !expanded);
+  }
+  synchronizeTreeNow();
+  return row;
+}
+
+// Container expansion mirrors lazy folder expansion: fetch children on
+// first open, then toggle visibility. Failures state themselves in the
+// group rather than leaving an empty box.
+async function toggleTreeContainer(row) {
+  var children = /** @type {HTMLElement | null} */ (row.nextElementSibling);
+  if (!children?.classList.contains("tree-children")) {
+    return row;
+  }
+  var expanded = row.getAttribute("aria-expanded") === "true";
+  if (expanded) {
+    row.setAttribute("aria-expanded", "false");
+    row.classList.add("collapsed");
+    row.classList.remove("expanded");
+    children.classList.add("tree-children-collapsed");
+    synchronizeTreeNow();
+    return row;
+  }
+  row.setAttribute("aria-expanded", "true");
+  row.classList.add("expanded");
+  row.classList.remove("collapsed");
+  children.classList.remove("tree-children-collapsed");
+  if (!children.dataset.loaded) {
+    children.innerHTML =
+      '<div class="tree-lazy-placeholder mb-delayed-loading" role="status" aria-label="Loading">' +
+      '<span class="spinner spinner-sm" aria-hidden="true"></span></div>';
+    var level = Number(row.dataset.treeLevel || "1") + 1;
+    var childrenStartedAt = Date.now();
+    try {
+      var payload = await window.metabrowser.fetchPluginData(
+        row.dataset.containerPlugin,
+        row.dataset.containerChildren,
+        { path: row.dataset.path || "" },
+      );
+      var rows = Array.isArray(payload?.children) ? payload.children : [];
+      children.innerHTML = rows.length
+        ? renderContainerChildren(rows, { level: level })
+        : '<div class="tree-empty-note">No entries in this file.</div>';
+      children.dataset.loaded = "1";
+    } catch (error) {
+      console.error(
+        "metabrowser tree: container children failed",
+        {
+          path: row.dataset.path,
+          plugin: row.dataset.containerPlugin,
+          hook: row.dataset.containerChildren,
+          elapsedMs: Date.now() - childrenStartedAt,
+        },
+        error,
+      );
+      children.innerHTML = '<div class="tree-empty-note">Could not load these entries.</div>';
     }
+    applyTreeFilters();
+  }
+  synchronizeTreeNow();
+  return row;
+}
+
+// The keyboard's one disclosure entry point. Folders and container
+// files both expand through it, each by its own path, so the navigation
+// module never asks what kind of row it is holding.
+function setRowExpanded(row, expanded) {
+  if (!row.dataset.containerChildren) {
+    return setFolderExpanded(row, expanded);
+  }
+  if (row.getAttribute("aria-expanded") === String(expanded)) {
+    return undefined;
+  }
+  return toggleTreeContainer(row);
+}
+
+function mountNextTreePage(row) {
+  var pageId = row.dataset.pageId;
+  var page = pendingTreePages.get(pageId);
+  var nextBatch = page?.nodes;
+  if (!nextBatch?.length) {
+    return null;
+  }
+  treeKeyboard?.prepareForMutation();
+  pendingTreePages.delete(pageId);
+  var temporary = document.createElement("div");
+  temporary.innerHTML = renderTreeNodes(nextBatch, false, page.options);
+  var nodes = Array.prototype.slice.call(temporary.childNodes);
+  var firstMounted = null;
+  for (var i = 0; i < nodes.length; i++) {
+    var node = nodes[i];
+    row.parentElement?.insertBefore(node, row);
+    if (!firstMounted && node.getAttribute?.("role") === "treeitem") {
+      firstMounted = node;
+    }
+  }
+  row.remove();
+  // A deferred page arrives without current filter decoration.
+  applyTreeFilters();
+  reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
+  return firstMounted;
+}
+
+// The pointer activation contract. A folder row is a single target: it selects
+// the folder, opens its default Overview view, and toggles its immediate
+// children, so the chevron stays a state indicator rather than a second action
+// with its own navigation semantics.
+//
+// The keyboard splits what a click fuses, because arrows already carry the
+// opening half: see openTreeRow and activateTreeRowFromKeyboard below.
+async function activateTreeRow(row, options) {
+  var action = row.dataset.action;
+  if (action === "select-dir") {
+    // Guarded like the select branch below: a pathless row would otherwise
+    // clear the whole selection and request the served root.
+    if (row.dataset.path) {
+      setSelectedPath(row.dataset.path);
+      // Trailing slash marks a folder in the canonical /view/ route.
+      void navigateToPath(`${row.dataset.path}/`);
+    }
+    return toggleTreeFolder(row, options);
+  }
+  if (action === "page-more") {
+    return mountNextTreePage(row);
+  }
+  if (action === "select" && row.dataset.path) {
+    setSelectedPath(row.dataset.path);
+    void navigateToPath(row.dataset.path);
+    // A container file is one target like a folder row: opening it also
+    // discloses what is inside it.
+    if (row.dataset.containerChildren) {
+      return toggleTreeContainer(row);
+    }
+  }
+  return row;
+}
+
+// Arrow keys are the browse gesture: landing on a row opens it, so skimming
+// costs one keypress per row instead of two. Reading is the common case and
+// waiting for a confirm keystroke saved nothing once opening became fast.
+//
+// The route is replaced rather than pushed, so a skim does not bury the
+// reader's entry point under one history entry per row they passed.
+function openTreeRow(row) {
+  var path = row.dataset.path;
+  if (!path) {
+    // Pagination rows carry no path; they are activated, never opened.
+    return;
+  }
+  setSelectedPath(path);
+  var folder = row.dataset.action === "select-dir";
+  void navigateToPath(folder ? `${path}/` : path, undefined, { replace: true });
+}
+
+// Enter and Space are action keys in the tree, not view keys. Whatever the
+// focus is on is already open, so activation is only for what arrows cannot
+// express: changing a folder's disclosure state and mounting a deferred page.
+async function activateTreeRowFromKeyboard(row, options) {
+  var action = row.dataset.action;
+  if (action === "select-dir") {
+    return toggleTreeFolder(row, options);
+  }
+  if (action === "page-more") {
+    return mountNextTreePage(row);
+  }
+  if (row.dataset.containerChildren) {
+    return toggleTreeContainer(row);
+  }
+  return row;
+}
+
+treePane.addEventListener("click", (e) => {
+  var target = eventTargetElement(e);
+  if (!target) {
     return;
   }
   const item = /** @type {HTMLElement | null} */ (target.closest(".tree-item"));
   if (!item) {
     return;
   }
-  const action = item.dataset.action;
-  if (action === "toggle") {
-    var children = /** @type {HTMLElement | null} */ (item.nextElementSibling);
-    if (!children) {
-      return;
+  treeKeyboard?.setAnchor(item);
+  void activateTreeRow(item, { recursive: e.shiftKey }).then((focusTarget) => {
+    if (focusTarget?.isConnected) {
+      treeKeyboard?.setAnchor(focusTarget, item.dataset.action === "page-more");
     }
-    if (e.shiftKey) {
-      // Shift+click: recursive expand/collapse.
-      var wasExpanded = children.style.display !== "none";
-      if (wasExpanded) {
-        collapseAllDescendants(children);
-        children.style.display = "none";
-        item.classList.remove("expanded");
-        item.classList.add("collapsed");
-      } else {
-        children.style.display = "block";
-        item.classList.remove("collapsed");
-        item.classList.add("expanded");
-        if (children.querySelector(":scope > .tree-lazy-placeholder")) {
-          loadSubtree(item.dataset.path, children).then(() => {
-            expandAllDescendants(children);
-          });
-        } else {
-          expandAllDescendants(children);
-        }
-      }
-    } else {
-      // Normal click: toggle single level.
-      var isExpanded = children.style.display !== "none";
-      children.style.display = isExpanded ? "none" : "block";
-      item.classList.toggle("expanded", !isExpanded);
-      item.classList.toggle("collapsed", isExpanded);
-      if (!isExpanded && children.querySelector(".tree-lazy-placeholder")) {
-        loadSubtree(item.dataset.path, children);
-      }
-    }
-  } else if (action === "select") {
-    setSelectedPath(item.dataset.path);
-    selectFile(item.dataset.path);
-  }
+  });
 });
 
 // Mark every .tree-item whose data-path matches *path* as
@@ -1704,6 +2878,8 @@ function setSelectedPath(path) {
     }
   });
   if (!path) {
+    treeKeyboard?.setSelectedPath(null);
+    renderSelectionOutsideFilterNote(null);
     return;
   }
   queryHtmlAll(".tree-item").forEach((el) => {
@@ -1711,6 +2887,53 @@ function setSelectedPath(path) {
       el.classList.add("selected");
     }
   });
+  treeKeyboard?.setSelectedPath(path);
+  // The path explicitly: this runs before navigateToPath has committed it, so
+  // reading currentPath here would name the folder the reader just left.
+  renderSelectionOutsideFilterNote(path);
+}
+
+// A filter can exclude the folder the reader is standing in — open one from a
+// breadcrumb, a link, or a pasted URL and the tree legitimately has no row for
+// it. Say so, naming it, rather than leaving the panel silently unselected.
+//
+// Deliberately not a pinned row. Keeping the selection in the tree means
+// refetching as the reader navigates, and a refetch repaints the panel, which
+// collapses every folder they had open — the same cost this change already
+// refused to pay for filesystem bursts. A line costs nothing and answers the
+// question the empty selection actually raises.
+function renderSelectionOutsideFilterNote(selectedPath) {
+  var panel = document.getElementById("tab-files");
+  if (!panel) {
+    return;
+  }
+  var path = selectedPath === undefined ? currentPath : selectedPath;
+  var existing = panel.querySelector(".tree-selection-note");
+  var filtered = filterState ? filterHasConstraints(filterState.get()) : false;
+  var absent =
+    filtered &&
+    !!path &&
+    !panel.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`);
+  if (!absent) {
+    existing?.remove();
+    return;
+  }
+  var text = `${path} is outside this filter.`;
+  if (existing) {
+    existing.textContent = text;
+    return;
+  }
+  var note = document.createElement("div");
+  note.className = "tree-selection-note";
+  note.setAttribute("role", "status");
+  note.textContent = text;
+  var anchor =
+    panel.querySelector(".tree-summary-filtered") || panel.querySelector(".tree-summary");
+  if (anchor) {
+    anchor.insertAdjacentElement("afterend", note);
+  } else {
+    panel.insertAdjacentElement("afterbegin", note);
+  }
 }
 
 // ── Nav pane ────────────────────────────────────────────────────
@@ -1734,6 +2957,10 @@ const RECENT_RECLUSTER_DEBOUNCE_MS = _METABROWSER_SETTINGS.RECENT_RECLUSTER_DEBO
 const RECENT_CLUSTER_PCT = _METABROWSER_SETTINGS.RECENT_CLUSTER_PCT || 0.05;
 const INDEX_PROGRESS_POLL_MS = _METABROWSER_SETTINGS.INDEX_PROGRESS_POLL_MS || 1000;
 const INDEX_PROGRESS_UPDATE_FILES = _METABROWSER_SETTINGS.INDEX_PROGRESS_UPDATE_FILES || 1024;
+const PENDING_TALLY_DIAGNOSTIC_DELAY_MS =
+  _METABROWSER_SETTINGS.PENDING_TALLY_DIAGNOSTIC_DELAY_MS || 5000;
+const PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT =
+  _METABROWSER_SETTINGS.PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT || 20;
 var currentRecentWindow = _METABROWSER_SETTINGS.RECENT_DEFAULT_WINDOW || "24h";
 var recentEverLoaded = false;
 
@@ -1744,6 +2971,194 @@ var indexProgressTimer = null;
 var indexProgressInFlight = false;
 var indexProgressLastRendered = null;
 var indexProgressCompletionRefreshInFlight = false;
+var pendingTallyDiagnosticSequence = 0;
+
+function compactTallyEntry(entry) {
+  if (!entry) {
+    return null;
+  }
+  return {
+    type: entry.type || null,
+    total_files: entry.total_files === undefined ? null : entry.total_files,
+    total_size: entry.total_size === undefined ? null : entry.total_size,
+    size: entry.size === undefined ? null : entry.size,
+    mtime: entry.mtime === undefined ? null : entry.mtime,
+    mtime_ns: entry.mtime_ns === undefined ? null : entry.mtime_ns,
+    newest_mtime_ns: entry.newest_mtime_ns === undefined ? null : entry.newest_mtime_ns,
+    empty: entry.empty === undefined ? null : entry.empty,
+    gitignored: !!entry.gitignored,
+  };
+}
+
+function cachedTallyEntries(paths) {
+  var wanted = new Set(paths);
+  var found = new Map();
+  var stack = _lastTreeRender?.tree ? Array.from(_lastTreeRender.tree) : [];
+  while (stack.length > 0 && wanted.size > 0) {
+    var node = stack.pop();
+    if (!node) {
+      continue;
+    }
+    if (wanted.has(node.path)) {
+      found.set(node.path, compactTallyEntry(node));
+      wanted.delete(node.path);
+    }
+    if (Array.isArray(node.children)) {
+      for (var i = 0; i < node.children.length; i++) {
+        stack.push(node.children[i]);
+      }
+    }
+  }
+  return found;
+}
+
+function collectPendingTallyDiagnostic(context) {
+  var cells = Array.from(queryHtmlAll("#tab-files .tally-pending"));
+  var fieldCounts = { age: 0, count: 0, other: 0, size: 0 };
+  var rowsByPath = new Map();
+  var visibleCells = 0;
+  var withoutPath = 0;
+  for (var i = 0; i < cells.length; i++) {
+    var cell = cells[i];
+    if (cell.classList.contains("size")) {
+      fieldCounts.size += 1;
+    } else if (cell.classList.contains("count")) {
+      fieldCounts.count += 1;
+    } else if (cell.classList.contains("tally-pending-narrow")) {
+      fieldCounts.age += 1;
+    } else {
+      fieldCounts.other += 1;
+    }
+    var row = /** @type {HTMLElement | null} */ (cell.closest(".tree-item"));
+    var hidden = !!row?.classList.contains("tree-item-filter-hidden");
+    if (!hidden) {
+      visibleCells += 1;
+    }
+    if (!row?.dataset.path) {
+      withoutPath += 1;
+      continue;
+    }
+    var path = row.dataset.path;
+    if (!rowsByPath.has(path)) {
+      rowsByPath.set(path, {
+        path,
+        hidden,
+        row_type: row.classList.contains("tree-folder")
+          ? "dir"
+          : row.classList.contains("tree-symlink")
+            ? "symlink"
+            : "file",
+        dom: {
+          tip_files: row.dataset.tipFiles ?? null,
+          tip_mtime: row.dataset.tipMtime ?? null,
+          tip_size: row.dataset.tipSize ?? null,
+        },
+      });
+    }
+  }
+
+  var allPaths = Array.from(rowsByPath.keys());
+  var sampledPaths = allPaths.slice(0, PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT);
+  var cachedEntries = cachedTallyEntries(sampledPaths);
+  var samples = sampledPaths.map((path) => {
+    var sample = rowsByPath.get(path);
+    sample.file_store = compactTallyEntry(fileStore?.get?.(path));
+    sample.cached_tree = cachedEntries.get(path) || null;
+    return sample;
+  });
+  var filter = filterState?.get ? filterState.get() : null;
+  var readyState = inventoryEventSource?.readyState;
+  return {
+    diagnostic_id: `pending-tally-${Date.now()}-${++pendingTallyDiagnosticSequence}`,
+    kind: "pending-folder-tallies",
+    captured_at: new Date().toISOString(),
+    elapsed_ms: context.elapsedMs,
+    episode: context.episode,
+    current_path: currentPath,
+    source: filesPanelUsesRecentSource() ? "recent" : "tree",
+    filter: filter,
+    pending: {
+      cells: cells.length,
+      visible_cells: visibleCells,
+      paths: allPaths.length,
+      without_path: withoutPath,
+      fields: fieldCounts,
+      sample: samples,
+      sample_truncated: allPaths.length > samples.length,
+    },
+    cached_tree: {
+      root_nodes: _lastTreeRender?.tree?.length || 0,
+      tally_cache_status: _lastTreeRender?.tallyCacheStatus || null,
+    },
+    progress: {
+      in_flight: indexProgressInFlight,
+      polling: indexProgressTimer !== null,
+      completion_refresh_in_flight: indexProgressCompletionRefreshInFlight,
+      last_rendered: indexProgressLastRendered,
+    },
+    event_stream: {
+      ready_state: typeof readyState === "number" ? readyState : null,
+      consecutive_errors: _esConsecutiveErrors,
+      reconnect_scheduled: _esReconnectTimer !== null,
+      reconnect_backoff_ms: _esBackoffMs,
+      file_store_entries: fileStore?.size || 0,
+    },
+    document_visibility: document.visibilityState || null,
+  };
+}
+
+async function refreshAfterPendingTallyDiagnostic(serverDiagnostic) {
+  var status = serverDiagnostic?.inventory?.status;
+  if (
+    (status !== "done" && status !== "truncated") ||
+    !document.querySelector("#tab-files .tally-pending")
+  ) {
+    return;
+  }
+  await loadTree();
+  // The user can change or clear the filter while the tree request is in
+  // flight. Re-read the current window after the await so recovery never
+  // restores an obsolete recency source over the user's newer selection.
+  var recency = filterState ? filterState.get().recency : null;
+  if (recency && recency !== "all") {
+    loadRecent(recency);
+  }
+}
+
+async function reportPendingTallyDiagnostic(payload) {
+  var delaySeconds = PENDING_TALLY_DIAGNOSTIC_DELAY_MS / 1000;
+  console.warn(`Folder totals are still loading after ${delaySeconds} seconds`, payload);
+  try {
+    var resp = await fetch("/api/diagnostics/pending-tallies", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      console.warn(`Could not record pending folder totals on the server: HTTP ${resp.status}`);
+      return;
+    }
+    var serverDiagnostic = await resp.json();
+    console.warn("Server state for pending folder totals", serverDiagnostic);
+    await refreshAfterPendingTallyDiagnostic(serverDiagnostic);
+  } catch (error) {
+    console.warn("Could not record pending folder totals on the server", error);
+  }
+}
+
+var pendingTallyWatchdog = window.MetabrowserPendingTallyDiagnostics.create({
+  delayMs: PENDING_TALLY_DIAGNOSTIC_DELAY_MS,
+  hasPending: () => !!document.querySelector("#tab-files .tally-pending"),
+  collect: collectPendingTallyDiagnostic,
+  report: reportPendingTallyDiagnostic,
+  onError: (error) => console.warn("Could not collect pending folder total diagnostics", error),
+});
+
+function reconcilePendingTallyDiagnostics() {
+  pendingTallyWatchdog?.reconcile();
+}
+
+window.addEventListener("pagehide", () => pendingTallyWatchdog.dispose(), { once: true });
 
 function indexProgressIsActive(meta) {
   return !!meta && meta.status === "scanning";
@@ -1805,16 +3220,39 @@ function stopIndexProgressPolling() {
   indexProgressTimer = null;
 }
 
+// Finishing a crawl changes no entry, so it produces no file-store op and
+// therefore no inventory-change event. Every rollup watch refreshes on that
+// event alone, so without this announcement the last rollup a folder fetched
+// keeps reporting index_status "scanning" for the rest of the session: the
+// counts were right and the label above them was not, and nothing short of a
+// reload cleared it. Announce the transition on the channel an entry change
+// already uses, with null paths — "anything may have changed" — so each watch
+// re-fetches once and reads the terminal status.
+function announceScanCompletion() {
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:inventory-change", {
+      detail: { kind: "index-complete", paths: null },
+    }),
+  );
+}
+
 async function refreshTreeIfPendingTallies() {
-  if (indexProgressCompletionRefreshInFlight) {
+  if (indexProgressCompletionRefreshInFlight || _rootTreeRequestsInFlight > 0) {
     return;
   }
-  if (!document.querySelector(".tally-pending")) {
+  if (!document.querySelector("#tab-files .tally-pending")) {
     return;
   }
   indexProgressCompletionRefreshInFlight = true;
   try {
     await loadTree();
+    // Match diagnostic recovery: the tree request updates the authoritative
+    // cache but deliberately does not paint over an active recency source.
+    // Re-read after the await so a filter change during the request wins.
+    var recency = filterState ? filterState.get().recency : null;
+    if (recency && recency !== "all") {
+      loadRecent(recency);
+    }
     if (currentPath) {
       setSelectedPath(currentPath);
     }
@@ -1847,6 +3285,10 @@ async function refreshIndexProgress(force) {
       return;
     }
     var meta = await resp.json();
+    // Read before rendering: renderIndexProgress overwrites the record of
+    // what the last poll saw, and the transition out of scanning is only
+    // visible by comparing against it.
+    var wasScanning = indexProgressLastRendered?.status === "scanning";
     if (shouldRenderIndexProgress(meta, force)) {
       renderIndexProgress(meta);
     }
@@ -1855,6 +3297,9 @@ async function refreshIndexProgress(force) {
         ensureTreeTruncationNote(meta.max_files);
       }
       renderIndexProgress(meta);
+      if (wasScanning) {
+        announceScanCompletion();
+      }
       await refreshTreeIfPendingTallies();
       stopIndexProgressPolling();
     }
@@ -1910,6 +3355,53 @@ var navPanels = [];
 /** @type {Set<string>} */
 var navPanelsShown = new Set();
 var previewClaimGeneration = 0;
+/** @type {(() => void) | null} */
+var pendingFilePreviewStageCleanup = null;
+
+function cancelPendingFilePreviewStage() {
+  const cleanup = pendingFilePreviewStageCleanup;
+  pendingFilePreviewStageCleanup = null;
+  cleanup?.();
+}
+
+// Completed replacements ease only compositor opacity. Retained content is
+// never animated while work is pending.
+var PREVIEW_ARRIVAL_DURATION_MS = 50;
+var PREVIEW_ARRIVAL_START_OPACITY = 0.98;
+/** @type {Animation | null} */
+var previewArrivalAnimation = null;
+
+/** @param {HTMLElement} content */
+function animatePreviewContentArrival(content) {
+  previewArrivalAnimation?.cancel();
+  previewArrivalAnimation = null;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
+  const animation = content.animate([{ opacity: PREVIEW_ARRIVAL_START_OPACITY }, { opacity: 1 }], {
+    duration: PREVIEW_ARRIVAL_DURATION_MS,
+    easing: "ease-out",
+  });
+  previewArrivalAnimation = animation;
+  animation.addEventListener(
+    "finish",
+    () => {
+      if (previewArrivalAnimation === animation) {
+        previewArrivalAnimation = null;
+      }
+    },
+    { once: true },
+  );
+}
+
+/** @param {HTMLElement} preview */
+function clearPreviewNavigationState(preview) {
+  preview.classList.remove("preview-navigation-pending");
+  if (preview.hasAttribute("data-preview-pending-claim")) {
+    preview.removeAttribute("aria-busy");
+    preview.removeAttribute("data-preview-pending-claim");
+  }
+}
 
 /**
  * Claim the shared preview pane for one navigation owner.
@@ -1922,8 +3414,12 @@ var previewClaimGeneration = 0;
  * @returns {number}
  */
 function claimPreview(owner) {
-  previewClaimGeneration += 1;
+  cancelPendingFilePreviewStage();
   const preview = document.getElementById("preview-pane");
+  if (preview) {
+    clearPreviewNavigationState(preview);
+  }
+  previewClaimGeneration += 1;
   if (preview) {
     preview.dataset.previewOwner = owner;
   }
@@ -1933,6 +3429,39 @@ function claimPreview(owner) {
 /** @param {number} claim */
 function isPreviewClaimCurrent(claim) {
   return claim === previewClaimGeneration;
+}
+
+/**
+ * Mark retained preview content as pending for one navigation claim.
+ *
+ * Empty-state chrome is not a useful handoff surface. A delayed initial
+ * spinner may call this again after it has installed its neutral status.
+ *
+ * @param {number} claim
+ * @returns {boolean} Whether the pane contains a surface that can carry pending state.
+ */
+function beginPreviewNavigation(claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return false;
+  }
+  const preview = document.getElementById("preview-pane");
+  const child = preview?.firstElementChild;
+  if (!preview || !child || child.classList.contains("preview-empty")) {
+    return false;
+  }
+  preview.classList.add("preview-navigation-pending");
+  preview.setAttribute("aria-busy", "true");
+  preview.setAttribute("data-preview-pending-claim", String(claim));
+  return true;
+}
+
+/** @param {number} claim */
+function endPreviewNavigation(claim) {
+  const preview = document.getElementById("preview-pane");
+  if (!preview || preview.getAttribute("data-preview-pending-claim") !== String(claim)) {
+    return;
+  }
+  clearPreviewNavigationState(preview);
 }
 
 function registerNavPanel(panel) {
@@ -1994,6 +3523,16 @@ function activateNavPanel(panelId) {
     return;
   }
   claimPreview(`nav:${panelId}`);
+  // Claiming invalidates any in-flight file or commit load, but the
+  // placeholder those loads already painted is still on screen and their
+  // responses can no longer replace it — so the pane would keep showing a
+  // spinner until some unrelated navigation redraws it. Retire the
+  // placeholder here. Rendered content is left alone: it is still a valid
+  // preview, and a tab switch is not a reason to throw it away.
+  const preview = document.getElementById("preview-pane");
+  if (preview?.firstElementChild?.classList.contains("loading")) {
+    preview.innerHTML = '<div class="preview-empty">Select a file to preview.</div>';
+  }
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
     const selected = btn.dataset.tab === panelId;
     btn.classList.toggle("active", selected);
@@ -2064,7 +3603,26 @@ function renderPreviewHtml(html, claim) {
     return null;
   }
   disposeActivePluginViews();
+  delete preview.dataset.renderedPath;
   preview.innerHTML = html;
+  return preview;
+}
+
+// Install a fully staged core view without reparsing its HTML. Git uses this
+// after its comparison renderer has mounted into a detached tree, so the prior
+// revision remains visible until the replacement is complete.
+function renderPreviewNode(node, claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return null;
+  }
+  const preview = document.getElementById("preview-pane");
+  if (!preview) {
+    return null;
+  }
+  disposeActivePluginViews();
+  delete preview.dataset.renderedPath;
+  preview.replaceChildren(node);
+  animatePreviewContentArrival(node);
   return preview;
 }
 
@@ -2073,15 +3631,18 @@ function renderPreviewHtml(html, claim) {
 // Deliberately narrow, and deliberately not `window.metabrowser`: that
 // object is the documented plugin SDK with a compatibility contract,
 // whereas this is an internal boundary that core modules loaded by the
-// shell may use. Exposing it at all is what lets git_panel.js stay out
+// shell may use. Exposing it at all is what lets git-panel.js stay out
 // of app.js instead of adding a thousand lines to it.
 window.MetabrowserShell = Object.freeze({
   activateNavPanel,
+  beginPreviewNavigation,
   claimPreview,
+  endPreviewNavigation,
   isPreviewClaimCurrent,
   registerNavPanel,
   removeNavPanel,
   renderPreviewHtml,
+  renderPreviewNode,
 });
 
 // Toggle the nav chrome's drop shadow based on whether the
@@ -2295,6 +3856,7 @@ function renderRecentFromBase() {
   if (!results) {
     return;
   }
+  treeKeyboard?.prepareForMutation();
   var entries = recentEntriesFromBase({
     window: currentRecentWindow,
     limit: RECENT_LIMIT,
@@ -2319,6 +3881,8 @@ function renderRecentFromBase() {
   if (currentPath) {
     setSelectedPath(currentPath);
   }
+  reconcilePendingTallyDiagnostics();
+  synchronizeTreeNow();
 }
 
 const RECENT_EXPIRY_MIN_DELAY_MS = 250;
@@ -2685,8 +4249,8 @@ function renderRecentList(data) {
 //
 // One always-visible row (recency) plus a drawer holding type, size,
 // and gitignored visibility. Controls come from the shared chip family
-// (static/filter_controls.js) and every click writes through to the
-// shared state (static/filter_state.js), so the bar holds no state of
+// (static/filter-controls.js) and every click writes through to the
+// shared state (static/filter-state.js), so the bar holds no state of
 // its own.
 //
 // The drawer carries no section headings: an extension menu, a size
@@ -2694,11 +4258,11 @@ function renderRecentList(data) {
 //
 // See docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md.
 
-var filterState = /** @type {any} */ (window).MetabrowserFilterState || null;
+var filterState = /** @type {any} */ (window).metabrowser?.filterState || null;
 var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || null;
 
 // Recency is one axis from "everything" to the shortest mtime window.
-// Values match RECENT_WINDOWS and the /api/recent contract; labels are
+// Values match RECENT_WINDOW_SECONDS and the /api/recent contract; labels are
 // shortened because the whole group has to fit a 300px pane.
 // No "all" entry: the menu's any-row is that value, and listing it
 // twice would offer the same choice under two names. Labels can be
@@ -2707,14 +4271,15 @@ var filterControls = /** @type {any} */ (window.metabrowser?.filterControls) || 
 // Each row wears the freshness colour the tree gives files of that
 // age, so the menu doubles as the legend for the ramp below it.
 // Longer windows take the colour of the bucket they top out at. Live
-// keeps the freshest colour and spells out its exact server-owned
+// is an activity state that shares the freshest reddish-orange visual
+// with under-one-minute files and spells out its exact server-owned
 // cutoff in the accessible title.
 var FILTER_RECENCY_OPTIONS = [
   {
     value: "live",
     label: "Live",
-    title: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
-    ageClass: "age-sec",
+    tip: `Files modified in the past ${_RECENT_WINDOW_SECONDS.live} seconds`,
+    ageClass: "age-live",
   },
   { value: "1h", label: "Past hour", ageClass: "age-min" },
   { value: "24h", label: "Past day", ageClass: "age-hr" },
@@ -2760,29 +4325,74 @@ function filterHasConstraints(state) {
   );
 }
 
-// Extension tallies come from the server's index pass (/api/tree
-// `extensions`), not from the Quick File catalog: that catalog drops
-// gitignored entries by design, so a menu built from it undercounts
-// every extension the tree still shows while gitignored rows are
-// visible. Rows arrive as [ext, tracked, ignored] already ranked, so
-// the count shown can follow the gitignored setting instead of being
-// wrong half the time.
+// Filter tallies come from the server's full-index pass, not from the
+// rendered tree or Quick File catalog. Both sources can be partial,
+// and the catalog drops gitignored entries by design. Rows arrive as
+// [key, tracked, ignored], so every count can follow the gitignored
+// setting instead of being wrong half the time.
 /** @type {Array<[string, number, number]>} */
 var _extensionTally = [];
 /** @type {Array<[string, number, number]>} */
+var _canonicalExtensionTally = [];
+/** @type {Array<[string, number, number]>} */
+var _typeFamilyTally = [];
+/** @type {Array<[string, number, number]>} */
 var _typePresetTally = [];
+/** @type {Array<[string, number, number]>} */
+var _recencyTally = [];
 
-function updateFileTypeTallies(data) {
+function updateFilterTallies(data) {
   let changed = false;
   if (Array.isArray(data.extensions)) {
     _extensionTally = data.extensions;
+    changed = true;
+  }
+  if (Array.isArray(data.canonical_extensions)) {
+    _canonicalExtensionTally = data.canonical_extensions;
+    changed = true;
+  }
+  if (Array.isArray(data.type_families)) {
+    _typeFamilyTally = data.type_families;
     changed = true;
   }
   if (Array.isArray(data.type_presets)) {
     _typePresetTally = data.type_presets;
     changed = true;
   }
+  if (Array.isArray(data.recency_tallies)) {
+    _recencyTally = data.recency_tallies;
+    changed = true;
+  }
   return changed;
+}
+
+function filterRecencyOptions() {
+  const showIgnored = filterState ? filterState.get().showIgnored : true;
+  const counts = new Map(
+    _recencyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
+  );
+  return FILTER_RECENCY_OPTIONS.map((option) => ({
+    ...option,
+    count: counts.get(option.value) || 0,
+  }));
+}
+
+// Age counts decay without a filesystem event. A refresh that lands while the menu
+// is open updates only its count cells, preserving focus and keyboard position.
+function patchOpenRecencyTallyCounts() {
+  if (filterOpenMenu !== "recency") {
+    return;
+  }
+  const counts = new Map(filterRecencyOptions().map((option) => [option.value, option.count]));
+  const rows = queryHtmlAll("#filter-recency-menu [data-chip-value]");
+  for (var i = 0; i < rows.length; i++) {
+    var value = rows[i].getAttribute("data-chip-value");
+    var count = value === null ? undefined : counts.get(value);
+    var countEl = rows[i].querySelector(".chip-menu-count");
+    if (typeof count === "number" && countEl) {
+      countEl.textContent = count.toLocaleString();
+    }
+  }
 }
 
 function filterTypePresets() {
@@ -2796,9 +4406,49 @@ function filterTypePresets() {
   }));
 }
 
+function filterTypeFamilies(groupId) {
+  const showIgnored = filterState ? filterState.get().showIgnored : true;
+  const counts = new Map(
+    _typeFamilyTally.map((row) => [row[0], showIgnored ? row[1] + row[2] : row[1]]),
+  );
+  return (window.MetabrowserFileTypeTaxonomy?.families || [])
+    .filter((family) => !groupId || (family.groupId || family.category) === groupId)
+    .map((family) => ({
+      id: `family:${family.id}`,
+      label: family.label,
+      values: family.extensions.slice(),
+      count: counts.get(family.id) || 0,
+    }))
+    .filter((family) => family.count > 0);
+}
+
+function filterTypePresetSections() {
+  const groups = window.MetabrowserFileTypeTaxonomy?.groups || [];
+  const groupPresets = filterTypePresets();
+  if (groups.length === 0) {
+    return [
+      { id: "groups", label: "Groups", presets: groupPresets },
+      { id: "families", label: "Families", presets: filterTypeFamilies() },
+    ];
+  }
+  return [
+    { id: "groups", label: "Groups", presets: groupPresets },
+    ...groups.map((group) => ({
+      id: `families:${group.id}`,
+      label: group.label,
+      presets: filterTypeFamilies(group.id),
+    })),
+  ];
+}
+
+function allFilterTypePresets() {
+  return filterTypePresetSections().flatMap((section) => section.presets);
+}
+
 function filterTypeOptions() {
   const showIgnored = filterState ? filterState.get().showIgnored : true;
-  const ranked = _extensionTally
+  const source = _canonicalExtensionTally.length > 0 ? _canonicalExtensionTally : _extensionTally;
+  const ranked = source
     .map(
       (row) => /** @type {[string, number]} */ ([row[0], showIgnored ? row[1] + row[2] : row[1]]),
     )
@@ -2862,7 +4512,7 @@ function renderNavFilterBar() {
       key: "recency",
       select: "one",
       label: "Modified within",
-      options: FILTER_RECENCY_OPTIONS,
+      options: filterRecencyOptions(),
       value: st.recency,
       anyLabel: "Any age",
       anyValue: "all",
@@ -2871,9 +4521,9 @@ function renderNavFilterBar() {
     }) +
     fc.menuGroupHtml({
       key: "types",
-      label: "File extension",
+      label: "File type",
       options: filterTypeOptions(),
-      presets: filterTypePresets(),
+      presetSections: filterTypePresetSections(),
       value: st.types,
       anyLabel: "Any type",
       open: filterOpenMenu === "types",
@@ -2901,7 +4551,7 @@ function renderNavFilterBar() {
       ariaLabel:
         (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
         (count > 0 ? ` (${count} active)` : ""),
-      title: filterDrawerOpen ? "Fewer filters" : "More filters",
+      tip: filterDrawerOpen ? "Fewer filters" : "More filters",
       controls: "filter-drawer",
     }) +
     "</span></div>";
@@ -2932,7 +4582,7 @@ function renderNavFilterBar() {
       key: "showIgnored",
       label: "Show ignored",
       checked: st.showIgnored,
-      title: "Show gitignored entries, dimmed",
+      tip: "Show gitignored entries, dimmed",
     }) +
     "</div></div>";
   bar.innerHTML = main + drawer;
@@ -3006,6 +4656,9 @@ function initFilterBar() {
     onMenuToggle: (key, open) => {
       filterOpenMenu = open ? key : null;
       renderNavFilterBar();
+      if (key === "recency" && open) {
+        scheduleRootSummaryRefresh();
+      }
     },
     onMenuPreset: (key, presetId, wasOn) => {
       if (key !== "types") {
@@ -3013,7 +4666,7 @@ function initFilterBar() {
       }
       // const, not var: the closures below need the narrowing that a
       // function-scoped binding cannot promise.
-      const preset = FILTER_TYPE_PRESETS.find((p) => p.id === presetId);
+      const preset = allFilterTypePresets().find((p) => p.id === presetId);
       if (!preset) {
         return;
       }
@@ -3058,15 +4711,17 @@ function initFilterBar() {
   _filterLastSource = filesPanelUsesRecentSource();
   _filterLastRecency = filterState.get().recency;
   _filterLastShowIgnored = filterState.get().showIgnored;
+  _filterLastTreeQuery = treeFilterKey();
   filterState.subscribe(onFilterStateChange);
 }
 
-// One place decides what a filter change costs: a source swap plus a
-// re-render when the tree's data source changes, and a class pass over
-// the rendered rows otherwise.
+// One place decides what a filter change costs. Both sources resolve the
+// filter on the server, so a change to any dimension either source reads
+// is a refetch, not a repaint.
 var _filterLastSource = false;
 var _filterLastRecency = "all";
 var _filterLastShowIgnored = true;
+var _filterLastTreeQuery = "";
 function onFilterStateChange(state) {
   renderNavFilterBar();
   var usesRecent = filesPanelUsesRecentSource();
@@ -3076,14 +4731,17 @@ function onFilterStateChange(state) {
   // source, not just a class on the rows: it decides what the response
   // cap gets spent on, so changing it has to refetch.
   var ignoredChanged = usesRecent && _filterLastShowIgnored !== state.showIgnored;
+  var treeQuery = treeFilterKey();
+  var treeQueryChanged = !usesRecent && _filterLastTreeQuery !== treeQuery;
   _filterLastSource = usesRecent;
   _filterLastRecency = state.recency;
   _filterLastShowIgnored = state.showIgnored;
+  _filterLastTreeQuery = treeQuery;
   if (usesRecent && (sourceChanged || windowChanged || ignoredChanged)) {
     loadRecent(state.recency);
     return;
   }
-  if (!usesRecent && sourceChanged) {
+  if (!usesRecent && (sourceChanged || treeQueryChanged)) {
     // Abandon any recency fetch still in flight and drop the window it
     // was for. Otherwise a late response repaints the panel with the
     // old window's list under a trigger that now reads "Any age".
@@ -3095,11 +4753,10 @@ function onFilterStateChange(state) {
     // and must never find a match.
     currentRecentWindow = "";
     clearRecentExpiryRecheck();
-    // Restore the full tree from the cached payload; only fall back to
-    // a refetch when nothing has been cached yet.
-    if (!renderFilesFromTree()) {
-      loadTree();
-    }
+    // Refetch the authoritative tree. The first-paint cache can still carry
+    // pending aggregates even after live events patched the visible DOM; using
+    // it here reintroduced skeleton cells after progress polling had stopped.
+    loadTree();
     return;
   }
   applyTreeFilters();
@@ -3107,15 +4764,18 @@ function onFilterStateChange(state) {
 
 // ── Applying filters to the tree ────────────────────────────────
 //
-// A decoration layer over rendered rows, never a render fork: with no
-// filters set this removes its own classes and leaves the DOM exactly
-// as the renderer produced it.
+// Two sources, two answers. /api/tree is filtered server-side (see
+// treeFilterModel.requestParams), so in that source there is nothing here to
+// decide: every row that arrived belongs, and folder aggregates already
+// report their matches. /api/recent returns a flat list of files inside a
+// recency window, clustered into folders here, and the type and size
+// dimensions are still resolved over those rows — which is sound
+// because a cluster holds every matching file it has, unlike a
+// collapsed folder in the tree source whose contents were never sent.
 //
-// The walk runs in reverse document order so a folder is judged after
-// its descendants and can ask whether any of them survived. A folder
-// with no loaded children is unknown rather than excluded — the one
-// exception being recency, where the folder's own aggregate mtime
-// (newest descendant) is a definitive answer for the whole subtree.
+// That distinction is the bug this replaced: deciding a folder's fate
+// from mounted rows kept every folder whose subtree had not loaded, and
+// then removed it the moment expanding proved it held nothing.
 
 function _childContainerFor(row) {
   var next = row.nextElementSibling;
@@ -3123,99 +4783,164 @@ function _childContainerFor(row) {
 }
 
 function applyTreeFilters() {
+  return _perf.measure("applyTreeFilters", applyTreeFiltersInner);
+}
+
+function applyTreeFiltersInner() {
   var panel = document.getElementById("tab-files");
   if (!panel || !filterState) {
+    scheduleTreeSynchronize();
     return;
   }
   var st = filterState.get();
+  if (!filesPanelUsesRecentSource()) {
+    _applyTreeSourceFilters(panel, st);
+    scheduleTreeSynchronize();
+    return;
+  }
   var rows = /** @type {HTMLElement[]} */ (
-    Array.prototype.slice.call(panel.querySelectorAll(".tree-item"))
+    Array.prototype.slice.call(panel.querySelectorAll(".tree-item:not(.tree-page-more)"))
+  );
+  var pageRows = /** @type {HTMLElement[]} */ (
+    Array.prototype.slice.call(panel.querySelectorAll(".tree-page-more"))
   );
   var constrained = filterHasConstraints(st);
   if (!constrained) {
     for (var c = 0; c < rows.length; c++) {
       rows[c].classList.remove("tree-item-filter-hidden");
     }
-    // Clear both lines too: this early return is the path taken when
-    // the last filter is removed, so leaving them would strand a
-    // "Filtered to N files" over an unfiltered tree.
-    _renderFilteredTally(panel, 0, st, null);
-    _renderFilterNote(panel, 0, st);
+    for (var pageIndex = 0; pageIndex < pageRows.length; pageIndex++) {
+      pageRows[pageIndex].classList.remove("tree-item-filter-hidden");
+    }
+    // Clear the lines too: this early return is the path taken when the last
+    // filter is removed, so leaving them would strand a "Filtered to N files"
+    // over an unfiltered tree.
+    _renderFilteredTally(panel, st, null);
+    renderSelectionOutsideFilterNote();
+    scheduleTreeSynchronize();
     return;
   }
   var nowSec = Date.now() / 1000;
-  var keep = new Map();
-  var unloadedFolders = 0;
-  for (var i = rows.length - 1; i >= 0; i--) {
-    var row = rows[i];
-    var isDir = row.classList.contains("tree-folder");
-    var gitignored = row.classList.contains("tree-item-gitignored");
-    var path = row.dataset.path || "";
-    var ok;
-    if (!st.showIgnored && gitignored) {
-      ok = false;
-    } else {
-      ok = filterState.rowMatches(
-        {
-          mtime: parseTipNumber(row.dataset.tipMtime),
-          size: isDir ? null : parseTipNumber(row.dataset.tipSize),
-          path: path,
-          // The renderer stamps the index's compound-tail extension on
-          // every file row; matching on it keeps a compound pick
-          // (".min.js") agreeing with the tally that offered it.
-          ext: row.dataset.ext || "",
-          isDir: isDir,
-        },
-        st,
-        nowSec,
-      );
-    }
-    if (isDir && ok) {
-      var container = _childContainerFor(row);
-      var kids = container
-        ? Array.prototype.slice.call(container.querySelectorAll(":scope > .tree-item"))
-        : [];
-      if (kids.length > 0) {
-        ok = kids.some((kid) => keep.get(kid) === true);
-      } else {
-        // Nothing loaded under it: the filter cannot speak for this
-        // subtree, so the folder stays and gets counted.
-        unloadedFolders += 1;
-      }
-    }
-    keep.set(row, ok);
-  }
-  // Forward pass so a pruned folder is seen before its descendants:
-  // its verdict propagates down, and a subtree never keeps an orphaned
-  // visible row under a parent that is gone.
-  var suppressed = new Set();
-  var shownFiles = 0;
+  // Describe the rows, let the model decide, write the verdicts back. The
+  // decision — a cluster folder survives iff a child does, and a pruned
+  // folder takes its descendants with it — is in tree-filter-model.js, where
+  // it can be tested without a document.
+  var hidden = treeFilterModel.clusterHiddenIds(
+    rows.map((row, index) => ({
+      id: String(index),
+      parentId: _clusterParentId(row, rows),
+      isDir: row.classList.contains("tree-folder"),
+      matched: _rowPassesFilter(row, st, nowSec),
+    })),
+  );
   for (var j = 0; j < rows.length; j++) {
-    var el = rows[j];
-    var matched = !suppressed.has(el.parentElement) && keep.get(el) === true;
-    el.classList.toggle("tree-item-filter-hidden", !matched);
-    if (matched) {
-      if (!el.classList.contains("tree-folder")) {
-        shownFiles += 1;
-      }
-    } else {
-      var kidContainer = _childContainerFor(el);
-      if (kidContainer) {
-        suppressed.add(kidContainer);
-      }
-    }
+    rows[j].classList.toggle("tree-item-filter-hidden", hidden.has(String(j)));
   }
-  // The recency source counts from its entries, not the rendered rows:
+  for (var pageRowIndex = 0; pageRowIndex < pageRows.length; pageRowIndex++) {
+    var pageParent = pageRows[pageRowIndex].parentElement?.previousElementSibling;
+    pageRows[pageRowIndex].classList.toggle(
+      "tree-item-filter-hidden",
+      Boolean(pageParent?.classList.contains("tree-item-filter-hidden")),
+    );
+  }
+  // Counted from this source's entries, not from the rendered rows:
   // renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count reports how
   // much has been paged in rather than how many files passed.
-  var recencyCount = filesPanelUsesRecentSource()
-    ? countRecentMatches(
-        recentEntriesFromBase({ window: currentRecentWindow, limit: RECENT_LIMIT }),
-        nowSec,
-      )
-    : null;
-  _renderFilteredTally(panel, shownFiles, st, recencyCount);
-  _renderFilterNote(panel, unloadedFolders, st);
+  _renderFilteredTally(
+    panel,
+    st,
+    countRecentMatches(
+      recentEntriesFromBase({ window: currentRecentWindow, limit: RECENT_LIMIT }),
+      nowSec,
+    ),
+  );
+  renderSelectionOutsideFilterNote();
+  // Scheduled, not immediate: every caller that needs focus repaired in this
+  // turn follows applyTreeFilters() with synchronizeTreeNow(), which cancels
+  // this task and runs once instead of walking the tree twice.
+  scheduleTreeSynchronize();
+}
+
+// The row's own verdict, before anything about its descendants is considered.
+// Gitignored visibility is handled here rather than in the shared predicate
+// because only the caller knows a row's class.
+function _rowPassesFilter(row, state, nowSec) {
+  if (!state.showIgnored && row.classList.contains("tree-item-gitignored")) {
+    return false;
+  }
+  var isDir = row.classList.contains("tree-folder");
+  return filterState.rowMatches(
+    {
+      mtime: parseTipNumber(row.dataset.tipMtime),
+      size: isDir ? null : parseTipNumber(row.dataset.tipSize),
+      path: row.dataset.path || "",
+      // The renderer stamps the index's bounded compound-tail extension on
+      // every file row; matching on it keeps a compound pick (".min.js")
+      // agreeing with the tally that offered it.
+      ext: row.dataset.ext || "",
+      isDir: isDir,
+      isSymlink: row.classList.contains("tree-symlink"),
+    },
+    state,
+    nowSec,
+  );
+}
+
+// Index of the row that owns *row*'s group, as the model's parent id.
+// Rows nest through a .tree-children wrapper, so the owner is the element
+// before the wrapper rather than the wrapper itself.
+function _clusterParentId(row, rows) {
+  var container = row.parentElement;
+  if (!container?.classList.contains("tree-children")) {
+    return null;
+  }
+  var owner = container.previousElementSibling;
+  var index = owner ? rows.indexOf(/** @type {HTMLElement} */ (owner)) : -1;
+  return index >= 0 ? String(index) : null;
+}
+
+// The tree source: /api/tree was asked the question and answered it over the
+// whole index, so every row it sent belongs and every folder aggregate already
+// reports its matches. Re-deciding a folder's fate here from mounted rows is
+// exactly what used to list folders with nothing in them and then delete them
+// once expanding proved it.
+//
+// One thing is still this side's to judge. Rows arriving on /api/events were
+// never part of any response, so a file written while a filter is on would
+// otherwise appear regardless of it. Only leaves are judged: a live folder row
+// keeps whatever the last response said about it until the next one, which is
+// staleness rather than the wrong answer, and far cheaper than a refetch —
+// a refetch repaints the panel and would collapse the tree under a reader
+// every time anything on disk changed.
+function _applyTreeSourceFilters(panel, state) {
+  var rows = /** @type {HTMLElement[]} */ (
+    Array.prototype.slice.call(
+      panel.querySelectorAll(".tree-item.tree-file, .tree-item.tree-symlink"),
+    )
+  );
+  var constrained = filterHasConstraints(state);
+  var nowSec = Date.now() / 1000;
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var hide =
+      constrained &&
+      (!state.showIgnored && row.classList.contains("tree-item-gitignored")
+        ? true
+        : !filterState.rowMatches(
+            {
+              mtime: parseTipNumber(row.dataset.tipMtime),
+              size: parseTipNumber(row.dataset.tipSize),
+              path: row.dataset.path || "",
+              ext: row.dataset.ext || "",
+              isSymlink: row.classList.contains("tree-symlink"),
+            },
+            state,
+            nowSec,
+          ));
+    row.classList.toggle("tree-item-filter-hidden", hide);
+  }
+  _renderFilteredTally(panel, state, _filteredTreeTotals ? _filteredTreeTotals.files : null);
+  renderSelectionOutsideFilterNote();
 }
 
 // How many files the filter is actually showing, as a second line
@@ -3224,17 +4949,18 @@ function applyTreeFilters() {
 // question a filter raises every time, and the totals above are what
 // it reads against.
 //
-// Counted from the rows that survived, so it reflects every dimension
-// rather than just the one the server resolved.
-function _renderFilteredTally(panel, shownFiles, state, recencyCount) {
+// `count` is a subtree total, never a count of rendered rows: the tree is
+// capped by depth and the renderer pages long child lists, so a DOM count
+// would report how much has been mounted. A null count means the filter has
+// nothing to report and the line comes down.
+function _renderFilteredTally(panel, state, count) {
   var existing = panel.querySelector(".tree-summary-filtered");
-  if (!filterHasConstraints(state)) {
+  if (!filterHasConstraints(state) || typeof count !== "number") {
     if (existing) {
       existing.remove();
     }
     return;
   }
-  var count = recencyCount !== null ? recencyCount : shownFiles;
   var text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}`;
   // A capped response has more matches than it sent, and only it can
   // say so — the client never saw the rest.
@@ -3257,33 +4983,6 @@ function _renderFilteredTally(panel, shownFiles, state, recencyCount) {
     panel.insertAdjacentElement("afterbegin", line);
   }
 }
-
-// Filtering prunes what it has loaded, which is not the same as "this
-// is everything that matches". Say so rather than letting a short tree
-// imply completeness.
-function _renderFilterNote(panel, unloadedFolders, state) {
-  var existing = panel.querySelector(".filter-note");
-  if (unloadedFolders <= 0 || !filterHasConstraints(state)) {
-    if (existing) {
-      existing.remove();
-    }
-    return;
-  }
-  var text =
-    `${unloadedFolders.toLocaleString()} collapsed ` +
-    `${unloadedFolders === 1 ? "folder may" : "folders may"} contain additional matches. ` +
-    `Expand ${unloadedFolders === 1 ? "it" : "them"} to check.`;
-  if (existing) {
-    existing.textContent = text;
-    return;
-  }
-  var note = document.createElement("div");
-  note.className = "filter-note";
-  note.setAttribute("role", "status");
-  note.textContent = text;
-  panel.appendChild(note);
-}
-
 // Rows arriving from the event stream have to be classified too, or a
 // newly written file would appear regardless of the active filter.
 var _filterReapplyHandle = null;
@@ -3348,6 +5047,17 @@ var textChunkLoadInFlight = false;
 /** @type {number | null} */
 var filePreviewClaim = null;
 
+/**
+ * Bytes the next Load more will request. Each click doubles up to the cap, so
+ * reaching a large file takes a handful of clicks rather than dozens while no
+ * single click stalls the main thread.
+ */
+var textChunkNextBytes = TEXT_PREVIEW_CHUNK_BYTES;
+
+function resetTextChunkGrowth() {
+  textChunkNextBytes = TEXT_PREVIEW_CHUNK_BYTES;
+}
+
 function showTextChunkLoadError() {
   var warning = document.querySelector(".metabrowser-source-truncation-warning");
   if (!warning) {
@@ -3373,6 +5083,7 @@ async function loadMoreCurrentText() {
   var path = currentPath;
   var previewClaim = filePreviewClaim;
   var offset = cached.bytes_read || 0;
+  var requested = textChunkNextBytes;
   try {
     var resp = await fetch(
       "/api/file?path=" +
@@ -3380,7 +5091,7 @@ async function loadMoreCurrentText() {
         "&offset=" +
         encodeURIComponent(String(offset)) +
         "&limit=" +
-        encodeURIComponent(String(TEXT_PREVIEW_CHUNK_BYTES)),
+        encodeURIComponent(String(requested)),
     );
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status}`);
@@ -3403,8 +5114,26 @@ async function loadMoreCurrentText() {
     cached.content_bytes = (cached.content_bytes || 0) + (chunk.content_bytes || 0);
     cached.bytes_read = chunk.bytes_read || cached.bytes_read;
     cached.content_truncated = !!chunk.content_truncated;
-    cached.highlight_disabled = true;
-    renderFile(cached, previewClaim);
+    cached.highlight_disabled = !!chunk.highlight_disabled;
+    textChunkNextBytes = window.MetabrowserSourceAppend.nextChunkBytes(
+      requested,
+      TEXT_PREVIEW_MAX_CHUNK_BYTES,
+    );
+    if (window.MetabrowserSourceAppend.appendSourceText(document, chunk.content || "")) {
+      // The append skipped the plugin's render, so the banner it emitted still
+      // reports the byte counts from the previous chunk. Sync it rather than
+      // leaving a "content truncated" notice over a fully loaded file.
+      window.MetabrowserSourceAppend.syncTruncationWarning(
+        document,
+        window.metabrowser?.renderTextTruncationWarning?.(cached) || "",
+      );
+      window.MetabrowserSourceAppend.syncLoadMoreFooter(
+        document,
+        window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
+      );
+    } else {
+      await renderFile(cached, undefined, previewClaim);
+    }
   } catch (e) {
     console.warn("Failed to load text chunk", e);
     if (currentPath === path) {
@@ -3423,149 +5152,193 @@ var LOADING_INDICATOR_DELAY_MS = 120;
 var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
 
+async function renderFileWithPlugins(data, preferredViewId, previewClaim) {
+  await _perf.measureAsync(
+    "fileNavigation:assets",
+    () => window.metabrowser.ensureKindAssets(data.kind),
+    { kind: data.kind || "" },
+  );
+  return renderFile(data, preferredViewId, previewClaim);
+}
+
 /** @returns {Promise<QuickFileOpenOutcome>} */
-async function selectFile(path, skipHash) {
+async function selectFile(path, preferredViewId) {
   var previewClaim = claimPreview("file");
   filePreviewClaim = previewClaim;
-  return _perf.measureAsync(
-    "selectFile",
-    async () => {
-      // Always close any prior live stream — switching files (or reopening
-      // the same file) starts fresh.
-      closeLiveStream();
-      currentPath = path;
-      // Update URL hash for deep-linking (replaceState — lateral navigation, not history).
-      if (!skipHash) {
-        history.replaceState(null, "", `#${encodeURIComponent(path)}`);
-      }
-      const preview = document.getElementById("preview-pane");
-      if (!preview) {
-        return {
-          message: "Could not display the file. Refresh the page to try again.",
-          status: "error",
-        };
-      }
-
-      // Three-way cache state:
-      //   - hot: in fileCache and not flagged → serve from cache.
-      //   - revalidate: in fileCache but flagged (file recently changed in
-      //     activity poll) → send If-None-Match, accept 304 to confirm.
-      //   - cold: not in fileCache → unconditional fetch.
-      const cached = fileCache.get(path);
-      const needsRevalidate = fileNeedsRevalidate.has(path);
-      if (cached && !needsRevalidate && !activeFiles.has(path)) {
-        renderFile(cached, previewClaim);
-        maybeOpenLiveStream(path, cached);
-        return openedFileOutcome(path, cached, preview);
-      }
-
-      if (loadingIndicatorTimer) {
-        clearTimeout(loadingIndicatorTimer);
-      }
-      loadingIndicatorTimer = setTimeout(() => {
-        loadingIndicatorTimer = null;
+  var selection = /** @type {Promise<QuickFileOpenOutcome>} */ (
+    _perf.measureAsync(
+      "selectFile",
+      async () => {
+        // Always close any prior live stream — switching files (or reopening
+        // the same file) starts fresh.
+        closeLiveStream();
+        // Chunk growth is per file: a fresh selection starts small again so
+        // opening a file never inherits the last file's appetite.
+        resetTextChunkGrowth();
+        currentPath = path;
+        if (selectFileAbortController) {
+          selectFileAbortController.abort();
+          selectFileAbortController = null;
+        }
+        const preview = document.getElementById("preview-pane");
+        if (!preview) {
+          return {
+            message: "Could not display the file. Refresh the page to try again.",
+            status: "error",
+          };
+        }
+        var retainedPreview = beginPreviewNavigation(previewClaim);
+        await settleHoverPrefetchForSelection(path);
         if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
-          return;
+          return { status: "cancelled" };
         }
-        disposeActivePluginViews();
-        preview.innerHTML = '<div class="loading"><div class="spinner"></div>Loading file…</div>';
-      }, LOADING_INDICATOR_DELAY_MS);
 
-      if (selectFileAbortController) {
-        selectFileAbortController.abort();
-      }
-      selectFileAbortController =
-        typeof AbortController !== "undefined" ? new AbortController() : null;
-      var selectFileSignal = selectFileAbortController
-        ? selectFileAbortController.signal
-        : undefined;
-
-      try {
-        /** @type {Record<string, string>} */
-        const headers = {};
-        if (cached && fileETags.has(path)) {
-          headers["if-none-match"] = fileETags.get(path);
+        // Three-way cache state:
+        //   - hot: in fileCache and not flagged → serve from cache.
+        //   - revalidate: in fileCache but flagged (file recently changed in
+        //     activity poll) → send If-None-Match, accept 304 to confirm.
+        //   - cold: not in fileCache → unconditional fetch.
+        const cached = fileCache.get(path);
+        const needsRevalidate = fileNeedsRevalidate.has(path);
+        if (cached && !needsRevalidate && !activeFiles.has(path)) {
+          navigationController.canonicalizePath(path, cached.kind === "folder");
+          await renderFileWithPlugins(cached, preferredViewId, previewClaim);
+          maybeOpenLiveStream(path, cached);
+          return openedFileOutcome(path, cached, preview);
         }
-        const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
-          headers: headers,
-          signal: selectFileSignal,
-        });
-        if (resp.status === 304 && cached) {
-          // Server confirmed the cached payload is still fresh — zero-byte
-          // body, render from memory.
+
+        if (loadingIndicatorTimer) {
+          clearTimeout(loadingIndicatorTimer);
+        }
+        if (!retainedPreview) {
+          loadingIndicatorTimer = setTimeout(() => {
+            loadingIndicatorTimer = null;
+            if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
+              return;
+            }
+            disposeActivePluginViews();
+            stopFolderHeaderSubscription();
+            delete preview.dataset.renderedPath;
+            preview.innerHTML =
+              '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+              '<span class="sr-only">Loading file…</span></div>';
+            beginPreviewNavigation(previewClaim);
+          }, LOADING_INDICATOR_DELAY_MS);
+        }
+
+        selectFileAbortController =
+          typeof AbortController !== "undefined" ? new AbortController() : null;
+        var selectFileSignal = selectFileAbortController
+          ? selectFileAbortController.signal
+          : undefined;
+
+        try {
+          /** @type {Record<string, string>} */
+          const headers = {};
+          if (cached && fileETags.has(path)) {
+            headers["if-none-match"] = fileETags.get(path);
+          }
+          const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
+            headers: headers,
+            signal: selectFileSignal,
+          });
+          if (resp.status === 304 && cached) {
+            // Server confirmed the cached payload is still fresh — zero-byte
+            // body, render from memory.
+            fileNeedsRevalidate.delete(path);
+            if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
+              if (loadingIndicatorTimer) {
+                clearTimeout(loadingIndicatorTimer);
+                loadingIndicatorTimer = null;
+              }
+              navigationController.canonicalizePath(path, cached.kind === "folder");
+              await renderFileWithPlugins(cached, preferredViewId, previewClaim);
+              maybeOpenLiveStream(path, cached);
+              return openedFileOutcome(path, cached, preview);
+            }
+            return { status: "cancelled" };
+          }
+          if (!resp.ok) {
+            const text = await _perf.measureAsync(
+              "apiFile:errorText",
+              () => resp.text(),
+              responsePerfMeta(resp, path),
+            );
+            throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
+              notFound: resp.status === 404,
+              summary: responseErrorSummary(text, "Could not open this file."),
+            });
+          }
+          const data = await _perf.measureAsync(
+            "apiFile:json",
+            () => resp.json(),
+            responsePerfMeta(resp, path),
+          );
+          if (data.kind !== "folder") {
+            // Folder envelopes are no-store (aggregates move during a
+            // scan): keep them out of the file cache and ETag books.
+            cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
+            const etagHeader = resp.headers.get("etag");
+            if (etagHeader) {
+              fileETags.set(path, etagHeader);
+              boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
+            }
+          }
           fileNeedsRevalidate.delete(path);
           if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
             if (loadingIndicatorTimer) {
               clearTimeout(loadingIndicatorTimer);
               loadingIndicatorTimer = null;
             }
-            renderFile(cached, previewClaim);
-            maybeOpenLiveStream(path, cached);
-            return openedFileOutcome(path, cached, preview);
+            navigationController.canonicalizePath(path, data.kind === "folder");
+            await renderFileWithPlugins(data, preferredViewId, previewClaim);
+            maybeOpenLiveStream(path, data);
+            return openedFileOutcome(path, data, preview);
           }
           return { status: "cancelled" };
-        }
-        if (!resp.ok) {
-          const text = await _perf.measureAsync(
-            "apiFile:errorText",
-            () => resp.text(),
-            responsePerfMeta(resp, path),
-          );
-          throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
-            notFound: resp.status === 404,
-          });
-        }
-        const data = await _perf.measureAsync(
-          "apiFile:json",
-          () => resp.json(),
-          responsePerfMeta(resp, path),
-        );
-        cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
-        const etagHeader = resp.headers.get("etag");
-        if (etagHeader) {
-          fileETags.set(path, etagHeader);
-          boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
-        }
-        fileNeedsRevalidate.delete(path);
-        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
-          if (loadingIndicatorTimer) {
-            clearTimeout(loadingIndicatorTimer);
-            loadingIndicatorTimer = null;
+        } catch (err) {
+          var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
+          if (caught?.name === "AbortError") {
+            return { status: "cancelled" };
           }
-          renderFile(data, previewClaim);
-          maybeOpenLiveStream(path, data);
-          return openedFileOutcome(path, data, preview);
-        }
-        return { status: "cancelled" };
-      } catch (err) {
-        var caught = /** @type {{name?: string, notFound?: boolean}} */ (err);
-        if (caught?.name === "AbortError") {
-          return { status: "cancelled" };
-        }
-        var notFound = caught?.notFound === true;
-        if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
-          if (loadingIndicatorTimer) {
-            clearTimeout(loadingIndicatorTimer);
-            loadingIndicatorTimer = null;
+          var notFound = caught?.notFound === true;
+          if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
+            if (loadingIndicatorTimer) {
+              clearTimeout(loadingIndicatorTimer);
+              loadingIndicatorTimer = null;
+            }
+            disposeActivePluginViews();
+            stopFolderHeaderSubscription();
+            delete preview.dataset.renderedPath;
+            preview.innerHTML = previewErrorHtml(
+              caught?.summary || "Could not open this file.",
+              errorMessage(err),
+            );
+          } else {
+            return { status: "cancelled" };
           }
-          disposeActivePluginViews();
-          preview.innerHTML =
-            '<div class="preview-empty" role="alert"><strong>Could not open this file.</strong> ' +
-            esc(errorMessage(err)) +
-            "</div>";
-        } else {
-          return { status: "cancelled" };
+          return notFound
+            ? { message: `${path} is no longer available.`, status: "not-found" }
+            : {
+                message: `Could not open ${path}. Check that the file still exists and is readable.`,
+                status: "error",
+              };
         }
-        return notFound
-          ? { message: `${path} is no longer available.`, status: "not-found" }
-          : {
-              message: `Could not open ${path}. Check that the file still exists and is readable.`,
-              status: "error",
-            };
-      }
-    },
-    { path: path, skip_hash: !!skipHash },
+      },
+      { path: path, preferred_view: preferredViewId || "" },
+    )
   );
+  var readySelection = selection.finally(() => {
+    if (loadingIndicatorTimer && isPreviewClaimCurrent(previewClaim)) {
+      clearTimeout(loadingIndicatorTimer);
+      loadingIndicatorTimer = null;
+    }
+    endPreviewNavigation(previewClaim);
+  });
+  return _perf.measureAsync("fileNavigation:selectToReady", () => readySelection, {
+    path: path,
+    preferred_view: preferredViewId || "",
+  });
 }
 
 /**
@@ -3583,6 +5356,91 @@ function openedFileOutcome(path, data, preview) {
 
 // ── File rendering ──────────────────────────────────────────────
 
+// Folder navigation targets never ride in inline handlers: an inline
+// onclick HTML-decodes its attribute before compiling JavaScript, so a
+// filename containing a quote re-opens the string no matter how it was
+// HTML-escaped. Buttons carry the raw path in data-nav-dir and one
+// delegated listener (installed in init) reads it back via dataset.
+function navigateToFolder(path) {
+  navigateToPath(path ? `${path}/` : "");
+}
+
+// Folder preview header: up control, clickable breadcrumb, aggregate
+// summary. The shell owns this chrome so every folder view shares it.
+function renderFolderHeader(data) {
+  var path = typeof data.path === "string" ? data.path : "";
+  var segments = path ? path.split("/") : [];
+  var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
+  var parentLabel =
+    parent === null ? "" : parent === "" ? "/" : `${segments[segments.length - 2]}/`;
+  var upButton =
+    parent === null
+      ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
+      : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
+  var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
+  return (
+    '<div class="file-header folder-header">' +
+    upButton +
+    `<span class="file-header-path folder-breadcrumb">${headerAddressHtml(path, false)}</span>` +
+    summary +
+    '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
+    (ICONS.print || "") +
+    "</button>" +
+    "</div>"
+  );
+}
+
+// Aggregate strip of the folder header. Split out so the live
+// refresher below can patch it in place when the inventory changes.
+function folderHeaderSummaryHtml(dirInfo) {
+  // A still-finalizing directory reports null aggregates; sizeHtml,
+  // countHtml, and formatAge(null) all render the tally-pending
+  // skeleton the tree rows use, so the header paints with shape
+  // instead of blanks until the live refresher patches it.
+  return (
+    sizeHtml(dirInfo.total_size, "file-header-size") +
+    countHtml(dirInfo.total_files, "folder-header-count") +
+    `<span class="folder-header-age">${formatAge(dirInfo.mtime ?? null)}</span>`
+  );
+}
+
+// ── Folder header live refresh ──────────────────────────────────
+//
+// The folder envelope is no-store, so its header aggregates would
+// otherwise freeze at first render while the treemap keeps updating.
+// While a folder is previewed, inventory-change events touching its
+// subtree (deep changes surface via ancestor aggregate upserts)
+// trigger a debounced envelope refetch that patches the summary strip
+// in place — the server envelope stays the single authority.
+
+/** @type {(() => void) | null} */
+var activeFolderHeaderSubscription = null;
+
+function stopFolderHeaderSubscription() {
+  if (!activeFolderHeaderSubscription) {
+    return;
+  }
+  activeFolderHeaderSubscription();
+  activeFolderHeaderSubscription = null;
+}
+
+function startFolderHeaderSubscription(path) {
+  stopFolderHeaderSubscription();
+  var folderContext = window.metabrowser?.folderContext;
+  if (!folderContext) {
+    return;
+  }
+  activeFolderHeaderSubscription = folderContext.subscribe(path, (data) => {
+    if (currentPath !== path || data?.kind !== "folder") {
+      return;
+    }
+    var summaryEl = document.querySelector("#preview-pane .folder-header-summary");
+    if (summaryEl) {
+      summaryEl.innerHTML = folderHeaderSummaryHtml(data.dir || {});
+    }
+  });
+}
+
 // Build badges based on file kind (data-driven)
 function renderBadges(data) {
   var badges = "";
@@ -3594,7 +5452,7 @@ function renderBadges(data) {
       ? data.compression.charAt(0).toUpperCase() + data.compression.slice(1)
       : "Compressed";
     badges +=
-      '<span class="file-header-badge badge-compressed" title="On-disk file is ' +
+      '<span class="file-header-badge badge-compressed" data-tip-text="On-disk file is ' +
       esc(label.toLowerCase()) +
       '-compressed">' +
       esc(label) +
@@ -3639,27 +5497,11 @@ function renderBadges(data) {
   // ignored rather than silently using an unparsable value.
   if (data.frontmatter_error) {
     badges +=
-      '<span class="file-header-badge badge-frontmatter-error" title="' +
+      '<span class="file-header-badge badge-frontmatter-error" data-tip-text="' +
       esc(data.frontmatter_error) +
       '">Frontmatter error</span>';
   }
   return badges;
-}
-
-function renderTextPreviewControls(data) {
-  if (data?.type !== "text" || typeof data.bytes_read !== "number") {
-    return "";
-  }
-  if (!data.content_truncated && data.bytes_read >= (data.size || 0)) {
-    return "";
-  }
-  var loaded = Math.min(data.bytes_read || 0, data.size || 0);
-  var html = `<span class="file-header-preview">${formatSize(loaded)} / ${formatSize(data.size || 0)}</span>`;
-  if (data.content_truncated) {
-    html +=
-      '<button class="btn file-header-action" type="button" onclick="loadMoreCurrentText()" title="Load more of this file">Load more</button>';
-  }
-  return html;
 }
 
 function boolData(value) {
@@ -3701,7 +5543,7 @@ function updatePrintButton(printable) {
   btn.setAttribute("aria-hidden", printable ? "false" : "true");
 }
 
-function setActivePreviewView(tabId, preview) {
+function setActivePreviewView(tabId, preview, syncShell = true) {
   preview = preview || document.getElementById("preview-pane");
   if (!preview) {
     return;
@@ -3713,7 +5555,11 @@ function setActivePreviewView(tabId, preview) {
   for (var i = 0; i < tabContents.length; i++) {
     var c = tabContents[i];
     var isActive = !!tabId && c.dataset.tabContent === tabId;
-    c.dataset.activeView = isActive ? "true" : "false";
+    if (window.MetabrowserViewState) {
+      window.MetabrowserViewState.setActive(c, isActive);
+    } else {
+      c.dataset.activeView = isActive ? "true" : "false";
+    }
     if (isActive) {
       active = c;
     }
@@ -3724,7 +5570,9 @@ function setActivePreviewView(tabId, preview) {
     preview.dataset.printProfile = "plain";
     delete preview.dataset.renderRuntime;
     delete preview.dataset.kpressEnabled;
-    updatePrintButton(false);
+    if (syncShell) {
+      updatePrintButton(false);
+    }
     return;
   }
   var printable = boolData(active.dataset.printable);
@@ -3741,7 +5589,9 @@ function setActivePreviewView(tabId, preview) {
   } else {
     delete preview.dataset.kpressEnabled;
   }
-  updatePrintButton(printable);
+  if (syncShell) {
+    updatePrintButton(printable);
+  }
 }
 
 function printActiveView() {
@@ -3752,14 +5602,17 @@ if (typeof window !== "undefined") {
   window.printActiveView = printActiveView;
 }
 
+document.addEventListener("metabrowser:view-print-state", () => {
+  var preview = document.getElementById("preview-pane");
+  if (preview?.dataset.activeView) {
+    setActivePreviewView(preview.dataset.activeView, preview);
+  }
+});
+
 var activePluginDisposers = [];
 
-function disposeActivePluginViews() {
-  if (!activePluginDisposers.length) {
-    return;
-  }
-  var disposers = activePluginDisposers;
-  activePluginDisposers = [];
+/** @param {Array<() => void>} disposers */
+function disposePluginViews(disposers) {
   for (var i = 0; i < disposers.length; i++) {
     try {
       disposers[i]();
@@ -3769,220 +5622,326 @@ function disposeActivePluginViews() {
   }
 }
 
-function mountPluginView(container, pluginView, ctx) {
-  if (typeof pluginView.dispose === "function") {
-    activePluginDisposers.push(pluginView.dispose);
-  }
-  try {
-    var maybePromise = pluginView.render(container, ctx);
-    if (maybePromise && typeof maybePromise.catch === "function") {
-      maybePromise.catch((err) => {
-        console.error("plugin render error:", err);
-        container.innerHTML =
-          '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
-      });
+function disposeActivePluginViews() {
+  stopFolderHeaderSubscription();
+  var disposers = activePluginDisposers;
+  activePluginDisposers = [];
+  disposePluginViews(disposers);
+}
+
+async function mountPluginView(container, pluginView, ctx, disposers = activePluginDisposers) {
+  /** @type {{disposed: boolean, handle: {dispose?: () => void, ready?: Promise<void>} | null}} */
+  var record = { disposed: false, handle: null };
+  disposers.push(() => {
+    if (record.disposed) {
+      return;
     }
+    record.disposed = true;
+    if (typeof record.handle?.dispose === "function") {
+      record.handle.dispose();
+    }
+    if (typeof pluginView.dispose === "function") {
+      pluginView.dispose(container);
+    }
+  });
+  try {
+    var rendered = await Promise.resolve(pluginView.render(container, ctx));
+    var handle =
+      rendered && typeof rendered === "object"
+        ? /** @type {{dispose?: () => void, ready?: Promise<void>}} */ (rendered)
+        : null;
+    if (record.disposed) {
+      handle?.dispose?.();
+      return;
+    }
+    record.handle = handle;
+    if (handle?.ready) {
+      await handle.ready;
+    }
+    if (record.disposed) {
+      return;
+    }
+    scheduleHighlightCode(container);
   } catch (err) {
+    if (record.disposed) {
+      return;
+    }
     console.error("plugin render error:", err);
     container.innerHTML =
       '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
   }
 }
 
-function renderFile(data, claim) {
+/** @param {HTMLElement} preview */
+function createFilePreviewStage(preview) {
+  const stage = document.createElement("div");
+  stage.className = "preview-file-stage";
+  stage.setAttribute("aria-hidden", "true");
+  stage.inert = true;
+  preview.appendChild(stage);
+  return stage;
+}
+
+async function renderFile(data, preferredViewId, claim) {
+  // Ownership, not staleness: the Git panel renders into this same pane, so a
+  // file render that lost the pane must not paint over it. currentPath cannot
+  // express that, because the owner changed rather than the path.
   var renderClaim = claim ?? filePreviewClaim;
   if (renderClaim === null || !isPreviewClaimCurrent(renderClaim)) {
     return;
   }
-  return _perf.measure(
+  return _perf.measureAsync(
     `renderFile:${data.kind || data.type || "?"}`,
-    () => {
+    async () => {
       const preview = document.getElementById("preview-pane");
       if (!preview) {
         return;
       }
-
-      // Drain any disposers from a previously mounted view; we're about to
-      // replace preview.innerHTML below, which detaches their containers.
-      disposeActivePluginViews();
-
-      // Build header
-      var badges = renderBadges(data);
-      let html = '<div class="file-header">';
-      html +=
-        '<span class="file-header-path">' +
-        esc(data.path) +
-        '<button class="icon-btn icon-btn-reveal file-header-copy" type="button" onclick="copyPath(this, \'' +
-        esc(data.path).replace(/'/g, "\\'") +
-        '\')" title="Copy path" aria-label="Copy path">' +
-        ICON_COPY +
-        "</button>" +
-        "</span>";
-      html += badges;
-      html += sizeHtml(data.size, "file-header-size");
-      html += renderTextPreviewControls(data);
-      html +=
-        '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" title="Print view" aria-label="Print view" hidden>' +
-        (ICONS.print || "") +
-        "</button>";
-      html += "</div>";
-
-      // Data-driven tab rendering from server views.
-      //
-      // Every (kind, viewId) goes through the plugin registry: built-in
-      // plugins (markdown, agent-log, unknown-jsonl, text) own their own
-      // kinds; entry-point plugins own theirs. The shell here
-      // builds the empty containers; each plugin's render(container, ctx)
-      // fires below once the DOM is in place. If no plugin claims a
-      // (kind, viewId) we paint an unavailable-view message — never a
-      // fallback that pulls renderers out of the shell. This is the
-      // contract: every kind is a plugin.
-      var views = data.views;
-      var pluginRenders = [];
-      if (views && views.length > 0) {
-        if (views.length > 1) {
-          html += '<div class="tab-bar">';
-          for (let i = 0; i < views.length; i++) {
-            const view = views[i];
-            var active = view.default ? " active" : "";
-            html +=
-              '<button class="tab-btn' +
-              active +
-              '" type="button" data-tab="' +
-              esc(view.id) +
-              '"' +
-              viewMetaAttrs(view) +
-              ">" +
-              esc(view.label) +
-              "</button>";
-          }
+      const stage = createFilePreviewStage(preview);
+      const stagedPluginDisposers = [];
+      let installed = false;
+      let stageCleaned = false;
+      const cleanupStage = () => {
+        if (stageCleaned) {
+          return;
+        }
+        stageCleaned = true;
+        disposePluginViews(stagedPluginDisposers);
+        stage.remove();
+      };
+      cancelPendingFilePreviewStage();
+      pendingFilePreviewStageCleanup = cleanupStage;
+      try {
+        // Build header — folders get breadcrumb chrome (renderFolderHeader),
+        // files the path/badges/size strip.
+        let html = "";
+        if (data.kind === "folder") {
+          html = renderFolderHeader(data);
+          window.metabrowser?.folderContext?.seed(data.path, data);
+        }
+        if (data.kind !== "folder") {
+          var badges = renderBadges(data);
+          html = '<div class="file-header">';
+          html +=
+            '<span class="file-header-path folder-breadcrumb">' +
+            headerAddressHtml(data.path, true) +
+            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(data.path)}" data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
+            ICON_COPY +
+            "</button>" +
+            "</span>";
+          html += badges;
+          html += sizeHtml(data.size, "file-header-size");
+          html +=
+            '<button class="icon-btn file-header-icon file-header-print" id="print-view-btn" type="button" onclick="printActiveView()" data-tip-text="Print view" aria-label="Print view" hidden>' +
+            (ICONS.print || "") +
+            "</button>";
           html += "</div>";
         }
-        for (let i = 0; i < views.length; i++) {
-          const view = views[i];
-          var pluginView =
-            window.metabrowser && data.kind
-              ? window.metabrowser.getRegisteredView(data.kind, view.id)
-              : null;
-          // container_class can be set per-view in the plugin manifest as
-          // [[view]].container_class; defaults to "content-body".
-          var containerClass = view.container_class || "content-body";
-          var hidden = view.default ? "" : ' style="display:none;"';
-          var noPadding = view.id === "raw" || view.id === "source" ? "padding:0;" : "";
-          if (noPadding && !hidden) {
-            hidden = ` style="${noPadding}"`;
-          } else if (noPadding && hidden) {
-            hidden = ` style="display:none;${noPadding}"`;
-          }
 
-          if (pluginView) {
-            // Empty container; plugin renders into it after innerHTML lands.
-            html +=
-              '<div class="' +
-              containerClass +
-              '" data-tab-content="' +
-              view.id +
-              '" data-plugin-view="' +
-              esc(view.id) +
-              '"' +
-              viewMetaAttrs(view) +
-              ' data-active-view="false"' +
-              hidden +
-              "></div>";
-            pluginRenders.push({ tabId: view.id, view: pluginView });
-          } else {
-            // No plugin registered for this (kind, viewId). Defensive
-            // empty-state — should not fire in practice because every
-            // kind+view declared in any loaded plugin's manifest is
-            // expected to have a matching registerView call.
-            html +=
-              '<div class="' +
-              containerClass +
-              '" data-tab-content="' +
-              view.id +
-              '"' +
-              viewMetaAttrs(view) +
-              ' data-active-view="false"' +
-              hidden +
-              '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
+        // Data-driven tab rendering from server views.
+        //
+        // Every (kind, viewId) goes through the plugin registry: built-in
+        // plugins (markdown, agent-log, unknown-jsonl, text) own their own
+        // kinds; entry-point plugins own theirs. The shell here
+        // builds the empty containers; each plugin's render(container, ctx)
+        // fires below once the DOM is in place. If no plugin claims a
+        // (kind, viewId) we paint an unavailable-view message — never a
+        // fallback that pulls renderers out of the shell. This is the
+        // contract: every kind is a plugin.
+        var views = data.views;
+        var initialActiveView = null;
+        if (views?.length) {
+          // Plugin navigation can preserve a working mode across resources.
+          // An unavailable preference falls through to the server default.
+          initialActiveView =
+            views.find((view) => view.id === preferredViewId) ||
+            views.find((view) => view.default) ||
+            views[0];
+        }
+        var pluginRenders = [];
+        if (views && views.length > 0) {
+          if (views.length > 1) {
+            html += '<div class="tab-bar">';
+            for (let i = 0; i < views.length; i++) {
+              const view = views[i];
+              var active = view.id === initialActiveView?.id ? " active" : "";
+              html +=
+                '<button class="tab-btn' +
+                active +
+                '" type="button" data-tab="' +
+                esc(view.id) +
+                '"' +
+                viewMetaAttrs(view) +
+                ">" +
+                esc(view.label) +
+                "</button>";
+            }
+            html += "</div>";
+          }
+          for (let i = 0; i < views.length; i++) {
+            const view = views[i];
+            var pluginView =
+              window.metabrowser && data.kind
+                ? window.metabrowser.getRegisteredView(data.kind, view.id)
+                : null;
+            // container_class can be set per-view in the plugin manifest as
+            // [[view]].container_class; defaults to "content-body".
+            var containerClass = view.container_class || "content-body";
+            var hidden = view.id === initialActiveView?.id ? "" : ' style="display:none;"';
+            var noPadding = view.id === "raw" || view.id === "source" ? "padding:0;" : "";
+            if (noPadding && !hidden) {
+              hidden = ` style="${noPadding}"`;
+            } else if (noPadding && hidden) {
+              hidden = ` style="display:none;${noPadding}"`;
+            }
+
+            if (pluginView) {
+              // Empty container; plugin renders into it after innerHTML lands.
+              html +=
+                '<div class="' +
+                containerClass +
+                '" data-tab-content="' +
+                view.id +
+                '" data-plugin-view="' +
+                esc(view.id) +
+                '"' +
+                viewMetaAttrs(view) +
+                ' data-active-view="false"' +
+                hidden +
+                "></div>";
+              pluginRenders.push({ tabId: view.id, view: pluginView });
+            } else {
+              // No plugin registered for this (kind, viewId). Defensive
+              // empty-state — should not fire in practice because every
+              // kind+view declared in any loaded plugin's manifest is
+              // expected to have a matching registerView call.
+              html +=
+                '<div class="' +
+                containerClass +
+                '" data-tab-content="' +
+                view.id +
+                '"' +
+                viewMetaAttrs(view) +
+                ' data-active-view="false"' +
+                hidden +
+                '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
+            }
+          }
+        } else if (data.type === "image") {
+          // No tab bar — the browser renders the image directly via /raw,
+          // which already returns the right mimetype. The .content-body
+          // wrapper gives the same outer padding a plain text view has.
+          html +=
+            '<div class="content-body"><img class="file-image" src="/raw?path=' +
+            encodeURIComponent(data.path) +
+            '" alt="' +
+            esc(data.path) +
+            '"></div>';
+        } else if (data.type === "binary") {
+          html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
+        } else if (data.type === "jsonl_too_large") {
+          html +=
+            '<div class="content-body"><div class="preview-empty">' +
+            "<strong>This JSONL file is too large to preview.</strong><br><br>" +
+            "File size: " +
+            formatSize(data.size || 0) +
+            "<br>Preview limit: " +
+            formatSize(data.max_size || 0) +
+            "<br><br>Open it with a tool that can stream large files." +
+            "</div></div>";
+        } else if (data.type === "error") {
+          html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
+        }
+
+        _perf.measure(
+          "renderFile:mount",
+          () => {
+            stage.innerHTML = html;
+            stage.dataset.renderedPath = data.path || "";
+          },
+          filePerfMeta(data, { html_chars: html.length }),
+        );
+        if (initialActiveView) {
+          setActivePreviewView(initialActiveView.id, stage, false);
+        } else {
+          setActivePreviewView(null, stage, false);
+        }
+
+        // The stage is connected so renderers can measure layout, but remains
+        // transparent and inert while the prior useful surface stays visible.
+        // The active renderer and its optional readiness promise settle before
+        // the shell transfers the stage's children into the preview.
+        if (pluginRenders?.length) {
+          var ctx = {
+            path: data.path,
+            kind: data.kind,
+            ext: data.ext,
+            size: data.size,
+            frontmatter: data.frontmatter || {},
+            body: typeof data.content === "string" ? data.content : data.body || "",
+            raw: data,
+            fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
+          };
+          for (var pi = 0; pi < pluginRenders.length; pi++) {
+            var pr = pluginRenders[pi];
+            var container = stage.querySelector(`[data-plugin-view="${pr.tabId}"]`);
+            if (!container) {
+              continue;
+            }
+            var mount = (
+              (target, pluginView) => () =>
+                mountPluginView(target, pluginView, ctx, stagedPluginDisposers)
+            )(container, pr.view);
+            if (initialActiveView && pr.tabId === initialActiveView.id) {
+              await _perf.measureAsync(
+                "fileNavigation:activeView",
+                mount,
+                filePerfMeta(data, { view: pr.tabId }),
+              );
+            } else {
+              container._metabrowserMount = () => {
+                void mount();
+              };
+            }
           }
         }
-      } else if (data.type === "image") {
-        // No tab bar — the browser renders the image directly via /raw,
-        // which already returns the right mimetype. The .content-body
-        // wrapper gives the same outer padding a plain text view has.
-        html +=
-          '<div class="content-body"><img class="file-image" src="/raw?path=' +
-          encodeURIComponent(data.path) +
-          '" alt="' +
-          esc(data.path) +
-          '"></div>';
-      } else if (data.type === "binary") {
-        html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
-      } else if (data.type === "jsonl_too_large") {
-        html +=
-          '<div class="content-body"><div class="preview-empty">' +
-          "<strong>This JSONL file is too large to preview.</strong><br><br>" +
-          "File size: " +
-          formatSize(data.size || 0) +
-          "<br>Preview limit: " +
-          formatSize(data.max_size || 0) +
-          "<br><br>Open it with a tool that can stream large files." +
-          "</div></div>";
-      } else if (data.type === "error") {
-        html += `<div class="content-body"><div class="preview-empty" role="alert"><strong>Could not preview this file.</strong> ${esc(data.error)}</div></div>`;
-      }
 
-      _perf.measure(
-        "renderFile:mount",
-        () => {
-          preview.innerHTML = html;
-        },
-        filePerfMeta(data, { html_chars: html.length }),
-      );
-      var defaultActiveView = null;
-      if (views?.length) {
-        defaultActiveView = views.find((v) => v.default) || views[0];
-        setActivePreviewView(defaultActiveView.id, preview);
-      } else {
-        setActivePreviewView(null, preview);
-      }
-
-      // Now that the DOM is in place, run any deferred plugin renderers.
-      // Each plugin's render(container, ctx) mutates the container directly
-      // — async work (fetches, charts) is fine; the spinner stays visible
-      // until the plugin's render resolves.
-      if (pluginRenders?.length) {
-        var ctx = {
-          path: data.path,
-          kind: data.kind,
-          ext: data.ext,
-          size: data.size,
-          frontmatter: data.frontmatter || {},
-          body: typeof data.content === "string" ? data.content : data.body || "",
-          raw: data,
-          fetchPluginData: window.metabrowser ? window.metabrowser.fetchPluginData : null,
-        };
-        for (var pi = 0; pi < pluginRenders.length; pi++) {
-          var pr = pluginRenders[pi];
-          var container = preview.querySelector(`[data-plugin-view="${pr.tabId}"]`);
-          if (!container) {
-            continue;
+        _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
+        const arrivalContent =
+          stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
+        if (!isPreviewClaimCurrent(renderClaim)) {
+          return;
+        }
+        const replacementNodes = Array.from(stage.childNodes);
+        disposeActivePluginViews();
+        preview.replaceChildren(...replacementNodes);
+        activePluginDisposers = stagedPluginDisposers;
+        installed = true;
+        if (pendingFilePreviewStageCleanup === cleanupStage) {
+          pendingFilePreviewStageCleanup = null;
+        }
+        preview.dataset.renderedPath = data.path || "";
+        if (initialActiveView) {
+          setActivePreviewView(initialActiveView.id, preview);
+        } else {
+          setActivePreviewView(null, preview);
+        }
+        if (data.kind === "folder") {
+          startFolderHeaderSubscription(data.path);
+        }
+        scheduleHighlightCode(preview);
+        if (arrivalContent instanceof HTMLElement) {
+          animatePreviewContentArrival(arrivalContent);
+        }
+        await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
+      } finally {
+        if (!installed) {
+          if (pendingFilePreviewStageCleanup === cleanupStage) {
+            pendingFilePreviewStageCleanup = null;
           }
-          var mount = ((target, pluginView) => () => {
-            mountPluginView(target, pluginView, ctx);
-          })(container, pr.view);
-          if (defaultActiveView && pr.tabId === defaultActiveView.id) {
-            mount();
-          } else {
-            container._metabrowserMount = mount;
-          }
+          cleanupStage();
         }
       }
-
-      _perf.measure("initTabs", initTabs, filePerfMeta(data));
-      highlightCode();
-      measureNextPaint("renderFile:nextPaint", filePerfMeta(data));
     },
     filePerfMeta(data),
   );
@@ -4010,28 +5969,34 @@ function toggleEvent(header) {
     ) {
       window.metabrowserAgentLog.mountLogEventRaw(rawEl);
     }
-    if (typeof hljs !== "undefined") {
-      var code = parent.querySelector(".log-event-raw pre code:not(.hljs)");
-      if (code) {
-        hljs.highlightElement(code);
-      }
-    }
+    scheduleHighlightCode(parent);
   }
 }
 
 // ── Charts loading + rendering ──────────────────────────────────
 
-// biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
-function copyPath(btn, path) {
-  navigator.clipboard.writeText(path).then(() => {
-    btn.classList.add("copied");
-    btn.title = "Copied!";
-    setTimeout(() => {
-      btn.classList.remove("copied");
-      btn.title = "Copy path";
-    }, 1500);
-  });
-}
+// Delegated handlers for header navigation controls. Copyable values use
+// the SDK-owned data-mb-copy contract, so path and revision identifiers
+// share clipboard and feedback behavior without inline handlers.
+document.addEventListener("click", (e) => {
+  var origin = eventTargetElement(e);
+  if (!origin) {
+    return;
+  }
+  var navBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-dir]"));
+  if (navBtn && !navBtn.hasAttribute("disabled")) {
+    navigateToFolder(navBtn.dataset.navDir ?? "");
+    return;
+  }
+  // The address bar's last crumb names a file rather than a directory. It
+  // re-opens what is already open, which is the point: every segment of the
+  // address behaves alike.
+  var fileBtn = /** @type {HTMLElement | null} */ (origin.closest("[data-nav-file]"));
+  if (fileBtn && !fileBtn.hasAttribute("disabled")) {
+    void navigateToPath(fileBtn.dataset.navFile ?? "");
+    return;
+  }
+});
 
 // biome-ignore lint/correctness/noUnusedVariables: referenced from generated HTML.
 function copyContent(btn) {
@@ -4040,18 +6005,19 @@ function copyContent(btn) {
   var text = code ? code.textContent : "";
   navigator.clipboard.writeText(text).then(() => {
     btn.classList.add("copied");
-    btn.title = "Copied!";
+    btn.dataset.tipText = "Copied!";
     setTimeout(() => {
       btn.classList.remove("copied");
-      btn.title = "Copy content";
+      btn.dataset.tipText = "Copy content";
     }, 1500);
   });
 }
 
 // ── Tab switching ───────────────────────────────────────────────
 
-function initTabs() {
-  queryHtmlAll(".tab-btn").forEach((btn) => {
+/** @param {ParentNode} [root] */
+function initTabs(root = document) {
+  queryHtmlAll(".tab-btn", root).forEach((btn) => {
     btn.addEventListener("click", () => {
       var tabId = btn.dataset.tab;
       var bar = /** @type {HTMLElement | null} */ (btn.closest(".tab-bar"));
@@ -4227,7 +6193,7 @@ function appendLiveEvents(path, batch) {
         var renderEvt = window.metabrowser?.builtins?.agentLog?.renderLogEvent;
         if (renderEvt) {
           for (var j = 0; j < batch.events.length; j++) {
-            tail += renderEvt(batch.events[j], startIdx + j);
+            tail += renderEvt(logPane, batch.events[j], startIdx + j);
           }
         }
         logPane.insertAdjacentHTML("beforeend", tail);
@@ -4261,8 +6227,27 @@ function flagRunEndedBadge() {
 var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
+var catalogFeedCanStart = false;
+// The startup crawl establishes the navigation baseline. Its snapshot and
+// incremental walker upserts are not user-visible file changes, so newly
+// mounted rows stay neutral until the first terminal inventory event. A
+// completed on-connect snapshot arms the same policy after it has been applied.
+var inventoryChangeHighlightingActive = false;
 
+// Instrumented at the batch, not per entry: wrapping applyCellPatch itself
+// would emit one span per file and charge the measurement more than the work.
+// The entry count rides along as meta so the span can be read against the size
+// of the batch that produced it -- which is the whole question in H58, since a
+// pass whose cost tracks the data is the thing that has to stop.
 function fileStoreApplySnapshot(scope, entries) {
+  return _perf.measure(
+    "fileStoreApplySnapshot",
+    () => fileStoreApplySnapshotInner(scope, entries),
+    { entries: entries.length, work_items: entries.length },
+  );
+}
+
+function fileStoreApplySnapshotInner(scope, entries) {
   // Atomic apply: rebuild the store from this snapshot before
   // notifying any subscriber, so derived views never see a
   // half-empty state.
@@ -4270,13 +6255,21 @@ function fileStoreApplySnapshot(scope, entries) {
   fileStore = new Map();
   for (var i = 0; i < entries.length; i++) {
     fileStore.set(entries[i].path, entries[i]);
-    applyCellPatch(entries[i]);
+    applyCellPatch(entries[i], false);
     _mirrorActiveFromFsEntry(entries[i]);
   }
+  window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
   notifyFileStoreSubscribers({ kind: "snapshot", scope: scope });
 }
 
 function fileStoreApplyChange(ops) {
+  return _perf.measure("fileStoreApplyChange", () => fileStoreApplyChangeInner(ops), {
+    ops: ops.length,
+    work_items: ops.length,
+  });
+}
+
+function fileStoreApplyChangeInner(ops) {
   knownFileCatalog?.applyEventChange(ops);
   for (var i = 0; i < ops.length; i++) {
     var op = ops[i];
@@ -4284,11 +6277,12 @@ function fileStoreApplyChange(ops) {
       fileStore.set(op.entry.path, op.entry);
       // Patch any rendered cell for this path; insert a new row if
       // the parent is rendered + expanded. Idempotent.
-      applyCellPatch(op.entry);
+      applyCellPatch(op.entry, inventoryChangeHighlightingActive);
       _mirrorActiveFromFsEntry(op.entry);
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
       activeFiles.delete(op.path);
+      _removeDeferredTreePageEntries(op.path);
       // Remove rendered rows in every tab panel; also drops the
       // dir's `.tree-children` container so descendant rows go
       // with it. Server's bulk-remove op already lists each
@@ -4302,6 +6296,7 @@ function fileStoreApplyChange(ops) {
     // active window, mirror it into that base too.
     recentBaseApplyOp(op);
   }
+  window.metabrowserDirectoryTotalsStore?.applyChange(ops);
   notifyFileStoreSubscribers({ kind: "change", ops: ops });
 }
 
@@ -4410,11 +6405,30 @@ function notifyFileStoreSubscribers(evt) {
       /* isolate listener failure */
     }
   }
+  // Re-dispatch as a DOM event so SDK consumers (watchRollup) observe
+  // inventory activity without reaching into shell internals. ``paths``
+  // is null for snapshot/resync (treat as "anything may have changed").
+  var changedPaths = null;
+  if (evt && Array.isArray(evt.ops)) {
+    changedPaths = [];
+    for (var oi = 0; oi < evt.ops.length; oi++) {
+      var op = evt.ops[oi];
+      var opPath = op && (op.entry?.path ?? op.path);
+      if (typeof opPath === "string") {
+        changedPaths.push(opPath);
+      }
+    }
+  }
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:inventory-change", {
+      detail: { kind: evt ? evt.kind : "", paths: changedPaths },
+    }),
+  );
 }
 
 // Pure function: derive the patched cell HTML for a single
-// FsEntry. Returns separate dir/file shapes; applyCellPatch picks
-// the matching DOM target (.tree-folder vs .tree-file).
+// FsEntry. Returns separate directory, symlink, and file shapes;
+// applyCellPatch picks the matching DOM target.
 //
 // Directory aggregates, file updates, inserts, and removals all use this
 // path. See the realtime-debugging guide for the layer-by-layer contract.
@@ -4434,6 +6448,20 @@ function computeCellPatch(entry, options) {
       tipFiles: nullableDataValue(totalFiles),
       tipSize: nullableDataValue(totalSize),
       tipMtime: nullableDataValue(dirMtimeSec),
+    };
+  }
+  if (entry.type === "symlink") {
+    var linkMtimeSec = entry.mtime_ns ? entry.mtime_ns / 1e9 : 0;
+    return {
+      kind: "symlink",
+      sizeHtml: "",
+      ageHtml:
+        '<span class="tree-item-age">' +
+        formatAge(linkMtimeSec) +
+        '</span><span class="tree-item-activity"></span>',
+      tipSize: null,
+      tipMtime: linkMtimeSec,
+      active: false,
     };
   }
   // File entry: size + age + active class.
@@ -4474,6 +6502,9 @@ function _treeKeyCmp(a, b) {
 // sibling — the user can expand to lazy-load.
 function _buildRowHtml(entry, options) {
   var name = entry.name || "";
+  var level = options?.level || 1;
+  var position = options?.position || 1;
+  var setSize = options?.setSize || 1;
   var muted = "";
   if (entry.gitignored) {
     muted += " tree-item-gitignored";
@@ -4481,10 +6512,25 @@ function _buildRowHtml(entry, options) {
   if (entry.type === "dir") {
     var dirChip = treeDirChipHtml(entry.total_files, entry.total_size, options);
     var dirAge = formatAge(entry.newest_mtime_ns ? entry.newest_mtime_ns / 1e9 : 0);
+    var hasPotentialChildren = entry.empty !== true;
+    var folderLabelId = treeDomId("tree-label", `folder:${entry.path}`);
+    var groupId = hasPotentialChildren ? treeDomId("tree-group", entry.path) : "";
+    var folderAttributes = treeItemAttributes({
+      kind: "folder",
+      path: entry.path,
+      level: level,
+      position: position,
+      setSize: setSize,
+      expanded: hasPotentialChildren ? false : undefined,
+      ownedGroupId: groupId,
+      labelId: folderLabelId,
+    });
     return (
       '<div class="tree-item tree-folder collapsed' +
       muted +
-      '" data-action="toggle" data-path="' +
+      '"' +
+      folderAttributes +
+      ' data-action="select-dir" data-path="' +
       esc(entry.path) +
       '" data-tip-type="dir" data-tip-name="' +
       esc(name) +
@@ -4495,8 +6541,12 @@ function _buildRowHtml(entry, options) {
       '" data-tip-mtime="' +
       nullableDataValue((entry.newest_mtime_ns || 0) / 1e9) +
       '">' +
+      '<span class="tree-toggle">' +
       ICONS.toggle +
-      '<span class="tree-item-name">' +
+      "</span>" +
+      '<span class="tree-item-name" id="' +
+      folderLabelId +
+      '">' +
       esc(name) +
       "</span>" +
       '<span class="tree-item-age-inline">' +
@@ -4504,19 +6554,72 @@ function _buildRowHtml(entry, options) {
       "</span>" +
       dirChip +
       "</div>" +
-      '<div class="tree-children" style="display:none">' +
-      '<div class="tree-lazy-placeholder" role="status" aria-label="Loading">' +
-      '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
-      "</div>" +
+      (hasPotentialChildren
+        ? treeChildGroupStartHtml(groupId, level + 1, false) +
+          '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+          ' role="status" aria-label="Loading">' +
+          '<span class="spinner spinner-sm" aria-hidden="true"></span>' +
+          "</div>" +
+          "</div>"
+        : "")
+    );
+  }
+  if (entry.type === "symlink") {
+    var linkAge = formatAge(entry.mtime_ns ? entry.mtime_ns / 1e9 : 0);
+    var linkLabelId = treeDomId("tree-label", `symlink:${entry.path}`);
+    var linkAttributes = treeItemAttributes({
+      kind: "symlink",
+      path: entry.path,
+      level: level,
+      position: position,
+      setSize: setSize,
+      selected: currentPath === entry.path,
+      labelId: linkLabelId,
+    });
+    return (
+      '<div class="tree-item tree-symlink' +
+      muted +
+      '"' +
+      linkAttributes +
+      ' data-action="select" data-path="' +
+      esc(entry.path) +
+      '" data-tip-type="symlink" data-tip-name="' +
+      esc(name) +
+      '" data-tip-mtime="' +
+      (entry.mtime_ns || 0) / 1e9 +
+      '">' +
+      '<span class="tree-item-icon">' +
+      ICONS.fileSymlink +
+      "</span>" +
+      '<span class="tree-item-name" id="' +
+      linkLabelId +
+      '">' +
+      esc(name) +
+      "</span>" +
+      '<span class="tree-item-age-inline"><span class="tree-item-age">' +
+      linkAge +
+      '</span><span class="tree-item-activity"></span></span>' +
       "</div>"
     );
   }
   var fi = getFileIcon(getLogicalName(entry));
   var fileAge = formatAge(entry.mtime_ns ? entry.mtime_ns / 1e9 : 0);
+  var fileLabelId = treeDomId("tree-label", `file:${entry.path}`);
+  var fileAttributes = treeItemAttributes({
+    kind: "file",
+    path: entry.path,
+    level: level,
+    position: position,
+    setSize: setSize,
+    selected: currentPath === entry.path,
+    labelId: fileLabelId,
+  });
   return (
     '<div class="tree-item tree-file' +
     muted +
-    '" data-action="select" data-path="' +
+    '"' +
+    fileAttributes +
+    ' data-action="select" data-path="' +
     esc(entry.path) +
     '" data-tip-type="file" data-tip-name="' +
     esc(name) +
@@ -4529,12 +6632,14 @@ function _buildRowHtml(entry, options) {
     // suffix while the rendered ones are judged on the index's.
     (entry.ext ? `" data-ext="${esc(entry.ext)}` : "") +
     '">' +
-    '<span class="tree-item-icon ' +
+    '<span class="tree-item-icon file-identity-icon ' +
     fi.cls +
     '">' +
     fi.svg +
     "</span>" +
-    '<span class="tree-item-name">' +
+    '<span class="tree-item-name" id="' +
+    fileLabelId +
+    '">' +
     esc(name) +
     "</span>" +
     '<span class="tree-item-age-inline">' +
@@ -4556,7 +6661,7 @@ function _buildRowHtml(entry, options) {
 // appear when the user expands).
 function _findChildContainerFor(parentRel, panelEl) {
   if (!parentRel) {
-    return panelEl; // root
+    return treeRootForPanel(panelEl);
   }
   var folder = panelEl.querySelector(
     `.tree-folder[data-path="${escapePathForSelector(parentRel)}"]`,
@@ -4574,28 +6679,125 @@ function _findChildContainerFor(parentRel, panelEl) {
   return children;
 }
 
+function _deferredTreePageForContainer(container) {
+  var sentinel = container.querySelector(":scope > .tree-page-more[data-page-id]");
+  if (!sentinel) {
+    return null;
+  }
+  var pageId = sentinel.dataset.pageId;
+  var page = pendingTreePages.get(pageId);
+  return page ? { pageId: pageId, page: page, sentinel: sentinel } : null;
+}
+
+// Snapshot and change events include entries already held by a deferred page.
+// Refresh that pending copy instead of mounting it ahead of its sentinel.
+function _updateDeferredTreePageEntry(container, entry) {
+  var deferred = _deferredTreePageForContainer(container);
+  if (!deferred) {
+    return false;
+  }
+  var index = deferred.page.nodes.findIndex((node) => node.path === entry.path);
+  if (index < 0) {
+    return false;
+  }
+  var current = deferred.page.nodes[index];
+  if (current.type !== entry.type) {
+    deferred.page.nodes.splice(index, 1);
+    _synchronizeDeferredTreePage(deferred.pageId, deferred.page);
+    return false;
+  }
+  deferred.page.nodes[index] = { ...current, ...entry };
+  return true;
+}
+
+function _synchronizeDeferredTreePage(pageId, page, mutationSnapshot) {
+  var sentinel = /** @type {HTMLElement | null} */ (
+    document.querySelector(`.tree-page-more[data-page-id="${escapePathForSelector(pageId)}"]`)
+  );
+  if (!sentinel) {
+    pendingTreePages.delete(pageId);
+    return;
+  }
+  var container = sentinel.parentElement;
+  if (!container) {
+    return;
+  }
+  var rows = /** @type {HTMLElement[]} */ (
+    Array.from(container.querySelectorAll(":scope > .tree-item:not(.tree-page-more)"))
+  );
+  var setSize = Math.max(rows.length + page.nodes.length, Number(page.options.setSize) || 0);
+  page.options.setSize = setSize;
+  for (var index = 0; index < rows.length; index++) {
+    rows[index].dataset.treePosition = String(index + 1);
+    rows[index].dataset.treeSetSize = String(setSize);
+  }
+  if (page.nodes.length === 0) {
+    var sentinelMutation = mutationSnapshot || treeKeyboard?.prepareForMutation();
+    sentinel.remove();
+    pendingTreePages.delete(pageId);
+    scheduleTreeSynchronize(sentinelMutation);
+    return;
+  }
+  sentinel.dataset.treePosition = String(rows.length + 1);
+  sentinel.dataset.treeSetSize = String(setSize);
+  var labelId = sentinel.getAttribute("aria-labelledby") || "";
+  var label = document.getElementById(labelId);
+  if (label) {
+    label.textContent = `Show ${page.nodes.length} more (${setSize} total)`;
+  }
+  scheduleTreeSynchronize(mutationSnapshot);
+}
+
+function _removeDeferredTreePageEntries(path) {
+  var prefix = `${path}/`;
+  for (var [pageId, page] of pendingTreePages) {
+    var originalLength = page.nodes.length;
+    page.nodes = page.nodes.filter((node) => node.path !== path && !node.path.startsWith(prefix));
+    var removed = originalLength - page.nodes.length;
+    if (removed === 0) {
+      continue;
+    }
+    var previousSetSize = Number(page.options.setSize) || originalLength;
+    page.options.setSize = Math.max(page.nodes.length, previousSetSize - removed);
+    _synchronizeDeferredTreePage(pageId, page);
+  }
+}
+
 // Insert a new row into a child container at sorted position.
 // Containers may include a `.tree-page-more` sentinel at the end
-// (when the initial render hit TREE_PAGE_SIZE); inserts go before
-// it so the sort order isn't broken by new arrivals at the cap.
+// (when the initial render hit TREE_PAGE_SIZE). Entries already in
+// that deferred page stay deferred; genuinely new arrivals go before
+// the sentinel so they remain visible without a reload.
 // Idempotent: if a row with this data-path already exists in the
 // container, do nothing (the patch path will handle updates).
 //
-// The newly-inserted .tree-item gets a `tree-item-flash-in` class
-// to play the pale-yellow → transparent fade defined in styles.css.
-// The class is auto-removed on `animationend` so subsequent layout
-// (selection, hover) doesn't fight a dangling class.
-function _insertRowSorted(container, entry, options) {
+// After the initial inventory settles, the newly-inserted .tree-item gets a
+// `tree-item-flash-in` class to play the pale-yellow → transparent fade defined
+// in styles.css. Startup rows establish baseline state and stay neutral. The
+// class is auto-removed on `animationend` so subsequent layout (selection,
+// hover) doesn't fight a dangling class.
+function _insertRowSorted(container, entry, options, highlightChange) {
   var safe = escapePathForSelector(entry.path);
   var existing = container.querySelector(`:scope > .tree-item[data-path="${safe}"]`);
   if (existing) {
     return false;
   }
+  if (_updateDeferredTreePageEntry(container, entry)) {
+    return false;
+  }
+  var deferredPage = _deferredTreePageForContainer(container);
+  treeKeyboard?.prepareForMutation();
   container.querySelectorAll(":scope > .tree-lazy-placeholder").forEach((el) => {
     el.remove();
   });
   var tmp = document.createElement("div");
-  tmp.innerHTML = _buildRowHtml(entry, options);
+  var mountedRows = container.querySelectorAll(":scope > .tree-item").length + 1;
+  tmp.innerHTML = _buildRowHtml(entry, {
+    ...options,
+    level: treeLevelForContainer(container),
+    position: mountedRows,
+    setSize: mountedRows,
+  });
   var nodes = Array.prototype.slice.call(tmp.childNodes);
   // For dir inserts, _buildRowHtml emits two siblings (the .tree-folder
   // and its .tree-children). We insert both at the same anchor.
@@ -4614,10 +6816,10 @@ function _insertRowSorted(container, entry, options) {
         anchor = ch;
         break;
       }
-    } else if (ch.classList.contains("tree-file")) {
+    } else if (ch.classList.contains("tree-file") || ch.classList.contains("tree-symlink")) {
       var name2 = ch.querySelector(".tree-item-name");
       var k2 = _treeSortKey({
-        type: "file",
+        type: ch.classList.contains("tree-symlink") ? "symlink" : "file",
         name: name2 ? name2.textContent : "",
       });
       if (_treeKeyCmp(entryKey, k2) < 0) {
@@ -4637,7 +6839,7 @@ function _insertRowSorted(container, entry, options) {
     // Only flash the .tree-item itself; the sibling .tree-children
     // for folders is empty on insert (lazy placeholder) and would
     // visually double-flash if we styled it too.
-    if (node.classList?.contains("tree-item")) {
+    if (highlightChange && node.classList?.contains("tree-item")) {
       node.classList.add("tree-item-flash-in");
       node.addEventListener(
         "animationend",
@@ -4650,15 +6852,31 @@ function _insertRowSorted(container, entry, options) {
       );
     }
   }
+  var mounted = /** @type {HTMLElement[]} */ (
+    Array.from(container.querySelectorAll(":scope > .tree-item"))
+  );
+  if (deferredPage) {
+    _synchronizeDeferredTreePage(deferredPage.pageId, deferredPage.page);
+    return true;
+  }
+  var declaredSetSize = mounted.reduce(
+    (largest, row) => Math.max(largest, Number(row.dataset.treeSetSize) || 0),
+    mounted.length,
+  );
+  for (var metadataIndex = 0; metadataIndex < mounted.length; metadataIndex++) {
+    mounted[metadataIndex].dataset.treeLevel = String(treeLevelForContainer(container));
+    mounted[metadataIndex].dataset.treePosition = String(metadataIndex + 1);
+    mounted[metadataIndex].dataset.treeSetSize = String(declaredSetSize);
+  }
+  scheduleTreeSynchronize();
   return true;
 }
 
-// Apply the patch+insert path for one fs.change op. For type=file,
-// patches existing .tree-file rows (size/age/active). For type=dir,
-// patches existing .tree-folder rows (metric chip + age + tip-*). If
+// Apply the patch+insert path for one fs.change op. File, directory,
+// and symlink entries patch their matching row shape. If
 // no row exists for the entry's path AND the entry's parent is
 // rendered + expanded in either tab panel, insert a new row in
-// sorted position so the user sees new files/dirs without a reload.
+// sorted position so the user sees new entries without a reload.
 function updateRootAggregatePresentation(entry) {
   if (entry.path || entry.type !== "dir") {
     return;
@@ -4686,7 +6904,7 @@ function updateRootAggregatePresentation(entry) {
   }
 }
 
-function applyCellPatch(entry) {
+function applyCellPatch(entry, highlightChange) {
   // The root (path "") is the implicit tree container, never a row. The
   // server includes it in the fs.snapshot for its aggregate totals, but
   // patching it here would fall through to the insert branch (its parent
@@ -4695,14 +6913,33 @@ function applyCellPatch(entry) {
   // (re)connect. Keep it in the store; just don't render it.
   if (!entry.path) {
     updateRootAggregatePresentation(entry);
+    reconcilePendingTallyDiagnostics();
+    scheduleTreeSynchronize();
     return;
   }
   var safePath = escapePathForSelector(entry.path);
   var selector =
     entry.type === "dir"
       ? `.tree-folder[data-path="${safePath}"]`
-      : `.tree-file[data-path="${safePath}"]`;
+      : entry.type === "symlink"
+        ? `.tree-symlink[data-path="${safePath}"]`
+        : `.tree-file[data-path="${safePath}"]`;
   var rows = queryHtmlAll(selector);
+  var pathRows = queryHtmlAll(`.tree-item[data-path="${safePath}"]`);
+  var removingRow = Array.prototype.some.call(pathRows, (row) =>
+    row.classList.contains("tree-item-flash-out"),
+  );
+  if (pathRows.length !== rows.length || removingRow) {
+    // The watcher can observe a path changing shape (for example, a file
+    // replaced by a symlink) without an intervening remove event. A stale row
+    // with the old shape would make _insertRowSorted reject the replacement by
+    // path. Remove it synchronously, including a former folder's child rows,
+    // before taking the normal insert path. The same applies when a rapid
+    // remove/recreate reaches us while an old same-shaped row is animating out.
+    treeKeyboard?.prepareForMutation();
+    _removeRenderedRowsImmediately(entry.path);
+    rows = queryHtmlAll(selector);
+  }
   if (rows.length > 0) {
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
@@ -4722,24 +6959,50 @@ function applyCellPatch(entry) {
       row.dataset.tipMtime = nullableDataValue(patch.tipMtime);
       if (patch.kind === "dir") {
         row.dataset.tipFiles = patch.tipFiles;
-        // Sync the gray "empty" class. Server emits null for
-        // walker-pending dirs (don't change the class) and 0
-        // for finalized-empty (gray). Without this toggle, a
-        // dir initially painted gray during inventory startup
-        // never cleared once its real count arrived via
-        // fs.change.
+        // A zero file total does not prove emptiness because symlinks
+        // are visible leaves but intentionally excluded from aggregates.
         var totalFiles = entry.total_files;
-        if (totalFiles != null) {
-          row.classList.toggle("tree-item-empty", totalFiles === 0);
+        if (typeof entry.empty === "boolean") {
+          treeKeyboard?.prepareForMutation();
+          row.classList.toggle("tree-item-empty", entry.empty);
+          var children = row.nextElementSibling;
+          if (entry.empty && children?.classList.contains("tree-children")) {
+            children.remove();
+            row.classList.remove("expanded");
+            row.classList.add("collapsed");
+            row.removeAttribute("aria-expanded");
+            row.removeAttribute("aria-owns");
+          } else if (!entry.empty && !children?.classList.contains("tree-children")) {
+            var groupId = treeDomId("tree-group", entry.path);
+            row.insertAdjacentHTML(
+              "afterend",
+              treeChildGroupStartHtml(
+                groupId,
+                Number(row.getAttribute("aria-level") || 1) + 1,
+                false,
+              ) +
+                '<div class="tree-lazy-placeholder mb-delayed-loading" data-tree-lazy-stub' +
+                ' role="status" aria-label="Loading">' +
+                '<span class="spinner spinner-sm" aria-hidden="true"></span></div></div>',
+            );
+            row.setAttribute("aria-expanded", "false");
+            row.setAttribute("aria-owns", groupId);
+          }
+        } else if (totalFiles > 0) {
+          // Positive totals remain an unambiguous fallback for events
+          // from an older server that lacks explicit empty-state metadata.
+          row.classList.toggle("tree-item-empty", false);
         }
       }
-      // Sync gitignored across dir + file rows so a flag flip
+      // Sync gitignored across every row type so a flag flip
       // (rare, but possible if .gitignore is edited) updates
       // the muted class without a full rerender.
       row.classList.toggle("tree-item-gitignored", !!entry.gitignored);
       // mtime and active can both flip a row's filter verdict.
       scheduleFilterReapply();
     }
+    reconcilePendingTallyDiagnostics();
+    scheduleTreeSynchronize();
     return;
   }
   // No row exists — try to insert one in each panel where the
@@ -4759,10 +7022,12 @@ function applyCellPatch(entry) {
   if (!container) {
     return;
   }
-  _insertRowSorted(container, entry, treeRenderOptionsForElement(panel));
+  _insertRowSorted(container, entry, treeRenderOptionsForElement(panel), highlightChange);
   // A freshly inserted row carries no filter classes yet; without this
   // a new file would show up regardless of the active filter.
   scheduleFilterReapply();
+  reconcilePendingTallyDiagnostics();
+  scheduleTreeSynchronize();
 }
 
 // Remove all rendered rows (in any tab panel) for *path*. For
@@ -4780,6 +7045,7 @@ function applyCellPatch(entry) {
 // arrive on the wire, and a collapsing tree-children container
 // reads as confusing motion).
 function _removeRenderedRows(path) {
+  var removalMutation = treeKeyboard?.prepareForMutation();
   var safe = escapePathForSelector(path);
   var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
   for (var i = 0; i < rows.length; i++) {
@@ -4805,12 +7071,54 @@ function _removeRenderedRows(path) {
         if (ev.animationName === "tree-row-flash-out") {
           var target = ev.currentTarget;
           if (target instanceof Element) {
+            var parent = target.parentElement;
+            var previousSetSize = Number(target.getAttribute("aria-setsize")) || 0;
+            var deferredPage = parent ? _deferredTreePageForContainer(parent) : null;
             target.remove();
+            if (deferredPage) {
+              deferredPage.page.options.setSize = Math.max(
+                deferredPage.page.nodes.length,
+                previousSetSize - 1,
+              );
+              _synchronizeDeferredTreePage(deferredPage.pageId, deferredPage.page, removalMutation);
+            } else if (parent) {
+              var rows = /** @type {HTMLElement[]} */ (
+                Array.from(parent.querySelectorAll(":scope > .tree-item"))
+              );
+              var nextSetSize = Math.max(rows.length, previousSetSize - 1);
+              for (var j = 0; j < rows.length; j++) {
+                rows[j].dataset.treePosition = String(j + 1);
+                rows[j].dataset.treeSetSize = String(nextSetSize);
+              }
+              scheduleTreeSynchronize(removalMutation);
+            }
           }
         }
       },
       { once: true },
     );
+  }
+}
+
+// Type replacements cannot wait for the removal animation: the new row uses
+// the same data-path and must be inserted in this event turn. This also removes
+// a former folder's rendered descendants before its replacement is mounted.
+function _removeRenderedRowsImmediately(path) {
+  treeKeyboard?.prepareForMutation();
+  var safe = escapePathForSelector(path);
+  var rows = queryHtmlAll(`.tree-item[data-path="${safe}"]`);
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    if (row.classList.contains("tree-folder")) {
+      var children = row.nextElementSibling;
+      if (children?.classList.contains("tree-children")) {
+        children.querySelectorAll(".tree-page-more[data-page-id]").forEach((sentinel) => {
+          pendingTreePages.delete(/** @type {HTMLElement} */ (sentinel).dataset.pageId);
+        });
+        children.remove();
+      }
+    }
+    row.remove();
   }
 }
 
@@ -4839,26 +7147,71 @@ function _scheduleRecentRecompute() {
 var _esConsecutiveErrors = 0;
 var _esBackoffMs = 2000;
 var _esReconnectTimer = null;
+var _esStableResetTimer = null;
 var _ES_MAX_CONSECUTIVE_ERRORS = 5;
 var _ES_BACKOFF_CAP_MS = 60000;
+var _ES_STABLE_CONNECTION_MS = 10000;
 
 function _resetEsCircuitBreaker() {
   _esConsecutiveErrors = 0;
   _esBackoffMs = 2000;
 }
 
+function _cancelEsStableReset() {
+  if (_esStableResetTimer !== null) {
+    clearTimeout(_esStableResetTimer);
+    _esStableResetTimer = null;
+  }
+}
+
+function _scheduleEsStableReset() {
+  _cancelEsStableReset();
+  _esStableResetTimer = setTimeout(() => {
+    _esStableResetTimer = null;
+    if (inventoryEventSource) {
+      _resetEsCircuitBreaker();
+    }
+  }, _ES_STABLE_CONNECTION_MS);
+}
+
+function _scheduleInventoryReconnect() {
+  _cancelEsStableReset();
+  if (inventoryEventSource) {
+    inventoryEventSource.close();
+    inventoryEventSource = null;
+  }
+  catalogFeedCanStart = false;
+  if (_esReconnectTimer !== null) {
+    return;
+  }
+  var delay = _esBackoffMs;
+  _esBackoffMs = Math.min(_esBackoffMs * 2, _ES_BACKOFF_CAP_MS);
+  _esReconnectTimer = setTimeout(() => {
+    _esReconnectTimer = null;
+    // Each EventSource gets its own transport-error allowance. Keep the
+    // escalating reconnect delay until the stable timer fires, but do not let
+    // the previous source's threshold make one transient error close this one.
+    _esConsecutiveErrors = 0;
+    _createInventoryEventSource();
+  }, delay);
+}
+
 function _createInventoryEventSource() {
+  catalogFeedCanStart = false;
   try {
     inventoryEventSource = new EventSource("/api/events?scope=root-depth-2");
   } catch (_e) {
     inventoryEventSource = null;
+    _scheduleInventoryReconnect();
     return;
   }
   inventoryEventSource.addEventListener("fs.snapshot", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       fileStoreApplySnapshot(data.scope, data.entries || []);
+      if (data.complete === true) {
+        inventoryChangeHighlightingActive = true;
+      }
       _scheduleRecentRecompute();
       // A fresh snapshot after the first one means the connection
       // was rebuilt and catalog deltas may have been dropped; the
@@ -4869,7 +7222,6 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("fs.change", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       fileStoreApplyChange(data.ops || []);
@@ -4879,7 +7231,6 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("catalog.change", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
       quickFileCatalogFeed?.onCatalogChange(data);
@@ -4888,22 +7239,19 @@ function _createInventoryEventSource() {
     }
   });
   inventoryEventSource.addEventListener("capability.update", (e) => {
-    _resetEsCircuitBreaker();
     try {
       var data = JSON.parse(e.data);
-      // A truncated walk is "complete" in the sense that it stopped, but the
-      // files past the max-files cap were never indexed, so the catalog can
-      // never be a complete view of the root. Only an untruncated walk may
-      // promote the catalog to complete.
-      if (data.index && data.index.complete === true && data.index.truncated !== true) {
-        quickFileCatalogFeed?.onIndexComplete();
+      // Every terminal walk can repair membership lost across a reconnect.
+      // A capped walk remains incomplete for the root even after that repair.
+      if (data.index && data.index.complete === true) {
+        quickFileCatalogFeed?.onIndexComplete(data.index.truncated === true);
+        inventoryChangeHighlightingActive = true;
       }
     } catch (_e) {
       /* ignore */
     }
   });
   inventoryEventSource.addEventListener("fs.resync_required", (_e) => {
-    _resetEsCircuitBreaker();
     // A resync marks a gap in the ordered delta stream. Clear derived state,
     // then replace this connection so the server sends an authoritative
     // snapshot before live updates resume.
@@ -4912,37 +7260,27 @@ function _createInventoryEventSource() {
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
-    if (inventoryEventSource) {
-      inventoryEventSource.close();
-      inventoryEventSource = null;
-    }
-    _createInventoryEventSource();
+    _scheduleInventoryReconnect();
   });
   inventoryEventSource.onopen = () => {
-    _resetEsCircuitBreaker();
-    // First open only (start() is a no-op afterwards): the bulk
-    // catalog fetch begins once the stream is subscribed, so no op
-    // can fall between the payload build and the subscription.
+    catalogFeedCanStart = true;
+    // Do not erase accumulated failure state as soon as a socket opens. A
+    // connection that survives this interval is healthy enough to reset the
+    // exponential backoff; repeated overflow/resync cycles keep backing off.
+    _scheduleEsStableReset();
+    // The first open starts the bulk catalog fetch after subscription;
+    // later opens refetch to cover deltas lost while disconnected.
     quickFileCatalogFeed?.start();
   };
   inventoryEventSource.onerror = () => {
+    _cancelEsStableReset();
     _esConsecutiveErrors += 1;
     if (_esConsecutiveErrors >= _ES_MAX_CONSECUTIVE_ERRORS) {
       // Circuit breaker: too many consecutive errors without a
       // successful open or message. Close and recreate with
       // exponential backoff. A fresh connection gets a snapshot
       // via the existing fs.snapshot/resync flow.
-      if (inventoryEventSource) {
-        inventoryEventSource.close();
-        inventoryEventSource = null;
-      }
-      var delay = _esBackoffMs;
-      _esBackoffMs = Math.min(_esBackoffMs * 2, _ES_BACKOFF_CAP_MS);
-      _esReconnectTimer = setTimeout(() => {
-        _esReconnectTimer = null;
-        _esConsecutiveErrors = 0;
-        _createInventoryEventSource();
-      }, delay);
+      _scheduleInventoryReconnect();
     }
   };
 }
@@ -4951,6 +7289,7 @@ function startInventoryEventStream() {
   if (typeof EventSource === "undefined") {
     // Graceful degradation: no live deltas, but the one-shot bulk
     // fetch still gives the palette complete-as-of-fetch coverage.
+    catalogFeedCanStart = true;
     quickFileCatalogFeed?.start();
     return;
   }
@@ -4960,55 +7299,64 @@ function startInventoryEventStream() {
   _createInventoryEventSource();
 }
 
-// ── Hash routing ──────────────────────────────────────────────
+// ── Canonical navigation ───────────────────────────────────────
 
-function parseHashRoute() {
-  var hash = location.hash;
-  if (!hash || hash === "#") {
-    return "";
+// navigation.js is linked by the same shell response, immediately ahead of this
+// script, so the module and this controller always exist together.
+var navigationController = window.MetabrowserNavigationRoute.createController({
+  apply: applyNavigationTarget,
+});
+window.MetabrowserNavigationRoute.attachController(navigationController);
+
+function showNavigationLanding() {
+  closeLiveStream();
+  currentPath = "";
+  setSelectedPath(null);
+  disposeActivePluginViews();
+  stopFolderHeaderSubscription();
+  const preview = document.getElementById("preview-pane");
+  if (preview) {
+    preview.innerHTML = '<div class="preview-empty">Select a file to preview.</div>';
   }
-  var frag = decodeURIComponent(hash.slice(1)).replace(/\/+$/, "");
-  if (!frag) {
-    return "";
-  }
-  // The URL hash doubles as a file deep-link (#<path>) and as in-document
-  // anchors inside an embedded KPress document (#section, #fn-note). Only treat
-  // a fragment as a file path when it looks like one — a directory separator or
-  // a file extension. Otherwise it is an in-doc anchor the browser scrolls
-  // natively, and opening a file named by the fragment would 404.
-  if (frag.indexOf("/") === -1 && !/\.[A-Za-z0-9]{1,8}$/.test(frag)) {
-    return "";
-  }
-  return frag;
 }
 
-function serverInitialPath() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  var path = window.METABROWSER_INITIAL_PATH || "";
-  return typeof path === "string" ? path.replace(/\/+$/, "") : "";
+function deliverNavigationFragment(target) {
+  window.dispatchEvent(
+    new CustomEvent("metabrowser:navigation-fragment", {
+      detail: { target: target },
+    }),
+  );
 }
 
-// Top-level README (case-insensitive). Returns its path or "" if absent.
-// Auto-navigates on first load when no hash is set, so a worktree with
-// a root readme never opens to the empty "select a file" pane. Scoped
-// to direct children of the tree root: never auto-navs to a README in
-// some nested subdirectory.
-function findRootReadme() {
-  // Files are direct children of the Files panel; Recent is its sibling.
-  var rootFiles = queryHtmlAll("#tab-files > .tree-item.tree-file");
-  for (var i = 0; i < rootFiles.length; i++) {
-    var path = rootFiles[i].dataset.path;
-    if (!path) {
-      continue;
+async function applyNavigationTarget(target, context) {
+  if (!target) {
+    // A null target usually means "no selection". A /commit/ URL is a
+    // selection in another address space (Browser URL Grammar), owned
+    // by the Git panel — so the file pane must not claim the preview
+    // with its empty landing state.
+    if (window.MetabrowserNavigationRoute.parseCommit(window.location.pathname)) {
+      return { status: "cancelled" };
     }
-    var base = path.split("/").pop();
-    if (base && /^readme\.md$/i.test(base)) {
-      return path;
-    }
+    showNavigationLanding();
+    return { status: "cancelled" };
   }
-  return "";
+  var path = target.path.replace(/\/$/, "");
+  if (!context.pathChanged) {
+    deliverNavigationFragment(target);
+    return {
+      focusTarget: document.getElementById("preview-pane") || undefined,
+      status: "opened",
+    };
+  }
+  await revealInTree(path);
+  if (!context.isCurrent()) {
+    return { status: "cancelled" };
+  }
+  var outcome = await selectFile(path, context.viewId);
+  if (outcome.status === "opened" && context.isCurrent()) {
+    deliverNavigationFragment(navigationController.current() || target);
+  }
+  return outcome;
 }
 
 // Expand tree folders along ``path`` (loading lazy subtrees as needed)
@@ -5028,41 +7376,163 @@ async function revealInTree(path) {
     if (folder) {
       var children = /** @type {HTMLElement | null} */ (folder.nextElementSibling);
       if (children) {
-        if (children.querySelector(".tree-lazy-placeholder")) {
+        // Scoped to direct children on purpose. A descendant folder carries
+        // its own stub, so an unscoped match reads "this folder is unloaded"
+        // for a folder whose rows are already on screen, and reloading it
+        // swaps those rows for a spinner before restoring them.
+        if (children.querySelector(":scope > .tree-lazy-placeholder")) {
           await loadSubtree(current, children);
         }
-        if (children.style.display === "none") {
-          children.style.display = "block";
-          folder.classList.remove("collapsed");
-          folder.classList.add("expanded");
+        if (children.classList.contains("tree-children-collapsed")) {
+          await setFolderExpanded(folder, true);
         }
       }
     }
   }
-  var target = document.querySelector(`.tree-file[data-path="${escapePathForSelector(path)}"]`);
+  var target = document.querySelector(`.tree-item[data-path="${escapePathForSelector(path)}"]`);
   if (!target) {
     return false;
   }
   setSelectedPath(path);
   target.scrollIntoView({ block: "nearest" });
+  synchronizeTreeNow();
   return true;
 }
 
-// skipHash is set by hash-driven callers (hashchange, init) whose URL
-// already names the path; user-initiated callers (the quick-file
-// palette) leave it unset so selectFile writes the deep-link hash.
-/** @returns {Promise<QuickFileOpenOutcome>} */
-async function navigateToPath(path, skipHash) {
-  if (!path) {
-    return { status: "cancelled" };
+/**
+ * @param {string} path
+ * @param {string=} preferredViewId
+ * @param {{replace?: boolean}=} routeOptions
+ * @returns {Promise<QuickFileOpenOutcome>}
+ */
+async function navigateToPath(path, preferredViewId, routeOptions) {
+  // The served root is the empty path, and only a nested folder carries a
+  // trailing slash, so both spellings arrive here already canonical.
+  var normalized = path.replace(/\/+$/, "");
+  var folder = path.endsWith("/");
+  /** @type {{replace?: boolean, viewId?: string}} */
+  var openOptions = {};
+  if (preferredViewId) {
+    openOptions.viewId = preferredViewId;
   }
-  // Reveal is best-effort: a row past the pagination cap, or one inside
-  // a folder the tree has never expanded, does not resolve to a DOM
-  // node — but the preview must still open, because the palette
-  // navigates to paths that were never mounted.
-  await revealInTree(path);
-  return selectFile(path, skipHash);
+  // Skimming with arrows replaces the route instead of pushing it, so Back
+  // returns to wherever the reader entered the tree rather than replaying
+  // every row they passed through.
+  if (routeOptions?.replace) {
+    openOptions.replace = true;
+  }
+  // The route module is dialect-agnostic and types `open` as returning the
+  // apply callback's `unknown`. This shell installed that callback, so it is
+  // the one place that knows the result is an open outcome.
+  return /** @type {Promise<QuickFileOpenOutcome>} */ (
+    navigationController.open(
+      { path: folder && normalized ? `${normalized}/` : normalized },
+      openOptions,
+    )
+  );
 }
+
+// Compose application keyboard infrastructure at the shell boundary.
+function resolveApplicationFocusFallback(previous) {
+  if (treeKeyboard && previous?.closest?.('[role="treeitem"]')) {
+    var focusedTreeRow = treeKeyboard.focusedRow();
+    if (focusedTreeRow?.isConnected) {
+      return focusedTreeRow;
+    }
+  }
+  if (applicationFocusRegion === "preview") {
+    return document.getElementById("preview-pane");
+  }
+  return null;
+}
+
+function initKeyboardInfrastructure() {
+  if (shortcutRegistry || keyboardHelp || treeKeyboard) {
+    return;
+  }
+  if (
+    !window.MetabrowserKeyboardShortcuts ||
+    !window.MetabrowserTreeKeyboardNavigation ||
+    !window.MetabrowserOverlay ||
+    !window.MetabrowserKeyboardHelp
+  ) {
+    console.warn("Keyboard Help dependencies are unavailable");
+    return;
+  }
+  var hintHost = document.getElementById("nav-shortcut-hints");
+  if (!hintHost) {
+    console.warn("Keyboard Help hint host is unavailable");
+    return;
+  }
+  shortcutRegistry = window.MetabrowserKeyboardShortcuts.create({ document: document });
+  keyboardHelp = window.MetabrowserKeyboardHelp.create({
+    document: document,
+    hintHost: hintHost,
+    overlay: window.MetabrowserOverlay,
+    resolveFocusFallback: resolveApplicationFocusFallback,
+    shortcuts: shortcutRegistry,
+  });
+  treeKeyboard = window.MetabrowserTreeKeyboardNavigation.create({
+    activate: activateTreeRowFromKeyboard,
+    container: treePane,
+    document: document,
+    navigate: openTreeRow,
+    setFolderExpanded: setRowExpanded,
+    shortcuts: shortcutRegistry,
+  });
+  applicationFocusListener = (event) => {
+    var target = event.target;
+    var treePaneElement = document.getElementById("tree-pane");
+    var previewElement = document.getElementById("preview-pane");
+    if (treePaneElement?.contains(target)) {
+      applicationFocusRegion = "tree";
+    } else if (previewElement?.contains(target)) {
+      applicationFocusRegion = "preview";
+    }
+  };
+  document.addEventListener("focusin", applicationFocusListener);
+}
+
+function disposeKeyboardInfrastructure() {
+  if (applicationFocusListener) {
+    document.removeEventListener("focusin", applicationFocusListener);
+    applicationFocusListener = null;
+  }
+  quickFilePalette?.dispose();
+  quickFilePalette = null;
+  quickFileCatalogFeed?.dispose();
+  quickFileCatalogFeed = null;
+  quickFileSearchController?.dispose();
+  quickFileSearchController = null;
+  knownFileCatalog = null;
+  treeKeyboard?.dispose();
+  treeKeyboard = null;
+  keyboardHelp?.dispose();
+  keyboardHelp = null;
+  shortcutRegistry?.dispose();
+  shortcutRegistry = null;
+}
+
+// `pagehide` also fires when the document enters the back/forward cache, and a
+// bfcache restore never re-runs DOMContentLoaded. Tearing the registry down
+// there would return the user to a page whose shortcuts, Help, Quick File, and
+// tree keys are all silently dead, so a persisted hide is left alone and the
+// matching `pageshow` rebuilds whatever an earlier real teardown removed. The
+// listener stays registered: a persisted hide can be followed by a genuine one.
+window.addEventListener("pagehide", (event) => {
+  if (/** @type {PageTransitionEvent} */ (event).persisted) {
+    return;
+  }
+  disposeKeyboardInfrastructure();
+});
+
+window.addEventListener("pageshow", (event) => {
+  if (!(/** @type {PageTransitionEvent} */ (event).persisted)) {
+    return;
+  }
+  initKeyboardInfrastructure();
+  initQuickFileFinder();
+});
 
 // Compose the application-lifetime quick-file modules at the shell boundary.
 function initQuickFileFinder() {
@@ -5073,17 +7543,27 @@ function initQuickFileFinder() {
     !window.MetabrowserKnownFileCatalog ||
     !window.MetabrowserFileFuzzyMatch ||
     !window.MetabrowserSearch ||
-    !window.MetabrowserSearchPalette
+    !window.MetabrowserSearchPalette ||
+    !shortcutRegistry ||
+    !window.MetabrowserOverlay
   ) {
     console.warn("Quick File dependencies are unavailable");
     return;
   }
 
   knownFileCatalog = window.MetabrowserKnownFileCatalog.create();
+  window.MetabrowserPluginHost?.attachFileCatalog(knownFileCatalog);
   if (window.MetabrowserCatalogFeed) {
     quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
       catalog: knownFileCatalog,
     });
+    // The stream can open while its on-demand catalog modules are loading.
+    // Start here if that open already happened, or if this browser has no live
+    // transport; otherwise onopen starts it. JavaScript dispatches neither
+    // callback in the middle of this task, so the first fetch runs once.
+    if (catalogFeedCanStart) {
+      quickFileCatalogFeed.start();
+    }
   }
   quickFileSearchController = window.MetabrowserSearch.createController({
     maxResults: QUICK_FILE_RESULT_LIMIT,
@@ -5099,6 +7579,7 @@ function initQuickFileFinder() {
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
+    overlay: window.MetabrowserOverlay,
     // Coverage grows while the palette is open — the bulk feed lands, then
     // live deltas — so an open search re-runs instead of keeping the result
     // set it happened to get first.
@@ -5114,25 +7595,10 @@ function initQuickFileFinder() {
       boundMapSize(fileNeedsRevalidate, ETAG_REVALIDATE_MAX);
       return navigateToPath(path);
     },
+    resolveFocusFallback: resolveApplicationFocusFallback,
+    shortcuts: shortcutRegistry,
   });
 }
-
-window.addEventListener("hashchange", () => {
-  var path = parseHashRoute();
-  if (path && path !== currentPath) {
-    navigateToPath(path, true);
-  }
-});
-
-window.addEventListener("metabrowser:open-path", (event) => {
-  if (!(event instanceof CustomEvent)) {
-    return;
-  }
-  var path = event.detail?.path;
-  if (typeof path === "string" && path) {
-    selectFile(path);
-  }
-});
 
 function clearBrowserFileCache(path) {
   if (path) {
@@ -5147,13 +7613,13 @@ function clearBrowserFileCache(path) {
 }
 
 if (typeof window !== "undefined") {
-  window.MetabrowserDebug = {
+  window.metabrowser.debug = Object.freeze({
     clearFileCache: clearBrowserFileCache,
     selectFile: selectFile,
-  };
+  });
 
   function enhanceCurrentFileAfterOptionalAsset() {
-    highlightCode();
+    scheduleHighlightCode(document);
   }
 
   window.addEventListener(
@@ -5168,45 +7634,62 @@ if (typeof window !== "undefined") {
 
 // ── Init ────────────────────────────────────────────────────────
 
+async function initDeferredShellTools() {
+  const assets = window.MetabrowserAssets;
+  if (!assets) {
+    throw new Error("Metabrowser asset loader is unavailable");
+  }
+  await _perf.measureAsync("loadShellTools", () => assets.ensureAsset("shell-tools"));
+  initKeyboardInfrastructure();
+  initQuickFileFinder();
+  await window.MetabrowserGitPanel?.init();
+  document.documentElement.dataset.shellToolsReady = "true";
+}
+
+// app.js is the last core script in the body, so the tree container and every
+// cache used by its renderer are initialized here. Paint the server-carried
+// rows now instead of waiting for DOMContentLoaded. The authoritative request
+// below keeps the same baseline and reconciles into it.
+renderInitialTreeRows();
+
 document.addEventListener("DOMContentLoaded", async () => {
   initTooltip();
   initSettingsControl();
   initNavTabs();
   initFilterBar();
   initNavScrollShadow();
-  initQuickFileFinder();
-  // Not awaited: whether the served root is a repository is irrelevant
-  // to first paint, and blocking the tree walk on a git call would make
-  // every non-repository directory pay for a feature it will not show.
-  window.MetabrowserGitPanel?.init();
-  // Fire the URL-pinned file fetch in parallel with the tree walk: the
-  // two requests don't depend on each other, so a deep-link's preview
-  // can render as soon as /api/file lands instead of waiting for the
-  // full tree to come back. revealInTree below still waits on the
-  // tree because it queries DOM the renderer just produced.
-  var hashPath = parseHashRoute();
-  var initialPath = hashPath || serverInitialPath();
-  if (initialPath) {
-    selectFile(initialPath, true);
-  }
+  // Only a /view/ pathname selects a file; a hash is document state, never identity.
+  var initialTarget = window.MetabrowserNavigationRoute.parse(
+    location.pathname,
+    location.search,
+    location.hash,
+  );
+  var initialPath = initialTarget?.path.replace(/\/$/, "") || "";
   startIndexProgressPolling();
   // The tree fetch always runs: it supplies the header path and root
   // aggregates before any later recency selection repaints the panel
   // from /api/recent.
   await loadTree();
+  // The selected preview and its on-demand plugin assets share the local
+  // HTTP/1.1 connection pool with the tree. Start them after the first tree
+  // request so a folder renderer cannot delay the navigation's usable rows.
+  navigationController.start().catch((error) => {
+    console.error("Could not initialize browser navigation", error);
+  });
+  // These application-lifetime controls are not prerequisites for a usable
+  // tree. Start their ordered on-demand bundle only after the first tree
+  // request settles, so eleven unrelated scripts cannot delay the inline row,
+  // DOMContentLoaded, that request, inventory, or navigation. The catalog feed
+  // repairs the ordering when its stream opened before the bundle arrived.
+  initDeferredShellTools().catch((error) => {
+    console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
+  });
   if (filesPanelUsesRecentSource()) {
     loadRecent(filterState.get().recency);
   }
   initPaneResize("tree-resize", ".tree-pane", 180, null);
   if (initialPath) {
     revealInTree(initialPath);
-  } else {
-    var readme = findRootReadme();
-    if (readme) {
-      // The landing README is not a user navigation — keep the URL
-      // clean, as it was before the palette shared this path.
-      navigateToPath(readme, true);
-    }
   }
   // /api/events is the single source for tree decoration and
   // active-file badges; ActiveFileTracker emits fs.change ops

@@ -26,6 +26,24 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# SDK contract version
+
+# The browser SDK contract this host provides. A plugin declares the
+# contract it was written against and the loader rejects any other value,
+# so an SDK break surfaces as one clear message at load time instead of a
+# mystery failure inside a renderer.
+#
+# Bump this only when the contract actually breaks, and update every
+# built-in manifest in the same commit. The host ships no shims for older
+# values: an external plugin is expected to update and declare it. See
+# docs/development.md "Compatibility and Legacy Code".
+PLUGIN_SDK_VERSION = "0.5"
+
+# Metabrowser 0.4.0 allowed manifests to omit sdk_version. Such a manifest
+# targets the only SDK that existed under that contract. Keep this value pinned
+# when PLUGIN_SDK_VERSION changes so omission fails the ordinary mismatch gate.
+_IMPLICIT_PLUGIN_SDK_VERSION = "0.1"
+
 # ── Match predicate ────────────────────────────────────────────
 
 
@@ -116,6 +134,30 @@ class KindMatch(BaseModel):
 # ── Kind, view, data_hook ──────────────────────────────────────
 
 
+class ContainerSpec(BaseModel):
+    """The ``container`` table on a ``[[kind]]`` — folder-like behavior.
+
+    A container kind's files play both nav-tree roles from
+    ``docs/project/architecture/arch-nav-containers.md``: item-like
+    (selecting the file opens its normal views — the overview) and
+    folder-like (the row expands to child entries). Children come from
+    the named data hook; a child's document is served by the same kind's
+    views for the virtual path ``<file>/<inner>``, which the server
+    resolves by nearest-file-ancestor.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    children: str = Field(
+        ...,
+        description=(
+            "data_hook route (this plugin's) returning tree child entries for "
+            "?path=<container file>. Response shape: {children: [{name, path, "
+            "badge?, muted?}]} where path is the virtual child path."
+        ),
+    )
+
+
 class KindRule(BaseModel):
     """One ``[[kind]]`` block — declares a file kind + how to detect it."""
 
@@ -129,6 +171,10 @@ class KindRule(BaseModel):
             "Higher priority wins when multiple kinds claim the same file. "
             "Built-in kinds use 0; domain plugins should use 100+."
         ),
+    )
+    container: ContainerSpec | None = Field(
+        default=None,
+        description="Folder-like behavior for files of this kind; see ContainerSpec.",
     )
 
 
@@ -204,8 +250,13 @@ class PluginInfo(BaseModel):
     display_name: str = Field(default="", description="Human-readable plugin name.")
     version: str = Field(default="0.0.0", description="Plugin version, semver-ish.")
     sdk_version: str = Field(
-        default="0.1",
-        description="Metabrowser plugin SDK contract version this plugin targets.",
+        default=_IMPLICIT_PLUGIN_SDK_VERSION,
+        description=(
+            "Metabrowser plugin SDK contract version this plugin targets. "
+            "An omitted value targets the original SDK 0.1. The resolved value "
+            "must equal the host's PLUGIN_SDK_VERSION; the host provides no "
+            "compatibility path for older SDKs."
+        ),
     )
     extra_scripts: list[str] = Field(
         default_factory=list,
@@ -248,6 +299,27 @@ class PluginManifest(BaseModel):
         loader, not here.
         """
         problems: list[str] = []
+
+        # An SDK break is enforced, not absorbed. Refusing the plugin here
+        # names the required version so the author can update, instead of
+        # letting it load and fail later against a surface that moved.
+        if self.plugin.sdk_version != PLUGIN_SDK_VERSION:
+            problems.append(
+                f"plugin '{self.plugin.name}' targets browser SDK "
+                f"{self.plugin.sdk_version!r}, but this Metabrowser provides "
+                f"{PLUGIN_SDK_VERSION!r}; update the plugin for the current SDK "
+                "and set sdk_version accordingly"
+            )
+
+        # A container kind's children hook must be one of this plugin's
+        # declared data hooks — the capability is a contract, not a URL.
+        hook_routes = {hook.route for hook in self.data_hook}
+        for kr in self.kind:
+            if kr.container is not None and kr.container.children not in hook_routes:
+                problems.append(
+                    f"kind '{kr.id}' declares container.children="
+                    f"{kr.container.children!r} but no [[data_hook]] has that route"
+                )
 
         # Each kind needs a non-empty match predicate.
         for kr in self.kind:

@@ -2,6 +2,7 @@
 name = "sample"
 display_name = "Sample (test fixture)"
 version = "0.0.1"
+sdk_version = "0.5"
 
 # A pure-JS plugin — no Python sidekick. Detection is declarative
 # (extension + frontmatter key); rendering is fully client-side.

@@ -6,8 +6,11 @@ from funlog import log_calls
 from rich import get_console, reconfigure
 from rich import print as rprint
 
-# Update as needed.
-SRC_PATHS = ["src", "tests", "devtools"]
+from devtools.source_naming import find_source_naming_findings
+
+# Update as needed. explorations/performance-loop/ holds the load-time loop's runner: not shipped,
+# but it is Python this project maintains, so it is held to the same standard.
+SRC_PATHS = ["src", "tests", "devtools", "explorations"]
 
 # Tracked agent scaffolding: real files in the repository, but not prose this
 # project authors or spell-checks. Everything else that should stay out of the
@@ -58,6 +61,7 @@ BIOME_PATHS = [
     "src/metabrowser/static",
     "src/metabrowser/builtin_plugins",
     "tests/dom",
+    "explorations",
     "biome.json",
     "package.json",
     "tsconfig.json",
@@ -79,6 +83,11 @@ def main() -> int:
     rprint()
 
     errcount = 0
+    source_naming_findings = find_source_naming_findings()
+    if source_naming_findings:
+        for finding in source_naming_findings:
+            rprint(f"[bold red]Error: {finding}[/bold red]")
+        errcount += 1
     if args.check:
         errcount += run(["codespell", *SRC_PATHS, *DOC_PATHS])
         errcount += run(["ruff", "check", *SRC_PATHS])
@@ -90,7 +99,7 @@ def main() -> int:
     errcount += run(["basedpyright", "--stats", *SRC_PATHS])
     biome_args = ["npx", "--no-install", "biome"]
     if args.check:
-        biome_args.append("ci")
+        biome_args.extend(["ci", "--error-on-warnings"])
     else:
         biome_args.extend(["check", "--write", "--unsafe"])
     biome_args.extend(BIOME_PATHS)

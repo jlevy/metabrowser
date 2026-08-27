@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-import colorsys
+import math
 import re
 from pathlib import Path
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "metabrowser" / "static"
 STYLES_CSS = STATIC_DIR / "styles.css"
 HIGHLIGHT_THEME_CSS = STATIC_DIR / "vendor" / "highlight-github.min.css"
+DIFF_STYLES_CSS = STATIC_DIR.parent / "builtin_plugins" / "diff" / "styles.css"
 
 MINIMUM_TEXT_CONTRAST = 4.5
+MINIMUM_GUTTER_CONTRAST = 3.0
+PALE_DIFF_MIX = 0.03
+STRONG_DIFF_MIX = 0.09
+INNER_DIFF_MIX = 0.20
 HUE_CIRCLE_DEGREES = 360.0
 PERCENT_SCALE = 100.0
 SRGB_LINEAR_THRESHOLD = 0.04045
@@ -41,9 +46,6 @@ SYNTAX_DIFF_PAIRS = (
 )
 
 TOKEN_RE = re.compile(r"^\s*(--[\w-]+):\s*([^;]+);", re.MULTILINE)
-HSL_RE = re.compile(
-    r"hsl\(\s*(?P<hue>[\d.]+)\s+(?P<saturation>[\d.]+)%\s+(?P<lightness>[\d.]+)%\s*\)"
-)
 VAR_RE = re.compile(r"var\((?P<token>--[\w-]+)\)")
 CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 CSS_RULE_RE = re.compile(r"(?P<selectors>[^{}]+)\{(?P<body>[^{}]*)\}")
@@ -114,13 +116,50 @@ def _css_rules(css: str) -> tuple[tuple[str, str], ...]:
     )
 
 
-def _parse_hsl(value: str) -> tuple[float, float, float]:
-    match = HSL_RE.fullmatch(value)
-    assert match is not None, f"Expected an opaque hsl() color, got {value!r}"
-    hue = float(match.group("hue")) / HUE_CIRCLE_DEGREES
-    saturation = float(match.group("saturation")) / PERCENT_SCALE
-    lightness = float(match.group("lightness")) / PERCENT_SCALE
-    return colorsys.hls_to_rgb(hue, lightness, saturation)
+def _rule_body(css: str, selector: str) -> str:
+    return next(body for candidate, body in _css_rules(css) if candidate == selector)
+
+
+OKLCH_RE = re.compile(
+    r"oklch\(\s*(?P<lightness>[\d.]+)%?\s+(?P<chroma>[\d.]+)\s+(?P<hue>[\d.]+)\s*\)"
+)
+
+
+def _parse_color(value: str) -> tuple[float, float, float]:
+    """sRGB 0..1 for an opaque oklch() literal.
+
+    Every color in the stylesheets is oklch (see the design system's
+    Color and Theming section), so contrast is measured by converting
+    back through OKLab rather than by reading a notation that separates
+    lightness from luminance the way hsl did.
+    """
+    match = OKLCH_RE.fullmatch(value.strip())
+    assert match is not None, f"Expected an opaque oklch() color, got {value!r}"
+    lightness = float(match.group("lightness")) / 100
+    chroma = float(match.group("chroma"))
+    hue = math.radians(float(match.group("hue")))
+    a = chroma * math.cos(hue)
+    b = chroma * math.sin(hue)
+    l_, m_, s_ = (
+        lightness + 0.3963377774 * a + 0.2158037573 * b,
+        lightness - 0.1055613458 * a - 0.0638541728 * b,
+        lightness - 0.0894841775 * a - 1.2914855480 * b,
+    )
+    long, medium, short = l_**3, m_**3, s_**3
+    linear = (
+        +4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short,
+        -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short,
+        -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short,
+    )
+
+    def to_srgb(channel: float) -> float:
+        channel = max(0.0, min(1.0, channel))
+        if channel <= 0.0031308:
+            return channel * 12.92
+        return 1.055 * channel ** (1 / 2.4) - 0.055
+
+    red, green, blue = linear
+    return (to_srgb(red), to_srgb(green), to_srgb(blue))
 
 
 def _linear_channel(channel: float) -> float:
@@ -137,11 +176,29 @@ def _relative_luminance(color: tuple[float, float, float]) -> float:
 
 
 def _contrast_ratio(first: str, second: str) -> float:
-    first_luminance = _relative_luminance(_parse_hsl(first))
-    second_luminance = _relative_luminance(_parse_hsl(second))
+    return _contrast_ratio_rgb(_parse_color(first), _parse_color(second))
+
+
+def _contrast_ratio_rgb(
+    first: tuple[float, float, float], second: tuple[float, float, float]
+) -> float:
+    first_luminance = _relative_luminance(first)
+    second_luminance = _relative_luminance(second)
     lighter = max(first_luminance, second_luminance)
     darker = min(first_luminance, second_luminance)
     return (lighter + CONTRAST_LUMINANCE_OFFSET) / (darker + CONTRAST_LUMINANCE_OFFSET)
+
+
+def _mix_srgb(
+    foreground: tuple[float, float, float],
+    background: tuple[float, float, float],
+    foreground_ratio: float,
+) -> tuple[float, float, float]:
+    channels = tuple(
+        foreground_ratio * foreground_channel + (1 - foreground_ratio) * background_channel
+        for foreground_channel, background_channel in zip(foreground, background, strict=True)
+    )
+    return (channels[0], channels[1], channels[2])
 
 
 def _resolved_color(tokens: dict[str, str], token: str) -> str:
@@ -223,3 +280,119 @@ def test_metabrowser_owns_highlight_layout_and_semantic_colors() -> None:
     assert "overflow-x: auto;" in layout_rules["pre code.hljs"]
     assert "padding: 1em;" in layout_rules["pre code.hljs"]
     assert "padding: 3px 5px;" in layout_rules["code.hljs"]
+
+
+def test_syntax_foregrounds_meet_contrast_over_diff_tints() -> None:
+    css = STYLES_CSS.read_text(encoding="utf-8")
+    light_tokens = _tokens(_css_block(css, ":root {"))
+    dark_overrides = _tokens(_css_block(css, '[data-theme="dark"] {'))
+
+    for theme, tokens in (
+        ("light", light_tokens),
+        ("dark", {**light_tokens, **dark_overrides}),
+    ):
+        background = _parse_color(_resolved_color(tokens, "--bg"))
+        success = _parse_color(_resolved_color(tokens, "--status-success"))
+        error = _parse_color(_resolved_color(tokens, "--status-error"))
+        strong_addition = _mix_srgb(success, background, STRONG_DIFF_MIX)
+        strong_deletion = _mix_srgb(error, background, STRONG_DIFF_MIX)
+        refined_addition = _mix_srgb(success, background, PALE_DIFF_MIX)
+        refined_deletion = _mix_srgb(error, background, PALE_DIFF_MIX)
+        inner_foreground = _parse_color(_resolved_color(tokens, "--text"))
+        surfaces: dict[str, tuple[float, float, float]] = {
+            "context": background,
+            "addition": strong_addition,
+            "deletion": strong_deletion,
+            "refined addition": refined_addition,
+            "refined deletion": refined_deletion,
+            "inner addition": _mix_srgb(success, refined_addition, INNER_DIFF_MIX),
+            "inner deletion": _mix_srgb(error, refined_deletion, INNER_DIFF_MIX),
+        }
+        for foreground_token in SYNTAX_FOREGROUND_TOKENS:
+            foreground = _parse_color(_resolved_color(tokens, foreground_token))
+            for surface_name, surface in surfaces.items():
+                rendered_foreground = (
+                    inner_foreground if surface_name.startswith("inner ") else foreground
+                )
+                contrast = _contrast_ratio_rgb(rendered_foreground, surface)
+                assert contrast >= MINIMUM_TEXT_CONTRAST, (
+                    f"{theme} {foreground_token} has {contrast:.2f}:1 contrast "
+                    f"over the diff {surface_name} surface"
+                )
+        for direction, status, surface in (
+            ("addition", success, strong_addition),
+            ("deletion", error, strong_deletion),
+        ):
+            contrast = _contrast_ratio_rgb(status, surface)
+            assert contrast >= MINIMUM_GUTTER_CONTRAST, (
+                f"{theme} {direction} gutter has {contrast:.2f}:1 contrast against its line surface"
+            )
+
+
+def test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract() -> None:
+    css = DIFF_STYLES_CSS.read_text(encoding="utf-8")
+    token_host = _rule_body(css, ".metabrowser-diff-host .diff-line-text.hljs")
+    assert "background: transparent;" in token_host
+    assert "padding: 0;" in token_host
+    assert "overflow-x: auto;" in _rule_body(css, ".metabrowser-diff-host .diff-file-body")
+    assert "minmax(20em, 1fr) minmax(20em, 1fr)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-split-row"
+    )
+    assert "user-select: none;" in _rule_body(css, ".metabrowser-diff-host .diff-split-empty")
+    assert "user-select: none;" in _rule_body(
+        css,
+        '.metabrowser-diff-host .diff-root[data-selection-side="old"] .diff-split-new .diff-line-text',
+    )
+    assert "user-select: none;" in _rule_body(
+        css,
+        '.metabrowser-diff-host .diff-root[data-selection-side="new"] .diff-split-old .diff-line-text',
+    )
+    host_tokens = _rule_body(css, ".metabrowser-diff-host")
+    assert (
+        "--diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);"
+        in host_tokens
+    )
+    assert (
+        "--diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);" in host_tokens
+    )
+    assert (
+        "--diff-add-refined-row-bg: color-mix(in srgb, var(--status-success) 3%, transparent);"
+        in host_tokens
+    )
+    assert (
+        "--diff-del-refined-row-bg: color-mix(in srgb, var(--status-error) 3%, transparent);"
+        in host_tokens
+    )
+    assert (
+        "--diff-add-inner-bg: color-mix(in srgb, var(--status-success) 20%, transparent);"
+        in host_tokens
+    )
+    assert (
+        "--diff-del-inner-bg: color-mix(in srgb, var(--status-error) 20%, transparent);"
+        in host_tokens
+    )
+    assert "--diff-add-gutter: var(--status-success);" in host_tokens
+    assert "--diff-del-gutter: var(--status-error);" in host_tokens
+    assert "--diff-change-gutter-width: 3px;" in host_tokens
+    assert "var(--diff-add-refined-row-bg)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-add.diff-line-refined"
+    )
+    assert "var(--diff-del-refined-row-bg)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-del.diff-line-refined"
+    )
+    add_inner = _rule_body(css, ".metabrowser-diff-host .diff-line-add .diff-intraline-change")
+    assert "var(--diff-add-inner-bg)" in add_inner
+    assert "color: var(--text);" in add_inner
+    del_inner = _rule_body(css, ".metabrowser-diff-host .diff-line-del .diff-intraline-change")
+    assert "var(--diff-del-inner-bg)" in del_inner
+    assert "color: var(--text);" in del_inner
+    first_number = _rule_body(css, ".metabrowser-diff-host .diff-line-number:first-child")
+    assert "box-sizing: border-box;" in first_number
+    assert "border-inline-start: var(--diff-change-gutter-width) solid transparent;" in first_number
+    assert "border-inline-start-color: var(--diff-add-gutter);" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-add > .diff-line-number:first-child"
+    )
+    assert "border-inline-start-color: var(--diff-del-gutter);" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-del > .diff-line-number:first-child"
+    )
+    assert "@media (prefers-reduced-motion: reduce)" in css

@@ -123,7 +123,30 @@ def test_charts_cache_invalidates_when_file_grows(tmp_path: Path) -> None:
 
 def test_etag_is_stable_for_unchanged_file_hash() -> None:
     """Browser-server restarts should not change ETags for unchanged files."""
-    assert proc_browser._etag_for("abc123") == '"abc123"'
+    assert proc_browser._etag_for("abc123") == proc_browser._etag_for("abc123")
+    assert proc_browser._etag_for("abc123").endswith('-abc123"')
+
+
+def test_etag_is_scoped_to_the_build() -> None:
+    """A rendering change has to invalidate what clients cached.
+
+    The body is a function of the file *and* of how this version renders it.
+    Keying on the file alone made every rendering change invisible to a client
+    that had already cached the file: when small binaries moved from the text
+    fallback to the Bytes view, a cached browser kept replaying a field of
+    U+FFFD, because the mtime had not changed and the server answered 304 to
+    its revalidation.
+    """
+    from metabrowser.http_caching import BUILD_TAG, build_scoped_etag
+
+    assert BUILD_TAG and BUILD_TAG in proc_browser._etag_for("abc123")
+    # Quoted per RFC 7232, and the salt cannot break that quoting.
+    tag = build_scoped_etag("abc123")
+    assert tag.startswith('"') and tag.endswith('"') and tag.count('"') == 2
+
+    # A different build yields a different validator for the same file.
+    other = f'"{"0" * len(BUILD_TAG)}-abc123"'
+    assert other != tag
 
 
 def test_api_file_emits_etag_header_and_304s_on_match(tmp_path: Path) -> None:
@@ -162,6 +185,34 @@ def test_api_file_emits_etag_header_and_304s_on_match(tmp_path: Path) -> None:
         proc_browser._set_root_dir(Path())
 
 
+def test_api_file_explains_symlink_outside_served_folder(tmp_path: Path) -> None:
+    """A listed symlink must not degrade to the false claim ``Not found``."""
+
+    served = tmp_path / "served"
+    outside = tmp_path / "outside"
+    served.mkdir()
+    outside.mkdir()
+    (outside / "target.txt").write_text("outside")
+    (served / "outside-link").symlink_to(outside / "target.txt")
+
+    proc_browser._set_root_dir(served)
+    try:
+        response = asyncio.run(
+            proc_browser.api_file(cast(Any, _FakeRequest({"path": "outside-link"})))
+        )
+    finally:
+        proc_browser._set_root_dir(Path())
+
+    assert response.status_code == 404
+    assert json.loads(bytes(response.body)) == {
+        "summary": "Could not open this link.",
+        "error": (
+            "This symbolic link points outside the served folder. "
+            "Serve a folder containing its target to browse it."
+        ),
+    }
+
+
 def test_api_file_etag_changes_when_file_changes(tmp_path: Path) -> None:
     """A modification must invalidate the ETag — otherwise the client
     keeps the stale cached payload forever."""
@@ -188,8 +239,8 @@ def test_api_file_etag_changes_when_file_changes(tmp_path: Path) -> None:
         proc_browser._set_root_dir(Path())
 
 
-def test_api_file_windows_large_text_initial_payload(tmp_path: Path) -> None:
-    """Large text files should not be sent wholesale on first preview."""
+def test_api_file_windows_large_syntax_text_at_highlight_bound(tmp_path: Path) -> None:
+    """Large syntax-known files open as a highlighted bounded prefix."""
     content = "a" * (proc_browser._TEXT_PREVIEW_CHUNK_BYTES + 123)
     fixture = tmp_path / "big.yaml"
     fixture.write_text(content)
@@ -199,9 +250,44 @@ def test_api_file_windows_large_text_initial_payload(tmp_path: Path) -> None:
         payload = json.loads(bytes(resp.body))
         assert payload["type"] == "text"
         assert payload["content_truncated"] is True
+        assert payload["highlight_disabled"] is False
+        assert payload["bytes_read"] == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
+        assert len(payload["content"]) == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
+    finally:
+        proc_browser._set_root_dir(Path())
+
+
+def test_api_file_plain_text_keeps_the_normal_initial_window(tmp_path: Path) -> None:
+    """Grammar-less text should not inherit the smaller syntax-work bound."""
+    content = "a" * (proc_browser._TEXT_PREVIEW_CHUNK_BYTES + 123)
+    fixture = tmp_path / "big.txt"
+    fixture.write_text(content)
+    proc_browser._set_root_dir(tmp_path)
+    try:
+        resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "big.txt"}))))
+        payload = json.loads(bytes(resp.body))
+        assert payload["type"] == "text"
+        assert payload["content_truncated"] is True
         assert payload["highlight_disabled"] is True
         assert payload["bytes_read"] == proc_browser._TEXT_PREVIEW_CHUNK_BYTES
-        assert len(payload["content"]) == proc_browser._TEXT_PREVIEW_CHUNK_BYTES
+    finally:
+        proc_browser._set_root_dir(Path())
+
+
+def test_api_file_windows_large_extensionless_source_at_highlight_bound(tmp_path: Path) -> None:
+    """Known source basenames use the same bounded highlighted prefix."""
+    line = "target:\n\tbuild\n"
+    content = line * (proc_browser._TEXT_PREVIEW_CHUNK_BYTES // len(line) + 10)
+    fixture = tmp_path / "Makefile"
+    fixture.write_text(content)
+    proc_browser._set_root_dir(tmp_path)
+    try:
+        resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "Makefile"}))))
+        payload = json.loads(bytes(resp.body))
+        assert payload["type"] == "text"
+        assert payload["content_truncated"] is True
+        assert payload["highlight_disabled"] is False
+        assert payload["bytes_read"] == proc_browser._SYNTAX_HIGHLIGHT_MAX_BYTES
     finally:
         proc_browser._set_root_dir(Path())
 
@@ -218,7 +304,7 @@ def test_api_file_codex_turn_completed_without_usage_helper_crash(tmp_path: Path
     proc_browser._set_root_dir(tmp_path)
     try:
         resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "codex.jsonl"}))))
-        body = json.loads(resp.body)
+        body = json.loads(bytes(resp.body))
         assert resp.status_code == 200
         assert body["type"] == "jsonl"
         assert body["summary"]["adapter"] == "codex"
@@ -242,7 +328,7 @@ def test_api_file_internal_error_degrades_to_error_view(tmp_path: Path, monkeypa
     proc_browser._set_root_dir(tmp_path)
     try:
         resp = asyncio.run(proc_browser.api_file(cast(Any, _FakeRequest({"path": "broken.jsonl"}))))
-        body = json.loads(resp.body)
+        body = json.loads(bytes(resp.body))
         assert resp.status_code == 200
         assert body["type"] == "error"
         assert "Internal error while rendering this file" in body["error"]
@@ -282,6 +368,7 @@ def test_api_file_large_text_chunk_ignores_matching_etag(tmp_path: Path) -> None
         assert payload["type"] == "text_chunk"
         assert payload["content"] == "tail"
         assert payload["content_truncated"] is False
+        assert payload["highlight_disabled"] is True
     finally:
         proc_browser._set_root_dir(Path())
 
@@ -639,9 +726,10 @@ def test_sse_tail_closes_on_file_disappearance(tmp_path: Path) -> None:
 
 
 def test_markdown_plugin_has_no_duplicate_client_renderer() -> None:
-    plugin_js = (
-        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown" / "index.js"
-    ).read_text()
+    plugin_dir = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "markdown"
+    plugin_js = "\n".join(
+        (plugin_dir / name).read_text() for name in ("index.js", "rendered.js", "source.js")
+    )
     assert "DOMPurify" not in plugin_js
     assert "marked.parse(" not in plugin_js
     assert "fetchKpressRender" in plugin_js
@@ -714,13 +802,15 @@ def test_browser_perf_reports_large_file_render_phases() -> None:
     # renderSourceTab → renderText:source via the text built-in plugin.
     assert "renderText:source" in text_plugin
     assert "renderFile:mount" in app_js
-    assert "renderFile:nextPaint" in app_js
+    assert "fileNavigation:activeView" in app_js
+    assert "fileNavigation:paintReady" in app_js
     assert "highlightCode" in app_js
     assert "no-highlight" in app_js
     assert "loadMoreCurrentText" in app_js
     assert "TEXT_PREVIEW_CHUNK_BYTES" in app_js
     assert "filePerfMeta" in app_js
-    assert "MetabrowserDebug" in app_js
+    assert "window.metabrowser.debug" in app_js
+    assert "MetabrowserDebug" not in app_js
     assert "slow_measure" in perf_js
     assert "setSlowThreshold" in perf_js
     assert "console.warn" in perf_js

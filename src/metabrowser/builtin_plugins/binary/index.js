@@ -1,9 +1,17 @@
-// Binary built-in plugin — no JS-side renderer.
+// Binary built-in plugin — the generic byte-preview fallback.
 //
-// Binary files have no views (the manifest declares no [[view]]
-// blocks); the preview pane's no-views branch renders a static
-// "No preview is available" message. This file exists so the plugin
-// directory has the index.js the discovery layer expects, and so a
-// future binary-specific renderer (hex dump, embedded preview) has
-// an obvious place to land.
-(() => {})();
+// Owns one view:
+//   ("binary", "bytes") — a bounded window of the file's logical bytes,
+//                         fetched from /api/plugin/binary/chunk and
+//                         rendered one display unit per byte.
+
+import { mountBytesView } from "./bytes-view.js";
+
+const mb = window.metabrowser;
+if (!mb) {
+  throw new Error("metabrowser binary plugin: SDK is unavailable");
+}
+
+mb.registerView("binary", "bytes", {
+  render: (container, ctx) => mountBytesView(container, ctx, mb),
+});

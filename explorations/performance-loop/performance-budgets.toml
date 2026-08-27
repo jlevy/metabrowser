@@ -1,0 +1,260 @@
+schema = "web-performance-budgets/v1"
+
+[requirements]
+profile_schema = "web-performance-profile/v1"
+responsiveness_source = "navigation-profiler"
+vitals_source = "navigation-profiler"
+require_visible = true
+require_interactions = true
+minimum_interaction_inputs = 5
+minimum_interaction_coverage_pct = 80
+require_no_label_overflow = true
+require_no_fetch_concurrency_overflow = true
+require_no_resource_overflow = true
+required_observers = ["longtask", "event"]
+required_fields = [
+  "commit",
+  "corpus",
+  "dirty",
+  "files",
+  "harness_version",
+  "recorded_at",
+  "viewport_h",
+  "viewport_w",
+]
+minimum_runs_per_condition = 3
+completion_field = "index_status_at_probe"
+completion_values = ["done", "truncated"]
+
+# Hard gates defend properties the current application satisfies. A candidate
+# exceeding one cannot be accepted even when its primary metric improves.
+[metrics.long_task_max_ms]
+category = "responsiveness"
+maximum = 200
+policy = "gate"
+required = true
+description = "Longest task from navigation through settle."
+
+[metrics.long_task_max_ms_first_5s]
+category = "responsiveness"
+maximum = 200
+policy = "gate"
+required = true
+description = "Longest task while the reader is deciding whether the page is alive."
+
+[metrics.long_tasks_over_200ms]
+category = "responsiveness"
+maximum = 0
+policy = "gate"
+required = true
+description = "No synchronous task may cross the responsiveness budget."
+
+[metrics.animation_frame_max_ms]
+category = "responsiveness"
+maximum = 200
+policy = "target"
+required = false
+description = "Longest Chromium animation frame, including non-blocking navigation gaps."
+
+[metrics.animation_frames_over_200ms]
+category = "responsiveness"
+maximum = 0
+policy = "target"
+required = false
+description = "Animation frames crossing 200 ms, including non-blocking navigation gaps."
+
+[metrics.animation_frame_blocking_ms_max]
+category = "responsiveness"
+maximum = 200
+policy = "gate"
+required = false
+description = "Worst main-thread blocking attributed by Chromium Long Animation Frame."
+
+[metrics.animation_frames_blocking_over_200ms]
+category = "responsiveness"
+maximum = 0
+policy = "gate"
+required = false
+description = "Animation frames whose attributed blocking crosses the responsiveness budget."
+
+[metrics.interaction_max_ms]
+category = "responsiveness"
+maximum = 200
+policy = "gate"
+required = true
+description = "Worst captured interaction-to-next-paint latency."
+
+[metrics.main_thread_blocked_pct]
+category = "responsiveness"
+maximum = 5
+policy = "gate"
+required = true
+description = "Whole-window blocked share catches sustained smaller hitches."
+
+[metrics.inventory_delivery_max_ms]
+category = "responsiveness"
+maximum = 50
+policy = "gate"
+required = true
+description = "No inventory or catalog delivery callback may become a Long Task."
+
+[metrics.inventory_delivery_attribution_missing]
+category = "responsiveness"
+maximum = 0
+policy = "gate"
+required = true
+description = "The application must retain named inventory-delivery attribution."
+
+[metrics.inventory_delivery_work_pct]
+category = "responsiveness"
+maximum = 5
+policy = "gate"
+required = true
+description = "Inventory delivery may not consume a sustained share of the measured main-thread window."
+
+[metrics.fetch_network_errors]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "Rejected non-abort fetches, which status and timing summaries otherwise hide."
+
+[metrics.fetches_in_flight]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "A settled browser profile may not leave application fetch work running."
+
+[metrics.fetch_http_5xx]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "Server failures observed by the page."
+
+[metrics.rendered_preview_errors]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "Rendered main-panel error states are failed product behavior, not valid paint milestones."
+
+[metrics.page_exceptions]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "Uncaught browser exceptions observed from navigation through settled profile export."
+
+[metrics.collapsed_diff_rows_materialized]
+category = "rendering"
+maximum = 0
+policy = "gate"
+required = true
+description = "Rows hidden by a collapsed diff fold must not occupy the DOM."
+
+# Targets stay visible on every comparison but do not block unrelated work
+# until the application reaches them. Once reached, promote the policy to gate.
+[metrics.fetch_aborts]
+category = "correctness"
+maximum = 0
+policy = "target"
+required = true
+description = "Aborted requests stay visible until each scenario declares cancellation intentional."
+
+[metrics.fetch_http_4xx]
+category = "correctness"
+maximum = 0
+policy = "target"
+required = true
+description = "Client-visible missing or rejected resources."
+
+[metrics.fcp_ms]
+category = "loading"
+maximum = 200
+policy = "target"
+required = false
+description = "First contentful paint."
+
+[metrics.lcp_ms]
+category = "loading"
+maximum = 2500
+policy = "target"
+required = false
+description = "Largest contentful paint."
+
+# exp-014 measured 74 startup scripts / 337 KB before selected-kind loading,
+# 33 / 214 KB after that change, and 22 / 154 KB after shell tools moved behind
+# the first usable tree on the same 111,590-file corpus. These ceilings retain
+# headroom for a small core module while preventing either eager tier from
+# returning to the directory shell's critical path.
+[metrics.startup_script_requests]
+category = "loading"
+maximum = 25
+policy = "gate"
+required = true
+description = "JavaScript requests started before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
+
+[metrics.startup_script_transfer_kb]
+category = "loading"
+maximum = 175
+policy = "gate"
+required = true
+description = "Transferred startup JavaScript before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
+
+[metrics.shell_tools_missing]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "Deferred application-lifetime search, keyboard, Help, and Git controls did not reach ready state."
+
+[metrics.file_catalog_incomplete]
+category = "correctness"
+maximum = 0
+policy = "gate"
+required = true
+description = "Quick File did not converge to an authoritative complete catalog after the index settled."
+
+[metrics.first_row_ms]
+category = "application"
+maximum = 500
+policy = "target"
+required = true
+description = "Metabrowser's first usable navigation row."
+
+[metrics.cls]
+category = "visual-stability"
+maximum = 0.1
+policy = "target"
+required = false
+description = "Cumulative layout shift without recent input."
+
+[metrics.reserved_region_shift_px]
+category = "application"
+maximum = 0
+policy = "target"
+required = true
+description = "Movement in the two explicitly reserved Metabrowser regions."
+
+[metrics.tree_region_repaints]
+category = "application"
+maximum = 1
+policy = "target"
+required = true
+description = "Whole tree-region replacements from navigation through settle."
+
+[metrics.frame_missing_px]
+category = "application"
+maximum = 0
+policy = "target"
+required = true
+description = "Settled frame height absent from the shipped shell."
+
+[metrics.dom_nodes]
+category = "rendering"
+maximum = 20000
+policy = "target"
+required = true
+description = "At-rest DOM size."

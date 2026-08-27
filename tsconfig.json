@@ -23,7 +23,7 @@
     "src/metabrowser/static/charts.js",
     "src/metabrowser/static/icons.js",
     "src/metabrowser/static/perf.js",
-    "src/metabrowser/static/plugin_sdk.js",
+    "src/metabrowser/static/plugin-sdk.js",
     "src/metabrowser/builtin_plugins/agent_log/index.js",
     "src/metabrowser/builtin_plugins/markdown/index.js",
     "src/metabrowser/builtin_plugins/structured/index.js",

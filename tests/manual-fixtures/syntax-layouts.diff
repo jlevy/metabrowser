@@ -1,0 +1,102 @@
+diff --git a/src/example.js b/src/example.js
+index 348a77d..064cd23 100644
+--- a/src/example.js
++++ b/src/example.js
+@@ -1,9 +1,11 @@
+ export function render(item) {
+   const message = `hello ${
+-    item.oldName
++    item.newName
+   }`;
++  const active = item.enabled ?? true;
+   return {
+     message,
++    active,
+     width: "a deliberately long source line keeps narrow split panes honest without changing the source text or hiding horizontal overflow",
+   };
+ }
+\ No newline at end of file
+diff --git a/config/options.js b/config/options.toml
+similarity index 18%
+rename from config/options.js
+rename to config/options.toml
+index 99ad3dc..a51c09e 100644
+--- a/config/options.js
++++ b/config/options.toml
+@@ -1,42 +1,4 @@
+-export const option01 = true;
+-export const option02 = true;
+-export const option03 = true;
+-export const option04 = true;
+-export const option05 = true;
+-export const option06 = true;
+-export const option07 = true;
+-export const option08 = true;
+-export const option09 = true;
+-export const option10 = true;
+-export const option11 = true;
+-export const option12 = true;
+-export const option13 = true;
+-export const option14 = true;
+-export const option15 = true;
+-export const option16 = true;
+-export const option17 = true;
+-export const option18 = true;
+-export const option19 = true;
+-export const option20 = true;
+-export const option21 = true;
+-export const option22 = true;
+-export const option23 = true;
+-export const option24 = true;
+-export const option25 = true;
+-export const option26 = true;
+-export const option27 = true;
+-export const option28 = true;
+-export const option29 = true;
+-export const option30 = true;
+-export const option31 = true;
+-export const option32 = true;
+-export const option33 = true;
+-export const option34 = true;
+-export const option35 = true;
+-export const option36 = true;
+-export const option37 = true;
+-export const option38 = true;
+-export const option39 = true;
+-export const option40 = true;
+-export const option41 = true;
+-export const option42 = true;
++[options]
++enabled = true
++theme = "system"
++retry_count = 3
+diff --git a/notes/sample.weird b/notes/sample.weird
+new file mode 100644
+index 0000000..14fa813
+--- /dev/null
++++ b/notes/sample.weird
+@@ -0,0 +1,3 @@
++unknown grammars stay readable
++<script>looking text remains literal</script>
++the plain fallback is part of the contract
+diff --git a/config/app.yaml b/config/app.yaml
+index f12ca44..592fec3 100644
+--- a/config/app.yaml
++++ b/config/app.yaml
+@@ -1,3 +1,4 @@
+ app:
+-  retries: 3
++  retries: 5
+   theme: system
++  telemetry: false
+diff --git a/docs/guide.md b/docs/guide.md
+index 47e33c7..31cacc1 100644
+--- a/docs/guide.md
++++ b/docs/guide.md
+@@ -1,5 +1,5 @@
+ # Guide
+ Overview
+-Run the old command before opening the browser.
++Run the new command before opening Metabrowser.
+ Details
+ The source tab keeps Markdown syntax visible.

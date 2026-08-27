@@ -56,6 +56,7 @@ from starlette.responses import (
     FileResponse,
     HTMLResponse,
     PlainTextResponse,
+    RedirectResponse,
     Response,
     StreamingResponse,
 )
@@ -66,7 +67,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from strif import file_mtime_hash
 
-from metabrowser import kpress_adapter
+from metabrowser import __version__, kpress_adapter
 from metabrowser.activity import (
     ACTIVITY_POLL_INTERVAL_MS,
     TRACKABLE_DISCOVERY_TTL_SECONDS,
@@ -78,11 +79,14 @@ from metabrowser.activity import (
     activity_tracker,
 )
 from metabrowser.activity import FileActivityTracker as _FileActivityTracker
+from metabrowser.build_version import display_version_line
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.
 from metabrowser.charts import clear_charts_cache
+from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
+from metabrowser.file_extensions import syntax_language_for_path
 from metabrowser.file_kinds import (
     FILE_KIND_DETECTORS,
     VIEW_REGISTRY,
@@ -92,13 +96,20 @@ from metabrowser.file_kinds import (
     register_file_kind_detector,
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.folder_discovery import discover_folder
 from metabrowser.git.routes import GIT_ROUTES
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
     ArtifactPath,
 )
+from metabrowser.http_caching import (
+    build_scoped_etag,
+    etag_headers,
+    matches_if_none_match,
+)
 from metabrowser.inventory import get_instance as get_inventory
+from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
@@ -112,11 +123,27 @@ from metabrowser.paths_safe import (
     _safe_subdir,
     _set_root_dir,
 )
+from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.plugin_paths import normalize_plugin_dirs
 from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
+from metabrowser.repository_context import discover_repository_context
 from metabrowser.settings import (
+    FOLDER_DISCOVERY_MAX_ENTRIES,
     RECENT_WINDOW_SECONDS,
+    ROLLUP_BODY_CACHE_ENTRIES,
+    ROLLUP_DEFAULT_DEPTH,
+    ROLLUP_DEFAULT_EXT_RANK,
+    ROLLUP_DEFAULT_EXT_TOP,
+    ROLLUP_DEFAULT_TOP,
+    ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+    ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+    ROLLUP_MAX_DEPTH,
+    ROLLUP_MAX_EXT_TOP,
+    ROLLUP_MAX_TOP,
     SLOW_OPERATION_LOG_SECONDS,
+    SYNTAX_HIGHLIGHT_MAX_BYTES,
+    TEXT_PREVIEW_CHUNK_BYTES,
+    TEXT_PREVIEW_REQUEST_MAX_BYTES,
     client_settings_dict,
 )
 from metabrowser.sse import api_stream
@@ -128,16 +155,30 @@ from metabrowser.tree import (
     _build_inventory_tree,
     _dir_tree,
     _find_git_root,
-    _has_any_file,
+    _has_any_leaf,
     _has_any_nongitignored,
     _has_visible_children,
     _subtree_is_all_gitignored,
     _subtree_is_empty,
     _subtree_summary,
     _tree_depth_from_query,
+    build_filtered_inventory_tree,
     build_gitignore_check,
     inventory_has_data,
     inventory_status,
+    parent_is_gitignored,
+)
+from metabrowser.tree_filter import (
+    TreeFilter,
+    parse_recency,
+    parse_size_floor,
+    parse_types,
+    reset_rollup_cache_for_tests,
+)
+from metabrowser.view_routes import (
+    VIEW_ROUTE_PREFIX,
+    decode_safe_commit_route,
+    decode_safe_view_path,
 )
 
 if TYPE_CHECKING:
@@ -154,6 +195,94 @@ LOG = logging.getLogger(__name__)
 # this below the first-paint budget: large trees return partial inventory
 # state instead of blocking on a filesystem walk.
 _TREE_COLD_START_WAIT_S = 0.10
+
+# How stale the navigation tallies may be before a root /api/tree recomputes
+# them. They cost one pass over every entry in the index, and during a walk the
+# revision they memoize on advances on every write, so without an age bound
+# every request during the scan repeats the pass: measured at 837-1,567 ms per
+# root request on a 300,000-file tree against 15 ms once settled.
+#
+# This is the floor, not the bound. The bound the index applies is the larger
+# of this and however long the last pass actually took, so the server never
+# spends much over half its time recomputing a number the client is already
+# told is provisional -- and so the policy scales with the tree instead of
+# being tuned for one size. A fixed half second was measured first and moved
+# the scanning cost only 638 ms to 518 ms, because the nav polls once a second
+# and a bound shorter than the poll period can never be hit by a poller.
+#
+# The floor matters on a small tree, where the pass is cheap enough that its
+# own duration would allow a recompute per request for no benefit.
+NAVIGATION_TALLY_MIN_STALE_S = 0.5
+# The tally pass's own row cap, passed explicitly so the memo key the route
+# asks for is the memo key the route gets.
+NAVIGATION_TALLY_LIMIT = 200
+
+# How many of the root's immediate children the shell inlines so the tree can
+# paint before its first fetch returns. A cap rather than the whole level
+# because this rides in the HTML: every byte is on the critical path for every
+# reader, including the ones whose root has ten thousand entries. Two hundred
+# rows is past any viewport at any sane row height, so the reader sees a full
+# screen either way and the rest arrives with the fetch a moment later.
+# Set to 0 to disable the inline entirely.
+_INLINE_INITIAL_TREE_ROWS = 200
+
+# Encoded rollup bodies keyed by their ETag. The validator alone only helps a
+# client that already holds the answer; a second tab opening the same folder,
+# or a reconnect, arrives without one and would otherwise re-aggregate and
+# re-serialize a body the server just produced. Bounded by
+# ``ROLLUP_BODY_CACHE_ENTRIES``: entries from a superseded index revision can
+# never be requested again, so they age out by insertion order.
+_ROLLUP_BODY_CACHE: dict[str, bytes] = {}
+
+
+def _remember_rollup_body(etag: str, body: bytes | memoryview[int]) -> None:
+    """Retain one encoded rollup body for reuse by an identical request."""
+
+    _ROLLUP_BODY_CACHE[etag] = bytes(body)
+    while len(_ROLLUP_BODY_CACHE) > ROLLUP_BODY_CACHE_ENTRIES:
+        _ROLLUP_BODY_CACHE.pop(next(iter(_ROLLUP_BODY_CACHE)))
+
+
+# Rollup bodies currently being built, keyed by the ETag that identifies them.
+# The retained body only helps a request that arrives after one finished;
+# clients that arrive together — several tabs refreshing off the same inventory
+# change — would each aggregate the same answer.
+#
+# The build is its own task rather than work owned by whichever request arrived
+# first, and every request awaits it through a shield. That way a client
+# disconnecting cancels only its own wait: the shared build runs to completion
+# for everyone still waiting, and its body is still cached for whoever asks
+# next.
+_ROLLUP_IN_FLIGHT: dict[str, asyncio.Task[bytes]] = {}
+
+
+def reset_response_caches_for_tests() -> None:
+    """Drop cached rollup responses so a fresh index cannot inherit them.
+
+    The rollup ETag is keyed on the index revision, which only ever moves
+    forward for a served root: swapping roots calls ``InventoryIndex.clear``,
+    which bumps it. Tests are the one caller that builds a whole new index,
+    starting the revision at zero again, so without this a body cached by one
+    test could be served to the next one under a colliding tag.
+    """
+
+    _ROLLUP_BODY_CACHE.clear()
+    _ROLLUP_IN_FLIGHT.clear()
+    reset_rollup_cache_for_tests()
+
+
+def _release_rollup_flight(etag: str, task: asyncio.Task[bytes]) -> None:
+    """Retire a finished shared build and mark any failure as retrieved.
+
+    Every waiter raises on its own, so the task's exception would otherwise
+    surface as an "exception was never retrieved" warning once the last one
+    goes away.
+    """
+
+    if _ROLLUP_IN_FLIGHT.get(etag) is task:
+        del _ROLLUP_IN_FLIGHT[etag]
+    if not task.cancelled():
+        task.exception()
 
 
 # ── Performance logging setup ───────────────────────────────────
@@ -273,14 +402,13 @@ __all__ = [
     "_IGNORE_CACHE",
     "_activity_snapshot",
     "_cached_root_prefix",
-    "_classify_file_kind",
     "_clear_browser_caches",
     "_collect_trackable_files",
     "_collect_trackable_files_cached",
     "_dir_tree",
     "_discover_trackable_files",
     "_find_git_root",
-    "_has_any_file",
+    "_has_any_leaf",
     "_has_any_nongitignored",
     "_has_visible_children",
     "_parse_jsonl_file",
@@ -355,12 +483,6 @@ class _ProcBrowserModule(_types.ModuleType):
 _sys.modules[__name__].__class__ = _ProcBrowserModule
 
 
-def _classify_file_kind(ext: str, adapter: str | None = None) -> str:
-    """Backwards-compat alias for legacy callers; new code calls
-    :func:`metabrowser.file_kinds.classify_by_ext` directly."""
-    return classify_by_ext(ext, adapter)
-
-
 # ── Static asset directories ────────────────────────────────────
 #
 # CSS / JS bundles are served as plain static files (Starlette's
@@ -370,12 +492,6 @@ def _classify_file_kind(ext: str, adapter: str | None = None) -> str:
 # browser's HTTP cache does the work it's designed to do.
 
 STATIC_DIR: Path = Path(__file__).parent / "static"
-
-# perf.js is optional (only present in dev builds with the perf overlay
-# bundled). Probed at module load so the index template can skip the
-# script tag rather than emit a 404 reference.
-_PERF_JS_AVAILABLE: bool = (STATIC_DIR / "perf.js").is_file()
-
 
 _SLOW_SERVER_REQUEST_MS = int(
     os.environ.get(
@@ -399,8 +515,16 @@ def _etag_for(mtime_hash: str) -> str:
     Strong ETags are quoted per RFC 7232. The token is stable across
     browser-server restarts for unchanged files so dev-loop restarts do not
     force clients to re-download every cached payload.
+
+    It also carries this build's identity, because the body is a function of
+    the file *and* of how this version renders it. Keying on the file alone
+    made every rendering change invisible to a client that had already cached
+    the file: after small binaries moved from the text fallback to the Bytes
+    view, a cached browser kept replaying a field of U+FFFD, because the
+    file's mtime had not changed and the server answered 304 to its
+    revalidation. The salt is what makes an upgrade invalidate exactly once.
     """
-    return f'"{mtime_hash}"'
+    return build_scoped_etag(mtime_hash)
 
 
 # File-extension sets used by ``api_file`` to decide which branch to
@@ -415,17 +539,37 @@ from metabrowser.file_extensions import (
     BROWSER_TEXT_EXTS as _TEXT_EXTS,
 )
 
-# Files outside ``_TEXT_EXTS`` smaller than this are still tried as
-# text (`read_text(errors="replace")`). Above this we treat them as
-# binary unless they hit a known extension. 512 KiB is the
-# pre-refactor default.
-_INLINE_TEXT_FALLBACK_BYTES = 512 * 1024
-_TEXT_PREVIEW_CHUNK_BYTES = int(os.environ.get("METABROWSER_TEXT_PREVIEW_BYTES", str(128 * 1024)))
+# Files outside ``_TEXT_EXTS`` are decided by looking at their content —
+# see metabrowser.content_sniff and _prefers_text_body below. Size used to
+# stand in for that check (under 512 KiB meant "try it as text"), which read
+# every small binary through `errors="replace"` and rendered it as a field of
+# U+FFFD, and refused every large extensionless text file the opposite way.
+
+
+def _prefers_text_body(target: Path) -> bool:
+    """Whether a file with no known text extension should render as text.
+
+    Only consulted once the extension has failed to answer, so the bounded
+    read inside costs nothing for the files this browser opens most.
+
+    ``UNKNOWN`` resolves to text on purpose: it means the bytes could not be
+    read at all, and the text path reports that failure with the real reason
+    where the byte view would answer a broken file with an empty dump.
+    """
+    return sniff_artifact(target) is not ContentClass.BINARY
+
+
+# Defaults live in settings.py, which is also what the client reads, so the
+# chunk size cannot drift between the two planes. See
+# docs/large-content-rendering.md for the measurements behind them.
+_TEXT_PREVIEW_CHUNK_BYTES = int(
+    os.environ.get("METABROWSER_TEXT_PREVIEW_BYTES", str(TEXT_PREVIEW_CHUNK_BYTES))
+)
 _TEXT_PREVIEW_MAX_CHUNK_BYTES = int(
-    os.environ.get("METABROWSER_TEXT_PREVIEW_MAX_BYTES", str(8 * 1024 * 1024))
+    os.environ.get("METABROWSER_TEXT_PREVIEW_MAX_BYTES", str(TEXT_PREVIEW_REQUEST_MAX_BYTES))
 )
 _SYNTAX_HIGHLIGHT_MAX_BYTES = int(
-    os.environ.get("METABROWSER_HIGHLIGHT_MAX_BYTES", str(512 * 1024))
+    os.environ.get("METABROWSER_HIGHLIGHT_MAX_BYTES", str(SYNTAX_HIGHLIGHT_MAX_BYTES))
 )
 
 
@@ -441,6 +585,30 @@ def _query_int(request: Request, name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _query_bounded_int(
+    request: Request,
+    name: str,
+    default: int,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int:
+    return max(minimum, min(_query_int(request, name, default), maximum))
+
+
+def _query_choice(
+    request: Request,
+    name: str,
+    default: str,
+    allowed: frozenset[str],
+) -> str:
+    raw = request.query_params.get(name, "")
+    value = default if raw == "" else raw
+    if value not in allowed:
+        raise ValueError(f"Unknown {name}: {value!r}")
+    return value
 
 
 def _read_artifact_text_chunk(
@@ -470,7 +638,7 @@ def _clear_browser_caches() -> None:
     _IGNORE_CACHE.clear()
     _paths_safe._ROOT_PREFIX_CACHE.clear()
     _subtree_summary.cache_clear()
-    _has_any_file.cache_clear()
+    _has_any_leaf.cache_clear()
     _has_any_nongitignored.cache_clear()
     _collect_trackable_files_cached.cache_clear()
     clear_charts_cache()
@@ -680,35 +848,50 @@ class _SlowRequestLogMiddleware:
 
 
 def _initial_path_html() -> str:
-    """Server-render the served-root path so it shows on first paint."""
-    root_str = str(_paths_safe.ROOT_DIR.resolve())
+    """Server-render the served root's *name* so it shows on first paint.
+
+    The name and not the path: the directories above the served root are
+    the same on every row of every view, and the navigation column is the
+    scarcest width in the app. The whole path is one hover away on the
+    anchor's title, and the file header across the divider spells it out.
+    """
     base = _paths_safe.ROOT_DIR.resolve().name
-    if base:
-        dir_part = html_escape(root_str[: -len(base)])
-        base_part = html_escape(base)
-        return (
-            f'<span class="path">'
-            f'<span class="path-dir">{dir_part}</span>'
-            f'<span class="path-base">{base_part}</span>'
-            f"</span>"
-        )
-    return f'<span class="path"><span class="path-base">{html_escape(root_str)}</span></span>'
+    label = base or str(_paths_safe.ROOT_DIR.resolve())
+    return f'<span class="path"><span class="path-base">{html_escape(label)}</span></span>'
 
 
-def _initial_file_path() -> str:
-    """Return a cheap first-preview file path, without walking the tree."""
+def _served_root_str() -> str:
+    """The served root, absolute. What the API reports and paths resolve against."""
+    return str(_paths_safe.ROOT_DIR.resolve())
 
-    root = _paths_safe.ROOT_DIR.resolve()
-    for name in ("README.md", "readme.md", "Readme.md"):
-        if (root / name).is_file():
-            return name
+
+def _display_root_str() -> str:
+    """The served root as a header shows it, with the home directory as ``~``.
+
+    Display only, and only a shortening: the prefix is the same on every page
+    of the app, so every character it spends is width taken from the part of
+    the address that changes. A root under the home directory is the common
+    case and ``~`` is the shortest true name for it.
+
+    Falls through to the absolute path whenever the substitution would be a
+    guess rather than a fact — a root outside the home directory, or a
+    platform that does not report one.
+    """
+
+    resolved = _paths_safe.ROOT_DIR.resolve()
     try:
-        for child in root.iterdir():
-            if child.is_file() and child.name.lower() == "readme.md":
-                return child.name
-    except OSError:
-        return ""
-    return ""
+        home = Path.home().resolve()
+    except (OSError, RuntimeError):
+        return str(resolved)
+    if resolved == home:
+        return "~"
+    try:
+        relative = resolved.relative_to(home)
+    except ValueError:
+        return str(resolved)
+    # Through Path rather than a slash join, so the separator is the
+    # platform's rather than this file's assumption about it.
+    return str(Path("~") / relative)
 
 
 def _static_asset_url(rel_path: str) -> str:
@@ -733,37 +916,98 @@ _FONT_SETS: tuple[dict[str, str], ...] = (
 )
 _DEFAULT_FONT_SET = _FONT_SETS[0]["value"]
 
+# Prefetched-tier scheduling. The chain waits for the first idle callback so it
+# does not compete with the tree render, and the timeout is the floor: on a
+# large tree the main thread is busy for seconds, and a source view that never
+# highlights is worse than one that highlights late. Two seconds is the same
+# bound the tree's own idle prefetch already uses
+# (SUBTREE_PREFETCH_IDLE_TIMEOUT_MS in static/app.js).
+PREFETCH_IDLE_TIMEOUT_MS = 2000
+# requestIdleCallback is unavailable in Safari before 18.2, so the fallback is
+# a plain timer past first paint rather than no deferral at all.
+PREFETCH_FALLBACK_DELAY_MS = 200
+
 
 async def index(_request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
-    initial_file_path = _initial_file_path()
+    initial_root = html_escape(_display_root_str(), quote=True)
+    version_line = html_escape(display_version_line("metab", __version__))
+    repository_context = await asyncio.to_thread(discover_repository_context, _resolved_root_dir())
     styles_url = _static_asset_url("styles.css")
-    theme_state_url = _static_asset_url("theme_state.js")
-    plugin_sdk_url = _static_asset_url("plugin_sdk.js")
-    filter_state_url = _static_asset_url("filter_state.js")
-    filter_controls_url = _static_asset_url("filter_controls.js")
+    asset_loader_url = _static_asset_url("asset-loader.js")
+    theme_state_url = _static_asset_url("theme-state.js")
+    request_error_url = _static_asset_url("request-error.js")
+    formatters_url = _static_asset_url("formatters.js")
+    inventory_scope_url = _static_asset_url("inventory-scope.js")
+    directory_totals_store_url = _static_asset_url("directory-totals-store.js")
+    contribution_registry_url = _static_asset_url("contribution-registry.js")
+    resource_context_url = _static_asset_url("resource-context.js")
+    view_state_url = _static_asset_url("view-state.js")
+    navigation_url = _static_asset_url("navigation.js")
+    source_append_url = _static_asset_url("source-append.js")
+    file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
+    plugin_sdk_url = _static_asset_url("plugin-sdk.js")
+    filter_state_url = _static_asset_url("filter-state.js")
+    filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
     charts_url = _static_asset_url("charts.js")
-    tree_expansion_url = _static_asset_url("tree_expansion.js")
-    known_file_catalog_url = _static_asset_url("known_file_catalog.js")
-    catalog_feed_url = _static_asset_url("catalog_feed.js")
-    file_fuzzy_match_url = _static_asset_url("file_fuzzy_match.js")
-    search_controller_url = _static_asset_url("search_controller.js")
-    search_palette_url = _static_asset_url("search_palette.js")
-    git_graph_url = _static_asset_url("git_graph.js")
-    git_panel_url = _static_asset_url("git_panel.js")
+    tree_expansion_url = _static_asset_url("tree-expansion.js")
+    tree_filter_model_url = _static_asset_url("tree-filter-model.js")
+    pending_tally_diagnostics_url = _static_asset_url("pending-tally-diagnostics.js")
+    known_file_catalog_url = _static_asset_url("known-file-catalog.js")
+    catalog_feed_url = _static_asset_url("catalog-feed.js")
+    file_fuzzy_match_url = _static_asset_url("file-fuzzy-match.js")
+    search_controller_url = _static_asset_url("search-controller.js")
+    keyboard_shortcuts_url = _static_asset_url("keyboard-shortcuts.js")
+    overlay_layer_url = _static_asset_url("overlay-layer.js")
+    keyboard_help_url = _static_asset_url("keyboard-help.js")
+    tree_keyboard_navigation_url = _static_asset_url("tree-keyboard-navigation.js")
+    search_palette_url = _static_asset_url("search-palette.js")
+    git_graph_url = _static_asset_url("git-graph.js")
+    git_panel_url = _static_asset_url("git-panel.js")
     app_url = _static_asset_url("app.js")
-    perf_block = (
-        f'<script src="{_static_asset_url("perf.js")}"></script>' if _PERF_JS_AVAILABLE else ""
-    )
+    perf_url = _static_asset_url("perf.js")
     # Inject the client-visible settings dict before any app code
     # runs so JS can read window.METABROWSER_SETTINGS.* without
     # duplicating constants in the source.
     settings_block = (
-        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict())};"
-        f"window.METABROWSER_INITIAL_PATH={_json.dumps(initial_file_path)};</script>"
+        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES))};</script>"
+        f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
+    )
+    repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    # The tree's first rows, inlined. Without this the reader waits for a round
+    # trip the server did not have to make them take: time to first row is
+    # DOMContentLoaded plus the whole /api/tree request, and during a walk that
+    # request is the slow one (exp-003 made it faster for everyone except the
+    # first caller, whose cache is cold by construction). Depth 1 off the warm
+    # index is the root's immediate children and nothing else, so it is bounded
+    # by how wide the root is rather than by the tree.
+    #
+    # Only the unfiltered default view is inlined. A filter is client state the
+    # server has not been told about at this point, so inlining a filtered view
+    # would risk painting rows the reader's filter excludes; the fetch that
+    # follows owns every case but this one.
+    initial_tree_block = ""
+    if _INLINE_INITIAL_TREE_ROWS and inventory_has_data():
+        try:
+            initial_tree = _build_inventory_tree(
+                parent_rel="",
+                max_depth=1,
+                root_abs=_resolved_root_dir(),
+                max_entries=_INLINE_INITIAL_TREE_ROWS,
+            )
+        except Exception:
+            LOG.debug("initial tree inline failed", exc_info=True)
+            initial_tree = []
+        if initial_tree:
+            initial_tree_json = _json.dumps({"tree": initial_tree}).replace("<", "\\u003c")
+            initial_tree_block = (
+                f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
+            )
+    repository_context_block = (
+        f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
     # Read preferences from host-only cookies (not localStorage): cookies
     # ignore the port, so the choice is shared across every metabrowser instance
@@ -812,20 +1056,58 @@ async def index(_request: Request) -> HTMLResponse:
     # static/vendor/manifest.json) and served same-origin, so the page has
     # no external origins and works offline. Bump a version by updating
     # package.json + package-lock.json, then run `make vendor-assets`.
+    # Prefetched tier: small relative to how likely they are to be wanted, and
+    # visibly late if they arrive after the view that uses them. The chain
+    # below starts them on the first idle callback after DOMContentLoaded, so
+    # they do not compete with the tree render, and no later than
+    # PREFETCH_IDLE_TIMEOUT_MS so a busy main thread cannot defer them
+    # indefinitely. See docs/development.md "Asset Loading Tiers".
     optional_script_assets = [
         {"src": _static_asset_url("vendor/mustache.min.js")},
         {"src": _static_asset_url("vendor/highlight.min.js")},
         {"src": _static_asset_url("vendor/highlight-toml.min.js"), "requires": "hljs"},
-        {"src": _static_asset_url("vendor/chart.umd.min.js")},
-        {
-            "src": _static_asset_url("vendor/chartjs-plugin-annotation.min.js"),
-            "requires": "Chart",
-        },
-        {
-            "src": _static_asset_url("vendor/chartjs-adapter-date-fns.bundle.min.js"),
-            "requires": "Chart",
-        },
     ]
+    # On-demand tier: fetched by asset-loader.js the first time a consumer asks.
+    # Chart.js and its two plugins are 297,531 bytes read by one view, and
+    # eager loading measured ~374 ms of every document's load event whether or
+    # not that view was ever opened. See docs/development.md "Asset Loading
+    # Tiers" and the load-time plan for the measurement.
+    on_demand_script_bundles = {
+        # Navigation, search, Help, and Git controls are application-lifetime
+        # tools, but none is needed to paint or fetch the first tree. Keeping
+        # their ordered classic scripts behind that usable-state boundary
+        # removes eleven requests from the shell's startup waterfall. They
+        # begin immediately after loadTree settles, before inventory delivery
+        # continues in the background.
+        "shell-tools": [
+            {"src": known_file_catalog_url},
+            {"src": catalog_feed_url},
+            {"src": file_fuzzy_match_url},
+            {"src": search_controller_url},
+            {"src": keyboard_shortcuts_url},
+            {"src": overlay_layer_url},
+            {"src": keyboard_help_url},
+            {"src": tree_keyboard_navigation_url},
+            {"src": search_palette_url},
+            {"src": git_graph_url},
+            {"src": git_panel_url},
+        ],
+        "chart": [
+            {"src": _static_asset_url("vendor/chart.umd.min.js")},
+            {
+                "src": _static_asset_url("vendor/chartjs-plugin-annotation.min.js"),
+                "requires": "Chart",
+            },
+            {
+                "src": _static_asset_url("vendor/chartjs-adapter-date-fns.bundle.min.js"),
+                "requires": "Chart",
+            },
+        ],
+    }
+    asset_bundles_block = (
+        f"<script>window.METABROWSER_ASSET_BUNDLES="
+        f"{_json.dumps(on_demand_script_bundles)};</script>"
+    )
     optional_assets_block = f"""<script>
   (function () {{
     var assets = {_json.dumps(optional_script_assets)};
@@ -858,24 +1140,33 @@ async def index(_request: Request) -> HTMLResponse:
       }};
       document.head.appendChild(script);
     }}
+    // Prefetched, not eager: start when the main thread is free rather than
+    // the moment the document parses, so fetching and evaluating these never
+    // competes with the tree render that DOMContentLoaded also starts. The
+    // timeout is the floor — a busy thread must not defer them forever,
+    // because a source view that never highlights is worse than one that
+    // highlights late.
     function start() {{ loadNext(0); }}
+    function schedule() {{
+      if (typeof window.requestIdleCallback === "function") {{
+        window.requestIdleCallback(start, {{ timeout: {PREFETCH_IDLE_TIMEOUT_MS} }});
+      }} else {{
+        setTimeout(start, {PREFETCH_FALLBACK_DELAY_MS});
+      }}
+    }}
     if (document.readyState === "loading") {{
-      document.addEventListener("DOMContentLoaded", start, {{ once: true }});
+      document.addEventListener("DOMContentLoaded", schedule, {{ once: true }});
     }} else {{
-      start();
+      schedule();
     }}
   }})();
   </script>"""
-    # Emit per-plugin <link>/<script> tags from each loaded plugin's
-    # manifest. Each plugin contributes (in discovery order):
-    #   - <link rel="stylesheet"> for styles.css if present + every
-    #     manifest.plugin.extra_styles entry
-    #   - <script> for every manifest.plugin.extra_scripts entry
-    #   - <script type="module" src=".../index.js"> last
-    # Plugins that need additional JS/CSS files declare them in their
-    # manifest; metabrowser core never special-cases plugin asset names.
-    plugin_styles = _build_plugin_style_block()
-    plugin_scripts = _build_plugin_script_block()
+    # Plugin assets are configured in the shell but fetched only when a
+    # selected resource names a kind that consumes them. A cold directory
+    # should not wait for Markdown, structured-data, diff, and log modules
+    # before its first tree row. The manifest remains the source of every URL;
+    # core does not special-case plugin names.
+    plugin_asset_config = _build_plugin_asset_config_block()
 
     # Reuse KPress's vendored reader faces for the whole UI. Link KPress's
     # style-tokens.css (the @font-face source of truth) and preload the chrome's
@@ -909,36 +1200,65 @@ async def index(_request: Request) -> HTMLResponse:
        same-origin (see static/vendor/manifest.json), so the page loads
        with no external origins and works offline. -->
   <link rel="stylesheet" href="{styles_url}">
-  {plugin_styles}
 </head>
 <body>
   <main class="container">
     <div class="tree-pane" id="tree-pane">
       <header class="app-header">
-        <span class="header-brand">Metabrowser</span>
-        <a href="/" class="header-path" title="Jump to root">{initial_path}</a>
-        <!-- Settings menu. A gear button opens a menu with two icon-segment
-             choosers (theme + reading font) and a small font-set dropdown
-             (#app-font-select, options from _FONT_SETS). Choices apply instantly.
+        <!-- data-served-root is the one place the absolute root is written:
+             the file header reads it back to render its dimmed prefix, so
+             the two headers cannot disagree about what the root is. It is also
+             what this heading's tooltip is built from.
+
+             No data-tip-text here, deliberately. This element has a tooltip of
+             its own in app.js — the folder's counts and age, not just its
+             path — and an element carrying both would announce through two
+             mechanisms at once, which is the bug the one-tooltip rule exists
+             to prevent. See "One Tooltip, and It Is Ours" in
+             docs/design-system.md. -->
+        <a href="{VIEW_ROUTE_PREFIX}" class="header-path"
+           data-served-root="{initial_root}">{initial_path}</a>
+        <!-- The Metabrowser menu. The gear names the product rather than
+             standing as an unlabelled settings control: the wordmark that
+             used to sit on its own line above the path is this menu's title,
+             which returns that line of the navigation column — the app's
+             scarcest width — to the path. Inside: two icon-segment choosers
+             (theme + reading font), a small font-set dropdown
+             (#app-font-select, options from _FONT_SETS), and the same build
+             version line printed by `metab --version`. Choices apply instantly.
              app.js (initSettingsControl) fills the icon segments and wires
              open/select + the dropdown. The wrapper's aria-expanded drives the
-             menu's visibility via CSS. -->
+             menu's visibility via CSS.
+
+             The title is a link to the project rather than a label: it is the
+             one place the product names itself, so it is where someone goes
+             looking for the project. It carries its own accessible name saying
+             where it goes — the bare wordmark would announce as the menu's
+             name repeated — and it is not aria-hidden, because a control that
+             cannot be reached is not a control. -->
         <div class="settings-toggle" id="settings-control" aria-expanded="false">
           <button class="icon-btn settings-btn" id="settings-btn" type="button"
-                  aria-haspopup="true" title="Settings" aria-label="Settings"></button>
-          <div class="settings-menu menu" role="menu" aria-label="Settings">
+                  aria-haspopup="true" aria-label="Metabrowser menu"></button>
+          <div class="settings-menu menu" role="menu" aria-label="Metabrowser">
+            <a class="menu-title menu-title-link" href="https://github.com/jlevy/metabrowser"
+               target="_blank" rel="noopener noreferrer"
+               aria-label="Metabrowser on GitHub">Metabrowser<span class="menu-title-arrow"
+               aria-hidden="true">→</span></a>
+            <div class="menu-separator"></div>
             <div class="menu-chooser" role="group" aria-label="Theme">
-              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="system" title="System theme" aria-label="System theme"></button>
-              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="light" title="Light theme" aria-label="Light theme"></button>
-              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="dark" title="Dark theme" aria-label="Dark theme"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="system" data-tip-text="System theme" aria-label="System theme"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="light" data-tip-text="Light theme" aria-label="Light theme"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-theme-choice="dark" data-tip-text="Dark theme" aria-label="Dark theme"></button>
             </div>
             <div class="menu-separator"></div>
             <div class="menu-chooser" role="group" aria-label="Reading font">
-              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="serif" title="Serif reading font" aria-label="Serif reading font"></button>
-              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" title="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="serif" data-tip-text="Serif reading font" aria-label="Serif reading font"></button>
+              <button class="menu-seg" type="button" role="menuitemradio" data-font-choice="sans" data-tip-text="Sans-serif reading font" aria-label="Sans-serif reading font"></button>
             </div>
             <div class="menu-separator"></div>
             <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <div class="menu-separator"></div>
+            <div class="menu-version">{version_line}</div>
           </div>
         </div>
       </header>
@@ -951,9 +1271,17 @@ async def index(_request: Request) -> HTMLResponse:
       <div class="nav-filter-bar" id="nav-filter-bar"></div>
       <div class="tree-content" id="tree-content">
         <div id="tab-files" data-tab-content="files">
-          <div class="loading"><div class="spinner"></div>Loading files…</div>
+          <div class="loading mb-delayed-loading"><div class="spinner"></div><span
+            class="sr-only">Loading files…</span></div>
         </div>
       </div>
+      <!-- role="group" carries the accessible name: ARIA forbids naming a
+           generic element, so a bare div would drop the label and announce
+           the hints and their controls with no grouping context. Not a live
+           region — contextual hints change with focus, and announcing every
+           change would talk over the polite index-progress row below. -->
+      <div class="nav-shortcut-hints" id="nav-shortcut-hints" role="group"
+           aria-label="Keyboard shortcuts" hidden></div>
       <div class="index-progress" id="index-progress" role="status" aria-live="polite" hidden>
         <span class="index-progress-spinner" aria-hidden="true"></span>
         <span class="index-progress-text">Scanning…</span>
@@ -970,41 +1298,81 @@ async def index(_request: Request) -> HTMLResponse:
        tree/readme rendering. TOML support comes from the official
        highlight.js ini.min.js grammar (`aliases:["toml"]`), vendored as
        highlight-toml.min.js. -->
-  {perf_block}
   {settings_block}
+  {repository_context_block}
+  {initial_tree_block}
+  {asset_bundles_block}
+  <script src="{asset_loader_url}"></script>
   <script src="{theme_state_url}"></script>
+  <script src="{request_error_url}"></script>
+  <script src="{formatters_url}"></script>
+  <script src="{inventory_scope_url}"></script>
+  <script src="{directory_totals_store_url}"></script>
+  <script src="{contribution_registry_url}"></script>
+  <script src="{resource_context_url}"></script>
+  <script src="{view_state_url}"></script>
+  <script src="{navigation_url}"></script>
+  <script src="{source_append_url}"></script>
+  <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
+  <script src="{perf_url}"></script>
   <script src="{filter_state_url}"></script>
   <script src="{filter_controls_url}"></script>
   <script src="{icons_url}"></script>
   <script src="{charts_url}"></script>
   <script src="{tree_expansion_url}"></script>
-  <script src="{known_file_catalog_url}"></script>
-  <script src="{catalog_feed_url}"></script>
-  <script src="{file_fuzzy_match_url}"></script>
-  <script src="{search_controller_url}"></script>
-  <script src="{search_palette_url}"></script>
-  <!-- Git graph modules load before app.js: the shell's DOMContentLoaded
-       handler calls MetabrowserGitPanel.init(), which needs both present. -->
-  <script src="{git_graph_url}"></script>
-  <script src="{git_panel_url}"></script>
+  <script src="{tree_filter_model_url}"></script>
+  <script src="{pending_tally_diagnostics_url}"></script>
+  {plugin_asset_config}
   <script src="{app_url}"></script>
-  {plugin_scripts}
   {optional_assets_block}
 </body>
 </html>"""
     return HTMLResponse(html)
 
 
-@log_async_calls()
-async def api_tree(request: Request) -> JSONResponse:
-    subpath = request.query_params.get("path", "")
-    depth_str = request.query_params.get("depth", "")
-    target = _safe_path(subpath)
-    if target is None or not target.is_dir():
-        return JSONResponse({"error": "Not found"}, status_code=404)
+async def view_shell(request: Request) -> Response:
+    """Serve the SPA shell only for one safely encoded canonical view path."""
 
-    remaining_depth = _tree_depth_from_query(depth_str)
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
+        return PlainTextResponse("Invalid view path.", status_code=400)
+    return await index(request)
+
+
+async def commit_shell(request: Request) -> Response:
+    """Serve the SPA shell for ``/commit/<rev>[/<file>]``.
+
+    One route per address space (see the Browser URL Grammar): revisions
+    are not served-tree paths, so they are addressed here rather than
+    through an escape inside ``/view/``.
+    """
+
+    raw_path = request.scope.get("raw_path")
+    if not isinstance(raw_path, bytes) or decode_safe_commit_route(raw_path) is None:
+        return PlainTextResponse("Invalid commit route.", status_code=400)
+    return await index(request)
+
+
+async def root_redirect(_request: Request) -> Response:
+    """Send the bare origin to the canonical served-root view.
+
+    ``/view/`` is the only route that selects a path, so the origin must not be a
+    second landing URL that renders an empty preview. The redirect is temporary so a
+    browser cannot cache it past a change to the route scheme.
+    """
+
+    return RedirectResponse(VIEW_ROUTE_PREFIX, status_code=307)
+
+
+async def _ensure_inventory_serving(subpath: str) -> bool:
+    """Start the inventory walker if needed, wait briefly on a cold
+    start, and report whether the index can serve *subpath*.
+
+    Shared by `/api/tree` and `/api/rollup`: both read the same index
+    and share the cold-start grace so a request landing right after
+    boot finds the visible tree populated.
+    """
 
     inventory = get_inventory()
     root_dir = _resolved_root_dir()
@@ -1025,11 +1393,116 @@ async def api_tree(request: Request) -> JSONResponse:
                 break
             await asyncio.sleep(0.005)
 
-    inv_can_serve = False
-    if inventory_has_data():
-        inv_can_serve = True if not subpath else inventory.get(subpath) is not None
+    if not inventory_has_data():
+        return False
+    return True if not subpath else inventory.get(subpath) is not None
 
-    if inv_can_serve:
+
+def _query_values(request: Request, key: str) -> list[str]:
+    """Repeated query values, tolerating the fake-request shims in tests."""
+
+    params = request.query_params
+    if hasattr(params, "getlist"):
+        return list(params.getlist(key))
+    single = params.get(key, "")
+    return [single] if single else []
+
+
+def tree_filter_from_request(request: Request) -> TreeFilter:
+    """Read the nav filter off a request.
+
+    Shares its vocabulary with ``static/filter-state.js``: ``recency`` names a
+    window from :data:`RECENT_WINDOW_SECONDS`, ``types`` carries extension or
+    filename tokens (repeated or comma-separated), ``min_size`` is a byte
+    floor, and ``include_ignored=0`` drops gitignored entries. An absent or
+    unrecognized value means "no constraint", so an older client sees more
+    rather than a 400.
+    """
+
+    return TreeFilter(
+        recency_seconds=parse_recency(request.query_params.get("recency", "")),
+        types=parse_types(_query_values(request, "types")),
+        min_size=parse_size_floor(request.query_params.get("min_size", "")),
+        include_ignored=request.query_params.get("include_ignored", "1") not in ("0", "false"),
+    )
+
+
+@log_async_calls()
+async def api_tree(request: Request) -> JSONResponse:
+    subpath = request.query_params.get("path", "")
+    depth_str = request.query_params.get("depth", "")
+    target = _safe_path(subpath)
+    if target is None or not target.is_dir():
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    remaining_depth = _tree_depth_from_query(depth_str)
+    tree_filter = tree_filter_from_request(request)
+
+    inventory = get_inventory()
+    root_dir = _resolved_root_dir()
+    inv_can_serve = await _ensure_inventory_serving(subpath)
+
+    # One snapshot and one revision for every O(index) pass this request makes.
+    # A root request with a filter active needs two of them — the filtered
+    # rollup and the nav tallies — and they read the same entries for
+    # overlapping reasons. Taking a snapshot each would copy the index twice on
+    # the request the page makes first, and would let the two passes describe
+    # different indexes.
+    #
+    # Both are read in the same loop tick, with no await between them, so the
+    # revision names exactly the entries handed over. That is what lets either
+    # pass be memoized: otherwise a worker could only ask for a revision that
+    # had already moved, and would cache its answer under a key that never
+    # matches. Inventory writes are owned by the loop, so iterating the live
+    # dictionary off-loop would race the still-running walker.
+    #
+    # The response status joins them: the walker can finish while a worker
+    # runs, and reporting that newer "done" beside partial tallies would make
+    # the browser stop polling before it requests the final snapshot.
+    index_entries: list[Any] | None = None
+    index_revision = 0
+    tally_cache_status = inventory_status()
+    if inv_can_serve and tree_filter.active:
+        # Only the filter path needs the entries here. The tally path used to
+        # share this snapshot, which meant every unfiltered root request paid a
+        # list copy of the whole index on the event loop -- 300,000 entries on
+        # the bench corpus -- before discovering its tallies were memoized.
+        # It now takes its own snapshot inside the thread, and only when it has
+        # to recompute.
+        index_entries = inventory.entries(scope="all-known")
+        index_revision = inventory.rollup_revision()
+        tally_cache_status = inventory_status()
+    elif inv_can_serve and not subpath:
+        tally_cache_status = inventory_status()
+
+    filtered = None
+    if inv_can_serve and tree_filter.active and index_entries is not None:
+        # Presence and aggregates both depend on the whole subtree, not on the
+        # slice this request returns, so the pass is O(index) and goes to a
+        # worker. Structure comes from the index's own child map instead, which
+        # is why the subtree build stays cheap for a deep, narrow request.
+        filtered = await asyncio.to_thread(
+            build_filtered_inventory_tree,
+            entries=index_entries,
+            children_of=inventory.children_of,
+            parent_rel=subpath,
+            max_depth=remaining_depth,
+            root_abs=root_dir,
+            parent_ignored=parent_is_gitignored(subpath),
+            tree_filter=tree_filter,
+            now_sec=time.time(),
+            generation=index_revision,
+        )
+        tree = filtered.tree
+        LOG.debug(
+            "api_tree (filtered) path=%r depth=%d entries=%d matched=%d status=%s",
+            subpath or "<root>",
+            remaining_depth,
+            len(tree),
+            filtered.matched_files,
+            inventory_status(),
+        )
+    elif inv_can_serve:
         tree = _build_inventory_tree(
             parent_rel=subpath,
             max_depth=remaining_depth,
@@ -1057,40 +1530,241 @@ async def api_tree(request: Request) -> JSONResponse:
             len(tree),
             inventory_status(),
         )
-    # Both tallies are O(index) passes. The nav re-requests this route
-    # (depth=0) while the walk converges, so running them on the loop
-    # would stall the event stream at the design-center index size for
-    # the same reason api_catalog offloads its own pass.
-    summary = None
-    extensions = None
-    type_presets = None
+    # The nav tallies need one O(index) pass. The nav re-requests this route
+    # (depth=0) while the walk converges, so running it on the loop would stall
+    # the event stream at the design-center index size for the same reason
+    # api_catalog offloads its own pass.
+    navigation_tallies = None
     if inv_can_serve and not subpath:
-        summary, type_tallies = await asyncio.to_thread(
-            lambda: (
-                inventory.root_summary(),
-                inventory.file_type_tallies(
-                    [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
-                ),
-            )
+        tally_presets = [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
+        tally_windows = [
+            (window_key, seconds)
+            for window_key, seconds in RECENT_WINDOW_SECONDS.items()
+            if seconds is not None
+        ]
+        # Ask for a fresh-enough answer first. This is a tuple compare and a
+        # clock read, so it costs nothing when it misses -- and when it hits it
+        # skips both O(index) costs: the snapshot and the pass.
+        navigation_tallies = inventory.navigation_tallies_fresh_within(
+            tally_presets,
+            tally_windows,
+            NAVIGATION_TALLY_LIMIT,
+            min_stale_s=NAVIGATION_TALLY_MIN_STALE_S,
         )
-        extensions, type_presets = type_tallies
+        # A request carrying rows never waits for the pass that produces these.
+        #
+        # The tallies cost one visit per entry in the index; the rows do not.
+        # Sharing one response made the reader wait for the expensive half to
+        # see the cheap one, and during a scan that was most of a second at
+        # 240,000 files -- 0.37 s at 60,000 indexed, 1.30 s at 220,000, growing
+        # as the walk proceeds. Worse, the wait is not just the reader's: that
+        # work competes with the walker, so watching a scan slowed it twelvefold
+        # (exp-005).
+        #
+        # ``depth=0`` is the client's tally channel and is allowed to pay. It
+        # carries no rows to delay, ``scheduleRootSummaryRefresh`` already
+        # fetches it behind the render, and every tally field in this payload is
+        # nullable and guarded field-by-field on the client, so a row request
+        # that arrives without them is a shape the browser already handles.
+        wants_tallies = remaining_depth == 0
+        if navigation_tallies is None and wants_tallies and index_entries is not None:
+            # A filter is active, so the snapshot already exists and both
+            # passes must describe the same index. Reuse it rather than
+            # copying the index a second time.
+            tally_entries = index_entries
+            tally_revision = index_revision
+            navigation_tallies = await asyncio.to_thread(
+                lambda: inventory.navigation_tallies(
+                    tally_presets,
+                    tally_windows,
+                    NAVIGATION_TALLY_LIMIT,
+                    entries=tally_entries,
+                    revision=tally_revision,
+                )
+            )
+        elif navigation_tallies is None and wants_tallies:
+            navigation_tallies = await asyncio.to_thread(
+                inventory.navigation_tallies_snapshotting,
+                tally_presets,
+                tally_windows,
+                NAVIGATION_TALLY_LIMIT,
+            )
     return JSONResponse(
         {
             "root": str(root_dir),
             "tree": tree,
-            "tally_cache_status": inventory_status(),
+            # What the filter selected across the whole subtree, which the
+            # payload cannot be counted for: it is capped by depth, and the
+            # browser pages long child lists. Null when nothing is filtered.
+            "filtered": (
+                {
+                    "files": filtered.matched_files,
+                    "size": filtered.matched_size,
+                    "entries": filtered.matched_leaves,
+                }
+                if filtered is not None
+                else None
+            ),
+            "tally_cache_status": tally_cache_status,
             "tally_cache_max_files": inventory.max_files(),
-            # Tracked-versus-ignored split for the nav header, plus the
-            # extension and aggregate tallies behind the nav's type filter. None can
-            # be derived client-side: summing top-level children
+            # Tracked-versus-ignored split for the nav header, plus the age,
+            # extension, and aggregate tallies behind the nav filters. None can be
+            # derived client-side: summing top-level children
             # miscounts nested ignored files (see
             # InventoryIndex.root_summary), and the Quick File catalog
-            # drops gitignored entries (see file_type_tallies). Only the
+            # drops gitignored entries (see navigation_tallies). Only the
             # full-tree request needs these values.
-            "summary": summary,
-            "extensions": extensions,
-            "type_presets": type_presets,
+            "summary": (navigation_tallies["summary"] if navigation_tallies is not None else None),
+            "file_type_registry": (
+                navigation_tallies["file_type_registry"] if navigation_tallies is not None else None
+            ),
+            "extensions": (
+                navigation_tallies["extensions"] if navigation_tallies is not None else None
+            ),
+            "canonical_extensions": (
+                navigation_tallies["canonical_extensions"]
+                if navigation_tallies is not None
+                else None
+            ),
+            "type_families": (
+                navigation_tallies["type_families"] if navigation_tallies is not None else None
+            ),
+            "type_presets": (
+                navigation_tallies["type_presets"] if navigation_tallies is not None else None
+            ),
+            "recency_tallies": (
+                navigation_tallies["recency_tallies"] if navigation_tallies is not None else None
+            ),
         }
+    )
+
+
+@log_async_calls(if_slower_than=0.1)
+async def api_rollup(request: Request) -> Response:
+    """Bounded treemap rollup for a directory subtree.
+
+    `GET /api/rollup?path=&depth=&top=&ext_top=&filename_top=&remaining_top=`
+    clamps parameters to the ROLLUP_* settings bounds. `node` is null while the
+    index cannot serve the path yet (cold start); the client renders that as a
+    pending treemap and refreshes off `/api/events` activity. Totals always
+    cover the full subtree. Depth truncation is represented by `children: null`
+    without a rest bucket; node-budget truncation can retain emitted `children`
+    alongside a `rest` bucket for their omitted siblings.
+    """
+
+    subpath = request.query_params.get("path", "")
+    target = _safe_path(subpath)
+    if target is None or not target.is_dir():
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    depth = _query_bounded_int(
+        request, "depth", ROLLUP_DEFAULT_DEPTH, minimum=0, maximum=ROLLUP_MAX_DEPTH
+    )
+    top = _query_bounded_int(request, "top", ROLLUP_DEFAULT_TOP, minimum=0, maximum=ROLLUP_MAX_TOP)
+    ext_top = _query_bounded_int(
+        request, "ext_top", ROLLUP_DEFAULT_EXT_TOP, minimum=0, maximum=ROLLUP_MAX_EXT_TOP
+    )
+    filename_top = _query_bounded_int(
+        request,
+        "filename_top",
+        ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+        minimum=0,
+        maximum=ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+    )
+    remaining_top = _query_bounded_int(
+        request,
+        "remaining_top",
+        ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+        minimum=0,
+        maximum=ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+    )
+    try:
+        ext_rank = cast(
+            RollupRank,
+            _query_choice(
+                request,
+                "ext_rank",
+                ROLLUP_DEFAULT_EXT_RANK,
+                frozenset({"bytes", "dual"}),
+            ),
+        )
+    except ValueError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+
+    inventory = get_inventory()
+    inv_can_serve = await _ensure_inventory_serving(subpath)
+
+    # The body is a pure function of the served root, the index revision, the
+    # path, and the bounds that shape the response, so those make an exact
+    # validator. Each part is load-bearing. The bounds: two clients asking for
+    # different depths share a revision, and a tag that ignored the difference
+    # would hand one of them the other's shape. The root: a tag identifies the
+    # resource it validates, and "the rollup of this path" is a different
+    # resource under a different root — without it, serving a second root
+    # reuses the first one's body wherever the revisions happen to line up.
+    etag = build_scoped_etag(
+        "rollup-{}-{}-{}-{}-{}".format(
+            _resolved_root_dir(),
+            inventory_status(),
+            inventory.rollup_revision(),
+            subpath,
+            f"{depth}.{top}.{ext_top}.{remaining_top}.{filename_top}.{ext_rank}",
+        )
+    )
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=etag_headers(etag))
+    cached = _ROLLUP_BODY_CACHE.get(etag)
+    if cached is not None:
+        return Response(cached, media_type="application/json", headers=etag_headers(etag))
+
+    async def build() -> bytes:
+        result = None
+        if inv_can_serve:
+            result = await asyncio.to_thread(
+                inventory.rollup,
+                subpath,
+                depth=depth,
+                top=top,
+                ext_top=ext_top,
+                remaining_top=remaining_top,
+                filename_top=filename_top,
+                ext_rank=ext_rank,
+            )
+        # Built through JSONResponse rather than json.dumps so the bytes are
+        # identical to what every other JSON route on this server produces.
+        body = bytes(
+            JSONResponse(
+                {
+                    "root": str(_resolved_root_dir()),
+                    "path": subpath,
+                    "node": result["node"] if result is not None else None,
+                    "ext_tallies": result["ext_tallies"] if result is not None else [],
+                    "file_type_breakdown": (
+                        result["file_type_breakdown"] if result is not None else None
+                    ),
+                    "index_status": inventory_status(),
+                    "indexed_files": inventory.files_indexed(),
+                    "max_files": inventory.max_files(),
+                    "truncated": inventory_status() == "truncated",
+                }
+            ).body
+        )
+        _remember_rollup_body(etag, body)
+        return body
+
+    # Nothing between this lookup and the registration below awaits, so two
+    # requests cannot both start a build for the same answer.
+    shared = _ROLLUP_IN_FLIGHT.get(etag)
+    if shared is None:
+        shared = asyncio.ensure_future(build())
+        _ROLLUP_IN_FLIGHT[etag] = shared
+        shared.add_done_callback(functools.partial(_release_rollup_flight, etag))
+    # Shielded, so a client that disconnects cancels its own wait and not the
+    # build the others are still waiting on.
+    return Response(
+        await asyncio.shield(shared),
+        media_type="application/json",
+        headers=etag_headers(etag),
     )
 
 
@@ -1127,6 +1801,10 @@ async def api_recent(request: Request) -> JSONResponse:
     # cap is not spent on rows they will drop on arrival.
     include_ignored = request.query_params.get("include_ignored", "1") not in ("0", "false")
 
+    # Stay conservative if the walker finishes while collection runs. A
+    # response built from a scanning inventory must remain labeled scanning so
+    # the client schedules the completed result instead of stranding a prefix.
+    tally_cache_status = inventory_status()
     result = await asyncio.to_thread(
         collect_recent_entries,
         root=_resolved_root_dir(),
@@ -1151,7 +1829,7 @@ async def api_recent(request: Request) -> JSONResponse:
             "limit": result.limit,
             "total_matching": result.total_matching,
             "truncated": result.truncated,
-            "tally_cache_status": inventory_status(),
+            "tally_cache_status": tally_cache_status,
         }
     )
 
@@ -1262,6 +1940,56 @@ def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONRespo
     )
 
 
+async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
+    """Directory envelope for `/api/file`: the folder analog of a file response.
+
+    Mirrors the file envelope shape (`type` / `kind` / `views` / `path`)
+    so `renderFile` routes folders through the same tab pipeline. The
+    `dir` block carries the inventory aggregates (null while the walker
+    is still finalizing, matching the tree wire contract) and
+    `readme_path` names a direct-child README for Overview panel discovery.
+    Served no-store: the envelope is tiny and its aggregates change
+    while a scan is running.
+    """
+
+    inventory = get_inventory()
+    entry = inventory.get(subpath)
+    discovery = await asyncio.to_thread(
+        discover_folder,
+        target,
+        max_entries=FOLDER_DISCOVERY_MAX_ENTRIES,
+    )
+    readme_path = (
+        f"{subpath}/{discovery.readme_name}"
+        if subpath and discovery.readme_name
+        else discovery.readme_name
+    )
+    total_files = entry.total_files if entry is not None else None
+    total_size = entry.total_size if entry is not None else None
+    unignored_files = entry.unignored_files if entry is not None else None
+    unignored_size = entry.unignored_size if entry is not None else None
+    newest_ns = entry.newest_mtime_ns if entry is not None else None
+    payload: dict[str, Any] = {
+        "type": "folder",
+        "kind": "folder",
+        "path": subpath,
+        "name": target.name,
+        "views": _views_for_kind("folder"),
+        "dir": {
+            "total_files": total_files,
+            "total_size": total_size,
+            "unignored_files": unignored_files,
+            "unignored_size": unignored_size,
+            "mtime": newest_ns / 1_000_000_000.0 if newest_ns is not None else None,
+            "gitignored": bool(entry.gitignored) if entry is not None else False,
+            "state": "pending" if total_files is None else "complete",
+        },
+        "readme_path": readme_path,
+        "readme_search_truncated": discovery.readme_search_truncated,
+    }
+    return JSONResponse(payload, headers={"cache-control": "no-store"})
+
+
 @log_async_calls(if_slower_than=0.1)
 async def api_file(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
@@ -1272,11 +2000,80 @@ async def api_file(request: Request) -> JSONResponse | Response:
         return _api_file_internal_error_response(subpath, exc)
 
 
+def _file_unavailable_response(subpath: str, target: Path | None) -> JSONResponse:
+    """Explain file-path failures without weakening served-root containment."""
+
+    # Inspect the final path component without resolving it so an escaping
+    # symlink can still be identified. Resolve and validate the parent first;
+    # otherwise an absolute path, ``..``, or a symlinked parent could turn this
+    # error-classification check into a probe outside the served root.
+    requested = Path(subpath)
+    candidate: Path | None = None
+    try:
+        parent = (_paths_safe.ROOT_DIR / requested.parent).resolve()
+        root = _paths_safe.ROOT_DIR.resolve()
+        if subpath and requested.name and _paths_safe._is_within(parent, root):
+            candidate = parent / requested.name
+        is_symlink = candidate is not None and candidate.is_symlink()
+    except OSError:
+        is_symlink = False
+
+    if is_symlink:
+        if target is None:
+            detail = (
+                "This symbolic link points outside the served folder. "
+                "Serve a folder containing its target to browse it."
+            )
+        elif not target.exists():
+            detail = "The target of this symbolic link is unavailable."
+        elif target.is_dir():
+            detail = (
+                "This symbolic link points to a folder. "
+                "Open the target folder directly to browse it."
+            )
+        else:
+            detail = "The target of this symbolic link cannot be opened."
+        return JSONResponse(
+            {"summary": "Could not open this link.", "error": detail},
+            status_code=404,
+        )
+
+    if target is not None and target.is_dir():
+        return JSONResponse(
+            {
+                "summary": "Could not open this folder.",
+                "error": "Select the folder in the navigation panel to browse its contents.",
+            },
+            status_code=404,
+        )
+
+    return JSONResponse(
+        {
+            "summary": "Could not open this file.",
+            "error": "This file is no longer available.",
+        },
+        status_code=404,
+    )
+
+
 async def _api_file_impl(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
     target = _safe_path(subpath)
-    if target is None or not target.is_file():
-        return JSONResponse({"error": "Not found"}, status_code=404)
+    if target is None or (target.exists() and not target.is_dir() and not target.is_file()):
+        # Before declaring the path unavailable: a missing path whose
+        # nearest file ancestor is a container kind is that container's
+        # virtual child. Classification reads the file, so off the loop.
+        container = await asyncio.to_thread(_resolve_container_child, subpath)
+        if container is not None:
+            return container
+        return _file_unavailable_response(subpath, target)
+    if target.is_dir():
+        return await _api_folder_envelope(subpath, target)
+    if not target.is_file():
+        container = await asyncio.to_thread(_resolve_container_child, subpath)
+        if container is not None:
+            return container
+        return _file_unavailable_response(subpath, target)
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
@@ -1335,18 +2132,23 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             }
         )
     mtime_hash = file_mtime_hash(target)
-    etag = _etag_for(mtime_hash)
-    etag_headers = {"etag": etag, "cache-control": "no-cache"}
     compression_fields = (
         _compression_envelope_fields(artifact, logical_size)
         if logical_size is not None
         else _compression_identity_fields(artifact)
     )
     requested_text_offset = max(0, _query_int(request, "offset", 0))
+    default_text_limit = _TEXT_PREVIEW_CHUNK_BYTES
+    if (
+        requested_text_offset == 0
+        and syntax_language_for_path(artifact.logical_name, ext)
+        and _SYNTAX_HIGHLIGHT_MAX_BYTES > 0
+    ):
+        default_text_limit = min(default_text_limit, _SYNTAX_HIGHLIGHT_MAX_BYTES)
     text_limit = max(
         1,
         min(
-            _query_int(request, "limit", _TEXT_PREVIEW_CHUNK_BYTES),
+            _query_int(request, "limit", default_text_limit),
             _TEXT_PREVIEW_MAX_CHUNK_BYTES,
         ),
     )
@@ -1367,12 +2169,18 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         requested_text_offset if logical_size is None else min(requested_text_offset, logical_size)
     )
 
+    # The window is part of what the body is, so it is part of the validator,
+    # and the tag can only be built once the window is known. Keyed on the file
+    # alone, one tag covered every chunk, and the 304 path had to be fenced off
+    # to `text_offset == 0` to stay correct — the knowledge lived in a guard at
+    # one call site instead of in the tag.
+    etag = _etag_for(f"{mtime_hash}-{text_offset}-{text_limit}")
+    etag_headers = {"etag": etag, "cache-control": "no-cache"}
+
     # 304 short-circuit. Repeat clicks on an unchanged file return zero
-    # bytes — meaningful over an SSH tunnel and free locally. We compare
-    # bytewise against the full ETag including the process-epoch suffix
-    # so a server restart guarantees a fresh body even if the file is
-    # untouched.
-    if text_offset == 0 and request.headers.get("if-none-match") == etag:
+    # bytes — meaningful over an SSH tunnel and free locally. Every chunk can
+    # take this path now, not only the first.
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=etag_headers)
 
     # JSONL gets parsed into structured events (single-pass streaming).
@@ -1418,15 +2226,13 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
-    if ext in _TEXT_EXTS or (
-        logical_size is not None and logical_size < _INLINE_TEXT_FALLBACK_BYTES
-    ):
+    if ext in _TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target):
         try:
             content_has_more = False
             if (
                 artifact.is_compressed
                 or text_offset > 0
-                or (logical_size is not None and logical_size > _TEXT_PREVIEW_CHUNK_BYTES)
+                or (logical_size is not None and logical_size > text_limit)
             ):
                 content, content_bytes, bytes_read, content_has_more = await asyncio.to_thread(
                     _read_artifact_text_chunk,
@@ -1485,7 +2291,10 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                     "content_truncated": content_has_more
                     or (logical_size is not None and bytes_read < logical_size),
                     "content_preview_limit": text_limit,
-                    "highlight_disabled": True,
+                    "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+                    "highlight_disabled": (
+                        _SYNTAX_HIGHLIGHT_MAX_BYTES <= 0 or bytes_read > _SYNTAX_HIGHLIGHT_MAX_BYTES
+                    ),
                     **compression_fields,
                 },
                 headers=etag_headers,
@@ -1523,11 +2332,9 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             "content_truncated": content_has_more
             or (logical_size is not None and bytes_read < logical_size),
             "content_preview_limit": text_limit,
+            "content_max_preview_limit": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
             "highlight_disabled": (
-                content_has_more
-                or (logical_size is not None and bytes_read < logical_size)
-                or (logical_size is not None and logical_size > _SYNTAX_HIGHLIGHT_MAX_BYTES)
-                or bytes_read > _SYNTAX_HIGHLIGHT_MAX_BYTES
+                _SYNTAX_HIGHLIGHT_MAX_BYTES <= 0 or bytes_read > _SYNTAX_HIGHLIGHT_MAX_BYTES
             ),
             **compression_fields,
         }
@@ -1567,9 +2374,93 @@ def _read_artifact_text(artifact: ArtifactPath, max_bytes: int) -> tuple[str, in
 async def api_kpress_render(request: Request) -> JSONResponse:
     """Render a safe served-root-relative file through the KPress adapter."""
 
-    subpath = request.query_params.get("path", "")
-    view = request.query_params.get("view", "document")
-    profile = request.query_params.get("profile", "") or None
+    source_override: str | None = None
+    if getattr(request, "method", "GET") == "POST":
+        # ``JSON.stringify`` can expand one UTF-8 source byte to a six-byte
+        # JSON escape. Bound the transport independently of the decoded
+        # source cap so request-body reads cannot grow without limit.
+        request_limit = (_TEXT_PREVIEW_MAX_CHUNK_BYTES * 6) + (64 * 1024)
+        chunks: list[bytes] = []
+        request_size = 0
+        async for chunk in request.stream():
+            request_size += len(chunk)
+            if request_size > request_limit:
+                return JSONResponse(
+                    {
+                        "type": "kpress_render_error",
+                        "error": "Render request exceeds safety limits",
+                        "max_size": request_limit,
+                    },
+                    status_code=413,
+                )
+            chunks.append(chunk)
+        try:
+            body = _json.loads(b"".join(chunks))
+        except (_json.JSONDecodeError, UnicodeDecodeError) as exc:
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Invalid JSON body", "detail": str(exc)},
+                status_code=400,
+            )
+        if not isinstance(body, dict):
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Request body must be a JSON object"},
+                status_code=400,
+            )
+        subpath = body.get("path", "")
+        view = body.get("view", "document")
+        profile_value = body.get("profile")
+        profile = profile_value or None
+        source_override = body.get("source_text")
+        if (
+            not all(isinstance(value, str) for value in (subpath, view))
+            or not isinstance(source_override, str)
+            or (profile is not None and not isinstance(profile, str))
+        ):
+            return JSONResponse(
+                {"type": "kpress_render_error", "error": "Invalid render body fields"},
+                status_code=400,
+            )
+        try:
+            source_size = len(source_override.encode())
+        except UnicodeEncodeError as exc:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "Invalid transformed source encoding",
+                    "detail": str(exc),
+                },
+                status_code=400,
+            )
+        if source_size > _TEXT_PREVIEW_MAX_CHUNK_BYTES:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "Transformed source exceeds safety limits",
+                    "max_size": _TEXT_PREVIEW_MAX_CHUNK_BYTES,
+                },
+                status_code=413,
+            )
+    else:
+        subpath = request.query_params.get("path", "")
+        view = request.query_params.get("view", "document")
+        profile = request.query_params.get("profile", "") or None
+    # A document embedded in Metabrowser's own navigation (the folder
+    # Overview's README) asks for no TOC of its own. Closed choice: an
+    # unrecognized value is rejected here rather than silently rendering the
+    # other layout. KPress validates it again at its request boundary.
+    # The SDK carries ``toc`` on the query string for GET and POST alike, so
+    # it is read here, after the method branch, rather than from the body.
+    include_toc = request.query_params.get("toc", "auto")
+    if include_toc not in ("auto", "on", "off"):
+        return JSONResponse(
+            {
+                "type": "kpress_render_error",
+                "error": "Invalid toc",
+                "detail": f"Invalid toc: {include_toc!r}; expected 'auto', 'on', or 'off'",
+                "diagnostics": [],
+            },
+            status_code=400,
+        )
 
     target = _safe_path(subpath)
     if target is None or not target.is_file():
@@ -1577,14 +2468,14 @@ async def api_kpress_render(request: Request) -> JSONResponse:
 
     artifact = ArtifactPath(target)
     ext = artifact.logical_ext
-    content: str | None = None
+    content: str | None = source_override
     try:
         disk_size = artifact.disk_size
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     try:
-        if artifact.is_compressed:
+        if artifact.is_compressed and source_override is None:
             content, logical_size = await asyncio.to_thread(
                 _read_artifact_text,
                 artifact,
@@ -1628,7 +2519,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
         )
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
-    if ext not in _TEXT_EXTS and logical_size >= _INLINE_TEXT_FALLBACK_BYTES:
+    if ext not in _TEXT_EXTS and not await asyncio.to_thread(_prefers_text_body, target):
         return JSONResponse(
             {
                 "type": "kpress_render_error",
@@ -1680,6 +2571,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             frontmatter=frontmatter,
             frontmatter_error=frontmatter_error,
             profile=profile,
+            include_toc=include_toc,
         )
     except kpress_adapter.KPressInvalidRequestError as exc:
         return JSONResponse(
@@ -1915,7 +2807,7 @@ async def kpress_static_asset(request: Request) -> Response:
             # asset changes.
             "Cache-Control": "no-cache",
         }
-    if request.headers.get("if-none-match", "") == asset.etag:
+    if matches_if_none_match(request, asset.etag):
         return Response(status_code=304, headers=headers)
     return Response(
         content=asset.content,
@@ -2158,6 +3050,106 @@ def _classify_with_plugins(
     return classify_file_kind(target, ext, adapter)
 
 
+def _container_kinds() -> dict[str, dict[str, str]]:
+    """Kinds whose files are folder-like containers in the tree.
+
+    Maps kind id -> {"plugin": name, "children": data-hook route}. Built
+    from loaded plugin manifests; the shell and the /api/file container
+    resolution below both consume it, so the capability has exactly one
+    source of truth.
+    """
+    out: dict[str, dict[str, str]] = {}
+    for plugin in _LOADED_PLUGINS:
+        for rule in plugin.manifest.kind:
+            if rule.container is not None:
+                out[rule.id] = {
+                    "plugin": plugin.name,
+                    "children": rule.container.children,
+                }
+    return out
+
+
+def _container_exts() -> dict[str, dict[str, str]]:
+    """Extension -> container info, for the tree's row affordance.
+
+    Only ext-matched kinds project here: a kind matched by content
+    sniffing cannot be recognized from a bare tree row. Such kinds still
+    resolve as containers server-side; their rows simply lack the
+    chevron until selected.
+    """
+    kinds = _container_kinds()
+    out: dict[str, dict[str, str]] = {}
+    for plugin in _LOADED_PLUGINS:
+        for rule in plugin.manifest.kind:
+            if rule.id not in kinds:
+                continue
+            exts = [rule.match.ext] if rule.match.ext else (rule.match.exts or [])
+            for ext in exts:
+                if ext:
+                    out[ext] = {"kind": rule.id, **kinds[rule.id]}
+    return out
+
+
+def _resolve_container_child(subpath: str) -> JSONResponse | None:
+    """Resolve ``<container-file>/<inner>`` to a file envelope.
+
+    Walks the requested path's ancestors from longest to shortest,
+    bounded, through the same safe-path gate as every other read. The
+    nearest existing ancestor decides: a directory means the request was
+    an ordinary missing file; a file whose kind declares the container
+    capability owns everything beneath it, and its views render the
+    virtual path. Returns None when no container claims the path.
+    """
+    parts = subpath.split("/")
+    if len(parts) < 2:
+        return None
+    kinds = _container_kinds()
+    if not kinds:
+        return None
+    for cut in range(len(parts) - 1, 0, -1):
+        prefix = "/".join(parts[:cut])
+        target = _safe_path(prefix)
+        if target is None:
+            continue
+        if target.is_dir():
+            # A real directory ancestor: the leaf is genuinely missing.
+            return None
+        if not target.is_file():
+            # Nothing at this depth; keep walking toward the root.
+            continue
+        artifact = ArtifactPath(target)
+        ext = artifact.logical_ext
+        kind = _classify_with_plugins(target, ext)
+        info = kinds.get(kind)
+        if info is None:
+            return None
+        if len(parts) - cut > MAX_CONTAINER_INNER_DEPTH:
+            # The bound is on the inner path, measured from the claiming
+            # file; the shared constant keeps this walk and the plugins'
+            # own walks agreeing.
+            return None
+        inner = "/".join(parts[cut:])
+        return JSONResponse(
+            {
+                "type": "text",
+                "kind": kind,
+                "views": _views_for_kind(kind),
+                "path": subpath,
+                "container": prefix,
+                "container_inner": inner,
+                "ext": ext,
+                "size": 0,
+                "mtime_hash": file_mtime_hash(target),
+                "content": "",
+                "content_offset": 0,
+                "content_bytes": 0,
+                "bytes_read": 0,
+                "content_truncated": False,
+            }
+        )
+    return None
+
+
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
@@ -2187,38 +3179,33 @@ def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     return out
 
 
-def _build_plugin_style_block() -> str:
-    """Emit <link rel='stylesheet'> tags for each plugin's styles.css + extra_styles.
+def _build_plugin_asset_config_block() -> str:
+    """Configure manifest-owned assets by the kinds that consume them.
 
-    Emitted in the <head>; each plugin contributes its `styles.css`
-    (auto-detected) followed by every entry in `[plugin].extra_styles`
-    in manifest order.
+    No plugin asset is an eager shell dependency. The private plugin host
+    loads one descriptor at most once when ``app.js`` selects any kind in its
+    manifest. Extra classic scripts retain manifest order before ``index.js``;
+    styles load in parallel and settle before the plugin renderer mounts.
     """
-    parts: list[str] = []
+    assets_by_kind: dict[str, list[dict[str, object]]] = {}
     for plugin in _LOADED_PLUGINS:
-        css_path = plugin.static_root / "styles.css"
-        if css_path.is_file():
-            parts.append(f'<link rel="stylesheet" href="/plugin-static/{plugin.name}/styles.css">')
-        for extra in plugin.manifest.plugin.extra_styles:
-            parts.append(f'<link rel="stylesheet" href="/plugin-static/{plugin.name}/{extra}">')
-    return "\n  ".join(parts)
-
-
-def _build_plugin_script_block() -> str:
-    """Emit per-plugin <script> tags after the shell loads.
-
-    For each plugin (in discovery order), emit any `extra_scripts`
-    declared in its manifest as classic <script> tags first (so they
-    set up globals that `index.js` can use), then the plugin's
-    `index.js` as an ES module. Plugins that don't declare
-    `extra_scripts` get just the index.js tag.
-    """
-    parts: list[str] = []
-    for plugin in _LOADED_PLUGINS:
-        for extra in plugin.manifest.plugin.extra_scripts:
-            parts.append(f'<script src="/plugin-static/{plugin.name}/{extra}"></script>')
-        parts.append(f'<script type="module" src="/plugin-static/{plugin.name}/index.js"></script>')
-    return "\n  ".join(parts)
+        prefix = f"/plugin-static/{plugin.name}"
+        styles: list[str] = []
+        if plugin.static_root.joinpath("styles.css").is_file():
+            styles.append(f"{prefix}/styles.css")
+        styles.extend(f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_styles)
+        descriptor: dict[str, object] = {
+            "name": plugin.name,
+            "module": f"{prefix}/index.js",
+            "scripts": [f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_scripts],
+            "styles": styles,
+        }
+        kinds = {view.kind for view in plugin.manifest.view}
+        kinds.update(kind.id for kind in plugin.manifest.kind)
+        for kind in sorted(kinds):
+            assets_by_kind.setdefault(kind, []).append(descriptor)
+    encoded = _json.dumps(assets_by_kind).replace("<", "\\u003c")
+    return f"<script>window.MetabrowserPluginHost.configureAssets({encoded});</script>"
 
 
 # ── Diagnostic routes (opt-in) ──────────────────────────────────
@@ -2266,11 +3253,14 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
 # ── Starlette app ───────────────────────────────────────────────
 
 routes = [
-    Route("/", index),
+    Route("/", root_redirect),
+    Route("/view/{path:path}", view_shell),
+    Route("/commit/{rest:path}", commit_shell),
     Route("/api/tree", api_tree),
+    Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),
     Route("/api/file", api_file),
-    Route("/api/kpress/render", api_kpress_render),
+    Route("/api/kpress/render", api_kpress_render, methods=["GET", "POST"]),
     Route("/api/kpress/export", api_kpress_export, methods=["POST"]),
     Route("/api/activity", api_activity),
     Route("/api/stream", api_stream),

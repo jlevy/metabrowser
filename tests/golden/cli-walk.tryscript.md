@@ -94,6 +94,7 @@ $ metab walkroot --walk --format json
       "ext": ".jsonl"
     }
   ],
+  "filtered": null,
   "tally_cache_status": "done",
   "tally_cache_max_files": 500000
 }
@@ -132,6 +133,7 @@ tree:
   size: 37
   mtime: 1700000000.0
   ext: .jsonl
+filtered: null
 tally_cache_status: done
 tally_cache_max_files: 500000
 ? 0
@@ -141,13 +143,13 @@ tally_cache_max_files: 500000
 
 ```console
 $ metab walkroot --walk --format json --stream
-{"path":"","parent":"","name":"walkroot","type":"dir","ext":"","kind":"dir","size":0,"mtime_ns":0,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
-{"path":"logs","parent":"","name":"logs","type":"dir","ext":"","kind":"dir","size":0,"mtime_ns":0,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
-{"path":"README.md","parent":"","name":"README.md","type":"file","ext":".md","kind":"file","size":17,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
-{"path":"data.jsonl","parent":"","name":"data.jsonl","type":"file","ext":".jsonl","kind":"file","size":37,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
-{"path":"logs/run.log","parent":"logs","name":"run.log","type":"file","ext":".log","kind":"file","size":18,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
-{"path":"logs","parent":"","name":"logs","type":"dir","ext":"","kind":"dir","size":0,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":1,"total_size":18,"newest_mtime_ns":1700000000000000000,"gitignored":false,"write_token":null}
-{"path":"","parent":"","name":"walkroot","type":"dir","ext":"","kind":"dir","size":0,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":3,"total_size":72,"newest_mtime_ns":1700000000000000000,"gitignored":false,"write_token":null}
+{"path":"","parent":"","name":"walkroot","type":"dir","ext":"","kind":"dir","size":0,"mtime_ns":0,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"unignored_files":null,"unignored_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
+{"path":"logs","parent":"","name":"logs","type":"dir","ext":"","kind":"dir","size":0,"mtime_ns":0,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"unignored_files":null,"unignored_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
+{"path":"README.md","parent":"","name":"README.md","type":"file","ext":".md","kind":"file","size":17,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"unignored_files":null,"unignored_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
+{"path":"data.jsonl","parent":"","name":"data.jsonl","type":"file","ext":".jsonl","kind":"file","size":37,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"unignored_files":null,"unignored_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
+{"path":"logs/run.log","parent":"logs","name":"run.log","type":"file","ext":".log","kind":"file","size":18,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":null,"total_size":null,"unignored_files":null,"unignored_size":null,"newest_mtime_ns":null,"gitignored":false,"write_token":null}
+{"path":"logs","parent":"","name":"logs","type":"dir","ext":"","kind":"dir","size":0,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":1,"total_size":18,"unignored_files":1,"unignored_size":18,"newest_mtime_ns":1700000000000000000,"gitignored":false,"write_token":null}
+{"path":"","parent":"","name":"walkroot","type":"dir","ext":"","kind":"dir","size":0,"mtime_ns":1700000000000000000,"mtime_hash":"","active":false,"views":[],"labels":[],"total_files":3,"total_size":72,"unignored_files":3,"unignored_size":72,"newest_mtime_ns":1700000000000000000,"gitignored":false,"write_token":null}
 ? 0
 ```
 
@@ -167,6 +169,7 @@ $ metab walkroot --walk --format json --path logs
       "ext": ".log"
     }
   ],
+  "filtered": null,
   "tally_cache_status": "done",
   "tally_cache_max_files": 500000
 }

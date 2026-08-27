@@ -54,20 +54,28 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    make verify
    ```
 
-3. Confirm CI is green for the exact commit to be tagged.
+3. Compare the candidate with the previous published release using the
+   [previous-release performance loop](../explorations/performance-loop/README.md#comparing-a-candidate-with-the-previous-release).
+   Record the ranges and verdict in a committed experiment and regenerate the
+   performance report. Every candidate run must pass the hard responsiveness and
+   correctness gates, and a repeatable wrong-way metric blocks the release until it is
+   fixed or explicitly accepted.
+   For the first release, record a baseline instead.
 
-4. Review changes since the previous release and choose a semantic version.
+4. Confirm CI is green for the exact commit to be tagged.
 
-5. Create a GitHub release with a `vX.Y.Z` tag.
+5. Review changes since the previous release and choose a semantic version.
+
+6. Create a GitHub release with a `vX.Y.Z` tag.
    The workflow checks out that exact tag, rejects non-semantic tags, and verifies that
    the derived package version matches before publishing.
 
-6. Watch the `Publish to PyPI` workflow through completion.
+7. Watch the `Publish to PyPI` workflow through completion.
 
-7. Verify the published metadata and files on PyPI, including the AGPL license, Python
+8. Verify the published metadata and files on PyPI, including the AGPL license, Python
    classifiers, source and issue links, and release notes.
 
-8. Run an isolated smoke test against the released version:
+9. Run an isolated smoke test against the released version:
 
    ```shell
    uvx metabrowser@X.Y.Z --help
@@ -75,12 +83,9 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    uvx --from metabrowser==X.Y.Z metabrowser --help
    ```
 
-9. From a clean temporary directory, install the public Agent Skill and confirm its
-   pinned runner matches the release:
-
-   ```shell
-   npx skills add jlevy/metabrowser --skill metabrowser
-   ```
+10. From a clean temporary directory, install the public Agent Skill and confirm it
+    retains the documented local-`metab` or `uvx metabrowser@latest` runner policy with
+    `npx skills add jlevy/metabrowser --skill metabrowser`.
 
 For the first release, the intended tag and package version are `v0.1.0` and `0.1.0`.
 

@@ -30,7 +30,8 @@ def _api_file(path: str) -> dict[str, Any]:
     request.query_params = _FakeQuery({"path": path})
     request.headers = {}
     response = asyncio.run(server.api_file(request))
-    return (response.body and __import__("json").loads(response.body)) or {}
+    payload = bytes(response.body)
+    return __import__("json").loads(payload) if payload else {}
 
 
 def test_api_file_emits_frontmatter_for_md_with_yaml(tmp_path: Path) -> None:

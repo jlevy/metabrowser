@@ -19,9 +19,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Collection, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, cast, override
 
+from conftest import SyntheticIndexWriter
+
+from metabrowser import inventory as inventory_module
 from metabrowser import paths_safe
 from metabrowser import server as proc_browser
 from metabrowser.activity import (
@@ -29,8 +33,10 @@ from metabrowser.activity import (
     _discover_trackable_files_from_inventory,
 )
 from metabrowser.events import FsEntry
-from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser.file_type_registry import load_file_type_registry
+from metabrowser.inventory import InventoryIndex, get_instance, reset_instance_for_tests
 from metabrowser.tree import _build_inventory_tree, inventory_has_data, inventory_status
+from metabrowser.wire_models import NavigationTallies
 
 
 def _build_fixture(root: Path) -> None:
@@ -125,7 +131,7 @@ def test_inventory_backed_tree_emits_none_aggregates_when_walker_in_progress(
     reset_instance_for_tests()
     inv = get_instance()
 
-    inv._entries["docs"] = FsEntry(
+    SyntheticIndexWriter(inv)["docs"] = FsEntry(
         path="docs",
         parent="",
         name="docs",
@@ -160,9 +166,15 @@ def test_inventory_has_data_false_when_idle() -> None:
 
 
 def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
-    """When the inventory is populated, /api/tree's response
-    carries the entries from the cache and the response envelope
-    includes ``tally_cache_status``."""
+    """When the inventory is populated, /api/tree's response carries the
+    entries from the cache and the response envelope includes
+    ``tally_cache_status``.
+
+    The tallies are requested at ``depth=0``, which is the channel that is
+    allowed to pay for them: they cost one visit per entry in the index and the
+    rows do not, so a request carrying rows never waits for that pass. See
+    explorations/performance-loop/experiments/exp-007.
+    """
 
     _build_fixture(tmp_path)
 
@@ -173,18 +185,115 @@ def test_api_tree_uses_inventory_when_populated(tmp_path: Path) -> None:
         try:
             await _drive_walker(tmp_path)
             resp = await proc_browser.api_tree(cast(Any, _FakeRequest()))
+            tallies = await proc_browser.api_tree(cast(Any, _FakeRequest({"depth": "0"})))
         finally:
             paths_safe._set_root_dir(original_root)
-        return json.loads(bytes(resp.body))
+        rows = json.loads(bytes(resp.body))
+        # Rows and tallies now come from different requests; merge them here so
+        # the assertions below still read as one description of the surface.
+        rows.update({k: v for k, v in json.loads(bytes(tallies.body)).items() if k != "tree"})
+        return rows
 
     body = asyncio.run(_run())
     assert "tally_cache_status" in body
     assert body["tally_cache_status"] in ("idle", "scanning", "done", "truncated")
     assert "tree" in body
-    assert [row[0] for row in body["type_presets"]] == ["docs", "code", "data"]
+    assert [row[0] for row in body["type_presets"]] == [
+        "code",
+        "docs",
+        "data",
+        "archives",
+        "media",
+    ]
+    assert body["file_type_registry"] == {
+        "schema_version": 3,
+        "revision": load_file_type_registry().revision,
+        "fingerprint": load_file_type_registry().fingerprint,
+    }
+    assert body["canonical_extensions"] is not None
+    assert body["type_families"] is not None
+    assert [row[0] for row in body["recency_tallies"]] == [
+        "live",
+        "1h",
+        "24h",
+        "7d",
+        "30d",
+    ]
     names = {row["name"] for row in body["tree"]}
     assert "README.md" in names
     assert "runs" in names
+
+
+def test_api_tree_snapshots_tallies_before_worker_thread(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """A filter-clear refresh must not iterate the live index off-loop.
+
+    The inventory walker owns mutations on the event-loop thread. This
+    test double rejects a tally call that reaches into the live mapping
+    from ``asyncio.to_thread``, modeling the dictionary-size race seen
+    while a large root was still scanning. It also finishes the walk
+    while the worker runs: the response status must still describe the
+    partial snapshot so the browser schedules a final refresh.
+    """
+
+    class WorkerUnsafeTallies(InventoryIndex):
+        @override
+        def navigation_tallies(
+            self,
+            presets: Sequence[tuple[str, Collection[str]]],
+            recency_windows: Sequence[tuple[str, float]],
+            limit: int = 200,
+            *,
+            now_ns: int | None = None,
+            entries: Sequence[FsEntry] | None = None,
+            revision: int | None = None,
+        ) -> NavigationTallies:
+            if entries is None:
+                raise RuntimeError("dictionary changed size during iteration")
+            return super().navigation_tallies(
+                presets,
+                recency_windows,
+                limit=limit,
+                now_ns=now_ns,
+                entries=entries,
+                revision=revision,
+            )
+
+    original_root = paths_safe.ROOT_DIR
+    resolved_root = tmp_path.resolve()
+    paths_safe._set_root_dir(resolved_root)
+    inv = WorkerUnsafeTallies()
+    inv._root = resolved_root
+    inv._status = "scanning"
+    SyntheticIndexWriter(inv)["README.md"] = FsEntry.for_observed_file(
+        path="README.md",
+        parent="",
+        name="README.md",
+        size=6,
+        mtime_ns=1_700_000_000_000_000_000,
+    )
+    monkeypatch.setattr(inventory_module, "get_instance", lambda: inv)
+    monkeypatch.setattr(proc_browser, "get_inventory", lambda: inv)
+    original_to_thread = asyncio.to_thread
+
+    async def finish_inventory_during_tallies(function: Any, /, *args: Any, **kwargs: Any) -> Any:
+        result = await original_to_thread(function, *args, **kwargs)
+        inv._status = "done"
+        return result
+
+    monkeypatch.setattr(proc_browser.asyncio, "to_thread", finish_inventory_during_tallies)
+
+    try:
+        response = asyncio.run(proc_browser.api_tree(cast(Any, _FakeRequest({"depth": "0"}))))
+    finally:
+        paths_safe._set_root_dir(original_root)
+
+    assert response.status_code == 200
+    body = json.loads(bytes(response.body))
+    assert body["summary"]["files"] == 1
+    assert body["tally_cache_status"] == "scanning"
 
 
 def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
@@ -203,7 +312,7 @@ def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
     inv._root = tmp_path
     inv._status = "scanning"
 
-    inv._entries["runs/local"] = FsEntry(
+    SyntheticIndexWriter(inv)["runs/local"] = FsEntry(
         path="runs/local",
         parent="runs",
         name="local",
@@ -215,7 +324,7 @@ def test_api_tree_uses_pending_inventory_without_filesystem_fallback(
         mtime_hash="",
         active=False,
     )
-    inv._entries["runs/local/known"] = FsEntry(
+    SyntheticIndexWriter(inv)["runs/local/known"] = FsEntry(
         path="runs/local/known",
         parent="runs/local",
         name="known",
@@ -324,3 +433,38 @@ def test_inventory_and_filesystem_paths_agree_on_trackable_set(tmp_path: Path) -
     assert inv_out is not None
     inv_paths = {p.relative_to(tmp_path).as_posix() for p in inv_out}
     assert fs_paths == inv_paths
+
+
+def test_a_row_request_does_not_pay_for_the_tallies(tmp_path: Path) -> None:
+    """The split H27 introduced, stated as a contract rather than a timing.
+
+    Tallies cost one visit per entry in the index and rows do not. Sharing one
+    response made a reader wait for the expensive half to see the cheap one --
+    most of a second at 240,000 files, and worse, work that competes with the
+    walker. A row request now carries tallies only if they happen to be
+    memoized; ``depth=0`` is the channel that computes them.
+    """
+
+    _build_fixture(tmp_path)
+
+    async def _run() -> tuple[dict[str, Any], dict[str, Any]]:
+        original_root = paths_safe.ROOT_DIR
+        paths_safe._set_root_dir(tmp_path)
+        try:
+            await _drive_walker(tmp_path)
+            rows = await proc_browser.api_tree(cast(Any, _FakeRequest()))
+            tallies = await proc_browser.api_tree(cast(Any, _FakeRequest({"depth": "0"})))
+        finally:
+            paths_safe._set_root_dir(original_root)
+        return json.loads(bytes(rows.body)), json.loads(bytes(tallies.body))
+
+    rows, tallies = asyncio.run(_run())
+
+    # The rows arrive either way, and so does the scan-state label the client
+    # uses to decide whether to trust what it has.
+    assert rows["tree"], "a row request must still carry rows"
+    assert "tally_cache_status" in rows
+
+    # And the tally channel answers with them.
+    assert tallies["summary"] is not None
+    assert tallies["type_presets"] is not None

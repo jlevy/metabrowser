@@ -1,7 +1,7 @@
 // Shared chart and tally rendering for built-in and external plugins.
 
 ((global) => {
-  var _perf = global.metabrowserPerf || {
+  var _perf = global.metabrowser?.perf || {
     measure: (_label, fn) => fn(),
   };
   var ICONS = global.MetabrowserIcons || {};
@@ -39,16 +39,17 @@
     return v || ref;
   }
 
-  // Apply alpha (0..1) to an hsl()/hex color. Works with the resolved
-  // output of cssVar() or any concrete color string already in the spec.
+  // Apply alpha (0..1) to an oklch()/hsl()/hex color. Works with the
+  // resolved output of cssVar() or a concrete color already in the spec.
   function colorWithAlpha(color, alpha) {
     if (typeof color !== "string" || alpha >= 1) {
       return color;
     }
     var c = cssVar(color);
-    var m = c.match(/^hsla?\(([^/)]+?)(?:\s*\/\s*[^)]+)?\)$/i);
+    var m = c.match(/^(oklch|hsla?)\(([^/)]+?)(?:\s*\/\s*[^)]+)?\)$/i);
     if (m) {
-      return `hsl(${m[1].trim()} / ${alpha})`;
+      var colorFunction = m[1].toLowerCase() === "hsla" ? "hsl" : m[1].toLowerCase();
+      return `${colorFunction}(${m[2].trim()} / ${alpha})`;
     }
     if (/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c)) {
       var hex = Math.round(alpha * 255).toString(16);

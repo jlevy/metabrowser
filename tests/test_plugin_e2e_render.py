@@ -7,7 +7,7 @@ Real flow exercised here: the SDK source loads, every built-in plugin's
 ``registerView`` call lands for it, the plugin's contract is broken
 and the shell would paint "Unknown view" for that file.
 
-We use Node's ``vm`` module via subprocess (see ``tests/dom/load_plugins.js``)
+We use Node's ``vm`` module via subprocess (see ``tests/dom/load-plugins.js``)
 instead of jsdom — the SDK only needs ``window`` + a tiny ``document``
 stub at registration time, so a real DOM would add 150 MB of test deps
 for negligible gain.
@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-LOADER_JS = Path(__file__).resolve().parent / "dom" / "load_plugins.js"
+LOADER_JS = Path(__file__).resolve().parent / "dom" / "load-plugins.js"
 
 
 def _has_node() -> bool:
@@ -41,7 +41,7 @@ def shim_output() -> dict[str, Any]:
     if not _has_node():
         pytest.skip("node not available; skipping JS-side plugin shim")
     result = subprocess.run(
-        ["node", str(LOADER_JS), str(REPO_ROOT)],
+        ["node", "--experimental-vm-modules", str(LOADER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
         timeout=30,
@@ -58,7 +58,9 @@ def test_shim_loads_every_builtin_plugin(shim_output: dict[str, Any]) -> None:
     """The generic built-in plugin set loads and runs each ``index.js``."""
     assert set(shim_output["plugins"]) == {
         "agent_log",
+        "diff",
         "binary",
+        "folder",
         "markdown",
         "structured",
         "text",
@@ -113,7 +115,8 @@ def test_namespace_rule_is_enforced(tmp_path: Path) -> None:
     bad = tmp_path / "bad_plugin"
     bad.mkdir()
     (bad / "manifest.toml").write_text(
-        '[plugin]\nname = "bad_plugin"\n[[kind]]\nid = "bad"\n'
+        '[plugin]\nname = "bad_plugin"\nsdk_version = "0.5"\n'
+        '[[kind]]\nid = "bad"\n'
         'match = { ext = ".bad" }\n[[view]]\nkind = "bad"\nid = "v"\nlabel = "V"\n'
     )
     (bad / "index.js").write_text(
@@ -126,7 +129,13 @@ def test_namespace_rule_is_enforced(tmp_path: Path) -> None:
         "})();\n"
     )
     result = subprocess.run(
-        ["node", str(LOADER_JS), str(REPO_ROOT), str(tmp_path)],
+        [
+            "node",
+            "--experimental-vm-modules",
+            str(LOADER_JS),
+            str(REPO_ROOT),
+            str(tmp_path),
+        ],
         capture_output=True,
         text=True,
         timeout=30,
@@ -150,7 +159,13 @@ def test_extra_plugins_dir_is_loaded() -> None:
     if not (fixture_dir / "sample_plugin" / "index.js").is_file():
         pytest.skip("sample_plugin fixture missing")
     result = subprocess.run(
-        ["node", str(LOADER_JS), str(REPO_ROOT), str(fixture_dir)],
+        [
+            "node",
+            "--experimental-vm-modules",
+            str(LOADER_JS),
+            str(REPO_ROOT),
+            str(fixture_dir),
+        ],
         capture_output=True,
         text=True,
         timeout=30,

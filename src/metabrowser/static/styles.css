@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────────
-   Design system — HSL color tokens + elevation tokens, no literals
+   Design system — semantic color tokens + elevation tokens, no literals
    outside :root.
 
    Every color AND every box-shadow in this app is defined ONCE as a
@@ -10,35 +10,40 @@
    tests/test_viz_css_no_literal_colors.py; the same rule applies by
    convention to the rest of the app.
 
-   Why HSL (hsl(H S% L%) / hsl(H S% L% / A))?
+   New and deliberately adjusted color families use OKLCH
+   (oklch(L% C H) / oklch(L% C H / A)). Existing HSL families stay
+   valid until their palette is deliberately adjusted; do not mass-convert a
+   stable palette merely to change syntax.
 
      1. Hue encodes *family*. Tokens that share a hue are meant to
         read as related. Example — adapter and model chips both sit
-        on ~sea-green (~160°); file-age grades walk a continuous
-        warm→cool→grey ramp (red→amber→green→blue→grey); chart
+        on ~sea-green; file-age grades keep every non-live age in a
+        yellow-to-neutral family while Live has one salmon state; chart
         threshold colors use the same info / warning / error hues
         as the status palette so dashboards and alerts speak the
         same language. To introduce a new token, pick the hue that
         places it in the right family first — do not pick a color
         that "looks nice" in isolation.
 
-     2. Lightness is the retune knob. To make a dark theme or a
-        higher-contrast variant, hold H and S roughly fixed and
+     2. Lightness is the contrast knob. To make a dark theme or a
+        higher-contrast variant, hold H and chroma roughly fixed and
         invert/shift L. A pair like "--viz-chip-adapter-bg" /
         "--viz-chip-adapter-text" is two lightness stops on one
         hue — so bg and text retune together when either is
-        adjusted. Never shift hue to dim a color; lower L.
+        adjusted. Never shift hue to dim a color; move L toward the
+        surrounding surface.
 
-     3. Saturation is the loudness knob. Chart callouts, age
-        warnings, and status dots are higher S; body text, borders,
-        and surfaces are low S. If a new token reads as too noisy,
-        drop S before dropping L.
+     3. Chroma is the loudness knob. Chart callouts, fresh-age
+        text, and status dots are higher C; body text, borders,
+        and surfaces are low C. OKLCH makes equal chroma and lightness
+        steps more perceptually uniform than HSL. If a new token reads
+        as too noisy, drop C before dropping L.
 
-     4. Alpha is L4 syntax: hsl(H S% L% / 0.5). This lets us derive
+     4. Alpha uses Color 4 syntax: oklch(L% C H / 0.5). This lets us derive
         translucent variants at the point of use (chart fills,
         annotation backgrounds) without a separate -a-20 token for
-        every color. The JS helper colorWithAlpha() in charts.js
-        applies alpha to any hsl() at runtime.
+        every color. The JS helper colorWithAlpha() in charts.js accepts
+        both OKLCH and legacy HSL while the remaining families migrate.
 
    How to add a color token: add it in :root below, next to the
    family it belongs to, with a one-line comment naming the use site
@@ -81,10 +86,10 @@
            app header, drawer, tooltip — routes through
            `sizeHtml(bytes)`. The helper formats via formatSize()
            AND applies `.size-large` (= font-weight: bold) above a
-           single shared threshold (SIZE_LARGE_THRESHOLD). Big reads
+           single threshold owned by MetabrowserFormatters. Big reads
            as bold, small as normal, EVERYWHERE. Never render a byte
            count with a bare formatSize() call + custom weight logic
-           in a one-off site — adjust the threshold in one place.
+           in a one-off site.
 
        File-type colors (.ft-<name> + --ft-*) — see the block in
        :root. Each subtype is one hue triplet (--ft-color, --ft-bg,
@@ -152,7 +157,7 @@
        file paths, including parent paths and ancestor segments, in the
        tree, the header, the file header, and search results; key names
        and shortcut hints; labels, metadata, chips, tooltips, notes,
-       counts, and status text.
+       counts, status text, and commit-message prose.
        A path is navigation, not code. It reads in the same face as the
        Navigator row it points at, at --nav-font-size.
 
@@ -182,7 +187,10 @@
 
      Keys are always ALL CAPS — ENTER, ESC, T — including single
      letters, so a key never reads as a word. Arrow glyphs (↑ ↓) have no
-     case and pass through unchanged.
+     case and pass through unchanged. The visible, spoken, and ARIA
+     vocabulary for semantic keys lives in docs/design-system.md and is
+     emitted by the shared shortcut binding formatter; use sites do not
+     choose abbreviations or glyphs.
 
      The border is deliberately thin and low-contrast: a key is a quiet
      inline mark inside hint text, not a button. Both themes inherit
@@ -258,6 +266,15 @@
   --body-font-size: 14px;
   --nav-font-size: 13px;
   --ui-small-font-size: 12px;
+  /* The app's tooltip reads at body size, not at small-chrome size.
+
+     Its own token rather than a reference to --ui-small-font-size, which is
+     the size of chips, counts and row metadata: pointing the tooltip at that
+     made its size a side effect of a decision about chrome, so the next
+     adjustment to small chrome text would have moved every tooltip with it. A
+     tooltip is prose the reader has stopped to read. */
+  --tooltip-font-size: var(--body-font-size);
+  --tooltip-detail-font-size: var(--ui-small-font-size);
   --micro-font-size: 10px;
   --document-body-font-size: 15px;
   --kpress-host-font-size-base: var(--document-body-font-size);
@@ -284,6 +301,23 @@
   --label-text-transform: uppercase;
   --label-color: var(--muted);
 
+  /* Section disclosures place one quiet chevron immediately after the title.
+     The em-sized glyph follows the surrounding heading rather than creating a
+     second icon tier. Folder-tree chevrons remain a separate leading control. */
+  /* One row height for every row-like activation target: tree rows,
+     tally rows, the diff file bar. 13px row text in a 19.5px line plus
+     2px pads — and exactly --icon-btn-size, so a revealed icon button
+     never stretches a row. */
+  --ui-row-height: 24px;
+  /* One nesting step in the file tree. Rows keep a full-width box and add
+     this to their left padding per level, so depth reads in the text
+     position while the hover and selection shapes stay constant. */
+  --tree-indent: 16px;
+  --section-disclosure-chevron-color: var(--muted);
+  --section-disclosure-chevron-gap: 0.35em;
+  --section-disclosure-chevron-size: 0.85em;
+  --section-heading-divider-gap: 5px;
+
   /* "Panel" envelope — the bordered, rounded frame shared by markdown
      tables and frontmatter blocks (and any future similar surface).
      Putting these on :root keeps the visual treatment consistent across
@@ -292,6 +326,21 @@
   --panel-border: 1px solid var(--border);
   --panel-header-bg: var(--sidebar-bg);
   --panel-cell-padding: 0.35rem 0.6rem;
+
+  /* Aggregate distributions — the marks that join a stacked bar to the rows
+     below it. Text never sits on these colors.
+
+     A file type's color is not here. The registry declares its hue, the server
+     resolves that hue against both themes at one lightness and one chroma
+     target, and category-palette.js writes both answers onto the element as
+     --mb-distribution-color-light and -dark. Composing the color in CSS was
+     the obvious alternative and does not work: sRGB cannot hold the target
+     chroma at every hue, and a browser handed an out-of-gamut oklch() clips
+     it, moving hue by as much as nine degrees. See color_oklch.py. */
+  --mb-distribution-other: var(--muted);
+  --mb-distribution-track: var(--viz-surface-sunken);
+  --mb-distribution-track-height: 8px;
+  --mb-distribution-segment-gap: 1px;
 
   /* Icons — one glyph size for every icon in the chrome, whether it is a
      button (gear, printer, copy), a file-type mark in a row, or a menu
@@ -319,6 +368,26 @@
   --radius-document: 0;
   --radius-pill: 999px;
   --radius-circle: 50%;
+  /* Space between independently bounded chips in a wrapping cluster. */
+  --chip-cluster-gap: 4px;
+  /* A chip's box, in one place. The filter bar has to reserve a chip's height
+     before any chip exists (see `.nav-filter-bar`), so the padding and border
+     that make up that height cannot live only in `.chip` -- a reservation that
+     restates them is coupled to the real chip by nothing but a comment, and
+     goes silently short the first time either changes. `.chip` reads these
+     back, so the two cannot disagree. */
+  --chip-padding-y: 2px;
+  --chip-border: 1px;
+  /* Derived from the type it contains rather than measured off a rendered
+     chip: the 1.5 line box of `--ui-small-font-size`, plus the box above. */
+  --chip-height: calc(
+    1.5 *
+    var(--ui-small-font-size) +
+    2 *
+    var(--chip-padding-y) +
+    2 *
+    var(--chip-border)
+  );
 
   /* Z-index scale — the named stacking layers. Use these tokens at use
      sites rather than ad-hoc integers so the relative order of panes,
@@ -334,6 +403,15 @@
 
   /* Transitions */
   --transition-fast: 150ms ease;
+  /* Square-ish corner for tag-like chips (branch refs): visibly not a
+     pill, still not a hard corner. */
+  --radius-tag: 3px;
+  /* Transient loading chrome stays quiet through work that finishes within
+     about three frames, which covers a cached subtree expansion and most
+     local requests. The placeholder still reserves its layout while hidden,
+     so revealing it later cannot move ready content. Nothing announces
+     loading inside this window; see "Motion" in docs/design-system.md. */
+  --loading-state-delay: 50ms;
   /* Theme crossfade — applied to the major page surfaces so flipping
      light↔dark glides instead of snapping. Gated behind html.theme-anim
      (added by app.js one frame after first paint) so it never fires on
@@ -349,18 +427,27 @@
   /* Content spacing */
   --content-padding-x: 24px;
   --content-padding-y: 16px;
+  --preview-message-max-width: 42rem;
   --embedded-document-padding-top: 8px;
   /* The navigation column has one left inset, and everything in it
-     lines up on that edge: the brand, the served path, the Files tab,
-     the filter chips, the tally row, and every tree row. 12px is the
-     tree row's own content inset (10px padding + the 2px selection
-     bar), so the chrome above aligns to the content rather than the
-     content having to move. Controls with internal padding cancel it
-     — see .header-brand's negative margin and .nav-tab-bar below — so
+     lines up on that edge: the served path, the Files tab, the filter
+     chips, the tally row, and every tree row. 12px is the tree row's own
+     content inset (10px padding + the 2px selection bar), so the chrome
+     above aligns to the content rather than the content having to move.
+     Controls with internal padding cancel it — see .nav-tab-bar below — so
      their *text* lands on the inset; bordered controls like chips
      align their border instead, since that is their visual edge. */
   --pane-header-padding-x: 12px;
   --pane-header-padding-y: 8px;
+  /* The height of the path row on BOTH sides of the divider, border included,
+     so the two headers meet exactly and the hairline under them is one line
+     across the app rather than two that happen to be close.
+
+     Driven from here rather than from each side's content, which is how they
+     drifted: the navigation header came out 40.5px against the file header's
+     41px — invisible in review, and enough for the rules to miss each other by
+     half a pixel. Both rows are border-box, so this is the whole row. */
+  --pane-header-row-height: 41px;
   --file-header-padding-y: var(--pane-header-padding-y);
   --file-tab-padding-x: 12px;
   --file-tab-padding-y: 4px;
@@ -373,24 +460,25 @@
      vars so active-state hue and border thickness stay locked in
      step across every tab in the UI; change here to retheme
      everywhere. */
-  --tab-active-color: hsl(216 98% 52%);
+  --tab-active-color: oklch(57.51% 0.2293 260.21);
   --tab-active-border-width: 2px;
 
   /* Colors — light theme */
-  --bg: hsl(0 0% 100%);
-  --text: hsl(0 0% 10%);
-  --border: hsl(0 0% 90%);
+  --bg: oklch(100% 0 89.9);
+  --text: oklch(21.6% 0 89.9);
+  --border: oklch(92.34231% 0 0);
   /* Top bar — light surface matching the sidebar, dark-grey text. The
      bar reads as another content pane rather than an inverse-styled
      banner. The nav tab bar (which sits below the header and above the
      scrollable tree) carries the drop shadow so the shadow falls onto
      the scrolling content rather than onto a fixed strip. */
   --header-bg: var(--sidebar-bg);
-  --header-text: hsl(0 0% 20%);
-  --sidebar-bg: hsl(210 17% 98%);
-  --hover-bg: hsl(0 0% 94%);
-  --link: hsl(205 80% 40%);
-  --muted: hsl(208 7% 46%);
+  --header-text: oklch(32.1% 0 89.9);
+  --sidebar-bg: oklch(98.44% 0.0015 247.84);
+  --hover-bg: oklch(95.4% 0 89.9);
+  --link: oklch(54.14% 0.1337 246.71);
+  --muted: oklch(56.1% 0.016 244.4);
+  --dimmed-content-opacity: 0.45;
 
   /* Selection highlight — the "current item" indicator shared by the
      file-tree nav and the embedded KPress document TOC, so both read the
@@ -403,9 +491,23 @@
   --highlight-bg: color-mix(in srgb, var(--link) 10%, transparent);
   --highlight-bar: var(--link);
   --modal-scrim: color-mix(in srgb, var(--text) 28%, transparent);
+  --modal-inline-margin: 16px;
+  --modal-block-margin: max(24px, 8vh);
+  --modal-max-width: 640px;
+  --modal-max-height: min(80vh, 720px);
+  --modal-header-padding: 8px 12px;
+  --modal-header-gap: 12px;
+  --modal-body-padding: 12px;
+  --modal-footer-padding: 8px 12px;
+  --help-dialog-width: 560px;
+  --help-section-gap: 16px;
+  --help-row-gap: 12px;
+  --help-binding-width: 108px;
+  --search-palette-width: 640px;
+  --search-palette-max-height: min(70vh, 640px);
 
   /* Code block backgrounds */
-  --code-bg: hsl(210 29% 97%);
+  --code-bg: oklch(97.6% 0.004 247.9);
   /* Inline code in a rendered document is a tint with the faintest possible
      edge — enough to close the shape, not enough to read as a chip. Prose that
      names many identifiers shows dozens of these in a paragraph, so this sits
@@ -415,25 +517,27 @@
 
   /* Syntax colors shared by Highlight.js source views and the structured
      JSON/YAML tree. Every foreground meets WCAG AA against both --bg and
-     --code-bg; diff foregrounds are checked against their own surfaces.
+     --code-bg; these light-theme foregrounds also retain 4.5:1 over
+     the diff view's 12% success and error composites.
+     Diff foregrounds are checked against their own surfaces.
      The async vendor stylesheet supplies layout only: the host mappings in
      the Highlight.js integration block below own every semantic color. */
-  --color-syntax-keyword: hsl(355 65% 44%);
-  --color-syntax-title: hsl(265 55% 46%);
-  --color-syntax-string: hsl(140 50% 32%);
-  --color-syntax-number: hsl(28 75% 38%);
+  --color-syntax-keyword: oklch(51.6% 0.181 22.4);
+  --color-syntax-title: oklch(47.03% 0.1915 297.54);
+  --color-syntax-string: oklch(51% 0.116 151);
+  --color-syntax-number: oklch(53% 0.1261 55.64);
   --color-syntax-bool: var(--color-syntax-title);
-  --color-syntax-null: hsl(208 7% 42%);
-  --color-syntax-key: hsl(208 60% 35%);
+  --color-syntax-null: oklch(52% 0.0147 244.44);
+  --color-syntax-key: oklch(46.53% 0.1006 248.34);
   --color-syntax-built-in: var(--color-syntax-number);
   --color-syntax-comment: var(--color-syntax-null);
   --color-syntax-tag: var(--color-syntax-string);
   --color-syntax-punct: var(--color-syntax-null);
   --color-syntax-summary: var(--color-syntax-null);
-  --color-syntax-addition: hsl(140 50% 28%);
-  --color-syntax-addition-bg: hsl(140 60% 95%);
-  --color-syntax-deletion: hsl(355 65% 40%);
-  --color-syntax-deletion-bg: hsl(355 70% 95%);
+  --color-syntax-addition: oklch(47.1% 0.104 151.2);
+  --color-syntax-addition-bg: oklch(97.1% 0.021 156.8);
+  --color-syntax-deletion: oklch(48.2% 0.168 22.3);
+  --color-syntax-deletion-bg: oklch(94.96% 0.0195 11.7);
 
   /* Row height for the structured plugin's virtualized list. Read at
      render time from --tree-row-height (parseFloat → px); changing
@@ -447,7 +551,7 @@
      "Go to file" filter input and the tree content when any filter
      (keyword / suffix / recency) is active, signaling a restricted view
      in the spirit of Google Sheets filter views. */
-  --filter-active-border: hsl(140 35% 60%);
+  --filter-active-border: oklch(73.7% 0.1 154.1);
 
   /* Scrollbar — shared geometry consumed by every scroll container
      in the app via the global rules near the bottom of this file.
@@ -457,8 +561,8 @@
      per-site override: containers that sit on a non-default surface
      (sidebar, code blocks) set it to their own background so the
      scrollbar disappears into whatever surface it sits on. */
-  --scrollbar-thumb: hsl(0 0% 75%);
-  --scrollbar-thumb-hover: hsl(0 0% 65%);
+  --scrollbar-thumb: oklch(80.5% 0 89.9);
+  --scrollbar-thumb-hover: oklch(72.4% 0 89.9);
   --scrollbar-width: 10px;
   --scrollbar-thumb-border-width: 2px;
   --scrollbar-thumb-radius: 5px;
@@ -469,7 +573,7 @@
      pulse signals "loading" without the noise of a spinner.
      applyCellPatch() in app.js replaces these in place once a
      ``fs.change`` op arrives on /api/events. */
-  --tally-skeleton-bg: hsl(0 0% 88%);
+  --tally-skeleton-bg: oklch(90.8% 0 89.9);
 
   /* Live-update row flash. Applied by app.js when the SPA inserts
      a freshly-created row (`.tree-item-flash-in`) or starts the
@@ -477,7 +581,7 @@
      Pale yellow that fades to transparent — visible enough to
      draw the eye, calm enough not to flicker on a burst of
      changes. */
-  --row-flash-bg: hsl(50 95% 86%);
+  --row-flash-bg: oklch(95.63% 0.0733 98.1);
 
   /* ── Viz palette (process-visualization plane) ─────────────── */
   /* Design-system rules (shared by steps / processes / deps, viz + drawer):
@@ -488,68 +592,68 @@
      - Strong/meta are reserved for headings and tertiary metadata.
      Keeping labels muted + values emphasized is the single rule that
      makes field rows and field pairs readable at a glance. */
-  --viz-text: hsl(0 0% 7%);
-  --viz-text-muted: hsl(220 9% 46%);
-  --viz-text-dim: hsl(218 11% 65%);
-  --viz-text-strong: hsl(244 47% 20%);
-  --viz-text-meta: hsl(217 19% 27%);
+  --viz-text: oklch(18.2% 0 89.9);
+  --viz-text-muted: oklch(55.03% 0.0235 264.36);
+  --viz-text-dim: oklch(71.4% 0.02 261.5);
+  --viz-text-strong: oklch(25.8% 0.086 281.5);
+  --viz-text-meta: oklch(37.6% 0.031 259.8);
 
   /* Surfaces */
-  --viz-surface: hsl(0 0% 100%);
-  --viz-surface-raised: hsl(0 0% 98%);
-  --viz-surface-toolbar: hsl(0 0% 97%);
-  --viz-surface-sunken: hsl(220 14% 96%);
-  --viz-surface-card: hsl(210 20% 98%);
-  --viz-surface-hover: hsl(0 0% 94%);
-  --viz-border: hsl(0 0% 89%);
-  --viz-border-strong: hsl(216 12% 84%);
-  --viz-border-subtle: hsl(220 13% 91%);
+  --viz-surface: oklch(100% 0 89.9);
+  --viz-surface-raised: oklch(98.5% 0 89.9);
+  --viz-surface-toolbar: oklch(97.7% 0 89.9);
+  --viz-surface-sunken: oklch(96.8% 0.003 264.5);
+  --viz-surface-card: oklch(98.4% 0.002 247.8);
+  --viz-surface-hover: oklch(95.4% 0 89.9);
+  --viz-border: oklch(91.6% 0 89.9);
+  --viz-border-strong: oklch(87.2% 0.009 258.3);
+  --viz-border-subtle: oklch(92.8% 0.006 264.5);
 
   /* Kind accents (step / dep / process / file)
      Design-system rule: each kind gets a light, logically-distinct bg so
      nested graph levels are visually distinguishable without chroma
      fighting — they share brightness but differ in hue.
-       - Steps:    cool near-white gray (hsl(210 20% 98%)) — intentionally the
+       - Steps:    cool near-white gray (oklch(98.4% 0.002 247.8)) — intentionally the
                    lightest surface so step cards read as the primary
                    "leaf" content; slightly brighter than the process
                    frame so nested process bg stays distinguishable
-       - Process:  very-light neutral-warm gray (hsl(45 18% 96%)) — darker than
+       - Process:  very-light neutral-warm gray (oklch(97.2% 0.004 91.4)) — darker than
                    steps by a hair and in a different (warm) hue, so a
                    process frame reads as a subtle container around its
                    step children and doesn't blend into them
-       - Deps:     pale peach (hsl(25 90% 96%)) — represent user-visible artifact
+       - Deps:     pale peach (oklch(97.1% 0.015 58.1)) — represent user-visible artifact
                    files. Kept in a warm hue distinct from warnings
                    (which are yellow) so the two don't collide visually,
                    and distinct from errors (which are red) so they
                    don't read as a problem.
      Icon + header text are always near-black so the kind label reads the
      same across cards and drawer. */
-  --viz-accent-step-bg: hsl(45 20% 96%);
-  --viz-accent-step-border: hsl(45 12% 84%);
-  --viz-accent-step-icon: hsl(0 0% 7%);
-  --viz-accent-dep-bg: hsl(25 90% 96%);
-  --viz-accent-dep-border: hsl(30 72% 83%);
-  --viz-accent-dep-icon: hsl(29 50% 36%);
-  --viz-accent-file-bg: hsl(210 40% 96%);
-  --viz-accent-file-border: hsl(213 27% 84%);
+  --viz-accent-step-bg: oklch(97.3% 0.004 91.4);
+  --viz-accent-step-border: oklch(88.4% 0.01 91.5);
+  --viz-accent-step-icon: oklch(18.2% 0 89.9);
+  --viz-accent-dep-bg: oklch(97.1% 0.015 58.1);
+  --viz-accent-dep-border: oklch(88.71% 0.0542 67.03);
+  --viz-accent-dep-icon: oklch(51.12% 0.0865 61.89);
+  --viz-accent-file-bg: oklch(96.8% 0.007 247.9);
+  --viz-accent-file-border: oklch(86.9% 0.02 253.4);
 
   /* Focus indicator (side-panel target). Desaturated blue keeps the
      ring noticeable without reading as an alert against near-white
      card surfaces. The hue remains in the same family as --link. */
-  --viz-accent-focus: hsl(217 55% 55%);
-  --viz-accent-focus-glow: hsl(217 55% 55% / 0.25);
+  --viz-accent-focus: oklch(59.39% 0.1308 259.5);
+  --viz-accent-focus-glow: oklch(59.39% 0.1308 259.5 / 0.25);
 
   /* Edge strokes — design-system rule: every arrow is a uniform-width
      1.4px stroke (set in viz.css). Kind is carried by color alone, not
      stroke-weight, so no arrow "outweighs" another visually. Colors are
      kept light + desaturated because arrows are connective tissue, not
      emphasis. */
-  --viz-edge-default: hsl(220 18% 65%);
+  --viz-edge-default: oklch(70.56% 0.0336 264.33);
   /* Data-flow arrow colors — light + desaturated so arrows read as
      connective tissue between boxes, not emphasis. Produces (blue) =
      step→artifact; consumes (green) = artifact→step. */
-  --viz-edge-produces: hsl(199 65% 74%);
-  --viz-edge-consumes: hsl(102 18% 75%); /* muted sage — lighter sibling of the
+  --viz-edge-produces: oklch(81.6% 0.0716 228.45);
+  --viz-edge-consumes: oklch(82.3% 0.036 136.2); /* muted sage — lighter sibling of the
                                        sky-blue produces stroke; both are
                                        low-chroma so neither outshouts the
                                        kind accents on the nodes they link */
@@ -567,36 +671,36 @@
      - Pill text uses --weight-medium — slightly heavier than body but
        not bold — set centrally on .viz-chip.
      Chip tokens below pair -bg / -border / -text per category. */
-  --viz-chip-bg: hsl(0 0% 100% / 0.75);
-  --viz-chip-border: hsl(0 0% 0% / 0.08);
-  --viz-chip-mode-bg: hsl(228 100% 94%);
-  --viz-chip-mode-border: hsl(228 96% 89%);
-  --viz-chip-mode-text: hsl(228 55% 41%);
+  --viz-chip-bg: oklch(100% 0 89.9 / 0.75);
+  --viz-chip-border: oklch(0% 0 0 / 0.08);
+  --viz-chip-mode-bg: oklch(92.93% 0.0339 274.56);
+  --viz-chip-mode-border: oklch(87.2% 0.061 274.1);
+  --viz-chip-mode-text: oklch(43.2% 0.151 268.7);
   /* Adapter — sea-green, dialed back from a vivid teal so the pill reads as
      a tag, not a status/alert. Still the strongest of the green pills
      (adapter = primary fact, model = sub-facet). */
-  --viz-chip-adapter-bg: hsl(162 47% 85%);
-  --viz-chip-adapter-border: hsl(162 38% 74%);
-  --viz-chip-adapter-text: hsl(162 57% 24%);
+  --viz-chip-adapter-bg: oklch(91% 0.04 175.3);
+  --viz-chip-adapter-border: oklch(83.6% 0.056 174.5);
+  --viz-chip-adapter-text: oklch(44% 0.077 168.9);
   /* Model — same sea-green hue as adapter, just lightened a few steps so
      the two chips read as "primary + secondary facet" of the same fact
      (adapter = runtime, model = which model that runtime is running).
      Keep the hue identical; vary only lightness so they stay in lockstep. */
-  --viz-chip-model-bg: hsl(191 46% 91%);
-  --viz-chip-model-border: hsl(191 33% 80%);
-  --viz-chip-model-text: hsl(191 44% 30%);
-  --viz-chip-fan-bg: hsl(60 52% 70%);
-  --viz-chip-fan-border: hsl(60 52% 42%);
-  --viz-chip-fan-text: hsl(60 88% 20%);
-  --viz-chip-variant-bg: hsl(250 91% 95%);
-  --viz-chip-variant-border: hsl(250 95% 92%);
-  --viz-chip-variant-text: hsl(263 69% 42%);
-  --viz-chip-role-bg: hsl(48 96% 89%);
-  --viz-chip-role-border: hsl(48 97% 77%);
-  --viz-chip-role-text: hsl(48 81% 29%);
-  --viz-chip-type-bg: hsl(220 14% 96%);
-  --viz-chip-type-border: hsl(220 13% 91%);
-  --viz-chip-type-text: hsl(221 13% 28%);
+  --viz-chip-model-bg: oklch(93.968% 0.01901 212.695);
+  --viz-chip-model-border: oklch(86% 0.031 212.8);
+  --viz-chip-model-text: oklch(46.4% 0.061 214.6);
+  --viz-chip-fan-bg: oklch(87.1% 0.101 108.3);
+  --viz-chip-fan-border: oklch(69.4% 0.131 109.4);
+  --viz-chip-fan-text: oklch(47.32% 0.1006 109.7);
+  --viz-chip-variant-bg: oklch(93.7% 0.031 293.4);
+  --viz-chip-variant-border: oklch(89.7% 0.053 292.9);
+  --viz-chip-variant-text: oklch(43% 0.209 292.4);
+  --viz-chip-role-bg: oklch(96.2% 0.057 95.6);
+  --viz-chip-role-border: oklch(92.57% 0.1141 95.75);
+  --viz-chip-role-text: oklch(54.55% 0.1075 93);
+  --viz-chip-type-bg: oklch(96.8% 0.003 264.5);
+  --viz-chip-type-border: oklch(92.8% 0.006 264.5);
+  --viz-chip-type-text: oklch(38.6% 0.023 265.6);
 
   /* Typography — shared header size for graph cards and frame headers. */
   --viz-header-font-size: var(--label-font-size);
@@ -605,10 +709,60 @@
      legend item, frame header, node card, toggle) shares the same ease
      + duration so hover feels consistent across the plane. Filter-darken
      is used where the element has a solid rest-color; background swap is
-     used where the rest-state is transparent. */
+     used where the rest-state is transparent. Categorical data marks shift the
+     whole mark rather than recoloring it, so hue and internal contrast remain —
+     but the shift has to run the direction that gains contrast against the
+     page, which is opposite per theme. The light palette sits near 48%
+     lightness on a near-white page, so hover deepens it; the dark palette sits
+     near 67% on a near-black page, so hover lifts it (see the dark block). One
+     shared direction is what left hover reading as "nothing happened" on the
+     light distribution bars. The saturation nudge keeps the deepened light mark
+     from reading as merely greyer. */
   --viz-hover-duration: 120ms;
   --viz-hover-ease: ease;
   --viz-hover-filter: brightness(0.94);
+  --viz-data-mark-hover-filter: brightness(0.78) saturate(1.3);
+  /* How a hovered data mark grows, and the curve it grows on.
+  
+     Motion rather than an outline, which is what this replaces twice over — a
+     translucent ring, then an opaque grey one. A ring is a mark drawn ON the
+     data: it covers the colour it is meant to point at, it competes with the
+     hairlines between segments, and on an eight-pixel track a two-pixel ring
+     is a quarter of the height. Growth is the mark answering instead. Nothing
+     is covered, and the eye is already good at spotting the one thing that
+     moved.
+
+     The curve is what makes it read as an answer. It overshoots past the
+     target and settles back, so the mark goes wider than it ends up and comes
+     back — which at this duration is a flick rather than a resize. A plain
+     ease over the same distance reads as the layout being sluggish.
+
+     The overshoot is worth more than the growth, and it has to be big enough
+     to see. The stock ease-out-back (y1 1.56) peaks only 0.5% past its target,
+     which on a 257px segment is 1.3px of bounce against 13px of growth — the
+     move lands but the spring does not. At y1 2.2 the peak is 2% past, so the
+     same segment overshoots by 5px and a mid-sized one by 2px. Measured, not
+     guessed: evaluate the bezier rather than adjusting it by eye, because the
+     part being tuned lasts about a tenth of a second.
+
+     Grow the axis that carries NO data. On a horizontal bar the width is the
+     value, so it is the one dimension that must not move — growing it states a
+     share the mark does not have. Thickness means nothing there, which is what
+     frees it. That also makes the answer uniform: a proportional width grew a
+     wide segment by fifteen pixels and a three-pixel segment by nothing, so
+     the marks hardest to point at answered least, where every segment shares
+     one height.
+
+     Applied as a transform rather than as a height, so the row's layout does
+     not reflow under the pointer, and centred so the mark grows either side of
+     the baseline the eye follows along the row.
+
+     The factor is large because the axis is small: an eight-pixel bar at 1.5
+     is twelve, and the overshoot carries it past thirteen before it settles. A
+     few percent would be a fraction of a pixel. */
+  --viz-hover-grow: 1.5;
+  --viz-hover-grow-duration: 170ms;
+  --viz-hover-grow-ease: cubic-bezier(0.34, 2.2, 0.64, 1);
   --viz-hover-transition:
     filter var(--viz-hover-duration) var(--viz-hover-ease),
     background-color var(--viz-hover-duration) var(--viz-hover-ease),
@@ -634,16 +788,16 @@
   --viz-fade-ease: ease;
 
   /* Side panel */
-  --viz-panel-badge-bg: hsl(226 100% 94%);
-  --viz-panel-badge-text: hsl(242 47% 34%);
-  --viz-panel-link: hsl(224 66% 48%);
-  --viz-panel-row-muted: hsl(220 14% 96%);
-  --viz-panel-desc: hsl(217 19% 27%);
+  --viz-panel-badge-bg: oklch(93.13% 0.0327 272.26);
+  --viz-panel-badge-text: oklch(35.7% 0.133 278.7);
+  --viz-panel-link: oklch(49.3% 0.19 264.9);
+  --viz-panel-row-muted: oklch(96.8% 0.003 264.5);
+  --viz-panel-desc: oklch(37.6% 0.031 259.8);
 
   /* Toolbar toggle */
-  --viz-toggle-on-bg: hsl(214 95% 93%);
-  --viz-toggle-on-border: hsl(213 74% 68%);
-  --viz-toggle-on-text: hsl(224 64% 33%);
+  --viz-toggle-on-bg: oklch(93.46% 0.0305 255.11);
+  --viz-toggle-on-border: oklch(71.9% 0.113 254.1);
+  --viz-toggle-on-text: oklch(38.1% 0.136 265.3);
 
   /* Alert banners (errors + validation warnings).
      Design-system rule: every "this isn't right" callout shares the same
@@ -652,22 +806,22 @@
      banner use these tokens — distinction is in icon + copy, not hue. The
      bg is intentionally very light so the callout informs without
      dominating. */
-  --viz-error-bg: hsl(0 69% 97%); /* very-light warm red */
-  --viz-error-border: hsl(0 59% 86%); /* desaturated rose */
-  --viz-error-title: hsl(0 41% 38%); /* muted dark red — heading weight */
-  --viz-error-text: hsl(0 41% 25%); /* body text, deeper than title */
-  --viz-error-hint: hsl(0 31% 36%); /* tertiary hint text */
-  --viz-error-detail-bg: hsl(0 0% 100% / 0.6); /* nested detail box */
+  --viz-error-bg: oklch(97% 0.011 17.4); /* very-light warm red */
+  --viz-error-border: oklch(86.4% 0.048 18.1); /* desaturated rose */
+  --viz-error-title: oklch(45.32% 0.1093 22.43); /* muted dark red — heading weight */
+  --viz-error-text: oklch(34.1% 0.077 22); /* body text, deeper than title */
+  --viz-error-hint: oklch(43.97% 0.0793 20.78); /* tertiary hint text */
+  --viz-error-detail-bg: oklch(100% 0 89.9 / 0.6); /* nested detail box */
 
   /* Elevation — three semantic stops. See the design-system header
      for picking rules. Every box-shadow in the app MUST resolve to
      one of these (directly via var(--shadow-*) or via a semantic
      alias like --viz-shadow-card that points at them). */
-  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.04);
-  --shadow-md: 0 2px 6px hsl(0 0% 0% / 0.12);
-  --shadow-pane-right: 2px 0 6px hsl(0 0% 0% / 0.12);
-  --shadow-pane-left: -2px 0 6px hsl(0 0% 0% / 0.12);
-  --shadow-lg: 0 4px 12px hsl(0 0% 0% / 0.12);
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.04);
+  --shadow-md: 0 2px 6px oklch(0% 0 0 / 0.12);
+  --shadow-pane-right: 2px 0 6px oklch(0% 0 0 / 0.12);
+  --shadow-pane-left: -2px 0 6px oklch(0% 0 0 / 0.12);
+  --shadow-lg: 0 4px 12px oklch(0% 0 0 / 0.12);
   /* Viz aliases — keep existing viz-* names so consumers there don't
      care which primitive backs "card" vs "hover". */
   --viz-shadow-card: var(--shadow-sm);
@@ -678,63 +832,69 @@
      a size" reads as a single visual category. Two L/S stops so small
      sizes recede and big sizes stand out while staying in the same
      hue. To retune the overall feel, shift L/S here; keep hue 205. */
-  --size-color: hsl(225 30% 50%);
-  --size-color-bold: hsl(225 42% 40%);
+  --size-color: oklch(54.2% 0.093 269.1);
+  --size-color-bold: oklch(44.9% 0.108 268);
 
   /* Status palette — shared by stats, tally tree, badges, progress bars.
      Pair -bg / -text variants where the text sits on the tinted surface. */
-  --status-success: hsl(142 76% 36%);
-  --status-success-bg: hsl(141 84% 93%);
-  --status-success-soft-bg: hsl(134 41% 88%);
-  --status-success-soft-text: hsl(134 61% 21%);
-  --status-success-dot: hsl(134 61% 41%);
-  --status-warning: hsl(32 95% 44%);
-  --status-warning-strong: hsl(21 90% 48%);
-  --status-error: hsl(0 72% 51%);
-  --status-error-strong: hsl(0 84% 60%);
-  --status-info: hsl(217 81% 60%);
-  --status-info-bg: hsl(214 95% 93%);
-  --status-info-text: hsl(224 56% 48%);
+  --status-success: oklch(62.3% 0.1688 149.18);
+  --status-success-bg: oklch(96.5% 0.041 157.1);
+  --status-success-soft-bg: oklch(92.2% 0.037 152.6);
+  --status-success-soft-text: oklch(40.1% 0.103 147.4);
+  --status-success-dot: oklch(64.4% 0.175 146.9);
+  --status-warning: oklch(66.88% 0.1588 57.96);
+  --status-warning-strong: oklch(64.55% 0.1918 41.71);
+  --status-error: oklch(57.9% 0.214 27.2);
+  --status-error-strong: oklch(63.56% 0.2082 25.38);
+  --status-info: oklch(62.8% 0.167 259.5);
+  --status-info-bg: oklch(93.46% 0.0305 255.11);
+  --status-info-text: oklch(50% 0.163 265.7);
 
   /* Secondary muted tone (slate) for metadata/labels on charts & stats.
      Distinct from --muted which is the warmer bootstrap grey. */
-  --muted-slate: hsl(215 16% 47%);
+  --muted-slate: oklch(55.64% 0.0398 256.82);
 
   /* Spinner tokens — all progress spinners use a light grey track with
      a darker grey rotating segment. Do not use brand, link, status, or
      file-age hues for spinner rings; those colors are too loud for
      ambient background work. */
-  --spinner-track: hsl(0 0% 90%);
-  --spinner-accent: hsl(0 0% 55%);
-  --spinner-mini-track: hsl(0 0% 87%);
-  --spinner-mini-accent: hsl(0 0% 55%);
+  --spinner-track: oklch(92.34231% 0 0);
+  --spinner-accent: oklch(64.1% 0 89.9);
+  --spinner-mini-track: oklch(90% 0 89.9);
+  --spinner-mini-accent: oklch(64.1% 0 89.9);
 
-  /* File-age design system (used by the file-tree ".age-*" classes).
+  /* File-age design system (used by every ".age-*" class and Live badge).
      Rationale: the primary affordance of the file browser is "where did
      something *just happen*?" — when runs write new files, the user's
-     eye should land on them without scanning names. Color is the
-     primary signal (warm/red = seconds, cooling to grey = old); weight
-     is a secondary boost for the very-recent tiers (seconds, minutes)
-     so they also read as bold. Every ".age-*" class pulls from these
-     tokens — do not add literal hex values inline. */
+     eye should land on them without scanning names. The text itself
+     carries the hue, and weight boosts the very-recent tiers. Live is a
+     warm salmon activity state. Every elapsed age stays yellow and loses
+     chroma and prominence as it gets older. */
   --file-age-weight: var(--weight-medium); /* base — 11px labels read */
   /* as light at normal 400, */
   /* so medium (500) is the */
   /* legibility floor */
-  --file-age-weight-recent: var(--weight-bold); /* seconds + minutes pop */
+  --file-age-weight-recent: var(--weight-bold); /* live, seconds, minutes pop */
+  /* Live remains a distinct activity state, but it and the under-one-
+     minute bucket share the freshest reddish-orange visual. Later ages
+     retain the approved swatch hues while using darker lightness and
+     stronger chroma so the text stays vivid without a marker. */
+  --file-age-live: oklch(74% 0.22 55);
+  --file-age-sec: var(--file-age-live); /* < 1 minute */
+  --file-age-min: oklch(72% 0.23 97.5); /* < 1 hour */
+  --file-age-hr: oklch(64% 0.2 104); /* < 1 day */
+  --file-age-day: oklch(56% 0.14 107.1); /* < 1 week */
+  --file-age-wk: oklch(50% 0.07 107.8); /* < 1 month */
+  --file-age-old: oklch(48% 0.012 106.6); /* ≥ 1 month */
 
-  /* Freshness ramp (red → orange → dim yellow). Single-family encoding:
-     hue walks monotonically from red to yellow as age grows, saturation
-     drops from loud to quiet, and lightness stays in the mid-40s so
-     contrast against the page background is roughly constant. The
-     reading is "warmer + louder = newer; cooler + quieter = older"
-     without ever crossing into a different color family. */
-  --file-age-sec: hsl(8 85% 52%); /* < 1 min — saturated red */
-  --file-age-min: hsl(22 78% 48%); /* < 1 hour — red-orange */
-  --file-age-hr: hsl(34 68% 46%); /* < 1 day — orange */
-  --file-age-day: hsl(44 55% 44%); /* < 1 week — amber */
-  --file-age-wk: hsl(50 35% 42%); /* < 1 month — dim yellow */
-  --file-age-old: hsl(52 18% 40%); /* ≥ 1 month — desaturated khaki */
+  /* Translucent surface variants for badges and area encodings. */
+  --file-age-fill-live: oklch(71% 0.151 55 / 0.22);
+  --file-age-fill-sec: var(--file-age-fill-live);
+  --file-age-fill-min: oklch(78.6% 0.159 97.5 / 0.28);
+  --file-age-fill-hr: oklch(71.4% 0.138 104 / 0.24);
+  --file-age-fill-day: oklch(62% 0.097 107.1 / 0.19);
+  --file-age-fill-wk: oklch(54.8% 0.047 107.8 / 0.14);
+  --file-age-fill-old: oklch(51.6% 0.006 106.6 / 0.1);
 
   /* File-type design system (used everywhere a filename shows up —
      file tree, viz dep icons, drawer path rows).
@@ -753,20 +913,20 @@
          .form.md          → yellow (fill-in-the-blank scaffolds)
      Distinct hues rather than L-steps because the roles are different
      *kinds* of document, not severity levels. */
-  --ft-md: hsl(220 35% 50%); /* regular .md — blue (canonical docs) */
-  --ft-md-runbook: hsl(142 45% 50%); /* .runbook.md — green (procedural) */
-  --ft-md-template: hsl(45 52% 46%); /* .template.md / .form.md — yellow (fill-in) */
+  --ft-md: oklch(55.1% 0.1 263.3); /* regular .md — blue (canonical docs) */
+  --ft-md-runbook: oklch(70.2% 0.149 152.5); /* .runbook.md — green (procedural) */
+  --ft-md-template: oklch(67.7% 0.115 90.4); /* .template.md / .form.md — yellow (fill-in) */
   --ft-text: var(--muted); /* .txt / .pid / .pdf — muted grey */
   /* YAML: orange (not red) — data/config files are common, and a red
      icon reads as "error" at a glance, colliding with the status-error
      hue used by failure badges, threshold lines, and annotation
      callouts. Orange keeps data visually distinct from code without
      pretending to be a warning. */
-  --ft-yaml: hsl(28 65% 53%); /* .yaml / .yml / .json — orange (data/config) */
+  --ft-yaml: oklch(68.2% 0.134 58.5); /* .yaml / .yml / .json — orange (data/config) */
   --ft-config: var(--muted); /* .cfg / .ini — muted grey */
-  --ft-jsonl: hsl(247 40% 55%); /* .jsonl — indigo (log stream, distinct from md blue) */
-  --ft-code: hsl(162 40% 38%); /* .py / .sh / .ts / .toml — teal-green (non-purple) */
-  --ft-csv: hsl(60 52% 52%); /* .csv — yellow green (tabular) */
+  --ft-jsonl: oklch(53.8% 0.139 286); /* .jsonl — indigo (log stream, distinct from md blue) */
+  --ft-code: oklch(57% 0.085 170.8); /* .py / .sh / .ts / .toml — teal-green (non-purple) */
+  --ft-csv: oklch(79.77% 0.1465 109.31); /* .csv — yellow green (tabular) */
 
   /* Surface + border stops derived from the same hue as each --ft-<name>
      icon color. One design rule: bg ≈ hue at S≈40%, L≈94% (light wash);
@@ -776,24 +936,24 @@
      var(--ft-bg) / var(--ft-border) — the per-class rules below map
      each ft-<name> to its own triplet, so adding a new subtype means
      declaring one new class rule, not editing every consumer. */
-  --ft-md-bg: hsl(210 45% 95%);
-  --ft-md-border: hsl(210 30% 82%);
-  --ft-md-runbook-bg: hsl(142 40% 94%);
-  --ft-md-runbook-border: hsl(142 28% 80%);
-  --ft-md-template-bg: hsl(43 80% 94%);
-  --ft-md-template-border: hsl(43 58% 80%);
-  --ft-text-bg: hsl(208 10% 96%);
-  --ft-text-border: hsl(208 8% 85%);
-  --ft-yaml-bg: hsl(28 65% 94%);
-  --ft-yaml-border: hsl(28 45% 80%);
-  --ft-config-bg: hsl(208 10% 96%);
-  --ft-config-border: hsl(208 8% 85%);
-  --ft-jsonl-bg: hsl(247 45% 95%);
-  --ft-jsonl-border: hsl(247 30% 82%);
-  --ft-code-bg: hsl(162 35% 94%);
-  --ft-code-border: hsl(162 24% 80%);
-  --ft-csv-bg: hsl(41 70% 94%);
-  --ft-csv-border: hsl(41 48% 80%);
+  --ft-md-bg: oklch(95.921% 0.00985 247.929);
+  --ft-md-border: oklch(85.47% 0.0243 248.11);
+  --ft-md-runbook-bg: oklch(96.1% 0.016 158.3);
+  --ft-md-runbook-border: oklch(86.3% 0.039 157.7);
+  --ft-md-template-bg: oklch(97.086% 0.02425 88.932);
+  --ft-md-template-border: oklch(88.8% 0.059 89);
+  --ft-text-bg: oklch(96.9% 0.002 244.1);
+  --ft-text-border: oklch(88.35% 0.0053 244.16);
+  --ft-yaml-bg: oklch(95.8% 0.017 63.9);
+  --ft-yaml-border: oklch(85.5% 0.04 63.5);
+  --ft-config-bg: oklch(96.9% 0.002 244.1);
+  --ft-config-border: oklch(88.35% 0.0053 244.16);
+  --ft-jsonl-bg: oklch(94.9% 0.015 291.5);
+  --ft-jsonl-border: oklch(82.95% 0.0383 290.89);
+  --ft-code-bg: oklch(96.1% 0.012 176.3);
+  --ft-code-border: oklch(86.3% 0.028 175.7);
+  --ft-csv-bg: oklch(96.74% 0.0206 86.08);
+  --ft-csv-border: oklch(87.7% 0.0476 86.08);
 
   /* Chart palette — used by Chart.js configs emitted from Python
      and resolved
@@ -808,12 +968,12 @@
   --chart-label-text: var(--viz-text-meta); /* annotation label fg */
   --chart-annotation-default: var(--status-error-strong);
   --chart-series-info: var(--status-info); /* primary blue */
-  --chart-series-info-soft: hsl(213 94% 68%); /* secondary blue */
-  --chart-series-warning: hsl(38 92% 50%); /* amber */
+  --chart-series-info-soft: oklch(71.57% 0.1425 254.45); /* secondary blue */
+  --chart-series-warning: oklch(76.97% 0.1645 70.61); /* amber */
   --chart-series-error: var(--status-error-strong); /* red */
-  --chart-series-success: hsl(142 71% 45%); /* green */
-  --chart-series-result: hsl(160 84% 39%); /* emerald */
-  --chart-series-thinking: hsl(255 92% 76%); /* violet */
+  --chart-series-success: oklch(72% 0.192 149.5); /* green */
+  --chart-series-result: oklch(69% 0.148 162.4); /* emerald */
+  --chart-series-thinking: oklch(70.52% 0.1615 293.33); /* violet */
   --chart-series-init: var(--viz-text-muted); /* neutral grey */
   --chart-series-system: var(--viz-text-dim); /* neutral grey-dim */
 
@@ -821,120 +981,183 @@
      render_html.py when they emit self-contained documents (no
      browser runtime). The generated doc inlines these tokens into
      its own :root so the same naming works offline. */
-  --standalone-bg: hsl(0 0% 98%);
-  --standalone-surface: hsl(0 0% 100%);
-  --standalone-border: hsl(0 0% 87%);
-  --standalone-text: hsl(0 0% 7%);
-  --standalone-text-muted: hsl(0 0% 33%);
-  --standalone-node-fill: hsl(0 0% 97%);
-  --standalone-node-stroke: hsl(0 0% 20%);
-  --standalone-node-step-fill: hsl(210 100% 95%);
-  --standalone-node-dep-fill: hsl(40 100% 93%);
-  --standalone-label-kind: hsl(0 0% 40%);
-  --standalone-label-badge: hsl(0 0% 27%);
-  --standalone-edge: hsl(0 0% 33%);
+  --standalone-bg: oklch(98.5% 0 89.9);
+  --standalone-surface: oklch(100% 0 89.9);
+  --standalone-border: oklch(90% 0 89.9);
+  --standalone-text: oklch(18.2% 0 89.9);
+  --standalone-text-muted: oklch(44.6% 0 89.9);
+  --standalone-node-fill: oklch(97.7% 0 89.9);
+  --standalone-node-stroke: oklch(32.1% 0 89.9);
+  --standalone-node-step-fill: oklch(95.6% 0.022 248.1);
+  --standalone-node-dep-fill: oklch(96.8% 0.034 84.6);
+  --standalone-label-kind: oklch(51% 0 89.9);
+  --standalone-label-badge: oklch(39% 0 89.9);
+  --standalone-edge: oklch(44.6% 0 89.9);
 
   /* Commit-graph branch lanes. These five are VS Code's graph
-     foreground colors, chosen upstream to stay distinguishable under
-     the common forms of color vision deficiency — which is why they are
-     kept as a set rather than resampled from the app palette. The
-     renderer references them only as tokens (see git_graph.js). They
-     are identical in both themes: they are drawn as 1px strokes on
-     either background and already carry enough contrast on both. */
-  --git-lane-1: #ffb000;
-  --git-lane-2: #dc267f;
-  --git-lane-3: #994f00;
-  --git-lane-4: #40b0a6;
-  --git-lane-5: #b66dff;
+     foreground colors, kept as a set rather than resampled per surface:
+     the five hues stay distinguishable from one another under the common
+     forms of color vision deficiency, which is a property of the set and
+     is lost as soon as one member is returned alone. The renderer
+     references them only as tokens (see git-graph.js). They are
+     identical in both themes: they are drawn as 1px strokes on either
+     background and already carry enough contrast on both. */
+  --git-lane-1: oklch(0.81 0.17 76.38);
+  --git-lane-2: oklch(0.6 0.22 357.69);
+  --git-lane-3: oklch(0.51 0.12 56.37);
+  --git-lane-4: oklch(0.69 0.1 186.78);
+  --git-lane-5: oklch(0.68 0.21 304.41);
 
-  /* Ref badges, and the lane color for the branch HEAD is on. */
-  --git-ref-local: var(--status-info);
-  --git-ref-remote: hsl(265 75% 58%);
-  --git-ref-tag: hsl(38 92% 40%);
-  --git-ref-bg: var(--viz-surface-sunken);
+  /* Ref badges, and the lane color for the branch HEAD is on. Each is
+     text on the chip ground below, so all three sit at the same
+     lightness and differ by hue: local, remote, tag. */
+  --git-ref-local: oklch(0.5 0.1 259.52);
+  --git-ref-remote: oklch(0.5 0.1 301.25);
+  --git-ref-tag: oklch(0.5 0.14 71.1);
+  /* Branch and tag chips carry their own ground, so a ref never reads as
+     a filter chip: a near-neutral at the value of the surfaces beside
+     it, carrying just enough chroma to separate from them. */
+  --git-ref-bg: oklch(95% 0.005 240);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: hsl(225 18% 10%);
-  --text: hsl(210 20% 92%);
-  --border: hsl(220 13% 25%);
-  --header-bg: hsl(224 18% 13%);
-  --header-text: hsl(210 20% 90%);
-  --sidebar-bg: hsl(222 18% 15%);
-  --hover-bg: hsl(222 16% 22%);
-  --link: hsl(204 88% 66%);
-  --muted: hsl(215 12% 68%);
-  --code-bg: hsl(220 18% 14%);
+  --bg: oklch(20.6% 0.014 270.6);
+  --text: oklch(93.7% 0.007 247.9);
+  --border: oklch(35.9% 0.021 264.3);
+  --header-bg: oklch(23.7% 0.018 269.4);
+  --header-text: oklch(92.1% 0.009 247.9);
+  --sidebar-bg: oklch(25.8% 0.019 266.8);
+  --hover-bg: oklch(32.72% 0.0235 266.85);
+  --link: oklch(75% 0.1241 246.71);
+  --muted: oklch(74.1% 0.019 256.7);
+  --code-bg: oklch(25% 0.017 264.2);
 
-  --color-syntax-keyword: hsl(355 80% 72%);
-  --color-syntax-title: hsl(265 75% 78%);
-  --color-syntax-string: hsl(140 55% 68%);
-  --color-syntax-number: hsl(28 85% 70%);
+  --color-syntax-keyword: oklch(72.51% 0.1402 22.4);
+  --color-syntax-title: oklch(75.8% 0.123 297.54);
+  --color-syntax-string: oklch(81.7% 0.1216 151);
+  --color-syntax-number: oklch(80.432% 0.11214 55.64);
   --color-syntax-bool: var(--color-syntax-title);
   --color-syntax-null: var(--muted);
-  --color-syntax-key: hsl(208 80% 72%);
+  --color-syntax-key: oklch(77.22% 0.0993 248.34);
   --color-syntax-built-in: var(--color-syntax-number);
   --color-syntax-comment: var(--color-syntax-null);
   --color-syntax-tag: var(--color-syntax-string);
   --color-syntax-punct: var(--color-syntax-null);
   --color-syntax-summary: var(--color-syntax-null);
-  --color-syntax-addition: hsl(140 55% 75%);
-  --color-syntax-addition-bg: hsl(140 45% 16%);
-  --color-syntax-deletion: hsl(355 80% 82%);
-  --color-syntax-deletion-bg: hsl(355 55% 18%);
+  --color-syntax-addition: oklch(85.5% 0.096 151.2);
+  --color-syntax-addition-bg: oklch(31.8% 0.061 156.8);
+  --color-syntax-deletion: oklch(81.7% 0.087 22.3);
+  --color-syntax-deletion-bg: oklch(27.8% 0.077 18.8);
 
-  --panel-header-bg: hsl(222 17% 18%);
-  --scrollbar-thumb: hsl(220 10% 36%);
-  --scrollbar-thumb-hover: hsl(220 10% 46%);
-  --tally-skeleton-bg: hsl(220 10% 31%);
-  --row-flash-bg: hsl(45 75% 28%);
+  /* Dark surfaces keep the same semantics and hue families while
+     raising foreground lightness and fill alpha. */
+  --file-age-live: oklch(78% 0.109 55);
+  --file-age-sec: var(--file-age-live);
+  --file-age-min: oklch(89% 0.136 97.5);
+  --file-age-hr: oklch(86% 0.121 104);
+  --file-age-day: oklch(80.6% 0.088 107.1);
+  --file-age-wk: oklch(74.1% 0.043 107.8);
+  --file-age-old: oklch(69.7% 0.006 106.6);
+
+  --file-age-fill-live: oklch(75.1% 0.126 55 / 0.26);
+  --file-age-fill-sec: var(--file-age-fill-live);
+  --file-age-fill-min: oklch(85.9% 0.161 97.5 / 0.36);
+  --file-age-fill-hr: oklch(81.4% 0.149 104 / 0.3);
+  --file-age-fill-day: oklch(73% 0.116 107.1 / 0.24);
+  --file-age-fill-wk: oklch(61.7% 0.053 107.8 / 0.18);
+  --file-age-fill-old: oklch(55.2% 0.007 106.6 / 0.12);
+
+  --panel-header-bg: oklch(28.8% 0.021 266.8);
+  --scrollbar-thumb: oklch(46.2% 0.021 264.3);
+  --scrollbar-thumb-hover: oklch(54.9% 0.026 264.3);
+  --tally-skeleton-bg: oklch(41.7% 0.019 264.3);
+  --row-flash-bg: oklch(50.98% 0.0977 98.1);
+  /* Lift rather than deepen: the dark categorical palette is already light
+     against a near-black page (see the light-theme note beside this token). */
+  --viz-data-mark-hover-filter: brightness(1.22) saturate(1.2);
 
   --viz-text: var(--text);
-  --viz-text-muted: hsl(215 12% 68%);
-  --viz-text-dim: hsl(215 10% 52%);
-  --viz-text-strong: hsl(220 35% 88%);
-  --viz-text-meta: hsl(217 15% 76%);
-  --viz-surface: hsl(225 18% 10%);
-  --viz-surface-raised: hsl(222 18% 15%);
-  --viz-surface-toolbar: hsl(222 18% 16%);
-  --viz-surface-sunken: hsl(223 19% 12%);
-  --viz-surface-card: hsl(222 18% 15%);
+  --viz-text-muted: oklch(74.1% 0.019 256.7);
+  --viz-text-dim: oklch(60.5% 0.025 261.5);
+  --viz-text-strong: oklch(89.6% 0.021 281.5);
+  --viz-text-meta: oklch(80.5% 0.018 259.9);
+  --viz-surface: oklch(20.6% 0.014 270.6);
+  --viz-surface-raised: oklch(25.8% 0.019 266.8);
+  --viz-surface-toolbar: oklch(26.8% 0.02 266.8);
+  --viz-surface-sunken: oklch(22.7% 0.017 268.1);
+  --viz-surface-card: oklch(25.8% 0.019 266.8);
   --viz-surface-hover: var(--hover-bg);
   --viz-border: var(--border);
-  --viz-border-strong: hsl(218 13% 33%);
-  --viz-border-subtle: hsl(218 13% 24%);
-  --viz-chip-bg: hsl(222 18% 15% / 0.8);
-  --viz-chip-border: hsl(0 0% 100% / 0.12);
-  --viz-error-detail-bg: hsl(225 18% 10% / 0.65);
-  --shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.3);
-  --shadow-md: 0 2px 8px hsl(0 0% 0% / 0.35);
-  --shadow-pane-right: 2px 0 8px hsl(0 0% 0% / 0.35);
-  --shadow-pane-left: -2px 0 8px hsl(0 0% 0% / 0.35);
-  --shadow-lg: 0 8px 24px hsl(0 0% 0% / 0.4);
-  --size-color: hsl(211 42% 70%);
-  --size-color-bold: hsl(207 80% 78%);
-  --spinner-track: hsl(220 10% 30%);
-  --spinner-accent: hsl(220 10% 70%);
-  --spinner-mini-track: hsl(220 10% 30%);
-  --spinner-mini-accent: hsl(220 10% 70%);
+  --viz-border-strong: oklch(43.4% 0.025 261.4);
+  --viz-border-subtle: oklch(35.1% 0.019 261.4);
+  --viz-chip-bg: oklch(25.8% 0.019 266.8 / 0.8);
+  --viz-chip-border: oklch(100% 0 89.9 / 0.12);
+  --viz-error-detail-bg: oklch(20.6% 0.014 270.6 / 0.65);
+  --shadow-sm: 0 1px 2px oklch(0% 0 0 / 0.3);
+  --shadow-md: 0 2px 8px oklch(0% 0 0 / 0.35);
+  --shadow-pane-right: 2px 0 8px oklch(0% 0 0 / 0.35);
+  --shadow-pane-left: -2px 0 8px oklch(0% 0 0 / 0.35);
+  --shadow-lg: 0 8px 24px oklch(0% 0 0 / 0.4);
+  --size-color: oklch(75% 0.059 269.1);
+  --size-color-bold: oklch(82.3% 0.077 268);
+  --spinner-track: oklch(40.8% 0.018 264.3);
+  --spinner-accent: oklch(75.6% 0.016 264.5);
+  --spinner-mini-track: oklch(40.8% 0.018 264.3);
+  --spinner-mini-accent: oklch(75.6% 0.016 264.5);
 
-  --ft-text-bg: hsl(220 12% 18%);
-  --ft-text-border: hsl(220 10% 30%);
-  --ft-config-bg: hsl(220 12% 18%);
-  --ft-config-border: hsl(220 10% 30%);
-  --chart-grid: hsl(220 13% 24%);
+  --ft-text-bg: oklch(29.28% 0.0144 264.32);
+  --ft-text-border: oklch(40.8% 0.018 264.3);
+  --ft-config-bg: oklch(29.28% 0.0144 264.32);
+  --ft-config-border: oklch(40.8% 0.018 264.3);
+  /* Hued file-type washes: same hue as the light triplets, dropped to
+     dark-surface lightness. The treemap uses --ft-bg as large area
+     fills, so every subtype needs a dark stop, not just the greys. */
+  --ft-md-bg: oklch(29.5% 0.031 248.9);
+  --ft-md-border: oklch(42.93% 0.0374 248.11);
+  --ft-md-runbook-bg: oklch(29.9% 0.035 155.8);
+  --ft-md-runbook-border: oklch(44.1% 0.044 157.7);
+  --ft-md-template-bg: oklch(30.8% 0.035 88.932);
+  --ft-md-template-border: oklch(45.6% 0.048 89);
+  --ft-yaml-bg: oklch(30.1% 0.034 62.2);
+  --ft-yaml-border: oklch(44% 0.042 63.5);
+  --ft-jsonl-bg: oklch(28.5% 0.046 288.5);
+  --ft-jsonl-border: oklch(41.5% 0.052 290.89);
+  --ft-code-bg: oklch(30.15% 0.0286 173.47);
+  --ft-code-border: oklch(44.4% 0.036 175.7);
+  --ft-csv-bg: oklch(30.34% 0.0318 86.08);
+  --ft-csv-border: oklch(44.9% 0.043 86.08);
+  --chart-grid: oklch(35% 0.02 264.3);
   --chart-label-text: var(--viz-text-meta);
 
   /* Lane colors are intentionally not overridden: the five graph
      foregrounds are readable as thin strokes on both backgrounds, and
-     re-tuning them per theme would break the colorblind-safe spacing
-     they were chosen for. Badge colors do need lifting — the light
-     values are text on a dark surface here, not fills on a light one. */
-  --git-ref-remote: hsl(265 75% 74%);
-  --git-ref-tag: hsl(38 92% 62%);
-  --git-ref-bg: hsl(220 16% 22%);
+     re-tuning them per theme would break the separation they were
+     chosen for as a set. Badge colors do need lifting — the light
+     values are text on a dark surface here, not on a light one. Each
+     keeps its hue and chroma and rises in lightness only, so the three
+     stay the same three colors. `--git-ref-local` is overridden here
+     too: it used to inherit a themed token, and a literal light value
+     would be unreadable on this background. */
+  --git-ref-local: oklch(0.74 0.1 259.52);
+  --git-ref-remote: oklch(0.74 0.1 301.25);
+  --git-ref-tag: oklch(0.76 0.14 71.1);
+  --git-ref-bg: oklch(26% 0.008 240);
+}
+
+/* Which of the two colors on the element is live. Both are written once, when
+   the segment is painted, so a theme change is a selector switch rather than a
+   repaint. Segments with no color behind them — the treemap remainder cell,
+   the Other types parent — carry .mb-distribution-other and take the neutral. */
+.mb-distribution-mark {
+  --mb-distribution-color: var(--mb-distribution-color-light);
+}
+[data-theme="dark"] .mb-distribution-mark {
+  --mb-distribution-color: var(--mb-distribution-color-dark);
+}
+.mb-distribution-other {
+  --mb-distribution-color: var(--mb-distribution-other);
 }
 
 * {
@@ -988,14 +1211,25 @@ body {
 
 /* ── Header ──────────────────────────────────────────────────── */
 
+/* One row — the path, then the Metabrowser menu — which is the shape
+   .file-header has on the other side of the divider, so the two headers
+   read as one bar across the top of the app rather than as two headers
+   that happen to be adjacent. */
+/* The navigation column's path row. Its twin across the divider is
+   .file-header: same height, same hairline, so the top of the app reads as one
+   band rather than as two panes that happen to be adjacent. Anything that
+   changes the height of one belongs in --pane-header-row-height, which changes
+   both. */
 .app-header {
   background: var(--header-bg);
   color: var(--header-text);
   padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
+  height: var(--pane-header-row-height);
+  border-bottom: 1px solid var(--border);
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   font-size: var(--ui-small-font-size);
   font-weight: var(--weight-bold);
   letter-spacing: 0.1em;
@@ -1014,16 +1248,6 @@ body {
 .app-header a:hover {
   background: var(--hover-bg);
 }
-/* Product-name brand label at the very top of the nav header. Not a
-   link (the path immediately below already jumps to root) — just a
-   small uppercase muted line so the SPA name is present without
-   competing with the path for attention. */
-.header-brand {
-  font-size: var(--micro-font-size);
-  color: var(--muted);
-  padding: 0 4px;
-  margin-left: -4px;
-}
 /* Path is the primary piece of information in the header — bold,
    mixed-case, sans-serif at the tree-row size. Click jumps back to
    the served root. */
@@ -1036,6 +1260,13 @@ body {
   font-size: var(--nav-font-size);
   padding: 2px 0;
   border-radius: var(--radius-chrome);
+  /* Grows and truncates exactly as .file-header-path does, so both
+     headers shorten the same way when the panes are resized. */
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* ── Text buttons — shared labelled action primitive ─────────────
    A compact action with a persistent surface and border. Use-site
@@ -1057,6 +1288,66 @@ body {
 .btn:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
+}
+/* Parent navigation is a button, not a bare icon action. Labelled and
+   icon-only forms share the same compact arrow, persistent boundary,
+   hover, and focus vocabulary through `.btn`. */
+.parent-nav-btn {
+  display: inline-flex;
+  height: var(--icon-btn-size);
+  align-items: center;
+  gap: 6px;
+  border-color: var(--viz-border-strong);
+  background: var(--viz-surface);
+}
+.parent-nav-btn-icon-only {
+  width: var(--icon-btn-size);
+  justify-content: center;
+  padding: 3px;
+}
+.parent-nav-arrow {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  line-height: 1;
+}
+.parent-nav-btn:hover .parent-nav-arrow,
+.parent-nav-btn:focus-visible .parent-nav-arrow {
+  color: inherit;
+}
+.parent-nav-btn[disabled] {
+  cursor: default;
+  opacity: 0.4;
+}
+.parent-nav-btn[disabled]:hover {
+  border-color: var(--viz-border-strong);
+  color: var(--text);
+}
+/* ── Section disclosures — shared trailing-chevron primitive ─────
+   Section titles keep their local typography and put a quiet, em-sized
+   chevron immediately after the text. The trigger owns aria-expanded;
+   folder-tree rows intentionally keep their separate leading chevron. */
+.section-disclosure-trigger {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--section-disclosure-chevron-gap);
+}
+
+.section-disclosure-trigger::after,
+.metabrowser-kpress-host .kpress details > summary::after {
+  background-color: var(--section-disclosure-chevron-color);
+  content: "";
+  flex: none;
+  height: var(--section-disclosure-chevron-size);
+  mask:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  transition: transform var(--transition-fast);
+  width: var(--section-disclosure-chevron-size);
+}
+
+.section-disclosure-trigger[aria-expanded="true"]::after,
+.metabrowser-kpress-host .kpress details[open] > summary::after {
+  transform: rotate(90deg);
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
@@ -1145,16 +1436,18 @@ body {
 }
 
 /* ── Settings toggle (gear → theme + reading-font choosers) ───────
-   A gear button pinned to the header's top-right opens a .menu holding
-   two segmented choosers (theme, reading font). Click-to-open-then-pick,
-   never click-to-cycle. The button itself is the .icon-btn primitive
-   above; only the trigger's placement and the menu's anchored
-   positioning live here, the menu surface comes from the .menu
-   primitive, and the segments from the .menu-chooser primitive below. */
+   The gear at the end of the nav header opens a .menu holding the product
+   name, two segmented choosers (theme, reading font), and a muted version
+   footer. Click-to-open-then-pick, never click-to-cycle. It sits in the
+   header's flex row rather than pinned over it, so it shares the row's
+   vertical centring with the path the way .file-header's controls share
+   theirs. `relative` is what the menu below anchors against. The button
+   itself is the .icon-btn primitive above; only the trigger's placement and
+   the menu's anchored positioning live here. The menu surface comes from the
+   .menu primitive, and the segments from the .menu-chooser primitive below. */
 .settings-toggle {
-  position: absolute;
-  top: 6px;
-  right: 8px;
+  position: relative;
+  flex: 0 0 auto;
 }
 /* Anchored placement under the trigger; the .menu primitive supplies the
    surface styling. Scoped under .settings-toggle so this `display: none`
@@ -1177,7 +1470,7 @@ body {
    identically. Styling only — positioning, keyboard nav, and dismissal
    live in the JS that opens each menu.
 
-   Two content primitives sit inside a .menu:
+   Content primitives inside a .menu:
      .menu-item       a full-width text row (icon slot + label), for
                       vertical lists. Slots: .menu-item-icon /
                       .menu-item-label; states: [aria-disabled],
@@ -1188,7 +1481,9 @@ body {
                       theme and reading-font pickers.
      .menu-select     a small native <select> for a short list that may grow
                       (the font-set picker), styled as a recessed field.
-     .menu-separator  a divider between groups. */
+     .menu-version    the command-formatted build identity at the menu's foot.
+     .menu-separator  a divider between groups.
+     .menu-section-label a quiet heading for a semantic group of rows. */
 .menu {
   min-width: 124px;
   padding: 4px;
@@ -1258,6 +1553,79 @@ body {
   height: 1px;
   margin: 4px 0;
   background: var(--border);
+}
+.menu-version {
+  padding: 2px 8px;
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-normal);
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: none;
+}
+/* The menu's own name, at its top. Metabrowser's wordmark lives here now:
+   the gear is the product's menu, and a menu that names itself does not
+   need a line of the navigation column to do it. Same small-caps register
+   as .menu-section-label, without that rule's icon-column inset — a title
+   is not a row. */
+.menu-title {
+  padding: 2px 8px 3px;
+  color: var(--label-color);
+  font-family: var(--font-sans);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
+}
+
+/* The wordmark is where the product names itself, so it is where someone looks
+   for the project. As a link it behaves like the menu rows under it — the same
+   hover ground — rather than like a heading that happens to be clickable. */
+.menu-title-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  border-radius: 3px;
+}
+.menu-title-link:hover,
+.menu-title-link:focus-visible {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+.menu-title-link:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -1px;
+}
+
+/* The arrow occupies its space whether or not it is showing, so revealing it
+   cannot move the wordmark. Hiding it with `display: none` or appending it on
+   hover would reflow the row under the pointer, which is the one thing a hover
+   must not do — see "Hover Styles the Thing Under the Pointer" in
+   docs/design-system.md. Only its opacity changes. */
+.menu-title-arrow {
+  opacity: 0;
+  transition: opacity var(--viz-hover-duration) var(--viz-hover-ease);
+}
+.menu-title-link:hover .menu-title-arrow,
+.menu-title-link:focus-visible .menu-title-arrow {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-title-arrow {
+    transition: none;
+  }
+}
+.menu-section-label {
+  padding: 3px 8px 2px 32px;
+  color: var(--label-color);
+  font-family: var(--font-sans);
+  font-size: var(--label-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  text-transform: var(--label-text-transform);
 }
 /* Segmented chooser: icon-only buttons sharing a row, applied instantly
    on click. The active segment fills with the selection surface; the rest
@@ -1353,24 +1721,42 @@ html.theme-anim .menu {
    reads as evenly spaced bands rather than one band and one gap.
    .tree-content contributes no top padding, so this is the whole
    distance between the bar's border and the tally text. */
+/* Sized at --nav-font-size, not --ui-small-font-size: this row states the
+   totals for the rows directly beneath it, and the two sat one step apart
+   on the ramp, which read as the header being an afterthought rather than
+   as a heading. The spans inside it inherit; they carry colour only. */
 .tree-summary {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
+  font-size: var(--nav-font-size);
 }
-.tree-summary-count,
-.tree-summary-size {
-  font-size: var(--ui-small-font-size);
+/* This row is rendered before it has numbers -- the tree paints from the
+   inlined rows, and the tallies arrive on a later request -- and empty cells
+   give it no content height, so it stood 13px tall and then grew as the counts
+   landed, pushing every row below it down.
+
+   One line box is reserved, not the settled height, because the settled height
+   is not a constant: `.tree-summary-split` reports tracked and ignored files
+   separately and wraps to a second line in a narrow pane. A two-line floor
+   would fit that case and leave dead space in every other one, so the wrap is
+   tracked as H54 instead -- shape the pending row like the settled one. Same
+   derivation as `--chip-height`: the 1.5 line box of the type inside -- which
+   is this row's own `--nav-font-size` -- plus its padding and bottom border.
+
+   Scoped away from the joined state below, which drops this row's bottom
+   padding and border: a floor derived from a box the row no longer has would
+   hold 7px open between the totals and the filtered count, which is the gap
+   that rule exists to close. Nothing is pending there in any case -- the
+   inline first paint is skipped whenever a filter is set. */
+.tree-summary:not(:has(+ .tree-summary-filtered)):not(:has(+ .tree-selection-note)) {
+  min-height: calc(1.5 * var(--nav-font-size) + 13px);
 }
 .tree-summary-split {
   flex-wrap: wrap;
   gap: 4px 5px;
-}
-.tree-summary-tracked,
-.tree-summary-bytes {
-  font-size: var(--ui-small-font-size);
 }
 .tree-summary-tracked {
   color: var(--text);
@@ -1386,7 +1772,6 @@ html.theme-anim .menu {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--ui-small-font-size);
 }
 
 /* Walker-truncation banner: shown only when /api/tree returns
@@ -1402,23 +1787,12 @@ html.theme-anim .menu {
   border-bottom: 1px solid var(--border);
 }
 
-/* Path-rendering convention — pathHtml() in app.js wraps a path in
-   .path with .path-dir (everything up to and including the final
-   slash) and .path-base (the last segment). Only the dir prefix
-   restyles; the basename inherits whatever its container declares so
-   each call site (header, file header, etc.) keeps its own emphasis. */
-.path-dir {
-  color: var(--muted);
-  font-weight: var(--weight-normal);
-}
-/* Header path is the document headline — both the dir-prefix
-   and the basename inherit the header's bold weight + dark
-   text color. Other call sites (file header, etc.) keep the
-   normal-weight muted dir prefix from the rule above. */
-.header-path .path-dir {
-  font-weight: inherit;
-  color: inherit;
-}
+/* Path-rendering convention — pathBaseHtml() in app.js wraps the last
+   component of a path in .path with .path-base. Neither carries style of
+   its own: the basename inherits whatever its container declares, so each
+   call site keeps its own emphasis. A whole path is not rendered this way
+   anywhere — the file header renders one as an address of controls, which
+   .folder-breadcrumb styles. */
 
 /* ── Keyboard keys — shared inline primitive ─────────────────────
    The one way to render a keyboard key. Tokens live with the type
@@ -1429,12 +1803,15 @@ html.theme-anim .menu {
 
      Press <kbd class="kbd">T</kbd> to search
 
-   Write the key in its natural case in markup — the caps treatment is
-   presentational, so the accessible name a screen reader announces
-   stays whatever the markup says. Keys stand alone as marks; do not
-   nest one inside a <code> or restyle it per surface. For a sequence,
-   emit separate keys and let the surrounding text carry any joining
-   word, so each key keeps its own border. */
+   Write an isolated key in its natural case in markup — the caps
+   treatment is presentational, so the accessible name a screen reader
+   announces stays whatever the markup says. Keys stand alone as marks;
+   do not nest one inside a <code> or restyle it per surface.
+
+   Dynamic shortcut surfaces use the shared binding renderer. It emits
+   one .kbd per physical key, an unambiguous visual separator, and one
+   expanded spoken phrase for aliases or chords; callers never assemble
+   those pieces themselves. */
 
 .kbd {
   display: inline-flex;
@@ -1453,6 +1830,23 @@ html.theme-anim .menu {
   text-transform: var(--kbd-text-transform);
   line-height: 1.5;
   vertical-align: baseline;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shortcut-binding-separator {
+  margin-inline: 3px;
+  color: var(--muted);
 }
 
 /* ── Main layout ─────────────────────────────────────────────── */
@@ -1488,6 +1882,58 @@ html.theme-anim .menu {
   overflow-y: auto;
   padding: 0 0 8px;
   --scrollbar-bg: var(--sidebar-bg);
+}
+
+.nav-shortcut-hints {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  line-height: 1.2;
+}
+.nav-shortcut-hints[hidden] {
+  display: none;
+}
+.nav-shortcut-action,
+.nav-shortcut-hint,
+.nav-shortcut-binding {
+  display: inline-flex;
+  align-items: center;
+}
+.nav-shortcut-action,
+.nav-shortcut-hint {
+  gap: 4px;
+  padding: 3px 0;
+}
+/* A shortcut hint carries exactly two boxes: the strip that groups every
+   shortcut behind one border, and the keycap that says "this is a key". A
+   button chrome around the key and its label would be a third, nested box
+   restating what the other two already say. An actionable hint is therefore a
+   bare button whose visible affordance is the keycap it contains. */
+.nav-shortcut-action {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.nav-shortcut-action:hover {
+  color: var(--link);
+}
+.nav-shortcut-action:hover .kbd {
+  border-color: var(--link);
+  color: var(--link);
+}
+.nav-shortcut-action:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
 }
 
 .index-progress[hidden] {
@@ -1625,6 +2071,17 @@ html[data-prose-font="sans"] {
   outline: 2px solid var(--link);
   outline-offset: -2px;
 }
+.preview-file-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
 .preview-empty {
   display: flex;
   align-items: center;
@@ -1633,21 +2090,34 @@ html[data-prose-font="sans"] {
   color: var(--muted);
   font-size: var(--body-font-size);
 }
+.preview-error {
+  flex-direction: column;
+  gap: var(--pane-header-padding-y);
+  box-sizing: border-box;
+  padding: var(--content-padding-y) var(--content-padding-x);
+  text-align: center;
+}
+.preview-error-title {
+  color: var(--text);
+}
+.preview-error-detail {
+  max-width: var(--preview-message-max-width);
+}
 
 /* ── Tree items ──────────────────────────────────────────────── */
 
 /* Pagination sentinel — clickable row that swaps in the next batch
    of children for a directory that exceeded TREE_PAGE_SIZE. Compact
    and visually subordinate to real tree rows. */
-.tree-page-more {
-  padding: 2px 12px 2px 32px;
+.tree-item.tree-page-more {
+  padding: 2px 12px 2px calc(32px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   cursor: pointer;
   user-select: var(--toggle-user-select);
   color: var(--muted-slate);
   font-style: italic;
   font-size: var(--ui-small-font-size);
 }
-.tree-page-more:hover {
+.tree-item.tree-page-more:hover {
   background: var(--hover-bg);
   color: var(--text);
 }
@@ -1655,10 +2125,16 @@ html[data-prose-font="sans"] {
 .tree-item {
   display: flex;
   align-items: center;
+  min-height: var(--ui-row-height);
   /* 2px transparent bar reserved on every row (coloured only when
      selected) so selecting never shifts the row; the 10px + 2px keeps the
-     content's left inset at the original 12px. */
-  padding: 2px 12px 2px 10px;
+     content's left inset at the original 12px.
+     Depth is added to the padding, never to the box: the row spans the full
+     panel width at every level, so the hover and selection backgrounds and
+     the accent bar are one constant shape a reader can track down the tree
+     instead of a box that narrows as they go deeper. --tree-depth is
+     published by the enclosing .tree-root / .tree-children group. */
+  padding: 2px 12px 2px calc(10px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   border-left: 2px solid transparent;
   cursor: pointer;
   user-select: var(--toggle-user-select);
@@ -1667,6 +2143,11 @@ html[data-prose-font="sans"] {
   transition: background var(--transition-fast);
 }
 .tree-item:hover {
+  background: var(--hover-bg);
+}
+.tree-item:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
   background: var(--hover-bg);
 }
 /* Current item — same tinted background + accent left bar as the embedded
@@ -1684,6 +2165,23 @@ html[data-prose-font="sans"] {
   justify-content: center;
 }
 .tree-item-icon svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+
+/* File identity is one icon primitive in navigation and plugin chrome.
+   The resolver supplies the canonical SVG and optional ft-* subtype;
+   this alignment box supplies the common geometry and base tone. */
+.file-identity-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.file-identity-icon svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
 }
@@ -1743,7 +2241,7 @@ html[data-prose-font="sans"] {
    these, not bespoke styles. `.size` is the neutral base (cool-blue
    hue, tabular nums); `.size-large` bumps weight + shifts to the
    bolder stop of the same hue above the shared threshold (see
-   sizeHtml() / SIZE_LARGE_THRESHOLD in app.js). Callers add a
+   MetabrowserFormatters.sizeClass() in formatters.js). Callers add a
    site-specific class for positioning (.tree-item-size,
    .file-header-size, .tree-summary-size) but NEVER for weight/color. */
 .size {
@@ -1758,8 +2256,8 @@ html[data-prose-font="sans"] {
 /* File-count convention — same idea as .size, same hue family (file
    counts and file sizes are two views of the same data category so
    they share the color signal). `.count-large` bolds up at the
-   shared threshold (see countHtml() / COUNT_LARGE_THRESHOLD in
-   app.js) the same way `.size-large` does for byte counts. */
+   shared threshold (see MetabrowserFormatters.countClass() in
+   formatters.js) the same way `.size-large` does for byte counts. */
 .count {
   color: var(--size-color);
   font-variant-numeric: tabular-nums;
@@ -1769,37 +2267,59 @@ html[data-prose-font="sans"] {
   color: var(--size-color-bold);
   font-weight: var(--weight-bold);
 }
-/* Freshness ramp on the file tree: color (primary signal) + weight-boost
-   on the two most-recent tiers (secondary signal) so the newest files
-   read as the eye's first stop during a run. Colors + weights come from
-   --file-age-* tokens; do not inline literal hex values here. */
+/* File-age primitive. The text color is the sole age hue signal. */
+.age-live {
+  --file-age-current: var(--file-age-live);
+}
 .age-sec {
-  color: var(--file-age-sec);
-  font-weight: var(--file-age-weight-recent);
+  --file-age-current: var(--file-age-sec);
 }
 .age-min {
-  color: var(--file-age-min);
-  font-weight: var(--file-age-weight-recent);
+  --file-age-current: var(--file-age-min);
 }
 .age-hr {
-  color: var(--file-age-hr);
+  --file-age-current: var(--file-age-hr);
 }
 .age-day {
-  color: var(--file-age-day);
+  --file-age-current: var(--file-age-day);
 }
 .age-wk {
-  color: var(--file-age-wk);
+  --file-age-current: var(--file-age-wk);
 }
 .age-old {
-  color: var(--file-age-old);
+  --file-age-current: var(--file-age-old);
 }
+/* Every age anywhere — file rows, commit rows, commit detail — uses
+   the same tier hue, shared weight, and tabular numerals. Call sites
+   may adopt their container's type size and positioning, but never
+   override colour or weight, exactly as they do for `.size`. */
+:is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
+  color: var(--file-age-current);
+  font-weight: var(--file-age-weight);
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: var(--tabular-numerals);
+}
+:is(.age-live, .age-sec, .age-min) {
+  font-weight: var(--file-age-weight-recent);
+}
+/* No margin: indentation is the rows' own left padding (see .tree-item),
+   so a nested row's box still starts at the panel edge. The group only
+   publishes the depth its contents read. */
 .tree-children {
-  margin-left: 16px;
+  interpolate-size: allow-keywords;
+  height: auto;
+  overflow: hidden;
+  transition:
+    height var(--transition-fast),
+    visibility var(--transition-fast) allow-discrete;
 }
 .tree-folder .tree-item-icon {
   color: var(--text);
 }
 .tree-file .tree-item-icon {
+  color: var(--muted);
+}
+.tree-symlink .tree-item-icon {
   color: var(--muted);
 }
 /* File-type design system — systematic hue triplet per subtype.
@@ -1857,22 +2377,33 @@ html[data-prose-font="sans"] {
   --ft-border: var(--ft-csv-border);
 }
 
-/* Icon-color consumer — any tree-item-icon with an ft-<name> class
-   reads the subtype's --ft-color automatically. */
-.tree-item-icon.ft-md,
-.tree-item-icon.ft-md-runbook,
-.tree-item-icon.ft-md-template,
-.tree-item-icon.ft-text,
-.tree-item-icon.ft-yaml,
-.tree-item-icon.ft-config,
-.tree-item-icon.ft-jsonl,
-.tree-item-icon.ft-code,
-.tree-item-icon.ft-csv {
+/* Icon-color consumer — every shared file identity with an ft-<name>
+   class reads the subtype's --ft-color automatically. */
+.file-identity-icon.ft-md,
+.file-identity-icon.ft-md-runbook,
+.file-identity-icon.ft-md-template,
+.file-identity-icon.ft-text,
+.file-identity-icon.ft-yaml,
+.file-identity-icon.ft-config,
+.file-identity-icon.ft-jsonl,
+.file-identity-icon.ft-code,
+.file-identity-icon.ft-csv {
   color: var(--ft-color);
+}
+/* A family's icon is painted in that family's own colour, so the glyph, the
+   bar beside it and the row all name the same family.
+
+   After the ft-* rules above deliberately: those colour a glyph from the old
+   sixteen-entry extension table, which does not know about registry families —
+   it is the second taxonomy mb-xrh8 is about. On a family row the registry is
+   the authority, so its colour wins. The fallback keeps a family the palette
+   has no colour for looking like every other muted glyph. */
+.file-identity-icon.file-identity-icon-family {
+  color: var(--mb-distribution-color, var(--muted));
 }
 /* `.icon-state` is a folder variant (logs/state dirs), not a file-type. */
 .tree-item-icon.icon-state {
-  color: hsl(261 51% 51%);
+  color: oklch(50.3% 0.189 294.7);
 }
 
 /* Muted states: gitignored entries and empty directories. Dim the whole row
@@ -1880,7 +2411,7 @@ html[data-prose-font="sans"] {
    — just faded. Hover still lights up via .tree-item:hover. */
 .tree-item.tree-item-gitignored,
 .tree-item.tree-item-empty {
-  opacity: 0.45;
+  opacity: var(--dimmed-content-opacity);
 }
 .tree-item.tree-item-gitignored:hover,
 .tree-item.tree-item-empty:hover {
@@ -1935,8 +2466,8 @@ html[data-prose-font="sans"] {
    the shadow is the additive cue. */
 .tab-bar.nav-tab-bar {
   /* Cancel the tab's own horizontal padding so the *label* sits on the
-     column inset, the same trick .header-brand uses. Left-padding the
-     bar instead would inset the label twice. */
+     column inset. Left-padding the bar instead would inset the label
+     twice. */
   padding-left: calc(var(--pane-header-padding-x) - var(--file-tab-padding-x));
   position: relative;
   z-index: 1;
@@ -1950,19 +2481,14 @@ html[data-prose-font="sans"] {
 /* ── Filter controls ─────────────────────────────────────────────
    The one chip family for every filtering surface. See
    docs/design-system.md ("Filter Controls") for the contract and
-   static/filter_controls.js for the markup that produces it.
+   static/filter-controls.js for the markup that produces it.
 
    Three shapes built from one atom:
      .chip                          the pill itself; state on
                                     [aria-pressed] or [aria-checked]
-     .chip-group[data-select="one"] joined single-select — the
-                                    segments read as one object and
-                                    the active one fills with the
-                                    accent tint
-     .chip-group[data-select="many"] joined multi-select — same
-                                    joinery, neutral fill, because
-                                    these accumulate rather than
-                                    replace each other
+     .chip-group[data-layout="joined"] single-row segmented control
+     .chip-group[data-layout="wrap"]   wrapping cluster whose chips
+                                        keep individual pill borders
      .chip-toggle                   a standalone boolean chip
 
    The accent-versus-neutral fill is the only cue that separates
@@ -1974,9 +2500,9 @@ html[data-prose-font="sans"] {
   font-size: var(--ui-small-font-size);
   color: var(--muted);
   background: var(--viz-surface);
-  border: 1px solid var(--viz-border);
+  border: var(--chip-border) solid var(--viz-border);
   border-radius: var(--radius-pill);
-  padding: 2px 9px;
+  padding: var(--chip-padding-y) 9px;
   cursor: pointer;
   user-select: var(--toggle-user-select);
   white-space: nowrap;
@@ -1993,14 +2519,15 @@ html[data-prose-font="sans"] {
   outline: 2px solid var(--link);
   outline-offset: -2px;
 }
-/* Joined group: one shared border and radius, segments losing their
-   own so the row reads as a single control. Wrapping is allowed —
-   the type row has more members than a 300px pane can hold — and the
-   dividers survive it because they ride the segment, not the edge. */
+/* Joined groups are segmented controls: one shared border and one
+   row. A set that cannot fit that contract opts into the wrapping
+   cluster below instead of folding one outer pill across rows. */
 .chip-group {
   display: inline-flex;
-  flex-wrap: wrap;
-  border: 1px solid var(--viz-border);
+  flex-wrap: nowrap;
+  /* The group's border stands in for the borders its chips drop below, so it
+     has to be the same width or a joined set stops matching a lone chip. */
+  border: var(--chip-border) solid var(--viz-border);
   border-radius: var(--radius-pill);
   background: var(--viz-surface);
   overflow: hidden;
@@ -2012,6 +2539,26 @@ html[data-prose-font="sans"] {
 }
 .chip-group > .chip + .chip {
   border-left: 1px solid var(--viz-border-subtle);
+}
+/* A long additive set is a chip cluster, not a segmented control.
+   Each visible shape is its own target; the semantic group contributes
+   layout only, with no oversized frame or decorative end caps. */
+.chip-group[data-layout="wrap"] {
+  flex-wrap: wrap;
+  gap: var(--chip-cluster-gap);
+  max-width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.chip-group[data-layout="wrap"] > .chip {
+  border: 1px solid var(--viz-border);
+  border-radius: var(--radius-pill);
+  background: var(--viz-surface);
+}
+.chip-group[data-layout="wrap"] > .chip:hover {
+  background: var(--hover-bg);
 }
 /* Single-select: accent fill, the .menu-seg[aria-checked] treatment. */
 .chip-group[data-select="one"] > .chip[aria-checked="true"] {
@@ -2066,9 +2613,18 @@ html[data-prose-font="sans"] {
   box-shadow: inset 0 0 0 1px var(--viz-border-strong);
 }
 .chip-menu-caret {
-  font-size: 9px;
-  line-height: 1;
+  display: inline-flex;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  align-items: center;
+  justify-content: center;
+  margin-inline-end: -2px;
   opacity: 0.7;
+}
+.chip-menu-caret .toggle-chevron {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  transform: rotate(90deg);
 }
 /* Drawer disclosure. Geometry, hover surface, and focus ring come
    entirely from the .icon-btn primitive — this is the same control as
@@ -2127,17 +2683,8 @@ html[data-prose-font="sans"] {
   font-variant-numeric: tabular-nums;
   font-size: var(--ui-small-font-size);
 }
-/* Age rows wear the freshness ramp, so the menu is the legend for the
-   colours in the tree. The .age-* classes already colour the button;
-   this only pulls the hour row's red back a little, because Live and
-   Past hour are adjacent steps and sit next to each other here in a
-   way they never do in a file listing. Scoped to the menu on purpose:
-   the tree's ramp is contrast-audited against every surface it rides
-   (see the --file-age-* block), and this is a legibility tweak for one
-   control, not a change to what the colours mean. */
-.chip-menu-item.age-min {
-  color: color-mix(in srgb, var(--file-age-min) 72%, var(--muted));
-}
+/* Age menu rows inherit the same foreground as tree and header ages.
+   There are no menu-only color corrections. */
 /* Labelled checkbox — the family's one deliberate break from
    button-with-aria-pressed, for a boolean whose polarity has to be
    legible. A pressed pill reading "Gitignored" does not say whether
@@ -2222,6 +2769,14 @@ html[data-prose-font="sans"] {
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   flex-shrink: 0;
+  /* The server ships this element empty and filter-controls.js fills it, so
+     without a reserved height it stands 13px tall until the chips arrive and
+     then grows to 37 -- pushing the whole tree down on every load and every
+     reload. One chip, this element's 6px vertical padding, and its bottom
+     border: the same height a populated bar computes to, so nothing moves
+     when the chips land. `box-sizing` is border-box, so the padding and
+     border are inside this figure. */
+  min-height: calc(var(--chip-height) + 12px + 1px);
   position: relative;
   z-index: 1;
   transition:
@@ -2233,11 +2788,10 @@ html[data-prose-font="sans"] {
 .nav-filter-bar:has(.filter-drawer[data-open="true"]) {
   row-gap: 6px;
 }
-/* Deliberately nowrap. A wrapping flex line breaks before it shrinks,
-   so with wrap on, the drawer toggle would drop to its own row the
-   moment the badge widened it — the bar would reflow under the control
-   you just clicked. Nowrap plus a shrinkable group means the recency
-   segments wrap inside their own pill instead. */
+/* Deliberately nowrap. The drawer toggle stays on the same line as its
+   trigger, and any grouped control in this row keeps the single-line
+   segmented-control contract. Longer value sets belong in a menu or a
+   wrapping chip cluster on another row. */
 .nav-filter-bar-main {
   display: flex;
   align-items: center;
@@ -2320,22 +2874,13 @@ html[data-prose-font="sans"] {
   justify-content: flex-end;
   padding-top: 4px;
 }
-/* Honest incompleteness: hide mode prunes what it has loaded and says
-   so rather than implying the tree is now the whole answer. */
-.filter-note {
-  padding: 8px 12px;
-  color: var(--muted);
-  font-size: var(--ui-small-font-size);
-  font-style: italic;
-}
-
-/* Filtering prunes; there is no dim/hide switch, because removing what
-   does not match is what a filter is for. Only .tree-item rows carry
-   this — the .tree-children wrapper is left alone because the
-   expansion code owns its inline display, and the wrapper has no box
-   of its own (margin only), so a container whose rows are all hidden
-   collapses to nothing by itself. app.js propagates a hidden folder's
-   verdict down to its descendants so there is never an orphaned
+/* Only the recency source hides rows this way: the tree source is
+   filtered by /api/tree, which sends nothing that should be hidden. Only
+   .tree-item rows carry the class — the .tree-children wrapper is left
+   alone because the expansion code owns its collapse state, and the
+   wrapper has no box of its own, so a container whose rows are all
+   hidden collapses to nothing by itself. app.js propagates a hidden
+   folder's verdict down to its descendants so there is never an orphaned
    visible row inside a pruned subtree. Gitignored rows keep the tree's
    existing dimmed treatment when shown; unchecking removes them. */
 .tree-item-filter-hidden {
@@ -2357,11 +2902,28 @@ html[data-prose-font="sans"] {
   font-size: var(--ui-small-font-size);
   border-bottom: 1px solid var(--border);
 }
+/* A filter can exclude the folder the reader is standing in, and the tree
+   then legitimately has no row to select. Same muted register as the
+   filtered count directly above it — this is the same kind of remark about
+   what the filter did, not a warning. Paths break anywhere rather than
+   widening the pane. */
+.tree-selection-note {
+  padding: 3px 12px 6px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-style: italic;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+}
+.tree-summary-filtered:has(+ .tree-selection-note) {
+  border-bottom: none;
+}
 /* The tally and its filtered count are one block, so the rule belongs
    under the pair rather than between them: the totals are what the
    filtered figure reads against, and a border in between made them
    look like two unrelated bands. */
-.tree-summary:has(+ .tree-summary-filtered) {
+.tree-summary:has(+ .tree-summary-filtered),
+.tree-summary:has(+ .tree-selection-note) {
   border-bottom: none;
   padding-bottom: 0;
 }
@@ -2373,9 +2935,9 @@ html[data-prose-font="sans"] {
    leads the pane and when rows do (a recency window renders no tally
    of its own). Margin, not padding, so the row's hover fill and its
    selected border stay the height of every other row. */
-.tree-summary + .tree-item,
-.tree-summary-filtered + .tree-item,
-.tree-content > * > .tree-item:first-child {
+.tree-summary + .tree-root > .tree-item:first-child,
+.tree-summary-filtered + .tree-root > .tree-item:first-child,
+.tree-content > * > .tree-root:first-child > .tree-item:first-child {
   margin-top: 4px;
 }
 .recent-truncated-note {
@@ -2389,8 +2951,11 @@ html[data-prose-font="sans"] {
 
 /* ── File header ─────────────────────────────────────────────── */
 
+/* The main view's path row, and the twin of .app-header across the divider.
+   See --pane-header-row-height. */
 .file-header {
   padding: var(--file-header-padding-y) var(--content-padding-x);
+  height: var(--pane-header-row-height);
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   display: flex;
@@ -2415,6 +2980,133 @@ html[data-prose-font="sans"] {
 }
 /* Geometry, hover, and reveal come from the .icon-btn primitive; only
    the reveal trigger and the copied-confirmation tint live here. */
+
+/* Folder preview header: up control + clickable breadcrumb + summary.
+   Shares .file-header chrome; crumbs are real buttons for keyboard use. */
+.folder-breadcrumb {
+  gap: 2px;
+}
+/* The address gives way in the order the reader can afford to lose it: the
+   dimmed root prefix first, then the directories, and the segment you are
+   standing on last, because the name you are looking at is the part worth
+   keeping. Each shrinking part carries its own ellipsis, so a squeezed
+   address ends in a visible "…" instead of being cut mid-word against the
+   header's clip. The separators and the leading slash hold their size —
+   they are five to eight pixels of structure, not content.
+
+   The weights matter more than their absolute values: the root outshrinks a
+   directory by enough that it is effectively gone before one narrows, and a
+   directory outshrinks the current segment the same way.
+
+   Measured on a 296px header, which is a 620px window at the default nav
+   width, showing a served root 494px wide followed by three components.
+   Below a 375px header the root has nothing left to give.
+   Without the rules below, the next 55px came out of the end of the run
+   rather than the start: at 320px the filename was cut 19px short with no
+   ellipsis, and the copy control sat 45px outside the clipped box, where it
+   could be neither seen nor clicked. */
+.folder-breadcrumb .folder-crumb {
+  flex: 0 4 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-breadcrumb .folder-crumb-current {
+  flex-shrink: 1;
+}
+.folder-breadcrumb .folder-crumb-root,
+.folder-breadcrumb .folder-crumb-sep {
+  flex: 0 0 auto;
+}
+.folder-crumb {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  padding: 0 2px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.folder-crumb:hover {
+  background: var(--hover-bg);
+}
+.folder-crumb:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -1px;
+}
+/* The component you are standing on: darker and bold so the address has a
+   focus, but still a control. It navigates to where you already are, which
+   changes nothing — the point is that the address has no dead segment in
+   the middle of a run of live ones. */
+.folder-crumb-current {
+  color: var(--text);
+  font-weight: var(--weight-bold);
+}
+/* The served root, absolute, ahead of the first slash. Dimmed because it
+   is identical on every page of the app: context for the live part of the
+   address rather than part of it. It gives up its width first, so a long
+   root elides before a filename does — the shrink weight is what puts it
+   first, against the 4 and the 1 the crumbs above carry.
+
+   The weight is enormous on purpose, because flex-shrink is proportional
+   rather than sequential: every shrinkable item gives up something at every
+   step, so a crumb takes a sliver even while the root still has hundreds of
+   pixels to give. A sliver is not harmless once crumbs ellipsize — any overflow
+   at all, however small, paints the ellipsis and eats real characters, so a
+   fifth of a pixel turns "metabrowser" into "metabrow…".
+
+   Measured on a 900px window showing ~/wrk/.../<root> / src / metabrowser /
+   color_oklch.py, as the largest width any crumb gave up:
+
+     weight    1000   0.164px   ellipsis
+     weight    5000   0.031px   clean
+     weight   20000   0.008px   clean
+     weight  100000   0.000px   clean
+
+   5000 is where it stops; 20000 is that with room, and still finite so the
+   ordering below stays real. Once the root reaches zero flex freezes it and
+   redistributes the rest, so the 4-to-1 ordering between the directories and
+   the filename applies from there down. */
+.file-header-root {
+  color: var(--muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 20000 auto;
+  /* Truncates from the START, so the part of the root nearest what you are
+     looking at is the part that survives: "…/wrk/github/project /" rather
+     than a home directory spelled out in full and the project name cut off.
+     The end of a path carries the information; the beginning is the same on
+     every page of the app.
+
+     direction: rtl moves the overflow — and so the ellipsis — to the left
+     edge. The text itself must not be reordered by that, which is what the
+     <bdi> around it is for: it isolates the path as one left-to-right run, so
+     a leading "~" or "/" cannot be reordered to the far end the way a bare
+     neutral character would be. */
+  direction: rtl;
+  text-align: left;
+}
+.file-header-root > bdi {
+  direction: ltr;
+}
+.folder-crumb-sep {
+  color: var(--muted);
+}
+.folder-header-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.folder-header-count,
+.folder-header-age {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .file-header:hover .file-header-copy {
   opacity: 1;
   pointer-events: auto;
@@ -2428,15 +3120,6 @@ html[data-prose-font="sans"] {
    size-chip convention above. */
 .file-header-size {
   font-size: var(--ui-small-font-size);
-  flex-shrink: 0;
-}
-.file-header-preview {
-  font-size: var(--ui-small-font-size);
-  color: var(--muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.file-header-action {
   flex-shrink: 0;
 }
 /* .file-header-icon (the print action) has no block of its own: it is
@@ -2455,44 +3138,44 @@ html[data-prose-font="sans"] {
   flex-shrink: 0;
 }
 .badge-completed {
-  background: hsl(134 41% 88%);
-  color: hsl(134 61% 21%);
+  background: oklch(92.2% 0.037 152.6);
+  color: oklch(40.1% 0.103 147.4);
 }
 .badge-failed {
-  background: hsl(355 70% 91%);
-  color: hsl(354 61% 28%);
+  background: oklch(91% 0.036 12.1);
+  color: oklch(37.3% 0.12 19.9);
 }
 .badge-running {
-  background: hsl(46 100% 90%);
-  color: hsl(46 94% 27%);
+  background: oklch(96.4% 0.052 93.1);
+  color: oklch(53.05% 0.1071 88.17);
 }
 .badge-pending {
-  background: hsl(210 16% 93%);
-  color: hsl(210 9% 31%);
+  background: oklch(94.5% 0.005 247.9);
+  color: oklch(42.4% 0.015 248.2);
 }
 .badge-claude {
-  background: hsl(214 95% 93%);
-  color: hsl(214 71% 40%);
+  background: oklch(93.46% 0.0305 255.11);
+  color: oklch(48.3% 0.145 257);
 }
 .badge-gemini {
-  background: hsl(48 96% 89%);
-  color: hsl(48 82% 31%);
+  background: oklch(96.2% 0.057 95.6);
+  color: oklch(57.4% 0.1136 92.83);
 }
 .badge-pi {
-  background: hsl(251 91% 95%);
-  color: hsl(263 69% 42%);
+  background: oklch(93.7% 0.031 294.2);
+  color: oklch(43% 0.209 292.4);
 }
 .badge-adapter {
-  background: hsl(226 100% 94%);
-  color: hsl(226 55% 41%);
+  background: oklch(93.13% 0.0327 272.26);
+  color: oklch(44% 0.146 267.3);
 }
 .badge-compressed {
-  background: hsl(0 0% 92%);
-  color: hsl(0 0% 35%);
+  background: oklch(93.9% 0 89.9);
+  color: oklch(46.5% 0 89.9);
 }
 .badge-frontmatter-error {
-  background: hsl(355 70% 91%);
-  color: hsl(354 61% 28%);
+  background: oklch(91% 0.036 12.1);
+  color: oklch(37.3% 0.12 19.9);
   cursor: help;
 }
 
@@ -2644,13 +3327,9 @@ html[data-prose-font="sans"] {
 .metabrowser-kpress-host .metabrowser-doc-meta > details {
   border: 0;
 }
-/* Hang the disclosure chevron in the card's gutter so the label starts on the
-   prose edge, flush with the keys of the list it opens. The offset is the
-   marker itself: KPress draws it at 0.85em with a 0.4rem gap (document.css
-   `.kpress summary`), and it stays well inside the card's narrowest inline
-   padding (1.5rem below the 768px card breakpoint). */
+/* Preamble disclosures align their title with the prose edge. Their shared
+   trailing chevron follows the title instead of hanging in the card gutter. */
 .metabrowser-kpress-host .metabrowser-doc-meta > details > summary {
-  margin-inline-start: calc(-0.85em - 0.4rem);
   padding-inline: 0;
 }
 .metabrowser-kpress-host .metabrowser-doc-meta > details[open] > summary {
@@ -2746,6 +3425,14 @@ html[data-prose-font="sans"] {
   letter-spacing: var(--label-letter-spacing);
   line-height: normal;
   text-transform: var(--label-text-transform);
+  gap: var(--section-disclosure-chevron-gap);
+}
+/* KPress supplies the same Lucide mark before its standalone summaries.
+   Embedded documents use the host section-disclosure placement after the
+   title while retaining native details/summary interaction. */
+.metabrowser-kpress-host .kpress details > summary::before {
+  content: none;
+  display: none;
 }
 .metabrowser-kpress-host .kpress details > summary:hover {
   color: var(--text);
@@ -2756,20 +3443,71 @@ html[data-prose-font="sans"] {
    it. The preview pane is marked `data-kpress-viewport` (see server.py) and
    carries the `kpress-doc` query container (see .preview-pane above), so
    KPress's components.css drives the responsive sidebar/drawer against the
-   pane and toc.js (loaded + initialized via plugin_sdk.js) drives scroll-spy,
+   pane and toc.js (loaded + initialized via plugin-sdk.js) drives scroll-spy,
    the toggle, and the drawer. The doc <h1> header is suppressed at the source
    via show_doc_header=False (the path shows in metabrowser's file header), so
    no host CSS override is needed. */
-.metabrowser-kpress-render-error,
-.metabrowser-source-truncation-warning {
-  margin: 0 0 12px;
+/* ── Notices ─────────────────────────────────────────────────
+   One box for anything the app says *about* the content it is showing: a
+   partial load, a render failure. See docs/design-system.md, "Notices";
+   tests/test_notice_style.py enforces it.
+
+   The fill is always the ordinary surface and the severity is carried by the
+   border alone. Tinting the fill is how these drifted apart: the render error
+   wore an info-blue fill with a warning border, so an error announced itself
+   in the color of an aside and the border named the wrong severity. One tone
+   per box, and it is the one on the edge.
+
+   This rule owns the visual identity only. Layout — how a use site arranges
+   its own contents, and where it sits relative to the content — belongs to
+   the use site, because a one-line notice with a button and a stacked error
+   with a detail block have nothing to share there. */
+.notice {
   padding: 10px 12px;
-  border: 1px solid var(--status-warning);
-  background: var(--status-info-bg);
+  border: 1px solid var(--border);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--ui-small-font-size);
   line-height: 1.45;
+}
+
+.notice[data-severity="warning"] {
+  border-color: var(--status-warning);
+}
+
+.notice[data-severity="error"] {
+  border-color: var(--status-error);
+}
+
+/* A KPress render failure: the document could not be rendered at all, so it
+   stacks its message above a detail block rather than sitting in a row. */
+.metabrowser-kpress-render-error {
+  margin: 0 0 12px;
+}
+
+/* The partial-content notice, which pairs a statement with the control that
+   continues it — hence the row. */
+.partial-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* It brackets the content, so its margin is the one thing that differs
+   between the two ends. */
+.partial-notice[data-position="top"] {
+  margin: 0 0 12px;
+}
+
+.partial-notice[data-position="bottom"] {
+  margin: 12px 0 0;
+}
+
+.partial-notice-readout {
+  font-variant-numeric: var(--tabular-numerals);
 }
 .metabrowser-kpress-error-detail {
   margin: 8px 0 0;
@@ -3028,7 +3766,7 @@ pre.code-block code.hljs {
   margin-right: 0.2em;
 }
 .md-body:not(.metabrowser-kpress-host) .checkbox.checked {
-  color: hsl(134 61% 41%);
+  color: oklch(64.4% 0.175 146.9);
 }
 
 /* ── Markdown panels: tables and frontmatter ─────────────────── */
@@ -3175,7 +3913,7 @@ pre.code-block code.hljs {
   padding: 6px 10px;
   border-radius: var(--radius-chrome);
   font-family: var(--font-sans);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--tooltip-font-size);
   line-height: 1.4;
   max-width: 360px;
   pointer-events: none;
@@ -3187,28 +3925,28 @@ pre.code-block code.hljs {
   opacity: 1;
 }
 
-/* ── Quick-file palette ─────────────────────────────────────────
-   A body-level modal surface so tree and preview replacement cannot
-   discard its state. Search work and selection state stay in the
-   injected controller; this block owns only the bounded result DOM. */
-.search-palette-overlay {
+/* ── Modal dialog — shared blocking overlay primitive ───────────
+   Consumers supply content and dimensions. This primitive owns the
+   raised surface, fixed scrim, labelled header, scrolling body, and
+   fixed footer shared by every modal. */
+.modal-overlay {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: max(48px, 10vh) 16px 16px;
+  padding: var(--modal-block-margin) var(--modal-inline-margin) var(--modal-inline-margin);
   background: var(--modal-scrim);
 }
-.search-palette-overlay[hidden] {
+.modal-overlay[hidden] {
   display: none;
 }
-.search-palette-dialog {
+.modal-dialog {
   display: flex;
   flex-direction: column;
-  width: min(640px, calc(100vw - 32px));
-  max-height: min(70vh, 640px);
+  width: min(var(--modal-max-width), calc(100vw - 2 * var(--modal-inline-margin)));
+  max-height: var(--modal-max-height);
   overflow: hidden;
   color: var(--text);
   background: var(--viz-surface-raised);
@@ -3216,13 +3954,122 @@ pre.code-block code.hljs {
   border-radius: var(--radius-chrome);
   box-shadow: var(--shadow-lg);
 }
-.search-palette-title {
-  padding: 8px 12px 4px;
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--modal-header-gap);
+  padding: var(--modal-header-padding);
+  border-bottom: 1px solid var(--border);
+}
+.modal-title {
   color: var(--label-color);
   font-size: var(--label-font-size);
   font-weight: var(--label-font-weight);
   letter-spacing: var(--label-letter-spacing);
   text-transform: var(--label-text-transform);
+}
+.modal-close {
+  flex: none;
+}
+.modal-body {
+  min-height: 0;
+  padding: var(--modal-body-padding);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.modal-footer {
+  padding: var(--modal-footer-padding);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Help dialog ──────────────────────────────────────────────── */
+.help-dialog {
+  width: min(var(--help-dialog-width), calc(100vw - 2 * var(--modal-inline-margin)));
+}
+.help-dialog .modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--help-section-gap);
+}
+.help-description p + p {
+  margin-top: 6px;
+}
+/* The shell sets no global anchor color, so an unclassed link falls through to
+   the user agent's default blue instead of the accent every other link uses. */
+.help-project a {
+  color: var(--link);
+}
+.help-project a:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+  border-radius: var(--radius-chrome);
+}
+.help-section-heading,
+.help-shortcut-heading {
+  color: var(--text);
+  font-weight: var(--weight-bold);
+}
+.help-section-heading {
+  margin-bottom: 8px;
+  font-size: var(--body-font-size);
+}
+.help-shortcut-group + .help-shortcut-group {
+  margin-top: var(--help-section-gap);
+}
+.help-shortcut-heading {
+  font-size: var(--nav-font-size);
+}
+.help-shortcut-context {
+  margin: 2px 0 6px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.help-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.help-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, var(--help-binding-width)) minmax(0, 1fr);
+  gap: var(--help-row-gap);
+  align-items: start;
+}
+.help-command-binding {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.help-command-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.help-command-label {
+  font-size: var(--nav-font-size);
+}
+.help-command-description {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+/* ── Quick-file palette ─────────────────────────────────────────
+   A body-level modal surface so tree and preview replacement cannot
+   discard its state. Search work and selection state stay in the
+   injected controller; this block owns only the bounded result DOM. */
+.search-palette-overlay {
+  --modal-block-margin: max(48px, 10vh);
+}
+.search-palette-dialog {
+  width: min(var(--search-palette-width), calc(100vw - 2 * var(--modal-inline-margin)));
+  max-height: var(--search-palette-max-height);
+}
+.search-palette-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
 }
 /* The query is a band of the dialog, not a control floating inside it.
    Every other row here — title, results, status, hint — runs edge to edge on
@@ -3349,10 +4196,15 @@ pre.code-block code.hljs {
   word-break: break-all;
   color: var(--viz-text);
 }
+/* One step below the tooltip's own size, so a tooltip has a hierarchy: the
+   name it is about, then the measurements under it. Relative rather than a
+   second absolute token — it is defined as "smaller than the tooltip", and
+   pinning it to a chrome token is what let base and detail drift to the same
+   size in the first place. */
 .tip-detail {
   color: var(--viz-text-muted);
   font-weight: var(--weight-normal);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--tooltip-detail-font-size);
 }
 .tip-loading {
   color: var(--muted);
@@ -3368,6 +4220,34 @@ pre.code-block code.hljs {
 }
 
 /* ── Loading ─────────────────────────────────────────────────── */
+
+/* Screen-reader-only text. Global by necessity: this is what makes a
+   spinner's label inaudible-but-announced rather than printed next to it
+   (see "Spinners Carry No Visible Label" in docs/design-system.md), and
+   the shell, the Markdown renderer, and every plugin need it. It lived
+   only inside the folder tables' stylesheet, so the same class printed
+   its text verbatim everywhere else. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.mb-delayed-loading {
+  visibility: hidden;
+  animation: mb-delayed-loading-reveal 0s linear var(--loading-state-delay) forwards;
+}
+@keyframes mb-delayed-loading-reveal {
+  to {
+    visibility: visible;
+  }
+}
 
 .loading {
   display: flex;
@@ -3406,7 +4286,7 @@ pre.code-block code.hljs {
 .tree-lazy-placeholder {
   display: flex;
   align-items: center;
-  padding: 2px 12px 2px 28px;
+  padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
   color: var(--muted);
   font-size: var(--ui-small-font-size);
   font-style: italic;
@@ -3417,6 +4297,55 @@ pre.code-block code.hljs {
 }
 
 /* ── Tree expand/collapse indicator ──────────────────────────── */
+
+/* The commit diff mounted by the diff plugin inside the Git commit
+   view: its own scroll rhythm, separated from the file list above. */
+.git-commit-diff {
+  margin-top: 16px;
+}
+.git-commit-diff:empty {
+  display: none;
+}
+
+/* ── Disclosure motion — one travel for every toggle ─────────────
+   Expand/collapse bodies travel on the same var(--transition-fast)
+   their chevrons rotate with, via height auto<->0. interpolate-size is
+   scoped to each animated body (Chromium animates keyword heights;
+   elsewhere the swap is instant, which was the prior behavior).
+   Collapsed bodies drop visibility so hidden rows leave the tab order
+   and the accessibility tree. Same recipe in the diff and folder
+   plugins' stylesheets; test_design_vocabulary.py pins all of it. */
+.tree-children-collapsed {
+  height: 0;
+  visibility: hidden;
+}
+
+/* Container rows: a file that is also folder-like. Its chevron sits in
+   the same 16px alignment box a folder's does, so names line up at every
+   indent level; its children carry a kind badge in place of an icon. */
+.tree-container > .tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  margin: 0 2px;
+  flex: none;
+}
+.tree-container-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-bold);
+}
+.tree-empty-note {
+  padding: 2px 12px 2px calc(28px + (var(--tree-depth, 1) - 1) * var(--tree-indent));
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
 
 /* Shared toggle chevron (used by tree folders and tally tree) */
 .toggle-chevron {
@@ -3434,13 +4363,22 @@ pre.code-block code.hljs {
   transform: rotate(90deg);
 }
 /* Left-align folder names with file names. A file row leads with a 16px icon
-   box (.tree-item-icon); a folder row leads with the bare 12px chevron, so
-   folder names sat 4px to the left. The 2px inline margins make the chevron's
-   margin-box 16px to match the icon box (glyph stays 12px, centered), so names
-   align at every indent level. Scoped to .tree-folder so the shared tally-tree
-   chevron is unaffected. */
-.tree-folder > .toggle-chevron {
+   box (.tree-item-icon); a folder row leads with the chevron inside its
+   .tree-toggle wrapper, so the wrapper's 2px inline margins make its
+   margin-box 16px to match the icon box (glyph stays 12px, centered), so
+   names align at every indent level. Scoped to .tree-folder so the shared
+   tally-tree chevron is unaffected. The entire folder row shares one
+   disclosure-and-navigation action. */
+.tree-folder > .tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-inline: 2px;
+  flex-shrink: 0;
+  border-radius: var(--radius-circle);
+}
+.tree-folder > .tree-toggle .toggle-chevron {
+  margin: 0;
 }
 
 /* ── Activity indicators ────────────────────────────────────── */
@@ -3474,18 +4412,9 @@ pre.code-block code.hljs {
 }
 
 .badge-live {
-  background: var(--status-success-soft-bg);
-  color: var(--status-success-soft-text);
+  background: var(--file-age-fill-live);
+  color: var(--file-age-live);
   animation: pulse-dot 1.5s ease-in-out infinite;
-}
-.badge-live::before {
-  content: "";
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-circle);
-  background: var(--status-success-dot);
-  margin-right: 4px;
 }
 
 /* ── Charts ─────────────────────────────────────────────────── */
@@ -3660,10 +4589,13 @@ pre.code-block code.hljs {
   .tree-item-flash-out {
     animation-duration: 1ms;
   }
-  /* The drawer and its chevron still change state, just without the
-     travel. */
+  /* Drawers and disclosure chevrons still change state, just without
+     the travel. */
   .filter-drawer,
-  .filter-drawer-toggle svg {
+  .filter-drawer-toggle svg,
+  .section-disclosure-trigger::after,
+  .metabrowser-kpress-host .kpress details > summary::after,
+  .tree-children {
     transition-duration: 1ms;
   }
   /* The bar's row-gap tracks the drawer, so it has to stop travelling
@@ -3705,7 +4637,9 @@ pre.code-block code.hljs {
   .file-header-print,
   .settings-toggle,
   .custom-tooltip,
-  .search-palette-overlay,
+  /* Covers Quick File too: its overlay is a .modal-overlay. */
+  .modal-overlay,
+  .nav-shortcut-hints,
   .index-progress,
   .loading,
   .spinner {
@@ -3748,8 +4682,9 @@ pre.code-block code.hljs {
     color: black;
   }
 
-  .metabrowser-kpress-render-error,
-  .metabrowser-source-truncation-warning {
+  /* Addressed through the primitive, so a new notice prints correctly
+     without being added here. */
+  .notice {
     break-inside: avoid;
     background: white;
     color: black;
@@ -3780,7 +4715,7 @@ pre.code-block code.hljs {
    and right-aligned author and age.
 
    The 22px row height is not a style choice — it is SWIMLANE_HEIGHT in
-   git_graph.js, and each row's SVG is drawn to exactly that height.
+   git-graph.js, and each row's SVG is drawn to exactly that height.
    Changing one without the other misaligns every lane against its row. */
 
 .git-graph-list {
@@ -3797,7 +4732,6 @@ pre.code-block code.hljs {
   cursor: pointer;
   user-select: var(--toggle-user-select);
   font-size: var(--nav-font-size);
-  transition: background var(--transition-fast);
 }
 
 .git-graph-row:hover {
@@ -3817,31 +4751,13 @@ pre.code-block code.hljs {
 /* Width is set per panel from the widest row loaded, so the subject
    column stays put instead of stepping in and out as lanes open and
    close. */
+/* Shrink-wraps this row's graph: the svg carries its own width, so the
+   subject starts immediately after the lanes that row actually uses
+   rather than after the widest row's. */
 .git-graph-gutter {
   display: flex;
-  flex-shrink: 0;
+  flex: none;
   height: 22px;
-}
-
-/* The hollow centre of the HEAD and merge markers should read as the row
-   background rather than as a filled dot. Following the row's own
-   background through hover and selection keeps it hollow instead of
-   leaving a pale disc on a highlighted row. */
-.git-graph-row .git-graph-svg > circle:not([style*="fill"]) {
-  fill: var(--sidebar-bg);
-}
-
-.git-graph-row:hover .git-graph-svg > circle:not([style*="fill"]) {
-  fill: var(--hover-bg);
-}
-
-/* Ordered after :hover to match how the row background itself resolves:
-   .git-graph-row.selected and .git-graph-row:hover carry equal
-   specificity, so on a row that is both, source order is what makes the
-   selection colour win. The marker has to make the same choice, or a
-   selected row shows a sidebar-coloured disc inside its ring. */
-.git-graph-row.selected .git-graph-svg > circle:not([style*="fill"]) {
-  fill: var(--highlight-bg);
 }
 
 .git-graph-body {
@@ -3853,12 +4769,31 @@ pre.code-block code.hljs {
   padding-left: 6px;
 }
 
+/* Ref chips shrink last, not first. Flex distributes shrinkage in
+   proportion to each item's shrink factor, so the subject's factor
+   below is large enough that it absorbs essentially all of it: chips
+   keep their full names until the subject has collapsed entirely,
+   which is the only point at which clipping a ref beats clipping the
+   message. Without this the chips shrank alongside the subject and a
+   single short branch name was cut in half on a half-empty row. */
+.git-graph-refs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
 .git-graph-subject {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
   flex-grow: 1;
+  /* Absorbs the row's shrinkage so the ref chips beside it do not; an
+     ellipsized message still reads, a halved branch name does not. */
+  flex-shrink: 1000;
 }
 
 .git-graph-meta {
@@ -3874,9 +4809,10 @@ pre.code-block code.hljs {
   font-size: var(--ui-small-font-size);
 }
 
+/* Positioning only — colour, weight, size, and numerals come from the
+   shared age primitive above. */
 .git-graph-age {
   flex-shrink: 0;
-  font-variant-numeric: var(--tabular-numerals);
 }
 
 .git-graph-more {
@@ -3895,40 +4831,74 @@ pre.code-block code.hljs {
   font-size: var(--nav-font-size);
 }
 
-/* Rides the .btn primitive; only the spacing is local. The hand-rolled
-   copy this replaced also had no :focus-visible ring. */
+/* Rides the .btn primitive; only the spacing is local. */
 .git-panel-refresh {
   margin-top: 10px;
 }
 
 /* ── Ref badges ─────────────────────────────────────────────── */
 
+/* Branch chips are their own vocabulary, not filter chips: at this
+   size the name carries the meaning, so it is always bold, and the
+   square corner separates "a ref" from "a filter" at a glance. */
 .git-ref {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  max-width: 140px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
+  /* Wide enough for the branch names this project actually uses:
+     measured against this repository's refs, 140px clipped 18 of 41
+     chips, including ordinary names like `codex/help-keyboard-shortcuts`.
+     Still bounded, since one very long ref must not own the row. */
+  max-width: 220px;
+  padding: 0 5px;
+  border-radius: var(--radius-tag);
   line-height: 16px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   background: var(--git-ref-bg);
-  color: var(--git-ref-local);
+  /* The chip's own colour, named so the trunk form below can swap ink
+     and ground without the circularity currentcolor would create. */
+  --git-ref-ink: var(--git-ref-local);
+  color: var(--git-ref-ink);
   font-size: var(--micro-font-size);
+  font-weight: var(--weight-bold);
 }
 
 .git-ref-remote {
-  color: var(--git-ref-remote);
+  --git-ref-ink: var(--git-ref-remote);
+  color: var(--git-ref-ink);
 }
 
+/* A tag is a different kind of thing from a branch, not a differently
+   coloured one: it carries a notched left edge, so `<tag)` and
+   `[branch]` are distinguishable without relying on hue — which colour
+   alone cannot do for a reader who does not separate these two hues.
+   The extra left padding keeps the text clear of the notch. */
 .git-ref-tag {
-  color: var(--git-ref-tag);
+  --git-ref-ink: var(--git-ref-tag);
+  color: var(--git-ref-ink);
+  padding-left: 9px;
+  clip-path: polygon(4px 0, 100% 0, 100% 100%, 4px 100%, 0 50%);
 }
 
+/* Trunk — the branch everything merges into — is the one branch worth
+   finding at a glance, so it takes the solid form: its colour becomes
+   the ground and the ground becomes its ink. Routed through
+   --git-ref-ink rather than currentcolor, which would be circular when
+   both roles are set on one element. */
+.git-ref-trunk {
+  background: var(--git-ref-ink);
+  color: var(--git-ref-bg);
+}
+
+/* HEAD is orthogonal to kind — it can sit on trunk, an ordinary
+   branch, or nothing — so it is marked with a ring rather than by
+   changing the chip's form. Every chip is bold, so weight cannot carry
+   this. */
 .git-ref-head {
-  font-weight: var(--weight-bold);
+  outline: 1px solid currentcolor;
+  outline-offset: 1px;
 }
 
 /* ── Commit detail view ─────────────────────────────────────── */
@@ -3950,18 +4920,122 @@ pre.code-block code.hljs {
   align-items: center;
   gap: 10px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-sha {
   font-family: var(--font-mono);
+  font-size: var(--body-font-size);
+}
+
+.git-commit-revision {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text);
+}
+
+.git-commit-identity,
+.git-commit-refs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-commit-revision-copy {
+  --icon-btn-size: 20px;
+}
+
+.git-commit-revision:hover .git-commit-revision-copy,
+.git-commit-revision:focus-within .git-commit-revision-copy {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.git-commit-change-stats {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.git-commit-file-statuses,
+.git-commit-line-stats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-commit-stat-unit {
+  color: var(--text);
+  font-size: var(--body-font-size);
+}
+
+.git-commit-file-status {
+  color: var(--text);
+  font-variant-numeric: var(--tabular-numerals);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+
+.git-commit-file-status-added {
+  color: var(--status-success);
+}
+
+.git-commit-file-status-deleted {
+  color: var(--status-error-strong);
+}
+
+.git-commit-summary .git-ref {
+  font-size: var(--body-font-size);
+  line-height: 20px;
+}
+
+.git-commit-summary .git-commit-age {
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary :is(.git-stat-add, .git-stat-del) {
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary-compact {
+  max-width: min(340px, calc(100vw - 32px));
+}
+
+.git-commit-summary-compact .git-commit-subject {
+  display: -webkit-box;
+  margin: 0 0 6px;
+  overflow: hidden;
+  font-size: var(--body-font-size);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.git-commit-summary-compact .git-commit-meta {
+  gap: 6px;
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary-compact .git-commit-revision-copy-preview {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.git-commit-summary-compact .git-commit-revision-copy-preview svg {
+  width: 100%;
+  height: 100%;
 }
 
 .git-commit-refs {
-  display: flex;
-  flex-wrap: wrap;
   gap: 4px;
-  margin-top: 8px;
 }
 
 .git-commit-body {
@@ -3971,8 +5045,8 @@ pre.code-block code.hljs {
   background: var(--code-bg);
   white-space: pre-wrap;
   overflow-x: auto;
-  font-family: var(--font-mono);
-  font-size: var(--mono-block-font-size);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-files {
@@ -4010,8 +5084,10 @@ pre.code-block code.hljs {
   background: var(--hover-bg);
 }
 
-.git-commit-file:focus-visible,
-.git-panel-refresh:focus-visible {
+/* .git-panel-refresh is not listed here: it rides .btn, which carries the
+   family's focus ring. .git-commit-file is a bare native button and needs
+   its own. */
+.git-commit-file:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
 }
@@ -4064,10 +5140,12 @@ pre.code-block code.hljs {
 
 .git-stat-add {
   color: var(--status-success);
+  font-weight: var(--weight-bold);
 }
 
 .git-stat-del {
   color: var(--status-error-strong);
+  font-weight: var(--weight-bold);
 }
 
 .git-stat-binary {

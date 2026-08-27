@@ -10,10 +10,10 @@ from pathlib import Path
 import pytest
 
 SEARCH_CONTROLLER_TEST_JS = (
-    Path(__file__).resolve().parent / "dom" / "search_controller_behavior.js"
+    Path(__file__).resolve().parent / "dom" / "search-controller-behavior.js"
 )
 SEARCH_CONTROLLER_PROFILE_JS = (
-    Path(__file__).resolve().parent / "dom" / "search_controller_profile.js"
+    Path(__file__).resolve().parent / "dom" / "search-controller-profile.js"
 )
 
 

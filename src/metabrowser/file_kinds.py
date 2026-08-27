@@ -15,6 +15,7 @@ from typing import Any
 from frontmatter_format import FmFormatError, FmStyle, fmf_read_frontmatter, from_yaml_string
 from ruamel.yaml.error import YAMLError
 
+from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.gz_io import ArtifactPath
 
 _FRONTMATTER_MAX_BYTES = 256 * 1024
@@ -60,6 +61,9 @@ VIEW_REGISTRY: dict[str, list[dict[str, Any]]] = {
         },
     ],
     "binary": [],
+    # Directories: core assigns the kind (api_file's is_dir branch);
+    # the built-in `folder` plugin manifest contributes the views.
+    "folder": [],
 }
 
 
@@ -113,6 +117,7 @@ class FileContext:
     """
 
     __slots__ = (
+        "_content_class_cache",
         "_frontmatter_cache",
         "_frontmatter_loaded",
         "_frontmatter_parse_error",
@@ -125,10 +130,21 @@ class FileContext:
         "path",
     )
 
-    def __init__(self, path: Path, ext: str, adapter: str | None = None) -> None:
+    def __init__(
+        self,
+        path: Path,
+        ext: str,
+        adapter: str | None = None,
+        content_class: ContentClass | None = None,
+    ) -> None:
         self.path = path
         self.ext = ext
         self.adapter = adapter
+        # Pre-supplied by a caller that already knows — today only tests and
+        # call sites without a real path on disk. A crawl that sniffs during
+        # inventory would populate it the same way, which is the point of
+        # taking it here rather than reading unconditionally.
+        self._content_class_cache: ContentClass | None = content_class
         self._frontmatter_cache: dict[str, Any] | None = None
         self._frontmatter_loaded = False
         self._frontmatter_parse_error: str | None = None
@@ -136,6 +152,20 @@ class FileContext:
         self._json_top_level_loaded = False
         self._yaml_top_level_cache: dict[str, Any] | None = None
         self._yaml_top_level_loaded = False
+
+    @property
+    def content_class(self) -> ContentClass:
+        """Lazily-sniffed :class:`ContentClass` for this file.
+
+        Peer of :attr:`json_top_level` and :attr:`yaml_top_level`: a bounded
+        read that happens only when something asks, and is cached so repeated
+        questions cost one read. Nothing on the ordinary path asks — extension
+        typing answers first — so this stays unread for almost every file the
+        browser opens.
+        """
+        if self._content_class_cache is None:
+            self._content_class_cache = sniff_artifact(self.path)
+        return self._content_class_cache
 
     @property
     def frontmatter(self) -> dict[str, Any] | None:

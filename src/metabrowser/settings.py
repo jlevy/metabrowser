@@ -19,7 +19,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.file_extensions import (
+    SYNTAX_LANGUAGE_BY_BASENAME,
+    SYNTAX_LANGUAGE_BY_EXTENSION,
+)
+from metabrowser.file_type_filters import (
+    FILTER_TYPE_PRESETS,
+    serialize_distribution_colors,
+    serialize_file_type_registry,
+)
 
 # ── Server port ──────────────────────────────────────────────
 
@@ -33,9 +41,43 @@ DEFAULT_BROWSER_PORT = 8411
 # Routine details stay behind DEBUG without obscuring failures.
 SLOW_OPERATION_LOG_SECONDS = 2.0
 
+# ── Text preview chunking ────────────────────────────────────
+
+# See docs/large-content-rendering.md for the cost model these come from.
+#
+# The source view puts real text in a `white-space: pre` surface, so the
+# browser never searches for wrap opportunities and layout is proportional
+# to line count. Measured in Chromium 141: scrolling stays at ~33 ms at every
+# size tried, and a single 2M-character minified line paints in ~70 ms. The
+# old 128 KiB chunk was therefore costing 31 clicks to open a 4 MiB source
+# file for no measured benefit.
+# A contiguous run of added or deleted lines longer than this folds
+# behind an expander in the diff view, so one large rewrite cannot bury
+# the changes around it. Measured on this project's own 65-file pull
+# request (13,020 changed lines in 127 runs): at 40, 42 runs fold and
+# 83% of the lines start hidden, while the 85 ordinary runs — most real
+# changes — are untouched. Set to 0 to disable folding entirely.
+DIFF_FOLD_THRESHOLD = 40
+# Lines of the run shown above the expander, so a fold always starts by
+# showing what the change is before offering the rest.
+DIFF_FOLD_VISIBLE = 20
+
+TEXT_PREVIEW_CHUNK_BYTES = 2 * 1024 * 1024
+# Each Load more asks for twice the last chunk, capped here, so reaching a
+# large file takes a handful of clicks while no single click stalls.
+TEXT_PREVIEW_MAX_CHUNK_BYTES = 8 * 1024 * 1024
+# Hard clamp on one request, which also bounds the decompression window for a
+# compressed artifact.
+TEXT_PREVIEW_REQUEST_MAX_BYTES = 16 * 1024 * 1024
+# Highlight.js tokenization plus attached-DOM layout creates one span per token.
+# Chromium 141 measurements in docs/large-content-rendering.md put representative
+# 512 KiB sources at 0.34–1.14 s and 29k–170k spans; 2 MiB reaches 1.48–4.45 s
+# and 117k–682k spans. The shell performs this work after first paint and keeps
+# the loaded syntax-highlighted prefix at or below this bound.
+SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024
+
 # ── InventoryIndex walker ────────────────────────────────────
 
-INVENTORY_FIRST_RENDER_DEPTH = 2
 INVENTORY_MAX_DEPTH = 20
 # Hard ceiling on files indexed by the BFS walker at startup. The
 # walker streams entries as it discovers them so /api/tree responds
@@ -161,9 +203,64 @@ RECENT_RECLUSTER_DEBOUNCE_MS = 100
 INDEX_PROGRESS_POLL_MS = 1_000
 INDEX_PROGRESS_UPDATE_FILES = 1_024
 
+# Rendered directory totals should normally converge through the inventory
+# event stream. If any remain pending this long, the browser records one
+# correlated client/server diagnostic for that unresolved episode.
+PENDING_TALLY_DIAGNOSTIC_DELAY_MS = 5_000
+PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT = 20
+PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES = 64 * 1_024
+
 # Fallback first-paint row budget when the browser cannot measure the
 # navigation viewport. Normal rendering derives the budget from the live pane.
 TREE_AUTO_EXPAND_FALLBACK_ROWS = 24
+
+# ── Folder rollup (/api/rollup) ──────────────────────────────
+
+# Emitted-node bounds for the treemap rollup. Depth bounds the emitted
+# tree only (totals stay full-subtree); ``top`` caps children per
+# directory before the rest bucket; ``ext_top`` caps envelope
+# extension-tally rows before the remainder row. The semantic breakdown
+# independently caps No extension basenames and Other types extensions;
+# the route clamps every query parameter to the corresponding maximum.
+ROLLUP_DEFAULT_DEPTH = 3
+ROLLUP_MAX_DEPTH = 6
+ROLLUP_DEFAULT_TOP = 40
+ROLLUP_MAX_TOP = 200
+ROLLUP_DEFAULT_EXT_TOP = 12
+ROLLUP_MAX_EXT_TOP = 32
+ROLLUP_DEFAULT_EXT_RANK = "bytes"
+ROLLUP_FILE_TYPE_FILENAME_LIMIT = 20
+ROLLUP_FILE_TYPE_REMAINING_LIMIT = 20
+FOLDER_DISCOVERY_MAX_ENTRIES = 4_096
+
+# Global emission budget for one rollup response. ``top`` bounds a
+# single directory; a balanced tree multiplies per level, so this cap
+# is what actually bounds response size (nodes past it become
+# children:null lazy sentinels or fold into rest buckets). The browser
+# renders at most ~800 cells, so 1200 leaves headroom for hide-mode
+# filtering without amplification.
+ROLLUP_MAX_NODES = 1_200
+
+# Trailing debounce for treemap refresh after inventory change events;
+# read by the SDK's watchRollup.
+ROLLUP_WATCH_DEBOUNCE_MS = 1_000
+
+# Encoded rollup bodies retained for reuse, keyed by ETag. One open folder
+# view asks for a handful of shapes at once (the Overview totals, the file-type
+# breakdown, the treemap at its own depth), and several tabs on the same folder
+# ask for the same ones, so a cache of a few entries covers the repeats.
+#
+# This bounds entries, not bytes. Measured on a 100k-file tree, the largest
+# shape the browser asks for (depth 3, default bounds) encodes to ~200 KB, and
+# a body is capped by ROLLUP_MAX_NODES regardless of tree size, so eight
+# entries is a ceiling near 1.6 MB rather than something that grows with the
+# root.
+#
+# This is a settled-index optimization. During a scan the revision has already
+# moved by the time a body is stored, so every stored body is unreachable the
+# moment it lands; the reuse shows up once the crawl finishes. Superseded
+# bodies age out by insertion order rather than needing to be swept.
+ROLLUP_BODY_CACHE_ENTRIES = 8
 
 
 # ── Git graph panel ──────────────────────────────────────────
@@ -220,33 +317,51 @@ GIT_DETAIL_CACHE_SIZE = 200
 # ── Client settings export ───────────────────────────────────
 
 
-def client_settings_dict() -> dict[str, Any]:
+def client_settings_dict(
+    *, syntax_highlight_max_bytes: int = SYNTAX_HIGHLIGHT_MAX_BYTES
+) -> dict[str, Any]:
     """The subset of settings injected into the client via the
     index template. Reading from a single dict keeps the JS
     side from duplicating constants.
 
     Convention: keys here mirror the JS-side constant names
-    (``RECENT_LIMIT``, ``RECENT_WINDOWS``, …); the client reads
+    (``RECENT_LIMIT``, ``RECENT_WINDOW_SECONDS``, …); the client reads
     via ``window.METABROWSER_SETTINGS.RECENT_LIMIT`` etc.
     """
 
     return {
+        "FILE_TYPE_REGISTRY": serialize_file_type_registry(),
+        "DISTRIBUTION_COLORS": serialize_distribution_colors(),
         "FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS,
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,
         "RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS,
-        # Window keys in UI chip order. Server enforces same set.
-        "RECENT_WINDOWS": list(RECENT_WINDOW_SECONDS.keys()),
         "RECENT_CLUSTER_PCT": RECENT_CLUSTER_PCT,
         "RECENT_RECLUSTER_DEBOUNCE_MS": RECENT_RECLUSTER_DEBOUNCE_MS,
         "INDEX_PROGRESS_POLL_MS": INDEX_PROGRESS_POLL_MS,
         "INDEX_PROGRESS_UPDATE_FILES": INDEX_PROGRESS_UPDATE_FILES,
+        "PENDING_TALLY_DIAGNOSTIC_DELAY_MS": PENDING_TALLY_DIAGNOSTIC_DELAY_MS,
+        "PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT": PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
         "TREE_AUTO_EXPAND_FALLBACK_ROWS": TREE_AUTO_EXPAND_FALLBACK_ROWS,
         "SSE_HEARTBEAT_INTERVAL_S": SSE_HEARTBEAT_INTERVAL_S,
         "GIT_LOG_LIMIT": GIT_LOG_DEFAULT_LIMIT,
         "GIT_HISTORY_MAX_ROWS": GIT_HISTORY_MAX_ROWS,
         "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
         "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
+        "ROLLUP_DEFAULT_DEPTH": ROLLUP_DEFAULT_DEPTH,
+        "ROLLUP_DEFAULT_TOP": ROLLUP_DEFAULT_TOP,
+        "ROLLUP_DEFAULT_EXT_TOP": ROLLUP_DEFAULT_EXT_TOP,
+        "ROLLUP_DEFAULT_EXT_RANK": ROLLUP_DEFAULT_EXT_RANK,
+        "ROLLUP_FILE_TYPE_FILENAME_LIMIT": ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+        "ROLLUP_FILE_TYPE_REMAINING_LIMIT": ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+        "ROLLUP_WATCH_DEBOUNCE_MS": ROLLUP_WATCH_DEBOUNCE_MS,
+        "DIFF_FOLD_THRESHOLD": DIFF_FOLD_THRESHOLD,
+        "DIFF_FOLD_VISIBLE": DIFF_FOLD_VISIBLE,
+        "SYNTAX_HIGHLIGHT_MAX_BYTES": syntax_highlight_max_bytes,
+        "SYNTAX_LANGUAGE_BY_BASENAME": dict(SYNTAX_LANGUAGE_BY_BASENAME),
+        "SYNTAX_LANGUAGE_BY_EXTENSION": dict(SYNTAX_LANGUAGE_BY_EXTENSION),
+        "TEXT_PREVIEW_CHUNK_BYTES": TEXT_PREVIEW_CHUNK_BYTES,
+        "TEXT_PREVIEW_MAX_CHUNK_BYTES": TEXT_PREVIEW_MAX_CHUNK_BYTES,
     }
 
 
@@ -255,34 +370,53 @@ __all__ = [
     "ACTIVE_TRACKER_QUIET_POLLS",
     "DEFAULT_BROWSER_PORT",
     "DEFAULT_EXECUTOR_WORKERS",
+    "FOLDER_DISCOVERY_MAX_ENTRIES",
     "GIT_COMMIT_MAX_FILES",
     "GIT_DETAIL_CACHE_SIZE",
-    "GIT_HOVER_DEBOUNCE_MS",
     "GIT_HISTORY_MAX_ROWS",
+    "GIT_HOVER_DEBOUNCE_MS",
     "GIT_LOG_DEFAULT_LIMIT",
     "GIT_LOG_MAX_LIMIT",
     "GIT_LOG_MAX_SKIP",
     "GIT_REPO_INFO_TTL_S",
     "GIT_SUBPROCESS_MAX_BYTES",
     "GIT_SUBPROCESS_TIMEOUT_S",
-    "INVENTORY_FIRST_RENDER_DEPTH",
+    "INDEX_PROGRESS_POLL_MS",
+    "INDEX_PROGRESS_UPDATE_FILES",
     "INVENTORY_MAX_DEPTH",
     "INVENTORY_MAX_FILES",
     "INVENTORY_REFRESH_TTL_S",
     "INVENTORY_WALKER_EMIT_BATCH",
-    "INDEX_PROGRESS_POLL_MS",
-    "INDEX_PROGRESS_UPDATE_FILES",
     "LIVE_FILE_WINDOW_S",
+    "PENDING_TALLY_DIAGNOSTIC_DELAY_MS",
+    "PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES",
+    "PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT",
     "RECENT_CLUSTER_PCT",
     "RECENT_DEFAULT_LIMIT",
     "RECENT_DEFAULT_WINDOW",
     "RECENT_MAX_LIMIT",
     "RECENT_RECLUSTER_DEBOUNCE_MS",
     "RECENT_WINDOW_SECONDS",
+    "ROLLUP_BODY_CACHE_ENTRIES",
+    "ROLLUP_DEFAULT_DEPTH",
+    "ROLLUP_DEFAULT_EXT_RANK",
+    "ROLLUP_DEFAULT_EXT_TOP",
+    "ROLLUP_DEFAULT_TOP",
+    "ROLLUP_FILE_TYPE_FILENAME_LIMIT",
+    "ROLLUP_FILE_TYPE_REMAINING_LIMIT",
+    "ROLLUP_MAX_DEPTH",
+    "ROLLUP_MAX_EXT_TOP",
+    "ROLLUP_MAX_NODES",
+    "ROLLUP_MAX_TOP",
+    "ROLLUP_WATCH_DEBOUNCE_MS",
     "SSE_BUS_INVENTORY_QUEUE_SIZE",
     "SSE_HEARTBEAT_INTERVAL_S",
     "SSE_PER_CONNECTION_QUEUE_SIZE",
     "SSE_RING_BUFFER_CAPACITY",
+    "SYNTAX_HIGHLIGHT_MAX_BYTES",
+    "TEXT_PREVIEW_CHUNK_BYTES",
+    "TEXT_PREVIEW_MAX_CHUNK_BYTES",
+    "TEXT_PREVIEW_REQUEST_MAX_BYTES",
     "TREE_AUTO_EXPAND_FALLBACK_ROWS",
     "client_settings_dict",
 ]

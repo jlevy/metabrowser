@@ -1,0 +1,1762 @@
+{
+  "families": [
+    {
+      "deviation": null,
+      "extensions": [
+        ".py",
+        ".pyi"
+      ],
+      "group_id": "code",
+      "hue": 246.5,
+      "id": "python",
+      "label": "Python",
+      "lightness_rank": null,
+      "linguist": "Python",
+      "linguist_color": "#3572a5",
+      "order": 100
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".js",
+        ".mjs",
+        ".cjs",
+        ".jsx"
+      ],
+      "group_id": "code",
+      "hue": 102.08,
+      "id": "javascript",
+      "label": "JavaScript",
+      "lightness_rank": null,
+      "linguist": "JavaScript",
+      "linguist_color": "#f1e05a",
+      "order": 110
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".ts",
+        ".mts",
+        ".cts",
+        ".tsx"
+      ],
+      "group_id": "code",
+      "hue": 253.3,
+      "id": "typescript",
+      "label": "TypeScript",
+      "lightness_rank": null,
+      "linguist": "TypeScript",
+      "linguist_color": "#3178c6",
+      "order": 120
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".css",
+        ".scss",
+        ".less"
+      ],
+      "group_id": "code",
+      "hue": 303.37,
+      "id": "css",
+      "label": "CSS",
+      "lightness_rank": null,
+      "linguist": "CSS",
+      "linguist_color": "#663399",
+      "order": 130
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".html",
+        ".htm"
+      ],
+      "group_id": "code",
+      "hue": 34.85,
+      "id": "html",
+      "label": "HTML",
+      "lightness_rank": null,
+      "linguist": "HTML",
+      "linguist_color": "#e34c26",
+      "order": 140
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".rs"
+      ],
+      "group_id": "code",
+      "hue": 51.2,
+      "id": "rust",
+      "label": "Rust",
+      "lightness_rank": null,
+      "linguist": "Rust",
+      "linguist_color": "#dea584",
+      "order": 150
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".go"
+      ],
+      "group_id": "code",
+      "hue": 223.85,
+      "id": "go",
+      "label": "Go",
+      "lightness_rank": null,
+      "linguist": "Go",
+      "linguist_color": "#00add8",
+      "order": 160
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".java"
+      ],
+      "group_id": "code",
+      "hue": 69.41,
+      "id": "java",
+      "label": "Java",
+      "lightness_rank": null,
+      "linguist": "Java",
+      "linguist_color": "#b07219",
+      "order": 170
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".kt",
+        ".kts"
+      ],
+      "group_id": "code",
+      "hue": 297.24,
+      "id": "kotlin",
+      "label": "Kotlin",
+      "lightness_rank": null,
+      "linguist": "Kotlin",
+      "linguist_color": "#a97bff",
+      "order": 180
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".swift"
+      ],
+      "group_id": "code",
+      "hue": 31.62,
+      "id": "swift",
+      "label": "Swift",
+      "lightness_rank": null,
+      "linguist": "Swift",
+      "linguist_color": "#f05138",
+      "order": 190
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".c",
+        ".h",
+        ".cc",
+        ".cpp",
+        ".hpp"
+      ],
+      "group_id": "code",
+      "hue": 6.9,
+      "id": "c-cpp",
+      "label": "C/C++",
+      "lightness_rank": null,
+      "linguist": "C++",
+      "linguist_color": "#f34b7d",
+      "order": 200
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".cs"
+      ],
+      "group_id": "code",
+      "hue": 288.37,
+      "id": "csharp",
+      "label": "C#",
+      "lightness_rank": null,
+      "linguist": "C#",
+      "linguist_color": "#7355dd",
+      "order": 210
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".rb"
+      ],
+      "group_id": "code",
+      "hue": 25.77,
+      "id": "ruby",
+      "label": "Ruby",
+      "lightness_rank": null,
+      "linguist": "Ruby",
+      "linguist_color": "#701516",
+      "order": 220
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".php"
+      ],
+      "group_id": "code",
+      "hue": 272.03,
+      "id": "php",
+      "label": "PHP",
+      "lightness_rank": null,
+      "linguist": "PHP",
+      "linguist_color": "#4f5d95",
+      "order": 230
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".scala"
+      ],
+      "group_id": "code",
+      "hue": 19.52,
+      "id": "scala",
+      "label": "Scala",
+      "lightness_rank": null,
+      "linguist": "Scala",
+      "linguist_color": "#c22d40",
+      "order": 240
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".clj"
+      ],
+      "group_id": "code",
+      "hue": 24.35,
+      "id": "clojure",
+      "label": "Clojure",
+      "lightness_rank": null,
+      "linguist": "Clojure",
+      "linguist_color": "#db5855",
+      "order": 250
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".ex",
+        ".exs"
+      ],
+      "group_id": "code",
+      "hue": 314.93,
+      "id": "elixir",
+      "label": "Elixir",
+      "lightness_rank": null,
+      "linguist": "Elixir",
+      "linguist_color": "#6e4a7e",
+      "order": 260
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".erl"
+      ],
+      "group_id": "code",
+      "hue": 339.55,
+      "id": "erlang",
+      "label": "Erlang",
+      "lightness_rank": null,
+      "linguist": "Erlang",
+      "linguist_color": "#b83998",
+      "order": 270
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".hs"
+      ],
+      "group_id": "code",
+      "hue": 294.76,
+      "id": "haskell",
+      "label": "Haskell",
+      "lightness_rank": null,
+      "linguist": "Haskell",
+      "linguist_color": "#5e5086",
+      "order": 280
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".lua"
+      ],
+      "group_id": "code",
+      "hue": 264.05,
+      "id": "lua",
+      "label": "Lua",
+      "lightness_rank": null,
+      "linguist": "Lua",
+      "linguist_color": "#000080",
+      "order": 290
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".jl"
+      ],
+      "group_id": "code",
+      "hue": 314.22,
+      "id": "julia",
+      "label": "Julia",
+      "lightness_rank": null,
+      "linguist": "Julia",
+      "linguist_color": "#a270ba",
+      "order": 300
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".dart"
+      ],
+      "group_id": "code",
+      "hue": 188.48,
+      "id": "dart",
+      "label": "Dart",
+      "lightness_rank": null,
+      "linguist": "Dart",
+      "linguist_color": "#00b4ab",
+      "order": 310
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".vue"
+      ],
+      "group_id": "code",
+      "hue": 160.49,
+      "id": "vue",
+      "label": "Vue",
+      "lightness_rank": null,
+      "linguist": "Vue",
+      "linguist_color": "#41b883",
+      "order": 320
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".svelte"
+      ],
+      "group_id": "code",
+      "hue": 34.2,
+      "id": "svelte",
+      "label": "Svelte",
+      "lightness_rank": null,
+      "linguist": "Svelte",
+      "linguist_color": "#ff3e00",
+      "order": 330
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish"
+      ],
+      "group_id": "code",
+      "hue": 135.27,
+      "id": "shell",
+      "label": "Shell",
+      "lightness_rank": null,
+      "linguist": "Shell",
+      "linguist_color": "#89e051",
+      "order": 340
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".ps1"
+      ],
+      "group_id": "code",
+      "hue": 258.14,
+      "id": "powershell",
+      "label": "PowerShell",
+      "lightness_rank": null,
+      "linguist": "PowerShell",
+      "linguist_color": "#012456",
+      "order": 350
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".sql"
+      ],
+      "group_id": "code",
+      "hue": 67.02,
+      "id": "sql",
+      "label": "SQL",
+      "lightness_rank": null,
+      "linguist": "SQL",
+      "linguist_color": "#e38c00",
+      "order": 360
+    },
+    {
+      "deviation": "GitHub puts Markdown at 261.42, inside a seven-family run -- python 246.50, xml 251.44, typescript 253.30, powershell 258.14, markdown, lua 264.05, php 272.03 -- and it read as Python's blue. Markdown is the most-viewed family in the app and Python's colour is the better known of the two, so Markdown is the one that moves. 276.0 clears every other family by 0.0355 rather than 0.0149 and is still plainly a blue rather than a violet. The rank puts it below the band, which is the deliberate part: at its upstream rank it painted 0.571 against Python's 0.599, and no hue move makes a lighter blue read as a darker one. #083fa1 is a dark navy, so this paints closer to the colour GitHub chose than the band alone allowed.",
+      "extensions": [
+        ".md"
+      ],
+      "group_id": "docs",
+      "hue": 276.0,
+      "id": "markdown",
+      "label": "Markdown",
+      "lightness_rank": -0.5,
+      "linguist": "Markdown",
+      "linguist_color": "#083fa1",
+      "order": 100
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".txt"
+      ],
+      "group_id": "docs",
+      "hue": 206.2,
+      "id": "plain-text",
+      "label": "Plain text",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 110
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".rst"
+      ],
+      "group_id": "docs",
+      "hue": 118.7,
+      "id": "restructured-text",
+      "label": "reStructuredText",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 120
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".adoc"
+      ],
+      "group_id": "docs",
+      "hue": 243.94,
+      "id": "asciidoc",
+      "label": "AsciiDoc",
+      "lightness_rank": null,
+      "linguist": "AsciiDoc",
+      "linguist_color": "#73a0c5",
+      "order": 130
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".org"
+      ],
+      "group_id": "docs",
+      "hue": 171.76,
+      "id": "org",
+      "label": "Org",
+      "lightness_rank": null,
+      "linguist": "Org",
+      "linguist_color": "#77aa99",
+      "order": 140
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".pdf"
+      ],
+      "group_id": "docs",
+      "hue": 85.7,
+      "id": "pdf",
+      "label": "PDF",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 150
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".doc",
+        ".docx"
+      ],
+      "group_id": "docs",
+      "hue": 327.2,
+      "id": "word",
+      "label": "Word",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 160
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".rtf"
+      ],
+      "group_id": "docs",
+      "hue": 233.9,
+      "id": "rich-text",
+      "label": "Rich Text",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 170
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".odt"
+      ],
+      "group_id": "docs",
+      "hue": 144.9,
+      "id": "open-document",
+      "label": "OpenDocument",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 180
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".epub"
+      ],
+      "group_id": "docs",
+      "hue": 357.9,
+      "id": "epub",
+      "label": "EPUB",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 190
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".json"
+      ],
+      "group_id": "data",
+      "hue": 197.3,
+      "id": "json",
+      "label": "JSON",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 100
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".yaml",
+        ".yml"
+      ],
+      "group_id": "data",
+      "hue": 26.9,
+      "id": "yaml",
+      "label": "YAML",
+      "lightness_rank": null,
+      "linguist": "YAML",
+      "linguist_color": "#cb171e",
+      "order": 110
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".toml"
+      ],
+      "group_id": "data",
+      "hue": 39.62,
+      "id": "toml",
+      "label": "TOML",
+      "lightness_rank": null,
+      "linguist": "TOML",
+      "linguist_color": "#9c4221",
+      "order": 120
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".ini"
+      ],
+      "group_id": "data",
+      "hue": 215.0,
+      "id": "ini",
+      "label": "INI",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 130
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".csv",
+        ".tsv",
+        ".psv"
+      ],
+      "group_id": "data",
+      "hue": 154.61,
+      "id": "delimited-text",
+      "label": "Delimited text",
+      "lightness_rank": null,
+      "linguist": "CSV",
+      "linguist_color": "#237346",
+      "order": 140
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".xml"
+      ],
+      "group_id": "data",
+      "hue": 251.44,
+      "id": "xml",
+      "label": "XML",
+      "lightness_rank": null,
+      "linguist": "XML",
+      "linguist_color": "#0060ac",
+      "order": 150
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".parquet"
+      ],
+      "group_id": "data",
+      "hue": 180.1,
+      "id": "parquet",
+      "label": "Parquet",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 160
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".arrow",
+        ".feather"
+      ],
+      "group_id": "data",
+      "hue": 110.4,
+      "id": "arrow",
+      "label": "Arrow",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 170
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".avro"
+      ],
+      "group_id": "data",
+      "hue": 127.0,
+      "id": "avro",
+      "label": "Avro",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 180
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".orc"
+      ],
+      "group_id": "data",
+      "hue": 93.9,
+      "id": "orc",
+      "label": "ORC",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 190
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".proto"
+      ],
+      "group_id": "data",
+      "hue": 280.2,
+      "id": "protocol-buffers",
+      "label": "Protocol Buffers",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 200
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".graphql"
+      ],
+      "group_id": "data",
+      "hue": 348.88,
+      "id": "graphql",
+      "label": "GraphQL",
+      "lightness_rank": null,
+      "linguist": "GraphQL",
+      "linguist_color": "#e10098",
+      "order": 210
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".sqlite"
+      ],
+      "group_id": "data",
+      "hue": 77.6,
+      "id": "sqlite",
+      "label": "SQLite",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 220
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".zip",
+        ".tar",
+        ".tar.gz",
+        ".tgz",
+        ".gz",
+        ".tar.bz2",
+        ".bz2",
+        ".tar.xz",
+        ".xz",
+        ".tar.zst",
+        ".zst",
+        ".7z",
+        ".rar"
+      ],
+      "group_id": "archives",
+      "hue": 59.1,
+      "id": "archives",
+      "label": "Archives",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 100
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".avif",
+        ".bmp",
+        ".ico",
+        ".tif",
+        ".tiff",
+        ".heic",
+        ".svg"
+      ],
+      "group_id": "media",
+      "hue": 13.2,
+      "id": "images",
+      "label": "Images",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 100
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".mp4",
+        ".mov",
+        ".m4v",
+        ".mkv",
+        ".webm",
+        ".avi"
+      ],
+      "group_id": "media",
+      "hue": 333.4,
+      "id": "videos",
+      "label": "Videos",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 110
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".mp3",
+        ".wav",
+        ".flac",
+        ".m4a",
+        ".aac",
+        ".ogg",
+        ".opus"
+      ],
+      "group_id": "media",
+      "hue": 321.1,
+      "id": "audio",
+      "label": "Audio",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 120
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".ttf",
+        ".otf",
+        ".woff",
+        ".woff2"
+      ],
+      "group_id": "media",
+      "hue": 45.4,
+      "id": "fonts",
+      "label": "Fonts",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 130
+    },
+    {
+      "deviation": null,
+      "extensions": [
+        ".log",
+        ".jsonl",
+        ".ndjson"
+      ],
+      "group_id": "other",
+      "hue": 166.1,
+      "id": "log-files",
+      "label": "Log files",
+      "lightness_rank": null,
+      "linguist": null,
+      "linguist_color": null,
+      "order": 100
+    }
+  ],
+  "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c",
+  "groups": [
+    {
+      "id": "code",
+      "label": "Code",
+      "order": 10
+    },
+    {
+      "id": "docs",
+      "label": "Documentation",
+      "order": 20
+    },
+    {
+      "id": "data",
+      "label": "Data",
+      "order": 30
+    },
+    {
+      "id": "archives",
+      "label": "Archives",
+      "order": 40
+    },
+    {
+      "id": "media",
+      "label": "Media",
+      "order": 50
+    },
+    {
+      "id": "other",
+      "label": "Other",
+      "order": 60
+    }
+  ],
+  "kinds": [
+    {
+      "content_family": "code",
+      "extensions": [
+        ".py",
+        ".pyi"
+      ],
+      "family_id": "python",
+      "filenames": [],
+      "group_id": "code",
+      "id": "python",
+      "priority": 100,
+      "shebangs": [
+        "python",
+        "python3"
+      ]
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".js",
+        ".mjs",
+        ".cjs",
+        ".jsx"
+      ],
+      "family_id": "javascript",
+      "filenames": [],
+      "group_id": "code",
+      "id": "javascript",
+      "priority": 100,
+      "shebangs": [
+        "node",
+        "deno",
+        "bun"
+      ]
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".ts",
+        ".mts",
+        ".cts",
+        ".tsx"
+      ],
+      "family_id": "typescript",
+      "filenames": [],
+      "group_id": "code",
+      "id": "typescript",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".css",
+        ".scss",
+        ".less"
+      ],
+      "family_id": "css",
+      "filenames": [],
+      "group_id": "code",
+      "id": "css",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "markup",
+      "extensions": [
+        ".html",
+        ".htm"
+      ],
+      "family_id": "html",
+      "filenames": [],
+      "group_id": "code",
+      "id": "html",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".rs"
+      ],
+      "family_id": "rust",
+      "filenames": [],
+      "group_id": "code",
+      "id": "rust",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".go"
+      ],
+      "family_id": "go",
+      "filenames": [],
+      "group_id": "code",
+      "id": "go",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".java"
+      ],
+      "family_id": "java",
+      "filenames": [],
+      "group_id": "code",
+      "id": "java",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".kt",
+        ".kts"
+      ],
+      "family_id": "kotlin",
+      "filenames": [],
+      "group_id": "code",
+      "id": "kotlin",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".swift"
+      ],
+      "family_id": "swift",
+      "filenames": [],
+      "group_id": "code",
+      "id": "swift",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".c",
+        ".h"
+      ],
+      "family_id": "c-cpp",
+      "filenames": [],
+      "group_id": "code",
+      "id": "c",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".cc",
+        ".cpp",
+        ".hpp"
+      ],
+      "family_id": "c-cpp",
+      "filenames": [],
+      "group_id": "code",
+      "id": "cpp",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".cs"
+      ],
+      "family_id": "csharp",
+      "filenames": [],
+      "group_id": "code",
+      "id": "csharp",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".rb"
+      ],
+      "family_id": "ruby",
+      "filenames": [],
+      "group_id": "code",
+      "id": "ruby",
+      "priority": 100,
+      "shebangs": [
+        "ruby"
+      ]
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".php"
+      ],
+      "family_id": "php",
+      "filenames": [],
+      "group_id": "code",
+      "id": "php",
+      "priority": 100,
+      "shebangs": [
+        "php"
+      ]
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".scala"
+      ],
+      "family_id": "scala",
+      "filenames": [],
+      "group_id": "code",
+      "id": "scala",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".clj"
+      ],
+      "family_id": "clojure",
+      "filenames": [],
+      "group_id": "code",
+      "id": "clojure",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".ex",
+        ".exs"
+      ],
+      "family_id": "elixir",
+      "filenames": [],
+      "group_id": "code",
+      "id": "elixir",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".erl"
+      ],
+      "family_id": "erlang",
+      "filenames": [],
+      "group_id": "code",
+      "id": "erlang",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".hs"
+      ],
+      "family_id": "haskell",
+      "filenames": [],
+      "group_id": "code",
+      "id": "haskell",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".lua"
+      ],
+      "family_id": "lua",
+      "filenames": [],
+      "group_id": "code",
+      "id": "lua",
+      "priority": 100,
+      "shebangs": [
+        "lua"
+      ]
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".jl"
+      ],
+      "family_id": "julia",
+      "filenames": [],
+      "group_id": "code",
+      "id": "julia",
+      "priority": 100,
+      "shebangs": [
+        "julia"
+      ]
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".dart"
+      ],
+      "family_id": "dart",
+      "filenames": [],
+      "group_id": "code",
+      "id": "dart",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "markup",
+      "extensions": [
+        ".vue"
+      ],
+      "family_id": "vue",
+      "filenames": [],
+      "group_id": "code",
+      "id": "vue",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "markup",
+      "extensions": [
+        ".svelte"
+      ],
+      "family_id": "svelte",
+      "filenames": [],
+      "group_id": "code",
+      "id": "svelte",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish"
+      ],
+      "family_id": "shell",
+      "filenames": [],
+      "group_id": "code",
+      "id": "shell",
+      "priority": 100,
+      "shebangs": [
+        "sh",
+        "bash",
+        "zsh",
+        "fish"
+      ]
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".ps1"
+      ],
+      "family_id": "powershell",
+      "filenames": [],
+      "group_id": "code",
+      "id": "powershell",
+      "priority": 100,
+      "shebangs": [
+        "pwsh",
+        "powershell"
+      ]
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".sql"
+      ],
+      "family_id": "sql",
+      "filenames": [],
+      "group_id": "code",
+      "id": "sql",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "markup",
+      "extensions": [
+        ".md"
+      ],
+      "family_id": "markdown",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "markdown",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "prose",
+      "extensions": [
+        ".txt"
+      ],
+      "family_id": "plain-text",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "plain-text",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "markup",
+      "extensions": [
+        ".rst"
+      ],
+      "family_id": "restructured-text",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "restructured-text",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "markup",
+      "extensions": [
+        ".adoc"
+      ],
+      "family_id": "asciidoc",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "asciidoc",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "markup",
+      "extensions": [
+        ".org"
+      ],
+      "family_id": "org",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "org",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "binary",
+      "extensions": [
+        ".pdf"
+      ],
+      "family_id": "pdf",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "pdf",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "binary",
+      "extensions": [
+        ".doc",
+        ".docx"
+      ],
+      "family_id": "word",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "word",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "prose",
+      "extensions": [
+        ".rtf"
+      ],
+      "family_id": "rich-text",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "rich-text",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "binary",
+      "extensions": [
+        ".odt"
+      ],
+      "family_id": "open-document",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "open-document",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "binary",
+      "extensions": [
+        ".epub"
+      ],
+      "family_id": "epub",
+      "filenames": [],
+      "group_id": "docs",
+      "id": "epub",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".json"
+      ],
+      "family_id": "json",
+      "filenames": [],
+      "group_id": "data",
+      "id": "json",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".yaml",
+        ".yml"
+      ],
+      "family_id": "yaml",
+      "filenames": [],
+      "group_id": "data",
+      "id": "yaml",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".toml"
+      ],
+      "family_id": "toml",
+      "filenames": [],
+      "group_id": "data",
+      "id": "toml",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".ini"
+      ],
+      "family_id": "ini",
+      "filenames": [],
+      "group_id": "data",
+      "id": "ini",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".csv",
+        ".tsv",
+        ".psv"
+      ],
+      "family_id": "delimited-text",
+      "filenames": [],
+      "group_id": "data",
+      "id": "delimited-text",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "markup",
+      "extensions": [
+        ".xml"
+      ],
+      "family_id": "xml",
+      "filenames": [],
+      "group_id": "data",
+      "id": "xml",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".parquet"
+      ],
+      "family_id": "parquet",
+      "filenames": [],
+      "group_id": "data",
+      "id": "parquet",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".arrow",
+        ".feather"
+      ],
+      "family_id": "arrow",
+      "filenames": [],
+      "group_id": "data",
+      "id": "arrow",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".avro"
+      ],
+      "family_id": "avro",
+      "filenames": [],
+      "group_id": "data",
+      "id": "avro",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".orc"
+      ],
+      "family_id": "orc",
+      "filenames": [],
+      "group_id": "data",
+      "id": "orc",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".proto"
+      ],
+      "family_id": "protocol-buffers",
+      "filenames": [],
+      "group_id": "data",
+      "id": "protocol-buffers",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".graphql"
+      ],
+      "family_id": "graphql",
+      "filenames": [],
+      "group_id": "data",
+      "id": "graphql",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".sqlite"
+      ],
+      "family_id": "sqlite",
+      "filenames": [],
+      "group_id": "data",
+      "id": "sqlite",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "prose",
+      "extensions": [
+        ".log"
+      ],
+      "family_id": "log-files",
+      "filenames": [],
+      "group_id": "other",
+      "id": "log",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".jsonl",
+        ".ndjson"
+      ],
+      "family_id": "log-files",
+      "filenames": [],
+      "group_id": "other",
+      "id": "json-lines",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "binary",
+      "extensions": [
+        ".zip",
+        ".tar",
+        ".tar.gz",
+        ".tgz",
+        ".gz",
+        ".tar.bz2",
+        ".bz2",
+        ".tar.xz",
+        ".xz",
+        ".tar.zst",
+        ".zst",
+        ".7z",
+        ".rar"
+      ],
+      "family_id": "archives",
+      "filenames": [],
+      "group_id": "archives",
+      "id": "archives",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "binary",
+      "extensions": [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".avif",
+        ".bmp",
+        ".ico",
+        ".tif",
+        ".tiff",
+        ".heic"
+      ],
+      "family_id": "images",
+      "filenames": [],
+      "group_id": "media",
+      "id": "raster-image",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "markup",
+      "extensions": [
+        ".svg"
+      ],
+      "family_id": "images",
+      "filenames": [],
+      "group_id": "media",
+      "id": "svg",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "binary",
+      "extensions": [
+        ".mp4",
+        ".mov",
+        ".m4v",
+        ".mkv",
+        ".webm",
+        ".avi"
+      ],
+      "family_id": "videos",
+      "filenames": [],
+      "group_id": "media",
+      "id": "video",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "binary",
+      "extensions": [
+        ".mp3",
+        ".wav",
+        ".flac",
+        ".m4a",
+        ".aac",
+        ".ogg",
+        ".opus"
+      ],
+      "family_id": "audio",
+      "filenames": [],
+      "group_id": "media",
+      "id": "audio",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "binary",
+      "extensions": [
+        ".ttf",
+        ".otf",
+        ".woff",
+        ".woff2"
+      ],
+      "family_id": "fonts",
+      "filenames": [],
+      "group_id": "media",
+      "id": "font",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "prose",
+      "extensions": [],
+      "family_id": null,
+      "filenames": [
+        "readme",
+        "license",
+        "licence",
+        "copying",
+        "notice",
+        "changelog",
+        "authors",
+        "contributors",
+        "contributing",
+        "codeowners"
+      ],
+      "group_id": "docs",
+      "id": "documentation-file",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [],
+      "family_id": null,
+      "filenames": [
+        "makefile",
+        "dockerfile",
+        "justfile",
+        "rakefile",
+        "gemfile",
+        "procfile"
+      ],
+      "group_id": "code",
+      "id": "build-file",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "code",
+      "extensions": [
+        ".m",
+        ".mm",
+        ".ml",
+        ".pl",
+        ".r"
+      ],
+      "family_id": null,
+      "filenames": [],
+      "group_id": "code",
+      "id": "ambiguous-code",
+      "priority": 10,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".cfg",
+        ".conf",
+        ".properties",
+        ".db"
+      ],
+      "family_id": null,
+      "filenames": [],
+      "group_id": "data",
+      "id": "configuration",
+      "priority": 100,
+      "shebangs": []
+    },
+    {
+      "content_family": "data",
+      "extensions": [
+        ".map"
+      ],
+      "family_id": null,
+      "filenames": [],
+      "group_id": "data",
+      "id": "source-map",
+      "priority": 100,
+      "shebangs": []
+    }
+  ],
+  "max_extension_components": 2,
+  "revision": 3,
+  "schema": "file-type-registry-v3",
+  "schema_version": 3
+}

@@ -11,6 +11,8 @@ This module owns:
 * ``GET /api/index/progress`` — lightweight crawl status for the
   left-nav progress footer. Reads in-memory inventory counters
   only; never scans the tree or rebuilds suffix tallies.
+* ``POST /api/diagnostics/pending-tallies`` — bounded client/server state
+  captured when a rendered directory total remains unresolved.
 * ``GET /api/index/meta`` — bundled summary of index status,
   suffix tally, and oldest/newest mtime; ETag-cacheable. Folds
   what the search spec called ``/api/index/status`` and
@@ -56,6 +58,11 @@ from metabrowser.events import (
     encode_heartbeat_comment,
     encode_sse,
 )
+from metabrowser.http_caching import (
+    build_scoped_etag,
+    etag_headers,
+    matches_if_none_match,
+)
 from metabrowser.inventory import InventoryIndex
 from metabrowser.inventory import (
     get_instance as get_inventory,
@@ -64,6 +71,8 @@ from metabrowser.paths_safe import _resolved_root_dir
 from metabrowser.settings import (
     DEFAULT_EXECUTOR_WORKERS,
     INDEX_PROGRESS_UPDATE_FILES,
+    PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES,
+    PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
     SSE_BUS_INVENTORY_QUEUE_SIZE,
     SSE_HEARTBEAT_INTERVAL_S,
     SSE_PER_CONNECTION_QUEUE_SIZE,
@@ -608,7 +617,7 @@ def _progress_etag(progress: IndexProgress) -> str:
         if progress.active
         else progress.indexed_files
     )
-    return f'"{progress.status}-{count_key}"'
+    return build_scoped_etag(f"{progress.status}-{count_key}")
 
 
 def _build_index_meta(inventory: InventoryIndex, *, suffix_limit: int = 64) -> IndexMeta:
@@ -630,7 +639,7 @@ def _build_index_meta(inventory: InventoryIndex, *, suffix_limit: int = 64) -> I
                 if e.mtime_ns > newest:
                     newest = e.mtime_ns
             suffix_counter[e.ext] += 1
-        else:
+        elif e.type == "dir":
             dirs += 1
     suffixes = [
         {"ext": ext, "count": count}
@@ -665,14 +674,89 @@ async def api_index_progress(request: Request) -> Response:
     inventory = get_inventory()
     progress = _build_index_progress(inventory)
     etag = _progress_etag(progress)
-    if not progress.active and request.headers.get("If-None-Match", "") == etag:
+    if not progress.active and matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
     body = json.dumps(asdict(progress), separators=(",", ":")).encode()
     return Response(
         body,
         media_type="application/json",
-        headers={"ETag": etag, "Cache-Control": "no-cache"},
+        headers=etag_headers(etag),
     )
+
+
+def _pending_tally_paths(payload: dict[str, object]) -> list[str]:
+    pending = payload.get("pending")
+    if not isinstance(pending, dict):
+        return []
+    sample = pending.get("sample")
+    if not isinstance(sample, list):
+        return []
+    paths: list[str] = []
+    for item in sample[:PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT]:
+        if not isinstance(item, dict):
+            continue
+        path = item.get("path")
+        if isinstance(path, str) and path:
+            paths.append(path)
+    return paths
+
+
+async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
+    """Correlate a client-side pending-tally warning with server state."""
+
+    content_length = request.headers.get("content-length", "")
+    try:
+        if content_length and int(content_length) > PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES:
+            return JSONResponse({"error": "Diagnostic payload too large"}, status_code=413)
+    except ValueError:
+        return JSONResponse({"error": "Invalid Content-Length"}, status_code=400)
+
+    body_parts: list[bytes] = []
+    body_size = 0
+    async for chunk in request.stream():
+        body_size += len(chunk)
+        if body_size > PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES:
+            return JSONResponse({"error": "Diagnostic payload too large"}, status_code=413)
+        if chunk:
+            body_parts.append(chunk)
+    body = b"".join(body_parts)
+    try:
+        decoded = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return JSONResponse({"error": "Invalid diagnostic payload"}, status_code=400)
+    if not isinstance(decoded, dict):
+        return JSONResponse({"error": "Invalid diagnostic payload"}, status_code=400)
+
+    payload = cast(dict[str, object], decoded)
+    raw_id = payload.get("diagnostic_id")
+    diagnostic_id = (
+        "".join(char if char.isalnum() or char in "-_.:" else "_" for char in raw_id)[:128]
+        if isinstance(raw_id, str)
+        else "pending-tally-unknown"
+    )
+    inventory = get_inventory()
+    inventory_state = inventory.diagnostic_snapshot(
+        _pending_tally_paths(payload),
+        sample_limit=PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
+    )
+    bus = _BusSingleton.instance
+    event_state: dict[str, object] = {
+        "bus_started": bus is not None,
+        "connections": bus.connection_count() if bus is not None else 0,
+        "latest_event_id": bus.latest_id() if bus is not None else 0,
+    }
+    response_payload = {
+        "diagnostic_id": diagnostic_id,
+        "inventory": inventory_state,
+        "events": event_state,
+    }
+    LOG.warning(
+        "pending folder tallies diagnostic id=%s client=%s server=%s",
+        diagnostic_id,
+        json.dumps(payload, separators=(",", ":"), sort_keys=True),
+        json.dumps(response_payload, separators=(",", ":"), sort_keys=True),
+    )
+    return JSONResponse(response_payload)
 
 
 # Last encoded catalog body, keyed by its ETag. Holds at most one entry: the
@@ -695,7 +779,7 @@ def _encode_catalog(files: list[tuple[str, str]], status: str, revision: int) ->
 
 
 def _catalog_etag(inventory: InventoryIndex) -> str:
-    return f'"{inventory.status()}-{inventory.catalog_revision()}"'
+    return build_scoped_etag(f"{inventory.status()}-{inventory.catalog_revision()}")
 
 
 async def api_catalog(request: Request) -> Response:
@@ -714,7 +798,7 @@ async def api_catalog(request: Request) -> Response:
 
     inventory = get_inventory()
     etag = _catalog_etag(inventory)
-    if request.headers.get("If-None-Match", "") == etag:
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
 
     cached = _CATALOG_BODY_CACHE.get(etag)
@@ -722,7 +806,7 @@ async def api_catalog(request: Request) -> Response:
         return Response(
             cached,
             media_type="application/json",
-            headers={"ETag": etag, "Cache-Control": "no-cache"},
+            headers=etag_headers(etag),
         )
 
     status = inventory.status()
@@ -743,7 +827,7 @@ async def api_catalog(request: Request) -> Response:
     return Response(
         body,
         media_type="application/json",
-        headers={"ETag": etag, "Cache-Control": "no-cache"},
+        headers=etag_headers(etag),
     )
 
 
@@ -755,14 +839,13 @@ async def api_index_meta(request: Request) -> Response:
     inventory = get_inventory()
     meta = _build_index_meta(inventory)
     body = json.dumps(asdict(meta), separators=(",", ":")).encode()
-    etag = f'"{meta.status}-{meta.indexed_files}-{meta.indexed_dirs}"'
-    if_none_match = request.headers.get("If-None-Match", "")
-    if if_none_match and if_none_match == etag:
+    etag = build_scoped_etag(f"{meta.status}-{meta.indexed_files}-{meta.indexed_dirs}")
+    if matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
     return Response(
         body,
         media_type="application/json",
-        headers={"ETag": etag, "Cache-Control": "no-cache"},
+        headers=etag_headers(etag),
     )
 
 
@@ -828,6 +911,11 @@ def add_inventory_routes(app: Starlette) -> None:
             Route("/api/events", api_events),
             Route("/api/catalog", api_catalog),
             Route("/api/index/progress", api_index_progress),
+            Route(
+                "/api/diagnostics/pending-tallies",
+                api_pending_tally_diagnostic,
+                methods=["POST"],
+            ),
             Route("/api/index/meta", api_index_meta),
             Route("/api/capabilities", api_capabilities),
         ]

@@ -8,6 +8,7 @@ macOS. Every other operation is a mode flag on the same command:
     metab path/to/directory --path documents/report.pdf  # deep-link within root
 
     metab . --walk --format json       # inventory walk, no server
+    metab . --check-api                # exercise navigation APIs, no browser
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
@@ -28,11 +29,20 @@ from typing import TextIO, cast
 import typer
 
 from metabrowser import __version__
+from metabrowser.build_version import display_version_line
 from metabrowser.cli.common import PipeTrackingStream, silence_broken_pipe, validate_log_level
+from metabrowser.cli.diff_cli import run_diff
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
 from metabrowser.cli.remote import run_remote
 from metabrowser.cli.serve import run_serve
-from metabrowser.cli.walk_cli import run_walk, validate_detail, validate_format
+from metabrowser.cli.walk_cli import (
+    RECENCY_WINDOW_CHOICES,
+    run_walk,
+    validate_age,
+    validate_detail,
+    validate_format,
+    validate_min_size,
+)
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
 from metabrowser.settings import DEFAULT_BROWSER_PORT
@@ -41,6 +51,8 @@ _PANEL_MODES = "Modes (default: serve ROOT)"
 _PANEL_SHARED = "Shared by multiple modes (each option names its modes)"
 _PANEL_SERVE = "Serve"
 _PANEL_WALK = "Walk (--walk)"
+_PANEL_DIFF = "Diff (--diff SPEC)"
+_PANEL_CHECK_API = "API check (--check-api)"
 _PANEL_REMOTE = "Remote (--remote)"
 _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
 
@@ -49,7 +61,23 @@ _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
 # selectors) are never applicability-checked.
 _MODE_OPTIONS: dict[str, frozenset[str]] = {
     "serve": frozenset({"path", "port", "host", "no_open", "plugins_dir", "log_level"}),
-    "walk": frozenset({"fmt", "stream", "path", "detail", "max_depth", "max_files", "log_level"}),
+    "walk": frozenset(
+        {
+            "fmt",
+            "stream",
+            "path",
+            "detail",
+            "max_depth",
+            "max_files",
+            "log_level",
+            "filter_type",
+            "filter_age",
+            "filter_min_size",
+            "filter_ignored",
+        }
+    ),
+    "diff": frozenset({"fmt", "diff_patch", "diff_check", "log_level"}),
+    "check-api": frozenset({"plugins_dir", "log_level", "index_timeout"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
     "plugin": frozenset({"plugins_dir", "as_json"}),
@@ -59,6 +87,8 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
 _MODE_LABELS: dict[str, str] = {
     "serve": "serve mode (the default)",
     "walk": "--walk",
+    "diff": "--diff",
+    "check-api": "--check-api",
     "remote": "--remote",
     "plugins": "--plugins",
     "plugin": "--plugin",
@@ -73,10 +103,17 @@ _OPTION_LABELS: dict[str, str] = {
     "plugins_dir": "--plugins-dir",
     "log_level": "--log-level",
     "fmt": "--format",
+    "diff_patch": "--diff-patch",
+    "diff_check": "--diff-check",
     "stream": "--stream/--all-at-once",
     "detail": "--detail",
     "max_depth": "--max-depth",
     "max_files": "--max-files",
+    "filter_type": "--type",
+    "filter_age": "--age",
+    "filter_min_size": "--min-size",
+    "filter_ignored": "--ignored/--no-ignored",
+    "index_timeout": "--index-timeout",
     "base_port": "--base-port",
     "ssh_options": "--ssh-options",
     "gcp": "--gcp",
@@ -88,7 +125,10 @@ _OPTION_LABELS: dict[str, str] = {
 
 def _version_callback(ctx: typer.Context, value: bool) -> None:
     if value:
-        typer.echo(f"{ctx.info_name or 'metab'} {__version__}")
+        # Annotated when this is a checkout rather than an installed release,
+        # so a dev build cannot be mistaken for the tag it is sitting past.
+        # See metabrowser.build_version.
+        typer.echo(display_version_line(ctx.info_name or "metab", __version__))
         raise typer.Exit()
 
 
@@ -111,6 +151,8 @@ def _resolve_mode(
     ctx: typer.Context,
     *,
     walk: bool,
+    diff: str | None,
+    check_api: bool,
     remote: str | None,
     plugins: bool,
     plugin: str | None,
@@ -121,6 +163,8 @@ def _resolve_mode(
         label
         for label, on in (
             ("--walk", walk),
+            ("--diff", diff is not None),
+            ("--check-api", check_api),
             ("--remote", remote is not None),
             ("--plugins", plugins),
             ("--plugin", plugin is not None),
@@ -146,7 +190,12 @@ def _check_option_applicability(ctx: typer.Context, mode: str, explicit: frozens
 
 def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
     if root is None:
-        hint = "e.g. `metab .`" if mode == "serve" else "e.g. `metab . --walk`"
+        hints = {
+            "serve": "e.g. `metab .`",
+            "walk": "e.g. `metab . --walk`",
+            "check-api": "e.g. `metab . --check-api`",
+        }
+        hint = hints.get(mode, "pass the required root")
         ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
     return root
 
@@ -169,6 +218,7 @@ _app = typer.Typer(add_completion=False)
         "metab .\n\n"
         "metab ./path/to/directory --no-open\n\n"
         "metab . --walk --format json\n\n"
+        "metab . --check-api\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
         "metab --plugins"
     ),
@@ -177,7 +227,10 @@ def _metab(
     ctx: typer.Context,
     root: Path | None = typer.Argument(
         None,
-        help="Directory (or file) to serve or walk. With no ROOT and no mode, prints help.",
+        help=(
+            "Root directory to serve, check, or walk; a file may be served directly. "
+            "With no ROOT and no mode, prints help."
+        ),
         show_default=False,
     ),
     # ── Mode selectors ─────────────────────────────────────────────
@@ -185,6 +238,35 @@ def _metab(
         False,
         "--walk",
         help="Walk ROOT with the inventory walker and dump the result (no server).",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    diff: str | None = typer.Option(
+        None,
+        "--diff",
+        metavar="SPEC",
+        help=(
+            "Show a change set: BASE..TARGET, one revision (against its first "
+            "parent), or a .patch/.diff file under ROOT."
+        ),
+        rich_help_panel=_PANEL_MODES,
+    ),
+    diff_patch: str | None = typer.Option(
+        None,
+        "--diff-patch",
+        metavar="PATH",
+        help="Print one changed file's hunks from the comparison (--diff only).",
+        rich_help_panel=_PANEL_DIFF,
+    ),
+    diff_check: bool = typer.Option(
+        False,
+        "--diff-check",
+        help="Run the apply oracle: rebuild the target tree and compare hashes (--diff only).",
+        rich_help_panel=_PANEL_DIFF,
+    ),
+    check_api: bool = typer.Option(
+        False,
+        "--check-api",
+        help="Run the navigation API scenario without a browser or listening port.",
         rich_help_panel=_PANEL_MODES,
     ),
     remote: str | None = typer.Option(
@@ -238,7 +320,7 @@ def _metab(
         help="Extra plugin directory; each subdirectory containing manifest.toml "
         "is loaded. May be passed multiple times. Combines additively with "
         "the METABROWSER_PLUGINS_DIRS env var (env-var dirs first, then CLI; "
-        "deduped). Applies when serving and to the plugin modes.",
+        "deduped). Applies when serving, checking APIs, and to the plugin modes.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
@@ -249,7 +331,7 @@ def _metab(
         metavar="LEVEL",
         help="Log verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL. "
         "DEBUG traces the inventory walker (rewalk targets + resolved paths). "
-        "Overrides METABROWSER_LOG_LEVEL. Applies when serving and walking.",
+        "Overrides METABROWSER_LOG_LEVEL. Applies when serving, walking, or checking APIs.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
@@ -311,6 +393,49 @@ def _metab(
         help="Max files before truncation.",
         rich_help_panel=_PANEL_WALK,
     ),
+    # ── Walk filter options ───────────────────────────────────────
+    # The nav filter bar's own vocabulary, so "which folders survive this
+    # filter, and what do they add up to" is answerable from a terminal
+    # instead of from a browser. Same projection the /api/tree route uses.
+    filter_type: list[str] = typer.Option(
+        [],
+        "--type",
+        metavar="TOKEN",
+        help="Keep only files of this type: an extension (.md, .min.js) or a whole "
+        "filename (README). Repeatable, or comma-separated.",
+        rich_help_panel=_PANEL_WALK,
+    ),
+    filter_age: str = typer.Option(
+        "",
+        "--age",
+        callback=validate_age,
+        metavar="WINDOW",
+        help=f"Keep only files modified within a window: {', '.join(RECENCY_WINDOW_CHOICES)}.",
+        rich_help_panel=_PANEL_WALK,
+    ),
+    filter_min_size: str = typer.Option(
+        "",
+        "--min-size",
+        callback=validate_min_size,
+        metavar="SIZE",
+        help="Keep only files at least this large. Plain bytes or a k/m/g suffix (10m).",
+        rich_help_panel=_PANEL_WALK,
+    ),
+    filter_ignored: bool = typer.Option(
+        True,
+        "--ignored/--no-ignored",
+        help="Include gitignored entries in the filtered result.",
+        rich_help_panel=_PANEL_WALK,
+    ),
+    # ── API check options ─────────────────────────────────────────
+    index_timeout: float = typer.Option(
+        60.0,
+        "--index-timeout",
+        min=0.1,
+        metavar="SECONDS",
+        help="Maximum time to wait for the inventory to finish.",
+        rich_help_panel=_PANEL_CHECK_API,
+    ),
     # ── Remote options ─────────────────────────────────────────────
     base_port: int = typer.Option(
         DEFAULT_BROWSER_PORT,
@@ -367,10 +492,17 @@ def _metab(
 
     Serving is the default: `metab .` serves the current directory and opens
     it in your browser. Select another operation with a mode flag (--walk,
-    --remote, --plugins, --plugin, --doctor).
+    --diff, --check-api, --remote, --plugins, --plugin, --doctor).
     """
     mode = _resolve_mode(
-        ctx, walk=walk, remote=remote, plugins=plugins, plugin=plugin, doctor=doctor
+        ctx,
+        walk=walk,
+        diff=diff,
+        check_api=check_api,
+        remote=remote,
+        plugins=plugins,
+        plugin=plugin,
+        doctor=doctor,
     )
     explicit = _explicit_params(ctx)
     _check_option_applicability(ctx, mode, explicit)
@@ -398,6 +530,28 @@ def _metab(
             max_depth=max_depth,
             max_files=max_files,
             log_level=log_level,
+            types=tuple(filter_type),
+            age=filter_age,
+            min_size=filter_min_size,
+            include_ignored=filter_ignored,
+        )
+    elif mode == "diff":
+        assert diff is not None
+        run_diff(
+            _require_root(ctx, root, mode),
+            spec=diff,
+            fmt=fmt,
+            patch_path=diff_patch,
+            check=diff_check,
+        )
+    elif mode == "check-api":
+        from metabrowser.cli.check_api import run_api_check
+
+        run_api_check(
+            _require_root(ctx, root, mode),
+            plugins_dir=plugins_dir,
+            log_level=log_level,
+            index_timeout_s=index_timeout,
         )
     elif remote is not None:
         _reject_root(ctx, root, mode)

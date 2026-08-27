@@ -35,21 +35,25 @@ def _render_index_html() -> str:
     )
 
 
-def test_quick_file_assets_load_in_dependency_order_before_app() -> None:
+def test_quick_file_assets_load_in_deferred_dependency_order() -> None:
     html = _render_index_html()
     asset_paths = (
-        "/static/known_file_catalog.js",
-        "/static/catalog_feed.js",
-        "/static/file_fuzzy_match.js",
-        "/static/search_controller.js",
-        "/static/search_palette.js",
-        "/static/app.js",
+        "/static/known-file-catalog.js",
+        "/static/catalog-feed.js",
+        "/static/file-fuzzy-match.js",
+        "/static/search-controller.js",
+        "/static/keyboard-shortcuts.js",
+        "/static/overlay-layer.js",
+        "/static/keyboard-help.js",
+        "/static/tree-keyboard-navigation.js",
+        "/static/search-palette.js",
     )
     positions = []
     for asset_path in asset_paths:
-        assert f'src="{asset_path}?v=' in html
+        assert asset_path in html
         positions.append(html.index(asset_path))
     assert positions == sorted(positions)
+    assert all(f'<script src="{asset_path}' not in html for asset_path in asset_paths)
 
 
 def test_preview_is_a_programmatic_focus_destination() -> None:
@@ -59,12 +63,12 @@ def test_preview_is_a_programmatic_focus_destination() -> None:
 
 def test_file_preview_claims_and_checks_shell_ownership() -> None:
     js = _read_app_js()
-    select_start = js.index("async function selectFile(path, skipHash)")
+    select_start = js.index("async function selectFile(path, preferredViewId)")
     select_block = js[select_start : select_start + 5200]
     assert 'claimPreview("file")' in select_block
     assert "isPreviewClaimCurrent(previewClaim)" in select_block
 
-    render_start = js.index("function renderFile(data, claim)")
+    render_start = js.index("function renderFile(data, preferredViewId, claim)")
     render_block = js[render_start : render_start + 700]
     assert "isPreviewClaimCurrent(renderClaim)" in render_block
 
@@ -82,11 +86,44 @@ def test_application_initializes_one_injected_quick_file_finder() -> None:
     assert "getFileIcon" in init_block
     assert "openFile" in init_block
     assert "onNotFound" in init_block
+    assert "overlay: window.MetabrowserOverlay" in init_block
+    assert "resolveFocusFallback: resolveApplicationFocusFallback" in init_block
+    assert "shortcuts: shortcutRegistry" in init_block
 
     loaded_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     loaded_block = js[loaded_start:]
-    assert loaded_block.index("initQuickFileFinder();") < loaded_block.index("selectFile(")
-    assert loaded_block.count("initQuickFileFinder();") == 1
+    assert loaded_block.index("await loadTree();") < loaded_block.index("initDeferredShellTools()")
+    assert loaded_block.index("initDeferredShellTools()") < loaded_block.index(
+        "startInventoryEventStream();"
+    )
+    assert "await initDeferredShellTools();" not in loaded_block
+    deferred = js[js.index("async function initDeferredShellTools()") : loaded_start]
+    assert deferred.count("initQuickFileFinder();") == 1
+
+
+def test_quick_file_uses_the_shared_command_and_modal_owners() -> None:
+    palette = proc_browser.STATIC_DIR.joinpath("search-palette.js").read_text()
+    assert "function registerCommands()" in palette
+    assert "function renderShortcutHints()" in palette
+    assert "options.overlay.createModal" in palette
+    assert 'id: "quick-file.open"' in palette
+    assert 'id: "quick-file.close"' in palette
+    assert "OPEN_KEYS" not in palette
+    assert "HINT_GROUPS" not in palette
+    assert 'hostDocument.addEventListener("keydown"' not in palette
+
+
+def test_registry_is_the_only_application_shortcut_dispatcher() -> None:
+    registry = proc_browser.STATIC_DIR.joinpath("keyboard-shortcuts.js").read_text()
+    assert registry.count('hostDocument.addEventListener("keydown"') == 1
+    for filename in (
+        "keyboard-help.js",
+        "overlay-layer.js",
+        "search-palette.js",
+        "tree-keyboard-navigation.js",
+    ):
+        source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
+        assert 'hostDocument.addEventListener("keydown"' not in source
 
 
 def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
@@ -98,14 +135,14 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
     assert "knownFileCatalog?.observeInitialTree(data.tree)" in load_tree
     assert load_tree.index("observeInitialTree") < load_tree.index('"renderTreeNodes:root"')
 
-    load_subtree = js[
-        js.index("async function loadSubtree(path, childrenEl, options)") : js.index(
-            "// ── Custom tooltip"
-        )
+    # Lazily fetched rows are observed in fetchSubtree, so a subtree pulled in
+    # by the idle prefetch reaches the catalog the same as an expanded one.
+    fetch_subtree = js[
+        js.index("function fetchSubtree(path)") : js.index("async function loadSubtree(")
     ]
-    assert "knownFileCatalog?.observeLazyTree(tree)" in load_subtree
-    assert load_subtree.index("observeLazyTree") < load_subtree.index(
-        "subtreeCache.set(path, tree)"
+    assert "knownFileCatalog?.observeLazyTree(data.tree)" in fetch_subtree
+    assert fetch_subtree.index("observeLazyTree") < fetch_subtree.index(
+        "subtreeCache.set(key, data.tree)"
     )
 
     recent = js[
@@ -139,7 +176,7 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
 def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
     """The complete-coverage feed rides the existing stream: deltas
     via ``catalog.change``, refetch on the sentinel snapshot and on
-    resync, completeness via ``capability.update``, and the bulk
+    resync, terminal coverage via ``capability.update``, and the bulk
     fetch starting only once the stream is subscribed (first open;
     the no-EventSource degradation path starts it directly)."""
 
@@ -155,11 +192,13 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 
     capability_start = js.index('addEventListener("capability.update"')
     capability_block = js[capability_start : capability_start + 900]
-    assert "quickFileCatalogFeed?.onIndexComplete()" in capability_block
+    assert "quickFileCatalogFeed?.onIndexComplete(data.index.truncated === true)" in (
+        capability_block
+    )
     assert "data.index.complete === true" in capability_block
-    # A capped walk is complete for the index but never for the root, so it
-    # must not promote the catalog to complete (senior review R10).
-    assert "data.index.truncated !== true" in capability_block
+    # A capped walk is terminal and must repair membership, but the callback
+    # receives its truncated state so it cannot promote root coverage.
+    assert "data.index.truncated !== true" not in capability_block
 
     resync_start = js.index('addEventListener("fs.resync_required"')
     resync_block = js[resync_start : resync_start + 700]
@@ -168,33 +207,52 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
     assert resync_block.index("knownFileCatalog?.clear()") < resync_block.index("onResync")
 
     onopen_start = js.index("inventoryEventSource.onopen")
-    onopen_block = js[onopen_start : onopen_start + 500]
+    onopen_block = js[onopen_start : onopen_start + 700]
+    assert "catalogFeedCanStart = true" in onopen_block
     assert "quickFileCatalogFeed?.start()" in onopen_block
 
     degraded_start = js.index("function startInventoryEventStream()")
     degraded_block = js[degraded_start : degraded_start + 600]
+    assert degraded_block.index("catalogFeedCanStart = true") < degraded_block.index(
+        "quickFileCatalogFeed?.start()"
+    )
     assert "quickFileCatalogFeed?.start()" in degraded_block
 
     init_start = js.index("function initQuickFileFinder()")
     init_block = js[init_start : init_start + 1200]
     assert "window.MetabrowserCatalogFeed.create" in init_block
+    assert "if (catalogFeedCanStart)" in init_block
+    assert "quickFileCatalogFeed.start()" in init_block
+
+
+def test_catalog_delivery_is_attributed_with_bounded_work_volume() -> None:
+    feed = proc_browser.STATIC_DIR.joinpath("catalog-feed.js").read_text()
+
+    assert '"knownFileCatalog:applyCatalogChange"' in feed
+    assert "work_items: upserts + subtreeRemoves + fileRemoves" in feed
+    assert '"knownFileCatalog:applyBulkSnapshot"' in feed
+    assert "work_items: Array.isArray(payload.files) ? payload.files.length : 0" in feed
+    assert "subtree_removes: subtreeRemoves" in feed
+    assert "file_removes: fileRemoves" in feed
 
 
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
     js = _read_app_js()
     select_file = js[
-        js.index("async function selectFile(path, skipHash)") : js.index("// ── File rendering")
+        js.index("async function selectFile(path, preferredViewId)") : js.index(
+            "// ── File rendering"
+        )
     ]
     for status in ("opened", "not-found", "error", "cancelled"):
         assert f'status: "{status}"' in select_file
     assert "resp.status === 404" in select_file
 
-    navigate = js[
-        js.index("async function navigateToPath(path, skipHash)") : js.index(
-            "function initQuickFileFinder()"
+    apply_navigation = js[
+        js.index("async function applyNavigationTarget(target, context)") : js.index(
+            "async function revealInTree(path)"
         )
     ]
-    assert "return selectFile(" in navigate
+    assert "await selectFile(path, context.viewId)" in apply_navigation
 
     init_start = js.index("function initQuickFileFinder()")
     init_block = js[init_start : init_start + 2600]
@@ -203,12 +261,66 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
     assert "knownFileCatalog.removePath(path)" in init_block
 
 
+def test_selected_file_cancels_or_joins_matching_hover_prefetch() -> None:
+    js = _read_app_js()
+    helper = js[
+        js.index("async function settleHoverPrefetchForSelection(path)") : js.index(
+            "function shouldPrefetchFile"
+        )
+    ]
+    assert "clearTimeout(hoverPrefetchTimer)" in helper
+    assert "hoverPrefetchPath !== path" in helper
+    assert "abortHoverPrefetch()" in helper
+    assert "await hoverPrefetchPromise" in helper
+
+    select_file = js[
+        js.index("async function selectFile(path, preferredViewId)") : js.index(
+            "// ── File rendering"
+        )
+    ]
+    assert select_file.index("beginPreviewNavigation(previewClaim)") < select_file.index(
+        "await settleHoverPrefetchForSelection(path)"
+    )
+    assert select_file.index("await settleHoverPrefetchForSelection(path)") < select_file.index(
+        "const cached = fileCache.get(path)"
+    )
+
+
+def test_plugin_navigation_can_prefer_a_destination_view() -> None:
+    """Folder visualizations can carry their view intent across navigation."""
+    js = _read_app_js()
+    sdk = (proc_browser.STATIC_DIR / "plugin-sdk.js").read_text()
+    types = (proc_browser.STATIC_DIR / "types.d.ts").read_text()
+    treemap = (
+        proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder" / "treemap.js"
+    ).read_text()
+
+    assert "navigation: global.MetabrowserNavigationRoute.navigation" in sdk
+    assert "function openPath(" not in sdk
+    assert "type MetabrowserNavigationOpenOptions" in types
+    assert "navigation: MetabrowserNavigationApi;" in types
+
+    assert "async function selectFile(path, preferredViewId)" in js
+    assert "function renderFile(data, preferredViewId, claim)" in js
+    assert "async function navigateToPath(path, preferredViewId, routeOptions)" in js
+    assert "MetabrowserNavigationRoute.attachController(navigationController)" in js
+    assert "metabrowser:open-path" not in js
+
+    render_start = js.index("function renderFile(data, preferredViewId, claim)")
+    render = js[render_start : render_start + 5000]
+    assert "view.id === preferredViewId" in render
+    assert "views.find((view) => view.default)" in render
+
+    assert 'const TREEMAP_VIEW_ID = "treemap";' in treemap
+    assert "mb.navigation.open({ path: cell.path }, { viewId: TREEMAP_VIEW_ID })" in treemap
+
+
 def test_local_quick_file_modules_define_no_search_endpoint() -> None:
     for filename in (
-        "known_file_catalog.js",
-        "file_fuzzy_match.js",
-        "search_controller.js",
-        "search_palette.js",
+        "known-file-catalog.js",
+        "file-fuzzy-match.js",
+        "search-controller.js",
+        "search-palette.js",
     ):
         source = proc_browser.STATIC_DIR.joinpath(filename).read_text()
         assert "/api/search" not in source

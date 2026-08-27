@@ -19,8 +19,8 @@ from pathlib import Path
 import pytest
 
 _DOM_DIR = Path(__file__).resolve().parent / "dom"
-GIT_GRAPH_TEST_JS = _DOM_DIR / "git_graph_behavior.js"
-GIT_PANEL_TEST_JS = _DOM_DIR / "git_panel_behavior.js"
+GIT_GRAPH_TEST_JS = _DOM_DIR / "git-graph-behavior.js"
+GIT_PANEL_TEST_JS = _DOM_DIR / "git-panel-behavior.js"
 
 
 def _run_node_suite(script: Path) -> None:
@@ -47,22 +47,20 @@ def test_git_panel_behavior_assertions_pass() -> None:
     _run_node_suite(GIT_PANEL_TEST_JS)
 
 
-def test_selected_row_marker_fill_is_ordered_after_the_hover_rule() -> None:
-    """The hollow HEAD and merge markers must track the row background.
+def test_every_vertex_is_a_solid_dot() -> None:
+    """Node shape carries no state, so no row state can change it.
 
-    ``.git-graph-row.selected`` and ``.git-graph-row:hover`` carry equal
-    specificity, so on a row that is both, source order alone decides the
-    winner. The marker fill has to resolve the same way the row's own
-    background does, or a selected row shows a sidebar-coloured disc
-    inside the ring that is supposed to be hollow.
+    Hollow variants (a ring for HEAD, a ring around a dot for a merge)
+    took their centre fill from the row background, which is how a node
+    came to look different under hover and selection. Every vertex is
+    one filled dot now: the fill is required at the drawing site, and no
+    stylesheet rule may paint graph markers.
     """
-    css = (Path(__file__).resolve().parents[1] / "src/metabrowser/static/styles.css").read_text()
-    marker = ".git-graph-svg > circle"
-    hover = css.index(f".git-graph-row:hover {marker}")
-    selected = css.index(f".git-graph-row.selected {marker}")
-    assert hover < selected, "the selected marker rule must come after the hover rule"
-
-    # The fill must be the same token the selected row background uses.
-    row_selected = css.index(".git-graph-row.selected {")
-    assert "var(--highlight-bg)" in css[row_selected : css.index("}", row_selected)]
-    assert "var(--highlight-bg)" in css[selected : css.index("}", selected)]
+    root = Path(__file__).resolve().parents[1]
+    css = (root / "src/metabrowser/static/styles.css").read_text()
+    assert ".git-graph-svg > circle" not in css, (
+        "a rule filling graph markers reintroduces state-dependent node shapes"
+    )
+    graph = (root / "src/metabrowser/static/git-graph.js").read_text()
+    assert "circle.style.fill = color;" in graph, "every vertex must be filled at the draw site"
+    assert "if (color) {" not in graph, "an optional fill lets an unfilled vertex be drawn"

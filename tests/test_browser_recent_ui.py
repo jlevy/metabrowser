@@ -17,11 +17,27 @@ from __future__ import annotations
 import asyncio
 from typing import Any, cast
 
+from metabrowser import __version__
 from metabrowser import server as proc_browser
+from metabrowser.build_version import display_version_line
 
 
 def _read_app_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("app.js").read_text()
+
+
+def _function_source(js: str, name: str) -> str:
+    """Return one top-level function's source, up to the next definition.
+
+    These assertions used a fixed character window, which made them fail
+    for the wrong reason: adding an unrelated line near the top of a
+    function pushed the asserted call past the cutoff even though the
+    behavior was intact. Nested functions are indented, so the next
+    column-zero ``function`` is the end of this one.
+    """
+    start = js.index(f"function {name}(")
+    end = js.find("\nfunction ", start + 1)
+    return js[start:] if end == -1 else js[start:end]
 
 
 def _read_styles_css() -> str:
@@ -69,19 +85,81 @@ def test_index_template_renders_only_the_files_panel() -> None:
 
 def test_index_template_renders_index_progress_footer() -> None:
     html = _render_index_html()
+    hints = html.index('id="nav-shortcut-hints"')
+    progress = html.index('id="index-progress"')
+    hint_tag = html[hints : html.index(">", hints)]
+    assert hints < progress
+    # A name needs a role that can carry it: ARIA forbids naming a generic
+    # element, so the label would be dropped from a bare div.
+    assert 'role="group"' in hint_tag
+    assert 'aria-label="Keyboard shortcuts"' in hint_tag
+    assert "aria-live" not in hint_tag
     assert 'id="index-progress"' in html
     assert 'class="index-progress-spinner"' in html
     assert 'aria-live="polite"' in html
 
 
+def test_settings_menu_ends_with_the_cli_formatted_version() -> None:
+    html = _render_index_html()
+    expected = display_version_line("metab", __version__)
+    markup = f'<div class="menu-version">{expected}</div>'
+
+    assert markup in html
+    assert html.index('id="app-font-select"') < html.index(markup)
+
+    css = _read_styles_css()
+    start = css.index(".menu-version {")
+    rule = css[start : css.index("}", start)]
+    assert "color: var(--muted);" in rule
+    assert "font-size: var(--ui-small-font-size);" in rule
+    assert "letter-spacing: 0;" in rule
+    assert "text-transform: none;" in rule
+
+
 def test_index_template_versions_core_static_assets() -> None:
     html = _render_index_html()
     assert 'href="/static/styles.css?v=' in html
-    assert 'src="/static/plugin_sdk.js?v=' in html
-    assert 'src="/static/icons.js?v=' in html
-    assert 'src="/static/tree_expansion.js?v=' in html
-    assert 'src="/static/app.js?v=' in html
-    assert html.index("/static/tree_expansion.js") < html.index("/static/app.js")
+    assert '<link rel="preload" href="/static/app.js?v=' not in html
+    assets = (
+        "/static/plugin-sdk.js",
+        "/static/icons.js",
+        "/static/tree-expansion.js",
+        "/static/tree-filter-model.js",
+        "/static/app.js",
+    )
+    positions = []
+    for asset in assets:
+        assert f'src="{asset}?v=' in html
+        positions.append(html.index(f'<script src="{asset}?v='))
+    assert positions == sorted(positions)
+    deferred_assets = (
+        "/static/known-file-catalog.js",
+        "/static/catalog-feed.js",
+        "/static/file-fuzzy-match.js",
+        "/static/search-controller.js",
+        "/static/keyboard-shortcuts.js",
+        "/static/overlay-layer.js",
+        "/static/keyboard-help.js",
+        "/static/tree-keyboard-navigation.js",
+        "/static/search-palette.js",
+    )
+    assert all(asset in html for asset in deferred_assets)
+    assert all(f'<script src="{asset}' not in html for asset in deferred_assets)
+
+
+def test_files_panel_owns_one_generated_tree_with_concise_row_names() -> None:
+    html = _render_index_html()
+    js = _read_app_js()
+    tab_start = html.index('id="tab-files"')
+    tab_tag = html[tab_start : html.index(">", tab_start)]
+    assert 'role="tree"' not in tab_tag
+    assert 'role="tree" aria-label="Files"' in js
+    assert "return isRoot ? treeRootHtml(content) : content;" in js
+    assert 'role="group"' in js
+    assert "aria-labelledby" in js
+    assert "data-tree-level" in js
+    assert "data-tree-position" in js
+    assert "data-tree-set-size" in js
 
 
 # ── DOM contract: every JS-referenced id present in HTML ───────
@@ -139,14 +217,14 @@ def test_init_nav_tabs_function_exists_and_wires_tab_bar() -> None:
 
     js = _read_app_js()
     assert "function initNavTabs()" in js
-    init_block = js[js.index("function initNavTabs()") :][:1500]
+    init_block = _function_source(js, "initNavTabs")
     assert "nav-tab-bar" in init_block
     # Files is declared here rather than discovered from the DOM, so a
     # panel can carry its own lazy first-show hook.
     assert 'registerNavPanel({ id: "files"' in init_block
     assert "activateNavPanel(panelId)" in init_block
 
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1200]
+    activate_block = _function_source(js, "activateNavPanel")
     assert "data-tab-content" in activate_block
     assert "aria-selected" in activate_block
 
@@ -164,7 +242,7 @@ def test_recent_is_not_a_registered_nav_panel() -> None:
     """
 
     js = _read_app_js()
-    init_block = js[js.index("function initNavTabs()") :][:1500]
+    init_block = _function_source(js, "initNavTabs")
     assert 'id: "recent"' not in init_block
     assert "loadRecent" not in init_block
 
@@ -177,7 +255,7 @@ def test_switching_panels_hides_the_file_filter_bar() -> None:
     otherwise show file filters above content they cannot filter."""
 
     js = _read_app_js()
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:2400]
+    activate_block = _function_source(js, "activateNavPanel")
     assert 'getElementById("nav-filter-bar")' in activate_block
     assert 'panelId === "files" ? "" : "none"' in activate_block
 
@@ -189,18 +267,18 @@ def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
     hides — leaving the scroll cue on a hidden element."""
 
     js = _read_app_js()
-    block = js[js.index("function initNavScrollShadow()") :][:1400]
+    block = _function_source(js, "initNavScrollShadow")
     assert "offsetParent !== null" in block
     # The loser is cleared, so a tab switch cannot arm two shadows.
     assert 'other?.classList.remove("scrolled")' in block
     # A tab switch fires no scroll event, so activation re-runs it.
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:2400]
+    activate_block = _function_source(js, "activateNavPanel")
     assert "navScrollShadowUpdate?.()" in activate_block
 
 
 def test_nav_panels_support_an_every_show_retry_hook() -> None:
     js = _read_app_js()
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1800]
+    activate_block = _function_source(js, "activateNavPanel")
     assert "panel?.onShow?.()" in activate_block
     assert activate_block.index("panel?.onFirstShow?.()") < activate_block.index(
         "panel?.onShow?.()"
@@ -211,7 +289,7 @@ def test_preview_shell_uses_generation_claims_across_owners() -> None:
     js = _read_app_js()
     assert "function claimPreview(owner)" in js
     assert "function isPreviewClaimCurrent(claim)" in js
-    activate_block = js[js.index("function activateNavPanel(panelId)") :][:1800]
+    activate_block = _function_source(js, "activateNavPanel")
     assert "claimPreview(`nav:${panelId}`)" in activate_block
     shell_block = js[js.index("window.MetabrowserShell = Object.freeze") :][:600]
     assert "claimPreview" in shell_block
@@ -433,21 +511,57 @@ def test_set_selected_path_clears_when_path_falsy() -> None:
     assert "if (!path)" in fn_block
 
 
-def test_set_selected_path_called_from_click_handler_and_reveal() -> None:
-    """Both the tree-pane click delegate's 'select' branch AND
-    revealInTree should funnel through setSelectedPath; otherwise
-    cross-panel selection breaks."""
+def test_set_selected_path_called_from_shared_activation_and_reveal() -> None:
+    """Pointer and keyboard activation share selection with deep-link reveal."""
 
     js = _read_app_js()
-    # The select-branch use is right after the action === "select".
+    # The select branch lives in the shared pointer/keyboard action.
     select_branch = js.index('action === "select"')
     select_block = js[select_branch : select_branch + 500]
-    assert "setSelectedPath(item.dataset.path)" in select_block
+    assert "setSelectedPath(row.dataset.path)" in select_block
 
     # revealInTree uses it.
     reveal_start = js.index("async function revealInTree(path)")
     reveal_block = js[reveal_start : reveal_start + 1500]
     assert "setSelectedPath(path)" in reveal_block
+
+
+def test_folder_row_activation_selects_opens_and_toggles_the_folder() -> None:
+    """A folder row is one target, including its chevron hotspot.
+
+    Every activation must keep navigation and disclosure together: open the
+    folder Overview, then toggle the immediate subtree in either direction.
+    Pointer and keyboard share one entry point, so the contract lives in
+    activateTreeRow rather than in the click delegate.
+    """
+
+    js = _read_app_js()
+    activate_start = js.index("async function activateTreeRow(row, options)")
+    activate_block = js[activate_start : activate_start + 900]
+    select_dir_start = activate_block.index('action === "select-dir"')
+    select_dir_block = activate_block[select_dir_start : activate_block.index('action === "page')]
+    assert "setSelectedPath(row.dataset.path)" in select_dir_block
+    # Folder activation goes through the canonical /view/ route; the trailing
+    # slash is what makes it a folder rather than a file.
+    assert "navigateToPath(`${row.dataset.path}/`)" in select_dir_block
+    assert "toggleTreeFolder(row, options)" in select_dir_block
+    # Guarded like the select branch: a pathless row must not clear selection.
+    assert "if (row.dataset.path) {" in select_dir_block
+
+    # The click delegate routes every row through that one action, and the
+    # chevron never becomes a second hotspot with its own semantics.
+    handler_start = js.index('treePane.addEventListener("click"')
+    handler_block = js[handler_start : handler_start + 3400]
+    assert "activateTreeRow(item, { recursive: e.shiftKey })" in handler_block
+    assert "isToggleHotspot" not in handler_block
+
+
+def test_initial_and_live_folder_rows_share_the_select_dir_action() -> None:
+    """Live inserts must not regress to chevron-only folder behavior."""
+
+    js = _read_app_js()
+    assert js.count('data-action="select-dir"') == 2
+    assert 'data-action="toggle"' not in js
 
 
 # ── Auto-expand behavior ───────────────────────────────────────
@@ -504,17 +618,20 @@ def test_styles_css_drops_the_superseded_recent_chip() -> None:
     assert ".recent-controls" not in css
 
 
-# ── findRootReadme follows the tab refactor ─────────────────
+# ── Default folder route ─────────────────────────────────────
 
 
-def test_find_root_readme_targets_tab_files_panel() -> None:
-    """The selector must match files inside #tab-files, not the
-    old #tree-content > selector that broke after the tab refactor."""
+def test_startup_selects_only_what_the_canonical_route_names() -> None:
+    """The shell never picks a root document the URL did not ask for.
+
+    ``/`` redirects to ``/view/`` at the server, so the browser only ever reads a
+    canonical route, and startup selection comes from that route alone.
+    """
 
     js = _read_app_js()
-    fn_start = js.index("function findRootReadme()")
-    fn_block = js[fn_start : fn_start + 800]
-    assert "#tab-files > .tree-item.tree-file" in fn_block
+    assert "function findRootReadme()" not in js
+    assert "window.MetabrowserNavigationRoute.parse(" in js
+    assert "navigationController.start()" in js
 
 
 # ── DOMContentLoaded wiring ─────────────────────────────────
@@ -525,3 +642,13 @@ def test_dom_content_loaded_calls_init_nav_tabs() -> None:
     handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
     handler_block = js[handler_start : handler_start + 3000]
     assert "initNavTabs();" in handler_block
+
+
+def test_startup_gives_the_tree_request_priority_over_preview_plugins() -> None:
+    js = _read_app_js()
+    handler_start = js.rindex('addEventListener("DOMContentLoaded", async () =>')
+    handler_block = js[handler_start : handler_start + 3000]
+
+    assert handler_block.index("await loadTree();") < handler_block.index(
+        "navigationController.start()"
+    )

@@ -55,13 +55,15 @@ format lint lint-check test audit build: | install
 lint:
 	$(UV_RUN) python -m devtools.lint
 	$(UV_RUN) python -m devtools.public_hygiene
+	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
+	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
 
 format:
 	$(MAKE) format-markdown
-	$(UV_RUN) ruff format src tests devtools
+	$(UV_RUN) ruff format src tests devtools explorations
 	npx --no-install biome format --write \
-		src/metabrowser/static src/metabrowser/builtin_plugins tests/dom \
+		src/metabrowser/static src/metabrowser/builtin_plugins tests/dom explorations \
 		biome.json package.json tsconfig.json tsconfig.legacy.json
 
 format-markdown:
@@ -77,6 +79,8 @@ vendor-assets: install
 lint-check:
 	$(UV_RUN) python -m devtools.lint --check
 	$(UV_RUN) python -m devtools.public_hygiene
+	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
+	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
 	$(FLOWMARK) --auto --check .
 

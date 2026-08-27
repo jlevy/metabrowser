@@ -61,8 +61,8 @@ def test_index_bootstraps_theme_before_app_paint() -> None:
     assert "data-theme-mode" in html
     assert "data-theme" in html
     assert "data-kpress-resolved-theme" in html
-    assert html.index("/static/theme_state.js") < html.index("/static/plugin_sdk.js")
-    assert html.index("/static/theme_state.js") < html.index("/static/app.js")
+    assert html.index("/static/theme-state.js") < html.index("/static/plugin-sdk.js")
+    assert html.index("/static/theme-state.js") < html.index('<script src="/static/app.js')
     # Settings menu (gear) + the reading-font boot.
     assert 'id="settings-btn"' in html
     assert "metabrowser.proseFont" in html
@@ -111,7 +111,10 @@ def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None
     assert "--kpress-host-bg" not in css
     normalized_css = " ".join(css.split())
     assert ".metabrowser-kpress-host .kpress, :root .kpress-tooltip {" in normalized_css
-    assert ".metabrowser-source-truncation-warning" in css
+    # Notices print through the `.notice` primitive rather than each use site,
+    # so a new one prints correctly without being named here.
+    # See tests/test_notice_style.py.
+    assert "\n  .notice {" in css
 
 
 def test_embedded_markdown_does_not_double_top_spacing() -> None:

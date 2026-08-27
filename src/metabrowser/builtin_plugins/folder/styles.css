@@ -1,0 +1,250 @@
+/* Folder plugin — treemap view styles.
+   Every color references host tokens or the shared distribution palette;
+   no local color literals. */
+
+/* The host keeps content-body's normal padding so the treemap sits on
+   the page like a figure with margins rather than bleeding edge to
+   edge; the shared width cap keeps cells from over-stretching on very
+   wide panes. */
+.folder-treemap-host {
+  --tm-max-width: 1240px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tm-totals-heading {
+  max-width: var(--tm-max-width);
+  margin: 0 0 14px;
+  padding: 0 0 var(--section-heading-divider-gap);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  line-height: 1.25;
+  text-transform: var(--label-text-transform);
+}
+
+.tm-totals {
+  max-width: var(--tm-max-width);
+  margin: 0 0 18px;
+}
+
+.folder-treemap-host > .folder-rollup-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 10px;
+  max-width: var(--tm-max-width);
+}
+
+.tm-parent-nav-row {
+  max-width: var(--tm-max-width);
+  margin: 0 0 10px;
+}
+
+.tm-viewport {
+  position: relative;
+  min-height: 280px;
+  /* Pre-measurement fallback only: index.js measures the space below
+     the viewport's top edge on mount and window resize and pins an
+     inline height (clamped 280-900px), so wrapped toolbars or long
+     breadcrumbs never force the pane's scroll owner to scroll. */
+  height: calc(100vh - 330px);
+  max-width: var(--tm-max-width);
+  overflow: hidden;
+  outline: none;
+  border: 1px solid var(--viz-border);
+  background: var(--viz-surface-sunken);
+}
+
+.tm-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--tally-skeleton-bg);
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
+}
+
+.tm-cell {
+  --tm-label-size: var(--ui-small-font-size);
+  --tm-value-size: var(--ui-small-font-size);
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: 1px 4px;
+  border: 1px solid var(--viz-border-subtle);
+  background: var(--viz-surface);
+  overflow: hidden;
+  cursor: default;
+  transition: filter var(--viz-hover-duration) var(--viz-hover-ease);
+}
+
+.tm-actionable {
+  cursor: pointer;
+}
+
+/* The lift, and only the lift — the documented exception to the growth every
+   other data mark gets. See "Hover Styles the Thing Under the Pointer" in
+   docs/design-system.md.
+
+   Two reasons, and either is enough. A cell's area IS its value here, so
+   growing one states a size it does not have, where a bar segment's overshoot
+   settles back to the width it earned. And growth needs the mark to lift above
+   its neighbours, which this map cannot give it: a nested folder and its
+   descendants are flattened into siblings, so raising a hovered container
+   paints it over every rectangle inside it. */
+.tm-cell:hover {
+  filter: var(--viz-data-mark-hover-filter);
+}
+
+/* Two-tone focus ring: the accent ring is backed by a neutral halo so
+   it stays distinct from every categorical cell wash. */
+.tm-cell:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 4px var(--viz-surface);
+  z-index: 3;
+}
+
+.tm-dir {
+  border-color: var(--viz-border);
+}
+
+.tm-cell-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* A nested directory's label strip is the cell's button because the
+   body is covered by child cells. The whole cell remains the only
+   hover surface. */
+.tm-cell-title[role="button"] {
+  cursor: pointer;
+  padding: 0 3px;
+  margin-left: -3px;
+  border-radius: 3px;
+}
+
+.tm-cell-title[role="button"]:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -1px;
+  box-shadow: 0 0 0 2px var(--viz-surface);
+}
+
+.tm-cell-file-icon {
+  align-self: center;
+}
+
+.tm-cell-label {
+  min-width: 0;
+  font-size: var(--tm-label-size);
+  line-height: 1.2;
+  font-weight: var(--weight-medium);
+  color: var(--viz-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
+.tm-cell-sub {
+  margin-top: 1px;
+  font-size: var(--tm-value-size);
+  line-height: 1.2;
+  /* Keep the value subordinate without switching hue families on the
+     categorical wash. */
+  color: var(--viz-text);
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+.tm-cell-sub-inline {
+  flex-shrink: 0;
+  margin-top: 0;
+}
+
+/* Every folder/file fill shares the mounted extension palette with
+   the Files Overview. Directory cells use their dominant type;
+   the remainder uses the neutral Other slot. The base hue is mixed
+   into the current surface so chrome text stays readable in both
+   themes while the Overview bars retain the full-strength swatch. */
+.tm-type-fill {
+  background: color-mix(
+    in srgb,
+    var(--mb-distribution-color, var(--viz-border)) 34%,
+    var(--viz-surface)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--mb-distribution-color, var(--viz-border)) 74%,
+    var(--viz-border)
+  );
+}
+
+.tm-ignored {
+  opacity: var(--dimmed-content-opacity);
+}
+
+.tm-rest {
+  color: var(--muted);
+  align-items: center;
+  justify-content: center;
+}
+
+.tm-pending {
+  animation: tm-pending-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes tm-pending-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-loading,
+  .tm-pending {
+    animation: none;
+    opacity: 0.75;
+  }
+  .tm-cell {
+    transition: none;
+  }
+}
+
+.tm-status {
+  margin-top: 8px;
+  max-width: var(--tm-max-width);
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  user-select: text;
+}
+
+/* Print keeps the map as a figure at its measured size and drops the
+   interactive chrome; the host's print rules already hide the app
+   shell around it. */
+@media print {
+  .folder-treemap-host > .folder-rollup-controls,
+  .tm-parent-nav-row {
+    display: none;
+  }
+  .tm-cell {
+    transition: none;
+  }
+}

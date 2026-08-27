@@ -107,7 +107,7 @@ Future changes belong below as dated before-and-after examples.
 
 ## Scorer Throughput
 
-The public synthetic profile in `tests/dom/file_fuzzy_match_profile.js` measures the
+The public synthetic profile in `tests/dom/file-fuzzy-match-profile.js` measures the
 pure scorer without DOM work or result sorting.
 On an arm64 development machine running macOS 26.5.2 and Node 24.18.0, the median of
 five Recent-sized runs over 2,000 paths was 19.46 ms, or 9.73 microseconds per
@@ -122,7 +122,7 @@ can preserve input responsiveness without another state-transfer boundary.
 
 ## Search Runtime Validation
 
-The repeatable profile in `tests/dom/search_controller_profile.js` measures the complete
+The repeatable profile in `tests/dom/search-controller-profile.js` measures the complete
 local provider and controller path, including catalog snapshots, ranking, bounded
 retention, chunk yields, cancellation, and result composition.
 The provider publishes one completed batch, so `firstResultMs` is also completion

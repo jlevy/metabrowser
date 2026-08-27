@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
 from threading import Event
 
+import pytest
+
 from metabrowser import inventory as inventory_module
+from metabrowser.events import FsEntry
 from metabrowser.inventory import InventoryIndex
 
 
@@ -37,3 +41,46 @@ def test_inventory_start_offloads_gitignore_build(monkeypatch, tmp_path: Path) -
 
     elapsed_ms = asyncio.run(_run())
     assert elapsed_ms < 50
+
+
+def test_inventory_walker_yields_to_request_tasks_between_entry_batches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A wide directory must not monopolize the request event loop."""
+
+    started = asyncio.Event()
+
+    async def immediate_entries(_root: Path, **_kwargs: object) -> AsyncIterator[FsEntry]:
+        started.set()
+        for index in range(1_000):
+            yield FsEntry.for_observed_file(
+                path=f"file-{index}.txt",
+                parent="",
+                name=f"file-{index}.txt",
+                size=1,
+                mtime_ns=1,
+            )
+
+    monkeypatch.setattr(inventory_module, "walk_tree", immediate_entries)
+
+    async def _run() -> int:
+        inventory = InventoryIndex()
+        walker = inventory.start(tmp_path)
+        finished = asyncio.Event()
+        interleavings = 0
+
+        async def request_probe() -> None:
+            nonlocal interleavings
+            await started.wait()
+            while not finished.is_set():
+                await asyncio.sleep(0)
+                if not finished.is_set():
+                    interleavings += 1
+
+        probe = asyncio.create_task(request_probe())
+        await walker
+        finished.set()
+        await probe
+        return interleavings
+
+    assert asyncio.run(_run()) > 0

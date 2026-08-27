@@ -19,7 +19,8 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -33,6 +34,13 @@ from metabrowser.gz_io import ArtifactPath
 from metabrowser.ignore_filter import IgnoreMode, ignore_none, make_ignore_filter
 from metabrowser.paths_safe import _rel_path, register_root_callback
 from metabrowser.settings import SLOW_OPERATION_LOG_SECONDS
+from metabrowser.tree_filter import (
+    DirMatches,
+    TreeFilter,
+    cached_rollups,
+    leaf_matches,
+    matches_for,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -124,7 +132,7 @@ def _scan_marker_basename(dirpath: Path) -> str | None:
 def _invalidate_caches() -> None:
     _IGNORE_CACHE.clear()
     _subtree_summary.cache_clear()
-    _has_any_file.cache_clear()
+    _has_any_leaf.cache_clear()
     _has_any_nongitignored.cache_clear()
 
 
@@ -212,7 +220,7 @@ def _dir_stats(children: list[dict[str, Any]]) -> tuple[int, int, float]:
             total_size += child.get("total_size", 0)
             child_mtime = child.get("mtime", 0)
             newest_mtime = max(newest_mtime, child_mtime)
-        else:
+        elif child["type"] == "file":
             total_files += 1
             total_size += child.get("size", 0)
             child_mtime = child.get("mtime", 0)
@@ -221,13 +229,13 @@ def _dir_stats(children: list[dict[str, Any]]) -> tuple[int, int, float]:
 
 
 def _subtree_is_empty(children: list[dict[str, Any]]) -> bool:
-    """True iff *children* describe a subtree with no files anywhere.
+    """True iff *children* contain no file or symlink leaf anywhere.
 
     Uses the per-child ``empty`` flag so this works even when children are
     lazy-load sentinels (whose ``total_files`` is always 0 as a placeholder).
     """
     for c in children:
-        if c["type"] == "file":
+        if c["type"] in {"file", "symlink"}:
             return False
         if c["type"] == "dir" and not c.get("empty", False):
             return False
@@ -328,8 +336,8 @@ def _has_any_nongitignored(
 
 
 @ttl_cache(maxsize=_SENTINEL_CACHE_MAXSIZE, ttl=_SENTINEL_CACHE_TTL)
-def _has_any_file(dirpath: Path, max_depth: int = 20) -> bool:
-    """True iff any visible file exists anywhere under ``dirpath``."""
+def _has_any_leaf(dirpath: Path, max_depth: int = 20) -> bool:
+    """True iff any visible file or symlink leaf exists under ``dirpath``."""
     if max_depth <= 0:
         return False
     try:
@@ -338,9 +346,9 @@ def _has_any_file(dirpath: Path, max_depth: int = 20) -> bool:
                 if not _is_visible(entry.name):
                     continue
                 try:
-                    if entry.is_file(follow_symlinks=False):
+                    if entry.is_symlink() or entry.is_file(follow_symlinks=False):
                         return True
-                    if entry.is_dir(follow_symlinks=False) and _has_any_file(
+                    if entry.is_dir(follow_symlinks=False) and _has_any_leaf(
                         Path(entry.path), max_depth - 1
                     ):
                         return True
@@ -391,16 +399,17 @@ def _dir_tree(
 
     # Snapshot the dir contents (with cached stat from scandir's dirent).
     try:
-        raw_entries: list[tuple[os.DirEntry[str], bool]] = []
+        raw_entries: list[tuple[os.DirEntry[str], bool, bool]] = []
         with os.scandir(dirpath) as it:
             for entry in it:
                 if not _is_visible(entry.name):
                     continue
                 try:
+                    is_symlink = entry.is_symlink()
                     is_dir = entry.is_dir(follow_symlinks=False)
                 except OSError:
                     continue
-                raw_entries.append((entry, is_dir))
+                raw_entries.append((entry, is_dir, is_symlink))
     except (PermissionError, OSError, FileNotFoundError, NotADirectoryError):
         return []
 
@@ -408,7 +417,7 @@ def _dir_tree(
     raw_entries.sort(key=lambda pair: (not pair[1], pair[0].name))
 
     entries: list[dict[str, Any]] = []
-    for entry, is_dir in raw_entries:
+    for entry, is_dir, is_symlink in raw_entries:
         item_path = Path(entry.path)
         rel = _rel_path(entry.path)
 
@@ -428,7 +437,7 @@ def _dir_tree(
                 sub_files, sub_size, newest_mtime = _subtree_summary(
                     item_path, max_depth=SENTINEL_SUMMARY_DEPTH
                 )
-                is_empty = not _has_any_file(item_path)
+                is_empty = not _has_any_leaf(item_path)
                 if (
                     not ignored
                     and not is_empty
@@ -492,6 +501,24 @@ def _dir_tree(
             if is_empty:
                 entry_dict["empty"] = True
             entries.append(entry_dict)
+        elif is_symlink:
+            try:
+                st = entry.stat(follow_symlinks=False)
+                size = st.st_size
+                mtime = st.st_mtime
+            except OSError:
+                size = 0
+                mtime = 0
+            link_dict: dict[str, Any] = {
+                "name": entry.name,
+                "path": rel,
+                "type": "symlink",
+                "size": size,
+                "mtime": mtime,
+            }
+            if ignored:
+                link_dict["gitignored"] = True
+            entries.append(link_dict)
         else:
             try:
                 st = entry.stat(follow_symlinks=False)
@@ -552,6 +579,7 @@ def _build_inventory_tree(
     parent_rel: str,
     max_depth: int,
     root_abs: Path,
+    max_entries: int | None = None,
 ) -> list[dict[str, Any]]:
     """Recursive in-memory build of the tree shape for a subtree
     rooted at *parent_rel*. Reads only from
@@ -566,57 +594,179 @@ def _build_inventory_tree(
     not yet finalized come through as JSON ``null``; the client
     renders them as skeleton cells and patches via
     ``fs.change`` ops on ``/api/events``.
+
+    *max_entries* bounds each level to its first *n* entries in display order.
+    The shell uses it to inline the root's first rows: that runs synchronously
+    on the event loop for every page load, and a root with tens of thousands of
+    immediate children should not pay for all of them to send two hundred.
     """
+
+    if max_depth <= 0:
+        return []
+    # Deferred to break the tree → inventory → walker → tree cycle.
+    from metabrowser.inventory import (
+        get_instance as get_inventory,
+    )
+
+    return _build_inventory_subtree(
+        children_of=get_inventory().children_of,
+        parent_rel=parent_rel,
+        max_depth=max_depth,
+        parent_ignored=parent_is_gitignored(parent_rel),
+        root_abs=root_abs,
+        max_entries=max_entries,
+    )
+
+
+def parent_is_gitignored(parent_rel: str) -> bool:
+    """Carry forward "an ancestor was gitignored so this whole subtree
+    paints gray." Look the parent up in the inventory; if we don't have
+    an entry for it (stub or root), fall back to False — the per-entry
+    ``gitignored`` field written by the walker is the authoritative
+    per-row signal."""
 
     # Deferred to break the tree → inventory → walker → tree cycle.
     from metabrowser.inventory import (
         get_instance as get_inventory,
     )
 
-    if max_depth <= 0:
-        return []
+    parent_entry = get_inventory().get(parent_rel) if parent_rel else None
+    return bool(parent_entry.gitignored) if parent_entry else False
 
-    inv = get_inventory()
-    # Single O(N) parent→children scan, reused across every level
-    # of the recursion. Without this, a depth-D request rescans the
-    # full index D times; at 200k entries that's seconds of CPU.
-    by_parent: dict[str, list[Any]] = {}
-    for entry in inv.entries(scope="all-known"):
-        by_parent.setdefault(entry.parent, []).append(entry)
-    # ``parent_ignored`` carries forward "an ancestor was gitignored
-    # so this whole subtree paints gray." Look the parent up in the
-    # inventory; if we don't have an entry for it (stub or root),
-    # fall back to False — the per-entry `entry.gitignored` field
-    # written by the walker is the authoritative per-row signal.
-    parent_entry = inv.get(parent_rel) if parent_rel else None
-    parent_ignored = bool(parent_entry.gitignored) if parent_entry else False
-    return _build_inventory_subtree(
-        by_parent=by_parent,
-        parent_rel=parent_rel,
-        max_depth=max_depth,
-        parent_ignored=parent_ignored,
-        root_abs=root_abs,
+
+@dataclass(frozen=True, slots=True)
+class FilteredTree:
+    """A tree already narrowed to what a filter selects, plus its totals.
+
+    The totals are the subtree's own rollup, not a count of emitted rows: the
+    tree is capped by depth and the browser pages long child lists, so a count
+    taken from the payload would report how much has been mounted rather than
+    how much matched. The nav's "Filtered to N files" line reads this.
+    """
+
+    tree: list[dict[str, Any]]
+    matched_files: int
+    matched_size: int
+    matched_leaves: int
+
+
+def build_filtered_inventory_tree(
+    *,
+    entries: Sequence[Any],
+    children_of: Callable[[str], Sequence[Any]],
+    parent_rel: str,
+    max_depth: int,
+    root_abs: Path,
+    parent_ignored: bool,
+    tree_filter: TreeFilter,
+    now_sec: float,
+    generation: int = 0,
+) -> FilteredTree:
+    """Tree shape for *parent_rel* containing only what *tree_filter* selects.
+
+    A directory survives when its subtree holds at least one matching leaf, and
+    its aggregates report those matches rather than the directory's own, so a
+    folder row under a filter answers "what is in here that I asked for". Both
+    facts come from one rollup over the whole index, which is why they can be
+    right for a folder whose children were never sent.
+
+    Two different reads, for two different reasons. *entries* is a snapshot the
+    caller took on the event loop, because the rollup is an O(index) pass and
+    belongs on a worker — the same split
+    :func:`InventoryIndex.navigation_tallies` already uses. Structure comes from
+    *children_of* instead, which serves each level from the index the inventory
+    maintains on write: grouping the snapshot by parent would cost a second full
+    pass to answer a question about one subtree, which is the cost
+    :func:`InventoryIndex.children_of` exists to remove. It is safe off the loop
+    because it copies each bucket under the index lock.
+
+    *generation* is the inventory's rollup generation, which keys the memo in
+    :func:`cached_rollups` so one filter change costs one pass rather than one
+    per request it fans out into. Leaving it at its default only costs a
+    recomputation.
+    """
+
+    totals = cached_rollups(
+        entries, tree_filter=tree_filter, now_sec=now_sec, generation=generation
     )
+    subtree = matches_for(totals, parent_rel)
+    tree = (
+        _build_inventory_subtree(
+            children_of=children_of,
+            parent_rel=parent_rel,
+            max_depth=max_depth,
+            parent_ignored=parent_ignored,
+            root_abs=root_abs,
+            tree_filter=tree_filter,
+            matches=totals,
+            now_sec=now_sec,
+        )
+        if max_depth > 0
+        else []
+    )
+    return FilteredTree(
+        tree=tree,
+        matched_files=subtree.files,
+        matched_size=subtree.size,
+        matched_leaves=subtree.leaves,
+    )
+
+
+def _dir_mtime_seconds(entry: Any, dir_matches: DirMatches | None) -> float | None:
+    """Age a folder row shows: the newest matching leaf under a filter, the
+    walker's own newest mtime otherwise. ``None`` stays ``None`` so the client
+    keeps rendering a skeleton cell for an aggregate the walk has not
+    finalized."""
+
+    newest = dir_matches.newest_mtime_ns if dir_matches else entry.newest_mtime_ns
+    return newest / 1_000_000_000.0 if newest is not None else None
 
 
 def _build_inventory_subtree(
     *,
-    by_parent: dict[str, list[Any]],
+    children_of: Callable[[str], Sequence[Any]],
     parent_rel: str,
     max_depth: int,
     parent_ignored: bool,
     root_abs: Path,
+    tree_filter: TreeFilter | None = None,
+    matches: Mapping[str, DirMatches] | None = None,
+    now_sec: float = 0.0,
+    max_entries: int | None = None,
 ) -> list[dict[str, Any]]:
     if max_depth <= 0:
         return []
     # The root entry has parent == "" == its own path; skip it
     # so the root doesn't render as a sibling of its own children.
     siblings = sorted(
-        (e for e in by_parent.get(parent_rel, []) if e.path != parent_rel),
+        (e for e in children_of(parent_rel) if e.path != parent_rel),
         key=lambda e: (e.type != "dir", e.name),
     )
+    if max_entries is not None:
+        # Sliced after the sort, so the cap keeps the first *n* a reader would
+        # see rather than an arbitrary *n*. The sort itself is still O(level) --
+        # what this bounds is the dict building and the recursion under it,
+        # which is where the cost actually is.
+        siblings = siblings[:max_entries]
     out: list[dict[str, Any]] = []
     for entry in siblings:
+        # Under a filter a row earns its place: a leaf has to match, and a
+        # directory has to have a match somewhere below it. Deciding this from
+        # the rollup rather than from the rendered children is the whole point
+        # — it is the only way a folder at the depth cap, or one whose match
+        # sits past the browser's page size, gets the right answer.
+        if tree_filter is not None and matches is not None:
+            if entry.type == "dir":
+                # A gitignored directory needs no separate test: with
+                # ``include_ignored`` off the rollup counted none of its leaves,
+                # so its subtree total is already zero.
+                if matches_for(matches, entry.path).leaves == 0:
+                    continue
+            else:
+                if not tree_filter.include_ignored and (entry.gitignored or parent_ignored):
+                    continue
+                if not leaf_matches(entry, tree_filter, now_sec):
+                    continue
         if entry.type == "dir":
             # Walker populates `entry.gitignored` once at index-write
             # time; response layer reads the flag straight off the
@@ -627,33 +777,43 @@ def _build_inventory_subtree(
             children: list[dict[str, Any]] | None
             if max_depth - 1 > 0:
                 children = _build_inventory_subtree(
-                    by_parent=by_parent,
+                    children_of=children_of,
                     parent_rel=entry.path,
                     max_depth=max_depth - 1,
                     parent_ignored=ignored,
                     root_abs=root_abs,
+                    tree_filter=tree_filter,
+                    matches=matches,
+                    now_sec=now_sec,
                 )
             else:
                 # Past the depth cap; emit a sentinel so the SPA
                 # knows to lazy-load on click. has_children matches
                 # the shape `_dir_tree` produces for sentinels.
                 children = None
-            # Aggregate dimming flags, matching _dir_tree semantics:
-            # `empty` if subtree has zero files; `gitignored`
+            # Match _dir_tree's dimming semantics. ``empty`` requires a
+            # loaded subtree with no file or symlink leaf; ``gitignored``
             # propagates up when every visible child is ignored.
-            # ``total_files is None`` means "walker still finalizing" —
-            # don't paint gray on a missing count, only on a finalized
-            # zero. Conflating the two flashed every dir gray during
-            # the initial inventory scan; an fs.change later filling
-            # the count never cleared the class.
-            is_empty = entry.total_files == 0
+            # File totals intentionally exclude symlinks, so zero files cannot
+            # by itself prove that a directory has no visible leaf entries.
+            # At a lazy boundary, leave emptiness unknown until its children
+            # are loaded instead of dimming a link-only directory as empty.
+            is_empty = (
+                entry.total_files == 0 and children is not None and _subtree_is_empty(children)
+            )
             if children is not None and not ignored and _subtree_is_all_gitignored(children):
                 ignored = True
             # Use the inventory's actual child count for the
             # has_children flag. A finalized empty dir would
             # otherwise show a lazy-load spinner that resolves to
             # nothing, leaving the spinner spinning forever.
-            inv_child_count = sum(1 for c in by_parent.get(entry.path, []) if c.path != entry.path)
+            inv_child_count = sum(1 for c in children_of(entry.path) if c.path != entry.path)
+            # Under a filter the chip answers "what of what I asked for is in
+            # here", so the aggregates are the subtree's matches rather than
+            # the directory's own totals. The row was kept because that count
+            # is non-zero, which also means it is never empty and always has
+            # something to disclose.
+            dir_matches = matches_for(matches, entry.path) if matches is not None else None
             entry_dict: dict[str, Any] = {
                 "name": entry.name,
                 "path": entry.path,
@@ -661,23 +821,37 @@ def _build_inventory_subtree(
                 # Aggregates: None pass-through. Wire format emits
                 # JSON null for None; the client treats as
                 # "skeleton cell, fill via fs.change".
-                "total_files": entry.total_files,
-                "total_size": entry.total_size,
+                "total_files": dir_matches.files if dir_matches else entry.total_files,
+                "total_size": dir_matches.size if dir_matches else entry.total_size,
                 # Distinguish "walker still finalizing" (None → skeleton)
                 # from "finalized, dir is genuinely empty" (0 → no age
                 # text). The client renders the former as a pulsing
                 # placeholder; the latter as nothing.
-                "mtime": entry.newest_mtime_ns / 1_000_000_000.0
-                if entry.newest_mtime_ns is not None
-                else None,
-                "has_children": inv_child_count > 0 if children is None else bool(children),
+                "mtime": _dir_mtime_seconds(entry, dir_matches),
+                "has_children": (
+                    True
+                    if dir_matches
+                    else (inv_child_count > 0 if children is None else bool(children))
+                ),
                 "children": children,
             }
             if ignored:
                 entry_dict["gitignored"] = True
-            if is_empty:
+            if is_empty and matches is None:
                 entry_dict["empty"] = True
             out.append(entry_dict)
+        elif entry.type == "symlink":
+            ignored = parent_ignored or entry.gitignored
+            link_dict: dict[str, Any] = {
+                "name": entry.name,
+                "path": entry.path,
+                "type": "symlink",
+                "size": entry.size,
+                "mtime": entry.mtime_ns / 1_000_000_000.0 if entry.mtime_ns else 0.0,
+            }
+            if ignored:
+                link_dict["gitignored"] = True
+            out.append(link_dict)
         else:
             ignored = parent_ignored or entry.gitignored
             file_dict: dict[str, Any] = {
@@ -686,7 +860,7 @@ def _build_inventory_subtree(
                 "type": "file",
                 "size": entry.size,
                 "mtime": entry.mtime_ns / 1_000_000_000.0 if entry.mtime_ns else 0.0,
-                # The index's compound-tail extension (".min.js",
+                # The index's bounded compound-tail extension (".min.js",
                 # ".runbook.md"), which is the unit the nav's type
                 # filter and its tally both key on. Distinct from
                 # ``logical_ext`` below: that one means "the inner

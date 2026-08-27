@@ -4,8 +4,9 @@
   ``all-known`` scope in the minimal ``{p, e}`` shape, with honest
   ``complete``/``truncated`` flags and a revision-backed ETag.
 * Every ``fs.change`` emits a minimal ``catalog.change`` companion:
-  file upserts shrink to ``{p, e}``, a gitignored upsert becomes a
-  catalog remove, directory-only batches emit nothing.
+  file upserts shrink to ``{p, e}``, a gitignored upsert becomes an
+  exact-file removal, filesystem removals retain subtree semantics,
+  and directory-only upsert batches emit nothing.
 * ``catalog.change`` passes the ``root-depth-2`` scope filter
   unchanged, so the depth-scoped tree stream carries complete
   catalog deltas.
@@ -172,6 +173,7 @@ def test_live_upsert_emits_catalog_companion(tmp_path: Path) -> None:
     assert isinstance(second, CatalogChange)
     assert [(u.p, u.e) for u in second.upserts] == [("docs/live.txt", ".txt")]
     assert second.removes == ()
+    assert second.remove_files == ()
 
 
 def test_gitignored_upsert_becomes_catalog_remove(tmp_path: Path) -> None:
@@ -188,7 +190,8 @@ def test_gitignored_upsert_becomes_catalog_remove(tmp_path: Path) -> None:
     companion = asyncio.run(_run())
     assert isinstance(companion, CatalogChange)
     assert companion.upserts == ()
-    assert companion.removes == ("ignored/other.txt",)
+    assert companion.removes == ()
+    assert companion.remove_files == ("ignored/other.txt",)
 
 
 def test_remove_emits_catalog_remove(tmp_path: Path) -> None:
@@ -205,6 +208,7 @@ def test_remove_emits_catalog_remove(tmp_path: Path) -> None:
     companion = asyncio.run(_run())
     assert isinstance(companion, CatalogChange)
     assert companion.removes == ("docs/notes.md",)
+    assert companion.remove_files == ()
 
 
 def test_catalog_change_passes_depth_scope_filter() -> None:
@@ -213,6 +217,7 @@ def test_catalog_change_passes_depth_scope_filter() -> None:
     event = CatalogChange(
         upserts=(CatalogUpsert(p="very/deep/nested/path/file.txt", e=".txt"),),
         removes=(),
+        remove_files=(),
     )
     assert _filter_event_for_scope(event, "root-depth-2") is event
 

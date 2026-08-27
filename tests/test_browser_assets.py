@@ -19,7 +19,9 @@ def test_tree_subtree_fetches_remain_depth_bounded() -> None:
     js = _browser_app_js()
 
     assert "TREE_SUBTREE_FETCH_DEPTH" in js
-    assert "&depth=${TREE_SUBTREE_FETCH_DEPTH}" in js
+    # Built through treeUrl, which also carries the active filter, so the
+    # depth parameter is one of the pieces rather than a whole query string.
+    assert "`depth=${TREE_SUBTREE_FETCH_DEPTH}`" in js
 
 
 def test_hover_prefetch_skips_expensive_file_types() -> None:
@@ -49,14 +51,23 @@ def test_activity_polling_retired_no_longer_referenced() -> None:
 def test_generated_html_handlers_keep_their_global_names() -> None:
     """Static analysis cannot see function names embedded in generated HTML."""
     app = _browser_app_js()
-    sdk = _browser_asset("static/plugin_sdk.js")
+    sdk = _browser_asset("static/plugin-sdk.js")
     agent_log = _browser_asset("builtin_plugins/agent_log/index.js")
 
-    assert 'onclick="loadMoreCurrentText()"' in app
+    # The Load more control moved into the SDK's partial-content notice, so the
+    # inline handler is emitted there while the global it names still lives in
+    # app.js. That split is exactly what this check exists to catch.
+    assert 'loadMoreCurrentText()"' in sdk
     assert "async function loadMoreCurrentText()" in app
-    assert 'onclick="copyPath(this,' in app
-    assert "function copyPath(btn, path)" in app
+    # Header copy/navigation buttons carry values in data-* attributes
+    # consumed by the SDK's delegated listener (inline onclick would
+    # HTML-decode quotes back into the JavaScript string).
+    assert 'data-mb-copy="text"' in app
+    assert "data-mb-copy-text=" in app
+    assert "data-nav-dir=" in app
+    assert "function copyPath(btn, path)" not in app
     assert "content-copy-btn" in sdk
+    assert 'target.closest("[data-mb-copy]")' in sdk
     assert "_copyDelegationInstalled" in sdk
     assert "function copyContent(btn)" in app
     assert 'onclick="toggleEvent(this)"' in agent_log

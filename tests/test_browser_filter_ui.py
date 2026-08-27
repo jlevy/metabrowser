@@ -7,8 +7,8 @@ rules. These tests pin the parts of that contract a refactor could
 quietly break.
 
 Behavioural checks for the selection semantics live in
-tests/dom/filter_controls_behavior.js and
-tests/dom/filter_state_behavior.js.
+tests/dom/filter-controls-behavior.js and
+tests/dom/filter-state-behavior.js.
 """
 
 from __future__ import annotations
@@ -60,6 +60,135 @@ def test_chip_family_is_defined_in_core_styles() -> None:
         assert selector in css, f"missing chip-family rule {selector!r}"
 
 
+def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
+    """One reusable owner renders the metric and scope controls.
+
+    Files and Treemap mount the same stateful component, so neither view
+    can fork its labels, accessibility semantics, defaults, or preference key.
+    """
+
+    folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    controls = (folder_root / "rollup-controls.js").read_text()
+    treemap = (folder_root / "treemap.js").read_text()
+    file_totals = (folder_root / "file-totals-panel.js").read_text()
+    file_types = (folder_root / "file-type-summary.js").read_text()
+    overview_panel = (folder_root / "file-overview-panel.js").read_text()
+    plugin_css = (folder_root / "styles.css").read_text()
+
+    assert "filterControls.groupHtml" in controls
+    assert 'label: "Measure file rollups by"' in controls
+    assert "filterControls.checkHtml" in controls
+    assert 'label: "Show ignored"' in controls
+    assert "includeIgnored: value.includeIgnored !== false" in controls
+
+    # Both views mount one row carrying both halves, because the measure and
+    # the gitignore switch are the same kind of choice about the same numbers
+    # and splitting them meant each silently moved the other's. No parts
+    # argument is what asks for both, so the absence of one is the assertion.
+    assert "rollupControls.mount(controls)" in overview_panel
+    assert "rollupControls.mount(rollupControlsHost)" in treemap
+    assert "metric: true" not in treemap
+    assert "ignored: true" not in treemap
+    # And neither body owns a control row any more.
+    for body in (file_totals, file_types):
+        assert "rollupControls.mount(" not in body
+    assert "segmentHtml" not in controls
+    assert ".tm-seg" not in plugin_css
+
+
+def test_folder_rollups_use_coordinated_totals_and_breakdown_sections() -> None:
+    """Overview keeps one selected metric across totals and details.
+
+    Files, Ignored, and type rows must switch together instead of retaining
+    parallel Files and Size columns that compete with the chooser.
+    """
+
+    folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    index = (folder_root / "index.js").read_text()
+    totals = (folder_root / "folder-totals.js").read_text()
+    file_totals = (folder_root / "file-totals-panel.js").read_text()
+    file_types = (folder_root / "file-type-summary.js").read_text()
+    overview_panel = (folder_root / "file-overview-panel.js").read_text()
+    distribution = (folder_root / "distribution-view.js").read_text()
+    treemap = (folder_root / "treemap.js").read_text()
+
+    assert 'label: "File Overview"' in overview_panel
+    assert "defaultExpanded: true" in overview_panel
+    assert '"folder.file-overview"' in index
+    assert '<h2 class="tm-totals-heading">Files</h2>' in treemap
+    assert "mountFolderTotalsView" in file_totals
+    assert "mountFolderTotalsView" not in file_types
+    # The bodies stay separate modules and the section composes them, so the
+    # merge is a heading and a control row rather than an entanglement of two
+    # different data lifecycles.
+    assert "mountFileTotalsPanel" in overview_panel
+    assert "mountFileTypeSummary" in overview_panel
+    assert 'filesRow = totalsRow("Files")' in totals
+    # Total was once left out because the two disjoint rows already sum to it.
+    # It is back because the type distribution below counts against that sum
+    # whenever Show ignored is on, so without it no percentage in the
+    # distribution corresponds to any track a reader can see.
+    assert 'allRow = totalsRow("Total")' in totals
+    assert "body.append(filesRow.tr, ignoredRow.tr, allRow.tr)" in totals
+    # And Show ignored cannot reach the totals rows at all: the builder does
+    # not take it, so the invariant is structural rather than observed.
+    assert "buildFolderTotalsComposition(envelope, fileTypes, metric)" in totals
+    assert "includeIgnored" not in totals.split("export function buildFolderTotalsComposition")[1]
+    assert 'head.className = "sr-only"' in totals
+    assert 'for (const label of ["Population", "Files", "Size"])' not in totals
+    assert 'for (const label of ["Type", "Files", "Size"])' not in distribution
+    assert "metricHeader" in distribution
+    # The totals table hides its header row with `sr-only`, which is defined in
+    # the shared stylesheet rather than here. It used to be scoped to this
+    # plugin's own ancestors, which silently left the same class inert
+    # everywhere else; see test_browser_loading_delay.py.
+    assert ".sr-only" in (proc_browser.STATIC_DIR / "styles.css").read_text()
+
+
+def test_treemap_hover_never_promotes_a_container_over_nested_cells() -> None:
+    """A nested folder and its descendants are flattened siblings.
+
+    Hover may adjust the folder fill, but changing its stacking level would
+    paint the folder over every descendant rectangle inside it.
+    """
+
+    folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    shared_css = (proc_browser.STATIC_DIR / "styles.css").read_text()
+    plugin_css = (folder_root / "styles.css").read_text()
+    hover_start = plugin_css.index(".tm-cell:hover {")
+    hover_block = plugin_css[hover_start : plugin_css.index("}", hover_start)]
+
+    assert "filter: var(--viz-data-mark-hover-filter);" in hover_block
+    # The direction that gains contrast against the page flips between themes,
+    # so the token is declared for the light palette and again for the dark one.
+    # Pinning the declarations rather than their values leaves the filter free
+    # to be adjusted without editing this test.
+    dark_start = shared_css.index('[data-theme="dark"] {')
+    assert "--viz-data-mark-hover-filter:" in shared_css[:dark_start]
+    assert "--viz-data-mark-hover-filter:" in shared_css[dark_start:]
+    assert "z-index" not in hover_block
+    assert "display:" not in hover_block
+
+
+def test_treemap_pointer_hit_testing_uses_the_full_actionable_cell() -> None:
+    """Nested ARIA buttons stay on labels, but pointer activation uses
+    the deepest visible cell rectangle rather than that label alone."""
+
+    folder_root = proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder"
+    treemap = (folder_root / "treemap.js").read_text()
+    plugin_css = (folder_root / "styles.css").read_text()
+    click_start = treemap.index('viewport.addEventListener("click"')
+    click_block = treemap[click_start : treemap.index('viewport.addEventListener("mouseover"')]
+
+    assert 'cls.push("tm-actionable")' in treemap
+    assert "cellForElement" in click_block
+    assert "cellIsActionable(cell)" in click_block
+    assert "actionableCellForElement" not in click_block
+    assert ".tm-actionable {" in plugin_css
+    assert "cursor: pointer;" in plugin_css[plugin_css.index(".tm-actionable {") :]
+    assert ".tm-nested {\n  cursor: default;" not in plugin_css
+
+
 def test_single_and_multi_select_use_different_fills() -> None:
     """The fill split is the only cue that tells a user which kind of
     group they are looking at before clicking, so it is load-bearing:
@@ -86,12 +215,53 @@ def test_chip_family_uses_tokens_not_color_literals() -> None:
         assert literal not in block, f"chip family must use design tokens, found {literal!r}"
 
 
+def test_symlinks_use_the_lucide_icon_in_the_standard_leading_slot() -> None:
+    """A link replaces the ordinary file icon; it is not an extra badge."""
+
+    icons = _read("icons.js")
+    app = _read("app.js")
+    css = _read("styles.css")
+
+    assert "fileSymlink: // Lucide `file-symlink`" in icons
+    assert "ICONS.fileSymlink" in app
+    assert 'class="tree-item tree-symlink' in app
+    assert 'data-tip-type="symlink"' in app
+    assert ".tree-symlink .tree-item-icon" in css
+
+
+def test_wrapped_groups_are_chip_clusters_not_segmented_controls() -> None:
+    """Segmented controls stay on one line. A long additive set wraps as
+    individually bounded chips without an enclosing pill, so every visible
+    shape remains an interactive target."""
+
+    css = _read("styles.css")
+    joined_start = css.index(".chip-group {")
+    joined_block = css[joined_start : css.index("}", joined_start)]
+    assert "flex-wrap: nowrap;" in joined_block
+
+    wrapped_start = css.index('.chip-group[data-layout="wrap"] {')
+    wrapped_block = css[wrapped_start : css.index("}", wrapped_start)]
+    assert "flex-wrap: wrap;" in wrapped_block
+    assert "gap: var(--chip-cluster-gap);" in wrapped_block
+    assert "border: 0;" in wrapped_block
+    assert "background: transparent;" in wrapped_block
+
+    chip_start = css.index('.chip-group[data-layout="wrap"] > .chip {')
+    chip_block = css[chip_start : css.index("}", chip_start)]
+    assert "border: 1px solid var(--viz-border);" in chip_block
+    assert "border-radius: var(--radius-pill);" in chip_block
+
+    hover_start = css.index('.chip-group[data-layout="wrap"] > .chip:hover')
+    hover_block = css[hover_start : css.index("}", hover_start)]
+    assert "background: var(--hover-bg);" in hover_block
+
+
 def test_groups_carry_the_aria_their_variant_implies() -> None:
     """Single-select is a radiogroup with aria-checked; multi-select
     is a plain group of aria-pressed toggles. Styling keys off these
     attributes, so drifting ARIA silently breaks the visuals too."""
 
-    js = _read("filter_controls.js")
+    js = _read("filter-controls.js")
     assert 'select === "one" ? "radiogroup" : "group"' in js
     assert 'role="radio" aria-checked=' in js
     assert "aria-pressed=" in js
@@ -102,7 +272,7 @@ def test_single_select_group_is_one_tab_stop_with_arrow_keys() -> None:
     radiogroup pattern; multi-select chips stay individually
     reachable because each is an independent control."""
 
-    js = _read("filter_controls.js")
+    js = _read("filter-controls.js")
     assert 'tabindex="${on ? "0" : "-1"}"' in js
     assert '"ArrowLeft"' in js
     assert '"ArrowRight"' in js
@@ -113,11 +283,19 @@ def test_filter_values_are_carried_by_buttons() -> None:
     """Anything that holds a filter *value* is a button with
     aria-pressed or aria-checked, so state is read one way."""
 
-    js = _read("filter_controls.js")
+    js = _read("filter-controls.js")
     for fn in ("groupHtml", "menuGroupHtml"):
         start = js.index(f"function {fn}(spec)")
         block = js[start : js.index("\n  }", start)]
         assert "<input" not in block, f"{fn} must not use inputs"
+
+
+def test_filter_control_types_expose_the_wrapping_chip_layout() -> None:
+    """Plugins must be able to select the documented chip-cluster layout
+    without escaping the public SDK type contract."""
+
+    types = _read("types.d.ts")
+    assert 'layout?: "joined" | "wrap";' in types
 
 
 def test_the_checkbox_exception_is_scoped_and_explained() -> None:
@@ -125,7 +303,7 @@ def test_the_checkbox_exception_is_scoped_and_explained() -> None:
     to be legible. "Show ignored" with a tick says which way it points;
     a pressed pill reading "Gitignored" does not."""
 
-    js = _read("filter_controls.js")
+    js = _read("filter-controls.js")
     start = js.index("function checkHtml(spec)")
     block = js[start : start + 700]
     assert '<input type="checkbox"' in block
@@ -155,7 +333,7 @@ def test_dropdown_rows_are_arrow_key_traversable() -> None:
     """A menu is a list, so it takes the vertical keys; the segmented
     groups take the horizontal ones."""
 
-    js = _read("filter_controls.js")
+    js = _read("filter-controls.js")
     start = js.index("function onKeyDown(event)")
     block = js[start : start + 1200]
     assert '.closest(".chip-menu-panel")' in block
@@ -242,7 +420,7 @@ def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
     assert '"Hide more filters" : "Show more filters"' in fn_block
     assert "active)" in fn_block
 
-    controls = _read("filter_controls.js")
+    controls = _read("filter-controls.js")
     assert 'class="icon-btn' in controls
 
     css = _read("styles.css")
@@ -252,13 +430,29 @@ def test_drawer_toggle_is_an_icon_button_that_names_itself() -> None:
     assert ".filter-drawer-toggle {" not in css
 
 
+def test_dropdown_triggers_use_the_shared_disclosure_chevron() -> None:
+    """Menu triggers and the adjacent drawer disclosure should use one
+    Lucide shape at the standard chrome glyph size, with rotation alone
+    distinguishing their direction."""
+
+    controls = _read("filter-controls.js")
+    assert "window.MetabrowserIcons?.toggle" in controls
+    assert "⌄" not in controls
+
+    css = _read("styles.css")
+    start = css.index(".chip-menu-caret {")
+    block = css[start : start + 700]
+    assert "var(--icon-glyph)" in block
+    assert "rotate(90deg)" in block
+
+
 def test_every_icon_only_control_carries_the_icon_button_primitive() -> None:
     """Use-site classes may position a button but may not recreate its control style."""
 
     server = Path(proc_browser.__file__).read_text()
     app = _read("app.js")
-    sdk = _read("plugin_sdk.js")
-    controls = _read("filter_controls.js")
+    sdk = _read("plugin-sdk.js")
+    controls = _read("filter-controls.js")
 
     assert 'class="icon-btn settings-btn"' in server
     assert 'class="icon-btn icon-btn-reveal file-header-copy"' in app
@@ -283,10 +477,23 @@ def test_plain_text_actions_use_the_shared_button_primitive() -> None:
     app = _read("app.js")
     css = _read("styles.css")
 
-    assert 'class="btn file-header-action"' in app
-    assert 'class="btn file-header-action" type="button"' in app
+    # The text view's Load more moved out of the file header and into the
+    # shared partial-content notice, but it is still the `.btn` primitive.
+    sdk = _read("plugin-sdk.js")
+    assert 'class="btn metabrowser-load-more"' in sdk
+    assert "file-header-action" not in app, (
+        "the header no longer restates partial progress; the notice owns it"
+    )
+    assert 'class="btn parent-nav-btn parent-nav-btn-icon-only folder-up"' in app
+    assert '<span class="parent-nav-arrow" aria-hidden="true">↑</span>' in app
     assert ".btn {" in css
     assert ".btn:focus-visible {" in css
+    assert ".parent-nav-btn {" in css
+    assert ".parent-nav-btn-icon-only {" in css
+    parent_nav = css[css.index(".parent-nav-btn {") : css.index(".parent-nav-btn-icon-only {")]
+    assert "height: var(--icon-btn-size);" in parent_nav
+    assert "border-color: var(--viz-border-strong);" in parent_nav
+    assert 'aria-label="Open parent folder ${esc(parentLabel)}"' in app
 
 
 def test_every_core_button_declares_non_submit_behavior() -> None:
@@ -294,7 +501,7 @@ def test_every_core_button_declares_non_submit_behavior() -> None:
     for tag in re.findall(r"<button\b[^>]*>", html):
         assert 'type="button"' in tag
 
-    for name in ("app.js", "filter_controls.js", "plugin_sdk.js"):
+    for name in ("app.js", "filter-controls.js", "plugin-sdk.js"):
         source = _read(name)
         for match in re.finditer(r"<button\b", source):
             nearby_markup = source[match.start() : match.start() + 320]
@@ -302,7 +509,7 @@ def test_every_core_button_declares_non_submit_behavior() -> None:
 
 
 def test_filter_surfaces_have_no_private_button_family() -> None:
-    """Filter values come from filter_controls.js, never private button markup."""
+    """Filter values come from filter-controls.js, never private button markup."""
 
     builtin_root = proc_browser.STATIC_DIR.parent / "builtin_plugins"
     sources = [_read("app.js"), _read("styles.css")]
@@ -325,7 +532,7 @@ def test_menu_rows_use_type_icons_rather_than_tinted_labels() -> None:
     tinted row labels would compete with the check mark instead of
     helping anyone scan the list."""
 
-    controls = _read("filter_controls.js")
+    controls = _read("filter-controls.js")
     assert 'class="menu-item-icon ' in controls
 
     css = _read("styles.css")
@@ -342,7 +549,7 @@ def test_recency_is_one_dimension_including_live() -> None:
     """Live is the narrowest recency window, not a specialized
     tracker flag or a second boolean dimension."""
 
-    js = _read("filter_state.js")
+    js = _read("filter-state.js")
     assert "const RECENCY_VALUES = Object.keys(RECENCY_SECONDS);" in js
     assert 's.recency === "live"' not in js
     assert "current:" not in js
@@ -354,7 +561,7 @@ def test_defaults_leave_the_tree_unfiltered() -> None:
     match. The only display choice left is gitignored visibility, and
     it defaults to the tree's long-standing dimmed treatment."""
 
-    js = _read("filter_state.js")
+    js = _read("filter-state.js")
     start = js.index("const DEFAULTS = Object.freeze({")
     block = js[start : start + 600]
     assert 'recency: "all"' in block
@@ -368,7 +575,7 @@ def test_size_is_a_cumulative_floor() -> None:
     """ "What is over 10M in here" is the question people ask; bands
     make you guess which one a file landed in."""
 
-    js = _read("filter_state.js")
+    js = _read("filter-state.js")
     start = js.index("const SIZE_MIN_BYTES = {")
     block = js[start : start + 400]
     for step in ('"100k"', '"1m"', '"10m"', '"100m"', '"1g"'):
@@ -383,7 +590,7 @@ def test_missing_data_never_excludes_a_row() -> None:
     still arriving. A missing extension is different: that is complete
     information, so it is a real non-match."""
 
-    js = _read("filter_state.js")
+    js = _read("filter-state.js")
     size_start = js.index("function sizeMatches(bytes, bucket)")
     size_block = js[size_start : size_start + 500]
     assert "return true; // pending size is unknown, not excluded" in size_block
@@ -393,15 +600,21 @@ def test_missing_data_never_excludes_a_row() -> None:
     assert "return false;" in type_block
 
 
-def test_type_presets_name_broad_kinds_of_work() -> None:
-    """Docs / Code / Data are shorthands for the full extension list
-    beneath them, and a deliberately separate vocabulary from
+def test_type_presets_name_registry_display_groups() -> None:
+    """Registry groups are shorthands for the full declared membership
+    beneath them and a deliberately separate vocabulary from
     FILE_TYPES: that list answers "what icon and hue does this file
     get" (which is why .json sits with YAML there), these answer "which
     kind of work is this"."""
 
     labels = [preset["label"] for preset in FILTER_TYPE_PRESETS]
-    assert labels == ["Docs", "Code", "Data"]
+    assert labels == [
+        "Code",
+        "Documentation",
+        "Data",
+        "Archives",
+        "Media",
+    ]
 
     settings = (proc_browser.STATIC_DIR.parent / "settings.py").read_text()
     assert '"FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS' in settings
@@ -416,7 +629,13 @@ def test_type_presets_name_broad_kinds_of_work() -> None:
     assert "license" in docs["values"]
     assert ".md" in docs["values"]
 
-    state = _read("filter_state.js")
+    code = next(preset for preset in FILTER_TYPE_PRESETS if preset["id"] == "code")
+    assert ".mts" in code["values"]
+    assert ".cts" in code["values"]
+
+    state = _read("filter-state.js")
+    assert "mb.filterState = {" in state
+    assert "MetabrowserFilterState" not in state
     tm_start = state.index("function typeMatches(pathLike, types, logicalExt)")
     tm_block = state[tm_start : tm_start + 1400]
     assert 'token.charAt(0) === "."' in tm_block
@@ -479,11 +698,11 @@ def test_the_first_tree_row_clears_the_tally_rule() -> None:
     tally's border while every band above kept 6px."""
 
     css = _read("styles.css")
-    start = css.index(".tree-summary + .tree-item,")
+    start = css.index(".tree-summary + .tree-root > .tree-item:first-child,")
     block = css[start : css.index("}", start)]
     # Both leading cases: the tally, and rows alone under a recency window.
-    assert ".tree-summary-filtered + .tree-item" in block
-    assert ".tree-content > * > .tree-item:first-child" in block
+    assert ".tree-summary-filtered + .tree-root > .tree-item:first-child" in block
+    assert ".tree-content > * > .tree-root:first-child > .tree-item:first-child" in block
     # Margin, so the hover fill and selected border stay row-height.
     assert "margin-top" in block
     assert "padding-top" not in block
@@ -514,15 +733,18 @@ def test_live_overlay_rows_carry_the_index_extension() -> None:
     assert "ext: entry.ext" in block
 
 
+def _apply_tree_filters_body(js: str) -> str:
+    start = js.index("function applyTreeFilters()")
+    return js[start : js.index("function _applyTreeSourceFilters(panel, state)")]
+
+
 def test_the_recency_tally_is_recomputed_not_cached() -> None:
     """Type and size changes run applyTreeFilters alone, so a count
     cached at render time kept its previous value while rows updated."""
 
     js = _read("app.js")
     assert "_recentFilteredCount" not in js
-    start = js.index("function applyTreeFilters()")
-    block = js[start : start + 4200]
-    assert "countRecentMatches(" in block
+    assert "countRecentMatches(" in _apply_tree_filters_body(js)
 
 
 def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
@@ -530,8 +752,8 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     time, not only when a response was capped."""
 
     js = _read("app.js")
-    start = js.index("function _renderFilteredTally(panel, shownFiles, state, recencyCount)")
-    block = js[start : start + 1600]
+    start = js.index("function _renderFilteredTally(panel, state, count)")
+    block = js[start : start + 1800]
     assert "filterHasConstraints(state)" in block
     assert "Filtered to ${" in block
     # The "of N matching" half is the capped-response disclosure only.
@@ -539,20 +761,24 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
 
     # Removing the last filter must clear the line, and that path is
     # the unconstrained early return.
-    apply_start = js.index("function applyTreeFilters()")
-    apply_block = js[apply_start : apply_start + 1400]
-    assert "_renderFilteredTally(panel, 0, st, null);" in apply_block
+    assert "_renderFilteredTally(panel, st, null);" in _apply_tree_filters_body(js)
 
 
-def test_the_recency_tally_counts_entries_not_rendered_rows() -> None:
-    """renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count reports
-    how much has been paged in rather than how many files passed."""
+def test_the_filtered_tally_counts_a_subtree_not_rendered_rows() -> None:
+    """renderTreeNodes pages at TREE_PAGE_SIZE and the tree is depth-capped,
+    so a DOM count reports how much has been paged in rather than how many
+    files matched. Each source hands the line a subtree total instead: the
+    server's for the tree, the window's own entries for recency."""
 
     js = _read("app.js")
     assert "function countRecentMatches(entries, nowSec)" in js
-    start = js.index("function _renderFilteredTally(panel, shownFiles, state, recencyCount)")
-    block = js[start : start + 1600]
-    assert "recencyCount !== null ? recencyCount : shownFiles" in block
+    assert "countRecentMatches(" in _apply_tree_filters_body(js)
+    leaf_start = js.index("function _applyTreeSourceFilters(panel, state)")
+    assert (
+        "_filteredTreeTotals ? _filteredTreeTotals.files : null"
+        in js[leaf_start : js.index("function _renderFilteredTally(")]
+    )
+    assert "_filteredTreeTotals = data.filtered || null;" in js
 
 
 def test_the_recency_cap_records_why_it_is_where_it_is() -> None:
@@ -591,10 +817,47 @@ def test_type_presets_use_index_wide_tracked_and_ignored_tallies() -> None:
     block = js[start : start + 1000]
     assert "showIgnored ? row[1] + row[2] : row[1]" in block
     assert "count:" in block
+    tally_start = js.index("function updateFilterTallies(data)")
+    tally_block = js[tally_start : tally_start + 1800]
+    assert "registryMismatch" not in tally_block
+    assert "file_type_registry" not in tally_block
 
     render_start = js.index("function renderNavFilterBar()")
     render_block = js[render_start : render_start + 2200]
-    assert "presets: filterTypePresets()" in render_block
+    assert "presetSections: filterTypePresetSections()" in render_block
+    assert "function filterTypeFamilies(groupId)" in js
+    assert "window.MetabrowserFileTypeTaxonomy?.groups" in js
+    assert "_typeFamilyTally" in js
+
+
+def test_age_options_use_index_wide_tracked_and_ignored_tallies() -> None:
+    """Every fixed age choice carries the same right-aligned count as a
+    file-type row, and the count follows Show ignored."""
+
+    js = _read("app.js")
+    assert "var _recencyTally = [];" in js
+    start = js.index("function filterRecencyOptions()")
+    block = js[start : start + 1000]
+    assert "showIgnored ? row[1] + row[2] : row[1]" in block
+    assert "count:" in block
+
+    render_start = js.index("function renderNavFilterBar()")
+    render_block = js[render_start : render_start + 2200]
+    assert "options: filterRecencyOptions()" in render_block
+
+
+def test_opening_age_menu_refreshes_rolling_tallies() -> None:
+    """Age membership changes as time passes even when no filesystem event fires."""
+
+    js = _read("app.js")
+    toggle_start = js.index("onMenuToggle: (key, open) =>")
+    toggle_block = js[toggle_start : toggle_start + 500]
+    assert 'key === "recency" && open' in toggle_block
+    assert "scheduleRootSummaryRefresh();" in toggle_block
+
+    refresh_start = js.index("function scheduleRootSummaryRefresh()")
+    refresh_block = js[refresh_start : refresh_start + 2000]
+    assert "patchOpenRecencyTallyCounts();" in refresh_block
 
 
 def test_filters_reapply_when_new_rows_render() -> None:
@@ -605,8 +868,8 @@ def test_filters_reapply_when_new_rows_render() -> None:
     js = _read("app.js")
     sub_start = js.index("async function loadSubtree(")
     assert "applyTreeFilters();" in js[sub_start : sub_start + 2500]
-    page_start = js.index(".tree-page-more")
-    assert "applyTreeFilters();" in js[page_start : page_start + 700]
+    page_start = js.index("function mountNextTreePage(row)")
+    assert "applyTreeFilters();" in js[page_start : page_start + 1800]
 
 
 def test_leaving_the_recency_source_abandons_its_fetch() -> None:
@@ -620,29 +883,88 @@ def test_leaving_the_recency_source_abandons_its_fetch() -> None:
     assert 'currentRecentWindow = ""' in block
 
 
+def test_leaving_recency_refetches_the_authoritative_tree() -> None:
+    """The cached first-paint tree can retain pending aggregates.
+
+    Live events patch the visible DOM, not that old wire snapshot. Restoring it
+    after a recency filter therefore reintroduced skeletons after the scan and
+    its progress polling had completed.
+    """
+
+    js = _read("app.js")
+    start = js.index("function onFilterStateChange(state)")
+    block = js[start : start + 2200]
+    assert "loadTree();" in block
+    assert "renderFilesFromTree()" not in block
+
+
 def test_the_summary_poll_does_not_disturb_an_open_menu() -> None:
     """It runs repeatedly while the index warms up; rebuilding the bar
     would drop focus out of a dropdown being arrowed through."""
 
     js = _read("app.js")
     start = js.index("function scheduleRootSummaryRefresh()")
-    block = js[start : start + 1800]
+    # Slice to the next top-level function rather than a fixed character
+    # count: a comment added inside this one pushed the last assertion out
+    # of an 1800-character window and failed a behavior that had not changed.
+    block = js[start : js.index("\nfunction ", start + 1)]
     assert "filterOpenMenu === null" in block
     # Both caches move together, or the tally reverts to first-paint
     # figures under a recency filter.
     assert "_lastTreeSummaryHtml = html;" in block
 
 
-def test_index_wide_tallies_stay_off_the_event_loop() -> None:
-    """Two O(index) passes per request, and the nav re-requests this
-    route while the walk converges."""
-
+def _api_tree_source() -> str:
     py = (proc_browser.STATIC_DIR.parent / "server.py").read_text()
-    start = py.index("summary = None")
-    block = py[start : start + 700]
+    start = py.index("async def api_tree(")
+    return py[start : py.index("\nasync def ", start + 1)]
+
+
+def test_index_wide_tallies_stay_off_the_event_loop() -> None:
+    """One O(index) pass per request, and the nav re-requests this route
+    while the walk converges.
+
+    The snapshot the pass needs is O(index) too, so on the unfiltered path it
+    is taken inside the same thread rather than in the handler -- see
+    explorations/performance-loop/experiments/exp-003, where taking it on the loop cost every
+    root request a copy of all 300,000 entries before it discovered its
+    tallies were memoized."""
+
+    block = _api_tree_source()
     assert "asyncio.to_thread" in block
-    assert "root_summary()" in block
-    assert "file_type_tallies(" in block
+    assert "navigation_tallies(" in block
+    assert "RECENT_WINDOW_SECONDS.items()" in block
+    assert "entries=tally_entries" in block
+    assert "navigation_tallies_snapshotting" in block
+
+
+def test_one_index_snapshot_serves_every_pass_a_request_makes() -> None:
+    """A root request with a filter active runs two O(index) passes — the
+    filtered rollup and the nav tallies — over the same entries for
+    overlapping reasons. Snapshotting per pass copies the index twice on the
+    request the page makes first, and lets the two describe different indexes.
+
+    The revision and the reported status are read in the same tick as the
+    snapshot: a revision that has already moved keys a memo that never
+    matches, and a newer "done" beside partial tallies stops the browser
+    polling before it asks for the final snapshot."""
+
+    block = _api_tree_source()
+    assert block.count('inventory.entries(scope="all-known")') == 1
+    assert block.count("inventory.rollup_revision()") == 1
+    # And the tally path reuses it rather than taking a second one: the
+    # unfiltered path snapshots lazily inside its thread, but when a filter has
+    # already forced a snapshot, both passes read that one.
+    assert "if navigation_tallies is None and wants_tallies and index_entries is not None:" in block
+    # No await between the snapshot and the two reads that must describe it.
+    snapshot = block.index('index_entries = inventory.entries(scope="all-known")')
+    settled = block.index("tally_cache_status = inventory_status()", snapshot)
+    assert "await" not in block[snapshot:settled]
+    # And both passes are handed that one snapshot.
+    assert "entries=index_entries" in block
+    assert "tally_entries = index_entries" in block
+    assert "generation=index_revision" in block
+    assert "tally_revision = index_revision" in block
 
 
 def test_reapply_is_skipped_when_nothing_is_filtered() -> None:
@@ -661,7 +983,7 @@ def test_compound_extensions_match_what_the_menu_counted() -> None:
     compound row into ".js" and made a compound pick match nothing it
     was offered for."""
 
-    js = _read("filter_state.js")
+    js = _read("filter-state.js")
     start = js.index("function typeMatches(pathLike, types, logicalExt)")
     block = js[start : start + 1200]
     assert "logicalExt || extensionOf(pathLike)" in block
@@ -674,7 +996,7 @@ def test_compound_extensions_match_what_the_menu_counted() -> None:
 
 
 def test_filter_state_is_transient_and_emits_change() -> None:
-    js = _read("filter_state.js")
+    js = _read("filter-state.js")
     assert 'const LEGACY_PREF_KEY = "filters"' in js
     assert '"metabrowser:filter-change"' in js
     assert "p.remove(LEGACY_PREF_KEY)" in js
@@ -685,7 +1007,7 @@ def test_sdk_exposes_prefs_and_filters() -> None:
     """Plugin views bind to the shared vocabulary through the
     documented SDK rather than reaching for the global."""
 
-    js = _read("plugin_sdk.js")
+    js = _read("plugin-sdk.js")
     assert "remove: prefsRemove" in js
     assert "prefs: prefs," in js
     assert "filters: filters," in js
@@ -699,37 +1021,100 @@ def test_no_filters_leaves_the_rendered_dom_alone() -> None:
     nothing set, the pass removes its own classes and returns."""
 
     js = _read("app.js")
-    fn_start = js.index("function applyTreeFilters()")
-    fn_block = js[fn_start : fn_start + 1200]
+    fn_block = _apply_tree_filters_body(js)
     assert "if (!constrained) {" in fn_block
     assert 'rows[c].classList.remove("tree-item-filter-hidden")' in fn_block
 
 
-def test_folders_with_no_loaded_children_are_kept_and_counted() -> None:
-    """An unexpanded folder is unknown, not excluded. Hide mode says
-    so instead of implying the pruned tree is the whole answer."""
+def test_the_tree_source_asks_the_server_rather_than_judging_mounted_rows() -> None:
+    """Whether a folder survives a filter, and what it rolls up to, are
+    questions about a whole subtree — including the part this client was
+    never sent. Deciding them from mounted rows listed every folder whose
+    children had not loaded, then deleted it once expanding proved it held
+    nothing. The filter travels with the request instead."""
 
     js = _read("app.js")
-    fn_start = js.index("function applyTreeFilters()")
-    fn_block = js[fn_start : fn_start + 3000]
-    assert "unloadedFolders += 1" in fn_block
-    note_start = js.index("function _renderFilterNote(panel, unloadedFolders, state)")
-    note_block = js[note_start : note_start + 1600]
-    assert '"folder may" : "folders may"' in note_block
-    assert "contain additional matches." in note_block
-    assert 'Expand ${unloadedFolders === 1 ? "it" : "them"} to check.' in note_block
-    assert 'note.setAttribute("role", "status")' in note_block
+    assert "unloadedFolders" not in js
+    assert "_renderFilterNote" not in js
+    assert "contain additional matches." not in js
+
+    # The request itself is built in the model, where it is testable without a
+    # document (tests/dom/tree-filter-model-behavior.js); app.js only supplies
+    # the current snapshot.
+    assert "treeFilterModel.treeUrl(" in js
+    assert "treeFilterModel.requestKey(" in js
+
+    # A subtree cached under a wider filter is not an answer for a narrower
+    # one, so the cache key carries the selection.
+    key_start = js.index("function subtreeCacheKey(path)")
+    key = js[key_start : js.index("}", js.index("return filter", key_start))]
+    assert "treeFilterKey()" in key
+
+    # And the tree source never re-decides a folder: it judges leaves only,
+    # which is all that rows arriving live can get wrong.
+    fn_block = _apply_tree_filters_body(js)
+    tree_source = fn_block[: fn_block.index("var rows =")]
+    assert "if (!filesPanelUsesRecentSource()) {" in tree_source
+    assert "_applyTreeSourceFilters(panel, st);" in tree_source
+
+    leaf_start = js.index("function _applyTreeSourceFilters(panel, state)")
+    leaf_block = js[leaf_start : js.index("function _renderFilteredTally(")]
+    assert ".tree-item.tree-file, .tree-item.tree-symlink" in leaf_block
+    assert "tree-folder" not in leaf_block
+
+    # And a filesystem burst must not repaint the panel: that would collapse
+    # the tree under a reader every time anything on disk changed.
+    reapply = js[js.index("function scheduleFilterReapply()") :][:900]
+    assert "loadTree()" not in reapply
+    assert "applyTreeFilters();" in reapply
+
+
+def test_a_filter_that_excludes_where_you_are_standing_says_so() -> None:
+    """Open a folder from a breadcrumb or a URL while a filter is on and the
+    tree legitimately has no row for it, so nothing is selected. Naming the
+    folder answers the question that raises.
+
+    Deliberately a line and not a pinned row: keeping the selection in the
+    tree means refetching as the reader navigates, and a refetch repaints the
+    panel and collapses every folder they had open."""
+
+    js = _read("app.js")
+    start = js.index("function renderSelectionOutsideFilterNote(selectedPath)")
+    block = js[start : start + 1800]
+    assert "filterHasConstraints(filterState.get())" in block
+    assert "escapePathForSelector(path)" in block
+    # Named from the path being selected, not from currentPath: this runs
+    # before navigateToPath commits it, so the latter is the folder just left.
+    assert "selectedPath === undefined ? currentPath : selectedPath" in block
+    assert "renderSelectionOutsideFilterNote(path);" in js
+    assert "is outside this filter." in block
+    assert 'note.setAttribute("role", "status")' in block
+
+    # Written on selection change and on every repaint, or it would survive a
+    # filter change that brought the folder back.
+    select_block = js[js.index("function setSelectedPath(path)") :][:1400]
+    assert "renderSelectionOutsideFilterNote(path);" in select_block
+    assert "renderSelectionOutsideFilterNote(null);" in select_block
+    assert js.count("renderSelectionOutsideFilterNote();") >= 3
+
+    css = _read("styles.css")
+    note_start = css.index(".tree-selection-note {")
+    assert "var(--muted)" in css[note_start : css.index("}", note_start)]
 
 
 def test_hidden_folders_suppress_their_descendants() -> None:
     """Otherwise a matching row could survive inside a pruned subtree
-    and float under the wrong parent."""
+    and float under the wrong parent.
+
+    The rule itself lives in static/tree-filter-model.js and is exercised
+    there; this pins that app.js still routes the clustered source through it
+    rather than growing a second copy of the walk."""
 
     js = _read("app.js")
-    fn_start = js.index("function applyTreeFilters()")
-    fn_block = js[fn_start : fn_start + 4200]
-    assert "suppressed.add(kidContainer)" in fn_block
-    assert "suppressed.has(el.parentElement)" in fn_block
+    assert "treeFilterModel.clusterHiddenIds(" in _apply_tree_filters_body(js)
+    model = _read("tree-filter-model.js")
+    assert "function clusterHiddenIds(rows)" in model
+    assert "hidden.has(row.parentId)" in model
 
 
 def test_filters_reapply_after_live_row_inserts() -> None:
@@ -740,7 +1125,7 @@ def test_filters_reapply_after_live_row_inserts() -> None:
     assert "function scheduleFilterReapply()" in js
     # applyCellPatch owns both live paths: patching an existing row
     # (mtime and activity can flip its verdict) and inserting a new one.
-    patch_start = js.index("function applyCellPatch(entry)")
+    patch_start = js.index("function applyCellPatch(entry, highlightChange)")
     patch_block = js[patch_start : js.index("function _removeRenderedRows(path)")]
     assert patch_block.count("scheduleFilterReapply()") == 2
 
@@ -749,14 +1134,23 @@ def test_filters_reapply_after_live_row_inserts() -> None:
 
 
 def test_index_loads_filter_modules_before_app() -> None:
-    """filter_state.js registers the global app.js reads at load, and
-    filter_controls.js supplies the markup it renders."""
+    """filter-state.js registers the global app.js reads at load, and
+    filter-controls.js supplies the markup it renders."""
 
     html = _render_index_html()
-    assert 'src="/static/filter_state.js?v=' in html
-    assert 'src="/static/filter_controls.js?v=' in html
-    assert html.index("/static/filter_state.js") < html.index("/static/app.js")
-    assert html.index("/static/filter_controls.js") < html.index("/static/app.js")
+    assert 'src="/static/filter-state.js?v=' in html
+    assert 'src="/static/filter-controls.js?v=' in html
+    app_script = html.index('<script src="/static/app.js')
+    assert html.index("/static/filter-state.js") < app_script
+    assert html.index("/static/filter-controls.js") < app_script
+
+
+def test_index_loads_pending_tally_watchdog_before_app() -> None:
+    html = _render_index_html()
+    assert 'src="/static/pending-tally-diagnostics.js?v=' in html
+    assert html.index("/static/pending-tally-diagnostics.js") < html.index(
+        '<script src="/static/app.js'
+    )
 
 
 def test_dom_content_loaded_initializes_the_filter_bar() -> None:
@@ -812,10 +1206,16 @@ def test_the_navigation_column_shares_one_left_inset() -> None:
     nav_tab_block = css[nav_tab_start : css.index("}", nav_tab_start)]
     assert "calc(var(--pane-header-padding-x) - var(--file-tab-padding-x))" in nav_tab_block
 
-    # Tree row: 10px padding + 2px selection bar = the same 12px.
+    # Tree row: 10px padding + 2px selection bar = the same 12px at the top
+    # level, plus one --tree-indent per level of nesting. The depth is in the
+    # padding, never in the box, so the row still spans the whole panel.
     row_start = css.index(".tree-item {")
     row_block = css[row_start : css.index("}", row_start)]
-    assert "padding: 2px 12px 2px 10px;" in row_block
+    assert "padding: 2px 12px 2px calc(10px + (var(--tree-depth, 1) - 1)" in row_block
+    assert (
+        "margin-left"
+        not in css[css.index(".tree-children {") : css.index("}", css.index(".tree-children {"))]
+    )
     assert "border-left: 2px solid transparent;" in row_block
 
 
@@ -842,6 +1242,7 @@ def test_live_uses_the_server_owned_ninety_second_window() -> None:
     assert "LIVE_FILE_WINDOW_S = 90.0" in settings
     assert '"live": LIVE_FILE_WINDOW_S' in settings
     assert '"RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS' in settings
+    assert '"RECENT_WINDOWS"' not in settings
 
     js = _read("app.js")
     assert "_METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS" in js
@@ -857,7 +1258,7 @@ def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
     start = js.index("var FILTER_RECENCY_OPTIONS = [")
     block = js[start : js.index("];", start)]
     for value, age in (
-        ('"live"', "age-sec"),
+        ('"live"', "age-live"),
         ('"1h"', "age-min"),
         ('"24h"', "age-hr"),
         ('"7d"', "age-day"),
@@ -867,9 +1268,13 @@ def test_age_menu_rows_reuse_the_tree_freshness_ramp() -> None:
         option = block[value_start : value_start + 240]
         assert f'ageClass: "{age}"' in option, f"{value} should wear {age}"
 
-    # Scoped to the menu: the tree's ramp is contrast-audited.
+    filter_controls = _read("filter-controls.js")
+    assert "file-age-marker" not in filter_controls
+
+    # The shared ramp is sufficient; no menu-only color correction may drift.
     css = _read("styles.css")
-    assert ".chip-menu-item.age-min {" in css
+    assert ".chip-menu-item.age-min {" not in css
+    assert ".file-age-marker" not in css
 
 
 def test_clear_sits_with_the_dropdowns_it_undoes() -> None:
@@ -889,7 +1294,7 @@ def test_a_constrained_dropdown_trigger_looks_set() -> None:
     """A collapsed control must not require reading its label to know
     whether it is filtering."""
 
-    js = _read("filter_controls.js")
+    js = _read("filter-controls.js")
     assert 'data-active="${selected.length > 0}"' in js
 
     css = _read("styles.css")
