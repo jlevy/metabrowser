@@ -5,11 +5,13 @@ title: "Spike: validate the exact-wheel fdu provider against the MetaBrowser con
 kind: task
 status: open
 priority: 1
-version: 4
+version: 5
 labels: []
 dependencies: []
+child_order_hints:
+  - is-01m1108krqtakrjwazn3eycbp1
 created_at: 2026-08-27T05:28:32.426Z
-updated_at: 2026-08-27T06:52:57.361Z
+updated_at: 2026-08-27T06:59:33.782Z
 ---
 On branch codex/fdu-opened-root-e2e-spike at PR #74 head 3183888, install an fdu wheel built from exact PR #48 revision 0583a1a, implement the minimum disposable adapter to the unchanged InventoryHandle contract, instrument materialization/sort/aggregate/binding costs, and run one full application lifecycle. Preserve the Python provider and standalone fdu CLI. Retain the reproducible harness and evidence; delete or replace naive adapter code after the contract decision.
 
