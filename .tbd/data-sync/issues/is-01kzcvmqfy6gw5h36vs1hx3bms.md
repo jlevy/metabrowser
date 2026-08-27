@@ -5,17 +5,17 @@ title: "HTML P2: capability set, --untrusted profile, and client publication"
 kind: task
 status: open
 priority: 1
-version: 5
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzcvmr0d1eyegyds8zpbffbz
   - type: blocks
-    target: is-01kzs5m38dz1egphfwf30c8h7n
+    target: is-01kzsb4k9hwrt25jj9j6svkvaf
 parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 created_at: 2026-08-07T00:58:17.469Z
-updated_at: 2026-08-16T08:05:43.354Z
+updated_at: 2026-08-27T05:37:04.547Z
 extensions:
   linear:
     id: 799c6e7a-191e-4d81-86b5-0a581e9e54c1
