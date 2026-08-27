@@ -508,7 +508,7 @@ schema.
    highlighting as the unanchored default, whole-file highlight-then-diff when content
    refs resolve, full highlighting for added files now.
 5. Fold the agent-edit adapter into the general diff rendering plan
-   ([plan spec](../../specs/active/plan-2026-08-17-general-diff-rendering.md)) once the
+   ([plan spec](../specs/active/plan-2026-08-17-general-diff-rendering.md)) once the
    anchored-apply engine exists.
 
 ## Appendix: Syntax Highlighting in Diff Viewers
@@ -584,7 +584,7 @@ Project sources:
   (schema)
 - [patch_file.py parser](../../../src/metabrowser/diff/adapters/patch_file.py),
   [apply.py oracle](../../../src/metabrowser/diff/apply.py) (source)
-- [General diff rendering plan](../../specs/active/plan-2026-08-17-general-diff-rendering.md)
+- [General diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md)
   (spec)
 
 POSIX and GNU (spec/manual):

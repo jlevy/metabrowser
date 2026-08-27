@@ -290,7 +290,7 @@ that a particular bundler grows a community.
 - [npm `min-release-age`](https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age)
 - [Supply-chain security](../../../SUPPLY-CHAIN-SECURITY.md)
 - [Development](../../development.md)
-- [Historical Diff View Spike Results](research-2026-07-18-diff-view-spike-results.md)
+- [Historical Diff View Spike Results](archive/research-2026-07-18-diff-view-spike-results.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

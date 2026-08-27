@@ -36,13 +36,24 @@ links to the document that covers each in depth.
 
 ## Research
 
+Research records are evidence and design input, not contracts.
+A record stays in this list while it still informs open work.
+Once its questions are answered and its measurements are superseded, it moves to
+[`research/archive/`](research/archive/) and is listed under Archived Research below.
+
 - [Web diff viewer architecture and intermediate representations](research/research-2026-07-17-web-diff-viewer-architecture.md)
-- [Historical diff view spike results](research/research-2026-07-18-diff-view-spike-results.md)
 - [Browser contributor toolchain and distribution](research/research-2026-07-18-browser-contributor-toolchain.md)
 - [Fuzzy file ranking contract and measurements](research/research-2026-07-31-fuzzy-file-ranking.md)
 - [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
+- [File patch formats](research/research-2026-08-19-file-patch-formats.md)
 - [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
+
+### Archived Research
+
+- [Historical diff view spike results](research/archive/research-2026-07-18-diff-view-spike-results.md)
+  — July 2026 prototype timings, kept for provenance; the production renderer and its
+  performance gates carry the current numbers
 
 ## Reviews
 

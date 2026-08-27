@@ -146,7 +146,7 @@ They show that the architectural conclusion was implemented and then measured di
 
 The production measurement, current test contract, and implementation details live in
 the
-[general diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md#phase-5-large-folded-comparison-responsiveness).
+[general diff rendering plan](../../specs/active/plan-2026-08-17-general-diff-rendering.md#phase-5-large-folded-comparison-responsiveness).
 
 ## Packaging Measurements and Correction
 
@@ -192,11 +192,11 @@ or virtualization, and choosing a reproducible ESM vendor-build mechanism.
 
 - [Pull request #12](https://github.com/jlevy/metabrowser/pull/12)
 - [Historical spike tree](https://github.com/jlevy/metabrowser/tree/414a2fc313d45044295d3bae9b1ac77028c6b2bb/spikes/diff-view)
-- [Web Diff Viewer Architecture and Intermediate Representations](research-2026-07-17-web-diff-viewer-architecture.md)
-- [Browser Contributor Toolchain and Distribution](research-2026-07-18-browser-contributor-toolchain.md)
-- [General Diff Rendering](../specs/active/plan-2026-08-17-general-diff-rendering.md)
-- [Web Performance Framework](../../web-performance-framework.md)
-- [Rendering Large Content](../../large-content-rendering.md)
+- [Web Diff Viewer Architecture and Intermediate Representations](../research-2026-07-17-web-diff-viewer-architecture.md)
+- [Browser Contributor Toolchain and Distribution](../research-2026-07-18-browser-contributor-toolchain.md)
+- [General Diff Rendering](../../specs/active/plan-2026-08-17-general-diff-rendering.md)
+- [Web Performance Framework](../../../web-performance-framework.md)
+- [Rendering Large Content](../../../large-content-rendering.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

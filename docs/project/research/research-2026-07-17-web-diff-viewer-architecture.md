@@ -1,10 +1,19 @@
 # Research: Web Diff Viewer Architecture and Intermediate Representations
 
-**Date:** 2026-07-17 (last updated 2026-08-25)
+**Date:** 2026-07-17 (last updated 2026-08-27)
 
 **Author:** Joshua Levy with OpenAI Codex research assistance
 
-**Status:** Complete
+**Status:** Complete; the comparison model and layered IR are adopted, the delivery
+sequence is superseded
+
+The layered architecture, comparison semantics, and completeness rules below became
+[File Diff Format v1](../architecture/file-diff-format/file-diff-format.md) and the
+production Git source and diff renderer.
+[General diff rendering](../specs/active/plan-2026-08-17-general-diff-rendering.md) is
+the implementation contract and the place where remaining work is tracked.
+Read the sections below as the rationale that plan adopted, except where a section notes
+that production settled the question differently.
 
 ## Overview
 
@@ -43,6 +52,14 @@ Its current API and release maturity still warrant a pinned, benchmarked spike.
 GitHub’s 2026 diff work provides the best complementary lesson: simplify each row,
 progressively load file bodies, and virtualize only very large reviews so native find,
 copy, print, and accessibility remain intact for ordinary changes.
+
+Two of those recommendations did not survive implementation.
+Diff shipped in core rather than as an installed plugin, because a comparison is not a
+Git concept and a renderer inside a Git plugin would have to be extracted before a patch
+file or a hosted API could use it.
+And no renderer library was adopted: an owned DOM renderer met the measured bounds, so
+the dependency gate stayed shut.
+The layered architecture above is what carried through.
 
 ## Scope
 
@@ -833,7 +850,7 @@ printing.
 A July prototype compared the default nonvirtualized `@pierre/diffs` path,
 `@git-diff-view/core` with a custom DOM layer, server-rendered HTML, and a small owned
 table renderer.
-[Historical Diff View Spike Results](research-2026-07-18-diff-view-spike-results.md)
+[Historical Diff View Spike Results](archive/research-2026-07-18-diff-view-spike-results.md)
 preserves the measurements and their limits.
 The prototype established that fully mounting a pathological diff was the dominant cost
 and that client-side diff computation was unsuitable for that input.
@@ -1078,6 +1095,16 @@ Use:
 
 ## Delivery Plan
 
+**Superseded.** This sequence assumed diff would ship as an installed plugin built on a
+third-party renderer.
+It shipped instead as core: a comparison model in `src/metabrowser/diff/`, Git routes in
+`src/metabrowser/git/`, and an owned renderer in the built-in diff plugin, phased by
+[general diff rendering](../specs/active/plan-2026-08-17-general-diff-rendering.md).
+Phases 0 through 2 are delivered in that different shape, Phase 3 review state and Phase
+5 mutations remain unscheduled, and Phase 4 native and Jujutsu work is still gated on
+measurement. The phases are kept because they record what the research expected to be
+hard, which is the part worth comparing against what actually was.
+
 ### Phase 0: Contracts, Platform Capabilities, and Benchmark Harness
 
 - Specify `ComparisonIntent`, `ResolvedComparison`, `ChangeSetManifest`, `ContentRef`,
@@ -1137,29 +1164,30 @@ Use:
 
 ## Open Decisions
 
-The implementation project should decide, with benchmark evidence:
+Production settled four of these.
+Semantic hunks are produced by the Python adapter and parsed into File Diff Format
+before transport, not parsed in a browser worker.
+That schema is JSON with an explicit encoding and availability model, which answers the
+serialization question.
+No `@pierre/diffs` integration exists, so its `CodeView` threshold question is moot; the
+owned renderer bounds mounted rows instead, and the dependency gate is described in the
+[frontend tooling review](#frontend-tooling-review) above.
+Diff is core rather than a plugin, so it needs no manifest-declared repository-scoped
+tool entry.
 
-- Whether the first `@pierre/diffs` integration uses `CodeView` for all reviews or
-  switches from fully mounted `FileDiff` instances only above a threshold.
-- Whether semantic hunks are produced directly by the Python adapter or first parsed in
-  a worker from bounded per-file patches.
-  Direct server production is the cleaner target; worker parsing may reduce initial
-  backend work.
+The rest still need benchmark evidence:
+
 - How strong local consistency must be: optimistic generation and refresh, or bounded
   content-addressed worktree snapshots.
 - Which rename and copy detection limits produce the best accuracy/latency balance.
+  The Git source runs `-M` and `-C` at their defaults; no limit has been measured.
 - Whether addition/deletion totals are deferred when exact counts would delay the
-  manifest.
-- Which schema serialization best preserves arbitrary path and content bytes while
-  remaining pleasant for plugins.
+  manifest. This is still open for the planned uncommitted comparisons.
 - What stable Jujutsu machine interface is available at implementation time.
-- Whether the repository-scoped surface ships as a manifest-declared tool entry first or
-  waits for directory-scoped container kinds, and how the two later unify.
-- Whether and when the core file tree gains a decoration API so the plugin can badge
+- Whether and when the core file tree gains a decoration API so a source can badge
   changed, staged, and untracked files in place.
-  Tree rows are core-owned, editor users expect change indicators there, and the answer
-  moves the core/plugin boundary, so it should be decided before the plugin’s first
-  release rather than after.
+  Tree rows are core-owned and editor users expect change indicators there, so the
+  answer moves the core boundary.
 
 ## Methodology and Evidence Limits
 
@@ -1206,7 +1234,7 @@ Metabrowser’s benchmarks.
 
 ### Frontend Libraries
 
-- [Historical Diff View Spike Results](research-2026-07-18-diff-view-spike-results.md)
+- [Historical Diff View Spike Results](archive/research-2026-07-18-diff-view-spike-results.md)
 - [Browser Contributor Toolchain and Distribution](research-2026-07-18-browser-contributor-toolchain.md)
 - [`@pierre/diffs` documentation](https://diffs.com/docs)
 - [Pierre: On Rendering Diffs](https://pierre.computer/writing/on-rendering-diffs)
