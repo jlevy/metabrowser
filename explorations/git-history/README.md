@@ -147,8 +147,44 @@ The profile also exposed a server cleanup defect before acceptance: evicting a l
 walk could wait on a killed child whose stdout pipe was still full.
 Session shutdown now drains that pipe while reaping the child, and a 10,000-commit
 resource-eviction regression covers the bound.
-Phase 5 repeats the matrix across every measured shape and size and adds a corpus deep
-enough to force physical scroll-segment rebasing.
+
+## Phase 5 Release Validation
+
+The production backend passed the complete nine-corpus matrix: linear, branch-heavy, and
+merge-heavy histories at 250, 1,000, and 10,000 commits.
+Every result exactly matched `git rev-list --date-order --all`; each 10,000-commit
+history reached page 40. Sampled first, middle, and final pages replayed exactly.
+The largest parser buffer was 114,071 bytes against the 128 KiB budget, the largest
+spool density was 194.417 bytes per commit, and the largest sampled Git child was 16.969
+MiB RSS.
+
+Nine headed browser profiles reached the exact final logical row and revision, replayed
+evicted pages, restored their deepest selection and direct route, and retained exactly
+one comparison. The final window contained 100 rows, no profile exceeded the 256-row
+mount budget, and retained heap ranged from 2.7 to 3.4 MiB. Every profile recorded zero
+blank frames, state divergence, page exceptions, and Long Tasks.
+
+The matrix exposed one release defect rather than normalizing it away.
+Chrome could make a cached manifest-owned plugin stylesheet available through
+`link.sheet` without firing its `load` event, leaving commit detail on “Loading
+commit…”. The shared plugin asset loader now detects that cached state, settles once on
+load, error, or cache readiness, and bounds a missing event with a 10-second timeout.
+The merge-heavy 1,000- and 10,000-commit profiles each passed three times after the fix.
+
+The separate synthetic profile uses 1,454,667 logical rows, more than four physical
+scroll segments.
+It forced both forward and backward rebases while preserving the logical
+top row and intra-row pixel offset, restored direct target ordinal 1,454,567, and
+measured a 7,999,992 px physical segment under the 8,000,000 px budget.
+It mounted at most 170 rows and recorded no page exception.
+
+Finally, the exact installed candidate wheel from `1c7bdf8` was compared with installed
+v0.8.0 on the unchanged `tree-114a927f` release corpus.
+Five backend pairs returned identical ordered rows and tallies.
+Six interleaved visible browser profiles passed every hard correctness and
+responsiveness gate with no Long Task, blocking time, failed fetch, rendered error, or
+page exception. The complete release comparison is recorded in
+[`exp-020`](../performance-loop/experiments/exp-020-v090-history-preserves-release-responsiveness.md).
 
 ## Frozen Structural Budgets
 

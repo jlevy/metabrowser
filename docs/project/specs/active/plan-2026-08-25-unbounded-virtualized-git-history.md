@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** In progress; Phases 1–3 accepted on 2026-08-26 and targeted for v0.9.0
+**Status:** Completed and accepted for v0.9.0 on 2026-08-27
 
 ## Overview
 
@@ -327,7 +327,7 @@ evicted windows in both directions within the mounted-row bound, restored its de
 route, and found a full-stdout subprocess cleanup deadlock that is now covered by a
 resource-eviction regression.
 
-### Phase 5: Validate v0.9 (`mb-0ev5`)
+### Phase 5: Validate v0.9 (`mb-0ev5`, completed)
 
 - Run the deterministic structural suite and real-browser profiles at all measured
   sizes, including repeated down/up traversal after cache eviction and a history deep
@@ -335,6 +335,23 @@ resource-eviction regression.
 - Compare the release candidate with the preceding release through the performance
   harness, run `make verify`, and record limitations and measurements in the release
   notes.
+
+The deterministic backend matrix exactly matches Git ordering across linear,
+branch-heavy, and merge-heavy histories at 250, 1,000, and 10,000 commits.
+Every 10,000-commit case reaches page 40, and sampled first, middle, and final pages
+replay exactly while parser, spool, Git-process, registry, and subprocess bounds hold.
+
+Nine headed profiles reach the exact logical end, revisit evicted pages, restore the
+deepest selection and direct route, and keep mounted rows and retained heap bounded.
+A separate 1,454,667-row profile forces physical scroll-segment rebasing in both
+directions, preserves the logical row and intra-row offset, and restores a direct target
+near the end without exceeding the 8,000,000 px segment budget.
+
+The exact installed candidate at `1c7bdf8` passes `make verify` with 1,596 tests and 48
+golden scenarios. Five backend pairs and six interleaved headed browser profiles against
+installed v0.8.0 preserve semantic responses and pass every hard responsiveness gate.
+The full measurements and the cached-stylesheet defect found during the matrix are
+recorded in the Git-history exploration and performance experiment `exp-020`.
 
 ## Testing and Acceptance
 
