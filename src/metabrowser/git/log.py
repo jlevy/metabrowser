@@ -31,6 +31,7 @@ of the next.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from metabrowser.git.process import run_git
@@ -296,6 +297,44 @@ async def read_refs(served_root: Path, *, head_ref: str | None = None) -> list[G
     return refs
 
 
+async def read_history_summary(
+    served_root: Path,
+    *,
+    revisions: Sequence[str],
+    all_refs: bool,
+) -> tuple[int, float | None]:
+    """Total commits in scope, and the oldest root commit's committer date.
+
+    Backs the panel's header tally. ``--all`` stands in for an expanded
+    all-refs target list: it reaches the same commits, and a repository
+    with thousands of refs must not become thousands of argv entries.
+    The default scope passes its handful of resolved revisions directly.
+
+    Both commands walk the graph without touching trees or diffs, so the
+    cost is one traversal, bounded by the shared subprocess timeout. An
+    empty scope is an unborn branch: zero commits, no first date.
+    """
+    selector: tuple[str, ...] = ("--all",) if all_refs else tuple(revisions)
+    if not selector:
+        return 0, None
+    raw_count = await run_git(["rev-list", "--count", *selector], cwd=served_root)
+    commit_count = int(raw_count.decode("ascii", errors="replace").strip() or "0")
+
+    # One "commit <sha>" line and one "%ct" line per root commit. A scope
+    # can have several roots (orphan branches, grafted history); the
+    # repository's age is the oldest of them.
+    raw_roots = await run_git(
+        ["rev-list", "--max-parents=0", "--format=%ct", *selector],
+        cwd=served_root,
+    )
+    timestamps = [
+        float(line)
+        for line in raw_roots.decode("ascii", errors="replace").splitlines()
+        if line.isdigit()
+    ]
+    return commit_count, (min(timestamps) if timestamps else None)
+
+
 __all__ = [
     "parse_decoration",
     "parse_epoch",
@@ -303,6 +342,7 @@ __all__ = [
     "TRUNK_REMOTES",
     "parse_log_output",
     "is_trunk_ref",
+    "read_history_summary",
     "trunk_refs",
     "read_refs",
 ]

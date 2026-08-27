@@ -395,7 +395,6 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "white-space: pre-wrap" in summary_body
     for rule in (
         meta,
-        summary_sha,
         compact_subject,
         compact_meta,
         summary_age,
@@ -405,6 +404,12 @@ def test_git_commit_summary_is_one_component() -> None:
         assert "font-size: var(--body-font-size)" in rule
         assert "font-size: var(--ui-small-font-size)" not in rule
         assert "font-size: var(--tooltip-detail-font-size)" not in rule
+    # The revision is the documented exception: monospace at body size
+    # renders optically larger than the sans beside it, so the sha sits
+    # one step down the ramp. See "Git Commit Summary" in the design
+    # system.
+    assert "font-family: var(--font-mono)" in summary_sha
+    assert "font-size: var(--nav-font-size)" in summary_sha
     assert "noninteractive copy glyph" in doc
 
 

@@ -735,8 +735,11 @@ The server computes all counts before bounding the returned file list, so a larg
 remains exact. Line totals use the shared semantic colors and weight and render a true
 minus sign. Missing totals remain visibly unknown.
 
-The subject, revision, ref badges, author, age, file-status counts, units, and line
-counts use `--body-font-size` in both projections.
+The subject, ref badges, author, age, file-status counts, units, and line counts use
+`--body-font-size` in both projections.
+The revision is the one deliberate exception: it is monospace, and mono at body size
+renders optically larger than the sans text beside it, so it uses `--nav-font-size` —
+one step down the ramp — to sit level with its row.
 The compact tooltip is bounded by width and subject line count, not made denser with
 smaller type. The optional full-summary description is prose: it uses `--font-sans` at
 `--body-font-size`, wraps naturally, and preserves the newlines authored in the commit
