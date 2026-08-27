@@ -28,6 +28,13 @@ Features:
 
 Fixes:
 
+- Scrolling deep into Git history no longer nudges the view by a row.
+  The virtualized window measures from the first history row, but the panel was handing
+  it the shared scroller’s offset, which also includes the header tally above the graph.
+  Row mounting absorbed the difference, so the visible symptom was confined to the
+  jumps: a scroll position rewritten at a segment boundary, and restoring a commit from
+  its URL or arrow-keying past the mounted range, each landing one row off target.
+
 - A history row can no longer render with an invisible commit message.
   The subject used to absorb all of a row’s flex shrinkage and could collapse to zero
   width — most often on merge rows, whose converging lanes widen the graph gutter —
