@@ -822,45 +822,51 @@ printing.
 
 | Tool | Best qualities | Limitations for Metabrowser | Fit |
 | --- | --- | --- | --- |
-| `@pierre/diffs` | Vanilla and React APIs; parsed patches or full files; Shiki; split/unified; annotations; worker pool; file and row virtualization; scroll anchoring | Fast-moving APIs; newer `CodeView` surfaces and the inspected version are beta; nontrivial dependency and CSS integration | Best prototype candidate. |
-| `@git-diff-view/core` and framework packages | Current worker-compatible core; HAST highlighting; split/unified projections; React and Vue packages | Younger ecosystem, rapid releases, less evidence at extreme multi-file scale, no native Metabrowser framework match | Track and benchmark as an emerging challenger. |
+| `@pierre/diffs` | Vanilla and React APIs; parsed patches or full files; Shiki; split/unified; annotations; worker pool; file and row virtualization; scroll anchoring | Fast-moving APIs; newer `CodeView` surfaces and the inspected version are beta; nontrivial dependency and CSS integration | Reopen only if worker tokenization or virtualization can replace enough production code to justify the graph. |
+| `@git-diff-view/core` and framework packages | Current worker-compatible core; HAST highlighting; split/unified projections; React and Vue packages | Younger ecosystem, rapid releases, less evidence at extreme multi-file scale, no native Metabrowser framework match | Re-evaluate as a model or tokenizer if the production enrichment path needs one. |
 | `react-diff-view` | Mature flexible hunk, widget, selection, source-expansion, token, and worker APIs | Requires React; multi-file orchestration and virtualization remain application work | Strong if a React island is accepted. |
 | Diff2Html | Robust Git/unified parser including combined, copy, rename, binary, and limits; static split/unified HTML | Highlighting and HTML generation are less suited to rich incremental review and extreme virtualization | Good static/import fallback and parser reference. |
 | CodeMirror Merge | Incremental text model; split and unified views; collapse unchanged; accept/reject; editing | Editor-centric and full-content oriented; multi-file review shell is application work | Best future editing or hunk-action foundation. |
 | Monaco Diff Editor | Polished IDE semantics; advanced algorithm, moved changes, hidden regions, accessibility, limits, responsive inline fallback | Very large editor runtime and styling footprint; one-file editor model duplicates much of Metabrowser’s UI | Use only if full IDE behavior becomes the goal. |
-| Custom DOM renderer | Exact schema, design-system, and performance control | Parser, layout, accessibility, selection, comments, workers, and scroll anchoring are a large permanent burden | Build only the shell and adaptations, not the entire line renderer initially. |
+| Custom DOM renderer | Exact schema, design-system, and performance control | Layout, accessibility, selection, comments, workers, and scroll anchoring remain owned maintenance | Production path; preserve its measured bounds and reopen the dependency gate only for a named missing capability. |
 
-`@pierre/diffs` deserves the first spike because its vanilla `CodeView` is unusually
-well aligned with Metabrowser.
-Its source distinguishes partial patch files from full file contents, groups hunk
-content, records modes and object IDs, computes split and unified row ranges, and
-terminates worker pools explicitly.
-Its newer DiffsHub example also streams complete per-file patch segments rather than
-waiting for the entire patch.
+A July prototype compared the default nonvirtualized `@pierre/diffs` path,
+`@git-diff-view/core` with a custom DOM layer, server-rendered HTML, and a small owned
+table renderer.
+[Historical Diff View Spike Results](research-2026-07-18-diff-view-spike-results.md)
+preserves the measurements and their limits.
+The prototype established that fully mounting a pathological diff was the dominant cost
+and that client-side diff computation was unsuitable for that input.
+It did not exercise Pierre’s virtualized components or worker pool, so it does not close
+the current renderer dependency gate.
 
-The library should not become the server contract.
-Add a small adapter from Metabrowser’s `FilePatch` to the library’s `FileDiffMetadata`,
-pin the audited version, bundle assets locally, and retain a plain renderer for
-unsupported or degraded cases.
-The spike should test the released stable version and the newer `CodeView` version
-separately under the repository’s dependency cool-off and lockfile rules.
+If the dependency gate reopens, the library must not become the server contract.
+A small adapter should translate Metabrowser’s `FilePatch` to the library model, and a
+plain renderer should remain for unsupported or degraded cases.
+Test the exact cooled-off release under the repository’s lockfile and supply-chain
+rules; do not carry the July package versions forward as implementation inputs.
 
-Adopting the library is also a packaging decision, not only an API decision.
-Inspection of the published stable package shows an ESM-only distribution of several
-megabytes across hundreds of files with bare-specifier imports of Shiki and HAST
+Adopting a renderer library is also a packaging decision, not only an API decision.
+The July inspection of the published stable package found an ESM-only distribution of
+several megabytes across hundreds of files with bare-specifier imports of Shiki and HAST
 utilities, React confined to the separate `react` and `ssr` entry points (the vanilla
 entry does not import React), and dedicated worker entry points.
-Metabrowser today has no JavaScript bundling pipeline, ships zero runtime npm
-dependencies by policy, and loads third parties from a pinned CDN or as single vendored
-files. Consuming this library therefore means introducing the repository’s first runtime
-npm dependency graph and a development-time bundling step that emits pinned, vendored
-plugin assets served from the plugin-static route, all under the cool-off and exact-pin
-rules. Shiki’s pure-JavaScript regex engine avoids vendoring the Oniguruma WebAssembly
-binary and should be the spike’s default.
-The spike must score these integration axes — bundled size, worker operation from
-plugin-static under the target Content Security Policy, and dependency count and update
-cadence — alongside render performance, with `@git-diff-view/core` as the named fallback
-if integration costs disqualify the first choice.
+Metabrowser has no first-party JavaScript bundling pipeline and ships no browser runtime
+dependency graph.
+Third-party browser files are exact-pinned npm development dependencies
+copied into the wheel with a hash manifest and license texts.
+Consuming this library would introduce the repository’s first bundled browser dependency
+graph and a development-time build that emits pinned, vendored plugin assets served from
+the plugin-static route.
+Shiki’s pure-JavaScript regex engine avoids vendoring the Oniguruma WebAssembly binary
+and should be the evaluation default.
+Any new spike must start from the production renderer and its current browser profile.
+It must score bundled size, worker operation from plugin-static under the target Content
+Security Policy, dependency count and update cadence, accessibility, design-token fit,
+and maintenance cost alongside render performance.
+The
+[browser contributor toolchain research](research-2026-07-18-browser-contributor-toolchain.md)
+owns the wider build-system decision.
 
 `react-diff-viewer` and similar two-string components are attractive demos but poor
 multi-file foundations.
@@ -1200,6 +1206,8 @@ Metabrowser’s benchmarks.
 
 ### Frontend Libraries
 
+- [Historical Diff View Spike Results](research-2026-07-18-diff-view-spike-results.md)
+- [Browser Contributor Toolchain and Distribution](research-2026-07-18-browser-contributor-toolchain.md)
 - [`@pierre/diffs` documentation](https://diffs.com/docs)
 - [Pierre: On Rendering Diffs](https://pierre.computer/writing/on-rendering-diffs)
 - [`@pierre/diffs` package](https://www.npmjs.com/package/%40pierre/diffs)
