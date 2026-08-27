@@ -57,6 +57,7 @@ Three things in a working repository have **no object id**:
 | The index | A file identity — device, inode, size, mtime — but no content hash |
 | The working tree | Nothing; files change underneath a read |
 | A remote URL | A name for a repository that is not local yet |
+| A position in an ordered walk | An offset that is only meaningful while the walk lives |
 
 Every hard problem outside the implemented surface descends from this one fact, and each
 is solved the same way: **manufacture an identity, then state its validity rules.** A
@@ -68,8 +69,22 @@ not be used as an immutable cache key, and a document built from it carries a
 
 `metabrowser/git/process.py` is the only place a `git` process is created.
 That singularity is what makes the properties below invariants rather than conventions
-somebody has to remember, and it is why a new Git feature extends `run_git` with a
-policy instead of adding a second wrapper.
+somebody has to remember, and it is why a new Git feature extends the module instead of
+adding a second wrapper.
+
+The module exposes two seams, and which one a feature needs is a real decision:
+
+- **`run_git`** runs a command to completion and returns its buffered bytes.
+  Every bounded, request-scoped read uses this.
+- **`spawn_git_process`** returns a live process whose streams the caller owns, for
+  consumers that cannot wait for completion — a long walk read page by page.
+  It performs the same executable lookup, environment isolation, fixed-argument
+  assembly, and spawn-failure translation, so the guarantees below are identical either
+  way. Its `pipe_stdin` is reserved for bounded, already-validated input.
+
+A caller that owns a process also owns terminating it; `terminate_git_process` is the
+counterpart, and anything holding a process across requests needs the lifecycle rules in
+[Long-lived walks](#long-lived-walks).
 
 | Invariant | Mechanism | What it prevents |
 | --- | --- | --- |
@@ -96,6 +111,50 @@ rewrites `.git/index` to persist a refreshed stat cache, and with optional locks
 does not. The cost is that the stat cache never persists, so stat-dirty files re-hash on
 every invocation. Any feature that polls Git must budget for a cost that does not
 amortize.
+
+### Long-lived walks
+
+Continuous history is the first consumer that holds a Git process across requests, and
+it is worth reading as the third instance of the identity problem above rather than as a
+special case. A page of `git log` output has no object id: its offset means something
+only while that ordered walk exists.
+So the position gets a manufactured identity — an opaque page cursor — and the cursor
+carries the rules that say when it stopped being true.
+
+`git/history.py` owns one demand-driven `git log --date-order` walk per session.
+Pages already produced are framed into a private spool and replayed by indexed seek, so
+revisiting a page is a file read rather than a re-walk.
+
+The cursor is base64-encoded JSON carrying a format version, the session id, a scope
+fingerprint, the page number, and the page size.
+It is opaque to the browser and is validated on the way back in — exact key-set match, a
+version check, regex-bounded ids, integers that reject `bool`, and a page size that must
+equal the request’s own clamped limit.
+Every invalid shape decodes to `None` rather than raising.
+
+Four typed failures keep the states distinct, because “your cursor is malformed”, “the
+session was evicted”, “the repository moved underneath you”, and “the replay budget is
+exhausted” call for different recovery:
+
+| Failure | Means |
+| --- | --- |
+| `InvalidHistoryCursorError` | The cursor is malformed, or disagrees with the request |
+| `ExpiredHistorySessionError` | The bounded session is gone — idle-reaped, evicted, or shut down |
+| `StaleHistorySessionError` | The repository or ref scope changed after the session was created |
+| `HistoryStorageError` | The session exhausted its measured replay-storage budget |
+
+Every resource a session holds is separately bounded, and the constants live in
+`settings.py` beside the measurement that produced them: session count and concurrent
+walks, idle TTL, replay storage, and a parser budget that scales with page size.
+A session owns a process, a spool directory, and a registry entry, and all three are
+released together on eviction, idle reap, and shutdown.
+Shutdown drains the process output before reaping it — a walk whose stdout pipe is full
+will not exit on its own, so reaping first would wait forever.
+
+The rule this establishes for anything that follows: **holding a Git process across
+requests means owning its whole lifecycle.** Bound the count, bound the storage, expire
+on idle, release on shutdown, and give the client a typed way to learn its handle went
+away — the client must be able to recover, not just fail.
 
 ## Paths are bytes
 
@@ -280,7 +339,9 @@ with a different lifetime from the Git boundary.
 
 The short list a change should be checked against:
 
-1. Every `git` invocation goes through `run_git`. A second subprocess path is a bug.
+1. Every `git` invocation goes through `git/process.py`, via `run_git` or
+   `spawn_git_process`. A subprocess spawned anywhere else is a bug, and
+   `tests/test_git_arch_doc.py` fails the build for one.
 2. Argument vectors are fixed; caller-supplied values are validated before they can be
    read as options or revision expressions.
 3. Paths are bytes for identity and comparison; UTF-8 only for display, with `path_b64`

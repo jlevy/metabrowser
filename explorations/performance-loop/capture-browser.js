@@ -18,6 +18,7 @@ const BROWSER_STARTUP_SETTLE_MS = 500;
 const CDP_COMMAND_TIMEOUT_MS = 15_000;
 const CHROME_EXIT_GRACE_MS = 2_000;
 const CLIENT_COMPLETION_SETTLE_MS = 1_000;
+const DEEP_ROUTE_MEASUREMENT_TIMEOUT_MS = 30_000;
 // Keep the hydration probe bounded while allowing a moving history to put a
 // suitable multi-file revision beyond the first screenful between releases.
 const DEFERRED_CANDIDATE_ROWS = 64;
@@ -51,7 +52,8 @@ function usage() {
     "  --timeout-ms N      Application-settle timeout (default 180000)",
     "  --width N           Viewport width (default 1600)",
     "  --height N          Viewport height (default 900)",
-    "  --scenario NAME     Interaction scenario: git-revisions or file-views",
+    "  --scenario NAME     Interaction scenario: git-revisions, file-views, git-history-depth, or git-history-rebase",
+    "  --history-rows N    Required target row count for git-history-depth",
   ].join("\n");
 }
 
@@ -60,6 +62,7 @@ function parseArgs(argv) {
     chrome: "",
     headed: false,
     height: DEFAULT_VIEWPORT.height,
+    historyRows: 0,
     output: "",
     probe: "",
     scenario: "",
@@ -86,6 +89,8 @@ function parseArgs(argv) {
       options.chrome = value;
     } else if (argument === "--height") {
       options.height = Number(value);
+    } else if (argument === "--history-rows") {
+      options.historyRows = Number(value);
     } else if (argument === "--output") {
       options.output = value;
     } else if (argument === "--probe") {
@@ -115,8 +120,20 @@ function parseArgs(argv) {
       throw new Error(`--${field === "timeoutMs" ? "timeout-ms" : field} must be positive`);
     }
   }
-  if (options.scenario && !["git-revisions", "file-views"].includes(options.scenario)) {
+  if (
+    options.scenario &&
+    !["git-revisions", "file-views", "git-history-depth", "git-history-rebase"].includes(
+      options.scenario,
+    )
+  ) {
     throw new Error(`unknown scenario: ${options.scenario}`);
+  }
+  if (options.scenario === "git-history-depth") {
+    if (!Number.isInteger(options.historyRows) || options.historyRows <= 0) {
+      throw new Error("--history-rows is required and must be a positive integer");
+    }
+  } else if (options.historyRows !== 0) {
+    throw new Error("--history-rows is only valid with --scenario git-history-depth");
   }
   return options;
 }
@@ -1372,6 +1389,530 @@ async function runGitRevisionScenario(session, timeoutMs) {
   };
 }
 
+async function gitHistoryMountedStats(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const content = document.getElementById("tree-content");
+      const list = document.querySelector(".git-graph-list");
+      if (!(content instanceof HTMLElement) || !(list instanceof HTMLElement)) return null;
+      const rows = Array.from(list.querySelectorAll(".git-graph-row"));
+      return {
+        document_dom_nodes: document.querySelectorAll("*").length,
+        first_ordinal: Number(rows[0]?.dataset.ordinal ?? -1),
+        first_revision: rows[0]?.dataset.revision || "",
+        history_end: list.dataset.historyEnd === "true",
+        last_revision: rows.at(-1)?.dataset.revision || "",
+        last_ordinal: Number(rows.at(-1)?.dataset.ordinal ?? -1),
+        list_dom_nodes: list.querySelectorAll("*").length + 1,
+        list_html_bytes: new TextEncoder().encode(list.outerHTML).byteLength,
+        logical_row_count: Number(list.dataset.historyRows || 0),
+        max_mounted_rows: Number(window.METABROWSER_SETTINGS.GIT_HISTORY_WINDOW_MAX_ROWS),
+        row_count: rows.length,
+        scroll_height_px: content.scrollHeight,
+        viewport_height_px: content.clientHeight,
+      };
+    })()`,
+  );
+}
+
+async function gitHistoryRowCount(session) {
+  return evaluate(session, 'document.querySelectorAll(".git-graph-row").length');
+}
+
+async function gitHistoryLogicalState(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const list = document.querySelector(".git-graph-list");
+      const rows = Array.from(document.querySelectorAll(".git-graph-row"));
+      if (!(list instanceof HTMLElement)) return null;
+      return {
+        end: list.dataset.historyEnd === "true",
+        first_ordinal: Number(rows[0]?.dataset.ordinal ?? -1),
+        last_ordinal: Number(rows.at(-1)?.dataset.ordinal ?? -1),
+        logical_rows: Number(list.dataset.historyRows || 0),
+        mounted_rows: rows.length,
+      };
+    })()`,
+  );
+}
+
+async function loadGitHistoryDepth(session, targetRows, timeoutMs) {
+  await waitFor(
+    () => pointForSelector(session, '.tab-btn[data-tab="git"]'),
+    timeoutMs,
+    "Git navigation tab",
+  );
+  await dispatchTrustedClickForSelector(session, '.tab-btn[data-tab="git"]');
+  await waitFor(
+    async () => ((await gitHistoryRowCount(session)) > 0 ? true : null),
+    timeoutMs,
+    "the first Git history page",
+  );
+
+  // Give the deepest-row transition a real retained preview to replace. The
+  // established revision scenario uses the same warm handoff; an empty preview
+  // would measure first render instead of navigation continuity.
+  const warm = await gitRow(session, 0);
+  await dispatchTrustedClickForSelector(session, ".git-graph-row", 0);
+  await waitForGitRevision(session, warm.revision, timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+
+  const pageAppends = [];
+  while (true) {
+    const before = await gitHistoryLogicalState(session);
+    if (!before) {
+      throw new Error("Git history list disappeared during depth measurement");
+    }
+    if (before.logical_rows >= targetRows) {
+      if (before.logical_rows !== targetRows || !before.end) {
+        throw new Error(
+          `Git history reached ${before.logical_rows} logical rows without its expected end`,
+        );
+      }
+      await evaluate(
+        session,
+        `(() => {
+          const content = document.getElementById("tree-content");
+          if (!(content instanceof HTMLElement)) return false;
+          content.scrollTop = content.scrollHeight;
+          content.dispatchEvent(new Event("scroll"));
+          return true;
+        })()`,
+      );
+      await waitFor(
+        async () => {
+          const state = await gitHistoryLogicalState(session);
+          return state?.last_ordinal === targetRows - 1 ? state : null;
+        },
+        timeoutMs,
+        "the terminal Git history window",
+      );
+      const stats = await gitHistoryMountedStats(session);
+      if (!stats) {
+        throw new Error("Git history list disappeared during depth measurement");
+      }
+      return { pageAppends, stats };
+    }
+    const started = await evaluate(session, "performance.now()");
+    await evaluate(
+      session,
+      `(() => {
+        const content = document.getElementById("tree-content");
+        if (!(content instanceof HTMLElement)) return false;
+        content.scrollTop = content.scrollHeight;
+        content.dispatchEvent(new Event("scroll"));
+        return true;
+      })()`,
+    );
+    const afterRows = await waitFor(
+      async () => {
+        const failure = await evaluate(
+          session,
+          `document.querySelector(".git-graph-more-failed")?.textContent || ""`,
+        );
+        if (failure) {
+          throw new Error(failure);
+        }
+        const state = await gitHistoryLogicalState(session);
+        if (!state) {
+          return null;
+        }
+        return state.logical_rows > before.logical_rows || state.end ? state : null;
+      },
+      timeoutMs,
+      `Git history page after row ${before.logical_rows}`,
+    );
+    const paintedAt = await awaitNextPaint(session);
+    pageAppends.push({
+      from_rows: before.logical_rows,
+      mounted_rows: afterRows.mounted_rows,
+      to_rows: afterRows.logical_rows,
+      total_ms: Number((paintedAt - started).toFixed(2)),
+    });
+  }
+}
+
+async function measureGitHistoryScrolling(session) {
+  return evaluate(
+    session,
+    `(async () => {
+      const content = document.getElementById("tree-content");
+      if (!(content instanceof HTMLElement)) return null;
+      const maximum = Math.max(0, content.scrollHeight - content.clientHeight);
+      const positions = [0, 0.25, 0.5, 0.75, 1, 0.5, 0];
+      const samples = [];
+      for (const fraction of positions) {
+        const started = performance.now();
+        content.scrollTop = Math.round(maximum * fraction);
+        content.dispatchEvent(new Event("scroll"));
+        content.getBoundingClientRect();
+        const deadline = performance.now() + 10000;
+        while (true) {
+          await new Promise((resolve) => requestAnimationFrame(() =>
+            requestAnimationFrame(resolve)));
+          const list = document.querySelector(".git-graph-list");
+          if (!(list instanceof HTMLElement)) break;
+          if (!list.querySelector(".git-history-page-placeholder") &&
+              list.getAttribute("aria-busy") !== "true") break;
+          if (performance.now() >= deadline) break;
+        }
+        const rows = Array.from(document.querySelectorAll(".git-graph-row"));
+        samples.push({
+          complete: !document.querySelector(".git-history-page-placeholder"),
+          fraction,
+          first_ordinal: Number(rows[0]?.dataset.ordinal ?? -1),
+          last_ordinal: Number(rows.at(-1)?.dataset.ordinal ?? -1),
+          mounted_rows: rows.length,
+          duration_ms: Number((performance.now() - started).toFixed(2)),
+          scroll_top_px: content.scrollTop,
+        });
+      }
+      return {maximum_scroll_top_px: maximum, samples};
+    })()`,
+    true,
+  );
+}
+
+async function measureBrowserHeightClamp(session) {
+  return evaluate(
+    session,
+    `(() => {
+      const probe = document.createElement("div");
+      Object.assign(probe.style, {
+        height: "100000000px",
+        left: "-10000px",
+        position: "absolute",
+        top: "0",
+        width: "1px",
+      });
+      document.body.append(probe);
+      const height = probe.getBoundingClientRect().height;
+      probe.remove();
+      return height;
+    })()`,
+  );
+}
+
+function assertGitHistoryDepthHealth(result) {
+  if (result.stats.logical_row_count !== result.target_rows || !result.stats.history_end) {
+    throw new Error(
+      `Git history reached ${result.stats.logical_row_count} rows without its expected end`,
+    );
+  }
+  if (result.stats.row_count > result.stats.max_mounted_rows) {
+    throw new Error(
+      `Git history mounted ${result.stats.row_count} rows; bound is ${result.stats.max_mounted_rows}`,
+    );
+  }
+  if (result.stats.last_ordinal !== result.target_rows - 1) {
+    throw new Error(
+      `Git history final window ended at ordinal ${result.stats.last_ordinal}; ` +
+        `expected ${result.target_rows - 1}`,
+    );
+  }
+  if (!result.stats.first_revision || !result.stats.last_revision) {
+    throw new Error("Git history depth scenario did not mount its final window revisions");
+  }
+  if (result.selection.revision !== result.stats.last_revision) {
+    throw new Error("Git history depth scenario did not select its deepest mounted revision");
+  }
+  if (result.scrolling.samples.some((sample) => !sample.complete)) {
+    throw new Error("Git history scrolling left a replay placeholder unresolved");
+  }
+  if (!result.deep_route.restored) {
+    throw new Error(
+      `deep route did not restore the selected revision: ${JSON.stringify(result.deep_route)}`,
+    );
+  }
+  for (const field of ["selected_revision", "route_revision", "rendered_revision"]) {
+    if (result.deep_route[field] !== result.selection.revision) {
+      throw new Error(`deep route ${field} did not restore the selected revision`);
+    }
+  }
+  if (result.deep_route.mounted_comparisons !== 1) {
+    throw new Error("deep route must retain exactly one mounted comparison");
+  }
+}
+
+function assertGitHistoryRebaseHealth(result) {
+  if (result.logical_rows <= result.segment_capacity) {
+    throw new Error("synthetic Git history did not exceed one physical scroll segment");
+  }
+  if (!result.forward.rebased || !result.backward.rebased) {
+    throw new Error("synthetic Git history did not rebase in both directions");
+  }
+  if (
+    result.forward.visible_start !== result.forward.logical_top_before ||
+    result.forward.pixel_offset_after !== result.forward.pixel_offset_before
+  ) {
+    throw new Error("forward Git history rebase moved the logical viewport anchor");
+  }
+  if (result.backward.visible_start !== result.backward.logical_top_before) {
+    throw new Error("backward Git history rebase moved the logical viewport anchor");
+  }
+  if (
+    result.forward.segment_height_px > result.rebase_px ||
+    result.backward.segment_height_px > result.rebase_px ||
+    result.direct.segment_height_px > result.rebase_px ||
+    result.measured_segment_height_px !== result.direct.segment_height_px
+  ) {
+    throw new Error("Git history physical segment exceeded or failed its browser height budget");
+  }
+  if (
+    result.direct.start > result.direct.target_ordinal ||
+    result.direct.end <= result.direct.target_ordinal ||
+    result.direct.visible_start > result.direct.target_ordinal ||
+    result.direct.visible_end <= result.direct.target_ordinal
+  ) {
+    throw new Error("Git history direct target was not mounted and visible after rebasing");
+  }
+  if (result.max_mounted_rows > result.window_max_rows) {
+    throw new Error("Git history synthetic rebase exceeded the mounted-row budget");
+  }
+}
+
+async function runGitHistoryRebaseScenario(session, viewportHeight) {
+  await evaluate(session, "window.metabrowser.perf.reset()");
+  const result = await evaluate(
+    session,
+    `(() => {
+      const historyWindow = window.MetabrowserGitHistoryWindow;
+      const graph = window.MetabrowserGitGraph;
+      const settings = window.METABROWSER_SETTINGS;
+      if (!historyWindow || !graph || !settings) {
+        throw new Error("Git history window dependencies are unavailable");
+      }
+      const rowHeight = graph.SWIMLANE_HEIGHT;
+      const windowMaxRows = settings.GIT_HISTORY_WINDOW_MAX_ROWS;
+      const overscanRows = settings.GIT_HISTORY_WINDOW_OVERSCAN_ROWS;
+      const rebasePx = settings.GIT_HISTORY_SEGMENT_REBASE_PX;
+      const viewportHeight = ${JSON.stringify(viewportHeight)};
+      const virtual = historyWindow.createVirtualWindow({
+        rowHeight,
+        maxRows: windowMaxRows,
+        overscanRows,
+        rebasePx,
+      });
+      const logicalRows = virtual.segmentCapacity * 4 + 123;
+      virtual.setRowCount(logicalRows);
+
+      const forwardScroll = Math.floor(rebasePx * 0.8) + 7;
+      const forwardLogicalTop = Math.floor(forwardScroll / rowHeight);
+      const forwardPixelOffset = forwardScroll % rowHeight;
+      const forward = virtual.read(forwardScroll, viewportHeight);
+      const backwardLogicalTop = forward.segmentStart;
+      const backward = virtual.read(0, viewportHeight);
+      const targetOrdinal = logicalRows - 100;
+      const directScroll = virtual.scrollTopForOrdinal(targetOrdinal, viewportHeight, "center");
+      const direct = virtual.read(directScroll, viewportHeight);
+
+      const heightProbe = document.createElement("div");
+      Object.assign(heightProbe.style, {
+        height: direct.segmentHeightPx + "px",
+        left: "-10000px",
+        position: "absolute",
+        top: "0",
+        width: "1px",
+      });
+      document.body.append(heightProbe);
+      const measuredSegmentHeight = heightProbe.getBoundingClientRect().height;
+      heightProbe.remove();
+      virtual.dispose();
+      const wireRange = (range) => ({
+        start: range.start,
+        end: range.end,
+        visible_start: range.visibleStart,
+        visible_end: range.visibleEnd,
+        segment_start: range.segmentStart,
+        segment_end: range.segmentEnd,
+        segment_height_px: range.segmentHeightPx,
+        scroll_top: range.scrollTop,
+        rebased: range.rebased,
+      });
+
+      return {
+        schema: "git-history-rebase/v1",
+        generated_at: new Date().toISOString(),
+        scenario: "git-history-rebase",
+        logical_rows: logicalRows,
+        row_height: rowHeight,
+        window_max_rows: windowMaxRows,
+        overscan_rows: overscanRows,
+        rebase_px: rebasePx,
+        segment_capacity: Math.floor(rebasePx / rowHeight),
+        measured_segment_height_px: measuredSegmentHeight,
+        max_mounted_rows: Math.max(
+          forward.end - forward.start,
+          backward.end - backward.start,
+          direct.end - direct.start,
+        ),
+        forward: {
+          ...wireRange(forward),
+          logical_top_before: forwardLogicalTop,
+          pixel_offset_before: forwardPixelOffset,
+          pixel_offset_after: forward.scrollTop % rowHeight,
+        },
+        backward: {...wireRange(backward), logical_top_before: backwardLogicalTop},
+        direct: {...wireRange(direct), target_ordinal: targetOrdinal},
+        profiler: window.metabrowser.perf.snapshot(),
+      };
+    })()`,
+  );
+  assertGitHistoryRebaseHealth(result);
+  return result;
+}
+
+async function runGitHistoryDepthScenario(
+  session,
+  targetRows,
+  timeoutMs,
+  baseUrl,
+  consoleMessages,
+) {
+  await evaluate(session, "window.metabrowser.perf.reset()");
+  const loaded = await loadGitHistoryDepth(session, targetRows, timeoutMs);
+  await waitForClientQuiescence(session, timeoutMs);
+  const scrolling = await measureGitHistoryScrolling(session);
+  const browserHeightClampPx = await measureBrowserHeightClamp(session);
+  const profiler = await evaluate(session, "window.metabrowser.perf.snapshot()");
+  const logFetches = profiler.raw_fetch
+    .filter((sample) => new URL(sample.url, "http://localhost").pathname === "/api/git/log")
+    .map((sample) => ({
+      duration_ms: Number(sample.duration_ms.toFixed(2)),
+      server_ms: sample.server_ms,
+      size_bytes: sample.size_bytes,
+      status: sample.status,
+      url: new URL(sample.url, "http://localhost").pathname,
+    }));
+
+  await session.send("HeapProfiler.enable");
+  await session.send("HeapProfiler.collectGarbage");
+  const loadedHeap = await session.send("Runtime.getHeapUsage");
+
+  await evaluate(
+    session,
+    `(() => {
+      const content = document.getElementById("tree-content");
+      if (!(content instanceof HTMLElement)) return false;
+      content.scrollTop = content.scrollHeight;
+      content.dispatchEvent(new Event("scroll"));
+      return true;
+    })()`,
+  );
+  await waitFor(
+    async () => {
+      const state = await gitHistoryLogicalState(session);
+      return state?.last_ordinal === targetRows - 1 ? state : null;
+    },
+    timeoutMs,
+    "the final virtual Git history window",
+  );
+  await awaitNextPaint(session);
+  const mountedRows = await gitHistoryRowCount(session);
+  const selection = await measureGitTransition(
+    session,
+    mountedRows - 1,
+    "deepest-mounted-row",
+    timeoutMs,
+  );
+  await waitForClientQuiescence(session, timeoutMs);
+
+  const priorTimeOrigin = await evaluate(session, "performance.timeOrigin");
+  const deepUrl = new URL(`/commit/${selection.revision}`, baseUrl).href;
+  const deepRouteStarted = Date.now();
+  await session.send(`Page.navigate`, { url: deepUrl });
+  let deepRouteRestored = true;
+  let deepRouteError = "";
+  try {
+    await waitFor(
+      async () =>
+        evaluate(
+          session,
+          `(() => {
+            if (performance.timeOrigin === ${JSON.stringify(priorTimeOrigin)}) return false;
+            const revision = ${JSON.stringify(selection.revision)};
+            return document.querySelector(".git-commit-view")?.dataset.revision === revision &&
+              location.pathname.endsWith(revision) &&
+              !document.querySelector("#preview-pane")?.classList.contains(
+                "preview-navigation-pending"
+              );
+          })()`,
+        ),
+      Math.min(timeoutMs, DEEP_ROUTE_MEASUREMENT_TIMEOUT_MS),
+      "deep Git commit route restoration",
+    );
+    await awaitNextPaint(session);
+    await waitForClientQuiescence(session, timeoutMs);
+  } catch (error) {
+    deepRouteRestored = false;
+    deepRouteError = String(error);
+  }
+  const deepRouteState = await evaluate(
+    session,
+    `(() => ({
+      selected_revision: document.querySelector(".git-graph-row.selected")?.dataset.revision ||
+        ${JSON.stringify(selection.revision)},
+      route_revision: location.pathname.split("/").pop() || "",
+      rendered_revision: document.querySelector(".git-commit-view")?.dataset.revision || "",
+      mounted_comparisons: document.querySelectorAll(".git-commit-diff .diff-root").length,
+      preview_pending: document.querySelector("#preview-pane")?.classList.contains(
+        "preview-navigation-pending"
+      ) || false,
+      preview_owner: document.querySelector("#preview-pane")?.dataset.previewOwner || "",
+      preview_owners: window.__metabrowserPreviewOwners || [],
+      fetches: (window.__metabrowserFetches || []).slice(-20),
+      plugin_assets: Array.from(document.querySelectorAll(
+        "[data-metabrowser-plugin-asset]"
+      )).map((element) => ({
+        asset: element.getAttribute("data-metabrowser-plugin-asset") || "",
+        connected: element.isConnected,
+        href: element instanceof HTMLLinkElement ? element.href : "",
+        sheet: element instanceof HTMLLinkElement ? Boolean(element.sheet) : undefined,
+        src: element instanceof HTMLScriptElement ? element.src : "",
+      })),
+      performance_resources: performance.getEntriesByType("resource")
+        .filter((entry) => entry.name.includes("/plugins/") || entry.name.includes("/api/git/commit") ||
+          entry.name.includes("/api/plugin/diff/comparison"))
+        .map((entry) => ({
+          duration_ms: Number(entry.duration.toFixed(1)),
+          initiator_type: entry.initiatorType,
+          name: entry.name,
+          transfer_size: entry.transferSize,
+        })),
+      preview_text: document.querySelector("#preview-pane")?.textContent?.trim().slice(0, 500) || "",
+      git_panel_text: document.querySelector("#tab-git")?.textContent?.trim().slice(0, 500) || "",
+      document_ready_state: document.readyState,
+    }))()`,
+  );
+
+  const result = {
+    schema: "git-history-depth/v2",
+    generated_at: new Date().toISOString(),
+    scenario: "git-history-depth",
+    target_rows: targetRows,
+    stats: loaded.stats,
+    page_appends: loaded.pageAppends,
+    log_fetches: logFetches,
+    log_payload_bytes: logFetches.reduce((total, sample) => total + (sample.size_bytes || 0), 0),
+    loaded_js_heap_after_gc_mb: Number((loadedHeap.usedSize / (1024 * 1024)).toFixed(1)),
+    browser_height_clamp_px: browserHeightClampPx,
+    scrolling,
+    selection,
+    deep_route: {
+      ...deepRouteState,
+      console_messages: consoleMessages.slice(-20),
+      error: deepRouteError,
+      restored: deepRouteRestored,
+      total_ms: Date.now() - deepRouteStarted,
+    },
+    profiler,
+  };
+  assertGitHistoryDepthHealth(result);
+  return result;
+}
+
 async function removeInputSentinel(session) {
   await evaluate(
     session,
@@ -1498,8 +2039,18 @@ async function capture(options) {
     activateHeadedChrome(executable, options.headed);
     session = new CdpSession(target.webSocketDebuggerUrl);
     let pageExceptions = 0;
+    const consoleMessages = [];
     session.on("Runtime.exceptionThrown", () => {
       pageExceptions += 1;
+    });
+    session.on("Runtime.consoleAPICalled", (event) => {
+      if (event.type !== "error" && event.type !== "warning") {
+        return;
+      }
+      consoleMessages.push({
+        type: event.type,
+        values: event.args.map((argument) => argument.value ?? argument.description ?? ""),
+      });
     });
     await session.send("Page.enable");
     await session.send("Runtime.enable");
@@ -1509,6 +2060,54 @@ async function capture(options) {
       mobile: false,
       width: options.width,
     });
+    if (options.scenario === "git-history-depth") {
+      await session.send("Page.addScriptToEvaluateOnNewDocument", {
+        source: `(() => {
+          const nativeFetch = window.fetch.bind(window);
+          window.__metabrowserPreviewOwners = [];
+          window.__metabrowserFetches = [];
+          window.addEventListener("DOMContentLoaded", () => {
+            const preview = document.getElementById("preview-pane");
+            if (!(preview instanceof HTMLElement)) return;
+            const record = () => window.__metabrowserPreviewOwners.push({
+              owner: preview.dataset.previewOwner || "",
+              timestamp_ms: Number(performance.now().toFixed(1)),
+            });
+            record();
+            new MutationObserver(record).observe(preview, {
+              attributeFilter: ["data-preview-owner"],
+            });
+          }, {once: true});
+          window.fetch = (input, init) => {
+            const rawUrl = input instanceof Request ? input.url : String(input);
+            const url = new URL(rawUrl, location.href);
+            if (url.pathname === "/api/git/log") {
+              url.searchParams.set("scope", "all");
+              input = input instanceof Request ? new Request(url, input) : url.href;
+            }
+            const entry = {
+              method: init?.method || (input instanceof Request ? input.method : "GET"),
+              started_ms: Number(performance.now().toFixed(1)),
+              status: "pending",
+              url: url.pathname + url.search,
+            };
+            window.__metabrowserFetches.push(entry);
+            return nativeFetch(input, init).then(
+              (response) => {
+                entry.ended_ms = Number(performance.now().toFixed(1));
+                entry.status = response.status;
+                return response;
+              },
+              (error) => {
+                entry.ended_ms = Number(performance.now().toFixed(1));
+                entry.status = String(error);
+                throw error;
+              },
+            );
+          };
+        })();`,
+      });
+    }
     await session.send("Page.navigate", { url: options.url });
     await waitFor(
       async () =>
@@ -1552,10 +2151,22 @@ async function capture(options) {
       await waitForIndex(options.url, options.timeoutMs);
       await delay(CLIENT_COMPLETION_SETTLE_MS);
       await waitForClientQuiescence(session, options.timeoutMs);
-      const payload =
-        options.scenario === "git-revisions"
-          ? await runGitRevisionScenario(session, options.timeoutMs)
-          : await runFileViewScenario(session, options.timeoutMs);
+      let payload;
+      if (options.scenario === "git-revisions") {
+        payload = await runGitRevisionScenario(session, options.timeoutMs);
+      } else if (options.scenario === "git-history-depth") {
+        payload = await runGitHistoryDepthScenario(
+          session,
+          options.historyRows,
+          options.timeoutMs,
+          options.url,
+          consoleMessages,
+        );
+      } else if (options.scenario === "git-history-rebase") {
+        payload = await runGitHistoryRebaseScenario(session, options.height);
+      } else {
+        payload = await runFileViewScenario(session, options.timeoutMs);
+      }
       if (gitFilesRoundTrip) {
         payload.git_files_roundtrip = gitFilesRoundTrip;
       }
@@ -1660,6 +2271,8 @@ module.exports = {
   assertDeferredHydrationHealth,
   assertFileTransitionHealth,
   assertGitFilesRoundTripHealth,
+  assertGitHistoryDepthHealth,
+  assertGitHistoryRebaseHealth,
   assertGitTransitionHealth,
   capture,
   chromeExecutable,
@@ -1668,6 +2281,8 @@ module.exports = {
   parseArgs,
   runFileViewScenario,
   runGitFilesRoundTrip,
+  runGitHistoryDepthScenario,
+  runGitHistoryRebaseScenario,
   runGitRevisionScenario,
   startTrustedInputPulse,
   usage,

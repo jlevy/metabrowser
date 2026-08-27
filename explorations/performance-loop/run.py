@@ -720,6 +720,8 @@ def cmd_capture(args: argparse.Namespace) -> int:
         command.append("--headed")
     if scenario:
         command.extend(["--scenario", scenario])
+    if scenario == "git-history-depth":
+        command.extend(["--history-rows", str(args.history_rows)])
     result = subprocess.run(command, cwd=REPO, check=False)
     if result.returncode != 0 or not args.record:
         return result.returncode
@@ -1238,9 +1240,15 @@ def main(argv: list[str] | None = None) -> int:
     capture.add_argument("--height", type=int, default=900)
     capture.add_argument(
         "--scenario",
-        choices=["git-revisions", "file-views"],
+        choices=["git-revisions", "file-views", "git-history-depth", "git-history-rebase"],
         default="",
         help="capture an interaction scenario instead of the initial-load profile",
+    )
+    capture.add_argument(
+        "--history-rows",
+        type=int,
+        default=0,
+        help="target row count for the git-history-depth scenario",
     )
     capture.add_argument(
         "--record",

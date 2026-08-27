@@ -526,8 +526,17 @@ classify source
   -> continue optional object backfill in background
 ```
 
-All Git work continues through `metabrowser.git.process.run_git`. The runner gains
-request, acquisition, and background policies rather than a parallel subprocess wrapper.
+All Git work continues through `metabrowser.git.process`, which now exposes two seams:
+`run_git` for bounded buffered commands, and `spawn_git_process` plus
+`terminate_git_process` for a caller-owned streaming process.
+Acquisition is a buffered command, so it uses `run_git`, which gains request,
+acquisition, and background policies rather than a parallel subprocess wrapper.
+
+Background backfill is the one piece that may want the streaming seam, and if it takes
+it, the lifecycle rules that continuous history established apply in full: bound the
+count, bound the storage, expire on idle, release on shutdown, and drain output before
+reaping. See
+[Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md#long-lived-walks).
 Every policy retains fixed arguments, no shell, bounded output, cancellation cleanup,
 and scrubbed repository-pinning environment variables.
 Acquisition also sets `stdin=DEVNULL`, disables terminal and credential-manager prompts,

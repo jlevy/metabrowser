@@ -87,6 +87,7 @@ from metabrowser.settings import (
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
     ROLLUP_MAX_NODES,
+    SLOW_OPERATION_LOG_SECONDS,
 )
 from metabrowser.walker import (
     DEFAULT_MAX_DEPTH,
@@ -1478,7 +1479,14 @@ class InventoryIndex:
             )
         )
         elapsed_ms = (time.monotonic_ns() - self._started_at_ns) // 1_000_000
-        LOG.info(
+        # INFO only when the walk is worth a line in someone's terminal:
+        # a truncated index means the browser is showing part of the tree,
+        # and a slow one explains a wait the user just sat through. The
+        # ordinary case — a small tree indexed before the first paint —
+        # is routine lifecycle, which belongs at DEBUG with the rest.
+        notable = is_truncated or elapsed_ms >= SLOW_OPERATION_LOG_SECONDS * 1000
+        LOG.log(
+            logging.INFO if notable else logging.DEBUG,
             "inventory walker complete: status=%s files=%d entries=%d elapsed=%dms",
             self._status,
             self._files_indexed,

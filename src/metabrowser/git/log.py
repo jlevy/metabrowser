@@ -31,23 +31,18 @@ of the next.
 
 from __future__ import annotations
 
-import base64
-import binascii
-import json
-from collections.abc import Sequence
 from pathlib import Path
 
-from metabrowser.git.process import GitError, run_git
-from metabrowser.git.wire import GitAuthor, GitCommit, GitLogPage, GitRef, is_full_revision
-from metabrowser.settings import GIT_LOG_MAX_SKIP
+from metabrowser.git.process import run_git
+from metabrowser.git.wire import GitAuthor, GitCommit, GitRef, is_full_revision
 
 # Field separator inside one commit record. Chosen from the C0 separator
 # block, which git never emits itself in these fields.
 _FIELD_SEP = "\x1f"
 
-# Field order in _LOG_FORMAT. The subject is last on purpose; see the
+# Field order in LOG_FORMAT. The subject is last on purpose; see the
 # module docstring.
-_LOG_FORMAT = _FIELD_SEP.join(
+LOG_FORMAT = _FIELD_SEP.join(
     ["%H", "%h", "%an", "%ae", "%at", "%ct", "%P", "%D", "%s"],
 )
 _LOG_FIELD_COUNT = 9
@@ -81,65 +76,6 @@ def is_trunk_ref(name: str, kind: str) -> bool:
     if kind == "tag":
         return False
     return name in trunk_refs()
-
-
-def _log_args(*, skip: int, limit: int, refs: Sequence[str] | None = None) -> list[str]:
-    """Build the ``git log`` argument vector for one page.
-
-    *refs* scopes the walk. ``None`` means every ref (``--all``), which
-    is the explicit "all branches" choice; a list is the default scope
-    the panel asks for. Scope matters because ``--all`` in a repository
-    with many refs shows whichever branch commits most often — an
-    automation branch can fill every visible row while the trunk sits
-    hundreds of rows down.
-
-    ``--date-order`` rather than ``--topo-order``: both guarantee no
-    parent is drawn before its children, which is all the lane layout
-    requires, but topological order walks one lineage to exhaustion
-    before switching, so a busy branch buries the others. Date order
-    intermixes lines of history, which is what makes recent activity
-    across branches legible.
-
-    ``--decorate=full`` is required for ``%D`` to emit unambiguous full
-    refnames — the short form cannot distinguish a branch from a tag of
-    the same name.
-    """
-    scope = ["--all"] if refs is None else list(refs)
-    return [
-        "log",
-        "-z",
-        f"--format={_LOG_FORMAT}",
-        "--decorate=full",
-        "--date-order",
-        *scope,
-        f"--skip={skip}",
-        # One extra row beyond the page: its presence is how `has_more`
-        # is determined without a second counting pass over the history.
-        f"--max-count={limit + 1}",
-    ]
-
-
-async def resolve_default_scope(served_root: Path) -> list[str]:
-    """The refs the graph shows unless asked for everything.
-
-    HEAD, its upstream, and whichever trunk refs exist — so the view is
-    always "where I am, and what I merge into", which is the comparison
-    a history view is for. Refs that do not resolve are dropped rather
-    than passed to git, which would fail the whole walk.
-    """
-    candidates = ["HEAD", "@{upstream}", *trunk_refs()]
-    scope: list[str] = []
-    for candidate in candidates:
-        try:
-            await run_git(
-                ["rev-parse", "--verify", "--quiet", f"{candidate}^{{commit}}"], cwd=served_root
-            )
-        except GitError:
-            continue
-        scope.append(candidate)
-    # HEAD always resolves in a repository with commits; an empty scope
-    # means an unborn branch, where `--all` is the honest answer.
-    return scope or []
 
 
 def parse_decoration(decoration: str, revision: str) -> list[GitRef]:
@@ -314,68 +250,6 @@ def parse_log_output(raw: bytes) -> list[GitCommit]:
     return commits
 
 
-def encode_cursor(skip: int) -> str:
-    """Encode a page cursor.
-
-    Opaque by construction — base64 of a JSON object — so the offset is
-    not part of the API and paging can change shape without a client
-    change. Callers never build one; they echo back what a page returned.
-    """
-    payload = json.dumps({"skip": skip}, separators=(",", ":")).encode("utf-8")
-    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
-
-
-def decode_cursor(cursor: str) -> int | None:
-    """Decode a page cursor to its skip offset, or ``None`` if unusable.
-
-    The route rejects ``None`` as a bad request. Restarting at offset zero
-    would make the append-only client duplicate commits and corrupt lane
-    continuity.
-
-    A well-formed cursor is not yet a usable one: the offset is bounded by
-    ``GIT_LOG_MAX_SKIP`` because ``git log --skip`` walks and discards the
-    whole prefix, so an arbitrary offset buys a full history walk that
-    returns nothing.
-    """
-    try:
-        padding = "=" * (-len(cursor) % 4)
-        payload = base64.urlsafe_b64decode(cursor + padding)
-        skip = json.loads(payload)["skip"]
-    except (binascii.Error, UnicodeDecodeError, ValueError, KeyError, TypeError):
-        return None
-    if not isinstance(skip, int) or isinstance(skip, bool) or skip < 0:
-        return None
-    if skip > GIT_LOG_MAX_SKIP:
-        return None
-    return skip
-
-
-async def read_log_page(
-    served_root: Path, *, skip: int, limit: int, refs: Sequence[str] | None = None
-) -> GitLogPage:
-    """Read one page of history.
-
-    *refs* is the scope; ``None`` walks every ref. The page is
-    over-fetched by one commit; that extra row is the ``has_more``
-    signal and is dropped before the page is returned. The alternative —
-    counting the whole history to know whether more exists — costs a
-    full walk on every page.
-    """
-    raw = await run_git(_log_args(skip=skip, limit=limit, refs=refs), cwd=served_root)
-    commits = parse_log_output(raw)
-
-    has_more = len(commits) > limit
-    if has_more:
-        commits = commits[:limit]
-
-    return GitLogPage(
-        is_repo=True,
-        commits=commits,
-        cursor=encode_cursor(skip + len(commits)) if has_more else None,
-        has_more=has_more,
-    )
-
-
 async def read_refs(served_root: Path, *, head_ref: str | None = None) -> list[GitRef]:
     """List every branch, remote branch, and tag with its target commit.
 
@@ -423,16 +297,12 @@ async def read_refs(served_root: Path, *, head_ref: str | None = None) -> list[G
 
 
 __all__ = [
-    "decode_cursor",
-    "encode_cursor",
     "parse_decoration",
     "parse_epoch",
     "TRUNK_BRANCH_NAMES",
     "TRUNK_REMOTES",
     "parse_log_output",
     "is_trunk_ref",
-    "read_log_page",
-    "resolve_default_scope",
     "trunk_refs",
     "read_refs",
 ]

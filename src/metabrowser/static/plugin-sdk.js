@@ -116,6 +116,8 @@
   /** @type {Map<string, Promise<void>>} */
   const _loadingKpressAssets = new Map();
   const _KPRESS_ASSET_MANIFEST_SCHEMA = "kpress-asset-manifest-v2";
+  /** Bounds a missing manifest-owned plugin asset load/error event. */
+  const _pluginAssetLoadTimeoutMs = 10_000;
   /** Bounds a missing stylesheet load/error event before a later render can retry. */
   const _stylesheetLoadTimeoutMs = 10_000;
   /** Detects cached stylesheets whose browsers expose `sheet` without a load event. */
@@ -195,24 +197,57 @@
   function _loadPluginElement(tagName, url, attributes) {
     return new Promise((resolve) => {
       const element = global.document.createElement(tagName);
+      let settled = false;
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let readyPoll = null;
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let loadTimeout = null;
+
+      const settle = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (readyPoll !== null) {
+          clearTimeout(readyPoll);
+        }
+        if (loadTimeout !== null) {
+          clearTimeout(loadTimeout);
+        }
+        resolve(undefined);
+      };
+      /** @param {string} reason */
+      const fail = (reason) => {
+        if (settled) {
+          return;
+        }
+        console.error(`metabrowser plugin asset failed to load: ${url} (${reason})`);
+        settle();
+      };
+      const detectCachedStylesheet = () => {
+        if (settled || tagName !== "link") {
+          return;
+        }
+        if ("sheet" in element && element.sheet) {
+          settle();
+          return;
+        }
+        readyPoll = setTimeout(detectCachedStylesheet, _stylesheetReadyPollMs);
+      };
+
       for (const [name, value] of Object.entries(attributes || {})) {
         element.setAttribute(name, value);
       }
-      element.addEventListener("load", () => resolve(undefined), { once: true });
-      element.addEventListener(
-        "error",
-        () => {
-          console.error(`metabrowser plugin asset failed to load: ${url}`);
-          resolve(undefined);
-        },
-        { once: true },
-      );
+      element.addEventListener("load", settle, { once: true });
+      element.addEventListener("error", () => fail("error event"), { once: true });
       if (tagName === "link") {
         element.setAttribute("href", url);
       } else {
         element.setAttribute("src", url);
       }
+      loadTimeout = setTimeout(() => fail("timed out"), _pluginAssetLoadTimeoutMs);
       global.document.head.append(element);
+      detectCachedStylesheet();
     });
   }
 

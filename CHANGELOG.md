@@ -4,6 +4,62 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Features:
+
+- Git history pages now come from a bounded server session that advances one ordered Git
+  walk on demand and replays visited pages by indexed seek.
+  Opaque page cursors replace progressively expensive skip offsets; ref movement,
+  expiry, eviction, and storage exhaustion remain explicit recovery states rather than
+  appearing as the end of history.
+
+- The Git panel now stores decoded history pages in a bounded LRU and mounts only a
+  fixed-height row window with measured overscan.
+  Versioned server checkpoints make evicted pages independently replayable without
+  retaining expanded rows or a complete ordinal map.
+  Continuous paging reaches Git’s real end instead of stopping after 500 commits;
+  spacers preserve logical scroll geometry, and long histories rebase before the browser
+  height clamp while keeping selection and logical focus independent of row mounting.
+
+Fixes:
+
+- A Git history page at the route’s maximum `limit` no longer fails with HTTP 500. The
+  measured parser budget now scales with the requested page size instead of holding
+  every page to the default page’s fixed budget.
+
+- Keeping a repository’s history open in three or more tabs no longer makes the tabs
+  evict each other’s live Git walks and thrash through expired-session recovery.
+  The concurrent-walk bound now matches the eight-session registry bound.
+
+- Recovering an idle-expired history session replays a bounded prefix — at most the
+  page-cache depth — instead of one request per 250 rows back to the prior position, and
+  a recovery interrupted by further ref movement no longer recurses without a depth
+  bound.
+
+- Scrolling back to a distant, previously visited part of a long history now replays
+  each needed page in one request.
+  The panel retains every visited page’s replay cursor, so reaching page 2,000 no longer
+  steps through 2,000 intermediate requests whose results were evicted unseen.
+
+- Leaving the Git panel restores the shared tree scroller’s focusability instead of
+  leaving a stray `tabindex` on a node other panels keep using.
+
+- Ctrl-C stops the server on the first press and reports exit 130 whatever the timing of
+  any that follow. A repeat interrupt arriving while the process exited used to land on
+  Python’s default handler and print an `Exception ignored on threading shutdown`
+  traceback, or kill the process outright for exit `-2`. The first interrupt now prints
+  `Stopping Metabrowser.` so the press is visibly registered rather than reading as a
+  hang.
+
+- Serving a directory that is not a Git repository no longer repeats
+  `git rev-parse --show-toplevel exited 128` every few seconds, and opening the Git tab
+  no longer logs one line per history ref that does not resolve.
+  These are questions the browser asks git by exit code, so they are DEBUG detail; git
+  failures that are failures still log at WARNING, now including git’s own message.
+
+- The inventory boot walk reports its summary only when the result is worth reading — a
+  truncated index, or a walk slow enough to have been noticed.
+  `--log-level debug` still shows every completion.
+
 ## 0.8.0
 
 Features:

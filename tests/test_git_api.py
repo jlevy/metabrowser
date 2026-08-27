@@ -14,6 +14,7 @@ guards the tree contract.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 import subprocess
@@ -27,17 +28,24 @@ import pytest
 from metabrowser import paths_safe
 from metabrowser.git import repo as git_repo
 from metabrowser.git.detail import _summarize_changes, read_commit_detail, translate_repo_path
+from metabrowser.git.history import (
+    HISTORY_SESSIONS,
+    ExpiredHistorySessionError,
+    HistorySessionRegistry,
+    HistoryStorageError,
+    InvalidHistoryCursorError,
+    StaleHistorySessionError,
+)
 from metabrowser.git.log import (
-    decode_cursor,
-    encode_cursor,
     parse_decoration,
-    read_log_page,
     read_refs,
 )
 from metabrowser.git.process import (
     _REPO_PINNING_GIT_VARS,
     GitCommandError,
     GitOutputTooLargeError,
+    GitTimeoutError,
+    failure_detail,
     run_git,
 )
 from metabrowser.git.repo import repo_info
@@ -51,7 +59,6 @@ from metabrowser.git.wire import (
     validate_git_ref,
     validate_git_repo_info,
 )
-from metabrowser.settings import GIT_LOG_MAX_SKIP
 
 pytestmark = pytest.mark.skipif(
     shutil.which("git") is None,
@@ -212,6 +219,17 @@ def _by_subject(commits: Sequence[Mapping[str, Any]], subject: str) -> Mapping[s
     raise AssertionError(f"no commit with subject {subject!r} in {_subjects(commits)}")
 
 
+def _first_history_page(root: Path, *, limit: int):
+    async def read():
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            return await registry.read_page(root, wants_all=True, limit=limit, cursor=None)
+        finally:
+            await registry.close_all()
+
+    return asyncio.run(read())
+
+
 # ── Repository discovery ─────────────────────────────────────
 
 
@@ -339,7 +357,7 @@ def test_repo_info_and_routes_support_sha256_object_ids(tmp_path: Path) -> None:
         assert len(revision) == 64
         assert is_full_revision(revision)
 
-        page = asyncio.run(read_log_page(root, skip=0, limit=10))
+        page = _first_history_page(root, limit=10)
         validate_git_log_page(dict(page))
         assert page["commits"][0]["id"] == revision
 
@@ -358,7 +376,7 @@ def test_repo_info_and_routes_support_sha256_object_ids(tmp_path: Path) -> None:
 
 
 def test_log_page_returns_every_commit_with_parents(repo: Path) -> None:
-    page = asyncio.run(read_log_page(repo, skip=0, limit=50))
+    page = _first_history_page(repo, limit=50)
     validate_git_log_page(dict(page))
     subjects = _subjects(page["commits"])
     assert subjects[0] == "merge feature into main"
@@ -381,7 +399,7 @@ def test_log_page_returns_every_commit_with_parents(repo: Path) -> None:
 def test_log_page_parent_ids_reference_commits_in_the_page(repo: Path) -> None:
     # The swimlane layout matches parents against commit ids by string
     # equality, so a parent that does not resolve is a broken lane.
-    page = asyncio.run(read_log_page(repo, skip=0, limit=50))
+    page = _first_history_page(repo, limit=50)
     ids = {c["id"] for c in page["commits"]}
     for commit in page["commits"]:
         for parent in commit["parent_ids"]:
@@ -389,7 +407,7 @@ def test_log_page_parent_ids_reference_commits_in_the_page(repo: Path) -> None:
 
 
 def test_log_page_carries_ref_badges(repo: Path) -> None:
-    page = asyncio.run(read_log_page(repo, skip=0, limit=50))
+    page = _first_history_page(repo, limit=50)
     tagged = _by_subject(page["commits"], "rename and binary")
     refs = tagged.get("refs", [])
     for ref in refs:
@@ -405,23 +423,32 @@ def test_log_page_carries_ref_badges(repo: Path) -> None:
 
 
 def test_log_pages_are_contiguous_and_report_has_more(repo: Path) -> None:
-    first = asyncio.run(read_log_page(repo, skip=0, limit=2))
+    async def read_two_pages():
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            first = await registry.read_page(repo, wants_all=True, limit=2, cursor=None)
+            assert first["cursor"] is not None
+            second = await registry.read_page(
+                repo,
+                wants_all=True,
+                limit=2,
+                cursor=first["cursor"],
+            )
+            return first, second
+        finally:
+            await registry.close_all()
+
+    first, second = asyncio.run(read_two_pages())
     validate_git_log_page(dict(first))
     assert len(first["commits"]) == 2
     assert first["has_more"] is True
-    cursor = first["cursor"]
-    assert cursor is not None
-
-    skip = decode_cursor(cursor)
-    assert skip == 2
-    second = asyncio.run(read_log_page(repo, skip=skip, limit=2))
     validate_git_log_page(dict(second))
 
     # Contiguity is what makes browser-side lane continuity correct: the
     # second page must resume exactly where the first stopped, with no
     # overlap and no gap.
     combined = _subjects(first["commits"]) + _subjects(second["commits"])
-    full = _subjects(asyncio.run(read_log_page(repo, skip=0, limit=50))["commits"])
+    full = _subjects(_first_history_page(repo, limit=50)["commits"])
     assert combined == full[:4]
 
 
@@ -439,31 +466,9 @@ def test_log_page_on_a_repository_with_no_commits(tmp_path: Path) -> None:
     assert payload == {"is_repo": True, "commits": [], "cursor": None, "has_more": False}
 
 
-def test_cursor_round_trips_and_rejects_junk() -> None:
-    assert decode_cursor(encode_cursor(0)) == 0
-    assert decode_cursor(encode_cursor(137)) == 137
-    for junk in ("", "!!!", "Zm9v", encode_cursor(1)[:-1] + "%"):
-        assert decode_cursor(junk) is None or isinstance(decode_cursor(junk), int)
-    # A cursor decoding to a negative offset must not reach `--skip`.
-    import base64
-    import json
-
-    negative = base64.urlsafe_b64encode(json.dumps({"skip": -5}).encode()).decode().rstrip("=")
-    assert decode_cursor(negative) is None
-
-
-def test_cursor_rejects_an_offset_past_the_skip_bound() -> None:
-    # A well-formed cursor is not automatically a usable one. `git log
-    # --skip` walks and discards the whole prefix, so an unbounded offset
-    # buys a full history walk that returns nothing.
-    assert decode_cursor(encode_cursor(GIT_LOG_MAX_SKIP)) == GIT_LOG_MAX_SKIP
-    assert decode_cursor(encode_cursor(GIT_LOG_MAX_SKIP + 1)) is None
-    assert decode_cursor(encode_cursor(10**15)) is None
-
-
-def test_log_route_rejects_an_over_bound_cursor(repo: Path) -> None:
+def test_log_route_rejects_a_malformed_session_cursor(repo: Path) -> None:
     with _served(repo):
-        request = _FakeRequest({"cursor": encode_cursor(GIT_LOG_MAX_SKIP + 1)})
+        request = _FakeRequest({"cursor": "not-a-session-cursor"})
         response = asyncio.run(api_git_log(request))  # pyright: ignore[reportArgumentType]
     assert response.status_code == 400
 
@@ -497,7 +502,7 @@ def test_annotated_tags_resolve_to_the_commit_they_tag(repo: Path) -> None:
     _git(repo, "tag", "-a", "v2.0", "-m", "annotated")
     refs = asyncio.run(read_refs(repo))
     annotated = next(r for r in refs if r["name"] == "v2.0")
-    page = asyncio.run(read_log_page(repo, skip=0, limit=50))
+    page = _first_history_page(repo, limit=50)
     # An annotated tag names a tag object, not a commit. A badge that
     # pointed at the tag object would match no row in the graph.
     assert annotated["revision"] in {c["id"] for c in page["commits"]}
@@ -526,7 +531,7 @@ def test_parse_decoration_ignores_a_bare_detached_head_marker() -> None:
 def _detail_for(repo: Path, subject: str) -> dict[str, Any]:
     context, _info = asyncio.run(repo_info(repo))
     assert context is not None
-    page = asyncio.run(read_log_page(repo, skip=0, limit=50))
+    page = _first_history_page(repo, limit=50)
     commit = _by_subject(page["commits"], subject)
     detail = asyncio.run(read_commit_detail(context, commit["id"]))
     assert detail is not None
@@ -619,7 +624,7 @@ def test_commit_detail_reports_truncation_without_understating_stats(repo: Path)
 
     context, _info = asyncio.run(repo_info(repo))
     assert context is not None
-    page = asyncio.run(read_log_page(repo, skip=0, limit=5))
+    page = _first_history_page(repo, limit=5)
     commit = _by_subject(page["commits"], "many files")
     detail = asyncio.run(read_commit_detail(context, commit["id"], max_files=2))
     assert detail is not None
@@ -646,7 +651,7 @@ def test_detail_parser_translates_paths_for_a_defensive_subdirectory_context(rep
         served_root=repo / "sub",
         head=root_context.head,
     )
-    page = asyncio.run(read_log_page(repo, skip=0, limit=50))
+    page = _first_history_page(repo, limit=50)
     inside = _by_subject(page["commits"], "add subdir")
     detail = asyncio.run(read_commit_detail(context, inside["id"]))
     assert detail is not None
@@ -666,7 +671,7 @@ def test_detail_parser_flags_files_outside_a_defensive_subdirectory_context(repo
         served_root=repo / "sub",
         head=root_context.head,
     )
-    page = asyncio.run(read_log_page(repo, skip=0, limit=50))
+    page = _first_history_page(repo, limit=50)
     outside = _by_subject(page["commits"], "main side commit")
     detail = asyncio.run(read_commit_detail(context, outside["id"]))
     assert detail is not None
@@ -699,6 +704,47 @@ def test_run_git_raises_on_a_non_zero_exit(repo: Path) -> None:
     assert excinfo.value.returncode != 0
 
 
+def test_run_git_keeps_an_expected_non_zero_exit_out_of_the_default_log(
+    plain_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Discovery, HEAD resolution, and history scope all ask git questions
+    whose answer is an exit code. Ranking each refusal as INFO put a line in
+    the terminal every few seconds for anyone browsing a plain directory."""
+    with (
+        caplog.at_level(logging.DEBUG, logger="metabrowser.git.process"),
+        pytest.raises(GitCommandError),
+    ):
+        asyncio.run(run_git(["rev-parse", "--show-toplevel"], cwd=plain_dir))
+
+    records = [record for record in caplog.records if "exited" in record.getMessage()]
+    assert [record.levelno for record in records] == [logging.DEBUG]
+    assert "not a git repository" in records[0].getMessage()
+
+
+def test_failure_detail_carries_stderr_that_the_exception_message_withholds() -> None:
+    """The route-level warning is where git's own diagnosis has to survive;
+    ``str(exc)`` stays free of the absolute paths git writes into it."""
+    failure = GitCommandError(["show", "beef"], 128, "fatal: /srv/example/repo is corrupt")
+
+    assert "/srv/example/repo" not in str(failure)
+    assert "/srv/example/repo" in failure_detail(failure)
+    assert failure_detail(GitTimeoutError("git log exceeded 5s")) == "git log exceeded 5s"
+
+
+def test_route_failure_warning_reports_git_stderr(
+    repo: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    failure = GitCommandError(["log"], 128, "fatal: bad object HEAD")
+    with (
+        caplog.at_level(logging.WARNING, logger="metabrowser.git.routes"),
+        mock.patch("metabrowser.git.routes.HISTORY_SESSIONS.read_page", side_effect=failure),
+    ):
+        response = asyncio.run(api_git_log(_FakeRequest()))  # pyright: ignore[reportArgumentType]
+
+    assert response.status_code == 500
+    assert "fatal: bad object HEAD" in caplog.text
+
+
 def test_run_git_enforces_the_output_cap(repo: Path) -> None:
     with pytest.raises(GitOutputTooLargeError):
         asyncio.run(run_git(["log", "--format=%H%n%s"], cwd=repo, max_bytes=8))
@@ -708,7 +754,7 @@ def test_run_git_ignores_a_hook_exported_git_dir(repo: Path, tmp_path: Path) -> 
     """A leaked ``GIT_DIR`` must not redirect commands away from ``cwd``.
 
     Githooks run with ``GIT_DIR`` exported, and it outranks the working
-    directory. Without the scrub in ``_git_env`` this exact scenario
+    directory. Without the scrub in ``git_environment`` this exact scenario
     re-initialized the served repository as bare from inside the pre-push
     gate: the fixture's ``git init`` landed on the hook's repository
     instead of the fixture directory.
@@ -753,14 +799,22 @@ def test_routes_return_the_negative_envelope_outside_a_repository(plain_dir: Pat
 
 
 def test_route_log_clamps_an_out_of_range_limit(repo: Path) -> None:
-    for raw_limit in ("0", "-3", "999999999", "not-a-number"):
-        response = asyncio.run(
-            api_git_log(_FakeRequest({"limit": raw_limit}))  # pyright: ignore[reportArgumentType]
-        )
-        assert response.status_code == 200, raw_limit
-        payload = _json(response)
-        validate_git_log_page(payload)
-        assert len(payload["commits"]) >= 1, raw_limit
+    async def scenario() -> None:
+        try:
+            for raw_limit in ("0", "-3", "999999999", "not-a-number"):
+                response = await api_git_log(
+                    _FakeRequest(  # pyright: ignore[reportArgumentType]
+                        {"limit": raw_limit}
+                    )
+                )
+                assert response.status_code == 200, raw_limit
+                payload = _json(response)
+                validate_git_log_page(payload)
+                assert len(payload["commits"]) >= 1, raw_limit
+        finally:
+            await HISTORY_SESSIONS.close_all()
+
+    asyncio.run(scenario())
 
 
 def test_route_log_rejects_a_malformed_cursor(repo: Path) -> None:
@@ -768,7 +822,31 @@ def test_route_log_rejects_a_malformed_cursor(repo: Path) -> None:
         api_git_log(_FakeRequest({"cursor": "!!!not-a-cursor"}))  # pyright: ignore[reportArgumentType]
     )
     assert response.status_code == 400
-    assert _json(response) == {"error": "invalid cursor"}
+    assert _json(response) == {
+        "error": "invalid cursor",
+        "code": "history_cursor_invalid",
+    }
+
+
+@pytest.mark.parametrize(
+    ("failure", "status", "code"),
+    [
+        (InvalidHistoryCursorError("invalid"), 400, "history_cursor_invalid"),
+        (StaleHistorySessionError("stale"), 409, "history_stale"),
+        (ExpiredHistorySessionError("expired"), 410, "history_expired"),
+        (HistoryStorageError("full"), 507, "history_storage_exhausted"),
+    ],
+)
+def test_route_log_maps_session_failures_to_stable_codes(
+    repo: Path,
+    failure: Exception,
+    status: int,
+    code: str,
+) -> None:
+    with mock.patch.object(HISTORY_SESSIONS, "read_page", side_effect=failure):
+        response = asyncio.run(api_git_log(_FakeRequest()))  # pyright: ignore[reportArgumentType]
+    assert response.status_code == status
+    assert _json(response)["code"] == code
 
 
 @pytest.mark.parametrize(
@@ -806,7 +884,7 @@ def test_route_commit_returns_404_for_an_unknown_object(repo: Path) -> None:
 
 
 def test_route_commit_preserves_operational_git_failures(repo: Path) -> None:
-    page = asyncio.run(read_log_page(repo, skip=0, limit=1))
+    page = _first_history_page(repo, limit=1)
     revision = page["commits"][0]["id"]
     with mock.patch(
         "metabrowser.git.routes.read_commit_detail",
@@ -825,7 +903,7 @@ def test_route_commit_preserves_operational_git_failures(repo: Path) -> None:
 
 
 def test_route_commit_does_not_hide_a_generic_command_failure(repo: Path) -> None:
-    page = asyncio.run(read_log_page(repo, skip=0, limit=1))
+    page = _first_history_page(repo, limit=1)
     revision = page["commits"][0]["id"]
     failure = GitCommandError(["show", revision], 128, "fatal: repository is corrupt")
     with mock.patch("metabrowser.git.routes.read_commit_detail", side_effect=failure):
@@ -842,7 +920,7 @@ def test_route_commit_does_not_hide_a_generic_command_failure(repo: Path) -> Non
 
 
 def test_route_commit_returns_detail_for_a_known_commit(repo: Path) -> None:
-    page = asyncio.run(read_log_page(repo, skip=0, limit=1))
+    page = _first_history_page(repo, limit=1)
     revision = page["commits"][0]["id"]
     response = asyncio.run(
         api_git_commit(_FakeRequest(path_params={"revision": revision}))  # pyright: ignore[reportArgumentType]

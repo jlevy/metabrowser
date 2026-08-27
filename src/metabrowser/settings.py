@@ -279,19 +279,29 @@ GIT_SUBPROCESS_MAX_BYTES = 32 * 1024 * 1024
 GIT_LOG_DEFAULT_LIMIT = 250
 GIT_LOG_MAX_LIMIT = 1_000
 
-# Maximum commit rows retained and mounted by the browser. A navigation
-# panel must not grow its DOM or client state with the lifetime of a
-# repository. The panel discloses the cap instead of presenting the
-# bounded list as complete.
-GIT_HISTORY_MAX_ROWS = 500
-
-# Largest ``--skip`` offset a page cursor may carry. Cursors are opaque
-# and server-issued, and the panel stops paging at GIT_HISTORY_MAX_ROWS,
-# so no legitimate cursor comes near this; it is ~400 pages at the default
-# limit. Without the bound, a well-formed cursor carrying an arbitrary
-# offset makes git walk and discard that whole prefix of history on every
-# request, spending the subprocess timeout budget to return nothing.
-GIT_LOG_MAX_SKIP = 100_000
+# Budgets for the v0.9 continuous-history implementation. The evidence and
+# derivation live in ``explorations/git-history/README.md``. They are frozen
+# before the continuation and virtual-window mechanisms so neither phase can
+# choose a convenient unmeasured limit while it is being implemented.
+GIT_HISTORY_WINDOW_MAX_ROWS = 256
+GIT_HISTORY_WINDOW_OVERSCAN_ROWS = 64
+GIT_HISTORY_PAGE_CACHE_PAGES = 8
+GIT_HISTORY_SEGMENT_REBASE_PX = 8_000_000
+GIT_HISTORY_SESSION_IDLE_TTL_S = 300.0
+GIT_HISTORY_SESSION_MAX_ENTRIES = 8
+# Walks match the session-entry bound so an active tab can never have its
+# live walk evicted by another tab short of the registry itself being
+# full. A lower ceiling (originally 2) made a third tab evict an active
+# walk and thrash every open tab through 410-and-replay recovery. The
+# measured 10,000-commit walk holds 16.9 MiB of Git-child RSS, so eight
+# concurrent walks bound at roughly 135 MiB, transient and TTL-reaped.
+GIT_HISTORY_SESSION_MAX_WALKS = 8
+# Measured for one GIT_LOG_DEFAULT_LIMIT page (largest observed
+# accumulation 114,071 bytes, merge-heavy corpus). Sessions scale this
+# linearly with their page size, so a route-legal ``limit`` up to
+# GIT_LOG_MAX_LIMIT stays inside the budget instead of failing.
+GIT_HISTORY_SESSION_PARSER_MAX_BYTES = 128 * 1024
+GIT_HISTORY_SESSION_MAX_STORAGE_BYTES = 64 * 1024 * 1024
 
 # Changed files returned by ``/api/git/commit/{revision}``. A commit that
 # touches more than this reports ``files_truncated`` rather than being
@@ -345,7 +355,10 @@ def client_settings_dict(
         "TREE_AUTO_EXPAND_FALLBACK_ROWS": TREE_AUTO_EXPAND_FALLBACK_ROWS,
         "SSE_HEARTBEAT_INTERVAL_S": SSE_HEARTBEAT_INTERVAL_S,
         "GIT_LOG_LIMIT": GIT_LOG_DEFAULT_LIMIT,
-        "GIT_HISTORY_MAX_ROWS": GIT_HISTORY_MAX_ROWS,
+        "GIT_HISTORY_WINDOW_MAX_ROWS": GIT_HISTORY_WINDOW_MAX_ROWS,
+        "GIT_HISTORY_WINDOW_OVERSCAN_ROWS": GIT_HISTORY_WINDOW_OVERSCAN_ROWS,
+        "GIT_HISTORY_PAGE_CACHE_PAGES": GIT_HISTORY_PAGE_CACHE_PAGES,
+        "GIT_HISTORY_SEGMENT_REBASE_PX": GIT_HISTORY_SEGMENT_REBASE_PX,
         "GIT_HOVER_DEBOUNCE_MS": GIT_HOVER_DEBOUNCE_MS,
         "GIT_DETAIL_CACHE_SIZE": GIT_DETAIL_CACHE_SIZE,
         "ROLLUP_DEFAULT_DEPTH": ROLLUP_DEFAULT_DEPTH,
@@ -373,11 +386,18 @@ __all__ = [
     "FOLDER_DISCOVERY_MAX_ENTRIES",
     "GIT_COMMIT_MAX_FILES",
     "GIT_DETAIL_CACHE_SIZE",
-    "GIT_HISTORY_MAX_ROWS",
+    "GIT_HISTORY_PAGE_CACHE_PAGES",
+    "GIT_HISTORY_SEGMENT_REBASE_PX",
+    "GIT_HISTORY_SESSION_IDLE_TTL_S",
+    "GIT_HISTORY_SESSION_MAX_ENTRIES",
+    "GIT_HISTORY_SESSION_MAX_STORAGE_BYTES",
+    "GIT_HISTORY_SESSION_MAX_WALKS",
+    "GIT_HISTORY_SESSION_PARSER_MAX_BYTES",
+    "GIT_HISTORY_WINDOW_MAX_ROWS",
+    "GIT_HISTORY_WINDOW_OVERSCAN_ROWS",
     "GIT_HOVER_DEBOUNCE_MS",
     "GIT_LOG_DEFAULT_LIMIT",
     "GIT_LOG_MAX_LIMIT",
-    "GIT_LOG_MAX_SKIP",
     "GIT_REPO_INFO_TTL_S",
     "GIT_SUBPROCESS_MAX_BYTES",
     "GIT_SUBPROCESS_TIMEOUT_S",

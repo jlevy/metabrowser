@@ -220,6 +220,48 @@ The status letters are:
 Badge text, group, tooltip, and accessible name carry meaning.
 Color is secondary.
 
+### Changes above a virtualized History
+
+Continuous virtualized history changed what “put a section above History” costs, and
+this plan predates it.
+The constraint is concrete.
+
+`git-history-window.js` is a pure computation module: `read(scrollTop, viewportHeight)`
+maps a scroll position to a logical row range, and `rebaseToOrdinal` returns a new
+`scrollTop` when the physical segment must move before the 8,000,000-pixel budget.
+Its caller in `git-panel.js` passes the scroller’s raw `scrollTop` and writes the
+rebased value straight back.
+The window therefore assumes **history row 0 sits at scroll offset 0 of the scroller it
+is given**.
+
+A Changes section in that same scroller breaks the assumption in both directions.
+Reads map to the wrong logical row by the height of the Changes block, and a rebase
+write-back jumps the viewport by that same amount.
+The offset is not a constant that could simply be subtracted: Changes is absent when the
+tree is clean, grows with the number of entries, and expands and collapses under a
+disclosure — so it changes while the user scrolls.
+
+Changes therefore **must not share a scroll origin with History.** Two acceptable
+structures:
+
+1. **Separate scrollers.** Changes and History are peer disclosures, each owning its own
+   scroll container. The window keeps its origin invariant untouched, and each section
+   scrolls independently.
+   This is the baseline.
+2. **Non-scrolling Changes.** Changes occupies a bounded, non-scrolling region above a
+   History that still owns the full scroller.
+   Simpler, but it caps how many status rows are reachable without its own overflow
+   treatment.
+
+What is **not** acceptable is one scroller with an offset correction applied at the call
+site. That reintroduces the coupling the virtual window was written to avoid, has to be
+re-derived on every expand, collapse, and status refresh, and silently corrupts the
+segment-rebase budget, which assumes the segment owns the whole scroll range.
+
+Phase 2 states which structure it chose and adds a browser test that scrolls deep into
+history with Changes both expanded and collapsed, asserting the resolved logical row is
+unaffected by the Changes block’s height.
+
 ### Selection and canonical route
 
 Selecting a status row replaces the main content with that row’s one-file diff and
@@ -283,7 +325,7 @@ git <common-hardening-args> \
 ```
 
 The actual argument vector is fixed in Python and contains no shell.
-`<common-hardening-args>` is `metabrowser.git.process._COMMON_ARGS`, which already
+`<common-hardening-args>` is `metabrowser.git.process.GIT_COMMON_ARGS`, which already
 supplies `--no-optional-locks` and `core.quotepath=false`; status does not restate them,
 because a second copy of a centrally owned flag is a second thing to keep correct.
 (`core.quotepath` is additionally inert under `-z`, which emits raw path bytes without
@@ -588,7 +630,13 @@ entry count, and optional browser row budget only where the evidence shows a bou
 needed. Each constant cites the measurement beside it.
 The ordinary Git subprocess limits remain a final safety net.
 
-Status acquisition needs a record-aware streaming runner.
+Status acquisition needs a record-aware streaming runner, and half of it now exists.
+`metabrowser.git.process.spawn_git_process` landed with continuous history: it returns a
+live process whose streams the caller owns, with the same executable lookup, environment
+isolation, fixed arguments, and spawn-failure translation as `run_git`, plus
+`terminate_git_process` as its counterpart.
+Status uses that seam and adds only the record-framing layer on top; it does not
+introduce a third way to start a Git process.
 It shares the current subprocess environment, stderr cap, timeout, cancellation, and
 termination behavior, but feeds complete records to the porcelain parser and can stop at
 an entry or byte budget.
@@ -623,7 +671,10 @@ The browser behavior is:
 - if a status diff is selected, mark it stale immediately and reload it only after the
   refreshed list proves the same entry still exists;
 - if `HEAD` changed, also reset the existing history state through its current refresh
-  path; and
+  path. Since continuous history landed, that path is session-based: a moved `HEAD`
+  changes the scope fingerprint, so held page cursors resolve to
+  `StaleHistorySessionError` and the panel’s existing recovery restarts the walk.
+  Status invalidation signals that reset; it does not implement a second one; and
 - after timeout or truncation, suspend automatic retries until manual refresh or a later
   panel activation.
 
@@ -737,7 +788,8 @@ into the new root.
   normalization, group projection, generation, clean predicate, and service.
 - `metabrowser/git/status_coordinator.py` — in-flight coalescing, lazy targeted
   invalidation, debounce, SSE event, and disposal.
-- `metabrowser/git/process.py` — shared record-aware streaming subprocess primitive.
+- `metabrowser/git/process.py` — already provides `spawn_git_process` and
+  `terminate_git_process`; status adds record framing above them, not a new primitive.
 - `metabrowser/git/capabilities.py` — cached Git-version parsing and the status safety
   gate.
 - `metabrowser/data/no-hooks/README.md` — a shipped directory with no recognized Git
@@ -757,6 +809,10 @@ into the new root.
 - `static/git-status-model.js` — strict, pure status render model.
 - `static/git-panel.js` — sections, fetching, refresh, row DOM, selection, disposal,
   route restoration, and history coordination.
+- `static/git-history-window.js` — the existing virtualized history window.
+  Status does not modify it, but the panel restructuring must respect its scroll
+  contract; see
+  [Changes above a virtualized History](#changes-above-a-virtualized-history).
 - `static/navigation.js` — `statusHref` and `parseStatus`.
 - `static/types.d.ts` — one authoritative browser wire and runtime shape.
 - `static/styles.css` — status component layout using existing tokens.
@@ -859,8 +915,8 @@ state moved. It never implies immutable content the way `/commit/<revision>` doe
 - [ ] Extract the shared raw Git path codec from the immutable diff adapter.
 - [ ] Add cached Git-version parsing and the Git 2.36 status-safety gate; keep
   repository discovery and History usable below it.
-- [ ] Add the record-aware streaming Git runner without weakening the existing runner’s
-  environment, timeout, output, cancellation, stderr, or reaping rules.
+- [ ] Frame porcelain records over the existing `spawn_git_process` seam without
+  weakening its environment, timeout, output, cancellation, stderr, or reaping rules.
 - [ ] Implement strict incremental porcelain-v2 parsing for header, ordinary, rename,
   copy, unmerged, untracked, and ignored records.
 - [ ] Implement `GitStatusService`, canonical sorting, raw-to-normalized projection,
