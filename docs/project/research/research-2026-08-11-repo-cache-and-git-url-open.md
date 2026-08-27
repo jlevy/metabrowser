@@ -33,6 +33,46 @@ Two properties make this more than a convenience wrapper around `git clone`:
 The decision this research supports is whether to build the feature, and if so which
 clone strategy, cache layout, and purge policy to commit to.
 
+## 2026-08-26 Addendum: Repository Library Direction
+
+The benchmarks and prior-art survey below remain a dated record of the system tested on
+2026-08-11. The product surface has since changed enough that several recommendations
+must be revalidated before implementation.
+
+Git history and diff rendering now ship together.
+The graph itself still needs only commit and tree objects, but selecting a revision also
+starts commit-detail and full comparison requests.
+The comparison path reads raw changes, line counts, patches, and file content by object
+ID, so blobs can enter the first interactive path.
+The original 0.49-second commit-detail measurement does not cover that workload.
+Blobless clone plus bounded background backfill remains the leading strategy, but the
+current routes must be measured before its thresholds or timing claims become
+implementation constants.
+
+The active
+[repository-library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
+also broadens the original cache proposal.
+It defines a versioned `~/.metabrowser/` application home beginning at format `f01`,
+collision-safe source identities, a pinned read-only `gitroot`, offline-first cache
+reuse, explicit refresh, and provider-owned metadata namespaces.
+Later phases add a repository chooser and GitHub pull-request records and views.
+
+That active plan supersedes this research where they differ on the exact cache layout,
+directory slug, CLI surface, refresh behavior, and rollout phases.
+In particular, the cache path now includes a digest-derived suffix rather than relying
+on a readable URL slug alone.
+The evidence and tradeoffs below remain useful inputs; they are not the current
+implementation contract.
+
+The rewrite also closes four contradictions found in review of the original plan.
+The CLI keeps `ROOT` as a raw string until URL classification instead of asking Typer to
+construct a `Path`; production clone policy allows HTTPS and SSH while an injected
+test-only policy enables local `file://` fixtures; provider-aware normalization happens
+before digest-based identity, so GitHub case aliases converge without weakening generic
+host identity; and full-clone fallback is chosen before publication.
+A failed post-publication backfill leaves an honestly partial entry to retry rather than
+replacing a live checkout.
+
 ## Questions to Answer
 
 1. Which clone strategy gives a fast first render without breaking the history browsing

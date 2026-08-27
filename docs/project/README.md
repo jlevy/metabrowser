@@ -32,6 +32,7 @@ links to the document that covers each in depth.
 - [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
 - [Git revision navigation performance](specs/active/plan-2026-08-25-git-revision-navigation-performance.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
+- [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
 
 ## Research
@@ -41,6 +42,7 @@ links to the document that covers each in depth.
 - [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
 - [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
+- [Repository cache and open from a Git URL](research/research-2026-08-11-repo-cache-and-git-url-open.md)
 
 ## Reviews
 

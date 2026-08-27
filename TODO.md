@@ -18,6 +18,7 @@ Checked items below are supported today; unchecked items are planned work.
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
 | Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md) | Graph panel, read-only Git API, and diff rendering shipped; `/compare/` remains |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | Draft; versioned cache and URL-open foundation first |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
@@ -96,6 +97,10 @@ Two known gaps sit outside that plan and are not regressions:
 - [x] Add a Git graph navigation panel over a read-only Git collection API
 - [ ] Build the `/compare/<base>..<head>` route, which
   [the URL grammar](docs/architecture.md) specifies and nothing serves yet
+- [ ] Add the
+  [repository library](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md):
+  a versioned local cache that opens or reuses Git URLs, followed by refresh, a repo
+  chooser, and provider-owned metadata such as GitHub pull requests
 
 Both entered core behind written plans, with the read-only boundary and bounded-cost
 model those plans required: the Git routes only read, every `git` subprocess is bounded
