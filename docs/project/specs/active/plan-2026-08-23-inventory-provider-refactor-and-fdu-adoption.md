@@ -1,10 +1,10 @@
 # Feature: Inventory Provider Refactor and fdu Adoption
 
-**Date:** 2026-08-23 (last updated 2026-08-25)
+**Date:** 2026-08-23 (last updated 2026-08-26)
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
-**Status:** Phase 1 implemented; Phase 2 planned
+**Status:** Phase 1 implemented; Phase 2A measured; Phase 2B planned
 
 ## Overview
 
@@ -343,75 +343,97 @@ a route or browser change.
 
 ### Phase 2: Implement and Adopt the fdu Provider
 
-The current fdu design and implementation are in
-[fdu pull request 47](https://github.com/jlevy/fdu/pull/47), stacked on the design work
-in [fdu pull request 44](https://github.com/jlevy/fdu/pull/44). The live execution map
-is `fdu-u7vo` in an up-to-date fdu checkout; this plan does not copy its changing bead
-counts or statuses.
+The reviewed fdu design and implementation are in
+[fdu pull request 48](https://github.com/jlevy/fdu/pull/48). Its
+`plan-2026-08-25-fdu-opened-root-inventory-engine.md` is the cross-repository execution
+map.
+Pull requests 44 and 47 remain research and implementation sources; neither owns the
+current contract.
 
-#### Prove the Real Rust Boundary First
+#### Checkpoint 2A: Measure the Unchanged Contract
 
-- [ ] Refine the linked Metabrowser architecture and fdu integration design until their
-  values, bounds, state transitions, registry handoff, and failure semantics match.
-- [ ] Build the smallest actual PyO3 spike that opens an fdu shared handle, performs one
-  bundled directory-plus-rollup read, returns one version/cursor/state/work record, and
-  converges after one live mutation without a Python mirror index.
-- [ ] Run that slice through the same provider contract tests and File Rollup packet.
-  If translation requires provider-specific branches or lossy values, revise both
-  designs and the Python provider before expanding the Rust implementation.
+- [x] Build and install an exact fdu wheel from revision `0583a1a`; reject a sibling
+  source-tree import and record the wheel digest.
+- [x] Inject a disposable fdu backend directly into `InventoryCoordinator` without
+  changing the shipping factory or Python default.
+- [x] Run the registered provider cases, selected route and SSE tests, one repository
+  corpus, and a complete open-to-close application lifecycle.
+- [x] Record every temporary full materialization, sort, aggregate pass, binding page,
+  latency, and memory observation in
+  [the exact-wheel spike](../../../../explorations/fdu-inventory-adapter/README.md).
 
-#### Complete the fdu Handle and Thin Adapter
+The spike proves that the public Python handle has the required lifecycle shape.
+It also shows why the unchanged contract cannot be the durable boundary: resource
+refusal, journal capacity, discovery barriers, and recursive-removal coalescing need
+explicit shared rules.
+Complete materialization and Python projection work are measured duplication, not an
+acceptable adapter implementation.
 
-- [ ] Implement the capabilities in
-  [Required fdu work](../../research/research-2026-08-23-fdu-metabrowser-inventory-engine.md#required-fdu-work):
-  runtime registry and scope inputs, shared retained index, coherent bounded
-  projections, complete reducers, progressive open, snapshot and revalidation state,
-  resumable changes, verified refresh, watcher handoff, cancellation, and typed
-  telemetry.
-- [ ] Implement `FduInventoryHandle` as bounded value translation and async/GIL
-  management only. Retain no entries, rollups, navigation indexes, cursors, or watcher
-  state in the adapter.
-- [ ] Preserve `InventoryConfig.max_files` as semantic scope and make fdu enforce the
-  same discovery stop, partial coverage, and resource-budget issue as Python.
-  Projection bounds do not replace this Phase 1 resource and behavior contract.
-- [ ] Map fdu state, source, and issue values through the total table in
-  [Inventory Provider](../../architecture/arch-inventory-provider.md#state-and-failures),
-  including the distinct open-idle `ready` phase; never infer a later state from a
-  second read.
-- [ ] Add one native bounded fdu refresh operation with per-path disposition and a
-  terminal version after all accepted observations are incorporated.
-  One native commit is a useful optimization, not a semantic requirement; the adapter
-  must neither return early nor launch untracked per-path work.
-- [ ] Add native version-pinned flat paging with exact remainders for filtered trees and
-  catalogs. The adapter must not retain a mirror, materialize an unbounded result, or
-  report a truncated page as complete.
-  Continuations must not repeat a full projection pass merely to advance one page.
-- [ ] Add forced `python` and `fdu` selection through the composition root and benchmark
-  CLI. An explicit unavailable or incompatible fdu selection fails with provider,
-  platform, build, and contract details; it never falls back silently.
-- [ ] Run the shared format corpus, normalized observation replay, filesystem scenarios,
-  wire goldens, cursor and recovery tests, and forced concurrency interleavings against
-  both providers.
+#### Checkpoint 2B: Revise the Contract and Python Oracle
 
-#### Measure and Decide the Default
+- [ ] Pass immutable registry content at open instead of trusting a caller-supplied
+  fingerprint. Derive both scope and semantic identities inside each provider.
+- [ ] Make discovery budget execution policy with honest partial state, and move maximum
+  depth to bounded read selection.
+  Name hidden, symlink, filesystem-boundary, and object-kind scope explicitly.
+- [ ] Align lifecycle, coverage, freshness, source, and issue values with fdu’s total
+  vocabulary. Resource refusal is terminal for expansion and observation rather than a
+  nominally watching state.
+- [ ] Add request work limits and typed limit results.
+  Replace exact suffix remainders with opaque continuations plus exact-or-capped totals,
+  stable version pinning, and portable-path completeness.
+- [ ] Specify one active change iterator, provider-batch replay capacity, iterator-only
+  cancellation, reset semantics, and the host coalescing boundary for recursive changes.
+- [ ] Update the Python provider, coordinator, page assembly, routes, and the closed
+  conformance registry.
+  The Python provider must pass before fdu is registered.
 
-- [ ] Run interleaved Python/fdu comparisons on the same immutable real corpora and
-  cache states at the engine, server, and browser layers, with A/A calibration,
-  semantic-digest equality, work counters, memory, binding copies, and filesystem-floor
-  ratios.
-- [ ] Resolve every correctness, resource, interaction, recovery, packaging, or
-  supported-platform regression before fdu is considered for automatic selection.
-- [ ] Publish the paired performance review and add `auto` only after every adoption
-  gate in the broader plan passes.
-  Diagnostics record the chosen provider and the exact reason for a Python fallback.
-- [ ] Keep Python as the readable semantic oracle and rollback provider.
-  Remove any spike-only adapter code or temporary cross-repository shims before Phase 2
-  closes.
+#### Checkpoint 2C: Add Native Projections and the Thin Adapter
+
+- [ ] Add only the maintained native structures justified by Checkpoint 2A: path order,
+  timestamp and catalog order, registry dimensions, fixed partitions, and navigation
+  presets. Each structure must name the measured pass or sort it removes.
+- [ ] Add bounded version-pinned tree, flat, filtered-tree, rollup, navigation, recent,
+  catalog, and diagnostics projections with opaque handle-local continuations.
+- [ ] Implement `FduInventoryBackend` as total value translation and one application-
+  owned async change bridge.
+  It retains the native handle but no entry mirror, aggregate store, filesystem walker,
+  fingerprint recipe, or MetaBrowser policy.
+- [ ] Give each handle one dedicated bounded poll worker.
+  Iterator cancellation joins only the bridge and preserves the handle; handle close
+  joins the bridge and native opened root.
+  A second active iterator fails explicitly.
+- [ ] Add explicit `python` and `fdu` factory choices plus an optional exact fdu
+  package. Missing or incompatible native artifacts are typed startup failures.
+  Python remains the default, and an explicit fdu request never falls back silently.
+- [ ] Delete the disposable materializing adapter and its temporary instrumentation.
+  Retain the reproducible harness, normalized evidence, and report.
+
+#### Checkpoint 2D: Prove the Composed Product
+
+- [ ] Run the same provider conformance registry, File Rollup packet, route tests, and
+  deterministic observation sessions against Python and fdu.
+- [ ] Record a normalized golden session covering progressive open, bounded reads and
+  paging, live mutation, refresh, replay loss, iterator cancellation, root replacement,
+  and joined close. Normalize only generated identities, time, and platform metadata;
+  preserve complete stable request, result, state, impact, work, route, and SSE
+  payloads.
+- [ ] Build the exact fdu revision as a wheel in a clean MetaBrowser environment on
+  every supported Python and platform job.
+  A source-tree import must not make integration pass.
+- [ ] Run interleaved Python/fdu comparisons on immutable real corpora with A/A
+  calibration, semantic equality, work counters, memory, binding copies, and
+  filesystem-floor ratios.
+- [ ] Resolve every correctness, resource, interaction, recovery, packaging, and
+  supported-platform regression.
+  Any default change is a separate reversible decision after these gates; this
+  implementation phase does not add an `auto` fallback.
 
 **Phase 2 exit:** both providers pass the same contract and product suites; the fdu
 adapter retains no mirror state; explicit fdu operation is reliable on supported
-platforms; and a recorded end-to-end comparison justifies whether `auto` selects fdu.
-Routes, browser code, plugins, and wire serializers are unchanged by provider choice.
+platforms; and the recorded end-to-end comparison is sufficient for a separate default
+decision. Routes, browser code, plugins, and wire serializers are unchanged by provider
+choice.
 
 ## Testing Strategy
 
@@ -521,9 +543,7 @@ Two Phase 2 optimizations remain measurement-gated:
 - [Metabrowser performance loop](../../../../explorations/performance-loop/README.md)
 - [fdu pull request 44](https://github.com/jlevy/fdu/pull/44)
 - [fdu pull request 47](https://github.com/jlevy/fdu/pull/47)
-- [fdu interactive-client integration plan](https://github.com/jlevy/fdu/blob/claude/fdu-interactive-client-implementation-map/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-integration.md)
-- [fdu implementation map](https://github.com/jlevy/fdu/blob/claude/fdu-interactive-client-implementation-map/docs/project/specs/active/plan-2026-08-23-fdu-interactive-client-implementation.md)
-- [fdu metadata-walk floor report](https://github.com/jlevy/fdu/blob/claude/fdu-interactive-client-implementation-map/docs/project/reports/report-2026-08-23-metadata-walk-floor.md)
+- [fdu pull request 48](https://github.com/jlevy/fdu/pull/48)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
