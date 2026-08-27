@@ -46,6 +46,9 @@ links to the document that covers each in depth.
 
 ## Reviews
 
+- [Repository-library phasing and GitHub content model](reviews/review-2026-08-26-repository-library-and-github-model.md)
+  — design review that separates generic Git caching from GitHub integration and defines
+  the strict provider-model and snapshot boundaries
 - [Load-time performance and the distance still to cover](reviews/review-2026-08-22-load-time-performance.md)
   — review of the six-round load-time work, its eight findings and their fixes, plus
   principles and candidate hypotheses for the rounds after it
