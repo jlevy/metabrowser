@@ -381,7 +381,7 @@ acceptable adapter implementation.
 - [x] Make discovery budget execution policy with honest partial state, and move maximum
   depth to bounded read selection.
   Name hidden, symlink, filesystem-boundary, and object-kind scope explicitly.
-- [ ] Align lifecycle, coverage, freshness, source, and issue values with fdu’s total
+- [x] Align lifecycle, coverage, freshness, source, and issue values with fdu’s total
   vocabulary. Resource refusal is terminal for expansion and observation rather than a
   nominally watching state.
 - [ ] Add request work limits and typed limit results.
@@ -402,6 +402,9 @@ The scope-and-classification slice is also complete: config names the supported 
 filesystem scope, the discovery budget is not part of semantic identity, reads own their
 depth selection, and each provider parses the supplied registry document and uses that
 same parsed value for identity, filters, navigation tallies, and rollups.
+The lifecycle slice is complete: the contract pins exhaustive, same-named coverage,
+freshness, source, and issue vocabularies, while `opening` remains an explicit
+host-owned phase before a provider has native state to report.
 
 #### Checkpoint 2C: Add Native Projections and the Thin Adapter
 

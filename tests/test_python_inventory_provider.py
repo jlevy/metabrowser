@@ -761,7 +761,7 @@ def test_python_provider_surfaces_discovery_failure(
     assert "contract failure sentinel" in details[0]
 
 
-def test_python_provider_surfaces_watcher_gap(
+def test_python_provider_surfaces_observation_gap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -784,7 +784,7 @@ def test_python_provider_surfaces_watcher_gap(
                 )
                 diagnostic = result.projection("watch")
                 assert isinstance(diagnostic, DiagnosticsProjection)
-                if any(issue.code is IssueCode.WATCHER_GAP for issue in result.state.issues):
+                if any(issue.code is IssueCode.OBSERVATION_GAP for issue in result.state.issues):
                     reason = (
                         result.state.coverage.reason.value
                         if result.state.coverage.reason is not None
@@ -808,7 +808,7 @@ def test_python_provider_surfaces_watcher_gap(
     assert complete is True
     assert reason is None
     assert freshness == "stale"
-    assert IssueCode.WATCHER_GAP in issue_codes
+    assert IssueCode.OBSERVATION_GAP in issue_codes
     assert watch_state == "failed"
 
 

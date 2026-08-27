@@ -287,8 +287,46 @@ def test_catalog_records_preserve_signed_filesystem_mtimes() -> None:
     assert record.mtime_ns == -1
 
 
+def test_state_vocabularies_match_the_native_contract_exactly() -> None:
+    assert {phase.value for phase in LifecyclePhase} == {
+        "opening",
+        "discovering",
+        "reconciling",
+        "ready",
+        "watching",
+        "stopped",
+        "failed",
+    }
+    assert {reason.value for reason in CoverageReason} == {
+        "building",
+        "budget",
+        "cancelled",
+        "inaccessible",
+        "failed",
+    }
+    assert {freshness.value for freshness in Freshness} == {
+        "fresh",
+        "reconciling",
+        "stale",
+        "partial",
+    }
+    assert {source.value for source in SourceKind} == {
+        "scanned",
+        "revalidated",
+        "journal_scoped",
+        "cached",
+    }
+    assert {code.value for code in IssueCode} == {
+        "permission",
+        "disappeared",
+        "invalid_metadata",
+        "resource_budget",
+        "observation_gap",
+        "provider_failure",
+    }
+
+
 def test_state_requires_an_explanation_for_partial_coverage() -> None:
-    assert "watcher_gap" not in {reason.value for reason in CoverageReason}
     with pytest.raises(ValueError, match="reason"):
         Coverage(complete=False)
     with pytest.raises(ValueError, match="complete"):

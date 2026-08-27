@@ -223,7 +223,7 @@ facts. A same-phase observation is always valid; cross-phase transitions are:
 
 | Current phase | Legal next phases |
 | --- | --- |
-| `opening_cache` | `discovering`, `reconciling`, `ready`, `stopped`, `failed` |
+| `opening` | `discovering`, `reconciling`, `ready`, `stopped`, `failed` |
 | `discovering` | `reconciling`, `ready`, `watching`, `stopped`, `failed` |
 | `reconciling` | `ready`, `watching`, `stopped`, `failed` |
 | `ready` | `reconciling`, `watching`, `stopped`, `failed` |
@@ -244,32 +244,27 @@ Priority hints are inert after this stop.
 
 Coverage is either complete with no reason or partial with one of `building`, `budget`,
 `cancelled`, `inaccessible`, or `failed`. Freshness is `fresh`, `reconciling`, `stale`,
-or `partial`. A watcher gap makes freshness stale and adds a typed watcher-gap issue;
-coverage changes only if reconciliation discovers or cannot resolve an enumeration hole.
+or `partial`. An observation gap makes freshness stale and adds a typed
+`observation_gap` issue; coverage changes only if reconciliation discovers or cannot
+resolve an enumeration hole.
 Typed issues also distinguish permission failures, disappearance, invalid metadata,
-filesystem-boundary skips, resource stops, and provider failures.
+resource stops, and provider failures.
 Providers preserve the original path and cause when the current layer can handle them.
 `IndexState` contains at most `MAX_INVENTORY_ISSUES` records, and each issue detail is
 at most `MAX_ISSUE_DETAIL_BYTES` UTF-8 bytes.
 A provider coalesces or summarizes larger failure sets before constructing the state
 record.
 
-The Phase 2 fdu adapter uses the following total mappings; it does not infer them from
-strings at individual call sites:
+The fdu adapter maps every shared value exhaustively; it does not infer names at
+individual call sites:
 
 | Metabrowser fact | fdu fact |
 | --- | --- |
-| `LifecyclePhase.READY` | `Ready` |
-| `SourceKind.SCANNED` | `cold_scan` |
-| `SourceKind.REVALIDATED` | `warm_revalidate` |
-| `SourceKind.CACHED` | `cache_only` |
-| `IssueCode.PERMISSION_DENIED` | `Permission` |
-| `IssueCode.WATCHER_GAP` | `ObservationGap` |
-| `IssueCode.RESOURCE_BUDGET` | `ResourceStop` |
+| `LifecyclePhase.DISCOVERING` through `FAILED` | same named fdu lifecycle value |
+| `LifecyclePhase.OPENING` | host-owned pre-provider state; no fabricated fdu value |
+| every `CoverageReason`, `Freshness`, and `SourceKind` | same named fdu value |
+| every `IssueCode` | same named fdu issue kind |
 
-`SourceKind.JOURNAL_SCOPED` has no fdu mapping because replaying a journal does not
-manufacture a new answer-shaping state.
-Other issue spellings are identical.
 Zero progress is honest for a settled provider that did not expose progressive state; an
 adapter never invents progress, and fdu must expose real mid-discovery progress before
 it can satisfy the progressive-open adoption gate.

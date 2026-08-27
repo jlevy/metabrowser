@@ -823,7 +823,7 @@ async def _read_index_progress(
         complete=state.coverage.complete or truncated,
         active=state.phase
         in {
-            LifecyclePhase.OPENING_CACHE,
+            LifecyclePhase.OPENING,
             LifecyclePhase.DISCOVERING,
             LifecyclePhase.RECONCILING,
         },
@@ -1053,7 +1053,7 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
             "active"
             if state.phase
             in {
-                LifecyclePhase.OPENING_CACHE,
+                LifecyclePhase.OPENING,
                 LifecyclePhase.DISCOVERING,
                 LifecyclePhase.RECONCILING,
             }

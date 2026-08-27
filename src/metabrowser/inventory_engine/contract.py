@@ -279,7 +279,7 @@ class ChangeCursor:
 
 
 class LifecyclePhase(StrEnum):
-    OPENING_CACHE = "opening_cache"
+    OPENING = "opening"
     DISCOVERING = "discovering"
     RECONCILING = "reconciling"
     READY = "ready"
@@ -289,7 +289,7 @@ class LifecyclePhase(StrEnum):
 
 
 ALLOWED_PHASE_TRANSITIONS: Mapping[LifecyclePhase, frozenset[LifecyclePhase]] = {
-    LifecyclePhase.OPENING_CACHE: frozenset(
+    LifecyclePhase.OPENING: frozenset(
         {
             LifecyclePhase.DISCOVERING,
             LifecyclePhase.RECONCILING,
@@ -384,11 +384,10 @@ class IndexProgress:
 
 
 class IssueCode(StrEnum):
-    PERMISSION_DENIED = "permission_denied"
+    PERMISSION = "permission"
     DISAPPEARED = "disappeared"
     INVALID_METADATA = "invalid_metadata"
-    FILESYSTEM_BOUNDARY = "filesystem_boundary"
-    WATCHER_GAP = "watcher_gap"
+    OBSERVATION_GAP = "observation_gap"
     RESOURCE_BUDGET = "resource_budget"
     PROVIDER_FAILURE = "provider_failure"
 

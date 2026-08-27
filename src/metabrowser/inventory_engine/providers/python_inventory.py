@@ -973,7 +973,7 @@ class _PythonInventoryStore:
             freshness = Freshness.STALE
             issues += (
                 InventoryIssue(
-                    code=IssueCode.WATCHER_GAP,
+                    code=IssueCode.OBSERVATION_GAP,
                     detail=_bounded_issue_detail(
                         self._watcher_detail or "filesystem observation stopped"
                     ),
