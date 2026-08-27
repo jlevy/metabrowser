@@ -229,6 +229,11 @@ facts. A same-phase observation is always valid; cross-phase transitions are:
 live filesystem observer.
 `watching` requires a live observer; a provider configured with observation off, or one
 whose observer has failed while the retained index remains readable, reports `ready`.
+Resource-budget refusal remains readable but shuts down observation and reports
+`stopped`; it must not claim to watch a scope it can no longer expand.
+Refresh may still verify a retained file or symlink, including its removal, but rejects
+unknown paths and retained directories because either could expand the stopped scope.
+Priority hints are inert after this stop.
 `stopped` is terminal; `failed` may only transition to `stopped`.
 
 Coverage is either complete with no reason or partial with one of `building`, `budget`,

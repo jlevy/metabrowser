@@ -120,6 +120,7 @@ async def _open_settled_provider(
         if result.state.phase in {
             LifecyclePhase.READY,
             LifecyclePhase.WATCHING,
+            LifecyclePhase.STOPPED,
             LifecyclePhase.FAILED,
         }:
             return handle
@@ -855,25 +856,46 @@ def test_provider_budget_stop_is_explicit_and_absence_remains_unknown(
         )
         try:
             result = await handle.read(
-                ReadRequest(queries=(EntryQuery(query_id="missing", path="z.txt"),))
+                ReadRequest(
+                    queries=(
+                        EntryQuery(query_id="missing", path="z.txt"),
+                        DiagnosticsQuery(query_id="diagnostics"),
+                    )
+                )
             )
             projection = cast("EntryProjection", result.projection("missing"))
+            diagnostics = cast("DiagnosticsProjection", result.projection("diagnostics"))
+            (tmp_path / "a.txt").write_text("updated", encoding="utf-8")
+            retained_receipt = await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="a.txt"),))
+            )
+            unknown_receipt = await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="z.txt"),))
+            )
             return (
                 result.state.phase.value,
                 result.state.coverage.complete,
                 result.state.coverage.reason.value if result.state.coverage.reason else None,
                 tuple(issue.code.value for issue in result.state.issues),
                 projection.presence.value,
+                diagnostics.payload.watch_state,
+                diagnostics.payload.watch_reason,
+                retained_receipt.accepted_paths,
+                unknown_receipt.rejected_paths,
             )
         finally:
             await handle.close()
 
     assert asyncio.run(run()) == (
-        "watching",
+        "stopped",
         False,
         "budget",
         ("resource_budget",),
         "unknown",
+        "off",
+        "resource_budget",
+        ("a.txt",),
+        ("z.txt",),
     )
 
 

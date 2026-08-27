@@ -62,6 +62,7 @@ async def _open_settled(
         if result.state.phase in {
             LifecyclePhase.READY,
             LifecyclePhase.WATCHING,
+            LifecyclePhase.STOPPED,
             LifecyclePhase.FAILED,
         }:
             return handle
@@ -578,6 +579,38 @@ def test_priority_hint_returns_before_reference_refresh_finishes(
             await asyncio.wait_for(started.wait(), timeout=1)
         finally:
             release.set()
+            await handle.close()
+
+    asyncio.run(run())
+
+
+def test_priority_hint_cannot_expand_a_budget_stopped_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("a.txt", "b.txt"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+
+    async def run() -> None:
+        handle = await _open_settled(
+            tmp_path,
+            InventoryConfig(max_files=1, watch_mode="off"),
+        )
+        refresh_started = asyncio.Event()
+
+        async def unexpected_priority_refresh(*_args: object, **_kwargs: object) -> None:
+            refresh_started.set()
+
+        monkeypatch.setattr(
+            handle._store,
+            "_run_priority_refresh",
+            unexpected_priority_refresh,
+        )
+        try:
+            await handle.prioritize(PriorityRequest(paths=("b.txt",)))
+            await asyncio.sleep(0)
+            assert not refresh_started.is_set()
+        finally:
             await handle.close()
 
     asyncio.run(run())

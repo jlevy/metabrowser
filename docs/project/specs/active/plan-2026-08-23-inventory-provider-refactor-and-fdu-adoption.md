@@ -388,6 +388,12 @@ acceptable adapter implementation.
   conformance registry.
   The Python provider must pass before fdu is registered.
 
+The resource-stop slice is complete: the Python reference provider remains readable,
+reports partial budget coverage in terminal `stopped`, and joins its watcher with an
+explicit `resource_budget` diagnostic.
+It still verifies retained leaves, rejects refreshes that could expand the stopped
+scope, and treats priority hints as inert.
+
 #### Checkpoint 2C: Add Native Projections and the Thin Adapter
 
 - [ ] Add only the maintained native structures justified by Checkpoint 2A: path order,

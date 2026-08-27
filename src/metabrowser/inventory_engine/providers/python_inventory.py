@@ -658,6 +658,17 @@ class _PythonInventoryStore:
             self._rollup_generation = next(_ROLLUP_REVISIONS)
         self._record_provider_change(dirty_queries=frozenset({QueryKind.DIAGNOSTICS}))
 
+    async def _stop_watcher_for_resource_budget(self) -> None:
+        watcher = self._watcher_task
+        if watcher is not None and not watcher.done():
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
+        self._watcher_task = None
+        self._watcher_state = "off"
+        self._watcher_reason = "resource_budget"
+        self._watcher_detail = ""
+
     def clear(self) -> None:
         """Drop all state and stop the walker. Called by
         ``paths_safe.register_root_callback`` on root swap; a
@@ -764,10 +775,14 @@ class _PythonInventoryStore:
         rejected: list[str] = []
         valid: list[RefreshObservation] = []
         for observation in request.observations:
-            if self._valid_relative_path(observation.path):
-                valid.append(observation)
-            else:
+            if not self._valid_relative_path(observation.path):
                 rejected.append(observation.path)
+                continue
+            retained = self.get(observation.path)
+            if self._status == "truncated" and (retained is None or retained.type == "dir"):
+                rejected.append(observation.path)
+                continue
+            valid.append(observation)
         if not valid:
             return RefreshReceipt(
                 version=self._current_version(),
@@ -797,6 +812,8 @@ class _PythonInventoryStore:
         """Schedule bounded verification without delaying the interactive read path."""
 
         self._ensure_open()
+        if self._status == "truncated":
+            return
         paths = tuple(
             rel
             for rel in request.paths
@@ -933,7 +950,7 @@ class _PythonInventoryStore:
             coverage = Coverage(complete=True)
             freshness = Freshness.FRESH
         elif status == "truncated":
-            phase = self._settled_phase()
+            phase = LifecyclePhase.STOPPED
             coverage = Coverage(complete=False, reason=CoverageReason.BUDGET)
             freshness = Freshness.PARTIAL
             issues = (
@@ -2837,6 +2854,8 @@ class _PythonInventoryStore:
             return
 
         is_truncated = self._files_indexed >= self._max_files
+        if is_truncated:
+            await self._stop_watcher_for_resource_budget()
         if not is_truncated:
             try:
                 self._repair_pending_dir_aggregates()
