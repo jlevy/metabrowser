@@ -1,17 +1,17 @@
 ---
 type: is
 id: is-01kzt6hdasbhx6maqzvtxntxj7
-title: "Repository library Phase 6: measured large-repository acquisition"
+title: "Repository library Phase 8: measured large-repository acquisition"
 kind: feature
 status: open
 priority: 3
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies: []
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-08-12T05:18:50.711Z
-updated_at: 2026-08-27T05:36:14.376Z
+updated_at: 2026-08-27T06:09:27.844Z
 extensions:
   linear:
     id: 7766c0ab-8af4-4ee0-a3c5-d984d20cb1db
