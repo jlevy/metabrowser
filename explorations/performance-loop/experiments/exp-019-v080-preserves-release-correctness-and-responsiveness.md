@@ -22,43 +22,43 @@ experiment:
     runs_per_condition: 3
     interleaved: true
     control: exact installed v0.7.1 with a measurement-only concurrency recorder adapter
-    candidate: exact installed wheel from ec2ede9
+    candidate: exact installed wheel from 5674cb6
     record: five backend pairs and three admissible browser profiles per installed build
   results:
     - metric: backend_first_row_s
-      control_median: 0.556
-      candidate_median: 0.560
-      control_range: [0.544, 1.027]
-      candidate_range: [0.542, 0.582]
-      change_pct: 0.7
-      overlapping: true
-    - metric: backend_index_done_s
-      control_median: 6.129
-      candidate_median: 5.903
-      control_range: [5.579, 7.089]
-      candidate_range: [5.808, 6.441]
+      control_median: 0.573
+      candidate_median: 0.552
+      control_range: [0.561, 0.594]
+      candidate_range: [0.543, 0.582]
       change_pct: -3.7
       overlapping: true
+    - metric: backend_index_done_s
+      control_median: 5.074
+      candidate_median: 5.313
+      control_range: [4.812, 6.178]
+      candidate_range: [5.053, 5.667]
+      change_pct: 4.7
+      overlapping: true
     - metric: backend_peak_rss_mb
-      control_median: 132.7
-      candidate_median: 132.1
-      control_range: [132.0, 138.3]
-      candidate_range: [132.0, 133.0]
-      change_pct: -0.5
+      control_median: 132.2
+      candidate_median: 132.5
+      control_range: [131.4, 141.5]
+      candidate_range: [131.2, 140.8]
+      change_pct: 0.2
       overlapping: true
     - metric: browser_first_row_ms
-      control_median: 313
-      candidate_median: 276
-      control_range: [223, 389]
-      candidate_range: [223, 930]
-      change_pct: -11.8
+      control_median: 179
+      candidate_median: 224
+      control_range: [127, 225]
+      candidate_range: [177, 263]
+      change_pct: 25.1
       overlapping: true
     - metric: browser_fcp_ms
-      control_median: 228
-      candidate_median: 184
-      control_range: [152, 240]
-      candidate_range: [184, 392]
-      change_pct: -19.3
+      control_median: 140
+      candidate_median: 140
+      control_range: [120, 192]
+      candidate_range: [124, 156]
+      change_pct: 0.0
       overlapping: true
     - metric: browser_hard_gate_pass_rate_pct
       control_median: 100
@@ -74,11 +74,10 @@ experiment:
       - collapsed diff rows can remain mounted while hidden
     notes: >-
       The candidate adds 4 KB of startup JavaScript at the comparison's reporting
-      precision while keeping the startup script count at 22. One cold candidate run
-      reaches 930 ms for first row, 392 ms for FCP, and a 223 ms animation frame; the
-      other two match the release floor, the intervals overlap, and no candidate run
-      records a Long Task or blocking time. The outlier is retained as a release caveat
-      rather than averaged away or promoted to a repeatable regression.
+      precision while keeping the startup script count at 22. One candidate run reaches
+      384 ms for LCP and records 0.0047 CLS; its first row is 263 ms, its FCP is 140 ms,
+      and it records no Long Task or blocking time. Every timing range overlaps and all
+      candidate profiles pass the hard gate.
   verdict:
     decision: accepted
     primary_metric: every candidate backend and browser run passes correctness and hard responsiveness gates
@@ -86,9 +85,9 @@ experiment:
       The candidate returns identical ordered rows and tallies on an unchanged corpus,
       preserves backend timing and memory within overlapping ranges, records no Long
       Task, blocking time, failed fetch, rendered error, page exception, or collapsed
-      hidden row, and passes every hard browser budget. The one cold-start tail is not
-      repeatable and crosses roadmap targets rather than release gates.
-    commit: ec2ede9
+      hidden row, and passes every hard browser budget. The 384 ms LCP tail does not
+      separate the candidate interval from v0.7.1 or cross a hard release gate.
+    commit: 5674cb6
 ---
 # v0.8.0 preserves release correctness and responsiveness
 
@@ -102,20 +101,20 @@ browser profiles pass every hard correctness and responsiveness gate.
 The candidate records no Long Task, blocking time, failed fetch, rendered error,
 uncaught page exception, or collapsed diff row mounted beneath a closed fold.
 
-One candidate browser run is a cold-start tail: first row reaches 930 ms, FCP reaches
-392 ms, and the longest animation frame reaches 223 ms.
-The other two candidate runs reach first row in 223–276 ms and FCP in 184 ms.
+One candidate browser run reaches 384 ms for LCP and records 0.0047 CLS, while its first
+row is 263 ms and FCP is 140 ms.
 The full candidate and release ranges overlap, so this sample does not establish a
 repeatable regression or improvement.
-The outlier remains visible as a release caveat because it misses roadmap targets even
-though it passes the hard release gate.
+The tail remains visible in the release record even though it passes the hard release
+gate.
 
 ## Exact provenance and corpus
 
 The control is an installed wheel from tag `v0.7.1`. The candidate is an installed wheel
-built from commit `ec2ede9`, before any measurement record changed the working tree, and
-reports `metab 0.7.2.dev55+ec2ede9`. Both isolated environments contain identical
-dependency versions; only Metabrowser differs.
+built from commit `5674cb6`, before any measurement record changed the working tree, and
+reports `metab 0.7.2.dev57+5674cb6`. Both isolated environments contain identical
+dependency versions under the repository’s supply-chain cutoff; only Metabrowser
+differs. The first-party Metabrowser release is exempt from that cutoff.
 
 The v0.7.1 recorder predates the request-class concurrency provenance required by the
 current evidence policy.
@@ -144,10 +143,10 @@ claim.
 
 | measure | v0.7.1 median (range) | candidate median (range) | result |
 | --- | ---: | ---: | --- |
-| first navigation row | 0.556 s (0.544–1.027) | 0.560 s (0.542–0.582) | no detected difference |
-| index complete | 6.129 s (5.579–7.089) | 5.903 s (5.808–6.441) | no detected difference |
-| peak RSS | 132.7 MB (132.0–138.3) | 132.1 MB (132.0–133.0) | no detected difference |
-| worst overlap progress | 69.4 ms (65.8–154.8) | 108.9 ms (55.4–162.1) | every run passes |
+| first navigation row | 0.573 s (0.561–0.594) | 0.552 s (0.543–0.582) | no detected difference |
+| index complete | 5.074 s (4.812–6.178) | 5.313 s (5.053–5.667) | no detected difference |
+| peak RSS | 132.2 MB (131.4–141.5) | 132.5 MB (131.2–140.8) | no detected difference |
+| worst overlap progress | 121.8 ms (65.4–147.1) | 121.7 ms (81.9–124.6) | every run passes |
 
 The corpus fingerprint is identical before and after the comparison.
 Ordered rows and tallies have zero differences and no required field is missing.
@@ -165,16 +164,16 @@ than release regressions.
 | measure | v0.7.1 median (range) | candidate median (range) | result |
 | --- | ---: | ---: | --- |
 | hard-gate passes | 3 of 3 | 3 of 3 | every run passes |
-| first row | 313 ms (223–389) | 276 ms (223–930) | no detected difference; one candidate tail |
-| FCP | 228 ms (152–240) | 184 ms (184–392) | no detected difference; one candidate tail |
-| LCP | 228 ms (152–240) | 184 ms (184–392) | no detected difference; one candidate tail |
+| first row | 179 ms (127–225) | 224 ms (177–263) | no detected difference |
+| FCP | 140 ms (120–192) | 140 ms (124–156) | no detected difference |
+| LCP | 140 ms (120–192) | 156 ms (124–384) | no detected difference; one candidate tail |
 | longest Long Task | 0 ms | 0 ms | unchanged |
 | blocking time | 0 ms | 0 ms | unchanged |
 | startup scripts | 22 | 22 | unchanged |
 | startup JavaScript | 155 KB | 159 KB | 4 KB larger |
-| all requests | 85 | 85 (85–102) | ranges overlap |
-| all transfer | 493 KB (485–499) | 507 KB (498–515) | ranges overlap |
-| retained heap after GC | 4.9 MB (4.8–4.9) | 4.9 MB (4.8–4.9) | unchanged |
+| all requests | 81 (67–84) | 83 (75–83) | ranges overlap |
+| all transfer | 488 KB (473–495) | 484 KB (451–500) | ranges overlap |
+| retained heap after GC | 4.9 MB (4.0–4.9) | 4.6 MB (4.2–4.9) | ranges overlap |
 
 ## Decision
 
@@ -183,9 +182,9 @@ The minor release adds the retained-navigation, diff-rendering, Git-summary, Sou
 performance-gate work while preserving semantic responses, backend behavior, retained
 memory, rendering count, and every hard browser budget.
 
-The one candidate cold-start tail remains part of the release record.
-It does not repeat, separate the candidate interval from the release, create a Long Task
-or blocking time, fail a fetch, render an error, throw an exception, or cross a hard
+The one candidate LCP tail remains part of the release record.
+It does not separate the candidate interval from the release, create a Long Task or
+blocking time, fail a fetch, render an error, throw an exception, or cross a hard
 release budget.
 
 <!-- This document follows common-doc-guidelines.md.

@@ -50,6 +50,9 @@ Fixes:
 - Commit summaries keep the revision at the standard interface size and place file and
   line totals on dedicated rows with explicit units.
 
+- Full navigation-tally passes yield often enough on slower hosts to preserve the
+  deterministic 50 ms event-loop heartbeat guard.
+
 Plugin API:
 
 - A view handle may expose an optional `ready: Promise<void>` for its initial useful
@@ -77,8 +80,8 @@ Validation:
 - All three visible-browser candidate profiles pass every hard correctness and
   responsiveness gate with no Long Task, blocking time, failed fetch, rendered error,
   page exception, or collapsed row mounted beneath a closed fold.
-  One cold-start tail misses roadmap targets but does not repeat or separate the
-  candidate interval from v0.7.1.
+  One LCP tail remains in the record but does not separate the candidate interval from
+  v0.7.1 or cross a hard release gate.
 
 ## 0.7.1
 
