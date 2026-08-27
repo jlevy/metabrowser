@@ -172,6 +172,14 @@ Once repository discovery succeeds, the Git panel has two top-level sections:
 Status and the first history page load concurrently the first time the Git tab is shown.
 A failure in one section does not erase the other.
 
+There is a third request to place in that order.
+`/api/git/summary` backs the history tally and runs one graph traversal, so the panel
+defers it until after the first history page paints rather than racing it.
+Status must not undo that deferral: the ordering is status and the first history page
+together, then the summary once the first page is on screen.
+Phase 2 records the chosen ordering and its reason, and `mb-0lkd` covers how the Changes
+header and the existing tally row coexist in the panel’s header region.
+
 Changes has four possible states:
 
 - **Loading:** the ordinary panel skeleton and busy semantics;
@@ -240,6 +248,20 @@ write-back jumps the viewport by that same amount.
 The offset is not a constant that could simply be subtracted: Changes is absent when the
 tree is clean, grows with the number of entries, and expands and collapses under a
 disclosure — so it changes while the user scrolls.
+
+This is not hypothetical, and the evidence arrived before this plan was implemented.
+The Git header tally added `.git-history-summary` above `.git-graph-list` in the same
+scroller, in normal flow, which already breaks the assumption by roughly one row.
+The 64-row overscan absorbs it, so nothing looks wrong while scrolling, and the
+`scrollTop` write-backs land about a row off target.
+It is tracked as `mb-180g`.
+
+The lesson for this plan is the important part: the first element ever added above the
+virtualized list silently violated the contract, and it was small and fixed-height.
+Changes is large, variable, and user-toggled.
+Whatever fix `mb-180g` takes — a separate scroll container, or an explicit conversion at
+the boundary — must land before Changes is built on top of it, or this plan inherits a
+defect and multiplies it.
 
 Changes therefore **must not share a scroll origin with History.** Two acceptable
 structures:
