@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** In progress; Phase 1 accepted on 2026-08-26 and targeted for v0.9.0
+**Status:** In progress; Phases 1 and 2 accepted on 2026-08-26 and targeted for v0.9.0
 
 ## Overview
 
@@ -273,7 +273,7 @@ history shapes. The headed-browser matrix established the need for the virtual w
 and the one-walk prototype proved exact ordering and indexed page replay without prefix
 work. Phase 2 and Phase 3 may now proceed against those recorded budgets.
 
-### Phase 2: Scalable continuation (`mb-abu2`)
+### Phase 2: Scalable continuation (`mb-abu2`, completed)
 
 - Replace skip cursors with the measured session, scope fingerprint, replay spool,
   lifecycle registry, shutdown cleanup, and explicit stale/expired responses.
@@ -281,6 +281,13 @@ work. Phase 2 and Phase 3 may now proceed against those recorded budgets.
   changelog as one internal contract change.
 - Cover empty repositories, default and all-ref scopes, moving refs, malformed tokens,
   expiry, concurrent panels, resource eviction, and subprocess failure.
+
+The implementation freezes the resolved commit tips at session creation, advances one
+demand-driven `git log --date-order` process, publishes only flushed replay frames, and
+maps malformed, stale, expired, and storage-exhausted sessions to distinct HTTP states.
+The focused suite covers all three measured history shapes and traverses a 1,003-commit
+history without `--skip`; the repository-wide handoff gate passed before the phase was
+closed.
 
 ### Phase 3: Virtual row window (`mb-ghju`)
 

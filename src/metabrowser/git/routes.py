@@ -32,7 +32,14 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from metabrowser.git.detail import read_commit_detail
-from metabrowser.git.log import decode_cursor, read_log_page, read_refs, resolve_default_scope
+from metabrowser.git.history import (
+    HISTORY_SESSIONS,
+    ExpiredHistorySessionError,
+    HistoryStorageError,
+    InvalidHistoryCursorError,
+    StaleHistorySessionError,
+)
+from metabrowser.git.log import read_refs
 from metabrowser.git.process import GitError, GitTimeoutError
 from metabrowser.git.repo import RepoContext, repo_info
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
@@ -125,10 +132,7 @@ async def api_git_log(request: Request) -> JSONResponse:
         return JSONResponse(_negative_payload(info))
 
     limit = _clamped_limit(request.query_params.get("limit", ""))
-    cursor = request.query_params.get("cursor", "")
-    skip = decode_cursor(cursor) if cursor else 0
-    if skip is None:
-        return JSONResponse({"error": "invalid cursor"}, status_code=400)
+    cursor = request.query_params.get("cursor") or None
 
     # An unborn HEAD is a repository with no commits. `git log` exits
     # non-zero there, which would read as a failure; short-circuit to the
@@ -136,20 +140,49 @@ async def api_git_log(request: Request) -> JSONResponse:
     if context.head.get("unborn"):
         return JSONResponse({"is_repo": True, "commits": [], "cursor": None, "has_more": False})
 
-    wants_all = request.query_params.get("scope", "") == "all"
+    raw_scope = request.query_params.get("scope")
+    wants_all = raw_scope == "all" if raw_scope is not None else None
     try:
-        refs = None if wants_all else await resolve_default_scope(served_root)
-        page = await read_log_page(served_root, skip=skip, limit=limit, refs=refs)
+        page = await HISTORY_SESSIONS.read_page(
+            served_root,
+            wants_all=wants_all,
+            limit=limit,
+            cursor=cursor,
+        )
+    except InvalidHistoryCursorError:
+        return JSONResponse(
+            {"error": "invalid cursor", "code": "history_cursor_invalid"},
+            status_code=400,
+        )
+    except StaleHistorySessionError:
+        return JSONResponse(
+            {
+                "error": "git history changed; refresh required",
+                "code": "history_stale",
+            },
+            status_code=409,
+        )
+    except ExpiredHistorySessionError:
+        return JSONResponse(
+            {
+                "error": "git history session expired; refresh required",
+                "code": "history_expired",
+            },
+            status_code=410,
+        )
+    except HistoryStorageError:
+        return JSONResponse(
+            {
+                "error": "git history session storage exhausted",
+                "code": "history_storage_exhausted",
+            },
+            status_code=507,
+        )
     except GitError as exc:
         log.warning("git log failed: %s", exc)
         return _git_failure_response(exc)
 
-    # The panel states what it is showing, so a graph that omits a branch
-    # never looks like a graph that lost one.
-    payload = dict(page)
-    payload["scope"] = "all" if wants_all else "default"
-    payload["scope_refs"] = list(refs) if refs else []
-    return JSONResponse(payload)
+    return JSONResponse(dict(page))
 
 
 async def api_git_commit(request: Request) -> JSONResponse:

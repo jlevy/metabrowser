@@ -41,6 +41,11 @@ page payloads, append-to-paint intervals, DOM and serialized HTML, retained heap
 collection, scrolling, deepest-row selection, and a fresh deep route.
 The product’s normal default ref scope is unchanged.
 
+The accepted mechanism is implemented in `metabrowser.git.history` for Phase 2.
+Production freezes the resolved commit tips at session creation, advances the same
+ordered walk only when a page is requested, and applies the measured parser, process,
+registry, idle, and storage budgets independently.
+
 Run the backend matrix with:
 
 ```shell

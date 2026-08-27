@@ -4,6 +4,14 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Features:
+
+- Git history pages now come from a bounded server session that advances one ordered Git
+  walk on demand and replays visited pages by indexed seek.
+  Opaque page cursors replace progressively expensive skip offsets; ref movement,
+  expiry, eviction, and storage exhaustion remain explicit recovery states rather than
+  appearing as the end of history.
+
 ## 0.8.0
 
 Features:

@@ -165,15 +165,22 @@ class GitRefList(TypedDict):
 class GitLogPage(TypedDict):
     """Response shape for ``GET /api/git/log``.
 
-    ``cursor`` is opaque and single-use: pass it back to fetch the next
-    page. Callers never construct one. It is ``None`` exactly when
-    ``has_more`` is false.
+    ``cursor`` is the opaque next-page token. The page and previous-page
+    tokens make an evicted client page replayable from the same bounded
+    server session without walking its prefix again. Callers never
+    construct a token.
     """
 
     is_repo: bool
     commits: list[GitCommit]
     cursor: str | None
     has_more: bool
+    page: NotRequired[int]
+    page_cursor: NotRequired[str]
+    previous_cursor: NotRequired[str | None]
+    scope: NotRequired[Literal["default", "all"]]
+    scope_refs: NotRequired[list[str]]
+    scope_fingerprint: NotRequired[str]
 
 
 class GitFileChange(TypedDict):
@@ -339,6 +346,28 @@ def validate_git_log_page(page: Mapping[str, Any]) -> None:
         )
     else:
         assert cursor is None, f"log page has_more=False must carry cursor=None, got {cursor!r}"
+
+    if "page" in page:
+        assert isinstance(page["page"], int) and page["page"] >= 0, (
+            f"log page 'page' not a non-negative int: {page['page']!r}"
+        )
+        assert isinstance(page.get("page_cursor"), str) and page["page_cursor"], (
+            "session log page missing its replay cursor"
+        )
+        previous = page.get("previous_cursor")
+        if page["page"] == 0:
+            assert previous is None, "first session log page must not have a previous cursor"
+        else:
+            assert isinstance(previous, str) and previous, (
+                "non-first session log page missing its previous cursor"
+            )
+        assert page.get("scope") in ("default", "all"), (
+            f"session log page has invalid scope: {page.get('scope')!r}"
+        )
+        assert isinstance(page.get("scope_refs"), list), "session log page scope_refs not a list"
+        assert isinstance(page.get("scope_fingerprint"), str), (
+            "session log page scope_fingerprint not a string"
+        )
 
 
 def validate_git_file_change(change: Mapping[str, Any], *, _where: str = "") -> None:

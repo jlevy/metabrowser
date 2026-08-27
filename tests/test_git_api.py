@@ -27,6 +27,13 @@ import pytest
 from metabrowser import paths_safe
 from metabrowser.git import repo as git_repo
 from metabrowser.git.detail import _summarize_changes, read_commit_detail, translate_repo_path
+from metabrowser.git.history import (
+    HISTORY_SESSIONS,
+    ExpiredHistorySessionError,
+    HistoryStorageError,
+    InvalidHistoryCursorError,
+    StaleHistorySessionError,
+)
 from metabrowser.git.log import (
     decode_cursor,
     encode_cursor,
@@ -753,14 +760,22 @@ def test_routes_return_the_negative_envelope_outside_a_repository(plain_dir: Pat
 
 
 def test_route_log_clamps_an_out_of_range_limit(repo: Path) -> None:
-    for raw_limit in ("0", "-3", "999999999", "not-a-number"):
-        response = asyncio.run(
-            api_git_log(_FakeRequest({"limit": raw_limit}))  # pyright: ignore[reportArgumentType]
-        )
-        assert response.status_code == 200, raw_limit
-        payload = _json(response)
-        validate_git_log_page(payload)
-        assert len(payload["commits"]) >= 1, raw_limit
+    async def scenario() -> None:
+        try:
+            for raw_limit in ("0", "-3", "999999999", "not-a-number"):
+                response = await api_git_log(
+                    _FakeRequest(  # pyright: ignore[reportArgumentType]
+                        {"limit": raw_limit}
+                    )
+                )
+                assert response.status_code == 200, raw_limit
+                payload = _json(response)
+                validate_git_log_page(payload)
+                assert len(payload["commits"]) >= 1, raw_limit
+        finally:
+            await HISTORY_SESSIONS.close_all()
+
+    asyncio.run(scenario())
 
 
 def test_route_log_rejects_a_malformed_cursor(repo: Path) -> None:
@@ -768,7 +783,31 @@ def test_route_log_rejects_a_malformed_cursor(repo: Path) -> None:
         api_git_log(_FakeRequest({"cursor": "!!!not-a-cursor"}))  # pyright: ignore[reportArgumentType]
     )
     assert response.status_code == 400
-    assert _json(response) == {"error": "invalid cursor"}
+    assert _json(response) == {
+        "error": "invalid cursor",
+        "code": "history_cursor_invalid",
+    }
+
+
+@pytest.mark.parametrize(
+    ("failure", "status", "code"),
+    [
+        (InvalidHistoryCursorError("invalid"), 400, "history_cursor_invalid"),
+        (StaleHistorySessionError("stale"), 409, "history_stale"),
+        (ExpiredHistorySessionError("expired"), 410, "history_expired"),
+        (HistoryStorageError("full"), 507, "history_storage_exhausted"),
+    ],
+)
+def test_route_log_maps_session_failures_to_stable_codes(
+    repo: Path,
+    failure: Exception,
+    status: int,
+    code: str,
+) -> None:
+    with mock.patch.object(HISTORY_SESSIONS, "read_page", side_effect=failure):
+        response = asyncio.run(api_git_log(_FakeRequest()))  # pyright: ignore[reportArgumentType]
+    assert response.status_code == status
+    assert _json(response)["code"] == code
 
 
 @pytest.mark.parametrize(

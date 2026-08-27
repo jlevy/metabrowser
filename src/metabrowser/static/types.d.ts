@@ -1442,9 +1442,18 @@ declare global {
   type MetabrowserGitLogPage = {
     is_repo: boolean;
     commits?: Array<MetabrowserGitCommit>;
-    /** Opaque; null exactly when `has_more` is false. */
+    /** Opaque next-page token; null exactly when `has_more` is false. */
     cursor?: string | null;
     has_more?: boolean;
+    /** Zero-based page within one bounded server history session. */
+    page?: number;
+    /** Replay token for this exact page. */
+    page_cursor?: string;
+    /** Replay token for the prior page; null on page zero. */
+    previous_cursor?: string | null;
+    scope?: "default" | "all";
+    scope_refs?: Array<string>;
+    scope_fingerprint?: string;
   };
 
   type MetabrowserGitFileChange = {

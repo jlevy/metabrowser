@@ -44,6 +44,8 @@ import logging
 import os
 import sys
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO, cast
@@ -97,6 +99,7 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
+from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
 from metabrowser.gz_io import (
     ArtifactCompressionError,
@@ -3309,8 +3312,13 @@ def _inventory_root_provider() -> object:
     return root if str(root) and root != Path() else None
 
 
-def _lifespan(app: Starlette):  # type: ignore[no-untyped-def]
-    return build_lifespan(root_provider=_inventory_root_provider)
+@asynccontextmanager  # pyright: ignore[reportDeprecated]
+async def _lifespan(_app: Starlette) -> AsyncIterator[None]:
+    async with build_lifespan(root_provider=_inventory_root_provider):
+        try:
+            yield
+        finally:
+            await close_history_sessions()
 
 
 app = Starlette(routes=routes, middleware=middleware, lifespan=_lifespan)
