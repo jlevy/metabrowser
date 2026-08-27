@@ -15,6 +15,9 @@ links to the document that covers each in depth.
 - [Nav containers: item-like and folder-like roles](architecture/arch-nav-containers.md)
 - [State and delivery](architecture/arch-state-and-delivery.md) — what the inventory
   holds, how derived state is invalidated, and what the browser does with it
+- [Git and comparison sources](architecture/arch-git-and-comparison-sources.md) — the
+  Git process boundary, the three-layer stack, and the rule for adding a comparison
+  source
 - [File Diff Format v1](architecture/file-diff-format/file-diff-format.md)
 - [Diff sources, context, and anchoring](architecture/file-diff-format/diff-sources-and-anchoring.md)
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md)
