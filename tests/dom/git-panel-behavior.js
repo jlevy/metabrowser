@@ -1008,6 +1008,11 @@ async function run() {
       }
     }
     assertEqual(
+      "deep: a visited page replays in one request, not one per page",
+      fetchRequests.length - requestStart,
+      1,
+    );
+    assertEqual(
       "deep: replay restores the first exact commit",
       internals.rowsForRange(0, 1)[0].row.commit.id,
       revisions[0],
@@ -1706,6 +1711,88 @@ async function run() {
   const afterRefresh = fetchCount;
   await internals.selectCommit(SHA_B);
   assertTrue("head: a refresh clears the detail cache", fetchCount > afterRefresh);
+
+  // ── Bounded session recovery ───────────────────────────────
+  //
+  // A reaped session replays its prefix one request per page against a
+  // fresh walk, so a deep pre-expiry position must restore to the
+  // bounded PAGE_CACHE_PAGES * LOG_LIMIT depth rather than issuing one
+  // request per LOG_LIMIT rows of unbounded prefix.
+  {
+    const total = 40;
+    const revisions = Array.from({ length: total }, (_value, index) =>
+      (index + 3000).toString(16).padStart(40, "0"),
+    );
+    const recoveryCommits = revisions.map((revision, index) =>
+      commit(
+        revision,
+        index + 1 < total ? [revisions[index + 1]] : [],
+        `recovery commit ${index}`,
+        index === 0
+          ? [{ id: "refs/heads/main", name: "main", kind: "branch", is_head: true }]
+          : undefined,
+      ),
+    );
+    // A row focused by the keyboard tests would otherwise donate its
+    // ordinal to the render pass and mask the staged deep position.
+    document.activeElement = null;
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: revisions[0], detached: false, unborn: false },
+    });
+    responses.set("/api/git/refs", { is_repo: true, refs: [] });
+    let logCalls = 0;
+    responses.set("/api/git/log", (url) => {
+      logCalls += 1;
+      if (logCalls === 1) {
+        return { httpStatus: 410 };
+      }
+      const cursor = new URL(`http://metabrowser.invalid${url}`).searchParams.get("cursor");
+      const page = cursor ? Number(cursor.split(":")[1]) : 0;
+      return historyPage(page, recoveryCommits.slice(page * 2, page * 2 + 2), total, revisions[0]);
+    });
+    const expired = internals.emptyState();
+    expired.headRevision = revisions[0];
+    expired.cursor = "history:9";
+    expired.nextPageNumber = 9;
+    expired.rowCount = 18;
+    expired.focusedOrdinal = 17;
+    internals.setStateForTests(expired);
+    await internals.loadNextPage(false);
+    const recovered = internals.stateForTests();
+    assertEqual(
+      "recovery: replay is bounded by the page cache depth",
+      logCalls,
+      // The 410 itself, then pages 0 and 1: rows 0..3 cover the capped
+      // restore ordinal of PAGE_CACHE_PAGES * LOG_LIMIT - 1 = 3.
+      3,
+    );
+    assertEqual("recovery: restored rows stop at the cap", recovered.rowCount, 4);
+    assertEqual("recovery: focus lands on the capped ordinal", recovered.focusedOrdinal, 3);
+    assertTrue("recovery: the rebuilt session is not failed", !recovered.failed);
+  }
+
+  // ── Teardown restores the shared scroller ──────────────────
+  //
+  // The focus-suspension path writes tabindex onto the shell-owned
+  // scroller. Teardown must remove it: the tree keeps using that node
+  // after the Git panel is gone.
+  {
+    const scroller = document.getElementById("tab-git");
+    scroller.setAttribute("tabindex", "-1");
+    responses.set("/api/git/log", { is_repo: false, reason: "not_a_repo" });
+    const gone = internals.stateForTests();
+    gone.cursor = "history:1";
+    gone.nextPageNumber = 1;
+    internals.setStateForTests(gone);
+    await internals.loadNextPage(false);
+    assertEqual(
+      "teardown: shared scroller focusability is restored",
+      scroller.getAttribute("tabindex"),
+      null,
+    );
+  }
 
   // ── Relative age ───────────────────────────────────────────
   {

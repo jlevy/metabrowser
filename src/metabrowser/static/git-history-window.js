@@ -241,7 +241,8 @@
     function read(scrollTop, viewportHeight) {
       assertLive();
       const height = Math.max(rowHeight, Number.isFinite(viewportHeight) ? viewportHeight : 0);
-      const rebase = maybeRebase(Math.max(0, scrollTop), height);
+      const top = Math.max(0, Number.isFinite(scrollTop) ? scrollTop : 0);
+      const rebase = maybeRebase(top, height);
       const segmentRows = Math.min(rowCount, segmentCapacity);
       const segmentEnd = segmentStart + segmentRows;
       const segmentHeightPx = segmentRows * rowHeight;
@@ -291,11 +292,17 @@
     }
 
     /**
+     * Move the physical segment so *ordinal* is mounted, and return the
+     * scroll offset that shows it. This is a mutator: an out-of-segment
+     * target repositions the window, so the caller must apply the
+     * returned offset rather than treating the call as a coordinate
+     * query.
+     *
      * @param {number} ordinal
      * @param {number} viewportHeight
      * @param {"nearest" | "start" | "center" | "end"} [align]
      */
-    function scrollTopForOrdinal(ordinal, viewportHeight, align = "nearest") {
+    function rebaseToOrdinal(ordinal, viewportHeight, align = "nearest") {
       assertLive();
       if (rowCount === 0) {
         return 0;
@@ -333,7 +340,7 @@
     return Object.freeze({
       read,
       setRowCount,
-      scrollTopForOrdinal,
+      rebaseToOrdinal,
       dispose,
       get rowCount() {
         return rowCount;

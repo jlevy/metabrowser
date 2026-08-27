@@ -160,7 +160,7 @@ function page(number, dispose) {
   assertTrue("rebase: backward edge moves the segment", backward.rebased);
   assertEqual("rebase: earlier logical rows become reachable", backward.visibleStart, 35);
 
-  const targetScroll = virtual.scrollTopForOrdinal(900, 100, "center");
+  const targetScroll = virtual.rebaseToOrdinal(900, 100, "center");
   const target = virtual.read(targetScroll, 100);
   assertTrue("rebase: direct target is mounted", target.start <= 900 && 900 < target.end);
   assertTrue(
@@ -175,6 +175,35 @@ function page(number, dispose) {
     threw = true;
   }
   assertTrue("rebase: disposed model rejects retained work", threw);
+}
+
+// The module has no DOM dependency, so callers are not guaranteed to pass
+// real scrollTop values. A non-finite scrollTop reads as the segment top
+// instead of producing a NaN range that renders an empty frame.
+{
+  const virtual = historyWindow.createVirtualWindow({
+    rowHeight: 10,
+    maxRows: 20,
+    overscanRows: 5,
+    rebasePx: 1_000,
+  });
+  virtual.setRowCount(1_000);
+  virtual.read(807, 100);
+  const guarded = virtual.read(Number.NaN, 100);
+  assertTrue(
+    "window: NaN scrollTop yields a finite range",
+    Number.isFinite(guarded.start) &&
+      Number.isFinite(guarded.end) &&
+      Number.isFinite(guarded.topSpacerPx) &&
+      Number.isFinite(guarded.bottomSpacerPx) &&
+      Number.isFinite(guarded.scrollTop),
+  );
+  const recovered = virtual.read(500, 100);
+  assertTrue(
+    "window: read after NaN input stays coherent",
+    Number.isFinite(recovered.start) && recovered.end >= recovered.start,
+  );
+  virtual.dispose();
 }
 
 if (failures.length) {

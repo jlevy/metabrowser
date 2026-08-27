@@ -60,6 +60,7 @@
    * @property {boolean} focusSuspended The scroller temporarily owns DOM focus.
    * @property {MetabrowserGitHistoryWindowRange | null} mountedRange
    * @property {string} scopeFingerprint
+   * @property {Map<number, string>} cursorByPage Replay cursor for every visited page.
    */
 
   /** @returns {PanelState} */
@@ -91,6 +92,11 @@
       focusSuspended: false,
       mountedRange: null,
       scopeFingerprint: "",
+      // One retained cursor string (~175 characters) per visited page:
+      // the key that lets the server seek any visited spool frame in a
+      // single request. Growth is one entry per LOG_LIMIT rows walked —
+      // about 1 MiB at the validated 1,454,667-row corpus — not per row.
+      cursorByPage: new Map(),
     };
   }
 
@@ -134,6 +140,7 @@
   let pendingPreviewClaim = null;
   let started = false;
   let refreshing = false;
+  let recoveringSession = false;
   /** @type {{start: number, end: number} | null} */
   let wantedRange = null;
   /** @type {Promise<void> | null} */
@@ -442,6 +449,9 @@
       throw new Error("Git history scope changed while storing a page");
     }
     const checkpoint = checkpointFromWire(wirePage, pageNumber);
+    if (typeof wirePage.page_cursor === "string" && wirePage.page_cursor) {
+      state.cursorByPage.set(pageNumber, wirePage.page_cursor);
+    }
     const startOrdinal = pageNumber * LOG_LIMIT;
     state.pageCache.put({
       page: pageNumber,
@@ -557,11 +567,19 @@
   }
 
   /**
-   * Find the nearest cached page that can replay one step toward target.
+   * Name the request that makes progress toward mounting target. A page
+   * visited in this session replays in one request — the server seeks
+   * its spool frame directly through the retained page cursor — so only
+   * an unvisited page beyond the walk frontier steps one page at a time.
+   *
    * @param {number} targetPage
    * @returns {{cursor: string, page: number} | null}
    */
   function replayStep(targetPage) {
+    const direct = state.cursorByPage.get(targetPage);
+    if (direct) {
+      return { cursor: direct, page: targetPage };
+    }
     let best = null;
     for (const pageNumber of state.pageCache.keys()) {
       const page = state.pageCache.peek(pageNumber);
@@ -1079,7 +1097,7 @@
         if (!scroller) {
           return;
         }
-        scroller.scrollTop = state.virtualWindow.scrollTopForOrdinal(
+        scroller.scrollTop = state.virtualWindow.rebaseToOrdinal(
           nextOrdinal,
           viewportHeight(scroller),
           "nearest",
@@ -1101,7 +1119,7 @@
       if (!scroller) {
         return false;
       }
-      scroller.scrollTop = state.virtualWindow.scrollTopForOrdinal(
+      scroller.scrollTop = state.virtualWindow.rebaseToOrdinal(
         nextOrdinal,
         viewportHeight(scroller),
         "center",
@@ -1756,29 +1774,50 @@
   /**
    * Rebuild an invalid or expired server session without replacing the
    * already-rendered selected commit detail. Partial rows are discarded
-   * before the new walk starts, and the prior logical position is rebuilt.
+   * before the new walk starts, and the prior logical position is rebuilt
+   * up to a bounded replay depth.
    */
   async function recoverHistorySession() {
-    const selectedId = state.selectedId;
-    const restoreOrdinal = Math.max(
-      0,
-      state.focusedOrdinal ?? state.mountedRange?.visibleStart ?? 0,
-    );
-    await refreshHistory({ preserveDetail: true, selectedId });
-    while (state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
-      await loadNextPage(false);
+    // Recovery itself issues page requests, and one of those can come
+    // back 400/409/410 while refs are churning — without this guard that
+    // response recurses through a fresh refresh-and-replay cycle with no
+    // depth bound.
+    if (recoveringSession) {
+      return;
     }
-    const scroller = historyScroller();
-    if (scroller && state.rowCount > 0) {
-      const ordinal = Math.min(restoreOrdinal, state.rowCount - 1);
-      scroller.scrollTop = state.virtualWindow.scrollTopForOrdinal(
-        ordinal,
-        viewportHeight(scroller),
-        "start",
+    recoveringSession = true;
+    try {
+      const selectedId = state.selectedId;
+      // The new walk replays its prefix one request per page, so the
+      // restored position must be bounded: the cache retains at most
+      // PAGE_CACHE_PAGES pages anyway, and at the measured 13-70 ms per
+      // page request this cap costs well under a second. A deeper
+      // pre-expiry position lands at the cap instead of issuing one
+      // request per LOG_LIMIT rows of unbounded prefix.
+      const restoreOrdinal = Math.min(
+        Math.max(0, state.focusedOrdinal ?? state.mountedRange?.visibleStart ?? 0),
+        PAGE_CACHE_PAGES * LOG_LIMIT - 1,
       );
-      state.focusedOrdinal = ordinal;
-      state.mountedRange = null;
-      renderVirtualRows(true);
+      await refreshHistory({ preserveDetail: true, selectedId });
+      while (state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
+        if (!(await loadNextPage(false))) {
+          break;
+        }
+      }
+      const scroller = historyScroller();
+      if (scroller && state.rowCount > 0) {
+        const ordinal = Math.min(restoreOrdinal, state.rowCount - 1);
+        scroller.scrollTop = state.virtualWindow.rebaseToOrdinal(
+          ordinal,
+          viewportHeight(scroller),
+          "start",
+        );
+        state.focusedOrdinal = ordinal;
+        state.mountedRange = null;
+        renderVirtualRows(true);
+      }
+    } finally {
+      recoveringSession = false;
     }
   }
 
@@ -1880,6 +1919,11 @@
     abortPreparation(preparationSlot);
     preparationSlot = null;
     disposeCommitDiff();
+    // The focus-suspension path writes ``tabindex`` onto the shared
+    // ``#tree-content`` node, which the shell owns and other panels keep
+    // using after this panel is gone; renderer state written onto a
+    // borrowed node is restored here, its disposal path.
+    historyScroller()?.removeAttribute("tabindex");
     if (scrollOwner) {
       scrollOwner.removeEventListener("scroll", onTreeScroll);
       scrollOwner = null;

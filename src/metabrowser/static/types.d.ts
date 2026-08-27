@@ -1510,7 +1510,7 @@ declare global {
   type MetabrowserGitHistoryVirtualWindow = Readonly<{
     read(scrollTop: number, viewportHeight: number): MetabrowserGitHistoryWindowRange;
     setRowCount(rowCount: number): void;
-    scrollTopForOrdinal(
+    rebaseToOrdinal(
       ordinal: number,
       viewportHeight: number,
       align?: "nearest" | "start" | "center" | "end",

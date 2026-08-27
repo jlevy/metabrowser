@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from metabrowser.git.process import GitError, run_git
+from metabrowser.git.process import run_git
 from metabrowser.git.wire import GitAuthor, GitCommit, GitRef, is_full_revision
 
 # Field separator inside one commit record. Chosen from the C0 separator
@@ -76,29 +76,6 @@ def is_trunk_ref(name: str, kind: str) -> bool:
     if kind == "tag":
         return False
     return name in trunk_refs()
-
-
-async def resolve_default_scope(served_root: Path) -> list[str]:
-    """The refs the graph shows unless asked for everything.
-
-    HEAD, its upstream, and whichever trunk refs exist — so the view is
-    always "where I am, and what I merge into", which is the comparison
-    a history view is for. Refs that do not resolve are dropped rather
-    than passed to git, which would fail the whole walk.
-    """
-    candidates = ["HEAD", "@{upstream}", *trunk_refs()]
-    scope: list[str] = []
-    for candidate in candidates:
-        try:
-            await run_git(
-                ["rev-parse", "--verify", "--quiet", f"{candidate}^{{commit}}"], cwd=served_root
-            )
-        except GitError:
-            continue
-        scope.append(candidate)
-    # HEAD always resolves in a repository with commits; an empty scope
-    # means an unborn branch, where `--all` is the honest answer.
-    return scope or []
 
 
 def parse_decoration(decoration: str, revision: str) -> list[GitRef]:
@@ -326,7 +303,6 @@ __all__ = [
     "TRUNK_REMOTES",
     "parse_log_output",
     "is_trunk_ref",
-    "resolve_default_scope",
     "trunk_refs",
     "read_refs",
 ]

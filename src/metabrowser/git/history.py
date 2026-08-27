@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from metabrowser.git.log import LOG_FORMAT, parse_log_output, resolve_default_scope
+from metabrowser.git.log import LOG_FORMAT, parse_log_output, trunk_refs
 from metabrowser.git.process import (
     GitCommandError,
     GitError,
@@ -47,6 +47,7 @@ from metabrowser.settings import (
     GIT_HISTORY_SESSION_MAX_STORAGE_BYTES,
     GIT_HISTORY_SESSION_MAX_WALKS,
     GIT_HISTORY_SESSION_PARSER_MAX_BYTES,
+    GIT_LOG_DEFAULT_LIMIT,
     GIT_SUBPROCESS_TIMEOUT_S,
 )
 
@@ -267,10 +268,21 @@ async def resolve_history_scope(root: Path, *, wants_all: bool) -> HistoryScope:
         display_refs: tuple[str, ...] = ()
         name: HistoryScopeName = "all"
     else:
-        candidates = await resolve_default_scope(root)
+        # HEAD, its upstream, and whichever trunk refs exist — "where I
+        # am, and what I merge into", the comparison a history view is
+        # for. Each candidate is resolved exactly once: scope resolution
+        # runs on every paged request, so a second rev-parse per
+        # candidate doubles the subprocess cost of continuous scrolling.
+        # A candidate that does not resolve is dropped rather than passed
+        # to git, which would fail the whole walk; HEAD reuses the
+        # revision resolved for the fingerprint above. An empty result
+        # means an unborn branch, which the caller renders as an empty
+        # history rather than an error.
         resolved: list[tuple[str, str]] = []
-        for candidate in candidates:
-            revision = await _resolved_revision(root, candidate)
+        for candidate in ("HEAD", "@{upstream}", *trunk_refs()):
+            revision = (
+                head_revision if candidate == "HEAD" else await _resolved_revision(root, candidate)
+            )
             if revision is not None:
                 resolved.append((candidate, revision))
                 material.extend(candidate.encode("utf-8"))
@@ -404,7 +416,14 @@ class HistorySession:
         self.root = root.resolve()
         self.scope = scope
         self.page_size = page_size
-        self.parser_max_bytes = parser_max_bytes
+        # The budget passed in was measured for one GIT_LOG_DEFAULT_LIMIT
+        # page (explorations/git-history/README.md), but a route-legal
+        # ``limit`` reaches GIT_LOG_MAX_LIMIT. The accumulated-page budget
+        # must scale with the page this session builds, or a legal
+        # ``limit=1000`` overruns the default-page budget on an ordinary
+        # repository and surfaces as a 500.
+        default_pages = -(-page_size // GIT_LOG_DEFAULT_LIMIT)
+        self.parser_max_bytes = parser_max_bytes * max(1, default_pages)
         self.storage_max_bytes = storage_max_bytes
         self._clock = clock
         self.last_access = clock()
@@ -880,12 +899,17 @@ class HistorySessionRegistry:
 
     async def _reap_loop(self) -> None:
         interval = min(self.idle_ttl_s / 2, _REAPER_MAX_INTERVAL_S)
-        try:
-            while True:
-                await asyncio.sleep(interval)
+        while True:
+            await asyncio.sleep(interval)
+            try:
                 await self.reap_expired()
-        except asyncio.CancelledError:
-            raise
+            except Exception:
+                # If a failing pass ended the loop, every remaining idle
+                # session would keep its git process and spool directory
+                # until process exit — the leak the idle TTL exists to
+                # prevent. Cancellation still propagates and stops the
+                # task.
+                log.exception("git history reaper pass failed")
 
     async def reap_expired(self) -> None:
         """Close sessions whose last access is outside the idle budget."""
@@ -897,7 +921,12 @@ class HistorySessionRegistry:
             for session in expired:
                 self._sessions.pop(session.id, None)
         for session in expired:
-            await session.close()
+            # A spool held open or a read-only temp filesystem fails one
+            # session's cleanup; the other expired sessions still close.
+            try:
+                await session.close()
+            except Exception:
+                log.exception("git history session %s cleanup failed", session.id)
 
     async def _discard(self, session_id: str) -> None:
         async with self._lock:

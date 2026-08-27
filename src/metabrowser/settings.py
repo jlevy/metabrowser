@@ -289,7 +289,17 @@ GIT_HISTORY_PAGE_CACHE_PAGES = 8
 GIT_HISTORY_SEGMENT_REBASE_PX = 8_000_000
 GIT_HISTORY_SESSION_IDLE_TTL_S = 300.0
 GIT_HISTORY_SESSION_MAX_ENTRIES = 8
-GIT_HISTORY_SESSION_MAX_WALKS = 2
+# Walks match the session-entry bound so an active tab can never have its
+# live walk evicted by another tab short of the registry itself being
+# full. A lower ceiling (originally 2) made a third tab evict an active
+# walk and thrash every open tab through 410-and-replay recovery. The
+# measured 10,000-commit walk holds 16.9 MiB of Git-child RSS, so eight
+# concurrent walks bound at roughly 135 MiB, transient and TTL-reaped.
+GIT_HISTORY_SESSION_MAX_WALKS = 8
+# Measured for one GIT_LOG_DEFAULT_LIMIT page (largest observed
+# accumulation 114,071 bytes, merge-heavy corpus). Sessions scale this
+# linearly with their page size, so a route-legal ``limit`` up to
+# GIT_LOG_MAX_LIMIT stays inside the budget instead of failing.
 GIT_HISTORY_SESSION_PARSER_MAX_BYTES = 128 * 1024
 GIT_HISTORY_SESSION_MAX_STORAGE_BYTES = 64 * 1024 * 1024
 

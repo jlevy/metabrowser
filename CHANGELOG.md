@@ -22,6 +22,27 @@ Features:
 
 Fixes:
 
+- A Git history page at the route’s maximum `limit` no longer fails with HTTP 500. The
+  measured parser budget now scales with the requested page size instead of holding
+  every page to the default page’s fixed budget.
+
+- Keeping a repository’s history open in three or more tabs no longer makes the tabs
+  evict each other’s live Git walks and thrash through expired-session recovery.
+  The concurrent-walk bound now matches the eight-session registry bound.
+
+- Recovering an idle-expired history session replays a bounded prefix — at most the
+  page-cache depth — instead of one request per 250 rows back to the prior position, and
+  a recovery interrupted by further ref movement no longer recurses without a depth
+  bound.
+
+- Scrolling back to a distant, previously visited part of a long history now replays
+  each needed page in one request.
+  The panel retains every visited page’s replay cursor, so reaching page 2,000 no longer
+  steps through 2,000 intermediate requests whose results were evicted unseen.
+
+- Leaving the Git panel restores the shared tree scroller’s focusability instead of
+  leaving a stray `tabindex` on a node other panels keep using.
+
 - Ctrl-C stops the server on the first press and reports exit 130 whatever the timing of
   any that follow. A repeat interrupt arriving while the process exited used to land on
   Python’s default handler and print an `Exception ignored on threading shutdown`

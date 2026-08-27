@@ -44,7 +44,9 @@ def test_measured_history_budgets_remain_structurally_bounded() -> None:
     assert GIT_HISTORY_SEGMENT_REBASE_PX == 8_000_000
     assert GIT_HISTORY_SESSION_IDLE_TTL_S == 300.0
     assert GIT_HISTORY_SESSION_MAX_ENTRIES == 8
-    assert GIT_HISTORY_SESSION_MAX_WALKS == 2
+    # Walks match the entry bound so a session in the registry can never
+    # lose its live walk to another tab short of registry eviction.
+    assert GIT_HISTORY_SESSION_MAX_WALKS == GIT_HISTORY_SESSION_MAX_ENTRIES
     assert GIT_HISTORY_SESSION_PARSER_MAX_BYTES == 128 * 1024
     assert GIT_HISTORY_SESSION_MAX_STORAGE_BYTES == 64 * 1024 * 1024
 

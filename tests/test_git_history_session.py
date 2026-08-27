@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
 
 from devtools.git_history_benchmark import HistoryShape, build_history_corpus
+from metabrowser.git import history as history_module
 from metabrowser.git.history import (
     ExpiredHistorySessionError,
     HistoryCursor,
@@ -24,8 +27,10 @@ from metabrowser.git.history import (
     encode_history_cursor,
     resolve_history_scope,
 )
+from metabrowser.git.log import LOG_FORMAT
 from metabrowser.git.process import GitCommandError, run_git
 from metabrowser.git.wire import validate_git_log_page
+from metabrowser.settings import GIT_HISTORY_SESSION_PARSER_MAX_BYTES, GIT_LOG_MAX_LIMIT
 
 pytestmark = pytest.mark.skipif(
     shutil.which("git") is None,
@@ -565,5 +570,88 @@ def test_subprocess_failure_discards_the_session(tmp_path: Path) -> None:
             assert registry.session_count == 0
         finally:
             await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_max_limit_page_stays_inside_the_scaled_parser_budget(tmp_path: Path) -> None:
+    """The route clamps ``limit`` to GIT_LOG_MAX_LIMIT, so a page of that
+    size is legal. The parser budget is measured per default-limit page and
+    must scale with the requested page, or the request the route declared
+    legal comes back as a 500."""
+    root = _history(tmp_path / "history", commits=900)
+
+    async def scenario() -> None:
+        raw = await run_git(
+            ["log", "-z", f"--format={LOG_FORMAT}", "--decorate=full", "--date-order", "--all"],
+            cwd=root,
+        )
+        # The fixture only guards the regression while one max-limit page
+        # is larger than the unscaled default budget.
+        assert len(raw) > GIT_HISTORY_SESSION_PARSER_MAX_BYTES
+
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            page = await registry.read_page(
+                root,
+                wants_all=True,
+                limit=GIT_LOG_MAX_LIMIT,
+                cursor=None,
+            )
+            assert len(page["commits"]) == 900
+            assert page["cursor"] is None
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_reaping_survives_a_session_whose_cleanup_fails(tmp_path: Path) -> None:
+    """One session's failing cleanup must neither skip the other expired
+    sessions nor propagate into the reaper loop, which would end it."""
+    root = _history(tmp_path / "history", commits=4)
+    now = 10.0
+
+    def clock() -> float:
+        return now
+
+    async def scenario() -> None:
+        nonlocal now
+        registry = HistorySessionRegistry(idle_ttl_s=5, clock=clock)
+        try:
+            await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            sessions = list(registry._sessions.values())
+            assert len(sessions) == 2
+
+            now = 16.0
+            with mock.patch.object(sessions[0], "close", side_effect=OSError("spool held open")):
+                await registry.reap_expired()
+            assert registry.session_count == 0
+            assert sessions[1].closed is True
+            await sessions[0].close()
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_default_scope_resolves_each_candidate_exactly_once(tmp_path: Path) -> None:
+    """Scope resolution runs on every paged request; resolving a candidate
+    ref twice doubles the subprocess cost of continuous scrolling."""
+    root = _history(tmp_path / "history", commits=4)
+
+    async def scenario() -> None:
+        calls: list[tuple[str, ...]] = []
+        real_run_git = history_module.run_git
+
+        async def spy(args: Sequence[str], **kwargs: Any) -> bytes:
+            calls.append(tuple(args))
+            return await real_run_git(args, **kwargs)
+
+        with mock.patch.object(history_module, "run_git", spy):
+            await resolve_history_scope(root, wants_all=False)
+        verifies = [call for call in calls if call[:3] == ("rev-parse", "--verify", "--quiet")]
+        assert len(verifies) == len(set(verifies))
 
     asyncio.run(scenario())

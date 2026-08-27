@@ -199,8 +199,8 @@ The constants live in `src/metabrowser/settings.py` and are covered by structura
 | scroll segment rebase | 8,000,000 px | Less than half Chrome’s measured 16,777,214 px clamp. |
 | idle session lifetime | 300 seconds | Gives a reader time to inspect a commit while ensuring abandoned spool files expire. |
 | session registry | 8 entries | Bounds idle indexes and spools independently of open browser count. |
-| concurrent Git walks | 2 | The measured pair costs roughly 34 MiB of Git-child RSS at 10,000 commits. |
-| parser buffer | 128 KiB | Clears the 111.4 KiB merge-heavy peak while retaining one 64 KiB read chunk plus one page. |
+| concurrent Git walks | 8 | Matches the session-registry bound so an open tab cannot lose its live walk to another tab short of registry eviction. The measured 10,000-commit walk holds 16.9 MiB of Git-child RSS, so eight walks bound at roughly 135 MiB, transient and TTL-reaped. |
+| parser buffer | 128 KiB per default-limit page | Clears the 111.4 KiB merge-heavy peak while retaining one 64 KiB read chunk plus one page. Sessions scale the budget linearly with their page size so the route’s maximum `limit` stays legal. |
 | spool storage | 64 MiB per session | About 329,000 visited commits at the measured worst 194.4 bytes per commit; exhaustion expires the session explicitly rather than claiming end of history. |
 
 These are resource budgets, not product-history limits.
