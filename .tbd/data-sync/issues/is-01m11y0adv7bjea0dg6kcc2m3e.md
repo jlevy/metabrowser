@@ -3,13 +3,17 @@ type: is
 id: is-01m11y0adv7bjea0dg6kcc2m3e
 title: "Serve mode: repeat Ctrl-C leaks a shutdown traceback and a nondeterministic exit code"
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-27T15:39:19.353Z
-updated_at: 2026-08-27T15:39:19.353Z
+updated_at: 2026-08-27T16:04:27.344Z
+closed_at: 2026-08-27T16:04:27.329Z
+close_reason: "Serve mode holds SIGINT at SIG_IGN across uvicorn's run, so uvicorn's capture_signals re-raise is a no-op and no repeat Ctrl-C can land on Python's default handler during exit. Server.interrupted is now the live signal for exit 130. First interrupt writes 'Stopping Metabrowser.' to fd 2 from the handler (raw os.write, no stdio lock). Verified: three SIGINTs at gaps 0.0-0.6s all give rc=130 with no traceback, and a single Ctrl-C under uvx is clean."
+resolution: null
+duplicate_of: null
 ---
 Uvicorn 0.49 capture_signals restores the previous SIGINT handler when Server.run() returns and then re-raises the captured signal. Between that restore and process exit (~250 ms) a repeat Ctrl-C lands on Python's default handler:
 
