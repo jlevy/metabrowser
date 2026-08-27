@@ -4,297 +4,114 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-Added:
+## 0.8.0
 
-- The gear menu now ends with the exact build version line reported by
-  `metab --version`, including checkout annotations for unreleased and dirty builds.
+Features:
 
-Fixed:
+- Diff views now open in Split by default, retain a remembered Unified choice, and apply
+  the same bounded syntax highlighting as ordinary Source views.
+  Similar replacements emphasize changed words or characters; neighboring wholly changed
+  lines join the refined hierarchy only when their contiguous run contains a meaningful
+  partial replacement.
+  Independent additions, deletions, paragraphs, and files retain the ordinary whole-line
+  treatment.
 
-- Commit summaries keep the revision at the standard interface type size and place
-  file-status totals and line totals on two dedicated rows below the identity, author,
-  and age. The rows include their “files” and “lines” units instead of running all counts
-  into the metadata line.
+- Large diffs keep collapsed content out of the DOM and materialize expanded rows in
+  cancellable batches.
+  The browser performance gate rejects hidden rows mounted beneath collapsed folds and
+  attributes decode, model, projection, and attachment work separately.
 
-- File Overview no longer says “Show ignored” when its selected scope contains only
-  ignored files. The existing checkbox already provides that action, so the redundant
-  distribution body now stays empty instead of pointing readers at another control.
+- File and Git navigation retain the prior useful preview at full opacity until the
+  selected renderer reaches painted readiness, then install the replacement atomically.
+  File navigation joins or cancels matching row-intent prefetches.
+  Git navigation keeps at most one pointer-intent comparison, cancels obsolete work,
+  hydrates deferred file sections with bounded concurrency, and preserves exact row,
+  route, and rendered-view convergence.
 
-- File-to-file navigation now keeps the prior useful preview visible while an
-  asynchronous structured renderer becomes ready.
-  The replacement mounts in a connected, inert stage and swaps in atomically, so YAML
-  and JSON views no longer expose a blank frame without weakening plugins’
-  connected-container contract.
-  The standard file-navigation performance scenario now always covers a cold structured
-  view alongside source, Markdown, and cached transitions.
+- Git history uses the file tree’s one-Tab-stop Arrow-key navigation contract.
+  Commit details and pointer tooltips share subject, author, revision, refs, age, exact
+  modified/added/deleted file totals, and line totals.
+  Details preserve multiline commit descriptions as standard-size sans-serif prose,
+  while pointer tooltips remain compact and pointer-only.
 
-- Folders discovered while the Files panel is inactive now use the same class-driven
-  disclosure state as fetched folders, so returning from a Git comparison during an
-  active inventory scan can expand them without reloading the page.
+- Raw Source tabs highlight every extension backed by the shipped Highlight.js registry.
+  Large syntax-known files retain highlighting for the measured prefix and fall back
+  uniformly when the loaded content crosses the configured bound.
 
-- Opening the first Git commit in a fresh browser session now loads the diff plugin on
-  demand before mounting the commit view, so changed files and lines appear without
-  first opening a `.patch` or `.diff` file.
+Fixes:
 
-- Opening the gear menu no longer leaves a redundant “Metabrowser” tooltip over the
-  menu. The gear retains its accessible name.
+- File Overview no longer shows a passive “Show ignored” instruction when the selected
+  scope contains only ignored files.
+  The existing checkbox remains the action.
 
-Performance, validated against 0.6.0 side by side:
+- Folders discovered while the Files panel is inactive retain their disclosure state
+  when the reader returns from a Git comparison during an active inventory scan.
 
-- Collapsed diff runs now mount only their visible prefix and materialize expanded rows
-  in cancellable 100-row tasks.
-  On the reproduced 19,654-line comparison, total DOM size fell from 182,686 to 6,476
-  nodes and the longest main-thread task from 552 ms to 127 ms, with no task or
-  attributed frame blocking above 200 ms.
-  The browser performance profile now hard-gates rows mounted beneath collapsed folds at
-  zero and attributes diff decode, validation, model construction, projection, and
-  attachment separately.
+- Commit summaries keep the revision at the standard interface size and place file and
+  line totals on dedicated rows with explicit units.
 
-- On the final installed candidate, five interleaved backend pairs over a fingerprinted
-  123,658-file project corpus return the first navigation row in 0.571 s instead of
-  1.075 s and complete indexing in 3.998 s instead of 7.859 s. Peak RSS is 123.5 MB
-  against 126.3 MB. The full ranges do not overlap for any of those three measures, the
-  corpus remains unchanged, and both builds return identical ordered rows and tallies.
+- Full navigation-tally passes yield often enough on slower hosts to preserve the
+  deterministic 50 ms event-loop heartbeat guard.
 
-- Four fresh-profile, visible browser pairs reduce median first row from 962 ms to 239
-  ms, FCP from 308 ms to 166 ms, and LCP from 862 ms to 166 ms.
-  Startup JavaScript falls from 74 requests / 332 KB to 22 / 154 KB, all requests from a
-  median 138 to 81, and total transfer from 519 KB to 473 KB. Every candidate run passes
-  every hard responsiveness, correctness, readiness, network, and startup-asset gate,
-  with no Long Task, blocked main-thread share, rendered preview error, or uncaught page
-  exception.
+Plugin API:
 
-- The browser performance loop now treats responsiveness as an acceptance gate.
-  Its reusable navigation-time profile covers loading, Long Tasks, Long Animation
-  Frames, Event Timing interactions grouped by gesture, rendering, visual stability,
-  exact fetch failures, network cost, and bounded retention; recorded comparisons reject
-  hidden, late, unsettled, interaction-free, truncated, or undersampled evidence.
-  Trusted input now pulses from first usable state through client quiescence, and the
-  profile records and gates its loading-window coverage, so one early click cannot miss
-  a later event storm.
-  It also separates startup JavaScript from scripts loaded for the selected view,
-  retains bounded path-only attribution for the slowest and latest startup assets, and
-  gates startup request count and transfer size.
-  Rendered main-panel error states and uncaught browser exceptions are hard failures, so
-  an error panel cannot count as a successful paint milestone.
-  Stateful-navigation profiling now follows one documented attribution sequence that
-  separates synchronous acknowledgement, complete painted readiness, and Event Timing;
-  it audits the full input task and Long Animation Frame forced-layout evidence when
-  those clocks disagree.
-  The interaction driver resolves target scrolling and click geometry before starting
-  the application clock, so its own layout preparation is not reported as pending-state
-  delay. Recording exits nonzero as soon as any run crosses a hard budget.
+- A view handle may expose an optional `ready: Promise<void>` for its initial useful
+  connected render. The shell waits for it before the atomic retained-navigation handoff;
+  existing handles without `ready` retain their behavior.
 
-Browser:
-
-- File and Git navigation keep useful retained preview content unchanged at full opacity
-  until the selected view reaches its painted-readiness boundary.
-  The shared pending class and `aria-busy` remain claim-owned accessibility and
-  instrumentation state, but no longer add a gray sheet, cursor, filter, or per-element
-  styling. After replacement, one compositor animation takes only the incoming foreground
-  content from 0.98 to full opacity over 50 ms, softening the paint boundary without
-  delaying usable content, fading out the prior view, or animating the pane’s light or
-  dark theme background.
-  Reduced motion skips the animation, and empty initial previews retain the delayed
-  neutral spinner.
-
-- Ordinary file navigation now awaits the active plugin renderer, an optional
-  instance-declared initial readiness promise, and a double-animation-frame paint
-  boundary before reporting completion.
-  Production measurements separate selected-kind assets, active-view mounting, and
-  painted readiness instead of ending when the file envelope or empty container arrives.
-  Selecting a file also cancels a matching not-yet-started row-intent prefetch or joins
-  one already in flight, so a cold selection issues one file request and a cached
-  revisit issues none.
-
-- Git history keeps the current commit and diff visible while the selected revision is
-  prepared, then installs the replacement atomically.
-  Commit metadata, diff assets, and comparison data start together; one replaceable
-  pointer-intent slot avoids duplicate work without prefetching every visible row.
-  Speculative work waits for stable hover intent, so scrolling through rows starts no
-  transient detail or comparison requests; click and Arrow-key selection remain
-  immediate and mutate only the previous and next row instead of rewriting the mounted
-  history. The performance loop records that synchronous selection feedback separately
-  from the complete selection-to-painted-ready span and fails if pending onset,
-  clearance, exact revision convergence, or either phase label is missing.
-  Git row backgrounds update without a per-row transition, so the visible selection does
-  not ease in behind the input.
-  The focused row’s one-row Tab anchor finalizes after painted readiness rather than
-  recalculating focus order across the retained diff in the input task.
-  In three interleaved visible browser runs, candidate scenarios record zero blank
-  frames instead of 4–5 and the prepared transition falls from a 209.7 ms median to
-  104.4 ms, while cold-transition ranges overlap and retained heap stays unchanged.
-  The performance loop now records this interaction’s server, client, rendering,
-  paint-continuity, and lifecycle costs.
-
-- Large Git comparisons now hydrate deferred file sections only as they enter the
-  visible scroll area, with at most two active requests.
-  Selecting another revision cancels queued and active work while retaining the rendered
-  handoff surface, so obsolete per-file requests cannot leave the navigation selection
-  ahead of the visible diff.
-  The standard headed Git scenario now exercises that boundary on a deferred comparison
-  and fails on request fanout, missing cancellation, obsolete successful requests,
-  divergent row/route/view state, or multiple mounted comparisons.
-
-- Git history now follows the file tree’s navigational-row keyboard contract.
-  The row set contributes one Tab stop; unmodified Arrow Up and Arrow Down focus and
-  open the adjacent commit, allow key repeat, and clamp without reopening at either
-  edge.
-
-- Git commit details now place one shared, standard-size summary above the description:
-  subject; copyable short revision with the same refs and tags as Git history; author;
-  age; exact modified, added, and deleted file counts using `M`, `A`, and `D`; and line
-  additions and deletions.
-  Renames and type changes count as modified, while copies count as added, so every file
-  status contributes exactly once even when the returned file list is bounded.
-  Optional commit descriptions use standard-size sans-serif prose while preserving
-  authored newlines. The hosted comparison keeps its layout control without repeating
-  that aggregate summary.
-
-- Git commit details now present the short revision as a path-like identifier with a
-  copy control that writes the full commit ID. Revision, file-header, and diff-file
-  copies share one delegated clipboard and feedback contract.
-
-- Git history pointer tooltips now reuse the same commit-summary projection, including
-  subject, author, short revision, refs and tags, age, `M`/`A`/`D` file counts, and line
-  counts at the standard body size.
-  They omit the long commit description, clamp the subject to two lines, and keep the
-  copy glyph noninteractive while the real copy action remains in the selected commit
-  summary. Keyboard focus does not open or retain navigation tooltips; focus movement and
-  Arrow, Enter, or Space selection dismiss pending and visible tooltip presentation
-  before navigation.
-
-- Diff views now pair similar removed and added lines monotonically and emphasize the
-  changed words or characters in both unified and split layouts.
-  A wholly added or deleted line uses the stronger semantic background.
-  Similar replacements use a 3% row mix for unchanged text and a 20% overlay on changed
-  ranges, producing a 22.4% composite accent.
-  Changed ranges use the standard text foreground to retain at least 4.5:1 contrast over
-  the stronger light-theme surface.
-  When any pair in a contiguous changed run has meaningful unchanged text, wholly
-  changed neighboring lines join the same pale-row hierarchy and receive the stronger
-  fill across their complete text.
-  Independent new or removed paragraphs and files keep the ordinary whole-line
-  treatment. Every changed line retains a solid status-colored bar at the leading edge of
-  its line-number gutter, while syntax foregrounds, exact selectable text,
-  unmatched-line treatment, folding, and persisted layout state remain intact.
-  Pathological changed runs fall back to ordinary whole-line rendering at a measured
-  deterministic work bound.
-
-- A first-time diff opens in Split, with Split on the left and Unified on the right of
-  the joined layout control.
-  A valid stored layout choice remains authoritative, and switching continues to
-  reproject the shared model without fetching or lexing again.
-
-- Raw Source tabs now use syntax highlighting consistently for every extension backed by
-  the shipped Highlight.js registry, including lazy Markdown, YAML, and JSON Source
-  views. Structured Source no longer depends on the generic text plugin already being
-  loaded. Large syntax-known files open with a highlighted prefix up to the measured 512
-  KiB bound; loading beyond it withdraws highlighting uniformly while preserving the
-  full loaded text and normal 2–8 MiB chunk growth.
-
-API, observable to plugin authors:
-
-- A view instance handle may expose an optional `ready: Promise<void>` for a concrete
-  initial useful-content pass that continues after `render` returns.
-  During retained navigation, that connected container is transparent and inert until
-  the active renderer is ready and the shell installs it atomically; initial rendering
-  must not move focus.
-  Lazy mounting for inactive tabs, direct async-render support, and existing handles
-  without `ready` are unchanged.
-
-- **`PLUGIN_SDK_VERSION` is `0.5`.** External plugins must set `sdk_version = "0.5"` for
-  the selected-kind asset lifecycle.
-  A plugin’s styles settle first, its classic scripts load sequentially in manifest
-  order, and `index.js` evaluates last, only when one of its kinds is selected or
-  `metabrowser.ensureKindAssets(kind)` requests it.
-  Version 0.4 manifests are rejected rather than admitted under different global CSS and
-  module-side-effect timing; see [the plugin documentation](docs/plugins.md).
-
-- `metabrowser.highlightSyntax(source, language, { signal })` exposes the shell’s
-  prefetched Highlight.js grammars as DOM-free token runs.
-  It uses the same injected byte bound as regular source previews, preserves source text
-  exactly, supports cancellation, and falls back to plain text for unavailable,
-  unsupported, malformed, or over-limit input.
-  Each fallback contributes one fixed profiler reason with its grammar and byte count,
-  never source text.
-
-- `metabrowser.renderSourceView(container, data)` exposes the standard bounded Source
-  surface. `metabrowser.langForExtension(ext)` and
-  `metabrowser.langForPath(pathOrName, ext)` read server-injected mappings checked
-  against the vendored grammar registry, including extensionless `Makefile`, `Gemfile`,
-  and `Rakefile` source.
-
-- Browser-console tools now share the existing `window.metabrowser` namespace.
-  The complete recorder is `metabrowser.perf`, shell troubleshooting helpers are under
-  `metabrowser.debug`, and the pasted serving probe installs `metabrowser.bench`. The
-  standalone `metabrowserPerf` global and this development cycle’s
-  `webPerformanceProfiler` alias are removed.
-
-- `/api/tree` answers rows and tallies as two separate requests, and only `depth=0`
-  computes tallies. A request with `depth` absent or `>= 1` returns rows with the tally
-  fields null unless a fresh memo happens to exist.
-  Every tally field was already nullable and guarded field by field on the client, so
-  the browser is unaffected — it asks twice, which is what any client wanting both
-  should do. See
-  [the route documentation](docs/project/architecture/arch-state-and-delivery.md) for
-  the table.
+- `metabrowser.highlightSyntax`, `metabrowser.renderSourceView`,
+  `metabrowser.langForExtension`, and `metabrowser.langForPath` expose the shell’s
+  bounded syntax and Source rendering contracts to plugins.
+  `PLUGIN_SDK_VERSION` remains `0.5`.
 
 Development:
 
-- First-party JavaScript and TypeScript filenames now use lowercase kebab-case
-  consistently. `make lint-check` rejects nonconforming tracked or newly added files;
-  vendored assets retain their upstream names.
+- The performance loop now gates stateful navigation from trusted input through painted
+  readiness, audits forced layout, checks blank-frame continuity and exact convergence,
+  and fails on deferred-diff request fanout, obsolete successful requests, or multiple
+  mounted comparisons.
 
-- A build that is not exactly a released one now says so: `metab --version` annotates
-  the version with how far past the tag it is, which commit, and whether the tree is
-  dirty. An installed release is unchanged.
-  This exists because two builds under comparison both reported `0.6.0` while thirty
-  commits apart, and nothing on screen contradicted it.
+Validation:
 
-- `devtools/bench_serving.py` takes `--corpus {synthetic,realistic,project}`. Two of the
-  three corpus shapes had no command-line route, including the one the scan-ordering
-  figures were measured on, so reproducing them meant importing the module by hand.
+- Five interleaved backend pairs against v0.7.1 return identical ordered rows and
+  tallies on an unchanged 148,581-file corpus; first-row, index-completion, and peak-RSS
+  ranges overlap.
 
-- Performance harnesses can select an exact installed `metab` console script and record
-  its reported version.
-  Browser runs also require an immutable build reference, preventing `PATH` order or an
-  ambiguous version string from mislabeling a comparison.
-  External builds run from the served root rather than the candidate checkout, and the
-  harness stops only the exact server process it recorded starting.
-  Browser profiles can be recorded from an exported JSON file as well as an inline
-  console paste. A dependency-free Chrome DevTools Protocol capture command now produces
-  the same profile with browser-trusted input and can record and gate it directly.
+- All three visible-browser candidate profiles pass every hard correctness and
+  responsiveness gate with no Long Task, blocking time, failed fetch, rendered error,
+  page exception, or collapsed row mounted beneath a closed fold.
+  One LCP tail remains in the record but does not separate the candidate interval from
+  v0.7.1 or cross a hard release gate.
 
-- The initial fetched tree now reconciles into the shell’s inline rows instead of
-  replacing the complete tree panel.
-  Reconciliation is keyed through every visible expanded container, while collapsed
-  descendants remain cached data until expansion instead of consuming hidden DOM.
-  Performance profiles also report inventory-delivery batch volume, maximum callback
-  time, and whole-window work share, with hard gates against both single callback stalls
-  and sustained event storms.
-  Automated captures wait for browser-side fetch and work quiescence, exercise inert
-  trusted-input paints throughout the load, send a final paint at the settle boundary,
-  freeze product responsiveness before adapter diagnostics, and record controlled
-  post-GC retained heap.
-  Backend completion, an early-only interaction, adapter work, and garbage-collection
-  timing therefore cannot hide regressions.
-  The inventory walker also yields between bounded entry groups so one wide directory
-  cannot monopolize the request event loop.
+## 0.7.1
 
-- Built-in plugin styles, classic dependencies, and modules now load on demand for the
-  selected file kind instead of every plugin joining every directory load.
-  The shell preserves each manifest’s script order and waits for the selected renderer
-  before mounting it; folder navigation and first tree paint no longer wait for
-  unrelated Markdown, structured-data, log, diff, or chart code.
-  Search, keyboard Help, and Git controls likewise initialize after the first usable
-  tree. The live inventory starts independently, and a stream that opens before the
-  on-demand Quick File modules arrive still starts their authoritative catalog feed.
-  Separate correctness gates prove both the deferred tools and the complete catalog
-  reached ready state.
-  The server-carried first rows also paint as soon as the final core script runs rather
-  than waiting for `DOMContentLoaded`; the shell preloads that already-eager final
-  script so its download does not sit behind the rest of the startup waterfall.
+Fixes:
+
+- Opening the first Git commit in a fresh browser session loads the diff plugin on
+  demand before mounting the commit view, while a completed stale request cannot replace
+  a newer selection.
+
+- The gear trigger no longer shows a redundant native tooltip over the open menu, and
+  the menu reports the exact running build from `metab --version`.
+
+## 0.7.0
+
+Performance and scale:
+
+- Large-directory startup moved built-in plugin assets, search, keyboard Help, and Git
+  controls off the eager path.
+  Server-carried first rows paint before unrelated assets, while inventory and tally
+  work yield in bounded groups.
+
+- The browser performance loop gained reproducible installed-build selection, headed
+  Chrome capture, and hard responsiveness, readiness, network, error, and exception
+  gates.
+
+Plugin API:
+
+- `PLUGIN_SDK_VERSION` became `0.5` for selected-kind asset loading.
+  Browser-console tools moved under `window.metabrowser`, and `/api/tree` separated row
+  delivery from tally computation.
 
 ## 0.6.0
 
