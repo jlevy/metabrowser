@@ -301,6 +301,11 @@ GIT_HISTORY_SESSION_MAX_WALKS = 8
 # linearly with their page size, so a route-legal ``limit`` up to
 # GIT_LOG_MAX_LIMIT stays inside the budget instead of failing.
 GIT_HISTORY_SESSION_PARSER_MAX_BYTES = 128 * 1024
+# Per session, not global: GIT_HISTORY_SESSION_MAX_ENTRIES sessions each
+# get this budget, so the aggregate ceiling is 512 MiB. The spool lives in
+# ``tempfile.gettempdir()``, which is tmpfs on many Linux distributions —
+# there this bounds RAM rather than disk. Both are transient: the reaper
+# reclaims an idle session and shutdown releases every spool.
 GIT_HISTORY_SESSION_MAX_STORAGE_BYTES = 64 * 1024 * 1024
 
 # Changed files returned by ``/api/git/commit/{revision}``. A commit that

@@ -177,8 +177,8 @@ There is a third request to place in that order.
 defers it until after the first history page paints rather than racing it.
 Status must not undo that deferral: the ordering is status and the first history page
 together, then the summary once the first page is on screen.
-Phase 2 records the chosen ordering and its reason, and `mb-0lkd` covers how the Changes
-header and the existing tally row coexist in the panel’s header region.
+That ordering is fixed here rather than left to implementation: status is not permitted
+to move the summary earlier to simplify its own loading sequence.
 
 Changes has four possible states:
 
@@ -197,6 +197,28 @@ Within Changes, nonempty groups appear in this order:
 4. Untracked.
 
 Each group header shows its row count and uses the section-disclosure contract.
+
+The panel already has a header row.
+`.git-history-summary` carries the history tally directly above the graph, and it
+belongs to History rather than to the panel as a whole.
+Changes and History therefore each own their own header, stacked in that order, rather
+than sharing one region:
+
+```text
+Changes  ▾   3 changes           ← Changes disclosure header
+  …rows…
+History  ▾                       ← History disclosure header
+  begun 3mo ago · 1,204 commits   ← the existing tally, unchanged
+  …graph…
+```
+
+Two headers is the honest structure because the counts answer different questions and go
+stale independently: the tally changes when history moves, the Changes count when the
+working tree does. Merging them would also put a status count above the scroll origin
+that [Changes above a virtualized History](#changes-above-a-virtualized-history)
+requires History to keep, which is the coupling this plan exists to avoid.
+The tally keeps its current markup, class names, and lazy load; Changes adds its own
+header beside it and does not restyle it.
 Group counts count comparison rows.
 The top-level summary carries both comparison-entry and unique-path totals so a
 partially staged file does not make an accessible label claim there are two files.

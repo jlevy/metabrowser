@@ -153,6 +153,10 @@
   let historyAbortController = new AbortController();
   /** @type {HTMLElement | null} */
   let scrollOwner = null;
+  /** @type {number | null} Cached scroller-to-list offset; see historyOrigin(). */
+  let historyOriginPx = null;
+  /** @type {ResizeObserver | null} Watches the tally for height changes. */
+  let summaryResizeObserver = null;
 
   function graphModule() {
     return window.MetabrowserGitGraph;
@@ -890,6 +894,83 @@
   }
 
   /**
+   * Distance from the scroller's origin to the first history row.
+   *
+   * `git-history-window.js` computes in coordinates relative to
+   * `.git-graph-list`, but `#tree-content` scrolls everything inside
+   * `#tab-git` — including the header tally that sits above the list. The
+   * two spaces differ by this offset, so every value crossing the boundary
+   * is converted: subtract before `read` and `rebaseToOrdinal`, add back
+   * before assigning `scrollTop`. Without it the window reads a scroll
+   * position carrying roughly one row it does not know about; overscan
+   * hides that in the mounted range, but the `scrollTop` it writes back
+   * lands a row off target.
+   *
+   * Cached because the conversion sits on the scroll path, where reading
+   * `offsetHeight` would force a synchronous reflow every frame.
+   * `invalidateHistoryOrigin` clears it whenever anything above the list
+   * changes height.
+   *
+   * @returns {number}
+   */
+  function historyOrigin() {
+    if (historyOriginPx !== null) {
+      return historyOriginPx;
+    }
+    const panel = panelElement();
+    const list = panel?.querySelector(".git-graph-list");
+    if (!panel || !(list instanceof HTMLElement)) {
+      return 0;
+    }
+    // Sum the panel chrome above the list rather than differencing
+    // rectangles: heights do not move when the pane scrolls, so the
+    // measurement is valid whenever it is taken, and any future sibling
+    // added above the list is counted without touching this function.
+    let offset = 0;
+    for (const sibling of panel.children) {
+      if (sibling === list) {
+        break;
+      }
+      if (sibling instanceof HTMLElement) {
+        offset += sibling.offsetHeight || 0;
+      }
+    }
+    historyOriginPx = Math.max(0, Math.round(offset));
+    return historyOriginPx;
+  }
+
+  /** Drop the cached origin; the next reader re-measures. */
+  function invalidateHistoryOrigin() {
+    historyOriginPx = null;
+  }
+
+  /**
+   * Re-measure the origin whenever the tally's box changes.
+   *
+   * Render-time invalidation covers content changes, but the tally can
+   * also reflow without one — its text wraps at a narrow pane width, and
+   * that moves the list without any code here running. Observing the
+   * element is exact: it fires when the box actually changes and stays
+   * silent otherwise, unlike a resize listener that would fire for every
+   * viewport change whether or not this row moved.
+   *
+   * @param {HTMLElement} summary
+   */
+  function observeSummaryHeight(summary) {
+    summaryResizeObserver?.disconnect();
+    summaryResizeObserver = null;
+    if (typeof ResizeObserver !== "function") {
+      // Absent in the DOM-test environment. The render-time invalidation
+      // above still holds; only reflow-without-render goes unnoticed.
+      return;
+    }
+    summaryResizeObserver = new ResizeObserver(() => {
+      invalidateHistoryOrigin();
+    });
+    summaryResizeObserver.observe(summary);
+  }
+
+  /**
    * Preserve every logical row's fixed-height coordinate while one or more
    * evicted pages are being replayed. A placeholder is an honest loading or
    * retry state; it never lets a partial window read as the complete history.
@@ -998,9 +1079,13 @@
     if (!(list instanceof HTMLElement) || !scroller) {
       return;
     }
-    const range = state.virtualWindow.read(scroller.scrollTop || 0, viewportHeight(scroller));
-    if (range.rebased && scroller.scrollTop !== range.scrollTop) {
-      scroller.scrollTop = range.scrollTop;
+    const origin = historyOrigin();
+    const range = state.virtualWindow.read(
+      Math.max(0, (scroller.scrollTop || 0) - origin),
+      viewportHeight(scroller),
+    );
+    if (range.rebased && scroller.scrollTop !== range.scrollTop + origin) {
+      scroller.scrollTop = range.scrollTop + origin;
     }
     const previous = state.mountedRange;
     if (
@@ -1101,11 +1186,9 @@
         if (!scroller) {
           return;
         }
-        scroller.scrollTop = state.virtualWindow.rebaseToOrdinal(
-          nextOrdinal,
-          viewportHeight(scroller),
-          "nearest",
-        );
+        scroller.scrollTop =
+          historyOrigin() +
+          state.virtualWindow.rebaseToOrdinal(nextOrdinal, viewportHeight(scroller), "nearest");
         state.mountedRange = null;
         renderVirtualRows(true);
       });
@@ -1123,11 +1206,9 @@
       if (!scroller) {
         return false;
       }
-      scroller.scrollTop = state.virtualWindow.rebaseToOrdinal(
-        nextOrdinal,
-        viewportHeight(scroller),
-        "center",
-      );
+      scroller.scrollTop =
+        historyOrigin() +
+        state.virtualWindow.rebaseToOrdinal(nextOrdinal, viewportHeight(scroller), "center");
       state.mountedRange = null;
       renderVirtualRows();
       next = list.querySelector(`.git-graph-row[data-ordinal="${nextOrdinal}"]`);
@@ -1210,8 +1291,14 @@
       list.className = "git-graph-list";
       list.addEventListener("focusin", handleCommitListFocus);
       panel.replaceChildren(summary, list);
+      invalidateHistoryOrigin();
+      observeSummaryHeight(summary);
     }
     renderHistorySummary(panel);
+    // The tally goes from a pending shimmer to real text, and its height
+    // can change with it, so the origin is re-measured after it renders
+    // rather than before.
+    invalidateHistoryOrigin();
     state.mountedRange = null;
     renderVirtualRows(true);
   }
@@ -1898,11 +1985,9 @@
       const scroller = historyScroller();
       if (scroller && state.rowCount > 0) {
         const ordinal = Math.min(restoreOrdinal, state.rowCount - 1);
-        scroller.scrollTop = state.virtualWindow.rebaseToOrdinal(
-          ordinal,
-          viewportHeight(scroller),
-          "start",
-        );
+        scroller.scrollTop =
+          historyOrigin() +
+          state.virtualWindow.rebaseToOrdinal(ordinal, viewportHeight(scroller), "start");
         state.focusedOrdinal = ordinal;
         state.mountedRange = null;
         renderVirtualRows(true);
@@ -2022,6 +2107,9 @@
       scrollOwner.removeEventListener("scroll", onTreeScroll);
       scrollOwner = null;
     }
+    invalidateHistoryOrigin();
+    summaryResizeObserver?.disconnect();
+    summaryResizeObserver = null;
     disposeHistoryState(state);
     state = emptyState();
     detailCache.clear();
@@ -2103,6 +2191,8 @@
       renderPanel,
       renderVirtualRows,
       renderRefBadges,
+      historyOrigin,
+      invalidateHistoryOrigin,
       rowsForRange,
       loadNextPage,
       retryFailedPage,
