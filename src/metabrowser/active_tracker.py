@@ -86,7 +86,7 @@ async def _read_candidates(
         ),
         include_catalog_decorations=True,
     )
-    projection = read.result.projection("activity-candidates")
+    projection = read.result.completed_projection("activity-candidates")
     if not isinstance(projection, CatalogProjection):
         raise TypeError("the activity catalog read returned the wrong projection")
     records = projection.records

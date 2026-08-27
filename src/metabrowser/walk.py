@@ -467,7 +467,7 @@ async def build_tree_envelope(
             if assembly is not None
             else await runtime.coordinator.read(ReadRequest(queries=companion_queries))
         )
-        parent = read.result.projection("walk-parent")
+        parent = read.result.completed_projection("walk-parent")
         if not isinstance(parent, EntryProjection):
             raise TypeError("the walk parent query returned the wrong projection")
         entries = ()

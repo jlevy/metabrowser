@@ -116,6 +116,7 @@ from metabrowser.inventory_engine.contract import (
     NavigationProjection,
     NavigationQuery,
     PriorityRequest,
+    QueryWorkLimitError,
     ReadQuery,
     ReadRequest,
     RecentProjection,
@@ -1002,7 +1003,7 @@ async def index(request: Request) -> HTMLResponse:
                     )
                 )
             )
-            initial_projection = initial_read.result.projection("initial-tree")
+            initial_projection = initial_read.result.completed_projection("initial-tree")
             if not isinstance(initial_projection, DirectoryProjection):
                 raise TypeError("the initial-tree read returned the wrong projection")
             initial_tree = build_inventory_tree_from_entries(
@@ -1501,7 +1502,7 @@ async def _read_tree_from_provider(
         return assembly.first_read, assembly
 
     read, assembly = await read_tree()
-    parent = read.result.projection("tree-parent")
+    parent = read.result.completed_projection("tree-parent")
     if not isinstance(parent, EntryProjection):
         raise TypeError("the tree parent query returned the wrong projection")
     if parent.presence is EntryPresence.UNKNOWN:
@@ -1513,7 +1514,7 @@ async def _read_tree_from_provider(
         while asyncio.get_running_loop().time() < deadline:
             await asyncio.sleep(0.005)
             read, assembly = await read_tree()
-            parent = read.result.projection("tree-parent")
+            parent = read.result.completed_projection("tree-parent")
             if not isinstance(parent, EntryProjection):
                 raise TypeError("the tree parent query returned the wrong projection")
             if parent.presence is not EntryPresence.UNKNOWN:
@@ -1547,7 +1548,7 @@ async def _read_tree_from_provider(
     )
     navigation = None
     if navigation_id is not None:
-        candidate = read.result.projection(navigation_id)
+        candidate = read.result.completed_projection(navigation_id)
         if not isinstance(candidate, NavigationProjection):
             raise TypeError("the navigation query returned the wrong projection")
         navigation = candidate.payload
@@ -1660,7 +1661,7 @@ async def api_rollup(request: Request) -> Response:
     preflight = await runtime.coordinator.read(
         ReadRequest(queries=(EntryQuery(query_id="rollup-parent", path=subpath),))
     )
-    parent = preflight.result.projection("rollup-parent")
+    parent = preflight.result.completed_projection("rollup-parent")
     if not isinstance(parent, EntryProjection):
         raise TypeError("the rollup parent query returned the wrong projection")
     if parent.presence is EntryPresence.ABSENT or (
@@ -1696,8 +1697,8 @@ async def api_rollup(request: Request) -> Response:
                 at_version=at_version,
             )
         )
-        rollup = coordinated.result.projection("rollup")
-        diagnostic = coordinated.result.projection("rollup-diagnostics")
+        rollup = coordinated.result.completed_projection("rollup")
+        diagnostic = coordinated.result.completed_projection("rollup-diagnostics")
         if not isinstance(rollup, RollupProjection) or not isinstance(
             diagnostic, DiagnosticsProjection
         ):
@@ -1811,7 +1812,7 @@ async def api_recent(request: Request) -> JSONResponse:
             )
         )
     )
-    projection = coordinated.result.projection("recent")
+    projection = coordinated.result.completed_projection("recent")
     if not isinstance(projection, RecentProjection):
         raise TypeError("the recent read returned the wrong projection")
     result = recent_result_from_projection(
@@ -1971,7 +1972,7 @@ async def _api_folder_envelope(
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(EntryQuery(query_id="folder", path=subpath),))
     )
-    projection = coordinated.result.projection("folder")
+    projection = coordinated.result.completed_projection("folder")
     if not isinstance(projection, EntryProjection):
         raise TypeError("the folder read returned the wrong projection")
     entry = projection.entry
@@ -3285,11 +3286,12 @@ async def _debug_inventory(request: Request) -> JSONResponse:
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(DiagnosticsQuery(query_id="debug-inventory"),))
     )
-    diagnostic = coordinated.result.projection("debug-inventory")
+    diagnostic = coordinated.result.completed_projection("debug-inventory")
     if not isinstance(diagnostic, DiagnosticsProjection):
         raise TypeError("the inventory diagnostic returned the wrong projection")
     diagnostics = diagnostic.payload
     work = diagnostics.cumulative_work
+    metrics = diagnostics.cumulative_metrics
 
     return JSONResponse(
         {
@@ -3300,13 +3302,23 @@ async def _debug_inventory(request: Request) -> JSONResponse:
             "version": coordinated.version.engine.sequence,
             "work": {
                 "read_requests": diagnostics.read_requests,
-                "entries_visited": work.entries_visited,
-                "directories_visited": work.directories_visited,
+                "observations": work.observations,
+                "unchanged": work.unchanged,
+                "stale": work.stale,
+                "resource_refused": work.resource_refused,
+                "rows_visited": work.rows_visited,
                 "rows_returned": work.rows_returned,
-                "binding_bytes_copied": work.bytes_copied,
-                "lock_wait_ns": work.lock_wait_ns,
-                "cpu_time_ns": work.cpu_time_ns,
-                "wall_time_ns": work.wall_time_ns,
+                "maintained_index_work": work.maintained_index_work,
+                "commits_visited": work.commits_visited,
+                "commits_returned": work.commits_returned,
+                "directories_read": work.directories_read,
+                "entries_visited": work.entries_visited,
+                "files_visited": work.files_visited,
+                "bytes_visited": work.bytes_visited,
+                "binding_bytes_copied": metrics.bytes_copied,
+                "lock_wait_ns": metrics.lock_wait_ns,
+                "cpu_time_ns": metrics.cpu_time_ns,
+                "wall_time_ns": metrics.wall_time_ns,
             },
         }
     )
@@ -3376,7 +3388,33 @@ def _lifespan(app: Starlette):  # type: ignore[no-untyped-def]
     return build_lifespan(app=app, root_provider=_inventory_root_provider)
 
 
-app = Starlette(routes=routes, middleware=middleware, lifespan=_lifespan)
+async def _query_work_limit_response(
+    _request: Request,
+    error: Exception,
+) -> JSONResponse:
+    """Expose an exhausted provider work bound without a misleading partial body."""
+
+    if not isinstance(error, QueryWorkLimitError):  # pragma: no cover - Starlette dispatches it
+        raise error
+    limit = error.projection
+    return JSONResponse(
+        {
+            "error": "Inventory query work limit exceeded",
+            "code": "inventory_query_limit",
+            "query": limit.query_kind.value,
+            "max_work": limit.max_work,
+            "rows_visited": limit.rows_visited,
+        },
+        status_code=503,
+    )
+
+
+app = Starlette(
+    routes=routes,
+    middleware=middleware,
+    lifespan=_lifespan,
+    exception_handlers={QueryWorkLimitError: _query_work_limit_response},
+)
 add_inventory_routes(app)
 
 

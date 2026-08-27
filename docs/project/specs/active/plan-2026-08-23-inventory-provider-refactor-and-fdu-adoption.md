@@ -152,8 +152,9 @@ Every `ReadResult` returns the following values from one read boundary:
 - an opaque engine version and a resume cursor;
 - lifecycle phase, coverage, freshness, source, progress, and typed issues;
 - the requested typed projections;
-- request work, including lock wait, visited entries and directories, returned rows,
-  elapsed wall time, exact CPU time when measured, and bytes copied across the binding.
+- deterministic semantic work in the same vocabulary as fdu;
+- separate boundary metrics for lock wait, elapsed wall time, exact CPU time when
+  measured, and bytes copied across the binding.
   CPU time is unavailable when the provider cannot measure it exactly; zero never means
   unavailable.
 
@@ -384,12 +385,14 @@ acceptable adapter implementation.
 - [x] Align lifecycle, coverage, freshness, source, and issue values with fdu’s total
   vocabulary. Resource refusal is terminal for expansion and observation rather than a
   nominally watching state.
-- [ ] Add request work limits and typed limit results.
+- [x] Add request work limits and typed limit results.
   Replace exact suffix remainders with opaque continuations plus exact-or-capped totals,
-  stable version pinning, and portable-path completeness.
-- [ ] Specify one active change iterator, provider-batch replay capacity, iterator-only
+  and stable version pinning.
+- [x] Carry portable-path completeness and bounded issue examples through tree and flat
+  projections.
+- [x] Specify one active change iterator, provider-batch replay capacity, iterator-only
   cancellation, reset semantics, and the host coalescing boundary for recursive changes.
-- [ ] Update the Python provider, coordinator, page assembly, routes, and the closed
+- [x] Update the Python provider, coordinator, page assembly, routes, and the closed
   conformance registry.
   The Python provider must pass before fdu is registered.
 
@@ -405,6 +408,15 @@ same parsed value for identity, filters, navigation tallies, and rollups.
 The lifecycle slice is complete: the contract pins exhaustive, same-named coverage,
 freshness, source, and issue vocabularies, while `opening` remains an explicit
 host-owned phase before a provider has native state to report.
+The paging-and-count-value slice is complete: page control uses only opaque,
+version-pinned continuations; bounded host assembly proves conservation without exact
+suffix counts; and product counts distinguish exact values from proven lower bounds.
+The work-and-ordering slice is complete: every broad query has a deterministic work
+bound and typed nonpartial limit result; common work uses fdu’s exact semantic
+vocabulary while timing remains a separate boundary metric; directory rows use
+directory-first canonical UTF-8 name order and catalogs use canonical UTF-8 path order.
+The provider admits one active change iterator, retains bounded replay, and leaves
+fan-out to the coordinator’s host stream.
 
 #### Checkpoint 2C: Add Native Projections and the Thin Adapter
 
@@ -486,11 +498,11 @@ the standing performance-loop method.
 The provider-parametrized registry in
 `docs/project/architecture/arch-inventory-provider.md` is the Phase 2 parity entry
 point. Its maintained tests cover coherent checkpoints, time-pinned paging, semantic
-digests, explicit budget stops, lossless remainders, unavailable versions, change resume
-and reset recovery, verified refresh, joined close, lifecycle, and session stability.
-`tests/test_python_inventory_provider.py` adds implementation-specific progressive,
-failure, refresh, paging, bound, and work-counter checks for the reference store without
-expanding the public handle.
+digests, explicit budget stops, lossless opaque paging, unavailable versions, change
+resume and reset recovery, verified refresh, joined close, lifecycle, and session
+stability. `tests/test_python_inventory_provider.py` adds implementation-specific
+progressive, failure, refresh, paging, bound, and work-counter checks for the reference
+store without expanding the public handle.
 
 The existing product suites remain the wire and browser preservation oracle:
 

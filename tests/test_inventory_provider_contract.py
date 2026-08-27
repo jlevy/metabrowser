@@ -7,7 +7,7 @@ import asyncio
 import inspect
 import itertools
 import os
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,17 +16,25 @@ import pytest
 from metabrowser.file_type_registry import load_file_type_registry_document
 from metabrowser.inventory_engine.contract import (
     ALLOWED_PHASE_TRANSITIONS,
+    MAX_ASSEMBLED_ROWS,
     MAX_COMMAND_PATHS,
+    MAX_COUNT_CAP,
     MAX_INVENTORY_ISSUES,
     MAX_ISSUE_DETAIL_BYTES,
+    MAX_PORTABLE_PATH_EXAMPLE_BYTES,
+    MAX_PORTABLE_PATH_EXAMPLES,
     QUERY_TYPE_BY_KIND,
     REGISTERED_QUERY_TYPES,
     AdmittedObjectKind,
+    BoundaryMetrics,
     CatalogProjection,
     CatalogQuery,
     CatalogRecord,
     ChangeBatch,
     ChangeCursor,
+    ChangeStreamBusyError,
+    CountKind,
+    CountResult,
     Coverage,
     CoverageReason,
     DiagnosticsProjection,
@@ -55,8 +63,13 @@ from metabrowser.inventory_engine.contract import (
     NavigationProjection,
     NavigationQuery,
     ObservationKind,
+    PortablePathEncoding,
+    PortablePathExample,
+    PortablePathIssue,
     PriorityRequest,
     QueryKind,
+    QueryLimitProjection,
+    QueryWorkLimitError,
     ReadRequest,
     ReadResult,
     RecentProjection,
@@ -103,9 +116,14 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
         "test_provider_budget_stop_is_explicit_and_absence_remains_unknown",
         "test_directory_pages_are_lossless_when_directories_outnumber_file_budget",
         "test_catalog_predicate_semantics_are_runtime_independent_and_exact",
-        "test_catalog_pages_report_exact_lossless_remainders",
+        "test_catalog_pages_are_lossless_without_suffix_counts",
+        "test_provider_applies_work_bounds_to_continuation_pages",
+        "test_provider_returns_typed_query_limits_without_partial_answers",
+        "test_provider_counts_are_exact_or_proven_lower_bounds",
+        "test_provider_uses_canonical_portable_row_order",
         "test_provider_version_pins_fail_instead_of_moving",
         "test_provider_changes_resume_and_report_history_gaps_as_reset",
+        "test_provider_allows_only_one_active_change_iterator",
         "test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint",
         "test_provider_close_joins_change_delivery_and_is_idempotent",
         "test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session",
@@ -215,31 +233,31 @@ def test_read_request_defaults_to_a_checkpoint_and_rejects_duplicate_projection_
                 DiagnosticsQuery(query_id="same"),
             )
         )
+    with pytest.raises(ValueError, match="exact provider version"):
+        ReadRequest(queries=(DirectoryQuery(query_id="page", after="opaque-continuation"),))
 
 
 @pytest.mark.parametrize(
     "factory",
     (
-        lambda: DirectoryProjection(query_id="directory", entries=(), remaining_rows=1),
+        lambda: DirectoryProjection(query_id="directory", entries=(), next_page="next"),
         lambda: FilteredTreeProjection(
             query_id="filtered",
             entries=(),
             matching_leaves=0,
             matching_files=0,
             matching_bytes=0,
-            next_page="1",
-            remaining_rows=0,
+            next_page="next",
         ),
         lambda: CatalogProjection(
             query_id="catalog",
             records=(),
-            total_matches=1,
-            next_page="1",
-            remaining_rows=0,
+            total_matches=CountResult(CountKind.EXACT, 1),
+            next_page="next",
         ),
     ),
 )
-def test_paged_projection_continuations_match_lossless_remainders(
+def test_paged_projection_continuations_require_nonempty_pages(
     factory: Callable[[], object],
 ) -> None:
     with pytest.raises(ValueError, match="continuation"):
@@ -384,16 +402,44 @@ def test_configuration_and_command_bounds_are_enforced() -> None:
         PriorityRequest(paths=("same", "same"))
     with pytest.raises(ValueError, match="nonnegative"):
         WorkCounters(entries_visited=-1)
-    assert WorkCounters().cpu_time_ns is None
-    assert WorkCounters(cpu_time_ns=0).cpu_time_ns == 0
+    assert BoundaryMetrics().cpu_time_ns is None
+    assert BoundaryMetrics(cpu_time_ns=0).cpu_time_ns == 0
     with pytest.raises(ValueError, match="nonnegative"):
-        WorkCounters(cpu_time_ns=-1)
+        BoundaryMetrics(cpu_time_ns=-1)
     with pytest.raises(ValueError, match="nonnegative"):
-        RecentProjection(
+        CountResult(CountKind.EXACT, -1)
+
+
+def test_query_work_and_count_bounds_are_enforced() -> None:
+    query_factories: tuple[Callable[[int], object], ...] = (
+        lambda value: DirectoryQuery(query_id="directory", max_work=value),
+        lambda value: FilteredTreeQuery(query_id="filtered", max_work=value),
+        lambda value: RollupQuery(query_id="rollup", max_work=value),
+        lambda value: NavigationQuery(query_id="navigation", max_work=value),
+        lambda value: RecentQuery(
             query_id="recent",
-            entries=(),
-            total_matches=-1,
-        )
+            max_rows=1,
+            as_of_ns=1,
+            max_work=value,
+        ),
+        lambda value: CatalogQuery(query_id="catalog", max_rows=1, max_work=value),
+    )
+    for factory in query_factories:
+        with pytest.raises(ValueError, match="positive"):
+            factory(0)
+        with pytest.raises(ValueError, match="at most"):
+            factory(MAX_ASSEMBLED_ROWS + 1)
+
+    for count_cap in (0, MAX_COUNT_CAP + 1):
+        with pytest.raises(ValueError, match="count_cap"):
+            RecentQuery(
+                query_id="recent",
+                max_rows=1,
+                as_of_ns=1,
+                count_cap=count_cap,
+            )
+        with pytest.raises(ValueError, match="count_cap"):
+            CatalogQuery(query_id="catalog", max_rows=1, count_cap=count_cap)
 
 
 def test_inventory_scope_fingerprint_is_portable_and_semantic() -> None:
@@ -567,7 +613,7 @@ def test_path_bearing_contract_records_reject_noncanonical_paths(path: str) -> N
         RecentProjection(
             query_id="recent",
             entries=(),
-            total_matches=0,
+            total_matches=CountResult(CountKind.EXACT, 0),
             gitignored_directories=(path,),
         )
 
@@ -607,6 +653,34 @@ def test_lifecycle_diagnostics_are_bounded_before_crossing_provider_boundaries()
         InventoryIssue(
             code=IssueCode.PROVIDER_FAILURE,
             detail="x" * (MAX_ISSUE_DETAIL_BYTES + 1),
+        )
+
+
+def test_portable_path_loss_is_bounded_and_losslessly_encoded() -> None:
+    example = PortablePathExample(
+        encoding=PortablePathEncoding.UNIX_BYTES,
+        encoded_hex="ff00",
+        truncated=False,
+    )
+    assert PortablePathIssue(omitted=1, examples=(example,)).omitted == 1
+    with pytest.raises(ValueError, match="positive"):
+        PortablePathIssue(omitted=0)
+    with pytest.raises(ValueError, match="lowercase hexadecimal"):
+        PortablePathExample(
+            encoding=PortablePathEncoding.UNIX_BYTES,
+            encoded_hex="FF",
+            truncated=False,
+        )
+    with pytest.raises(ValueError, match="encoded-byte bound"):
+        PortablePathExample(
+            encoding=PortablePathEncoding.PLATFORM_BYTES,
+            encoded_hex="aa" * (MAX_PORTABLE_PATH_EXAMPLE_BYTES + 1),
+            truncated=True,
+        )
+    with pytest.raises(ValueError, match="at most"):
+        PortablePathIssue(
+            omitted=MAX_PORTABLE_PATH_EXAMPLES + 1,
+            examples=(example,) * (MAX_PORTABLE_PATH_EXAMPLES + 1),
         )
 
     issue = InventoryIssue(code=IssueCode.PROVIDER_FAILURE, detail="failed")
@@ -674,12 +748,43 @@ def test_version_and_cursor_share_a_session() -> None:
         )
     assert version.cursor == ChangeCursor.from_version(version)
 
+    limited = ReadResult(
+        version=version,
+        cursor=version.cursor,
+        state=state,
+        projections=(
+            QueryLimitProjection(
+                query_id="catalog",
+                query_kind=QueryKind.CATALOG,
+                max_work=10,
+                rows_visited=10,
+            ),
+        ),
+        work=WorkCounters(rows_visited=10),
+    )
+    with pytest.raises(QueryWorkLimitError, match="catalog query"):
+        limited.completed_projection("catalog")
+
 
 def test_recent_truncation_is_derived_from_the_projection_rows() -> None:
-    complete = RecentProjection(query_id="complete", entries=(), total_matches=0)
-    truncated = RecentProjection(query_id="truncated", entries=(), total_matches=1)
+    complete = RecentProjection(
+        query_id="complete",
+        entries=(),
+        total_matches=CountResult(CountKind.EXACT, 0),
+    )
+    truncated = RecentProjection(
+        query_id="truncated",
+        entries=(),
+        total_matches=CountResult(CountKind.EXACT, 1),
+    )
+    capped = RecentProjection(
+        query_id="capped",
+        entries=(),
+        total_matches=CountResult(CountKind.AT_LEAST, 0),
+    )
     assert complete.truncated is False
     assert truncated.truncated is True
+    assert capped.truncated is True
 
 
 class _Handle:
@@ -748,7 +853,7 @@ def test_checkpoint_read_returns_only_a_coherent_constant_work_envelope(
             assert checkpoint.version.sequence == checkpoint.cursor.sequence
             assert checkpoint.state.phase is LifecyclePhase.WATCHING
             assert checkpoint.work.entries_visited == 0
-            assert checkpoint.work.directories_visited == 0
+            assert checkpoint.work.directories_read == 0
             assert checkpoint.work.rows_returned == 0
         finally:
             await handle.close()
@@ -1087,7 +1192,7 @@ def test_directory_pages_are_lossless_when_directories_outnumber_file_budget(
     for path in expected:
         (tmp_path / path).mkdir()
 
-    async def run() -> tuple[set[str], tuple[int, ...]]:
+    async def run() -> set[str]:
         handle = await _open_settled_provider(
             provider_factory,
             tmp_path,
@@ -1098,7 +1203,6 @@ def test_directory_pages_are_lossless_when_directories_outnumber_file_budget(
         )
         try:
             seen: set[str] = set()
-            remaining: list[int] = []
             after: str | None = None
             pinned: EngineVersion | None = None
             while True:
@@ -1121,16 +1225,13 @@ def test_directory_pages_are_lossless_when_directories_outnumber_file_budget(
                 assert result.version == pinned
                 assert not (seen & {entry.path for entry in projection.entries})
                 seen.update(entry.path for entry in projection.entries)
-                remaining.append(projection.remaining_rows)
                 after = projection.next_page
                 if after is None:
-                    return seen, tuple(remaining)
+                    return seen
         finally:
             await handle.close()
 
-    seen, remaining = asyncio.run(run())
-    assert seen == expected
-    assert remaining == (5, 3, 1, 0)
+    assert asyncio.run(run()) == expected
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
@@ -1172,7 +1273,7 @@ def test_catalog_predicate_semantics_are_runtime_independent_and_exact(
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
-def test_catalog_pages_report_exact_lossless_remainders(
+def test_catalog_pages_are_lossless_without_suffix_counts(
     provider_factory: Callable[[], InventoryBackend],
     tmp_path: Path,
 ) -> None:
@@ -1180,7 +1281,7 @@ def test_catalog_pages_report_exact_lossless_remainders(
     for path in expected:
         (tmp_path / path).write_text(path, encoding="utf-8")
 
-    async def run() -> tuple[set[str], tuple[int, ...]]:
+    async def run() -> set[str]:
         handle = await _open_settled_provider(
             provider_factory,
             tmp_path,
@@ -1191,7 +1292,6 @@ def test_catalog_pages_report_exact_lossless_remainders(
         )
         try:
             seen: set[str] = set()
-            remaining: list[int] = []
             after: str | None = None
             pinned: EngineVersion | None = None
             while True:
@@ -1213,16 +1313,252 @@ def test_catalog_pages_report_exact_lossless_remainders(
                 assert result.version == pinned
                 assert not (seen & {record.path for record in projection.records})
                 seen.update(record.path for record in projection.records)
-                remaining.append(projection.remaining_rows)
                 after = projection.next_page
                 if after is None:
-                    return seen, tuple(remaining)
+                    return seen
         finally:
             await handle.close()
 
-    seen, remaining = asyncio.run(run())
-    assert seen == expected
-    assert remaining == (5, 3, 1, 0)
+    assert asyncio.run(run()) == expected
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_applies_work_bounds_to_continuation_pages(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    for index in range(6):
+        (tmp_path / f"file-{index}.txt").write_text(str(index), encoding="utf-8")
+
+    async def run() -> None:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        )
+        try:
+            for kind in (QueryKind.DIRECTORY, QueryKind.FILTERED_TREE, QueryKind.CATALOG):
+                if kind is QueryKind.DIRECTORY:
+                    first_query = DirectoryQuery(query_id=kind, max_depth=1, max_rows=2)
+                elif kind is QueryKind.FILTERED_TREE:
+                    first_query = FilteredTreeQuery(query_id=kind, max_depth=1, max_rows=2)
+                else:
+                    first_query = CatalogQuery(query_id=kind, max_rows=2)
+                first = await handle.read(ReadRequest(queries=(first_query,)))
+                first_projection = first.projection(kind)
+                assert isinstance(
+                    first_projection,
+                    (DirectoryProjection, FilteredTreeProjection, CatalogProjection),
+                )
+                after = first_projection.next_page
+                assert after is not None
+
+                if kind is QueryKind.DIRECTORY:
+                    limited_query = DirectoryQuery(
+                        query_id=kind,
+                        max_depth=1,
+                        max_rows=4,
+                        max_work=1,
+                        after=after,
+                    )
+                    retry_query = DirectoryQuery(
+                        query_id=kind,
+                        max_depth=1,
+                        max_rows=4,
+                        max_work=4,
+                        after=after,
+                    )
+                elif kind is QueryKind.FILTERED_TREE:
+                    limited_query = FilteredTreeQuery(
+                        query_id=kind,
+                        max_depth=1,
+                        max_rows=4,
+                        max_work=1,
+                        after=after,
+                    )
+                    retry_query = FilteredTreeQuery(
+                        query_id=kind,
+                        max_depth=1,
+                        max_rows=4,
+                        max_work=4,
+                        after=after,
+                    )
+                else:
+                    limited_query = CatalogQuery(
+                        query_id=kind,
+                        max_rows=4,
+                        max_work=1,
+                        after=after,
+                    )
+                    retry_query = CatalogQuery(
+                        query_id=kind,
+                        max_rows=4,
+                        max_work=4,
+                        after=after,
+                    )
+
+                limited = await handle.read(
+                    ReadRequest(queries=(limited_query,), at_version=first.version)
+                )
+                assert limited.projection(kind) == QueryLimitProjection(
+                    query_id=kind,
+                    query_kind=kind,
+                    max_work=1,
+                    rows_visited=1,
+                )
+                assert limited.work.rows_visited == 1
+                assert limited.work.rows_returned == 0
+
+                retry = await handle.read(
+                    ReadRequest(queries=(retry_query,), at_version=first.version)
+                )
+                assert not isinstance(retry.projection(kind), QueryLimitProjection)
+                assert retry.work.rows_visited == 4
+                assert retry.work.rows_returned == 4
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_returns_typed_query_limits_without_partial_answers(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    for index in range(6):
+        (tmp_path / f"file-{index}.txt").write_text(str(index), encoding="utf-8")
+
+    async def run() -> None:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        )
+        queries = (
+            DirectoryQuery(query_id="directory", max_depth=1, max_work=2),
+            FilteredTreeQuery(query_id="filtered", max_depth=1, max_work=2),
+            RollupQuery(query_id="rollup", max_work=2),
+            NavigationQuery(query_id="navigation", max_work=2),
+            RecentQuery(query_id="recent", max_rows=1, as_of_ns=1, max_work=2),
+            CatalogQuery(query_id="catalog", max_rows=1, max_work=2),
+        )
+        try:
+            result = await handle.read(ReadRequest(queries=queries))
+            for query in queries:
+                projection = result.projection(query.query_id)
+                assert projection == QueryLimitProjection(
+                    query_id=query.query_id,
+                    query_kind=query.kind,
+                    max_work=2,
+                    rows_visited=2,
+                )
+            assert result.work.rows_visited == 12
+            assert result.work.rows_returned == 0
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_counts_are_exact_or_proven_lower_bounds(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    for index in range(8):
+        (tmp_path / f"file-{index}.txt").write_text(str(index), encoding="utf-8")
+
+    async def run() -> None:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        )
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=(
+                        RecentQuery(
+                            query_id="recent",
+                            max_rows=2,
+                            as_of_ns=1,
+                            count_cap=3,
+                        ),
+                        CatalogQuery(query_id="catalog", max_rows=2, count_cap=3),
+                    )
+                )
+            )
+            recent = result.projection("recent")
+            catalog = result.projection("catalog")
+            assert isinstance(recent, RecentProjection)
+            assert isinstance(catalog, CatalogProjection)
+            assert recent.total_matches == CountResult(CountKind.AT_LEAST, 3)
+            assert catalog.total_matches == CountResult(CountKind.AT_LEAST, 3)
+            assert catalog.next_page is not None
+            tail = await handle.read(
+                ReadRequest(
+                    queries=(
+                        CatalogQuery(
+                            query_id="catalog",
+                            max_rows=6,
+                            count_cap=3,
+                            after=catalog.next_page,
+                        ),
+                    ),
+                    at_version=result.version,
+                )
+            )
+            tail_catalog = tail.projection("catalog")
+            assert isinstance(tail_catalog, CatalogProjection)
+            assert tail_catalog.total_matches == CountResult(CountKind.AT_LEAST, 8)
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_uses_canonical_portable_row_order(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    for name in ("é-dir", "A-dir"):
+        (tmp_path / name).mkdir()
+    for name in ("中.txt", "z.txt"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+
+    async def run() -> tuple[tuple[str, ...], tuple[str, ...]]:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        )
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=(
+                        DirectoryQuery(query_id="directory", max_depth=1),
+                        CatalogQuery(query_id="catalog", max_rows=10),
+                    )
+                )
+            )
+            directory = result.projection("directory")
+            catalog = result.projection("catalog")
+            assert isinstance(directory, DirectoryProjection)
+            assert isinstance(catalog, CatalogProjection)
+            assert directory.portable_issue is None
+            assert catalog.portable_issue is None
+            return (
+                tuple(entry.path for entry in directory.entries),
+                tuple(record.path for record in catalog.records),
+            )
+        finally:
+            await handle.close()
+
+    directory_paths, catalog_paths = asyncio.run(run())
+    assert directory_paths == ("A-dir", "é-dir", "z.txt", "中.txt")
+    assert catalog_paths == ("z.txt", "中.txt")
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
@@ -1270,27 +1606,77 @@ def test_provider_changes_resume_and_report_history_gaps_as_reset(
             await handle.refresh(
                 RefreshRequest(observations=(RefreshObservation(path="first.txt"),))
             )
-            first_stream = handle.changes(after=initial.cursor)
+            first_stream = cast(
+                "AsyncGenerator[ChangeBatch, None]",
+                handle.changes(after=initial.cursor),
+            )
             first = await asyncio.wait_for(anext(first_stream), timeout=1)
             assert first.reset is False
             assert "first.txt" in first.dirty_paths
             assert first.cursor.session == initial.cursor.session
+            await first_stream.aclose()
 
             (tmp_path / "second.txt").write_text("second", encoding="utf-8")
             await handle.refresh(
                 RefreshRequest(observations=(RefreshObservation(path="second.txt"),))
             )
-            resumed_stream = handle.changes(after=first.cursor)
+            resumed_stream = cast(
+                "AsyncGenerator[ChangeBatch, None]",
+                handle.changes(after=first.cursor),
+            )
             resumed = await asyncio.wait_for(anext(resumed_stream), timeout=1)
             assert resumed.reset is False
             assert "second.txt" in resumed.dirty_paths
+            await resumed_stream.aclose()
 
-            gap_stream = handle.changes(after=initial.cursor)
+            gap_stream = cast(
+                "AsyncGenerator[ChangeBatch, None]",
+                handle.changes(after=initial.cursor),
+            )
             gap = await asyncio.wait_for(anext(gap_stream), timeout=1)
             assert gap.reset is True
             assert gap.cursor.session == initial.cursor.session
             assert gap.cursor.sequence >= resumed.cursor.sequence
+            await gap_stream.aclose()
         finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_allows_only_one_active_change_iterator(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    async def run() -> None:
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        )
+        first_stream: AsyncGenerator[ChangeBatch, None] | None = None
+        try:
+            checkpoint = await handle.read(ReadRequest())
+            first_stream = cast(
+                "AsyncGenerator[ChangeBatch, None]",
+                handle.changes(after=checkpoint.cursor),
+            )
+            first_change = asyncio.ensure_future(anext(first_stream))
+            await asyncio.sleep(0)
+
+            second_stream = handle.changes(after=checkpoint.cursor)
+            with pytest.raises(ChangeStreamBusyError):
+                await anext(second_stream)
+
+            (tmp_path / "changed.txt").write_text("changed", encoding="utf-8")
+            await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="changed.txt"),))
+            )
+            assert (await asyncio.wait_for(first_change, timeout=1)).reset is False
+        finally:
+            if first_stream is not None:
+                await first_stream.aclose()
             await handle.close()
 
     asyncio.run(run())
