@@ -406,6 +406,10 @@ If an integrity check finds a dirty cached worktree, Metabrowser reports it as
 externally modified.
 It does not reset or absorb the changes.
 Rebuild and purge remain explicit.
+The separate [Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md)
+defines the lossless status service and its `is_clean` predicate.
+Cache integrity should call that predicate rather than keep a second porcelain parser or
+a second definition of clean.
 
 ## URL Resolution and Acquisition
 
@@ -889,9 +893,9 @@ Production policy cannot select that override.
 - **Publication:** interruption at every staging boundary leaves no visible incomplete
   entry; `repository.yml`, `state.yml`, and HEAD agree before rename; a cache hit needs
   no network.
-- **Read-only behavior:** browse and ref refresh leave `git status --porcelain` empty
-  and `active_revision` unchanged; an externally dirtied entry is reported rather than
-  reset.
+- **Read-only behavior:** browse and ref refresh leave the shared Git-status service’s
+  clean predicate true and `active_revision` unchanged; an externally dirtied entry is
+  reported rather than reset.
 - **Concurrency:** two opens share one completed entry; open, refresh, promotion,
   migration, repair, and purge cannot race across processes.
 - **Git integration:** cached roots satisfy repository-root discovery, history, direct
