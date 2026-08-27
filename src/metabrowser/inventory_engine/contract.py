@@ -17,6 +17,11 @@ from pathlib import Path, PurePosixPath
 from typing import Literal, Protocol, runtime_checkable
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
+from metabrowser.file_type_registry import (
+    FileTypeRegistryError,
+    load_file_type_registry_document,
+    load_file_type_registry_from_text,
+)
 from metabrowser.wire_models import NavigationTallies, RollupResult
 
 MAX_CHANGE_PATHS = 1_024
@@ -26,6 +31,8 @@ MAX_QUERIES_PER_READ = 1_024
 MAX_INVENTORY_ISSUES = MAX_CHANGE_PATHS
 # Bound provider-supplied diagnostic text before it crosses an FFI boundary.
 MAX_ISSUE_DETAIL_BYTES = 4_096
+DEFAULT_DISCOVERY_MAX_FILES = 500_000
+INVENTORY_SCOPE_IDENTITY_SCHEMA = "inventory-scope-v2"
 
 
 def _require_nonempty(value: str, name: str) -> None:
@@ -41,6 +48,32 @@ def _require_positive(value: int, name: str) -> None:
 def _require_nonnegative(value: int, name: str) -> None:
     if value < 0:
         raise ValueError(f"{name} must be nonnegative")
+
+
+def _require_registry_document(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError("registry document must be nonempty text")
+    return value
+
+
+def _require_positive_integer(value: object, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+
+
+def _require_discovery_budget(value: object) -> None:
+    if not isinstance(value, DiscoveryBudget):
+        raise ValueError("budget must be a DiscoveryBudget")
+
+
+def _require_scope_flags(values: tuple[object, ...]) -> None:
+    if any(not isinstance(value, bool) for value in values):
+        raise ValueError("scope flags must be boolean")
+
+
+def _require_hidden_allowlist(value: object) -> None:
+    if not isinstance(value, tuple) or any(not isinstance(name, str) for name in value):
+        raise ValueError("hidden_allowlist must be a tuple of names")
 
 
 def require_canonical_inventory_path(
@@ -82,22 +115,63 @@ def catalog_terminal_suffix(name: str) -> str:
     return name[dot:].lower()
 
 
+class AdmittedObjectKind(StrEnum):
+    """Filesystem object kinds exposed through the portable provider contract."""
+
+    FILE = "file"
+    DIRECTORY = "directory"
+    SYMLINK = "symlink"
+
+
+ALL_ADMITTED_OBJECT_KINDS = (
+    AdmittedObjectKind.FILE,
+    AdmittedObjectKind.DIRECTORY,
+    AdmittedObjectKind.SYMLINK,
+)
+
+
+def _require_admitted_object_kinds(value: object) -> None:
+    if not isinstance(value, tuple):
+        raise ValueError("admitted object kinds must be a tuple")
+    if any(not isinstance(kind, AdmittedObjectKind) for kind in value):
+        raise ValueError("admitted object kinds must use AdmittedObjectKind values")
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryBudget:
+    """Execution bound for progressive discovery, separate from semantic scope."""
+
+    max_files: int = DEFAULT_DISCOVERY_MAX_FILES
+
+    def __post_init__(self) -> None:
+        _require_positive_integer(self.max_files, "max_files")
+
+
 @dataclass(frozen=True, slots=True)
 class InventoryConfig:
-    """Semantic scope plus provider execution policy for one root session."""
+    """Validated semantic scope plus execution policy for one root session."""
 
-    max_files: int = 500_000
-    max_depth: int = 20
+    registry_document: str = field(default_factory=load_file_type_registry_document)
+    budget: DiscoveryBudget = field(default_factory=DiscoveryBudget)
     hidden_allowlist: tuple[str, ...] = (LOGS_DIR, STATE_DIR)
-    registry_fingerprint: str = "builtin"
+    include_hidden: bool = False
+    follow_symlinks: bool = False
+    one_filesystem: bool = False
+    admitted_object_kinds: tuple[AdmittedObjectKind, ...] = ALL_ADMITTED_OBJECT_KINDS
     change_queue_size: int = 1_024
     watch_mode: Literal["auto", "native", "poll", "off"] = "auto"
 
     def __post_init__(self) -> None:
-        _require_positive(self.max_files, "max_files")
-        _require_positive(self.max_depth, "max_depth")
+        _require_discovery_budget(self.budget)
+        _require_scope_flags((self.include_hidden, self.follow_symlinks, self.one_filesystem))
+        _require_hidden_allowlist(self.hidden_allowlist)
+        _require_admitted_object_kinds(self.admitted_object_kinds)
         _require_positive(self.change_queue_size, "change_queue_size")
-        _require_nonempty(self.registry_fingerprint, "registry_fingerprint")
+        registry_document = _require_registry_document(self.registry_document)
+        try:
+            load_file_type_registry_from_text(registry_document)
+        except FileTypeRegistryError as error:
+            raise ValueError(f"registry document is invalid: {error}") from error
         if self.watch_mode not in {"auto", "native", "poll", "off"}:
             raise ValueError("watch_mode must be auto, native, poll, or off")
         if len(set(self.hidden_allowlist)) != len(self.hidden_allowlist):
@@ -111,6 +185,18 @@ class InventoryConfig:
             for name in self.hidden_allowlist
         ):
             raise ValueError("hidden_allowlist entries must be exact hidden path-component names")
+        if self.include_hidden:
+            raise ValueError("the v1 scope must filter hidden path components")
+        if self.follow_symlinks:
+            raise ValueError("the v1 scope must retain symlinks without following them")
+        if self.one_filesystem:
+            raise ValueError("the v1 scope must cross filesystem boundaries")
+        if len(set(self.admitted_object_kinds)) != len(self.admitted_object_kinds):
+            raise ValueError("admitted object kinds must be unique")
+        if set(self.admitted_object_kinds) != set(ALL_ADMITTED_OBJECT_KINDS):
+            raise ValueError(
+                "the v1 admitted object kinds must be exactly file, directory, and symlink"
+            )
 
 
 def inventory_scope_fingerprint(config: InventoryConfig) -> str:
@@ -122,6 +208,7 @@ def inventory_scope_fingerprint(config: InventoryConfig) -> str:
     """
 
     components = (
+        ("schema", INVENTORY_SCOPE_IDENTITY_SCHEMA),
         (
             "hidden_allowlist",
             json.dumps(
@@ -130,8 +217,17 @@ def inventory_scope_fingerprint(config: InventoryConfig) -> str:
                 separators=(",", ":"),
             ),
         ),
-        ("max_depth", str(config.max_depth)),
-        ("max_files", str(config.max_files)),
+        ("include_hidden", json.dumps(config.include_hidden)),
+        ("follow_symlinks", json.dumps(config.follow_symlinks)),
+        ("one_filesystem", json.dumps(config.one_filesystem)),
+        (
+            "admitted_object_kinds",
+            json.dumps(
+                sorted(kind.value for kind in config.admitted_object_kinds),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        ),
     )
     payload = json.dumps(sorted(components), ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()

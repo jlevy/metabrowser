@@ -149,7 +149,7 @@ def _provider_tree(root: Path, *, depth: int) -> list[dict[str, Any]]:
                             query_id="tree",
                             path="",
                             max_depth=depth,
-                            max_rows=harness.runtime.config.max_files,
+                            max_rows=harness.runtime.config.budget.max_files,
                         ),
                     )
                 )

@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import pytest
 
+from metabrowser.file_type_registry import load_file_type_registry_document
 from metabrowser.inventory_engine.contract import (
     ALLOWED_PHASE_TRANSITIONS,
     MAX_COMMAND_PATHS,
@@ -20,6 +21,7 @@ from metabrowser.inventory_engine.contract import (
     MAX_ISSUE_DETAIL_BYTES,
     QUERY_TYPE_BY_KIND,
     REGISTERED_QUERY_TYPES,
+    AdmittedObjectKind,
     CatalogProjection,
     CatalogQuery,
     CatalogRecord,
@@ -31,6 +33,7 @@ from metabrowser.inventory_engine.contract import (
     DiagnosticsQuery,
     DirectoryProjection,
     DirectoryQuery,
+    DiscoveryBudget,
     EngineVersion,
     EntryPresence,
     EntryProjection,
@@ -95,6 +98,8 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
         "test_checkpoint_read_returns_only_a_coherent_constant_work_envelope",
         "test_paged_time_dependent_reads_reuse_one_as_of",
         "test_provider_semantic_digest",
+        "test_provider_derives_registry_identity_from_supplied_content",
+        "test_provider_uses_supplied_registry_content_for_classification",
         "test_provider_budget_stop_is_explicit_and_absence_remains_unknown",
         "test_directory_pages_are_lossless_when_directories_outnumber_file_budget",
         "test_catalog_predicate_semantics_are_runtime_independent_and_exact",
@@ -291,14 +296,35 @@ def test_state_requires_an_explanation_for_partial_coverage() -> None:
 
 
 def test_configuration_and_command_bounds_are_enforced() -> None:
-    with pytest.raises(ValueError, match="max_files must be positive"):
-        InventoryConfig(max_files=0)
-    with pytest.raises(ValueError, match="max_depth must be positive"):
-        InventoryConfig(max_depth=0)
+    with pytest.raises(ValueError, match="max_files must be a positive integer"):
+        DiscoveryBudget(max_files=0)
+    with pytest.raises(ValueError, match="max_files must be a positive integer"):
+        DiscoveryBudget(max_files=cast(Any, True))
+    with pytest.raises(ValueError, match="budget"):
+        InventoryConfig(budget=cast(Any, 10))
     with pytest.raises(ValueError, match="change_queue_size must be positive"):
         InventoryConfig(change_queue_size=0)
-    with pytest.raises(ValueError, match="registry_fingerprint must not be empty"):
-        InventoryConfig(registry_fingerprint="")
+    with pytest.raises(ValueError, match="registry"):
+        InventoryConfig(registry_document="")
+    with pytest.raises(ValueError, match="registry"):
+        InventoryConfig(registry_document=cast(Any, None))
+    with pytest.raises(ValueError, match="symlink"):
+        InventoryConfig(follow_symlinks=True)
+    with pytest.raises(ValueError, match="scope flags"):
+        InventoryConfig(include_hidden=cast(Any, 0))
+    with pytest.raises(ValueError, match="filesystem"):
+        InventoryConfig(one_filesystem=True)
+    with pytest.raises(ValueError, match="object kinds"):
+        InventoryConfig(admitted_object_kinds=(AdmittedObjectKind.FILE,))
+    with pytest.raises(ValueError, match="object kinds"):
+        InventoryConfig(
+            admitted_object_kinds=cast(
+                Any,
+                ("file", "directory", "symlink"),
+            )
+        )
+    with pytest.raises(ValueError, match="hidden_allowlist"):
+        InventoryConfig(hidden_allowlist=cast(Any, [".metabrowser"]))
     with pytest.raises(ValueError, match="watch_mode"):
         InventoryConfig(watch_mode=cast(Any, "sometimes"))
     for invalid_hidden_name in ("visible", ".", "..", ".nested/name", ".bad\\name", ".bad\x00name"):
@@ -334,26 +360,141 @@ def test_configuration_and_command_bounds_are_enforced() -> None:
 
 def test_inventory_scope_fingerprint_is_portable_and_semantic() -> None:
     first = InventoryConfig(
-        max_files=10,
-        max_depth=3,
+        budget=DiscoveryBudget(max_files=10),
         hidden_allowlist=(".z", ".a"),
     )
     reordered = InventoryConfig(
-        max_files=10,
-        max_depth=3,
+        budget=DiscoveryBudget(max_files=20),
         hidden_allowlist=(".a", ".z"),
+        admitted_object_kinds=(
+            AdmittedObjectKind.SYMLINK,
+            AdmittedObjectKind.DIRECTORY,
+            AdmittedObjectKind.FILE,
+        ),
     )
     changed = InventoryConfig(
-        max_files=11,
-        max_depth=3,
+        budget=DiscoveryBudget(max_files=10),
+        hidden_allowlist=(".a", ".雪"),
+    )
+    reformatted_registry = InventoryConfig(
+        registry_document=f"{load_file_type_registry_document()}\n",
         hidden_allowlist=(".a", ".z"),
     )
 
     digest = inventory_scope_fingerprint(first)
     assert digest == inventory_scope_fingerprint(reordered)
     assert digest != inventory_scope_fingerprint(changed)
+    assert digest == inventory_scope_fingerprint(reformatted_registry)
+    assert inventory_scope_fingerprint(changed) == (
+        "9e6928332861f2f6a485dcffabfac6a6c8a1f0ecb4e080684f7dcddce28dfdcd"
+    )
     assert len(digest) == 64
     assert all(character in "0123456789abcdef" for character in digest)
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_derives_registry_identity_from_supplied_content(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    registry_document = load_file_type_registry_document()
+    changed_registry = registry_document.replace(
+        "registry_revision = 3",
+        "registry_revision = 4",
+        1,
+    )
+
+    async def identity(config: InventoryConfig) -> EngineVersion:
+        handle = await _open_settled_provider(provider_factory, tmp_path, config=config)
+        try:
+            return (await handle.read(ReadRequest())).version
+        finally:
+            await handle.close()
+
+    baseline = asyncio.run(identity(InventoryConfig(watch_mode="off")))
+    reformatted = asyncio.run(
+        identity(
+            InventoryConfig(
+                registry_document=f"{registry_document}\n",
+                watch_mode="off",
+            )
+        )
+    )
+    changed = asyncio.run(
+        identity(
+            InventoryConfig(
+                registry_document=changed_registry,
+                watch_mode="off",
+            )
+        )
+    )
+
+    assert baseline.scope_fingerprint == reformatted.scope_fingerprint
+    assert baseline.semantic_fingerprint == reformatted.semantic_fingerprint
+    assert baseline.scope_fingerprint == changed.scope_fingerprint
+    assert baseline.semantic_fingerprint != changed.semantic_fingerprint
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_provider_uses_supplied_registry_content_for_classification(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "note.md").write_text("# Note\n", encoding="utf-8")
+    registry_document = load_file_type_registry_document()
+    changed_registry = registry_document.replace(
+        'id = "python"\nfamily = "python"\ncontent_family = "code"',
+        'id = "python"\nfamily = "markdown"\ncontent_family = "code"',
+        1,
+    ).replace(
+        'id = "markdown"\nfamily = "markdown"\ncontent_family = "markup"',
+        'id = "markdown"\nfamily = "python"\ncontent_family = "markup"',
+        1,
+    )
+    assert changed_registry != registry_document
+
+    async def markdown_group(config: InventoryConfig) -> str:
+        handle = await _open_settled_provider(provider_factory, tmp_path, config=config)
+        try:
+            read = await handle.read(
+                ReadRequest(
+                    queries=(
+                        RollupQuery(
+                            query_id="rollup",
+                            max_depth=2,
+                            max_nodes=20,
+                            top=20,
+                            extension_top=20,
+                        ),
+                    )
+                )
+            )
+            projection = cast("RollupProjection", read.projection("rollup"))
+            assert projection.payload is not None
+            breakdown = cast("dict[str, object]", projection.payload["file_type_breakdown"])
+            groups = cast("list[dict[str, object]]", breakdown["groups"])
+            for group in groups:
+                families = cast("list[dict[str, object]]", group["families"])
+                for family in families:
+                    extensions = cast("list[dict[str, object]]", family["extensions"])
+                    if any(extension["extension"] == ".md" for extension in extensions):
+                        return cast(str, group["id"])
+            raise AssertionError("the Markdown extension is absent from the rollup")
+        finally:
+            await handle.close()
+
+    baseline = asyncio.run(markdown_group(InventoryConfig(watch_mode="off")))
+    changed = asyncio.run(
+        markdown_group(
+            InventoryConfig(
+                registry_document=changed_registry,
+                watch_mode="off",
+            )
+        )
+    )
+
+    assert baseline == "docs"
+    assert changed == "code"
 
 
 @pytest.mark.parametrize("path", ("/absolute", "a//b", "a/./b", "a/../b", "a\\b", "a\x00b"))
@@ -852,7 +993,7 @@ def test_provider_budget_stop_is_explicit_and_absence_remains_unknown(
         handle = await _open_settled_provider(
             provider_factory,
             tmp_path,
-            config=InventoryConfig(max_files=2),
+            config=InventoryConfig(budget=DiscoveryBudget(max_files=2)),
         )
         try:
             result = await handle.read(
@@ -912,7 +1053,10 @@ def test_directory_pages_are_lossless_when_directories_outnumber_file_budget(
         handle = await _open_settled_provider(
             provider_factory,
             tmp_path,
-            config=InventoryConfig(max_files=1, watch_mode="off"),
+            config=InventoryConfig(
+                budget=DiscoveryBudget(max_files=1),
+                watch_mode="off",
+            ),
         )
         try:
             seen: set[str] = set()
@@ -1002,7 +1146,10 @@ def test_catalog_pages_report_exact_lossless_remainders(
         handle = await _open_settled_provider(
             provider_factory,
             tmp_path,
-            config=InventoryConfig(max_files=10, watch_mode="off"),
+            config=InventoryConfig(
+                budget=DiscoveryBudget(max_files=10),
+                watch_mode="off",
+            ),
         )
         try:
             seen: set[str] = set()

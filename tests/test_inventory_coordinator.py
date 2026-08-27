@@ -10,6 +10,7 @@ from typing import cast
 
 import pytest
 
+from metabrowser.file_type_registry import load_file_type_registry_from_text
 from metabrowser.inventory_engine.contract import (
     CatalogProjection,
     CatalogQuery,
@@ -94,7 +95,9 @@ class _FakeHandle:
             session=self.session,
             sequence=self.sequence,
             scope_fingerprint=f"scope-{self.root.name}",
-            semantic_fingerprint=self.config.registry_fingerprint,
+            semantic_fingerprint=load_file_type_registry_from_text(
+                self.config.registry_document
+            ).fingerprint,
         )
 
     def cursor(self) -> ChangeCursor:
@@ -265,10 +268,7 @@ def _coordinator(
 ) -> InventoryCoordinator:
     return InventoryCoordinator(
         backend=cast(InventoryBackend, backend),
-        config=InventoryConfig(
-            registry_fingerprint="test-registry",
-            change_queue_size=queue_size,
-        ),
+        config=InventoryConfig(change_queue_size=queue_size),
     )
 
 
@@ -653,7 +653,12 @@ def test_provider_fingerprint_drift_fails_reads_and_resets_stream_consumers(
         pending = asyncio.create_task(anext(changes))
         await asyncio.sleep(0)
 
-        handle.config = InventoryConfig(registry_fingerprint="illegal-replacement-semantics")
+        changed_registry = handle.config.registry_document.replace(
+            "registry_revision = 3",
+            "registry_revision = 4",
+            1,
+        )
+        handle.config = InventoryConfig(registry_document=changed_registry)
         handle.emit(dirty_paths=("changed",))
         reset = await asyncio.wait_for(pending, timeout=1)
         assert reset.reset is True

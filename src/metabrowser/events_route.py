@@ -108,6 +108,7 @@ from metabrowser.inventory_engine.tree_page_assembly import assemble_tree_pages
 from metabrowser.settings import (
     DEFAULT_EXECUTOR_WORKERS,
     INDEX_PROGRESS_UPDATE_FILES,
+    INVENTORY_MAX_DEPTH,
     INVENTORY_TREE_PAGE_ROWS,
     PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES,
     PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
@@ -289,7 +290,7 @@ class _EventBus:
     async def _read_snapshot(self, scope: _ScopeType) -> tuple[FsSnapshot, HostVersion]:
         """Assemble one lossless snapshot from version-pinned bounded pages."""
 
-        max_depth = 2 if scope == "root-depth-2" else self._config.max_depth
+        max_depth = 2 if scope == "root-depth-2" else INVENTORY_MAX_DEPTH
         assembly = await assemble_tree_pages(
             self._coordinator,
             page_query=DirectoryQuery(
@@ -461,7 +462,7 @@ class _EventBus:
                     "complete": state.coverage.complete,
                     "truncated": truncated,
                     "indexed_files": diagnostics.files_indexed,
-                    "max_files": self._config.max_files,
+                    "max_files": self._config.budget.max_files,
                     "status": _status_from_phase(
                         state.phase,
                         complete=state.coverage.complete,
@@ -817,7 +818,7 @@ async def _read_index_progress(
     return IndexProgressEnvelope(
         status=status,
         indexed_files=diagnostics.files_indexed,
-        max_files=runtime.config.max_files,
+        max_files=runtime.config.budget.max_files,
         truncated=truncated,
         complete=state.coverage.complete or truncated,
         active=state.phase
@@ -896,7 +897,7 @@ async def _read_index_meta(
         status=status,
         indexed_files=files,
         indexed_dirs=dirs,
-        max_files=runtime.config.max_files,
+        max_files=runtime.config.budget.max_files,
         truncated=truncated,
         complete=state.coverage.complete or truncated,
         oldest_mtime_ns=oldest,
@@ -997,7 +998,7 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
                     query_id=f"pending-children-{index}",
                     path=path,
                     max_depth=1,
-                    max_rows=runtime.config.max_files,
+                    max_rows=runtime.config.budget.max_files,
                 ),
             )
         )
@@ -1146,7 +1147,7 @@ async def _read_catalog(
     # in one scan instead of rescanning and resorting the same index for each 50k page.
     # The continuation loop remains part of the application contract for a provider
     # whose own semantic scope can return more than one bounded page.
-    page_size = runtime.config.max_files
+    page_size = runtime.config.budget.max_files
     last_version_error: VersionUnavailableError | None = None
     for _attempt in range(_CATALOG_ASSEMBLY_ATTEMPTS):
         pages: list[tuple[CatalogRecord, ...]] = []

@@ -35,6 +35,7 @@ from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.inventory_engine.contract import (
     DiagnosticsQuery,
     DirectoryQuery,
+    DiscoveryBudget,
     EntryProjection,
     EntryQuery,
     FilteredTreeProjection,
@@ -394,8 +395,7 @@ async def build_tree_envelope(
 
     config = replace(
         default_inventory_config(),
-        max_files=max_files,
-        max_depth=max_depth,
+        budget=DiscoveryBudget(max_files=max_files),
         watch_mode="off",
     )
     runtime = InventoryRuntime(config=config)
@@ -509,7 +509,7 @@ async def build_tree_envelope(
                 else None
             ),
             "tally_cache_status": status,
-            "tally_cache_max_files": config.max_files,
+            "tally_cache_max_files": config.budget.max_files,
         }
     finally:
         await runtime.close()

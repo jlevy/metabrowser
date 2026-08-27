@@ -36,12 +36,7 @@ from metabrowser.events import (
     StreamEvent,
     WriteToken,
 )
-from metabrowser.file_type_filters import (
-    canonical_extension,
-    category_for_file,
-    family_for_extension,
-)
-from metabrowser.file_type_registry import load_file_type_registry
+from metabrowser.file_type_registry import load_file_type_registry_from_text
 from metabrowser.fs_paths import is_visible_segment
 from metabrowser.inventory_engine.contract import (
     MAX_CHANGE_PATHS,
@@ -582,8 +577,8 @@ class _PythonInventoryStore:
         self._priority_paths: set[str] = set()
         self._done_event: asyncio.Event = asyncio.Event()
         self._status: IndexStatus = "idle"
-        self._max_files = config.max_files
-        self._max_depth = config.max_depth
+        self._registry = load_file_type_registry_from_text(config.registry_document)
+        self._max_files = config.budget.max_files
         self._files_indexed = 0
         self._directories_indexed = 0
         self._started_at_ns: int = 0
@@ -915,7 +910,7 @@ class _PythonInventoryStore:
             session=self._session,
             sequence=sequence,
             scope_fingerprint=self._scope_fingerprint,
-            semantic_fingerprint=self._config.registry_fingerprint,
+            semantic_fingerprint=self._registry.fingerprint,
         )
 
     def _current_version(self) -> EngineVersion:
@@ -1544,6 +1539,7 @@ class _PythonInventoryStore:
                     options,
                     ancestor_gitignored=self._ancestor_gitignored(query.path, entries_by_path),
                     aggregates=ChainMap(computed, image.rollup_aggregates),
+                    registry=self._registry,
                 )
             finally:
                 self._merge_subtree_aggregates(computed, image.rollup_epoch)
@@ -1743,7 +1739,7 @@ class _PythonInventoryStore:
             extension_match = any(
                 lowered_ext == extension.lower()
                 or (
-                    family_for_extension(extension) is not None
+                    self._registry_family_id(extension) is not None
                     and lowered_ext.endswith(extension.lower())
                 )
                 for extension in selection.extensions
@@ -1754,10 +1750,14 @@ class _PythonInventoryStore:
             if not extension_match and not filename_match:
                 return False
         if selection.type_families:
-            match = family_for_extension(entry.ext)
-            if match is None or match.family.id not in selection.type_families:
+            family_id = self._registry_family_id(entry.ext)
+            if family_id is None or family_id not in selection.type_families:
                 return False
         return True
+
+    def _registry_family_id(self, extension: str) -> str | None:
+        match = self._registry.match("", extension)
+        return match.kind.family_id if match is not None else None
 
     @staticmethod
     def _effective_ignored_directories(entries: Sequence[FsEntry]) -> dict[str, bool]:
@@ -2227,17 +2227,20 @@ class _PythonInventoryStore:
                     extension_counts[ext] = row
                 row[ignored_index] += 1
 
-                canonical = canonical_extension(ext)
+                extension_classification = self._registry.classify("", ext)
+                canonical = extension_classification.canonical_extension or ext
                 canonical_row = canonical_extension_counts.setdefault(canonical, [0, 0])
                 canonical_row[ignored_index] += 1
 
-                family_match = family_for_extension(ext)
-                if family_match is not None:
-                    family_row = family_counts.setdefault(family_match.family.id, [0, 0])
+                if extension_classification.family_id is not None:
+                    family_row = family_counts.setdefault(
+                        extension_classification.family_id,
+                        [0, 0],
+                    )
                     family_row[ignored_index] += 1
 
             name = entry.name.lower()
-            semantic_category = category_for_file(name, ext)
+            semantic_category = self._registry.classify(name, ext).group_id
             for preset_id, preset_extensions, preset_names in normalized_presets:
                 if (
                     preset_id == semantic_category
@@ -2278,7 +2281,7 @@ class _PythonInventoryStore:
         preset_rows: list[list[object]] = [
             [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
         ]
-        registry = load_file_type_registry()
+        registry = self._registry
         tracked_mtimes = array("q", sorted(tracked_mtimes))
         ignored_mtimes = array("q", sorted(ignored_mtimes))
         oldest_mtime_ns = min(
@@ -2389,6 +2392,7 @@ class _PythonInventoryStore:
                 options,
                 ancestor_gitignored=self._ancestor_gitignored(path, entries),
                 aggregates=ChainMap(computed, self._subtree_aggregates),
+                registry=self._registry,
             )
         except BaseException:
             # The pass is still counted in flight; retiring it here keeps a
@@ -2655,7 +2659,7 @@ class _PythonInventoryStore:
             )
         async for entry in walk_tree(
             target_resolved,
-            max_depth=(self._max_depth if max_depth is None else min(self._max_depth, max_depth)),
+            max_depth=max_depth,
             max_files=self._max_files,
             gitignore_check=gi_check,
             hidden_allowlist=self._config.hidden_allowlist,
@@ -2817,7 +2821,7 @@ class _PythonInventoryStore:
             )
             async for observation in walk_tree(
                 root,
-                max_depth=self._max_depth,
+                max_depth=None,
                 max_files=self._max_files,
                 gitignore_check=gi_check,
                 hidden_allowlist=self._config.hidden_allowlist,

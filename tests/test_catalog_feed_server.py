@@ -334,5 +334,5 @@ def test_catalog_bulk_materialization_stays_in_the_worker() -> None:
     assert '{"p": record.path, "e": record.logical_extension}' in encode_source
     assert "for record in projection.records" not in read_source
     assert "pages.append(projection.records)" in read_source
-    assert "page_size = runtime.config.max_files" in read_source
+    assert "page_size = runtime.config.budget.max_files" in read_source
     assert "if include_catalog:" in coordinator_source

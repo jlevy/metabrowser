@@ -22,6 +22,7 @@ from metabrowser.inventory_engine.contract import (
     DiagnosticsQuery,
     DirectoryProjection,
     DirectoryQuery,
+    DiscoveryBudget,
     EntryPresence,
     EntryProjection,
     EntryQuery,
@@ -594,7 +595,10 @@ def test_priority_hint_cannot_expand_a_budget_stopped_inventory(
     async def run() -> None:
         handle = await _open_settled(
             tmp_path,
-            InventoryConfig(max_files=1, watch_mode="off"),
+            InventoryConfig(
+                budget=DiscoveryBudget(max_files=1),
+                watch_mode="off",
+            ),
         )
         refresh_started = asyncio.Event()
 

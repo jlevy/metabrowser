@@ -1571,7 +1571,7 @@ async def _read_tree_from_provider(
                 else None
             ),
             "tally_cache_status": status,
-            "tally_cache_max_files": runtime.config.max_files,
+            "tally_cache_max_files": runtime.config.budget.max_files,
             "summary": navigation["summary"] if navigation is not None else None,
             "file_type_registry": (
                 navigation["file_type_registry"] if navigation is not None else None
@@ -1722,7 +1722,7 @@ async def api_rollup(request: Request) -> Response:
                     ),
                     "index_status": status,
                     "indexed_files": indexed_files,
-                    "max_files": runtime.config.max_files,
+                    "max_files": runtime.config.budget.max_files,
                     "truncated": status == "truncated",
                 }
             ).body

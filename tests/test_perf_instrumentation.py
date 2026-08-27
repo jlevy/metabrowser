@@ -293,7 +293,7 @@ def test_inventory_provider_environment_selection_is_explicit(
     monkeypatch.setenv("METABROWSER_INVENTORY_PROVIDER", " PYTHON ")
     assert inventory_provider_from_environment() == " PYTHON "
     runtime = InventoryRuntime(provider=inventory_provider_from_environment())
-    assert runtime.config.max_files > 0
+    assert runtime.config.budget.max_files > 0
     monkeypatch.setenv("METABROWSER_INVENTORY_PROVIDER", "missing")
     with pytest.raises(ValueError, match="unknown inventory provider"):
         InventoryRuntime(provider=inventory_provider_from_environment())

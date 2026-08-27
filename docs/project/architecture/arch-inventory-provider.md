@@ -63,31 +63,36 @@ Configuration separates state identity from execution policy:
 
 | Class | Fields | Effect |
 | --- | --- | --- |
-| Semantic scope | `max_files`, `max_depth`, and exact hidden-name allowlist | Included in the scope fingerprint; a file-budget stop reports partial coverage |
-| Classification | File Rollup registry fingerprint | Contributes to the semantic fingerprint; changing it opens a new session |
-| Execution | change-queue size | Reported as a provider fact; does not change a result’s meaning |
+| Semantic filesystem scope | hidden admission and exact allowlist, symlink following, filesystem boundary, and admitted object kinds | Included in the versioned scope fingerprint |
+| Classification | Immutable File Rollup registry document | Parsed by each provider; its provider-derived identity contributes to the semantic fingerprint |
+| Execution | discovery budget and change-queue size | A budget stop reports partial coverage but does not redefine semantic scope |
 | Observation | watch mode | Reported through source, freshness, and diagnostics |
+| Selection | depth, row, and work bounds carried by each query | Changes one answer without changing the opened root’s identity |
 
-`max_files` limits regular files, not directory rows.
+`DiscoveryBudget.max_files` limits regular files, not directory rows.
 Query `max_rows` bounds each returned page independently, and complete directory-style
 consumers follow every continuation.
 Metabrowser route and initial-stream tree assembly use `INVENTORY_TREE_PAGE_ROWS` rather
 than reusing the `INVENTORY_MAX_FILES` discovery budget.
 One `ReadRequest` contains at most `MAX_QUERIES_PER_READ` queries, which also bounds a
 dirty-path projection batch.
+The opened provider discovers without a depth limit.
 The walker and watcher both apply `hidden_allowlist`; a name that changes scope cannot
 be fingerprinted without also changing observation behavior.
 
-Traversal is breadth-first and symlinks are visible leaves but never followed.
-These are contract semantics, not configurable fields.
-Filesystem-boundary restriction and persistent-cache modes are absent until an
-implementation and consumer require them; providers cannot silently ignore inert
-options.
+Traversal is breadth-first.
+The v1 contract names and validates one observation-compatible scope: hidden components
+are excluded except for the allowlist, symlinks are visible leaves and never followed,
+filesystem boundaries are crossed, and files, directories, and symlinks are admitted.
+An unsupported scope fails at config construction; providers cannot silently ignore
+inert options.
 
 The scope fingerprint is SHA-256 over the UTF-8 compact JSON array of sorted
 `[name, value]` string pairs.
-Structured values, currently `hidden_allowlist`, are compact canonical JSON strings
-within that outer array.
+The payload includes the `inventory-scope-v2` schema identity.
+Structured values are compact canonical JSON strings within that outer array.
+Discovery budget, query depth, registry content, queue capacity, and observation mode
+are intentionally absent.
 Every provider adapter uses the application helper that defines this encoding; it does
 not hash a language-specific object representation.
 
@@ -98,8 +103,9 @@ complete answer changes.
 A provider with one native fingerprint returns it directly.
 A provider with several computes SHA-256 over the UTF-8 canonical JSON array of
 `[name, value]` string pairs sorted by name, with no insignificant whitespace.
-The Python provider’s sole component is the File Rollup registry, while fdu also
-includes its tag rules and reducer registrations.
+The Python provider’s current semantic component is the parsed File Rollup registry,
+while fdu also includes its reducer behavior.
+A caller never supplies a fingerprint as proof of different registry content.
 A `ChangeCursor` contains the same session and sequence at the read boundary.
 A provider may implement coherent reads with a lock, an immutable image, or
 version-check-and-retry, provided that:
@@ -338,7 +344,7 @@ and
 | `/api/tree` | Version-pinned `DirectoryQuery` or `FilteredTreeQuery` pages, with `NavigationQuery` at the same host boundary for root tallies |
 | `/api/rollup` and folder hooks | `RollupQuery` |
 | `/api/recent` | `RecentQuery` |
-| Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages; the Python scope fits in one page bounded by `InventoryConfig.max_files` |
+| Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages; the default Python execution budget fits in one page bounded by `InventoryConfig.budget.max_files` |
 | `/api/file` folder facts | `EntryQuery` |
 | Initial browser stream | A lossless version-pinned snapshot assembled before atomic queue attachment; covered older changes are suppressed per connection |
 | Live browser stream | `changes()` plus coherent rereads |
@@ -370,6 +376,8 @@ verifies that every row resolves to a provider-parametrized test in
 | `test_checkpoint_read_returns_only_a_coherent_constant_work_envelope` |
 | `test_paged_time_dependent_reads_reuse_one_as_of` |
 | `test_provider_semantic_digest` |
+| `test_provider_derives_registry_identity_from_supplied_content` |
+| `test_provider_uses_supplied_registry_content_for_classification` |
 | `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` |
 | `test_directory_pages_are_lossless_when_directories_outnumber_file_budget` |
 | `test_catalog_predicate_semantics_are_runtime_independent_and_exact` |

@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers with OpenAI Codex planning assistance
 
-**Status:** Phase 1 implemented; Phase 2A measured; Phase 2B planned
+**Status:** Phase 1 implemented; Phase 2A measured; Phase 2B in progress
 
 ## Overview
 
@@ -127,10 +127,16 @@ is the starting point.
 
 `InventoryConfig` separates semantic scope and classification inputs from execution,
 cache, watch, and resource policy.
-`max_files` is the regular-file discovery budget; directory rows use bounded query pages
-and do not consume that budget.
+The immutable File Rollup registry document is the classification input; providers parse
+it and derive its identity rather than accepting a caller-asserted fingerprint.
+`DiscoveryBudget.max_files` is the regular-file execution bound; directory rows use
+bounded query pages and do not consume that budget.
+Discovery depth is unbounded and query depth is selection, so neither budget nor depth
+participates in scope identity.
 The Python walker and watcher both apply the configured exact hidden-name allowlist.
-Unsupported symlink-following and one-filesystem scopes fail at construction.
+The v1 config explicitly names hidden admission, non-followed symlinks, crossed
+filesystem boundaries, and admitted files, directories, and symlinks; unsupported values
+fail at construction.
 Semantic inputs use the portable canonical scope-fingerprint encoding defined by the
 contract rather than a Python representation.
 Execution facts remain telemetry.
@@ -371,9 +377,9 @@ acceptable adapter implementation.
 
 #### Checkpoint 2B: Revise the Contract and Python Oracle
 
-- [ ] Pass immutable registry content at open instead of trusting a caller-supplied
+- [x] Pass immutable registry content at open instead of trusting a caller-supplied
   fingerprint. Derive both scope and semantic identities inside each provider.
-- [ ] Make discovery budget execution policy with honest partial state, and move maximum
+- [x] Make discovery budget execution policy with honest partial state, and move maximum
   depth to bounded read selection.
   Name hidden, symlink, filesystem-boundary, and object-kind scope explicitly.
 - [ ] Align lifecycle, coverage, freshness, source, and issue values with fdu’s total
@@ -393,6 +399,10 @@ reports partial budget coverage in terminal `stopped`, and joins its watcher wit
 explicit `resource_budget` diagnostic.
 It still verifies retained leaves, rejects refreshes that could expand the stopped
 scope, and treats priority hints as inert.
+The scope-and-classification slice is also complete: config names the supported v1
+filesystem scope, the discovery budget is not part of semantic identity, reads own their
+depth selection, and each provider parses the supplied registry document and uses that
+same parsed value for identity, filters, navigation tallies, and rollups.
 
 #### Checkpoint 2C: Add Native Projections and the Thin Adapter
 
