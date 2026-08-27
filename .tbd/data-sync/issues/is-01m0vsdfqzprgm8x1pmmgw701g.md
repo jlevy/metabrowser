@@ -3,9 +3,9 @@ type: is
 id: is-01m0vsdfqzprgm8x1pmmgw701g
 title: Validate unbounded Git history for the v0.9.0 release
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md
 delegate: codex@spud10.local
 labels:
@@ -15,8 +15,12 @@ parent_id: is-01m0ghvrnps0hh3m8d28xvfn2j
 hold: null
 hold_until: null
 created_at: 2026-08-25T06:23:41.310Z
-updated_at: 2026-08-27T07:18:42.697Z
+updated_at: 2026-08-27T07:24:36.150Z
 started_at: 2026-08-27T06:54:32.466Z
+closed_at: 2026-08-27T07:24:36.137Z
+close_reason: Completed the nine-corpus backend and headed browser matrices, forced 1.45-million-row segment rebasing, fixed the cached stylesheet settlement defect, passed exact installed-wheel v0.8.0 comparison, make verify, pre-push, and all five GitHub checks, and committed durable evidence in exp-020 and the completed spec.
+resolution: null
+duplicate_of: null
 ---
 Add behavior tests for paging, virtualization, keyboard and pointer selection, direct commit routes, failures, retries, ref changes, and end of history. Run real-browser measurements across the planned corpora, verify mounted resources remain within the recorded budgets while logical history grows, update architecture and large-content guidance, run make verify, and complete release-candidate comparison.
 
