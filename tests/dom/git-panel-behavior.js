@@ -190,6 +190,13 @@ class FakeElement {
     }
     this.listeners.get(type).push(handler);
   }
+  removeEventListener(type, handler) {
+    const listeners = this.listeners.get(type) ?? [];
+    this.listeners.set(
+      type,
+      listeners.filter((candidate) => candidate !== handler),
+    );
+  }
   dispatch(type, event = {}) {
     for (const handler of this.listeners.get(type) ?? []) {
       handler(event);
@@ -203,6 +210,9 @@ class FakeElement {
     previous?.dispatch("blur", { target: previous, relatedTarget: this });
     this.ownerDocument.activeElement = this;
     this.dispatch("focus", { target: this, relatedTarget: previous });
+    for (let current = this; current; current = current.parentNode) {
+      current.dispatch("focusin", { target: this, relatedTarget: previous });
+    }
   }
   scrollIntoView(options) {
     this.scrollCalls.push(options);
@@ -316,6 +326,10 @@ sandbox.HTMLElement = FakeElement;
 sandbox.METABROWSER_SETTINGS = {
   GIT_LOG_LIMIT: 2,
   GIT_HISTORY_MAX_ROWS: 3,
+  GIT_HISTORY_WINDOW_MAX_ROWS: 3,
+  GIT_HISTORY_WINDOW_OVERSCAN_ROWS: 1,
+  GIT_HISTORY_PAGE_CACHE_PAGES: 2,
+  GIT_HISTORY_SEGMENT_REBASE_PX: 220,
   GIT_HOVER_DEBOUNCE_MS: 5,
   GIT_DETAIL_CACHE_SIZE: 3,
 };
@@ -466,11 +480,13 @@ sandbox.metabrowser = {
 // Stubbed network. Each entry is url-prefix -> payload.
 const responses = new Map();
 let fetchCount = 0;
-sandbox.fetch = async (url) => {
+const fetchRequests = [];
+sandbox.fetch = async (url, options) => {
   fetchCount += 1;
+  fetchRequests.push({ url, signal: options?.signal });
   for (const [prefix, payload] of responses) {
     if (url.startsWith(prefix)) {
-      const value = typeof payload === "function" ? await payload(url) : payload;
+      const value = typeof payload === "function" ? await payload(url, options) : payload;
       if (value && typeof value === "object" && "httpStatus" in value) {
         return {
           ok: value.httpStatus >= 200 && value.httpStatus < 300,
@@ -488,7 +504,7 @@ vm.createContext(sandbox);
 // formatters.js first: the panel's ages come from that shared primitive,
 // and loading the real module (not a stub) is what proves a commit's age
 // is spelled exactly like a file's.
-for (const file of ["formatters.js", "git-graph.js", "git-panel.js"]) {
+for (const file of ["formatters.js", "git-graph.js", "git-history-window.js", "git-panel.js"]) {
   const source = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", file), "utf-8");
   vm.runInContext(source, sandbox, { filename: file });
 }
@@ -502,6 +518,7 @@ const SHA_C = "c".repeat(40);
 const SHA_D = "d".repeat(40);
 const SHA_E = "e".repeat(40);
 const SHA_F = "f".repeat(40);
+const SHA_G = "1".repeat(40);
 
 function commit(id, parents, subject, refs) {
   return {
@@ -823,7 +840,7 @@ async function run() {
     const trailing = afterFirst.trailingSwimlanes.map((lane) => lane.id);
     assertEqual("paging: trailing lane leads to the next commit", trailing, [SHA_C]);
 
-    const secondPageRows = internals.appendPage([commit(SHA_C, [], "root")], null);
+    internals.appendPage([commit(SHA_C, [], "root")], null);
     const afterSecond = internals.stateForTests();
     assertEqual("paging: rows accumulate", afterSecond.rows.length, 3);
     assertEqual("paging: end of history clears the cursor", afterSecond.cursor, null);
@@ -842,12 +859,13 @@ async function run() {
     // — so a later page cannot change how an earlier row lays out. That
     // independence is what lets a page be appended to the rendered list
     // instead of rebuilding the whole history on every "load more".
-    assertEqual("paging: a page reports only its own rows", secondPageRows.length, 1);
     assertEqual(
-      "paging: a rejected page reports no rows",
-      internals.appendPage([commit(SHA_D, [])], null).length,
-      0,
+      "paging: a page lays out only its requested range",
+      internals.rowsForRange(2, 3).length,
+      1,
     );
+    internals.appendPage([commit(SHA_D, [])], null);
+    assertEqual("paging: a rejected page reports no rows", internals.rowsForRange(3, 4).length, 0);
   }
 
   // ── History retention is explicitly bounded ───────────────
@@ -874,6 +892,103 @@ async function run() {
       3,
     );
     assertContains("bounded: cap is disclosed", container.textContent, "newest 3 commits");
+  }
+
+  // ── The panel mounts a logical window, not its decoded working set ──
+  {
+    const container = document.getElementById("tab-git");
+    container.clientHeight = 44;
+    container.scrollTop = 0;
+    const virtualized = internals.emptyState();
+    const commits = [
+      commit(SHA_G, [SHA_B], "window one"),
+      commit(SHA_B, [SHA_C], "window two"),
+      commit(SHA_C, [SHA_D], "window three"),
+      commit(SHA_D, [SHA_E], "window four"),
+      commit(SHA_E, [], "window five"),
+    ];
+    virtualized.pageCache.put({
+      page: 0,
+      startOrdinal: 0,
+      commits,
+      checkpoint: {
+        version: 1,
+        priorSwimlanes: [],
+        colorIndex: -1,
+        headRevision: SHA_G,
+        scopeFingerprint: "scope",
+      },
+      pageCursor: "page-0",
+      nextCursor: null,
+      previousCursor: null,
+    });
+    virtualized.rowCount = commits.length;
+    virtualized.virtualWindow.setRowCount(commits.length);
+    virtualized.selectedId = SHA_E;
+    internals.setStateForTests(virtualized);
+    internals.renderPanel();
+
+    let rows = container.querySelectorAll(".git-graph-row");
+    assertEqual("virtual panel: mounted rows obey the hard bound", rows.length, 3);
+    assertEqual("virtual panel: first window starts at ordinal zero", rows[0].dataset.ordinal, "0");
+    assertTrue(
+      "virtual panel: unmounted selection has no false selected row",
+      !rows.some((row) => row.classList.contains("selected")),
+    );
+
+    const tooltipCountBeforeUnmount = shownTooltips.length;
+    let hoverAbortSignal;
+    responses.set(
+      `/api/git/commit/${SHA_G}`,
+      (_url, options) =>
+        new Promise((resolve) => {
+          hoverAbortSignal = options?.signal;
+          if (hoverAbortSignal?.aborted) {
+            resolve({ httpStatus: 499, body: {} });
+            return;
+          }
+          hoverAbortSignal?.addEventListener(
+            "abort",
+            () => resolve({ httpStatus: 499, body: {} }),
+            { once: true },
+          );
+        }),
+    );
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertTrue("virtual panel: hover detail has a cancellation signal", hoverAbortSignal);
+    rows[0].focus();
+    container.scrollTop = 66;
+    internals.renderVirtualRows();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    rows = container.querySelectorAll(".git-graph-row");
+    assertEqual("virtual panel: scrolled window remains bounded", rows.length, 3);
+    assertEqual("virtual panel: scrolled window advances ordinals", rows[0].dataset.ordinal, "2");
+    assertTrue(
+      "virtual panel: selection returns when its row remounts",
+      rows[2].classList.contains("selected"),
+    );
+    assertTrue(
+      "virtual panel: unmounted focus transfers to the scroller",
+      document.activeElement === container,
+    );
+    assertEqual(
+      "virtual panel: unmount cancels pending hover work",
+      shownTooltips.length,
+      tooltipCountBeforeUnmount,
+    );
+    assertTrue("virtual panel: unmount aborts in-flight hover detail", hoverAbortSignal.aborted);
+
+    container.scrollTop = 0;
+    internals.renderVirtualRows();
+    rows = container.querySelectorAll(".git-graph-row");
+    assertTrue(
+      "virtual panel: logical focus returns when its row remounts",
+      document.activeElement === rows[0],
+    );
+    container.clientHeight = undefined;
+    container.scrollTop = 0;
   }
 
   // ── Panel states ───────────────────────────────────────────

@@ -1456,6 +1456,76 @@ declare global {
     scope_fingerprint?: string;
   };
 
+  type MetabrowserGitGraphCheckpoint = {
+    version: 1;
+    priorSwimlanes: Array<MetabrowserGitGraphLane>;
+    colorIndex: number;
+    headRevision: string | null;
+    scopeFingerprint: string;
+  };
+
+  type MetabrowserGitHistoryPage = {
+    page: number;
+    startOrdinal: number;
+    commits: Array<MetabrowserGitCommit>;
+    checkpoint: MetabrowserGitGraphCheckpoint;
+    pageCursor: string;
+    nextCursor: string | null;
+    previousCursor: string | null;
+    dispose?: () => void;
+  };
+
+  type MetabrowserGitHistoryPageCache = Readonly<{
+    get(page: number): MetabrowserGitHistoryPage | null;
+    peek(page: number): MetabrowserGitHistoryPage | null;
+    put(page: MetabrowserGitHistoryPage): MetabrowserGitHistoryPage;
+    remove(page: number): boolean;
+    clear(): void;
+    dispose(): void;
+    readonly size: number;
+    keys(): number[];
+  }>;
+
+  type MetabrowserGitHistoryWindowRange = Readonly<{
+    start: number;
+    end: number;
+    visibleStart: number;
+    visibleEnd: number;
+    segmentStart: number;
+    segmentEnd: number;
+    segmentHeightPx: number;
+    topSpacerPx: number;
+    bottomSpacerPx: number;
+    scrollTop: number;
+    rebased: boolean;
+  }>;
+
+  type MetabrowserGitHistoryVirtualWindow = Readonly<{
+    read(scrollTop: number, viewportHeight: number): MetabrowserGitHistoryWindowRange;
+    setRowCount(rowCount: number): void;
+    scrollTopForOrdinal(
+      ordinal: number,
+      viewportHeight: number,
+      align?: "nearest" | "start" | "center" | "end",
+    ): number;
+    dispose(): void;
+    readonly rowCount: number;
+    readonly segmentCapacity: number;
+  }>;
+
+  type MetabrowserGitHistoryWindowRuntime = {
+    createPageCache(options: {
+      maxPages: number;
+      onEvict?: (page: MetabrowserGitHistoryPage) => void;
+    }): MetabrowserGitHistoryPageCache;
+    createVirtualWindow(options: {
+      rowHeight: number;
+      maxRows: number;
+      overscanRows: number;
+      rebasePx: number;
+    }): MetabrowserGitHistoryVirtualWindow;
+  };
+
   type MetabrowserGitFileChange = {
     /** Served-root-relative unless `outside_root` is set. */
     path: string;
@@ -1526,6 +1596,8 @@ declare global {
         colorIndex?: number;
         headRevision?: string | null;
         refColors?: Map<string, string>;
+        rowStart?: number;
+        rowEnd?: number;
       },
     ): MetabrowserGitSwimlaneResult;
     graphWidth(row: MetabrowserGitGraphRow): number;
@@ -1616,6 +1688,7 @@ declare global {
     MetabrowserCatalogFeed: MetabrowserCatalogFeedRuntime;
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserGitGraph: MetabrowserGitGraphRuntime;
+    MetabrowserGitHistoryWindow: MetabrowserGitHistoryWindowRuntime;
     MetabrowserGitPanel?: MetabrowserGitPanelRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;

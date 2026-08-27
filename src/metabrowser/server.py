@@ -969,6 +969,7 @@ async def index(_request: Request) -> HTMLResponse:
     tree_keyboard_navigation_url = _static_asset_url("tree-keyboard-navigation.js")
     search_palette_url = _static_asset_url("search-palette.js")
     git_graph_url = _static_asset_url("git-graph.js")
+    git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
     app_url = _static_asset_url("app.js")
     perf_url = _static_asset_url("perf.js")
@@ -1093,6 +1094,7 @@ async def index(_request: Request) -> HTMLResponse:
             {"src": tree_keyboard_navigation_url},
             {"src": search_palette_url},
             {"src": git_graph_url},
+            {"src": git_history_window_url},
             {"src": git_panel_url},
         ],
         "chart": [

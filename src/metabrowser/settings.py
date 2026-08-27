@@ -279,10 +279,10 @@ GIT_SUBPROCESS_MAX_BYTES = 32 * 1024 * 1024
 GIT_LOG_DEFAULT_LIMIT = 250
 GIT_LOG_MAX_LIMIT = 1_000
 
-# Maximum commit rows retained and mounted by the browser. A navigation
-# panel must not grow its DOM or client state with the lifetime of a
-# repository. The panel discloses the cap instead of presenting the
-# bounded list as complete.
+# Temporary v0.8 product-history ceiling retained until server replay is joined
+# to bidirectional browser paging. Mounted rows are already bounded independently
+# by ``GIT_HISTORY_WINDOW_MAX_ROWS``; this remaining ceiling is removed only when
+# every evicted page can be recovered without a false end.
 GIT_HISTORY_MAX_ROWS = 500
 
 # Budgets for the v0.9 continuous-history implementation. The evidence and

@@ -4723,6 +4723,18 @@ pre.code-block code.hljs {
   flex-direction: column;
 }
 
+.git-history-window {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+}
+
+.git-history-spacer {
+  flex: 0 0 auto;
+  width: 1px;
+  pointer-events: none;
+}
+
 .git-graph-row {
   display: flex;
   align-items: center;

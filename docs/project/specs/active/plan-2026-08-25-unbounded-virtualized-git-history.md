@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** In progress; Phases 1 and 2 accepted on 2026-08-26 and targeted for v0.9.0
+**Status:** In progress; Phases 1–3 accepted on 2026-08-26 and targeted for v0.9.0
 
 ## Overview
 
@@ -66,9 +66,9 @@ The complete continuation and virtualization design targets v0.9.0.
 
 ## Background
 
-### Current behavior and cost
+### Starting behavior and cost
 
-The current browser requests 250 commits at a time and keeps every accepted `GitCommit`,
+The v0.8 browser requests 250 commits at a time and keeps every accepted `GitCommit`,
 every computed graph row, and every row element.
 `GIT_HISTORY_MAX_ROWS` stops that growth at 500 and clears the continuation cursor.
 The server cursor contains an opaque skip offset, and every subsequent
@@ -289,12 +289,22 @@ The focused suite covers all three measured history shapes and traverses a 1,003
 history without `--skip`; the repository-wide handoff gate passed before the phase was
 closed.
 
-### Phase 3: Virtual row window (`mb-ghju`)
+### Phase 3: Virtual row window (`mb-ghju`, completed)
 
 - Separate logical pages, graph checkpoints, mounted row models, and DOM ownership.
 - Add fixed-height spacers, bounded overscan, page-cache eviction, segment rebasing,
   focus restoration, selection persistence, and complete disposal.
 - Keep current row visuals and lane geometry unchanged.
+
+The browser now keeps decoded wire pages and their page-boundary graph checkpoints in an
+eight-page LRU, while graph-row objects and SVG nodes exist only for the mounted logical
+range. Fixed-height top and bottom spacers preserve the current segment’s scroll
+geometry. The pure window model rebases before 8,000,000 px without moving the logical
+top row or its intra-row pixel offset.
+Pointer work is cancelled on unmount; logical selection survives independently; and
+roving focus transfers to the scroller until its row remounts.
+Phase 4 retains the v0.8 history ceiling until server replay and bidirectional page
+recovery are connected.
 
 ### Phase 4: Integrate continuous scrolling (`mb-vieq`)
 

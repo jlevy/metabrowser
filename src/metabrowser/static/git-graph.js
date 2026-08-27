@@ -151,6 +151,8 @@
    * @param {string | null} [options.headRevision] Commit id HEAD resolves
    *   to; that row is drawn with the HEAD marker.
    * @param {Map<string, string>} [options.refColors]
+   * @param {number} [options.rowStart] First row model to retain after walking topology.
+   * @param {number} [options.rowEnd] Exclusive row-model bound. Omit both for every row.
    * @returns {MetabrowserGitSwimlaneResult}
    */
   function computeSwimlanes(commits, options = {}) {
@@ -159,10 +161,16 @@
 
     /** @type {MetabrowserGitGraphRow[]} */
     const rows = [];
+    const rowStart = Math.max(0, Math.min(commits.length, options.rowStart ?? 0));
+    const rowEnd = Math.max(rowStart, Math.min(commits.length, options.rowEnd ?? commits.length));
     let colorIndex = typeof options.colorIndex === "number" ? options.colorIndex : -1;
     let previousOutput = cloneLanes(options.priorSwimlanes ?? []);
 
-    for (const commit of commits) {
+    for (let commitIndex = 0; commitIndex < commits.length; commitIndex += 1) {
+      const commit = commits[commitIndex];
+      if (!commit) {
+        continue;
+      }
       const inputSwimlanes = cloneLanes(previousOutput);
       /** @type {MetabrowserGitGraphLane[]} */
       const outputSwimlanes = [];
@@ -219,12 +227,14 @@
         outputSwimlanes.push({ id: commit.parent_ids[i], color });
       }
 
-      rows.push({
-        commit,
-        inputSwimlanes,
-        outputSwimlanes,
-        kind: headRevision !== null && commit.id === headRevision ? "HEAD" : "node",
-      });
+      if (commitIndex >= rowStart && commitIndex < rowEnd) {
+        rows.push({
+          commit,
+          inputSwimlanes,
+          outputSwimlanes,
+          kind: headRevision !== null && commit.id === headRevision ? "HEAD" : "node",
+        });
+      }
       previousOutput = outputSwimlanes;
     }
 

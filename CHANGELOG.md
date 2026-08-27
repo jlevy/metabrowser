@@ -12,6 +12,12 @@ Features:
   expiry, eviction, and storage exhaustion remain explicit recovery states rather than
   appearing as the end of history.
 
+- The Git panel now stores decoded history pages in a bounded LRU and mounts only a
+  fixed-height row window with measured overscan.
+  Graph checkpoints preserve lane continuity without retaining expanded rows, spacers
+  preserve logical scroll geometry, and long histories rebase before the browser height
+  clamp while keeping selection and logical focus independent of row mounting.
+
 ## 0.8.0
 
 Features:

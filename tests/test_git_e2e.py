@@ -196,6 +196,8 @@ def test_index_page_defers_the_git_modules_in_dependency_order(served_repo: Path
     client = TestClient(app)
     html = client.get("/").text
     assert html.index("/static/git-graph.js") < html.index("/static/git-panel.js")
+    assert html.index("/static/git-history-window.js") < html.index("/static/git-panel.js")
     assert '<script src="/static/git-graph.js' not in html
+    assert '<script src="/static/git-history-window.js' not in html
     assert '<script src="/static/git-panel.js' not in html
     assert '"shell-tools"' in html

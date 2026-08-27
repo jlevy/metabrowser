@@ -9,6 +9,12 @@ This report measures the released append-only implementation, prototypes a one-w
 server session, and freezes the structural budgets used by the continuation and virtual
 window work.
 
+The Phase 3 implementation now applies the browser budgets directly: decoded pages use
+an eight-entry LRU, at most 256 graph rows are expanded and mounted, overscan is bounded
+to 64 rows per edge, and the physical scroll segment rebases before 8,000,000 px.
+The 500-row product ceiling remains until Phase 4 connects eviction replay and
+continuous bidirectional loading; it no longer determines retained DOM size.
+
 Machine timings below describe one development machine.
 They explain the chosen structures but are not CI thresholds and do not support a
 cross-machine speed claim.
