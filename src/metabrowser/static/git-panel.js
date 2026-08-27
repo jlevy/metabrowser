@@ -1240,15 +1240,25 @@
     const countSpan = document.createElement("span");
     countSpan.className = "git-history-summary-count";
     countSpan.textContent = `${count.toLocaleString()} ${count === 1 ? "commit" : "commits"}`;
-    const firstAge =
-      state.summary.firstCommitAt === null ? "" : relativeAge(state.summary.firstCommitAt);
-    if (!firstAge) {
+    const firstCommitAt = state.summary.firstCommitAt;
+    const firstAge = firstCommitAt === null ? "" : relativeAge(firstCommitAt);
+    if (!firstAge || firstCommitAt === null) {
       row.replaceChildren(countSpan);
       return;
     }
+    // "begun 3mo ago" — the age value carries the shared age primitive
+    // (tier hue, weight, tabular numerals) exactly as commit rows do;
+    // the words around it stay ordinary row text.
     const firstSpan = document.createElement("span");
     firstSpan.className = "git-history-summary-first";
-    firstSpan.textContent = `(first ${firstAge} ago)`;
+    const begun = document.createElement("span");
+    begun.textContent = "begun";
+    const ageSpan = document.createElement("span");
+    ageSpan.className = `git-history-summary-age ${ageClass(firstCommitAt)}`;
+    ageSpan.textContent = firstAge;
+    const ago = document.createElement("span");
+    ago.textContent = "ago";
+    firstSpan.replaceChildren(begun, ageSpan, ago);
     row.replaceChildren(countSpan, firstSpan);
   }
 

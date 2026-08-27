@@ -1822,9 +1822,17 @@ async function run() {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
     assertTrue("tally: the summary loads on its own request", summaryRequested);
-    const text = document.getElementById("tab-git").textContent;
-    assertContains("tally: commit count renders", text, "10,345 commits");
-    assertContains("tally: first-commit age renders", text, "(first 2y ago)");
+    const container = document.getElementById("tab-git");
+    assertContains("tally: commit count renders", container.textContent, "10,345 commits");
+    assertContains("tally: begun wording renders", container.textContent, "begun");
+    const tallyAge = container.querySelector(".git-history-summary-age");
+    assertTrue("tally: age value is present", tallyAge !== null);
+    assertEqual("tally: age value uses the shared formatter", tallyAge?.textContent, "2y");
+    assertContains(
+      "tally: age value carries the shared freshness tier",
+      tallyAge?.className,
+      "age-old",
+    );
     responses.delete("/api/git/summary");
   }
 

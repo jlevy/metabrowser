@@ -4735,6 +4735,15 @@ pre.code-block code.hljs {
   min-height: calc(1.5 * var(--nav-font-size) + 13px);
 }
 
+/* "begun 3mo ago": word gaps only — the age value inside carries the
+   shared age primitive (hue, weight, size, numerals), the words keep
+   the row's own type, and baseline alignment joins the two sizes. */
+.git-history-summary-first {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
 .git-graph-list {
   display: flex;
   flex-direction: column;

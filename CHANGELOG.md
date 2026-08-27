@@ -21,9 +21,10 @@ Features:
   height clamp while keeping selection and logical focus independent of row mounting.
 
 - The Git tab opens with a header tally — the total commits in the panel’s scope and the
-  age of the repository’s first commit, e.g. `142 commits (first 1mo ago)` — styled like
-  the file tree’s summary row and loaded the same way: off the render path, after the
-  first page of history paints.
+  age of the repository’s first commit, e.g. `142 commits begun 1mo ago`, the age value
+  carrying the shared age hue and numerals exactly as commit rows do — styled like the
+  file tree’s summary row and loaded the same way: off the render path, after the first
+  page of history paints.
 
 Fixes:
 
