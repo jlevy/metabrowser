@@ -49,15 +49,20 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_engine.providers import python_inventory as python_provider
 from metabrowser.inventory_engine.providers.python_inventory import (
     PythonInventoryBackend,
-    PythonInventoryHandle,
+)
+from metabrowser.inventory_engine.providers.python_inventory import (
+    _PythonInventoryStore as PythonInventoryStore,
 )
 
 
 async def _open_settled(
     root: Path,
     config: InventoryConfig | None = None,
-) -> PythonInventoryHandle:
-    handle = await PythonInventoryBackend().open(root, config or InventoryConfig())
+) -> PythonInventoryStore:
+    handle = cast(
+        PythonInventoryStore,
+        await PythonInventoryBackend().open(root, config or InventoryConfig()),
+    )
     for _attempt in range(200):
         result = await handle.read(ReadRequest(queries=(DiagnosticsQuery(query_id="state"),)))
         if result.state.phase in {
@@ -571,7 +576,7 @@ def test_priority_hint_returns_before_reference_refresh_finishes(
             started.set()
             await release.wait()
 
-        monkeypatch.setattr(handle._store, "_refresh_path", blocked_refresh)
+        monkeypatch.setattr(handle, "_refresh_path", blocked_refresh)
         try:
             await asyncio.wait_for(
                 handle.prioritize(PriorityRequest(paths=("later",), max_depth=1)),
@@ -606,7 +611,7 @@ def test_priority_hint_cannot_expand_a_budget_stopped_inventory(
             refresh_started.set()
 
         monkeypatch.setattr(
-            handle._store,
+            handle,
             "_run_priority_refresh",
             unexpected_priority_refresh,
         )

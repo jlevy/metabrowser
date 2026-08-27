@@ -14,7 +14,6 @@ _INVENTORY_STATE_CONSTRUCTORS = frozenset(
         "InventoryCoordinator",
         "InventoryRuntime",
         "PythonInventoryBackend",
-        "PythonInventoryHandle",
         "create_inventory_backend",
     }
 )
@@ -73,23 +72,17 @@ def test_no_process_global_inventory_state_exists_outside_inventory_engine() -> 
     )
 
 
-def test_python_provider_handle_exposes_exactly_the_contract_methods() -> None:
+def test_python_provider_does_not_add_a_forwarding_handle_class() -> None:
     provider_path = _PROVIDER_ROOT / "python_inventory.py"
     tree = ast.parse(provider_path.read_text(encoding="utf-8"), filename=str(provider_path))
-    handle = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == "PythonInventoryHandle"
-    )
-    public_methods = {
+    forwarding_handles = {
         node.name
-        for node in handle.body
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-        and not node.name.startswith("_")
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name.endswith("InventoryHandle")
     }
-    assert public_methods == {"read", "changes", "refresh", "prioritize", "close"}, (
-        "PythonInventoryHandle is the sealed provider contract; implementation helpers "
-        f"belong on the private store, found {sorted(public_methods)}"
+    assert forwarding_handles == set(), (
+        "the backend should return its protocol-conforming store directly; forwarding "
+        f"handle classes duplicate the provider API: {sorted(forwarding_handles)}"
     )
 
 

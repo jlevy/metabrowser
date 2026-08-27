@@ -65,6 +65,7 @@ from metabrowser.inventory_engine.contract import (
     InventoryClosedError,
     InventoryConfig,
     InventoryEntry,
+    InventoryHandle,
     InventoryIssue,
     IssueCode,
     LifecyclePhase,
@@ -3378,30 +3379,6 @@ class _PythonInventoryStore:
                 queue.put_nowait(self._reset_batch())
 
 
-class PythonInventoryHandle:
-    """Thin provider-contract façade over the private Python inventory store."""
-
-    __slots__ = ("_store",)
-
-    def __init__(self, store: _PythonInventoryStore) -> None:
-        self._store = store
-
-    async def read(self, request: ReadRequest) -> ReadResult:
-        return await self._store.read(request)
-
-    def changes(self, *, after: ChangeCursor | None) -> AsyncGenerator[ChangeBatch, None]:
-        return self._store.changes(after=after)
-
-    async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
-        return await self._store.refresh(request)
-
-    async def prioritize(self, request: PriorityRequest) -> None:
-        await self._store.prioritize(request)
-
-    async def close(self) -> None:
-        await self._store.close()
-
-
 class PythonInventoryBackend:
     """Construct one Python reference-provider handle per served root."""
 
@@ -3409,15 +3386,14 @@ class PythonInventoryBackend:
         self,
         root: Path,
         config: InventoryConfig,
-    ) -> PythonInventoryHandle:
+    ) -> InventoryHandle:
         canonical_root = await asyncio.to_thread(root.resolve)
         store = _PythonInventoryStore(config=config)
         store.start_watcher(canonical_root)
         store.start(canonical_root)
-        return PythonInventoryHandle(store)
+        return store
 
 
 __all__ = [
     "PythonInventoryBackend",
-    "PythonInventoryHandle",
 ]

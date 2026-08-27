@@ -80,10 +80,8 @@ routes, serializers, and browser wire
                  |
        InventoryHandle protocol
           /                 \
- PythonInventoryHandle    FduInventoryHandle
+ _PythonInventoryStore     fdu-backed store
        Phase 1                 Phase 2
-          |
- _PythonInventoryStore
 ```
 
 Provider selection appears only in the factory and composition root.
@@ -290,8 +288,9 @@ new filename.
 #### Extract Ownership Without a Compatibility Facade
 
 - [x] Move current retained entries, child indexes, reducers, walker, refresh mutation
-  path, and watcher lifecycle behind the five-method `PythonInventoryHandle` façade in a
-  private store while preserving algorithms and observation semantics.
+  path, and watcher lifecycle into a private store that directly implements the
+  five-method `InventoryHandle` protocol while preserving algorithms and observation
+  semantics.
 - [x] Give every Python read atomic payload/version/cursor capture.
   Fix the existing rollup payload/ETag race and equivalent catalog or snapshot races in
   the same slice.

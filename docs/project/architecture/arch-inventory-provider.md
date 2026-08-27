@@ -20,14 +20,14 @@ routes and browser event projection
                 |
           InventoryHandle
           /             \
- PythonInventoryHandle  FduInventoryHandle (planned)
-          |
- _PythonInventoryStore
+ _PythonInventoryStore  fdu-backed store (planned)
 ```
 
-`PythonInventoryHandle` is a five-method façade.
-The private Python store owns walking, watching, retained indexes, and projection
-execution; none of those helpers are part of the provider interface.
+`InventoryHandle` is a structural protocol, not a wrapper class.
+The private Python store implements its five operations directly and also owns walking,
+watching, retained indexes, and projection execution.
+Those implementation helpers remain private without a forwarding object that duplicates
+the provider API.
 
 ## One Opened Root
 
