@@ -162,6 +162,33 @@ try {{
     assert "--history-rows is required" in result.stdout
 
 
+def test_capture_browser_accepts_the_git_history_rebase_scenario() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    script = f"""
+const capture = require({json.dumps(str(CAPTURE))});
+const parsed = capture.parseArgs([
+  "--url", "http://127.0.0.1:8411/view/",
+  "--probe", "probe.js",
+  "--output", "profile.json",
+  "--scenario", "git-history-rebase"
+]);
+process.stdout.write(JSON.stringify(parsed));
+"""
+
+    result = subprocess.run(
+        [node, "-e", script],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["scenario"] == "git-history-rebase"
+
+
 def test_capture_browser_rejects_an_unknown_scenario() -> None:
     node = shutil.which("node")
     if node is None:
@@ -216,7 +243,10 @@ def test_git_revision_scenario_uses_trusted_clicks_and_paint_boundaries() -> Non
     assert "performance.timeOrigin !==" in post_preflight
 
     runner = RUNNER.read_text(encoding="utf-8")
-    assert 'choices=["git-revisions", "file-views", "git-history-depth"]' in runner
+    assert (
+        'choices=["git-revisions", "file-views", "git-history-depth", "git-history-rebase"]'
+        in runner
+    )
     assert 'command.extend(["--scenario", scenario])' in runner
     assert 'command.extend(["--history-rows", str(args.history_rows)])' in runner
 

@@ -52,7 +52,7 @@ function usage() {
     "  --timeout-ms N      Application-settle timeout (default 180000)",
     "  --width N           Viewport width (default 1600)",
     "  --height N          Viewport height (default 900)",
-    "  --scenario NAME     Interaction scenario: git-revisions, file-views, or git-history-depth",
+    "  --scenario NAME     Interaction scenario: git-revisions, file-views, git-history-depth, or git-history-rebase",
     "  --history-rows N    Required target row count for git-history-depth",
   ].join("\n");
 }
@@ -122,7 +122,9 @@ function parseArgs(argv) {
   }
   if (
     options.scenario &&
-    !["git-revisions", "file-views", "git-history-depth"].includes(options.scenario)
+    !["git-revisions", "file-views", "git-history-depth", "git-history-rebase"].includes(
+      options.scenario,
+    )
   ) {
     throw new Error(`unknown scenario: ${options.scenario}`);
   }
@@ -1634,6 +1636,134 @@ function assertGitHistoryDepthHealth(result) {
   }
 }
 
+function assertGitHistoryRebaseHealth(result) {
+  if (result.logical_rows <= result.segment_capacity) {
+    throw new Error("synthetic Git history did not exceed one physical scroll segment");
+  }
+  if (!result.forward.rebased || !result.backward.rebased) {
+    throw new Error("synthetic Git history did not rebase in both directions");
+  }
+  if (
+    result.forward.visible_start !== result.forward.logical_top_before ||
+    result.forward.pixel_offset_after !== result.forward.pixel_offset_before
+  ) {
+    throw new Error("forward Git history rebase moved the logical viewport anchor");
+  }
+  if (result.backward.visible_start !== result.backward.logical_top_before) {
+    throw new Error("backward Git history rebase moved the logical viewport anchor");
+  }
+  if (
+    result.forward.segment_height_px > result.rebase_px ||
+    result.backward.segment_height_px > result.rebase_px ||
+    result.direct.segment_height_px > result.rebase_px ||
+    result.measured_segment_height_px !== result.direct.segment_height_px
+  ) {
+    throw new Error("Git history physical segment exceeded or failed its browser height budget");
+  }
+  if (
+    result.direct.start > result.direct.target_ordinal ||
+    result.direct.end <= result.direct.target_ordinal ||
+    result.direct.visible_start > result.direct.target_ordinal ||
+    result.direct.visible_end <= result.direct.target_ordinal
+  ) {
+    throw new Error("Git history direct target was not mounted and visible after rebasing");
+  }
+  if (result.max_mounted_rows > result.window_max_rows) {
+    throw new Error("Git history synthetic rebase exceeded the mounted-row budget");
+  }
+}
+
+async function runGitHistoryRebaseScenario(session, viewportHeight) {
+  await evaluate(session, "window.metabrowser.perf.reset()");
+  const result = await evaluate(
+    session,
+    `(() => {
+      const historyWindow = window.MetabrowserGitHistoryWindow;
+      const graph = window.MetabrowserGitGraph;
+      const settings = window.METABROWSER_SETTINGS;
+      if (!historyWindow || !graph || !settings) {
+        throw new Error("Git history window dependencies are unavailable");
+      }
+      const rowHeight = graph.SWIMLANE_HEIGHT;
+      const windowMaxRows = settings.GIT_HISTORY_WINDOW_MAX_ROWS;
+      const overscanRows = settings.GIT_HISTORY_WINDOW_OVERSCAN_ROWS;
+      const rebasePx = settings.GIT_HISTORY_SEGMENT_REBASE_PX;
+      const viewportHeight = ${JSON.stringify(viewportHeight)};
+      const virtual = historyWindow.createVirtualWindow({
+        rowHeight,
+        maxRows: windowMaxRows,
+        overscanRows,
+        rebasePx,
+      });
+      const logicalRows = virtual.segmentCapacity * 4 + 123;
+      virtual.setRowCount(logicalRows);
+
+      const forwardScroll = Math.floor(rebasePx * 0.8) + 7;
+      const forwardLogicalTop = Math.floor(forwardScroll / rowHeight);
+      const forwardPixelOffset = forwardScroll % rowHeight;
+      const forward = virtual.read(forwardScroll, viewportHeight);
+      const backwardLogicalTop = forward.segmentStart;
+      const backward = virtual.read(0, viewportHeight);
+      const targetOrdinal = logicalRows - 100;
+      const directScroll = virtual.scrollTopForOrdinal(targetOrdinal, viewportHeight, "center");
+      const direct = virtual.read(directScroll, viewportHeight);
+
+      const heightProbe = document.createElement("div");
+      Object.assign(heightProbe.style, {
+        height: direct.segmentHeightPx + "px",
+        left: "-10000px",
+        position: "absolute",
+        top: "0",
+        width: "1px",
+      });
+      document.body.append(heightProbe);
+      const measuredSegmentHeight = heightProbe.getBoundingClientRect().height;
+      heightProbe.remove();
+      virtual.dispose();
+      const wireRange = (range) => ({
+        start: range.start,
+        end: range.end,
+        visible_start: range.visibleStart,
+        visible_end: range.visibleEnd,
+        segment_start: range.segmentStart,
+        segment_end: range.segmentEnd,
+        segment_height_px: range.segmentHeightPx,
+        scroll_top: range.scrollTop,
+        rebased: range.rebased,
+      });
+
+      return {
+        schema: "git-history-rebase/v1",
+        generated_at: new Date().toISOString(),
+        scenario: "git-history-rebase",
+        logical_rows: logicalRows,
+        row_height: rowHeight,
+        window_max_rows: windowMaxRows,
+        overscan_rows: overscanRows,
+        rebase_px: rebasePx,
+        segment_capacity: Math.floor(rebasePx / rowHeight),
+        measured_segment_height_px: measuredSegmentHeight,
+        max_mounted_rows: Math.max(
+          forward.end - forward.start,
+          backward.end - backward.start,
+          direct.end - direct.start,
+        ),
+        forward: {
+          ...wireRange(forward),
+          logical_top_before: forwardLogicalTop,
+          pixel_offset_before: forwardPixelOffset,
+          pixel_offset_after: forward.scrollTop % rowHeight,
+        },
+        backward: {...wireRange(backward), logical_top_before: backwardLogicalTop},
+        direct: {...wireRange(direct), target_ordinal: targetOrdinal},
+        profiler: window.metabrowser.perf.snapshot(),
+      };
+    })()`,
+  );
+  assertGitHistoryRebaseHealth(result);
+  return result;
+}
+
 async function runGitHistoryDepthScenario(
   session,
   targetRows,
@@ -2032,6 +2162,8 @@ async function capture(options) {
           options.url,
           consoleMessages,
         );
+      } else if (options.scenario === "git-history-rebase") {
+        payload = await runGitHistoryRebaseScenario(session, options.height);
       } else {
         payload = await runFileViewScenario(session, options.timeoutMs);
       }
@@ -2140,6 +2272,7 @@ module.exports = {
   assertFileTransitionHealth,
   assertGitFilesRoundTripHealth,
   assertGitHistoryDepthHealth,
+  assertGitHistoryRebaseHealth,
   assertGitTransitionHealth,
   capture,
   chromeExecutable,
@@ -2149,6 +2282,7 @@ module.exports = {
   runFileViewScenario,
   runGitFilesRoundTrip,
   runGitHistoryDepthScenario,
+  runGitHistoryRebaseScenario,
   runGitRevisionScenario,
   startTrustedInputPulse,
   usage,

@@ -1240,7 +1240,7 @@ def main(argv: list[str] | None = None) -> int:
     capture.add_argument("--height", type=int, default=900)
     capture.add_argument(
         "--scenario",
-        choices=["git-revisions", "file-views", "git-history-depth"],
+        choices=["git-revisions", "file-views", "git-history-depth", "git-history-rebase"],
         default="",
         help="capture an interaction scenario instead of the initial-load profile",
     )
