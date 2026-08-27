@@ -53,7 +53,7 @@ _STDERR_MAX_BYTES = 64 * 1024
 # ``core.quotepath=false`` makes git emit UTF-8 paths directly instead of
 # octal-escaping every non-ASCII byte, which would otherwise have to be
 # unescaped in each parser.
-_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
+GIT_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
 
 
 class GitError(Exception):
@@ -141,7 +141,7 @@ _REPO_PINNING_GIT_VARS: tuple[str, ...] = (
 )
 
 
-def _git_env() -> dict[str, str]:
+def git_environment() -> dict[str, str]:
     """Environment for a git child process.
 
     Strips the repository-pinning variables above, then:
@@ -205,24 +205,7 @@ async def run_git(
     Raises :class:`GitUnavailableError`, :class:`GitTimeoutError`,
     :class:`GitOutputTooLargeError`, or :class:`GitCommandError`.
     """
-    exe = git_executable()
-    if exe is None:
-        raise GitUnavailableError("git executable not found on PATH")
-
-    argv = (exe, *_COMMON_ARGS, *args)
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            cwd=cwd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=_git_env(),
-        )
-    except OSError as exc:
-        # Spawn itself failed — a missing cwd, a permissions problem, or
-        # process-table exhaustion. Nothing downstream can distinguish
-        # these usefully, so they collapse into one typed failure.
-        raise GitUnavailableError(f"could not run git: {exc}") from exc
+    proc = await spawn_git_process(args, cwd=cwd)
 
     # stdout and stderr are drained concurrently. Reading them in
     # sequence deadlocks as soon as git fills the pipe we are not
@@ -237,7 +220,7 @@ async def run_git(
     except TimeoutError:
         stdout_task.cancel()
         stderr_task.cancel()
-        await _terminate(proc)
+        await terminate_git_process(proc)
         raise GitTimeoutError(
             f"git {' '.join(args)} exceeded {timeout_s:g}s and was terminated"
         ) from None
@@ -248,7 +231,7 @@ async def run_git(
         # converting it to a GitError would swallow the shutdown signal.
         stdout_task.cancel()
         stderr_task.cancel()
-        await _terminate(proc)
+        await terminate_git_process(proc)
         raise
 
     if overflowed:
@@ -273,7 +256,43 @@ async def run_git(
     return stdout
 
 
-async def _terminate(proc: asyncio.subprocess.Process) -> None:
+async def spawn_git_process(
+    args: Sequence[str],
+    *,
+    cwd: Path,
+    pipe_stdin: bool = False,
+) -> asyncio.subprocess.Process:
+    """Start a sanitized Git process whose streams the caller owns.
+
+    Long-lived streaming consumers cannot use :func:`run_git`, which
+    drains and buffers a complete command. They still use this seam so
+    executable lookup, environment isolation, fixed arguments, and
+    spawn-failure translation remain identical to ordinary requests.
+    ``pipe_stdin`` is reserved for bounded, validated input such as a
+    resolved history scope.
+    """
+    exe = git_executable()
+    if exe is None:
+        raise GitUnavailableError("git executable not found on PATH")
+
+    argv = (exe, *GIT_COMMON_ARGS, *args)
+    try:
+        return await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=cwd,
+            stdin=asyncio.subprocess.PIPE if pipe_stdin else None,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=git_environment(),
+        )
+    except OSError as exc:
+        # Spawn itself failed — a missing cwd, a permissions problem, or
+        # process-table exhaustion. Nothing downstream can distinguish
+        # these usefully, so they collapse into one typed failure.
+        raise GitUnavailableError(f"could not run git: {exc}") from exc
+
+
+async def terminate_git_process(proc: asyncio.subprocess.Process) -> None:
     """Kill *proc* and reap it, so a timeout cannot leak a child.
 
     ``proc.wait()`` after ``kill()`` is what actually reaps; skipping it
@@ -281,11 +300,9 @@ async def _terminate(proc: asyncio.subprocess.Process) -> None:
     """
     if proc.returncode is not None:
         return
-    try:
+    # The process may exit between the returncode check and the signal.
+    with contextlib.suppress(ProcessLookupError):
         proc.kill()
-    except ProcessLookupError:
-        # Exited between the returncode check and the signal.
-        return
     # The request may be cancelled again while reaping. The child is
     # already signalled by then, and re-raising here would replace the
     # original failure with a cancellation from the cleanup path.
@@ -301,5 +318,7 @@ __all__ = [
     "GitUnavailableError",
     "failure_detail",
     "git_executable",
+    "spawn_git_process",
+    "terminate_git_process",
     "run_git",
 ]
