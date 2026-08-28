@@ -1859,15 +1859,37 @@ activity, not meaning.
 Prefer the shared spinner classes; custom sizes must still use the shared spinner tokens
 and keyframe.
 
-### Spinners Carry No Visible Label
+### Loading States Are Shapes, Not Sentences
 
-A spinner beside the words “Loading folder…” says the same thing twice: the surface
-being replaced already says which folder, and the spinner already says it is loading.
-Keep the label for screen readers (`sr-only`) and show the spinner alone.
+A loading state says “this will be content” by taking the shape of the content.
+It does not announce itself in words.
+“Loading history…”, “Loading file types…”, and “Loading bytes…” are all the same
+sentence, they all say what the surface being replaced already implies, and a column of
+them reads as a page in trouble rather than a page working.
 
-Visible copy is for a state the spinner cannot express on its own — a scan still running
-behind an empty result, an index that failed — and it says what that state is rather
-than that something is loading.
+Two forms, and the choice between them is about whether the shape is known:
+
+- **Skeleton blocks are the default.** When the layout is known before the data — rows,
+  cells, a tally, a list — draw that layout as neutral blocks carrying the slow pulse
+  used by the navigation tally (`.tally-pending`, `tally-pending-pulse`). The block
+  reserves the real geometry, so arriving content replaces it without reflow, and the
+  pulse reads as “loading” rather than “blinking”.
+- **A spinner is for an indeterminate wait whose shape is unknown.** A document about to
+  render, a comparison whose file count is not yet known — a skeleton there would invent
+  a structure the result may not have.
+  The spinner says only that work is happening, which is all that is honestly known.
+
+Both forms observe the quiet period above: a state that resolves inside
+`--loading-state-delay` shows nothing at all.
+
+Screen-reader text is required and is not a violation of this rule.
+A spinner or a skeleton is invisible to a screen reader, so it carries an `sr-only`
+label or an `aria-label` naming what is loading.
+That text is not visible copy; the rule is about what is painted.
+
+Visible copy is for a state neither form can express — a scan still running behind an
+empty result, an index that failed — and it says what that state is rather than that
+something is loading.
 
 ## Text Selection
 

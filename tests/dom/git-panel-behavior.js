@@ -82,7 +82,17 @@ class FakeElement {
     this.classNames = new Set();
     this.classList = new FakeClassList(this);
     this.dataset = {};
-    this.style = {};
+    // `style` is a bag with the one CSSOM method the panel uses: custom
+    // properties are how the row pitch reaches the skeleton CSS without
+    // restating SWIMLANE_HEIGHT there.
+    this.style = {
+      setProperty(name, value) {
+        this[name] = value;
+      },
+      getPropertyValue(name) {
+        return this[name] ?? "";
+      },
+    };
     this._text = "";
     this._html = "";
     this._hovered = false;
@@ -1065,8 +1075,16 @@ async function run() {
       return historyPage(page, pageCommits, total, revisions[0]);
     });
     internals.renderPanel();
+    // A pending page shows the shape of the rows it stands in for, and
+    // names itself only to a screen reader. See design-system.md,
+    // "Loading States Are Shapes, Not Sentences".
     assertContains(
-      "replay window: missing rows disclose loading",
+      "replay window: missing rows show a skeleton",
+      container.innerHTML,
+      "git-history-skeleton",
+    );
+    assertNotContains(
+      "replay window: missing rows carry no visible loading text",
       container.textContent,
       "Loading history",
     );
@@ -1264,7 +1282,17 @@ async function run() {
 
     internals.setStateForTests({ ...internals.emptyState(), loading: true });
     internals.renderPanel();
-    assertContains("panel: loading state", container.innerHTML, "spinner");
+    assertContains(
+      "panel: first load draws skeleton rows",
+      container.innerHTML,
+      "git-history-skeleton",
+    );
+    assertNotContains(
+      "panel: first load carries no visible loading text",
+      container.textContent,
+      "Loading",
+    );
+    assertNotContains("panel: first load uses no spinner", container.innerHTML, "spinner");
 
     internals.setStateForTests({ ...internals.emptyState(), failed: true });
     internals.renderPanel();

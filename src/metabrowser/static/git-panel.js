@@ -1008,7 +1008,15 @@
         });
         placeholder.appendChild(retry);
       } else {
-        placeholder.textContent = "Loading history…";
+        // A pending page shows the shape of the rows it is holding space
+        // for, not the word "loading". See design-system.md, "Loading
+        // States Are Shapes, Not Sentences".
+        placeholder.classList.add("git-history-skeleton");
+        placeholder.style.setProperty(
+          "--git-skeleton-row-height",
+          `${graphModule().SWIMLANE_HEIGHT}px`,
+        );
+        placeholder.setAttribute("aria-label", "Loading history");
       }
       host.appendChild(placeholder);
     }
@@ -1269,7 +1277,15 @@
     }
 
     if (state.rowCount === 0 && state.loading) {
-      panel.innerHTML = '<div class="loading"><div class="spinner"></div>Loading history…</div>';
+      // The first paint of the Git tab: the row geometry is known before
+      // the data, so it is drawn as skeleton rows rather than announced.
+      const skeleton = document.createElement("div");
+      skeleton.className = "git-history-skeleton git-history-skeleton-first mb-delayed-loading";
+      skeleton.style.setProperty("--git-skeleton-row-height", `${graphModule().SWIMLANE_HEIGHT}px`);
+      skeleton.style.height = `${graphModule().SWIMLANE_HEIGHT * 12}px`;
+      skeleton.setAttribute("role", "status");
+      skeleton.setAttribute("aria-label", "Loading history");
+      panel.replaceChildren(skeleton);
       return;
     }
     if (state.rowCount === 0 && state.failed) {
@@ -1410,8 +1426,11 @@
     let trailing = null;
     if (state.loading && state.loadingPage === state.nextPageNumber) {
       trailing = document.createElement("div");
-      trailing.className = "git-graph-more";
-      trailing.textContent = "Loading…";
+      trailing.className =
+        "git-graph-more git-history-skeleton git-history-skeleton-more mb-delayed-loading";
+      trailing.style.setProperty("--git-skeleton-row-height", `${graphModule().SWIMLANE_HEIGHT}px`);
+      trailing.style.height = `${graphModule().SWIMLANE_HEIGHT * 2}px`;
+      trailing.setAttribute("aria-label", "Loading more history");
     } else if (state.failed && state.failedPage === state.nextPageNumber) {
       trailing = document.createElement("div");
       trailing.className = "git-graph-more git-graph-more-failed";

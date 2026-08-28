@@ -731,7 +731,15 @@ function contentOf(container) {
     const { mb } = makeSdk();
     const loading = renderChunkState({ status: "loading" }, mb);
     check("the loading state defers its placeholder", loading.includes("mb-delayed-loading"));
-    check("the loading state uses progressive copy", loading.includes("…"), loading);
+    // Loading states are shapes, not sentences (design-system.md): a
+    // skeleton at line pitch, named only for screen readers.
+    check("the loading state draws a skeleton", loading.includes("bytes-loading"), loading);
+    check(
+      "the loading state names itself for screen readers",
+      loading.includes('aria-label="Loading bytes"'),
+      loading,
+    );
+    check("the loading state shows no visible copy", !/>[^<]*\S[^<]*</.test(loading), loading);
 
     const dense = renderChunkState(
       {

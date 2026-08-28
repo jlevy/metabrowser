@@ -28,6 +28,14 @@ Features:
 
 Fixes:
 
+- Loading states no longer announce themselves in words.
+  The Git panel said “Loading history…” on first open, and pending tooltip cells, the
+  recent-files list, and the byte preview each had a sentence of their own.
+  Where the layout is known before the data, these now draw it as neutral blocks
+  carrying the navigation tally’s slow pulse; the spinner is reserved for waits whose
+  shape is genuinely unknown, and screen readers still get a name.
+  Skeletons hold steady instead of pulsing under `prefers-reduced-motion`.
+
 - Scrolling deep into Git history no longer nudges the view by a row.
   The virtualized window measures from the first history row, but the panel was handing
   it the shared scroller’s offset, which also includes the header tally above the graph.
