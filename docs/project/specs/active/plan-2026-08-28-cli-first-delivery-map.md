@@ -413,22 +413,26 @@ The reasoning — the four layers, why the view is exempt, why state needed its 
 
 ## Open Decisions
 
-1. **Local origins and the safe URL grammar.** The grammar is specified to accept
-   conservative HTTPS and SSH and reject other transports, which would reject the
-   `file://` and local-path origins the acquisition goldens need.
-   Recommendation: accept local origins as first-class Git sources under the **untrusted
-   profile**, documented as mirror and air-gapped support.
-   The grammar’s job is rejecting ambiguous and dangerous input — credentials, query,
-   fragment, option-like strings — not rejecting a transport that is strictly safer than
-   the ones already allowed.
-   The alternative, a test-only escape hatch, forks production and test paths and is
-   what the golden guidelines specifically warn against.
-2. **Where acquisition is triggered from.** Everything in `metab` is read-only today,
+**Closed 2026-08-28: local origins are first-class Git sources.** `file://` URLs and
+local repository paths are accepted as Git sources under the **untrusted profile**,
+documented as mirror and air-gapped support.
+The safe URL grammar’s job is rejecting ambiguous and dangerous input — credentials,
+query, fragment, option-like strings — not rejecting a transport that is strictly safer
+than the ones already allowed.
+This keeps acquisition goldens on exactly the production code path; the rejected
+alternative, a test-only escape hatch, forks production and test logic, which
+`tbd guidelines golden-testing-guidelines` warns against directly.
+`cache/urls.py` therefore classifies transport into `https`, `ssh`, and `local`, and
+`acquire` binds `local` to the untrusted profile unconditionally.
+
+Still open:
+
+1. **Where acquisition is triggered from.** Everything in `metab` is read-only today,
    and acquisition writes.
    Recommendation: keep it a side effect of `metab <url>`, and add `--no-serve` so a
    golden can acquire and inspect without starting a server.
    No `/api/cache/acquire` write route; the state clause covers reads only.
-3. **Whether `--show` recurses into containers.** Carried forward from the parity plan,
+2. **Whether `--show` recurses into containers.** Carried forward from the parity plan,
    unresolved, and not on the critical path.
 
 ## References
