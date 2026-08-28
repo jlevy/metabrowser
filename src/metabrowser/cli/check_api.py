@@ -9,18 +9,22 @@ command.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
 
 import typer
-from starlette.types import ASGIApp, Message, Scope
+from starlette.types import ASGIApp
 
+from metabrowser.cli.asgi_client import (
+    INDEX_READY_TIMEOUT_S,
+    ApiResponse,
+    IndexResult,
+    InProcessClient,
+    wait_for_index,
+)
 from metabrowser.cli.common import apply_log_level
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain
@@ -28,8 +32,6 @@ from metabrowser.errors import CLIError
 
 LOG = logging.getLogger(__name__)
 
-_INDEX_READY_TIMEOUT_S = 60.0
-_INDEX_READY_POLL_S = 0.05
 # Markdown: present in every directory this check is pointed at (a repository,
 # a run directory), and narrow enough that a tree still carrying folders with
 # no match is visibly wrong rather than plausibly complete.
@@ -44,137 +46,6 @@ class _CheckStep:
     status_code: int
     fields: str
     valid: bool
-
-
-@dataclass(frozen=True, slots=True)
-class _Response:
-    """Minimal response surface needed by the navigation scenario."""
-
-    status_code: int
-    body: bytes
-
-    def json(self) -> Any:
-        return json.loads(self.body)
-
-
-@dataclass(frozen=True, slots=True)
-class _IndexResult:
-    """Terminal or failed outcome from waiting for the inventory."""
-
-    detail: str
-    completed: bool
-
-
-class _InProcessClient:
-    """Drive one ASGI app lifecycle and JSON GET requests without HTTP I/O."""
-
-    def __init__(self, app: ASGIApp) -> None:
-        self._app = app
-        self._lifespan_input: asyncio.Queue[Message] = asyncio.Queue()
-        self._lifespan_output: asyncio.Queue[Message] = asyncio.Queue()
-        self._lifespan_task: asyncio.Task[None] | None = None
-        self._state: dict[str, Any] = {}
-
-    async def __aenter__(self) -> _InProcessClient:
-        async def receive() -> Message:
-            return await self._lifespan_input.get()
-
-        async def send(message: Message) -> None:
-            await self._lifespan_output.put(message)
-
-        async def run_app() -> None:
-            await self._app(scope, receive, send)
-
-        scope: Scope = {
-            "type": "lifespan",
-            "asgi": {"version": "3.0", "spec_version": "2.0"},
-            "state": self._state,
-        }
-        self._lifespan_task = asyncio.create_task(run_app())
-        await self._lifespan_input.put({"type": "lifespan.startup"})
-        message = await self._lifespan_output.get()
-        if message["type"] != "lifespan.startup.complete":
-            detail = message.get("message", "application startup failed")
-            await self._finish_lifespan_task()
-            raise CLIError(str(detail))
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: object,
-        exc: object,
-        traceback: object,
-    ) -> None:
-        await self._lifespan_input.put({"type": "lifespan.shutdown"})
-        message = await self._lifespan_output.get()
-        await self._finish_lifespan_task()
-        if message["type"] != "lifespan.shutdown.complete" and exc is None:
-            detail = message.get("message", "application shutdown failed")
-            raise CLIError(str(detail))
-
-    async def _finish_lifespan_task(self) -> None:
-        if self._lifespan_task is not None:
-            await self._lifespan_task
-
-    async def get(
-        self,
-        path: str,
-        *,
-        params: dict[str, str] | None = None,
-    ) -> _Response:
-        """Issue one complete GET request through the ASGI middleware stack."""
-
-        request_available = True
-        status_code: int | None = None
-        body_parts: list[bytes] = []
-
-        async def receive() -> Message:
-            nonlocal request_available
-            if request_available:
-                request_available = False
-                return {"type": "http.request", "body": b"", "more_body": False}
-            return {"type": "http.disconnect"}
-
-        async def send(message: Message) -> None:
-            nonlocal status_code
-            if message["type"] == "http.response.start":
-                status_code = message["status"]
-            elif message["type"] == "http.response.body":
-                body_parts.append(message.get("body", b""))
-
-        query_string = urlencode(params or {}).encode("ascii")
-        scope: Scope = {
-            "type": "http",
-            "asgi": {"version": "3.0", "spec_version": "2.5"},
-            "http_version": "1.1",
-            "method": "GET",
-            "scheme": "http",
-            "path": path,
-            "raw_path": path.encode("ascii"),
-            "query_string": query_string,
-            "root_path": "",
-            "headers": [(b"host", b"testserver")],
-            "client": ("127.0.0.1", 1),
-            "server": ("testserver", 80),
-            "state": self._state,
-        }
-        try:
-            await self._app(scope, receive, send)
-        except Exception as exc:
-            # Starlette sends its 500 response before re-raising the route
-            # exception. Preserve that response so the check reports a stable
-            # failed step instead of exposing a diagnostic traceback.
-            if status_code is None:
-                raise CLIError(f"navigation API request failed for {path}") from exc
-            LOG.debug(
-                "navigation API route raised after HTTP %d path=%s",
-                status_code,
-                path,
-                exc_info=True,
-            )
-        if status_code is None:
-            raise CLIError(f"navigation API returned no response for {path}")
-        return _Response(status_code=status_code, body=b"".join(body_parts))
 
 
 def _tree_step(label: str, status_code: int, payload: Any) -> _CheckStep:
@@ -256,43 +127,20 @@ def _read_json(response: Any) -> Any:
         return None
 
 
-async def _wait_for_index(
-    client: _InProcessClient,
-    *,
-    timeout_s: float = _INDEX_READY_TIMEOUT_S,
-) -> _IndexResult:
-    """Poll the cheap progress route until the inventory reaches a terminal state."""
-
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        response = await client.get("/api/index/progress")
-        if response.status_code != 200:
-            return _IndexResult(f"HTTP {response.status_code}", False)
-        payload = _read_json(response)
-        if isinstance(payload, dict):
-            status = payload.get("status")
-            if status in ("done", "truncated"):
-                return _IndexResult(status, True)
-            if status == "failed":
-                return _IndexResult("failed", False)
-        else:
-            return _IndexResult("invalid progress response", False)
-        await asyncio.sleep(_INDEX_READY_POLL_S)
-    return _IndexResult(f"timeout after {timeout_s:g}s", False)
-
-
 async def _run_navigation_scenario(
     app: ASGIApp,
     *,
-    index_timeout_s: float = _INDEX_READY_TIMEOUT_S,
-) -> tuple[_Response, _Response, _Response, _IndexResult, _Response, _Response, _Response]:
+    index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+) -> tuple[
+    ApiResponse, ApiResponse, ApiResponse, IndexResult, ApiResponse, ApiResponse, ApiResponse
+]:
     """Exercise the navigation routes while the background index is active."""
 
-    async with _InProcessClient(app) as client:
+    async with InProcessClient(app, label="navigation API", logger=LOG) as client:
         initial = await client.get("/api/tree", params={"depth": "2"})
         live = await client.get("/api/recent", params={"window": "live"})
         cleared = await client.get("/api/tree", params={"depth": "2"})
-        index_result = await _wait_for_index(client, timeout_s=index_timeout_s)
+        index_result = await wait_for_index(client, timeout_s=index_timeout_s)
         final = await client.get("/api/tree", params={"depth": "2"})
         # Rows and tallies travel separately now: a request carrying rows never
         # waits for the pass over every index entry that produces the summary.
@@ -310,7 +158,7 @@ def run_api_check(
     *,
     plugins_dir: list[Path] | None = None,
     log_level: str = "",
-    index_timeout_s: float = _INDEX_READY_TIMEOUT_S,
+    index_timeout_s: float = INDEX_READY_TIMEOUT_S,
 ) -> None:
     """Run the browser's navigation request sequence without a browser."""
 
