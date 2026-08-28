@@ -82,11 +82,26 @@ class FakeElement {
     this.classNames = new Set();
     this.classList = new FakeClassList(this);
     this.dataset = {};
-    this.style = {};
+    // `style` is a bag with the one CSSOM method the panel uses: custom
+    // properties are how the row pitch reaches the skeleton CSS without
+    // restating SWIMLANE_HEIGHT there.
+    this.style = {
+      setProperty(name, value) {
+        this[name] = value;
+      },
+      getPropertyValue(name) {
+        return this[name] ?? "";
+      },
+    };
     this._text = "";
     this._html = "";
     this._hovered = false;
     this.scrollCalls = [];
+    // Layout the panel actually reads. The Git panel converts between the
+    // scroller's coordinate space and the virtualized list's by summing
+    // the heights of the chrome above the list, so a fake DOM reporting
+    // nothing here cannot exercise that conversion.
+    this.offsetHeight = 0;
   }
 
   set className(value) {
@@ -1060,8 +1075,16 @@ async function run() {
       return historyPage(page, pageCommits, total, revisions[0]);
     });
     internals.renderPanel();
+    // A pending page shows the shape of the rows it stands in for, and
+    // names itself only to a screen reader. See design-system.md,
+    // "Loading States Are Shapes, Not Sentences".
     assertContains(
-      "replay window: missing rows disclose loading",
+      "replay window: missing rows show a skeleton",
+      container.innerHTML,
+      "git-history-skeleton",
+    );
+    assertNotContains(
+      "replay window: missing rows carry no visible loading text",
       container.textContent,
       "Loading history",
     );
@@ -1071,6 +1094,85 @@ async function run() {
     assertEqual("replay window: exact first row returns", rows[0].dataset.revision, revisions[0]);
     assertEqual("replay window: visible range fills after replay", rows.length, 3);
     assertEqual("replay window: decoded cache stays bounded", replayed.pageCache.size, 2);
+    container.clientHeight = undefined;
+    container.scrollTop = 0;
+  }
+
+  // ── Chrome above the list does not shift the resolved window ──
+  //
+  // The header tally lives above `.git-graph-list` inside the shared
+  // scroller, so `scrollTop` carries height the virtualized window knows
+  // nothing about. The panel converts between the two coordinate spaces.
+  // Without that conversion the `scrollTop` written back on a segment
+  // rebase lands short by the tally's height, which is what this pins.
+  {
+    const container = document.getElementById("tab-git");
+    const deepRows = 400;
+    const revisions = Array.from({ length: deepRows }, (_value, index) =>
+      (index + 9000).toString(16).padStart(40, "0"),
+    );
+    const commits = revisions.map((revision, index) =>
+      commit(revision, index + 1 < deepRows ? [revisions[index + 1]] : [], `origin ${index}`),
+    );
+
+    /**
+     * Scroll deep enough to force a segment rebase and report the
+     * `scrollTop` the panel writes back.
+     *
+     * @param {number} chrome height of the tally above the list
+     * @returns {number}
+     */
+    const rebasedScrollTop = async (chrome) => {
+      container.clientHeight = 44;
+      container.scrollTop = 0;
+      const fresh = internals.emptyState();
+      fresh.pageCache.put({
+        page: 0,
+        startOrdinal: 0,
+        commits,
+        checkpoint: {
+          version: 1,
+          priorSwimlanes: [],
+          colorIndex: -1,
+          headRevision: revisions[0],
+          scopeFingerprint: "scope",
+        },
+        pageCursor: "page-0",
+        nextCursor: null,
+        previousCursor: null,
+      });
+      fresh.rowCount = commits.length;
+      fresh.virtualWindow.setRowCount(commits.length);
+      fresh.scopeFingerprint = "scope";
+      internals.setStateForTests(fresh);
+      internals.renderPanel();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const summary = container.querySelector(".git-history-summary");
+      summary.offsetHeight = chrome;
+      internals.invalidateHistoryOrigin();
+      // Past the later overscan edge, so the segment must rebase.
+      container.scrollTop = 22 * 300 + chrome;
+      internals.renderVirtualRows();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return container.scrollTop;
+    };
+
+    const withoutChrome = await rebasedScrollTop(0);
+    const withChrome = await rebasedScrollTop(30);
+    assertEqual("scroll origin: chrome above the list is measured", internals.historyOrigin(), 30);
+    assertTrue(
+      "scroll origin: the fixture actually rebased",
+      withoutChrome !== 22 * 300 && withoutChrome > 0,
+    );
+    assertEqual(
+      "scroll origin: a rebase writes back through the tally's height",
+      withChrome,
+      withoutChrome + 30,
+    );
+
+    const summary = container.querySelector(".git-history-summary");
+    summary.offsetHeight = 0;
+    internals.invalidateHistoryOrigin();
     container.clientHeight = undefined;
     container.scrollTop = 0;
   }
@@ -1146,6 +1248,8 @@ async function run() {
     rows = container.querySelectorAll(".git-graph-row");
     assertEqual("virtual panel: scrolled window remains bounded", rows.length, 3);
     assertEqual("virtual panel: scrolled window advances ordinals", rows[0].dataset.ordinal, "2");
+
+    rows = container.querySelectorAll(".git-graph-row");
     assertTrue(
       "virtual panel: selection returns when its row remounts",
       rows[2].classList.contains("selected"),
@@ -1178,7 +1282,17 @@ async function run() {
 
     internals.setStateForTests({ ...internals.emptyState(), loading: true });
     internals.renderPanel();
-    assertContains("panel: loading state", container.innerHTML, "spinner");
+    assertContains(
+      "panel: first load draws skeleton rows",
+      container.innerHTML,
+      "git-history-skeleton",
+    );
+    assertNotContains(
+      "panel: first load carries no visible loading text",
+      container.textContent,
+      "Loading",
+    );
+    assertNotContains("panel: first load uses no spinner", container.innerHTML, "spinner");
 
     internals.setStateForTests({ ...internals.emptyState(), failed: true });
     internals.renderPanel();

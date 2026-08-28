@@ -222,8 +222,14 @@ def test_tree_tooltips_do_not_coerce_pending_aggregates_to_zero() -> None:
     assert "+d.tipSize" not in js
     assert 'data-tip-files="${nullableDataValue(node.total_files)}' in js
     assert 'data-tip-size="${nullableDataValue(node.total_size)}' in js
-    assert "Loading file count…" in js
-    assert "Loading size…" in js
+    # Pending aggregates render as tally skeleton blocks named for screen
+    # readers, not as visible "Loading …" copy. See docs/design-system.md,
+    # "Loading States Are Shapes, Not Sentences", enforced by
+    # tests/test_loading_states.py.
+    assert 'aria-label="Loading file count"' in js
+    assert 'aria-label="Loading size"' in js
+    assert "Loading file count…" not in js
+    assert "Loading size…" not in js
 
 
 def test_tree_tooltips_omit_duplicative_name() -> None:
@@ -860,7 +866,9 @@ def test_styles_css_defines_tally_pending_class() -> None:
     assert "@keyframes tally-pending-pulse" in css
     # Narrow variant for inline age cells.
     assert ".tally-pending.tally-pending-narrow {" in css
-    assert ".tip-loading {" in css
+    # .tip-loading held italic "Loading …" copy in tooltips; the pending
+    # cells now reuse the tally skeleton block instead.
+    assert ".tip-loading {" not in css
 
 
 # ── Activity poll fallback retained ──────────────────────────

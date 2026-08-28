@@ -5,6 +5,15 @@
 // viewport model whose physical scroll segment never approaches the browser's
 // element-height clamp. It deliberately has no DOM or network dependency, so
 // the structural bounds can be tested without timing-sensitive browser work.
+//
+// Coordinate contract: every `scrollTop` this module accepts and returns is
+// relative to the *first history row*, not to whatever element scrolls. The
+// signatures accept a bare number and cannot enforce that, so the caller owns
+// the conversion: `git-panel.js` renders a header tally above the list inside
+// the shared `#tree-content` scroller and subtracts its height on the way in,
+// adding it back before assigning `scrollTop`. Pass a raw scroller offset and
+// the window resolves the wrong logical row and rebases to the wrong pixel —
+// quietly, because overscan hides the first symptom.
 
 (() => {
   /** @param {number} value @param {number} minimum @param {number} maximum */

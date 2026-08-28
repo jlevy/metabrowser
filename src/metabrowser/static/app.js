@@ -2323,14 +2323,17 @@ document.addEventListener("focusin", hideTooltip);
 // visual category (this number is a size) is carried by the class.
 function _tipSize(bytes) {
   if (isPendingNumber(bytes)) {
-    return '<span class="tip-loading">Loading size…</span>';
+    return '<span class="tally-pending" role="status" aria-label="Loading size"></span>';
   }
   var cls = `size ${sizeClass(bytes)}`.trim();
   return `<span class="${cls}">${formatExactSize(bytes || 0)}</span>`;
 }
 function _tipCount(n) {
   if (isPendingNumber(n)) {
-    return '<span class="tip-loading">Loading file count…</span>';
+    return (
+      '<span class="tally-pending tally-pending-narrow" role="status"' +
+      ' aria-label="Loading file count"></span>'
+    );
   }
   return `<span class="count">${formatCount(n)}</span>`;
 }
@@ -3748,7 +3751,9 @@ function fetchRecent(windowKey) {
   // already selected — and a warm `recentBaseEntries` from an earlier
   // window is the wrong window's answer, not this one's.
   if (results) {
-    results.innerHTML = '<div class="recent-empty">Loading recent files…</div>';
+    results.innerHTML =
+      '<div class="recent-loading mb-delayed-loading" role="status"' +
+      ' aria-label="Loading recent files"></div>';
   }
   var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   recentInflight = ctrl;

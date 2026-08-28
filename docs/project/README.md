@@ -15,6 +15,9 @@ links to the document that covers each in depth.
 - [Nav containers: item-like and folder-like roles](architecture/arch-nav-containers.md)
 - [State and delivery](architecture/arch-state-and-delivery.md) — what the inventory
   holds, how derived state is invalidated, and what the browser does with it
+- [Git and comparison sources](architecture/arch-git-and-comparison-sources.md) — the
+  Git process boundary, the three-layer stack, and the rule for adding a comparison
+  source
 - [File Diff Format v1](architecture/file-diff-format/file-diff-format.md)
 - [Diff sources, context, and anchoring](architecture/file-diff-format/diff-sources-and-anchoring.md)
 - [File Rollup Format v0.1](architecture/file-rollup-format/file-rollup-format.md)
@@ -31,19 +34,26 @@ links to the document that covers each in depth.
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
 - [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
 - [Git revision navigation performance](specs/active/plan-2026-08-25-git-revision-navigation-performance.md)
+- [Git status and working-tree diffs](specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
+- [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
 
 ## Research
 
 - [Web diff viewer architecture and intermediate representations](research/research-2026-07-17-web-diff-viewer-architecture.md)
 - [Fuzzy file ranking contract and measurements](research/research-2026-07-31-fuzzy-file-ranking.md)
+- [Git status and dirty working-tree browsing](research/research-2026-08-26-git-status-and-dirty-working-trees.md)
 - [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
 - [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
+- [Repository cache and open from a Git URL](research/research-2026-08-11-repo-cache-and-git-url-open.md)
 
 ## Reviews
 
+- [Repository-library phasing and GitHub content model](reviews/review-2026-08-26-repository-library-and-github-model.md)
+  — design review that separates generic Git caching from GitHub integration and defines
+  the strict provider-model and snapshot boundaries
 - [Load-time performance and the distance still to cover](reviews/review-2026-08-22-load-time-performance.md)
   — review of the six-round load-time work, its eight findings and their fixes, plus
   principles and candidate hypotheses for the rounds after it

@@ -28,6 +28,21 @@ Features:
 
 Fixes:
 
+- Loading states no longer announce themselves in words.
+  The Git panel said “Loading history…” on first open, and pending tooltip cells, the
+  recent-files list, and the byte preview each had a sentence of their own.
+  Where the layout is known before the data, these now draw it as neutral blocks
+  carrying the navigation tally’s slow pulse; the spinner is reserved for waits whose
+  shape is genuinely unknown, and screen readers still get a name.
+  Skeletons hold steady instead of pulsing under `prefers-reduced-motion`.
+
+- Scrolling deep into Git history no longer nudges the view by a row.
+  The virtualized window measures from the first history row, but the panel was handing
+  it the shared scroller’s offset, which also includes the header tally above the graph.
+  Row mounting absorbed the difference, so the visible symptom was confined to the
+  jumps: a scroll position rewritten at a segment boundary, and restoring a commit from
+  its URL or arrow-keying past the mounted range, each landing one row off target.
+
 - A history row can no longer render with an invisible commit message.
   The subject used to absorb all of a row’s flex shrinkage and could collapse to zero
   width — most often on merge rows, whose converging lanes widen the graph gutter —

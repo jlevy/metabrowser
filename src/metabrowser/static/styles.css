@@ -4206,9 +4206,43 @@ pre.code-block code.hljs {
   font-weight: var(--weight-normal);
   font-size: var(--tooltip-detail-font-size);
 }
-.tip-loading {
-  color: var(--muted);
-  font-style: italic;
+/* Recent-files rows while the first query is in flight: known row
+   geometry, so it is drawn rather than announced. See design-system.md,
+   "Loading States Are Shapes, Not Sentences". */
+/* Byte lines while the first chunk is in flight. Monospace lines are a
+   known grid, so the pending state is drawn at line pitch. */
+.bytes-loading {
+  height: calc(1.5em * 10);
+  margin: 8px 12px;
+  border-radius: var(--radius-chrome);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--tally-skeleton-bg) 0,
+    var(--tally-skeleton-bg) 0.85em,
+    transparent 0.85em,
+    transparent 1.5em
+  );
+  background-size: 85% 100%;
+  background-repeat: repeat-y;
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
+}
+
+.recent-loading {
+  height: calc(var(--ui-row-height) * 6);
+  margin: 4px 12px;
+  border-radius: var(--radius-chrome);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 4px,
+    var(--tally-skeleton-bg) 4px,
+    var(--tally-skeleton-bg) calc(var(--ui-row-height) - 4px),
+    transparent calc(var(--ui-row-height) - 4px),
+    transparent var(--ui-row-height)
+  );
+  background-size: 70% 100%;
+  background-repeat: repeat-y;
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
 }
 /* Section titles inside a tooltip don't need the extra top margin the
    drawer uses (tooltip has its own padding). */
@@ -4589,6 +4623,16 @@ pre.code-block code.hljs {
   .tree-item-flash-out {
     animation-duration: 1ms;
   }
+  /* Skeletons keep their shape and their contrast, but stop pulsing:
+     the block already says "pending", and the loop is exactly the kind
+     of sustained motion this preference asks us to drop. */
+  .tally-pending,
+  .recent-loading,
+  .bytes-loading,
+  .git-history-skeleton {
+    animation: none;
+    opacity: 0.7;
+  }
   /* Drawers and disclosure chevrons still change state, just without
      the travel. */
   .filter-drawer,
@@ -4768,6 +4812,42 @@ pre.code-block code.hljs {
   flex: 0 0 auto;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+
+/* ── Git history skeletons ──────────────────────────────────── */
+/* A pending page takes the shape of the rows it stands in for, per
+   design-system.md "Loading States Are Shapes, Not Sentences". The
+   repeating gradient draws one block per row at any height, so a
+   placeholder covering hundreds of rows costs no extra DOM, and it
+   reuses the navigation tally's block color and pulse so every skeleton
+   in the product reads as the same thing. The row pitch comes from
+   git-graph.js's SWIMLANE_HEIGHT through --git-skeleton-row-height,
+   rather than restating the constant here. */
+.git-history-skeleton {
+  --git-skeleton-row: var(--git-skeleton-row-height, 22px);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 4px,
+    var(--tally-skeleton-bg) 4px,
+    var(--tally-skeleton-bg) calc(var(--git-skeleton-row) - 4px),
+    transparent calc(var(--git-skeleton-row) - 4px),
+    transparent var(--git-skeleton-row)
+  );
+  background-size: 60% 100%;
+  background-repeat: repeat-y;
+  border-radius: var(--radius-chrome);
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
+}
+
+.git-history-skeleton-first {
+  flex: 0 0 auto;
+  margin: 0 12px;
+}
+
+.git-history-skeleton-more {
+  flex: 0 0 auto;
+  margin: 0 12px;
 }
 
 .git-history-retry {
