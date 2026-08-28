@@ -410,6 +410,79 @@ a far better test than any unit test of the same code.
 The reasoning — the four layers, why the view is exempt, why state needed its own clause
 — goes in `docs/development.md`, which today does not mention parity at all.
 
+## Execution Plan
+
+The map above says what to build.
+This section says how it gets built without supervision, and — more usefully — where
+unsupervised work must stop.
+
+### The loop, once per bead
+
+1. Read the bead and the spec section it names.
+   The bead is the unit of work; the spec is the authority.
+2. Write the golden first, as a failing transcript.
+   It is the acceptance criterion, so it is written before the code that satisfies it
+   and reviewed as a specification in its own right.
+3. Implement until the transcript passes.
+4. Run `make verify`.
+5. Review the golden diff line by line, then commit code and transcript together.
+6. Close the bead, `tbd sync`, and move to the next ready one.
+
+### The one discipline that matters
+
+`make golden-update` rewrites transcripts to match current behavior.
+Run it to record an *intended* change, never to make a failure go away.
+A regenerated golden that nobody read is worse than no golden: it converts a regression
+into a committed expectation, and the next reader inherits it as the specification.
+
+So: when a transcript changes, the diff is read line by line and the change is explained
+in the commit message.
+When a transcript changes in a way that was not intended, that is a bug found, not a
+transcript to refresh.
+This is the failure mode `tbd guidelines golden-testing-guidelines` names
+“over-approval,” and it is the one that makes golden suites worthless over time.
+
+### Behavior preservation is checkable, not aspirational
+
+`mb-8n8l` lifts `_InProcessClient` out of `check_api.py`, and `mb-ian3` and `mb-y5wm`
+build on it. Across all three, every existing transcript in `tests/golden/` must stay
+byte-identical. That is the whole test: if `cli-check-api.tryscript.md` moves, the lift
+changed behavior and the change is wrong, whatever the diff looks like.
+
+### Where unsupervised work stops
+
+These are not risks to manage; they are decisions that are not the implementer’s to
+make. Work up to them, then stop and report with the evidence gathered.
+
+| Stop | Bead | Why it is not an implementation decision |
+| --- | --- | --- |
+| Adopting SoftSchema | `mb-4gnu` | Needs either the 14-day cool-off or an *Audited First-Party Exceptions* row with a blast-radius statement, reviewed against its predecessor. That is a security judgment, and [SUPPLY-CHAIN-SECURITY.md](../../../../SUPPLY-CHAIN-SECURITY.md) requires it be argued, not assumed. |
+| Unbounded `--untracked-files=all` | `mb-r5gn` | The plan says that if a complete status cannot be bounded usefully, the phase returns to design review. Choosing a partial-status policy instead would be redesigning the feature. |
+| Any `PLUGIN_SDK_VERSION` bump | any | A hard gate by [AGENTS.md](../../../../AGENTS.md), not a compatibility layer to negotiate. |
+| A golden that changes for an unexplained reason | any | Either a regression or a misunderstanding of the spec. Both need a human before the transcript is rewritten. |
+
+Everything else is ordinary work: the budgets from `mb-r5gn` are chosen from recorded
+measurements, and the rename-versus-copy question is answered by whether copy detection
+measures cheaply enough on the corpus.
+Those are decisions with evidence attached, so they get made and recorded rather than
+escalated.
+
+### What lands, in order
+
+The first six beads are unattended work with a clear finish line:
+
+| Order | Bead | Done when |
+| --- | --- | --- |
+| 1 | `mb-8n8l` | `InProcessClient` and `normalize.py` exist; every existing golden byte-identical |
+| 2 | `mb-ian3` | `metab . --api '<route>'` reaches every registered route; `cli-api.tryscript.md` green |
+| 3 | `mb-y5wm` | `--show` reports route, kind, views, model; `cli-show.tryscript.md` covers one file per built-in kind |
+| 4 | `mb-esht` | `check_parity.py` fails on a missing row, a bad command, and an unpinned row; wired into `make lint-check` |
+| 5 | `mb-zodq` | The three clauses in `AGENTS.md`, the reasoning in `docs/development.md` |
+| 6 | `mb-r5gn` | Measurements recorded; the three decisions written down or the stop above triggered |
+
+After 6, the status and cache tracks run in parallel and neither needs a browser until
+`mb-vibn`.
+
 ## Open Decisions
 
 **Closed 2026-08-28: local origins are first-class Git sources.** `file://` URLs and
