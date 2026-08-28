@@ -949,13 +949,34 @@ state moved. It never implies immutable content the way `/commit/<revision>` doe
 
 ## Implementation Plan
 
+Three phases: a measurement gate, a backend, and the browser delivery.
+The gate is small and produces no code, but it is listed as a phase because its output
+is the set of constants the other two are built on.
+
+### Phase 0: The measurement gate (`mb-r5gn`)
+
+This is a separate phase, not the first two items of the next one, because measurement
+that shares a bead with the code it constrains gets done to justify that code rather
+than to choose it — and its result is never separately reviewed.
+
+- [ ] Build the dirty-tree fixture corpus and benchmark command covering every state in
+  the special-case table, including the stat-dirty content-identical population.
+- [ ] Record status and one-file-diff latency, bytes, retained memory, and
+  representative browser row cost.
+- [ ] Close the three [open decisions](#open-decisions): the submodule inspection
+  option, the entry/byte/timeout/debounce/row budgets, and whether copy detection earns
+  its cost.
+
+**Acceptance boundary:** every constant Phase 1 will hard-code exists as a recorded
+measurement with the command that produced it, and the three gate decisions are written
+down with their evidence.
+If a complete `--untracked-files=all` status cannot be bounded usefully, this phase ends
+in a return to design review rather than in a chosen number — which is a real possible
+outcome and the reason the gate is separable at all.
+
 ### Phase 1: Measured status and comparison backend (`mb-u4mf`)
 
-- [ ] Build the dirty-tree fixture/corpus and benchmark command covering every state in
-  the special-case table.
-- [ ] Record status and one-file-diff latency, bytes, retained memory, and
-  representative browser row cost; select and document named limits from those
-  measurements.
+Starts from the constants Phase 0 chose; it does not produce them.
 - [ ] Extract the shared raw Git path codec from the immutable diff adapter.
 - [ ] Add cached Git-version parsing and the Git 2.36 status-safety gate; keep
   repository discovery and History usable below it.

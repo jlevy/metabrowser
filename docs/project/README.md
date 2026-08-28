@@ -34,6 +34,7 @@ links to the document that covers each in depth.
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
 - [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
 - [Git revision navigation performance](specs/active/plan-2026-08-25-git-revision-navigation-performance.md)
+- [GitHub provider: content model, acquisition, and pull requests](specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
 - [Git status and working-tree diffs](specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
