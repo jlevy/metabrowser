@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import Any, cast
 
+import pytest
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from metabrowser.cli.asgi_client import ApiResponse, InProcessClient, wait_for_index
@@ -71,3 +72,25 @@ def test_caller_label_and_logger_are_used_for_diagnostics(caplog: Any) -> None:
         asyncio.run(client.get("/api/tree"))
 
     assert "navigation API route raised after HTTP 500 path=/api/tree" in caplog.text
+
+
+def test_a_streaming_route_fails_instead_of_hanging() -> None:
+    """A server-sent-event response never completes; an unbounded read would hang."""
+
+    async def app(_scope: Scope, _receive: Receive, send: Send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/event-stream")],
+            }
+        )
+        while True:  # never terminates, like a real SSE route
+            await send({"type": "http.response.body", "body": b": heartbeat\n", "more_body": True})
+            await asyncio.sleep(0.01)
+
+    from metabrowser.errors import CLIError
+
+    client = InProcessClient(cast(ASGIApp, app))
+    with pytest.raises(CLIError, match="did not complete within"):
+        asyncio.run(client.request("GET", "/api/events", timeout_s=0.2))

@@ -28,6 +28,10 @@ LOG = logging.getLogger(__name__)
 
 INDEX_READY_TIMEOUT_S = 60.0
 INDEX_READY_POLL_S = 0.05
+# A server-sent-event route never completes its response, so an unbounded read
+# would hang rather than fail. This bounds every request instead of guessing
+# which routes stream.
+REQUEST_TIMEOUT_S = 30.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +152,7 @@ class InProcessClient:
         params: Mapping[str, str] | None = None,
         body: bytes = b"",
         content_type: str = "application/json",
+        timeout_s: float = REQUEST_TIMEOUT_S,
     ) -> ApiResponse:
         """Issue one complete request, splitting any query already in ``path``.
 
@@ -204,7 +209,12 @@ class InProcessClient:
             "state": self._state,
         }
         try:
-            await self._app(scope, receive, send)
+            await asyncio.wait_for(self._app(scope, receive, send), timeout=timeout_s)
+        except TimeoutError as exc:
+            raise CLIError(
+                f"{self._label} request for {route} did not complete within {timeout_s:g}s; "
+                "a streaming route has no terminating response"
+            ) from exc
         except Exception as exc:
             # Starlette sends its 500 response before re-raising the route
             # exception. Preserve that response so a caller reports a stable

@@ -125,6 +125,51 @@ reservation and its invariants, is in
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`.
 
+## CLI parity
+
+Every data surface the browser consumes is reachable from `metab` without a browser or a
+listening port, and should be pinned by a golden transcript.
+`--api` makes reachability true by construction; the remaining debt is coverage, and it
+is listed here rather than left implicit.
+`devtools/check_parity.py` fails the build when this table drifts from the registered
+routes.
+
+Status values: **covered** names the goldens that pin it, **gap** names the bead that
+closes it, and **exempt** gives the reason it has no model to pin.
+
+| Surface | Status | CLI | Golden or reason |
+| --- | --- | --- | --- |
+| `/api/file` | covered | `--show PATH`, `--api` | `cli-show.tryscript.md`, `cli-api.tryscript.md` |
+| `/api/tree` | covered | `--walk`, `--api` | `cli-api.tryscript.md` |
+| `/api/rollup` | gap | `--api` | `mb-crmq` |
+| `/api/recent` | gap | `--api` | `mb-e1uk` |
+| `/api/activity` | gap | `--api` | `mb-e1uk` |
+| `/api/catalog` | gap | `--api` | `mb-4uy2` |
+| `/api/capabilities` | gap | `--api` | `mb-4uy2` |
+| `/api/index/progress` | gap | `--api` | `mb-4uy2` |
+| `/api/index/meta` | gap | `--api` | `mb-4uy2` |
+| `/api/git/repo` | gap | `--api` | `mb-s0gw` |
+| `/api/git/refs` | gap | `--api` | `mb-s0gw` |
+| `/api/git/summary` | gap | `--api` | `mb-s0gw` |
+| `/api/git/log` | gap | `--api` | `mb-s0gw` |
+| `/api/git/commit` | gap | `--api` | `mb-s0gw` |
+| `/api/kpress/render` | gap | `--api --data` | `mb-4uy2` |
+| `/api/kpress/export` | gap | `--api --data` | `mb-4uy2` |
+| `/api/plugin/agent-log/charts` | gap | `--api` | `mb-oolf` |
+| `/api/plugin/binary/chunk` | gap | `--api` | `mb-oolf` |
+| `/api/plugin/diff/document` | gap | `--api` | `mb-oolf` |
+| `/api/plugin/diff/children` | gap | `--api` | `mb-oolf` |
+| `/api/plugin/diff/comparison` | gap | `--api` | `mb-oolf` |
+| `/api/plugin/structured/parsed` | gap | `--api` | `mb-oolf` |
+| `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
+| `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
+
+The two exempt rows are the honest boundary.
+A server-sent-event response has no terminating envelope, so `--api` bounds the request
+and fails rather than hanging — which is behavior worth having, but not a model a
+transcript can assert.
+Their content is covered by `tests/dom/` and the event tests instead.
+
 ## Adding something
 
 - **A kind**: add a `[[kind]]` block with a match predicate, and at least one

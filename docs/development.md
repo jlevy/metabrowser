@@ -368,6 +368,45 @@ The root-level `--kpress-host-font-size-base` hook anchors KPress’s derived ty
 Metabrowser’s document scale, while scoped public size tokens express deliberate mono,
 secondary-text, and label divergences.
 
+## CLI Parity and Goldens
+
+A selection travels four layers — route, kind, model, view.
+Three of those are data and need no screen, which is why parity is stated at the model
+layer and only the view is exempt.
+The rule itself is in [AGENTS.md](../AGENTS.md); the reasoning is here.
+
+**Why a rule rather than a habit.** Two of eleven data surfaces had CLI coverage when
+this was written, and the two that did — the tree and the diff — are where this project
+had done its hardest debugging.
+That is the argument for the rule rather than a coincidence.
+
+**Model parity is not wire parity.** `--walk` and `--diff` reach their models through
+the library, so they prove the model and not the route.
+A route can accept a parameter the library never sees, or drop an envelope key, with
+those transcripts still green — which is what happened when the nav filter shipped.
+`--api` closes that gap by issuing the request the browser would issue.
+So a golden counts as evidence for a route only if it names that route, and
+`check_parity.py` enforces exactly that.
+
+**Why goldens rather than more integration tests.**
+`tbd guidelines golden-testing-guidelines` makes the case: capture a broad, stable slice
+of what the system does, keep it in the repository, and read the diffs.
+The discipline that keeps it honest is that `make golden-update` records an *intended*
+change and is never run to clear a failure.
+A regenerated transcript nobody read converts a regression into a committed expectation.
+
+**Normalize only what a fixture cannot pin.** `metabrowser/normalize.py` is the stated
+session schema. Revisions and mtimes stay real, because fixture repositories build
+deterministically and fixtures pin mtimes with `touch -t`; hiding a value the fixture
+controls removes the coverage the golden existed to provide.
+Placeholders use angle brackets, because tryscript reads `[NAME]` in expected output as
+an elision pattern and `[ROOT]` is one of its built-ins.
+
+**State counts too.** The cache persists layout, identity, entry state, quarantine, and
+trash, none of which appears in a response envelope.
+Those are read through `/api/cache/*` like any other model rather than through a bespoke
+inspection command, which is the practical reason to prefer a route to a CLI mode.
+
 ## Compatibility and Legacy Code
 
 `tbd guidelines backward-compatibility-rules` owns the general rules: the deciding

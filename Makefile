@@ -58,6 +58,7 @@ lint:
 	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
 	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
+	$(UV_RUN) python -m devtools.check_parity
 
 format:
 	$(MAKE) format-markdown
@@ -82,6 +83,7 @@ lint-check:
 	$(UV_RUN) python -m devtools.check_file_type_colors --quiet
 	$(UV_RUN) python -m devtools.check_tooltips
 	$(UV_RUN) python -m devtools.check_supply_chain
+	$(UV_RUN) python -m devtools.check_parity
 	$(FLOWMARK) --auto --check .
 
 test:
