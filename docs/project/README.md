@@ -51,6 +51,9 @@ links to the document that covers each in depth.
 
 ## Reviews
 
+- [Delivery order for Git status, the repository cache, and providers](reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
+  — reviews the architecture and plans against the stated priority order, and finds the
+  gates that order does not yet show
 - [Repository-library phasing and GitHub content model](reviews/review-2026-08-26-repository-library-and-github-model.md)
   — design review that separates generic Git caching from GitHub integration and defines
   the strict provider-model and snapshot boundaries
