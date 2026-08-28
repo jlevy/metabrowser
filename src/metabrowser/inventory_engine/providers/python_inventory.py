@@ -96,6 +96,7 @@ from metabrowser.inventory_engine.contract import (
     SourceKind,
     VersionUnavailableError,
     WorkCounters,
+    ascii_casefold,
     catalog_terminal_suffix,
     inventory_scope_fingerprint,
 )
@@ -220,7 +221,7 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
             bucket = self._index._children_index.get(parent)
             if bucket is None:
                 raise KeyError(parent)
-            return tuple(bucket.values())
+            return tuple(sorted(bucket.values(), key=_child_order))
 
     def get(  # type: ignore[override]
         self,
@@ -229,7 +230,9 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
     ) -> Sequence[FsEntry]:
         with self._index._rollup_cache_lock:
             bucket = self._index._children_index.get(parent)
-            return tuple(bucket.values()) if bucket is not None else default
+            return (
+                tuple(sorted(bucket.values(), key=_child_order)) if bucket is not None else default
+            )
 
     def __iter__(self) -> Iterator[str]:
         with self._index._rollup_cache_lock:
@@ -423,16 +426,26 @@ def _internal_entry(entry: InventoryEntry | FsEntry) -> FsEntry:
     )
 
 
+def _child_order(row: FsEntry) -> tuple[bool, bytes]:
+    """The contract's intra-directory order: directories first, then canonical bytes.
+
+    One definition, because there are two paths that produce a directory's children and
+    they disagreed. The snapshot builder sorted; the read-through view returned dictionary
+    insertion order, so which order a directory page came back in depended on which path
+    served it. Byte order also gives uppercase before lowercase, which is what the
+    contract states.
+    """
+
+    return (row.type != "dir", row.name.encode("utf-8"))
+
+
 def _children_for(entries: Sequence[FsEntry]) -> dict[str, tuple[FsEntry, ...]]:
     mutable: dict[str, list[FsEntry]] = {}
     for entry in entries:
         if entry.path == entry.parent:
             continue
         mutable.setdefault(entry.parent, []).append(entry)
-    return {
-        parent: tuple(sorted(rows, key=lambda row: (row.type != "dir", row.name.encode("utf-8"))))
-        for parent, rows in mutable.items()
-    }
+    return {parent: tuple(sorted(rows, key=_child_order)) for parent, rows in mutable.items()}
 
 
 def _directory_rows(
@@ -485,8 +498,12 @@ def _catalog_entry_matches(entry: FsEntry, query: CatalogQuery) -> bool:
     if query.size_less_than is not None and entry.size >= query.size_less_than:
         return False
     if query.terminal_extensions:
+        # Both sides are folded. Folding only the candidate would silently reject a query
+        # that spelled its suffix `.PDF`, which is the kind of asymmetry that reads as a
+        # missing file rather than as a rejected filter.
         terminal = catalog_terminal_suffix(entry.name)
-        if terminal not in query.terminal_extensions:
+        wanted = {ascii_casefold(value) for value in query.terminal_extensions}
+        if terminal not in wanted:
             return False
     if query.ancestor_names:
         parts = PurePosixPath(entry.path).parts[:-1]
@@ -2016,19 +2033,36 @@ class _PythonInventoryStore:
             if entry.type == "file"
             and entry.mtime_ns >= cutoff
             and (not query.prefix or entry.path.startswith(query.prefix))
-            and (not query.extensions or entry.ext in query.extensions)
+            and (
+                not query.extensions
+                or ascii_casefold(entry.ext)
+                in {ascii_casefold(value) for value in query.extensions}
+            )
             and (query.include_ignored or not entry.gitignored)
         ]
-        matching.sort(key=lambda entry: entry.mtime_ns, reverse=True)
+        # Two orders, and they are different questions.
+        #
+        # Selection ranks ignored last, then newest, then canonical path. Presentation
+        # then restores pure recency within the page that survived.
+        #
+        # Demoting ignored entries is deliberate and load-bearing: an `npm install` writes
+        # thousands of files at once, and a pure recency ranking would hand back ten
+        # `node_modules` entries and none of the caller's own work, which is a useless
+        # answer to "what have I been working on".
+        #
+        # Applying it in *every* branch is the change. It used to fire only when the match
+        # count exceeded the row bound, so the same query name carried two different
+        # ranking contracts and which one a caller received depended on how many rows
+        # happened to match. A rule that appears at a threshold cannot be agreed with a
+        # second provider, and cannot be tested without knowing the corpus size.
+        #
+        # The path is the final key in both sorts because it is unique within one index,
+        # which makes each total. A stable sort on time alone leaves ties resolved by
+        # whatever order `entries` was built in, and that is not a contract.
+        matching.sort(key=lambda entry: (entry.gitignored, -entry.mtime_ns, entry.path))
         total = len(matching)
-        if total > query.max_rows:
-            capped = [entry for entry in matching if not entry.gitignored][: query.max_rows]
-            if len(capped) < query.max_rows:
-                capped.extend(entry for entry in matching if entry.gitignored)
-                capped = capped[: query.max_rows]
-            capped.sort(key=lambda entry: entry.mtime_ns, reverse=True)
-        else:
-            capped = matching
+        capped = matching[: query.max_rows]
+        capped.sort(key=lambda entry: (-entry.mtime_ns, entry.path))
         ignored_directories: set[str] = set()
         for entry in capped:
             parts = entry.path.split("/")
