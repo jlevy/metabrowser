@@ -76,8 +76,10 @@ invalidating tests.
   after checkout and metadata validation complete.
 - Keep the browsed working tree pinned and read-only from Metabrowser’s perspective.
   Fetching refs must not dirty or silently advance it.
-- Make a cache hit an offline operation.
-  Network work begins only for a missing entry or an explicit refresh.
+- Make a cache hit an offline operation for everything the entry actually contains.
+  Network work begins only for a missing entry or an explicit refresh — and for a
+  blobless entry, file content is subject to the lazy-fetch policy Phase 0 chooses
+  rather than being silently exempt from this goal.
 - Establish `~/.metabrowser/` as a versioned application home beginning at layout format
   `f01`.
 - Give each machine-owned YAML family a strict, independently versioned contract, with
@@ -586,6 +588,34 @@ Dropping a parameter is not silent when it changes what the user would see: a UR
 for a display mode Metabrowser does not have opens the file and says which part of the
 request it could not honor.
 
+### What a selection can actually address
+
+The selection is bounded by the URL grammar, and that boundary is narrower than the
+table above suggests.
+
+`/view/<path>` addresses the served tree; `/commit/<rev>[/<inner>]` addresses a change
+set. **Neither addresses file content at an arbitrary revision**, and
+[the grammar says why](../../architecture.md#browser-url-grammar): a revision is not a
+path in the served tree, so it gets its own route rather than a sigil inside `/view/`.
+
+A selection therefore resolves to a real surface when `<ref>` resolves to the entry’s
+pinned `active_revision` — the ordinary case, because acquisition pins the default
+branch and that is the ref most pasted URLs carry.
+When `<ref>` names some other branch, tag, or commit, Phase 1B opens the repository at
+its pinned revision and reports which revision was requested and which is served.
+It does not show another revision’s content under the requested path, which is the one
+genuinely wrong outcome available here.
+
+Line and column anchors have the same shape of limit: carried through the parse, applied
+where the target view supports a line selection, and reported rather than silently
+dropped where it does not.
+
+Addressing content at an arbitrary revision is a real gap, and closing it is what a
+content-at-revision route would do.
+It is not in this phase and this plan does not promise it.
+Opening the right repository at its pinned revision while saying so is bounded and
+honest; promising a file at a ref nothing can render is not.
+
 ### The ref and path boundary is ambiguous, and the clone resolves it
 
 `/<owner>/<repo>/tree/<ref>/<path>` has no delimiter between the ref and the path, and
@@ -611,6 +641,20 @@ selection.
 This is a case where doing the work locally is strictly better than the provider API
 would be, and it is the reason selection resolution belongs after acquisition rather
 than inside URL parsing.
+
+**What it resolves against matters.** A fresh clone has exactly one local branch under
+`refs/heads/`; every other branch exists only as `refs/remotes/origin/<name>`. Resolving
+a bare branch name against local heads alone would find the default branch and nothing
+else — the common case working by accident while every other case fails.
+The candidate split resolves against remote-tracking refs and tags as well as local
+heads, and an object-id-shaped `<ref>` is checked as an object first.
+
+One URL shape spells that namespace out and must not be mistaken for the first two
+segments of a path:
+
+```text
+https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/<path>
+```
 
 ### Pull requests: the shape now, the content later
 
@@ -701,6 +745,48 @@ credential lookup, or background refresh.
 This rule is observable and tested.
 A failed backfill leaves the published entry usable and honestly marked partial; it does
 not turn a successful open into a fatal error.
+
+### Blobless acquisition and the offline guarantee
+
+These two commitments are in tension, and the plan previously held both without
+reconciling them:
+
+- a cache hit is an offline operation, served without fetch; and
+- initial acquisition is blobless, with backfill running afterwards.
+
+A blobless clone does not contain file content.
+Git fills that in lazily from the promisor remote at the moment something reads a
+missing blob — so between publication and backfill completion, a read on a *server
+request path* can attempt network I/O. The project’s own research observed exactly this
+failure rather than reasoning about it: a blame in a blobless clone failed outright with
+`could not fetch … from promisor remote` while the network was intercepted.
+
+That makes “offline cache hit” true for history and tree structure and false for file
+content, which is not a distinction a user should discover by having a request hang.
+
+Phase 0 decides the policy and records it beside the
+[version gates](#git-version-gates).
+The options, in preference order:
+
+1. **Disable lazy fetch on read paths** (`--no-lazy-fetch` / `GIT_NO_LAZY_FETCH`) and
+   map a missing object to the existing `deferred` or `unavailable` availability, which
+   backfill completion flips to `ready`. Reads stay bounded and offline by construction,
+   and the honest partial state the plan already models carries the meaning.
+   This needs its own floor row, since the option is recent — Phase 0 verifies the
+   version.
+2. **Gate blobless acquisition on that floor** and fall back to full clone below it, so
+   there is never a published entry whose reads can reach the network unexpectedly.
+3. **Accept lazy fetch, bound it, and rewrite the guarantee** to what is true: history
+   and tree structure offline, file content per `object_state`.
+
+Option 3 is listed because it may be the right trade, not because it is the fallback: it
+is the only one that keeps a blobless entry fully readable when the network *is*
+available. What is not acceptable is keeping the current wording, which promises offline
+reads that a blobless entry cannot deliver.
+
+Whichever is chosen, “read of a not-yet-backfilled blob, online and offline” joins the
+Phase 1B acceptance list beside interrupted clone and unavailable network.
+It is currently the only adverse path there with no stated outcome.
 
 ### Git version gates
 
@@ -825,14 +911,21 @@ repository that opens, so its scope is stated rather than assumed.
 
 **Not negotiable**, because each one is what makes an interrupted or concurrent
 operation safe rather than corrupting: source identity, atomic publication with a
-no-replace rename, application-home locking, honest recorded state, `CACHEDIR.TAG`, and
-the `staging`/`trash` reclamation sweep.
+no-replace rename, application-home locking, honest recorded state, `CACHEDIR.TAG`, the
+`staging`/`trash` reclamation sweep, and compiled-schema drift checking.
 A cache without these is not a smaller cache; it is one that loses entries.
 
 **Deferrable if the phase proves too large to land in one step**, because each only pays
 off once a *second* reader exists — that is, once a released version must read entries
-another version wrote: the sequential migration harness, the ordered format history
-beyond recording `f01`, and compiled-schema drift checking.
+another version wrote: the sequential migration harness and the ordered format history
+beyond recording `f01`.
+
+Drift checking is **not** deferrable, though an earlier draft listed it here.
+Drift is a single-release failure: a packaged schema silently diverging from its model
+weakens `status: enforced` the moment it happens, with no second reader required.
+Dropping it would reopen exactly the hole the
+[2026-08-26 design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
+closed when it required both a compiled schema and a strict model.
 The strict Pydantic models stay either way; it is the portable-schema and migration
 machinery around them that can follow.
 
@@ -882,14 +975,18 @@ that already exist costs more than building it first.
   lookup, including against an application home the process cannot write.
 - [ ] Start measured object backfill only after serving; persist honest partial,
   backfilling, complete, and failed states.
+- [ ] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
+  not-yet-backfilled blob read behaves as decided both online and offline.
 - [ ] Force the untrusted profile for URL-opened roots once `mb-vib1` lands; until then
   acquisition, identity, publication, and CLI inspection may ship, and serving may not.
 - [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
   interrupted clone, read-only application home, unsupported Git version, and repair
   guidance.
 - [ ] Add URL-reduction goldens for every row of the variants table, both fragment and
-  query tables, a slash-containing branch name, a reserved namespace, and a pull-request
-  URL that opens the repository while naming the object it cannot yet render.
+  query tables, a slash-containing branch name, a tag rather than a branch, the
+  `raw.githubusercontent.com/.../refs/heads/<branch>/...` spelling, a ref that is not
+  the pinned revision, a reserved namespace, and a pull-request URL that opens the
+  repository while naming the object it cannot yet render.
 
 ### Phase 2: Generic catalog, refresh, and cache management
 
@@ -1018,15 +1115,9 @@ above.
 
 - Phase 0 selects full versus blobless initial acquisition from current route
   measurements.
-- Phase 4 selects the physical snapshot sharding after fixture counts and parse costs
-  are measured. Its logical contracts and atomic-publication invariants are not open.
-- Phase 5 selects REST, GraphQL, or a hybrid per acquisition need, and durable records
-  do not expose that transport choice.
-  This is narrower than it first reads: the v1 model already contains GraphQL-only
-  fields such as `review_decision`, so GraphQL is presumed for pull requests and what
-  stays open is which transport serves each acquisition.
-  See
-  [Transport is already partly decided, and the model should say so](#transport-is-already-partly-decided-and-the-model-should-say-so).
+- Snapshot sharding and transport selection moved with
+  [the provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) and are
+  deferred there rather than here.
 - Automatic eviction waits for Phase 2 size data and remains absent unless a defensible
   default follows.
 - A live session either retains its pinned root until reopen or explicitly accepts a
@@ -1039,9 +1130,11 @@ Phase 1B is complete when:
 - `metab <any-common-repository-url>` publishes one validated entry under
   `~/.metabrowser/cache/repos/<uniquified-slug>/gitroot` and serves it with the
   untrusted profile;
-- a `/blob/<ref>/<path>` URL opens that file, a `/tree/<ref>/<path>` URL opens that
-  directory, and a line anchor selects those lines — a URL naming a file does not land
-  at the repository root;
+- a `/blob/<ref>/<path>` URL whose `<ref>` resolves to the pinned revision opens that
+  file, and `/tree/<ref>/<path>` opens that directory — a URL naming a file does not
+  land at the repository root;
+- a `<ref>` resolving to any other revision opens the repository at its pinned revision
+  and names both, rather than showing another revision’s content at that path;
 - a branch name containing slashes resolves against the cloned ref list rather than
   being guessed at parse time;
 - repeating the command opens the cached root without clone, fetch, provider detection,

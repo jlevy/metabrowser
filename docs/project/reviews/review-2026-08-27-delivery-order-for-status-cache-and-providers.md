@@ -263,6 +263,34 @@ it. That is what keeps R1 from simply adding its cost to the end of the schedule
 - [Git and comparison sources](../architecture/arch-git-and-comparison-sources.md)
 - [Repository-library phasing and GitHub content model](review-2026-08-26-repository-library-and-github-model.md)
 
+## Status Addendum — 2026-08-27, after independent review
+
+An [independent review](review-2026-08-27-independent-design-review.md) of the same
+material corrected two things here.
+Findings are not rewritten; this records what changed.
+
+**R1 was over-severed.** It was filed as a Blocker.
+The dependency is real and the sequencing consequence stands, but nothing in this plan
+is *incorrect* because of it — the plans already stated that serving is gated, and the
+failure mode is a wrong estimate rather than a wrong design.
+High is the accurate severity, and the review’s own severity table says Blocker is for a
+correctness, security, or soundness failure.
+
+**R1’s Fix option 2 restated the existing posture.** It proposed a narrower deliverable
+that ships acquisition and inspection while serving stays gated — which is what the plan
+already said at `3d04a78` ("Cache storage and clone components may land before that
+gate; serving fetched content may not"). Offering it as a choice implied a change that
+was not one. The genuine choice is option 1: schedule the trust chain deliberately, in
+parallel, because it depends on nothing here.
+
+**R2’s framing understated the problem it named.** Calling web-URL reduction “pure
+string work on a decade-stable shape” was true of the host and path-prefix parsing and
+false of the ref/path split, which is genuinely ambiguous and needs the cloned ref list
+to resolve.
+The revision in `f46bc26` solved it correctly regardless, and the independent
+review credits that; the understatement is recorded because a reader taking the original
+framing at face value would have scoped the work too small.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

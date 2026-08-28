@@ -297,10 +297,26 @@ structures:
    Simpler, but it caps how many status rows are reachable without its own overflow
    treatment.
 
-What is **not** acceptable is one scroller with an offset correction applied at the call
-site. That reintroduces the coupling the virtual window was written to avoid, has to be
-re-derived on every expand, collapse, and status refresh, and silently corrupts the
-segment-rebase budget, which assumes the segment owns the whole scroll range.
+A call-site offset correction is the third option, and it is the one that shipped:
+`mb-180g` was fixed in `0715a66` by having `git-panel.js` convert between the two spaces
+at the boundary, with `historyOrigin()` summing the chrome above the list and a
+`ResizeObserver` re-measuring when it reflows.
+An earlier draft of this section declared that approach unacceptable.
+The code has since falsified the premise, so the claim is withdrawn rather than left
+standing against a shipped fix.
+
+What is left is weaker and more honest.
+The conversion is *correct* — measured from live layout, counting any future sibling
+above the list, re-derived on every render and reflow rather than assumed.
+What it is not is *free*: every element added above the list silently joins that sum, so
+the coupling the virtual window was written to avoid still exists, just handled.
+Changes is large, variable, and user-toggled, which makes it the worst case for that
+handling — a mis-measurement there is a viewport jump proportional to the block’s height
+rather than to one header row.
+
+The preference for a separate scroller is therefore a UX and blast-radius argument, not
+a correctness one, and Phase 2 should choose on those terms rather than on a claim the
+code disproves.
 
 Phase 2 states which structure it chose and adds a browser test that scrolls deep into
 history with Changes both expanded and collapsed, asserting the resolved logical row is
@@ -513,9 +529,19 @@ existing Git wire model.
 The list generation is a SHA-256 digest over canonical serialized status facts:
 
 - current `HEAD` state;
-- normalized, sorted raw records;
-- resolved per-worktree index identity; and
+- normalized, sorted raw records; and
 - the acquisition policies that affect the result.
+
+The resolved index file’s stat identity is deliberately **not** an input.
+Plain terminal `git status` rewrites the index to persist its refreshed stat cache, so a
+user running one in another window would churn the generation with no change to any
+status fact — spending ETag misses, `409 stale_status` responses, and diff
+re-materialization on nothing.
+The normalized records and `HEAD` already capture every change the index identity was
+meant to detect, because a staged change that alters the index also alters a record.
+Index identity still matters for the *one-file* materialization race, where it is
+sampled before and after; that is a different mechanism from the list generation and
+stays.
 
 It is an opaque change token, not a content snapshot ID. A file can change from one
 modified byte sequence to another while remaining `M`.
@@ -961,15 +987,22 @@ than to choose it — and its result is never separately reviewed.
 
 - [ ] Build the dirty-tree fixture corpus and benchmark command covering every state in
   the special-case table, including the stat-dirty content-identical population.
-- [ ] Record status and one-file-diff latency, bytes, retained memory, and
-  representative browser row cost.
+- [ ] Record command-level status and one-file-diff latency and output bytes across the
+  corpus — everything measurable without the parser or the panel.
+- [ ] Defer the measurements that need code to the phase that writes it: peak retained
+  parser bytes and projection cost during Phase 1, browser time-to-first-row and DOM
+  cost during Phase 2, both against this same corpus.
+  A gate cannot produce a number only the implementation can produce, and pretending
+  otherwise is how a gate becomes a formality.
 - [ ] Close the three [open decisions](#open-decisions): the submodule inspection
   option, the entry/byte/timeout/debounce/row budgets, and whether copy detection earns
   its cost.
 
-**Acceptance boundary:** every constant Phase 1 will hard-code exists as a recorded
-measurement with the command that produced it, and the three gate decisions are written
-down with their evidence.
+**Acceptance boundary:** every constant Phase 1 will hard-code *from command-level
+evidence* exists as a recorded measurement with the command that produced it, and the
+three gate decisions are written down with their evidence.
+Constants that depend on the parser or the panel are chosen in those phases against this
+corpus, and recorded the same way.
 If a complete `--untracked-files=all` status cannot be bounded usefully, this phase ends
 in a return to design review rather than in a chosen number — which is a real possible
 outcome and the reason the gate is separable at all.

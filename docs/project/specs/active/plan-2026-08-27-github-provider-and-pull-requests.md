@@ -338,6 +338,47 @@ It does not run Git itself.
 Every base, head, and merge object records whether the object is present, fetchable,
 unavailable because a fork disappeared, or outside the configured acquisition bound.
 
+## Retention and Reclamation
+
+The cache plan established that retention without a reclamation rule is how a cache
+becomes the largest directory in a home folder, and gave `staging`, `trash`, and
+quarantine a rule each.
+Immutable provider snapshots need the same treatment, because “immutable” describes a
+snapshot’s contents, not its lifetime.
+
+| Held | Retained because | Reclaimed by |
+| --- | --- | --- |
+| Snapshots referenced by the current manifest | They are the view being served | Never, while that manifest is current |
+| Snapshots referenced only by superseded manifests | One prior generation is worth keeping for diagnosis after a bad refresh | Bounded generation count; older manifests and the snapshots only they reference are collectable |
+| Snapshots referenced by no retained manifest | Nothing can reach them | Swept with the superseded manifests that orphaned them |
+| Everything, for an offline or deleted source | The last validated set may be the only surviving copy | Never automatically; explicit purge only |
+
+The sweep runs under the same application-home lock as generic reclamation, and never
+collects a snapshot a live session is serving.
+A provider store whose source is gone is the case that must not be swept on a timer — it
+is precisely when the cached copy is irreplaceable.
+
+## Security and Trust
+
+Provider content is third-party content, and moving these phases out of the cache plan
+must not leave that behind with the phases it applied to.
+
+Every provider string — titles, bodies, comments, review text, actor names — is
+untrusted. Markdown and HTML from issues, pull requests, and comments render through the
+existing untrusted-content policy, the same one that gates serving a fetched repository
+at all.
+
+Provider records are validated before publication and bounded by file, field, and
+collection limits established from fixtures and browser measurements, so a hostile or
+merely enormous response cannot become an unbounded document or an unbounded render.
+
+Schema selection comes from the installed registry, never from a path inside a cache
+file. Provider object ids and URLs never become filesystem paths without safe encoding
+and containment checks.
+Credentials stay in `gh`, the OS credential store, or an explicit provider adapter; the
+plugin reports which source it used and never reads a secret into a record, a log, or a
+browser response.
+
 ## Phased Implementation Plan
 
 ### Phase 1: Browsing model and schema corpus — no network
