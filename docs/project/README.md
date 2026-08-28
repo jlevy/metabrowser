@@ -39,6 +39,8 @@ links to the document that covers each in depth.
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
+- [CLI parity and golden coverage](specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md)
+- [CLI-first delivery: parity, Git status, and the repository cache](specs/active/plan-2026-08-28-cli-first-delivery-map.md)
 
 ## Research
 
@@ -55,6 +57,9 @@ links to the document that covers each in depth.
 - [Delivery order for Git status, the repository cache, and providers](reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
   — reviews the architecture and plans against the stated priority order, and finds the
   gates that order does not yet show
+- [Independent design review of the status, cache, and provider plans](reviews/review-2026-08-27-independent-design-review.md)
+  — second opinion on the same material, correcting the delivery-order review’s R1
+  severity and its framing of web-URL reduction
 - [Repository-library phasing and GitHub content model](reviews/review-2026-08-26-repository-library-and-github-model.md)
   — design review that separates generic Git caching from GitHub integration and defines
   the strict provider-model and snapshot boundaries

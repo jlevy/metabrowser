@@ -705,10 +705,33 @@ declines it.
 
 Inputs beginning with `-`, containing credentials, using unknown schemes, or resolving
 to Git helpers such as `ext::` are rejected before Git sees them.
-Production clone policy sets `protocol.allow=never` and explicitly enables only HTTPS
-and SSH. Web-URL reduction runs before this gate, not around it: its output is a clone
-URL that passes through exactly the same transport allowlist, credential rejection, and
-option screening as one the user typed.
+Production clone policy sets `protocol.allow=never` and explicitly enables HTTPS, SSH,
+and `file`.
+
+**Local origins, decided 2026-08-28.** `cache/urls.py` classifies transport as `https`,
+`ssh`, or `local`, and `file://` URLs and local repository paths are accepted as Git
+sources.
+`acquire` binds a `local` source to the untrusted profile unconditionally, which
+is where a source nobody authenticated belongs anyway.
+
+This is a widening of an earlier HTTPS-and-SSH-only rule, and the reason is worth
+stating plainly. The grammar exists to reject input that is ambiguous or dangerous —
+credentials, query, fragment, option-like strings, remote helpers — not to rank
+transports by trust.
+A path on the local filesystem is strictly safer than either transport already allowed:
+no network, no credentials, no name resolution.
+It also serves a real workflow in mirrors and air-gapped checkouts.
+
+The decision is load-bearing for testing, which is the honest reason it came up.
+Acquisition goldens clone from a local origin built in the same sandbox, so they run the
+real `run_git` on the real code path with no network and no mocking.
+The alternative considered and rejected was a test-only escape hatch admitting local
+origins, which would fork production and test logic — the thing
+`tbd guidelines golden-testing-guidelines` warns against most directly, and which would
+mean the acquisition path proved by CI was not the acquisition path users run.
+Web-URL reduction runs before this gate, not around it: its output is a clone URL that
+passes through exactly the same transport allowlist, credential rejection, and option
+screening as one the user typed.
 
 Acquisition publishes one complete entry:
 
@@ -950,6 +973,26 @@ that already exist costs more than building it first.
   backed-up cache data.
 - [ ] Prove config preserves unknown settings while machine records reject unknown
   fields and cache-controlled schema paths cannot redirect validation.
+- [ ] Add the three read routes — `/api/cache/layout`, `/api/cache/entries`, and
+  `/api/cache/entry/{slug}` — projecting the records above, and pin them with a golden
+  through `metab --api`.
+
+That last item is the one most likely to look like it belongs in a later phase, and it
+does not.
+It is what makes every subsequent behavior in this plan assertable: without it,
+the state machine that Phase 1A exists to build is observable only by reading the
+sandbox by hand. It is cheap here, because the records it projects are being written in
+this phase anyway, and it satisfies the state clause in
+[CLI parity](plan-2026-08-21-cli-parity-and-golden-coverage.md).
+
+The routes project **logical** state only — identity, format, publication state, head
+revision. Never a directory listing: pack file names, object counts after `gc`, and
+`.git` internals are not stable across runs, and a golden that asserted them would fail
+for reasons that have nothing to do with this plan.
+
+This phase now depends on `metab --api` (`mb-ian3`) landing first, so that its proof is
+a golden transcript rather than a parallel test harness written and then thrown away.
+See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 
 ### Phase 1B: Generic Git cache and URL open — first usable feature PR
 

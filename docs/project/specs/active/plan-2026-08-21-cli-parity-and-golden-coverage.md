@@ -25,6 +25,25 @@ view — and draws the line where that architecture already draws it:
 > transcript. Only the view layer — how a model is drawn, and how it responds to pointer
 > and keyboard — is exempt, and its behaviour is pinned in `tests/dom/` instead.
 
+Two clauses were added on 2026-08-28, when
+[CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md) applied this principle
+to work that persists state rather than only serving it:
+
+> **State clause.** Every state the system persists is reachable from `metab` as a
+> normalized model and pinned by a golden transcript.
+> Cache layout, entry identity, entry state, and reclamation outcomes are read through
+> `/api/cache/*` like any other model, not through a bespoke inspection command.
+
+> **Prefer a route to a CLI mode.** `--api` reaches every registered route by
+> construction, so a surface exposed as a route is inspectable and golden-pinned for
+> free. A surface exposed only as a CLI mode needs its own flag, its own normalizer path,
+> and its own golden.
+
+The state clause is what the original principle missed: the repository cache writes an
+application home, layout, per-entry records, locks, staging, quarantine, and trash, and
+none of that appears in a response envelope.
+A `--api` transcript would have proved nothing about any of it.
+
 ## Goals
 
 - State the parity principle where it is binding, and enforce it with a check rather
@@ -284,11 +303,14 @@ No user-facing behaviour changes.
 
 ## Open Questions
 
-- Should `--api` accept POST bodies?
-  `/api/kpress/export` and `/api/kpress/render` take POST, so a GET-only mode leaves two
-  routes permanently exempt.
-  A `--data` flag reading a JSON file is the obvious answer, but it is only worth it if
-  those two routes are worth pinning.
+**Closed 2026-08-28: `--api` accepts POST bodies.** `InProcessClient` carries `post`
+from the day it is lifted, and `--data <file>` supplies the body.
+The cost is a few lines at lift time; the alternative leaves `/api/kpress/render` and
+`/api/kpress/export` permanently exempt, which would make the exemption list dishonest
+about why they are there.
+
+Still open:
+
 - Should `--show` follow a container into its children, or is that `--api`’s job through
   the `children` hook?
   Following would make the container contract golden-testable in one command, at the
@@ -305,6 +327,9 @@ No user-facing behaviour changes.
   transcripts beat integration suites for systems like this
 - `tbd guidelines general-testing-rules` — the minimal-tests-maximum-coverage rule this
   serves
+- [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md) — the state clause,
+  the route-over-mode rule, and the file-level map of what this principle is used to
+  build
 - [Development](../../../development.md) — where the reasoning behind the rule lives
 - [tryscript](https://github.com/jlevy/tryscript) — the transcript runner
 

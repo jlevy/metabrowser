@@ -448,6 +448,19 @@ The parser consumes raw bytes incrementally and recognizes these record families
 - `!`: ignored path, rejected from the configured command but parsed defensively; and
 - `#`: optional headers, including branch identity.
 
+Verified against Git 2.50.1, so the `2` family’s shape is recorded rather than assumed:
+
+```text
+2 R. N... 100644 100644 100644 2227cddb 2227cddb R100 renamed.txt\0a.txt\0
+1 A. N... 000000 100644 100644 00000000 587be6b4 weird name.txt\0
+? u.txt\0
+```
+
+The rename’s two paths are two NUL-terminated fields of one record.
+A parser that splits on NUL and treats each field as a record yields `a.txt` as a
+phantom entry and desynchronizes every record after it, which is why the families above
+drive the parse and the delimiter does not.
+
 Unknown optional headers are ignored as Git requires.
 An unknown record family, invalid field count, malformed mode, malformed object ID,
 incomplete rename record, or trailing partial record is a typed acquisition failure.
@@ -1010,6 +1023,13 @@ outcome and the reason the gate is separable at all.
 ### Phase 1: Measured status and comparison backend (`mb-u4mf`)
 
 Starts from the constants Phase 0 chose; it does not produce them.
+It also starts after `metab --api` (`mb-ian3`), so `/api/git/status` is proved by a
+golden transcript on the day it exists rather than by a test harness written here and
+discarded when parity lands.
+Fixture repositories are built with pinned identity and dates, which makes commit
+revisions identical across runs and machines, so the goldens assert real revisions
+instead of placeholders.
+See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 - [ ] Extract the shared raw Git path codec from the immutable diff adapter.
 - [ ] Add cached Git-version parsing and the Git 2.36 status-safety gate; keep
   repository discovery and History usable below it.
