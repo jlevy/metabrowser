@@ -34,6 +34,7 @@ links to the document that covers each in depth.
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
 - [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
 - [Git revision navigation performance](specs/active/plan-2026-08-25-git-revision-navigation-performance.md)
+- [GitHub provider: content model, acquisition, and pull requests](specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
 - [Git status and working-tree diffs](specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
@@ -51,6 +52,9 @@ links to the document that covers each in depth.
 
 ## Reviews
 
+- [Delivery order for Git status, the repository cache, and providers](reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
+  — reviews the architecture and plans against the stated priority order, and finds the
+  gates that order does not yet show
 - [Repository-library phasing and GitHub content model](reviews/review-2026-08-26-repository-library-and-github-model.md)
   — design review that separates generic Git caching from GitHub integration and defines
   the strict provider-model and snapshot boundaries
