@@ -52,6 +52,7 @@ _PANEL_SHARED = "Shared by multiple modes (each option names its modes)"
 _PANEL_SERVE = "Serve"
 _PANEL_WALK = "Walk (--walk)"
 _PANEL_DIFF = "Diff (--diff SPEC)"
+_PANEL_API = "API (--api ROUTE)"
 _PANEL_CHECK_API = "API check (--check-api)"
 _PANEL_REMOTE = "Remote (--remote)"
 _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
@@ -77,6 +78,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
         }
     ),
     "diff": frozenset({"fmt", "diff_patch", "diff_check", "log_level"}),
+    "api": frozenset({"fmt", "data", "plugins_dir", "log_level", "index_timeout"}),
     "check-api": frozenset({"plugins_dir", "log_level", "index_timeout"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
@@ -88,6 +90,7 @@ _MODE_LABELS: dict[str, str] = {
     "serve": "serve mode (the default)",
     "walk": "--walk",
     "diff": "--diff",
+    "api": "--api",
     "check-api": "--check-api",
     "remote": "--remote",
     "plugins": "--plugins",
@@ -113,6 +116,7 @@ _OPTION_LABELS: dict[str, str] = {
     "filter_age": "--age",
     "filter_min_size": "--min-size",
     "filter_ignored": "--ignored/--no-ignored",
+    "data": "--data",
     "index_timeout": "--index-timeout",
     "base_port": "--base-port",
     "ssh_options": "--ssh-options",
@@ -152,6 +156,7 @@ def _resolve_mode(
     *,
     walk: bool,
     diff: str | None,
+    api: str | None,
     check_api: bool,
     remote: str | None,
     plugins: bool,
@@ -164,6 +169,7 @@ def _resolve_mode(
         for label, on in (
             ("--walk", walk),
             ("--diff", diff is not None),
+            ("--api", api is not None),
             ("--check-api", check_api),
             ("--remote", remote is not None),
             ("--plugins", plugins),
@@ -193,6 +199,7 @@ def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
         hints = {
             "serve": "e.g. `metab .`",
             "walk": "e.g. `metab . --walk`",
+            "api": "e.g. `metab . --api /api/tree`",
             "check-api": "e.g. `metab . --check-api`",
         }
         hint = hints.get(mode, "pass the required root")
@@ -218,6 +225,7 @@ _app = typer.Typer(add_completion=False)
         "metab .\n\n"
         "metab ./path/to/directory --no-open\n\n"
         "metab . --walk --format json\n\n"
+        "metab . --api '/api/tree?depth=2'\n\n"
         "metab . --check-api\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
         "metab --plugins"
@@ -262,6 +270,21 @@ def _metab(
         "--diff-check",
         help="Run the apply oracle: rebuild the target tree and compare hashes (--diff only).",
         rich_help_panel=_PANEL_DIFF,
+    ),
+    api: str | None = typer.Option(
+        None,
+        "--api",
+        metavar="ROUTE",
+        help="Issue one /api/ route through the real request stack and print the "
+        "normalized envelope (no browser, no listening port).",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    data: Path | None = typer.Option(
+        None,
+        "--data",
+        metavar="FILE",
+        help="Send FILE as the request body, making the request a POST (--api only).",
+        rich_help_panel=_PANEL_API,
     ),
     check_api: bool = typer.Option(
         False,
@@ -498,6 +521,7 @@ def _metab(
         ctx,
         walk=walk,
         diff=diff,
+        api=api,
         check_api=check_api,
         remote=remote,
         plugins=plugins,
@@ -543,6 +567,21 @@ def _metab(
             fmt=fmt,
             patch_path=diff_patch,
             check=diff_check,
+        )
+    elif mode == "api":
+        assert api is not None
+        from metabrowser.cli.api_cli import run_api
+
+        run_api(
+            _require_root(ctx, root, mode),
+            route=api,
+            # --format defaults to text for the human report modes; an envelope
+            # has no text rendering, so this mode reads that default as json.
+            fmt="json" if fmt == "text" else fmt,
+            data=data,
+            plugins_dir=plugins_dir,
+            log_level=log_level,
+            index_timeout_s=index_timeout,
         )
     elif mode == "check-api":
         from metabrowser.cli.check_api import run_api_check

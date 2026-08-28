@@ -127,12 +127,26 @@ The rules, and why each is needed:
 
 | Field or shape | Becomes | Why |
 | --- | --- | --- |
-| Absolute path under `root` | `[ROOT]/...` | sandbox path varies |
-| Absolute path under `home` | `[HOME]/...` | cache home varies |
-| `mtime`, `ctime` | `[MTIME]` | unless the fixture pinned it with `touch -t` |
-| `elapsed_ms`, `duration_ms` | `[ELAPSED]` | timing |
+| Absolute path under `root` | `<ROOT>/...` | sandbox path varies |
+| Absolute path under `home` | `<HOME>/...` | cache home varies |
+| `mtime`, `mtime_hash` | `<MTIME>`, **opt-in** | fixtures pin these with `touch -t`; a clone into the cache cannot |
 | Pack file names, `.git` internals | omitted | never stable; see below |
 | Git revisions | **kept** | fixture repos are built deterministically |
+
+The table is short because it was measured.
+Running the same routes twice against two sandbox roots, the only field that varied was
+`root`, and no envelope carries an elapsed or duration field — so an `<ELAPSED>` rule
+would be speculative and is absent until something needs it.
+Mtime normalization is opt-in rather than default for the same reason revisions are
+kept: the existing goldens pin mtimes and assert the real values, and normalizing by
+default would delete that coverage.
+
+Placeholders use angle brackets, not square ones.
+tryscript reads `[NAME]` in expected output as an elision pattern, and `[ROOT]` is one
+of its built-ins — it matches the test file’s directory rather than the served root — so
+a square-bracket placeholder is silently reinterpreted instead of compared.
+This was found by writing the first `--api` golden: the three cases carrying `[ROOT]`
+failed while the three without it passed.
 
 Keeping revisions is deliberate and is the single most valuable decision in the testing
 design. See [Deterministic origin repositories](#deterministic-origin-repositories).
@@ -360,7 +374,7 @@ git init -q --initial-branch=main origin
 
 Verified: two repositories built this way on Git 2.50.1 both produced HEAD
 `1e9bc884891152dfb4e0ac2d87c40f5a5b7389a9`. So Git goldens assert **real revisions**,
-not `[REV]` placeholders.
+not `<REV>` placeholders.
 A commit that changes shape changes the golden, which is the entire point.
 `--initial-branch=main` is required: the default branch name varies by Git version and
 is the one genuinely unstable thing in the recipe.

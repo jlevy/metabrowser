@@ -40,25 +40,32 @@ $ metab --help
 │ --help             Show this message and exit.                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
-│ --walk                   Walk ROOT with the inventory walker and dump the    │
-│                          result (no server).                                 │
-│ --diff             SPEC  Show a change set: BASE..TARGET, one revision       │
-│                          (against its first parent), or a .patch/.diff file  │
-│                          under ROOT.                                         │
-│ --check-api              Run the navigation API scenario without a browser   │
-│                          or listening port.                                  │
-│ --remote           HOST  SSH into HOST, start metab there, and tunnel it to  │
-│                          localhost. Pass the remote directory with --path.   │
-│ --plugins                List every discovered plugin.                       │
-│ --plugin           NAME  Print the full resolved manifest for one plugin.    │
-│ --doctor                 Validate every discovered plugin; exit non-zero on  │
-│                          any problem.                                        │
+│ --walk                    Walk ROOT with the inventory walker and dump the   │
+│                           result (no server).                                │
+│ --diff             SPEC   Show a change set: BASE..TARGET, one revision      │
+│                           (against its first parent), or a .patch/.diff file │
+│                           under ROOT.                                        │
+│ --api              ROUTE  Issue one /api/ route through the real request     │
+│                           stack and print the normalized envelope (no        │
+│                           browser, no listening port).                       │
+│ --check-api               Run the navigation API scenario without a browser  │
+│                           or listening port.                                 │
+│ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
+│                           localhost. Pass the remote directory with --path.  │
+│ --plugins                 List every discovered plugin.                      │
+│ --plugin           NAME   Print the full resolved manifest for one plugin.   │
+│ --doctor                  Validate every discovered plugin; exit non-zero on │
+│                           any problem.                                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
 │ --diff-patch        PATH  Print one changed file's hunks from the comparison │
 │                           (--diff only).                                     │
 │ --diff-check              Run the apply oracle: rebuild the target tree and  │
 │                           compare hashes (--diff only).                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ API (--api ROUTE) ──────────────────────────────────────────────────────────╮
+│ --data        FILE  Send FILE as the request body, making the request a POST │
+│                     (--api only).                                            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
 │ --path               TEXT   Serve: relative path from ROOT to select on      │
@@ -166,6 +173,7 @@ $ metab --help
  metab .
  metab ./path/to/directory --no-open
  metab . --walk --format json
+ metab . --api '/api/tree?depth=2'
  metab . --check-api
  metab --remote example-host --path /srv/shared-files
  metab --plugins
@@ -195,25 +203,32 @@ $ metab
 │ --help             Show this message and exit.                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Modes (default: serve ROOT) ────────────────────────────────────────────────╮
-│ --walk                   Walk ROOT with the inventory walker and dump the    │
-│                          result (no server).                                 │
-│ --diff             SPEC  Show a change set: BASE..TARGET, one revision       │
-│                          (against its first parent), or a .patch/.diff file  │
-│                          under ROOT.                                         │
-│ --check-api              Run the navigation API scenario without a browser   │
-│                          or listening port.                                  │
-│ --remote           HOST  SSH into HOST, start metab there, and tunnel it to  │
-│                          localhost. Pass the remote directory with --path.   │
-│ --plugins                List every discovered plugin.                       │
-│ --plugin           NAME  Print the full resolved manifest for one plugin.    │
-│ --doctor                 Validate every discovered plugin; exit non-zero on  │
-│                          any problem.                                        │
+│ --walk                    Walk ROOT with the inventory walker and dump the   │
+│                           result (no server).                                │
+│ --diff             SPEC   Show a change set: BASE..TARGET, one revision      │
+│                           (against its first parent), or a .patch/.diff file │
+│                           under ROOT.                                        │
+│ --api              ROUTE  Issue one /api/ route through the real request     │
+│                           stack and print the normalized envelope (no        │
+│                           browser, no listening port).                       │
+│ --check-api               Run the navigation API scenario without a browser  │
+│                           or listening port.                                 │
+│ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
+│                           localhost. Pass the remote directory with --path.  │
+│ --plugins                 List every discovered plugin.                      │
+│ --plugin           NAME   Print the full resolved manifest for one plugin.   │
+│ --doctor                  Validate every discovered plugin; exit non-zero on │
+│                           any problem.                                       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Diff (--diff SPEC) ─────────────────────────────────────────────────────────╮
 │ --diff-patch        PATH  Print one changed file's hunks from the comparison │
 │                           (--diff only).                                     │
 │ --diff-check              Run the apply oracle: rebuild the target tree and  │
 │                           compare hashes (--diff only).                      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ API (--api ROUTE) ──────────────────────────────────────────────────────────╮
+│ --data        FILE  Send FILE as the request body, making the request a POST │
+│                     (--api only).                                            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
 │ --path               TEXT   Serve: relative path from ROOT to select on      │
@@ -321,6 +336,7 @@ $ metab
  metab .
  metab ./path/to/directory --no-open
  metab . --walk --format json
+ metab . --api '/api/tree?depth=2'
  metab . --check-api
  metab --remote example-host --path /srv/shared-files
  metab --plugins

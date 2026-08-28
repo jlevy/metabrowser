@@ -8,6 +8,12 @@ The bias is deliberate: normalize only what a fixture cannot pin. Hiding a
 value the fixture controls removes the coverage the golden existed to provide,
 so revisions and mtimes stay real by default and only sandbox-dependent paths
 are rewritten unconditionally.
+
+Placeholders use angle brackets rather than square ones because tryscript reads
+``[NAME]`` in expected output as an elision pattern, and ``[ROOT]`` is one of
+its built-ins -- it matches the test file's directory, not the served root. A
+square-bracket placeholder is therefore silently reinterpreted rather than
+compared.
 """
 
 from __future__ import annotations
@@ -17,9 +23,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-ROOT_PLACEHOLDER = "[ROOT]"
-HOME_PLACEHOLDER = "[HOME]"
-MTIME_PLACEHOLDER = "[MTIME]"
+ROOT_PLACEHOLDER = "<ROOT>"
+HOME_PLACEHOLDER = "<HOME>"
+MTIME_PLACEHOLDER = "<MTIME>"
 
 # Filesystem timestamps, which a fixture normally pins with `touch -t`. A clone
 # into the cache cannot pin them, which is the case `normalize_mtimes` serves.
