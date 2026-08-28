@@ -5,7 +5,7 @@ title: "Repository library: generic Git cache, chooser, and provider snapshots"
 kind: epic
 status: open
 priority: 1
-version: 23
+version: 26
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies:
@@ -29,8 +29,11 @@ child_order_hints:
   - is-01m10xd6s2fy7qthahs3cz25gk
   - is-01kzt6hdasbhx6maqzvtxntxj7
   - is-01m11xe1pr09sc61h58tq0rcwd
+  - is-01m1389aetecehg10qdf7zb9rz
+  - is-01m1389bszmmkqj7d90sq8p3bj
+  - is-01m1389rewn2mkj8emj3wxwpr7
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-08-27T15:29:20.599Z
+updated_at: 2026-08-28T03:58:28.818Z
 extensions:
   linear:
     id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5

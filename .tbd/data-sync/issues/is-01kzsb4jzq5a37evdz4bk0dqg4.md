@@ -5,7 +5,7 @@ title: "Repository library Phase 1A: f01 and SoftSchema format foundation"
 kind: task
 status: open
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies:
@@ -15,9 +15,11 @@ dependencies:
     target: is-01m10vgw6vhq82cd495kvhh9gf
   - type: blocks
     target: is-01kzsb4jnyd56wy89xmztkmz2m
+  - type: blocks
+    target: is-01m1389aetecehg10qdf7zb9rz
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-08-11T21:19:58.966Z
-updated_at: 2026-08-28T02:57:04.847Z
+updated_at: 2026-08-28T03:58:14.488Z
 extensions:
   linear:
     id: 72de9d89-2da1-484f-b3bf-1a9e3204a9bb
