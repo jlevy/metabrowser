@@ -48,6 +48,8 @@ $ metab --help
 │ --api              ROUTE  Issue one /api/ route through the real request     │
 │                           stack and print the normalized envelope (no        │
 │                           browser, no listening port).                       │
+│ --show             PATH   Report the four layers for one selection: route,   │
+│                           kind, views, and a model summary.                  │
 │ --check-api               Run the navigation API scenario without a browser  │
 │                           or listening port.                                 │
 │ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
@@ -174,6 +176,7 @@ $ metab --help
  metab ./path/to/directory --no-open
  metab . --walk --format json
  metab . --api '/api/tree?depth=2'
+ metab . --show README.md
  metab . --check-api
  metab --remote example-host --path /srv/shared-files
  metab --plugins
@@ -211,6 +214,8 @@ $ metab
 │ --api              ROUTE  Issue one /api/ route through the real request     │
 │                           stack and print the normalized envelope (no        │
 │                           browser, no listening port).                       │
+│ --show             PATH   Report the four layers for one selection: route,   │
+│                           kind, views, and a model summary.                  │
 │ --check-api               Run the navigation API scenario without a browser  │
 │                           or listening port.                                 │
 │ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
@@ -337,6 +342,7 @@ $ metab
  metab ./path/to/directory --no-open
  metab . --walk --format json
  metab . --api '/api/tree?depth=2'
+ metab . --show README.md
  metab . --check-api
  metab --remote example-host --path /srv/shared-files
  metab --plugins

@@ -79,6 +79,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
     ),
     "diff": frozenset({"fmt", "diff_patch", "diff_check", "log_level"}),
     "api": frozenset({"fmt", "data", "plugins_dir", "log_level", "index_timeout"}),
+    "show": frozenset({"fmt", "plugins_dir", "log_level", "index_timeout"}),
     "check-api": frozenset({"plugins_dir", "log_level", "index_timeout"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
@@ -91,6 +92,7 @@ _MODE_LABELS: dict[str, str] = {
     "walk": "--walk",
     "diff": "--diff",
     "api": "--api",
+    "show": "--show",
     "check-api": "--check-api",
     "remote": "--remote",
     "plugins": "--plugins",
@@ -157,6 +159,7 @@ def _resolve_mode(
     walk: bool,
     diff: str | None,
     api: str | None,
+    show: str | None,
     check_api: bool,
     remote: str | None,
     plugins: bool,
@@ -170,6 +173,7 @@ def _resolve_mode(
             ("--walk", walk),
             ("--diff", diff is not None),
             ("--api", api is not None),
+            ("--show", show is not None),
             ("--check-api", check_api),
             ("--remote", remote is not None),
             ("--plugins", plugins),
@@ -200,6 +204,7 @@ def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
             "serve": "e.g. `metab .`",
             "walk": "e.g. `metab . --walk`",
             "api": "e.g. `metab . --api /api/tree`",
+            "show": "e.g. `metab . --show README.md`",
             "check-api": "e.g. `metab . --check-api`",
         }
         hint = hints.get(mode, "pass the required root")
@@ -226,6 +231,7 @@ _app = typer.Typer(add_completion=False)
         "metab ./path/to/directory --no-open\n\n"
         "metab . --walk --format json\n\n"
         "metab . --api '/api/tree?depth=2'\n\n"
+        "metab . --show README.md\n\n"
         "metab . --check-api\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
         "metab --plugins"
@@ -277,6 +283,13 @@ def _metab(
         metavar="ROUTE",
         help="Issue one /api/ route through the real request stack and print the "
         "normalized envelope (no browser, no listening port).",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    show: str | None = typer.Option(
+        None,
+        "--show",
+        metavar="PATH",
+        help="Report the four layers for one selection: route, kind, views, and a model summary.",
         rich_help_panel=_PANEL_MODES,
     ),
     data: Path | None = typer.Option(
@@ -522,6 +535,7 @@ def _metab(
         walk=walk,
         diff=diff,
         api=api,
+        show=show,
         check_api=check_api,
         remote=remote,
         plugins=plugins,
@@ -579,6 +593,18 @@ def _metab(
             # has no text rendering, so this mode reads that default as json.
             fmt="json" if fmt == "text" else fmt,
             data=data,
+            plugins_dir=plugins_dir,
+            log_level=log_level,
+            index_timeout_s=index_timeout,
+        )
+    elif mode == "show":
+        assert show is not None
+        from metabrowser.cli.show_cli import run_show
+
+        run_show(
+            _require_root(ctx, root, mode),
+            path=show,
+            fmt="text" if fmt not in ("json",) else fmt,
             plugins_dir=plugins_dir,
             log_level=log_level,
             index_timeout_s=index_timeout,
