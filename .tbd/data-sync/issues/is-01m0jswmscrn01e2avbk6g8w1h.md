@@ -3,9 +3,9 @@ type: is
 id: is-01m0jswmscrn01e2avbk6g8w1h
 title: "metab --api <route>: any data route through the real request stack"
 kind: feature
-status: open
+status: closed
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
 labels: []
 dependencies:
@@ -29,6 +29,10 @@ dependencies:
     target: is-01kzsb4jzq5a37evdz4bk0dqg4
 parent_id: is-01m0jsvvcqw7knvxbaq4sn6ddj
 created_at: 2026-08-21T18:38:48.107Z
-updated_at: 2026-08-28T03:58:52.795Z
+updated_at: 2026-08-28T06:59:43.100Z
+closed_at: 2026-08-28T06:59:43.087Z
+close_reason: metab --api ROUTE ships with JSON/YAML rendering, POST via --data, query-string passthrough, normalized envelopes, and honest exit codes. Pinned by tests/golden/cli-api.tryscript.md, verified deterministic across consecutive runs.
+resolution: null
+duplicate_of: null
 ---
 One mode, complete by construction for every route now and later. Issues a GET through the in-process ASGI app with no port and no browser, waits for the index where the route needs it, and prints the normalized envelope as JSON or YAML. This is the wire-parity backbone: --walk and --diff prove their models through the library and never touch the route, which is how the nav filter shipped with unparsed query parameters and every golden still green. Ships with cli-api.tryscript.md.
