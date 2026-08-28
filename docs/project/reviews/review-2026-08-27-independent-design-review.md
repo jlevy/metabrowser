@@ -114,7 +114,7 @@ the project’s own research measured commit detail at ~0.5 s cold because
 `--numstat -M -C` needs file content, and observed blame failing outright with
 `could not fetch … from promisor remote` when the network was cut, concluding “a
 blobless clone is not self-sufficient until backfill completes”
-([research](../../research/research-2026-08-11-repo-cache-and-git-url-open.md) lines
+([research](../research/research-2026-08-11-repo-cache-and-git-url-open.md) lines
 259–283).
 
 The plan absorbed that observation only as “run backfill promptly” and “honest partial
@@ -502,7 +502,7 @@ Recorded so the next reviewer does not repeat the work:
 - [Git and comparison sources](../architecture/arch-git-and-comparison-sources.md)
 - [Delivery order for Git status, the repository cache, and providers](review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
 - [Repository-library phasing and GitHub content model](review-2026-08-26-repository-library-and-github-model.md)
-- [Repository-cache research](../../research/research-2026-08-11-repo-cache-and-git-url-open.md)
+- [Repository-cache research](../research/research-2026-08-11-repo-cache-and-git-url-open.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

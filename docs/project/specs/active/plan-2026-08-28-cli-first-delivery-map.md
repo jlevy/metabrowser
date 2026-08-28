@@ -405,8 +405,7 @@ a far better test than any unit test of the same code.
 > persists, has a `metab` equivalent and a golden transcript.
 > Prefer adding a route to adding a CLI mode: `--api` reaches routes by construction.
 > `devtools/check_parity.py` enforces this and names what is missing; the exemption list
-> and its reasons live in
-> [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+> and its reasons live in `docs/project/architecture/arch-views-models-routes.md`.
 
 The reasoning — the four layers, why the view is exempt, why state needed its own clause
 — goes in `docs/development.md`, which today does not mention parity at all.

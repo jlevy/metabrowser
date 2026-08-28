@@ -55,7 +55,7 @@ view — and draws the line where that architecture already draws it:
 ### What the layering already gives us
 
 A selection travels four layers, described in
-[Views, Models, and Routes](../architecture/arch-views-models-routes.md):
+[Views, Models, and Routes](../../architecture/arch-views-models-routes.md):
 
 ```text
 route  ──►  kind  ──►  model  ──►  view
@@ -222,7 +222,7 @@ at the check rather than restating it:
 > Every route, kind, and model the browser consumes has a `metab` equivalent and a
 > golden transcript. `devtools/check_parity.py` enforces it and names what is missing;
 > the exemption list and its reasons are in
-> [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+> `docs/project/architecture/arch-views-models-routes.md`.
 
 ## Implementation Plan
 
@@ -299,13 +299,13 @@ No user-facing behaviour changes.
 
 ## References
 
-- [Views, Models, and Routes](../architecture/arch-views-models-routes.md) — the four
+- [Views, Models, and Routes](../../architecture/arch-views-models-routes.md) — the four
   layers this principle is drawn on, and the home of the parity table
 - `tbd guidelines golden-testing-guidelines` — sessions, stable fields, and why
   transcripts beat integration suites for systems like this
 - `tbd guidelines general-testing-rules` — the minimal-tests-maximum-coverage rule this
   serves
-- [Development](../../development.md) — where the reasoning behind the rule lives
+- [Development](../../../development.md) — where the reasoning behind the rule lives
 - [tryscript](https://github.com/jlevy/tryscript) — the transcript runner
 
 <!-- This document follows common-doc-guidelines.md.

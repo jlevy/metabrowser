@@ -40,7 +40,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 
 | Kind | Matches | Views (default first) | Model |
 | --- | --- | --- | --- |
-| `folder` | Directories | Overview, Treemap | Folder envelope + [File Rollup Format](../file-rollup-format/file-rollup-format.md) |
+| `folder` | Directories | Overview, Treemap | Folder envelope + [File Rollup Format](file-rollup-format/file-rollup-format.md) |
 | `markdown` | `.md` | Document, Source | File envelope; KPress render |
 | `text` | Text files | Source | File envelope |
 | `structured` | `.json`, `.yaml`, `.yml` | Tree, Source | File envelope, parsed hook |
@@ -85,7 +85,7 @@ These are tool-neutral: nothing in a document references Metabrowser.
 | Format | Describes | Authority | Implementations |
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
-| [File Rollup Format](../file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
+| [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
 
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact — an internal contract, not a standard.

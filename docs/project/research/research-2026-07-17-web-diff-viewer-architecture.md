@@ -779,7 +779,7 @@ one-million-work-unit fallback.
 The result keeps the existing patch size policy for similar text and bounds
 edit-distance work rather than adding a smaller file-size cutoff.
 The reproducible table, including retained-heap evidence and its measurement limits, is
-in the [diff intraline benchmark](../../../../explorations/diff-intraline/).
+in the [diff intraline benchmark](../../../explorations/diff-intraline/).
 
 The final visual hierarchy uses shared success/error tokens: a 3% whole-line mix, a 9%
 inner overlay for an effective 11.7% changed-range mix, and a solid three-pixel gutter

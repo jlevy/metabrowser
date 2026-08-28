@@ -595,8 +595,8 @@ table above suggests.
 
 `/view/<path>` addresses the served tree; `/commit/<rev>[/<inner>]` addresses a change
 set. **Neither addresses file content at an arbitrary revision**, and
-[the grammar says why](../../architecture.md#browser-url-grammar): a revision is not a
-path in the served tree, so it gets its own route rather than a sigil inside `/view/`.
+[the grammar says why](../../../architecture.md#browser-url-grammar): a revision is not
+a path in the served tree, so it gets its own route rather than a sigil inside `/view/`.
 
 A selection therefore resolves to a real surface when `<ref>` resolves to the entry’s
 pinned `active_revision` — the ordinary case, because acquisition pins the default
