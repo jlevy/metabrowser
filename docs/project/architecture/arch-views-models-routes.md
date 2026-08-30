@@ -148,11 +148,11 @@ closes it, and **exempt** gives the reason it has no model to pin.
 | `/api/capabilities` | gap | `--api` | `mb-4uy2` |
 | `/api/index/progress` | gap | `--api` | `mb-4uy2` |
 | `/api/index/meta` | gap | `--api` | `mb-4uy2` |
-| `/api/git/repo` | gap | `--api` | `mb-s0gw` |
-| `/api/git/refs` | gap | `--api` | `mb-s0gw` |
-| `/api/git/summary` | gap | `--api` | `mb-s0gw` |
-| `/api/git/log` | gap | `--api` | `mb-s0gw` |
-| `/api/git/commit` | gap | `--api` | `mb-s0gw` |
+| `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/git/summary` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/git/log` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/git/commit` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/kpress/render` | gap | `--api --data` | `mb-4uy2` |
 | `/api/kpress/export` | gap | `--api --data` | `mb-4uy2` |
 | `/api/plugin/agent-log/charts` | gap | `--api` | `mb-oolf` |

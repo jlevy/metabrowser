@@ -26,10 +26,16 @@ from typing import Any
 ROOT_PLACEHOLDER = "<ROOT>"
 HOME_PLACEHOLDER = "<HOME>"
 MTIME_PLACEHOLDER = "<MTIME>"
+CURSOR_PLACEHOLDER = "<CURSOR>"
 
 # Filesystem timestamps, which a fixture normally pins with `touch -t`. A clone
 # into the cache cannot pin them, which is the case `normalize_mtimes` serves.
 MTIME_FIELDS: tuple[str, ...] = ("mtime", "mtime_hash")
+
+# Opaque pagination cursors carry a per-request random session token, so no
+# fixture can pin them. Unlike mtimes these are always normalized: there is no
+# arrangement under which the value is reproducible.
+CURSOR_FIELDS: tuple[str, ...] = ("page_cursor",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +72,8 @@ def normalize_payload(value: Any, ctx: NormalizeContext) -> Any:
 
 
 def _normalize(value: Any, ctx: NormalizeContext, *, key: str | None) -> Any:
+    if key in CURSOR_FIELDS and isinstance(value, str) and value:
+        return CURSOR_PLACEHOLDER
     if ctx.normalize_mtimes and key in MTIME_FIELDS:
         return MTIME_PLACEHOLDER
     if isinstance(value, str):
@@ -88,6 +96,8 @@ def describe_schema() -> str:
         f"| Absolute path under the application home | `{HOME_PLACEHOLDER}` | the cache home varies |",
         f"| `{'`, `'.join(MTIME_FIELDS)}` | `{MTIME_PLACEHOLDER}` |"
         " only when the fixture cannot pin them |",
+        f"| `{'`, `'.join(CURSOR_FIELDS)}` | `{CURSOR_PLACEHOLDER}` |"
+        " a random session token; no fixture can pin it |",
         "| Git revisions | kept | fixture repositories build deterministically |",
     ]
     return "\n".join(lines)

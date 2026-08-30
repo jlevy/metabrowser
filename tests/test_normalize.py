@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from metabrowser.normalize import (
+    CURSOR_PLACEHOLDER,
     HOME_PLACEHOLDER,
     MTIME_PLACEHOLDER,
     ROOT_PLACEHOLDER,
@@ -120,3 +121,15 @@ def test_schema_is_documented_for_every_rule_it_applies() -> None:
 
     for token in (ROOT_PLACEHOLDER, HOME_PLACEHOLDER, MTIME_PLACEHOLDER):
         assert token in described
+
+
+def test_a_pagination_cursor_is_always_normalized() -> None:
+    """It carries a random session token, so no fixture arrangement pins it."""
+
+    payload = {"page_cursor": "eyJzIjoiUUJNUzYzTl9QTnI1QWVxVnplQWVYTjNaIn0="}
+
+    assert normalize_payload(payload, _ctx()) == {"page_cursor": CURSOR_PLACEHOLDER}
+
+
+def test_an_absent_cursor_is_left_alone() -> None:
+    assert normalize_payload({"page_cursor": None}, _ctx()) == {"page_cursor": None}
