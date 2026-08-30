@@ -5,12 +5,17 @@ title: File tree icons and colors are a separate taxonomy from the rollup regist
 kind: bug
 status: open
 priority: 1
-version: 2
+version: 6
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
+child_order_hints:
+  - is-01m18s7s2f5qzc7hx8stv2sqcb
+  - is-01m18s7ta5jn8970fczk6v8ry3
+  - is-01m18s7tzag65bkae14mkptrjd
+  - is-01m18s7vz7sxjemx03328vmm70
 created_at: 2026-08-22T19:05:22.759Z
-updated_at: 2026-08-22T21:14:57.215Z
+updated_at: 2026-08-30T07:30:44.838Z
 ---
 Raised in QA: extensions in one rollup family should share an icon and a color.
 
