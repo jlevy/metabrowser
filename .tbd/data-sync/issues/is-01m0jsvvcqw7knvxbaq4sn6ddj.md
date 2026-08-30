@@ -3,9 +3,9 @@ type: is
 id: is-01m0jsvvcqw7knvxbaq4sn6ddj
 title: "CLI parity: every model reachable from metab, every one pinned by a golden"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
 labels: []
 dependencies: []
@@ -23,7 +23,11 @@ child_order_hints:
   - is-01m0jsxgfznxwn8cwr2n3p01f4
   - is-01m0jsxgty51qvw61s6sfwv688
 created_at: 2026-08-21T18:38:22.102Z
-updated_at: 2026-08-21T20:19:28.866Z
+updated_at: 2026-08-30T02:31:36.931Z
+closed_at: 2026-08-30T02:31:36.930Z
+close_reason: All twelve children closed. Parity table at 22 covered, 2 exempt, no gaps; check_parity.py rejects gap rows and runs in make lint/lint-check; the rule is in AGENTS.md with reasoning in docs/development.md. Golden checks went from 48 to 100.
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 21c3ee1a-cf78-4125-9ff3-6e9a4ff80b80
