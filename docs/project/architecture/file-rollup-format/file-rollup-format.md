@@ -38,7 +38,7 @@ The current JSON components retain these established schema identifiers:
 
 | Component | Schema identifier | Clear artifact name |
 | --- | --- | --- |
-| Type-definition projection | `file-type-registry-v3` | `recommended-file-types.json` |
+| Type-definition projection | `file-type-registry-v4` | `recommended-file-types.json` |
 | Directory rollup | `file-type-breakdown-v1` | `file-rollup.schema.json` |
 | Conformance cases | `file-type-conformance-v1` | `file-rollup-conformance.json` |
 
@@ -445,7 +445,7 @@ Validated definitions project into JSON-compatible runtime data:
 
 ```json
 {
-  "schema": "file-type-registry-v3",
+  "schema": "file-type-registry-v4",
   "schema_version": 3,
   "revision": 1,
   "fingerprint": "normalized-registry-identity",
@@ -681,7 +681,7 @@ a standalone report:
 {
   "schema": "example-report-v1",
   "file_rollup": {
-    "type_definitions": {"schema": "file-type-registry-v3"},
+    "type_definitions": {"schema": "file-type-registry-v4"},
     "rollup": {"schema": "file-type-breakdown-v1"}
   }
 }

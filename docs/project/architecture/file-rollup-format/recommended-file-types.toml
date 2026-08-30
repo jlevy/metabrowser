@@ -23,7 +23,7 @@
 # own colours are told apart mostly by the two dimensions a fixed tone discards.
 # devtools/check_file_type_colors.py holds these rules and reports the measurements.
 
-schema_version = 3
+schema_version = 4
 registry_revision = 3
 max_extension_components = 2
 
@@ -31,31 +31,37 @@ max_extension_components = 2
 id = "code"
 label = "Code"
 order = 10
+icon = "alignLeft"
 
 [[group]]
 id = "docs"
 label = "Documentation"
 order = 20
+icon = "doc"
 
 [[group]]
 id = "data"
 label = "Data"
 order = 30
+icon = "list"
 
 [[group]]
 id = "archives"
 label = "Archives"
 order = 40
+icon = "copy"
 
 [[group]]
 id = "media"
 label = "Media"
 order = 50
+icon = "monitor"
 
 [[group]]
 id = "other"
 label = "Other"
 order = 60
+icon = "file"
 
 [[family]]
 id = "python"
@@ -357,6 +363,7 @@ label = "PDF"
 group = "docs"
 order = 150
 hue = 85.70
+icon = "fileText"
 
 [[family]]
 id = "word"
@@ -426,6 +433,7 @@ order = 140
 linguist = "CSV"
 linguist_color = "#237346"
 hue = 154.61
+icon = "grid"
 
 [[family]]
 id = "xml"
@@ -442,6 +450,7 @@ label = "Parquet"
 group = "data"
 order = 160
 hue = 180.10
+icon = "grid"
 
 [[family]]
 id = "arrow"
@@ -449,6 +458,7 @@ label = "Arrow"
 group = "data"
 order = 170
 hue = 110.40
+icon = "grid"
 
 [[family]]
 id = "avro"
@@ -463,6 +473,7 @@ label = "ORC"
 group = "data"
 order = 190
 hue = 93.90
+icon = "grid"
 
 [[family]]
 id = "protocol-buffers"
@@ -486,6 +497,7 @@ label = "SQLite"
 group = "data"
 order = 220
 hue = 77.60
+icon = "grid"
 
 [[family]]
 id = "log-files"
@@ -493,6 +505,7 @@ label = "Log files"
 group = "other"
 order = 100
 hue = 166.10
+icon = "activity"
 
 [[family]]
 id = "archives"

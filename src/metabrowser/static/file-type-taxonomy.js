@@ -80,7 +80,7 @@
   /** @param {unknown} rawRegistry */
   function createRuntime(rawRegistry) {
     const raw = objectValue(rawRegistry, "FILE_TYPE_REGISTRY");
-    if (raw.schema !== "file-type-registry-v3" || raw.schema_version !== 3) {
+    if (raw.schema !== "file-type-registry-v4" || raw.schema_version !== 4) {
       throw new TypeError("unsupported file-type registry schema");
     }
     const revision = integerValue(raw.revision, "file-type registry revision");
@@ -114,6 +114,8 @@
         id,
         label: stringValue(value.label, `label for ${id}`),
         order,
+        // Required: every family must resolve to a shape without declaring one.
+        icon: stringValue(value.icon, `icon for ${id}`),
       });
     });
     if (!groupIds.has("other")) {
@@ -140,6 +142,10 @@
         label: stringValue(value.label, `label for ${id}`),
         groupId,
         category: groupId,
+        // The family's own shape, or null to take its group's. The split is
+        // what keeps 56 families down to six shapes: icon is the major type,
+        // colour is the subtype.
+        icon: value.icon == null ? null : stringValue(value.icon, `icon for ${id}`),
         order: integerValue(value.order, `order for ${id}`),
         extensions,
         // The family's whole color. Lightness and chroma live in the
@@ -319,6 +325,24 @@
     }
 
     /** @param {unknown} extension */
+    /**
+     * The icon name a family paints with: its own, or its group's.
+     *
+     * Here rather than in each caller because the fallback is the rule, and a
+     * rule implemented twice is how this project ended up with two taxonomies
+     * disagreeing about `.jsx`.
+     * @param {unknown} familyId
+     */
+    function iconForFamily(familyId) {
+      const family = frozenFamilies.find((entry) => entry.id === familyId);
+      if (!family) {
+        return null;
+      }
+      const group = frozenGroups.find((entry) => entry.id === family.groupId);
+      return family.icon || group?.icon || null;
+    }
+
+    /** @param {unknown} extension */
     function distributionKeyForExtension(extension) {
       const normalized = normalizeExtension(extension);
       if (normalized === NO_EXTENSION_KEY) {
@@ -344,12 +368,12 @@
     const frozenGroups = Object.freeze(groups);
     const frozenFamilies = Object.freeze(families);
     return Object.freeze({
-      schema: "file-type-registry-v3",
-      schemaVersion: 3,
+      schema: "file-type-registry-v4",
+      schemaVersion: 4,
       revision,
       fingerprint,
       maxExtensionComponents,
-      registryIdentity: Object.freeze({ schemaVersion: 3, revision, fingerprint }),
+      registryIdentity: Object.freeze({ schemaVersion: 4, revision, fingerprint }),
       groups: frozenGroups,
       families: frozenFamilies,
       kinds: Object.freeze(kinds),
@@ -359,6 +383,7 @@
       groupForFile,
       distributionKeyForExtension,
       hueForDistributionKey,
+      iconForFamily,
     });
   }
 
