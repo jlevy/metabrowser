@@ -5,9 +5,9 @@ pinned by a golden transcript. A table nobody checks is worse than no table, so
 this reads the parity table in the views/models/routes map and compares it to
 what the code actually registers.
 
-Gap rows are permitted and counted. They make the remaining debt visible and
-machine-countable rather than implicit; ``mb-4uy2`` removes that allowance once
-the gaps are closed.
+Gap rows were permitted while the debt was paid down, and are not any more:
+every registered surface is either covered by a transcript or exempt with a
+reason. A new route arrives with its golden or the build fails.
 """
 
 from __future__ import annotations
@@ -24,8 +24,7 @@ BUILTIN_PLUGINS = REPO_ROOT / "src/metabrowser/builtin_plugins"
 SOURCE_ROOT = REPO_ROOT / "src/metabrowser"
 GOLDEN_DIR = REPO_ROOT / "tests/golden"
 
-_STATUSES = frozenset({"covered", "gap", "exempt"})
-_BEAD = re.compile(r"^mb-[0-9a-z]{4,}$")
+_STATUSES = frozenset({"covered", "exempt"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,9 +108,6 @@ def check() -> list[str]:
                     problems.append(f"{row.surface}: golden {golden} does not exist")
                 elif row.surface not in path.read_text(encoding="utf-8"):
                     problems.append(f"{row.surface}: golden {golden} never exercises it")
-        elif row.status == "gap":
-            if not _BEAD.match(row.evidence.strip("`")):
-                problems.append(f"{row.surface}: a gap row must name the bead that closes it")
         elif not row.evidence or row.evidence == "—":
             problems.append(f"{row.surface}: an exempt row must give a reason")
 
@@ -126,10 +122,9 @@ def main() -> int:
             print(f"  {problem}", file=sys.stderr)
         return 1
     rows = parity_rows(MAP_DOC.read_text(encoding="utf-8"))
-    gaps = sum(1 for row in rows if row.status == "gap")
     exempt = sum(1 for row in rows if row.status == "exempt")
     covered = sum(1 for row in rows if row.status == "covered")
-    print(f"Parity checks passed: {covered} covered, {gaps} gap, {exempt} exempt.")
+    print(f"Parity checks passed: {covered} covered, {exempt} exempt.")
     return 0
 
 

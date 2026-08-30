@@ -31,7 +31,7 @@ def test_a_registered_route_with_no_row_is_reported(
 ) -> None:
     monkeypatch.setattr(check_parity, "registered_surfaces", lambda: {"/api/tree", "/api/rollup"})
     monkeypatch.setattr(
-        check_parity, "MAP_DOC", _write_map(tmp_path, "| `/api/tree` | gap | `--api` | `mb-1234` |")
+        check_parity, "MAP_DOC", _write_map(tmp_path, "| `/api/tree` | exempt | — | streaming |")
     )
 
     problems = check_parity.check()
@@ -47,7 +47,7 @@ def test_a_row_for_an_unregistered_route_is_reported(
         "MAP_DOC",
         _write_map(
             tmp_path,
-            "| `/api/tree` | gap | `--api` | `mb-1234` |\n| `/api/gone` | gap | `--api` | `mb-1234` |",
+            "| `/api/tree` | exempt | — | streaming |\n| `/api/gone` | exempt | — | streaming |",
         ),
     )
 
@@ -90,16 +90,18 @@ def test_a_covered_row_whose_golden_never_exercises_it_is_reported(
     assert any("/api/tree" in problem and "never exercises it" in problem for problem in problems)
 
 
-def test_a_gap_row_without_a_bead_is_reported(
+def test_a_gap_row_is_rejected_outright(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
 ) -> None:
+    """Gap rows were an allowance while the debt was paid down. It is gone."""
+
     monkeypatch.setattr(
-        check_parity, "MAP_DOC", _write_map(tmp_path, "| `/api/tree` | gap | `--api` | later |")
+        check_parity, "MAP_DOC", _write_map(tmp_path, "| `/api/tree` | gap | `--api` | `mb-1234` |")
     )
 
     problems = check_parity.check()
 
-    assert any("/api/tree" in problem and "name the bead" in problem for problem in problems)
+    assert any("/api/tree" in problem and "is not one of" in problem for problem in problems)
 
 
 def test_an_exempt_row_without_a_reason_is_reported(

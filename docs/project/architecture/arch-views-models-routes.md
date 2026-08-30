@@ -134,8 +134,10 @@ is listed here rather than left implicit.
 `devtools/check_parity.py` fails the build when this table drifts from the registered
 routes.
 
-Status values: **covered** names the goldens that pin it, **gap** names the bead that
-closes it, and **exempt** gives the reason it has no model to pin.
+Status values: **covered** names the goldens that pin it and **exempt** gives the reason
+it has no model to pin.
+There is no third value: `check_parity.py` rejects a `gap` row outright, so a new route
+arrives with a transcript or the build fails.
 
 | Surface | Status | CLI | Golden or reason |
 | --- | --- | --- | --- |
@@ -154,7 +156,7 @@ closes it, and **exempt** gives the reason it has no model to pin.
 | `/api/git/log` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/commit` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/kpress/render` | covered | `--api`, `--api --data` | `cli-api-shell.tryscript.md` |
-| `/api/kpress/export` | gap | `--api --data` | `mb-4uy2` |
+| `/api/kpress/export` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
 | `/api/plugin/agent-log/charts` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/binary/chunk` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
@@ -164,13 +166,13 @@ closes it, and **exempt** gives the reason it has no model to pin.
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 | `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 
-The one remaining gap is `/api/kpress/export`. Its refusals are reachable, but its
-success path writes a file to a destination the caller names, and every other mode in
-`metab` is read-only.
-Whether a golden may perform a write — and where that written file lives so the
-transcript stays deterministic — is a policy decision for the suite, not something to
-settle inside one transcript.
-`mb-4uy2` carries it.
+`/api/kpress/export` is the one surface whose golden writes a file, and the rule it
+settles is worth stating: a golden may write, into the tryscript sandbox, which is
+created per run and discarded after it.
+That is safe here because the export report’s paths normalize to `<ROOT>` and its
+content hash is identical across runs and across sandbox paths, so the write is
+deterministic evidence rather than a source of churn.
+The test runs last in its file so no earlier test observes the written file.
 
 The two exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request

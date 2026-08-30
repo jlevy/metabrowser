@@ -12,7 +12,8 @@ before: >-
   printf '# Sample\n\nHello.\n' > shellroot/README.md &&
   printf '{"path": "README.md", "view": "document", "source_text": "# Overridden\n\nBody.\n"}\n'
   > shellroot/render.json &&
-  printf '{"path": "README.md", "view": "document"}\n' > shellroot/export.json &&
+  printf '{"path": "README.md", "view": "rendered", "destination": "out.html"}\n'
+  > shellroot/export.json &&
   touch -t 202311142213.20 shellroot/README.md shellroot/render.json
   shellroot/export.json shellroot
 ---
@@ -321,4 +322,40 @@ status: 405
 Method Not Allowed
 Error: /api/kpress/export returned HTTP 405
 ? 1
+```
+
+## Test: exporting a document writes it and reports the build
+
+This is the one golden that writes.
+The tryscript sandbox is created per run and discarded after it, the report’s paths
+normalize to `<ROOT>`, and the content hash is stable across runs and across sandbox
+paths -- so the write is deterministic evidence rather than a source of churn.
+It runs last so no earlier test sees the written file.
+
+```console
+$ metab shellroot --api /api/kpress/export --data shellroot/export.json
+api: /api/kpress/export
+status: 200
+{
+  "type": "kpress-export-report",
+  "report": {
+    "schema_version": "kpress-build-manifest-v2",
+    "output_dir": "<ROOT>",
+    "files": [
+      {
+        "path": "out.html",
+        "kind": "html",
+        "content_hash": "5dca55909155f58b",
+        "size": 10019,
+        "applied_pipeline": []
+      }
+    ],
+    "assets": [],
+    "routes": {},
+    "diagnostics": [],
+    "pipeline": []
+  },
+  "destination": "<ROOT>/out.html"
+}
+? 0
 ```
