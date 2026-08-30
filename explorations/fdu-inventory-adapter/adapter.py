@@ -386,8 +386,6 @@ class FduSpikeHandle:
             elif isinstance(result, fdu.FlatResult):
                 rows.extend(result.value.rows)
                 continuation = result.value.next
-                if result.value.portable_issue is not None:
-                    raise InventoryContractError("fdu omitted paths MetaBrowser cannot represent")
             elif isinstance(result, fdu.DiagnosticsResult):
                 diagnostics = result.value
             elif isinstance(result, fdu.LimitResult):
@@ -410,8 +408,6 @@ class FduSpikeHandle:
                 )
             if not isinstance(result, fdu.FlatResult):
                 raise InventoryContractError("fdu continuation changed projection kind")
-            if result.value.portable_issue is not None:
-                raise InventoryContractError("fdu omitted paths MetaBrowser cannot represent")
             rows.extend(result.value.rows)
             continuation = result.value.next
             native_pages += 1

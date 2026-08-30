@@ -45,6 +45,28 @@ applied only when the match count exceeded the row bound, so one query name carr
 ranking contracts and which one a caller received depended on the size of the corpus.
 Beyond these keys nothing reorders ranked rows — not size, not type, not depth.
 
+Every order above keys on the canonical path, so the canonical path has to exist for
+every entry, and it does: the encoding is **total**.
+
+A path is canonical POSIX-relative, `/`-separated, and derived from the platform name by
+escaping. Bytes that are not valid UTF-8 become `%XX` with uppercase hexadecimal digits,
+and `%` itself becomes `%25` so that the mapping stays injective and two different names
+can never collide on one canonical form. Runs that are valid UTF-8 are preserved, so a
+name that is mostly readable stays mostly readable.
+
+This is a name, not an address. It orders rows and resumes pages; it is never joined onto
+a native path or handed to the filesystem.
+
+Totality is the point. This contract once let a provider report that some entries had no
+canonical form, with an omission count and a bounded list of escaped examples, and the
+consumer then had to treat a directory as having two populations — the entries it knew
+and the entries it could name — with a separate completeness answer for each. Every mature
+system meeting this problem makes the derived name total instead: git quotes paths, Python
+escapes undecodable bytes as surrogates, and the `file://` URIs that LSP and desktop file
+managers exchange are percent-encoded. None of them tells a caller that a file has no
+name. Neither does this one, so there is no omission to report and no second population to
+describe.
+
 `include_ignored=False` **prunes the excluded directory's whole subtree**, contributing
 neither the directory nor any descendant. Filtering the row instead is an equally
 reasonable reading of an unstated rule, which is why the rule is stated.
@@ -54,6 +76,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import string
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
@@ -83,8 +106,6 @@ DEFAULT_DISCOVERY_MAX_FILES = 500_000
 DEFAULT_QUERY_MAX_WORK = 1_000_000
 DEFAULT_COUNT_CAP = 10_000
 MAX_COUNT_CAP = 1_000_000
-MAX_PORTABLE_PATH_EXAMPLES = 8
-MAX_PORTABLE_PATH_EXAMPLE_BYTES = 256
 INVENTORY_SCOPE_IDENTITY_SCHEMA = "inventory-scope-v2"
 
 
@@ -148,6 +169,11 @@ def require_canonical_inventory_path(
             return
         raise ValueError(f"{name} must be a canonical POSIX-relative path below the root")
     pure = PurePosixPath(value)
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        # A canonical path is the escaped form, so a surrogate here means some producer
+        # passed a raw platform name through. Rejecting at the boundary keeps the rule
+        # enforced rather than merely stated.
+        raise ValueError(f"{name} must be escaped, not a raw platform name")
     if (
         "\\" in value
         or "\x00" in value
@@ -157,6 +183,57 @@ def require_canonical_inventory_path(
         or ".." in pure.parts
     ):
         raise ValueError(f"{name} must be a canonical POSIX-relative path")
+
+
+def canonical_inventory_name(name: str) -> str:
+    """Escape one platform filename into its canonical form.
+
+    Total by construction: every name has one. Undecodable bytes become `%XX` with
+    uppercase hexadecimal digits, `%` itself becomes `%25` so the mapping stays injective,
+    and everything else is preserved, so a mostly-readable name stays mostly readable.
+
+    The platform branch mirrors how the name was decoded, and mirrors fdu. On POSIX,
+    `os.scandir` decodes undecodable bytes with `surrogateescape`, mapping each byte to one
+    scalar in `U+DC80..U+DCFF`, so each becomes one escape. On Windows a name is UTF-16
+    that need not be well formed, and an unpaired surrogate has no UTF-8 encoding at all,
+    so its two code units' bytes are escaped big-endian: `U+D800` becomes `%D8%00`, whose
+    hex digits read in the order the code unit is written.
+
+    Without this, ordering a directory that holds one undecodable name raised
+    `UnicodeEncodeError` from `name.encode("utf-8")` -- surrogates are not encodable -- so
+    a single such file made the whole directory unlistable, where fdu escaped it and
+    listed it.
+    """
+
+    if not any(_is_escapable(character) for character in name):
+        return name
+    out: list[str] = []
+    for character in name:
+        point = ord(character)
+        if character == "%":
+            out.append("%25")
+        elif _POSIX_BYTES and 0xDC80 <= point <= 0xDCFF:
+            out.append(f"%{point - 0xDC00:02X}")
+        elif 0xD800 <= point <= 0xDFFF:
+            out.append(f"%{point >> 8:02X}%{point & 0xFF:02X}")
+        else:
+            out.append(character)
+    return "".join(out)
+
+
+def canonical_inventory_path(path: str) -> str:
+    """Escape a `/`-separated relative path, component by component."""
+
+    if not path:
+        return path
+    return "/".join(canonical_inventory_name(part) for part in path.split("/"))
+
+
+_POSIX_BYTES = os.name != "nt"
+
+
+def _is_escapable(character: str) -> bool:
+    return character == "%" or 0xD800 <= ord(character) <= 0xDFFF
 
 
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
@@ -577,41 +654,6 @@ class EntryType(StrEnum):
     SYMLINK = "symlink"
 
 
-class PortablePathEncoding(StrEnum):
-    UNIX_BYTES = "unix_bytes"
-    WINDOWS_WTF16_LE = "windows_wtf16_le"
-    PLATFORM_BYTES = "platform_bytes"
-
-
-@dataclass(frozen=True, slots=True)
-class PortablePathExample:
-    encoding: PortablePathEncoding
-    encoded_hex: str
-    truncated: bool
-
-    def __post_init__(self) -> None:
-        _require_nonempty(self.encoded_hex, "encoded_hex")
-        if len(self.encoded_hex) > MAX_PORTABLE_PATH_EXAMPLE_BYTES * 2:
-            raise ValueError("portable path example exceeds its encoded-byte bound")
-        if len(self.encoded_hex) % 2 or any(
-            character not in "0123456789abcdef" for character in self.encoded_hex
-        ):
-            raise ValueError("portable path example must be lowercase hexadecimal bytes")
-
-
-@dataclass(frozen=True, slots=True)
-class PortablePathIssue:
-    omitted: int
-    examples: tuple[PortablePathExample, ...] = ()
-
-    def __post_init__(self) -> None:
-        _require_positive(self.omitted, "omitted")
-        if len(self.examples) > MAX_PORTABLE_PATH_EXAMPLES:
-            raise ValueError(
-                f"portable path issue accepts at most {MAX_PORTABLE_PATH_EXAMPLES} examples"
-            )
-
-
 @dataclass(frozen=True, slots=True)
 class InventoryEntry:
     """Provider-owned filesystem facts for one served-root-relative path."""
@@ -993,7 +1035,6 @@ class EntryProjection:
 class DirectoryProjection:
     query_id: str
     entries: tuple[InventoryEntry, ...]
-    portable_issue: PortablePathIssue | None = None
     next_page: str | None = None
 
     def __post_init__(self) -> None:
@@ -1011,7 +1052,6 @@ class FilteredTreeProjection:
     matching_leaves: int
     matching_files: int
     matching_bytes: int
-    portable_issue: PortablePathIssue | None = None
     next_page: str | None = None
 
     def __post_init__(self) -> None:
@@ -1067,7 +1107,6 @@ class RecentProjection:
     query_id: str
     entries: tuple[InventoryEntry, ...]
     total_matches: CountResult
-    portable_issue: PortablePathIssue | None = None
     gitignored_directories: tuple[str, ...] = ()
     valid_until_ns: int | None = None
 
@@ -1108,7 +1147,6 @@ class CatalogProjection:
     query_id: str
     records: tuple[CatalogRecord, ...]
     total_matches: CountResult
-    portable_issue: PortablePathIssue | None = None
     next_page: str | None = None
 
     def __post_init__(self) -> None:

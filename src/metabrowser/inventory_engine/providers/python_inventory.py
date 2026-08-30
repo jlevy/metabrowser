@@ -97,6 +97,8 @@ from metabrowser.inventory_engine.contract import (
     VersionUnavailableError,
     WorkCounters,
     ascii_casefold,
+    canonical_inventory_name,
+    canonical_inventory_path,
     catalog_terminal_suffix,
     inventory_scope_fingerprint,
 )
@@ -434,9 +436,14 @@ def _child_order(row: FsEntry) -> tuple[bool, bytes]:
     insertion order, so which order a directory page came back in depended on which path
     served it. Byte order also gives uppercase before lowercase, which is what the
     contract states.
+
+    Ordering by the canonical form, not the raw name: `scandir` decodes an undecodable
+    byte to a surrogate, and encoding a surrogate as UTF-8 raises, so one such file made the
+    whole directory unlistable. Escaping first is also what makes this order agree with
+    fdu's, which sorts the same canonical bytes.
     """
 
-    return (row.type != "dir", row.name.encode("utf-8"))
+    return (row.type != "dir", canonical_inventory_name(row.name).encode("utf-8"))
 
 
 def _children_for(entries: Sequence[FsEntry]) -> dict[str, tuple[FsEntry, ...]]:
@@ -1795,7 +1802,7 @@ class _PythonInventoryStore:
                         for entry in image.entries
                         if _catalog_entry_matches(entry, query)
                     ),
-                    key=lambda record: record.path.encode("utf-8"),
+                    key=lambda record: canonical_inventory_path(record.path).encode("utf-8"),
                 )
             )
             page = records[: query.max_rows]
@@ -2059,10 +2066,16 @@ class _PythonInventoryStore:
         # The path is the final key in both sorts because it is unique within one index,
         # which makes each total. A stable sort on time alone leaves ties resolved by
         # whatever order `entries` was built in, and that is not a contract.
-        matching.sort(key=lambda entry: (entry.gitignored, -entry.mtime_ns, entry.path))
+        matching.sort(
+            key=lambda entry: (
+                entry.gitignored,
+                -entry.mtime_ns,
+                canonical_inventory_path(entry.path),
+            )
+        )
         total = len(matching)
         capped = matching[: query.max_rows]
-        capped.sort(key=lambda entry: (-entry.mtime_ns, entry.path))
+        capped.sort(key=lambda entry: (-entry.mtime_ns, canonical_inventory_path(entry.path)))
         ignored_directories: set[str] = set()
         for entry in capped:
             parts = entry.path.split("/")
