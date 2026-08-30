@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,13 @@ from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
 from metabrowser.normalize import NormalizeContext, normalize_payload
-from metabrowser.view_routes import format_view_href
+from metabrowser.view_routes import (
+    COMMIT_ROUTE_PREFIX,
+    VIEW_ROUTE_PREFIX,
+    decode_safe_commit_route,
+    decode_safe_view_path,
+    format_view_href,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -40,13 +47,23 @@ _MODEL_FIELDS: dict[str, tuple[str, ...]] = {
 }
 _DEFAULT_MODEL_FIELDS: tuple[str, ...] = ("size",)
 
+# A container entry names the file it lives inside, which is the whole point of
+# the /view/<container>/<inner> address, so the report says both.
+_CONTAINER_FIELDS: tuple[str, ...] = ("container", "container_inner")
 
-async def _fetch(app: Any, path: str, *, index_timeout_s: float) -> ApiResponse:
+
+async def _fetch(
+    app: Any,
+    route: str,
+    params: Mapping[str, str],
+    *,
+    index_timeout_s: float,
+) -> ApiResponse:
     from metabrowser.cli.asgi_client import wait_for_index
 
     async with InProcessClient(app, label="show", logger=LOG) as client:
         await wait_for_index(client, timeout_s=index_timeout_s)
-        return await client.get("/api/file", params={"path": path})
+        return await client.get(route, params=params)
 
 
 def _describe_views(views: Any) -> str:
@@ -66,9 +83,36 @@ def _describe_views(views: Any) -> str:
 def _describe_model(payload: dict[str, Any]) -> str:
     envelope_type = str(payload.get("type", "unknown"))
     fields = _MODEL_FIELDS.get(envelope_type, _DEFAULT_MODEL_FIELDS)
-    parts = [f"{name}={payload[name]}" for name in fields if name in payload]
+    names = (*fields, *(name for name in _CONTAINER_FIELDS if name in payload))
+    parts = [
+        f"{'inner' if name == 'container_inner' else name}={payload[name]}"
+        for name in names
+        if name in payload
+    ]
     detail = " ".join(parts) if parts else "no summary fields"
     return f"{envelope_type} envelope; {detail}"
+
+
+def _describe_comparison(payload: dict[str, Any], inner: str) -> str:
+    """Summarize a comparison envelope, which has its own shape."""
+
+    resolved = payload.get("resolved")
+    manifest = payload.get("manifest")
+    parts: list[str] = []
+    if isinstance(resolved, dict):
+        for name in ("comparison_id", "kind", "base_policy"):
+            if name in resolved:
+                parts.append(f"{name}={resolved[name]}")
+    if isinstance(manifest, dict):
+        files = manifest.get("files")
+        if isinstance(files, list):
+            parts.append(f"files={len(files)}")
+        if "truncated" in manifest:
+            parts.append(f"truncated={manifest['truncated']}")
+    if inner:
+        parts.append(f"file={inner}")
+    detail = " ".join(parts) if parts else "no summary fields"
+    return f"comparison envelope; {detail}"
 
 
 def run_show(
@@ -96,7 +140,29 @@ def run_show(
     from metabrowser import server
 
     server._set_root_dir(resolved)
-    response = asyncio.run(_fetch(server.app, path, index_timeout_s=index_timeout_s))
+
+    commit = None
+    if path.startswith(COMMIT_ROUTE_PREFIX):
+        commit = decode_safe_commit_route(path.encode())
+        if commit is None:
+            raise CLIError(f"{path} is not a route this grammar accepts")
+
+    if commit is not None:
+        revision, inner = commit
+        params = {"revision": revision}
+        if inner:
+            params["file"] = inner
+        route = "/api/plugin/diff/comparison"
+    else:
+        selection = path
+        if path.startswith(VIEW_ROUTE_PREFIX):
+            decoded = decode_safe_view_path(path.encode())
+            if decoded is None:
+                raise CLIError(f"{path} is not a route this grammar accepts")
+            selection = decoded
+        route, params = "/api/file", {"path": selection}
+
+    response = asyncio.run(_fetch(server.app, route, params, index_timeout_s=index_timeout_s))
 
     if response.status_code != 200:
         raise CLIError(
@@ -113,20 +179,30 @@ def run_show(
     ctx = NormalizeContext(root=resolved)
     payload = normalize_payload(payload, ctx)
 
-    logical = str(payload.get("path", path))
-    route = format_view_href(logical) if logical not in ("", ".") else "/view/"
-    kind = str(payload.get("kind", "unknown"))
-    views = payload.get("views")
+    if commit is not None:
+        revision, inner = commit
+        shown_route = COMMIT_ROUTE_PREFIX + revision + (f"/{inner}" if inner else "")
+        kind = "comparison"
+        # The same registry /api/file reads, so the views reported are the real
+        # registered ones rather than a second list that could drift from them.
+        views: Any = server._views_for_kind("diff")
+        model = _describe_comparison(payload, inner)
+    else:
+        logical = str(payload.get("path", path))
+        shown_route = format_view_href(logical) if logical not in ("", ".") else "/view/"
+        kind = str(payload.get("kind", "unknown"))
+        views = payload.get("views")
+        model = _describe_model(payload)
 
     if fmt == "json":
         typer.echo(
             json.dumps(
                 {
                     "show": path,
-                    "route": route,
+                    "route": shown_route,
                     "kind": kind,
                     "views": views,
-                    "model": _describe_model(payload),
+                    "model": model,
                 },
                 indent=2,
                 ensure_ascii=False,
@@ -135,7 +211,7 @@ def run_show(
         return
 
     typer.echo(f"show: {path}")
-    typer.echo(f"route: {route}")
+    typer.echo(f"route: {shown_route}")
     typer.echo(f"kind: {kind}")
     typer.echo(f"views: {_describe_views(views)}")
-    typer.echo(f"model: {_describe_model(payload)}")
+    typer.echo(f"model: {model}")

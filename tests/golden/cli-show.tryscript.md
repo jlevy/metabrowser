@@ -158,3 +158,30 @@ $ metab showroot --show README.md --format json
 }
 ? 0
 ```
+
+## Test: a container inner path resolves to the entry inside it
+
+`/view/<container>/<inner>` addresses one entry inside a container file.
+The URL grammar had no end-to-end coverage before this.
+
+```console
+$ metab showroot --show change.patch/x.txt
+show: change.patch/x.txt
+route: /view/change.patch/x.txt
+kind: diff
+views: diff (default)
+model: text envelope; size=0 content_bytes=0 content_truncated=False container=change.patch inner=x.txt
+? 0
+```
+
+## Test: a browser view route resolves the same as a bare path
+
+```console
+$ metab showroot --show /view/README.md
+show: /view/README.md
+route: /view/README.md
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=17 content_bytes=17 content_truncated=False
+? 0
+```

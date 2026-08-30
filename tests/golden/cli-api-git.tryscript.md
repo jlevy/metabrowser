@@ -240,3 +240,39 @@ status: 404
 Error: /api/git/commit/0000000000000000000000000000000000000000 returned HTTP 404
 ? 1
 ```
+
+## Test: `--show` resolves a commit route
+
+`/commit/<rev>` and `/commit/<rev>/<inner>` are browser addresses, not API routes.
+This is their first end-to-end coverage: the grammar decodes, the comparison resolves,
+and the views come from the same registry `/api/file` reads.
+
+```console
+$ metab gitroot --show /commit/703de1c4a3360d55e60646f300ceb6c926377221
+show: /commit/703de1c4a3360d55e60646f300ceb6c926377221
+route: /commit/703de1c4a3360d55e60646f300ceb6c926377221
+kind: comparison
+views: diff (default)
+model: comparison envelope; comparison_id=git:6af1e10278161613 kind=content base_policy=first_parent files=2 truncated=False
+? 0
+```
+
+## Test: `--show` resolves one file inside a commit
+
+```console
+$ metab gitroot --show /commit/703de1c4a3360d55e60646f300ceb6c926377221/README.md
+show: /commit/703de1c4a3360d55e60646f300ceb6c926377221/README.md
+route: /commit/703de1c4a3360d55e60646f300ceb6c926377221/README.md
+kind: comparison
+views: diff (default)
+model: comparison envelope; comparison_id=git:6af1e10278161613 kind=content base_policy=first_parent files=1 truncated=False file=README.md
+? 0
+```
+
+## Test: a malformed revision is refused by the grammar
+
+```console
+$ metab gitroot --show '/commit/not-a-revision!'
+Error: /commit/not-a-revision! is not a route this grammar accepts
+? 1
+```
