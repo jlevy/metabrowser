@@ -396,8 +396,10 @@ def _metab(
         callback=validate_format,
         metavar="FORMAT",
         help="Output format: text (human report) | json | yaml. "
-        "json/yaml dump the exact data the nav panel consumes.",
-        rich_help_panel=_PANEL_WALK,
+        "Walk and diff: json/yaml dump the exact data the browser consumes. "
+        "Show: json reports the four layers as an object. "
+        "Api: json (default) or yaml renders the envelope.",
+        rich_help_panel=_PANEL_SHARED,
     ),
     stream: bool = typer.Option(
         False,
@@ -527,8 +529,13 @@ def _metab(
     rendering of Markdown, code, JSON, YAML, logs, and other files.
 
     Serving is the default: `metab .` serves the current directory and opens
-    it in your browser. Select another operation with a mode flag (--walk,
-    --diff, --check-api, --remote, --plugins, --plugin, --doctor).
+    it in your browser. Select another operation with a mode flag.
+
+    Data modes read the same server the browser reads, without a browser or a
+    listening port: --api issues one route, --show reports the four layers
+    behind one selection, --walk dumps the inventory, --diff shows a change
+    set. Diagnostics: --check-api, --plugins, --plugin, --doctor. Remote
+    serving: --remote.
     """
     mode = _resolve_mode(
         ctx,

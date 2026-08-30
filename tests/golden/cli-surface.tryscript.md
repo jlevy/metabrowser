@@ -28,8 +28,13 @@ $ metab --help
  rendering of Markdown, code, JSON, YAML, logs, and other files.
 
  Serving is the default: `metab .` serves the current directory and opens
- it in your browser. Select another operation with a mode flag (--walk,
- --diff, --check-api, --remote, --plugins, --plugin, --doctor).
+ it in your browser. Select another operation with a mode flag.
+
+ Data modes read the same server the browser reads, without a browser or a
+ listening port: --api issues one route, --show reports the four layers
+ behind one selection, --walk dumps the inventory, --diff shows a change
+ set. Diagnostics: --check-api, --plugins, --plugin, --doctor. Remote
+ serving: --remote.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      PATH  Root directory to serve, check, or walk; a file may be   │
@@ -70,23 +75,30 @@ $ metab --help
 │                     (--api only).                                            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
-│ --path               TEXT   Serve: relative path from ROOT to select on      │
-│                             launch. Walk: subtree for a JSON/YAML            │
-│                             all-at-once tree envelope. Remote: remote        │
-│                             directory to serve (required).                   │
-│ --no-open                   Don't auto-open the browser (serve and remote    │
-│                             modes).                                          │
-│ --plugins-dir        PATH   Extra plugin directory; each subdirectory        │
-│                             containing manifest.toml is loaded. May be       │
-│                             passed multiple times. Combines additively with  │
-│                             the METABROWSER_PLUGINS_DIRS env var (env-var    │
-│                             dirs first, then CLI; deduped). Applies when     │
-│                             serving, checking APIs, and to the plugin modes. │
-│ --log-level          LEVEL  Log verbosity: DEBUG, INFO, WARNING, ERROR,      │
-│                             CRITICAL. DEBUG traces the inventory walker      │
-│                             (rewalk targets + resolved paths). Overrides     │
-│                             METABROWSER_LOG_LEVEL. Applies when serving,     │
-│                             walking, or checking APIs.                       │
+│ --path               TEXT    Serve: relative path from ROOT to select on     │
+│                              launch. Walk: subtree for a JSON/YAML           │
+│                              all-at-once tree envelope. Remote: remote       │
+│                              directory to serve (required).                  │
+│ --no-open                    Don't auto-open the browser (serve and remote   │
+│                              modes).                                         │
+│ --plugins-dir        PATH    Extra plugin directory; each subdirectory       │
+│                              containing manifest.toml is loaded. May be      │
+│                              passed multiple times. Combines additively with │
+│                              the METABROWSER_PLUGINS_DIRS env var (env-var   │
+│                              dirs first, then CLI; deduped). Applies when    │
+│                              serving, checking APIs, and to the plugin       │
+│                              modes.                                          │
+│ --log-level          LEVEL   Log verbosity: DEBUG, INFO, WARNING, ERROR,     │
+│                              CRITICAL. DEBUG traces the inventory walker     │
+│                              (rewalk targets + resolved paths). Overrides    │
+│                              METABROWSER_LOG_LEVEL. Applies when serving,    │
+│                              walking, or checking APIs.                      │
+│ --format             FORMAT  Output format: text (human report) | json |     │
+│                              yaml. Walk and diff: json/yaml dump the exact   │
+│                              data the browser consumes. Show: json reports   │
+│                              the four layers as an object. Api: json         │
+│                              (default) or yaml renders the envelope.         │
+│                              [default: text]                                 │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Serve ──────────────────────────────────────────────────────────────────────╮
 │ --port        INTEGER RANGE [1<=x<=65535]  Server port. [default: 8411]      │
@@ -101,12 +113,6 @@ $ metab --help
 │                                            [default: 127.0.0.1]              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Walk (--walk) ──────────────────────────────────────────────────────────────╮
-│ --format                        FORMAT                Output format: text    │
-│                                                       (human report) | json  │
-│                                                       | yaml. json/yaml dump │
-│                                                       the exact data the nav │
-│                                                       panel consumes.        │
-│                                                       [default: text]        │
 │ --stream       --all-at-once                          Streaming emits one    │
 │                                                       walker record per line │
 │                                                       (json→JSONL, yaml→doc  │
@@ -194,8 +200,13 @@ $ metab
  rendering of Markdown, code, JSON, YAML, logs, and other files.
 
  Serving is the default: `metab .` serves the current directory and opens
- it in your browser. Select another operation with a mode flag (--walk,
- --diff, --check-api, --remote, --plugins, --plugin, --doctor).
+ it in your browser. Select another operation with a mode flag.
+
+ Data modes read the same server the browser reads, without a browser or a
+ listening port: --api issues one route, --show reports the four layers
+ behind one selection, --walk dumps the inventory, --diff shows a change
+ set. Diagnostics: --check-api, --plugins, --plugin, --doctor. Remote
+ serving: --remote.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      PATH  Root directory to serve, check, or walk; a file may be   │
@@ -236,23 +247,30 @@ $ metab
 │                     (--api only).                                            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Shared by multiple modes (each option names its modes) ─────────────────────╮
-│ --path               TEXT   Serve: relative path from ROOT to select on      │
-│                             launch. Walk: subtree for a JSON/YAML            │
-│                             all-at-once tree envelope. Remote: remote        │
-│                             directory to serve (required).                   │
-│ --no-open                   Don't auto-open the browser (serve and remote    │
-│                             modes).                                          │
-│ --plugins-dir        PATH   Extra plugin directory; each subdirectory        │
-│                             containing manifest.toml is loaded. May be       │
-│                             passed multiple times. Combines additively with  │
-│                             the METABROWSER_PLUGINS_DIRS env var (env-var    │
-│                             dirs first, then CLI; deduped). Applies when     │
-│                             serving, checking APIs, and to the plugin modes. │
-│ --log-level          LEVEL  Log verbosity: DEBUG, INFO, WARNING, ERROR,      │
-│                             CRITICAL. DEBUG traces the inventory walker      │
-│                             (rewalk targets + resolved paths). Overrides     │
-│                             METABROWSER_LOG_LEVEL. Applies when serving,     │
-│                             walking, or checking APIs.                       │
+│ --path               TEXT    Serve: relative path from ROOT to select on     │
+│                              launch. Walk: subtree for a JSON/YAML           │
+│                              all-at-once tree envelope. Remote: remote       │
+│                              directory to serve (required).                  │
+│ --no-open                    Don't auto-open the browser (serve and remote   │
+│                              modes).                                         │
+│ --plugins-dir        PATH    Extra plugin directory; each subdirectory       │
+│                              containing manifest.toml is loaded. May be      │
+│                              passed multiple times. Combines additively with │
+│                              the METABROWSER_PLUGINS_DIRS env var (env-var   │
+│                              dirs first, then CLI; deduped). Applies when    │
+│                              serving, checking APIs, and to the plugin       │
+│                              modes.                                          │
+│ --log-level          LEVEL   Log verbosity: DEBUG, INFO, WARNING, ERROR,     │
+│                              CRITICAL. DEBUG traces the inventory walker     │
+│                              (rewalk targets + resolved paths). Overrides    │
+│                              METABROWSER_LOG_LEVEL. Applies when serving,    │
+│                              walking, or checking APIs.                      │
+│ --format             FORMAT  Output format: text (human report) | json |     │
+│                              yaml. Walk and diff: json/yaml dump the exact   │
+│                              data the browser consumes. Show: json reports   │
+│                              the four layers as an object. Api: json         │
+│                              (default) or yaml renders the envelope.         │
+│                              [default: text]                                 │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Serve ──────────────────────────────────────────────────────────────────────╮
 │ --port        INTEGER RANGE [1<=x<=65535]  Server port. [default: 8411]      │
@@ -267,12 +285,6 @@ $ metab
 │                                            [default: 127.0.0.1]              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Walk (--walk) ──────────────────────────────────────────────────────────────╮
-│ --format                        FORMAT                Output format: text    │
-│                                                       (human report) | json  │
-│                                                       | yaml. json/yaml dump │
-│                                                       the exact data the nav │
-│                                                       panel consumes.        │
-│                                                       [default: text]        │
 │ --stream       --all-at-once                          Streaming emits one    │
 │                                                       walker record per line │
 │                                                       (json→JSONL, yaml→doc  │
