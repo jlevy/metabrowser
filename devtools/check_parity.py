@@ -66,7 +66,9 @@ def registered_surfaces() -> set[str]:
 
     surfaces: set[str] = set()
     for path in sorted(SOURCE_ROOT.rglob("*.py")):
-        for route in re.findall(r'Route\("([^"]+)"', path.read_text(encoding="utf-8")):
+        # The path may sit on the line after `Route(` when the registration is
+        # wrapped, which a pattern anchored to `Route("` misses entirely.
+        for route in re.findall(r'Route\(\s*"([^"]+)"', path.read_text(encoding="utf-8")):
             if route.startswith("/api/"):
                 # Route patterns carry placeholders; the table documents the shape.
                 surfaces.add(route.split("{", 1)[0].rstrip("/"))

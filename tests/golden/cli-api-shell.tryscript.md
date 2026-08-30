@@ -14,8 +14,9 @@ before: >-
   > shellroot/render.json &&
   printf '{"path": "README.md", "view": "rendered", "destination": "out.html"}\n'
   > shellroot/export.json &&
+  printf '{"reason": "golden", "pending": []}\n' > shellroot/diag.json &&
   touch -t 202311142213.20 shellroot/README.md shellroot/render.json
-  shellroot/export.json shellroot
+  shellroot/export.json shellroot/diag.json shellroot
 ---
 # Golden tests: the shell’s own routes
 
@@ -37,6 +38,10 @@ status: 200
     {
       "p": "README.md",
       "e": ".md"
+    },
+    {
+      "p": "diag.json",
+      "e": ".json"
     },
     {
       "p": "export.json",
@@ -67,7 +72,7 @@ status: 200
   ],
   "index": {
     "complete": true,
-    "indexed_files": 3,
+    "indexed_files": 4,
     "max_files": 500000,
     "truncated": false
   },
@@ -104,7 +109,7 @@ api: /api/index/meta
 status: 200
 {
   "status": "done",
-  "indexed_files": 3,
+  "indexed_files": 4,
   "indexed_dirs": 1,
   "max_files": 500000,
   "truncated": false,
@@ -114,7 +119,7 @@ status: 200
   "suffixes": [
     {
       "ext": ".json",
-      "count": 2
+      "count": 3
     },
     {
       "ext": ".md",
@@ -123,6 +128,339 @@ status: 200
   ]
 }
 ? 0
+```
+
+## Test: the route index lists what this build serves
+
+`--api` can reach any route, but nothing told a reader or an agent which routes exist.
+`/api/routes` reads the live routing table, so plugin data hooks and lazily-added
+inventory routes are included and the answer cannot drift from what is mounted.
+
+```console
+$ metab shellroot --api /api/routes
+api: /api/routes
+status: 200
+{
+  "routes": [
+    {
+      "path": "/api/activity",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/capabilities",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/catalog",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/diagnostics/pending-tallies",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/events",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/file",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/git/commit/{revision}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/git/log",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/git/refs",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/git/repo",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/git/summary",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/index/meta",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/index/progress",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/kpress/export",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/kpress/render",
+      "methods": [
+        "GET",
+        "HEAD",
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/agent-log/charts",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/binary/chunk",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/diff/children",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/diff/comparison",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/diff/document",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/structured/parsed",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/recent",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/rollup",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/routes",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/stream",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/tree",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/kpress-static/{path:path}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "asset"
+    },
+    {
+      "path": "/plugin-static/{plugin}/{path:path}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "asset"
+    },
+    {
+      "path": "/raw",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "asset"
+    },
+    {
+      "path": "/static",
+      "methods": [
+        "GET"
+      ],
+      "kind": "asset"
+    },
+    {
+      "path": "/",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "browser"
+    },
+    {
+      "path": "/commit/{rest:path}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "browser"
+    },
+    {
+      "path": "/view/{path:path}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "browser"
+    },
+    {
+      "path": "/_debug/tasks",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "debug"
+    }
+  ],
+  "count": 34
+}
+? 0
+```
+
+## Test: the pending-tally diagnostic accepts a POST body
+
+The route logs a diagnostic line to stderr by design; it carries a wall-clock timestamp
+and is elided. The envelope is pinned exactly, with `elapsed_ms` normalized because it
+moves with load and hardware even when a small fixture makes it repeat locally.
+
+```console
+$ metab shellroot --api /api/diagnostics/pending-tallies --data shellroot/diag.json
+[..]
+api: /api/diagnostics/pending-tallies
+status: 200
+{
+  "diagnostic_id": "pending-tally-unknown",
+  "inventory": {
+    "status": "done",
+    "elapsed_ms": "<ELAPSED>",
+    "files_indexed": 4,
+    "entries": 5,
+    "pending_dirs": 0,
+    "pending_dir_sample": [],
+    "subscribers": 0,
+    "catalog_revision": 1,
+    "walker_task": "done",
+    "requested_paths": []
+  },
+  "events": {
+    "bus_started": false,
+    "connections": 0,
+    "latest_event_id": 0
+  }
+}
+? 0
+```
+
+## Test: the diagnostic refuses a GET
+
+```console
+$ metab shellroot --api /api/diagnostics/pending-tallies
+api: /api/diagnostics/pending-tallies
+status: 405
+Method Not Allowed
+Error: /api/diagnostics/pending-tallies returned HTTP 405
+? 1
 ```
 
 ## Test: rendering a document

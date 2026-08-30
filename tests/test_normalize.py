@@ -6,6 +6,7 @@ from pathlib import Path
 
 from metabrowser.normalize import (
     CURSOR_PLACEHOLDER,
+    ELAPSED_PLACEHOLDER,
     HOME_PLACEHOLDER,
     MTIME_PLACEHOLDER,
     ROOT_PLACEHOLDER,
@@ -155,3 +156,17 @@ def test_the_filesystem_root_is_not_normalized() -> None:
     ctx = NormalizeContext(root=Path("/"))
 
     assert normalize_text("a/b/c and /etc/passwd", ctx) == "a/b/c and /etc/passwd"
+
+
+def test_a_wall_clock_measurement_is_always_normalized() -> None:
+    """A small fixture can make it repeat locally; that is not pinnable."""
+
+    payload = {"inventory": {"elapsed_ms": 52, "entries": 2}}
+
+    normalized = normalize_payload(payload, _ctx())
+
+    assert normalized == {"inventory": {"elapsed_ms": ELAPSED_PLACEHOLDER, "entries": 2}}
+
+
+def test_a_boolean_is_not_mistaken_for_a_measurement() -> None:
+    assert normalize_payload({"elapsed_ms": False}, _ctx()) == {"elapsed_ms": False}

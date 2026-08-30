@@ -28,6 +28,7 @@ ROOT_PLACEHOLDER = "<ROOT>"
 HOME_PLACEHOLDER = "<HOME>"
 MTIME_PLACEHOLDER = "<MTIME>"
 CURSOR_PLACEHOLDER = "<CURSOR>"
+ELAPSED_PLACEHOLDER = "<ELAPSED>"
 
 # Filesystem timestamps, which a fixture normally pins with `touch -t`. A clone
 # into the cache cannot pin them, which is the case `normalize_mtimes` serves.
@@ -37,6 +38,11 @@ MTIME_FIELDS: tuple[str, ...] = ("mtime", "mtime_hash")
 # fixture can pin them. Unlike mtimes these are always normalized: there is no
 # arrangement under which the value is reproducible.
 CURSOR_FIELDS: tuple[str, ...] = ("page_cursor",)
+
+# Wall-clock measurements. A small fixture can make these repeat on one machine,
+# which is not the same as being pinnable: they move with load and hardware, so
+# a golden asserting one fails somewhere else.
+ELAPSED_FIELDS: tuple[str, ...] = ("elapsed_ms", "duration_ms")
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +91,8 @@ def normalize_payload(value: Any, ctx: NormalizeContext) -> Any:
 def _normalize(value: Any, ctx: NormalizeContext, *, key: str | None) -> Any:
     if key in CURSOR_FIELDS and isinstance(value, str) and value:
         return CURSOR_PLACEHOLDER
+    if key in ELAPSED_FIELDS and isinstance(value, (int, float)) and not isinstance(value, bool):
+        return ELAPSED_PLACEHOLDER
     if ctx.normalize_mtimes and key in MTIME_FIELDS:
         return MTIME_PLACEHOLDER
     if isinstance(value, str):
@@ -109,6 +117,8 @@ def describe_schema() -> str:
         " only when the fixture cannot pin them |",
         f"| `{'`, `'.join(CURSOR_FIELDS)}` | `{CURSOR_PLACEHOLDER}` |"
         " a random session token; no fixture can pin it |",
+        f"| `{'`, `'.join(ELAPSED_FIELDS)}` | `{ELAPSED_PLACEHOLDER}` |"
+        " wall clock; moves with load and hardware |",
         "| Git revisions | kept | fixture repositories build deterministically |",
     ]
     return "\n".join(lines)

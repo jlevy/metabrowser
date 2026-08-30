@@ -3258,6 +3258,34 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
     )
 
 
+async def api_routes(_request: Request) -> JSONResponse:
+    """List every route this build serves, so the surface is discoverable.
+
+    An agent or script driving ``metab --api`` cannot know what exists
+    otherwise. Reading ``app.routes`` at request time rather than a static
+    list means plugin data hooks and the lazily-added inventory routes are
+    included, and the answer cannot drift from what is actually mounted.
+    """
+
+    listed: list[dict[str, object]] = []
+    for route in app.routes:
+        path = getattr(route, "path", None)
+        if not isinstance(path, str):
+            continue
+        methods = sorted(getattr(route, "methods", None) or ["GET"])
+        if path.startswith("/api/"):
+            kind = "api"
+        elif path.startswith(("/static", "/kpress-static", "/plugin-static", "/raw")):
+            kind = "asset"
+        elif path.startswith("/_"):
+            kind = "debug"
+        else:
+            kind = "browser"
+        listed.append({"path": path, "methods": methods, "kind": kind})
+    listed.sort(key=lambda entry: (str(entry["kind"]), str(entry["path"])))
+    return JSONResponse({"routes": listed, "count": len(listed)})
+
+
 # ── Starlette app ───────────────────────────────────────────────
 
 routes = [
@@ -3271,6 +3299,7 @@ routes = [
     Route("/api/kpress/render", api_kpress_render, methods=["GET", "POST"]),
     Route("/api/kpress/export", api_kpress_export, methods=["POST"]),
     Route("/api/activity", api_activity),
+    Route("/api/routes", api_routes),
     Route("/api/stream", api_stream),
     Route("/_debug/tasks", _debug_tasks),
     Route("/raw", raw_file),

@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches: ["main"]
+  # Every pull request, not only those targeting main. A stacked pull request
+  # has a base of the branch below it, so a branches filter here silently gives
+  # the stack no CI at all -- which is exactly when review needs it most.
   pull_request:
-    branches: ["main"]
 
 permissions:
   contents: read

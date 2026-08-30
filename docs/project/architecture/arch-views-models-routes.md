@@ -147,6 +147,8 @@ arrives with a transcript or the build fails.
 | `/api/recent` | covered | `--api` | `cli-api-nav.tryscript.md` |
 | `/api/activity` | covered | `--api` | `cli-api-nav.tryscript.md` |
 | `/api/catalog` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/routes` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/diagnostics/pending-tallies` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
 | `/api/capabilities` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/index/progress` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/index/meta` | covered | `--api` | `cli-api-shell.tryscript.md` |

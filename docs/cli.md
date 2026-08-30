@@ -61,6 +61,12 @@ Do not change `--host` to expose a served root to an untrusted network; see the
 `--api` issues one route through the real application — same middleware, same routing,
 same serialization the browser receives — without binding a port or opening a browser.
 
+Start with the route index, which lists every route this build serves:
+
+```shell
+metab ./notes --api /api/routes
+```
+
 ```shell
 # Any registered route, with its query string exactly as the browser would send it.
 metab ./notes --api '/api/file?path=README.md'
