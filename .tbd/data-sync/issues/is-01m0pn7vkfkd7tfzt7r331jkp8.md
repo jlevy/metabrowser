@@ -3,9 +3,9 @@ type: is
 id: is-01m0pn7vkfkd7tfzt7r331jkp8
 title: "Stability for 0.6.1: validating the perf work, and the measurement errors that cost time doing it"
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 15
+version: 16
 labels: []
 dependencies: []
 child_order_hints:
@@ -24,7 +24,7 @@ child_order_hints:
   - is-01m0s89fnaknv3z2nxh16mh8tg
   - is-01m0s8aj66bkeprhxw8ar6hed5
 created_at: 2026-08-23T06:34:30.382Z
-updated_at: 2026-08-24T06:46:30.853Z
+updated_at: 2026-08-30T09:26:33.598Z
 ---
 The perf work in #66 and #68 landed on main after 0.6.0 shipped. This epic covers proving it is genuine, proving it changed no behaviour, and recording the measurement errors made while doing so -- because every one of them produced a confident wrong answer, and every one is cheap to repeat.
 
@@ -35,3 +35,7 @@ Is it faster? Partly established: on a live 249,147-file tree the full index wen
 Does it behave the same? Established at the channel the browser uses: `/api/tree?depth=0` shows zero differences, and on a quarter-million-file tree both builds report identical row counts, file counts and byte totals. One deliberate difference exists at depth>=1 and is filed as mb-amyt.
 
 WHY THE ERRORS ARE TRACKED AS WORK. Each of the children below is a real mistake made during this validation, and not one of them announced itself -- a broken harness looked like a slow build, a mutating corpus looked like a behaviour change, and an endpoint nobody uses looked like a regression. The fix in every case is a check or a docstring that makes the next run fail loudly instead of quietly. They are filed individually so each can be fixed and closed rather than surviving as a paragraph in a report.
+
+## Notes
+
+All children closed. The measurement errors this epic tracked are fixed where they were code (the bench corpus flag, the comparison harness guards, the visibility precondition and the freeze warning in perf.js) and recorded where they were method (exp-006's phrasing, probe calibration, hand-written hexes). The perf validation it existed to run is exp-011, whose verdict is accepted on the server half and contradicted on the browser half -- that contradiction was fixed in later work and both P0s from it are closed.

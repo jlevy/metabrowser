@@ -3,9 +3,9 @@ type: is
 id: is-01m0ndt127q6zs53zcr5assk5d
 title: File tree icons and colors are a separate taxonomy from the rollup registry
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 6
+version: 7
 labels: []
 dependencies: []
 parent_id: is-01m0ndp6h7a3hx27zbswtknk89
@@ -15,7 +15,7 @@ child_order_hints:
   - is-01m18s7tzag65bkae14mkptrjd
   - is-01m18s7vz7sxjemx03328vmm70
 created_at: 2026-08-22T19:05:22.759Z
-updated_at: 2026-08-30T07:30:44.838Z
+updated_at: 2026-08-30T09:26:33.309Z
 ---
 Raised in QA: extensions in one rollup family should share an icon and a color.
 
@@ -35,4 +35,4 @@ Note the ordering dependency: doing this makes every tree row take its family's 
 
 ## Notes
 
-Palette is settled (mb-0ov6 closed), so the ordering dependency this bead recorded is cleared: deriving the tree's icon and colour from the registry now spreads a palette whose closest pair is 0.0156 rather than 0.0020, instead of spreading the collisions. The one exception to know about is swift/svelte in dark (mb-oq6j). Nothing else about this bead's scope changed - it is still the larger piece of work: adding an icon per family or group to the registry and routing the tree through the same classifier the rollup uses.
+All four children done. The tree and the rollup bars now read one registry: one family is one icon and one colour, and the reviewer's own examples are pinned by tests/dom/file-type-identity-behavior.js -- .js and .jsx share an identity, .json/.toml/.yaml no longer paint as YAML. The palette ordering dependency this bead recorded is moot: the tree takes the registry's colours, so it spreads whatever the palette is. The one remaining collision cluster is tracked separately as mb-8lou.
