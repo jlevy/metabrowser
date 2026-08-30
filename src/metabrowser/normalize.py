@@ -18,6 +18,7 @@ compared.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,18 +51,28 @@ class NormalizeContext:
         """Path prefixes to rewrite, longest first so the most specific wins."""
 
         pairs: list[tuple[str, str]] = []
-        if self.root is not None:
-            pairs.append((str(self.root), ROOT_PLACEHOLDER))
-        if self.home is not None:
-            pairs.append((str(self.home), HOME_PLACEHOLDER))
+        for base, placeholder in ((self.root, ROOT_PLACEHOLDER), (self.home, HOME_PLACEHOLDER)):
+            if base is None:
+                continue
+            text = str(base)
+            # Serving "/" would turn every separator in every string into a
+            # placeholder, which mangles the payload instead of stabilizing it.
+            if text == "/":
+                continue
+            pairs.append((text, placeholder))
         return tuple(sorted(pairs, key=lambda pair: len(pair[0]), reverse=True))
+
+
+# A prefix matches only where the path ends or continues with a separator, so
+# `/tmp` rewrites `/tmp/x` but leaves `/tmpfile`, which is a different path.
+_BOUNDARY = r"(?![A-Za-z0-9_.\-])"
 
 
 def normalize_text(text: str, ctx: NormalizeContext) -> str:
     """Rewrite sandbox-dependent paths in free text such as console output."""
 
     for prefix, placeholder in ctx.prefixes():
-        text = text.replace(prefix, placeholder)
+        text = re.sub(re.escape(prefix) + _BOUNDARY, placeholder, text)
     return text
 
 

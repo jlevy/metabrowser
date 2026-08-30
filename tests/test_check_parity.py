@@ -132,3 +132,70 @@ def test_an_unknown_status_is_reported(
 
 def test_the_real_table_passes() -> None:
     assert check_parity.check() == []
+
+
+def _write_golden(golden_dir: Path, name: str, body: str) -> None:
+    golden_dir.mkdir(exist_ok=True)
+    (golden_dir / name).write_text(body, encoding="utf-8")
+
+
+def test_a_route_named_only_in_prose_is_not_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    """A comment mentioning a route must not count as covering it."""
+
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir,
+        "prose.tryscript.md",
+        "This is the transcript for `/api/tree`, which drives the nav panel.\n"
+        "```console\n$ metab root --api /api/rollup\n```\n",
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `prose.tryscript.md` |"),
+    )
+
+    problems = check_parity.check()
+
+    assert any("/api/tree" in problem and "never exercises it" in problem for problem in problems)
+
+
+def test_a_route_named_in_a_command_is_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir,
+        "direct.tryscript.md",
+        "```console\n$ metab root --api '/api/tree?depth=1'\n```\n",
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `direct.tryscript.md` |"),
+    )
+
+    assert check_parity.check() == []
+
+
+def test_a_mode_that_resolves_a_route_internally_is_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    """`--show` issues /api/file without naming it, so the mode is the evidence."""
+
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir, "indirect.tryscript.md", "```console\n$ metab root --show README.md\n```\n"
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | covered | `--show PATH` | `indirect.tryscript.md` |"),
+    )
+
+    assert check_parity.check() == []

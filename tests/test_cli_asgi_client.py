@@ -94,3 +94,48 @@ def test_a_streaming_route_fails_instead_of_hanging() -> None:
     client = InProcessClient(cast(ASGIApp, app))
     with pytest.raises(CLIError, match="did not complete within"):
         asyncio.run(client.request("GET", "/api/events", timeout_s=0.2))
+
+
+def _echo_app_factory(seen: dict[str, object]):
+    async def app(scope: Scope, _receive: Receive, send: Send) -> None:
+        seen["path"] = scope["path"]
+        seen["raw_path"] = scope["raw_path"]
+        seen["query_string"] = scope["query_string"]
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    return app
+
+
+def test_a_non_ascii_query_is_percent_encoded_not_crashed() -> None:
+    """A route carrying a non-ASCII filename must reach the app, not raise."""
+
+    seen: dict[str, object] = {}
+    client = InProcessClient(cast(ASGIApp, _echo_app_factory(seen)))
+
+    response = asyncio.run(client.get("/api/file?path=日本.md"))
+
+    assert response.status_code == 200
+    assert seen["query_string"] == b"path=%E6%97%A5%E6%9C%AC.md"
+
+
+def test_a_non_ascii_route_segment_is_percent_encoded() -> None:
+    seen: dict[str, object] = {}
+    client = InProcessClient(cast(ASGIApp, _echo_app_factory(seen)))
+
+    asyncio.run(client.get("/api/plugin/x/日本"))
+
+    assert seen["raw_path"] == b"/api/plugin/x/%E6%97%A5%E6%9C%AC"
+    # ASGI says `path` is the decoded form; Starlette routes on it.
+    assert seen["path"] == "/api/plugin/x/日本"
+
+
+def test_an_already_encoded_query_is_not_double_encoded() -> None:
+    """A caller who percent-encoded already must not get %25 back."""
+
+    seen: dict[str, object] = {}
+    client = InProcessClient(cast(ASGIApp, _echo_app_factory(seen)))
+
+    asyncio.run(client.get("/api/file?path=%E6%97%A5%E6%9C%AC.md"))
+
+    assert seen["query_string"] == b"path=%E6%97%A5%E6%9C%AC.md"

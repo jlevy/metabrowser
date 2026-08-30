@@ -18,7 +18,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from starlette.types import ASGIApp, Message, Scope
 
@@ -32,6 +32,12 @@ INDEX_READY_POLL_S = 0.05
 # would hang rather than fail. This bounds every request instead of guessing
 # which routes stream.
 REQUEST_TIMEOUT_S = 30.0
+
+# A caller writes a route the way the browser would request it, which may carry
+# a non-ASCII filename and may already be percent-encoded. Escaping with `%`
+# itself marked safe encodes the former without double-encoding the latter.
+_PATH_SAFE = "/%:@!$&'()*+,;=~-._"
+_QUERY_SAFE = "?" + _PATH_SAFE
 
 
 @dataclass(frozen=True, slots=True)
@@ -193,15 +199,18 @@ class InProcessClient:
             request_headers.append((b"content-type", content_type.encode("ascii")))
             request_headers.append((b"content-length", str(len(body)).encode("ascii")))
 
+        raw_path = quote(route, safe=_PATH_SAFE).encode("ascii")
         scope: Scope = {
             "type": "http",
             "asgi": {"version": "3.0", "spec_version": "2.5"},
             "http_version": "1.1",
             "method": method,
             "scheme": "http",
-            "path": route,
-            "raw_path": route.encode("ascii"),
-            "query_string": query.encode("ascii"),
+            # ASGI says `path` is the decoded target and `raw_path` the bytes as
+            # sent; Starlette routes on `path`.
+            "path": unquote(route),
+            "raw_path": raw_path,
+            "query_string": quote(query, safe=_QUERY_SAFE).encode("ascii"),
             "root_path": "",
             "headers": request_headers,
             "client": ("127.0.0.1", 1),

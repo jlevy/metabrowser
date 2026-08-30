@@ -25,6 +25,32 @@ SOURCE_ROOT = REPO_ROOT / "src/metabrowser"
 GOLDEN_DIR = REPO_ROOT / "tests/golden"
 
 _STATUSES = frozenset({"covered", "exempt"})
+# Modes that resolve a route internally rather than naming it on the command
+# line. `--api` is deliberately absent: it always names its route, so a row
+# claiming it must show the route in a command.
+_INDIRECT_MODES = ("--show", "--walk", "--diff", "--check-api")
+
+
+def _command_lines(golden: str) -> list[str]:
+    """The `$ metab ...` lines in a transcript, which are what it actually runs."""
+
+    return [line.strip()[2:] for line in golden.splitlines() if line.strip().startswith("$ ")]
+
+
+def _exercises(golden: str, surface: str, cli: str) -> bool:
+    """Whether a transcript runs the surface, rather than merely mentioning it.
+
+    Naming the route in a command is direct evidence. A mode that resolves the
+    route internally -- `--show` reaching `/api/file` without naming it -- is
+    evidence only when the row says so, which is why the CLI column is read
+    here and not just the route.
+    """
+
+    commands = _command_lines(golden)
+    if any(surface in command for command in commands):
+        return True
+    claimed = [mode for mode in _INDIRECT_MODES if mode in cli]
+    return any(mode in command for mode in claimed for command in commands)
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,7 +132,7 @@ def check() -> list[str]:
                 path = GOLDEN_DIR / golden
                 if not path.exists():
                     problems.append(f"{row.surface}: golden {golden} does not exist")
-                elif row.surface not in path.read_text(encoding="utf-8"):
+                elif not _exercises(path.read_text(encoding="utf-8"), row.surface, row.cli):
                     problems.append(f"{row.surface}: golden {golden} never exercises it")
         elif not row.evidence or row.evidence == "—":
             problems.append(f"{row.surface}: an exempt row must give a reason")

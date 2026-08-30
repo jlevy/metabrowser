@@ -133,3 +133,25 @@ def test_a_pagination_cursor_is_always_normalized() -> None:
 
 def test_an_absent_cursor_is_left_alone() -> None:
     assert normalize_payload({"page_cursor": None}, _ctx()) == {"page_cursor": None}
+
+
+def test_a_prefix_only_matches_at_a_path_boundary() -> None:
+    """`/tmp` must not corrupt `/tmpfile`, which is a different path."""
+
+    ctx = NormalizeContext(root=Path("/tmp"))
+
+    assert normalize_text("/tmpfile and /tmp/x", ctx) == f"/tmpfile and {ROOT_PLACEHOLDER}/x"
+
+
+def test_a_bare_prefix_at_the_end_of_a_token_is_replaced() -> None:
+    ctx = NormalizeContext(root=Path("/tmp/sandbox"))
+
+    assert normalize_text('"/tmp/sandbox"', ctx) == f'"{ROOT_PLACEHOLDER}"'
+
+
+def test_the_filesystem_root_is_not_normalized() -> None:
+    """Serving `/` would otherwise turn every separator into a placeholder."""
+
+    ctx = NormalizeContext(root=Path("/"))
+
+    assert normalize_text("a/b/c and /etc/passwd", ctx) == "a/b/c and /etc/passwd"
