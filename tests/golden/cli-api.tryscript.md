@@ -152,6 +152,78 @@ status: 200
 ? 0
 ```
 
+## Test: the content window and its truncation state
+
+`limit` and `offset` bound the content window.
+Both are parsed by the route, so a truncated read needs no large fixture -- and a
+library-level transcript could not show either parameter taking effect.
+
+```console
+$ metab apiroot --api '/api/file?path=README.md&limit=4'
+api: /api/file?path=README.md&limit=4
+status: 200
+{
+  "type": "text",
+  "kind": "markdown",
+  "views": [
+    {
+      "id": "rendered",
+      "label": "Document",
+      "default": true,
+      "container_class": "content-body metabrowser-kpress-host md-body",
+      "printable": true,
+      "print_profile": "document",
+      "render_runtime": "kpress"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "default": false,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "path": "README.md",
+  "ext": ".md",
+  "size": 17,
+  "mtime_hash": "README_md_17_1700000000000000000_g2zgranz5n3p809yrp44i27596jw754",
+  "content": "# Sa",
+  "content_offset": 0,
+  "content_bytes": 4,
+  "bytes_read": 4,
+  "content_truncated": true,
+  "content_preview_limit": 4,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+? 0
+```
+
+## Test: a second window reports its offset
+
+```console
+$ metab apiroot --api '/api/file?path=README.md&offset=9&limit=8'
+api: /api/file?path=README.md&offset=9&limit=8
+status: 200
+{
+  "type": "text_chunk",
+  "path": "README.md",
+  "size": 17,
+  "mtime_hash": "README_md_17_1700000000000000000_g2zgranz5n3p809yrp44i27596jw754",
+  "content": "\nHello.\n",
+  "content_offset": 9,
+  "content_bytes": 8,
+  "bytes_read": 17,
+  "content_truncated": false,
+  "content_preview_limit": 8,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+? 0
+```
+
 ## Test: YAML rendering of the same envelope
 
 ```console
