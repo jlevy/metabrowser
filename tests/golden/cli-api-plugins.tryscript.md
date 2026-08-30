@@ -21,7 +21,7 @@ before: >-
   printf '{"a": 1, "b": [2, 3]}\n' > data.json &&
   printf -- '--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-old\n+new\n' > change.patch &&
   printf '{"type":"system","subtype":"init","session_id":"s1","model":"m1"}\n' > session.jsonl &&
-  printf '\x00\x01\x02bin' > blob.bin &&
+  printf '\000\001\002bin' > blob.bin &&
   git init -q --initial-branch=main . &&
   printf 'first\n' > tracked.txt &&
   git add tracked.txt &&

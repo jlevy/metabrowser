@@ -15,7 +15,7 @@ before: >-
   printf -- '--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n' > showroot/change.patch &&
   printf '{"type":"system","subtype":"init","session_id":"s1","model":"m1"}\n' > showroot/session.jsonl &&
   printf '{"event":"start"}\n{"event":"stop"}\n' > showroot/events.jsonl &&
-  printf '\x00\x01\x02binary\n' > showroot/blob.bin &&
+  printf '\000\001\002binary\n' > showroot/blob.bin &&
   printf 'nested\n' > showroot/docs/a.md &&
   touch -t 202311142213.20 showroot/README.md showroot/notes.txt showroot/data.json
   showroot/change.patch showroot/session.jsonl showroot/events.jsonl showroot/blob.bin

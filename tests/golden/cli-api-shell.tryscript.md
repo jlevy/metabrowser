@@ -58,6 +58,11 @@ status: 200
 
 ## Test: build capabilities
 
+The two `reason` values are host facts — the filesystem type the served root sits on,
+and which watch backend that made available — so they are elided.
+Everything around them is pinned, including the backend `mode`, which is the part a
+regression would change.
+
 ```console
 $ metab shellroot --api /api/capabilities
 api: /api/capabilities
@@ -67,7 +72,7 @@ status: 200
     {
       "prefix": ".",
       "mode": "native",
-      "reason": "fs=apfs"
+      "reason": "[..]"
     }
   ],
   "index": {
@@ -78,7 +83,7 @@ status: 200
   },
   "events": {
     "stream": "live",
-    "reason": "inventory-done+watchfiles-native"
+    "reason": "[..]"
   }
 }
 ? 0
