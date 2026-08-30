@@ -9,7 +9,7 @@
 ## Overview
 
 Three workstreams are queued behind each other:
-[CLI parity](plan-2026-08-21-cli-parity-and-golden-coverage.md),
+[CLI parity](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md),
 [Git status](plan-2026-08-26-git-status-and-working-tree-diffs.md), and the
 [repository library](plan-2026-08-11-open-repo-from-git-url.md).
 This document sequences them, maps each to files and functions, and states how all of
@@ -33,7 +33,7 @@ tested as rigorously as the parts that have one.
 
 ## The Parity Principle, Extended
 
-The [parity plan](plan-2026-08-21-cli-parity-and-golden-coverage.md) states the
+The [parity plan](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md) states the
 principle over the four layers `route → kind → model → view`, and exempts only the view.
 That covers read models.
 It does not cover **durable state**, which is most of what the cache is.
@@ -523,7 +523,7 @@ Still open:
 
 ## References
 
-- [CLI parity and golden coverage](plan-2026-08-21-cli-parity-and-golden-coverage.md)
+- [CLI parity and golden coverage](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
 - [Git status and working-tree diffs](plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Repository library and open from a Git URL](plan-2026-08-11-open-repo-from-git-url.md)
 - [Delivery order review](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)

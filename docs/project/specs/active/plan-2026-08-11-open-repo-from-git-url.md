@@ -983,7 +983,7 @@ It is what makes every subsequent behavior in this plan assertable: without it,
 the state machine that Phase 1A exists to build is observable only by reading the
 sandbox by hand. It is cheap here, because the records it projects are being written in
 this phase anyway, and it satisfies the state clause in
-[CLI parity](plan-2026-08-21-cli-parity-and-golden-coverage.md).
+[CLI parity](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md).
 
 The routes project **logical** state only — identity, format, publication state, head
 revision. Never a directory listing: pack file names, object counts after `gc`, and

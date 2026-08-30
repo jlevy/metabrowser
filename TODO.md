@@ -23,7 +23,7 @@ Checked items below are supported today; unchecked items are planned work.
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
-| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md), [CLI-first delivery](docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md) | Draft; lands first and behavior-preserving, because Git status and the repository cache are proved through it |
+| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [CLI-first delivery](docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md) | Mechanism delivered: `--api` and `--show` reach every route, `check_parity.py` gates the table at 22 covered and 2 exempt with no gaps. Git status and the repository cache are proved through it |
 
 Delivered plans keep their record in [done plans](docs/project/README.md#done-plans):
 the navigation baseline, folder Overview and file-type summaries, semantic file-type

@@ -39,7 +39,6 @@ links to the document that covers each in depth.
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
-- [CLI parity and golden coverage](specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md)
 - [CLI-first delivery: parity, Git status, and the repository cache](specs/active/plan-2026-08-28-cli-first-delivery-map.md)
 
 ## Research
@@ -69,6 +68,7 @@ links to the document that covers each in depth.
 
 ## Done Plans
 
+- [CLI parity and golden coverage](specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
 - [Bounded binary byte preview](specs/done/plan-2026-08-11-binary-byte-preview.md)
 - [Metabrowser v0.1.0 standalone package](specs/done/plan-2026-07-14-metabrowser-v0.1.0-standalone-package.md)
 - [Flat single-command `metab` CLI](specs/done/plan-2026-07-27-metab-flat-cli.md)

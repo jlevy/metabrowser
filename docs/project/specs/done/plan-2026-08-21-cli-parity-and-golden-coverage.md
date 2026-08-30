@@ -4,7 +4,10 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Delivered.
+All twelve beads under epic `mb-u29h` are closed.
+The parity table stands at 22 covered and 2 exempt with no gaps, and
+`devtools/check_parity.py` rejects a `gap` row outright.
 
 ## Overview
 
@@ -26,8 +29,8 @@ view — and draws the line where that architecture already draws it:
 > and keyboard — is exempt, and its behaviour is pinned in `tests/dom/` instead.
 
 Two clauses were added on 2026-08-28, when
-[CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md) applied this principle
-to work that persists state rather than only serving it:
+[CLI-first delivery](../active/plan-2026-08-28-cli-first-delivery-map.md) applied this
+principle to work that persists state rather than only serving it:
 
 > **State clause.** Every state the system persists is reachable from `metab` as a
 > normalized model and pinned by a golden transcript.
@@ -327,9 +330,9 @@ Still open:
   transcripts beat integration suites for systems like this
 - `tbd guidelines general-testing-rules` — the minimal-tests-maximum-coverage rule this
   serves
-- [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md) — the state clause,
-  the route-over-mode rule, and the file-level map of what this principle is used to
-  build
+- [CLI-first delivery](../active/plan-2026-08-28-cli-first-delivery-map.md) — the state
+  clause, the route-over-mode rule, and the file-level map of what this principle is
+  used to build
 - [Development](../../../development.md) — where the reasoning behind the rule lives
 - [tryscript](https://github.com/jlevy/tryscript) — the transcript runner
 
