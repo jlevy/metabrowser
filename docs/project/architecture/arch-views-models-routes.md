@@ -141,28 +141,36 @@ closes it, and **exempt** gives the reason it has no model to pin.
 | --- | --- | --- | --- |
 | `/api/file` | covered | `--show PATH`, `--api` | `cli-show.tryscript.md`, `cli-api.tryscript.md` |
 | `/api/tree` | covered | `--walk`, `--api` | `cli-api.tryscript.md` |
-| `/api/rollup` | gap | `--api` | `mb-crmq` |
-| `/api/recent` | gap | `--api` | `mb-e1uk` |
-| `/api/activity` | gap | `--api` | `mb-e1uk` |
-| `/api/catalog` | gap | `--api` | `mb-4uy2` |
-| `/api/capabilities` | gap | `--api` | `mb-4uy2` |
-| `/api/index/progress` | gap | `--api` | `mb-4uy2` |
-| `/api/index/meta` | gap | `--api` | `mb-4uy2` |
+| `/api/rollup` | covered | `--api` | `cli-api-nav.tryscript.md` |
+| `/api/recent` | covered | `--api` | `cli-api-nav.tryscript.md` |
+| `/api/activity` | covered | `--api` | `cli-api-nav.tryscript.md` |
+| `/api/catalog` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/capabilities` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/index/progress` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/index/meta` | covered | `--api` | `cli-api-shell.tryscript.md` |
 | `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/summary` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/log` | covered | `--api` | `cli-api-git.tryscript.md` |
 | `/api/git/commit` | covered | `--api` | `cli-api-git.tryscript.md` |
-| `/api/kpress/render` | gap | `--api --data` | `mb-4uy2` |
+| `/api/kpress/render` | covered | `--api`, `--api --data` | `cli-api-shell.tryscript.md` |
 | `/api/kpress/export` | gap | `--api --data` | `mb-4uy2` |
-| `/api/plugin/agent-log/charts` | gap | `--api` | `mb-oolf` |
-| `/api/plugin/binary/chunk` | gap | `--api` | `mb-oolf` |
-| `/api/plugin/diff/document` | gap | `--api` | `mb-oolf` |
-| `/api/plugin/diff/children` | gap | `--api` | `mb-oolf` |
-| `/api/plugin/diff/comparison` | gap | `--api` | `mb-oolf` |
-| `/api/plugin/structured/parsed` | gap | `--api` | `mb-oolf` |
+| `/api/plugin/agent-log/charts` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/binary/chunk` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 | `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
+
+The one remaining gap is `/api/kpress/export`. Its refusals are reachable, but its
+success path writes a file to a destination the caller names, and every other mode in
+`metab` is read-only.
+Whether a golden may perform a write — and where that written file lives so the
+transcript stays deterministic — is a policy decision for the suite, not something to
+settle inside one transcript.
+`mb-4uy2` carries it.
 
 The two exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request
