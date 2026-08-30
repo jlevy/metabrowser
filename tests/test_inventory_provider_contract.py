@@ -690,6 +690,62 @@ def test_the_canonical_path_is_total_and_injective() -> None:
     )
 
 
+def test_the_boundary_escapes_a_name_the_store_holds_natively() -> None:
+    """The store keeps the platform name; only rows crossing the boundary are escaped.
+
+    Nothing is stored twice, which is the point: the retained index holds one string per
+    entry, and the canonical form is derived for the page being returned. A name needing
+    no escape comes back as the *same object*, so the ordinary case allocates nothing.
+
+    Synthesised rather than written to disk, because APFS rejects a filename that is not
+    valid UTF-8, so the case this covers cannot be created on the machine that most often
+    runs these tests. It is reachable on Linux, which is where it would otherwise be found
+    the hard way.
+    """
+
+    from metabrowser.inventory_engine.providers.python_inventory import (
+        FsEntry,
+        _semantic_entry,
+    )
+
+    undecodable = b"x\xff.txt".decode("utf-8", "surrogateescape")
+    stored = FsEntry(
+        path=f"src/{undecodable}",
+        parent="src",
+        name=undecodable,
+        type="file",
+        ext=".txt",
+        kind="file",
+        size=1,
+        mtime_ns=1,
+        mtime_hash="",
+        active=False,
+    )
+
+    row = _semantic_entry(stored)
+    assert row.path == "src/x%FF.txt"
+    assert row.name == "x%FF.txt"
+    assert row.parent == "src"
+
+    # The store is untouched: one string per entry, still the platform's.
+    assert stored.name == undecodable
+
+    # And an ordinary name crosses without allocating a second string.
+    plain = FsEntry(
+        path="src/main.py",
+        parent="src",
+        name="main.py",
+        type="file",
+        ext=".py",
+        kind="file",
+        size=1,
+        mtime_ns=1,
+        mtime_hash="",
+        active=False,
+    )
+    assert _semantic_entry(plain).path is plain.path
+
+
 def test_lifecycle_issue_lists_are_bounded() -> None:
     issue = InventoryIssue(code=IssueCode.PROVIDER_FAILURE, detail="failed")
     with pytest.raises(ValueError, match="at most"):

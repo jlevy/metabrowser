@@ -205,8 +205,17 @@ def canonical_inventory_name(name: str) -> str:
     listed it.
     """
 
-    if not any(_is_escapable(character) for character in name):
-        return name
+    # The common path has to stay cheap, because it is every file. Both checks are
+    # C-level: `%` is a substring scan, and encoding raises precisely on the surrogates
+    # that mark an undecodable byte. A Python-level scan over every character of every
+    # name in every page is the version of this that shows up in a profile.
+    if "%" not in name:
+        try:
+            name.encode("utf-8")
+        except UnicodeEncodeError:
+            pass
+        else:
+            return name
     out: list[str] = []
     for character in name:
         point = ord(character)
@@ -222,18 +231,19 @@ def canonical_inventory_name(name: str) -> str:
 
 
 def canonical_inventory_path(path: str) -> str:
-    """Escape a `/`-separated relative path, component by component."""
+    """Escape a `/`-separated relative path.
 
-    if not path:
-        return path
-    return "/".join(canonical_inventory_name(part) for part in path.split("/"))
+    The same function as for one name, not a split-escape-join, because no escape rule
+    produces or consumes `/`: escaping is per character, and a separator passes through
+    untouched. Splitting and rejoining gives the identical string while allocating a new
+    one for every path on every page, including the paths that needed nothing done to
+    them.
+    """
+
+    return canonical_inventory_name(path)
 
 
 _POSIX_BYTES = os.name != "nt"
-
-
-def _is_escapable(character: str) -> bool:
-    return character == "%" or 0xD800 <= ord(character) <= 0xDFFF
 
 
 _ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)

@@ -381,12 +381,21 @@ class _SelectedDirectoryTotals:
 
 
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
-    """Drop Python-engine bookkeeping and host decorations at the boundary."""
+    """Drop Python-engine bookkeeping and host decorations at the boundary.
+
+    Also the one place the retained native name becomes the contract's canonical one. The
+    store keeps what the filesystem gave it; only rows crossing this boundary are escaped,
+    so nothing is stored twice — the same split fdu makes between its native arena and the
+    canonical path it derives per returned row.
+
+    Free in the ordinary case: a name needing no escape comes back as the same object, so
+    this allocates nothing for the files everyone actually has.
+    """
 
     return InventoryEntry(
-        path=entry.path,
-        parent=entry.parent,
-        name=entry.name,
+        path=canonical_inventory_path(entry.path),
+        parent=canonical_inventory_path(entry.parent),
+        name=canonical_inventory_name(entry.name),
         type=EntryType(entry.type),
         ext=entry.ext,
         size=entry.size,
