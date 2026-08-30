@@ -147,12 +147,12 @@
       "order": 180
     },
     {
-      "deviation": null,
+      "deviation": "Four upstream brands independently chose nearly the same orange-red, and GitHub hands us all four: swift 31.62, svelte 34.20, html 34.85, clojure 24.35. Taking each at its upstream hue is faithful and leaves swift and svelte at dE 0.0073 in the dark theme -- #ff4733 against #ff4a31, which is one colour to the eye. A palette whose job is telling families apart does not get to call that acceptable just because the rule that produced it is consistent.\n\nSwift moves rather than the others because it is the hub, not a member: it appears in five of the sub-0.02 pairs, more than any other family, so moving this one resolves three collisions (svelte, html, clojure) where moving any of the others resolves one. At 52.3 it clears every family by 0.0252 in both themes against 0.0073 before.\n\nIt stays orange -- #ab2300 light, #ff4c13 dark -- so what a reader recognises about Swift survives even though the exact hue no longer matches. The widest gap on the whole circle is near 265.8 and clears 0.0380, half again as much room, and is refused: a blue Swift is no longer recognisably Swift, and the entire reason for taking GitHub's colours is that readers already know them.",
       "extensions": [
         ".swift"
       ],
       "group_id": "code",
-      "hue": 31.62,
+      "hue": 52.3,
       "icon": null,
       "id": "swift",
       "label": "Swift",
@@ -904,7 +904,7 @@
       "order": 100
     }
   ],
-  "fingerprint": "14178950469e16d806fca429a970eac03331fcb0fc304755548de3335ecb89e6",
+  "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c",
   "groups": [
     {
       "icon": "alignLeft",
