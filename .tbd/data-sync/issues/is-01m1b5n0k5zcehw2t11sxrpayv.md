@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m1b5n0k5zcehw2t11sxrpayv
-title: Generate JSON Schema from the existing wire TypedDicts, with a drift check
+title: Generate JSON Schema for the Git envelopes, with a drift check
 kind: task
 status: open
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-30-api-schema-and-contract.md
 labels: []
 dependencies:
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m1b5n1awje3r2enbetszw8kx
 parent_id: is-01m1b5mzft281epbec7m4mmca0
 created_at: 2026-08-31T05:46:07.332Z
-updated_at: 2026-08-31T06:40:34.317Z
+updated_at: 2026-08-31T17:19:12.020Z
 ---
 No rewrite and no second declaration: the 31 TypedDicts that exist today stay the declaration.
 
