@@ -135,7 +135,7 @@ The row requests were not only slow, they were *taking* something.
 Each one spent most of a second of CPU that the walker wanted, under a GIL they share.
 Remove the cost and the scan finishes 29% sooner without touching the walker at all.
 That is
-[H31](../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#hypotheses)’s
+[H31](../../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#hypotheses)’s
 feedback loop measured from the other end.
 
 ## Where the real tree now stands

@@ -498,7 +498,8 @@ global.window = { METABROWSER_SETTINGS: {} };
   const handle = module.mountOverview(container, { path: "src", raw: envelope }, mb, {
     listPanels: () => descriptors,
   });
-  await new Promise((resolve) => setImmediate(resolve));
+  check("overview declares initial readiness", handle.ready instanceof Promise);
+  await handle.ready;
   const stack = container.children[0];
   check(
     "deterministic slots",

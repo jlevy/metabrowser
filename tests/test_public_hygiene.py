@@ -136,10 +136,14 @@ def test_git_ignored_preserves_unusual_filenames() -> None:
 
 
 SKILL_PATH = "skills/metabrowser/SKILL.md"
-# Worked "pin the release" examples live in these docs; the release workflow
-# keeps them on the current version. The skill is deliberately absent.
-PINNED_EXAMPLE_DOCS = ("README.md", "docs/installation.md")
+# No reader-facing document names a version. The reasoning that kept it out of
+# the skill applies everywhere: a version written into prose goes stale on the
+# next release and nothing in the build maintains it. Documents that teach the
+# pinning pattern use a `<version>` placeholder and point at the authoritative
+# source -- pyproject.toml, uv.lock, PyPI, or `metab --version`.
+VERSIONLESS_DOCS = ("README.md", "docs/installation.md", SKILL_PATH)
 _METABROWSER_PIN = re.compile(r"metabrowser[@=]=?(\d+\.\d+\.\d+)")
+_KPRESS_PIN = re.compile(r"kpress[@=]=?(\d+\.\d+\.\d+)")
 
 
 def test_agent_skill_runner_tracks_the_latest_release() -> None:
@@ -160,16 +164,24 @@ def test_agent_skill_routes_to_uv_cool_off_configuration() -> None:
     assert "exclude-newer" in skill or "UV_EXCLUDE_NEWER" in skill
 
 
-def test_documented_pin_examples_agree_across_docs() -> None:
-    found = {
-        relative: sorted(
-            set(_METABROWSER_PIN.findall((ROOT / relative).read_text(encoding="utf-8")))
-        )
-        for relative in PINNED_EXAMPLE_DOCS
-    }
+def test_reader_facing_docs_do_not_freeze_a_version() -> None:
+    """No document names a release, its own or a dependency's.
 
-    versions = {version for versions in found.values() for version in versions}
-    assert len(versions) <= 1, f"documented pin examples disagree: {found}"
+    These previously carried worked examples on the then-current version, kept in
+    step by hand at release time. They drifted anyway -- the install guide sat
+    two KPress upgrades behind, telling readers a version the package had not
+    shipped for weeks. A `<version>` placeholder cannot go stale, and the
+    authoritative source is one command away.
+    """
+
+    frozen = {
+        relative: sorted(set(_METABROWSER_PIN.findall(text)) | set(_KPRESS_PIN.findall(text)))
+        for relative in VERSIONLESS_DOCS
+        if (text := (ROOT / relative).read_text(encoding="utf-8"))
+    }
+    offenders = {relative: found for relative, found in frozen.items() if found}
+
+    assert not offenders, f"documents froze a version: {offenders}"
 
 
 def test_agent_skill_prefers_the_local_command_over_the_runner() -> None:

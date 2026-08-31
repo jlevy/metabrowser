@@ -79,3 +79,24 @@ index 0000000..14fa813
 +unknown grammars stay readable
 +<script>looking text remains literal</script>
 +the plain fallback is part of the contract
+diff --git a/config/app.yaml b/config/app.yaml
+index f12ca44..592fec3 100644
+--- a/config/app.yaml
++++ b/config/app.yaml
+@@ -1,3 +1,4 @@
+ app:
+-  retries: 3
++  retries: 5
+   theme: system
++  telemetry: false
+diff --git a/docs/guide.md b/docs/guide.md
+index 47e33c7..31cacc1 100644
+--- a/docs/guide.md
++++ b/docs/guide.md
+@@ -1,5 +1,5 @@
+ # Guide
+ Overview
+-Run the old command before opening the browser.
++Run the new command before opening Metabrowser.
+ Details
+ The source tab keeps Markdown syntax visible.

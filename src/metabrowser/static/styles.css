@@ -157,7 +157,7 @@
        file paths, including parent paths and ancestor segments, in the
        tree, the header, the file header, and search results; key names
        and shortcut hints; labels, metadata, chips, tooltips, notes,
-       counts, and status text.
+       counts, status text, and commit-message prose.
        A path is navigation, not code. It reads in the same face as the
        Navigator row it points at, at --nav-font-size.
 
@@ -215,7 +215,12 @@
      families to platform stacks; `data-prose-font="sans"` bridges just
      --kpress-host-font-prose to --prose-sans-font. Embedded document colors
      use KPress's public --kpress-doc-* seam in the scoped bridge below. */
-  --kpress-measure: 48rem;
+  /* No --kpress-measure here. KPress declares it on
+     `:root, .kpress, .kpress-page-main, .kpress-tooltip` and its stylesheet
+     loads after this one, so a value set here is overwritten on :root and
+     shadowed on .kpress — it reached nothing, in either scope. The reading
+     width lives in --doc-measure below, a name KPress does not declare, and is
+     bridged onto --kpress-measure at the .kpress scope further down. */
   --kpress-print-page-margin: 0.65in;
   --kpress-print-font-size: 11pt;
   /* Sans face for the "sans" reading mode. Points at the interface sans
@@ -279,6 +284,49 @@
   --document-body-font-size: 15px;
   --kpress-host-font-size-base: var(--document-body-font-size);
   --mono-block-font-size: var(--ui-small-font-size);
+
+  /* Reading width, in CHARACTERS. The menu's "Max text width" sets this; the
+     pre-paint boot script (server.py) seeds it from the cookie so the column
+     never starts at one width and jumps to another. The bridge rule further
+     down turns it into KPress's --kpress-measure.
+
+     Characters rather than a length because that is the decision a reader
+     actually has: 45-75 characters is the classic range for a single column,
+     and a browser pane is wide enough to sit above it. KPress's own token is a
+     length and stays one — it cannot convert, because a host may swap the face
+     through --kpress-host-font-prose and invalidate any ratio KPress shipped.
+     Metabrowser CAN convert: it pins its own faces, so it owns the ratio. */
+  --doc-max-chars: 105;
+  /* Average glyph advance per em for the current reading face, measured over
+     507 characters of representative English prose at 100px (not the CSS `ch`
+     unit, which is the advance of "0" and overstates a proportional face by
+     ~23%). Serif here; the [data-prose-font="sans"] rule below swaps it. Remeasure
+     if the vendored faces change:
+       PT Serif       0.4335  -> 105 chars = 45.5em
+       Source Sans 3  0.4039  -> 105 chars = 42.4em */
+  --doc-char-advance: 0.4335;
+  /* The resolved reading width, as a length. THE single source of truth for
+     how wide prose reads anywhere in the app, and the only place the character
+     count is converted.
+
+     A Metabrowser-owned name on purpose. The obvious move is to set
+     --kpress-measure here and let everything read that, but KPress declares
+     that token itself on `:root, .kpress, ...` and its stylesheet loads after
+     this one: on :root ours is overwritten, and on .kpress it is shadowed on
+     the very element that consumes it. Host CSS reading var(--kpress-measure)
+     outside a .kpress scope therefore silently gets KPress's default rather
+     than the reader's setting — which is exactly how the folder Overview's
+     README came to render at a different width from the same file opened on
+     its own. --doc-measure cannot be shadowed, so every host consumer and the
+     KPress bridge resolve to one number.
+
+     Any new surface that lays out prose reads THIS, never --kpress-measure and
+     never a literal. */
+  --doc-measure: calc(
+    var(--document-body-font-size) *
+    var(--doc-max-chars) *
+    var(--doc-char-advance)
+  );
 
   --tree-pane-width: 300px;
 
@@ -1459,6 +1507,11 @@ body {
   top: calc(100% + 4px);
   right: 0;
   display: none;
+  /* Wider than the shared .menu floor: this menu carries a labelled field
+     ("Max text width" + its number), and at the 124px floor the label wrapped
+     onto a second line and read as two labels. Set here rather than on .menu so
+     other menus keep the tighter default. */
+  min-width: 190px;
 }
 .settings-toggle[aria-expanded="true"] .settings-menu {
   display: flex;
@@ -1687,6 +1740,52 @@ body {
   border-color: var(--muted);
 }
 .menu-select:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+
+/* A labelled numeric row. The label is the click target (it wraps the input),
+   so the whole row behaves like the menu's other controls; the number sits
+   right-aligned at a fixed width so the label text has the rest and the digits
+   do not shift the row as they change.
+
+   text-transform and letter-spacing are reset, not inherited: .app-header sets
+   uppercase for the header's label tier and the menu sits inside it, but this
+   is a settings label that reads as words, not a section heading. The font-set
+   <select> beside it already reads title-case — form controls do not inherit
+   text-transform — so inheriting here would have made the two rows disagree.
+   nowrap because the label is a phrase: wrapped, it reads as two labels. */
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0 2px 2px;
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-medium);
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--text);
+  cursor: default;
+}
+.menu-number {
+  width: 4.5em;
+  padding: 4px 6px;
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  text-align: right;
+}
+.menu-number:hover {
+  border-color: var(--muted);
+}
+.menu-number:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
 }
@@ -2006,13 +2105,17 @@ html.theme-anim .menu {
    sidebar/drawer, the reading-measure column, the table widths — reacts to
    THIS pane's width, not the window's (the window also holds the file
    tree). The document-internal layout itself (the three width bands, the
-   two-column TOC grid, the table bleed/constraint rules, and the
-   reading-measure cap/uncap chain) lives in KPress, NOT here: see the
-   "Document layout + Table of Contents" block in KPress v0.3.0's
+   two-column TOC grid, the table bleed/constraint rules, and the width chain
+   that sizes the reading column) lives in KPress, NOT here: see the
+   "Document layout + Table of Contents" block in KPress v0.3.4's
    src/kpress/format/static/css/components.css. Metabrowser supplies only the
-   container and the bridge tokens (--kpress-host-*, --kpress-measure) declared
-   on :root above. The external source is authoritative:
-   https://github.com/jlevy/kpress/blob/v0.3.0/src/kpress/format/static/css/components.css */
+   container and the bridge tokens (--kpress-host-*, --kpress-measure) — the
+   measure on the `.kpress` scope, not :root, because KPress declares it on
+   `.kpress` itself and a :root value would be shadowed on the element that
+   consumes it. Do NOT restate KPress's caps or the wide-band grid track here:
+   as of 0.3.4 they all derive from --kpress-measure, so a host copy of the old
+   literals fights them. The external source is authoritative:
+   https://github.com/jlevy/kpress/blob/v0.3.4/src/kpress/format/static/css/components.css */
 
 /* Font-set rules (settings dropdown). The default "clean" set needs no rule —
    it is the :root base above. Each additional set repoints the tokens here;
@@ -2035,6 +2138,10 @@ html[data-app-font="system"] {
    pre-paint boot script (server.py) and the settings control (app.js). */
 html[data-prose-font="sans"] {
   --kpress-host-font-prose: var(--prose-sans-font);
+  /* The sans face sets narrower than the serif, so the same character count is
+     a shorter line. Swapping the ratio with the face keeps "Max text width:
+     105" honest across both reading modes instead of only the default one. */
+  --doc-char-advance: 0.4039;
 }
 .preview-pane {
   flex: 1;
@@ -2070,6 +2177,17 @@ html[data-prose-font="sans"] {
 .preview-pane:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: -2px;
+}
+.preview-file-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 .preview-empty {
   display: flex;
@@ -2278,10 +2396,10 @@ html[data-prose-font="sans"] {
 .age-old {
   --file-age-current: var(--file-age-old);
 }
-/* Every age anywhere — file rows, commit rows, commit detail — reads
-   the same: the tier hue, the shared weight, tabular numerals so
-   columns of ages line up. Call sites add positioning only, never
-   colour or weight, exactly as they do for `.size`. */
+/* Every age anywhere — file rows, commit rows, commit detail — uses
+   the same tier hue, shared weight, and tabular numerals. Call sites
+   may adopt their container's type size and positioning, but never
+   override colour or weight, exactly as they do for `.size`. */
 :is(.age-live, .age-sec, .age-min, .age-hr, .age-day, .age-wk, .age-old) {
   color: var(--file-age-current);
   font-weight: var(--file-age-weight);
@@ -3262,8 +3380,23 @@ html[data-prose-font="sans"] {
   --kpress-radius-lg: var(--radius-document);
 }
 
+/* Reading width: the one bridge from --doc-measure (the app's resolved reading
+   width, converted from characters at :root) onto KPress's token.
+
+   On `.kpress`, not `:root`: KPress declares --kpress-measure on
+   `:root, .kpress, .kpress-page-main, .kpress-tooltip`, and the rendered
+   article carries both `kpress` and `kpress-doc`, so a :root value is shadowed
+   on the very element that consumes it. Two classes beats KPress's one, the
+   same reason the radius bridge above names the element.
+
+   --doc-measure is already a length, so nothing is computed here. It resolves
+   to calc(base * chars * advance) — never `N em`, because an `em` inside a
+   custom property resolves at each CONSUMING element and KPress reads the
+   measure on .kpress-doc, .kpress-doc-layout and .kpress-long-text, which do
+   not share a font-size. */
 .metabrowser-kpress-host .kpress {
   --kpress-caps-label-size: var(--label-font-size);
+  --kpress-measure: var(--doc-measure);
 }
 
 /* Inline code is a tint with an edge, not a chip. KPress boxes every inline
@@ -3686,7 +3819,13 @@ pre.code-block code.hljs {
 }
 
 /* Cap prose-flow elements for readability; tables, code blocks, images,
-   and hr stay full-width. No effect on narrow viewports. */
+   and hr stay full-width. No effect on narrow viewports.
+
+   This is the fallback prose path for a plugin that renders Markdown into
+   `md-body` without KPress (the convention plugin_loader/manifest.py
+   documents). It reads --doc-measure like every other prose surface, so the
+   "Max text width" setting governs a plugin's markdown view too rather than
+   only the built-in one. */
 .md-body:not(.metabrowser-kpress-host) h1,
 .md-body:not(.metabrowser-kpress-host) h2,
 .md-body:not(.metabrowser-kpress-host) h3,
@@ -3697,7 +3836,7 @@ pre.code-block code.hljs {
 .md-body:not(.metabrowser-kpress-host) ul,
 .md-body:not(.metabrowser-kpress-host) ol,
 .md-body:not(.metabrowser-kpress-host) blockquote {
-  max-width: 50em;
+  max-width: var(--doc-measure);
 }
 /* The markdown plugin's container carries md-body (for prose-styling
    compatibility) alongside metabrowser-kpress-host, so these legacy chrome
@@ -4195,9 +4334,43 @@ pre.code-block code.hljs {
   font-weight: var(--weight-normal);
   font-size: var(--tooltip-detail-font-size);
 }
-.tip-loading {
-  color: var(--muted);
-  font-style: italic;
+/* Recent-files rows while the first query is in flight: known row
+   geometry, so it is drawn rather than announced. See design-system.md,
+   "Loading States Are Shapes, Not Sentences". */
+/* Byte lines while the first chunk is in flight. Monospace lines are a
+   known grid, so the pending state is drawn at line pitch. */
+.bytes-loading {
+  height: calc(1.5em * 10);
+  margin: 8px 12px;
+  border-radius: var(--radius-chrome);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--tally-skeleton-bg) 0,
+    var(--tally-skeleton-bg) 0.85em,
+    transparent 0.85em,
+    transparent 1.5em
+  );
+  background-size: 85% 100%;
+  background-repeat: repeat-y;
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
+}
+
+.recent-loading {
+  height: calc(var(--ui-row-height) * 6);
+  margin: 4px 12px;
+  border-radius: var(--radius-chrome);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 4px,
+    var(--tally-skeleton-bg) 4px,
+    var(--tally-skeleton-bg) calc(var(--ui-row-height) - 4px),
+    transparent calc(var(--ui-row-height) - 4px),
+    transparent var(--ui-row-height)
+  );
+  background-size: 70% 100%;
+  background-repeat: repeat-y;
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
 }
 /* Section titles inside a tooltip don't need the extra top margin the
    drawer uses (tooltip has its own padding). */
@@ -4578,6 +4751,16 @@ pre.code-block code.hljs {
   .tree-item-flash-out {
     animation-duration: 1ms;
   }
+  /* Skeletons keep their shape and their contrast, but stop pulsing:
+     the block already says "pending", and the loop is exactly the kind
+     of sustained motion this preference asks us to drop. */
+  .tally-pending,
+  .recent-loading,
+  .bytes-loading,
+  .git-history-skeleton {
+    animation: none;
+    opacity: 0.7;
+  }
   /* Drawers and disclosure chevrons still change state, just without
      the travel. */
   .filter-drawer,
@@ -4707,9 +4890,96 @@ pre.code-block code.hljs {
    git-graph.js, and each row's SVG is drawn to exactly that height.
    Changing one without the other misaligns every lane against its row. */
 
+/* Header tally above the graph — the same recipe as .tree-summary on the
+   Files tab so the two tabs read identically, but under its own class:
+   app.js live-patches the document's first .tree-summary with file
+   totals, and this row must never be that target. Same one-line-box
+   floor too, for the same reason: the row paints pending and must not
+   grow when the numbers land. */
+.git-history-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--nav-font-size);
+  color: var(--text);
+  min-height: calc(1.5 * var(--nav-font-size) + 13px);
+}
+
+/* "begun 3mo ago": word gaps only — the age value inside carries the
+   shared age primitive (hue, weight, size, numerals), the words keep
+   the row's own type, and baseline alignment joins the two sizes. */
+.git-history-summary-first {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
 .git-graph-list {
   display: flex;
   flex-direction: column;
+}
+
+.git-history-window {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+}
+
+.git-history-spacer {
+  flex: 0 0 auto;
+  width: 1px;
+  pointer-events: none;
+}
+
+.git-history-page-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+
+/* ── Git history skeletons ──────────────────────────────────── */
+/* A pending page takes the shape of the rows it stands in for, per
+   design-system.md "Loading States Are Shapes, Not Sentences". The
+   repeating gradient draws one block per row at any height, so a
+   placeholder covering hundreds of rows costs no extra DOM, and it
+   reuses the navigation tally's block color and pulse so every skeleton
+   in the product reads as the same thing. The row pitch comes from
+   git-graph.js's SWIMLANE_HEIGHT through --git-skeleton-row-height,
+   rather than restating the constant here. */
+.git-history-skeleton {
+  --git-skeleton-row: var(--git-skeleton-row-height, 22px);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 4px,
+    var(--tally-skeleton-bg) 4px,
+    var(--tally-skeleton-bg) calc(var(--git-skeleton-row) - 4px),
+    transparent calc(var(--git-skeleton-row) - 4px),
+    transparent var(--git-skeleton-row)
+  );
+  background-size: 60% 100%;
+  background-repeat: repeat-y;
+  border-radius: var(--radius-chrome);
+  animation: tally-pending-pulse 1.6s ease-in-out infinite;
+}
+
+.git-history-skeleton-first {
+  flex: 0 0 auto;
+  margin: 0 12px;
+}
+
+.git-history-skeleton-more {
+  flex: 0 0 auto;
+  margin: 0 12px;
+}
+
+.git-history-retry {
+  min-height: var(--button-height-compact);
 }
 
 .git-graph-row {
@@ -4721,7 +4991,6 @@ pre.code-block code.hljs {
   cursor: pointer;
   user-select: var(--toggle-user-select);
   font-size: var(--nav-font-size);
-  transition: background var(--transition-fast);
 }
 
 .git-graph-row:hover {
@@ -4762,10 +5031,10 @@ pre.code-block code.hljs {
 /* Ref chips shrink last, not first. Flex distributes shrinkage in
    proportion to each item's shrink factor, so the subject's factor
    below is large enough that it absorbs essentially all of it: chips
-   keep their full names until the subject has collapsed entirely,
-   which is the only point at which clipping a ref beats clipping the
-   message. Without this the chips shrank alongside the subject and a
-   single short branch name was cut in half on a half-empty row. */
+   keep their full names until the subject is down to its readable
+   floor, and only then does clipping a ref beat clipping the message.
+   Without this the chips shrank alongside the subject and a single
+   short branch name was cut in half on a half-empty row. */
 .git-graph-refs {
   display: flex;
   align-items: center;
@@ -4779,10 +5048,17 @@ pre.code-block code.hljs {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
-  flex-grow: 1;
   /* Absorbs the row's shrinkage so the ref chips beside it do not; an
-     ellipsized message still reads, a halved branch name does not. */
+     ellipsized message still reads, a halved branch name does not.
+
+     But absorbing ALL of it let the subject collapse to zero width: a
+     merge row's converging lanes widen the gutter, chips and the
+     author/age column keep their size, and the message vanished
+     entirely — read as "this commit has no message". The floor keeps
+     the start of the message visible; only past it do the chips (which
+     clip, min-width: 0 above) start yielding. */
+  min-width: 8ch;
+  flex-grow: 1;
   flex-shrink: 1000;
 }
 
@@ -4910,18 +5186,126 @@ pre.code-block code.hljs {
   align-items: center;
   gap: 10px;
   color: var(--muted);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-sha {
   font-family: var(--font-mono);
+  /* One step below the sans metadata beside it: SF Mono's x-height and
+     advance run visually larger than SF Pro at the same nominal size,
+     so body-size mono read as a bigger hash next to the age, refs, and
+     stat text it sits among. */
+  font-size: var(--nav-font-size);
+}
+
+.git-commit-revision {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text);
+}
+
+.git-commit-identity,
+.git-commit-refs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-commit-revision-copy {
+  --icon-btn-size: 20px;
+}
+
+.git-commit-revision:hover .git-commit-revision-copy,
+.git-commit-revision:focus-within .git-commit-revision-copy {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.git-commit-change-stats {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  margin-top: 6px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.git-commit-file-statuses,
+.git-commit-line-stats {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-commit-stat-unit {
+  color: var(--text);
+  font-size: var(--body-font-size);
+}
+
+.git-commit-file-status {
+  color: var(--text);
+  font-variant-numeric: var(--tabular-numerals);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+
+.git-commit-file-status-added {
+  color: var(--status-success);
+}
+
+.git-commit-file-status-deleted {
+  color: var(--status-error-strong);
+}
+
+.git-commit-summary .git-ref {
+  font-size: var(--body-font-size);
+  line-height: 20px;
+}
+
+.git-commit-summary .git-commit-age {
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary :is(.git-stat-add, .git-stat-del) {
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary-compact {
+  max-width: min(340px, calc(100vw - 32px));
+}
+
+.git-commit-summary-compact .git-commit-subject {
+  display: -webkit-box;
+  margin: 0 0 6px;
+  overflow: hidden;
+  font-size: var(--body-font-size);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.git-commit-summary-compact .git-commit-meta {
+  gap: 6px;
+  font-size: var(--body-font-size);
+}
+
+.git-commit-summary-compact .git-commit-revision-copy-preview {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.git-commit-summary-compact .git-commit-revision-copy-preview svg {
+  width: 100%;
+  height: 100%;
 }
 
 .git-commit-refs {
-  display: flex;
-  flex-wrap: wrap;
   gap: 4px;
-  margin-top: 8px;
 }
 
 .git-commit-body {
@@ -4931,8 +5315,8 @@ pre.code-block code.hljs {
   background: var(--code-bg);
   white-space: pre-wrap;
   overflow-x: auto;
-  font-family: var(--font-mono);
-  font-size: var(--mono-block-font-size);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
 }
 
 .git-commit-files {
@@ -5036,4 +5420,29 @@ pre.code-block code.hljs {
 
 .git-stat-binary {
   color: var(--muted);
+}
+
+/* A file row's identity colour, taken from the rollup registry.
+ *
+ * The two custom properties arrive per row because the colour belongs to the
+ * family, not to a fixed class: 56 families cannot be 56 hand-written rules,
+ * and the server has already resolved each hue against both themes (sRGB
+ * cannot hold the target chroma everywhere, and a browser handed an
+ * out-of-gamut oklch() clips it — moving hue further than the separation the
+ * palette is built on).
+ *
+ * The same colours paint the distribution bars, from the same source, which is
+ * what makes a family look like itself wherever it appears. */
+.file-identity-icon.file-identity-color {
+  color: var(--mb-file-color-light);
+}
+
+:root[data-theme="dark"] .file-identity-icon.file-identity-color {
+  color: var(--mb-file-color-dark);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .file-identity-icon.file-identity-color {
+    color: var(--mb-file-color-dark);
+  }
 }

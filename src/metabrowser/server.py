@@ -44,6 +44,8 @@ import logging
 import os
 import sys
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from html import escape as html_escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO, cast
@@ -88,6 +90,7 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
+from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
 from metabrowser.gz_io import (
     ArtifactCompressionError,
@@ -123,6 +126,7 @@ from metabrowser.inventory_engine.contract import (
     RollupProjection,
     RollupQuery,
     VersionUnavailableError,
+    canonical_inventory_path,
 )
 from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostVersion
 from metabrowser.inventory_engine.runtime import InventoryRuntime
@@ -963,6 +967,7 @@ async def index(request: Request) -> HTMLResponse:
     tree_keyboard_navigation_url = _static_asset_url("tree-keyboard-navigation.js")
     search_palette_url = _static_asset_url("search-palette.js")
     git_graph_url = _static_asset_url("git-graph.js")
+    git_history_window_url = _static_asset_url("git-history-window.js")
     git_panel_url = _static_asset_url("git-panel.js")
     app_url = _static_asset_url("app.js")
     perf_url = _static_asset_url("perf.js")
@@ -1057,6 +1062,14 @@ async def index(request: Request) -> HTMLResponse:
     var fontSets = __FONT_VALUES__;
     var fontPref = cookie("metabrowser.interfaceFont");
     de.setAttribute("data-app-font", fontSets.indexOf(fontPref) >= 0 ? fontPref : "__FONT_DEFAULT__");
+    // Reading width, seeded before first paint for the same reason as the
+    // theme: app.js runs after the document has already been laid out, so
+    // setting it there would render the column at the default and then reflow
+    // it to the reader's choice. Bounds mirror app.js (normalizeDocMaxChars).
+    var chars = Math.round(Number(cookie("metabrowser.docMaxChars")));
+    if (Number.isFinite(chars) && chars > 0) {
+      de.style.setProperty("--doc-max-chars", String(Math.min(160, Math.max(40, chars))));
+    }
   })();
   </script>"""
     theme_bootstrap = theme_bootstrap.replace(
@@ -1104,6 +1117,7 @@ async def index(request: Request) -> HTMLResponse:
             {"src": tree_keyboard_navigation_url},
             {"src": search_palette_url},
             {"src": git_graph_url},
+            {"src": git_history_window_url},
             {"src": git_panel_url},
         ],
         "chart": [
@@ -1271,6 +1285,11 @@ async def index(request: Request) -> HTMLResponse:
             </div>
             <div class="menu-separator"></div>
             <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <div class="menu-separator"></div>
+            <label class="menu-row" for="doc-max-chars-input">Max text width
+              <input class="menu-number" id="doc-max-chars-input" type="number"
+                     min="40" max="160" step="1" inputmode="numeric"
+                     data-tip-text="Characters per line in rendered documents"></label>
             <div class="menu-separator"></div>
             <div class="menu-version">{version_line}</div>
           </div>
@@ -1589,9 +1608,10 @@ async def _read_tree_from_provider(
 
 @log_async_calls()
 async def api_tree(request: Request) -> JSONResponse:
-    subpath = request.query_params.get("path", "")
+    requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
-    if _safe_path(subpath) is None:
+    subpath = canonical_inventory_path(requested)
+    if subpath is None or _safe_path(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     remaining_depth = _tree_depth_from_query(depth_str)
@@ -1618,8 +1638,9 @@ async def api_rollup(request: Request) -> Response:
     alongside a `rest` bucket for their omitted siblings.
     """
 
-    subpath = request.query_params.get("path", "")
-    if _safe_path(subpath) is None:
+    requested = request.query_params.get("path", "")
+    subpath = canonical_inventory_path(requested)
+    if subpath is None or _safe_path(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     depth = _query_bounded_int(
@@ -1967,6 +1988,10 @@ async def _api_folder_envelope(
     while a scan is running.
     """
 
+    key = canonical_inventory_path(subpath)
+    if key is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    subpath = key
     runtime = _inventory_runtime_for(request)
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(EntryQuery(query_id="folder", path=subpath),))
@@ -3219,7 +3244,10 @@ def _build_plugin_asset_config_block() -> str:
         styles: list[str] = []
         if plugin.static_root.joinpath("styles.css").is_file():
             styles.append(f"{prefix}/styles.css")
-        styles.extend(f"{prefix}/{extra}" for extra in plugin.manifest.plugin.extra_styles)
+        for extra in plugin.manifest.plugin.extra_styles:
+            url = f"{prefix}/{extra}"
+            if url not in styles:
+                styles.append(url)
         descriptor: dict[str, object] = {
             "name": plugin.name,
             "module": f"{prefix}/index.js",
@@ -3312,6 +3340,37 @@ async def _debug_inventory(request: Request) -> JSONResponse:
     )
 
 
+async def api_routes(request: Request) -> JSONResponse:
+    """List every route this build serves, so the surface is discoverable.
+
+    An agent or script driving ``metab --api`` cannot know what exists
+    otherwise. Reading ``app.routes`` at request time rather than a static
+    list means plugin data hooks and the lazily-added inventory routes are
+    included, and the answer cannot drift from what is actually mounted.
+    """
+
+    listed: list[dict[str, object]] = []
+    for route in request.app.routes:
+        path = getattr(route, "path", None)
+        if not isinstance(path, str):
+            continue
+        # A Mount serves whatever its sub-application serves, so reporting a
+        # method list for it would be a guess. Say so instead.
+        declared = getattr(route, "methods", None)
+        methods = sorted(declared) if declared else None
+        if path.startswith("/api/"):
+            kind = "api"
+        elif path.startswith(("/static", "/kpress-static", "/plugin-static", "/raw")):
+            kind = "asset"
+        elif path.startswith("/_"):
+            kind = "debug"
+        else:
+            kind = "browser"
+        listed.append({"path": path, "methods": methods, "kind": kind})
+    listed.sort(key=lambda entry: (str(entry["kind"]), str(entry["path"])))
+    return JSONResponse({"routes": listed, "count": len(listed)})
+
+
 # ── Starlette app ───────────────────────────────────────────────
 
 routes = [
@@ -3325,6 +3384,7 @@ routes = [
     Route("/api/kpress/render", api_kpress_render, methods=["GET", "POST"]),
     Route("/api/kpress/export", api_kpress_export, methods=["POST"]),
     Route("/api/activity", api_activity),
+    Route("/api/routes", api_routes),
     Route("/api/stream", api_stream),
     Route("/_debug/tasks", _debug_tasks),
     Route("/_debug/inventory", _debug_inventory),
@@ -3372,8 +3432,13 @@ def _inventory_root_provider() -> object:
     return root if str(root) and root != Path() else None
 
 
-def _lifespan(app: Starlette):  # type: ignore[no-untyped-def]
-    return build_lifespan(app=app, root_provider=_inventory_root_provider)
+@asynccontextmanager  # pyright: ignore[reportDeprecated]
+async def _lifespan(app: Starlette) -> AsyncIterator[None]:
+    async with build_lifespan(app=app, root_provider=_inventory_root_provider):
+        try:
+            yield
+        finally:
+            await close_history_sessions()
 
 
 app = Starlette(routes=routes, middleware=middleware, lifespan=_lifespan)

@@ -129,6 +129,7 @@ async function main() {
   check("portable profiler global is absent", !("webPerformanceProfiler" in sandbox));
   const fetches = [
     sandbox.fetch("/ok"),
+    sandbox.fetch("/ok?parallel=1"),
     sandbox.fetch("/missing"),
     sandbox.fetch("/server-error"),
     sandbox.fetch("/network"),
@@ -136,12 +137,24 @@ async function main() {
   ];
   check(
     "in-flight fetch count is visible before settlement",
-    sandbox.metabrowser.perf.snapshot().fetches_in_flight === 5,
+    sandbox.metabrowser.perf.snapshot().fetches_in_flight === 6,
+  );
+  check(
+    "maximum in-flight fetch count records the burst",
+    sandbox.metabrowser.perf.snapshot().fetches_in_flight_max === 6,
+  );
+  check(
+    "maximum in-flight fetch count groups query variants by request class",
+    sandbox.metabrowser.perf.snapshot().fetches_in_flight_max_by_key["/ok"] === 2,
   );
   await Promise.allSettled(fetches);
   const fetchProfile = sandbox.metabrowser.perf.snapshot();
-  check("fetch count survives bounded detail", fetchProfile.fetch_samples_seen === 5);
+  check("fetch count survives bounded detail", fetchProfile.fetch_samples_seen === 6);
   check("in-flight fetch count returns to zero", fetchProfile.fetches_in_flight === 0);
+  check(
+    "maximum in-flight fetch count survives settlement",
+    fetchProfile.fetches_in_flight_max === 6,
+  );
   check("non-abort fetch rejection is exact", fetchProfile.fetch_network_errors === 1);
   check("fetch abort is classified separately", fetchProfile.fetch_aborts === 1);
   check("HTTP 4xx count is exact", fetchProfile.fetch_http_4xx === 1);
@@ -323,6 +336,11 @@ async function main() {
     responsiveness.animation_frames_blocking_over_200ms === 0,
   );
   const resetProfile = sandbox.metabrowser.perf.snapshot();
+  check("reset clears maximum fetch concurrency", resetProfile.fetches_in_flight_max === 0);
+  check(
+    "reset clears per-request-class concurrency",
+    Object.keys(resetProfile.fetches_in_flight_max_by_key).length === 0,
+  );
   check("reset clears navigation vitals", resetProfile.vitals.lcp_ms === null);
   check("reset clears Resource Timing overflow", resetProfile.resource_timing_buffer_full === 0);
   check(
@@ -332,6 +350,20 @@ async function main() {
       resetProfile.fetch_http_4xx === 0 &&
       resetProfile.fetch_http_5xx === 0,
   );
+  const distinctFetches = [];
+  for (let index = 0; index < 205; index += 1) {
+    distinctFetches.push(sandbox.fetch(`/request-class-${index}`));
+  }
+  const boundedConcurrency = sandbox.metabrowser.perf.snapshot();
+  check(
+    "request-class concurrency remains bounded",
+    Object.keys(boundedConcurrency.fetches_in_flight_max_by_key).length <= 200,
+  );
+  check(
+    "request-class overflow remains explicit",
+    boundedConcurrency.fetch_concurrency_keys_overflowed > 0,
+  );
+  await Promise.allSettled(distinctFetches);
 
   // Engines can accept observe({type}) without throwing for an unsupported
   // entry type. The recorder must consult supportedEntryTypes so an absent signal

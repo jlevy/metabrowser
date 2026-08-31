@@ -51,7 +51,7 @@ def test_shell_appends_rather_than_rerendering() -> None:
     following = js[append_call : append_call + 800]
     # The fallback also asserts pane ownership: the Git panel renders into this
     # same pane, so a late chunk must not repaint over it.
-    assert "renderFile(cached, undefined, previewClaim)" in following, (
+    assert "await renderFile(cached, undefined, previewClaim)" in following, (
         "the fallback render should remain reachable"
     )
     # Appending skips the plugin's render, so the partial-content banner has to

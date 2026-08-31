@@ -62,6 +62,19 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    fixed or explicitly accepted.
    For the first release, record a baseline instead.
 
+   On a machine that has not run the loop before, build the corpus first — it is
+   gitignored and machine-local, so a fresh checkout has none:
+   [Building the corpus](../explorations/performance-loop/README.md#building-the-corpus).
+   Label the runs with the experiment number rather than `release` or `candidate`; a
+   label reused from an earlier round pools across corpora, and `compare` will refuse
+   it.
+
+   An intended change to a response makes the backend comparison report `valid: false` —
+   a schema bump moves `tallies`, and the harness cannot know it was deliberate.
+   Read `equivalence`: differing rows is a regression until shown otherwise, and
+   differing tallies confined to what the changelog describes is the explicit acceptance
+   this step allows.
+
 4. Confirm CI is green for the exact commit to be tagged.
 
 5. Review changes since the previous release and choose a semantic version.

@@ -42,7 +42,6 @@ MONO_DECLARATION_RE = re.compile(r"(?:^|;)\s*font(?:-family)?\s*:[^;]*--font-mon
 #   .metabrowser-kpress-error-detail   a verbatim error payload
 #   .log-event-header           structured log values (type, timestamps), not paths
 #   .git-commit-sha             an object id, where every character is identity
-#   .git-commit-body            a verbatim commit message, the committer's own text
 MONO_ALLOWED_SELECTORS = frozenset(
     {
         "code.hljs",
@@ -54,7 +53,6 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".metabrowser-kpress-error-detail",
         ".log-event-header",
         ".git-commit-sha",
-        ".git-commit-body",
     }
 )
 

@@ -60,11 +60,45 @@ def require_canonical_inventory_path(
         "\\" in value
         or "\x00" in value
         or pure.is_absolute()
+        # PurePosixPath spells the root ".", and "." survives both the
+        # as_posix and the parts check below because its parts are empty.
+        # The root has exactly one key here, "", so any other spelling of it
+        # is a path no provider can be asked to resolve.
+        or not pure.parts
         or pure.as_posix() != value
         or "." in pure.parts
         or ".." in pure.parts
     ):
         raise ValueError(f"{name} must be a canonical POSIX-relative path")
+
+
+def canonical_inventory_path(value: str) -> str | None:
+    """Translate a path as a client spelled it into the canonical key, or None.
+
+    HTTP clients and command lines spell one directory several ways -- ``docs``,
+    ``docs/``, ``./docs``, and ``.`` or ``""`` for the root. Providers must not
+    each decide what those mean: a spelling that the reference provider treats
+    as the root and a native one treats as a miss is a difference no test above
+    the boundary would attribute correctly. So the translation happens once,
+    here, and every provider sees only what
+    :func:`require_canonical_inventory_path` accepts.
+
+    ``None`` means the value cannot name anything inside the root, which callers
+    report as a miss rather than passing down. ``..`` is refused rather than
+    resolved: collapsing it would make the answer depend on whether a segment is
+    a symlink, which is a filesystem question the inventory key does not carry.
+    """
+
+    if "\x00" in value or "\\" in value or value.startswith("/"):
+        return None
+    parts: list[str] = []
+    for segment in value.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            return None
+        parts.append(segment)
+    return "/".join(parts)
 
 
 def catalog_terminal_suffix(name: str) -> str:

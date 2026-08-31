@@ -17,6 +17,8 @@ and `run.py` refuses invalid evidence or a candidate that crosses a hard gate.
 This is deliberately smaller than
 [`devtools/bench_serving.py`](../../devtools/bench_serving.py), which measures serving
 and belongs in `make verify`’s world.
+The one thing the two share is the corpus: its generators live in `bench_serving`, and
+[Building the corpus](#building-the-corpus) is how this loop calls them.
 Nothing here runs in CI. An exploration answers a question once; a benchmark defends an
 answer forever, and only the second one earns a place in the release gate.
 
@@ -34,6 +36,44 @@ answer forever, and only the second one earns a place in the release gate.
 
 Rejected rounds are worth as much as accepted ones and cost more to re-derive, so a
 refuted hypothesis gets the same write-up as a confirmed one.
+
+## Building the corpus
+
+`.bench/` is gitignored and machine-local, so a fresh checkout has no corpus and every
+command below fails until it is built.
+This is the first step on a new machine:
+
+```shell
+uv --config-file uv.toml run --frozen python -c "
+from pathlib import Path
+from devtools.bench_serving import build_project_corpus
+root = Path('.bench/project-10'); root.mkdir(parents=True, exist_ok=True)
+print(build_project_corpus(root, 10))
+"
+```
+
+It takes a few minutes and writes about 5 GB: 10 copies of this repository’s own locked
+installs — the `node_modules` from `package-lock.json` and the `.venv` from `uv.lock`,
+plus its own source as the tracked half — which comes to roughly 249k files across 31k
+directories, about 113k of them visible to the walker once ignore rules apply.
+See [The corpus](#the-corpus) for what that shape is and why it is copied rather than
+generated.
+
+`build_project_corpus` is called directly here rather than through `bench_serving`,
+which builds the same tree on its way to running a benchmark when a release comparison
+only wants the tree.
+It needs `make install` to have run first: the installs it copies are this repository’s
+own.
+
+The build is deterministic and idempotent.
+`.bench-corpus.json` records the project count and the shape version, so a rerun reuses
+a matching tree and rebuilds a mismatched one rather than comparing across shapes.
+Read the file count from that marker rather than counting by hand; `run.py count`
+reports the walker’s own rule for any tree.
+
+`project-10` is the name the rest of this document uses, and the directory name is not
+derived — pass it explicitly, as above, or `bench_serving` will default to
+`.bench/corpus-project-10` and nothing will find it.
 
 ## Resuming this loop from scratch
 
@@ -74,11 +114,16 @@ collide are few and named:
 - `report.md` is generated.
   Never hand-edit it; regenerate with `run.py report` after merging and let that be the
   conflict resolution.
+  `run.py report` writes unformatted Markdown, so run `make format` after it or
+  `make lint-check` fails on the file you just generated.
 - The corpus at `.bench/project-10` must not change.
   It is what makes runs from different agents and different weeks comparable, and
   [re-running an old round](#re-running-an-old-round-against-todays-corpus) depends on
   it. If a round needs a different tree, serve it with `--tree` and leave the corpus
-  alone.
+  alone. Rebuilding it is not a disaster — the label hashes the corpus marker, so a
+  rebuilt tree records under a new label and `compare` refuses to pool it with the old
+  rounds rather than mixing them silently.
+  It does mean those rounds no longer compare against new ones.
 - Take the next free `exp-NNN` and the next free `H` number by reading the plan, and say
   in the pull request which you took.
 
@@ -153,6 +198,24 @@ terminal. It uses installed console scripts on both sides, at least three cold b
 runs and three backend runs per condition, immutable build references, one unchanged
 corpus, semantic response comparison, and the full responsiveness gate.
 
+Build the corpus first if this machine has none (see
+[Building the corpus](#building-the-corpus)).
+
+**Label the round, not the side.** `--label release` or `--label v0.8.0` pools with
+every earlier round that used the same word, and the ledger is append-only across rounds
+and across corpora. `compare` refuses a label that spans more than one corpus, but the
+cheap habit is a label carrying the experiment number — `exp-021-release`,
+`exp-021-candidate`. The refusal exists because the pooled comparison looks ordinary: an
+earlier round’s smaller tree reads as a first-row regression in the current one.
+
+The control is the previous release, built from its tag rather than assumed:
+
+```shell
+git worktree add --detach /tmp/mb-at-vX.Y.Z vX.Y.Z
+cd /tmp/mb-at-vX.Y.Z && uv --config-file uv.toml sync --all-extras --locked
+/tmp/mb-at-vX.Y.Z/.venv/bin/metab --version    # confirm it is the release, not a dev build
+```
+
 Build the candidate as the artifact users will install.
 Keep machine-specific reports under `.bench/`; they contain absolute executable and
 corpus paths and therefore do not belong in the public repository.
@@ -175,6 +238,16 @@ uv --config-file uv.toml run --frozen python -m devtools.compare_builds \
 Read `valid` before reading the timings.
 It is true only when every run completed, the corpus fingerprint stayed fixed, required
 response fields existed, and ordered rows and tallies were identical.
+
+`valid: false` is not automatically a stop.
+A release that deliberately changes a response says so there: a schema bump moves
+`tallies`, and the comparison reports it as an equivalence difference because it cannot
+know the change was intended.
+Read `equivalence` and decide.
+Rows differing is a regression until proven otherwise — the navigation tree is what the
+reader sees. Tallies differing only where the changelog says they change is the release
+working as described, and the experiment records it as an explicit acceptance rather
+than as a pass.
 
 For the browser half, first use `count` to obtain the inventory count, then alternate
 the release and candidate in both orders.
@@ -244,6 +317,117 @@ Most rounds want both.
 exp-003 is the worked example of why: the route got 40% faster server-side and time to
 first row did not move at all, because the first request of a page load misses a cache
 by construction.
+
+### Git Revision Navigation Scenario
+
+Use the built-in interaction scenario when the hypothesis concerns moving between commit
+comparisons rather than initial page load:
+
+```shell
+$UV explorations/performance-loop/run.py capture --headed \
+  --scenario git-revisions --output .bench/git-revisions.json
+```
+
+The scenario warms the on-demand diff assets, resets the navigation-time profiler, and
+then uses trusted Chrome input for two cold selections and one pointer-prepared
+selection. It then finds a revision with active and queued deferred files, scrolls that
+comparison, and changes revision while hydration is active.
+Before waiting for inventory completion, it also switches from Files to Git, opens a
+comparison, waits for a nonempty folder to arrive in the inactive Files tree, returns,
+and expands the folder with trusted input.
+The preflight fails if collapsed class, ARIA, inline style, computed visibility, or the
+first expanded state disagree.
+It records `git_files_roundtrip.return_to_files_ms` and `folder_expand_ms`, then reloads
+the application document so the established revision measurements start without
+preflight cache or mount state.
+The run fails if deferred requests exceed two in flight, old-revision file work succeeds
+after selection, active work is not canceled, row/route/view state diverges, or more
+than one comparison remains mounted.
+The corpus must contain at least five revisions and one revision with three deferred
+files among the first history rows; missing stress coverage is an error, not a skipped
+check. Its `git-revision-navigation/v1` output separates request time reported by the
+server from client data and rendering spans.
+It also records time to a double-animation-frame ready boundary, frames without prior
+commit content, Long Tasks, Long Animation Frames, page exceptions, retained heap, and
+mounted comparison count.
+
+### File View Navigation Scenario
+
+Use the parallel file scenario to measure ordinary connected plugin views rather than
+commit comparisons:
+
+```shell
+$UV explorations/performance-loop/run.py capture --headed \
+  --scenario file-views --output .bench/file-views.json
+```
+
+The scenario warms one regular source file, then uses trusted tree-row clicks for a cold
+source file, a cold Markdown file, and a cached source revisit.
+Each transition must converge on the exact selected row, navigation target, rendered
+path, active view, and single mounted plugin container.
+The prior useful surface must remain continuously visible; the shared pending modifier
+must appear and clear with `aria-busy`; and the active view must contain useful content
+at a double-animation-frame boundary.
+
+The `file-view-navigation/v1` output separates `/api/file` and plugin requests from
+response decoding, selected-kind assets, active-renderer readiness, and paint.
+It also records pending onset and clearance, blank frames, Long Tasks, Long Animation
+Frames, page exceptions, and retained heap.
+A cold transition may issue at most one matching `/api/file` request, and a cached
+revisit may issue none.
+This gate catches selected requests that race the row-hover prefetch as well as ordinary
+duplicate navigation.
+The fixed corpus must expose one Markdown and two source-like file rows; missing
+coverage is an error.
+
+Scenario output stays under `.bench/` and is summarized in the corresponding experiment.
+It is not accepted by `record`: the initial-load ledger and its budgets use a different
+schema. Run at least three visible-Chrome captures for each condition, alternate
+condition order, and keep the repository and selected subjects unchanged.
+
+### Attributing Stateful-Navigation Delay
+
+Use this sequence when an interaction feels late even though one measured application
+phase looks fast:
+
+1. Freeze the exact product build, corpus fingerprint, selected subjects, viewport, and
+   foreground visibility.
+   Resolve driver-owned scrolling and click coordinates before starting the transition
+   clock or pending monitor; otherwise the harness can charge its own layout preparation
+   to application response time.
+   A single run can validate scenario wiring, but a performance conclusion needs at
+   least three runs per condition.
+   Interleave control and candidate runs when making a comparative claim.
+2. Record three separate clocks: the small synchronous acknowledgement phase, the full
+   selection-to-painted-ready handoff, and browser Event Timing.
+   Pending-state mutation time proves that application state changed; it does not prove
+   that the browser painted the change.
+3. If acknowledgement is fast but Event Timing is slow, inspect the complete input task.
+   Include capture and bubble listeners, synchronous focus handlers, browser default
+   actions, route/history updates, mutation observers, and work scheduled before the
+   next paint. Moving work immediately outside the named application span does not make
+   the interaction faster.
+4. Subdivide only the unexplained interval with finite, stable operation labels.
+   Match their timestamps to Long Tasks and Long Animation Frames, and use
+   forced-style/layout attribution to identify synchronous layout triggers.
+   Remove diagnostic labels that do not separate competing explanations.
+5. Exercise cold, prepared, rapid-replacement, and active-background-work paths.
+   Require exact selection, route, rendered subject, mounted owner, pending-state
+   clearance, continuous useful content, bounded request concurrency, and cancellation
+   of obsolete work before accepting any timing.
+6. Report the narrow result the evidence supports.
+   A handler-level cost can be fixed while input-to-next-paint or cold data and render
+   work remains slow; keep those residual costs visible as follow-up evidence rather
+   than folding them into the local win.
+
+The standard `git-revisions` scenario enforces the required phase labels, ordered
+pending onset and clearance, blank-frame and convergence checks, mounted-owner count,
+request bounds, and obsolete-work cancellation.
+The `file-views` scenario enforces the same useful-readiness and convergence contract
+for connected plugin renderers.
+It deterministically traverses a cold source file, a cold JSON or YAML structured view,
+a cold Markdown view, and a cached source revisit so an asynchronously ready renderer
+cannot disappear behind otherwise synchronous cases.
 
 ```shell
 uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py serve --files 100000 --provider python
@@ -384,6 +568,7 @@ adds no automation package or product dependency.
 | `last_resource_ms` | End of the last request the page made | The tail. A page can look finished and still be requesting |
 | `subtree_requests` | `/api/tree?path=…` count | The folder-warming sweep, which is invisible in a page that looks idle |
 | `tree_items`, `lazy_stubs`, `dom_nodes` | Rendered size | What row windowing has to bound |
+| `collapsed_diff_rows_materialized` | Unified or split rows mounted beneath a collapsed diff fold | Hard-gates visual folding as a real DOM bound; the value must be zero |
 | `transferred_kb`, `vendor_first_start_ms` | Payload and when the prefetched tier starts | The asset tiers |
 | `long_task_max_ms` | The longest single main-thread block | The one a reader feels. A total cannot tell sixty 100 ms hitches from one six-second freeze, and only one of those is a broken product |
 | `long_task_max_ms_first_5s` | The same, restricted to the first five seconds | Event rate peaks right after load, so the naive design is worst exactly when the reader is deciding whether the app is alive |
@@ -393,9 +578,12 @@ adds no automation package or product dependency.
 | `interaction_inputs`, `interaction_input_first_ms`, `interaction_input_last_ms`, `interaction_input_span_ms`, `interaction_input_coverage_pct`, `interactions`, `interaction_p50_ms`, `interaction_p95_ms`, `interaction_max_ms` | Trusted-input count and loading-window coverage, plus interaction-to-next-paint latency from Event Timing grouped by non-zero `interactionId` | Rejects untouched and single-early-click runs, separates fast inputs below Event Timing’s reporting threshold from missing input, and proves that responsiveness was sampled while later updates arrived. One click’s pointer and click events count once; the profiler retains the exact interaction maximum, while percentiles describe the explicitly reported bounded recent sample |
 | `animation_frame_*`, `forced_style_layout_ms_max`, `worst_animation_frames` | Chromium Long Animation Frame duration, attributed blocking, and bounded script/resource detail | Names the callback and rendering cost behind a Long Task without making an optional signal look universal. Attributed blocking is gated; raw duration remains a target because Chromium can report a long initial navigation frame with zero blocking or work attribution |
 | `label_totals` | Per-span count, total and max, never evicted | Attribution. `longtask` says the thread was blocked; this says by what |
-| `*_samples_seen`, `*_samples_retained`, `labels_overflowed`, `resource_timing_buffer_full` | Retention provenance | Proves bounded detail did not silently become a whole-window claim and refuses incomplete attribution or network totals |
+| `gitRevision:selectionFeedback` | Synchronous pending-sheet, route, and selected-row work for one Git revision choice | Separates immediate main-thread acknowledgement from fetch/render time; the Git scenario requires this phase but leaves paint responsiveness to Event Timing |
+| `gitRevision:selectToReady` | Complete Git selection-to-painted-ready handoff | Keeps data, decoding, mounting, and paint latency visible after synchronous acknowledgement |
+| `gitRevision:rowAnchor` | Post-readiness update of the focused Git row’s one-row Tab anchor | Keeps focus-order cost visible without charging it to immediate selection feedback |
+| `*_samples_seen`, `*_samples_retained`, `labels_overflowed`, `fetch_concurrency_keys_overflowed`, `resource_timing_buffer_full` | Retention provenance | Proves bounded detail did not silently become a whole-window claim and refuses incomplete attribution or network totals |
 | `fetch_network_errors`, `fetch_aborts`, `fetch_http_4xx`, `fetch_http_5xx` | Exact whole-window fetch outcomes outside the detail ring | Keeps a failed click from looking like a merely slow one. Rejected non-abort requests and 5xx responses are hard gates; cancellation and expected-not-found semantics remain visible targets |
-| `fetches_in_flight` | Application fetches still unresolved when the profile was taken | Prevents a faster server-completion marker from cutting the browser measurement off while delivery work is still running |
+| `fetches_in_flight`, `fetches_in_flight_max`, `fetches_in_flight_max_by_key` | Application fetches unresolved at capture, the measurement-window maximum, and maxima grouped by request class | Prevents a faster server-completion marker from cutting the browser measurement off, and exposes request fanout even when every request eventually settles |
 | `script_transfer_kb`, `style_transfer_kb`, `image_transfer_kb`, `api_transfer_kb`, `largest_resource_kb` | Transfer split by requested resource path; Resource Timing classifies preloaded JavaScript as a `link` initiator and its later script tag reuses that response | Makes an asset or API trade visible without omitting the preloaded shell or charging it to CSS |
 | `startup_script_requests`, `startup_script_transfer_kb`, `startup_script_last_response_ms`, `startup_script_duration_max_ms`, `startup_scripts_slowest`, `startup_scripts_latest` | Count, transfer, tail, worst duration, and bounded path-only attribution for non-vendor scripts started before `DOMContentLoaded`; attributed rows split response wait, server work, and download time | Catches an eager plugin or feature tier added to every page even when noisy paint timings obscure the waterfall, and distinguishes handler work from queueing or transfer |
 | `shell_tools_missing`, `file_catalog_incomplete`, `plugin_view_containers`, `plugin_view_nonempty` | Application-adapter readiness, final data authority, and selected-view facts after settle | Prevents an asset-tier improvement from passing by silently losing deferred controls, stopping at a partial search catalog, or omitting the requested renderer |
@@ -592,15 +780,44 @@ different tree.
 
 ## The corpus
 
-Two generators live in `devtools/bench_serving.py`, and the difference between them is
-the subject of [exp-005](experiments/exp-005-a-real-tree-changes-the-priorities.md).
+Three generators live in `devtools/bench_serving.py`, and the difference between the
+first two is the subject of
+[exp-005](experiments/exp-005-a-real-tree-changes-the-priorities.md).
+`bench_serving` is otherwise a different tool from this loop, but the corpus is shared:
+these functions are what [Building the corpus](#building-the-corpus) calls.
 
-`build_realistic_corpus` is **the one to use**. Its shape is taken from two real working
-trees rather than invented: median two files per directory, mean depth around nine, a
-nested `.gitignore` roughly every four hundred directories, and most of the file count
-inside a few enormous ignored subtrees.
+`build_project_corpus` is **the one to use**, and it is what `project-10` means.
+It does not approximate a real tree from summary statistics — it copies the actual
+`node_modules` that `package-lock.json` produces and the actual `.venv` that `uv.lock`
+produces, with the repository’s own `src`, `tests` and `docs` as the tracked half.
+So the directory shapes, name lengths, nesting and file-size distribution are a real
+dependency tree’s rather than a guess at one.
+Copies use APFS clones, so ten projects cost about one dependency tree on disk.
+
+**A comparison needs one tree, not a permanent one.** Build the corpus once, then run
+both binaries against it — the old release and the candidate see the same bytes, which
+is the whole requirement.
+`compare_builds` fingerprints the tree before and after to prove it did not move under
+the measurement.
+Which commit the corpus was built from does not matter, as long as it is
+one tree and the round records which.
+
+So the determinism worth stating is narrow and sufficient: the inputs are two committed
+lockfiles and a git checkout, with no network needed, so **one commit with one pair of
+locks gives one tree**. Rebuilding at a later commit gives a different tree, because the
+tracked half is the working tree’s own source — exp-020 measured 246,282 files in late
+August and the same generator gives 248,872 today.
+That is not a defect; it only means a round is comparable with another when their corpus
+labels match, which the label now carries: it hashes the corpus marker alongside the
+path, so a rebuild at the same path gets a new label rather than silently pooling with
+the old round.
+
+`build_realistic_corpus` approximates that shape from statistics instead: median two
+files per directory, mean depth around nine, a nested `.gitignore` roughly every four
+hundred directories, and most of the file count inside a few enormous ignored subtrees.
 That last detail is not decoration — it decided the verdict in
 [exp-006](experiments/exp-006-the-gitignore-prewalk-stops-traversing-what-it-cannot-use.md).
+Use it when a round needs a size the project corpus cannot reach.
 
 `build_corpus` is the original: 309 files per directory, shallow, and no `.gitignore` at
 all. It is kept because exp-001 through exp-004 were measured on it and their numbers

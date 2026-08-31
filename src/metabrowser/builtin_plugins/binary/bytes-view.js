@@ -31,7 +31,6 @@ import {
   formatByteLines,
 } from "./byte-format.js";
 
-const LOADING_TEXT = "Loading bytes…";
 const EMPTY_TEXT = "This file is empty.";
 const UNAVAILABLE_TEXT = "This file is no longer available.";
 const UNDECODABLE_TEXT = "This file could not be decompressed.";
@@ -119,7 +118,13 @@ function emptyStateHtml(message, isFailure) {
 export function renderChunkState(state, mb) {
   switch (state.status) {
     case "loading":
-      return `<div class="preview-empty mb-delayed-loading" role="status">${LOADING_TEXT}</div>`;
+      // Byte lines are a known grid, so the pending state is drawn as
+      // lines rather than announced. See design-system.md, "Loading
+      // States Are Shapes, Not Sentences".
+      return (
+        '<div class="bytes-loading mb-delayed-loading" role="status"' +
+        ' aria-label="Loading bytes"></div>'
+      );
     case "empty":
       return emptyStateHtml(EMPTY_TEXT, false);
     case "oversize":

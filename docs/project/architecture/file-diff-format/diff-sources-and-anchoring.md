@@ -5,8 +5,10 @@
 [File Diff Format v1](file-diff-format.md) defines *what* a comparison document is.
 This document is the first-principles map of *where documents come from*, what a
 repository context adds to one, and how that context is validated.
-It exists so the design survives the plan spec that produced it: the spec describes a
-project, this describes the system.
+[Git and comparison sources](../arch-git-and-comparison-sources.md) covers the Git side
+of that boundary — the process invariants, the layer stack, and what a new source owes
+the format. It exists so the design survives the plan spec that produced it: the spec
+describes a project, this describes the system.
 
 ## Separability
 

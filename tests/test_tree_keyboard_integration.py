@@ -60,11 +60,35 @@ def test_renderers_share_one_tree_semantics_helper() -> None:
         assert "aria-labelledby" in source
         assert "data-tree-position" in source
         assert "data-tree-set-size" in source
-    assert 'role="group"' in render
+    assert "treeChildGroupStartHtml(" in render
+    assert 'role="group"' in _function(source, "treeChildGroupStartHtml", 800)
     assert 'role="tree" aria-label="Files"' in source
     deferred_page = _function(source, "deferredTreePageHtml", 2000)
     assert "deferredTreePageHtml(" in render
     assert 'kind: "page"' in deferred_page
+
+
+def test_live_folder_insert_uses_the_canonical_collapsed_group_contract() -> None:
+    """A folder discovered during indexing must disclose like a fetched row.
+
+    The keyboard synchronizer derives ``aria-expanded`` from the shared
+    ``tree-children-collapsed`` class. An inline ``display:none`` substitute
+    leaves the row logically expanded but permanently invisible, so returning
+    from another nav panel makes every live-inserted folder appear frozen until
+    reload.
+    """
+
+    source = _app()
+    group_helper = _function(source, "treeChildGroupStartHtml", 800)
+    assert '" tree-children-collapsed"' in group_helper
+    assert "treeDepthStyle(depth)" in group_helper
+    assert "display:none" not in group_helper
+
+    render = _function(source, "renderTreeNodes", 12_000)
+    live = _function(source, "_buildRowHtml", 7000)
+    assert "treeChildGroupStartHtml(groupId, level + 1, expanded)" in render
+    assert "treeChildGroupStartHtml(groupId, level + 1, false)" in live
+    assert "display:none" not in live
 
 
 def test_pointer_fuses_open_and_toggle_while_keyboard_splits_them() -> None:

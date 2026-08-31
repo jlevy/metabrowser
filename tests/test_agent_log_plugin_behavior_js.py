@@ -65,9 +65,9 @@ def test_agent_log_scopes_filter_and_raw_state_to_each_container() -> None:
 
 def test_shell_disposes_the_specific_plugin_container() -> None:
     source = APP_JS.read_text()
-    start = source.index("function mountPluginView(container, pluginView, ctx)")
+    start = source.index("function mountPluginView(container, pluginView, ctx,")
     block = source[start : start + 1_500]
-    assert "activePluginDisposers.push(() =>" in block
+    assert "disposers.push(() =>" in block
     assert "pluginView.dispose(container)" in block
     assert "record.handle.dispose()" in block
     assert "if (record.disposed)" in block
