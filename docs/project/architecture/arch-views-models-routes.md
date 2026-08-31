@@ -165,7 +165,11 @@ arrives with a transcript or the build fails.
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
+| `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
+| `/raw` | exempt | — | asset serving; the response is the file’s bytes, covered by `tests/test_browser_assets.py` |
+| `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
 | `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 
 `/api/kpress/export` is the one surface whose golden writes a file, and the rule it

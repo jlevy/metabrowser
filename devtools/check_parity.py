@@ -72,7 +72,11 @@ def registered_surfaces() -> set[str]:
         # The path may sit on the line after `Route(` when the registration is
         # wrapped, which a pattern anchored to `Route("` misses entirely.
         for route in re.findall(r'Route\(\s*"([^"]+)"', path.read_text(encoding="utf-8")):
-            if route.startswith("/api/"):
+            # Browser routes are surfaces too: `/view/<path>` and `/commit/<rev>`
+            # are the addresses a reader lands on, and the four-layer model this
+            # check enforces starts at the route. Enumerating only `/api/` left
+            # them ungoverned even after --show learned to resolve them.
+            if route.startswith(("/api/", "/view", "/commit", "/raw", "/_debug")):
                 # Route patterns carry placeholders; the table documents the shape.
                 surfaces.add(route.split("{", 1)[0].rstrip("/"))
     for manifest_path in sorted(BUILTIN_PLUGINS.glob("*/manifest.toml")):

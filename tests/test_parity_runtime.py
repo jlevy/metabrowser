@@ -40,3 +40,25 @@ def test_every_mounted_route_has_a_parity_row() -> None:
     missing = _runtime_api_routes() - listed
 
     assert not missing, f"mounted but absent from the parity table: {sorted(missing)}"
+
+
+def _runtime_browser_routes() -> set[str]:
+    from metabrowser import server
+
+    surfaces: set[str] = set()
+    for route in server.app.routes:
+        path = getattr(route, "path", None)
+        if isinstance(path, str) and path.startswith(("/view", "/commit", "/raw", "/_debug")):
+            surfaces.add(path.split("{", 1)[0].rstrip("/"))
+    return surfaces
+
+
+def test_browser_routes_are_governed_too() -> None:
+    """`/view` and `/commit` are the addresses a reader lands on, not internals."""
+
+    listed = {row.surface for row in parity_rows(MAP_DOC.read_text(encoding="utf-8"))}
+    missing = _runtime_browser_routes() - listed
+
+    assert not missing, (
+        f"browser routes mounted but absent from the parity table: {sorted(missing)}"
+    )
