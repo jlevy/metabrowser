@@ -17,7 +17,7 @@ import threading
 import webbrowser
 from pathlib import Path
 from types import FrameType
-from typing import override
+from typing import NoReturn, override
 
 import typer
 import uvicorn
@@ -95,50 +95,63 @@ def _write_stopping_notice() -> None:
         os.write(2, _STOPPING_NOTICE)
 
 
+def _stop_now(_sig: int, _frame: FrameType | None) -> NoReturn:
+    """Stop the process on the spot, reporting the interrupt exit code.
+
+    This is a local, single-user, read-only file browser. There are no
+    in-flight requests whose completion is worth a reader's wait, and
+    nothing buffered that a graceful close would flush, so one Ctrl-C ends
+    it immediately rather than starting a shutdown the reader then waits
+    on. Anything still connected is a browser tab that sees its socket
+    close, which is what stopping the server means.
+    """
+    _write_stopping_notice()
+    os._exit(INTERRUPTED_EXIT_CODE)
+
+
 class _QuietForceExitServer(uvicorn.Server):
-    """Uvicorn server that exits immediately after a forced interrupt."""
+    """Uvicorn server that stops on the first interrupt."""
 
     interrupted: bool = False
 
     @override
     def handle_exit(self, sig: int, frame: FrameType | None) -> None:
-        if sig == signal.SIGINT and not self.interrupted:
+        if sig == signal.SIGINT:
             self.interrupted = True
-            _write_stopping_notice()
+            _stop_now(sig, frame)
         super().handle_exit(sig, frame)
-        if self.force_exit:
-            os._exit(INTERRUPTED_EXIT_CODE)
 
 
 def _run_until_interrupted(uvicorn_server: _QuietForceExitServer) -> bool:
     """Serve until the server stops. True when a Ctrl-C stopped it.
 
-    SIGINT is held at ``SIG_IGN`` around the run. Uvicorn's
-    ``capture_signals`` saves whichever handler is installed when
-    ``Server.run()`` starts, restores it on the way out, and then
-    re-raises the signal it captured (uvicorn 0.49). Handing it
-    ``SIG_IGN`` to save makes that re-raise a no-op, which settles two
-    things:
+    ``_stop_now`` is installed for the whole run, so one Ctrl-C ends the
+    process at any moment in it. Three windows have to be covered, and
+    only the middle one is uvicorn's:
 
-    * The interrupt is reported by ``Server.interrupted`` rather than by
-      a ``KeyboardInterrupt`` raised from inside ``run()``, so serve mode
-      picks its own exit code instead of inheriting one.
-    * Nothing is left to catch a repeat Ctrl-C during the couple of
-      hundred milliseconds between that restore and process exit. With
-      the default handler back in place, one arriving there raises
-      ``KeyboardInterrupt`` inside ``threading._shutdown`` — measured as
-      an "Exception ignored on threading shutdown" traceback, since an
-      AnyIO worker thread is non-daemon and gets joined there — or, a
-      little later, kills the process outright for exit ``-2`` instead
-      of ``130``.
+    * Before ``capture_signals`` takes effect, uvicorn is still building
+      the event loop and starting the app — which includes the inventory
+      walk. This window is seconds long on a large tree, and it is the
+      one that regressed: holding ``SIG_IGN`` here made a Ctrl-C in it
+      vanish, because ``SIG_IGN`` discards a signal rather than deferring
+      it. The press left no trace and the server came up and served on.
+    * During serving, uvicorn's own handler runs and calls ``handle_exit``
+      above, which stops immediately.
+    * After ``run()`` returns, ``capture_signals`` restores whatever was
+      installed when it started — ours — and re-raises the signal it
+      captured (uvicorn 0.49). That re-raise lands on ``_stop_now``, so a
+      repeat Ctrl-C arriving in the couple of hundred milliseconds before
+      exit stops the process instead of reaching Python's default
+      handler, where it used to raise ``KeyboardInterrupt`` inside
+      ``threading._shutdown`` — an "Exception ignored on threading
+      shutdown" traceback, since an AnyIO worker thread is non-daemon and
+      gets joined there — or kill the process outright for exit ``-2``.
 
-    The previous handler is put back only when serving ended for some
-    other reason. After an interrupt the process is milliseconds from
-    exiting and a further Ctrl-C has nothing left to interrupt, so
-    restoring it there would reopen the window this closes.
+    Installing a handler rather than ``SIG_IGN`` covers the first and
+    third windows with the same object, so no window is left deaf.
     """
     previous = signal.getsignal(signal.SIGINT)
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGINT, _stop_now)
     try:
         uvicorn_server.run()
     finally:
@@ -165,6 +178,19 @@ def run_serve(
     ``--path`` selection. An explicit ``path`` deep-links a file within the
     root directory.
     """
+    # First, before anything that starts a thread or opens a watcher: from here
+    # to process exit, one Ctrl-C stops serving.
+    #
+    # Serving brings up an fsevents watcher and worker threads, and until this
+    # handler is in place an interrupt takes the default path — KeyboardInterrupt
+    # to the console entry point, which returns 130 and then blocks in
+    # interpreter shutdown joining those threads. Measured on a large tree, a
+    # press in the first few hundred milliseconds left the process alive and
+    # serving. Installing the handler at the top of the mode, rather than around
+    # `run()` further down, is what leaves no window where serving has started
+    # and the interrupt has nowhere to land.
+    signal.signal(signal.SIGINT, _stop_now)
+
     # Dotenv is operator configuration for the entire command. Apply it before
     # log-level selection, plugin discovery, or path expansion so values such
     # as HOME affect every bootstrap step consistently with walk mode.

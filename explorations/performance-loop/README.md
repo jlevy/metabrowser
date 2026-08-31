@@ -17,6 +17,8 @@ and `run.py` refuses invalid evidence or a candidate that crosses a hard gate.
 This is deliberately smaller than
 [`devtools/bench_serving.py`](../../devtools/bench_serving.py), which measures serving
 and belongs in `make verify`’s world.
+The one thing the two share is the corpus: its generators live in `bench_serving`, and
+[Building the corpus](#building-the-corpus) is how this loop calls them.
 Nothing here runs in CI. An exploration answers a question once; a benchmark defends an
 answer forever, and only the second one earns a place in the release gate.
 
@@ -34,6 +36,44 @@ answer forever, and only the second one earns a place in the release gate.
 
 Rejected rounds are worth as much as accepted ones and cost more to re-derive, so a
 refuted hypothesis gets the same write-up as a confirmed one.
+
+## Building the corpus
+
+`.bench/` is gitignored and machine-local, so a fresh checkout has no corpus and every
+command below fails until it is built.
+This is the first step on a new machine:
+
+```shell
+uv --config-file uv.toml run --frozen python -c "
+from pathlib import Path
+from devtools.bench_serving import build_project_corpus
+root = Path('.bench/project-10'); root.mkdir(parents=True, exist_ok=True)
+print(build_project_corpus(root, 10))
+"
+```
+
+It takes a few minutes and writes about 5 GB: 10 copies of this repository’s own locked
+installs — the `node_modules` from `package-lock.json` and the `.venv` from `uv.lock`,
+plus its own source as the tracked half — which comes to roughly 249k files across 31k
+directories, about 113k of them visible to the walker once ignore rules apply.
+See [The corpus](#the-corpus) for what that shape is and why it is copied rather than
+generated.
+
+`build_project_corpus` is called directly here rather than through `bench_serving`,
+which builds the same tree on its way to running a benchmark when a release comparison
+only wants the tree.
+It needs `make install` to have run first: the installs it copies are this repository’s
+own.
+
+The build is deterministic and idempotent.
+`.bench-corpus.json` records the project count and the shape version, so a rerun reuses
+a matching tree and rebuilds a mismatched one rather than comparing across shapes.
+Read the file count from that marker rather than counting by hand; `run.py count`
+reports the walker’s own rule for any tree.
+
+`project-10` is the name the rest of this document uses, and the directory name is not
+derived — pass it explicitly, as above, or `bench_serving` will default to
+`.bench/corpus-project-10` and nothing will find it.
 
 ## Resuming this loop from scratch
 
@@ -74,11 +114,16 @@ collide are few and named:
 - `report.md` is generated.
   Never hand-edit it; regenerate with `run.py report` after merging and let that be the
   conflict resolution.
+  `run.py report` writes unformatted Markdown, so run `make format` after it or
+  `make lint-check` fails on the file you just generated.
 - The corpus at `.bench/project-10` must not change.
   It is what makes runs from different agents and different weeks comparable, and
   [re-running an old round](#re-running-an-old-round-against-todays-corpus) depends on
   it. If a round needs a different tree, serve it with `--tree` and leave the corpus
-  alone.
+  alone. Rebuilding it is not a disaster — the label hashes the corpus marker, so a
+  rebuilt tree records under a new label and `compare` refuses to pool it with the old
+  rounds rather than mixing them silently.
+  It does mean those rounds no longer compare against new ones.
 - Take the next free `exp-NNN` and the next free `H` number by reading the plan, and say
   in the pull request which you took.
 
@@ -145,6 +190,24 @@ terminal. It uses installed console scripts on both sides, at least three cold b
 runs and three backend runs per condition, immutable build references, one unchanged
 corpus, semantic response comparison, and the full responsiveness gate.
 
+Build the corpus first if this machine has none (see
+[Building the corpus](#building-the-corpus)).
+
+**Label the round, not the side.** `--label release` or `--label v0.8.0` pools with
+every earlier round that used the same word, and the ledger is append-only across rounds
+and across corpora. `compare` refuses a label that spans more than one corpus, but the
+cheap habit is a label carrying the experiment number — `exp-021-release`,
+`exp-021-candidate`. The refusal exists because the pooled comparison looks ordinary: an
+earlier round’s smaller tree reads as a first-row regression in the current one.
+
+The control is the previous release, built from its tag rather than assumed:
+
+```shell
+git worktree add --detach /tmp/mb-at-vX.Y.Z vX.Y.Z
+cd /tmp/mb-at-vX.Y.Z && uv --config-file uv.toml sync --all-extras --locked
+/tmp/mb-at-vX.Y.Z/.venv/bin/metab --version    # confirm it is the release, not a dev build
+```
+
 Build the candidate as the artifact users will install.
 Keep machine-specific reports under `.bench/`; they contain absolute executable and
 corpus paths and therefore do not belong in the public repository.
@@ -167,6 +230,16 @@ uv --config-file uv.toml run --frozen python -m devtools.compare_builds \
 Read `valid` before reading the timings.
 It is true only when every run completed, the corpus fingerprint stayed fixed, required
 response fields existed, and ordered rows and tallies were identical.
+
+`valid: false` is not automatically a stop.
+A release that deliberately changes a response says so there: a schema bump moves
+`tallies`, and the comparison reports it as an equivalence difference because it cannot
+know the change was intended.
+Read `equivalence` and decide.
+Rows differing is a regression until proven otherwise — the navigation tree is what the
+reader sees. Tallies differing only where the changelog says they change is the release
+working as described, and the experiment records it as an explicit acceptance rather
+than as a pass.
 
 For the browser half, first use `count` to obtain the inventory count, then alternate
 the release and candidate in both orders.
@@ -679,15 +752,44 @@ different tree.
 
 ## The corpus
 
-Two generators live in `devtools/bench_serving.py`, and the difference between them is
-the subject of [exp-005](experiments/exp-005-a-real-tree-changes-the-priorities.md).
+Three generators live in `devtools/bench_serving.py`, and the difference between the
+first two is the subject of
+[exp-005](experiments/exp-005-a-real-tree-changes-the-priorities.md).
+`bench_serving` is otherwise a different tool from this loop, but the corpus is shared:
+these functions are what [Building the corpus](#building-the-corpus) calls.
 
-`build_realistic_corpus` is **the one to use**. Its shape is taken from two real working
-trees rather than invented: median two files per directory, mean depth around nine, a
-nested `.gitignore` roughly every four hundred directories, and most of the file count
-inside a few enormous ignored subtrees.
+`build_project_corpus` is **the one to use**, and it is what `project-10` means.
+It does not approximate a real tree from summary statistics — it copies the actual
+`node_modules` that `package-lock.json` produces and the actual `.venv` that `uv.lock`
+produces, with the repository’s own `src`, `tests` and `docs` as the tracked half.
+So the directory shapes, name lengths, nesting and file-size distribution are a real
+dependency tree’s rather than a guess at one.
+Copies use APFS clones, so ten projects cost about one dependency tree on disk.
+
+**A comparison needs one tree, not a permanent one.** Build the corpus once, then run
+both binaries against it — the old release and the candidate see the same bytes, which
+is the whole requirement.
+`compare_builds` fingerprints the tree before and after to prove it did not move under
+the measurement.
+Which commit the corpus was built from does not matter, as long as it is
+one tree and the round records which.
+
+So the determinism worth stating is narrow and sufficient: the inputs are two committed
+lockfiles and a git checkout, with no network needed, so **one commit with one pair of
+locks gives one tree**. Rebuilding at a later commit gives a different tree, because the
+tracked half is the working tree’s own source — exp-020 measured 246,282 files in late
+August and the same generator gives 248,872 today.
+That is not a defect; it only means a round is comparable with another when their corpus
+labels match, which the label now carries: it hashes the corpus marker alongside the
+path, so a rebuild at the same path gets a new label rather than silently pooling with
+the old round.
+
+`build_realistic_corpus` approximates that shape from statistics instead: median two
+files per directory, mean depth around nine, a nested `.gitignore` roughly every four
+hundred directories, and most of the file count inside a few enormous ignored subtrees.
 That last detail is not decoration — it decided the verdict in
 [exp-006](experiments/exp-006-the-gitignore-prewalk-stops-traversing-what-it-cannot-use.md).
+Use it when a round needs a size the project corpus cannot reach.
 
 `build_corpus` is the original: 309 files per directory, shallow, and no `.gitignore` at
 all. It is kept because exp-001 through exp-004 were measured on it and their numbers

@@ -37,6 +37,14 @@ Usage::
 Run the two on the same machine and the same corpus size; the absolute numbers
 move a lot with the filesystem and the page cache, and only the comparison
 carries over.
+
+The corpus generators here are also what the load-time loop and the release
+comparison run on, which is easy to miss because that loop is otherwise a
+separate tool. ``build_project_corpus`` is the one they use: it copies the
+``node_modules`` that ``package-lock.json`` produces and the ``.venv`` that
+``uv.lock`` produces rather than approximating a tree, so one commit and one
+pair of locks give one tree. To build it without running a benchmark, see
+"Building the corpus" in ``explorations/performance-loop/README.md``.
 """
 
 from __future__ import annotations
