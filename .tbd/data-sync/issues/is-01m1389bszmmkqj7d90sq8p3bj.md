@@ -5,7 +5,7 @@ title: Accept local origins as first-class Git sources under the untrusted profi
 kind: task
 status: open
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
 labels: []
 dependencies:
@@ -13,6 +13,12 @@ dependencies:
     target: is-01kzsb4jnyd56wy89xmztkmz2m
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-08-28T03:58:15.870Z
-updated_at: 2026-08-28T03:58:46.976Z
+updated_at: 2026-08-31T01:21:06.091Z
 ---
-Closed design decision (2026-08-28): cache/urls.py classifies transport as https, ssh, or local, and accepts file:// URLs and local repository paths as Git sources. acquire() binds local sources to the untrusted profile unconditionally. Documented as mirror and air-gapped support. Rationale: the safe URL grammar exists to reject ambiguous and dangerous input (credentials, query, fragment, option-like strings), not a transport strictly safer than those already allowed. This keeps acquisition goldens on the production code path; the rejected alternative, a test-only escape hatch, forks test and production logic.
+Revised 2026-08-30 after the PR #89 review (finding F2).
+
+cache/urls.py classifies transport as https, ssh, or file, and accepts file:// URLs as Git sources. acquire binds a file source to the untrusted profile unconditionally. A bare local path is NOT a Git source: `metab /path/to/repo` keeps meaning "serve that directory", so the grammar has no ambiguity to resolve and acquisition must be asked for explicitly.
+
+The first draft accepted bare paths, justified as "strictly safer" than HTTPS/SSH. That was wrong. Verified on git 2.50.1: `git clone <path>` defaults to --local, which hardlinks .git/objects into the clone (loose object link count 2 from both sides, so the entry is not isolated from source mutation) and ignores --filter, warning "--filter is ignored in local clones; use file:// instead" — which silently defeats blobless acquisition. file:// uses the git-aware transport, produces a pack, and honours --filter.
+
+Implementation must therefore reject the path form as a Git source and accept only file://, and the acquisition goldens must build file:// origins.
