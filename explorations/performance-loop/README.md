@@ -120,7 +120,10 @@ collide are few and named:
   It is what makes runs from different agents and different weeks comparable, and
   [re-running an old round](#re-running-an-old-round-against-todays-corpus) depends on
   it. If a round needs a different tree, serve it with `--tree` and leave the corpus
-  alone.
+  alone. Rebuilding it is not a disaster — the label hashes the corpus marker, so a
+  rebuilt tree records under a new label and `compare` refuses to pool it with the old
+  rounds rather than mixing them silently.
+  It does mean those rounds no longer compare against new ones.
 - Take the next free `exp-NNN` and the next free `H` number by reading the plan, and say
   in the pull request which you took.
 
@@ -763,15 +766,23 @@ So the directory shapes, name lengths, nesting and file-size distribution are a 
 dependency tree’s rather than a guess at one.
 Copies use APFS clones, so ten projects cost about one dependency tree on disk.
 
-Its determinism is worth stating exactly, because it is not absolute: the inputs are two
-committed lockfiles and a git checkout, so **one commit with one pair of locks gives one
-tree**, with no network needed.
-That is what makes the two builds in a release comparison face an identical corpus.
-It is not frozen across commits — the tracked half is the working tree’s own source, so
-the file count drifts as the repository changes.
-exp-020 measured 246,282 files in late August and the same generator gives 248,872
-today. Runs are comparable within a round, and across rounds only when the recorded
-corpus label matches.
+**A comparison needs one tree, not a permanent one.** Build the corpus once, then run
+both binaries against it — the old release and the candidate see the same bytes, which
+is the whole requirement.
+`compare_builds` fingerprints the tree before and after to prove it did not move under
+the measurement.
+Which commit the corpus was built from does not matter, as long as it is
+one tree and the round records which.
+
+So the determinism worth stating is narrow and sufficient: the inputs are two committed
+lockfiles and a git checkout, with no network needed, so **one commit with one pair of
+locks gives one tree**. Rebuilding at a later commit gives a different tree, because the
+tracked half is the working tree’s own source — exp-020 measured 246,282 files in late
+August and the same generator gives 248,872 today.
+That is not a defect; it only means a round is comparable with another when their corpus
+labels match, which the label now carries: it hashes the corpus marker alongside the
+path, so a rebuild at the same path gets a new label rather than silently pooling with
+the old round.
 
 `build_realistic_corpus` approximates that shape from statistics instead: median two
 files per directory, mean depth around nine, a nested `.gitignore` roughly every four
