@@ -59,12 +59,11 @@ async def _fetch(
     *,
     index_timeout_s: float,
 ) -> ApiResponse:
-    from metabrowser.cli.asgi_client import wait_for_index
 
     async with InProcessClient(app, label="show", logger=LOG) as client:
-        index = await wait_for_index(client, timeout_s=index_timeout_s)
-        if not index.completed:
-            typer.echo(f"index: incomplete: {index.detail}", err=True)
+        # /api/file and the comparison hook answer from disk, not the
+        # inventory: both were byte-identical with and without the wait, so
+        # --show does not pay for a scan it does not read.
         return await client.get(route, params=params)
 
 

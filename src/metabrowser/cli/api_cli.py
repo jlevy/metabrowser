@@ -32,9 +32,27 @@ from metabrowser.normalize import NormalizeContext, normalize_payload, normalize
 
 LOG = logging.getLogger(__name__)
 
-# The progress route is how the index wait itself reports, so waiting on it
-# before requesting it would never terminate.
-_INDEX_PROGRESS_ROUTE = "/api/index/progress"
+# Routes whose answer changes once the inventory scan finishes. Measured by
+# requesting each one with and without the wait and comparing: /api/recent grew
+# from 6 KB to 853 KB on this repository, while /api/routes, /api/file, and the
+# Git and plugin routes were byte-identical.
+#
+# Waiting is therefore opt-in rather than universal. A full scan costs about
+# 0.7s on a three-thousand-file tree and grows with it, so making every route
+# pay for it made the cheap ones -- route discovery, one file's kind, a Git log
+# -- several times slower than the work they do.
+_INDEX_DEPENDENT: tuple[str, ...] = (
+    "/api/tree",
+    "/api/rollup",
+    "/api/recent",
+    "/api/catalog",
+    "/api/capabilities",
+    "/api/index/meta",
+    # POST-only, so the GET probe that measured the others could not see it;
+    # its whole payload is inventory state, and it reported status "scanning"
+    # instead of "done" the moment the wait was skipped.
+    "/api/diagnostics/pending-tallies",
+)
 
 
 def _render(payload: Any, fmt: str) -> str:
@@ -59,7 +77,7 @@ async def _issue(
 
     index_detail = "skipped"
     async with InProcessClient(app, label="api", logger=LOG) as client:
-        if not route.startswith(_INDEX_PROGRESS_ROUTE):
+        if route.startswith(_INDEX_DEPENDENT):
             result = await _wait_for_index(client, timeout_s=index_timeout_s)
             index_detail = result.detail if result.completed else f"incomplete: {result.detail}"
         if body:

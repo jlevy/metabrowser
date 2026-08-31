@@ -108,6 +108,21 @@ Two routes have no meaningful `--api` result: `/api/events` and `/api/stream` ar
 server-sent-event streams whose responses never terminate.
 `--api` bounds the request and reports that rather than hanging.
 
+### There is no server to start
+
+Every data mode runs the server in-process for the life of the command.
+Nothing binds a port, nothing is left running, and a `metab` already serving that
+directory is neither required nor consulted — the two do not share state.
+
+Most commands cost about half a second, which is mostly Python starting up.
+The exceptions are the routes that read the file inventory — `/api/tree`, `/api/rollup`,
+`/api/recent`, `/api/catalog`, `/api/capabilities`, and the index routes — which wait
+for the directory scan to finish so their answer is complete rather than partial.
+That wait grows with the tree; everything else skips it.
+
+If you are scripting several routes over a large tree, prefer one `--walk` for the
+inventory over repeated `/api/tree` calls: each invocation scans again.
+
 ## Understanding a Selection: `--show`
 
 `--show` answers “what would the browser do with this path” without opening one:
