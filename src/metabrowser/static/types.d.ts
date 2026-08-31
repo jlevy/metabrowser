@@ -179,13 +179,13 @@ type MetabrowserFileTypeFamilyMatch = Readonly<{
 }>;
 
 type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
-  schema: "file-type-registry-v3";
-  schemaVersion: 3;
+  schema: "file-type-registry-v4";
+  schemaVersion: 4;
   revision: number;
   fingerprint: string;
   maxExtensionComponents: 2;
   registryIdentity: Readonly<{
-    schemaVersion: 3;
+    schemaVersion: 4;
     revision: number;
     fingerprint: string;
   }>;
@@ -198,6 +198,8 @@ type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
   groupForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId;
   distributionKeyForExtension(extension: unknown): string;
   hueForDistributionKey(key: unknown): number | null;
+  /** The icon a family paints with: its own, or its group's. */
+  iconForFamily(familyId: unknown): string | null;
 }>;
 
 type MetabrowserInventoryWatch = Readonly<{
@@ -1696,7 +1698,11 @@ declare global {
     MetabrowserCharts?: MetabrowserChartRuntime;
     MetabrowserFileTypes?: {
       classFor(path: string): string;
-      iconFor(path: string): { cls: string; svg: string };
+      /** `style` carries the family colour as custom properties; "" when the
+       * registry does not claim the extension. */
+      iconFor(path: string): { cls: string; svg: string; style: string };
+      styleFor(path: string): string;
+      familyFor(path: string): string | null;
     };
     MetabrowserFileTypeTaxonomy: MetabrowserFileTypeTaxonomyRuntime;
     MetabrowserCatalogFeed: MetabrowserCatalogFeedRuntime;
@@ -1738,7 +1744,7 @@ declare global {
       /** Each family's distribution key with its color on each theme. */
       DISTRIBUTION_COLORS?: Array<{ key: string; light: string; dark: string }>;
       FILE_TYPE_REGISTRY?: {
-        schema: "file-type-registry-v3";
+        schema: "file-type-registry-v4";
         schema_version: 3;
         revision: number;
         fingerprint: string;

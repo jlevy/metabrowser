@@ -4,6 +4,33 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+File-type identity:
+
+- The file tree takes its icon and colour from the rollup registry, so a family looks
+  like itself everywhere it appears.
+  There were two taxonomies: a hand-maintained table of sixteen matchers in `app.js`
+  resolving to nine `ft-*` classes, and the registry’s 56 families each with a declared
+  hue. Nothing kept them in step and they had drifted in both directions at once — `.js`
+  and `.jsx` were one family in the registry and two different shapes in the tree, three
+  of the four JavaScript extensions had no colour at all, while `.json`, `.toml` and
+  `.yaml` were three families painted as one.
+  The rows disagreed with the distribution bars beside them, from the same data.
+
+- The registry declares an icon per group, which a family may override.
+  That is the rule the old table already stated — the icon is the major type, the colour
+  is the subtype — now enforced by where the data lives rather than by hand, which is
+  what keeps 56 families down to six shapes plus a few deliberate exceptions.
+  Icon names are checked against the shipped set, so a typo fails `make verify` instead
+  of rendering a blank row.
+
+- `FILE_TYPE_REGISTRY_SCHEMA` is `file-type-registry-v4`. Classification is not
+  reimplemented for the tree: `MetabrowserFileTypeTaxonomy` already resolves compound
+  extensions and family-to-group fallback, and a second implementation of that is the
+  defect being removed.
+  `window.MetabrowserFileTypes` keeps `classFor` and `iconFor` and gains `styleFor` and
+  `familyFor`; `iconFor` now returns `style` beside `svg` and `cls`, because a family’s
+  colour cannot travel in a class name when there are 56 of them.
+
 Features:
 
 - Rendered documents now read at a width the reader chooses, in characters, through

@@ -749,93 +749,126 @@ function initSettingsControl() {
 }
 
 // ── File type design system ───────────────────────────────────
-// Rule: major type carries the icon SHAPE; subtype carries the COLOR.
-//   - All markdown uses `doc` (document shape); regular vs template
-//     is communicated by color (green vs yellow).
-//   - All structured-config files (yaml/json/toml/cfg/ini) use `list`;
-//     color distinguishes yaml-family vs plain config.
-//   - All source code uses `alignLeft` (horizontal rules — reads as
-//     lines of code); one shared color today but a new subtype can
-//     split off its own color later.
-//   - Tabular (csv), log-stream (jsonl), and pdf each get their own
-//     iconic shape because they're visually distinct formats.
+// The file tree's icon and colour, resolved through the rollup registry.
 //
-// To add a new file type: append an entry to FILE_TYPES (order = match
-// priority, longest/compound suffix first). To add a subtype split:
-// introduce a new `--ft-<name>` token in styles.css + a `ft-<name>`
-// class, then point the entry's `cls` at it.
-function endsWithSuffix(suffix) {
-  return (name) => name.endsWith(suffix);
-}
-function hasExt(ext) {
-  return (name) => getExt(name) === ext;
-}
-function hasAnyExt(exts) {
-  return (name) => exts.indexOf(getExt(name)) >= 0;
+// This used to be a second taxonomy: sixteen hand-maintained matchers here
+// resolving to nine `ft-*` classes, beside a registry of 56 families each with
+// its own declared hue. Nothing kept them in step and they had drifted in both
+// directions at once — `.js` and `.jsx` were one family in the registry and two
+// different shapes in the tree, while `.json`, `.toml` and `.yaml` were three
+// families painted as one. A reader saw the bars disagree with the rows beside
+// them.
+//
+// Classification is NOT re-implemented here. `MetabrowserFileTypeTaxonomy` is
+// the registry runtime, it already canonicalises compound extensions and
+// resolves a family's shape through its group, and a second implementation of
+// that is exactly the defect being removed. This file only turns its answer
+// into markup.
+//
+// Colours arrive finished in `DISTRIBUTION_COLORS`, resolved per theme by the
+// server, because sRGB cannot hold the palette's target chroma at every hue and
+// a browser handed an out-of-gamut `oklch()` clips it — moving hue further than
+// the separation the palette is built on. The distribution bars read the same
+// list, which is what makes a family look like itself wherever it appears.
+
+/** Where a file row's colour for each theme is written. */
+const FILE_COLOR_LIGHT_PROPERTY = "--mb-file-color-light";
+const FILE_COLOR_DARK_PROPERTY = "--mb-file-color-dark";
+/** The class that selects between the two theme colours above. */
+const FILE_COLOR_CLASS = "file-identity-color";
+
+/** @type {Map<string, {light: string, dark: string}> | null} */
+let _familyColors = null;
+
+function familyColors() {
+  if (!_familyColors) {
+    _familyColors = new Map();
+    const declared =
+      (typeof window !== "undefined" && window.METABROWSER_SETTINGS?.DISTRIBUTION_COLORS) || [];
+    for (const entry of declared) {
+      // Keys are `family:<id>`; the tree only ever asks about families.
+      if (typeof entry?.key === "string" && entry.key.startsWith("family:")) {
+        _familyColors.set(entry.key.slice("family:".length), {
+          light: entry.light,
+          dark: entry.dark,
+        });
+      }
+    }
+  }
+  return _familyColors;
 }
 
-var FILE_TYPES = [
-  // Markdown subtypes — compound suffixes first so `.runbook.md`
-  // matches before the generic `.md` fallback.
-  { match: endsWithSuffix(".runbook.md"), icon: "doc", cls: "ft-md-runbook" },
-  { match: endsWithSuffix(".template.md"), icon: "doc", cls: "ft-md-template" },
-  { match: endsWithSuffix(".form.md"), icon: "doc", cls: "ft-md-template" },
-  { match: hasExt(".md"), icon: "doc", cls: "ft-md" },
-  { match: hasExt(".txt"), icon: "doc", cls: "ft-text" },
-  // Structured-config family.
-  { match: hasExt(".yaml"), icon: "list", cls: "ft-yaml" },
-  { match: hasExt(".yml"), icon: "list", cls: "ft-yaml" },
-  { match: hasExt(".json"), icon: "list", cls: "ft-yaml" },
-  { match: hasExt(".toml"), icon: "list", cls: "ft-yaml" },
-  { match: hasExt(".cfg"), icon: "list", cls: "ft-config" },
-  { match: hasExt(".ini"), icon: "list", cls: "ft-config" },
-  // Log stream.
-  { match: hasExt(".jsonl"), icon: "activity", cls: "ft-jsonl" },
-  // Source code — one shared shape/color across the family; append
-  // an extension to the list to pick it up.
-  {
-    match: hasAnyExt([".py", ".sh", ".js", ".ts"]),
-    icon: "alignLeft",
-    cls: "ft-code",
-  },
-  // Tabular + document.
-  { match: hasExt(".csv"), icon: "grid", cls: "ft-csv" },
-  { match: hasExt(".pid"), icon: "fileText", cls: "ft-text" },
-  { match: hasExt(".pdf"), icon: "fileText", cls: "ft-text" },
-];
+function fileTypeRuntime() {
+  return (typeof window !== "undefined" && window.MetabrowserFileTypeTaxonomy) || null;
+}
 
+/**
+ * The registry family a filename belongs to, or `null` when none claims it.
+ * @param {string} pathOrName
+ */
+function fileTypeFamilyFor(pathOrName) {
+  const runtime = fileTypeRuntime();
+  if (!runtime || !pathOrName) {
+    return null;
+  }
+  const slash = pathOrName.lastIndexOf("/");
+  const name = slash >= 0 ? pathOrName.slice(slash + 1) : pathOrName;
+  const dot = name.lastIndexOf(".");
+  // `classify` takes the name and its extension and does the compound-suffix
+  // work, so `.tar.gz` and `.d.ts` resolve the way the registry declares.
+  return runtime.classify(name, dot > 0 ? name.slice(dot) : "").familyId || null;
+}
+
+/**
+ * The icon and colour for a filename.
+ *
+ * Returns `style` beside `svg` and `cls` so a caller rendering markup carries
+ * the colour without a second lookup. An unknown extension gets the generic
+ * file shape and no colour, which is the honest answer: the registry does not
+ * claim it.
+ * @param {string} name
+ */
 function getFileIcon(name) {
-  for (var i = 0; i < FILE_TYPES.length; i++) {
-    if (FILE_TYPES[i].match(name)) {
-      return { svg: ICON_SVG[FILE_TYPES[i].icon], cls: FILE_TYPES[i].cls };
-    }
+  const runtime = fileTypeRuntime();
+  const family = fileTypeFamilyFor(name);
+  if (!runtime || !family) {
+    return { svg: ICON_SVG.file, cls: "", style: "" };
   }
-  return { svg: ICON_SVG.file, cls: "" };
+  const svg = ICON_SVG[runtime.iconForFamily(family) || "file"] || ICON_SVG.file;
+  const color = familyColors().get(family);
+  if (!color) {
+    return { svg, cls: "", style: "" };
+  }
+  return {
+    svg,
+    cls: FILE_COLOR_CLASS,
+    style: `${FILE_COLOR_LIGHT_PROPERTY}:${color.light};${FILE_COLOR_DARK_PROPERTY}:${color.dark}`,
+  };
 }
 
-// Classify a path by basename and return the file-type `ft-*` subtype
-// class (no icon). Exposed on `window.MetabrowserFileTypes` so viz.js can
-// color dep-node icons using the same design system as the file tree —
-// "icon = major type, color = subtype" applies everywhere a filename
-// shows up in the UI.
+/**
+ * The colour class for a path, for callers painting a name outside the tree.
+ *
+ * Exposed on `window.MetabrowserFileTypes` so anywhere a filename appears gets
+ * the family's identity. The class alone cannot carry the colour — that is in
+ * the custom properties — so callers needing the paint use `styleFor` beside it.
+ * @param {string} pathOrName
+ */
 function getFileTypeClass(pathOrName) {
-  if (!pathOrName) {
-    return "";
-  }
-  var slash = pathOrName.lastIndexOf("/");
-  var name = slash >= 0 ? pathOrName.slice(slash + 1) : pathOrName;
-  for (var i = 0; i < FILE_TYPES.length; i++) {
-    if (FILE_TYPES[i].match(name)) {
-      return FILE_TYPES[i].cls;
-    }
-  }
-  return "";
+  return getFileIcon(pathOrName).cls;
+}
+
+/** @param {string} pathOrName */
+function getFileTypeStyle(pathOrName) {
+  return getFileIcon(pathOrName).style;
 }
 
 if (typeof window !== "undefined") {
   window.MetabrowserFileTypes = {
     classFor: getFileTypeClass,
     iconFor: getFileIcon,
+    styleFor: getFileTypeStyle,
+    familyFor: fileTypeFamilyFor,
   };
 }
 
@@ -1797,6 +1830,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         container ? `<span class="tree-toggle">${ICONS.toggle}</span>` : "",
         '<span class="',
         iconCls,
+        fi.style ? `" style="${esc(fi.style)}` : "",
         '">',
         fi.svg,
         compressionBadge,
@@ -6711,6 +6745,7 @@ function _buildRowHtml(entry, options) {
     '">' +
     '<span class="tree-item-icon file-identity-icon ' +
     fi.cls +
+    (fi.style ? `" style="${esc(fi.style)}` : "") +
     '">' +
     fi.svg +
     "</span>" +
