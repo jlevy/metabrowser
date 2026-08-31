@@ -80,3 +80,22 @@ def test_api_passes_the_query_string_through_to_the_route(root: Path, capsys: An
     assert len(unfiltered["tree"]) == 2
     assert filtered["filtered"]["entries"] == 1
     assert len(filtered["tree"]) == 1
+
+
+def test_a_folder_envelope_is_complete_not_pending(root: Path, capsys: Any) -> None:
+    """A folder's aggregates come from the inventory, so /api/file must wait for it.
+
+    The sweep that decided which routes wait only ever requested a file, and the
+    folder branch returned `state: "pending"` with null aggregates, HTTP 200 and
+    exit 0 -- degraded data reported as a clean answer.
+    """
+
+    (root / "docs").mkdir()
+    (root / "docs" / "a.md").write_text("a\n")
+
+    run_api(root, route="/api/file?path=docs", fmt="json")
+
+    payload = json.loads(capsys.readouterr().out.split("\n", 2)[2])
+    assert payload["kind"] == "folder"
+    assert payload["dir"]["state"] == "complete"
+    assert payload["dir"]["total_files"] is not None

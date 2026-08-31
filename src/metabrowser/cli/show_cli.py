@@ -21,7 +21,12 @@ from typing import Any
 
 import typer
 
-from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S, ApiResponse, InProcessClient
+from metabrowser.cli.asgi_client import (
+    INDEX_READY_TIMEOUT_S,
+    ApiResponse,
+    InProcessClient,
+    wait_for_index,
+)
 from metabrowser.cli.common import apply_log_level
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain
@@ -58,12 +63,17 @@ async def _fetch(
     params: Mapping[str, str],
     *,
     index_timeout_s: float,
+    needs_index: bool,
 ) -> ApiResponse:
 
     async with InProcessClient(app, label="show", logger=LOG) as client:
-        # /api/file and the comparison hook answer from disk, not the
-        # inventory: both were byte-identical with and without the wait, so
-        # --show does not pay for a scan it does not read.
+        # A file envelope answers from disk; a folder envelope carries
+        # inventory aggregates and reads "pending" until the scan finishes.
+        # --show knows which it is asked for, so it waits only when it must.
+        if needs_index:
+            index = await wait_for_index(client, timeout_s=index_timeout_s)
+            if not index.completed:
+                typer.echo(f"index: incomplete: {index.detail}", err=True)
         return await client.get(route, params=params)
 
 
@@ -163,7 +173,17 @@ def run_show(
             selection = decoded
         route, params = "/api/file", {"path": selection}
 
-    response = asyncio.run(_fetch(server.app, route, params, index_timeout_s=index_timeout_s))
+    # A directory's envelope carries inventory aggregates; a file's does not.
+    needs_index = commit is None and (resolved / params["path"]).is_dir()
+    response = asyncio.run(
+        _fetch(
+            server.app,
+            route,
+            params,
+            index_timeout_s=index_timeout_s,
+            needs_index=needs_index,
+        )
+    )
 
     if response.incomplete:
         raise CLIError(f"{path} failed mid-response; the model below would be truncated")

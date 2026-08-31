@@ -116,8 +116,9 @@ directory is neither required nor consulted — the two do not share state.
 
 Most commands cost about half a second, which is mostly Python starting up.
 The exceptions are the routes that read the file inventory — `/api/tree`, `/api/rollup`,
-`/api/recent`, `/api/catalog`, `/api/capabilities`, and the index routes — which wait
-for the directory scan to finish so their answer is complete rather than partial.
+`/api/recent`, `/api/catalog`, `/api/capabilities`, `/api/index/meta`,
+`/api/diagnostics/pending-tallies` — which wait for the directory scan to finish so
+their answer is complete rather than partial.
 That wait grows with the tree; everything else skips it.
 
 If you are scripting several routes over a large tree, prefer one `--walk` for the

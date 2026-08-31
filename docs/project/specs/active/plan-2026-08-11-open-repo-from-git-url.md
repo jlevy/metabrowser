@@ -734,8 +734,9 @@ all:
   [this plan specifies](#blobless-acquisition-and-the-offline-guarantee).
 
 So a path-form clone is neither safer nor the same code path.
-`file://` goes through the git-aware transport, produces a pack rather than hardlinks,
-and honours `--filter`. Pinning it is what makes the rest of this section true.
+`file://` goes through the git-aware transport and produces a pack rather than
+hardlinks, which is what the isolation argument needs.
+Pinning it is what makes the rest of this section true.
 
 The decision is load-bearing for testing, which is the honest reason it came up.
 Acquisition goldens clone from a `file://` origin built in the same sandbox, so they run

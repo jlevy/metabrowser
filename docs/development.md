@@ -393,8 +393,11 @@ the library, so they prove the model and not the route.
 A route can accept a parameter the library never sees, or drop an envelope key, with
 those transcripts still green — which is what happened when the nav filter shipped.
 `--api` closes that gap by issuing the request the browser would issue.
-So a golden counts as evidence for a route only if it names that route, and
-`check_parity.py` enforces exactly that.
+So a golden counts as evidence only if it exercises the route: either a `$ metab`
+command names it, or the row names a mode that resolves it internally, which is how
+`--show` stands for `/api/file` without spelling it.
+`check_parity.py` enforces that distinction, and `--api` is deliberately not such a
+mode, because it always names its route.
 
 **Why goldens rather than more integration tests.**
 `tbd guidelines golden-testing-guidelines` makes the case: capture a broad, stable slice

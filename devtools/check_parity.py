@@ -25,13 +25,17 @@ SOURCE_ROOT = REPO_ROOT / "src/metabrowser"
 GOLDEN_DIR = REPO_ROOT / "tests/golden"
 
 _STATUSES = frozenset({"covered", "exempt"})
-# Modes that issue a route without naming it on the command line, and so can
-# stand as evidence for it. `--api` is absent because it always names its route,
-# so a row claiming it must show the route in a command. `--walk` and `--diff`
-# are absent for the opposite reason: they reach their models through the
-# library and issue no request at all, which is the model-versus-wire gap this
-# check exists to close.
-_INDIRECT_MODES = ("--show", "--check-api")
+# Modes that issue a route without naming it on the command line, mapped to the
+# routes each one can actually issue. The mapping matters: crediting a mode for
+# a surface it never touches is the same false evidence as crediting prose.
+# `--api` is absent because it always names its route, so a row claiming it must
+# show the route in a command. `--walk` and `--diff` are absent for the opposite
+# reason: they reach their models through the library and issue no request at
+# all, which is the model-versus-wire gap this check exists to close.
+_INDIRECT_MODES: dict[str, tuple[str, ...]] = {
+    "--show": ("/api/file", "/api/plugin/diff/comparison", "/view", "/commit"),
+    "--check-api": ("/api/tree", "/api/recent", "/api/index/progress"),
+}
 
 
 def _command_lines(golden: str) -> list[str]:
@@ -52,8 +56,12 @@ def _exercises(golden: str, surface: str, cli: str) -> bool:
     commands = _command_lines(golden)
     if any(surface in command for command in commands):
         return True
-    claimed = [mode for mode in _INDIRECT_MODES if mode in cli]
-    return any(mode in command for mode in claimed for command in commands)
+    for mode, issues in _INDIRECT_MODES.items():
+        if mode not in cli or surface not in issues:
+            continue
+        if any(mode in command for command in commands):
+            return True
+    return False
 
 
 @dataclass(frozen=True, slots=True)

@@ -380,9 +380,7 @@ status: 200
     },
     {
       "path": "/static",
-      "methods": [
-        "GET"
-      ],
+      "methods": null,
       "kind": "asset"
     },
     {

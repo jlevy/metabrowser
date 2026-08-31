@@ -74,10 +74,13 @@ Row 6 is the
 serving fetched content is gated on the trust chain, which no plan prioritized.
 It depends on nothing here, so it runs alongside rather than extending the schedule.
 
-Rows 1–2 are behavior-preserving.
-The proof is that `tests/golden/cli-check-api.tryscript.md` and every other existing
-golden are byte-identical after the refactor.
+The *lift* in row 1 is behavior-preserving, and that is checkable: every existing
+golden, `cli-check-api.tryscript.md` among them, must be byte-identical after it.
 If a transcript moves, the lift changed behavior and the change is wrong.
+
+The rows as a whole are not behavior-preserving, and an earlier draft said they were.
+They add two modes, so `cli-surface.tryscript.md` changes and `CHANGELOG.md` gains an
+entry. The invariant is about the refactor, not the phase.
 
 ## Part 0: Parity Mechanism — Module and Function Map
 
@@ -100,7 +103,7 @@ class InProcessClient:
     async def get(self, url: str) -> ApiResponse: ...
     async def post(self, url: str, *, body: bytes) -> ApiResponse: ...
 
-async def wait_for_index(client: InProcessClient, *, timeout_s: float) -> bool: ...
+async def wait_for_index(client: InProcessClient, *, timeout_s: float) -> IndexResult: ...
 ```
 
 `post` lands here now rather than later because it costs nothing at lift time and closes
@@ -116,9 +119,10 @@ The session schema the golden guidelines ask for, stated once.
 class NormalizeContext:
     root: Path
     home: Path | None          # METABROWSER_HOME, when set
-    keep_revisions: bool        # True for deterministic fixture repos
+    normalize_mtimes: bool      # only where a fixture cannot pin them
 
-UNSTABLE_FIELDS: Mapping[str, str]   # field name -> placeholder
+CURSOR_PATHS: tuple[tuple[str, ...], ...]   # addressed by position, not key name
+ELAPSED_PATHS: tuple[tuple[str, ...], ...]
 
 def normalize_payload(value: Any, ctx: NormalizeContext) -> Any: ...
 def normalize_text(text: str, ctx: NormalizeContext) -> str: ...
@@ -135,13 +139,21 @@ The rules, and why each is needed:
 | Pack file names, `.git` internals | omitted | never stable; see below |
 | Git revisions | **kept** | fixture repos are built deterministically |
 
-The table is short because it was measured.
+The table was measured, and then it grew, which is worth recording because the first
+version of this paragraph did not.
 Running the same routes twice against two sandbox roots, the only field that varied was
-`root`, and no envelope carries an elapsed or duration field — so an `<ELAPSED>` rule
-would be speculative and is absent until something needs it.
-Mtime normalization is opt-in rather than default for the same reason revisions are
-kept: the existing goldens pin mtimes and assert the real values, and normalizing by
-default would delete that coverage.
+`root`. That sample was too small: `/api/git/log` carries a `page_cursor` holding a
+random session token, and `/api/diagnostics/pending-tallies` carries
+`inventory.elapsed_ms`, a wall clock.
+Both were found later, by routes the first sweep did not request, and both are
+normalized now. The lesson is about the method rather than the fields — “no envelope
+carries X” is a claim about every envelope, and a sweep of six proves nothing of the
+sort. Mtime normalization stays opt-in for a different and better reason: the existing
+goldens pin mtimes with `touch -t` and assert the real values, so normalizing by default
+would delete coverage a fixture already controls.
+
+`metabrowser/normalize.py` is the authority for what is normalized; this table describes
+it and can lag it.
 
 Placeholders use angle brackets, not square ones.
 tryscript reads `[NAME]` in expected output as an elision pattern, and `[ROOT]` is one
@@ -161,12 +173,14 @@ removes the coverage you were trying to add.
 ```python
 async def run_api(
     root: Path,
-    route: str,
     *,
-    fmt: Literal["json", "yaml"],
-    data: Path | None,
-    wait_index: bool,
-) -> int: ...
+    route: str,
+    fmt: str = "json",
+    data: Path | None = None,
+    plugins_dir: list[Path] | None = None,
+    log_level: str = "",
+    index_timeout_s: float = INDEX_READY_TIMEOUT_S,
+) -> None: ...   # the index wait is per-route, not a flag
 ```
 
 Builds the real app, waits for the index when the route needs one, issues the request,
@@ -185,8 +199,8 @@ reader sees and today is proved by nothing outside a browser.
 
 ### `devtools/check_parity.py` (new) — `mb-esht`
 
-Enumerates registered routes from `server.py`, `git/routes.py`, `cache/routes.py`, and
-every manifest `[[data_hook]]`; reads the parity table in
+Enumerates registered routes by walking every module under `src/metabrowser/` for
+`Route(` registrations, plus every manifest `[[data_hook]]`; reads the parity table in
 [Views, Models, and Routes](../../architecture/arch-views-models-routes.md); fails
 naming the surface when a row is missing, names a command the CLI rejects, or names a
 command appearing in no golden.
@@ -242,8 +256,8 @@ Verified against Git 2.50.1, a rename emits its two paths as two separate NUL-te
 fields belonging to one record:
 
 ```text
-2 R. N... 100644 100644 100644 2227cddb 2227cddb R100 renamed.txt\0a.txt\0
-1 A. N... 000000 100644 100644 00000000 587be6b4 weird name.txt\0
+2 R. N... 100644 100644 100644 <oid> <oid> R100 renamed.txt\0a.txt\0
+1 A. N... 000000 100644 100644 <oid> <oid> weird name.txt\0
 ? u.txt\0
 ```
 
@@ -378,9 +392,11 @@ export GIT_COMMITTER_DATE='2020-01-01T00:00:00Z'
 git init -q --initial-branch=main origin
 ```
 
-Verified: two repositories built this way on Git 2.50.1 both produced HEAD
-`1e9bc884891152dfb4e0ac2d87c40f5a5b7389a9`. So Git goldens assert **real revisions**,
-not `<REV>` placeholders.
+Verified on Git 2.50.1: two repositories built from the same commands produced identical
+HEADs. The literal hash is not quoted here, because it is determined by the tree and
+message as well as the recipe, so a reader could not reproduce it from what is shown —
+the reproducible claim is the equality, not the value.
+So Git goldens assert **real revisions**, not `<REV>` placeholders.
 A commit that changes shape changes the golden, which is the entire point.
 `--initial-branch=main` is required: the default branch name varies by Git version and
 is the one genuinely unstable thing in the recipe.
@@ -516,11 +532,10 @@ allowed transports. Review showed that wrong: `git clone` given a path defaults 
 `--local`, which hardlinks `.git/objects` into the clone — so the entry is not isolated
 from later mutation of the source — and ignores `--filter`, defeating blobless
 acquisition with only a warning.
-Both were reproduced on Git 2.50.1. `file://` uses the git-aware transport, packs rather
-than hardlinks, and honours `--filter`, which is what makes the testing rationale true:
-acquisition goldens clone a `file://` origin through the real production path rather
-than a test-only escape hatch, which `tbd guidelines golden-testing-guidelines` warns
-against directly. See
+Both were reproduced on Git 2.50.1. `file://` uses the git-aware transport and packs
+rather than hardlinks, which is what makes the testing rationale true; it does not
+rescue `--filter`, and the repository-library plan owns that open measurement.
+See
 [Safety at the boundary](plan-2026-08-11-open-repo-from-git-url.md#safety-at-the-boundary).
 
 Still open:

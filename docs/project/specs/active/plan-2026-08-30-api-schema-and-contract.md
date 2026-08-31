@@ -55,91 +55,108 @@ anything else, and validate the goldens against it.
 Version it with the artifact and say in the document itself that it describes an
 internal contract, so a reader knows what it is before depending on it.
 
-## Approach: The TypedDicts Are Already the Declaration
+## Approach: Generate Where a Declaration Exists, Author Where It Does Not
 
-The envelopes are declared once, in the 31 `TypedDict`s that exist today, and they stay
-that way. Nothing is rewritten and no second declaration is introduced.
+An earlier draft of this section claimed the 31 existing `TypedDict`s were already the
+declaration and nothing needed rewriting.
+That is true of one family and false of the rest, and the difference is the actual shape
+of this work.
 
-`pydantic.TypeAdapter(GitRepoInfo).json_schema()` emits JSON Schema **directly from an
-existing TypedDict** — verified against `metabrowser.git.wire` before this was written.
-So the generator is a devtool that imports the wire modules, walks their TypedDicts, and
-writes the result.
+| Surface | Declaration today | What generation yields |
+| --- | --- | --- |
+| `/api/git/*` | 13 `TypedDict`s, all `total=True`, six validators | A real schema. `TypeAdapter(GitRepoInfo).json_schema()` verified. |
+| `/api/tree`, `/api/rollup` | 18 `TypedDict`s, but `DirNode` is `total=False` with `children: list[Any]` | **Nearly empty.** Verified: no `required`, and `children` as `{"items": {}}`. |
+| `/api/file` | None. `FileNode` is a tree row, not the response envelope with `kind`, `views`, and the content window | Nothing |
+| Plugin data hooks | None | Nothing |
+
+So the generator is the cheap part and the declarations are the work.
+
+### The loose ones are loose on purpose
+
+`DirNode` uses `total=False` for keys whose presence varies, and `children: list[Any]`
+because a child is a directory or a file and the wire contract does not discriminate.
+That is a deliberate permissiveness, not an oversight, and `wire_models.py` says so.
+
+Tightening it is therefore **a change to the contract**, not a detail of how a schema is
+emitted.
+It may well be right — a reader benefits from knowing a directory always carries
+`total_files`, even as `null` — but it needs its own justification and its own check
+that no producer violates the tightened shape.
+It cannot arrive as a side effect of wanting better documentation.
 
 ### Pydantic stays out of the runtime path
 
 Pydantic is already in `[project.dependencies]`, because `diff/format.py` and
 `plugin_loader/manifest.py` validate documents with it.
-This work adds no runtime use of it at all: the import happens in
-`devtools/build_api_schema.py`, at generation time, and what ships is the committed JSON
-Schema.
+This work adds no runtime use: the import is in `devtools/build_api_schema.py`, at
+generation time, and what ships is the committed JSON Schema.
 
-That matters beyond dependency hygiene.
-Tree and rollup responses sit on the measured load-time path, and `validate_tree_node`
-is `assert`-based and, as `wire_models.py` says, “invoked from the matching tests”.
-Nothing validates a response on the way out today.
-Keeping the models out of the response path preserves that, and any future decision to
-validate at runtime would need its own measurement rather than arriving as a side effect
-of documenting the shapes.
+That matters. Tree and rollup responses sit on the measured load-time path, and
+`validate_tree_node` is `assert`-based and, as `wire_models.py` says, “invoked from the
+matching tests”. Nothing validates a response on the way out today, and keeping the
+models out of the response path preserves that.
 
 ### Why emit JSON Schema rather than stop at Python
 
 The browser is a second implementation in another language.
 `builtin_plugins/diff/diff-model.js` validates by hand — `require`, `asObject`,
-`forbidExtras` — and its own comment refers to “the interchange rule the schema states,
-and the Pydantic side’s” behaviour.
+`forbidExtras` — and its comment refers to “the interchange rule the schema states”.
 A Python-only declaration leaves that side describing the contract from memory, which is
-the arrangement the two documented formats exist to avoid.
+what the two documented formats exist to avoid.
 A committed schema also has client-side validator support, so a plugin author can check
 an envelope without running Python.
 
-| Piece | What it is | Ships? |
-| --- | --- | --- |
-| The existing `TypedDict`s | The declaration, unchanged | yes, as today |
-| `devtools/build_api_schema.py` | Imports the wire modules, emits schema via `TypeAdapter` | no |
-| `src/metabrowser/data/api-envelopes/` | The generated schemas, committed | yes |
-| `GET /api/schema` | Serves them, so `metab . --api /api/schema` is the CLI view | yes |
-| Drift check in `make lint` | Regenerates and compares | no |
-| Golden validation | Each transcript’s envelope validated against its schema | no |
+### Two strictness choices, not one
 
-The last row is what ties the CLI and the API to one structure: a transcript already
-holds a real response, so checking it against the generated schema proves the schema
-describes what the server sends rather than what someone believed it sent.
+`TypeAdapter` does not set `additionalProperties`, and the right value differs by
+purpose:
 
-### One choice the generator has to make
+- **The published schema** should be permissive about unknown keys, so a reader written
+  against today’s build tolerates a field a newer server adds.
+- **Golden validation** should be strict, or it proves nothing: a permissive schema
+  accepts any envelope, and the phase that validates transcripts against it would pass
+  by construction.
 
-`TypeAdapter` does not set `additionalProperties` for a TypedDict, so the emitted schema
-is permissive about unknown keys unless the generator says otherwise.
-Strict is right for a *format* — it is what `forbidExtras` enforces for File Diff Format
-— and permissive is right for a *reader*, which should tolerate a field a newer server
-added. The generator should set it explicitly rather than inherit a default, and the
-phase that adds it should say which and why.
+The generator emits both, or one with a documented strict overlay.
+Deciding this as a single global flag is how that phase becomes vacuous without anyone
+noticing.
 
 ### Why not SoftSchema
 
 SoftSchema is for durable records — written now, read by a later release, which is why
 the [repository cache](plan-2026-08-11-open-repo-from-git-url.md) adopts it for identity
-and state. An envelope is produced and consumed by one artifact in one request, so the
-problem it solves does not arise here.
+and state. An envelope is produced and consumed by one artifact in one request.
 
 ## Phases
 
-1. **Generator and drift check.** `devtools/build_api_schema.py` emits schema from the
-   existing TypedDicts via `TypeAdapter`, the output is committed under
+1. **Generator and drift check, scoped to `/api/git/*`.** `devtools/build_api_schema.py`
+   emits from the 13 Git `TypedDict`s via `TypeAdapter`, the output is committed under
    `data/api-envelopes/`, and `make lint` regenerates and compares.
-   The `additionalProperties` choice is made and recorded here.
-   Nothing else changes, so the schemas are reviewable on their own.
-2. **Golden validation.** Every existing transcript’s envelope checked against its
-   schema. This is the phase that would expose a generator that describes the wrong
-   thing, so it comes before anything depends on the output.
-3. **The route and its golden.** `GET /api/schema`, its parity row, and a transcript,
-   which the parity rule requires of a new route anyway.
-4. **Retire the prose.** The map’s per-route descriptions point at the schema instead of
-   restating a shape that can drift from it.
+   Both strictness variants are produced here, and the choice is recorded.
+   Git is first because its declarations are real: the generator is proved on a family
+   where nothing has to be authored.
+2. **Golden validation for the Git transcripts.** `cli-api-git.tryscript.md` validated
+   against the strict variant.
+   The transcripts are normalized, not raw responses — placeholders change types and
+   elisions sit inside JSON strings — so this phase must state how it validates: most
+   likely by capturing the pre-normalization envelope in the harness rather than by
+   parsing the transcript back.
+   If that cannot be made to work, the plan stops here and is reconsidered, because
+   everything after it depends on the schema being checkable against reality.
+3. **The route and its golden.** `GET /api/schema`, its parity row, and a transcript.
+4. **Author declarations for `/api/file` and the plugin hooks.** This is the phase the
+   earlier draft hid: these envelopes have no `TypedDict` at all, and writing them is
+   ordinary design work with a real cost.
+5. **Decide whether to tighten the tree and rollup declarations**, as a contract change
+   argued on its own merits, with a check that no producer violates the tightened shape.
+   Not a documentation task.
+6. **Retire the prose**, per surface, only where a schema now covers it.
 
-Phase 2 sits before phase 3 deliberately.
-A schema nothing checks is a second description that can drift from the first, which is
-the failure this plan exists to fix; validating the goldens first means the artifact is
-known to match real responses before a route offers it to anyone.
+Phases 4 and 5 are where the work actually is, and they are deliberately last: the
+generator, the validation mechanism, and the route should all be proved on the family
+that needs none of it before anyone spends effort authoring the ones that do.
+
+If phase 2 fails, phases 4 and 5 should not be started.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -48,6 +48,11 @@ _INDEX_DEPENDENT: tuple[str, ...] = (
     "/api/catalog",
     "/api/capabilities",
     "/api/index/meta",
+    # A folder envelope carries inventory aggregates, so /api/file is
+    # index-dependent for a directory even though it is not for a file. The
+    # sweep that built this list only ever requested a file, and the folder
+    # branch returned state "pending" with nulls, HTTP 200, exit 0.
+    "/api/file",
     # POST-only, so the GET probe that measured the others could not see it;
     # its whole payload is inventory state, and it reported status "scanning"
     # instead of "done" the moment the wait was skipped.

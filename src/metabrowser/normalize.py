@@ -41,7 +41,11 @@ MTIME_FIELDS: tuple[str, ...] = ("mtime", "mtime_hash")
 # depth. A parsed JSON file, a Markdown front matter block, or a log record may
 # legitimately contain a key called `page_cursor`; rewriting a reader's own data
 # because it collides with an envelope field would corrupt the thing under test.
-CURSOR_PATHS: tuple[tuple[str, ...], ...] = (("page_cursor",),)
+CURSOR_PATHS: tuple[tuple[str, ...], ...] = (
+    ("page_cursor",),
+    ("cursor",),
+    ("previous_cursor",),
+)
 
 # Wall-clock measurements. A small fixture can make these repeat on one machine,
 # which is not the same as being pinnable: they move with load and hardware, so

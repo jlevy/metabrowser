@@ -6,8 +6,8 @@
 
 **Status:** Delivered.
 All twelve beads under epic `mb-u29h` are closed.
-The parity table stands at 22 covered and 2 exempt with no gaps, and
-`devtools/check_parity.py` rejects a `gap` row outright.
+The parity table has no gap rows, and `devtools/check_parity.py` reports the current
+covered and exempt counts when it runs.py`rejects a`gap` row outright.
 
 ## Overview
 
@@ -70,7 +70,9 @@ A `--api` transcript would have proved nothing about any of it.
 - Browser automation. If a behaviour genuinely needs a real browser, it belongs in the
   exemption list with its reason, not in a Playwright suite this repository does not
   have.
-- Mutation. Every mode added here is read-only, like the rest of `metab`.
+- Mutation. Every mode added here is read-only, with one exception recorded when it
+  arrived: `--api` can reach `/api/kpress/export`, which writes a file to a destination
+  the caller names. No mode added here writes on its own behalf.
 
 ## Background
 

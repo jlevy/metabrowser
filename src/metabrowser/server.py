@@ -3271,7 +3271,7 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
     )
 
 
-async def api_routes(_request: Request) -> JSONResponse:
+async def api_routes(request: Request) -> JSONResponse:
     """List every route this build serves, so the surface is discoverable.
 
     An agent or script driving ``metab --api`` cannot know what exists
@@ -3281,11 +3281,14 @@ async def api_routes(_request: Request) -> JSONResponse:
     """
 
     listed: list[dict[str, object]] = []
-    for route in app.routes:
+    for route in request.app.routes:
         path = getattr(route, "path", None)
         if not isinstance(path, str):
             continue
-        methods = sorted(getattr(route, "methods", None) or ["GET"])
+        # A Mount serves whatever its sub-application serves, so reporting a
+        # method list for it would be a guess. Say so instead.
+        declared = getattr(route, "methods", None)
+        methods = sorted(declared) if declared else None
         if path.startswith("/api/"):
             kind = "api"
         elif path.startswith(("/static", "/kpress-static", "/plugin-static", "/raw")):

@@ -183,9 +183,29 @@ def test_a_route_named_in_a_command_is_evidence(
 
 
 def test_a_mode_that_resolves_a_route_internally_is_evidence(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`--show` issues /api/file without naming it, so the mode is the evidence."""
+
+    monkeypatch.setattr(check_parity, "registered_surfaces", lambda: {"/api/file"})
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir, "indirect.tryscript.md", "```console\n$ metab root --show README.md\n```\n"
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/file` | covered | `--show PATH` | `indirect.tryscript.md` |"),
+    )
+
+    assert check_parity.check() == []
+
+
+def test_a_mode_is_not_evidence_for_a_route_it_cannot_issue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    """`--show` never issues /api/tree, so claiming it is false evidence."""
 
     golden_dir = tmp_path / "golden"
     _write_golden(
@@ -198,4 +218,6 @@ def test_a_mode_that_resolves_a_route_internally_is_evidence(
         _write_map(tmp_path, "| `/api/tree` | covered | `--show PATH` | `indirect.tryscript.md` |"),
     )
 
-    assert check_parity.check() == []
+    problems = check_parity.check()
+
+    assert any("/api/tree" in problem and "never exercises it" in problem for problem in problems)

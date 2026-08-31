@@ -139,8 +139,26 @@ class InProcessClient:
         traceback: object,
     ) -> None:
         await self._lifespan_input.put({"type": "lifespan.shutdown"})
-        message = await self._lifespan_output.get()
-        await self._finish_lifespan_task()
+        try:
+            message = await asyncio.wait_for(
+                self._lifespan_output.get(), timeout=LIFESPAN_TIMEOUT_S
+            )
+        except TimeoutError as exc_timeout:
+            await self._cancel_lifespan_task()
+            if exc is None:
+                raise CLIError(
+                    f"{self._label} application did not shut down within {LIFESPAN_TIMEOUT_S:g}s"
+                ) from exc_timeout
+            return
+        # Draining re-raises whatever the app raised, which is the symptom; the
+        # failure message is the cause. Same ordering bug the startup path had.
+        try:
+            await self._finish_lifespan_task()
+        except Exception as drained:
+            if exc is None:
+                detail = message.get("message", "application shutdown failed")
+                raise CLIError(str(detail)) from drained
+            return
         if message["type"] != "lifespan.shutdown.complete" and exc is None:
             detail = message.get("message", "application shutdown failed")
             raise CLIError(str(detail))
@@ -272,6 +290,15 @@ class InProcessClient:
             )
         if status_code is None:
             raise CLIError(f"{self._label} returned no response for {route}")
+        # A stream ends here only because the client hung up on the second
+        # receive(), not because the response finished. Reporting the prefix
+        # that happened to arrive as a complete answer would be a lie, and the
+        # bytes are arbitrary -- they depend on when the disconnect landed.
+        if headers.get("content-type", "").startswith("text/event-stream"):
+            raise CLIError(
+                f"{self._label} route {route} is a server-sent-event stream; "
+                "it has no terminating response to print"
+            )
         return ApiResponse(
             status_code=status_code,
             body=b"".join(body_parts),
