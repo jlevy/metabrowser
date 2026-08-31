@@ -40,7 +40,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 
 | Kind | Matches | Views (default first) | Model |
 | --- | --- | --- | --- |
-| `folder` | Directories | Overview, Treemap | Folder envelope + [File Rollup Format](../file-rollup-format/file-rollup-format.md) |
+| `folder` | Directories | Overview, Treemap | Folder envelope + [File Rollup Format](file-rollup-format/file-rollup-format.md) |
 | `markdown` | `.md` | Document, Source | File envelope; KPress render |
 | `text` | Text files | Source | File envelope |
 | `structured` | `.json`, `.yaml`, `.yml` | Tree, Source | File envelope, parsed hook |
@@ -85,7 +85,7 @@ These are tool-neutral: nothing in a document references Metabrowser.
 | Format | Describes | Authority | Implementations |
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
-| [File Rollup Format](../file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
+| [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
 
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact — an internal contract, not a standard.
@@ -124,6 +124,67 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`.
+
+## CLI parity
+
+Every data surface the browser consumes is reachable from `metab` without a browser or a
+listening port, and should be pinned by a golden transcript.
+`--api` makes reachability true by construction; the remaining debt is coverage, and it
+is listed here rather than left implicit.
+`devtools/check_parity.py` fails the build when this table drifts from the registered
+routes.
+
+Status values: **covered** names the goldens that pin it and **exempt** gives the reason
+it has no model to pin.
+There is no third value: `check_parity.py` rejects a `gap` row outright, so a new route
+arrives with a transcript or the build fails.
+
+| Surface | Status | CLI | Golden or reason |
+| --- | --- | --- | --- |
+| `/api/file` | covered | `--show PATH`, `--api` | `cli-show.tryscript.md`, `cli-api.tryscript.md` |
+| `/api/tree` | covered | `--walk`, `--api` | `cli-api.tryscript.md` |
+| `/api/rollup` | covered | `--api` | `cli-api-nav.tryscript.md` |
+| `/api/recent` | covered | `--api` | `cli-api-nav.tryscript.md` |
+| `/api/activity` | covered | `--api` | `cli-api-nav.tryscript.md` |
+| `/api/catalog` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/routes` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/diagnostics/pending-tallies` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
+| `/api/capabilities` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/index/progress` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/index/meta` | covered | `--api` | `cli-api-shell.tryscript.md` |
+| `/api/git/repo` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/git/refs` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/git/summary` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/git/log` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/git/commit` | covered | `--api` | `cli-api-git.tryscript.md` |
+| `/api/kpress/render` | covered | `--api`, `--api --data` | `cli-api-shell.tryscript.md` |
+| `/api/kpress/export` | covered | `--api --data` | `cli-api-shell.tryscript.md` |
+| `/api/plugin/agent-log/charts` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/binary/chunk` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md` |
+| `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
+| `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
+| `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
+| `/raw` | exempt | — | asset serving; the response is the file’s bytes, covered by `tests/test_browser_assets.py` |
+| `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
+| `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
+
+`/api/kpress/export` is the one surface whose golden writes a file, and the rule it
+settles is worth stating: a golden may write, into the tryscript sandbox, which is
+created per run and discarded after it.
+That is safe here because the export report’s paths normalize to `<ROOT>` and its
+content hash is identical across runs and across sandbox paths, so the write is
+deterministic evidence rather than a source of churn.
+The test runs last in its file so no earlier test observes the written file.
+
+The two exempt rows are the honest boundary.
+A server-sent-event response has no terminating envelope, so `--api` bounds the request
+and fails rather than hanging — which is behavior worth having, but not a model a
+transcript can assert.
+Their content is covered by `tests/dom/` and the event tests instead.
 
 ## Adding something
 

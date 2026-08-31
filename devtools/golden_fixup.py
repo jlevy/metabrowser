@@ -9,6 +9,10 @@ restores them so `make golden-update` is a single reviewable step:
 * `[CWD]` for the sandbox directory in walk envelopes
 * `[BUILTIN]` for the absolute checkout prefix of builtin plugin paths
 * `[VERSION]` for the installed package version
+* the KPress rendered document body, which is tens of kilobytes of icon sprite
+  and would make the transcript unreviewable; the POST case keeps its overridden
+  heading visible so the transcript still proves the source override took effect
+* the pending-tally diagnostic's stderr line, which carries a wall clock
 
 It also strips trailing whitespace, which `tryscript run --update` preserves
 from Rich's padded terminal output but `git diff --check` rejects; tryscript
@@ -32,6 +36,15 @@ FIXUPS: list[tuple[str, str]] = [
     # metabrowser.build_version. It varies per commit, so it elides with the
     # version rather than beside it.
     (r"^metab \d+\S*( \([^)]*\))?$", "metab [VERSION]"),
+    # The rendered document body. The POST case is matched first so its
+    # overridden heading survives: it is the only thing in that transcript that
+    # proves `source_text` reached the renderer.
+    (
+        r'^  "html": ".*?(<h1 id=\\"overridden\\">Overridden</h1>).*",$',
+        r'  "html": "[..]\1[..]",',
+    ),
+    (r'^  "html": ".{300,}",$', '  "html": "[..]",'),
+    (r"^.*pending folder tallies diagnostic.*$", "[..]"),
 ]
 
 

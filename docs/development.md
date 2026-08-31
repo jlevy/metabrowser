@@ -376,6 +376,85 @@ The root-level `--kpress-host-font-size-base` hook anchors KPress’s derived ty
 Metabrowser’s document scale, while scoped public size tokens express deliberate mono,
 secondary-text, and label divergences.
 
+## Deferred Imports
+
+Imports go at the top of a module.
+There is one exception, in `metabrowser/kpress_adapter.py`, and it is written down here
+so the next one has to argue for itself rather than cite precedent.
+
+**Why that one.** A CLI’s startup cost is a tax on every invocation, paid by humans
+waiting and by agents making many calls.
+Importing `metabrowser.server` cost about 345 ms, of which KPress and its rendering
+stack were the largest single contributor — and only four surfaces need it: the browser
+shell’s HTML, `/api/kpress/render`, `/api/kpress/export`, and `/kpress-static/*`. No
+data route touches KPress, so every `--api` call was paying for a renderer it never
+used. Deferring it took `metab --api` from 451 ms to 364 ms, about 19%.
+
+**What a deferral costs.** It trades a startup cost for a first-call cost, and it turns
+a missing dependency from an import error into a run-time one.
+Deferring the KPress *models* immediately proved the point: `KPressExportRequest` is
+constructed, not merely annotated, and moving it under `TYPE_CHECKING` broke four tests.
+Annotations are free to defer under `from __future__ import annotations`; anything
+called or constructed is not.
+
+**The bar for another one.** All three of:
+
+1. the saving is *measured*, not assumed;
+2. the dependency is heavy and genuinely optional to most callers; and
+3. the module keeps a patchable seam, so tests that substitute the dependency still
+   work.
+
+`kpress_adapter` keeps `_kpress_runtime` as a module attribute for exactly that third
+reason — `monkeypatch.setattr(kpress_adapter, "_kpress_runtime", fake)` behaves as it
+did when the import was at the top.
+
+If a deferral cannot meet all three, put the import back at the top and find the time
+somewhere else.
+
+## CLI Parity and Goldens
+
+A selection travels four layers — route, kind, model, view.
+Three of those are data and need no screen, which is why parity is stated at the model
+layer and only the view is exempt.
+The rule itself is in [AGENTS.md](../AGENTS.md); the reasoning is here.
+
+**Why a rule rather than a habit.** Two of eleven data surfaces had CLI coverage when
+this was written, and the two that did — the tree and the diff — are where this project
+had done its hardest debugging.
+That is the argument for the rule rather than a coincidence.
+
+**Model parity is not wire parity.** `--walk` and `--diff` reach their models through
+the library, so they prove the model and not the route.
+A route can accept a parameter the library never sees, or drop an envelope key, with
+those transcripts still green — which is what happened when the nav filter shipped.
+`--api` closes that gap by issuing the request the browser would issue.
+So a golden counts as evidence only if it exercises the route: either a `$ metab`
+command names it, or the row names a mode that resolves it internally, which is how
+`--show` stands for `/api/file` without spelling it.
+`check_parity.py` enforces that distinction, and `--api` is deliberately not such a
+mode, because it always names its route.
+
+**Why goldens rather than more integration tests.**
+`tbd guidelines golden-testing-guidelines` makes the case: capture a broad, stable slice
+of what the system does, keep it in the repository, and read the diffs.
+The discipline that keeps it honest is that `make golden-update` records an *intended*
+change and is never run to clear a failure.
+A regenerated transcript nobody read converts a regression into a committed expectation.
+
+**Normalize only what a fixture cannot pin.** `metabrowser/normalize.py` is the stated
+session schema. Revisions and mtimes stay real, because fixture repositories build
+deterministically and fixtures pin mtimes with `touch -t`; hiding a value the fixture
+controls removes the coverage the golden existed to provide.
+Placeholders use angle brackets, because tryscript reads `[NAME]` in expected output as
+an elision pattern and `[ROOT]` is one of its built-ins.
+
+**State counts too.** The cache will persist layout, identity, entry state, quarantine,
+and trash, none of which appears in a response envelope.
+The plan is that those be read through `/api/cache/*` like any other model rather than
+through a bespoke inspection command, which is the practical reason to prefer a route to
+a CLI mode. Neither the cache nor those routes exists yet; see
+[CLI-first delivery](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md).
+
 ## Compatibility and Legacy Code
 
 `tbd guidelines backward-compatibility-rules` owns the general rules: the deciding

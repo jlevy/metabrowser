@@ -42,6 +42,23 @@ Features:
   The choice persists like the theme and font settings, and is applied before first
   paint so the column never renders at one width and reflows to another.
 
+- `metab` gains two data modes that reach the server without a browser or a listening
+  port. `--api <route>` issues any registered `/api/` route through the real application
+  and prints the normalized envelope, in JSON or YAML, with `--data` for routes that
+  take a POST body and a non-zero exit status when the route answers outside 2xx.
+  `--show <path>` reports the four layers behind one selection — the route it resolves
+  to, the kind it classifies as, the views it offers, and a summary of its model — and
+  accepts browser addresses as well as paths, including `/view/<container>/<inner>`,
+  `/commit/<rev>`, and `/commit/<rev>/<inner>`. See the
+  [command-line guide](docs/command-line.md).
+
+- Every route the browser consumes is now reachable from `metab` and pinned by a golden
+  transcript, and `devtools/check_parity.py` fails the build when a registered route has
+  no CLI equivalent or no golden.
+  Plugin authors adding a `[[data_hook]]` need a transcript for it; the table and the
+  two streaming exemptions are in
+  [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+
 - Git history pages now come from a bounded server session that advances one ordered Git
   walk on demand and replays visited pages by indexed seek.
   Opaque page cursors replace progressively expensive skip offsets; ref movement,

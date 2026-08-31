@@ -4,7 +4,10 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Delivered.
+All twelve beads under epic `mb-u29h` are closed.
+The parity table has no gap rows, and `devtools/check_parity.py` reports the current
+covered and exempt counts when it runs.py`rejects a`gap` row outright.
 
 ## Overview
 
@@ -24,6 +27,25 @@ view — and draws the line where that architecture already draws it:
 > from `metab` without a browser or a listening port, and is covered by a golden
 > transcript. Only the view layer — how a model is drawn, and how it responds to pointer
 > and keyboard — is exempt, and its behaviour is pinned in `tests/dom/` instead.
+
+Two clauses were added on 2026-08-28, when
+[CLI-first delivery](../active/plan-2026-08-28-cli-first-delivery-map.md) applied this
+principle to work that persists state rather than only serving it:
+
+> **State clause.** Every state the system persists is reachable from `metab` as a
+> normalized model and pinned by a golden transcript.
+> Cache layout, entry identity, entry state, and reclamation outcomes are read through
+> `/api/cache/*` like any other model, not through a bespoke inspection command.
+
+> **Prefer a route to a CLI mode.** `--api` reaches every registered route by
+> construction, so a surface exposed as a route is inspectable and golden-pinned for
+> free. A surface exposed only as a CLI mode needs its own flag, its own normalizer path,
+> and its own golden.
+
+The state clause is what the original principle missed: the repository cache writes an
+application home, layout, per-entry records, locks, staging, quarantine, and trash, and
+none of that appears in a response envelope.
+A `--api` transcript would have proved nothing about any of it.
 
 ## Goals
 
@@ -48,14 +70,16 @@ view — and draws the line where that architecture already draws it:
 - Browser automation. If a behaviour genuinely needs a real browser, it belongs in the
   exemption list with its reason, not in a Playwright suite this repository does not
   have.
-- Mutation. Every mode added here is read-only, like the rest of `metab`.
+- Mutation. Every mode added here is read-only, with one exception recorded when it
+  arrived: `--api` can reach `/api/kpress/export`, which writes a file to a destination
+  the caller names. No mode added here writes on its own behalf.
 
 ## Background
 
 ### What the layering already gives us
 
 A selection travels four layers, described in
-[Views, Models, and Routes](../architecture/arch-views-models-routes.md):
+[Views, Models, and Routes](../../architecture/arch-views-models-routes.md):
 
 ```text
 route  ──►  kind  ──►  model  ──►  view
@@ -219,10 +243,18 @@ No changes to `/api/*` or to `window.metabrowser`. Two new CLI modes, one new de
 check, one new column in an architecture document, and a rule in `AGENTS.md` that points
 at the check rather than restating it:
 
-> Every route, kind, and model the browser consumes has a `metab` equivalent and a
-> golden transcript. `devtools/check_parity.py` enforces it and names what is missing;
+> Every route, kind, and model the browser consumes, and every state the system
+> persists, has a `metab` equivalent and a golden transcript.
+> Prefer adding a route to adding a CLI mode: `--api` reaches routes by construction.
+> A new route arrives with its parity row and a golden, or the build fails; there is no
+> `gap` status. `devtools/check_parity.py` enforces this and names what is missing, and
 > the exemption list and its reasons are in
-> [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+> `docs/project/architecture/arch-views-models-routes.md`.
+
+The text above is what shipped.
+This section originally specified a single clause; the state clause and the
+route-over-mode rule were added when the cache work showed that a principle covering
+only read models would not cover the thing it was needed for.
 
 ## Implementation Plan
 
@@ -284,11 +316,19 @@ No user-facing behaviour changes.
 
 ## Open Questions
 
-- Should `--api` accept POST bodies?
-  `/api/kpress/export` and `/api/kpress/render` take POST, so a GET-only mode leaves two
-  routes permanently exempt.
-  A `--data` flag reading a JSON file is the obvious answer, but it is only worth it if
-  those two routes are worth pinning.
+**Closed 2026-08-28: `--api` accepts POST bodies.** `InProcessClient` carries `post`
+from the day it is lifted, and `--data <file>` supplies the body.
+
+The premise needs one correction the first draft got wrong: `/api/kpress/render` is
+registered `GET` *and* `POST` and renders on either, so only `/api/kpress/export` was
+ever POST-only.
+The cost is still a few lines at lift time, and export would otherwise be
+permanently exempt for a reason the exemption list could not state honestly.
+Both branches of `render` are pinned, because the POST path reaches different handler
+code than the query form.
+
+Still open:
+
 - Should `--show` follow a container into its children, or is that `--api`’s job through
   the `children` hook?
   Following would make the container contract golden-testable in one command, at the
@@ -299,13 +339,16 @@ No user-facing behaviour changes.
 
 ## References
 
-- [Views, Models, and Routes](../architecture/arch-views-models-routes.md) — the four
+- [Views, Models, and Routes](../../architecture/arch-views-models-routes.md) — the four
   layers this principle is drawn on, and the home of the parity table
 - `tbd guidelines golden-testing-guidelines` — sessions, stable fields, and why
   transcripts beat integration suites for systems like this
 - `tbd guidelines general-testing-rules` — the minimal-tests-maximum-coverage rule this
   serves
-- [Development](../../development.md) — where the reasoning behind the rule lives
+- [CLI-first delivery](../active/plan-2026-08-28-cli-first-delivery-map.md) — the state
+  clause, the route-over-mode rule, and the file-level map of what this principle is
+  used to build
+- [Development](../../../development.md) — where the reasoning behind the rule lives
 - [tryscript](https://github.com/jlevy/tryscript) — the transcript runner
 
 <!-- This document follows common-doc-guidelines.md.

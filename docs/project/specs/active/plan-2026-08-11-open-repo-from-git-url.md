@@ -64,8 +64,10 @@ invalidating tests.
 
 ## Goals
 
-- Accept repository-root HTTPS and SSH clone URLs anywhere the CLI currently accepts a
-  root path.
+- Accept any common repository URL anywhere the CLI currently accepts a root path: clone
+  URLs, and provider web URLs reduced to the repository they name.
+- Open what the URL pointed at, not merely the repository containing it — a `/blob/` URL
+  opens that file, a line anchor selects those lines.
 - Preserve the root argument as a string at the Click/Typer boundary, then classify it
   before any `Path` construction can rewrite URL syntax.
 - Derive one stable cache identity from the credential-free clone source, and reuse the
@@ -74,8 +76,10 @@ invalidating tests.
   after checkout and metadata validation complete.
 - Keep the browsed working tree pinned and read-only from Metabrowser’s perspective.
   Fetching refs must not dirty or silently advance it.
-- Make a cache hit an offline operation.
-  Network work begins only for a missing entry or an explicit refresh.
+- Make a cache hit an offline operation for everything the entry actually contains.
+  Network work begins only for a missing entry or an explicit refresh — and for a
+  blobless entry, file content is subject to the lazy-fetch policy Phase 0 chooses
+  rather than being silently exempt from this goal.
 - Establish `~/.metabrowser/` as a versioned application home beginning at layout format
   `f01`.
 - Give each machine-owned YAML family a strict, independently versioned contract, with
@@ -111,8 +115,10 @@ invalidating tests.
 - Automatic LRU eviction before measurements establish a size and age policy.
   Explicit inspection and recoverable purge come first.
 - Supporting arbitrary Git transports.
-  Production initially permits HTTPS and SSH; helpers such as `ext::`, the
-  unauthenticated `git://` protocol, and local transport overrides remain disabled.
+  Production permits HTTPS, SSH, and `file://`; helpers such as `ext::` and the
+  unauthenticated `git://` protocol remain disabled, as does `git clone`’s implicit
+  `--local` path form.
+  See [Safety at the boundary](#safety-at-the-boundary).
 
 ## Current Foundation and Dependencies
 
@@ -129,6 +135,8 @@ As of v0.8.0:
 - URL-opened roots remain gated on the untrusted capability profile tracked by
   `mb-vib1`. Cache storage and clone components may land before that gate; serving
   fetched content may not.
+  That gate is larger than one bead and is sequenced explicitly below — see
+  [The gate that decides when this ships](#the-gate-that-decides-when-this-ships).
 - Metabrowser already depends on Pydantic, JSON Schema, ruamel.yaml, PyYAML, and
   frontmatter-format. SoftSchema v0.7.0 is a first-party package over the same boundary,
   but adopting it also raises the frontmatter-format minimum from 0.3 to 0.4 — a claim
@@ -153,6 +161,37 @@ The v0.8.0 revision click starts a comparison that needs blobs.
 Blobless clone followed by background backfill remains the leading acquisition strategy,
 but Phase 0 must remeasure the complete current route before promising a timing or
 selecting a threshold between full and blobless acquisition.
+
+## The Gate That Decides When This Ships
+
+The single largest scheduling fact about this plan is not in this plan.
+
+A fetched repository is third-party content, so serving one requires the untrusted
+capability profile. That profile is `mb-vib1`, which is blocked by `mb-cun0` — sandboxed
+`/raw` responses and same-origin proof on `/api`. Both are open `P1` tasks belonging to
+[the HTML rendering and content-trust plan](plan-2026-08-06-html-rendering-and-trust-model.md),
+which is `Status: Draft` with nothing implemented.
+
+```text
+mb-cun0  sandbox /raw, same-origin proof on /api
+   └──► mb-vib1  capability set and --untrusted profile
+           └──► mb-ew38  generic URL open and offline reuse
+```
+
+Two consequences, both worth stating plainly rather than discovering during
+implementation:
+
+- **Every estimate for this feature must include that chain.** The cache work alone does
+  not produce a user-visible result; the first thing anyone can actually open is gated
+  on a security workstream in another document.
+- **The chain depends on nothing here.** `mb-cun0` and `mb-vib1` have no dependency on
+  the cache, on Git status, or on each other beyond their own order, so they can proceed
+  in parallel with everything in Phase 0 through 1A. Sequencing them alongside rather
+  than after is what keeps the gate off the critical path.
+
+This plan does not absorb that work or restate its design.
+It records the dependency, names the beads, and treats “serving is gated” as a
+scheduling fact with a shape rather than a footnote.
 
 ## Ownership and Layering
 
@@ -494,11 +533,171 @@ a second definition of clean.
 
 ## URL Resolution and Acquisition
 
-Phase 1B accepts:
+### The URL a person actually has
 
-- `https://host/path/to/repository` and `https://host/path/to/repository.git`;
-- `ssh://user@host/path/to/repository.git`; and
-- SCP-like `user@host:path/to/repository.git`.
+The product goal is that any repository URL works: paste what is in the address bar,
+Metabrowser figures out which repository to check out, **and it opens what the URL was
+pointing at**. Landing at the repository root when the URL named a file is a worse
+outcome than it sounds — the reason someone pastes a `/blob/` URL is the file, not the
+repository.
+
+What people paste is almost never a clone URL:
+
+```text
+https://github.com/pallets/flask/tree/main/src/flask
+https://github.com/pallets/flask/blob/main/src/flask/app.py#L120-L134
+https://github.com/pallets/flask/blob/main/README.md?plain=1
+https://github.com/pallets/flask/commit/1a2b3c4
+https://github.com/pallets/flask/pull/5123
+```
+
+Every one names the same repository, unambiguously, in its first two path segments.
+Rejecting them because they are not clone URLs would fail on the most common input while
+the answer sits in plain sight.
+
+### The variants that must work
+
+Phase 1B accepts clone URLs as given — `https://host/path/to/repository`, the same with
+`.git`, `ssh://user@host/path/to/repository.git`, and the SCP-like
+`user@host:path/to/repository.git`.
+
+It also reduces provider web URLs to a clone URL plus a selection.
+The table covers the common shapes; “common” is the bar, and an unrecognized shape falls
+back to opening the repository rather than failing:
+
+| Web URL shape | Selection after clone |
+| --- | --- |
+| `/<owner>/<repo>` | repository root |
+| `/<owner>/<repo>/tree/<ref>` | root at `<ref>` |
+| `/<owner>/<repo>/tree/<ref>/<path>` | directory `<path>` at `<ref>` |
+| `/<owner>/<repo>/blob/<ref>/<path>` | file `<path>` at `<ref>` |
+| `/<owner>/<repo>/raw/<ref>/<path>` | file `<path>` at `<ref>` |
+| `/<owner>/<repo>/blame/<ref>/<path>` | file `<path>` at `<ref>` |
+| `/<owner>/<repo>/commit/<oid>` | `/commit/<oid>` |
+| `/<owner>/<repo>/releases/tag/<tag>` | root at `<tag>` |
+| `raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>` | file `<path>` at `<ref>` |
+| `/<owner>/<repo>/pull/<n>`, `/issues/<n>` | root, with the object named as unavailable |
+
+Fragments and query strings are read for meaning and otherwise discarded:
+
+| Carried | Dropped |
+| --- | --- |
+| `#L120`, `#L120-L134`, `#L120C5-L134C20` — line and column anchors become a selection within the file | `?utm_*`, `?ref=`, `?s=`, `?email_*` and other tracking parameters |
+| `?plain=1` — asks for source rather than the rendered view | `?w=1`, `?diff=split` and other display parameters with no local equivalent |
+|  | trailing slashes, duplicate slashes, and empty fragments |
+
+Dropping a parameter is not silent when it changes what the user would see: a URL asking
+for a display mode Metabrowser does not have opens the file and says which part of the
+request it could not honor.
+
+### What a selection can actually address
+
+The selection is bounded by the URL grammar, and that boundary is narrower than the
+table above suggests.
+
+`/view/<path>` addresses the served tree; `/commit/<rev>[/<inner>]` addresses a change
+set. **Neither addresses file content at an arbitrary revision**, and
+[the grammar says why](../../../architecture.md#browser-url-grammar): a revision is not
+a path in the served tree, so it gets its own route rather than a sigil inside `/view/`.
+
+A selection therefore resolves to a real surface when `<ref>` resolves to the entry’s
+pinned `active_revision` — the ordinary case, because acquisition pins the default
+branch and that is the ref most pasted URLs carry.
+When `<ref>` names some other branch, tag, or commit, Phase 1B opens the repository at
+its pinned revision and reports which revision was requested and which is served.
+It does not show another revision’s content under the requested path, which is the one
+genuinely wrong outcome available here.
+
+Line and column anchors have the same shape of limit: carried through the parse, applied
+where the target view supports a line selection, and reported rather than silently
+dropped where it does not.
+
+Addressing content at an arbitrary revision is a real gap, and closing it is what a
+content-at-revision route would do.
+It is not in this phase and this plan does not promise it.
+Opening the right repository at its pinned revision while saying so is bounded and
+honest; promising a file at a ref nothing can render is not.
+
+### The ref and path boundary is ambiguous, and the clone resolves it
+
+`/<owner>/<repo>/tree/<ref>/<path>` has no delimiter between the ref and the path, and
+branch names contain slashes.
+This URL is genuinely ambiguous:
+
+```text
+https://github.com/o/r/tree/feature/login/src/auth.py
+```
+
+The ref could be `feature`, `feature/login`, or `feature/login/src`. GitHub resolves it
+server-side against its own ref list, which is why the ambiguity is invisible on the
+web.
+
+Metabrowser does not need an API to resolve it, because **after the clone it has the ref
+list**. Reduction therefore produces a *candidate split set* rather than one answer, and
+the selection step resolves it against the acquired repository: try the longest prefix
+that names a real ref, then treat the remainder as the path.
+A commit-shaped `<ref>` is checked as an object id first.
+If no prefix resolves, the repository opens at its root and reports the unresolved
+selection.
+
+This is a case where doing the work locally is strictly better than the provider API
+would be, and it is the reason selection resolution belongs after acquisition rather
+than inside URL parsing.
+
+**What it resolves against matters.** A fresh clone has exactly one local branch under
+`refs/heads/`; every other branch exists only as `refs/remotes/origin/<name>`. Resolving
+a bare branch name against local heads alone would find the default branch and nothing
+else — the common case working by accident while every other case fails.
+The candidate split resolves against remote-tracking refs and tags as well as local
+heads, and an object-id-shaped `<ref>` is checked as an object first.
+
+One URL shape spells that namespace out and must not be mistaken for the first two
+segments of a path:
+
+```text
+https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/<path>
+```
+
+### Pull requests: the shape now, the content later
+
+A `/pull/<n>` URL reduces to the right repository today, and the number is retained in
+the resolved selection rather than discarded.
+This phase reports that the pull request itself needs provider support and opens the
+repository.
+
+When the provider work lands, the same reduction feeds a pull-request view with no
+change to URL handling — the parse already produced `(repository, pull_request, n)`.
+Designing the reduction to carry an object it cannot yet render is what keeps that a
+view change rather than a second URL implementation.
+
+### Where provider knowledge is allowed to live
+
+Reducing a web URL to a clone URL is provider-specific knowledge, and the layering rule
+says the generic cache must not acquire any.
+Both hold, because they are about different things.
+
+The rule protects *identity and records*: the cache must not learn a provider’s notion
+of equivalence, must not branch on a provider object kind, and must not import a
+provider schema. Reducing `/blob/main/foo.py` to a repository is none of those.
+It happens strictly **upstream** of the cache, needs no API, no credential, and no
+provider record, and its entire output is an ordinary clone URL plus an inert selection
+record that the cache never reads.
+
+The mechanism is a small declarative table of host patterns and path shapes behind one
+narrow interface, with GitHub as the first entry and GitHub Enterprise hosts
+configurable against the same shapes.
+The cache still computes identity from the resulting clone URL, so
+[conservative normalization](#stable-identity-and-mutable-state-are-separate) is
+untouched: two spellings that reduce to the same clone URL share an entry because the
+clone URL is identical, not because anything guessed they were equivalent.
+
+Reserved namespaces (`/settings`, `/orgs/…`, `/features`, `/sponsors`, `/marketplace`,
+and the rest) are not repositories and must not be reduced to one.
+The table lists what it recognizes rather than assuming every two-segment path is
+`owner/repo`, and an unrecognized `github.com` path is refused with a message rather
+than cloned hopefully.
+
+### Safety at the boundary
 
 The CLI currently annotates `root` as `Path | None`, so Typer converts a URL before the
 command body and collapses `https://` into path syntax.
@@ -508,10 +707,44 @@ declines it.
 
 Inputs beginning with `-`, containing credentials, using unknown schemes, or resolving
 to Git helpers such as `ext::` are rejected before Git sees them.
-Production clone policy sets `protocol.allow=never` and explicitly enables only HTTPS
-and SSH. Repository-root GitHub URLs are generic clone inputs.
-Tree, blob, commit, issue, and pull-request URLs remain unsupported until a provider
-phase can resolve them unambiguously.
+Production clone policy sets `protocol.allow=never` and explicitly enables HTTPS, SSH,
+and `file`.
+
+**Local origins, decided 2026-08-28, revised 2026-08-30.** `cache/urls.py` classifies
+transport as `https`, `ssh`, or `file`, and accepts `file://` URLs as Git sources.
+`acquire` binds a `file` source to the untrusted profile unconditionally, which is where
+a source nobody authenticated belongs anyway.
+
+**A bare local path is not a Git source.** `metab /path/to/repo` keeps its existing
+meaning — serve that directory — so the grammar has no ambiguity to resolve, and the
+only way to ask for acquisition is the explicit `file://` form.
+
+The first draft of this decision accepted bare paths too, and justified them as
+“strictly safer” than the allowed transports.
+That was wrong, and the reason is specific enough to record.
+`git clone` given a path defaults to `--local`, which is not the git-aware transport at
+all:
+
+- it **hardlinks** `.git/objects` into the clone, so the entry is not isolated from
+  later mutation of the source — verified on Git 2.50.1, where a loose object shows a
+  link count of 2 from both sides; and
+- it **ignores `--filter`**, warning
+  `--filter is ignored in local clones; use file:// instead`, which silently defeats the
+  blobless acquisition
+  [this plan specifies](#blobless-acquisition-and-the-offline-guarantee).
+
+So a path-form clone is neither safer nor the same code path.
+`file://` goes through the git-aware transport and produces a pack rather than
+hardlinks, which is what the isolation argument needs.
+Pinning it is what makes the rest of this section true.
+
+The decision is load-bearing for testing, which is the honest reason it came up.
+Acquisition goldens clone from a `file://` origin built in the same sandbox, so they run
+the real `run_git` on the real code path with no network and no mocking.
+The alternative considered and rejected was a test-only escape hatch admitting local
+origins, which would fork production and test logic — the thing
+`tbd guidelines golden-testing-guidelines` warns against most directly, and which would
+mean the acquisition path proved by CI was not the acquisition path users run.
 
 Acquisition publishes one complete entry:
 
@@ -548,6 +781,48 @@ credential lookup, or background refresh.
 This rule is observable and tested.
 A failed backfill leaves the published entry usable and honestly marked partial; it does
 not turn a successful open into a fatal error.
+
+### Blobless acquisition and the offline guarantee
+
+These two commitments are in tension, and the plan previously held both without
+reconciling them:
+
+- a cache hit is an offline operation, served without fetch; and
+- initial acquisition is blobless, with backfill running afterwards.
+
+A blobless clone does not contain file content.
+Git fills that in lazily from the promisor remote at the moment something reads a
+missing blob — so between publication and backfill completion, a read on a *server
+request path* can attempt network I/O. The project’s own research observed exactly this
+failure rather than reasoning about it: a blame in a blobless clone failed outright with
+`could not fetch … from promisor remote` while the network was intercepted.
+
+That makes “offline cache hit” true for history and tree structure and false for file
+content, which is not a distinction a user should discover by having a request hang.
+
+Phase 0 decides the policy and records it beside the
+[version gates](#git-version-gates).
+The options, in preference order:
+
+1. **Disable lazy fetch on read paths** (`--no-lazy-fetch` / `GIT_NO_LAZY_FETCH`) and
+   map a missing object to the existing `deferred` or `unavailable` availability, which
+   backfill completion flips to `ready`. Reads stay bounded and offline by construction,
+   and the honest partial state the plan already models carries the meaning.
+   This needs its own floor row, since the option is recent — Phase 0 verifies the
+   version.
+2. **Gate blobless acquisition on that floor** and fall back to full clone below it, so
+   there is never a published entry whose reads can reach the network unexpectedly.
+3. **Accept lazy fetch, bound it, and rewrite the guarantee** to what is true: history
+   and tree structure offline, file content per `object_state`.
+
+Option 3 is listed because it may be the right trade, not because it is the fallback: it
+is the only one that keeps a blobless entry fully readable when the network *is*
+available. What is not acceptable is keeping the current wording, which promises offline
+reads that a blobless entry cannot deliver.
+
+Whichever is chosen, “read of a not-yet-backfilled blob, online and offline” joins the
+Phase 1B acceptance list beside interrupted clone and unavailable network.
+It is currently the only adverse path there with no stated outcome.
 
 ### Git version gates
 
@@ -609,280 +884,24 @@ moves the entry to recoverable trash before deletion.
 List and inspect report identity, source, active revision, object state, size, last
 open, last fetch, integrity, and any quarantine state.
 
-## GitHub Browsing Content Model v1
+## Provider Support Lives in Its Own Plan
 
-“Full GitHub content model” is bounded here to the read-only repository-browsing domain.
-GitHub exposes many administrative and product APIs that do not contribute to browsing
-source, issues, or code review.
-Claiming to model all of them would leave the phase with no completion criterion.
+GitHub modeling, acquisition, snapshot storage, views, and pull-request stacks moved to
+[the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
+That document owns the record families, the storage layout, and the acquisition
+boundary.
 
-Phase 4 models the complete v1 browsing set before Phase 5 performs an API request.
-It lands Pydantic models, compiled SoftSchema contracts, field documentation, normalized
-fixtures, invalid fixtures, relationship tests, and a format inventory.
-No renderer reads a provider record that the inventory does not register.
+What stays here is the part the generic cache owes a provider, and it is deliberately
+small: a published entry with a stable identity, atomic publication, application-home
+locking, job progress and cancellation, and core-side Git ref fetching on request.
+Core allocates a provider namespace under an entry and does nothing else
+provider-specific — it does not import a provider schema, branch on a provider object
+kind, or let provider state affect generic identity, refresh, or purge.
 
-### The corpus needs a coverage oracle, not just fixtures
-
-Writing the model before the adapter is the right order, and the reason is in the
-[design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md):
-if the first fixture corpus comes from one API query, that response shape becomes the
-model. Hand-authored normalized fixtures avoid that.
-
-They also cannot answer a different question.
-A fixture proves the model is self-consistent and that validation rejects what it
-should. It cannot prove that GitHub actually supplies a modeled field, or supplies it
-over the transport Phase 5 chooses.
-Nothing in a hand-written corpus fails when a field turns out to be unobtainable, so the
-discovery lands in Phase 5, after roughly sixteen contracts and their fixtures are
-frozen.
-
-Phase 4 therefore validates its inventory against a small set of **recorded, scrubbed**
-real responses, used only as a coverage oracle:
-
-- captured once, from public repositories, with tokens, rate-limit headers, and volatile
-  transport metadata removed;
-- kept outside the fixture corpus and never loaded by a renderer, an adapter, or a
-  contract test — it is not authoritative and does not become a second model; and
-- consumed by exactly one check, which asserts that every field in the contract
-  inventory is present in at least one recorded response, and reports the transport that
-  supplied it.
-
-A field that no recorded response supplies is not automatically wrong — it may be
-derived, or intentionally Metabrowser-owned like `PullRequestStack/v1`. It just has to
-be labeled as such deliberately rather than by omission.
-
-This keeps the review’s ordering (the model leads) while removing its blind spot (the
-model is unfalsifiable until Phase 5).
-
-### Transport is already partly decided, and the model should say so
-
-The example below records `review_decision` and `counts.reviews`. Both are GraphQL
-fields with no REST equivalent — REST returns neither a review decision nor a review
-count — so the browsing model as written presumes GraphQL as the primary source for pull
-requests, with REST filling gaps.
-
-That is a reasonable choice and it is not what
-[Decisions Deferred to Their Evidence Phase](#decisions-deferred-to-their-evidence-phase)
-currently claims. What remains open for Phase 5 is which transport serves each
-*acquisition*, and that stays open.
-What is already settled is that some modeled fields are GraphQL-only, and the durable
-record still must not expose that.
-Phase 4 marks each such field so the constraint is visible: either the field is
-obtainable and the oracle proves it, or it is optional with an explicit `not_requested`
-state rather than a hole discovered during adapter work.
-
-### Record families
-
-| Family | Contracts | Purpose |
-| --- | --- | --- |
-| Provider storage | `ProviderBinding/v1`, `Retrieval/v1`, `SyncManifest/v1`, `ResourceSet/v1`, `Tombstone/v1` | Bind the generic entry to a stable GitHub repository, describe acquisition, and publish complete snapshot sets |
-| Repository | `GitHubRepository/v1` | Stable provider identity, owner/name, URLs, visibility, default branch, and provider timestamps |
-| Work items | `GitHubIssue/v1`, `GitHubIssueComment/v1`, `GitHubTimelineEvent/v1` | Issues and their bounded discussion and state history |
-| Pull requests | `GitHubPullRequest/v1`, `GitHubPullRequestReview/v1`, `GitHubReviewThread/v1`, `GitHubReviewComment/v1` | Review state, Git endpoints, decisions, threads, and line anchors |
-| Commit signals | `GitHubCheckSuite/v1`, `GitHubCheckRun/v1`, `GitHubCommitStatus/v1` | Mutable provider conclusions attached to an immutable commit ID |
-| Derived relationships | `PullRequestStack/v1` | Explicit, provenance-bearing dependency edges and display order; never presented as a native GitHub object |
-
-Small values such as `ActorRef`, `RepositoryRef`, `Label`, `MilestoneRef`,
-`GitObjectRef`, and `CollectionState` are nested `$defs`, not independently refreshed
-files. An actor reference carries enough identity and display information to render when
-no full actor resource was fetched.
-
-Issue and pull-request records are separate closed contracts.
-A pull request is not also written as an issue record, so common provider fields do not
-acquire two authorities.
-Shared code may project either type into an in-memory work-item summary.
-It does not use an open union or an untyped `data` mapping on disk.
-
-### Identity and Git references
-
-Every provider object stores the stable GitHub node ID when available, its repository
-ID, its human URL, and its repository-local number where applicable.
-File paths use a safe digest or encoded resource key; the full provider ID inside the
-record is authoritative.
-Repository renames change display coordinates, not provider identity or generic cache
-identity.
-
-Pull requests record:
-
-- stable pull-request and repository IDs, number, URL, title, body, author, state,
-  draft/locked flags, provider timestamps, labels, assignees, milestone, and review
-  decision;
-- base and head repository IDs, ref names, and full Git object IDs;
-- an optional merge object ID and its observation state;
-- requested reviewers and teams as bounded references; and
-- provider-reported aggregate counts where GitHub exposes them without fetching a
-  collection.
-
-The proposed strict core is concrete enough to fixture before acquisition work:
-
-```yaml
-softschema:
-  contract: com.github.jlevy.metabrowser.github:GitHubPullRequest/v1
-  envelope: pull_request
-  status: enforced
-pull_request:
-  id: PR_kwDOExample
-  repository_id: R_kgDOExample
-  number: 123
-  url: https://github.com/example/project/pull/123
-  title: Add repository caching
-  body: ""
-  author:
-    id: U_kgDOExample
-    login: octocat
-    url: https://github.com/octocat
-  state: open
-  draft: false
-  locked: false
-  created_at: "2026-08-20T12:00:00Z"
-  updated_at: "2026-08-26T15:30:00Z"
-  closed_at: null
-  merged_at: null
-  base:
-    repository_id: R_kgDOExample
-    ref: main
-    oid: 0123456789abcdef0123456789abcdef01234567
-    availability: present
-  head:
-    repository_id: R_kgDOFork
-    ref: cache-design
-    oid: 89abcdef0123456789abcdef0123456789abcdef
-    availability: present
-  merge_commit: null
-  labels: []
-  assignees: []
-  milestone: null
-  requested_reviewers: []
-  requested_teams: []
-  review_decision: review_required
-  counts:
-    commits: 4
-    issue_comments: 2
-    reviews: 1
-```
-
-Phase 4 freezes the exact field set and enum policy from representative fixtures.
-It may split a field into another typed record, but it cannot replace a modeled field
-with an opaque provider payload.
-
-Content and diffs are read from Git by object ID. Provider commits and files are fetched
-only when they carry provider-only annotations or prove collection completeness.
-Review anchors store path, side, line or range, original commit ID, current commit ID
-when available, and an explicit outdated/unresolved state.
-The UI never invents a current line when an anchor cannot be mapped.
-
-### Completeness, freshness, and absence
-
-Every collection entry in a resource-set or sync manifest reports one of
-`not_requested`, `partial`, `complete`, or `unavailable`, plus bounded pagination
-information. A missing comments list is therefore not silently interpreted as “no
-comments.”
-Truncation records its reason, limit, and next cursor or page when one exists.
-
-Provider `created_at` and `updated_at` describe the GitHub object.
-Retrieval time, transport, API version, query identity, HTTP validators, rate-limit
-observation, and normalization version belong to retrieval metadata.
-This prevents a conditional HTTP detail from becoming part of the domain object’s
-identity.
-
-A confirmed deletion receives a tombstone.
-Authentication failure, permission loss, rate limiting, and a resource never fetched are
-distinct states. Refresh does not turn any of them into deletion.
-
-### Stacked pull requests
-
-GitHub does not provide one universal stacked-pull-request object.
-`PullRequestStack/v1` is a Metabrowser projection over pull requests and Git history.
-It contains:
-
-- the ordered member pull-request IDs;
-- directed edges with a controlled relation such as `depends_on`;
-- the evidence for each edge, such as base/head topology, explicit user metadata, or a
-  named tool adapter;
-- derivation algorithm and version;
-- observation time and source snapshot IDs; and
-- conflicts, cycles, missing members, and confidence where the evidence is not
-  definitive.
-
-The model never silently treats numbering, creation time, or adjacent branches as a
-dependency. Phase 4 defines and fixtures the record.
-Phase 7 implements derivation and navigation after ordinary PR snapshots and views are
-stable.
-
-## Provider Snapshot Storage
-
-GitHub records are mutable observations, but cache publication should still be atomic
-and old data should remain readable during refresh.
-The provider directory begins in Phase 5:
-
-```text
-<entry>/providers/github/
-├── binding.yml
-├── objects/
-│   └── <kind>/
-│       └── <resource-key>/
-│           └── <snapshot-id>.yml
-├── manifests/
-│   └── <sync-id>.yml
-└── views/
-    ├── repository/current.yml
-    ├── issues/<number>/current.yml
-    └── pull-requests/<number>/current.yml
-```
-
-An object snapshot is immutable after publication.
-Its snapshot ID is derived from its contract ID and canonical normalized payload.
-Retrieval time, validators, query identity, and rate-limit state live in the sync
-manifest, so a conditional response can reuse an unchanged object instead of writing a
-byte-different copy.
-A sync manifest names the exact object snapshots, collection states, and failures that
-make up one completed acquisition.
-Each small `current.yml` is an atomic `ResourceSet/v1` pointer to a completed manifest;
-the browser never follows staging files or a half-written multi-page response.
-
-The physical layout remains an implementation hypothesis until Phase 4 fixtures measure
-path length, object counts, YAML size, parse time, and snapshot duplication.
-The invariants are fixed: immutable snapshots, atomic current manifests, strict
-contracts, safe path keys, explicit completeness, and no cross-entry writes.
-If measurement favors a sharded or indexed equivalent, the architecture map and layout
-format must say so before Phase 5 writes released data.
-
-Raw API responses are not authoritative and are not stored by default.
-A future bounded diagnostic capture, if justified, belongs under a separate
-content-addressed namespace, removes secrets and volatile headers, and has an explicit
-retention policy.
-
-## GitHub Acquisition Boundary
-
-Phase 5 adds a built-in GitHub plugin after the model phase.
-It maps REST or GraphQL responses into transport-neutral records; the durable schema
-does not expose response shape, pagination syntax, or client-library types.
-
-The provider binding resolves a generic cache entry to a stable GitHub repository ID
-without changing the cache source digest.
-Credentials remain in `gh`, the operating system credential store, or another explicit
-provider adapter. The plugin reports which credential source it used but never reads a
-secret into a cache record.
-
-Initial acquisition is on demand:
-
-- repository summary for the repository tab;
-- one issue bundle when an issue URL or chooser selection requests it; and
-- one pull-request bundle, including the bounded collections needed by the first PR
-  view.
-
-Bulk mirroring is not required.
-Conditional requests, cursor continuation, API budgets, field and collection bounds, and
-rate-limit reporting are part of the acquisition contract.
-A completed provider refresh atomically publishes a new manifest.
-A failed or partial refresh leaves the previous current manifest readable and exposes
-the new failure separately.
-
-Selected pull requests may require fetching provider refs into a Metabrowser-owned Git
-ref namespace. The plugin asks the core Git cache service to do that work.
-It does not run Git itself.
-Every base, head, and merge object records whether the object is present, fetchable,
-unavailable because a fork disappeared, or outside the configured acquisition bound.
+The one thing that is not deferred is the boundary itself, which is recorded in
+[Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md): Git
+stays authoritative for content, history, and diffs, and provider records refer to
+immutable Git object ids rather than replacing them.
 
 ## Security and Trust
 
@@ -923,6 +942,34 @@ containment checks.
 
 ### Phase 1A: Format foundation — infrastructure PR
 
+This phase produces no user-visible result and stands between the goal and the first
+repository that opens, so its scope is stated rather than assumed.
+
+**Not negotiable**, because each one is what makes an interrupted or concurrent
+operation safe rather than corrupting: source identity, atomic publication with a
+no-replace rename, application-home locking, honest recorded state, `CACHEDIR.TAG`, the
+`staging`/`trash` reclamation sweep, and compiled-schema drift checking.
+A cache without these is not a smaller cache; it is one that loses entries.
+
+**Deferrable if the phase proves too large to land in one step**, because each only pays
+off once a *second* reader exists — that is, once a released version must read entries
+another version wrote: the sequential migration harness and the ordered format history
+beyond recording `f01`.
+
+Drift checking is **not** deferrable, though an earlier draft listed it here.
+Drift is a single-release failure: a packaged schema silently diverging from its model
+weakens `status: enforced` the moment it happens, with no second reader required.
+Dropping it would reopen exactly the hole the
+[2026-08-26 design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
+closed when it required both a compiled schema and a strict model.
+The strict Pydantic models stay either way; it is the portable-schema and migration
+machinery around them that can follow.
+
+Deferring any of those is a decision to record in this plan with its reason, not a
+silent trim. The argument against deferring is real and should be weighed each time: a
+cache is released data from its first write, and retrofitting migration under entries
+that already exist costs more than building it first.
+
 - [ ] Add the application-home resolver, `config.yml`, `cache/layout.yml`, format
   history, future-format failure, and sequential migration harness.
 - [ ] Adopt the released SoftSchema package after dependency and lock review; verify the
@@ -939,6 +986,26 @@ containment checks.
   backed-up cache data.
 - [ ] Prove config preserves unknown settings while machine records reject unknown
   fields and cache-controlled schema paths cannot redirect validation.
+- [ ] Add the three read routes — `/api/cache/layout`, `/api/cache/entries`, and
+  `/api/cache/entry/{slug}` — projecting the records above, and pin them with a golden
+  through `metab --api`.
+
+That last item is the one most likely to look like it belongs in a later phase, and it
+does not.
+It is what makes every subsequent behavior in this plan assertable: without it,
+the state machine that Phase 1A exists to build is observable only by reading the
+sandbox by hand. It is cheap here, because the records it projects are being written in
+this phase anyway, and it satisfies the state clause in
+[CLI parity](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md).
+
+The routes project **logical** state only — identity, format, publication state, head
+revision. Never a directory listing: pack file names, object counts after `gc`, and
+`.git` internals are not stable across runs, and a golden that asserted them would fail
+for reasons that have nothing to do with this plan.
+
+This phase now depends on `metab --api` (`mb-ian3`) landing first, so that its proof is
+a golden transcript rather than a parallel test harness written and then thrown away.
+See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 
 ### Phase 1B: Generic Git cache and URL open — first usable feature PR
 
@@ -946,6 +1013,12 @@ containment checks.
   bytes until classification and keep path-only modes receiving resolved paths.
 - [ ] Add conservative source normalization, full identity digest, readable uniquified
   slug, collision verification, and per-source locking.
+- [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
+  variants table, line and column anchors, `?plain=1`, dropped tracking and display
+  parameters, reserved-namespace refusal, and configurable Enterprise hosts.
+- [ ] Resolve the ambiguous ref/path split after acquisition against the cloned ref
+  list, longest matching prefix first, falling back to the repository root with an
+  explicit unresolved-selection report.
 - [ ] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
   environment controls, and explicit acquisition/background policies.
 - [ ] Enforce the acquisition, blobless, and `git backfill` floors from
@@ -958,10 +1031,18 @@ containment checks.
   lookup, including against an application home the process cannot write.
 - [ ] Start measured object backfill only after serving; persist honest partial,
   backfilling, complete, and failed states.
-- [ ] Force the untrusted profile for URL-opened roots once `mb-vib1` lands.
+- [ ] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
+  not-yet-backfilled blob read behaves as decided both online and offline.
+- [ ] Force the untrusted profile for URL-opened roots once `mb-vib1` lands; until then
+  acquisition, identity, publication, and CLI inspection may ship, and serving may not.
 - [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
   interrupted clone, read-only application home, unsupported Git version, and repair
   guidance.
+- [ ] Add URL-reduction goldens for every row of the variants table, both fragment and
+  query tables, a slash-containing branch name, a tag rather than a branch, the
+  `raw.githubusercontent.com/.../refs/heads/<branch>/...` spelling, a ref that is not
+  the pinned revision, a reserved namespace, and a pull-request URL that opens the
+  repository while naming the object it cannot yet render.
 
 ### Phase 2: Generic catalog, refresh, and cache management
 
@@ -985,64 +1066,7 @@ containment checks.
 - [ ] Measure warm-cache first paint and choose eager, prefetched, or on-demand asset
   tiers from observed cost.
 
-### Phase 4: GitHub browsing model and schema corpus — no network
-
-- [ ] Write the contract inventory in this plan as Pydantic models and deterministic
-  compiled schemas, using simple closed objects and local `$defs`.
-- [ ] Define stable IDs, repository refs, Git object refs, provider timestamps,
-  retrieval metadata, completeness, pagination, tombstones, and unknown enum handling.
-- [ ] Define issue, PR, review, thread, comment, check, status, timeline, and stack
-  relationships without an opaque payload field or raw API authority.
-- [ ] Build representative normalized fixtures for open, closed, merged, draft, forked,
-  deleted, inaccessible, partial, paginated, outdated-anchor, unknown-enum, and stacked
-  cases.
-- [ ] Capture the scrubbed recorded-response oracle and add the check that every modeled
-  field is either present in a recorded response, or explicitly marked derived or
-  optional with a `not_requested` state.
-- [ ] Measure the proposed immutable-object and atomic-manifest layout; freeze or revise
-  it before released provider data is written.
-- [ ] Register every record and view surface in the architecture map and add an
-  inventory test that fails when a contract lacks a producer, consumer, schema, or
-  fixture.
-
-### Phase 5: GitHub binding, acquisition, and provider cache
-
-- [ ] Add the provider storage interface, namespace allocation, immutable snapshot
-  writer, sync manifest, and atomic current pointers.
-- [ ] Add GitHub repository binding without changing generic cache identity.
-- [ ] Map bounded REST or GraphQL responses into the Phase 4 contracts; support
-  conditional requests, cursors, rate limits, tombstones, and partial outcomes.
-- [ ] Fetch repository, selected issue, and selected PR bundles on demand; keep the last
-  completed manifest readable on refresh failure.
-- [ ] Ask core to fetch selected provider refs, and record availability for every Git
-  object reference.
-- [ ] Add refresh controls and stage-level diagnostics without making provider refresh
-  part of a generic cache hit.
-
-### Phase 6: GitHub repository, issue, and pull-request views
-
-- [ ] Add plugin-owned repository and issue views with explicit loading, stale, partial,
-  unavailable, offline, and refresh states.
-- [ ] Render PR comparisons through the existing Git adapter, File Diff Format, and diff
-  plugin.
-- [ ] Layer title, author, state, checks, reviews, threads, and freshness around the Git
-  comparison; preserve incomplete-collection indicators.
-- [ ] Render changed Markdown at the PR head through the existing revision-content path.
-- [ ] Map review anchors only when their Git identity and line context are sufficient;
-  otherwise show the original anchor as outdated or unresolved.
-
-### Phase 7: Stacked pull requests and cross-object projections
-
-- [ ] Implement stack derivation against the Phase 4 contract with explicit evidence,
-  algorithm version, conflicts, and cycles.
-- [ ] Add adapter points for explicit stack metadata without hard-coding a third-party
-  tool into core or treating heuristics as fact.
-- [ ] Add stack navigation, aggregate status, and adjacent comparisons as derived views
-  over immutable PR and Git snapshots.
-- [ ] Recompute projections when any input snapshot changes; never mutate source PR
-  records to store derived order.
-
-### Phase 8: Measured very-large-repository support
+### Phase 4: Measured very-large-repository support
 
 - [ ] Revisit shallow plus progressive deepening only for repositories whose measured
   acquisition cost justifies the added state model.
@@ -1058,18 +1082,26 @@ containment checks.
 | 1B generic Git cache | 1A, untrusted-profile gate for serving, Git-status Phase 1 (`mb-u4mf`) for `is_clean` | GitHub API or schemas | Any supported clone URL opens or reuses one local read-only entry |
 | 2 cache operations | 1B | Provider support | Generic list, inspect, refresh, and purge |
 | 3 chooser | 2 catalog | GitHub | Instant switching among cached repositories |
-| 4 GitHub model | 1A format rules; may proceed alongside 2–3 | Network credentials, UI | Reviewed contract corpus for the full browsing domain |
-| 5 GitHub acquisition | 2 job/storage primitives, 4 schemas | Provider UI | Refreshable, atomic offline GitHub snapshots |
-| 6 GitHub views | 5 snapshots, shipped Git/diff paths | Stack derivation | Repository, issue, and PR reading |
-| 7 stacked PRs | 4 stack contract, 5 snapshots, 6 navigation | New Git content model | Provenance-bearing stack navigation |
-| 8 large repositories | Measurements from 1B and real use | GitHub | Explicit bounded behavior for exceptional repository scale |
+| 4 large repositories | Measurements from 1B and real use | Provider support | Explicit bounded behavior for exceptional repository scale |
 
-Phase 4 may run in parallel with generic chooser work because it writes only schemas,
-fixtures, and design registrations.
-Phase 5 waits for both the model and the generic job and storage primitives.
+Two dependencies leave this plan, and they leave in opposite directions.
 
-The one dependency that leaves this plan is Phase 1B on Git-status Phase 1 (`mb-u4mf`),
-which owns the `is_clean` predicate cache integrity calls.
+**Inbound, blocking 1B:** the content-trust chain (`mb-cun0` → `mb-vib1`) gates serving,
+and Git-status Phase 1 (`mb-u4mf`) owns the `is_clean` predicate.
+Neither depends on anything here, so both can run alongside Phase 0 and 1A rather than
+after them.
+
+**Outbound, depending on 2:**
+[the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) needs a
+published entry with a stable identity, atomic publication, application-home locking,
+job progress and cancellation, and core-side ref fetching.
+It does **not** need the catalog, the chooser, purge, or size accounting.
+If provider work is scheduled before the rest of Phase 2, the job lifecycle and ref
+fetching are a small extraction that can be delivered ahead of it.
+
+The `is_clean` dependency is worth restating because it is a hard ordering constraint
+rather than a convenience: Phase 1B on Git-status Phase 1 (`mb-u4mf`), which owns the
+`is_clean` predicate cache integrity calls.
 It is a hard ordering constraint rather than a convenience: landing 1B first would leave
 integrity either unchecked or served by a second porcelain parser, which is the outcome
 both plans exist to prevent.
@@ -1081,10 +1113,10 @@ absent and cache integrity reports its check as unavailable rather than inferrin
 
 ## Testing Strategy
 
-The ordinary suite uses local fixture repositories and an isolated `METABROWSER_HOME`;
-it never requires the network or a real credential store.
-Test acquisition explicitly allows the local protocol for fixture remotes.
-Production policy cannot select that override.
+The ordinary suite uses `file://` fixture repositories and an isolated
+`METABROWSER_HOME`; it never requires the network or a real credential store.
+There is no test-only transport override: `file://` is a production transport, so the
+suite exercises the same acquisition path a user gets.
 
 - **Format and migration:** old released config migrates stepwise and idempotently; a
   future layout or contract fails before mutation; config extensions survive; registry
@@ -1139,15 +1171,9 @@ above.
 
 - Phase 0 selects full versus blobless initial acquisition from current route
   measurements.
-- Phase 4 selects the physical snapshot sharding after fixture counts and parse costs
-  are measured. Its logical contracts and atomic-publication invariants are not open.
-- Phase 5 selects REST, GraphQL, or a hybrid per acquisition need, and durable records
-  do not expose that transport choice.
-  This is narrower than it first reads: the v1 model already contains GraphQL-only
-  fields such as `review_decision`, so GraphQL is presumed for pull requests and what
-  stays open is which transport serves each acquisition.
-  See
-  [Transport is already partly decided, and the model should say so](#transport-is-already-partly-decided-and-the-model-should-say-so).
+- Snapshot sharding and transport selection moved with
+  [the provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) and are
+  deferred there rather than here.
 - Automatic eviction waits for Phase 2 size data and remains absent unless a defensible
   default follows.
 - A live session either retains its pinned root until reopen or explicitly accepts a
@@ -1157,9 +1183,16 @@ above.
 
 Phase 1B is complete when:
 
-- `metab <supported-repository-url>` publishes one validated entry under
+- `metab <any-common-repository-url>` publishes one validated entry under
   `~/.metabrowser/cache/repos/<uniquified-slug>/gitroot` and serves it with the
   untrusted profile;
+- a `/blob/<ref>/<path>` URL whose `<ref>` resolves to the pinned revision opens that
+  file, and `/tree/<ref>/<path>` opens that directory — a URL naming a file does not
+  land at the repository root;
+- a `<ref>` resolving to any other revision opens the repository at its pinned revision
+  and names both, rather than showing another revision’s content at that path;
+- a branch name containing slashes resolves against the cloned ref list rather than
+  being guessed at parse time;
 - repeating the command opens the cached root without clone, fetch, provider detection,
   credential lookup, or network access;
 - `repository.yml` names one credential-free source identity, while `state.yml` names a

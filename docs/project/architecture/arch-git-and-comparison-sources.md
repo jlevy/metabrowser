@@ -50,7 +50,7 @@ that id. Everything in the implemented Git surface — history, commit detail, r
 comparison — lives entirely inside that guarantee, which is why it needs no invalidation
 model.
 
-Three things in a working repository have **no object id**:
+These have **no object id**:
 
 | Thing | What it has instead |
 | --- | --- |
@@ -196,7 +196,7 @@ through `git rev-parse --git-path` for the same reason.
 
 ## The collection API
 
-Four read-only routes, registered as `GIT_ROUTES` in `metabrowser/git/routes.py`:
+The read-only routes, registered as `GIT_ROUTES` in `metabrowser/git/routes.py`:
 
 | Route | Serves |
 | --- | --- |

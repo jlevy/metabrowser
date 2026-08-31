@@ -231,7 +231,7 @@ The built-in binary plugin’s `chunk` route is the worked example: it reads a b
 window of a file’s logical bytes, reports `next_offset`, `has_more`, and the ceiling
 that applied, and carries a fingerprint so its view can tell a continued read from a
 changed file. See
-[Bounded binary byte preview](project/specs/active/plan-2026-08-11-binary-byte-preview.md)
+[Bounded binary byte preview](project/specs/done/plan-2026-08-11-binary-byte-preview.md)
 for the size policy and the reasoning behind the compressed-artifact bound.
 
 Explain a refusal in the response body, not only in the status code.

@@ -623,7 +623,7 @@ or make the served root behave differently from nested folders.
 - [GitHub GraphQL language-byte contract](https://docs.github.com/en/graphql/reference/objects#languageedge)
 - [Design system](../../../design-system.md)
 - [Architecture](../../../architecture.md)
-- [Filter controls and fine-grained navigation filtering](plan-2026-08-09-nav-filter-controls.md)
+- [Filter controls and fine-grained navigation filtering](../done/plan-2026-08-09-nav-filter-controls.md)
 - [Folder views, Treemap, and unified filtering](https://github.com/jlevy/metabrowser/pull/23)
 
 <!-- This document follows common-doc-guidelines.md.

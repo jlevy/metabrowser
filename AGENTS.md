@@ -24,6 +24,22 @@ isolated installed-wheel smoke tests.
 Run `make hooks-install` once per checkout to install the Lefthook pre-commit and
 pre-push gates.
 
+## CLI Parity
+
+Every route, kind, and model the browser consumes, and every state the system persists,
+has a `metab` equivalent and a golden transcript.
+Only the view layer is exempt, and its behaviour is pinned in `tests/dom/`.
+
+- Prefer adding a route to adding a CLI mode.
+  `--api` reaches every registered route by construction, so a surface exposed as a
+  route is inspectable and golden-pinned for free.
+- `devtools/check_parity.py` enforces this and names what is missing.
+  The table, the exemption list, and their reasons live in
+  [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+- A new route arrives with its parity row and a golden, or the build fails.
+  There is no `gap` status: every registered surface is either covered by a transcript
+  or exempt with a stated reason.
+
 ## Compatibility and Legacy Code
 
 **Speculative compatibility layers are forbidden.** Apply

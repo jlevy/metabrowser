@@ -58,6 +58,10 @@ resolves one.
 - Inspect or validate plugins: use `--plugins --json` for structured discovery,
   `--plugin <name> --json` for one resolved plugin, and `--doctor --json` for
   machine-readable validation
+- Read the data behind any view without a browser: `--api <route>` issues one API route
+  and prints its envelope, and `--show <path>` reports the route, kind, views, and model
+  for one selection. `--api /api/routes` lists the routes this build serves.
+  Consult `<invocation> --help` for their options rather than assuming a shape
 
 ## Operate Safely
 
