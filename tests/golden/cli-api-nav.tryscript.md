@@ -83,9 +83,9 @@ status: 200
   "file_type_breakdown": {
     "schema": "file-type-breakdown-v1",
     "registry": {
-      "schema_version": 3,
+      "schema_version": 4,
       "revision": 3,
-      "fingerprint": "89cd0f4edf740666cb23ba43cc4a305f035f92b78f540673e76cc09445932c8c"
+      "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c"
     },
     "metrics": {
       "all": {
