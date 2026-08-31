@@ -1047,6 +1047,14 @@ async def index(_request: Request) -> HTMLResponse:
     var fontSets = __FONT_VALUES__;
     var fontPref = cookie("metabrowser.interfaceFont");
     de.setAttribute("data-app-font", fontSets.indexOf(fontPref) >= 0 ? fontPref : "__FONT_DEFAULT__");
+    // Reading width, seeded before first paint for the same reason as the
+    // theme: app.js runs after the document has already been laid out, so
+    // setting it there would render the column at the default and then reflow
+    // it to the reader's choice. Bounds mirror app.js (normalizeDocMaxChars).
+    var chars = Math.round(Number(cookie("metabrowser.docMaxChars")));
+    if (Number.isFinite(chars) && chars > 0) {
+      de.style.setProperty("--doc-max-chars", String(Math.min(160, Math.max(40, chars))));
+    }
   })();
   </script>"""
     theme_bootstrap = theme_bootstrap.replace(
@@ -1262,6 +1270,11 @@ async def index(_request: Request) -> HTMLResponse:
             </div>
             <div class="menu-separator"></div>
             <select class="menu-select" id="app-font-select" aria-label="Fonts">{app_font_options}</select>
+            <div class="menu-separator"></div>
+            <label class="menu-row" for="doc-max-chars-input">Max text width
+              <input class="menu-number" id="doc-max-chars-input" type="number"
+                     min="40" max="160" step="1" inputmode="numeric"
+                     data-tip-text="Characters per line in rendered documents"></label>
             <div class="menu-separator"></div>
             <div class="menu-version">{version_line}</div>
           </div>

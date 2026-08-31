@@ -5,23 +5,52 @@
      up narrower here than the standalone page by twice the difference — it was
      1.25rem, and the text ran 24px short. */
   --folder-overview-narrow-document-gutter: 0.5rem;
+  /* KPress's regular-band column inset. Same arrangement as the wide inset
+     below: it is KPress's --kpress-column-inset for this band, restated because
+     that token lives on .kpress-doc, inside the document, and this host scope is
+     outside it. Keep the two in step. */
+  --folder-overview-regular-inset: 4rem;
   /* Mirror KPress's visible regular-band content card, not its wider article
-     frame: the frame reserves 2rem per side for the floating TOC control. */
-  --folder-overview-regular-card-width: min(calc(100% - 4rem), calc(var(--kpress-measure) - 2rem));
+     frame: the frame reserves 2rem per side for the floating TOC control, which
+     the README does not render, so .kpress's padding is zeroed below and the
+     card is the column box itself — the measure of text plus its two insets.
+
+     Sized to `measure - 2rem` before, which was right when KPress capped
+     .kpress-long-text at the measure and added the gutters outside it. Since
+     0.3.4 the cap is the measure PLUS the inset and the padding gives the
+     measure back as text, so the old formula lost an inset-pair and then some:
+     the README read 81 characters against the 105 the reader asked for.
+
+     --doc-measure, not --kpress-measure. This host scope is outside `.kpress`,
+     and KPress declares --kpress-measure on `:root` in a stylesheet that loads
+     after the app's, so reading it here resolves to KPress's default instead of
+     the reader's "Max text width" setting — the README then rendered at a
+     different width from the same file opened on its own, which is the one
+     thing this file exists to keep equal. --doc-measure is app-owned and cannot
+     be shadowed. See "Reading width" in static/styles.css. */
+  --folder-overview-regular-card-width: min(
+    calc(100% - 4rem),
+    calc(var(--doc-measure) + 2 * var(--folder-overview-regular-inset))
+  );
   --folder-overview-wide-document-gutter: 1rem;
   --folder-overview-wide-toc-width: 15rem;
   --folder-overview-wide-toc-gap: 3rem;
   /* The wide column is KPress's wide-band content track, not the reading
-     measure alone: 48rem of text plus the 2.5rem KPress insets on each side.
-     Sized to the measure instead, the column is right but the text inside it
-     is not — KPress still pads .kpress-long-text by 2.5rem in this band, so
-     the README rendered at 43rem here against 48rem when the same file is
-     opened on its own. Text width is what a reader compares between the two,
-     so it is the thing that has to match; every panel still shares one edge,
-     which is now that track's edge. */
+     measure alone: the measure of text plus the 2.5rem KPress insets on each
+     side. Sized to the measure instead, the column is right but the text inside
+     it is not — KPress still pads .kpress-long-text by 2.5rem in this band, so
+     the README rendered one inset-pair short of the same file opened on its
+     own. Text width is what a reader compares between the two, so it is the
+     thing that has to match; every panel still shares one edge, which is now
+     that track's edge.
+
+     The inset below is KPress's wide-band --kpress-column-inset. It is not read
+     from the token because that token is set on .kpress-doc, inside the
+     document, and this host scope is outside it. Keep the two in step: if
+     KPress changes its wide-band inset, this changes with it. */
   --folder-overview-wide-toc-inset: 2.5rem;
   --folder-overview-wide-card-width: calc(
-    var(--kpress-measure) +
+    var(--doc-measure) +
     2 *
     var(--folder-overview-wide-toc-inset)
   );
@@ -176,21 +205,21 @@
      sized for different boxes. KPress reaches its wide band here — the nearest
      container is this host, not the panel — but the README renders with no
      table of contents, so it stays a single column and keeps the cap. The
-     inset is then measured against the cap instead of against the 53rem track
-     it was written for, and eats 5rem of measure: the README read at 43rem
-     where the same file opened on its own reads at 48rem.
+     inset is then measured against the cap instead of against the content
+     track it was written for, and eats an inset-pair of measure.
 
      KPress documents this fallback and offers `toc_rail: reserved` as the way
      out, which holds a 15rem rail open. Overview has no use for a rail it
      deliberately does not fill, so it lifts the cap instead and lets the
-     column be the track: 53rem of card, 48rem of text, the same two numbers
-     the standalone page produces.
+     column be the track: card = measure + 2x inset, text = measure, the same
+     two numbers the standalone page produces.
 
-     Both caps, not one. KPress carries the measure on two elements — the
-     article at measure + 2rem and the layout at the measure — and warns that
-     lifting only the outer one leaves the inner still centred at the measure,
-     which reads as a wide left margin with the content spilling past its right
-     edge. */
+     Both caps, not one. KPress carries the width chain on three elements and
+     warns that lifting only the outer one leaves the inner still centred at
+     the measure, which reads as a wide left margin with the content spilling
+     past its right edge. As of KPress 0.3.4 those caps derive from
+     --kpress-measure rather than from literals, so this lift stays a lift and
+     must never become a host copy of the numbers. */
   .folder-overview-panel-document > .folder-overview-panel-body > .kpress,
   .folder-overview-panel-document .kpress-doc-layout {
     max-width: none;

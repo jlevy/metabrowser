@@ -460,7 +460,7 @@ def test_one_document_surface_has_one_set_of_breakpoints() -> None:
     # The wide column is the track, not the measure.
     assert "--folder-overview-wide-card-width: calc(" in css
     wide = css[css.index("--folder-overview-wide-card-width:") :][:200]
-    assert "var(--kpress-measure)" in wide and "--folder-overview-wide-toc-inset" in wide
+    assert "var(--doc-measure)" in wide and "--folder-overview-wide-toc-inset" in wide
     # Both of KPress's measure caps are lifted, never one: lifting the outer
     # alone leaves the inner centred at the measure, which reads as a wide left
     # margin with the content spilling past its right edge.
