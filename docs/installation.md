@@ -49,7 +49,7 @@ Upgrade deliberately to a reviewed release by naming its exact version:
 uv tool install --upgrade metabrowser==0.8.0
 ```
 
-Metabrowser installs `kpress==0.3.3` as a required dependency.
+Metabrowser installs `kpress==0.3.5` as a required dependency.
 Do not install a second KPress checkout beside the package or override it with a
 workspace source.
 
