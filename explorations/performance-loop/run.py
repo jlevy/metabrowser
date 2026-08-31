@@ -294,11 +294,29 @@ def _tree_label(root: Path) -> str:
 
     Not the path, and not the basename either: a directory name is usually a
     project name, and AGENTS.md keeps private repository and organization names
-    out of committed material. A hash of the absolute path identifies the same
-    tree across runs, which is all a ledger needs; what kind of tree it was
-    belongs in the experiment's prose, described rather than named.
+    out of committed material. A hash identifies the same tree across runs,
+    which is all a ledger needs; what kind of tree it was belongs in the
+    experiment's prose, described rather than named.
+
+    A generated corpus folds its marker into the hash, so the label changes when
+    the tree does. The path alone is not enough: the corpus lives at a fixed
+    `.bench/project-10`, and its tracked half is the working tree's own source,
+    so rebuilding at a later commit gives a different tree at the same path --
+    246,282 files in August against 248,872 a week later. Keyed on the path
+    alone those two share a label, and `compare` would pool them as one corpus
+    while reporting the size difference as a regression. That is the same
+    failure the pooling guard exists for, in the one form it cannot see.
+
+    A real tree passed with `--tree` has no marker and keeps the path-only
+    label, which is what a sanity check against a working directory can offer:
+    it changes under you, and the README says to record it as a sanity check
+    rather than as a baseline for that reason.
     """
-    return "tree-" + hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:8]
+    seed = str(root)
+    marker = root / ".bench-corpus.json"
+    with suppress(OSError):
+        seed += "\n" + marker.read_text(encoding="utf-8")
+    return "tree-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8]
 
 
 def _count_tree(root: Path) -> tuple[int, int]:
@@ -752,6 +770,34 @@ def cmd_compare(args: argparse.Namespace) -> int:
     missing = [label for label, rows in by_label.items() if not rows]
     if missing:
         raise SystemExit(f"no runs recorded for: {', '.join(missing)}")
+
+    # A label pools every run that ever carried it, and the ledger is
+    # append-only across rounds, so a reused label silently mixes corpora. The
+    # numbers still print, and a smaller tree in one side of the pool reads as a
+    # regression in the other. Refuse rather than warn: this was found by
+    # reusing `release-v0.8.0` from an earlier round, and the comparison looked
+    # ordinary — a plausible first-row regression that was entirely the older
+    # round's smaller tree.
+    mixed = {
+        label: sorted({str(r.get("corpus")) for r in rows if r.get("corpus")})
+        for label, rows in by_label.items()
+    }
+    contaminated = {label: corpora for label, corpora in mixed.items() if len(corpora) > 1}
+    if contaminated:
+        detail = "; ".join(
+            f"{label} spans {', '.join(corpora)}" for label, corpora in contaminated.items()
+        )
+        raise SystemExit(
+            f"label pooled across corpora: {detail}. Two runs are comparable only on one "
+            f"tree; re-record under a label that names this round."
+        )
+
+    across = {corpus for corpora in mixed.values() for corpus in corpora}
+    if len(across) > 1:
+        measured = "; ".join(f"{label}={corpora[0]}" for label, corpora in mixed.items() if corpora)
+        raise SystemExit(
+            f"labels measured on different corpora: {measured}. Compare only within one tree."
+        )
 
     width = max(len(m) for m in METRICS) + 2
     header = "metric".ljust(width) + "".join(

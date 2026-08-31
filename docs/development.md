@@ -165,6 +165,14 @@ below is the standing benchmark.
 An exploration answers a question once; a benchmark defends an answer forever, and only
 the second earns a place in the release gate.
 
+Both run on one corpus, and it is neither committed nor generated on demand: `.bench/`
+is gitignored, so a fresh checkout has none and every command that needs it fails until
+it is built. Build it once per machine —
+[Building the corpus](../explorations/performance-loop/README.md#building-the-corpus) —
+before benchmarking a change or checking a release candidate for regressions.
+It is assembled from this repository’s own locked installs, so one commit with one pair
+of lockfiles gives one tree and the two builds under comparison face an identical one.
+
 `devtools/bench_serving.py` measures how fast a tree becomes usable and stays usable.
 Use it whenever a change touches the walker, the derived index state, or the delivery
 layer, and record the comparison in the pull request.
