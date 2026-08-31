@@ -17,6 +17,8 @@ and `run.py` refuses invalid evidence or a candidate that crosses a hard gate.
 This is deliberately smaller than
 [`devtools/bench_serving.py`](../../devtools/bench_serving.py), which measures serving
 and belongs in `make verify`’s world.
+The one thing the two share is the corpus: its generators live in `bench_serving`, and
+[Building the corpus](#building-the-corpus) is how this loop calls them.
 Nothing here runs in CI. An exploration answers a question once; a benchmark defends an
 answer forever, and only the second one earns a place in the release gate.
 
@@ -51,9 +53,17 @@ print(build_project_corpus(root, 10))
 ```
 
 It takes a few minutes and writes about 5 GB: 10 copies of this repository’s own locked
-installs, roughly 249k files across 31k directories.
-Building it directly is deliberate — `bench_serving` builds the same tree on its way to
-running a benchmark, and a release comparison only wants the tree.
+installs — the `node_modules` from `package-lock.json` and the `.venv` from `uv.lock`,
+plus its own source as the tracked half — which comes to roughly 249k files across 31k
+directories, about 113k of them visible to the walker once ignore rules apply.
+See [The corpus](#the-corpus) for what that shape is and why it is copied rather than
+generated.
+
+`build_project_corpus` is called directly here rather than through `bench_serving`,
+which builds the same tree on its way to running a benchmark when a release comparison
+only wants the tree.
+It needs `make install` to have run first: the installs it copies are this repository’s
+own.
 
 The build is deterministic and idempotent.
 `.bench-corpus.json` records the project count and the shape version, so a rerun reuses
@@ -739,15 +749,36 @@ different tree.
 
 ## The corpus
 
-Two generators live in `devtools/bench_serving.py`, and the difference between them is
-the subject of [exp-005](experiments/exp-005-a-real-tree-changes-the-priorities.md).
+Three generators live in `devtools/bench_serving.py`, and the difference between the
+first two is the subject of
+[exp-005](experiments/exp-005-a-real-tree-changes-the-priorities.md).
+`bench_serving` is otherwise a different tool from this loop, but the corpus is shared:
+these functions are what [Building the corpus](#building-the-corpus) calls.
 
-`build_realistic_corpus` is **the one to use**. Its shape is taken from two real working
-trees rather than invented: median two files per directory, mean depth around nine, a
-nested `.gitignore` roughly every four hundred directories, and most of the file count
-inside a few enormous ignored subtrees.
+`build_project_corpus` is **the one to use**, and it is what `project-10` means.
+It does not approximate a real tree from summary statistics — it copies the actual
+`node_modules` that `package-lock.json` produces and the actual `.venv` that `uv.lock`
+produces, with the repository’s own `src`, `tests` and `docs` as the tracked half.
+So the directory shapes, name lengths, nesting and file-size distribution are a real
+dependency tree’s rather than a guess at one.
+Copies use APFS clones, so ten projects cost about one dependency tree on disk.
+
+Its determinism is worth stating exactly, because it is not absolute: the inputs are two
+committed lockfiles and a git checkout, so **one commit with one pair of locks gives one
+tree**, with no network needed.
+That is what makes the two builds in a release comparison face an identical corpus.
+It is not frozen across commits — the tracked half is the working tree’s own source, so
+the file count drifts as the repository changes.
+exp-020 measured 246,282 files in late August and the same generator gives 248,872
+today. Runs are comparable within a round, and across rounds only when the recorded
+corpus label matches.
+
+`build_realistic_corpus` approximates that shape from statistics instead: median two
+files per directory, mean depth around nine, a nested `.gitignore` roughly every four
+hundred directories, and most of the file count inside a few enormous ignored subtrees.
 That last detail is not decoration — it decided the verdict in
 [exp-006](experiments/exp-006-the-gitignore-prewalk-stops-traversing-what-it-cannot-use.md).
+Use it when a round needs a size the project corpus cannot reach.
 
 `build_corpus` is the original: 309 files per directory, shallow, and no `.gitignore` at
 all. It is kept because exp-001 through exp-004 were measured on it and their numbers
