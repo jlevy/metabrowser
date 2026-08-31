@@ -376,6 +376,41 @@ The root-level `--kpress-host-font-size-base` hook anchors KPress’s derived ty
 Metabrowser’s document scale, while scoped public size tokens express deliberate mono,
 secondary-text, and label divergences.
 
+## Deferred Imports
+
+Imports go at the top of a module.
+There is one exception, in `metabrowser/kpress_adapter.py`, and it is written down here
+so the next one has to argue for itself rather than cite precedent.
+
+**Why that one.** A CLI’s startup cost is a tax on every invocation, paid by humans
+waiting and by agents making many calls.
+Importing `metabrowser.server` cost about 345 ms, of which KPress and its rendering
+stack were the largest single contributor — and only four surfaces need it: the browser
+shell’s HTML, `/api/kpress/render`, `/api/kpress/export`, and `/kpress-static/*`. No
+data route touches KPress, so every `--api` call was paying for a renderer it never
+used. Deferring it took `metab --api` from 451 ms to 364 ms, about 19%.
+
+**What a deferral costs.** It trades a startup cost for a first-call cost, and it turns
+a missing dependency from an import error into a run-time one.
+Deferring the KPress *models* immediately proved the point: `KPressExportRequest` is
+constructed, not merely annotated, and moving it under `TYPE_CHECKING` broke four tests.
+Annotations are free to defer under `from __future__ import annotations`; anything
+called or constructed is not.
+
+**The bar for another one.** All three of:
+
+1. the saving is *measured*, not assumed;
+2. the dependency is heavy and genuinely optional to most callers; and
+3. the module keeps a patchable seam, so tests that substitute the dependency still
+   work.
+
+`kpress_adapter` keeps `_kpress_runtime` as a module attribute for exactly that third
+reason — `monkeypatch.setattr(kpress_adapter, "_kpress_runtime", fake)` behaves as it
+did when the import was at the top.
+
+If a deferral cannot meet all three, put the import back at the top and find the time
+somewhere else.
+
 ## CLI Parity and Goldens
 
 A selection travels four layers — route, kind, model, view.

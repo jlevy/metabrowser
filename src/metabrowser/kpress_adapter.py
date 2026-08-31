@@ -1,12 +1,52 @@
-"""Thin boundary between Metabrowser and the KPress runtime package."""
+"""Thin boundary between Metabrowser and the KPress runtime package.
+
+KPress is imported on first use rather than at module load, which is a
+deliberate exception to this package's ordinary import style and is confined to
+this module.
+
+The reason is measured. Importing `metabrowser.server` costs about 345 ms, of
+which KPress and its rendering stack are the single largest contributor, and
+every `metab` invocation pays it -- `--help`, `--walk`, and every `--api` route
+included. Only four surfaces actually need KPress: the browser shell's HTML
+(for its font URLs), `/api/kpress/render`, `/api/kpress/export`, and
+`/kpress-static/*`. No data route touches it, so the whole CLI was paying for a
+renderer it does not use.
+
+The exception is narrow on purpose. Deferring an import trades a startup cost
+for a first-call cost and hides an unavailable dependency until run time, so it
+earns its place only where the saving is measured and the dependency is heavy
+and genuinely optional to most callers. Do not copy this pattern without those
+three things; see `docs/development.md`.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
-from kpress import runtime as _kpress_runtime
-from kpress.models import KPressAsset, KPressExportRequest
+if TYPE_CHECKING:
+    # Annotations only. `from __future__ import annotations` makes these
+    # strings at run time, so naming them costs nothing.
+    from kpress.models import KPressAsset, KPressExportRequest
+
+
+# Resolved on first use and cached here. This stays a module attribute rather
+# than a local inside `_runtime` because it is the seam the KPress tests
+# substitute: `monkeypatch.setattr(kpress_adapter, "_kpress_runtime", fake)`
+# works exactly as it did when the import was at module level.
+_kpress_runtime: Any = None
+
+
+def _runtime() -> Any:
+    """The KPress runtime, imported on first call. See the module docstring."""
+
+    global _kpress_runtime
+    if _kpress_runtime is None:
+        from kpress import runtime
+
+        _kpress_runtime = runtime
+    return _kpress_runtime
+
 
 # Keep the top-level section spine visible while scroll-follow opens the active branch.
 _TOC_COLLAPSE_DEPTH = 1
@@ -46,19 +86,19 @@ def kpress_static_url(rel_path: str) -> str:
     second copy.
     """
 
-    return _kpress_runtime.static_asset_url(rel_path)
+    return _runtime().static_asset_url(rel_path)
 
 
 def clear_render_cache() -> None:
     """Clear KPress' in-process render cache."""
 
-    _kpress_runtime.clear_render_cache()
+    _runtime().clear_render_cache()
 
 
 def set_kpress_static_root_for_tests(path: Path | None) -> None:
     """Override KPress static asset root for route tests."""
 
-    _kpress_runtime.set_static_root_for_tests(path)
+    _runtime().set_static_root_for_tests(path)
 
 
 def render_kpress_view(
@@ -82,7 +122,7 @@ def render_kpress_view(
     folder Overview.
     """
 
-    runtime = _kpress_runtime
+    runtime = _runtime()
     # KPress defaults to font_mode="custom", which uses vendored PT Serif /
     # Source Sans reader faces. Host fonts apply only when font_mode="host".
     request = runtime.KPressRenderRequest(
@@ -124,7 +164,7 @@ def render_kpress_view(
 def get_kpress_static_asset(rel_path: str) -> KPressAsset:
     """Read a safe KPress package static asset."""
 
-    runtime = _kpress_runtime
+    runtime = _runtime()
     try:
         return runtime.get_static_asset(rel_path)
     except runtime.KPressAssetNotFoundError as exc:
@@ -132,9 +172,16 @@ def get_kpress_static_asset(rel_path: str) -> KPressAsset:
 
 
 def build_export_request(**kwargs: Any) -> KPressExportRequest:
-    """Construct a KPress static-export request."""
+    """Construct a KPress static-export request.
 
-    return KPressExportRequest(**kwargs)
+    The model is imported here rather than named at module scope because it is
+    constructed, not merely annotated -- the distinction the deferred import in
+    this module has to respect.
+    """
+
+    from kpress.models import KPressExportRequest as _KPressExportRequest
+
+    return _KPressExportRequest(**kwargs)
 
 
 def export_kpress_document(request: KPressExportRequest) -> dict[str, object]:
@@ -147,7 +194,7 @@ def export_kpress_document(request: KPressExportRequest) -> dict[str, object]:
     rather than letting it surface as an unstructured 500.
     """
 
-    runtime = _kpress_runtime
+    runtime = _runtime()
     try:
         return cast("dict[str, object]", runtime.export_document(request))
     except runtime.KPressInvalidRequestError as exc:
