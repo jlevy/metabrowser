@@ -118,12 +118,26 @@ Fixes:
 - Leaving the Git panel restores the shared tree scroller’s focusability instead of
   leaving a stray `tabindex` on a node other panels keep using.
 
-- Ctrl-C stops the server on the first press and reports exit 130 whatever the timing of
-  any that follow. A repeat interrupt arriving while the process exited used to land on
-  Python’s default handler and print an `Exception ignored on threading shutdown`
-  traceback, or kill the process outright for exit `-2`. The first interrupt now prints
+- One Ctrl-C stops the server, at any point in its life, and reports exit 130. It prints
   `Stopping Metabrowser.` so the press is visibly registered rather than reading as a
-  hang.
+  hang, and it does not wait on in-flight requests: this is a local, single-user
+  browser, and a reader who asks it to stop should not queue behind an open stream.
+  A repeat press while the process exits used to land on Python’s default handler and
+  print an `Exception ignored on threading shutdown` traceback, or kill the process
+  outright for exit `-2`; it now stops the same way as the first.
+
+  The press is no longer swallowed during startup.
+  Serving brings up a filesystem watcher and worker threads, and the handler covering
+  the interrupt was installed only around the server’s own run loop — so a Ctrl-C
+  arriving before that, which on a large tree is the seconds spent walking the
+  directory, either hit Python’s default path and blocked in interpreter shutdown
+  joining those threads, or was discarded outright.
+  Measured on a 150k-file tree, a press four tenths of a second after launch left the
+  process alive and still serving.
+  The handler now goes up at the top of serve mode, before the first thread starts.
+
+  This extends the 0.8.0 interrupt work from startup and filesystem scans to the running
+  server, and supersedes its note that a second Ctrl-C stays a forced exit.
 
 - Serving a directory that is not a Git repository no longer repeats
   `git rev-parse --show-toplevel exited 128` every few seconds, and opening the Git tab
