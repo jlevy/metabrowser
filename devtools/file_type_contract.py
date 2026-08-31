@@ -153,11 +153,13 @@ def _minimal_registry() -> str:
         id = "code"
         label = "Code"
         order = 10
+        icon = "alignLeft"
 
         [[group]]
         id = "other"
         label = "Other"
         order = 20
+        icon = "file"
 
         [[family]]
         id = "python"

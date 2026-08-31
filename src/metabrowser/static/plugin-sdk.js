@@ -618,7 +618,7 @@
   const fileTypes =
     global.MetabrowserFileTypeTaxonomy ||
     Object.freeze({
-      schema: "file-type-registry-v3",
+      schema: "file-type-registry-v4",
       schemaVersion: 3,
       revision: 0,
       fingerprint: "unavailable",
