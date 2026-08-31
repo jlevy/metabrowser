@@ -94,6 +94,10 @@ def run_api(
             body = data.expanduser().resolve().read_bytes()
         except OSError as exc:
             raise CLIError(f"cannot read request body from {data}: {exc}") from exc
+        if not body:
+            # An empty body would fall through to the GET path, so --data would
+            # look accepted while changing nothing about the request.
+            raise CLIError(f"request body from {data} is empty; --data needs content")
 
     extra_plugin_dirs = resolve_extra_plugin_dirs(plugins_dir)
     os.environ["METABROWSER_PLUGINS_DIRS"] = os.pathsep.join(

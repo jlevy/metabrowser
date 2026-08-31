@@ -241,10 +241,18 @@ No changes to `/api/*` or to `window.metabrowser`. Two new CLI modes, one new de
 check, one new column in an architecture document, and a rule in `AGENTS.md` that points
 at the check rather than restating it:
 
-> Every route, kind, and model the browser consumes has a `metab` equivalent and a
-> golden transcript. `devtools/check_parity.py` enforces it and names what is missing;
+> Every route, kind, and model the browser consumes, and every state the system
+> persists, has a `metab` equivalent and a golden transcript.
+> Prefer adding a route to adding a CLI mode: `--api` reaches routes by construction.
+> A new route arrives with its parity row and a golden, or the build fails; there is no
+> `gap` status. `devtools/check_parity.py` enforces this and names what is missing, and
 > the exemption list and its reasons are in
 > `docs/project/architecture/arch-views-models-routes.md`.
+
+The text above is what shipped.
+This section originally specified a single clause; the state clause and the
+route-over-mode rule were added when the cache work showed that a principle covering
+only read models would not cover the thing it was needed for.
 
 ## Implementation Plan
 

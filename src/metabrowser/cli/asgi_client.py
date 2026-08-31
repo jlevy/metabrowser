@@ -235,7 +235,11 @@ class InProcessClient:
             "method": method,
             "scheme": "http",
             # ASGI says `path` is the decoded target and `raw_path` the bytes as
-            # sent; Starlette routes on `path`.
+            # sent; Starlette routes on `path`. One consequence is worth naming:
+            # a caller cannot distinguish a file literally named `%41.md` from
+            # one named `A.md`, because both decode the same. No route takes a
+            # filename in its path today -- they take it in the query, which is
+            # unambiguous -- so this costs nothing until one does.
             "path": unquote(route),
             "raw_path": raw_path,
             "query_string": quote(query, safe=_QUERY_SAFE).encode("ascii"),

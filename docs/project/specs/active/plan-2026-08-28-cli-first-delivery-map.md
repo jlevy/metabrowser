@@ -64,8 +64,8 @@ what keeps the trust chain and the format foundation off the end of the schedule
 | 1 | Parity mechanism: ASGI client, normalizer, `--api`, `--show` | `mb-8n8l`, `mb-ian3`, `mb-y5wm` | nothing |
 | 2 | Parity enforcement and codification | `mb-esht`, `mb-zodq` | 1 |
 | 3 | Git-status measurement gate | `mb-r5gn` | nothing (can overlap 1) |
-| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn` | 1, 3 |
-| 5 | Cache format foundation, then acquisition | `mb-ire2`, `mb-4gnu`, `mb-h51g` | 1 |
+| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 1, 3 |
+| 5 | Cache format foundation, then acquisition | `mb-ire2`, `mb-4gnu`, `mb-dxmb`, `mb-h51g`, `mb-k54c`, `mb-dg00` | nothing (`mb-ire2` and `mb-dxmb` are ready today) |
 | 6 | HTML trust chain | `mb-cun0`, `mb-vib1` | nothing |
 | 7 | URL open and serving | `mb-ew38` | 4, 5, 6 |
 

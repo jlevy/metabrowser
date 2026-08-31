@@ -85,9 +85,9 @@ model. Hand-authored normalized fixtures avoid that.
 They also cannot answer a different question.
 A fixture proves the model is self-consistent and that validation rejects what it
 should. It cannot prove that GitHub actually supplies a modeled field, or supplies it
-over the transport Phase 5 chooses.
+over the transport Phase 2 chooses.
 Nothing in a hand-written corpus fails when a field turns out to be unobtainable, so the
-discovery lands in Phase 5, after roughly sixteen contracts and their fixtures are
+discovery lands in Phase 2, after roughly sixteen contracts and their fixtures are
 frozen.
 
 Phase 1 therefore validates its inventory against a small set of **recorded, scrubbed**
@@ -106,7 +106,7 @@ derived, or intentionally Metabrowser-owned like `PullRequestStack/v1`. It just 
 be labeled as such deliberately rather than by omission.
 
 This keeps the review’s ordering (the model leads) while removing its blind spot (the
-model is unfalsifiable until Phase 5).
+model is unfalsifiable until Phase 2).
 
 ### Transport is already partly decided, and the model should say so
 
@@ -116,8 +116,8 @@ count — so the browsing model as written presumes GraphQL as the primary sourc
 requests, with REST filling gaps.
 
 That is a reasonable choice and it is not what
-[Decisions Deferred to Their Evidence Phase](#decisions-deferred-to-their-evidence-phase)
-currently claims. What remains open for Phase 5 is which transport serves each
+[Decisions Deferred to Their Evidence Phase](plan-2026-08-11-open-repo-from-git-url.md#decisions-deferred-to-their-evidence-phase)
+currently claims. What remains open for Phase 2 is which transport serves each
 *acquisition*, and that stays open.
 What is already settled is that some modeled fields are GraphQL-only, and the durable
 record still must not expose that.
