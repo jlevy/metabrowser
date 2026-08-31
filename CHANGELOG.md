@@ -6,6 +6,15 @@ All notable changes to Metabrowser are documented here.
 
 Features:
 
+- Rendered documents now read at a width the reader chooses, in characters, through
+  **Max text width** in the Metabrowser menu (default 105). The setting is expressed in
+  characters rather than pixels because that is the decision a reader has, and it is
+  converted using each reading face’s measured average glyph advance — so switching
+  between the serif and sans reading fonts holds the same characters per line rather
+  than the same pixel width.
+  The choice persists like the theme and font settings, and is applied before first
+  paint so the column never renders at one width and reflows to another.
+
 - Git history pages now come from a bounded server session that advances one ordered Git
   walk on demand and replays visited pages by indexed seek.
   Opaque page cursors replace progressively expensive skip offsets; ref movement,
@@ -27,6 +36,14 @@ Features:
   page of history paints.
 
 Fixes:
+
+- The folder Overview’s README now renders at the same text width as the same file
+  opened on its own, and follows the **Max text width** setting.
+  The Overview sized its card from `--kpress-measure`, a token KPress declares on
+  `:root` from a stylesheet loaded after the app’s, so host CSS read KPress’s default
+  instead of the reader’s setting; the card geometry had also been written against
+  KPress’s pre-0.3.4 column, which capped at the measure rather than the measure plus
+  its inset. Both now derive from `--doc-measure`, the app’s own reading width.
 
 - Loading states no longer announce themselves in words.
   The Git panel said “Loading history…” on first open, and pending tooltip cells, the

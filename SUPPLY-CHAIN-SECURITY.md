@@ -50,7 +50,7 @@ recorded in `uv.lock`.
 
 | Package | Reviewed against | Notes |
 | --- | --- | --- |
-| `kpress==0.3.3` | `0.3.2` | TOC thresholds and `include_toc` on the render request |
+| `kpress==0.3.4` | `0.3.3` | Reading-measure repair: the public `--kpress-measure` token now sizes the reading column |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `get-tbd` | n/a | Issue tracker, first-party; not a build or runtime input |
 

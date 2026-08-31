@@ -47,13 +47,18 @@ def test_folder_overview_preserves_the_responsive_markdown_card() -> None:
     css = _overview_rules()
 
     assert ".folder-overview-panel-heading" in css
-    assert "var(--kpress-measure)" in css
+    assert "var(--doc-measure)" in css
     assert "@container kpress-doc (max-width: 47.99rem)" in css
     assert "@container kpress-doc (min-width: 75rem)" in css
     assert "--folder-overview-narrow-document-gutter: 0.5rem" in css
     assert "--folder-overview-regular-card-width" in css
     assert "calc(100% - 4rem)" in css
-    assert "calc(var(--kpress-measure) - 2rem)" in css
+    # The card is the column box: the measure plus KPress's inset on each side,
+    # so the text inside lands at the measure. Pinned as the derivation, not as
+    # a literal offset — `measure - 2rem` was right only while KPress capped the
+    # column at the measure itself, and silently lost an inset-pair when 0.3.4
+    # made the cap measure + inset.
+    assert "calc(var(--doc-measure) + 2 * var(--folder-overview-regular-inset))" in css
     assert "width: var(--folder-overview-regular-card-width);" in css
     assert "--folder-overview-wide-card-width" in css
     assert ".kpress-long-text" not in css
@@ -98,7 +103,7 @@ def test_the_readme_card_fills_the_same_column_as_every_other_panel() -> None:
     # text inside reads at the measure rather than at the measure minus the
     # insets KPress still applies.
     wide = css[css.index("--folder-overview-wide-card-width:") :][:200]
-    assert "var(--kpress-measure)" in wide
+    assert "var(--doc-measure)" in wide
     assert "--folder-overview-wide-toc-inset" in wide
     assert "--folder-overview-wide-prose-inset" not in css
 
