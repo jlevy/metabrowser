@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Draft — one decision open, stated below
+**Status:** Draft. The gating decision is closed: the envelopes stay internal.
 
 ## The Gap
 
@@ -55,59 +55,91 @@ anything else, and validate the goldens against it.
 Version it with the artifact and say in the document itself that it describes an
 internal contract, so a reader knows what it is before depending on it.
 
-## Approach: Derive, Never Duplicate
+## Approach: The TypedDicts Are Already the Declaration
 
-The TypedDicts are the source of truth and stay that way.
-A second hand-written schema would be a copy that drifts, which is the failure the two
-existing formats avoid by generating their conformance corpus rather than typing it.
+The envelopes are declared once, in the 31 `TypedDict`s that exist today, and they stay
+that way. Nothing is rewritten and no second declaration is introduced.
 
-| Piece | What it is |
-| --- | --- |
-| `devtools/build_api_schema.py` | Walks the wire modules and emits JSON Schema per envelope |
-| `src/metabrowser/data/api-envelopes/` | The generated schemas, committed, beside the two existing format directories |
-| `GET /api/schema` | Serves them, so `metab . --api /api/schema` is the CLI view |
-| Drift check in `make lint` | Regenerates and compares, the way compiled-schema drift is checked for the cache contracts |
-| Golden validation | Each transcript’s envelope validates against its schema |
+`pydantic.TypeAdapter(GitRepoInfo).json_schema()` emits JSON Schema **directly from an
+existing TypedDict** — verified against `metabrowser.git.wire` before this was written.
+So the generator is a devtool that imports the wire modules, walks their TypedDicts, and
+writes the result.
 
-That last row is what ties the CLI and the API to one structure, which is the point: a
-golden already captures a real response, so validating it against the generated schema
-proves the schema describes what the server actually sends — not what someone believed
-it sent.
+### Pydantic stays out of the runtime path
 
-### Why not SoftSchema here
+Pydantic is already in `[project.dependencies]`, because `diff/format.py` and
+`plugin_loader/manifest.py` validate documents with it.
+This work adds no runtime use of it at all: the import happens in
+`devtools/build_api_schema.py`, at generation time, and what ships is the committed JSON
+Schema.
 
-SoftSchema is for durable records — data written now and read by a later release, which
-is why the [repository cache](plan-2026-08-11-open-repo-from-git-url.md) adopts it for
-identity and state. An API envelope is not durable: it is produced and consumed by one
-artifact in one request.
-JSON Schema describes it adequately and adds no dependency, and the two formats this
-repository already documents use exactly that.
+That matters beyond dependency hygiene.
+Tree and rollup responses sit on the measured load-time path, and `validate_tree_node`
+is `assert`-based and, as `wire_models.py` says, “invoked from the matching tests”.
+Nothing validates a response on the way out today.
+Keeping the models out of the response path preserves that, and any future decision to
+validate at runtime would need its own measurement rather than arriving as a side effect
+of documenting the shapes.
 
-If SoftSchema lands for the cache, the question can be revisited with the dependency
-already paid for.
+### Why emit JSON Schema rather than stop at Python
 
-## Open Decision
+The browser is a second implementation in another language.
+`builtin_plugins/diff/diff-model.js` validates by hand — `require`, `asObject`,
+`forbidExtras` — and its own comment refers to “the interchange rule the schema states,
+and the Pydantic side’s” behaviour.
+A Python-only declaration leaves that side describing the contract from memory, which is
+the arrangement the two documented formats exist to avoid.
+A committed schema also has client-side validator support, so a plugin author can check
+an envelope without running Python.
 
-**Does `/api/*` stay an internal contract?** The recommendation above assumes yes, and
-everything follows from it: no OpenAPI document, no compatibility promise, a schema that
-describes rather than specifies.
+| Piece | What it is | Ships? |
+| --- | --- | --- |
+| The existing `TypedDict`s | The declaration, unchanged | yes, as today |
+| `devtools/build_api_schema.py` | Imports the wire modules, emits schema via `TypeAdapter` | no |
+| `src/metabrowser/data/api-envelopes/` | The generated schemas, committed | yes |
+| `GET /api/schema` | Serves them, so `metab . --api /api/schema` is the CLI view | yes |
+| Drift check in `make lint` | Regenerates and compares | no |
+| Golden validation | Each transcript’s envelope validated against its schema | no |
 
-If the answer is no — if `/api/*` should become a surface others may build against —
-then this plan is the wrong one.
-That version needs versioned routes, a deprecation policy, and an OpenAPI document as
-the published artifact, and it should be planned as that rather than reached by adding a
-schema file and discovering the promise later.
+The last row is what ties the CLI and the API to one structure: a transcript already
+holds a real response, so checking it against the generated schema proves the schema
+describes what the server sends rather than what someone believed it sent.
+
+### One choice the generator has to make
+
+`TypeAdapter` does not set `additionalProperties` for a TypedDict, so the emitted schema
+is permissive about unknown keys unless the generator says otherwise.
+Strict is right for a *format* — it is what `forbidExtras` enforces for File Diff Format
+— and permissive is right for a *reader*, which should tolerate a field a newer server
+added. The generator should set it explicitly rather than inherit a default, and the
+phase that adds it should say which and why.
+
+### Why not SoftSchema
+
+SoftSchema is for durable records — written now, read by a later release, which is why
+the [repository cache](plan-2026-08-11-open-repo-from-git-url.md) adopts it for identity
+and state. An envelope is produced and consumed by one artifact in one request, so the
+problem it solves does not arise here.
 
 ## Phases
 
-1. **Generator and drift check.** `build_api_schema.py`, the committed output, and the
-   `make lint` check. No route yet; the schemas are reviewable on their own.
-2. **The route and its golden.** `GET /api/schema`, its parity row, and a transcript —
-   which the parity rule requires anyway.
-3. **Golden validation.** Each existing transcript’s envelope checked against its
-   schema, so the description is bound to observed responses.
+1. **Generator and drift check.** `devtools/build_api_schema.py` emits schema from the
+   existing TypedDicts via `TypeAdapter`, the output is committed under
+   `data/api-envelopes/`, and `make lint` regenerates and compares.
+   The `additionalProperties` choice is made and recorded here.
+   Nothing else changes, so the schemas are reviewable on their own.
+2. **Golden validation.** Every existing transcript’s envelope checked against its
+   schema. This is the phase that would expose a generator that describes the wrong
+   thing, so it comes before anything depends on the output.
+3. **The route and its golden.** `GET /api/schema`, its parity row, and a transcript,
+   which the parity rule requires of a new route anyway.
 4. **Retire the prose.** The map’s per-route descriptions point at the schema instead of
    restating a shape that can drift from it.
+
+Phase 2 sits before phase 3 deliberately.
+A schema nothing checks is a second description that can drift from the first, which is
+the failure this plan exists to fix; validating the goldens first means the artifact is
+known to match real responses before a route offers it to anyone.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
