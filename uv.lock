@@ -8,7 +8,7 @@ exclude-newer-span = "P14D"
 
 [options.exclude-newer-package]
 flowmark-rs = "2026-07-16T00:00:00Z"
-kpress = "2026-08-30T23:42:12Z"
+kpress = "2026-08-31T00:55:00Z"
 
 [[package]]
 name = "annotated-doc"
@@ -264,7 +264,7 @@ wheels = [
 
 [[package]]
 name = "kpress"
-version = "0.3.4"
+version = "0.3.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "frontmatter-format" },
@@ -276,9 +276,9 @@ dependencies = [
     { name = "pygments" },
     { name = "strif" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d3/94/8c203d2ae1980324e2ce8bfcc4a5ea22bc73ab01c15a364c006559224392/kpress-0.3.4.tar.gz", hash = "sha256:47f11c065e5f82b89e7006151996646dcd328e3600d079ed2ca4a3b0d81a8402", size = 1136205, upload-time = "2026-08-30T23:42:12.482Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/84/4c18b4048b1932168835042353ccda54fb0ad6eb0c7828a2be26bfecc2ab/kpress-0.3.5.tar.gz", hash = "sha256:9a33e0af8b97c7b6ac136f55ab3a88fce2a00dca4ae8b22c7284c80c4a377913", size = 1138836, upload-time = "2026-08-31T00:54:43.649Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/17/ec/e771797428a2f7b5d4567a8ae7d354b1d63ee3ac1907e04c389f079c4b20/kpress-0.3.4-py3-none-any.whl", hash = "sha256:556d8f989e66f134b6b0fff5e36f1a773bec9eaa1dde6cf386a6341074fad84f", size = 762049, upload-time = "2026-08-30T23:42:11.116Z" },
+    { url = "https://files.pythonhosted.org/packages/98/a9/5ea25822da1f91660341e8dc19b2f1aa7f8753392cfda40fbbd504a21709/kpress-0.3.5-py3-none-any.whl", hash = "sha256:8e2907cda0f17e380109d08c63d920255e89b480dc6a308515ee791c3486c8e5", size = 762336, upload-time = "2026-08-31T00:54:42.439Z" },
 ]
 
 [[package]]
@@ -433,7 +433,7 @@ requires-dist = [
     { name = "funlog", specifier = ">=0.2.1" },
     { name = "json5", specifier = ">=0.15.0" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "kpress", specifier = "==0.3.4" },
+    { name = "kpress", specifier = "==0.3.5" },
     { name = "pathspec", specifier = ">=1.1.1" },
     { name = "prettyfmt", specifier = ">=0.4.1" },
     { name = "psutil", specifier = ">=7.2.2" },
