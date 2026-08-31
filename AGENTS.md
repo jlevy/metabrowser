@@ -83,8 +83,8 @@ this repository’s structural facts and standing answers.
 
 - Apply `tbd guidelines common-doc-guidelines` to every human-authored document and
   retain the standard footer.
-- Format all human-authored Markdown with the exact `flowmark-rs==0.3.2` pin through
-  `make format`.
+- Format all human-authored Markdown through `make format`, which invokes the exact
+  `flowmark-rs` pin the Makefile records in `FLOWMARK_VERSION`.
 - Link to source documentation instead of duplicating long policy text.
 - Architecture documents follow the layout convention in
   [Architecture Documents](docs/development.md#architecture-documents): status first,

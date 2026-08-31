@@ -240,6 +240,50 @@ root-size change near a responsive breakpoint can select a different heading tie
 Verify the type boundary at a pane width that stays in the same band and confirm
 computed sizes are identical at two browser root sizes.
 
+### Reading Width
+
+Prose reads at a width the reader sets, in **characters**, through “Max text width” in
+the Metabrowser menu.
+Characters rather than a length because that is the decision a reader has: 45–75 is the
+classic range for a single column, and a browser pane is wide enough to sit above it.
+The default is 105.
+
+Three tokens, all on `:root`:
+
+| Token | Meaning |
+| --- | --- |
+| `--doc-max-chars` | the reader’s setting; the menu writes it, the pre-paint script seeds it |
+| `--doc-char-advance` | average glyph advance per em for the current reading face |
+| `--doc-measure` | the resolved length: base × chars × advance |
+
+`--doc-measure` is the single source of truth for how wide prose reads anywhere in the
+app, and the only place the character count is converted.
+Every prose surface reads it: the KPress bridge, the folder Overview’s card widths, and
+the fallback `md-body` path a plugin gets when it renders Markdown without KPress.
+A new surface that lays out prose reads `--doc-measure`, never a literal.
+
+**Never read `--kpress-measure` from host CSS.** KPress declares that token on
+`:root, .kpress, …` from a stylesheet that loads after the app’s, so on `:root` the
+app’s value is overwritten and on `.kpress` it is shadowed on the element that consumes
+it. Host CSS outside a `.kpress` scope therefore resolves KPress’s default rather than
+the reader’s setting — which is exactly how the Overview’s README came to render at a
+different width from the same file opened on its own.
+`--doc-measure` is app-owned and cannot be shadowed.
+One bridge, `.metabrowser-kpress-host .kpress { --kpress-measure: var(--doc-measure) }`,
+carries it into the document.
+
+The advance ratio is measured, not assumed, over 507 characters of representative
+English prose: 0.4335 em/char for PT Serif and 0.4039 for Source Sans 3, so the sans
+reading mode swaps the ratio and the same character count still holds.
+This is the average advance, not the CSS `ch` unit — `ch` is the advance of “0” and
+overstates a proportional face by roughly 23%. KPress ships no per-face constants
+because a host may swap the face; Metabrowser pins its own faces, so it owns the
+conversion.
+
+Verify a width change by measuring the *text* box with padding excluded, in both the
+single-column and wide bands, and against the same file opened on its own.
+A card can be the right width while the text inside it is an inset-pair too narrow.
+
 ### Embedded Document Themes
 
 Metabrowser owns one theme input for the embedded document:
@@ -1612,9 +1656,15 @@ At regular and wide Markdown breakpoints, flat surface panels and section headin
 to the README card’s outer edges; the TOC keeps its own rail in the wide band.
 In the regular band, the target is the visible `.kpress-long-text` card rather than the
 wider `.kpress-doc` frame.
-The shared width is `min(100% - 4rem, var(--kpress-measure) - 2rem)`, which accounts for
-the frame’s floating-TOC clearance and aligns section rules, labels, tallies, and bars
-with the card border.
+The shared width is
+`min(100% - 4rem, var(--doc-measure) + 2 * var(--folder-overview-regular-inset))` — the
+column box, meaning the reading measure plus KPress’s inset on each side — which puts
+the README’s text at exactly the measure and aligns section rules, labels, tallies, and
+bars with the card border.
+It reads `--doc-measure`, the app’s own reading width, and never `--kpress-measure`:
+KPress declares that token on `:root` from a stylesheet loaded after the app’s, so host
+CSS outside a `.kpress` scope resolves KPress’s default instead of the reader’s setting.
+See [Reading Width](#reading-width).
 Below the card breakpoint, KPress removes the card boundary and the alignment follows
 the README prose edge.
 The Overview composer mirrors those pinned KPress breakpoints so the rule remains exact

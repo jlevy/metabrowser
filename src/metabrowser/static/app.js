@@ -499,6 +499,34 @@ function proseFontIcon(font) {
   return font === "sans" ? ICONS.sans || "" : ICONS.serif || "";
 }
 
+// Reading width, in characters. Drives --doc-max-chars on <html>; styles.css
+// multiplies it by the type base and the current face's advance-per-character
+// to get KPress's --kpress-measure. Characters, not pixels, because that is
+// the decision a reader has — see the token comment in styles.css.
+var DOC_MAX_CHARS_KEY = "metabrowser.docMaxChars";
+var DOC_MAX_CHARS_DEFAULT = 105;
+// 45-75 characters is the classic single-column range; a browser pane is wide
+// enough to sit above it, and the default does. The bounds are deliberately
+// wider than the advice on both sides: the floor still holds a readable column
+// in a narrow pane, and the ceiling is where a line stops being followable at
+// all rather than where it stops being ideal.
+var DOC_MAX_CHARS_MIN = 40;
+var DOC_MAX_CHARS_MAX = 160;
+
+/** @returns {number} */
+function normalizeDocMaxChars(value) {
+  var n = Math.round(Number(value));
+  if (!Number.isFinite(n)) {
+    return DOC_MAX_CHARS_DEFAULT;
+  }
+  return Math.min(DOC_MAX_CHARS_MAX, Math.max(DOC_MAX_CHARS_MIN, n));
+}
+
+function getStoredDocMaxChars() {
+  var raw = readPrefCookie(DOC_MAX_CHARS_KEY);
+  return raw ? normalizeDocMaxChars(raw) : DOC_MAX_CHARS_DEFAULT;
+}
+
 // Interface-font preference: the chosen font set's value (e.g. "clean",
 // "system") is set as [data-app-font] on <html>; styles.css repoints
 // --font-sans and bridges the host font hooks for the embedded document. The
@@ -547,6 +575,23 @@ function applyProseFont(font, persist) {
   markChooserSegments("#settings-control [data-font-choice]", "fontChoice", normalized);
 }
 
+function applyDocMaxChars(chars, persist) {
+  var normalized = normalizeDocMaxChars(chars);
+  document.documentElement.style.setProperty("--doc-max-chars", String(normalized));
+  if (persist) {
+    writePrefCookie(DOC_MAX_CHARS_KEY, String(normalized));
+  }
+  var input = /** @type {HTMLInputElement | null} */ (
+    document.getElementById("doc-max-chars-input")
+  );
+  // Only when it differs: writing the value back mid-edit would move the
+  // caret, and normalization can legitimately differ from what is typed
+  // (a partial "4" on the way to "45" clamps to the floor).
+  if (input && input.value !== String(normalized)) {
+    input.value = String(normalized);
+  }
+}
+
 function applyInterfaceFont(font, persist) {
   document.documentElement.setAttribute("data-app-font", font);
   if (persist) {
@@ -561,6 +606,7 @@ function applyInterfaceFont(font, persist) {
 function initSettingsControl() {
   applyThemeMode(getStoredThemeMode(), false);
   applyProseFont(getStoredProseFont(), false);
+  applyDocMaxChars(getStoredDocMaxChars(), false);
 
   const wrap = document.getElementById("settings-control");
   const btn = document.getElementById("settings-btn");
@@ -610,6 +656,32 @@ function initSettingsControl() {
         var select = event.currentTarget;
         if (select instanceof HTMLSelectElement) {
           applyInterfaceFont(select.value, true);
+        }
+      });
+    }
+
+    // Reading width. `input` applies live so the column follows the number as
+    // it is typed or stepped; `change` (commit, blur) is what normalizes and
+    // writes back, so an out-of-range or half-typed value is not snapped under
+    // the caret mid-edit. Clicks inside must not close the menu.
+    var charsInput = /** @type {HTMLInputElement | null} */ (
+      document.getElementById("doc-max-chars-input")
+    );
+    if (charsInput) {
+      charsInput.value = String(getStoredDocMaxChars());
+      charsInput.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+      charsInput.addEventListener("input", (event) => {
+        var field = event.currentTarget;
+        if (field instanceof HTMLInputElement && field.value !== "") {
+          applyDocMaxChars(field.value, true);
+        }
+      });
+      charsInput.addEventListener("change", (event) => {
+        var field = event.currentTarget;
+        if (field instanceof HTMLInputElement) {
+          applyDocMaxChars(field.value === "" ? DOC_MAX_CHARS_DEFAULT : field.value, true);
         }
       });
     }
