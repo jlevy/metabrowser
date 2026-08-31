@@ -99,7 +99,7 @@ def test_client_settings_publish_one_authoritative_registry() -> None:
     assert "FILE_TYPE_TAXONOMY" not in settings
     registry = settings["FILE_TYPE_REGISTRY"]
     assert isinstance(registry, dict)
-    assert registry["schema"] == "file-type-registry-v3"
+    assert registry["schema"] == "file-type-registry-v4"
 
 
 def test_index_loads_the_taxonomy_before_the_plugin_sdk() -> None:
