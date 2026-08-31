@@ -40,6 +40,7 @@ links to the document that covers each in depth.
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
 - [CLI-first delivery: parity, Git status, and the repository cache](specs/active/plan-2026-08-28-cli-first-delivery-map.md)
+- [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md)
 
 ## Research
 
