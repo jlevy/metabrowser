@@ -139,3 +139,37 @@ def test_an_already_encoded_query_is_not_double_encoded() -> None:
     asyncio.run(client.get("/api/file?path=%E6%97%A5%E6%9C%AC.md"))
 
     assert seen["query_string"] == b"path=%E6%97%A5%E6%9C%AC.md"
+
+
+def test_a_startup_failure_reports_its_reason_not_a_traceback() -> None:
+    """The app's own exception must not escape in place of the failure message."""
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        assert scope["type"] == "lifespan"
+        await receive()
+        await send({"type": "lifespan.startup.failed", "message": "index unavailable"})
+        raise RuntimeError("startup exploded")
+
+    from metabrowser.errors import CLIError
+
+    async def run() -> None:
+        async with InProcessClient(cast(ASGIApp, app)):
+            pass
+
+    with pytest.raises(CLIError, match="index unavailable"):
+        asyncio.run(run())
+
+
+def test_a_route_raising_after_a_2xx_start_is_not_reported_as_success() -> None:
+    """A truncated body with a 200 status would otherwise read as a clean answer."""
+
+    async def app(_scope: Scope, _receive: Receive, send: Send) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b'{"partial":', "more_body": True})
+        raise RuntimeError("route exploded mid-stream")
+
+    client = InProcessClient(cast(ASGIApp, app))
+    response = asyncio.run(client.get("/api/tree"))
+
+    assert response.status_code == 200
+    assert response.incomplete is True

@@ -54,8 +54,10 @@ they turn the entire state machine into something a transcript can assert.
 
 ## Ordering
 
-Land in this order. Rows 1–3 are strictly serial; rows 4 and 5 are independent of each
-other and of the status work, so they can proceed in parallel.
+Land in this order. Only rows 1 → 2 and 3 → 4 are serial; the table’s *Gated by* column
+is authoritative where this prose and it disagree.
+Rows 3, 5, and 6 depend on nothing and can start immediately alongside row 1, which is
+what keeps the trust chain and the format foundation off the end of the schedule.
 
 | # | Work | Beads | Gated by |
 | --- | --- | --- | --- |
@@ -277,9 +279,13 @@ One selected status entry as a File Diff Format document, reusing the patch-file
 the way `adapters/git.py` already does rather than carrying a second one.
 
 ```python
-class WorkingTreeAdapter(ComparisonAdapter):
-    async def describe(self) -> ComparisonSummary: ...
-    async def file_patch(self, path: str) -> FilePatch: ...
+class WorkingTreeSource(DiffSource):  # the Protocol in diff/adapters/base.py
+    async def resolve(self, intent: dict[str, Any]) -> ResolvedComparison: ...
+    async def manifest(self, resolved: ResolvedComparison) -> ChangeSetManifest: ...
+    async def file_patch(self, resolved: ResolvedComparison, file_id: str) -> FilePatch: ...
+    def content(
+        self, resolved: ResolvedComparison, file_id: str, side: str
+    ) -> AsyncIterator[bytes]: ...
 ```
 
 Backed by `/api/plugin/diff/working-tree` in `builtin_plugins/diff/sidekick.py`.
@@ -499,17 +505,23 @@ After 6, the status and cache tracks run in parallel and neither needs a browser
 
 ## Open Decisions
 
-**Closed 2026-08-28: local origins are first-class Git sources.** `file://` URLs and
-local repository paths are accepted as Git sources under the **untrusted profile**,
-documented as mirror and air-gapped support.
-The safe URL grammar’s job is rejecting ambiguous and dangerous input — credentials,
-query, fragment, option-like strings — not rejecting a transport that is strictly safer
-than the ones already allowed.
-This keeps acquisition goldens on exactly the production code path; the rejected
-alternative, a test-only escape hatch, forks production and test logic, which
-`tbd guidelines golden-testing-guidelines` warns against directly.
-`cache/urls.py` therefore classifies transport into `https`, `ssh`, and `local`, and
-`acquire` binds `local` to the untrusted profile unconditionally.
+**Closed 2026-08-28, revised 2026-08-30: `file://` origins are first-class Git sources;
+bare local paths are not.** `cache/urls.py` classifies transport into `https`, `ssh`,
+and `file`, and `acquire` binds a `file` source to the untrusted profile
+unconditionally. `metab /path/to/repo` keeps meaning “serve that directory”, so the
+grammar has no ambiguity to resolve.
+
+The first draft accepted bare paths as well, calling them strictly safer than the
+allowed transports. Review showed that wrong: `git clone` given a path defaults to
+`--local`, which hardlinks `.git/objects` into the clone — so the entry is not isolated
+from later mutation of the source — and ignores `--filter`, defeating blobless
+acquisition with only a warning.
+Both were reproduced on Git 2.50.1. `file://` uses the git-aware transport, packs rather
+than hardlinks, and honours `--filter`, which is what makes the testing rationale true:
+acquisition goldens clone a `file://` origin through the real production path rather
+than a test-only escape hatch, which `tbd guidelines golden-testing-guidelines` warns
+against directly. See
+[Safety at the boundary](plan-2026-08-11-open-repo-from-git-url.md#safety-at-the-boundary).
 
 Still open:
 

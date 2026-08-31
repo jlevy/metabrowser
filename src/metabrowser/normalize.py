@@ -37,12 +37,19 @@ MTIME_FIELDS: tuple[str, ...] = ("mtime", "mtime_hash")
 # Opaque pagination cursors carry a per-request random session token, so no
 # fixture can pin them. Unlike mtimes these are always normalized: there is no
 # arrangement under which the value is reproducible.
-CURSOR_FIELDS: tuple[str, ...] = ("page_cursor",)
+# Addressed by their exact position in the envelope, not by key name at any
+# depth. A parsed JSON file, a Markdown front matter block, or a log record may
+# legitimately contain a key called `page_cursor`; rewriting a reader's own data
+# because it collides with an envelope field would corrupt the thing under test.
+CURSOR_PATHS: tuple[tuple[str, ...], ...] = (("page_cursor",),)
 
 # Wall-clock measurements. A small fixture can make these repeat on one machine,
 # which is not the same as being pinnable: they move with load and hardware, so
 # a golden asserting one fails somewhere else.
-ELAPSED_FIELDS: tuple[str, ...] = ("elapsed_ms", "duration_ms")
+ELAPSED_PATHS: tuple[tuple[str, ...], ...] = (
+    ("inventory", "elapsed_ms"),
+    ("inventory", "duration_ms"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,9 +76,13 @@ class NormalizeContext:
         return tuple(sorted(pairs, key=lambda pair: len(pair[0]), reverse=True))
 
 
-# A prefix matches only where the path ends or continues with a separator, so
-# `/tmp` rewrites `/tmp/x` but leaves `/tmpfile`, which is a different path.
-_BOUNDARY = r"(?![A-Za-z0-9_.\-])"
+# A prefix matches only where a real delimiter follows, so `/tmp/sb` rewrites
+# `/tmp/sb/x` and a quoted `"/tmp/sb"` but leaves the sibling paths
+# `/tmp/sbfile` and `/tmp/sb+extra`, which are different directories. Listing
+# the terminators is safer than listing the characters that continue a name:
+# a name may contain almost anything, while the delimiters around one in JSON
+# or console output are few.
+_BOUNDARY = r"""(?=[/"',\s:;)\]}]|$)"""
 
 
 def normalize_text(text: str, ctx: NormalizeContext) -> str:
@@ -85,23 +96,30 @@ def normalize_text(text: str, ctx: NormalizeContext) -> str:
 def normalize_payload(value: Any, ctx: NormalizeContext) -> Any:
     """Rewrite unstable values throughout a decoded JSON payload."""
 
-    return _normalize(value, ctx, key=None)
+    return _normalize(value, ctx, path=())
 
 
-def _normalize(value: Any, ctx: NormalizeContext, *, key: str | None) -> Any:
-    if key in CURSOR_FIELDS and isinstance(value, str) and value:
+def _normalize(value: Any, ctx: NormalizeContext, *, path: tuple[str, ...]) -> Any:
+    if path in CURSOR_PATHS and isinstance(value, str) and value:
         return CURSOR_PLACEHOLDER
-    if key in ELAPSED_FIELDS and isinstance(value, (int, float)) and not isinstance(value, bool):
+    if path in ELAPSED_PATHS and isinstance(value, (int, float)) and not isinstance(value, bool):
         return ELAPSED_PLACEHOLDER
-    if ctx.normalize_mtimes and key in MTIME_FIELDS:
+    # Mtimes stay keyed by name: the rule is opt-in, used only where a fixture
+    # cannot pin them, and they appear throughout tree and entry structures
+    # rather than at one address.
+    if ctx.normalize_mtimes and path and path[-1] in MTIME_FIELDS:
         return MTIME_PLACEHOLDER
     if isinstance(value, str):
         return normalize_text(value, ctx)
     if isinstance(value, Mapping):
-        return {item_key: _normalize(item, ctx, key=item_key) for item_key, item in value.items()}
+        return {
+            item_key: _normalize(item, ctx, path=(*path, str(item_key)))
+            for item_key, item in value.items()
+        }
     # str is a Sequence, so it is handled above; bytes carry no sandbox paths.
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-        return [_normalize(item, ctx, key=key) for item in value]
+        # A list does not add a path component: entries share their field's address.
+        return [_normalize(item, ctx, path=path) for item in value]
     return value
 
 
@@ -115,9 +133,9 @@ def describe_schema() -> str:
         f"| Absolute path under the application home | `{HOME_PLACEHOLDER}` | the cache home varies |",
         f"| `{'`, `'.join(MTIME_FIELDS)}` | `{MTIME_PLACEHOLDER}` |"
         " only when the fixture cannot pin them |",
-        f"| `{'`, `'.join(CURSOR_FIELDS)}` | `{CURSOR_PLACEHOLDER}` |"
+        f"| `{'`, `'.join('.'.join(p) for p in CURSOR_PATHS)}` | `{CURSOR_PLACEHOLDER}` |"
         " a random session token; no fixture can pin it |",
-        f"| `{'`, `'.join(ELAPSED_FIELDS)}` | `{ELAPSED_PLACEHOLDER}` |"
+        f"| `{'`, `'.join('.'.join(p) for p in ELAPSED_PATHS)}` | `{ELAPSED_PLACEHOLDER}` |"
         " wall clock; moves with load and hardware |",
         "| Git revisions | kept | fixture repositories build deterministically |",
     ]

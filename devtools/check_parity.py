@@ -25,10 +25,13 @@ SOURCE_ROOT = REPO_ROOT / "src/metabrowser"
 GOLDEN_DIR = REPO_ROOT / "tests/golden"
 
 _STATUSES = frozenset({"covered", "exempt"})
-# Modes that resolve a route internally rather than naming it on the command
-# line. `--api` is deliberately absent: it always names its route, so a row
-# claiming it must show the route in a command.
-_INDIRECT_MODES = ("--show", "--walk", "--diff", "--check-api")
+# Modes that issue a route without naming it on the command line, and so can
+# stand as evidence for it. `--api` is absent because it always names its route,
+# so a row claiming it must show the route in a command. `--walk` and `--diff`
+# are absent for the opposite reason: they reach their models through the
+# library and issue no request at all, which is the model-versus-wire gap this
+# check exists to close.
+_INDIRECT_MODES = ("--show", "--check-api")
 
 
 def _command_lines(golden: str) -> list[str]:

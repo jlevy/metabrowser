@@ -62,7 +62,9 @@ async def _fetch(
     from metabrowser.cli.asgi_client import wait_for_index
 
     async with InProcessClient(app, label="show", logger=LOG) as client:
-        await wait_for_index(client, timeout_s=index_timeout_s)
+        index = await wait_for_index(client, timeout_s=index_timeout_s)
+        if not index.completed:
+            typer.echo(f"index: incomplete: {index.detail}", err=True)
         return await client.get(route, params=params)
 
 
@@ -164,6 +166,8 @@ def run_show(
 
     response = asyncio.run(_fetch(server.app, route, params, index_timeout_s=index_timeout_s))
 
+    if response.incomplete:
+        raise CLIError(f"{path} failed mid-response; the model below would be truncated")
     if response.status_code != 200:
         raise CLIError(
             f"{path} is not a selection the browser can open (HTTP {response.status_code})"

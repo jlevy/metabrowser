@@ -26,7 +26,7 @@ Mtimes are pinned so the recency window and rollup tallies are deterministic.
 `truncated` is reported here as `false`. The true case is not reachable from a golden
 fixture: `max_files` is a hard-coded 500,000, with no request parameter to lower it, so
 a truncated rollup needs a generated corpus rather than a sandbox.
-`mb-crmq` carries that remainder.
+`mb-1qwp` carries that remainder.
 
 ## Test: a folder rollup
 

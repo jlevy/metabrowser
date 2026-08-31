@@ -189,6 +189,28 @@ def _resolve_mode(
     return selected[0].lstrip("-")
 
 
+# Formats each mode can actually produce. An envelope has no text rendering and
+# --show's report has no YAML form, so a coerced value would be a flag that
+# looks accepted while being ignored -- which is what the rest of this CLI
+# promises never to do.
+_MODE_FORMATS: dict[str, frozenset[str]] = {
+    "api": frozenset({"json", "yaml"}),
+    "show": frozenset({"text", "json"}),
+}
+
+
+def _check_format_applicability(
+    ctx: typer.Context, mode: str, fmt: str, explicit: frozenset[str]
+) -> None:
+    allowed = _MODE_FORMATS.get(mode)
+    if allowed is None or "fmt" not in explicit or fmt in allowed:
+        return
+    ctx.fail(
+        f"--format {fmt} is not valid with {_MODE_LABELS[mode]}; "
+        f"choose {' or '.join(sorted(allowed))}"
+    )
+
+
 def _check_option_applicability(ctx: typer.Context, mode: str, explicit: frozenset[str]) -> None:
     """Reject explicitly-passed options that do not apply to the mode."""
     checkable = frozenset().union(*_MODE_OPTIONS.values())
@@ -356,7 +378,7 @@ def _metab(
         help="Extra plugin directory; each subdirectory containing manifest.toml "
         "is loaded. May be passed multiple times. Combines additively with "
         "the METABROWSER_PLUGINS_DIRS env var (env-var dirs first, then CLI; "
-        "deduped). Applies when serving, checking APIs, and to the plugin modes.",
+        "deduped). Applies when serving, checking APIs, issuing --api or --show, and to the plugin modes.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
@@ -367,7 +389,7 @@ def _metab(
         metavar="LEVEL",
         help="Log verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL. "
         "DEBUG traces the inventory walker (rewalk targets + resolved paths). "
-        "Overrides METABROWSER_LOG_LEVEL. Applies when serving, walking, or checking APIs.",
+        "Overrides METABROWSER_LOG_LEVEL. Applies when serving, walking, issuing --api or --show, or checking APIs.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
@@ -471,8 +493,9 @@ def _metab(
         "--index-timeout",
         min=0.1,
         metavar="SECONDS",
-        help="Maximum time to wait for the inventory to finish.",
-        rich_help_panel=_PANEL_CHECK_API,
+        help="Maximum time to wait for the inventory to finish. "
+        "Applies to --api, --show, and --check-api.",
+        rich_help_panel=_PANEL_SHARED,
     ),
     # ── Remote options ─────────────────────────────────────────────
     base_port: int = typer.Option(
@@ -551,6 +574,7 @@ def _metab(
     )
     explicit = _explicit_params(ctx)
     _check_option_applicability(ctx, mode, explicit)
+    _check_format_applicability(ctx, mode, fmt, explicit)
 
     if mode == "serve":
         if root is None and not explicit:
@@ -596,8 +620,8 @@ def _metab(
         run_api(
             _require_root(ctx, root, mode),
             route=api,
-            # --format defaults to text for the human report modes; an envelope
-            # has no text rendering, so this mode reads that default as json.
+            # Only the unset default is reinterpreted; an explicit --format text
+            # is refused above rather than silently becoming json.
             fmt="json" if fmt == "text" else fmt,
             data=data,
             plugins_dir=plugins_dir,
@@ -611,7 +635,7 @@ def _metab(
         run_show(
             _require_root(ctx, root, mode),
             path=show,
-            fmt="text" if fmt not in ("json",) else fmt,
+            fmt=fmt,
             plugins_dir=plugins_dir,
             log_level=log_level,
             index_timeout_s=index_timeout,

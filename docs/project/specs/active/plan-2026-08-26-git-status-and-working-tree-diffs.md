@@ -989,8 +989,11 @@ state moved. It never implies immutable content the way `/commit/<revision>` doe
 ## Implementation Plan
 
 Three phases: a measurement gate, a backend, and the browser delivery.
-The gate is small and produces no code, but it is listed as a phase because its output
-is the set of constants the other two are built on.
+The gate ships no production code — its deliverable is recorded measurements and the
+decisions they settle — though it necessarily builds the `devtools/` benchmark that
+produces them, as the history benchmark did.
+It is listed as a phase because its output is the set of constants the other two are
+built on.
 
 ### Phase 0: The measurement gate (`mb-r5gn`)
 

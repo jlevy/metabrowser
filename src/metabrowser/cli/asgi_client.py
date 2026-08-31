@@ -16,6 +16,7 @@ import json
 import logging
 import time
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import quote, unquote, urlencode, urlsplit
@@ -32,6 +33,7 @@ INDEX_READY_POLL_S = 0.05
 # would hang rather than fail. This bounds every request instead of guessing
 # which routes stream.
 REQUEST_TIMEOUT_S = 30.0
+LIFESPAN_TIMEOUT_S = 30.0
 
 # A caller writes a route the way the browser would request it, which may carry
 # a non-ASCII filename and may already be percent-encoded. Escaping with `%`
@@ -47,6 +49,9 @@ class ApiResponse:
     status_code: int
     body: bytes
     headers: Mapping[str, str] = field(default_factory=dict)
+    # The route raised after sending its status, so the body below is whatever
+    # arrived before it stopped. The status alone would read as success.
+    incomplete: bool = False
 
     def json(self) -> Any:
         return json.loads(self.body)
@@ -98,12 +103,34 @@ class InProcessClient:
         }
         self._lifespan_task = asyncio.create_task(run_app())
         await self._lifespan_input.put({"type": "lifespan.startup"})
-        message = await self._lifespan_output.get()
+        try:
+            message = await asyncio.wait_for(
+                self._lifespan_output.get(), timeout=LIFESPAN_TIMEOUT_S
+            )
+        except TimeoutError as exc:
+            # An app that neither completes nor fails startup would otherwise
+            # leave the caller waiting with no output at all.
+            await self._cancel_lifespan_task()
+            raise CLIError(
+                f"{self._label} application did not start within {LIFESPAN_TIMEOUT_S:g}s"
+            ) from exc
         if message["type"] != "lifespan.startup.complete":
             detail = message.get("message", "application startup failed")
-            await self._finish_lifespan_task()
+            # Draining the task re-raises whatever the app raised. That
+            # traceback is the symptom; the failure message is the cause, so
+            # report the cause and attach the exception to it.
+            try:
+                await self._finish_lifespan_task()
+            except Exception as exc:
+                raise CLIError(str(detail)) from exc
             raise CLIError(str(detail))
         return self
+
+    async def _cancel_lifespan_task(self) -> None:
+        if self._lifespan_task is not None:
+            self._lifespan_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await self._lifespan_task
 
     async def __aexit__(
         self,
@@ -177,6 +204,7 @@ class InProcessClient:
         status_code: int | None = None
         body_parts: list[bytes] = []
         headers: dict[str, str] = {}
+        incomplete = False
 
         async def receive() -> Message:
             nonlocal request_available
@@ -230,6 +258,7 @@ class InProcessClient:
             # failed step instead of exposing a diagnostic traceback.
             if status_code is None:
                 raise CLIError(f"{self._label} request failed for {route}") from exc
+            incomplete = True
             self._log.debug(
                 "%s route raised after HTTP %d path=%s",
                 self._label,
@@ -239,7 +268,12 @@ class InProcessClient:
             )
         if status_code is None:
             raise CLIError(f"{self._label} returned no response for {route}")
-        return ApiResponse(status_code=status_code, body=b"".join(body_parts), headers=headers)
+        return ApiResponse(
+            status_code=status_code,
+            body=b"".join(body_parts),
+            headers=headers,
+            incomplete=incomplete,
+        )
 
 
 def _read_json(response: ApiResponse) -> Any:

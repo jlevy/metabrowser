@@ -402,10 +402,12 @@ controls removes the coverage the golden existed to provide.
 Placeholders use angle brackets, because tryscript reads `[NAME]` in expected output as
 an elision pattern and `[ROOT]` is one of its built-ins.
 
-**State counts too.** The cache persists layout, identity, entry state, quarantine, and
-trash, none of which appears in a response envelope.
-Those are read through `/api/cache/*` like any other model rather than through a bespoke
-inspection command, which is the practical reason to prefer a route to a CLI mode.
+**State counts too.** The cache will persist layout, identity, entry state, quarantine,
+and trash, none of which appears in a response envelope.
+The plan is that those be read through `/api/cache/*` like any other model rather than
+through a bespoke inspection command, which is the practical reason to prefer a route to
+a CLI mode. Neither the cache nor those routes exists yet; see
+[CLI-first delivery](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md).
 
 ## Compatibility and Legacy Code
 

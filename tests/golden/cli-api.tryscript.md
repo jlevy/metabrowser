@@ -21,7 +21,7 @@ serialization the browser reaches — and prints the normalized envelope.
 model and not the wire.
 
 The fixture pins mtimes (`touch -t` under `TZ=UTC`, epoch 1700000000) so timestamps are
-deterministic, and the served root normalizes to `[ROOT]` so the sandbox path never
+deterministic, and the served root normalizes to `<ROOT>` so the sandbox path never
 reaches the transcript.
 
 ## Test: a tree envelope through the route

@@ -308,9 +308,14 @@ No user-facing behaviour changes.
 
 **Closed 2026-08-28: `--api` accepts POST bodies.** `InProcessClient` carries `post`
 from the day it is lifted, and `--data <file>` supplies the body.
-The cost is a few lines at lift time; the alternative leaves `/api/kpress/render` and
-`/api/kpress/export` permanently exempt, which would make the exemption list dishonest
-about why they are there.
+
+The premise needs one correction the first draft got wrong: `/api/kpress/render` is
+registered `GET` *and* `POST` and renders on either, so only `/api/kpress/export` was
+ever POST-only.
+The cost is still a few lines at lift time, and export would otherwise be
+permanently exempt for a reason the exemption list could not state honestly.
+Both branches of `render` are pinned, because the POST path reaches different handler
+code than the query form.
 
 Still open:
 

@@ -241,6 +241,145 @@ Error: /api/git/commit/0000000000000000000000000000000000000000 returned HTTP 40
 ? 1
 ```
 
+## Test: the comparison hook resolves a revision
+
+`cli-api-plugins` pins this hook’s refusal when neither endpoint is named.
+The resolved form needs a repository, so it lives here: the manifest reports the two
+changed files and the patches carry their hunks.
+
+```console
+$ metab gitroot --api '/api/plugin/diff/comparison?revision=703de1c4a3360d55e60646f300ceb6c926377221'
+api: /api/plugin/diff/comparison?revision=703de1c4a3360d55e60646f300ceb6c926377221
+status: 200
+{
+  "schema": "file-diff-v1",
+  "schema_version": 1,
+  "resolved": {
+    "comparison_id": "git:6af1e10278161613",
+    "source": {
+      "name": "git"
+    },
+    "kind": "content",
+    "base_policy": "first_parent",
+    "left": {
+      "kind": "commit",
+      "id": "6b7e50c374caae27f9758a6a8b1bccdc6d50ec11",
+      "symbolic": "703de1c4a3360d55e60646f300ceb6c926377221"
+    },
+    "right": {
+      "kind": "commit",
+      "id": "703de1c4a3360d55e60646f300ceb6c926377221"
+    },
+    "options": {
+      "context": 3,
+      "rename_detection": true,
+      "rename_similarity": 50
+    },
+    "warnings": []
+  },
+  "manifest": {
+    "files": [
+      {
+        "id": "f1",
+        "kind": "modified",
+        "old": {
+          "path": "README.md",
+          "entry_type": "file",
+          "mode": "100644",
+          "content": {
+            "kind": "git_object",
+            "oid": "f8051e05d7cc77b9aaeef09bc92709cfdead7d6d"
+          }
+        },
+        "new": {
+          "path": "README.md",
+          "entry_type": "file",
+          "mode": "100644",
+          "content": {
+            "kind": "git_object",
+            "oid": "6c3860949c1b22ea0adb00e5386b2baf83188790"
+          }
+        },
+        "binary": false,
+        "availability": "ready",
+        "additions": 1,
+        "deletions": 0
+      },
+      {
+        "id": "f2",
+        "kind": "added",
+        "new": {
+          "path": "other.txt",
+          "entry_type": "file",
+          "mode": "100644",
+          "content": {
+            "kind": "git_object",
+            "oid": "587be6b4c3f93f93c489c0111bba5596147a26cb"
+          }
+        },
+        "binary": false,
+        "availability": "ready",
+        "additions": 1,
+        "deletions": 0
+      }
+    ],
+    "totals": {
+      "files": 2,
+      "additions": 2,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false
+  },
+  "patches": {
+    "f1": {
+      "file_id": "f1",
+      "hunks": [
+        {
+          "old_start": 1,
+          "old_count": 1,
+          "new_start": 1,
+          "new_count": 2,
+          "lines": [
+            {
+              "op": "context",
+              "text": "# Repo",
+              "no_newline": false
+            },
+            {
+              "op": "add",
+              "text": "more",
+              "no_newline": false
+            }
+          ]
+        }
+      ],
+      "truncated": false
+    },
+    "f2": {
+      "file_id": "f2",
+      "hunks": [
+        {
+          "old_start": 0,
+          "old_count": 0,
+          "new_start": 1,
+          "new_count": 1,
+          "lines": [
+            {
+              "op": "add",
+              "text": "x",
+              "no_newline": false
+            }
+          ]
+        }
+      ],
+      "truncated": false
+    }
+  }
+}
+? 0
+```
+
 ## Test: `--show` resolves a commit route
 
 `/commit/<rev>` and `/commit/<rev>/<inner>` are browser addresses, not API routes.

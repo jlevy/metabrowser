@@ -54,13 +54,17 @@ async def _issue(
     *,
     body: bytes,
     index_timeout_s: float,
-) -> ApiResponse:
+) -> tuple[ApiResponse, str]:
+    """Return the response and the index state it was produced under."""
+
+    index_detail = "skipped"
     async with InProcessClient(app, label="api", logger=LOG) as client:
         if not route.startswith(_INDEX_PROGRESS_ROUTE):
-            await _wait_for_index(client, timeout_s=index_timeout_s)
+            result = await _wait_for_index(client, timeout_s=index_timeout_s)
+            index_detail = result.detail if result.completed else f"incomplete: {result.detail}"
         if body:
-            return await client.post(route, body=body)
-        return await client.get(route)
+            return await client.post(route, body=body), index_detail
+        return await client.get(route), index_detail
 
 
 def run_api(
@@ -99,7 +103,9 @@ def run_api(
     from metabrowser import server
 
     server._set_root_dir(resolved)
-    response = asyncio.run(_issue(server.app, route, body=body, index_timeout_s=index_timeout_s))
+    response, index_detail = asyncio.run(
+        _issue(server.app, route, body=body, index_timeout_s=index_timeout_s)
+    )
 
     ctx = NormalizeContext(root=resolved)
     typer.echo(f"api: {route}")
@@ -111,5 +117,14 @@ def run_api(
     else:
         typer.echo(_render(normalize_payload(payload, ctx), fmt))
 
+    # An envelope built from an index that never finished is not the envelope
+    # the browser would have drawn, so say so rather than letting it read clean.
+    if index_detail.startswith("incomplete"):
+        typer.echo(f"index: {index_detail}", err=True)
+    if response.incomplete:
+        raise CLIError(
+            f"{route} answered HTTP {response.status_code} and then failed mid-response; "
+            "the body above is truncated"
+        )
     if not 200 <= response.status_code < 300:
         raise CLIError(f"{route} returned HTTP {response.status_code}")

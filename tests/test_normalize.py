@@ -169,4 +169,45 @@ def test_a_wall_clock_measurement_is_always_normalized() -> None:
 
 
 def test_a_boolean_is_not_mistaken_for_a_measurement() -> None:
-    assert normalize_payload({"elapsed_ms": False}, _ctx()) == {"elapsed_ms": False}
+    assert normalize_payload({"inventory": {"elapsed_ms": False}}, _ctx()) == {
+        "inventory": {"elapsed_ms": False}
+    }
+
+
+def test_user_content_keeping_a_reserved_key_name_is_untouched() -> None:
+    """A parsed JSON file may hold any key; only the envelope's own is unstable."""
+
+    payload = {
+        "kind": "structured",
+        "parsed": {"page_cursor": "user-value", "inventory": {"elapsed_ms": 12}},
+    }
+
+    assert normalize_payload(payload, _ctx()) == payload
+
+
+def test_the_envelopes_own_cursor_and_measurement_are_still_normalized() -> None:
+    payload = {"page_cursor": "abc", "inventory": {"elapsed_ms": 52, "entries": 2}}
+
+    normalized = normalize_payload(payload, _ctx())
+
+    assert normalized == {
+        "page_cursor": CURSOR_PLACEHOLDER,
+        "inventory": {"elapsed_ms": ELAPSED_PLACEHOLDER, "entries": 2},
+    }
+
+
+def test_a_sibling_path_sharing_a_prefix_is_not_rewritten() -> None:
+    """The boundary must be a real delimiter, not merely a non-word character."""
+
+    ctx = NormalizeContext(root=Path("/tmp/sb"))
+
+    assert normalize_text("/tmp/sb+extra", ctx) == "/tmp/sb+extra"
+    assert normalize_text("/tmp/sb~1", ctx) == "/tmp/sb~1"
+
+
+def test_common_delimiters_still_terminate_a_prefix() -> None:
+    ctx = NormalizeContext(root=Path("/tmp/sb"))
+
+    assert normalize_text('"/tmp/sb"', ctx) == f'"{ROOT_PLACEHOLDER}"'
+    assert normalize_text("/tmp/sb/x", ctx) == f"{ROOT_PLACEHOLDER}/x"
+    assert normalize_text("at /tmp/sb, then", ctx) == f"at {ROOT_PLACEHOLDER}, then"

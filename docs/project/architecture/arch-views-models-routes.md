@@ -163,7 +163,7 @@ arrives with a transcript or the build fails.
 | `/api/plugin/binary/chunk` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md` |
-| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md` |
+| `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 | `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |

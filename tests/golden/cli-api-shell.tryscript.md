@@ -10,7 +10,7 @@ env:
 before: >-
   mkdir -p shellroot &&
   printf '# Sample\n\nHello.\n' > shellroot/README.md &&
-  printf '{"path": "README.md", "view": "document", "source_text": "# Overridden\n\nBody.\n"}\n'
+  printf '{"path": "README.md", "view": "document", "source_text": "# Overridden\\n\\nBody.\\n"}\n'
   > shellroot/render.json &&
   printf '{"path": "README.md", "view": "rendered", "destination": "out.html"}\n'
   > shellroot/export.json &&
@@ -641,19 +641,169 @@ status: 200
 
 `--data` sends the body, which is the path the browser uses when the Source view has
 been transformed.
-It reaches a different branch of the handler than the query form above.
+It reaches a different branch of the handler than the query form above:
+the rendered heading below comes from `source_text`, not from the file on disk, which is
+what proves the override took effect.
 
 ```console
 $ metab shellroot --api /api/kpress/render --data shellroot/render.json
 api: /api/kpress/render
-status: 400
+status: 200
 {
-  "type": "kpress_render_error",
-  "error": "Invalid JSON body",
-  "detail": "Invalid control character at: line 1 column 71 (char 70)"
+  "type": "kpress-rendered-document",
+  "html": "[..]<h1 id=\"overridden\">Overridden</h1>[..]",
+  "profile": "document",
+  "printable": true,
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "0554b3a1d96a854f",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/v0.3.3/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/v0.3.3/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "d86525c4bb370b43",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/v0.3.3/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "763595ddf1a251e9",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/v0.3.3/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "86c6396bc77060cd",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/v0.3.3/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "fonts/pt-serif-latin-400-normal.woff2",
+        "kind": "package",
+        "path": "fonts/pt-serif-latin-400-normal.woff2",
+        "mode": "hosted",
+        "media_type": "font/woff2",
+        "content_hash": "4271064a37f3ffc0",
+        "output_path": "fonts/pt-serif-latin-400-normal.woff2",
+        "public_url": "/kpress-static/v0.3.3/fonts/pt-serif-latin-400-normal.woff2",
+        "entry_point": false,
+        "loading": "resource"
+      },
+      {
+        "id": "fonts/pt-serif-latin-700-normal.woff2",
+        "kind": "package",
+        "path": "fonts/pt-serif-latin-700-normal.woff2",
+        "mode": "hosted",
+        "media_type": "font/woff2",
+        "content_hash": "bf23a7a4eebedbb8",
+        "output_path": "fonts/pt-serif-latin-700-normal.woff2",
+        "public_url": "/kpress-static/v0.3.3/fonts/pt-serif-latin-700-normal.woff2",
+        "entry_point": false,
+        "loading": "resource"
+      },
+      {
+        "id": "fonts/pt-serif-latin-400-italic.woff2",
+        "kind": "package",
+        "path": "fonts/pt-serif-latin-400-italic.woff2",
+        "mode": "hosted",
+        "media_type": "font/woff2",
+        "content_hash": "cb373bde18855c82",
+        "output_path": "fonts/pt-serif-latin-400-italic.woff2",
+        "public_url": "/kpress-static/v0.3.3/fonts/pt-serif-latin-400-italic.woff2",
+        "entry_point": false,
+        "loading": "resource"
+      },
+      {
+        "id": "fonts/pt-serif-latin-700-italic.woff2",
+        "kind": "package",
+        "path": "fonts/pt-serif-latin-700-italic.woff2",
+        "mode": "hosted",
+        "media_type": "font/woff2",
+        "content_hash": "3cb3cfab3c562cbb",
+        "output_path": "fonts/pt-serif-latin-700-italic.woff2",
+        "public_url": "/kpress-static/v0.3.3/fonts/pt-serif-latin-700-italic.woff2",
+        "entry_point": false,
+        "loading": "resource"
+      },
+      {
+        "id": "fonts/source-sans-3-latin-wght-normal.woff2",
+        "kind": "package",
+        "path": "fonts/source-sans-3-latin-wght-normal.woff2",
+        "mode": "hosted",
+        "media_type": "font/woff2",
+        "content_hash": "7a19a7027e125257",
+        "output_path": "fonts/source-sans-3-latin-wght-normal.woff2",
+        "public_url": "/kpress-static/v0.3.3/fonts/source-sans-3-latin-wght-normal.woff2",
+        "entry_point": false,
+        "loading": "resource"
+      },
+      {
+        "id": "fonts/source-sans-3-latin-wght-italic.woff2",
+        "kind": "package",
+        "path": "fonts/source-sans-3-latin-wght-italic.woff2",
+        "mode": "hosted",
+        "media_type": "font/woff2",
+        "content_hash": "9a15dafc2c2b2414",
+        "output_path": "fonts/source-sans-3-latin-wght-italic.woff2",
+        "public_url": "/kpress-static/v0.3.3/fonts/source-sans-3-latin-wght-italic.woff2",
+        "entry_point": false,
+        "loading": "resource"
+      }
+    ],
+    "import_map": {}
+  },
+  "diagnostics": [],
+  "widgets": {},
+  "model": {
+    "version": 1,
+    "title": "README.md",
+    "route": "",
+    "profile": "document",
+    "headings": [],
+    "widgets": {}
+  }
 }
-Error: /api/kpress/render returned HTTP 400
-? 1
+? 0
 ```
 
 ## Test: export refuses a GET

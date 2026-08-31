@@ -36,8 +36,9 @@ Only the view layer is exempt, and its behaviour is pinned in `tests/dom/`.
 - `devtools/check_parity.py` enforces this and names what is missing.
   The table, the exemption list, and their reasons live in
   [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
-- A new route arrives with its parity row, or the build fails.
-  A `gap` row is allowed and counted, but it must name the bead that closes it.
+- A new route arrives with its parity row and a golden, or the build fails.
+  There is no `gap` status: every registered surface is either covered by a transcript
+  or exempt with a stated reason.
 
 ## Compatibility and Legacy Code
 

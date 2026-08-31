@@ -115,8 +115,10 @@ invalidating tests.
 - Automatic LRU eviction before measurements establish a size and age policy.
   Explicit inspection and recoverable purge come first.
 - Supporting arbitrary Git transports.
-  Production initially permits HTTPS and SSH; helpers such as `ext::`, the
-  unauthenticated `git://` protocol, and local transport overrides remain disabled.
+  Production permits HTTPS, SSH, and `file://`; helpers such as `ext::` and the
+  unauthenticated `git://` protocol remain disabled, as does `git clone`’s implicit
+  `--local` path form.
+  See [Safety at the boundary](#safety-at-the-boundary).
 
 ## Current Foundation and Dependencies
 
@@ -708,30 +710,40 @@ to Git helpers such as `ext::` are rejected before Git sees them.
 Production clone policy sets `protocol.allow=never` and explicitly enables HTTPS, SSH,
 and `file`.
 
-**Local origins, decided 2026-08-28.** `cache/urls.py` classifies transport as `https`,
-`ssh`, or `local`, and `file://` URLs and local repository paths are accepted as Git
-sources.
-`acquire` binds a `local` source to the untrusted profile unconditionally, which
-is where a source nobody authenticated belongs anyway.
+**Local origins, decided 2026-08-28, revised 2026-08-30.** `cache/urls.py` classifies
+transport as `https`, `ssh`, or `file`, and accepts `file://` URLs as Git sources.
+`acquire` binds a `file` source to the untrusted profile unconditionally, which is where
+a source nobody authenticated belongs anyway.
 
-This is a widening of an earlier HTTPS-and-SSH-only rule, and the reason is worth
-stating plainly. The grammar exists to reject input that is ambiguous or dangerous —
-credentials, query, fragment, option-like strings, remote helpers — not to rank
-transports by trust.
-A path on the local filesystem is strictly safer than either transport already allowed:
-no network, no credentials, no name resolution.
-It also serves a real workflow in mirrors and air-gapped checkouts.
+**A bare local path is not a Git source.** `metab /path/to/repo` keeps its existing
+meaning — serve that directory — so the grammar has no ambiguity to resolve, and the
+only way to ask for acquisition is the explicit `file://` form.
+
+The first draft of this decision accepted bare paths too, and justified them as
+“strictly safer” than the allowed transports.
+That was wrong, and the reason is specific enough to record.
+`git clone` given a path defaults to `--local`, which is not the git-aware transport at
+all:
+
+- it **hardlinks** `.git/objects` into the clone, so the entry is not isolated from
+  later mutation of the source — verified on Git 2.50.1, where a loose object shows a
+  link count of 2 from both sides; and
+- it **ignores `--filter`**, warning
+  `--filter is ignored in local clones; use file:// instead`, which silently defeats the
+  blobless acquisition
+  [this plan specifies](#blobless-acquisition-and-the-offline-guarantee).
+
+So a path-form clone is neither safer nor the same code path.
+`file://` goes through the git-aware transport, produces a pack rather than hardlinks,
+and honours `--filter`. Pinning it is what makes the rest of this section true.
 
 The decision is load-bearing for testing, which is the honest reason it came up.
-Acquisition goldens clone from a local origin built in the same sandbox, so they run the
-real `run_git` on the real code path with no network and no mocking.
+Acquisition goldens clone from a `file://` origin built in the same sandbox, so they run
+the real `run_git` on the real code path with no network and no mocking.
 The alternative considered and rejected was a test-only escape hatch admitting local
 origins, which would fork production and test logic — the thing
 `tbd guidelines golden-testing-guidelines` warns against most directly, and which would
 mean the acquisition path proved by CI was not the acquisition path users run.
-Web-URL reduction runs before this gate, not around it: its output is a clone URL that
-passes through exactly the same transport allowlist, credential rejection, and option
-screening as one the user typed.
 
 Acquisition publishes one complete entry:
 
@@ -1100,10 +1112,10 @@ absent and cache integrity reports its check as unavailable rather than inferrin
 
 ## Testing Strategy
 
-The ordinary suite uses local fixture repositories and an isolated `METABROWSER_HOME`;
-it never requires the network or a real credential store.
-Test acquisition explicitly allows the local protocol for fixture remotes.
-Production policy cannot select that override.
+The ordinary suite uses `file://` fixture repositories and an isolated
+`METABROWSER_HOME`; it never requires the network or a real credential store.
+There is no test-only transport override: `file://` is a production transport, so the
+suite exercises the same acquisition path a user gets.
 
 - **Format and migration:** old released config migrates stepwise and idempotently; a
   future layout or contract fails before mutation; config extensions survive; registry
