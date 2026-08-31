@@ -753,6 +753,34 @@ def cmd_compare(args: argparse.Namespace) -> int:
     if missing:
         raise SystemExit(f"no runs recorded for: {', '.join(missing)}")
 
+    # A label pools every run that ever carried it, and the ledger is
+    # append-only across rounds, so a reused label silently mixes corpora. The
+    # numbers still print, and a smaller tree in one side of the pool reads as a
+    # regression in the other. Refuse rather than warn: this was found by
+    # reusing `release-v0.8.0` from an earlier round, and the comparison looked
+    # ordinary — a plausible first-row regression that was entirely the older
+    # round's smaller tree.
+    mixed = {
+        label: sorted({str(r.get("corpus")) for r in rows if r.get("corpus")})
+        for label, rows in by_label.items()
+    }
+    contaminated = {label: corpora for label, corpora in mixed.items() if len(corpora) > 1}
+    if contaminated:
+        detail = "; ".join(
+            f"{label} spans {', '.join(corpora)}" for label, corpora in contaminated.items()
+        )
+        raise SystemExit(
+            f"label pooled across corpora: {detail}. Two runs are comparable only on one "
+            f"tree; re-record under a label that names this round."
+        )
+
+    across = {corpus for corpora in mixed.values() for corpus in corpora}
+    if len(across) > 1:
+        measured = "; ".join(f"{label}={corpora[0]}" for label, corpora in mixed.items() if corpora)
+        raise SystemExit(
+            f"labels measured on different corpora: {measured}. Compare only within one tree."
+        )
+
     width = max(len(m) for m in METRICS) + 2
     header = "metric".ljust(width) + "".join(
         f"{label} (n={len(by_label[label])})".ljust(28) for label in labels

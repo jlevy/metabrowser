@@ -35,6 +35,36 @@ answer forever, and only the second one earns a place in the release gate.
 Rejected rounds are worth as much as accepted ones and cost more to re-derive, so a
 refuted hypothesis gets the same write-up as a confirmed one.
 
+## Building the corpus
+
+`.bench/` is gitignored and machine-local, so a fresh checkout has no corpus and every
+command below fails until it is built.
+This is the first step on a new machine:
+
+```shell
+uv --config-file uv.toml run --frozen python -c "
+from pathlib import Path
+from devtools.bench_serving import build_project_corpus
+root = Path('.bench/project-10'); root.mkdir(parents=True, exist_ok=True)
+print(build_project_corpus(root, 10))
+"
+```
+
+It takes a few minutes and writes about 5 GB: 10 copies of this repository’s own locked
+installs, roughly 249k files across 31k directories.
+Building it directly is deliberate — `bench_serving` builds the same tree on its way to
+running a benchmark, and a release comparison only wants the tree.
+
+The build is deterministic and idempotent.
+`.bench-corpus.json` records the project count and the shape version, so a rerun reuses
+a matching tree and rebuilds a mismatched one rather than comparing across shapes.
+Read the file count from that marker rather than counting by hand; `run.py count`
+reports the walker’s own rule for any tree.
+
+`project-10` is the name the rest of this document uses, and the directory name is not
+derived — pass it explicitly, as above, or `bench_serving` will default to
+`.bench/corpus-project-10` and nothing will find it.
+
 ## Resuming this loop from scratch
 
 Everything needed to pick the loop up mid-stream is in three places, and nothing needed
@@ -74,6 +104,8 @@ collide are few and named:
 - `report.md` is generated.
   Never hand-edit it; regenerate with `run.py report` after merging and let that be the
   conflict resolution.
+  `run.py report` writes unformatted Markdown, so run `make format` after it or
+  `make lint-check` fails on the file you just generated.
 - The corpus at `.bench/project-10` must not change.
   It is what makes runs from different agents and different weeks comparable, and
   [re-running an old round](#re-running-an-old-round-against-todays-corpus) depends on
@@ -145,6 +177,24 @@ terminal. It uses installed console scripts on both sides, at least three cold b
 runs and three backend runs per condition, immutable build references, one unchanged
 corpus, semantic response comparison, and the full responsiveness gate.
 
+Build the corpus first if this machine has none (see
+[Building the corpus](#building-the-corpus)).
+
+**Label the round, not the side.** `--label release` or `--label v0.8.0` pools with
+every earlier round that used the same word, and the ledger is append-only across rounds
+and across corpora. `compare` refuses a label that spans more than one corpus, but the
+cheap habit is a label carrying the experiment number — `exp-021-release`,
+`exp-021-candidate`. The refusal exists because the pooled comparison looks ordinary: an
+earlier round’s smaller tree reads as a first-row regression in the current one.
+
+The control is the previous release, built from its tag rather than assumed:
+
+```shell
+git worktree add --detach /tmp/mb-at-vX.Y.Z vX.Y.Z
+cd /tmp/mb-at-vX.Y.Z && uv --config-file uv.toml sync --all-extras --locked
+/tmp/mb-at-vX.Y.Z/.venv/bin/metab --version    # confirm it is the release, not a dev build
+```
+
 Build the candidate as the artifact users will install.
 Keep machine-specific reports under `.bench/`; they contain absolute executable and
 corpus paths and therefore do not belong in the public repository.
@@ -167,6 +217,16 @@ uv --config-file uv.toml run --frozen python -m devtools.compare_builds \
 Read `valid` before reading the timings.
 It is true only when every run completed, the corpus fingerprint stayed fixed, required
 response fields existed, and ordered rows and tallies were identical.
+
+`valid: false` is not automatically a stop.
+A release that deliberately changes a response says so there: a schema bump moves
+`tallies`, and the comparison reports it as an equivalence difference because it cannot
+know the change was intended.
+Read `equivalence` and decide.
+Rows differing is a regression until proven otherwise — the navigation tree is what the
+reader sees. Tallies differing only where the changelog says they change is the release
+working as described, and the experiment records it as an explicit acceptance rather
+than as a pass.
 
 For the browser half, first use `count` to obtain the inventory count, then alternate
 the release and candidate in both orders.
