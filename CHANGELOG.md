@@ -2,7 +2,7 @@
 
 All notable changes to Metabrowser are documented here.
 
-## Unreleased
+## 0.9.0
 
 File-type identity:
 
