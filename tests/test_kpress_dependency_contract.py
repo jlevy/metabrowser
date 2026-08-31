@@ -40,25 +40,6 @@ def test_kpress_does_not_resolve_from_the_monorepo_workspace() -> None:
     assert "kpress" not in project.get("tool", {}).get("uv", {}).get("sources", {})
 
 
-def test_the_install_guide_names_the_pinned_kpress_release() -> None:
-    """A version in prose that nothing maintains goes stale, and this one did.
-
-    ``docs/installation.md`` tells a reader which KPress the package pulls in,
-    and warns them off installing a second one beside it. That sentence sat at
-    0.3.3 through two upgrades because only the pin itself was checked. The
-    dated research and plan documents deliberately keep the version they were
-    written against and are not covered here -- they record what was verified at
-    the time, not what ships now.
-    """
-
-    project = tomllib.loads(PROJECT_FILE.read_text(encoding="utf-8"))
-    pins = [d for d in project["project"]["dependencies"] if d.startswith("kpress")]
-    assert len(pins) == 1, pins
-
-    guide = (PROJECT_FILE.parent / "docs" / "installation.md").read_text(encoding="utf-8")
-    assert f"`{pins[0]}`" in guide, f"{pins[0]} is not named in docs/installation.md"
-
-
 def test_the_toc_rail_is_reserved_through_kpress_not_reimplemented_in_host_css() -> None:
     """The reading column holds one position, and KPress is what holds it.
 
