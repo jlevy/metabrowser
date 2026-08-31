@@ -235,7 +235,8 @@ metab ./path/to/directory --check-api
 
 Every route the browser reads is reachable this way, which makes `metab` usable as a
 scriptable front end to the same data the UI draws.
-See the [CLI reference](docs/cli.md) for every mode.
+See the [command-line guide](docs/command-line.md) for every mode; `metab --help` is the
+reference.
 
 The server binds to `127.0.0.1:8411` by default and walks a bounded port range if that
 port is occupied.
@@ -306,7 +307,8 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 Using Metabrowser:
 
 - [Installation](docs/installation.md) — uv setup, upgrades, and the agent skill
-- [CLI reference](docs/cli.md) — every `metab` mode, including the data modes agents use
+- [Using the command line](docs/command-line.md) — a guide to every `metab` mode;
+  `metab --help` is the reference
 - [Changelog](CHANGELOG.md) — what changed in each release
 - [Roadmap](TODO.md) — what is planned next
 

@@ -1,8 +1,14 @@
-# The `metab` Command Line
+# Using the Metabrowser Command Line
 
 Metabrowser is a local file browser, and `metab` is the same program without the
 browser. Every mode below runs the same server code the browser talks to, so what a mode
 reports is what the browser would have drawn.
+
+**`metab --help` is the reference.** It ships with the program, so it is authoritative
+for the flags and arguments of the build you actually have, and it is what an agent or a
+script should consult.
+This page is the other half: what each mode is *for*, worked examples, and why the data
+modes exist. Where the two disagree, believe `--help`.
 
 `metab` and `metabrowser` are the same command.
 

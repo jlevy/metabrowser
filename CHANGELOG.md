@@ -49,7 +49,8 @@ Features:
   `--show <path>` reports the four layers behind one selection — the route it resolves
   to, the kind it classifies as, the views it offers, and a summary of its model — and
   accepts browser addresses as well as paths, including `/view/<container>/<inner>`,
-  `/commit/<rev>`, and `/commit/<rev>/<inner>`. See the [CLI reference](docs/cli.md).
+  `/commit/<rev>`, and `/commit/<rev>/<inner>`. See the
+  [command-line guide](docs/command-line.md).
 
 - Every route the browser consumes is now reachable from `metab` and pinned by a golden
   transcript, and `devtools/check_parity.py` fails the build when a registered route has

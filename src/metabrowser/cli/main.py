@@ -256,7 +256,8 @@ _app = typer.Typer(add_completion=False)
         "metab . --show README.md\n\n"
         "metab . --check-api\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
-        "metab --plugins"
+        "metab --plugins\n\n"
+        "Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md"
     ),
 )
 def _metab(

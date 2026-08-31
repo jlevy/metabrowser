@@ -194,6 +194,7 @@ $ metab --help
  metab . --check-api
  metab --remote example-host --path /srv/shared-files
  metab --plugins
+ Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md
 ? 0
 ```
 
@@ -374,6 +375,7 @@ $ metab
  metab . --check-api
  metab --remote example-host --path /srv/shared-files
  metab --plugins
+ Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md
 ? 0
 ```
 
