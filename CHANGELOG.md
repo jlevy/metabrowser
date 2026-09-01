@@ -2,6 +2,14 @@
 
 All notable changes to Metabrowser are documented here.
 
+## Unreleased
+
+Fixes:
+
+- Inactive plugin tabs now mount their own renderer when first opened.
+  The lazy callbacks shared one function-scoped binding, so every tab after the default
+  invoked the last view’s renderer and left the selected panel blank.
+
 ## 0.9.0
 
 File-type identity:
