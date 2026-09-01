@@ -415,29 +415,35 @@ def _semantic_entry(entry: FsEntry) -> InventoryEntry:
 
 
 def _internal_entry(entry: InventoryEntry | FsEntry) -> FsEntry:
-    """Convert a contract entry to the Python store's retained record."""
+    """Convert a contract entry to the Python store's retained record.
+
+    Built positionally: this runs once per discovered entry, and binding twenty
+    keywords costs measurably more than passing them in order.
+    """
 
     if isinstance(entry, FsEntry):
         return entry
     entry_type = entry.type.value
     return FsEntry(
-        path=entry.path,
-        parent=entry.parent,
-        name=entry.name,
-        type=entry_type,
-        ext=entry.ext,
-        kind=entry_type if entry_type != "file" else "file",
-        size=entry.size,
-        mtime_ns=entry.mtime_ns,
-        mtime_hash="",
-        active=False,
-        total_files=entry.total_files,
-        total_size=entry.total_size,
-        unignored_files=entry.unignored_files,
-        unignored_size=entry.unignored_size,
-        newest_mtime_ns=entry.newest_mtime_ns,
-        empty=entry.empty,
-        gitignored=entry.gitignored,
+        entry.path,
+        entry.parent,
+        entry.name,
+        entry_type,
+        entry.ext,
+        entry_type if entry_type != "file" else "file",
+        entry.size,
+        entry.mtime_ns,
+        "",
+        False,
+        (),
+        (),
+        entry.total_files,
+        entry.total_size,
+        entry.unignored_files,
+        entry.unignored_size,
+        entry.newest_mtime_ns,
+        entry.empty,
+        entry.gitignored,
     )
 
 

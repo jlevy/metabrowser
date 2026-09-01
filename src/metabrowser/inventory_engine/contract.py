@@ -90,6 +90,7 @@ from metabrowser.file_type_registry import (
     load_file_type_registry_document,
     load_file_type_registry_from_text,
 )
+from metabrowser.fs_paths import derive_ext
 from metabrowser.wire_models import NavigationTallies, RollupResult
 
 MAX_CHANGE_PATHS = 1_024
@@ -762,8 +763,6 @@ class InventoryEntry:
         mtime_ns: int,
         gitignored: bool = False,
     ) -> InventoryEntry:
-        from metabrowser.fs_paths import derive_ext
-
         return cls(
             path=path,
             parent=parent,

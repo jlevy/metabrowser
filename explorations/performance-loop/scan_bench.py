@@ -115,22 +115,36 @@ def _print_profile(profiler: cProfile.Profile) -> None:
         print(f"{tottime:8.3f} {cumtime:8.3f} {ncalls:10,}  {where}")
 
 
-def run_binary(binary: str, root: Path, runs: int) -> list[float]:
-    """Time a full scan through a route that waits for the index."""
+def _time_one_scan(binary: str, root: Path) -> float:
+    """One full scan through a route that waits for the index."""
 
-    elapsed: list[float] = []
+    started = time.perf_counter()
+    completed = subprocess.run(
+        [binary, str(root), "--api", "/api/index/meta"],
+        capture_output=True,
+        timeout=600,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise SystemExit(f"{binary} exited {completed.returncode}: {completed.stderr[-400:]!r}")
+    return (time.perf_counter() - started) * 1000.0
+
+
+def run_binaries(builds: list[tuple[str, str]], root: Path, runs: int) -> list[list[float]]:
+    """Time every build, interleaved, one run of each per pass.
+
+    Running a whole condition and then the next one lets anything that drifts
+    over the measurement -- another process starting, thermal throttling, a
+    filesystem cache filling -- land entirely on whichever went second, which is
+    always the candidate. That is a difference the numbers cannot distinguish
+    from the change under test. Interleaving spreads the drift across both.
+    """
+
+    samples: list[list[float]] = [[] for _ in builds]
     for _ in range(runs):
-        started = time.perf_counter()
-        completed = subprocess.run(
-            [binary, str(root), "--api", "/api/index/meta"],
-            capture_output=True,
-            timeout=600,
-            check=False,
-        )
-        if completed.returncode != 0:
-            raise SystemExit(f"{binary} exited {completed.returncode}: {completed.stderr[-400:]!r}")
-        elapsed.append((time.perf_counter() - started) * 1000.0)
-    return elapsed
+        for index, (_label, binary) in enumerate(builds):
+            samples[index].append(_time_one_scan(binary, root))
+    return samples
 
 
 def summarize(label: str, samples: list[float]) -> dict[str, Any]:
@@ -181,11 +195,16 @@ def main() -> None:
     else:
         if not args.binary:
             raise SystemExit("binary mode needs at least one --binary LABEL=PATH")
+        builds: list[tuple[str, str]] = []
         for spec in args.binary:
             label, _, path = spec.partition("=")
             if not path:
                 raise SystemExit(f"--binary wants LABEL=PATH, got {spec!r}")
-            conditions.append(summarize(label, run_binary(path, corpus_dir, args.runs)))
+            builds.append((label, path))
+        for (label, _path), samples in zip(
+            builds, run_binaries(builds, corpus_dir, args.runs), strict=True
+        ):
+            conditions.append(summarize(label, samples))
 
     print()
     for condition in conditions:
@@ -204,6 +223,7 @@ def main() -> None:
 
     record = {
         "mode": args.mode,
+        "interleaved": args.mode == "binary",
         "corpus_files": corpus.get("files"),
         "corpus_dir": str(corpus_dir),
         "host_system": f"{platform.system()} {platform.release()}",
