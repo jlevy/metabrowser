@@ -31,25 +31,30 @@ from tests.inventory_harness import inventory_harness
 # session with several active dispatch runs; the bug shows even at 50.
 N_TRACKABLE = 200
 
-# Budget for the stall measurement during _tick. The event-loop probe wakes
-# every 1 ms; anything past this means the loop was blocked. 50 ms is generous
-# — a fix that runs the per-entry loop off-thread typically lands well under
-# 10 ms.
+# An absolute floor, below which the loop is simply not blocked. A tick that
+# stalls a few milliseconds is doing its work off-thread no matter what share
+# of its wall time that is.
 MAX_STALL_MS = 50.0
 
-# The reported figure is the best of this many attempts, and that is the
-# measurement rather than a concession to it.
+# Above that floor, the question is what share of the tick the loop spent
+# blocked -- and that is the part a machine cannot fake.
 #
-# A single attempt reports a maximum, so it is decided by the worst moment on
-# the machine during one run: one garbage collection, one scheduler preemption,
-# or a neighbouring test's thread pool is enough to blow the budget while _tick
-# itself never touched the loop. Load can only push the number up, never down,
-# so the floor across attempts is the part attributable to this code.
+# An absolute budget measures the machine as much as the code. On a contended
+# CI runner the loop thread can miss its slot for 60 ms with `_tick` doing
+# nothing but waiting on its executor, which failed this test at 71 ms and
+# again at 61 ms while the same source measured 3-5 ms locally. A slower
+# machine inflates the stall, but it inflates the tick's wall time with it, so
+# the ratio between them stays put.
 #
-# The regression this guards is per-entry sync `glob()` and `check_pid_alive()`
-# running on the loop, which costs hundreds of milliseconds on *every* tick.
-# That raises the floor as much as the ceiling, so it still fails here — while
-# a busy CI runner no longer does.
+# The regression this guards -- per-entry sync `glob()` and `check_pid_alive()`
+# on the loop -- makes the stall *be* the tick: roughly half its wall time,
+# against a few percent when the work runs off-thread. The threshold sits well
+# clear of both.
+MAX_STALL_SHARE = 0.25
+
+# Both figures are the best of this many attempts. Load can only push a
+# maximum up, so the floor across attempts is the part attributable to the
+# code.
 STALL_ATTEMPTS = 3
 
 
@@ -136,12 +141,15 @@ def test_tick_does_not_block_event_loop(tmp_path: Path) -> None:
     spread = ", ".join(f"{stall:.1f}" for _wall, stall in attempts)
     print(
         f"\n_tick wall-time={tick_ms:.1f}ms  event-loop stall={stall_ms:.1f}ms  "
-        f"(best of {STALL_ATTEMPTS}: {spread} ms, N={N_TRACKABLE} trackable files)"
+        f"({stall_ms / tick_ms:.1%} of the tick, best of {STALL_ATTEMPTS}: "
+        f"{spread} ms, N={N_TRACKABLE} trackable files)"
     )
-    if stall_ms >= MAX_STALL_MS:
+    share = stall_ms / tick_ms if tick_ms > 0 else 0.0
+    if stall_ms >= MAX_STALL_MS and share >= MAX_STALL_SHARE:
         pytest.fail(
-            f"Event loop stalled {stall_ms:.1f} ms during _tick (limit "
-            f"{MAX_STALL_MS:.0f} ms). The per-entry sync glob() + "
+            f"Event loop stalled {stall_ms:.1f} ms during a {tick_ms:.1f} ms _tick "
+            f"({share:.0%} of it, limit {MAX_STALL_SHARE:.0%} above a "
+            f"{MAX_STALL_MS:.0f} ms floor). The per-entry sync glob() + "
             "check_pid_alive() block on the loop. Wrap the per-entry "
             "loop in asyncio.to_thread."
         )
