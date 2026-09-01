@@ -16,8 +16,8 @@ from typing import Any, Literal, cast
 
 from metabrowser.color_oklch import BAND_CENTER, TonePosition, band_positions
 
-FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v3"
-FILE_TYPE_REGISTRY_SCHEMA_VERSION = 3
+FILE_TYPE_REGISTRY_SCHEMA = "file-type-registry-v4"
+FILE_TYPE_REGISTRY_SCHEMA_VERSION = 4
 FILE_TYPE_REGISTRY_RESOURCE = "data/file-rollup-format/recommended-file-types.toml"
 FILE_TYPE_FAMILY_KEY_PREFIX = "family:"
 FILE_TYPE_NO_EXTENSION_KEY = "(none)"
@@ -77,6 +77,13 @@ class FileTypeGroup:
     id: str
     label: str
     order: int
+    icon: str
+    """The shape every family in this group takes unless it declares its own.
+
+    Required here so a family always resolves to something. The split follows
+    the rule the file tree already states: the icon is the major type and the
+    colour is the subtype, which is why 56 families need only six shapes and a
+    handful of overrides."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +125,12 @@ class FileTypeFamily:
     one way to leave it, and only with a ``deviation`` saying why, because the
     band is what bounds how much a stacked-bar segment can read heavier than
     its size."""
+    icon: str | None
+    """This family's own shape, or ``None`` to take the group's.
+
+    Declared only where the format reads as its own thing rather than as a
+    member of its group -- tabular data against a list, a log stream against a
+    document. A family that looks like its neighbours should look like them."""
 
     @property
     def distribution_key(self) -> str:
@@ -177,6 +190,7 @@ class _FamilyDeclaration:
     linguist_color: str | None
     deviation: str | None
     lightness_rank: float | None
+    icon: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,7 +343,7 @@ class FileTypeRegistry:
             "fingerprint": self.fingerprint,
             "max_extension_components": self.max_extension_components,
             "groups": tuple(
-                {"id": group.id, "label": group.label, "order": group.order}
+                {"id": group.id, "label": group.label, "order": group.order, "icon": group.icon}
                 for group in self.groups
             ),
             "families": tuple(
@@ -342,6 +356,7 @@ class FileTypeRegistry:
                     "hue": family.hue,
                     "linguist": family.linguist,
                     "linguist_color": family.linguist_color,
+                    "icon": family.icon,
                     "deviation": family.deviation,
                     "lightness_rank": family.lightness_rank,
                 }
@@ -627,13 +642,14 @@ def _parse_groups(raw_groups: list[Mapping[str, Any]]) -> tuple[FileTypeGroup, .
             raise FileTypeRegistryError("duplicate-id", "duplicate group id", table_id=group_id)
         label = _required_string(raw, "label", group_id).strip()
         order = _required_integer(raw, "order", group_id)
+        icon = _required_string(raw, "icon", group_id).strip()
         if order in orders:
             raise FileTypeRegistryError(
                 "duplicate-order", "duplicate group order", table_id=group_id, value=order
             )
         ids.add(group_id)
         orders.add(order)
-        groups.append(FileTypeGroup(group_id, label, order))
+        groups.append(FileTypeGroup(group_id, label, order, icon))
     if "other" not in ids:
         raise FileTypeRegistryError("missing-fallback", "registry must declare the other group")
     return tuple(sorted(groups, key=lambda group: (group.order, group.id)))
@@ -671,6 +687,16 @@ def _parse_families(
         hue = _required_hue(raw, family_id)
         linguist, linguist_color = _parse_linguist(raw, family_id)
         deviation, lightness_rank = _parse_deviation(raw, family_id)
+        raw_icon = raw.get("icon")
+        if raw_icon is not None and (not isinstance(raw_icon, str) or not raw_icon.strip()):
+            raise FileTypeRegistryError(
+                "invalid-icon",
+                "family icon must be a non-empty string when declared",
+                table_id=family_id,
+                field_name="icon",
+                value=raw_icon,
+            )
+        icon = raw_icon.strip() if isinstance(raw_icon, str) else None
         ids.add(family_id)
         orders.add(order_key)
         declarations.append(
@@ -684,6 +710,7 @@ def _parse_families(
                 linguist_color,
                 deviation,
                 lightness_rank,
+                icon,
             )
         )
     group_order = {group.id: group.order for group in groups}
@@ -870,6 +897,7 @@ def _materialize_families(
                 declaration.linguist_color,
                 declaration.deviation,
                 declaration.lightness_rank,
+                declaration.icon,
             )
         )
     return tuple(families)
@@ -890,7 +918,8 @@ def _registry_fingerprint(
         "registry_revision": revision,
         "max_extension_components": max_components,
         "groups": [
-            {"id": group.id, "label": group.label, "order": group.order} for group in groups
+            {"id": group.id, "label": group.label, "order": group.order, "icon": group.icon}
+            for group in groups
         ],
         "families": [
             {

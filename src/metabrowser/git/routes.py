@@ -32,8 +32,16 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from metabrowser.git.detail import read_commit_detail
-from metabrowser.git.log import decode_cursor, read_log_page, read_refs, resolve_default_scope
-from metabrowser.git.process import GitError, GitTimeoutError
+from metabrowser.git.history import (
+    HISTORY_SESSIONS,
+    ExpiredHistorySessionError,
+    HistoryStorageError,
+    InvalidHistoryCursorError,
+    StaleHistorySessionError,
+    resolve_history_scope,
+)
+from metabrowser.git.log import read_history_summary, read_refs
+from metabrowser.git.process import GitError, GitTimeoutError, failure_detail
 from metabrowser.git.repo import RepoContext, repo_info
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
 from metabrowser.paths_safe import _resolved_root_dir
@@ -57,7 +65,7 @@ async def _resolve(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]:
     try:
         return await repo_info(served_root)
     except GitError as exc:
-        log.warning("git repository resolution failed: %s", exc)
+        log.warning("git repository resolution failed: %s", failure_detail(exc))
         return None, GitRepoInfo(is_repo=False, root=None, head=None, reason="git_failed")
 
 
@@ -94,10 +102,45 @@ async def api_git_refs(_request: Request) -> JSONResponse:
     try:
         refs = await read_refs(served_root, head_ref=context.head["ref"])
     except GitError as exc:
-        log.warning("git refs failed: %s", exc)
+        log.warning("git refs failed: %s", failure_detail(exc))
         return _git_failure_response(exc)
 
     return JSONResponse({"is_repo": True, "refs": refs})
+
+
+async def api_git_summary(request: Request) -> JSONResponse:
+    """``GET /api/git/summary`` — history depth for the panel header.
+
+    Total commits reachable from the requested scope and the committer
+    date of the oldest root commit. Loaded lazily by the panel after the
+    first page paints — the same pattern as the file tree's tally row —
+    so its one graph traversal never blocks history rendering.
+
+    ``scope`` follows ``/api/git/log``: ``all`` counts every ref, the
+    default counts the same refs the panel walks.
+    """
+    served_root = _resolved_root_dir()
+    context, info = await _resolve(served_root)
+    if context is None:
+        return JSONResponse(_negative_payload(info))
+    if context.head.get("unborn"):
+        return JSONResponse({"is_repo": True, "commit_count": 0, "first_commit_at": None})
+
+    wants_all = request.query_params.get("scope") == "all"
+    try:
+        scope = await resolve_history_scope(served_root, wants_all=wants_all)
+        commit_count, first_commit_at = await read_history_summary(
+            served_root,
+            revisions=scope.arguments,
+            all_refs=wants_all,
+        )
+    except GitError as exc:
+        log.warning("git summary failed: %s", failure_detail(exc))
+        return _git_failure_response(exc)
+
+    return JSONResponse(
+        {"is_repo": True, "commit_count": commit_count, "first_commit_at": first_commit_at}
+    )
 
 
 async def api_git_log(request: Request) -> JSONResponse:
@@ -125,10 +168,7 @@ async def api_git_log(request: Request) -> JSONResponse:
         return JSONResponse(_negative_payload(info))
 
     limit = _clamped_limit(request.query_params.get("limit", ""))
-    cursor = request.query_params.get("cursor", "")
-    skip = decode_cursor(cursor) if cursor else 0
-    if skip is None:
-        return JSONResponse({"error": "invalid cursor"}, status_code=400)
+    cursor = request.query_params.get("cursor") or None
 
     # An unborn HEAD is a repository with no commits. `git log` exits
     # non-zero there, which would read as a failure; short-circuit to the
@@ -136,20 +176,49 @@ async def api_git_log(request: Request) -> JSONResponse:
     if context.head.get("unborn"):
         return JSONResponse({"is_repo": True, "commits": [], "cursor": None, "has_more": False})
 
-    wants_all = request.query_params.get("scope", "") == "all"
+    raw_scope = request.query_params.get("scope")
+    wants_all = raw_scope == "all" if raw_scope is not None else None
     try:
-        refs = None if wants_all else await resolve_default_scope(served_root)
-        page = await read_log_page(served_root, skip=skip, limit=limit, refs=refs)
+        page = await HISTORY_SESSIONS.read_page(
+            served_root,
+            wants_all=wants_all,
+            limit=limit,
+            cursor=cursor,
+        )
+    except InvalidHistoryCursorError:
+        return JSONResponse(
+            {"error": "invalid cursor", "code": "history_cursor_invalid"},
+            status_code=400,
+        )
+    except StaleHistorySessionError:
+        return JSONResponse(
+            {
+                "error": "git history changed; refresh required",
+                "code": "history_stale",
+            },
+            status_code=409,
+        )
+    except ExpiredHistorySessionError:
+        return JSONResponse(
+            {
+                "error": "git history session expired; refresh required",
+                "code": "history_expired",
+            },
+            status_code=410,
+        )
+    except HistoryStorageError:
+        return JSONResponse(
+            {
+                "error": "git history session storage exhausted",
+                "code": "history_storage_exhausted",
+            },
+            status_code=507,
+        )
     except GitError as exc:
-        log.warning("git log failed: %s", exc)
+        log.warning("git log failed: %s", failure_detail(exc))
         return _git_failure_response(exc)
 
-    # The panel states what it is showing, so a graph that omits a branch
-    # never looks like a graph that lost one.
-    payload = dict(page)
-    payload["scope"] = "all" if wants_all else "default"
-    payload["scope_refs"] = list(refs) if refs else []
-    return JSONResponse(payload)
+    return JSONResponse(dict(page))
 
 
 async def api_git_commit(request: Request) -> JSONResponse:
@@ -175,7 +244,7 @@ async def api_git_commit(request: Request) -> JSONResponse:
     try:
         detail = await read_commit_detail(context, revision)
     except GitError as exc:
-        log.warning("git commit detail failed for %s: %s", revision, exc)
+        log.warning("git commit detail failed for %s: %s", revision, failure_detail(exc))
         return _git_failure_response(exc)
 
     if detail is None:
@@ -199,6 +268,7 @@ def _clamped_limit(raw: str) -> int:
 GIT_ROUTES: list[Route] = [
     Route("/api/git/repo", api_git_repo),
     Route("/api/git/refs", api_git_refs),
+    Route("/api/git/summary", api_git_summary),
     Route("/api/git/log", api_git_log),
     Route("/api/git/commit/{revision}", api_git_commit),
 ]

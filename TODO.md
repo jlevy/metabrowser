@@ -17,10 +17,13 @@ Checked items below are supported today; unchecked items are planned work.
 | File actions | [Menu primitives and gated file actions](docs/project/specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md) | Draft |
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
-| Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md) | Graph panel, read-only Git API, and diff rendering shipped; `/compare/` remains |
+| Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | Draft; versioned cache and URL-open foundation first, after CLI parity. Serving is gated on the content-trust chain |
+| GitHub provider | [Content model, acquisition, and pull requests](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md) | Draft; split from the repository library, depends on the generic cache |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
+| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [CLI-first delivery](docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md) | Mechanism delivered: `--api` and `--show` reach every route, `check_parity.py` gates the table, and reports the current counts when it runs. Git status and the repository cache are proved through it |
 
 Delivered plans keep their record in [done plans](docs/project/README.md#done-plans):
 the navigation baseline, folder Overview and file-type summaries, semantic file-type
@@ -94,8 +97,15 @@ Two known gaps sit outside that plan and are not regressions:
   [web diff viewer research](docs/project/research/research-2026-07-17-web-diff-viewer-architecture.md),
   then stage its delivery behind a written plan
 - [x] Add a Git graph navigation panel over a read-only Git collection API
+- [ ] Add read-only
+  [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md),
+  with conflicts, staged, unstaged, and untracked groups above history
 - [ ] Build the `/compare/<base>..<head>` route, which
   [the URL grammar](docs/architecture.md) specifies and nothing serves yet
+- [ ] Add the
+  [repository library](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md):
+  a versioned local cache that opens or reuses Git URLs, followed by refresh, a repo
+  chooser, and provider-owned metadata such as GitHub pull requests
 
 Both entered core behind written plans, with the read-only boundary and bounded-cost
 model those plans required: the Git routes only read, every `git` subprocess is bounded

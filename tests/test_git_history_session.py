@@ -1,0 +1,657 @@
+"""Bounded continuation sessions for deep Git history."""
+
+from __future__ import annotations
+
+import asyncio
+import shutil
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+from unittest import mock
+
+import pytest
+
+from devtools.git_history_benchmark import HistoryShape, build_history_corpus
+from metabrowser.git import history as history_module
+from metabrowser.git.history import (
+    ExpiredHistorySessionError,
+    HistoryCursor,
+    HistoryParserError,
+    HistoryScope,
+    HistorySession,
+    HistorySessionRegistry,
+    HistoryStorageError,
+    InvalidHistoryCursorError,
+    StaleHistorySessionError,
+    decode_history_cursor,
+    encode_history_cursor,
+    resolve_history_scope,
+)
+from metabrowser.git.log import LOG_FORMAT
+from metabrowser.git.process import GitCommandError, run_git
+from metabrowser.git.wire import validate_git_log_page
+from metabrowser.settings import GIT_HISTORY_SESSION_PARSER_MAX_BYTES, GIT_LOG_MAX_LIMIT
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("git") is None,
+    reason="git executable is required to build the fixture repositories",
+)
+
+
+def _history(root: Path, *, commits: int = 17) -> Path:
+    build_history_corpus(root, shape="linear", commit_count=commits)
+    return root
+
+
+def test_history_cursor_round_trips_and_rejects_every_invalid_shape() -> None:
+    cursor = HistoryCursor(
+        session_id="abcdefghijklmnop",
+        page=37,
+        direction="previous",
+        scope_fingerprint="a" * 64,
+        page_size=250,
+    )
+    assert decode_history_cursor(encode_history_cursor(cursor)) == cursor
+
+    for invalid in (
+        "",
+        "!!!",
+        "Zm9v",
+        encode_history_cursor(cursor) + "%",
+        encode_history_cursor(cursor)[:-1],
+    ):
+        assert decode_history_cursor(invalid) is None
+
+
+def test_one_walk_pages_are_contiguous_and_replayable(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history")
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            expected = (
+                (await run_git(["rev-list", "--date-order", "--all"], cwd=root))
+                .decode()
+                .splitlines()
+            )
+            first = await registry.read_page(root, wants_all=True, limit=4, cursor=None)
+            validate_git_log_page(dict(first))
+            assert first.get("page") == 0
+            assert first.get("previous_cursor") is None
+            first_scope_fingerprint = first.get("scope_fingerprint")
+            first_checkpoint = first.get("graph_checkpoint")
+            assert first_scope_fingerprint is not None
+            assert first_checkpoint == {
+                "version": 1,
+                "prior_swimlanes": [],
+                "color_index": -1,
+                "head_revision": expected[0],
+                "scope_fingerprint": first_scope_fingerprint,
+            }
+            first_cursor = first["cursor"]
+            first_page_cursor = first.get("page_cursor")
+            assert first_cursor is not None
+            assert first_page_cursor is not None
+
+            decoded = decode_history_cursor(first_page_cursor)
+            assert decoded is not None
+            session = registry._sessions[decoded.session_id]
+            assert "--skip" not in session.command_args
+            assert session.command_args[-1] == "--stdin"
+            assert not set(session.scope.arguments) & set(session.command_args)
+            spool_path = session.spool_path
+            assert spool_path is not None and spool_path.is_file()
+
+            second = await registry.read_page(
+                root,
+                wants_all=True,
+                limit=4,
+                cursor=first_cursor,
+            )
+            third = await registry.read_page(
+                root,
+                wants_all=True,
+                limit=4,
+                cursor=second["cursor"],
+            )
+            replayed_first = await registry.read_page(
+                root,
+                wants_all=True,
+                limit=4,
+                cursor=first_page_cursor,
+            )
+            previous_cursor = third.get("previous_cursor")
+            assert previous_cursor is not None
+            replayed_second = await registry.read_page(
+                root,
+                wants_all=True,
+                limit=4,
+                cursor=previous_cursor,
+            )
+
+            combined = [
+                commit["id"] for page in (first, second, third) for commit in page["commits"]
+            ]
+            assert combined == expected[:12]
+            assert replayed_first["commits"] == first["commits"]
+            assert replayed_second["commits"] == second["commits"]
+            replayed_first_checkpoint = replayed_first.get("graph_checkpoint")
+            replayed_second_checkpoint = replayed_second.get("graph_checkpoint")
+            second_checkpoint = second.get("graph_checkpoint")
+            assert replayed_first_checkpoint == first_checkpoint
+            assert replayed_second_checkpoint == second_checkpoint
+            assert second_checkpoint is not None
+            assert second_checkpoint["prior_swimlanes"] == [
+                {"id": second["commits"][0]["id"], "color": "var(--git-ref-local)"}
+            ]
+        finally:
+            await registry.close_all()
+
+        assert not spool_path.exists()
+
+    asyncio.run(scenario())
+
+
+def test_merge_page_checkpoint_preserves_converging_lane_colors(tmp_path: Path) -> None:
+    root = tmp_path / "merge-history"
+    build_history_corpus(root, shape="merge-heavy", commit_count=17)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=True, limit=4, cursor=None)
+            assert first["cursor"] is not None
+            second = await registry.read_page(
+                root,
+                wants_all=True,
+                limit=4,
+                cursor=first["cursor"],
+            )
+            checkpoint = second.get("graph_checkpoint")
+            assert checkpoint is not None
+            boundary_revision = second["commits"][0]["id"]
+            assert checkpoint["prior_swimlanes"] == [
+                {"id": boundary_revision, "color": "var(--git-ref-local)"},
+                {"id": boundary_revision, "color": "var(--git-lane-2)"},
+            ]
+            assert checkpoint["color_index"] == 1
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_ref_movement_expires_the_snapshot_instead_of_changing_order(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=8)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            assert first["cursor"] is not None
+            await run_git(["update-ref", "refs/heads/new-tip", "HEAD~3"], cwd=root)
+            with pytest.raises(StaleHistorySessionError):
+                await registry.read_page(
+                    root,
+                    wants_all=True,
+                    limit=2,
+                    cursor=first["cursor"],
+                )
+            assert registry.session_count == 0
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_default_scope_expires_when_its_head_moves(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=8)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=False, limit=2, cursor=None)
+            assert first["cursor"] is not None
+            await run_git(["update-ref", "refs/heads/main", "HEAD~1"], cwd=root)
+            with pytest.raises(StaleHistorySessionError):
+                await registry.read_page(
+                    root,
+                    wants_all=None,
+                    limit=2,
+                    cursor=first["cursor"],
+                )
+            assert registry.session_count == 0
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_session_expires_when_head_switches_refs_at_the_same_commit(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=8)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=False, limit=2, cursor=None)
+            assert first["cursor"] is not None
+            await run_git(["checkout", "-q", "-b", "same-tip"], cwd=root)
+            with pytest.raises(StaleHistorySessionError):
+                await registry.read_page(
+                    root,
+                    wants_all=None,
+                    limit=2,
+                    cursor=first["cursor"],
+                )
+            assert registry.session_count == 0
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_registry_evicts_the_least_recent_session_at_its_entry_bound(tmp_path: Path) -> None:
+    first_root = _history(tmp_path / "first", commits=8)
+    second_root = _history(tmp_path / "second", commits=8)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(max_entries=1, max_walks=1, idle_ttl_s=60)
+        try:
+            first = await registry.read_page(first_root, wants_all=True, limit=2, cursor=None)
+            assert first["cursor"] is not None
+            await registry.read_page(second_root, wants_all=True, limit=2, cursor=None)
+            assert registry.session_count == 1
+            with pytest.raises(ExpiredHistorySessionError):
+                await registry.read_page(
+                    first_root,
+                    wants_all=True,
+                    limit=2,
+                    cursor=first["cursor"],
+                )
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_walk_eviction_drains_a_full_stdout_pipe_before_reaping(tmp_path: Path) -> None:
+    root = tmp_path / "deep-history"
+    build_history_corpus(root, shape="linear", commit_count=10_000)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(max_entries=2, max_walks=1, idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            assert first["cursor"] is not None
+            decoded = decode_history_cursor(first["cursor"])
+            assert decoded is not None
+            assert registry._sessions[decoded.session_id].walk_active is True
+            # Starting another walk evicts the first while Git still has far
+            # more than one pipe buffer of history left to write. The second
+            # page must not wait forever for the killed producer to be reaped.
+            second = await asyncio.wait_for(
+                registry.read_page(root, wants_all=True, limit=2, cursor=None),
+                timeout=5,
+            )
+            assert len(second["commits"]) == 2
+            assert registry.session_count == 1
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_parser_budget_expires_the_session(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=4)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(parser_max_bytes=64, idle_ttl_s=60)
+        try:
+            with pytest.raises(HistoryParserError, match="buffer budget"):
+                await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            assert registry.session_count == 0
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_storage_exhaustion_deletes_the_private_spool(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=4)
+
+    async def scenario() -> None:
+        scope = await resolve_history_scope(root, wants_all=True)
+        session = await HistorySession.start(
+            root=root,
+            scope=scope,
+            page_size=2,
+            parser_max_bytes=128 * 1024,
+            storage_max_bytes=8,
+            clock=lambda: 0.0,
+        )
+        spool_path = session.spool_path
+        assert spool_path is not None
+        cursor = HistoryCursor(
+            session_id=session.id,
+            page=0,
+            direction="next",
+            scope_fingerprint=scope.fingerprint,
+            page_size=2,
+        )
+        with pytest.raises(HistoryStorageError):
+            await session.page(cursor)
+        assert session.closed is True
+        assert not spool_path.exists()
+
+    asyncio.run(scenario())
+
+
+def test_idle_reaping_deletes_the_spool_and_expires_its_cursor(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=8)
+    now = 10.0
+
+    def clock() -> float:
+        return now
+
+    async def scenario() -> None:
+        nonlocal now
+        registry = HistorySessionRegistry(idle_ttl_s=5, clock=clock)
+        try:
+            first = await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            assert first["cursor"] is not None
+            decoded = decode_history_cursor(first["cursor"])
+            assert decoded is not None
+            spool_path = registry._sessions[decoded.session_id].spool_path
+            assert spool_path is not None and spool_path.exists()
+
+            now = 16.0
+            await registry.reap_expired()
+            assert registry.session_count == 0
+            assert not spool_path.exists()
+            with pytest.raises(ExpiredHistorySessionError):
+                await registry.read_page(
+                    root,
+                    wants_all=True,
+                    limit=2,
+                    cursor=first["cursor"],
+                )
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_missing_replay_spool_expires_the_session(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=8)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            page_cursor = first.get("page_cursor")
+            assert page_cursor is not None
+            decoded = decode_history_cursor(page_cursor)
+            assert decoded is not None
+            spool_path = registry._sessions[decoded.session_id].spool_path
+            assert spool_path is not None
+            spool_path.unlink()
+
+            with pytest.raises(HistoryStorageError, match="spool read failed"):
+                await registry.read_page(
+                    root,
+                    wants_all=True,
+                    limit=2,
+                    cursor=page_cursor,
+                )
+            assert registry.session_count == 0
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_cursor_cannot_change_page_size_or_skip_unvisited_pages(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=8)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            first = await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            first_cursor = first["cursor"]
+            assert first_cursor is not None
+            with pytest.raises(InvalidHistoryCursorError):
+                await registry.read_page(
+                    root,
+                    wants_all=True,
+                    limit=3,
+                    cursor=first_cursor,
+                )
+
+            decoded = decode_history_cursor(first_cursor)
+            assert decoded is not None
+            skipped = encode_history_cursor(
+                HistoryCursor(
+                    session_id=decoded.session_id,
+                    page=decoded.page + 1,
+                    direction="next",
+                    scope_fingerprint=decoded.scope_fingerprint,
+                    page_size=decoded.page_size,
+                )
+            )
+            with pytest.raises(InvalidHistoryCursorError):
+                await registry.read_page(
+                    root,
+                    wants_all=True,
+                    limit=2,
+                    cursor=skipped,
+                )
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("shape", ["linear", "branch-heavy", "merge-heavy"])
+def test_every_measured_history_shape_matches_one_date_order_walk(
+    tmp_path: Path,
+    shape: HistoryShape,
+) -> None:
+    root = tmp_path / shape
+    build_history_corpus(root, shape=shape, commit_count=73)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            expected = (
+                (await run_git(["rev-list", "--date-order", "--all"], cwd=root))
+                .decode()
+                .splitlines()
+            )
+            actual: list[str] = []
+            cursor: str | None = None
+            while True:
+                page = await registry.read_page(
+                    root,
+                    wants_all=True,
+                    limit=11,
+                    cursor=cursor,
+                )
+                actual.extend(commit["id"] for commit in page["commits"])
+                cursor = page["cursor"]
+                if cursor is None:
+                    break
+            assert actual == expected
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_deep_continuation_never_adds_skip_to_the_git_walk(tmp_path: Path) -> None:
+    root = _history(tmp_path / "deep-history", commits=1_003)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            cursor: str | None = None
+            seen = 0
+            session_id: str | None = None
+            while True:
+                page = await registry.read_page(
+                    root,
+                    wants_all=True if cursor is None else None,
+                    limit=97,
+                    cursor=cursor,
+                )
+                seen += len(page["commits"])
+                page_cursor = page.get("page_cursor")
+                assert page_cursor is not None
+                decoded = decode_history_cursor(page_cursor)
+                assert decoded is not None
+                session_id = session_id or decoded.session_id
+                assert decoded.session_id == session_id
+                assert "--skip" not in registry._sessions[session_id].command_args
+                cursor = page["cursor"]
+                if cursor is None:
+                    break
+            assert seen == 1_003
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_two_panels_hold_two_independent_sessions(tmp_path: Path) -> None:
+    first_root = _history(tmp_path / "first", commits=101)
+    second_root = _history(tmp_path / "second", commits=101)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(max_entries=2, max_walks=2, idle_ttl_s=60)
+        try:
+            first, second = await asyncio.gather(
+                registry.read_page(first_root, wants_all=True, limit=2, cursor=None),
+                registry.read_page(second_root, wants_all=True, limit=2, cursor=None),
+            )
+            assert first["cursor"] is not None
+            assert second["cursor"] is not None
+            assert registry.session_count == 2
+            session_ids = {
+                decoded.session_id
+                for cursor in (first["cursor"], second["cursor"])
+                if (decoded := decode_history_cursor(cursor)) is not None
+            }
+            assert len(session_ids) == 2
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_subprocess_failure_discards_the_session(tmp_path: Path) -> None:
+    root = _history(tmp_path / "history", commits=4)
+
+    async def scenario() -> None:
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        invalid_scope = HistoryScope(
+            name="default",
+            arguments=("0" * 40,),
+            display_refs=("HEAD",),
+            fingerprint="f" * 64,
+        )
+        try:
+            with (
+                mock.patch(
+                    "metabrowser.git.history.resolve_history_scope",
+                    return_value=invalid_scope,
+                ),
+                pytest.raises(GitCommandError, match="git log"),
+            ):
+                await registry.read_page(root, wants_all=False, limit=2, cursor=None)
+            assert registry.session_count == 0
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_max_limit_page_stays_inside_the_scaled_parser_budget(tmp_path: Path) -> None:
+    """The route clamps ``limit`` to GIT_LOG_MAX_LIMIT, so a page of that
+    size is legal. The parser budget is measured per default-limit page and
+    must scale with the requested page, or the request the route declared
+    legal comes back as a 500."""
+    root = _history(tmp_path / "history", commits=900)
+
+    async def scenario() -> None:
+        raw = await run_git(
+            ["log", "-z", f"--format={LOG_FORMAT}", "--decorate=full", "--date-order", "--all"],
+            cwd=root,
+        )
+        # The fixture only guards the regression while one max-limit page
+        # is larger than the unscaled default budget.
+        assert len(raw) > GIT_HISTORY_SESSION_PARSER_MAX_BYTES
+
+        registry = HistorySessionRegistry(idle_ttl_s=60)
+        try:
+            page = await registry.read_page(
+                root,
+                wants_all=True,
+                limit=GIT_LOG_MAX_LIMIT,
+                cursor=None,
+            )
+            assert len(page["commits"]) == 900
+            assert page["cursor"] is None
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_reaping_survives_a_session_whose_cleanup_fails(tmp_path: Path) -> None:
+    """One session's failing cleanup must neither skip the other expired
+    sessions nor propagate into the reaper loop, which would end it."""
+    root = _history(tmp_path / "history", commits=4)
+    now = 10.0
+
+    def clock() -> float:
+        return now
+
+    async def scenario() -> None:
+        nonlocal now
+        registry = HistorySessionRegistry(idle_ttl_s=5, clock=clock)
+        try:
+            await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            await registry.read_page(root, wants_all=True, limit=2, cursor=None)
+            sessions = list(registry._sessions.values())
+            assert len(sessions) == 2
+
+            now = 16.0
+            with mock.patch.object(sessions[0], "close", side_effect=OSError("spool held open")):
+                await registry.reap_expired()
+            assert registry.session_count == 0
+            assert sessions[1].closed is True
+            await sessions[0].close()
+        finally:
+            await registry.close_all()
+
+    asyncio.run(scenario())
+
+
+def test_default_scope_resolves_each_candidate_exactly_once(tmp_path: Path) -> None:
+    """Scope resolution runs on every paged request; resolving a candidate
+    ref twice doubles the subprocess cost of continuous scrolling."""
+    root = _history(tmp_path / "history", commits=4)
+
+    async def scenario() -> None:
+        calls: list[tuple[str, ...]] = []
+        real_run_git = history_module.run_git
+
+        async def spy(args: Sequence[str], **kwargs: Any) -> bytes:
+            calls.append(tuple(args))
+            return await real_run_git(args, **kwargs)
+
+        with mock.patch.object(history_module, "run_git", spy):
+            await resolve_history_scope(root, wants_all=False)
+        verifies = [call for call in calls if call[:3] == ("rev-parse", "--verify", "--quiet")]
+        assert len(verifies) == len(set(verifies))
+
+    asyncio.run(scenario())

@@ -10,6 +10,10 @@ HIGHLIGHT_THEME_CSS = STATIC_DIR / "vendor" / "highlight-github.min.css"
 DIFF_STYLES_CSS = STATIC_DIR.parent / "builtin_plugins" / "diff" / "styles.css"
 
 MINIMUM_TEXT_CONTRAST = 4.5
+MINIMUM_GUTTER_CONTRAST = 3.0
+PALE_DIFF_MIX = 0.03
+STRONG_DIFF_MIX = 0.09
+INNER_DIFF_MIX = 0.20
 HUE_CIRCLE_DEGREES = 360.0
 PERCENT_SCALE = 100.0
 SRGB_LINEAR_THRESHOLD = 0.04045
@@ -288,23 +292,41 @@ def test_syntax_foregrounds_meet_contrast_over_diff_tints() -> None:
         ("dark", {**light_tokens, **dark_overrides}),
     ):
         background = _parse_color(_resolved_color(tokens, "--bg"))
-        surfaces = {
+        success = _parse_color(_resolved_color(tokens, "--status-success"))
+        error = _parse_color(_resolved_color(tokens, "--status-error"))
+        strong_addition = _mix_srgb(success, background, STRONG_DIFF_MIX)
+        strong_deletion = _mix_srgb(error, background, STRONG_DIFF_MIX)
+        refined_addition = _mix_srgb(success, background, PALE_DIFF_MIX)
+        refined_deletion = _mix_srgb(error, background, PALE_DIFF_MIX)
+        inner_foreground = _parse_color(_resolved_color(tokens, "--text"))
+        surfaces: dict[str, tuple[float, float, float]] = {
             "context": background,
-            "addition": _mix_srgb(
-                _parse_color(_resolved_color(tokens, "--status-success")), background, 0.12
-            ),
-            "deletion": _mix_srgb(
-                _parse_color(_resolved_color(tokens, "--status-error")), background, 0.12
-            ),
+            "addition": strong_addition,
+            "deletion": strong_deletion,
+            "refined addition": refined_addition,
+            "refined deletion": refined_deletion,
+            "inner addition": _mix_srgb(success, refined_addition, INNER_DIFF_MIX),
+            "inner deletion": _mix_srgb(error, refined_deletion, INNER_DIFF_MIX),
         }
         for foreground_token in SYNTAX_FOREGROUND_TOKENS:
             foreground = _parse_color(_resolved_color(tokens, foreground_token))
             for surface_name, surface in surfaces.items():
-                contrast = _contrast_ratio_rgb(foreground, surface)
+                rendered_foreground = (
+                    inner_foreground if surface_name.startswith("inner ") else foreground
+                )
+                contrast = _contrast_ratio_rgb(rendered_foreground, surface)
                 assert contrast >= MINIMUM_TEXT_CONTRAST, (
                     f"{theme} {foreground_token} has {contrast:.2f}:1 contrast "
                     f"over the diff {surface_name} surface"
                 )
+        for direction, status, surface in (
+            ("addition", success, strong_addition),
+            ("deletion", error, strong_deletion),
+        ):
+            contrast = _contrast_ratio_rgb(status, surface)
+            assert contrast >= MINIMUM_GUTTER_CONTRAST, (
+                f"{theme} {direction} gutter has {contrast:.2f}:1 contrast against its line surface"
+            )
 
 
 def test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract() -> None:
@@ -324,5 +346,53 @@ def test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract() -> None:
     assert "user-select: none;" in _rule_body(
         css,
         '.metabrowser-diff-host .diff-root[data-selection-side="new"] .diff-split-old .diff-line-text',
+    )
+    host_tokens = _rule_body(css, ".metabrowser-diff-host")
+    assert (
+        "--diff-add-row-bg: color-mix(in srgb, var(--status-success) 9%, transparent);"
+        in host_tokens
+    )
+    assert (
+        "--diff-del-row-bg: color-mix(in srgb, var(--status-error) 9%, transparent);" in host_tokens
+    )
+    assert (
+        "--diff-add-refined-row-bg: color-mix(in srgb, var(--status-success) 3%, transparent);"
+        in host_tokens
+    )
+    assert (
+        "--diff-del-refined-row-bg: color-mix(in srgb, var(--status-error) 3%, transparent);"
+        in host_tokens
+    )
+    assert (
+        "--diff-add-inner-bg: color-mix(in srgb, var(--status-success) 20%, transparent);"
+        in host_tokens
+    )
+    assert (
+        "--diff-del-inner-bg: color-mix(in srgb, var(--status-error) 20%, transparent);"
+        in host_tokens
+    )
+    assert "--diff-add-gutter: var(--status-success);" in host_tokens
+    assert "--diff-del-gutter: var(--status-error);" in host_tokens
+    assert "--diff-change-gutter-width: 3px;" in host_tokens
+    assert "var(--diff-add-refined-row-bg)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-add.diff-line-refined"
+    )
+    assert "var(--diff-del-refined-row-bg)" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-del.diff-line-refined"
+    )
+    add_inner = _rule_body(css, ".metabrowser-diff-host .diff-line-add .diff-intraline-change")
+    assert "var(--diff-add-inner-bg)" in add_inner
+    assert "color: var(--text);" in add_inner
+    del_inner = _rule_body(css, ".metabrowser-diff-host .diff-line-del .diff-intraline-change")
+    assert "var(--diff-del-inner-bg)" in del_inner
+    assert "color: var(--text);" in del_inner
+    first_number = _rule_body(css, ".metabrowser-diff-host .diff-line-number:first-child")
+    assert "box-sizing: border-box;" in first_number
+    assert "border-inline-start: var(--diff-change-gutter-width) solid transparent;" in first_number
+    assert "border-inline-start-color: var(--diff-add-gutter);" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-add > .diff-line-number:first-child"
+    )
+    assert "border-inline-start-color: var(--diff-del-gutter);" in _rule_body(
+        css, ".metabrowser-diff-host .diff-line-del > .diff-line-number:first-child"
     )
     assert "@media (prefers-reduced-motion: reduce)" in css

@@ -3,8 +3,9 @@
 //
 // Layering, and why it is split this way:
 //
-//   git-graph.js  pure lane assignment and SVG, ported from VS Code
-//   git-panel.js  everything that talks to the network or owns DOM
+//   git-graph.js           pure lane assignment and SVG, ported from VS Code
+//   git-history-window.js bounded decoded pages and logical row coordinates
+//   git-panel.js           network, DOM ownership, selection, and lifecycle
 //
 // The row layout mirrors VS Code's `.history-item`: a fixed-width graph
 // gutter, then ref badges, subject, author, and relative date. The
@@ -12,16 +13,21 @@
 // rows loaded so far — so subjects line up in a column instead of
 // stepping in and out as lanes open and close.
 //
-// Paging is append-only. Lane state at the end of one page is fed back
-// in as the start of the next (`trailingSwimlanes`), which is what keeps
-// a branch's color and column continuous across a page boundary.
+// Lane state at the end of one page is saved as the next page's checkpoint.
+// Only the current virtual window expands those commits into graph-row models.
 
 (() => {
   const settings = (typeof window !== "undefined" && window.METABROWSER_SETTINGS) || {};
   const LOG_LIMIT = settings.GIT_LOG_LIMIT || 250;
-  const HISTORY_MAX_ROWS = settings.GIT_HISTORY_MAX_ROWS || 500;
-  const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS || 300;
+  const WINDOW_MAX_ROWS = settings.GIT_HISTORY_WINDOW_MAX_ROWS || 256;
+  const WINDOW_OVERSCAN_ROWS = settings.GIT_HISTORY_WINDOW_OVERSCAN_ROWS || 64;
+  const PAGE_CACHE_PAGES = settings.GIT_HISTORY_PAGE_CACHE_PAGES || 8;
+  const SEGMENT_REBASE_PX = settings.GIT_HISTORY_SEGMENT_REBASE_PX || 8_000_000;
+  const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS ?? 300;
   const DETAIL_CACHE_SIZE = settings.GIT_DETAIL_CACHE_SIZE || 200;
+  // Initial empty loads keep the measured quiet period. Retained content uses
+  // the shell's immediate preview-navigation state instead.
+  const PENDING_DELAY_MS = 120;
 
   // Distance from the bottom at which the next page is requested. One
   // row height would fetch too late to feel seamless; three viewport
@@ -34,37 +40,73 @@
    * reset it with a single assignment and no field can be missed.
    *
    * @typedef {object} PanelState
-   * @property {MetabrowserGitCommit[]} commits Every commit loaded so far, in order.
-   * @property {MetabrowserGitGraphRow[]} rows Laid-out rows, index-aligned with commits.
-   * @property {MetabrowserGitGraphLane[]} trailingSwimlanes Lane state after the last row.
-   * @property {number} colorIndex Palette cursor after the last row.
+   * @property {MetabrowserGitHistoryPageCache} pageCache Bounded decoded wire pages.
+   * @property {MetabrowserGitHistoryVirtualWindow} virtualWindow Logical row coordinates.
+   * @property {number} rowCount Number of sequential rows loaded in this session.
+   * @property {number} nextPageNumber Page expected from the next append.
    * @property {string | null} cursor Next-page cursor, null at the end.
    * @property {boolean} loading A page request is in flight.
+   * @property {number | null} loadingPage Logical page currently requested.
    * @property {boolean} failed The last page request failed.
-   * @property {boolean} capped Older commits were omitted at the client row cap.
+   * @property {number | null} failedPage Logical page whose request failed.
+   * @property {string | null} retryCursor Cursor retained for an in-place retry.
+   * @property {boolean} retryInitial Whether the failed request starts a session.
+   * @property {boolean} endReached Git reported the real end of this session.
    * @property {string | null} headRevision
+   * @property {string | null} headRef
    * @property {string | null} selectedId
+   * @property {number | null} focusedOrdinal Logical roving-focus target.
+   * @property {number | null} pendingSelectionOrdinal Keyboard target awaiting its page.
+   * @property {boolean} focusSuspended The scroller temporarily owns DOM focus.
+   * @property {MetabrowserGitHistoryWindowRange | null} mountedRange
+   * @property {string} scopeFingerprint
+   * @property {Map<number, string>} cursorByPage Replay cursor for every visited page.
+   * @property {{commitCount: number, firstCommitAt: number | null} | null} summary
    */
 
   /** @returns {PanelState} */
   function emptyState() {
+    const historyWindow = historyWindowModule();
     return {
-      commits: [],
-      rows: [],
-      trailingSwimlanes: [],
-      colorIndex: -1,
+      pageCache: historyWindow.createPageCache({ maxPages: PAGE_CACHE_PAGES }),
+      virtualWindow: historyWindow.createVirtualWindow({
+        rowHeight: graphModule().SWIMLANE_HEIGHT,
+        maxRows: WINDOW_MAX_ROWS,
+        overscanRows: WINDOW_OVERSCAN_ROWS,
+        rebasePx: SEGMENT_REBASE_PX,
+      }),
+      rowCount: 0,
+      nextPageNumber: 0,
       cursor: null,
       loading: false,
+      loadingPage: null,
       failed: false,
-      capped: false,
+      failedPage: null,
+      retryCursor: null,
+      retryInitial: false,
+      endReached: false,
       headRevision: null,
+      headRef: null,
       selectedId: null,
+      focusedOrdinal: null,
+      pendingSelectionOrdinal: null,
+      focusSuspended: false,
+      mountedRange: null,
+      scopeFingerprint: "",
+      // One retained cursor string (~175 characters) per visited page:
+      // the key that lets the server seek any visited spool frame in a
+      // single request. Growth is one entry per LOG_LIMIT rows walked —
+      // about 1 MiB at the validated 1,454,667-row corpus — not per row.
+      cursorByPage: new Map(),
+      // The header tally, loaded off the render path like the file
+      // tree's summary row; null renders the pending shimmer.
+      summary: null,
     };
   }
 
   /** @type {PanelState} */
   let state = emptyState();
-  /** @type {{dispose?: () => void} | null} The mounted commit diff. */
+  /** @type {{cancelPending?: () => void, dispose?: () => void} | null} The mounted commit diff. */
   let commitDiffHandle = null;
   /**
    * The commit named by the URL this page was opened with, if any. Read
@@ -79,13 +121,49 @@
   let refColors = new Map();
   /** @type {Map<string, MetabrowserGitCommitDetail>} */
   const detailCache = new Map();
+  /** @type {Map<string, Promise<MetabrowserGitCommitDetail | null>>} */
+  const detailInFlight = new Map();
+  /**
+   * @typedef {object} RevisionPreparation
+   * @property {string} revision
+   * @property {Promise<MetabrowserGitCommitDetail | null>} detail
+   * @property {Promise<void>} assets
+   * @property {Promise<unknown> | undefined} comparison
+   * @property {AbortController | null} controller
+   * @property {boolean} speculative
+   */
+  /** @type {RevisionPreparation | null} */
+  let preparationSlot = null;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let hoverTimer = null;
+  /** @type {string | null} */
+  let hoverRevision = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let pendingTimer = null;
+  /** @type {number | null} */
+  let pendingPreviewClaim = null;
   let started = false;
   let refreshing = false;
+  let recoveringSession = false;
+  /** @type {{start: number, end: number} | null} */
+  let wantedRange = null;
+  /** @type {Promise<void> | null} */
+  let rangeLoadPromise = null;
+  let historyGeneration = 0;
+  let historyAbortController = new AbortController();
+  /** @type {HTMLElement | null} */
+  let scrollOwner = null;
+  /** @type {number | null} Cached scroller-to-list offset; see historyOrigin(). */
+  let historyOriginPx = null;
+  /** @type {ResizeObserver | null} Watches the tally for height changes. */
+  let summaryResizeObserver = null;
 
   function graphModule() {
     return window.MetabrowserGitGraph;
+  }
+
+  function historyWindowModule() {
+    return window.MetabrowserGitHistoryWindow;
   }
 
   function shell() {
@@ -95,6 +173,37 @@
   /** The plugin SDK, which owns the view registry this panel composes. */
   function sdk() {
     return window.metabrowser;
+  }
+
+  /** @returns {string} */
+  function copyIcon() {
+    return sdk()?.icons?.copy || "⧉";
+  }
+
+  function perf() {
+    return window.metabrowser?.perf;
+  }
+
+  /**
+   * @template T
+   * @param {string} label
+   * @param {() => T} work
+   * @param {Record<string, unknown>} [meta]
+   * @returns {T}
+   */
+  function measure(label, work, meta) {
+    return perf()?.measure?.(label, work, meta) ?? work();
+  }
+
+  /**
+   * @template T
+   * @param {string} label
+   * @param {() => Promise<T>} work
+   * @param {Record<string, unknown>} [meta]
+   * @returns {Promise<T>}
+   */
+  function measureAsync(label, work, meta) {
+    return perf()?.measureAsync?.(label, work, meta) ?? work();
   }
 
   /**
@@ -108,6 +217,110 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  /**
+   * @param {Record<string, unknown>} stats
+   * @returns {string}
+   */
+  function renderCommitChangeStats(stats) {
+    const fileStatuses = [
+      [stats.files_modified ?? "?", "M", "modified", "git-commit-file-status-modified"],
+      [stats.files_added ?? "?", "A", "added", "git-commit-file-status-added"],
+      [stats.files_deleted ?? "?", "D", "deleted", "git-commit-file-status-deleted"],
+    ]
+      .filter(([count]) => count !== 0)
+      .map(([count, code, label, className]) => {
+        const fileLabel = count === 1 ? "file" : "files";
+        return (
+          `<span class="git-commit-file-status ${className}"` +
+          ` aria-label="${escapeHtml(String(count))} ${label} ${fileLabel}">` +
+          `${escapeHtml(String(count))} ${code}</span>`
+        );
+      })
+      .join("");
+    const filesChanged = stats.files_changed ?? "?";
+    const fileUnit = filesChanged === 1 ? "file" : "files";
+    const additions = stats.additions ?? "?";
+    const deletions = stats.deletions ?? "?";
+    const lineTotal =
+      typeof additions === "number" && typeof deletions === "number" ? additions + deletions : null;
+    const lineUnit = lineTotal === 1 ? "line" : "lines";
+    return (
+      '<div class="git-commit-change-stats">' +
+      '<div class="git-commit-file-statuses" aria-label="File changes">' +
+      `${fileStatuses}<span class="git-commit-stat-unit">${fileUnit}</span>` +
+      "</div>" +
+      '<div class="git-commit-line-stats" aria-label="Line changes">' +
+      `<span class="git-stat-add" aria-label="${escapeHtml(String(additions))} lines added">` +
+      `+${escapeHtml(String(additions))}</span>` +
+      `<span class="git-stat-del" aria-label="${escapeHtml(String(deletions))} lines deleted">` +
+      `−${escapeHtml(String(deletions))}</span>` +
+      `<span class="git-commit-stat-unit">${lineUnit}</span>` +
+      "</div>" +
+      "</div>"
+    );
+  }
+
+  /**
+   * Render the complete commit summary as one component. The comparison,
+   * out-of-root files, and bounds remain siblings because they describe the
+   * rendered change rather than the commit's identity and message.
+   *
+   * @param {MetabrowserGitCommitDetail} detail
+   * @param {{compact?: boolean}} [options]
+   * @returns {string}
+   */
+  function renderCommitSummary(detail, options = {}) {
+    const commit = detail.commit;
+    const stats = detail.stats || {};
+    const compact = options.compact === true;
+    const summaryClass = compact
+      ? "git-commit-summary git-commit-summary-compact"
+      : "git-commit-summary";
+    const subjectTag = compact ? "div" : "h1";
+    let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
+    html += '<div class="git-commit-header">';
+    html += `<${subjectTag} class="git-commit-subject">${escapeHtml(commit.subject)}</${subjectTag}>`;
+    html += '<div class="git-commit-meta">';
+    html += '<span class="git-commit-identity">';
+    html += '<span class="git-commit-revision">';
+    html += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
+    if (compact) {
+      html +=
+        '<span class="git-commit-revision-copy-preview" aria-hidden="true">' +
+        `${copyIcon()}</span>`;
+    } else {
+      html +=
+        '<button class="icon-btn icon-btn-reveal git-commit-revision-copy" type="button"' +
+        ` data-mb-copy="text" data-mb-copy-text="${escapeHtml(commit.id)}"` +
+        ' data-mb-copy-label="Copy revision" data-tip-text="Copy revision"' +
+        ` aria-label="Copy revision">${copyIcon()}</button>`;
+    }
+    html += "</span>";
+    if (commit.refs?.length) {
+      html += `<span class="git-commit-refs">${renderRefBadges(commit.refs)}</span>`;
+    }
+    html += "</span>";
+    html += `<span class="git-commit-author">${escapeHtml(commit.author?.name || "")}</span>`;
+    html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
+    html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
+    html += "</div>";
+    html += renderCommitChangeStats(stats);
+    html += "</div>";
+    if (!compact && detail.body) {
+      html += `<pre class="git-commit-body">${escapeHtml(detail.body)}</pre>`;
+    }
+    html += "</section>";
+    return html;
+  }
+
+  /**
+   * @param {MetabrowserGitCommitDetail} detail
+   * @returns {string}
+   */
+  function renderCommitTooltip(detail) {
+    return renderCommitSummary(detail, { compact: true });
   }
 
   /**
@@ -135,11 +348,12 @@
   /**
    * @param {string} path
    * @param {Record<string, string>} [params]
+   * @param {RequestInit} [options]
    * @returns {Promise<Response>}
    */
-  function apiFetch(path, params) {
+  function apiFetch(path, params, options) {
     const query = params ? `?${new URLSearchParams(params).toString()}` : "";
-    return fetch(`${path}${query}`);
+    return fetch(`${path}${query}`, options);
   }
 
   // ── Data ───────────────────────────────────────────────────
@@ -182,100 +396,319 @@
   }
 
   /**
-   * Load the next page and append it to the panel.
+   * Validate and translate the server checkpoint. A session page without one
+   * cannot be replayed exactly, so it invalidates the session instead of
+   * drawing a plausible graph from empty lanes.
    *
-   * Re-entrancy is guarded on `state.loading` rather than by cancelling:
-   * pages are append-only and ordered, so a second concurrent request
-   * would append out of order and corrupt lane continuity.
-   *
-   * @param {boolean} initial
-   * @returns {Promise<void>}
+   * @param {Partial<MetabrowserGitLogPage>} wirePage
+   * @param {number} pageNumber
+   * @returns {MetabrowserGitGraphCheckpoint}
    */
-  async function loadNextPage(initial) {
-    if (state.loading) {
-      return;
+  function checkpointFromWire(wirePage, pageNumber) {
+    const checkpoint = wirePage.graph_checkpoint;
+    if (!checkpoint) {
+      throw new Error(`Git history page ${pageNumber} omitted its graph checkpoint`);
     }
-    if (!initial && !state.cursor) {
-      return;
+    const fingerprint = wirePage.scope_fingerprint ?? "";
+    if (
+      !fingerprint ||
+      checkpoint.version !== 1 ||
+      checkpoint.scope_fingerprint !== fingerprint ||
+      checkpoint.head_revision !== state.headRevision ||
+      !Number.isSafeInteger(checkpoint.color_index) ||
+      !Array.isArray(checkpoint.prior_swimlanes) ||
+      checkpoint.prior_swimlanes.some(
+        (lane) =>
+          !lane || typeof lane.id !== "string" || typeof lane.color !== "string" || !lane.color,
+      )
+    ) {
+      throw new Error(`Git history page ${pageNumber} has an invalid graph checkpoint`);
     }
-    state.loading = true;
-    state.failed = false;
-    /** @type {MetabrowserGitGraphRow[] | null} */
-    let addedRows = null;
-    renderPanel();
+    return {
+      version: 1,
+      priorSwimlanes: checkpoint.prior_swimlanes.map((lane) => ({ ...lane })),
+      colorIndex: checkpoint.color_index,
+      headRevision: checkpoint.head_revision,
+      scopeFingerprint: checkpoint.scope_fingerprint,
+    };
+  }
 
-    try {
-      /** @type {Record<string, string>} */
-      const params = { limit: String(LOG_LIMIT) };
-      if (!initial && state.cursor) {
-        params.cursor = state.cursor;
-      }
-      const response = await apiFetch("/api/git/log", params);
-      if (!response.ok) {
-        if (!initial && response.status === 400) {
-          // A rejected opaque cursor means the append-only paging state is
-          // no longer usable. Drop the partial graph so the normal refresh
-          // state can restart at page one instead of retrying the same bad
-          // cursor every time the tab is shown.
-          const headRevision = state.headRevision;
-          state = emptyState();
-          state.headRevision = headRevision;
-        }
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const page = await response.json();
-      if (!page.is_repo) {
-        teardown();
-        return;
-      }
-      addedRows = appendPage(page.commits || [], page.cursor ?? null);
-    } catch {
-      state.failed = true;
-      addedRows = null;
-    } finally {
-      state.loading = false;
-      // A page that only adds rows appends them; anything else — the
-      // first page, a failure, a reset — repaints.
-      const appended = addedRows !== null && !initial && appendRenderedRows(addedRows);
-      if (appended) {
-        renderTrailingState();
-      } else {
-        renderPanel();
-      }
+  /**
+   * Store a sequential or replayed page. Only a newly discovered tail page
+   * extends logical height; replay replaces one cache entry in place.
+   *
+   * @param {MetabrowserGitCommit[]} commits
+   * @param {string | null} cursor
+   * @param {MetabrowserGitLogPage} wirePage
+   * @returns {void}
+   */
+  function appendPage(commits, cursor, wirePage) {
+    if (wirePage.page === undefined) {
+      throw new Error("Git history session page omitted its page number");
+    }
+    const pageNumber = wirePage.page;
+    if (pageNumber > state.nextPageNumber) {
+      throw new Error(
+        `Expected Git history page at most ${state.nextPageNumber}, received ${pageNumber}`,
+      );
+    }
+    const fingerprint = wirePage.scope_fingerprint ?? state.scopeFingerprint;
+    if (state.scopeFingerprint && fingerprint !== state.scopeFingerprint) {
+      throw new Error("Git history scope changed while storing a page");
+    }
+    const checkpoint = checkpointFromWire(wirePage, pageNumber);
+    if (typeof wirePage.page_cursor === "string" && wirePage.page_cursor) {
+      state.cursorByPage.set(pageNumber, wirePage.page_cursor);
+    }
+    const startOrdinal = pageNumber * LOG_LIMIT;
+    state.pageCache.put({
+      page: pageNumber,
+      startOrdinal,
+      commits,
+      checkpoint,
+      pageCursor: wirePage.page_cursor ?? `loaded-page-${pageNumber}`,
+      nextCursor: cursor,
+      previousCursor: wirePage.previous_cursor ?? null,
+    });
+    state.scopeFingerprint = fingerprint;
+
+    if (pageNumber === state.nextPageNumber) {
+      state.rowCount = startOrdinal + commits.length;
+      state.virtualWindow.setRowCount(state.rowCount);
+      state.nextPageNumber = pageNumber + 1;
+      state.cursor = cursor;
+      state.endReached = cursor === null;
     }
   }
 
   /**
-   * @param {MetabrowserGitCommit[]} commits
    * @param {string | null} cursor
-   * @returns {MetabrowserGitGraphRow[]} The rows this page added.
+   * @param {number} expectedPage
+   * @param {{initial?: boolean}} [options]
+   * @returns {Promise<boolean>}
    */
-  function appendPage(commits, cursor) {
-    const remaining = Math.max(0, HISTORY_MAX_ROWS - state.rows.length);
-    const accepted = commits.slice(0, remaining);
-    const reachesCap = state.rows.length + accepted.length >= HISTORY_MAX_ROWS;
-    const omitted = commits.length > accepted.length || (reachesCap && cursor !== null);
-    if (accepted.length === 0) {
-      state.capped = state.capped || omitted;
-      state.cursor = null;
-      return [];
+  async function loadPage(cursor, expectedPage, options = {}) {
+    if (state.loading || (!options.initial && !cursor)) {
+      return false;
     }
+    state.loading = true;
+    state.loadingPage = expectedPage;
+    state.failed = false;
+    state.failedPage = null;
+    renderPanel();
+    const requestGeneration = historyGeneration;
+    const requestState = state;
+    let recoverSession = false;
+    let loaded = false;
+    try {
+      /** @type {Record<string, string>} */
+      const params = { limit: String(LOG_LIMIT) };
+      if (!options.initial && cursor) {
+        params.cursor = cursor;
+      }
+      const response = await apiFetch("/api/git/log", params, {
+        signal: historyAbortController.signal,
+      });
+      if (requestGeneration !== historyGeneration || state !== requestState) {
+        return false;
+      }
+      if (!response.ok) {
+        recoverSession =
+          !options.initial &&
+          (response.status === 400 || response.status === 409 || response.status === 410);
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const page = /** @type {MetabrowserGitLogPage} */ (await response.json());
+      if (!page.is_repo) {
+        teardown();
+        return false;
+      }
+      if (page.page !== undefined && page.page !== expectedPage) {
+        recoverSession = !options.initial;
+        throw new Error(`Expected Git history page ${expectedPage}, received ${page.page}`);
+      }
+      try {
+        const commits = page.commits || [];
+        if (page.page === undefined && commits.length === 0 && page.cursor == null) {
+          state.cursor = null;
+          state.endReached = true;
+          state.virtualWindow.setRowCount(0);
+        } else {
+          appendPage(commits, page.cursor ?? null, page);
+        }
+      } catch (error) {
+        // A malformed continuation invalidates an established walk, but an
+        // invalid first page has no older session to recover. Keep that first
+        // failure visible so reopening or Refresh can retry from scratch.
+        recoverSession = !options.initial;
+        throw error;
+      }
+      state.retryCursor = null;
+      state.retryInitial = false;
+      loaded = true;
+    } catch {
+      if (requestGeneration === historyGeneration && state === requestState && !recoverSession) {
+        state.failed = true;
+        state.failedPage = expectedPage;
+        state.retryCursor = cursor;
+        state.retryInitial = Boolean(options.initial);
+      }
+    } finally {
+      if (requestGeneration === historyGeneration && state === requestState) {
+        state.loading = false;
+        state.loadingPage = null;
+        renderPanel();
+      }
+    }
+    if (recoverSession && requestGeneration === historyGeneration && state === requestState) {
+      await recoverHistorySession();
+    }
+    return loaded;
+  }
 
-    const graph = graphModule();
-    const result = graph.computeSwimlanes(accepted, {
-      priorSwimlanes: state.trailingSwimlanes,
-      colorIndex: state.colorIndex,
-      headRevision: state.headRevision,
-      refColors,
+  /** @param {boolean} initial @returns {Promise<boolean>} */
+  async function loadNextPage(initial) {
+    if (!initial && (!state.cursor || state.endReached)) {
+      return false;
+    }
+    return loadPage(initial ? null : state.cursor, state.nextPageNumber, { initial });
+  }
+
+  /**
+   * Name the request that makes progress toward mounting target. A page
+   * visited in this session replays in one request — the server seeks
+   * its spool frame directly through the retained page cursor — so only
+   * an unvisited page beyond the walk frontier steps one page at a time.
+   *
+   * @param {number} targetPage
+   * @returns {{cursor: string, page: number} | null}
+   */
+  function replayStep(targetPage) {
+    const direct = state.cursorByPage.get(targetPage);
+    if (direct) {
+      return { cursor: direct, page: targetPage };
+    }
+    let best = null;
+    for (const pageNumber of state.pageCache.keys()) {
+      const page = state.pageCache.peek(pageNumber);
+      if (!page) {
+        continue;
+      }
+      let candidate = null;
+      if (pageNumber < targetPage && page.nextCursor) {
+        candidate = { cursor: page.nextCursor, page: pageNumber + 1 };
+      } else if (pageNumber > targetPage && page.previousCursor) {
+        candidate = { cursor: page.previousCursor, page: pageNumber - 1 };
+      }
+      if (
+        candidate &&
+        (!best || Math.abs(candidate.page - targetPage) < Math.abs(best.page - targetPage))
+      ) {
+        best = candidate;
+      }
+    }
+    return best;
+  }
+
+  /** @param {number} targetPage @returns {Promise<boolean>} */
+  async function ensurePageLoaded(targetPage) {
+    while (!state.pageCache.peek(targetPage)) {
+      const step = replayStep(targetPage);
+      if (!step || !(await loadPage(step.cursor, step.page))) {
+        return false;
+      }
+    }
+    state.pageCache.get(targetPage);
+    return true;
+  }
+
+  /** @param {number} start @param {number} end @returns {Promise<void>} */
+  async function ensureRangeLoaded(start, end) {
+    if (end <= start) {
+      return;
+    }
+    const firstPage = Math.floor(start / LOG_LIMIT);
+    const lastPage = Math.floor((end - 1) / LOG_LIMIT);
+    for (let page = firstPage; page <= lastPage; page += 1) {
+      if (!(await ensurePageLoaded(page))) {
+        return;
+      }
+    }
+  }
+
+  /** @param {{start: number, end: number}} range */
+  function scheduleRangeLoad(range) {
+    wantedRange = { start: range.start, end: range.end };
+    if (rangeLoadPromise) {
+      return;
+    }
+    const generation = historyGeneration;
+    const loading = (async () => {
+      while (wantedRange) {
+        if (generation !== historyGeneration) {
+          return;
+        }
+        const target = wantedRange;
+        wantedRange = null;
+        await ensureRangeLoaded(target.start, target.end);
+        if (generation !== historyGeneration) {
+          return;
+        }
+        renderVirtualRows(true);
+        if (state.failed) {
+          wantedRange = null;
+        }
+      }
+    })();
+    rangeLoadPromise = loading;
+    void loading.finally(() => {
+      if (rangeLoadPromise === loading) {
+        rangeLoadPromise = null;
+      }
     });
+  }
 
-    state.commits = state.commits.concat(accepted);
-    state.rows = state.rows.concat(result.rows);
-    state.trailingSwimlanes = result.trailingSwimlanes;
-    state.colorIndex = result.colorIndex;
-    state.capped = state.capped || omitted;
-    state.cursor = state.capped ? null : cursor;
-    return result.rows;
+  /**
+   * Expand only cached commits intersecting a mounted logical range. Each
+   * page starts from its stored graph checkpoint, so an evicted earlier page
+   * is not required to draw it.
+   *
+   * @param {number} start
+   * @param {number} end
+   * @returns {Array<{ordinal: number, row: MetabrowserGitGraphRow}>}
+   */
+  function rowsForRange(start, end) {
+    /** @type {Array<{ordinal: number, row: MetabrowserGitGraphRow}>} */
+    const mounted = [];
+    const pages = state.pageCache
+      .keys()
+      .map((pageNumber) => state.pageCache.peek(pageNumber))
+      .filter((page) => page !== null)
+      .sort((left, right) => left.startOrdinal - right.startOrdinal);
+    for (const page of pages) {
+      const pageEnd = page.startOrdinal + page.commits.length;
+      if (pageEnd <= start || page.startOrdinal >= end) {
+        continue;
+      }
+      state.pageCache.get(page.page);
+      const localStart = Math.max(0, start - page.startOrdinal);
+      const localEnd = Math.min(page.commits.length, end - page.startOrdinal);
+      const result = graphModule().computeSwimlanes(page.commits, {
+        priorSwimlanes: page.checkpoint.priorSwimlanes,
+        colorIndex: page.checkpoint.colorIndex,
+        headRevision: page.checkpoint.headRevision,
+        refColors,
+        rowStart: localStart,
+        rowEnd: localEnd,
+      });
+      for (let index = 0; index < result.rows.length; index += 1) {
+        const row = result.rows[index];
+        if (row) {
+          mounted.push({ ordinal: page.startOrdinal + localStart + index, row });
+        }
+      }
+    }
+    return mounted;
   }
 
   /**
@@ -285,35 +718,140 @@
    * request: both surfaces read the same payload.
    *
    * @param {string} revision
+   * @param {AbortSignal | undefined} [signal]
    * @returns {Promise<MetabrowserGitCommitDetail | null>}
    */
-  async function fetchCommitDetail(revision) {
+  async function fetchCommitDetail(revision, signal) {
     const cached = detailCache.get(revision);
     if (cached) {
       return cached;
     }
-    try {
-      const response = await apiFetch(`/api/git/commit/${revision}`);
-      if (!response.ok) {
-        return null;
-      }
-      const detail = await response.json();
-      if (!detail?.is_repo) {
-        return null;
-      }
-      // Insertion-ordered eviction: Map preserves insertion order, so
-      // the first key is the oldest entry.
-      if (detailCache.size >= DETAIL_CACHE_SIZE) {
-        const oldest = detailCache.keys().next();
-        if (!oldest.done) {
-          detailCache.delete(oldest.value);
+    const existing = detailInFlight.get(revision);
+    if (existing) {
+      return existing;
+    }
+    const request = measureAsync(
+      "gitRevision:detailData",
+      async () => {
+        try {
+          const response = await apiFetch(`/api/git/commit/${revision}`, undefined, { signal });
+          if (!response.ok) {
+            return null;
+          }
+          const detail = await response.json();
+          if (!detail?.is_repo) {
+            return null;
+          }
+          // Insertion-ordered eviction: Map preserves insertion order, so
+          // the first key is the oldest entry.
+          if (detailCache.size >= DETAIL_CACHE_SIZE) {
+            const oldest = detailCache.keys().next();
+            if (!oldest.done) {
+              detailCache.delete(oldest.value);
+            }
+          }
+          detailCache.set(revision, detail);
+          return detail;
+        } catch {
+          return null;
         }
+      },
+      { revision },
+    );
+    detailInFlight.set(revision, request);
+    try {
+      return await request;
+    } finally {
+      if (detailInFlight.get(revision) === request) {
+        detailInFlight.delete(revision);
       }
-      detailCache.set(revision, detail);
-      return detail;
-    } catch {
+    }
+  }
+
+  /**
+   * Start the independent diff work for one revision.
+   *
+   * @param {string} revision
+   * @param {AbortController | null} controller
+   */
+  function beginDiffPreparation(revision, controller) {
+    const pluginSdk = sdk();
+    const assets = pluginSdk
+      ? measureAsync("gitRevision:diffAssets", () => pluginSdk.ensureKindAssets("diff"), {
+          revision,
+        })
+      : Promise.resolve();
+    const comparison = pluginSdk?.fetchPluginData
+      ? measureAsync(
+          "gitRevision:comparisonData",
+          () =>
+            pluginSdk.fetchPluginData(
+              "diff",
+              "comparison",
+              { revision },
+              { signal: controller?.signal },
+            ),
+          { revision },
+        )
+      : undefined;
+    // Speculative work may be replaced before the diff view awaits it. Attach
+    // a rejection handler immediately while preserving the original promise
+    // for the view's existing error path.
+    void comparison?.catch(() => {});
+    return { assets, comparison };
+  }
+
+  /**
+   * Prepare at most one revision. Pointer/focus work cannot displace an active
+   * selected revision, while a new selection may replace stale work.
+   *
+   * @param {string} revision
+   * @param {boolean} speculative
+   * @returns {RevisionPreparation | null}
+   */
+  function prepareRevision(revision, speculative) {
+    if (preparationSlot?.revision === revision) {
+      if (!speculative) {
+        preparationSlot.speculative = false;
+      }
+      return preparationSlot;
+    }
+    if (speculative && preparationSlot && !preparationSlot.speculative) {
       return null;
     }
+    abortPreparation(preparationSlot);
+    const controller = typeof AbortController === "undefined" ? null : new AbortController();
+    const diff = beginDiffPreparation(revision, controller);
+    preparationSlot = {
+      revision,
+      detail: fetchCommitDetail(revision, controller?.signal),
+      assets: diff.assets,
+      comparison: diff.comparison,
+      controller,
+      speculative,
+    };
+    return preparationSlot;
+  }
+
+  /** @param {RevisionPreparation | null} preparation */
+  function abortPreparation(preparation) {
+    if (!preparation) {
+      return;
+    }
+    detailInFlight.delete(preparation.revision);
+    preparation.controller?.abort();
+  }
+
+  /** @param {string | null} [revision] */
+  function cancelSpeculativePreparation(revision = null) {
+    if (
+      !preparationSlot?.speculative ||
+      (revision !== null && preparationSlot.revision !== revision)
+    ) {
+      return;
+    }
+    abortPreparation(preparationSlot);
+    preparationSlot = null;
   }
 
   // ── Panel rendering ────────────────────────────────────────
@@ -344,44 +882,392 @@
     panel.replaceChildren(empty);
   }
 
-  /**
-   * Append rows to a list in one fragment.
-   *
-   * @param {HTMLElement} list
-   * @param {MetabrowserGitGraphRow[]} rows
-   */
-  function appendRows(list, rows) {
-    const fragment = document.createDocumentFragment();
-    for (const row of rows) {
-      fragment.appendChild(renderRow(row));
-    }
-    list.appendChild(fragment);
+  /** @returns {HTMLElement | null} */
+  function historyScroller() {
+    const element = scrollOwner ?? document.getElementById("tree-content") ?? panelElement();
+    return element instanceof HTMLElement ? element : null;
+  }
+
+  /** @param {HTMLElement} scroller */
+  function viewportHeight(scroller) {
+    return scroller.clientHeight || graphModule().SWIMLANE_HEIGHT * 20;
   }
 
   /**
-   * Add one page's rows to the rendered list without touching the rows
-   * already on screen.
+   * Distance from the scroller's origin to the first history row.
    *
-   * Rows are independent — each carries its own graph width — so a new
-   * page cannot change how an earlier row lays out, and a full rebuild
-   * would cost the whole history on every "load more". Measured in this
-   * browser at ~22us per row (500 rows in 11ms), so a rebuild at two
-   * thousand rows costs ~44ms to show one more page, while appending
-   * that page costs only its own rows. Returns false when there is no
-   * rendered list to append to, in which case the caller falls back to
-   * a full render.
+   * `git-history-window.js` computes in coordinates relative to
+   * `.git-graph-list`, but `#tree-content` scrolls everything inside
+   * `#tab-git` — including the header tally that sits above the list. The
+   * two spaces differ by this offset, so every value crossing the boundary
+   * is converted: subtract before `read` and `rebaseToOrdinal`, add back
+   * before assigning `scrollTop`. Without it the window reads a scroll
+   * position carrying roughly one row it does not know about; overscan
+   * hides that in the mounted range, but the `scrollTop` it writes back
+   * lands a row off target.
    *
-   * @param {MetabrowserGitGraphRow[]} rows
-   * @returns {boolean}
+   * Cached because the conversion sits on the scroll path, where reading
+   * `offsetHeight` would force a synchronous reflow every frame.
+   * `invalidateHistoryOrigin` clears it whenever anything above the list
+   * changes height.
+   *
+   * @returns {number}
    */
-  function appendRenderedRows(rows) {
+  function historyOrigin() {
+    if (historyOriginPx !== null) {
+      return historyOriginPx;
+    }
     const panel = panelElement();
     const list = panel?.querySelector(".git-graph-list");
-    if (!(list instanceof HTMLElement) || rows.length === 0) {
+    if (!panel || !(list instanceof HTMLElement)) {
+      return 0;
+    }
+    // Sum the panel chrome above the list rather than differencing
+    // rectangles: heights do not move when the pane scrolls, so the
+    // measurement is valid whenever it is taken, and any future sibling
+    // added above the list is counted without touching this function.
+    let offset = 0;
+    for (const sibling of panel.children) {
+      if (sibling === list) {
+        break;
+      }
+      if (sibling instanceof HTMLElement) {
+        offset += sibling.offsetHeight || 0;
+      }
+    }
+    historyOriginPx = Math.max(0, Math.round(offset));
+    return historyOriginPx;
+  }
+
+  /** Drop the cached origin; the next reader re-measures. */
+  function invalidateHistoryOrigin() {
+    historyOriginPx = null;
+  }
+
+  /**
+   * Re-measure the origin whenever the tally's box changes.
+   *
+   * Render-time invalidation covers content changes, but the tally can
+   * also reflow without one — its text wraps at a narrow pane width, and
+   * that moves the list without any code here running. Observing the
+   * element is exact: it fires when the box actually changes and stays
+   * silent otherwise, unlike a resize listener that would fire for every
+   * viewport change whether or not this row moved.
+   *
+   * @param {HTMLElement} summary
+   */
+  function observeSummaryHeight(summary) {
+    summaryResizeObserver?.disconnect();
+    summaryResizeObserver = null;
+    if (typeof ResizeObserver !== "function") {
+      // Absent in the DOM-test environment. The render-time invalidation
+      // above still holds; only reflow-without-render goes unnoticed.
+      return;
+    }
+    summaryResizeObserver = new ResizeObserver(() => {
+      invalidateHistoryOrigin();
+    });
+    summaryResizeObserver.observe(summary);
+  }
+
+  /**
+   * Preserve every logical row's fixed-height coordinate while one or more
+   * evicted pages are being replayed. A placeholder is an honest loading or
+   * retry state; it never lets a partial window read as the complete history.
+   *
+   * @param {HTMLElement} host
+   * @param {Array<{ordinal: number, row: MetabrowserGitGraphRow}>} rows
+   * @param {number} start
+   * @param {number} end
+   */
+  function appendWindowContents(host, rows, start, end) {
+    const byOrdinal = new Map(rows.map((item) => [item.ordinal, item]));
+    let ordinal = start;
+    while (ordinal < end) {
+      const item = byOrdinal.get(ordinal);
+      if (item) {
+        host.appendChild(renderRow(item.row, item.ordinal));
+        ordinal += 1;
+        continue;
+      }
+      const missingStart = ordinal;
+      while (ordinal < end && !byOrdinal.has(ordinal)) {
+        ordinal += 1;
+      }
+      const placeholder = document.createElement("div");
+      placeholder.className = "git-history-page-placeholder";
+      placeholder.style.height = `${(ordinal - missingStart) * graphModule().SWIMLANE_HEIGHT}px`;
+      placeholder.setAttribute("role", "status");
+      if (state.failed && state.failedPage !== null) {
+        const retry = document.createElement("button");
+        retry.type = "button";
+        retry.className = "btn git-history-retry";
+        retry.textContent = "Retry loading history";
+        retry.addEventListener("click", () => {
+          void retryFailedPage();
+        });
+        placeholder.appendChild(retry);
+      } else {
+        // A pending page shows the shape of the rows it is holding space
+        // for, not the word "loading". See design-system.md, "Loading
+        // States Are Shapes, Not Sentences".
+        placeholder.classList.add("git-history-skeleton");
+        placeholder.style.setProperty(
+          "--git-skeleton-row-height",
+          `${graphModule().SWIMLANE_HEIGHT}px`,
+        );
+        placeholder.setAttribute("aria-label", "Loading history");
+      }
+      host.appendChild(placeholder);
+    }
+  }
+
+  /**
+   * @param {HTMLElement} list
+   * @returns {HTMLElement[]}
+   */
+  function commitRows(list) {
+    return Array.from(list.querySelectorAll(".git-graph-row")).filter(
+      (element) => element instanceof HTMLElement,
+    );
+  }
+
+  /**
+   * Make a row collection one Tab stop while keeping every row
+   * programmatically focusable for vertical navigation.
+   *
+   * @param {HTMLElement} list
+   * @param {HTMLElement} anchor
+   */
+  function setCommitRowAnchor(list, anchor) {
+    const previous = list.querySelector(".git-graph-row[data-roving-anchor]");
+    if (previous instanceof HTMLElement && previous !== anchor) {
+      previous.setAttribute("tabindex", "-1");
+      delete previous.dataset.rovingAnchor;
+    }
+    anchor.setAttribute("tabindex", "0");
+    anchor.dataset.rovingAnchor = "";
+  }
+
+  /** @param {HTMLElement} list */
+  function synchronizeCommitRowFocus(list) {
+    const rows = commitRows(list);
+    const focused = rows.find((row) => Number(row.dataset.ordinal) === state.focusedOrdinal);
+    const selected = rows.find((row) => row.dataset.revision === state.selectedId);
+    const existing = rows.find((row) => row.getAttribute("tabindex") === "0");
+    const anchor = focused ?? selected ?? existing ?? rows[0];
+    if (anchor) {
+      setCommitRowAnchor(list, anchor);
+    }
+  }
+
+  /** @param {Event} event */
+  function handleCommitListFocus(event) {
+    const row = event.target;
+    if (!(row instanceof HTMLElement) || !row.classList.contains("git-graph-row")) {
+      return;
+    }
+    const ordinal = Number(row.dataset.ordinal);
+    if (Number.isSafeInteger(ordinal)) {
+      state.focusedOrdinal = ordinal;
+      state.focusSuspended = false;
+    }
+  }
+
+  /**
+   * Rebuild only the mounted logical range. Spacers account for every cached
+   * row outside it, and a segment rebase rewrites the physical scroll offset
+   * before any DOM is replaced.
+   *
+   * @param {boolean} [force]
+   */
+  function renderVirtualRows(force = false) {
+    const list = panelElement()?.querySelector(".git-graph-list");
+    const scroller = historyScroller();
+    if (!(list instanceof HTMLElement) || !scroller) {
+      return;
+    }
+    const origin = historyOrigin();
+    const range = state.virtualWindow.read(
+      Math.max(0, (scroller.scrollTop || 0) - origin),
+      viewportHeight(scroller),
+    );
+    if (range.rebased && scroller.scrollTop !== range.scrollTop + origin) {
+      scroller.scrollTop = range.scrollTop + origin;
+    }
+    const previous = state.mountedRange;
+    if (
+      !force &&
+      previous?.start === range.start &&
+      previous.end === range.end &&
+      previous.segmentStart === range.segmentStart
+    ) {
+      return;
+    }
+
+    const active = document.activeElement;
+    const activeOrdinal =
+      active instanceof HTMLElement && active.classList.contains("git-graph-row")
+        ? Number(active.dataset.ordinal)
+        : null;
+    if (activeOrdinal !== null && Number.isSafeInteger(activeOrdinal)) {
+      state.focusedOrdinal = activeOrdinal;
+    }
+    const mounted = rowsForRange(range.start, range.end);
+    const mountedRevisions = new Set(mounted.map((item) => item.row.commit.id));
+    if (hoverRevision && !mountedRevisions.has(hoverRevision)) {
+      cancelHover(hoverRevision);
+    }
+
+    const top = document.createElement("div");
+    top.className = "git-history-spacer git-history-spacer-top";
+    top.style.height = `${range.topSpacerPx}px`;
+    top.setAttribute("aria-hidden", "true");
+    const host = document.createElement("div");
+    host.className = "git-history-window";
+    appendWindowContents(host, mounted, range.start, range.end);
+    const bottom = document.createElement("div");
+    bottom.className = "git-history-spacer git-history-spacer-bottom";
+    bottom.style.height = `${range.bottomSpacerPx}px`;
+    bottom.setAttribute("aria-hidden", "true");
+    list.replaceChildren(top, host, bottom);
+    list.dataset.historyEnd = state.endReached ? "true" : "false";
+    list.dataset.historyRows = String(state.rowCount);
+    list.setAttribute("aria-busy", state.loading ? "true" : "false");
+    state.mountedRange = range;
+    synchronizeCommitRowFocus(list);
+    renderTrailingState();
+
+    const focusedRow =
+      state.focusedOrdinal === null
+        ? null
+        : list.querySelector(`.git-graph-row[data-ordinal="${state.focusedOrdinal}"]`);
+    if (focusedRow instanceof HTMLElement && (activeOrdinal !== null || state.focusSuspended)) {
+      state.focusSuspended = false;
+      focusedRow.focus({ preventScroll: true });
+    } else if (activeOrdinal !== null) {
+      scroller.setAttribute("tabindex", "-1");
+      scroller.focus({ preventScroll: true });
+      state.focusSuspended = true;
+    }
+    if (mounted.length < range.end - range.start && !state.loading && !state.failed) {
+      scheduleRangeLoad(range);
+    }
+    if (
+      focusedRow instanceof HTMLElement &&
+      state.pendingSelectionOrdinal === state.focusedOrdinal
+    ) {
+      state.pendingSelectionOrdinal = null;
+      const revision = focusedRow.dataset.revision;
+      if (revision) {
+        void selectCommit(revision, { rowElement: focusedRow });
+      }
+    }
+  }
+
+  /**
+   * @param {HTMLElement} row
+   * @param {-1 | 1} delta
+   * @returns {boolean} Whether the row belongs to a mounted commit list.
+   */
+  function moveCommitRowFocus(row, delta) {
+    const list = panelElement()?.querySelector(".git-graph-list");
+    if (!(list instanceof HTMLElement)) {
       return false;
     }
-    appendRows(list, rows);
+    const currentOrdinal = Number(row.dataset.ordinal);
+    if (!Number.isSafeInteger(currentOrdinal)) {
+      return false;
+    }
+    const requestedOrdinal = currentOrdinal + delta;
+    if (requestedOrdinal >= state.rowCount && delta > 0 && state.cursor && !state.loading) {
+      const nextOrdinal = state.rowCount;
+      state.focusedOrdinal = nextOrdinal;
+      state.pendingSelectionOrdinal = nextOrdinal;
+      void loadNextPage(false).then((loaded) => {
+        if (!loaded || nextOrdinal >= state.rowCount) {
+          state.focusedOrdinal = currentOrdinal;
+          state.pendingSelectionOrdinal = null;
+          return;
+        }
+        const scroller = historyScroller();
+        if (!scroller) {
+          return;
+        }
+        scroller.scrollTop =
+          historyOrigin() +
+          state.virtualWindow.rebaseToOrdinal(nextOrdinal, viewportHeight(scroller), "nearest");
+        state.mountedRange = null;
+        renderVirtualRows(true);
+      });
+      return true;
+    }
+    const nextOrdinal = Math.max(0, Math.min(state.rowCount - 1, requestedOrdinal));
+    if (nextOrdinal === currentOrdinal) {
+      return true;
+    }
+    state.focusedOrdinal = nextOrdinal;
+    state.pendingSelectionOrdinal = nextOrdinal;
+    let next = list.querySelector(`.git-graph-row[data-ordinal="${nextOrdinal}"]`);
+    if (!(next instanceof HTMLElement)) {
+      const scroller = historyScroller();
+      if (!scroller) {
+        return false;
+      }
+      scroller.scrollTop =
+        historyOrigin() +
+        state.virtualWindow.rebaseToOrdinal(nextOrdinal, viewportHeight(scroller), "center");
+      state.mountedRange = null;
+      renderVirtualRows();
+      next = list.querySelector(`.git-graph-row[data-ordinal="${nextOrdinal}"]`);
+    }
+    if (!(next instanceof HTMLElement)) {
+      return true;
+    }
+    next.focus({ preventScroll: true });
+    next.scrollIntoView({ block: "nearest" });
+    state.pendingSelectionOrdinal = null;
+    const revision = next.dataset.revision;
+    if (revision) {
+      void selectCommit(revision, { rowElement: next });
+    }
     return true;
+  }
+
+  /**
+   * @param {KeyboardEvent} event
+   * @param {HTMLElement} row
+   * @param {string} revision
+   */
+  function handleCommitRowKeydown(event, row, revision) {
+    if (
+      !event.defaultPrevented &&
+      !event.isComposing &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
+      switch (event.key) {
+        case "ArrowUp":
+          dismissHoverTooltip();
+          if (moveCommitRowFocus(row, -1)) {
+            event.preventDefault();
+          }
+          return;
+        case "ArrowDown":
+          dismissHoverTooltip();
+          if (moveCommitRowFocus(row, 1)) {
+            event.preventDefault();
+          }
+          return;
+      }
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      dismissHoverTooltip();
+      event.preventDefault();
+      void selectCommit(revision, { rowElement: row });
+    }
   }
 
   function renderPanel() {
@@ -390,34 +1276,144 @@
       return;
     }
 
-    if (state.rows.length === 0 && state.loading) {
-      panel.innerHTML = '<div class="loading"><div class="spinner"></div>Loading history…</div>';
+    if (state.rowCount === 0 && state.loading) {
+      // The first paint of the Git tab: the row geometry is known before
+      // the data, so it is drawn as skeleton rows rather than announced.
+      const skeleton = document.createElement("div");
+      skeleton.className = "git-history-skeleton git-history-skeleton-first mb-delayed-loading";
+      skeleton.style.setProperty("--git-skeleton-row-height", `${graphModule().SWIMLANE_HEIGHT}px`);
+      skeleton.style.height = `${graphModule().SWIMLANE_HEIGHT * 12}px`;
+      skeleton.setAttribute("role", "status");
+      skeleton.setAttribute("aria-label", "Loading history");
+      panel.replaceChildren(skeleton);
       return;
     }
-    if (state.rows.length === 0 && state.failed) {
+    if (state.rowCount === 0 && state.failed) {
       renderRefreshState(panel, "Could not read repository history.");
       return;
     }
-    if (state.rows.length === 0) {
+    if (state.rowCount === 0) {
       // A repository with no commits yet. Distinct from a failure, and
       // it should read that way.
       renderRefreshState(panel, "No commits yet.");
       return;
     }
 
-    const list = document.createElement("div");
-    list.className = "git-graph-list";
-    appendRows(list, state.rows);
-    panel.replaceChildren(list);
-    renderTrailingState();
+    let list = panel.querySelector(".git-graph-list");
+    if (!(list instanceof HTMLElement)) {
+      const summary = document.createElement("div");
+      summary.className = "git-history-summary";
+      list = document.createElement("div");
+      list.className = "git-graph-list";
+      list.addEventListener("focusin", handleCommitListFocus);
+      panel.replaceChildren(summary, list);
+      invalidateHistoryOrigin();
+      observeSummaryHeight(summary);
+    }
+    renderHistorySummary(panel);
+    // The tally goes from a pending shimmer to real text, and its height
+    // can change with it, so the origin is re-measured after it renders
+    // rather than before.
+    invalidateHistoryOrigin();
+    state.mountedRange = null;
+    renderVirtualRows(true);
   }
 
   /**
-   * Put the one trailing row — loading, failed, or capped — at the end
-   * of the list, replacing whatever was there.
+   * The header tally above the graph — the Git tab's counterpart of the
+   * file tree's summary row, deliberately under its own class names:
+   * app.js live-patches the document's first `.tree-summary`, so this
+   * row must not present itself as one. Pending until the summary
+   * response lands.
    *
-   * Separate from the row rendering because it changes on its own
-   * schedule: a page append leaves every row alone and only moves this.
+   * @param {HTMLElement} panel
+   */
+  function renderHistorySummary(panel) {
+    const row = panel.querySelector(".git-history-summary");
+    if (!(row instanceof HTMLElement)) {
+      return;
+    }
+    if (!state.summary) {
+      const pending = document.createElement("span");
+      pending.className = "count tally-pending";
+      row.replaceChildren(pending);
+      return;
+    }
+    const count = state.summary.commitCount;
+    const countSpan = document.createElement("span");
+    countSpan.className = "git-history-summary-count";
+    countSpan.textContent = `${count.toLocaleString()} ${count === 1 ? "commit" : "commits"}`;
+    const firstCommitAt = state.summary.firstCommitAt;
+    const firstAge = firstCommitAt === null ? "" : relativeAge(firstCommitAt);
+    if (!firstAge || firstCommitAt === null) {
+      row.replaceChildren(countSpan);
+      return;
+    }
+    // "begun 3mo ago" — the age value carries the shared age primitive
+    // (tier hue, weight, tabular numerals) exactly as commit rows do;
+    // the words around it stay ordinary row text.
+    const firstSpan = document.createElement("span");
+    firstSpan.className = "git-history-summary-first";
+    const begun = document.createElement("span");
+    begun.textContent = "begun";
+    const ageSpan = document.createElement("span");
+    ageSpan.className = `git-history-summary-age ${ageClass(firstCommitAt)}`;
+    ageSpan.textContent = firstAge;
+    const ago = document.createElement("span");
+    ago.textContent = "ago";
+    firstSpan.replaceChildren(begun, ageSpan, ago);
+    row.replaceChildren(countSpan, firstSpan);
+  }
+
+  /**
+   * Load the header tally the way the file tree loads its own numbers:
+   * after first paint, off the render path, replacing a pending shimmer.
+   * A failed load keeps the shimmer; the next refresh retries.
+   *
+   * @returns {Promise<void>}
+   */
+  async function loadHistorySummary() {
+    const requestGeneration = historyGeneration;
+    const requestState = state;
+    try {
+      const response = await apiFetch("/api/git/summary", undefined, {
+        signal: historyAbortController.signal,
+      });
+      if (!response.ok) {
+        return;
+      }
+      const summary = /** @type {MetabrowserGitHistorySummary} */ (await response.json());
+      if (requestGeneration !== historyGeneration || state !== requestState) {
+        return;
+      }
+      if (!summary.is_repo || typeof summary.commit_count !== "number") {
+        return;
+      }
+      state.summary = {
+        commitCount: summary.commit_count,
+        firstCommitAt: typeof summary.first_commit_at === "number" ? summary.first_commit_at : null,
+      };
+      const panel = panelElement();
+      if (panel) {
+        renderHistorySummary(panel);
+      }
+    } catch {
+      // Leave the pending shimmer rather than blanking a number the
+      // user may be reading; refreshHistory issues the retry.
+    }
+  }
+
+  /** Retry the exact failed append or replay request. */
+  async function retryFailedPage() {
+    if (!state.failed || state.failedPage === null) {
+      return;
+    }
+    await loadPage(state.retryCursor, state.failedPage, { initial: state.retryInitial });
+  }
+
+  /**
+   * Put the trailing append state at the end of the list. Replay state is
+   * rendered at its missing logical rows, where its retry action belongs.
    */
   function renderTrailingState() {
     const list = panelElement()?.querySelector(".git-graph-list");
@@ -428,18 +1424,24 @@
       previous.remove();
     }
     let trailing = null;
-    if (state.loading) {
+    if (state.loading && state.loadingPage === state.nextPageNumber) {
       trailing = document.createElement("div");
-      trailing.className = "git-graph-more";
-      trailing.textContent = "Loading…";
-    } else if (state.failed) {
+      trailing.className =
+        "git-graph-more git-history-skeleton git-history-skeleton-more mb-delayed-loading";
+      trailing.style.setProperty("--git-skeleton-row-height", `${graphModule().SWIMLANE_HEIGHT}px`);
+      trailing.style.height = `${graphModule().SWIMLANE_HEIGHT * 2}px`;
+      trailing.setAttribute("aria-label", "Loading more history");
+    } else if (state.failed && state.failedPage === state.nextPageNumber) {
       trailing = document.createElement("div");
       trailing.className = "git-graph-more git-graph-more-failed";
-      trailing.textContent = "Could not load more history.";
-    } else if (state.capped) {
-      trailing = document.createElement("div");
-      trailing.className = "git-graph-more";
-      trailing.textContent = `Showing the newest ${HISTORY_MAX_ROWS} commits.`;
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "btn git-history-retry";
+      retry.textContent = "Retry loading history";
+      retry.addEventListener("click", () => {
+        void retryFailedPage();
+      });
+      trailing.appendChild(retry);
     }
     if (trailing) {
       list.appendChild(trailing);
@@ -448,17 +1450,20 @@
 
   /**
    * @param {MetabrowserGitGraphRow} row
+   * @param {number} ordinal
    * @returns {HTMLElement}
    */
-  function renderRow(row) {
+  function renderRow(row, ordinal) {
     const commit = row.commit;
     const element = document.createElement("div");
     element.className = "git-graph-row";
     element.dataset.revision = commit.id;
+    element.dataset.ordinal = String(ordinal);
     element.setAttribute("role", "button");
-    element.setAttribute("tabindex", "0");
+    element.setAttribute("tabindex", "-1");
     if (commit.id === state.selectedId) {
       element.classList.add("selected");
+      element.setAttribute("aria-current", "true");
     }
 
     const gutter = document.createElement("div");
@@ -486,15 +1491,12 @@
       `${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
     element.appendChild(body);
 
-    element.addEventListener("click", () => selectCommit(commit.id));
-    element.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        selectCommit(commit.id);
-      }
-    });
+    element.addEventListener("click", () => selectCommit(commit.id, { rowElement: element }));
+    element.addEventListener("keydown", (event) =>
+      handleCommitRowKeydown(event, element, commit.id),
+    );
     element.addEventListener("mouseenter", () => scheduleHover(element, commit.id));
-    element.addEventListener("mouseleave", cancelHover);
+    element.addEventListener("mouseleave", () => cancelHover(commit.id));
     return element;
   }
 
@@ -527,119 +1529,244 @@
    * @param {string} revision
    */
   function scheduleHover(rowElement, revision) {
-    cancelHover();
-    // Debounced because the hover is backed by a real request: dragging
-    // the pointer down the graph must not fire one per row.
+    if (hoverRevision !== revision) {
+      cancelHover();
+    } else if (hoverTimer !== null) {
+      clearTimeout(hoverTimer);
+    }
+    hoverRevision = revision;
+    // Both preparation and presentation wait for a stable target. Starting
+    // detail and comparison requests on every pointer crossing made scrolling
+    // the history compete with the commit the reader actually selected.
     hoverTimer = setTimeout(async () => {
-      const detail = await fetchCommitDetail(revision);
+      hoverTimer = null;
+      const preparation = prepareRevision(revision, true);
+      const detail = await (preparation?.detail ?? fetchCommitDetail(revision));
       if (!detail) {
         return;
       }
-      // The pointer may have left during the request.
-      if (!rowElement.matches(":hover")) {
+      if (hoverRevision !== revision || !rowElement.matches(":hover")) {
         return;
       }
-      rowElement.dataset.tipText = hoverText(detail);
+      sdk()?.tooltip?.show(renderCommitTooltip(detail), rowElement);
     }, HOVER_DEBOUNCE_MS);
   }
 
-  function cancelHover() {
+  function dismissHoverTooltip() {
     if (hoverTimer !== null) {
       clearTimeout(hoverTimer);
       hoverTimer = null;
     }
+    sdk()?.tooltip?.hide();
+    hoverRevision = null;
   }
 
-  /**
-   * The hover card body: full message plus this commit's line counts.
-   *
-   * A native title attribute rather than a custom popover — it needs no
-   * positioning logic, no dismissal handling, and no z-index against the
-   * resize handle, and the content is plain text.
-   *
-   * @param {MetabrowserGitCommitDetail} detail
-   * @returns {string}
-   */
-  function hoverText(detail) {
-    const commit = detail.commit;
-    const stats = detail.stats || {};
-    const parts = [commit.subject];
-    if (detail.body) {
-      parts.push("", detail.body);
+  /** @param {string | null} [revision] */
+  function cancelHover(revision = null) {
+    if (revision !== null && hoverRevision !== revision) {
+      return;
     }
-    parts.push("");
-    parts.push(`${commit.author?.name || ""} · ${commit.short_id}`);
-    parts.push(
-      `${stats.files_changed || 0} file(s) changed, ` +
-        `+${stats.additions || 0} −${stats.deletions || 0}`,
-    );
-    return parts.join("\n");
+    dismissHoverTooltip();
+    cancelSpeculativePreparation(revision);
   }
 
   // ── Commit detail view ─────────────────────────────────────
 
+  function clearPendingState() {
+    if (pendingTimer !== null) {
+      clearTimeout(pendingTimer);
+      pendingTimer = null;
+    }
+    if (pendingPreviewClaim !== null) {
+      shell()?.endPreviewNavigation(pendingPreviewClaim);
+      pendingPreviewClaim = null;
+    }
+  }
+
+  /** @returns {Promise<void>} */
+  function afterNextPaint() {
+    if (typeof requestAnimationFrame !== "function") {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }
+
   /**
    * @param {string} revision
-   * @returns {Promise<void>}
-   */
-  /**
-   * @param {string} revision
-   * @param {{fromRoute?: boolean}} [options] `fromRoute` when the URL is
-   *   already this commit (restore on load), so the route is not rewritten.
+   * @param {{fromRoute?: boolean, rowElement?: HTMLElement}} [options]
+   *   `fromRoute` when the URL is already this commit (restore on load), so
+   *   the route is not rewritten. Pointer and keyboard paths pass their row
+   *   so immediate feedback does not search the mounted history.
    */
   async function selectCommit(revision, options = {}) {
     const bridge = shell();
     if (!bridge) {
       return;
     }
-    const previewClaim = bridge.claimPreview("git");
-    // Whatever is on screen goes before the next commit's render starts.
-    disposeCommitDiff();
-    // A commit is a selection like any other, so it owns the URL while
-    // it is shown: /commit/<rev> (Browser URL Grammar). Replacing rather
-    // than pushing matches the tree's skim rule — walking a history list
-    // must not bury the reader's entry point.
-    const routes = window.MetabrowserNavigationRoute;
-    if (routes && !options.fromRoute && typeof window.history?.replaceState === "function") {
-      window.history.replaceState(null, "", routes.commitHref(revision));
-    }
-    state.selectedId = revision;
-    for (const element of document.querySelectorAll(".git-graph-row")) {
-      element.classList.toggle(
-        "selected",
-        element instanceof HTMLElement && element.dataset.revision === revision,
-      );
-    }
+    /** @type {number | null} */
+    let selectionClaim = null;
+    /** @type {HTMLElement | null} */
+    let selectedRowForAnchor = null;
+    return measureAsync(
+      "gitRevision:selectToReady",
+      async () => {
+        const feedback = measure(
+          "gitRevision:selectionFeedback",
+          () => {
+            const { previewClaim, retainedPreview } = measure(
+              "gitRevision:selectionFeedback:pending",
+              () => {
+                clearPendingState();
+                const claim = bridge.claimPreview("git");
+                selectionClaim = claim;
+                const retained = bridge.beginPreviewNavigation(claim);
+                pendingPreviewClaim = claim;
+                return { previewClaim: claim, retainedPreview: retained };
+              },
+              { revision },
+            );
+            selectionClaim = previewClaim;
+            const revisionChanged = state.selectedId !== revision;
+            measure(
+              "gitRevision:selectionFeedback:route",
+              () => {
+                // A commit is a selection like any other, so it owns the URL while
+                // it is shown: /commit/<rev> (Browser URL Grammar). Replacing rather
+                // than pushing matches the tree's skim rule — walking a history list
+                // must not bury the reader's entry point.
+                const routes = window.MetabrowserNavigationRoute;
+                if (
+                  routes &&
+                  !options.fromRoute &&
+                  typeof window.history?.replaceState === "function"
+                ) {
+                  window.history.replaceState(null, "", routes.commitHref(revision));
+                }
+                state.selectedId = revision;
+              },
+              { revision },
+            );
+            measure(
+              "gitRevision:selectionFeedback:rows",
+              () => {
+                const mountedPanel = panelElement();
+                const priorRow =
+                  mountedPanel instanceof HTMLElement
+                    ? mountedPanel.querySelector(".git-graph-row.selected")
+                    : null;
+                const matchedRow =
+                  options.rowElement?.dataset.revision === revision
+                    ? options.rowElement
+                    : mountedPanel
+                      ? commitRows(mountedPanel).find((row) => row.dataset.revision === revision)
+                      : null;
+                const selectedRow = matchedRow instanceof HTMLElement ? matchedRow : null;
+                selectedRowForAnchor = selectedRow;
+                if (priorRow instanceof HTMLElement && priorRow !== selectedRow) {
+                  priorRow.classList.remove("selected");
+                  priorRow.removeAttribute("aria-current");
+                }
+                if (selectedRow) {
+                  selectedRow.classList.add("selected");
+                  selectedRow.setAttribute("aria-current", "true");
+                  const ordinal = Number(selectedRow.dataset.ordinal);
+                  if (Number.isSafeInteger(ordinal)) {
+                    state.focusedOrdinal = ordinal;
+                  }
+                }
+              },
+              { revision },
+            );
+            return { previewClaim, retainedPreview, revisionChanged };
+          },
+          { revision },
+        );
+        const { previewClaim, retainedPreview, revisionChanged } = feedback;
+        if (revisionChanged) {
+          // Keep the prior DOM as the handoff surface, but stop its deferred
+          // hydration and syntax work from competing with the selected diff.
+          // Pointer and keyboard paths have already updated their exact two
+          // rows and the claim-owned busy state before this bounded cancellation
+          // work.
+          commitDiffHandle?.cancelPending?.();
+        }
 
-    const preview = bridge.renderPreviewHtml(
-      '<div class="loading"><div class="spinner"></div>Loading commit…</div>',
-      previewClaim,
-    );
-    if (!preview) {
-      return;
-    }
+        const preparation = prepareRevision(revision, false);
+        if (!preparation) {
+          clearPendingState();
+          return;
+        }
+        if (!retainedPreview) {
+          pendingTimer = setTimeout(() => {
+            pendingTimer = null;
+            if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
+              return;
+            }
+            const loading = bridge.renderPreviewHtml(
+              '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+                '<span class="sr-only">Loading commit…</span></div>',
+              previewClaim,
+            );
+            if (loading) {
+              bridge.beginPreviewNavigation(previewClaim);
+            }
+          }, PENDING_DELAY_MS);
+        }
 
-    const detail = await fetchCommitDetail(revision);
-    // A different commit or another preview owner won while this request
-    // was in flight.
-    if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
-      return;
-    }
-    if (!detail) {
-      bridge.renderPreviewHtml(
-        '<div class="preview-empty">Could not load this commit.</div>',
-        previewClaim,
-      );
-      return;
-    }
-    renderCommitDetail(detail, previewClaim);
+        const detail = await preparation.detail;
+        // A different commit or another preview owner won while this request
+        // was in flight.
+        if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
+          return;
+        }
+        if (!detail) {
+          disposeCommitDiff();
+          bridge.renderPreviewHtml(
+            '<div class="preview-empty">Could not load this commit.</div>',
+            previewClaim,
+          );
+          clearPendingState();
+          return;
+        }
+        await renderCommitDetail(detail, previewClaim, preparation);
+        if (state.selectedId === revision && bridge.isPreviewClaimCurrent(previewClaim)) {
+          await afterNextPaint();
+          clearPendingState();
+        }
+      },
+      { revision },
+    ).finally(() => {
+      if (
+        state.selectedId === revision &&
+        selectedRowForAnchor?.parentElement instanceof HTMLElement
+      ) {
+        measure(
+          "gitRevision:rowAnchor",
+          () => {
+            if (selectedRowForAnchor?.parentElement instanceof HTMLElement) {
+              setCommitRowAnchor(selectedRowForAnchor.parentElement, selectedRowForAnchor);
+            }
+          },
+          { revision },
+        );
+      }
+      if (selectionClaim !== null && pendingPreviewClaim === selectionClaim) {
+        clearPendingState();
+      }
+      if (preparationSlot?.revision === revision && !preparationSlot.speculative) {
+        preparationSlot = null;
+      }
+    });
   }
 
   /**
    * @param {MetabrowserGitCommitDetail} detail
    * @param {number} [claim]
+   * @param {RevisionPreparation | null} [preparation]
    */
-  function renderCommitDetail(detail, claim) {
+  async function renderCommitDetail(detail, claim, preparation = null) {
     const bridge = shell();
     if (!bridge) {
       return;
@@ -649,23 +1776,8 @@
     const stats = detail.stats || {};
     const files = detail.files || [];
 
-    let html = '<div class="git-commit-view">';
-    html += '<div class="git-commit-header">';
-    html += `<h1 class="git-commit-subject">${escapeHtml(commit.subject)}</h1>`;
-    html += '<div class="git-commit-meta">';
-    html += `<span class="git-commit-sha">${escapeHtml(commit.short_id)}</span>`;
-    html += `<span>${escapeHtml(commit.author?.name || "")}</span>`;
-    html += `<span class="${escapeHtml(ageClass(commit.committed_at))}">`;
-    html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
-    html += "</div>";
-    if (commit.refs?.length) {
-      html += `<div class="git-commit-refs">${renderRefBadges(commit.refs)}</div>`;
-    }
-    html += "</div>";
-
-    if (detail.body) {
-      html += `<pre class="git-commit-body">${escapeHtml(detail.body)}</pre>`;
-    }
+    let html = `<div class="git-commit-view" data-revision="${escapeHtml(commit.id)}">`;
+    html += renderCommitSummary(detail);
 
     // Files outside the served root are the one thing the comparison
     // below cannot show: it renders paths this server can open, and
@@ -693,13 +1805,38 @@
     html += '<div class="git-commit-diff metabrowser-diff-host"></div>';
     html += "</div>";
 
-    const preview = bridge.renderPreviewHtml(html, previewClaim);
-    if (!preview) {
+    const stage = document.createElement("div");
+    stage.className = "git-commit-stage";
+    measure(
+      "gitRevision:commitMarkup",
+      () => {
+        stage.innerHTML = html;
+      },
+      { revision: commit.id },
+    );
+    const diffPreparation = preparation ?? {
+      ...beginDiffPreparation(commit.id, null),
+    };
+    const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation);
+    if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
+      nextHandle?.dispose?.();
       return;
     }
-    mountCommitDiff(preview, commit.id, previewClaim);
 
-    for (const element of preview.querySelectorAll(".git-commit-file[data-path]")) {
+    wireCommitFileNavigation(stage);
+    const preview = bridge.renderPreviewNode(stage, previewClaim);
+    if (!preview) {
+      nextHandle?.dispose?.();
+      return;
+    }
+    const previousHandle = commitDiffHandle;
+    commitDiffHandle = nextHandle || null;
+    previousHandle?.dispose?.();
+  }
+
+  /** @param {HTMLElement} root */
+  function wireCommitFileNavigation(root) {
+    for (const element of root.querySelectorAll(".git-commit-file[data-path]")) {
       element.addEventListener("click", () => {
         const path = element instanceof HTMLElement ? element.dataset.path : null;
         if (path) {
@@ -717,47 +1854,40 @@
    *
    * @param {HTMLElement} preview
    * @param {string} revision
-   * @param {number} claim
+   * @param {{assets: Promise<void>, comparison?: Promise<unknown>}} preparation
+   * @returns {Promise<{cancelPending?: () => void, dispose?: () => void} | null>}
    */
-  async function mountCommitDiff(preview, revision, claim) {
+  async function mountCommitDiff(preview, revision, preparation) {
     const host = preview.querySelector(".git-commit-diff");
     const bridge = shell();
     if (!(host instanceof HTMLElement) || !bridge) {
-      return;
+      return null;
     }
-    disposeCommitDiff();
     const pluginSdk = sdk();
     if (!pluginSdk) {
       host.remove();
-      return;
+      return null;
     }
     try {
-      await pluginSdk.ensureKindAssets("diff");
-      // Loading the plugin yields to a newer selection, so check the
-      // preview claim before asking the newly registered view to render.
-      if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(claim)) {
-        return;
-      }
+      await preparation.assets;
       const view = pluginSdk.getRegisteredView("diff", "diff");
       if (!view) {
         // The diff plugin is absent: the file list above still stands on
         // its own, so say nothing rather than showing an empty frame.
         host.remove();
-        return;
+        return null;
       }
-      const handle = /** @type {{dispose?: () => void} | null} */ (
-        await view.render(host, { revision })
+      return measureAsync(
+        "gitRevision:diffMount",
+        async () =>
+          /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */ (
+            await view.render(host, { revision, raw: preparation.comparison })
+          ),
+        { revision },
       );
-      // A different commit or preview owner won while this was in flight.
-      if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(claim)) {
-        handle?.dispose?.();
-        return;
-      }
-      commitDiffHandle = handle || null;
     } catch (_error) {
-      if (state.selectedId === revision && bridge.isPreviewClaimCurrent(claim)) {
-        host.textContent = "Could not load this commit's diff.";
-      }
+      host.textContent = "Could not load this commit's diff.";
+      return null;
     }
   }
 
@@ -807,12 +1937,13 @@
   // ── Paging on scroll ───────────────────────────────────────
 
   function onTreeScroll() {
-    const content = document.getElementById("tree-content");
+    const content = historyScroller();
     const panel = panelElement();
     if (!content || !panel || panel.style.display === "none") {
       return;
     }
-    if (state.loading || !state.cursor) {
+    renderVirtualRows();
+    if (state.loading || state.failed || !state.cursor) {
       return;
     }
     const remaining = content.scrollHeight - content.scrollTop - content.clientHeight;
@@ -823,19 +1954,92 @@
 
   // ── Lifecycle ──────────────────────────────────────────────
 
-  /** @returns {Promise<void>} */
-  async function refreshHistory() {
+  /** @param {PanelState} current */
+  function disposeHistoryState(current) {
+    current.pageCache.dispose();
+    current.virtualWindow.dispose();
+  }
+
+  function resetHistoryRequests() {
+    historyAbortController.abort();
+    historyAbortController = new AbortController();
+    historyGeneration += 1;
+    wantedRange = null;
+    rangeLoadPromise = null;
+  }
+
+  /**
+   * Rebuild an invalid or expired server session without replacing the
+   * already-rendered selected commit detail. Partial rows are discarded
+   * before the new walk starts, and the prior logical position is rebuilt
+   * up to a bounded replay depth.
+   */
+  async function recoverHistorySession() {
+    // Recovery itself issues page requests, and one of those can come
+    // back 400/409/410 while refs are churning — without this guard that
+    // response recurses through a fresh refresh-and-replay cycle with no
+    // depth bound.
+    if (recoveringSession) {
+      return;
+    }
+    recoveringSession = true;
+    try {
+      const selectedId = state.selectedId;
+      // The new walk replays its prefix one request per page, so the
+      // restored position must be bounded: the cache retains at most
+      // PAGE_CACHE_PAGES pages anyway, and at the measured 13-70 ms per
+      // page request this cap costs well under a second. A deeper
+      // pre-expiry position lands at the cap instead of issuing one
+      // request per LOG_LIMIT rows of unbounded prefix.
+      const restoreOrdinal = Math.min(
+        Math.max(0, state.focusedOrdinal ?? state.mountedRange?.visibleStart ?? 0),
+        PAGE_CACHE_PAGES * LOG_LIMIT - 1,
+      );
+      await refreshHistory({ preserveDetail: true, selectedId });
+      while (state.rowCount <= restoreOrdinal && state.cursor && !state.failed) {
+        if (!(await loadNextPage(false))) {
+          break;
+        }
+      }
+      const scroller = historyScroller();
+      if (scroller && state.rowCount > 0) {
+        const ordinal = Math.min(restoreOrdinal, state.rowCount - 1);
+        scroller.scrollTop =
+          historyOrigin() +
+          state.virtualWindow.rebaseToOrdinal(ordinal, viewportHeight(scroller), "start");
+        state.focusedOrdinal = ordinal;
+        state.mountedRange = null;
+        renderVirtualRows(true);
+      }
+    } finally {
+      recoveringSession = false;
+    }
+  }
+
+  /**
+   * @param {{preserveDetail?: boolean, selectedId?: string | null}} [options]
+   * @returns {Promise<void>}
+   */
+  async function refreshHistory(options = {}) {
     if (state.loading || refreshing) {
       return;
     }
 
     refreshing = true;
+    resetHistoryRequests();
+    clearPendingState();
+    abortPreparation(preparationSlot);
+    preparationSlot = null;
+    disposeHistoryState(state);
     state = emptyState();
+    state.selectedId = options.selectedId ?? null;
     // The detail cache is keyed by object id, but a commit's *payload*
     // is not immutable: its refs move as branches and tags do. Keeping
     // the cache across a refresh would let the hover card and detail
     // view serve pre-refresh refs for a row the graph just redrew.
-    detailCache.clear();
+    if (!options.preserveDetail) {
+      detailCache.clear();
+    }
     state.loading = true;
     renderPanel();
     try {
@@ -847,12 +2051,16 @@
         return;
       }
       state.headRevision = info.head?.revision ?? null;
+      state.headRef = info.head?.ref ?? null;
 
       // Ref colors are an input to lane assignment, so they must settle
       // before the first page is laid out.
       await loadRefColors();
       state.loading = false;
       await loadNextPage(true);
+      // Fired, not awaited: the tally walks the whole graph server-side
+      // and must never hold up the first page of history.
+      void loadHistorySummary();
     } finally {
       refreshing = false;
     }
@@ -863,7 +2071,11 @@
     if (state.loading) {
       return;
     }
-    if (state.rows.length === 0) {
+    if (state.rowCount === 0 && state.endReached) {
+      renderPanel();
+      return;
+    }
+    if (state.rowCount === 0) {
       await refreshHistory();
       return;
     }
@@ -879,17 +2091,45 @@
       teardown();
       return;
     }
-    if ((info.head?.revision ?? null) !== state.headRevision) {
+    if (
+      (info.head?.revision ?? null) !== state.headRevision ||
+      (info.head?.ref ?? null) !== state.headRef
+    ) {
       await refreshHistory();
       return;
     }
 
-    if (state.failed && state.cursor) {
-      await loadNextPage(false);
+    if (state.failed) {
+      if (state.failedPage !== null) {
+        await retryFailedPage();
+      } else if (state.cursor) {
+        await loadNextPage(false);
+      }
+      return;
     }
+    renderVirtualRows(true);
   }
 
   function teardown() {
+    resetHistoryRequests();
+    clearPendingState();
+    cancelHover();
+    abortPreparation(preparationSlot);
+    preparationSlot = null;
+    disposeCommitDiff();
+    // The focus-suspension path writes ``tabindex`` onto the shared
+    // ``#tree-content`` node, which the shell owns and other panels keep
+    // using after this panel is gone; renderer state written onto a
+    // borrowed node is restored here, its disposal path.
+    historyScroller()?.removeAttribute("tabindex");
+    if (scrollOwner) {
+      scrollOwner.removeEventListener("scroll", onTreeScroll);
+      scrollOwner = null;
+    }
+    invalidateHistoryOrigin();
+    summaryResizeObserver?.disconnect();
+    summaryResizeObserver = null;
+    disposeHistoryState(state);
     state = emptyState();
     detailCache.clear();
     refColors = new Map();
@@ -908,7 +2148,7 @@
    */
   async function init() {
     const bridge = shell();
-    if (started || !graphModule() || !bridge) {
+    if (started || !graphModule() || !historyWindowModule() || !bridge) {
       return;
     }
     started = true;
@@ -919,6 +2159,7 @@
       return;
     }
     state.headRevision = info.head?.revision ?? null;
+    state.headRef = info.head?.ref ?? null;
 
     bridge.registerNavPanel({
       id: "git",
@@ -929,9 +2170,8 @@
       },
     });
 
-    document
-      .getElementById("tree-content")
-      ?.addEventListener("scroll", onTreeScroll, { passive: true });
+    scrollOwner = document.getElementById("tree-content");
+    scrollOwner?.addEventListener("scroll", onTreeScroll, { passive: true });
 
     if (routeSelection) {
       // The URL named a commit: show the Git panel and that commit,
@@ -959,19 +2199,38 @@
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,
+      ensurePageLoaded,
       emptyState,
-      hoverText,
       ageClass,
       relativeAge,
+      renderCommitSummary,
+      renderCommitTooltip,
       renderCommitDetail,
       renderFileRow,
       renderPanel,
+      renderVirtualRows,
       renderRefBadges,
+      historyOrigin,
+      invalidateHistoryOrigin,
+      rowsForRange,
+      loadNextPage,
+      retryFailedPage,
       selectCommit,
+      wireCommitFileNavigation,
       setStateForTests: (/** @type {PanelState} */ next) => {
+        if (state.pageCache !== next.pageCache) {
+          disposeHistoryState(state);
+        }
         state = next;
       },
-      stateForTests: () => state,
+      stateForTests: () => {
+        const mounted = rowsForRange(0, state.rowCount);
+        return {
+          ...state,
+          rows: mounted.map((item) => item.row),
+          commits: mounted.map((item) => item.row.commit),
+        };
+      },
     },
   });
 })();

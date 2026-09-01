@@ -160,6 +160,54 @@ def test_catalog_etag_and_live_addition_converge(tmp_path: Path) -> None:
     assert "docs/new.txt" in {file["p"] for file in _body(changed)["files"]}
 
 
+def test_catalog_identity_ignores_changes_the_catalog_does_not_carry(
+    tmp_path: Path,
+) -> None:
+    """An mtime touch must not re-send the catalog.
+
+    The engine version moves on every indexed change; the catalog carries a
+    path and a logical extension per file and moves on far fewer. Keying the
+    ETag on the engine version made an ordinary editor save invalidate the
+    largest payload the server produces, for a body whose only differing byte
+    was the revision claiming it had changed.
+
+    The touched file is already indexed and keeps its name, so the wire content
+    is identical and the client must be told so.
+    """
+
+    _build_fixture(tmp_path)
+
+    async def run() -> tuple[Any, Any, Any]:
+        async with inventory_harness(tmp_path) as harness:
+            first = await api_catalog(cast(Any, _FakeRequest(harness.app)))
+            etag = first.headers["ETag"]
+            target = tmp_path / "docs" / "notes.md"
+            target.write_text(target.read_text() + "more\n")
+            await harness.runtime.coordinator.refresh(
+                RefreshRequest(
+                    observations=(
+                        RefreshObservation(
+                            path="docs/notes.md",
+                            kind=ObservationKind.MODIFIED,
+                        ),
+                    )
+                )
+            )
+            await wait_until_settled(harness.runtime)
+            revalidated = await api_catalog(
+                cast(Any, _FakeRequest(harness.app, {"If-None-Match": etag}))
+            )
+            fresh = await api_catalog(cast(Any, _FakeRequest(harness.app)))
+            return first, revalidated, fresh
+
+    first, revalidated, fresh = asyncio.run(run())
+    assert revalidated.status_code == 304
+    assert fresh.headers["ETag"] == first.headers["ETag"]
+    # The revision is the count of distinct catalogs served, so it holds too.
+    assert _body(fresh)["revision"] == _body(first)["revision"]
+    assert _body(fresh)["files"] == _body(first)["files"]
+
+
 def test_catalog_live_add_ignore_and_remove_deltas(tmp_path: Path) -> None:
     _build_fixture(tmp_path)
 

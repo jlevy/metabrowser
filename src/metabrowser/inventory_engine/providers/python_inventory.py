@@ -112,6 +112,7 @@ from metabrowser.settings import (
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
     ROLLUP_MAX_NODES,
+    SLOW_OPERATION_LOG_SECONDS,
 )
 from metabrowser.walker import (
     WALKER_EMIT_BATCH,
@@ -136,11 +137,14 @@ LOG = logging.getLogger(__name__)
 _NANOSECONDS_PER_SECOND = 1_000_000_000
 # The first exact v0.7 release comparison found one 928.9 ms tally pass on a
 # 123,658-file corpus and a 291.7 ms unrelated-request delay. At that cold-tail
-# rate, 2,048 entries are about 15 ms of work. A one-microsecond timer-backed
-# pause releases the GIL and prevents the worker from immediately reacquiring
-# it, keeping the request loop independent of the interpreter's ordinary
-# thread-switch interval.
-_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH = 2_048
+# rate, 2,048 entries are about 15 ms of work. GitHub's shared Linux runner
+# later measured that batch at 52 ms under contention, just beyond the
+# deterministic 50 ms heartbeat guard. Yield every 1,024 entries so the same
+# guard remains meaningful across supported CI hosts. A one-microsecond
+# timer-backed pause releases the GIL and prevents the worker from immediately
+# reacquiring it, keeping the request loop independent of the interpreter's
+# ordinary thread-switch interval.
+_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH = 1_024
 _NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
 # The exact installed-build browser comparison in exp-014 measured a 1 ms
 # `/api/tree` handler queued for 33-37 ms while the startup walker applied a
@@ -3175,7 +3179,14 @@ class _PythonInventoryStore:
             )
         )
         elapsed_ms = (time.monotonic_ns() - self._started_at_ns) // 1_000_000
-        LOG.info(
+        # INFO only when the walk is worth a line in someone's terminal:
+        # a truncated index means the browser is showing part of the tree,
+        # and a slow one explains a wait the user just sat through. The
+        # ordinary case — a small tree indexed before the first paint —
+        # is routine lifecycle, which belongs at DEBUG with the rest.
+        notable = is_truncated or elapsed_ms >= SLOW_OPERATION_LOG_SECONDS * 1000
+        LOG.log(
+            logging.INFO if notable else logging.DEBUG,
             "inventory walker complete: provider=python contract=%s status=%s "
             "files=%d entries=%d elapsed=%dms",
             _CONTRACT_ID,

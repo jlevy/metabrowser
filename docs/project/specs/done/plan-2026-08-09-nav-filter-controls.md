@@ -46,8 +46,9 @@ tail.
 ## Non-Goals
 
 - Content or keyword search; that is the
-  [scalable file search](plan-2026-07-17-scalable-file-search.md) plan’s dimension of
-  the same vocabulary, and this plan leaves room for it rather than implementing it
+  [scalable file search](../active/plan-2026-07-17-scalable-file-search.md) plan’s
+  dimension of the same vocabulary, and this plan leaves room for it rather than
+  implementing it
 - Saved or user-named filter combinations
 - Filtering inside document views; a rendered README ignores filters
 - Folder-view and treemap filtering; this plan gives that work a shared vocabulary and
@@ -604,9 +605,9 @@ menu should quietly prefer it.
 - [Architecture](../../../architecture.md), “Where Filtering Happens” — which tier owns
   each dimension, what moving one upstream buys and costs, and the rule for capped
   responses
-- [Scalable file search](plan-2026-07-17-scalable-file-search.md) (the keyword dimension
-  of the same vocabulary)
-- [Scanning state and recent directories](plan-2026-07-16-scanning-state-and-recent-directories.md)
+- [Scalable file search](../active/plan-2026-07-17-scalable-file-search.md) (the keyword
+  dimension of the same vocabulary)
+- [Scanning state and recent directories](../active/plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Folder views, treemap, and unified filtering](https://github.com/jlevy/metabrowser/pull/23)
   (the control styling this plan promotes, and the branch that rebases onto it)
 

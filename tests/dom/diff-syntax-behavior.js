@@ -17,9 +17,17 @@ function tokenLines(source, side) {
 }
 
 async function main() {
-  const modulePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-syntax.js");
-  const { buildFileSyntaxModel, highlightFileSyntax, syntaxInputBytes } = await import(
-    pathToFileURL(modulePath).href
+  const modelModulePath = path.join(
+    repoRoot,
+    "src/metabrowser/builtin_plugins/diff/diff-render-model.js",
+  );
+  const syntaxModulePath = path.join(
+    repoRoot,
+    "src/metabrowser/builtin_plugins/diff/diff-syntax.js",
+  );
+  const { buildFileRenderModel } = await import(pathToFileURL(modelModulePath).href);
+  const { highlightFileSyntax, syntaxInputBytes } = await import(
+    pathToFileURL(syntaxModulePath).href
   );
 
   const change = {
@@ -59,7 +67,7 @@ async function main() {
     resolvedPaths.push(sourcePath);
     return sourcePath.endsWith(".js") ? "javascript" : sourcePath.endsWith(".py") ? "python" : "";
   };
-  const model = buildFileSyntaxModel(change, patch, languageForPath);
+  const model = buildFileRenderModel(change, patch, languageForPath);
   check("old rename language", model.oldLanguage === "javascript", model.oldLanguage);
   check("new rename language", model.newLanguage === "python", model.newLanguage);
   check(
@@ -139,7 +147,7 @@ async function main() {
       records[0].newTokens?.[0]?.classes[0] === "hljs-new",
   );
 
-  const overLimitModel = buildFileSyntaxModel(change, patch, languageForPath);
+  const overLimitModel = buildFileRenderModel(change, patch, languageForPath);
   let overLimitCalls = 0;
   const overLimit = await highlightFileSyntax(
     overLimitModel,
@@ -154,7 +162,7 @@ async function main() {
   );
   check("over-limit file stays wholly plain", overLimit === false && overLimitCalls === 0);
 
-  const invalidModel = buildFileSyntaxModel(change, patch, languageForPath);
+  const invalidModel = buildFileRenderModel(change, patch, languageForPath);
   const originalWarn = console.warn;
   let warningCount = 0;
   console.warn = () => {
@@ -183,7 +191,7 @@ async function main() {
     String(warningCount),
   );
 
-  const addedModel = buildFileSyntaxModel(
+  const addedModel = buildFileRenderModel(
     { id: "added", new: { path: "only.js" } },
     {
       hunks: [
@@ -212,7 +220,7 @@ async function main() {
   );
   check("an added file lexes only its new side", addedCalls === 1, String(addedCalls));
 
-  const unknownModel = buildFileSyntaxModel(change, patch, () => "");
+  const unknownModel = buildFileRenderModel(change, patch, () => "");
   let unknownCalls = 0;
   const unknown = await highlightFileSyntax(
     unknownModel,
@@ -227,7 +235,7 @@ async function main() {
   );
   check("unknown side languages stay plain", unknown === false && unknownCalls === 0);
 
-  const abortedModel = buildFileSyntaxModel(change, patch, languageForPath);
+  const abortedModel = buildFileRenderModel(change, patch, languageForPath);
   const controller = new AbortController();
   let releaseIgnoredAbort;
   const ignoredAbort = highlightFileSyntax(

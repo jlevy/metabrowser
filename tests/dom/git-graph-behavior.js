@@ -259,6 +259,37 @@ function countTags(svg, tagName) {
 // ── Ref colors ───────────────────────────────────────────────
 
 {
+  const commits = [
+    commit("m", ["b", "c"]),
+    commit("b", ["a"]),
+    commit("c", ["a"]),
+    commit("a", []),
+  ];
+  const whole = graph.computeSwimlanes(commits);
+  const windowed = graph.computeSwimlanes(commits, { rowStart: 1, rowEnd: 3 });
+  assertEqual(
+    "windowed layout: retains only requested row models",
+    windowed.rows.map((row) => row.commit.id),
+    ["b", "c"],
+  );
+  assertEqual(
+    "windowed layout: retained rows keep exact input topology",
+    windowed.rows.map((row) => laneIds(row.inputSwimlanes)),
+    whole.rows.slice(1, 3).map((row) => laneIds(row.inputSwimlanes)),
+  );
+  assertEqual(
+    "windowed layout: omitted rows still advance the page checkpoint",
+    laneIds(windowed.trailingSwimlanes),
+    laneIds(whole.trailingSwimlanes),
+  );
+  assertEqual(
+    "windowed layout: omitted rows still advance the palette",
+    windowed.colorIndex,
+    whole.colorIndex,
+  );
+}
+
+{
   const refColors = graph.buildRefColors("refs/heads/main");
   const commits = [
     commit("c", ["b"], [{ id: "refs/heads/main", name: "main", kind: "branch", is_head: true }]),

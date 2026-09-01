@@ -24,6 +24,22 @@ isolated installed-wheel smoke tests.
 Run `make hooks-install` once per checkout to install the Lefthook pre-commit and
 pre-push gates.
 
+## CLI Parity
+
+Every route, kind, and model the browser consumes, and every state the system persists,
+has a `metab` equivalent and a golden transcript.
+Only the view layer is exempt, and its behaviour is pinned in `tests/dom/`.
+
+- Prefer adding a route to adding a CLI mode.
+  `--api` reaches every registered route by construction, so a surface exposed as a
+  route is inspectable and golden-pinned for free.
+- `devtools/check_parity.py` enforces this and names what is missing.
+  The table, the exemption list, and their reasons live in
+  [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+- A new route arrives with its parity row and a golden, or the build fails.
+  There is no `gap` status: every registered surface is either covered by a transcript
+  or exempt with a stated reason.
+
 ## Compatibility and Legacy Code
 
 **Speculative compatibility layers are forbidden.** Apply
@@ -83,8 +99,8 @@ this repository’s structural facts and standing answers.
 
 - Apply `tbd guidelines common-doc-guidelines` to every human-authored document and
   retain the standard footer.
-- Format all human-authored Markdown with the exact `flowmark-rs==0.3.2` pin through
-  `make format`.
+- Format all human-authored Markdown through `make format`, which invokes the exact
+  `flowmark-rs` pin the Makefile records in `FLOWMARK_VERSION`.
 - Link to source documentation instead of duplicating long policy text.
 - Architecture documents follow the layout convention in
   [Architecture Documents](docs/development.md#architecture-documents): status first,

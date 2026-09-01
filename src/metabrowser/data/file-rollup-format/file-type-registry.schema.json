@@ -59,6 +59,39 @@
         },
         "order": {
           "type": "integer"
+        },
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "activity",
+            "alert",
+            "alignLeft",
+            "chevron",
+            "copy",
+            "dep",
+            "doc",
+            "file",
+            "fileSymlink",
+            "fileText",
+            "folder",
+            "gear",
+            "grid",
+            "list",
+            "monitor",
+            "moon",
+            "print",
+            "process",
+            "sans",
+            "serif",
+            "step",
+            "sun",
+            "toggle",
+            null
+          ],
+          "description": "This family's own shape, or null to take the group's."
         }
       },
       "required": [
@@ -86,12 +119,42 @@
         },
         "order": {
           "type": "integer"
+        },
+        "icon": {
+          "type": "string",
+          "enum": [
+            "activity",
+            "alert",
+            "alignLeft",
+            "chevron",
+            "copy",
+            "dep",
+            "doc",
+            "file",
+            "fileSymlink",
+            "fileText",
+            "folder",
+            "gear",
+            "grid",
+            "list",
+            "monitor",
+            "moon",
+            "print",
+            "process",
+            "sans",
+            "serif",
+            "step",
+            "sun",
+            "toggle"
+          ],
+          "description": "Shape every family in this group takes unless it declares its own."
         }
       },
       "required": [
         "id",
         "label",
-        "order"
+        "order",
+        "icon"
       ],
       "type": "object"
     },
@@ -198,10 +261,10 @@
       "type": "integer"
     },
     "schema": {
-      "const": "file-type-registry-v3"
+      "const": "file-type-registry-v4"
     },
     "schema_version": {
-      "const": 3
+      "const": 4
     }
   },
   "required": [

@@ -176,8 +176,40 @@ function tokenLines(source, className) {
   return source.split("\n").map((text) => [{ classes: [`hljs-${className}`], text }]);
 }
 
+function renderedText(host) {
+  return host.children.length === 0
+    ? host.textContent
+    : host.children.map((child) => child.textContent).join("");
+}
+
 async function main() {
   const documentListeners = new Map();
+  let hydrationObserver = null;
+  global.IntersectionObserver = class IntersectionObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.observed = new Set();
+      hydrationObserver = this;
+    }
+
+    observe(target) {
+      this.observed.add(target);
+    }
+
+    unobserve(target) {
+      this.observed.delete(target);
+    }
+
+    disconnect() {
+      this.observed.clear();
+    }
+
+    intersect(target) {
+      if (this.observed.has(target)) {
+        this.callback([{ isIntersecting: true, target }], this);
+      }
+    }
+  };
   global.document = {
     createElement: (tag) => new FakeElement(tag),
     addEventListener(type, handler) {
@@ -198,7 +230,19 @@ async function main() {
     }
   };
   const viewPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js");
-  const { mountDiffView, setChangeLoader } = await import(pathToFileURL(viewPath).href);
+  const {
+    composeTextRuns,
+    mountDiffView: mountDiffViewImpl,
+    setChangeLoader,
+  } = await import(pathToFileURL(viewPath).href);
+  const defaultTestApi = {
+    highlightSyntax: async () => null,
+    isLargeTextPreview: () => true,
+    langForPath: () => "",
+    prefs: { get: () => "unified" },
+  };
+  const mountDiffView = (container, document, api = {}, options) =>
+    mountDiffViewImpl(container, document, { ...defaultTestApi, ...api }, options);
   const corpus = JSON.parse(
     fs.readFileSync(
       path.join(repoRoot, "src/metabrowser/data/file-diff-format/file-diff-conformance.json"),
@@ -211,6 +255,29 @@ async function main() {
     await Promise.resolve();
     await nextTask();
   };
+
+  const composed = composeTextRuns(
+    "const oldName = true;",
+    [
+      { classes: ["hljs-keyword"], text: "const" },
+      { classes: [], text: " oldName = " },
+      { classes: ["hljs-literal"], text: "true" },
+      { classes: [], text: ";" },
+    ],
+    [{ start: 6, end: 13 }],
+  );
+  check(
+    "syntax and intraline boundaries compose without text loss",
+    composed.map((run) => run.text).join("") === "const oldName = true;" &&
+      composed.some(
+        (run) =>
+          run.text === "oldName" &&
+          run.classes.includes("diff-intraline-change") &&
+          run.classes.length === 1,
+      ) &&
+      composed.some((run) => run.text === "true" && run.classes.includes("hljs-literal")),
+    JSON.stringify(composed),
+  );
 
   // A modified file renders numbered rows with the right ops.
   const container = new FakeElement("div");
@@ -240,6 +307,11 @@ async function main() {
     isLargeTextPreview: () => false,
     langForPath: () => "python",
     perf: {
+      measure: (label, work, metadata) => {
+        const result = work();
+        syntaxMeasures.push({ label, metadata: { ...metadata } });
+        return result;
+      },
       measureAsync: async (label, work, metadata) => {
         const result = await work();
         syntaxMeasures.push({ label, metadata: { ...metadata } });
@@ -281,6 +353,22 @@ async function main() {
     additionHost.children[0].classList.contains("hljs-new"),
   );
   check(
+    "unified similar replacements use refined row classes",
+    highlightedLines[1].classList.contains("diff-line-refined") &&
+      highlightedLines[2].classList.contains("diff-line-refined"),
+  );
+  check(
+    "syntax and changed-range classes coexist",
+    deletionHost.children.some(
+      (span) =>
+        span.classList.contains("hljs-old") && span.classList.contains("diff-intraline-change"),
+    ) &&
+      additionHost.children.some(
+        (span) =>
+          span.classList.contains("hljs-new") && span.classList.contains("diff-intraline-change"),
+      ),
+  );
+  check(
     "enhancement preserves visible text",
     deletionHost.children.map((span) => span.textContent).join("") === "    return 1",
   );
@@ -291,6 +379,17 @@ async function main() {
   );
   const lexerMeasures = syntaxMeasures.filter(({ label }) => label === "diffSyntax:lexer");
   const fileMeasure = syntaxMeasures.find(({ label }) => label === "diffSyntax:file");
+  const mountLabels = new Set(syntaxMeasures.map(({ label }) => label));
+  check(
+    "mount phases separate model, projection, and attachment cost",
+    [
+      "diffMount:model",
+      "diffMount:fileProjection",
+      "diffMount:projection",
+      "diffMount:attach",
+    ].every((label) => mountLabels.has(label)),
+    JSON.stringify([...mountLabels]),
+  );
   check("each lexer call has a measured span", lexerMeasures.length === 2);
   check(
     "lexer measurements record language and UTF-8 input",
@@ -328,15 +427,32 @@ async function main() {
     highlightSyntax: async () => null,
   });
   await nextSyntaxUnit();
+  const failedHosts = failed.find("diff-line-text");
+  const expectedFailedText = byName
+    .get("modified-with-heading")
+    .patches.f1.hunks[0].lines.map((line) => line.text);
   check(
-    "failed enhancement leaves complete plain text",
-    failed.find("diff-line-text").every((host) => host.children.length === 0),
+    "failed syntax leaves exact text and independent intraline refinement",
+    JSON.stringify(
+      failedHosts.map((host) =>
+        host.children.length === 0
+          ? host.textContent
+          : host.children.map((span) => span.textContent).join(""),
+      ),
+    ) === JSON.stringify(expectedFailedText) && failed.find("diff-intraline-change").length > 0,
   );
 
   // Split is a second projection of the same records. The host control
   // primitives own radiogroup markup and keyboard behavior; this view
   // supplies the exclusive joined-group contract and reprojects on the
   // reported value without fetching or lexing again.
+  const defaultLayout = new FakeElement("div");
+  mountDiffViewImpl(defaultLayout, byName.get("modified-with-heading"));
+  check(
+    "missing layout preference defaults to split",
+    defaultLayout.find("diff-root")[0].dataset.layout === "split",
+  );
+
   let layoutChange = null;
   let layoutSyntaxCalls = 0;
   const preferenceWrites = [];
@@ -395,11 +511,16 @@ async function main() {
       layoutSpecs[0].value === "split",
   );
   check(
+    "layout control orders Split before Unified",
+    JSON.stringify(layoutSpecs[0].options.map((option) => option.value)) ===
+      JSON.stringify(["split", "unified"]),
+  );
+  check(
     "layout control is always present",
     split.find("diff-layout-control")[0].innerHTML.includes('role="radiogroup"'),
   );
   await nextSyntaxUnit();
-  const splitContextSides = splitContext.find("diff-split-side");
+  const splitContextSides = split.find("diff-split-context")[0].find("diff-split-side");
   check(
     "split context keeps each side's tokens",
     splitContextSides[0].find("diff-line-text")[0].children[0].classList.contains("hljs-old") &&
@@ -463,14 +584,60 @@ async function main() {
     unequalRows[1].find("diff-split-old")[0].find("diff-line-no-newline").length === 1,
   );
 
+  const shiftedDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
+  shiftedDoc.patches.f1.hunks[0].lines = [
+    { op: "del", text: "alpha = one;" },
+    { op: "del", text: "beta = two;" },
+    { op: "del", text: "gamma = three;" },
+    { op: "add", text: "inserted = zero;" },
+    { op: "add", text: "alpha = 1;" },
+    { op: "add", text: "beta = 2;" },
+    { op: "add", text: "gamma = 3;" },
+  ];
+  shiftedDoc.patches.f1.hunks[0].old_count = 3;
+  shiftedDoc.patches.f1.hunks[0].new_count = 4;
+  const shifted = new FakeElement("div");
+  mountDiffView(shifted, shiftedDoc, layoutApi);
+  check(
+    "split first paint retains positional fallback",
+    shifted.find("diff-split-row")[0].find("diff-split-empty").length === 0,
+  );
+  await nextSyntaxUnit();
+  const shiftedRows = shifted.find("diff-split-row");
+  const shiftedText = (rowIndex, side) =>
+    renderedText(shiftedRows[rowIndex].find(`diff-split-${side}`)[0].find("diff-line-text")[0]);
+  check(
+    "refinement reprojects only the file with monotonic shifted alignment",
+    shiftedRows[0].find("diff-split-old")[0].classList.contains("diff-split-empty") &&
+      shiftedText(0, "new") === "inserted = zero;" &&
+      shiftedText(1, "old") === "alpha = one;" &&
+      shiftedText(1, "new") === "alpha = 1;",
+    JSON.stringify(
+      shiftedRows.map((row) =>
+        row
+          .find("diff-split-side")
+          .map((side) => ({ className: side.className, text: side.text() })),
+      ),
+    ),
+  );
+
   const invalidPreference = new FakeElement("div");
   mountDiffView(invalidPreference, byName.get("modified-with-heading"), {
     ...layoutApi,
     prefs: { ...layoutApi.prefs, get: () => "future-layout" },
   });
   check(
-    "invalid layout preference falls back to unified",
-    invalidPreference.find("diff-root")[0].dataset.layout === "unified",
+    "invalid layout preference falls back to split",
+    invalidPreference.find("diff-root")[0].dataset.layout === "split",
+  );
+  const persistedUnified = new FakeElement("div");
+  mountDiffView(persistedUnified, byName.get("modified-with-heading"), {
+    ...layoutApi,
+    prefs: { ...layoutApi.prefs, get: () => "unified" },
+  });
+  check(
+    "persisted unified preference remains authoritative",
+    persistedUnified.find("diff-root")[0].dataset.layout === "unified",
   );
   const pureAdd = new FakeElement("div");
   mountDiffView(pureAdd, byName.get("added-text-file"), layoutApi);
@@ -566,7 +733,11 @@ async function main() {
     toggle.getAttribute("aria-controls") === body.getAttribute("id"),
   );
   const copy = container.find("diff-file-copy")[0];
-  check("copy control rides the shell delegation", Boolean(copy.getAttribute("data-copy-path")));
+  check("copy control rides the shared delegation", copy.getAttribute("data-mb-copy") === "text");
+  check(
+    "copy control carries an explicit path payload",
+    copy.getAttribute("data-mb-copy-text") === "a.py",
+  );
   check("copy control is an icon button", copy.classList.contains("icon-btn"));
   check(
     "stats sit beside the filename",
@@ -648,6 +819,13 @@ async function main() {
   };
   mountDiffView(many, twoFiles);
   check("change sets keep the summary", many.find("diff-summary").length === 1);
+  const hosted = new FakeElement("div");
+  mountDiffView(hosted, twoFiles, undefined, { showSummary: false });
+  check(
+    "revision-hosted change sets leave the aggregate summary to their commit header",
+    hosted.find("diff-summary").length === 0,
+  );
+  check("revision-hosted change sets keep their toolbar", hosted.find("diff-toolbar").length === 1);
 
   // A long contiguous run folds behind an expander; ordinary runs do not.
   const longDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
@@ -666,31 +844,76 @@ async function main() {
   check("the expander states the hidden count", control.text().includes("40 more changed lines"));
   const group = folded.find("diff-fold-group")[0];
   check("hidden lines start collapsed", group.classList.contains("diff-fold-collapsed"));
-  check("the visible head stays outside the group", folded.find("diff-line").length === 61);
-  check("the group holds exactly the surplus", group.find("diff-line").length === 40);
+  check("the visible head stays outside the group", folded.find("diff-line").length === 21);
+  check("collapsed surplus rows are not materialized", group.find("diff-line").length === 0);
   const sectionBody = folded.find("diff-file-body")[0];
   control.click();
   check("expanding reveals the group", !group.classList.contains("diff-fold-collapsed"));
+  check("expansion feedback precedes row construction", group.find("diff-line").length === 0);
   check(
     "expanding does not also collapse the file",
     !sectionBody.classList.contains("diff-file-body-collapsed"),
   );
+  await nextTask();
+  check("expansion materializes the surplus cooperatively", group.find("diff-line").length === 40);
   control.click();
   check("collapsing hides it again", group.classList.contains("diff-fold-collapsed"));
+  check("collapsing releases surplus row DOM", group.find("diff-line").length === 0);
   check("short runs do not fold", container.find("diff-fold-control").length === 0);
+
+  const hugeDoc = JSON.parse(JSON.stringify(longDoc));
+  const hugeHunk = hugeDoc.patches.f1.hunks[0];
+  hugeHunk.lines = Array.from({ length: 2_020 }, (_, index) => ({
+    op: "add",
+    text: `large line ${index}`,
+  }));
+  hugeHunk.old_count = 0;
+  hugeHunk.new_count = hugeHunk.lines.length;
+  const hugeFold = new FakeElement("div");
+  const hugeHandle = mountDiffView(hugeFold, hugeDoc);
+  const hugeControl = hugeFold.find("diff-fold-control")[0];
+  const hugeGroup = hugeFold.find("diff-fold-group")[0];
+  check(
+    "large collapsed runs mount only their visible prefix",
+    hugeFold.find("diff-line").length === 20,
+  );
+  hugeControl.click();
+  await nextTask();
+  check(
+    "large expansion yields after one bounded row batch",
+    hugeGroup.find("diff-line").length === 100,
+    String(hugeGroup.find("diff-line").length),
+  );
+  hugeHandle.cancelPending();
+  await nextTask();
+  check(
+    "navigation cancellation stops later fold batches",
+    hugeGroup.find("diff-line").length === 100,
+    String(hugeGroup.find("diff-line").length),
+  );
+  hugeControl.click();
+  await nextTask();
+  check("collapsed expansion cancels later batches", hugeGroup.find("diff-line").length === 0);
+  hugeHandle.dispose();
 
   const switchingFold = new FakeElement("div");
   mountDiffView(switchingFold, longDoc, layoutApi);
   const switchingControl = switchingFold.find("diff-fold-control")[0];
   const splitFoldGroup = switchingFold.find("diff-fold-group")[0];
   check(
+    "collapsed split surplus starts unmaterialized",
+    splitFoldGroup.find("diff-split-row").length === 0,
+  );
+  switchingControl.click();
+  await nextTask();
+  check(
     "split fold hides one paired interval across unequal sides",
     splitFoldGroup.find("diff-split-row").length === 40 &&
       splitFoldGroup.find("diff-split-empty").length === 40,
   );
-  switchingControl.click();
   layoutChange("diff-layout", "unified", "one");
   layoutChange("diff-layout", "split", "one");
+  await nextTask();
   const restoredControl = switchingFold.find("diff-fold-control")[0];
   check(
     "expanded fold state survives reprojection",
@@ -706,6 +929,33 @@ async function main() {
   // allowed to mutate state after disposal.
   const deferredDoc = JSON.parse(JSON.stringify(byName.get("deferred-manifest-only")));
   deferredDoc.__revision = "revision-1";
+  const manyDeferredDoc = JSON.parse(JSON.stringify(deferredDoc));
+  manyDeferredDoc.manifest.files = [0, 1, 2].map((index) => {
+    const change = JSON.parse(JSON.stringify(deferredDoc.manifest.files[0]));
+    change.id = `f${index + 1}`;
+    change.old.path = `old-${index}.txt`;
+    change.new.path = `new-${index}.txt`;
+    return change;
+  });
+  manyDeferredDoc.manifest.totals.files = 3;
+  let viewportLoads = 0;
+  setChangeLoader(() => {
+    viewportLoads += 1;
+    return new Promise(() => {});
+  });
+  const manyDeferred = new FakeElement("div");
+  const manyDeferredHandle = mountDiffView(manyDeferred, manyDeferredDoc, layoutApi);
+  const deferredBodies = manyDeferred.find("diff-file-body");
+  check("mounting many deferred files starts no requests", viewportLoads === 0);
+  check("all deferred bodies wait for visibility", hydrationObserver.observed.size === 3);
+  for (const body of deferredBodies) {
+    hydrationObserver.intersect(body.parentNode);
+  }
+  check("visible deferred work is concurrency-bounded", viewportLoads === 2);
+  manyDeferredHandle.cancelPending();
+  check("cancellation drops every queued observation", hydrationObserver.observed.size === 0);
+  manyDeferredHandle.dispose();
+
   let deferredResolve;
   let deferredSignal;
   let deferredLoads = 0;
@@ -718,6 +968,9 @@ async function main() {
   });
   const hydrated = new FakeElement("div");
   mountDiffView(hydrated, deferredDoc, layoutApi);
+  const deferredBody = hydrated.find("diff-file-body")[0];
+  check("offscreen deferred files do not start requests", deferredLoads === 0);
+  hydrationObserver.intersect(deferredBody.parentNode);
   const deferredLayoutChange = layoutChange;
   check("deferred loader receives the mount signal", deferredSignal instanceof AbortSignal);
   deferredLayoutChange("diff-layout", "unified", "one");
@@ -737,13 +990,21 @@ async function main() {
   const disposedFetch = new FakeElement("div");
   const disposedFetchHandle = mountDiffView(disposedFetch, deferredDoc, layoutApi);
   const detachedBody = disposedFetch.find("diff-file-body")[0];
-  disposedFetchHandle.dispose();
-  check("dispose aborts deferred fetches", disposedFetchSignal?.aborted === true);
+  check("replacement test starts with deferred work idle", disposedFetchSignal === undefined);
+  hydrationObserver.intersect(detachedBody.parentNode);
+  disposedFetchHandle.cancelPending();
+  check("pending-work cancellation aborts deferred fetches", disposedFetchSignal?.aborted === true);
+  check("pending-work cancellation retains the rendered root", disposedFetch.children.length === 1);
   disposedFetchResolve(JSON.parse(JSON.stringify(byName.get("modified-with-heading"))));
   await nextTask();
   check(
-    "late fetch completion cannot mutate detached DOM",
+    "late fetch completion cannot mutate retained stale DOM",
     detachedBody.find("diff-progress").length === 1 && detachedBody.find("diff-line").length === 0,
+  );
+  disposedFetchHandle.dispose();
+  check(
+    "disposal removes the retained root after cancellation",
+    disposedFetch.children.length === 0,
   );
 
   let tokenResolve;
@@ -774,13 +1035,14 @@ async function main() {
   const detachedHosts = disposedSyntax.find("diff-line-text");
   await nextSyntaxUnit();
   check("syntax work starts after plain paint", tokenCalls === 1, String(tokenCalls));
+  const detachedChildCounts = detachedHosts.map((host) => host.children.length);
   disposedSyntaxHandle.dispose();
   check("dispose aborts syntax waits", tokenSignal?.aborted === true);
   tokenResolve(tokenLines(tokenSource, "late"));
   await nextTask();
   check(
     "late syntax completion cannot mutate detached hosts",
-    detachedHosts.every((host) => host.children.length === 0),
+    detachedHosts.every((host, index) => host.children.length === detachedChildCounts[index]),
   );
 
   const queuedDoc = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));

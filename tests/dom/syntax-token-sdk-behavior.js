@@ -347,6 +347,11 @@ async function main() {
     "regular previews and syntax tokens should share the injected UTF-8 byte bound",
   );
   check(
+    bounded.metabrowser.isLargeTextPreview({ size: 4 }) === false &&
+      bounded.metabrowser.isLargeTextPreview({ size: 5 }) === true,
+    "DOM-free reconstructed inputs should share the injected byte bound",
+  );
+  check(
     bounded.metabrowser.isLargeTextPreview({
       content: "éé",
       content_truncated: true,

@@ -72,6 +72,12 @@ _STATUS_NAMES: dict[str, str] = {
 # Statuses that carry a second path. Git spends three tokens on these.
 _TWO_PATH_STATUSES = frozenset({"C", "R"})
 
+# The compact commit summary deliberately has three file categories.
+# Every wire status belongs to exactly one: copies create a new path;
+# renames and type changes alter an existing tracked path.
+_MODIFIED_SUMMARY_STATUSES = frozenset({"modified", "renamed", "typechanged"})
+_ADDED_SUMMARY_STATUSES = frozenset({"added", "copied"})
+
 _UNKNOWN_REVISION_MARKERS: tuple[str, ...] = (
     "bad object",
     "not a valid object name",
@@ -271,6 +277,18 @@ def _split_message(message: str) -> tuple[str, str]:
     return subject, body
 
 
+def _summarize_changes(changes: list[GitFileChange]) -> GitCommitStats:
+    """Return exact file-family and line totals for *changes*."""
+    return GitCommitStats(
+        files_changed=len(changes),
+        files_modified=sum(c["status"] in _MODIFIED_SUMMARY_STATUSES for c in changes),
+        files_added=sum(c["status"] in _ADDED_SUMMARY_STATUSES for c in changes),
+        files_deleted=sum(c["status"] == "deleted" for c in changes),
+        additions=sum(c["additions"] or 0 for c in changes),
+        deletions=sum(c["deletions"] or 0 for c in changes),
+    )
+
+
 def parse_commit_detail(
     raw: bytes,
     context: RepoContext,
@@ -315,11 +333,7 @@ def parse_commit_detail(
     # Stats describe the whole commit, so they are computed before the
     # cap is applied: a truncated list must not also understate the
     # totals it was truncated from.
-    stats = GitCommitStats(
-        files_changed=len(changes),
-        additions=sum(c["additions"] or 0 for c in changes),
-        deletions=sum(c["deletions"] or 0 for c in changes),
-    )
+    stats = _summarize_changes(changes)
     files_truncated = len(changes) > max_files
     if files_truncated:
         changes = changes[:max_files]

@@ -178,11 +178,58 @@ def require_canonical_inventory_path(
         "\\" in value
         or "\x00" in value
         or pure.is_absolute()
+        # PurePosixPath spells the root ".", and "." survives both the
+        # as_posix and the parts check below because its parts are empty.
+        # The root has exactly one key here, "", so any other spelling of it
+        # is a path no provider can be asked to resolve.
+        or not pure.parts
         or pure.as_posix() != value
         or "." in pure.parts
         or ".." in pure.parts
     ):
         raise ValueError(f"{name} must be a canonical POSIX-relative path")
+
+
+def parse_inventory_path(value: str) -> str | None:
+    """Read a path as a client spelled it, returning the key or ``None``.
+
+    This is the inbound direction, and the counterpart of
+    :func:`canonical_inventory_path`, which is outbound: that one turns a name the
+    filesystem gave us into the canonical identity, while this one turns a
+    spelling a client sent into the same identity, or says there isn't one.
+
+    HTTP clients and command lines spell one directory several ways -- ``docs``,
+    ``docs/``, ``./docs``, and ``.`` or ``""`` for the root. Providers must not each
+    decide what those mean: a spelling that the reference provider treats as the root
+    and a native one treats as a miss is a difference no test above the boundary would
+    attribute correctly.
+
+    ``None`` means the value cannot name anything inside the root, which callers report
+    as a miss rather than passing down. ``..`` is refused rather than resolved:
+    collapsing it would make the answer depend on whether a segment is a symlink, which
+    is a filesystem question the inventory key does not carry.
+
+    The result is checked against :func:`require_canonical_inventory_path` rather than
+    assumed canonical, so this function cannot drift from the rule it feeds. Every
+    tightening of that rule -- the surrogate refusal among them -- narrows this one in
+    the same commit.
+    """
+
+    if "\x00" in value or "\\" in value or value.startswith("/"):
+        return None
+    parts: list[str] = []
+    for segment in value.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            return None
+        parts.append(segment)
+    candidate = "/".join(parts)
+    try:
+        require_canonical_inventory_path(candidate, "path", allow_root=True)
+    except ValueError:
+        return None
+    return candidate
 
 
 def canonical_inventory_name(name: str) -> str:

@@ -301,13 +301,13 @@ document whose whole claim is to be the source.
 
 ## References
 
-- [File Rollup Format](../architecture/file-rollup-format/file-rollup-format.md) — the
-  format this registry belongs to and its version model
+- [File Rollup Format](../../architecture/file-rollup-format/file-rollup-format.md) —
+  the format this registry belongs to and its version model
 - [github-linguist/linguist](https://github.com/github-linguist/linguist) —
   `lib/linguist/languages.yml`, MIT; clone with
   `git clone --depth 1 https://github.com/github-linguist/linguist.git attic/linguist`
-- [Design System](../../design-system.md) — the distribution ramp, and the rule that hue
-  does not drift between themes
+- [Design System](../../../design-system.md) — the distribution ramp, and the rule that
+  hue does not drift between themes
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

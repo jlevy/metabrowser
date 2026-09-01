@@ -21,6 +21,7 @@ import typer
 from metabrowser.cli.common import apply_log_level, validate_contained_path
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
+from metabrowser.inventory_engine.contract import parse_inventory_path
 from metabrowser.settings import RECENT_WINDOW_SECONDS
 from metabrowser.tree_filter import TreeFilter, parse_recency, parse_types
 from metabrowser.walk import (
@@ -140,6 +141,17 @@ def _run_walk(
             "requires --format json or yaml with --all-at-once",
             param_hint="--path",
         )
+    if subpath:
+        # A command line spells a directory freely -- `docs`, `docs/`, `./docs`,
+        # `.` for the root. The provider boundary takes one canonical key, so
+        # the spelling is settled here rather than inside the walk.
+        canonical = parse_inventory_path(subpath)
+        if canonical is None:
+            # Same answer as a symlink that leaves the root below: the target
+            # is not somewhere this walk can go, and the two should not report
+            # it differently just because one is caught by spelling.
+            raise CLIError(f"--path target is outside the served root: {subpath}")
+        subpath = canonical
     if subpath:
         target = validate_contained_path(resolved, subpath)
         if not target.is_dir():

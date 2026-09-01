@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -92,6 +93,7 @@ from metabrowser.inventory_engine.contract import (
     QueryKind,
     ReadRequest,
     VersionUnavailableError,
+    parse_inventory_path,
 )
 from metabrowser.inventory_engine.coordinator import (
     DecoratedInventoryEntry,
@@ -949,8 +951,15 @@ def _pending_tally_paths(payload: dict[str, object]) -> list[str]:
         if not isinstance(item, dict):
             continue
         path = item.get("path")
-        if isinstance(path, str) and path:
-            paths.append(path)
+        if not isinstance(path, str) or not path:
+            continue
+        # The sample comes from a browser payload, so it is client input and
+        # is canonicalized before it can reach a provider query. A path that
+        # cannot name anything under the root is dropped from the diagnostic
+        # rather than failing the request the diagnostic exists to explain.
+        canonical = parse_inventory_path(path)
+        if canonical is not None:
+            paths.append(canonical)
     return paths
 
 
@@ -1087,9 +1096,65 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
 
 
 # Last encoded catalog body, keyed by its ETag. Holds at most one entry: the
-# revision moves on every indexed change, so older bodies are dead weight and
+# revision moves on every catalog change, so older bodies are dead weight and
 # a full catalog is the largest payload the server produces.
 _CATALOG_BODY_CACHE: dict[str, bytes] = {}
+
+# The engine version and the catalog are two different clocks. Every indexed
+# change advances the engine version, and most of them leave the catalog's wire
+# content -- a path and a logical extension per file -- exactly as it was. An
+# editor save or a build touching mtimes is the ordinary case.
+#
+# Keying the client-facing ETag on the engine clock therefore re-sent the whole
+# catalog, up to `max_files` rows, on changes the client had nothing to do with:
+# the only differing byte in the response was the revision number that claimed
+# it had changed. The ETag follows content identity instead, so a client
+# revalidates and gets a 304.
+#
+# The engine clock is still useful, just as an accelerator rather than an
+# identity: within one engine version the content cannot have moved, so a repeat
+# poll answers from this map without assembling the catalog at all. Bounded to
+# the newest entry for the same reason as the body cache.
+_CATALOG_ETAG_BY_CHECKPOINT: dict[str, str] = {}
+
+# Content identity is a hash, and the wire field is a revision, so the count of
+# distinct catalogs seen is kept here. It moves once per catalog change, which
+# is what `revision` has always meant to a reader.
+_CATALOG_REVISION: dict[str, object] = {"identity": None, "value": 0}
+
+
+def _catalog_content_identity(
+    pages: tuple[tuple[CatalogRecord, ...], ...],
+    status: str,
+) -> str:
+    """Hash exactly what the envelope carries, and nothing else.
+
+    Over the wire a record is its path and logical extension, so size and
+    mtime are deliberately absent: including them would reintroduce the
+    invalidation this identity exists to remove. Runs in a worker thread with
+    the immutable provider pages.
+    """
+
+    digest = hashlib.sha256()
+    digest.update(status.encode())
+    for page in pages:
+        for record in page:
+            digest.update(b"\x00")
+            digest.update(record.path.encode())
+            digest.update(b"\x01")
+            digest.update(record.logical_extension.encode())
+    return digest.hexdigest()
+
+
+def _catalog_revision_for(identity: str) -> int:
+    """The number of distinct catalogs served since the process started."""
+
+    if _CATALOG_REVISION["identity"] != identity:
+        _CATALOG_REVISION["identity"] = identity
+        _CATALOG_REVISION["value"] = cast(int, _CATALOG_REVISION["value"]) + 1
+    return cast(int, _CATALOG_REVISION["value"])
+
+
 # A moving provider gets bounded retries before the route reports version churn.
 _CATALOG_ASSEMBLY_ATTEMPTS = 3
 
@@ -1141,7 +1206,7 @@ def _encode_catalog(
 
 async def _read_catalog(
     runtime: InventoryRuntime,
-) -> tuple[tuple[tuple[CatalogRecord, ...], ...], str, int, str]:
+) -> tuple[tuple[tuple[CatalogRecord, ...], ...], str, EngineVersion]:
     """Assemble the complete bounded catalog from one engine version."""
 
     # The provider retains at most this many entries, so the complete file catalog
@@ -1195,8 +1260,7 @@ async def _read_catalog(
                     state = coordinated.result.state
                     status = _catalog_status(state)
                     engine = coordinated.version.engine
-                    etag = _catalog_etag(engine)
-                    return tuple(pages), status, engine.sequence, etag
+                    return tuple(pages), status, engine
                 if after in seen_cursors:
                     raise InventoryConsistencyError("catalog page cursor did not advance")
                 seen_cursors.add(after)
@@ -1225,24 +1289,33 @@ async def api_catalog(request: Request) -> Response:
     """
 
     runtime = _runtime_for(request)
-    checkpoint_etag = await _catalog_checkpoint(runtime)
-    if matches_if_none_match(request, checkpoint_etag):
-        return Response(status_code=304, headers={"ETag": checkpoint_etag})
-    cached = _CATALOG_BODY_CACHE.get(checkpoint_etag)
-    if cached is not None:
-        return Response(
-            cached,
-            media_type="application/json",
-            headers=etag_headers(checkpoint_etag),
-        )
+    checkpoint = await _catalog_checkpoint(runtime)
+    known = _CATALOG_ETAG_BY_CHECKPOINT.get(checkpoint)
+    if known is not None:
+        if matches_if_none_match(request, known):
+            return Response(status_code=304, headers={"ETag": known})
+        cached = _CATALOG_BODY_CACHE.get(known)
+        if cached is not None:
+            return Response(
+                cached,
+                media_type="application/json",
+                headers=etag_headers(known),
+            )
 
-    pages, status, revision, etag = await _read_catalog(runtime)
+    pages, status, engine = await _read_catalog(runtime)
+    identity = await asyncio.to_thread(_catalog_content_identity, pages, status)
+    etag = build_scoped_etag(
+        f"catalog-{engine.session}-{engine.scope_fingerprint}-"
+        f"{engine.semantic_fingerprint}-{identity}"
+    )
+    _CATALOG_ETAG_BY_CHECKPOINT.clear()
+    _CATALOG_ETAG_BY_CHECKPOINT[checkpoint] = etag
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers={"ETag": etag})
     cached = _CATALOG_BODY_CACHE.get(etag)
     if cached is not None:
         return Response(cached, media_type="application/json", headers=etag_headers(etag))
-    body = await asyncio.to_thread(_encode_catalog, pages, status, revision)
+    body = await asyncio.to_thread(_encode_catalog, pages, status, _catalog_revision_for(etag))
     # Reconnect storms and multiple tabs re-request the same revision; the
     # ETag turns most of those into 304s, but a client without the ETag (a
     # fresh tab) would otherwise pay the full encode again.

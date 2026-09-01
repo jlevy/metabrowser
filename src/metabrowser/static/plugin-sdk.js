@@ -116,6 +116,8 @@
   /** @type {Map<string, Promise<void>>} */
   const _loadingKpressAssets = new Map();
   const _KPRESS_ASSET_MANIFEST_SCHEMA = "kpress-asset-manifest-v2";
+  /** Bounds a missing manifest-owned plugin asset load/error event. */
+  const _pluginAssetLoadTimeoutMs = 10_000;
   /** Bounds a missing stylesheet load/error event before a later render can retry. */
   const _stylesheetLoadTimeoutMs = 10_000;
   /** Detects cached stylesheets whose browsers expose `sheet` without a load event. */
@@ -195,24 +197,57 @@
   function _loadPluginElement(tagName, url, attributes) {
     return new Promise((resolve) => {
       const element = global.document.createElement(tagName);
+      let settled = false;
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let readyPoll = null;
+      /** @type {ReturnType<typeof setTimeout> | null} */
+      let loadTimeout = null;
+
+      const settle = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (readyPoll !== null) {
+          clearTimeout(readyPoll);
+        }
+        if (loadTimeout !== null) {
+          clearTimeout(loadTimeout);
+        }
+        resolve(undefined);
+      };
+      /** @param {string} reason */
+      const fail = (reason) => {
+        if (settled) {
+          return;
+        }
+        console.error(`metabrowser plugin asset failed to load: ${url} (${reason})`);
+        settle();
+      };
+      const detectCachedStylesheet = () => {
+        if (settled || tagName !== "link") {
+          return;
+        }
+        if ("sheet" in element && element.sheet) {
+          settle();
+          return;
+        }
+        readyPoll = setTimeout(detectCachedStylesheet, _stylesheetReadyPollMs);
+      };
+
       for (const [name, value] of Object.entries(attributes || {})) {
         element.setAttribute(name, value);
       }
-      element.addEventListener("load", () => resolve(undefined), { once: true });
-      element.addEventListener(
-        "error",
-        () => {
-          console.error(`metabrowser plugin asset failed to load: ${url}`);
-          resolve(undefined);
-        },
-        { once: true },
-      );
+      element.addEventListener("load", settle, { once: true });
+      element.addEventListener("error", () => fail("error event"), { once: true });
       if (tagName === "link") {
         element.setAttribute("href", url);
       } else {
         element.setAttribute("src", url);
       }
+      loadTimeout = setTimeout(() => fail("timed out"), _pluginAssetLoadTimeoutMs);
       global.document.head.append(element);
+      detectCachedStylesheet();
     });
   }
 
@@ -356,7 +391,17 @@
       err.payload = payload;
       throw err;
     }
-    const data = await resp.json();
+    const responseBytes = Number(resp.headers?.get?.("content-length"));
+    const decode = () => resp.json();
+    const recorder = global.metabrowser?.perf;
+    const data =
+      typeof recorder?.measureAsync === "function"
+        ? await recorder.measureAsync("pluginData:decode", decode, {
+            plugin,
+            response_bytes: Number.isFinite(responseBytes) ? responseBytes : null,
+            route,
+          })
+        : await decode();
     if (data && data.type === "plugin_error") {
       /** @type {Error & {status?: number, payload?: unknown}} */
       const err = new Error(
@@ -573,7 +618,7 @@
   const fileTypes =
     global.MetabrowserFileTypeTaxonomy ||
     Object.freeze({
-      schema: "file-type-registry-v3",
+      schema: "file-type-registry-v4",
       schemaVersion: 3,
       revision: 0,
       fingerprint: "unavailable",
@@ -1551,10 +1596,14 @@
     if (!data) {
       return false;
     }
-    return (
-      !!data.highlight_disabled ||
-      (typeof data.content === "string" && utf8ByteLength(data.content) > syntaxHighlightMaxBytes())
-    );
+    if (data.highlight_disabled) {
+      return true;
+    }
+    if (typeof data.content === "string") {
+      return utf8ByteLength(data.content) > syntaxHighlightMaxBytes();
+    }
+    const size = Number(data.size);
+    return Number.isFinite(size) && size >= 0 && size > syntaxHighlightMaxBytes();
   }
 
   /**
@@ -1802,30 +1851,39 @@
     container.innerHTML = truncationWarning + wrapWithCopy(code) + loadMoreFooter;
   }
 
-  // Delegated click handler for the copy buttons wrapWithCopy emits.
-  // Fully SDK-owned: no reference to shell globals, so the documented
-  // wrapWithCopy behavior cannot change when app.js internals do. Scoped
-  // to buttons carrying data-mb-copy so plugin- or shell-built copy
-  // buttons with their own listeners are never double-handled.
+  // Delegated click handler for copyable content and explicit identifiers.
+  // Fully SDK-owned: no reference to shell globals, so paths, revisions,
+  // and wrapWithCopy surfaces share one clipboard and feedback contract.
   /** @param {Element & {classList?: DOMTokenList, dataset?: DOMStringMap}} btn */
   function _handleCopyClick(btn) {
-    var wrap = typeof btn.closest === "function" ? btn.closest(".content-copy-wrap") : null;
-    if (!wrap) {
-      return;
-    }
-    var code =
-      typeof wrap.querySelector === "function"
-        ? wrap.querySelector("[data-mb-copy-payload]") || wrap.querySelector("code")
-        : null;
-    var text = code ? code.textContent || "" : "";
-    if (!text) {
-      // No <code> child: copy the wrap's text minus the button's label.
-      const nodes = wrap.childNodes || [];
-      for (let ci = 0; ci < nodes.length; ci++) {
-        if (nodes[ci] !== btn) {
-          text += nodes[ci].textContent || "";
+    var mode = btn.dataset?.mbCopy || "";
+    var restingTip = btn.dataset?.mbCopyLabel || "Copy content";
+    var text = "";
+    var wrap = null;
+    var code = null;
+    if (mode === "text") {
+      text = btn.dataset?.mbCopyText || "";
+    } else if (mode === "wrap") {
+      wrap = typeof btn.closest === "function" ? btn.closest(".content-copy-wrap") : null;
+      if (!wrap) {
+        return;
+      }
+      code =
+        typeof wrap.querySelector === "function"
+          ? wrap.querySelector("[data-mb-copy-payload]") || wrap.querySelector("code")
+          : null;
+      text = code ? code.textContent || "" : "";
+      if (!text) {
+        // No <code> child: copy the wrap's text minus the button's label.
+        const nodes = wrap.childNodes || [];
+        for (let ci = 0; ci < nodes.length; ci++) {
+          if (nodes[ci] !== btn) {
+            text += nodes[ci].textContent || "";
+          }
         }
       }
+    } else {
+      return;
     }
     var clipboard = global.navigator?.clipboard;
     if (!clipboard || typeof clipboard.writeText !== "function") {
@@ -1844,7 +1902,7 @@
           btn.classList.remove("copied");
         }
         if (btn.dataset) {
-          btn.dataset.tipText = "Copy content";
+          btn.dataset.tipText = restingTip;
         }
       }, 1500);
     }
@@ -1863,7 +1921,7 @@
         if (!target || typeof target.closest !== "function") {
           return;
         }
-        var btn = target.closest(".content-copy-btn[data-mb-copy]");
+        var btn = target.closest("[data-mb-copy]");
         if (btn) {
           _handleCopyClick(btn);
         }

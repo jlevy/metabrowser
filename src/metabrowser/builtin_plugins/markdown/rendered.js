@@ -150,6 +150,6 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       }
     }
   }
-  void render();
-  return Object.freeze({ dispose });
+  const ready = render();
+  return Object.freeze({ dispose, ready });
 }

@@ -7,6 +7,7 @@ rule, and a ledger generated from the record.
 
 | Loop | Subject |
 | --- | --- |
+| [git-history](git-history/README.md) | The server and browser cost shape for continuous, virtualized Git history, including the frozen v0.9.0 structural budgets |
 | [performance-loop](performance-loop/README.md) | How fast Metabrowser becomes usable — loading, responsiveness, visual stability, assets, the scan, and the server underneath, using the reusable [Web Performance Framework](../docs/web-performance-framework.md) |
 
 Nothing here runs in CI. An exploration answers a question once; a benchmark defends an

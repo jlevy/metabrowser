@@ -41,6 +41,10 @@
   var measureSamples = [];
   var fetchCount = 0;
   var fetchesInFlight = 0;
+  var fetchesInFlightMax = 0;
+  var fetchesInFlightByKey = {};
+  var fetchesInFlightMaxByKey = {};
+  var fetchConcurrencyKeyOverflowed = 0;
   var fetchAbortCount = 0;
   var fetchHttp4xxCount = 0;
   var fetchHttp5xxCount = 0;
@@ -225,6 +229,47 @@
     _record(measureSamples, "span", sample);
   }
 
+  function _fetchConcurrencyKey(rawUrl) {
+    try {
+      var parsed = new URL(rawUrl, "http://localhost");
+      if (parsed.pathname === "/api/plugin/diff/comparison" && parsed.searchParams.has("file")) {
+        return `${parsed.pathname}?file`;
+      }
+      return parsed.pathname;
+    } catch (_error) {
+      return urlKey(rawUrl);
+    }
+  }
+
+  function _startFetch(concurrencyKey) {
+    if (
+      !(concurrencyKey in fetchesInFlightMaxByKey) &&
+      Object.keys(fetchesInFlightMaxByKey).length >= MAX_LABELS - 1
+    ) {
+      concurrencyKey = "(other request classes)";
+      fetchConcurrencyKeyOverflowed += 1;
+    }
+    fetchesInFlight += 1;
+    fetchesInFlightMax = Math.max(fetchesInFlightMax, fetchesInFlight);
+    var activeForKey = Number(fetchesInFlightByKey[concurrencyKey] || 0) + 1;
+    fetchesInFlightByKey[concurrencyKey] = activeForKey;
+    fetchesInFlightMaxByKey[concurrencyKey] = Math.max(
+      Number(fetchesInFlightMaxByKey[concurrencyKey] || 0),
+      activeForKey,
+    );
+    return concurrencyKey;
+  }
+
+  function _finishFetch(concurrencyKey) {
+    fetchesInFlight -= 1;
+    var activeForKey = Number(fetchesInFlightByKey[concurrencyKey] || 0) - 1;
+    if (activeForKey > 0) {
+      fetchesInFlightByKey[concurrencyKey] = activeForKey;
+    } else {
+      delete fetchesInFlightByKey[concurrencyKey];
+    }
+  }
+
   // Wrap the global fetch so every request gets a timing sample. The
   // wrapper preserves the original return contract — callers see the
   // same Promise<Response> shape — so existing call sites need no
@@ -242,17 +287,17 @@
             : input instanceof URL
               ? input.href
               : "";
-      fetchesInFlight += 1;
+      var concurrencyKey = _startFetch(_fetchConcurrencyKey(url));
       var p;
       try {
         p = fetchImpl(input, init);
       } catch (error) {
-        fetchesInFlight -= 1;
+        _finishFetch(concurrencyKey);
         throw error;
       }
       p.then(
         (resp) => {
-          fetchesInFlight -= 1;
+          _finishFetch(concurrencyKey);
           var t1 = _now();
           var status = resp?.status;
           // Sample size from Content-Length when we can; otherwise -1.
@@ -291,7 +336,7 @@
           });
         },
         (error) => {
-          fetchesInFlight -= 1;
+          _finishFetch(concurrencyKey);
           var t1 = _now();
           fetchCount += 1;
           var aborted = error?.name === "AbortError";
@@ -465,6 +510,9 @@
       fetch_samples_seen: fetchCount,
       fetch_samples_retained: fetchSamples.length,
       fetches_in_flight: fetchesInFlight,
+      fetches_in_flight_max: fetchesInFlightMax,
+      fetches_in_flight_max_by_key: { ...fetchesInFlightMaxByKey },
+      fetch_concurrency_keys_overflowed: fetchConcurrencyKeyOverflowed,
       fetch_aborts: fetchAbortCount,
       fetch_http_4xx: fetchHttp4xxCount,
       fetch_http_5xx: fetchHttp5xxCount,
@@ -1128,6 +1176,9 @@
     }
     labelTotals = {};
     fetchCount = 0;
+    fetchesInFlightMax = fetchesInFlight;
+    fetchesInFlightMaxByKey = { ...fetchesInFlightByKey };
+    fetchConcurrencyKeyOverflowed = 0;
     fetchAbortCount = 0;
     fetchHttp4xxCount = 0;
     fetchHttp5xxCount = 0;

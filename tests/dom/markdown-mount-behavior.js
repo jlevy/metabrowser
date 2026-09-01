@@ -68,10 +68,14 @@ function makeContainer() {
   const second = makeContainer();
   const firstMount = module.mountRenderedMarkdown(first, { path: "a.md" }, mb);
   const secondMount = module.mountRenderedMarkdown(second, { path: "b.md" }, mb);
+  check("first mount declares readiness", firstMount.ready instanceof Promise);
+  check("second mount declares readiness", secondMount.ready instanceof Promise);
   check("independent requests", requests.length === 2, String(requests.length));
   requests[1].resolve({ html: "<article>second</article>", diagnostics: [] });
   requests[0].resolve({ html: "<article>first</article>", diagnostics: [] });
-  const [firstHandle, secondHandle] = await Promise.all([firstMount, secondMount]);
+  await Promise.all([firstMount.ready, secondMount.ready]);
+  const firstHandle = firstMount;
+  const secondHandle = secondMount;
   check("first painted", first.innerHTML.includes("first"), first.innerHTML);
   check("second painted", second.innerHTML.includes("second"), second.innerHTML);
   firstHandle.dispose();
@@ -102,7 +106,7 @@ function makeContainer() {
   pendingHandle.dispose();
   check("direct disposer aborts pending request", pendingSignal.aborted === true);
   requests[2].resolve({ html: "<article>too late</article>", diagnostics: [] });
-  await new Promise((resolve) => setImmediate(resolve));
+  await pendingHandle.ready;
   check("disposed direct completion ignored", !pending.innerHTML.includes("too late"));
 
   const late = makeContainer();
@@ -112,7 +116,8 @@ function makeContainer() {
   });
   controller.abort();
   requests[3].resolve({ html: "<article>too late</article>", diagnostics: [] });
-  const lateHandle = await lateMount;
+  await lateMount.ready;
+  const lateHandle = lateMount;
   check("late completion ignored", !late.innerHTML.includes("too late"), late.innerHTML);
   lateHandle.dispose();
 
@@ -127,7 +132,8 @@ function makeContainer() {
     requests[4].options.sourceText === "processed [[wiki]]",
   );
   requests[4].resolve({ html: "<article>wiki</article>", diagnostics: [] });
-  (await wikiMount).dispose();
+  await wikiMount.ready;
+  wikiMount.dispose();
 
   const truncatedWiki = makeContainer();
   const truncatedWikiMount = module.mountRenderedMarkdown(
@@ -153,7 +159,8 @@ function makeContainer() {
     requests[5].options.sourceText === "processed [[wiki]]",
   );
   requests[5].resolve({ html: "<article>large wiki</article>", diagnostics: [] });
-  (await truncatedWikiMount).dispose();
+  await truncatedWikiMount.ready;
+  truncatedWikiMount.dispose();
 
   if (failures.length) {
     console.error(`markdown mount FAILURES:\n- ${failures.join("\n- ")}`);

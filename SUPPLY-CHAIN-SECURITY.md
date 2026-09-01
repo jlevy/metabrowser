@@ -50,7 +50,7 @@ recorded in `uv.lock`.
 
 | Package | Reviewed against | Notes |
 | --- | --- | --- |
-| `kpress==0.3.3` | `0.3.2` | TOC thresholds and `include_toc` on the render request |
+| `kpress==0.3.5` | `0.3.4` | Wide-band column inset applies without a TOC, so an embedded README matches the standalone document |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
 | `get-tbd` | n/a | Issue tracker, first-party; not a build or runtime input |
 

@@ -261,6 +261,31 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
     assert "knownFileCatalog.removePath(path)" in init_block
 
 
+def test_selected_file_cancels_or_joins_matching_hover_prefetch() -> None:
+    js = _read_app_js()
+    helper = js[
+        js.index("async function settleHoverPrefetchForSelection(path)") : js.index(
+            "function shouldPrefetchFile"
+        )
+    ]
+    assert "clearTimeout(hoverPrefetchTimer)" in helper
+    assert "hoverPrefetchPath !== path" in helper
+    assert "abortHoverPrefetch()" in helper
+    assert "await hoverPrefetchPromise" in helper
+
+    select_file = js[
+        js.index("async function selectFile(path, preferredViewId)") : js.index(
+            "// ── File rendering"
+        )
+    ]
+    assert select_file.index("beginPreviewNavigation(previewClaim)") < select_file.index(
+        "await settleHoverPrefetchForSelection(path)"
+    )
+    assert select_file.index("await settleHoverPrefetchForSelection(path)") < select_file.index(
+        "const cached = fileCache.get(path)"
+    )
+
+
 def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     """Folder visualizations can carry their view intent across navigation."""
     js = _read_app_js()

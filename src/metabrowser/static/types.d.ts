@@ -103,6 +103,8 @@ type KpressRenderPayload = {
 
 type DisposableHandle = {
   dispose?: () => void;
+  /** Initial useful content is ready; later progressive work stays outside this boundary. */
+  ready?: Promise<void>;
 };
 
 type MetabrowserRequestErrorRuntime = Readonly<{
@@ -177,13 +179,13 @@ type MetabrowserFileTypeFamilyMatch = Readonly<{
 }>;
 
 type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
-  schema: "file-type-registry-v3";
-  schemaVersion: 3;
+  schema: "file-type-registry-v4";
+  schemaVersion: 4;
   revision: number;
   fingerprint: string;
   maxExtensionComponents: 2;
   registryIdentity: Readonly<{
-    schemaVersion: 3;
+    schemaVersion: 4;
     revision: number;
     fingerprint: string;
   }>;
@@ -196,6 +198,8 @@ type MetabrowserFileTypeTaxonomyRuntime = Readonly<{
   groupForFile(name: unknown, extension: unknown): MetabrowserFileTypeCategoryId;
   distributionKeyForExtension(extension: unknown): string;
   hueForDistributionKey(key: unknown): number | null;
+  /** The icon a family paints with: its own, or its group's. */
+  iconForFamily(familyId: unknown): string | null;
 }>;
 
 type MetabrowserInventoryWatch = Readonly<{
@@ -1437,12 +1441,105 @@ declare global {
     reason?: string;
   };
 
+  type MetabrowserGitHistorySummary = {
+    is_repo: boolean;
+    commit_count?: number;
+    /** Committer date of the oldest root commit in scope; null when unborn. */
+    first_commit_at?: number | null;
+  };
+
   type MetabrowserGitLogPage = {
     is_repo: boolean;
     commits?: Array<MetabrowserGitCommit>;
-    /** Opaque; null exactly when `has_more` is false. */
+    /** Opaque next-page token; null exactly when `has_more` is false. */
     cursor?: string | null;
     has_more?: boolean;
+    /** Zero-based page within one bounded server history session. */
+    page?: number;
+    /** Replay token for this exact page. */
+    page_cursor?: string;
+    /** Replay token for the prior page; null on page zero. */
+    previous_cursor?: string | null;
+    scope?: "default" | "all";
+    scope_refs?: Array<string>;
+    scope_fingerprint?: string;
+    graph_checkpoint?: {
+      version: 1;
+      prior_swimlanes: Array<MetabrowserGitGraphLane>;
+      color_index: number;
+      head_revision: string | null;
+      scope_fingerprint: string;
+    };
+  };
+
+  type MetabrowserGitGraphCheckpoint = {
+    version: 1;
+    priorSwimlanes: Array<MetabrowserGitGraphLane>;
+    colorIndex: number;
+    headRevision: string | null;
+    scopeFingerprint: string;
+  };
+
+  type MetabrowserGitHistoryPage = {
+    page: number;
+    startOrdinal: number;
+    commits: Array<MetabrowserGitCommit>;
+    checkpoint: MetabrowserGitGraphCheckpoint;
+    pageCursor: string;
+    nextCursor: string | null;
+    previousCursor: string | null;
+    dispose?: () => void;
+  };
+
+  type MetabrowserGitHistoryPageCache = Readonly<{
+    get(page: number): MetabrowserGitHistoryPage | null;
+    peek(page: number): MetabrowserGitHistoryPage | null;
+    put(page: MetabrowserGitHistoryPage): MetabrowserGitHistoryPage;
+    remove(page: number): boolean;
+    clear(): void;
+    dispose(): void;
+    readonly size: number;
+    keys(): number[];
+  }>;
+
+  type MetabrowserGitHistoryWindowRange = Readonly<{
+    start: number;
+    end: number;
+    visibleStart: number;
+    visibleEnd: number;
+    segmentStart: number;
+    segmentEnd: number;
+    segmentHeightPx: number;
+    topSpacerPx: number;
+    bottomSpacerPx: number;
+    scrollTop: number;
+    rebased: boolean;
+  }>;
+
+  type MetabrowserGitHistoryVirtualWindow = Readonly<{
+    read(scrollTop: number, viewportHeight: number): MetabrowserGitHistoryWindowRange;
+    setRowCount(rowCount: number): void;
+    rebaseToOrdinal(
+      ordinal: number,
+      viewportHeight: number,
+      align?: "nearest" | "start" | "center" | "end",
+    ): number;
+    dispose(): void;
+    readonly rowCount: number;
+    readonly segmentCapacity: number;
+  }>;
+
+  type MetabrowserGitHistoryWindowRuntime = {
+    createPageCache(options: {
+      maxPages: number;
+      onEvict?: (page: MetabrowserGitHistoryPage) => void;
+    }): MetabrowserGitHistoryPageCache;
+    createVirtualWindow(options: {
+      rowHeight: number;
+      maxRows: number;
+      overscanRows: number;
+      rebasePx: number;
+    }): MetabrowserGitHistoryVirtualWindow;
   };
 
   type MetabrowserGitFileChange = {
@@ -1461,6 +1558,9 @@ declare global {
 
   type MetabrowserGitCommitStats = {
     files_changed: number;
+    files_modified: number;
+    files_added: number;
+    files_deleted: number;
     additions: number;
     deletions: number;
   };
@@ -1512,6 +1612,8 @@ declare global {
         colorIndex?: number;
         headRevision?: string | null;
         refColors?: Map<string, string>;
+        rowStart?: number;
+        rowEnd?: number;
       },
     ): MetabrowserGitSwimlaneResult;
     graphWidth(row: MetabrowserGitGraphRow): number;
@@ -1547,11 +1649,14 @@ declare global {
    */
   type MetabrowserShellRuntime = {
     activateNavPanel(panelId: string): void;
+    beginPreviewNavigation(claim: MetabrowserPreviewClaim): boolean;
     claimPreview(owner: string): MetabrowserPreviewClaim;
+    endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
     isPreviewClaimCurrent(claim: MetabrowserPreviewClaim): boolean;
     registerNavPanel(panel: MetabrowserNavPanel): void;
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;
@@ -1593,12 +1698,17 @@ declare global {
     MetabrowserCharts?: MetabrowserChartRuntime;
     MetabrowserFileTypes?: {
       classFor(path: string): string;
-      iconFor(path: string): { cls: string; svg: string };
+      /** `style` carries the family colour as custom properties; "" when the
+       * registry does not claim the extension. */
+      iconFor(path: string): { cls: string; svg: string; style: string };
+      styleFor(path: string): string;
+      familyFor(path: string): string | null;
     };
     MetabrowserFileTypeTaxonomy: MetabrowserFileTypeTaxonomyRuntime;
     MetabrowserCatalogFeed: MetabrowserCatalogFeedRuntime;
     MetabrowserFileFuzzyMatch: MetabrowserFileFuzzyMatchRuntime;
     MetabrowserGitGraph: MetabrowserGitGraphRuntime;
+    MetabrowserGitHistoryWindow: MetabrowserGitHistoryWindowRuntime;
     MetabrowserGitPanel?: MetabrowserGitPanelRuntime;
     MetabrowserIcons?: Record<string, string>;
     MetabrowserKnownFileCatalog: MetabrowserKnownFileCatalogRuntime;
@@ -1634,7 +1744,7 @@ declare global {
       /** Each family's distribution key with its color on each theme. */
       DISTRIBUTION_COLORS?: Array<{ key: string; light: string; dark: string }>;
       FILE_TYPE_REGISTRY?: {
-        schema: "file-type-registry-v3";
+        schema: "file-type-registry-v4";
         schema_version: 3;
         revision: number;
         fingerprint: string;
@@ -1669,7 +1779,10 @@ declare global {
         values: Array<string>;
       }>;
       GIT_DETAIL_CACHE_SIZE?: number;
-      GIT_HISTORY_MAX_ROWS?: number;
+      GIT_HISTORY_PAGE_CACHE_PAGES?: number;
+      GIT_HISTORY_SEGMENT_REBASE_PX?: number;
+      GIT_HISTORY_WINDOW_MAX_ROWS?: number;
+      GIT_HISTORY_WINDOW_OVERSCAN_ROWS?: number;
       GIT_HOVER_DEBOUNCE_MS?: number;
       GIT_LOG_LIMIT?: number;
       INDEX_PROGRESS_POLL_MS?: number;

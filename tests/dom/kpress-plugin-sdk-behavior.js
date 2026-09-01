@@ -10,6 +10,7 @@
 //   6. A failed auxiliary asset does not discard rendered HTML
 //   7. Manifest-owned plugin assets load in order and deduplicate by plugin
 //   8. Same-kind plugin modules evaluate in manifest order
+//   9. A cached manifest-owned stylesheet settles without a load event
 //
 // Usage:
 //   node kpress-plugin-sdk-behavior.js <repo_root>
@@ -689,6 +690,33 @@ async function check_selected_kind_plugin_assets() {
   return { ok: true };
 }
 
+async function check_cached_plugin_stylesheet_settles_without_onload() {
+  const firstAppend = appended.length;
+  sandbox.MetabrowserPluginHost.configureAssets({
+    "cached-plugin-kind": [
+      {
+        name: "cached-plugin",
+        module: "/plugin-static/cached-plugin/index.js",
+        scripts: [],
+        styles: ["/plugin-static/cached-plugin/styles.css"],
+      },
+    ],
+  });
+  cacheNextStylesheet = true;
+  const outcome = await Promise.race([
+    sandbox.metabrowser.ensureKindAssets("cached-plugin-kind").then(() => "settled"),
+    new Promise((resolve) => setTimeout(() => resolve("timed-out"), 250)),
+  ]);
+  const stylesheet = appended[firstAppend];
+  if (outcome !== "settled") {
+    return { ok: false, detail: "cached plugin stylesheet did not settle" };
+  }
+  if (stylesheet?.tagName !== "LINK" || !stylesheet.sheet) {
+    return { ok: false, detail: "cached plugin stylesheet was not the tested asset" };
+  }
+  return { ok: true };
+}
+
 async function check_same_kind_plugins_follow_manifest_order() {
   sandbox.MetabrowserPluginHost.configureAssets({
     "ordered-kind": [
@@ -731,10 +759,11 @@ async function check_same_kind_plugins_follow_manifest_order() {
   const completeText = await check_complete_text_fetch();
   const pathText = await check_path_text_fetch();
   const selectedKindAssets = await check_selected_kind_plugin_assets();
+  const cachedPluginStylesheet = await check_cached_plugin_stylesheet_settles_without_onload();
   const sameKindOrder = await check_same_kind_plugins_follow_manifest_order();
 
   process.stdout.write(
-    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, sameKindOrder })}\n`,
+    `${JSON.stringify({ stylesheet, dedup, errorProp, assetRetry, cachedStylesheet, assetFailureFallback, transformedSource, fileCatalog, completeText, pathText, selectedKindAssets, cachedPluginStylesheet, sameKindOrder })}\n`,
   );
 
   if (
@@ -749,6 +778,7 @@ async function check_same_kind_plugins_follow_manifest_order() {
     !completeText.ok ||
     !pathText.ok ||
     !selectedKindAssets.ok ||
+    !cachedPluginStylesheet.ok ||
     !sameKindOrder.ok
   ) {
     process.exit(1);

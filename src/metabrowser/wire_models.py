@@ -45,7 +45,10 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from metabrowser.file_type_filters import FILE_TYPE_FAMILIES, family_for_extension
-from metabrowser.file_type_registry import load_file_type_registry
+from metabrowser.file_type_registry import (
+    FILE_TYPE_REGISTRY_SCHEMA_VERSION,
+    load_file_type_registry,
+)
 from metabrowser.settings import (
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
@@ -484,7 +487,7 @@ def validate_file_type_breakdown(raw: object, node: Mapping[str, Any]) -> None:
     registry = raw["registry"]
     assert isinstance(registry, dict)
     assert set(registry) == {"schema_version", "revision", "fingerprint"}
-    assert registry["schema_version"] == 3
+    assert registry["schema_version"] == FILE_TYPE_REGISTRY_SCHEMA_VERSION
     active_registry = load_file_type_registry()
     assert registry["revision"] == active_registry.revision
     assert registry["fingerprint"] == active_registry.fingerprint

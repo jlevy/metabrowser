@@ -52,6 +52,7 @@ _PANEL_SHARED = "Shared by multiple modes (each option names its modes)"
 _PANEL_SERVE = "Serve"
 _PANEL_WALK = "Walk (--walk)"
 _PANEL_DIFF = "Diff (--diff SPEC)"
+_PANEL_API = "API (--api ROUTE)"
 _PANEL_CHECK_API = "API check (--check-api)"
 _PANEL_REMOTE = "Remote (--remote)"
 _PANEL_PLUGINS = "Plugins (--plugins / --plugin / --doctor)"
@@ -77,6 +78,8 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
         }
     ),
     "diff": frozenset({"fmt", "diff_patch", "diff_check", "log_level"}),
+    "api": frozenset({"fmt", "data", "plugins_dir", "log_level", "index_timeout"}),
+    "show": frozenset({"fmt", "plugins_dir", "log_level", "index_timeout"}),
     "check-api": frozenset({"plugins_dir", "log_level", "index_timeout"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
@@ -88,6 +91,8 @@ _MODE_LABELS: dict[str, str] = {
     "serve": "serve mode (the default)",
     "walk": "--walk",
     "diff": "--diff",
+    "api": "--api",
+    "show": "--show",
     "check-api": "--check-api",
     "remote": "--remote",
     "plugins": "--plugins",
@@ -113,6 +118,7 @@ _OPTION_LABELS: dict[str, str] = {
     "filter_age": "--age",
     "filter_min_size": "--min-size",
     "filter_ignored": "--ignored/--no-ignored",
+    "data": "--data",
     "index_timeout": "--index-timeout",
     "base_port": "--base-port",
     "ssh_options": "--ssh-options",
@@ -152,6 +158,8 @@ def _resolve_mode(
     *,
     walk: bool,
     diff: str | None,
+    api: str | None,
+    show: str | None,
     check_api: bool,
     remote: str | None,
     plugins: bool,
@@ -164,6 +172,8 @@ def _resolve_mode(
         for label, on in (
             ("--walk", walk),
             ("--diff", diff is not None),
+            ("--api", api is not None),
+            ("--show", show is not None),
             ("--check-api", check_api),
             ("--remote", remote is not None),
             ("--plugins", plugins),
@@ -177,6 +187,28 @@ def _resolve_mode(
     if not selected:
         return "serve"
     return selected[0].lstrip("-")
+
+
+# Formats each mode can actually produce. An envelope has no text rendering and
+# --show's report has no YAML form, so a coerced value would be a flag that
+# looks accepted while being ignored -- which is what the rest of this CLI
+# promises never to do.
+_MODE_FORMATS: dict[str, frozenset[str]] = {
+    "api": frozenset({"json", "yaml"}),
+    "show": frozenset({"text", "json"}),
+}
+
+
+def _check_format_applicability(
+    ctx: typer.Context, mode: str, fmt: str, explicit: frozenset[str]
+) -> None:
+    allowed = _MODE_FORMATS.get(mode)
+    if allowed is None or "fmt" not in explicit or fmt in allowed:
+        return
+    ctx.fail(
+        f"--format {fmt} is not valid with {_MODE_LABELS[mode]}; "
+        f"choose {' or '.join(sorted(allowed))}"
+    )
 
 
 def _check_option_applicability(ctx: typer.Context, mode: str, explicit: frozenset[str]) -> None:
@@ -193,6 +225,8 @@ def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
         hints = {
             "serve": "e.g. `metab .`",
             "walk": "e.g. `metab . --walk`",
+            "api": "e.g. `metab . --api /api/tree`",
+            "show": "e.g. `metab . --show README.md`",
             "check-api": "e.g. `metab . --check-api`",
         }
         hint = hints.get(mode, "pass the required root")
@@ -218,9 +252,12 @@ _app = typer.Typer(add_completion=False)
         "metab .\n\n"
         "metab ./path/to/directory --no-open\n\n"
         "metab . --walk --format json\n\n"
+        "metab . --api '/api/tree?depth=2'\n\n"
+        "metab . --show README.md\n\n"
         "metab . --check-api\n\n"
         "metab --remote example-host --path /srv/shared-files\n\n"
-        "metab --plugins"
+        "metab --plugins\n\n"
+        "Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md"
     ),
 )
 def _metab(
@@ -262,6 +299,28 @@ def _metab(
         "--diff-check",
         help="Run the apply oracle: rebuild the target tree and compare hashes (--diff only).",
         rich_help_panel=_PANEL_DIFF,
+    ),
+    api: str | None = typer.Option(
+        None,
+        "--api",
+        metavar="ROUTE",
+        help="Issue one /api/ route through the real request stack and print the "
+        "normalized envelope (no browser, no listening port).",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    show: str | None = typer.Option(
+        None,
+        "--show",
+        metavar="PATH",
+        help="Report the four layers for one selection: route, kind, views, and a model summary.",
+        rich_help_panel=_PANEL_MODES,
+    ),
+    data: Path | None = typer.Option(
+        None,
+        "--data",
+        metavar="FILE",
+        help="Send FILE as the request body, making the request a POST (--api only).",
+        rich_help_panel=_PANEL_API,
     ),
     check_api: bool = typer.Option(
         False,
@@ -320,7 +379,7 @@ def _metab(
         help="Extra plugin directory; each subdirectory containing manifest.toml "
         "is loaded. May be passed multiple times. Combines additively with "
         "the METABROWSER_PLUGINS_DIRS env var (env-var dirs first, then CLI; "
-        "deduped). Applies when serving, checking APIs, and to the plugin modes.",
+        "deduped). Applies when serving, checking APIs, issuing --api or --show, and to the plugin modes.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
@@ -331,7 +390,7 @@ def _metab(
         metavar="LEVEL",
         help="Log verbosity: DEBUG, INFO, WARNING, ERROR, CRITICAL. "
         "DEBUG traces the inventory walker (rewalk targets + resolved paths). "
-        "Overrides METABROWSER_LOG_LEVEL. Applies when serving, walking, or checking APIs.",
+        "Overrides METABROWSER_LOG_LEVEL. Applies when serving, walking, issuing --api or --show, or checking APIs.",
         rich_help_panel=_PANEL_SHARED,
         show_default=False,
     ),
@@ -360,8 +419,10 @@ def _metab(
         callback=validate_format,
         metavar="FORMAT",
         help="Output format: text (human report) | json | yaml. "
-        "json/yaml dump the exact data the nav panel consumes.",
-        rich_help_panel=_PANEL_WALK,
+        "Walk and diff: json/yaml dump the exact data the browser consumes. "
+        "Show: json reports the four layers as an object. "
+        "Api: json (default) or yaml renders the envelope.",
+        rich_help_panel=_PANEL_SHARED,
     ),
     stream: bool = typer.Option(
         False,
@@ -433,8 +494,9 @@ def _metab(
         "--index-timeout",
         min=0.1,
         metavar="SECONDS",
-        help="Maximum time to wait for the inventory to finish.",
-        rich_help_panel=_PANEL_CHECK_API,
+        help="Maximum time to wait for the inventory to finish. "
+        "Applies to --api, --show, and --check-api.",
+        rich_help_panel=_PANEL_SHARED,
     ),
     # ── Remote options ─────────────────────────────────────────────
     base_port: int = typer.Option(
@@ -491,13 +553,20 @@ def _metab(
     rendering of Markdown, code, JSON, YAML, logs, and other files.
 
     Serving is the default: `metab .` serves the current directory and opens
-    it in your browser. Select another operation with a mode flag (--walk,
-    --diff, --check-api, --remote, --plugins, --plugin, --doctor).
+    it in your browser. Select another operation with a mode flag.
+
+    Data modes read the same server the browser reads, without a browser or a
+    listening port: --api issues one route, --show reports the four layers
+    behind one selection, --walk dumps the inventory, --diff shows a change
+    set. Diagnostics: --check-api, --plugins, --plugin, --doctor. Remote
+    serving: --remote.
     """
     mode = _resolve_mode(
         ctx,
         walk=walk,
         diff=diff,
+        api=api,
+        show=show,
         check_api=check_api,
         remote=remote,
         plugins=plugins,
@@ -506,6 +575,7 @@ def _metab(
     )
     explicit = _explicit_params(ctx)
     _check_option_applicability(ctx, mode, explicit)
+    _check_format_applicability(ctx, mode, fmt, explicit)
 
     if mode == "serve":
         if root is None and not explicit:
@@ -543,6 +613,33 @@ def _metab(
             fmt=fmt,
             patch_path=diff_patch,
             check=diff_check,
+        )
+    elif mode == "api":
+        assert api is not None
+        from metabrowser.cli.api_cli import run_api
+
+        run_api(
+            _require_root(ctx, root, mode),
+            route=api,
+            # Only the unset default is reinterpreted; an explicit --format text
+            # is refused above rather than silently becoming json.
+            fmt="json" if fmt == "text" else fmt,
+            data=data,
+            plugins_dir=plugins_dir,
+            log_level=log_level,
+            index_timeout_s=index_timeout,
+        )
+    elif mode == "show":
+        assert show is not None
+        from metabrowser.cli.show_cli import run_show
+
+        run_show(
+            _require_root(ctx, root, mode),
+            path=show,
+            fmt=fmt,
+            plugins_dir=plugins_dir,
+            log_level=log_level,
+            index_timeout_s=index_timeout,
         )
     elif mode == "check-api":
         from metabrowser.cli.check_api import run_api_check

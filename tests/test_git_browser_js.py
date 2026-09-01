@@ -20,6 +20,7 @@ import pytest
 
 _DOM_DIR = Path(__file__).resolve().parent / "dom"
 GIT_GRAPH_TEST_JS = _DOM_DIR / "git-graph-behavior.js"
+GIT_HISTORY_WINDOW_TEST_JS = _DOM_DIR / "git-history-window-behavior.js"
 GIT_PANEL_TEST_JS = _DOM_DIR / "git-panel-behavior.js"
 
 
@@ -41,6 +42,10 @@ def _run_node_suite(script: Path) -> None:
 
 def test_git_graph_layout_assertions_pass() -> None:
     _run_node_suite(GIT_GRAPH_TEST_JS)
+
+
+def test_git_history_window_assertions_pass() -> None:
+    _run_node_suite(GIT_HISTORY_WINDOW_TEST_JS)
 
 
 def test_git_panel_behavior_assertions_pass() -> None:

@@ -32,6 +32,30 @@ stubs. They verify:
 These are contract tests, not visual browser tests.
 Keep the shims small instead of growing an incomplete DOM implementation.
 
+### Golden CLI Transcripts
+
+`tests/golden/*.tryscript.md` are markdown files holding shell commands and their exact
+expected output. [tryscript](https://github.com/jlevy/tryscript) runs each command in a
+fresh sandbox and diffs the result, so a transcript is both a test and a readable record
+of what the command does.
+
+This is the layer that proves **routes**, because `metab --api <route>` issues a real
+request through the real application — the same middleware, routing, and serialization
+the browser reaches.
+`--walk` and `--diff` call their libraries directly, so they prove the model and not the
+wire; a route could accept a parameter the library never sees and those transcripts
+would stay green.
+
+Fixtures pin everything they can so transcripts assert real values rather than
+wildcards: mtimes with `touch -t`, and Git identity and dates so commit revisions are
+byte-identical on every machine.
+Only what no fixture can pin is normalized, and `metabrowser/normalize.py` is the single
+table saying what and why.
+
+Regenerate with `make golden-update` **only to record an intended change**, then read
+the diff line by line before committing it.
+A regenerated transcript nobody read turns a regression into a committed expectation.
+
 ### Distribution Tests
 
 `make build` inspects the wheel for required static assets and rejects repository-only
@@ -63,7 +87,15 @@ Choose the narrowest layer that proves the behavior:
 - response shape, ETag, path validation, or middleware: route test;
 - background tasks and live changes: lifespan test;
 - SDK registration or renderer lifecycle: Node contract test;
-- package-data or import-boundary behavior: distribution test.
+- package-data or import-boundary behavior: distribution test;
+- a new `/api/` route, or the envelope a view draws from: golden transcript.
+
+The last one is not a preference.
+`devtools/check_parity.py` fails the build when a registered route has no transcript, so
+a route arrives with its golden or it does not arrive.
+See [CLI parity](../AGENTS.md#cli-parity) for the rule and
+[Views, Models, and Routes](project/architecture/arch-views-models-routes.md) for the
+table it checks.
 
 For regressions, make the test fail for the original defect before applying the fix.
 Assert behavior and public contracts instead of copying implementation structure into

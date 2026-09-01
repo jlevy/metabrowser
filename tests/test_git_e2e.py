@@ -96,7 +96,11 @@ def served_plain(tmp_path: Path) -> Iterator[Path]:
 
 
 def test_full_flow_from_gate_to_commit_detail(served_repo: Path) -> None:
-    client = TestClient(app)
+    with TestClient(app) as client:
+        _assert_full_flow(client)
+
+
+def _assert_full_flow(client: TestClient) -> None:
 
     info = client.get("/api/git/repo")
     assert info.status_code == 200
@@ -114,6 +118,8 @@ def test_full_flow_from_gate_to_commit_detail(served_repo: Path) -> None:
     page = log.json()
     validate_git_log_page(page)
     assert [c["subject"] for c in page["commits"]] == ["second commit", "first commit"]
+    assert page["scope"] == "default"
+    assert page["scope_refs"]
 
     revision = page["commits"][0]["id"]
     assert is_full_revision(revision)
@@ -126,21 +132,23 @@ def test_full_flow_from_gate_to_commit_detail(served_repo: Path) -> None:
 
 
 def test_paging_through_the_route_stack_is_contiguous(served_repo: Path) -> None:
-    client = TestClient(app)
+    with TestClient(app) as client:
+        first = client.get("/api/git/log", params={"limit": "1"}).json()
+        validate_git_log_page(first)
+        assert first["has_more"] is True
+        assert first["cursor"]
 
-    first = client.get("/api/git/log", params={"limit": "1"}).json()
-    validate_git_log_page(first)
-    assert first["has_more"] is True
-    assert first["cursor"]
-
-    second = client.get("/api/git/log", params={"limit": "1", "cursor": first["cursor"]}).json()
-    validate_git_log_page(second)
-    # No overlap, no gap — the property browser-side lane continuity
-    # depends on.
-    assert [c["subject"] for c in first["commits"]] == ["second commit"]
-    assert [c["subject"] for c in second["commits"]] == ["first commit"]
-    assert second["has_more"] is False
-    assert second["cursor"] is None
+        second = client.get(
+            "/api/git/log",
+            params={"limit": "1", "cursor": first["cursor"]},
+        ).json()
+        validate_git_log_page(second)
+        # No overlap, no gap — the property browser-side lane continuity
+        # depends on.
+        assert [c["subject"] for c in first["commits"]] == ["second commit"]
+        assert [c["subject"] for c in second["commits"]] == ["first commit"]
+        assert second["has_more"] is False
+        assert second["cursor"] is None
 
 
 def test_all_routes_answer_with_the_negative_envelope_outside_a_repo(served_plain: Path) -> None:
@@ -188,6 +196,8 @@ def test_index_page_defers_the_git_modules_in_dependency_order(served_repo: Path
     client = TestClient(app)
     html = client.get("/").text
     assert html.index("/static/git-graph.js") < html.index("/static/git-panel.js")
+    assert html.index("/static/git-history-window.js") < html.index("/static/git-panel.js")
     assert '<script src="/static/git-graph.js' not in html
+    assert '<script src="/static/git-history-window.js' not in html
     assert '<script src="/static/git-panel.js' not in html
     assert '"shell-tools"' in html
