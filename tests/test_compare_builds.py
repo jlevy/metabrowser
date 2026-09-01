@@ -65,7 +65,7 @@ def test_relative_executable_is_resolved_before_the_server_changes_directory(
 def test_normalise_preserves_list_order_and_nested_contract_fields() -> None:
     payload = {
         "tree": [{"path": "z"}, {"path": "a"}],
-        "file_type_registry": {"schema_version": 3},
+        "file_type_registry": {"schema_version": 4},
         "nested": {"duration_ms": 17, "version": "wire-v2"},
     }
 
