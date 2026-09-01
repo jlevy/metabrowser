@@ -1,64 +1,119 @@
-# Review: The Pluggable Inventory Engine, Merged with Current Main
+# Review: The Pluggable Inventory Engine
 
 **Date:** 2026-08-31
 
 **Author:** Reviewer (LLM-assisted)
 
 **Status:** Complete.
-Three defects were found and fixed on the branch; three design findings are open as
+Four defects were found and fixed while merging; three design findings are open as
 beads.
 
-**Scope:** [PR #74](https://github.com/jlevy/metabrowser/pull/74) at `3183888`, merged
-with `origin/main` at `26b109e` — 130 commits, including the CLI parity mechanism, the
-released 0.9.0, and the Git history work.
-The question asked was whether the boundary this refactor introduces is clean enough
-that the performance-sensitive engine could later be replaced by a native
-implementation.
+**Scope:** The whole inventory-engine stack, merged onto current `main` and reviewed as
+one artifact:
 
-Read: [the contract](../../../src/metabrowser/inventory_engine/contract.py), the
-coordinator, the Python provider, the
-[provider architecture](../architecture/arch-inventory-provider.md), the
-[conformance suite](../../../tests/test_inventory_provider_contract.py), and the routes
-and CLI modes that consume the boundary.
+| Branch | Head | Contributes |
+| --- | --- | --- |
+| `codex/fdu-backend-alignment-research` | `3183888` | the provider contract, coordinator, and Python provider |
+| `codex/fdu-opened-root-e2e-spike` | `45266a8` | the measured fdu adapter spike, the scope/policy split, lifecycle vocabulary |
+| `codex/inventory-contract-alignment` | `a5f5e55` | total row orders, unconditional recency ranking, the total canonical encoding |
+
+Merged with `origin/main` at `26b109e` — 130 commits, including the CLI parity
+mechanism, the released 0.9.0, and the Git history work.
+
+The question asked was whether the boundary this stack introduces is clean enough that
+the performance-sensitive engine could later be replaced by a native implementation.
+
+Read: the contract, coordinator, and Python provider; the
+[provider architecture](../architecture/arch-inventory-provider.md); the conformance
+suite; the [fdu adapter spike](../../../explorations/fdu-inventory-adapter/README.md)
+and its recorded evidence; and the routes and CLI modes that consume the boundary.
 Route behaviour was reproduced against a running server rather than read from the code,
-which is how the three defects surfaced.
+which is how the defects surfaced.
 
 ## Verdict
 
-**The boundary is the right shape and the right size, and it is not yet provider-neutral
-where neutrality matters most.**
+**The boundary is the right shape and the right size.
+It is not yet provider-neutral on the aggregate paths, and that is now measured rather
+than argued.**
 
 `InventoryHandle` is five methods.
 Reads are batched — one call carries many queries and returns one coherent version —
 which is exactly the shape that makes a foreign-function boundary cheap.
 Every query is bounded, every projection is validated on construction, the lifecycle is
 an explicit transition graph, and the coordinator retains no mirror of the inventory.
-A conformance suite parametrized over registered backends means adding a second provider
-is one tuple entry and twelve cases run against it.
-This is better than most abstraction boundaries survive contact with.
+Nineteen conformance cases are parametrized over registered backends, so adding a second
+provider is one tuple entry.
+The alignment branch closes the remaining ambiguity a second implementation would have
+discovered the hard way: row order is now stated and total, recency ranking is
+unconditional, case folding is ASCII and says so, and the canonical path encoding is
+total.
 
-The gap is narrow and specific.
-Of eight projections, five are contract-owned types built from primitives.
-The other three — rollup, navigation, and the aggregate paths generally — return
-**browser wire models**, imported into the contract from `metabrowser.wire_models`.
-Those are the paths a native engine exists to accelerate.
-A native provider must therefore emit the browser’s JSON row layout, including
-positional rows whose element order the contract never states, and reimplement 732 lines
-of presentation logic to do it.
+The spike already ran a real native engine against this contract.
+Nine of twelve conformance cases passed unchanged; a tenth matched every filesystem
+fact, order, aggregate, filter, and catalog record and failed only on the provider name.
+That is a strong result, and it is the evidence that matters most here.
 
-Fixing that is a bounded change to three types, and it should happen before the second
+The gap is narrow, specific, and unchanged by the stack.
+Of the projections the contract defines, most are contract-owned types built from
+primitives. Rollup and navigation return **browser wire models**, imported into the
+contract from `metabrowser.wire_models`. Those are the paths a native engine exists to
+accelerate, and the spike measured what they cost: one bundled eight-query read
+materialized 8,830 entries and 412,836 bytes of relative paths, rebuilt 470 child
+buckets, performed four full-result sorts and four aggregate passes, and took about 852
+ms. The spike’s own fourth recommendation — native filtered-tree and rollup projections
+to remove the temporary Python entry graph — is this finding reached from the other
+direction.
+
+Fixing it is a bounded change to three types, and it should happen before the native
 provider is written rather than after.
+
+## What the stack contributes
+
+Worth stating separately, because these are the parts that turn a plausible boundary
+into one a second implementation can be held to.
+
+**Row order is total.** The contract previously documented no row order at all.
+Each provider’s order was discoverable only by reading its implementation, and ties were
+settled by whichever sort it happened to use.
+All three orders are now stated as total: breadth-first level order for directory and
+filtered-tree pages, canonical path order for catalog pages, and two explicit orders for
+recency — selection by ignored state then time then path, return by time then path.
+Level order rather than pre-order is the right call for a bounded page: a pre-order page
+cut at its bound can return one directory and a thousand descendants, leaving the caller
+unable to tell whether the parent held two entries or two thousand.
+
+**The canonical encoding is total, and it was hiding a crash.** `_child_order` sorted by
+`row.name.encode("utf-8")`, but `os.scandir` decodes an undecodable byte into a
+surrogate, and encoding a surrogate raises.
+One such file made a whole directory unlistable, where fdu escaped it and listed it.
+Undecodable bytes now become `%XX`, the mapping is injective, and all four order keys
+canonicalize, so every order agrees with fdu byte for byte.
+
+**Case folding names its alphabet.** `str.lower()` folds all of Unicode; fdu’s
+`eq_ignore_ascii_case` folds only ASCII. `archive.TÜRKÇE` matched in one and was dropped
+by the other — identical on ASCII, divergent beyond it, invisible until a corpus stops
+being English. `ascii_casefold` states the alphabet and folds both sides of every
+comparison.
+
+**Scope is separated from execution policy.** `max_files` moved into `DiscoveryBudget`,
+leaving `InventoryConfig` to describe semantic scope.
+Two providers can then agree on what is in the inventory while disagreeing about how
+hard to work discovering it.
+
+**The spike is real evidence, honestly bounded.** It verifies the wheel digest, refuses
+to import fdu from a sibling checkout, and records its own duplication rather than
+hiding it. Its disposition — keep the probe, runner, and evidence; delete the adapter —
+is the right call, and its conclusion that the measurement does not justify a generic
+native query engine is the kind of negative result worth having recorded.
 
 ## What the merge required
 
-Five files conflicted.
-Four were both sides adding adjacent things.
-The fifth was the lifespan, where this branch made the runtime application-scoped and
-main added a Git history-session shutdown; both obligations are kept.
+Six files conflicted across the two merges.
+Five were both sides adding adjacent things.
+The sixth was a genuine collision, and it is the most interesting finding here.
 
-Reconciling the two sides surfaced three defects that neither side had alone.
-All three are fixed on the branch, each confirmed to fail against the code before its
-fix.
+All four defects below are fixed on the branch, each confirmed to fail against the code
+before its fix.
 
 ### D1 — A wire path reached the provider verbatim
 
@@ -74,15 +129,12 @@ Nothing bridged them, so client-supplied spellings went straight into contract q
 | `/api/rollup?path=.` | `404` | `200`, the root rollup |
 | `metab --walk --path docs/` | traceback | the subtree |
 | `metab --walk --path .` | empty tree, no error | the whole tree |
-| `POST /api/diagnostics/pending-tallies` | `500` on any non-canonical sample path | the path is dropped |
+| `POST /api/diagnostics/pending-tallies` | `500` on a non-canonical sample path | the path is dropped |
 
-The `/api/file` row is the worst of these: a broad `except Exception` turned a contract
-violation into an HTTP 200 carrying a degraded error body, so nothing upstream could
-notice.
+The `/api/file` row is the worst: a broad `except Exception` turned a contract violation
+into an HTTP 200 carrying a degraded error body, so nothing upstream could notice.
 
-`canonical_inventory_path` now performs the translation once, above the boundary.
-A provider only ever receives what `require_canonical_inventory_path` accepts, which is
-the property a second implementation depends on and which the new tests assert directly.
+`parse_inventory_path` now performs the translation once, above the boundary.
 
 `.` was also **accepted by the validator it should have failed**. `PurePosixPath(".")`
 has empty `parts` and an `as_posix()` equal to itself, so both structural checks passed.
@@ -91,15 +143,39 @@ provider as a path matching nothing.
 A native provider using different path normalization would very likely have resolved `.`
 to the root, and the two engines would have disagreed on an input no test covered.
 
-### D2 — The catalog ETag followed the wrong clock
+### D2 — Two functions, one name, opposite directions
+
+Both this branch and the alignment branch added a `canonical_inventory_path`, and they
+are not the same operation.
+
+- **Outbound**, from the alignment branch: a name the filesystem gave us becomes the
+  canonical identity, escaping undecodable bytes as `%XX`. Total by construction.
+- **Inbound**, from this review: a spelling a client sent becomes that same identity, or
+  is refused because it names nothing.
+
+Both are needed, so both are kept and the inbound one is renamed `parse_inventory_path`.
+
+It ends by checking its result against `require_canonical_inventory_path` rather than
+open-coding the same rules.
+That is what makes the pair compose: the alignment branch’s new surrogate refusal
+narrows the parser in the same commit that adds it, without the parser mentioning
+surrogates. A client sending a raw platform name now gets a `404` rather than a `500`,
+and that composition is asserted directly.
+
+This collision is worth more than its size.
+Two independent efforts reached for the same name for the two halves of one boundary
+crossing, which is a fair sign that the crossing deserves both halves named and stated
+together in the architecture document.
+
+### D3 — The catalog ETag followed the wrong clock
 
 The engine version and the catalog are different clocks.
 Every indexed change advances the engine version; the catalog carries a path and a
 logical extension per file and moves on far fewer.
 
 Keying the client-facing ETag on the engine version meant an ordinary editor save
-re-sent the entire catalog — up to `max_files` rows, the largest payload the server
-produces — to every connected client.
+re-sent the entire catalog — up to the discovery budget in rows, the largest payload the
+server produces — to every connected client.
 Measured on a settled tree, an mtime-only touch left the wire file list byte-identical
 and changed the ETag anyway; the only differing byte in the response was the `revision`
 field claiming it had changed.
@@ -107,16 +183,15 @@ field claiming it had changed.
 The ETag now derives from content identity.
 The engine version is retained as what it is genuinely good at: a constant-work
 checkpoint that lets a repeat poll answer without assembling the catalog at all.
-`revision` is again the count of distinct catalogs served, which is what it meant before
-this refactor and what the golden recorded.
+`revision` is again the count of distinct catalogs served.
 
-This one is worth noting as a boundary lesson rather than a bug.
+This is a boundary lesson as much as a bug.
 `CatalogProjection` carries no change identity, so the host cannot ask a provider
 whether its catalog moved.
 Deriving identity host-side is correct and cheap here; a provider that already knows the
 answer should eventually be able to say so.
 
-### D3 — `golden-update` silently re-pinned host facts
+### D4 — `golden-update` silently re-pinned host facts
 
 Commit `8cedf87` elided the watcher `reason` values by hand so the goldens would pass on
 Linux rather than only on the author’s Mac.
@@ -130,46 +205,52 @@ single reviewable step.
 
 ## What is strong
 
-These are worth stating explicitly, because they are the parts a second provider will
-lean on.
+These are the parts a native provider will lean on.
 
 **The handle is small and batched.** Five methods; `read` takes many queries and returns
 one coherent version, cursor, lifecycle state, and work record.
 A native binding crosses the boundary once per read, not once per query.
 
-**Bounds are separated rather than conflated.** The discovery file budget, per-page row
-bound, aggregate query bound, lifecycle issue bound, and read-bundle bound are distinct
-constants. Conflating them is the usual way a boundary like this becomes unimplementable
-at scale.
+**Bounds are separated rather than conflated.** The discovery budget, per-page row
+bound, aggregate query bound, lifecycle issue bound, and read-bundle bound are distinct.
+Conflating them is the usual way a boundary like this becomes unimplementable at scale.
 
 **The lifecycle is a real state machine.** `ALLOWED_PHASE_TRANSITIONS` is total over the
 phase set, terminal states are terminal, and a test asserts both.
 `ready` distinguishes an open idle handle from `watching`, which requires a live
 observer — a distinction a native provider needs and would otherwise have to guess.
+The spike found the one place this disagreed with fdu, on resource refusal, and the
+stack aligned it.
 
 **Invalidation is resumable with explicit reset.** `changes(after=cursor)` with a typed
-gap reset is the right primitive for a foreign provider: it can be implemented over a
-poll or a channel without an event loop on the other side.
+gap reset can be implemented over a poll or a channel without an event loop on the far
+side.
+
+**Work counters share a vocabulary with the native engine.** Thirteen semantic counters,
+timing values that may be absent rather than zero, and a diagnostics record that names
+which provider answered.
+A comparison across the swap therefore describes the same work rather than two
+vocabularies.
 
 **The conformance suite enforces its own integrity.** A meta-test asserts every
-registered conformance case is factory-parametrized, so a Python-only test cannot be
-added to the registry.
-Another asserts the architecture document lists every case.
+registered case is factory-parametrized, so a Python-only test cannot be added to the
+registry; another asserts the architecture document lists every case.
 The registry is maintained rather than aspirational.
 
 **The coordinator holds no mirror state.** Lifecycle, versioning, a bounded change
 history, and subscriber sets — no entry mirror.
-Host decorations live in a sparse path-keyed overlay that a provider never sees.
+Host decorations live in a sparse path-keyed overlay a provider never sees.
 This is the rule most refactors of this kind break, and it holds here.
 
 ## Open findings
 
 ### F1 — The contract returns browser wire models on the aggregate paths
 
-Tracked as `mb-gwlw`.
+Tracked as `mb-gwlw`. Unchanged by the stack, and now supported by the spike’s
+measurements.
 
-`contract.py` has exactly two non-standard-library imports: `metabrowser.constants`, and
-`metabrowser.wire_models`. The second is the browser’s JSON response layer.
+`contract.py` has three non-standard-library imports.
+One is `metabrowser.wire_models`, the browser’s JSON response layer.
 
 - `RollupProjection.payload` is `RollupResult`, whose `RollupDirNode.children` is
   `list[Any] | None` — an untyped recursive tree — and whose `mtime` is a float second
@@ -184,13 +265,22 @@ Tracked as `mb-gwlw`.
   presentation logic covering `top`/`rest` bucketing, dominant-extension selection, and
   the file-type breakdown.
 
-The PR’s own ownership table puts serialization and browser policy in the route layer.
-These three payloads are the exception, and they are the exception on precisely the
-surfaces a native engine is meant to make fast.
+The stack’s ownership table puts serialization and browser policy in the route layer.
+These payloads are the exception, and they are the exception on precisely the surfaces a
+native engine is meant to make fast.
 
-There is a sharp way to see the size of this gap.
+The spike shows the consequence rather than predicting it.
+Its adapter had to materialize the complete native projection and run the Python
+projection oracle over a temporary image for every read, because the contract asks for a
+shape only that oracle produces.
+It recorded 8,830 materialized entries and four aggregate passes for one read, and
+recommended native filtered-tree and rollup projections to remove them.
+That work cannot be removed while the contract’s type for it is the browser’s.
+
+There is a sharp way to see the size of the gap.
 `test_protocols_are_structural_and_provider_neutral` already asserts the contract is
-provider-neutral by checking its imports against a denylist.
+provider-neutral by checking its imports against a denylist, which this review updated
+to name modules that still exist.
 The denylist does not include `metabrowser.wire_models`. The check encoding the right
 idea is one entry away from failing, and that entry is the work.
 
@@ -214,13 +304,14 @@ not running, which is the failure the parity rule exists to prevent.
 
 The streaming surface is documented as the walker’s record sequence, so this may be
 deliberate. If it is, it should name which engine it reads and be excluded from provider
-parity explicitly. Either way the decision belongs before a second provider lands.
+parity explicitly. Either way the decision belongs before a second provider lands, and
+the spike’s existence makes that soon.
 
 ### F3 — No conformance case pins the aggregate payload shape
 
 Tracked as `mb-nqgs`.
 
-The twelve registered conformance cases cover checkpoints, semantic parity, bounds,
+The nineteen registered cases cover checkpoints, semantic parity, orders, bounds,
 paging, version pins, changes, verified refresh, lifecycle, sessions, and joined close.
 None asserts the shape of the rollup and navigation payloads.
 
@@ -230,7 +321,11 @@ with its elements in a different order, seconds where nanoseconds were expected,
 differently nested node.
 Nothing in the suite would fail.
 
-F1 and F3 are the same problem seen from two directions.
+The order work makes this sharper rather than softer.
+Having made row order total and testable, the shape of what those rows are made of is
+now the largest thing left to a reader’s inference.
+
+F1 and F3 are the same problem from two directions.
 Fixing F1 makes F3 mostly mechanical, because a typed payload is a payload a conformance
 case can assert.
 
@@ -238,17 +333,19 @@ case can assert.
 
 Three files, each confirmed to fail against the code before its fix.
 
-- `test_inventory_path_boundary.py` (48 cases) asserts the property a provider depends
-  on: everything `canonical_inventory_path` accepts is already canonical by
+- `test_inventory_path_boundary.py` asserts the property a provider depends on:
+  everything `parse_inventory_path` accepts is already canonical by
   `require_canonical_inventory_path`, the translation is idempotent, equivalent
   spellings are indistinguishable at the routes, and no query string can raise out of
-  the boundary.
+  the boundary. It also pins the composition of the two directions, including that a raw
+  platform name is a miss rather than a raise.
 - `test_inventory_debug_route.py` pins `/_debug/inventory`. Two tools parse that payload
-  — the performance harness and `bench_serving` — and nothing asserted it.
-  A renamed counter does not fail either tool; it blanks a benchmark column while
-  looking fine, which is a bad failure mode for the surface that exists to justify an
-  engine swap.
-- A case in `test_catalog_feed_server.py` covers D2 from the direction the existing test
+  and nothing asserted it.
+  It separates the four keys the benchmarks actually parse from the thirteen semantic
+  counters and the four timing values, because those are three different promises — and
+  it earned its place immediately by catching `directories_visited` becoming
+  `directories_read` during the stack merge.
+- A case in `test_catalog_feed_server.py` covers D3 from the direction the existing test
   did not: identity across a change the catalog does not carry.
 
 `/_debug/inventory` also gained the parity row it needed, exempt for the reason
@@ -259,24 +356,28 @@ pin.
 
 1. Settle F1. A native binding written against `list[list[object]]` will encode today’s
    positional layout by observation, and that becomes the contract by accident.
+   The spike’s fourth recommendation cannot be implemented without it.
 2. Settle F2, so every CLI mode names the engine it read.
 3. Add F3’s conformance case, so the aggregate shape is pinned for every registered
    backend rather than for the one that happens to build it today.
-4. Consider giving `CatalogProjection` a content identity.
-   D2 was fixed host-side because the contract offers no way for a provider to report
+4. Resolve the journal-capacity question the spike raised: with a capacity of one, one
+   refresh can produce several native commits, so the contract needs to define capacity
+   and replay in provider-batch terms.
+   Resource-stop semantics, the spike’s other finding, are already aligned.
+5. Consider giving `CatalogProjection` a content identity.
+   D3 was fixed host-side because the contract offers no way for a provider to report
    that a projection did not move.
-   The host can always derive it; a provider that already knows should be able to say
-   so.
 
-The first spikes the PR proposes — one constant-work checkpoint, one coherent
-directory-plus-rollup read, one mutation converging through `changes()` — are the right
-three, and the second of them is exactly where F1 will be felt.
+The spike also names a real open question of its own: the contract path is used as a
+filesystem *address* as well as an identity, so `root / path` breaks once the path is
+the escaped form. fdu carries both a native path and a canonical one per row.
+Deciding which shape to mirror is a contract decision, not an implementation detail, and
+it belongs with F1 because both are about what a row is made of.
 
 ## Validation
 
-`make verify` passes on the merged branch: 1,817 pytest cases, 99 golden scenarios,
-lint, type checks, public hygiene, parity (26 covered, 5 exempt), supply-chain audits,
-and distribution inspection.
+`make verify` passes on the merged stack: 1,837 pytest cases, 99 golden scenarios, lint,
+type checks, public hygiene, parity, supply-chain audits, and distribution inspection.
 
 ## References
 
@@ -284,6 +385,7 @@ and distribution inspection.
 - [Views, models, and routes](../architecture/arch-views-models-routes.md)
 - [Phase 1 refactor and fdu adoption plan](../specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md)
 - [fdu and Metabrowser inventory-engine alignment](../research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
+- [fdu inventory adapter spike](../../../explorations/fdu-inventory-adapter/README.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
