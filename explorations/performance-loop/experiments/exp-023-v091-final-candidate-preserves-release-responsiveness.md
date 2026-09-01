@@ -93,6 +93,8 @@ experiment:
 
 This is the final release comparison required before tagging v0.9.1: the exact v0.9.0
 release against the installed wheel from `f1d36447` on one unchanged corpus.
+Both installed environments were staged outside a Git checkout so their displayed
+versions came only from package metadata rather than the enclosing repository state.
 
 Five alternating backend pairs found no ordered-row or tally differences.
 Three cold browser profiles per condition passed every hard responsiveness and
