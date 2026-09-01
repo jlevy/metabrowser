@@ -423,11 +423,19 @@ A full scan on a 60,000-file synthetic corpus, timed through
 | the stack, with the two fixes below | 2,652 ms | 1.28x slower |
 
 Both causes are on the per-entry path, and neither was visible in any test.
+Both arrive with the bottom of the stack, which matters for merge order: the
+invalidation listener and the pathlib validator are
+`codex/fdu-backend-alignment-research`, and `codex/inventory-contract-alignment` adds
+the surrogate scan on top of the second.
+The fixes are at the top of the stack, so the stack has to land as one — merging the
+bottom alone ships the regression.
 
 **Validation ran twice per entry through pathlib.** `require_canonical_inventory_path`
-built two `PurePosixPath` objects and scanned every character of every path in a
-Python-level generator looking for surrogates, about 248,000 times for 60,000 files.
-Rewritten against the string, it costs 0.36 us instead of 4.75 us, and entry
+built two `PurePosixPath` objects and asked each for `as_posix()` and `parts`, and —
+once the alignment branch added the surrogate refusal — also scanned every character of
+every path in a Python-level generator.
+It runs once for an entry’s path and once for its parent, about 248,000 times for 60,000
+files. Rewritten against the string, it costs 0.36 us instead of 4.75 us, and entry
 construction 1.85 us instead of 10.12 us.
 `isascii()` is what does the work: every surrogate is non-ASCII, so an ASCII path cannot
 hold one and the expensive scan never runs.
