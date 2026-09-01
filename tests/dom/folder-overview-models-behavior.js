@@ -36,6 +36,7 @@ async function importSource(relative) {
     unignored: { files: unignoredFiles, bytes: unignoredBytes },
   });
   const baseRuntime = {
+    schemaVersion: 4,
     revision: 7,
     fingerprint: "registry-seven",
     groups: [
@@ -62,7 +63,7 @@ async function importSource(relative) {
     },
     file_type_breakdown: {
       schema: "file-type-breakdown-v1",
-      registry: { schema_version: 3, revision: 7, fingerprint: "registry-seven" },
+      registry: { schema_version: 4, revision: 7, fingerprint: "registry-seven" },
       metrics: metrics(157, 11000000, 150, 10000000),
       groups: [
         {
@@ -91,6 +92,11 @@ async function importSource(relative) {
     },
   };
   const normalized = modelModule.normalizeRollupEnvelope(raw);
+  check(
+    "breakdown preserves the registry schema version",
+    normalized.registry?.schemaVersion === 4,
+    normalized.registry?.schemaVersion,
+  );
   const visible = modelModule.buildFileTypeSummaryModel(normalized, true, formatters, baseRuntime);
   check("populated model", visible.state === "populated", visible.state);
   check(
@@ -124,6 +130,7 @@ async function importSource(relative) {
       .files === 145,
   );
   const registryRuntime = {
+    schemaVersion: 4,
     revision: 7,
     fingerprint: "registry-seven",
     groups: [
@@ -141,7 +148,7 @@ async function importSource(relative) {
     node: { total_files: 6, total_size: 50, unignored_files: 6, unignored_size: 50 },
     file_type_breakdown: {
       schema: "file-type-breakdown-v1",
-      registry: { schema_version: 3, revision: 7, fingerprint: "registry-seven" },
+      registry: { schema_version: 4, revision: 7, fingerprint: "registry-seven" },
       metrics: metrics(6, 50),
       groups: [
         {
@@ -228,6 +235,16 @@ async function importSource(relative) {
     identityMismatch = error instanceof TypeError;
   }
   check("breakdown rejects a mismatched browser registry", identityMismatch);
+  let schemaMismatch = false;
+  try {
+    modelModule.buildFileTypeSummaryModel(breakdownEnvelope, true, formatters, {
+      ...registryRuntime,
+      schemaVersion: 3,
+    });
+  } catch (error) {
+    schemaMismatch = error instanceof TypeError;
+  }
+  check("breakdown rejects a mismatched browser registry schema", schemaMismatch);
   const failed = modelModule.normalizeRollupEnvelope({ ...raw, index_status: "failed" });
   const failedModel = modelModule.buildFileTypeSummaryModel(failed, true, formatters, baseRuntime);
   check("failed index is terminal", failedModel.scanning === false);
@@ -267,6 +284,7 @@ async function importSource(relative) {
   );
 
   const manyFamiliesRuntime = {
+    schemaVersion: 4,
     revision: 7,
     fingerprint: "registry-seven",
     groups: [{ id: "code", label: "Code" }],
@@ -282,7 +300,7 @@ async function importSource(relative) {
     node: { total_files: 78, total_size: 78, unignored_files: 78, unignored_size: 78 },
     file_type_breakdown: {
       schema: "file-type-breakdown-v1",
-      registry: { schema_version: 3, revision: 7, fingerprint: "registry-seven" },
+      registry: { schema_version: 4, revision: 7, fingerprint: "registry-seven" },
       metrics: metrics(78, 78),
       groups: [
         {
@@ -497,7 +515,7 @@ async function importSource(relative) {
       },
       file_type_breakdown: {
         schema: "file-type-breakdown-v1",
-        registry: { schema_version: 3, revision: 7, fingerprint: "registry-seven" },
+        registry: { schema_version: 4, revision: 7, fingerprint: "registry-seven" },
         metrics: metrics(totalFiles, totalBytes),
         groups: [],
         no_extension: { metrics: metrics(0, 0), filenames: [], others: null },
@@ -510,6 +528,7 @@ async function importSource(relative) {
     });
     return modelModule
       .buildFileTypeSummaryModel(envelope, true, tailFormatters, {
+        schemaVersion: 4,
         revision: 7,
         fingerprint: "registry-seven",
         // The special rollups live in the "other" group, so it has to exist.
