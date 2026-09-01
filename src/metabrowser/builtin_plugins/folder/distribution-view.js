@@ -119,8 +119,6 @@ export function updateDistributionView(handle, model) {
   }
   if (model.state === "ignored-only") {
     resetBody(handle, "ignored-only");
-    const empty = element(handle.body, "file-type-summary-empty");
-    empty.textContent = `No included files. Show ignored to include ${model.allFilesText || "these files"}.`;
     return;
   }
 

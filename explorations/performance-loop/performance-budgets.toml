@@ -9,6 +9,7 @@ require_interactions = true
 minimum_interaction_inputs = 5
 minimum_interaction_coverage_pct = 80
 require_no_label_overflow = true
+require_no_fetch_concurrency_overflow = true
 require_no_resource_overflow = true
 required_observers = ["longtask", "event"]
 required_fields = [
@@ -145,6 +146,13 @@ maximum = 0
 policy = "gate"
 required = true
 description = "Uncaught browser exceptions observed from navigation through settled profile export."
+
+[metrics.collapsed_diff_rows_materialized]
+category = "rendering"
+maximum = 0
+policy = "gate"
+required = true
+description = "Rows hidden by a collapsed diff fold must not occupy the DOM."
 
 # Targets stay visible on every comparison but do not block unrelated work
 # until the application reaches them. Once reached, promote the policy to gate.

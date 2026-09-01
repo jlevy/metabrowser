@@ -1,0 +1,213 @@
+"""Tests for the golden session schema: what is normalized and what is kept."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from metabrowser.normalize import (
+    CURSOR_PLACEHOLDER,
+    ELAPSED_PLACEHOLDER,
+    HOME_PLACEHOLDER,
+    MTIME_PLACEHOLDER,
+    ROOT_PLACEHOLDER,
+    NormalizeContext,
+    describe_schema,
+    normalize_payload,
+    normalize_text,
+)
+
+ROOT = Path("/tmp/sandbox/checkroot")
+HOME = Path("/tmp/sandbox/home")
+
+
+def _ctx(**kwargs: object) -> NormalizeContext:
+    return NormalizeContext(root=ROOT, home=HOME, **kwargs)  # type: ignore[arg-type]
+
+
+def test_absolute_root_path_becomes_a_placeholder() -> None:
+    payload = {"root": str(ROOT)}
+
+    assert normalize_payload(payload, _ctx()) == {"root": ROOT_PLACEHOLDER}
+
+
+def test_path_under_root_keeps_its_suffix() -> None:
+    payload = {"root": f"{ROOT}/docs/guide.md"}
+
+    assert normalize_payload(payload, _ctx()) == {"root": f"{ROOT_PLACEHOLDER}/docs/guide.md"}
+
+
+def test_application_home_normalizes_independently_of_root() -> None:
+    payload = {"home": str(HOME / "cache" / "layout.yml")}
+
+    normalized = normalize_payload(payload, _ctx())
+
+    assert normalized == {"home": f"{HOME_PLACEHOLDER}/cache/layout.yml"}
+
+
+def test_nested_structures_are_normalized_throughout() -> None:
+    payload = {"tree": [{"path": str(ROOT / "a.md")}, {"path": str(ROOT / "b.md")}]}
+
+    normalized = normalize_payload(payload, _ctx())
+
+    assert normalized == {
+        "tree": [
+            {"path": f"{ROOT_PLACEHOLDER}/a.md"},
+            {"path": f"{ROOT_PLACEHOLDER}/b.md"},
+        ]
+    }
+
+
+def test_git_revisions_are_kept_because_fixtures_pin_them() -> None:
+    """Fixture repositories build deterministically, so a revision is real coverage."""
+
+    revision = "1e9bc884891152dfb4e0ac2d87c40f5a5b7389a9"
+    payload = {"head": {"revision": revision}}
+
+    assert normalize_payload(payload, _ctx()) == payload
+
+
+def test_mtime_is_kept_by_default_because_fixtures_pin_it() -> None:
+    payload = {"mtime": 1699999999.0, "mtime_hash": "abc123"}
+
+    assert normalize_payload(payload, _ctx()) == payload
+
+
+def test_mtime_is_normalized_when_the_fixture_cannot_pin_it() -> None:
+    payload = {"mtime": 1699999999.0, "mtime_hash": "abc123"}
+
+    normalized = normalize_payload(payload, _ctx(normalize_mtimes=True))
+
+    assert normalized == {"mtime": MTIME_PLACEHOLDER, "mtime_hash": MTIME_PLACEHOLDER}
+
+
+def test_a_payload_of_every_unstable_field_normalizes_to_none_of_them() -> None:
+    """The round-trip the golden guidelines ask for."""
+
+    payload = {
+        "root": str(ROOT),
+        "home": str(HOME),
+        "mtime": 1699999999.0,
+        "nested": {"path": str(ROOT / "x"), "list": [str(HOME / "y")]},
+    }
+
+    rendered = repr(normalize_payload(payload, _ctx(normalize_mtimes=True)))
+
+    assert str(ROOT) not in rendered
+    assert str(HOME) not in rendered
+    assert "1699999999" not in rendered
+
+
+def test_text_normalization_covers_console_output() -> None:
+    text = f"walking {ROOT}/docs\ncache at {HOME}/cache\n"
+
+    normalized = normalize_text(text, _ctx())
+
+    assert normalized == f"walking {ROOT_PLACEHOLDER}/docs\ncache at {HOME_PLACEHOLDER}/cache\n"
+
+
+def test_home_inside_root_still_normalizes_to_the_more_specific_prefix() -> None:
+    """Longest prefix wins, so a home under the served root is not mislabeled."""
+
+    root = Path("/tmp/sandbox")
+    home = Path("/tmp/sandbox/home")
+    ctx = NormalizeContext(root=root, home=home)
+
+    normalized = normalize_payload({"p": str(home / "config.yml")}, ctx)
+
+    assert normalized == {"p": f"{HOME_PLACEHOLDER}/config.yml"}
+
+
+def test_schema_is_documented_for_every_rule_it_applies() -> None:
+    described = describe_schema()
+
+    for token in (ROOT_PLACEHOLDER, HOME_PLACEHOLDER, MTIME_PLACEHOLDER):
+        assert token in described
+
+
+def test_a_pagination_cursor_is_always_normalized() -> None:
+    """It carries a random session token, so no fixture arrangement pins it."""
+
+    payload = {"page_cursor": "eyJzIjoiUUJNUzYzTl9QTnI1QWVxVnplQWVYTjNaIn0="}
+
+    assert normalize_payload(payload, _ctx()) == {"page_cursor": CURSOR_PLACEHOLDER}
+
+
+def test_an_absent_cursor_is_left_alone() -> None:
+    assert normalize_payload({"page_cursor": None}, _ctx()) == {"page_cursor": None}
+
+
+def test_a_prefix_only_matches_at_a_path_boundary() -> None:
+    """`/tmp` must not corrupt `/tmpfile`, which is a different path."""
+
+    ctx = NormalizeContext(root=Path("/tmp"))
+
+    assert normalize_text("/tmpfile and /tmp/x", ctx) == f"/tmpfile and {ROOT_PLACEHOLDER}/x"
+
+
+def test_a_bare_prefix_at_the_end_of_a_token_is_replaced() -> None:
+    ctx = NormalizeContext(root=Path("/tmp/sandbox"))
+
+    assert normalize_text('"/tmp/sandbox"', ctx) == f'"{ROOT_PLACEHOLDER}"'
+
+
+def test_the_filesystem_root_is_not_normalized() -> None:
+    """Serving `/` would otherwise turn every separator into a placeholder."""
+
+    ctx = NormalizeContext(root=Path("/"))
+
+    assert normalize_text("a/b/c and /etc/passwd", ctx) == "a/b/c and /etc/passwd"
+
+
+def test_a_wall_clock_measurement_is_always_normalized() -> None:
+    """A small fixture can make it repeat locally; that is not pinnable."""
+
+    payload = {"inventory": {"elapsed_ms": 52, "entries": 2}}
+
+    normalized = normalize_payload(payload, _ctx())
+
+    assert normalized == {"inventory": {"elapsed_ms": ELAPSED_PLACEHOLDER, "entries": 2}}
+
+
+def test_a_boolean_is_not_mistaken_for_a_measurement() -> None:
+    assert normalize_payload({"inventory": {"elapsed_ms": False}}, _ctx()) == {
+        "inventory": {"elapsed_ms": False}
+    }
+
+
+def test_user_content_keeping_a_reserved_key_name_is_untouched() -> None:
+    """A parsed JSON file may hold any key; only the envelope's own is unstable."""
+
+    payload = {
+        "kind": "structured",
+        "parsed": {"page_cursor": "user-value", "inventory": {"elapsed_ms": 12}},
+    }
+
+    assert normalize_payload(payload, _ctx()) == payload
+
+
+def test_the_envelopes_own_cursor_and_measurement_are_still_normalized() -> None:
+    payload = {"page_cursor": "abc", "inventory": {"elapsed_ms": 52, "entries": 2}}
+
+    normalized = normalize_payload(payload, _ctx())
+
+    assert normalized == {
+        "page_cursor": CURSOR_PLACEHOLDER,
+        "inventory": {"elapsed_ms": ELAPSED_PLACEHOLDER, "entries": 2},
+    }
+
+
+def test_a_sibling_path_sharing_a_prefix_is_not_rewritten() -> None:
+    """The boundary must be a real delimiter, not merely a non-word character."""
+
+    ctx = NormalizeContext(root=Path("/tmp/sb"))
+
+    assert normalize_text("/tmp/sb+extra", ctx) == "/tmp/sb+extra"
+    assert normalize_text("/tmp/sb~1", ctx) == "/tmp/sb~1"
+
+
+def test_common_delimiters_still_terminate_a_prefix() -> None:
+    ctx = NormalizeContext(root=Path("/tmp/sb"))
+
+    assert normalize_text('"/tmp/sb"', ctx) == f'"{ROOT_PLACEHOLDER}"'
+    assert normalize_text("/tmp/sb/x", ctx) == f"{ROOT_PLACEHOLDER}/x"
+    assert normalize_text("at /tmp/sb, then", ctx) == f"at {ROOT_PLACEHOLDER}, then"

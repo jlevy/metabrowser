@@ -9,6 +9,14 @@ restores them so `make golden-update` is a single reviewable step:
 * `[CWD]` for the sandbox directory in walk envelopes
 * `[BUILTIN]` for the absolute checkout prefix of builtin plugin paths
 * `[VERSION]` for the installed package version
+* the KPress rendered document body, which is tens of kilobytes of icon sprite
+  and would make the transcript unreviewable; the POST case keeps its overridden
+  heading visible so the transcript still proves the source override took effect
+* the pending-tally diagnostic's stderr line, which carries a wall clock
+* the host facts in watcher `reason` values -- the filesystem the served root
+  sits on and the backend that made available -- which differ between the
+  author's Mac and CI, and the engine sequence in the pending-tally
+  diagnostic, which counts internal change batches
 
 It also strips trailing whitespace, which `tryscript run --update` preserves
 from Rich's padded terminal output but `git diff --check` rejects; tryscript
@@ -32,6 +40,33 @@ FIXUPS: list[tuple[str, str]] = [
     # metabrowser.build_version. It varies per commit, so it elides with the
     # version rather than beside it.
     (r"^metab \d+\S*( \([^)]*\))?$", "metab [VERSION]"),
+    # The rendered document body. The POST case is matched first so its
+    # overridden heading survives: it is the only thing in that transcript that
+    # proves `source_text` reached the renderer.
+    (
+        r'^  "html": ".*?(<h1 id=\\"overridden\\">Overridden</h1>).*",$',
+        r'  "html": "[..]\1[..]",',
+    ),
+    (r'^  "html": ".{300,}",$', '  "html": "[..]",'),
+    (r"^.*pending folder tallies diagnostic.*$", "[..]"),
+    # Host facts, not behavior: the filesystem type the served root sits on
+    # (apfs here, ext4 on CI) and the watch backend it made available. These
+    # were elided by hand once and silently re-pinned by the next
+    # `golden-update`, which is the failure this rule exists to stop.
+    # Everything around them stays pinned, `mode` included, which is the part
+    # a regression would change.
+    (r'"reason": "fs=[^"]*"', '"reason": "[..]"'),
+    (r'"watch_reason": "fs=[^"]*"', '"watch_reason": "[..]"'),
+    (r'"reason": "inventory-[^"]*"', '"reason": "[..]"'),
+    # The provider's change-batch counter at the moment the diagnostic ran. It
+    # is worth reporting and not worth pinning: no reader depends on the count,
+    # and a provider that batches differently would fail the transcript for a
+    # difference that is not a defect. Anchored to the line above so the schema
+    # versions elsewhere in these goldens keep their exact values.
+    (
+        r'(^    "contract": "inventory-provider-v1",\n    "version": )\d+',
+        r"\1[..]",
+    ),
 ]
 
 

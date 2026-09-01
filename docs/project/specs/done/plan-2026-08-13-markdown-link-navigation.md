@@ -511,7 +511,7 @@ change baseline semantics silently.
 
 These are separate features after the baseline, not unresolved acceptance work.
 The
-[future Markdown navigation extensions plan](../future/plan-2026-08-13-markdown-navigation-extensions.md)
+[future Markdown navigation extensions plan](../active/plan-2026-08-13-markdown-navigation-extensions.md)
 maps their beads, preserved seams, and activation requirements.
 
 ## Open Questions

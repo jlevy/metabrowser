@@ -187,6 +187,7 @@ cython_debug/
 # Agent tool per-user local overrides (tracked scaffolding lives beside these).
 # Claude Code writes local tool-permission grants here with absolute paths.
 .claude/settings.local.json
+.claude/launch.json
 .codex/settings.local.json
 
 # Agent git worktrees checked out inside the repository. Each is a second full

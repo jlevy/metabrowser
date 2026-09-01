@@ -222,8 +222,14 @@ def test_tree_tooltips_do_not_coerce_pending_aggregates_to_zero() -> None:
     assert "+d.tipSize" not in js
     assert 'data-tip-files="${nullableDataValue(node.total_files)}' in js
     assert 'data-tip-size="${nullableDataValue(node.total_size)}' in js
-    assert "Loading file count…" in js
-    assert "Loading size…" in js
+    # Pending aggregates render as tally skeleton blocks named for screen
+    # readers, not as visible "Loading …" copy. See docs/design-system.md,
+    # "Loading States Are Shapes, Not Sentences", enforced by
+    # tests/test_loading_states.py.
+    assert 'aria-label="Loading file count"' in js
+    assert 'aria-label="Loading size"' in js
+    assert "Loading file count…" not in js
+    assert "Loading size…" not in js
 
 
 def test_tree_tooltips_omit_duplicative_name() -> None:
@@ -529,12 +535,24 @@ def test_enhance_after_optional_asset_only_schedules_highlight() -> None:
 def test_plugin_mount_schedules_scoped_post_paint_highlighting() -> None:
     """Default and lazy views share one post-mount enhancement lifecycle."""
     js = _read_app_js()
-    mount_start = js.index("function mountPluginView(container, pluginView, ctx)")
-    mount_block = js[mount_start : mount_start + 1800]
+    mount_start = js.index("async function mountPluginView(container, pluginView, ctx,")
+    mount_block = js[mount_start : mount_start + 2600]
+    assert "async function mountPluginView" in mount_block
+    assert "await Promise.resolve(pluginView.render(container, ctx))" in mount_block
+    assert "await handle.ready" in mount_block
+    assert "if (record.disposed)" in mount_block
+    assert "handle.dispose()" in mount_block
     assert "scheduleHighlightCode(container);" in mount_block
     assert "requestAnimationFrame(afterFrame)" in js
     assert "root !== document && !root.isConnected" in js
     assert 'rawLogHost.closest(".log-event.expanded")' in js
+
+    render_start = js.index("async function renderFile(data, preferredViewId, claim)")
+    render_block = js[render_start : render_start + 12_000]
+    assert "mountPluginView(target, pluginView, ctx, stagedPluginDisposers)" in render_block
+    assert '"fileNavigation:activeView"' in render_block
+    assert "await _perf.measureAsync(" in render_block
+    assert 'await measureNextPaint("fileNavigation:paintReady"' in render_block
 
 
 def test_user_visible_strings_dropped_crawling_label() -> None:
@@ -848,7 +866,9 @@ def test_styles_css_defines_tally_pending_class() -> None:
     assert "@keyframes tally-pending-pulse" in css
     # Narrow variant for inline age cells.
     assert ".tally-pending.tally-pending-narrow {" in css
-    assert ".tip-loading {" in css
+    # .tip-loading held italic "Loading …" copy in tooltips; the pending
+    # cells now reuse the tally skeleton block instead.
+    assert ".tip-loading {" not in css
 
 
 # ── Activity poll fallback retained ──────────────────────────

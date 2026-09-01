@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft; targeted for v0.8.0
+**Status:** Completed and accepted for v0.9.0 on 2026-08-27
 
 ## Overview
 
@@ -14,7 +14,7 @@ The cutoff prevents the browser from retaining an ever-growing DOM and graph, ye
 also makes older history inaccessible.
 Raising it to 1,000 only moves the same failure.
 
-The v0.8 design removes the numerical history ceiling.
+The v0.9 design removes the numerical history ceiling.
 History continues on demand until Git reports its real end.
 A virtual list mounts only the visible rows plus a measured overscan window, and a
 bounded client page cache retains only the working set.
@@ -27,9 +27,8 @@ server sessions all remain bounded.
 Temporary session storage may grow with history actually visited; it is released on
 expiry or disposal and is never read into memory as one object.
 
-This is a v0.8 feature.
-The v0.7.1 patch release remains limited to the commit-diff loading regression, the
-gear-menu tooltip correction, and version display.
+This work begins from the v0.8.0 release, which retains the bounded 500-commit panel.
+The complete continuation and virtualization design targets v0.9.0.
 
 ## Goals
 
@@ -67,9 +66,9 @@ gear-menu tooltip correction, and version display.
 
 ## Background
 
-### Current behavior and cost
+### Starting behavior and cost
 
-The current browser requests 250 commits at a time and keeps every accepted `GitCommit`,
+The v0.8 browser requests 250 commits at a time and keeps every accepted `GitCommit`,
 every computed graph row, and every row element.
 `GIT_HISTORY_MAX_ROWS` stops that growth at 500 and clears the continuation cursor.
 The server cursor contains an opaque skip offset, and every subsequent
@@ -105,7 +104,7 @@ the start of the current page.
 
 The server, browser shell, and built-in Git panel ship together.
 The `/api/git/log` cursor and `METABROWSER_SETTINGS` values are internal contracts, so
-v0.8 changes both sides together and removes the old skip cursor rather than adding a
+v0.9 changes both sides together and removes the old skip cursor rather than adding a
 compatibility shim. The observable paging behavior is recorded in `CHANGELOG.md`.
 
 ### Complexity assessment
@@ -255,7 +254,7 @@ Compatibility audit:
 
 ## Implementation Plan
 
-### Phase 1: Measure and freeze structural budgets (`mb-t875`)
+### Phase 1: Measure and freeze structural budgets (`mb-t875`, completed)
 
 - Build deterministic linear, branch-heavy, and merge-heavy repositories at 250, 1,000,
   10,000, and at least one depth that exercises deep continuation.
@@ -267,7 +266,14 @@ Compatibility audit:
 - Commit the measurement report and place each chosen constant beside the evidence that
   supports it.
 
-### Phase 2: Scalable continuation (`mb-abu2`)
+The accepted measurements, reproduction commands, and frozen structural budgets are in
+[Continuous Git History Measurements](../../../../explorations/git-history/README.md).
+The deterministic backend matrix covered 250, 1,000, and 10,000 commits in all three
+history shapes. The headed-browser matrix established the need for the virtual window,
+and the one-walk prototype proved exact ordering and indexed page replay without prefix
+work. Phase 2 and Phase 3 may now proceed against those recorded budgets.
+
+### Phase 2: Scalable continuation (`mb-abu2`, completed)
 
 - Replace skip cursors with the measured session, scope fingerprint, replay spool,
   lifecycle registry, shutdown cleanup, and explicit stale/expired responses.
@@ -276,14 +282,31 @@ Compatibility audit:
 - Cover empty repositories, default and all-ref scopes, moving refs, malformed tokens,
   expiry, concurrent panels, resource eviction, and subprocess failure.
 
-### Phase 3: Virtual row window (`mb-ghju`)
+The implementation freezes the resolved commit tips at session creation, advances one
+demand-driven `git log --date-order` process, publishes only flushed replay frames, and
+maps malformed, stale, expired, and storage-exhausted sessions to distinct HTTP states.
+The focused suite covers all three measured history shapes and traverses a 1,003-commit
+history without `--skip`; the repository-wide handoff gate passed before the phase was
+closed.
+
+### Phase 3: Virtual row window (`mb-ghju`, completed)
 
 - Separate logical pages, graph checkpoints, mounted row models, and DOM ownership.
 - Add fixed-height spacers, bounded overscan, page-cache eviction, segment rebasing,
   focus restoration, selection persistence, and complete disposal.
 - Keep current row visuals and lane geometry unchanged.
 
-### Phase 4: Integrate continuous scrolling (`mb-vieq`)
+The browser now keeps decoded wire pages and their page-boundary graph checkpoints in an
+eight-page LRU, while graph-row objects and SVG nodes exist only for the mounted logical
+range. Fixed-height top and bottom spacers preserve the current segment’s scroll
+geometry. The pure window model rebases before 8,000,000 px without moving the logical
+top row or its intra-row pixel offset.
+Pointer work is cancelled on unmount; logical selection survives independently; and
+roving focus transfers to the scroller until its row remounts.
+At this phase boundary, the v0.8 history ceiling remains until server replay and
+bidirectional page recovery are connected in Phase 4.
+
+### Phase 4: Integrate continuous scrolling (`mb-vieq`, completed)
 
 - Join bidirectional page loading to the virtual window and recover stale sessions
   without presenting partial history as complete.
@@ -291,7 +314,20 @@ Compatibility audit:
   scope, lane continuity, retry, empty, and real-end states.
 - Remove `GIT_HISTORY_MAX_ROWS`, the capped message, and skip-cursor code and tests.
 
-### Phase 5: Validate v0.8 (`mb-0ev5`)
+Session pages now carry their versioned graph-boundary checkpoint, so the eight-page
+browser LRU can discard every commit-sized representation and still replay in either
+direction from neighboring opaque page handles.
+The panel grows logical history until the session reports its real end, keeps missing
+ranges as explicit loading or actionable retry placeholders, restores keyboard focus
+after page replay, and rebuilds invalid or expired sessions without replacing the
+selected commit detail.
+The retired offset cursor and 500-row product cutoff no longer exist.
+The headed 10,000-commit integration gate reached the exact final revision, replayed
+evicted windows in both directions within the mounted-row bound, restored its deep
+route, and found a full-stdout subprocess cleanup deadlock that is now covered by a
+resource-eviction regression.
+
+### Phase 5: Validate v0.9 (`mb-0ev5`, completed)
 
 - Run the deterministic structural suite and real-browser profiles at all measured
   sizes, including repeated down/up traversal after cache eviction and a history deep
@@ -299,6 +335,23 @@ Compatibility audit:
 - Compare the release candidate with the preceding release through the performance
   harness, run `make verify`, and record limitations and measurements in the release
   notes.
+
+The deterministic backend matrix exactly matches Git ordering across linear,
+branch-heavy, and merge-heavy histories at 250, 1,000, and 10,000 commits.
+Every 10,000-commit case reaches page 40, and sampled first, middle, and final pages
+replay exactly while parser, spool, Git-process, registry, and subprocess bounds hold.
+
+Nine headed profiles reach the exact logical end, revisit evicted pages, restore the
+deepest selection and direct route, and keep mounted rows and retained heap bounded.
+A separate 1,454,667-row profile forces physical scroll-segment rebasing in both
+directions, preserves the logical row and intra-row offset, and restores a direct target
+near the end without exceeding the 8,000,000 px segment budget.
+
+The exact installed candidate at `1c7bdf8` passes `make verify` with 1,596 tests and 48
+golden scenarios. Five backend pairs and six interleaved headed browser profiles against
+installed v0.8.0 preserve semantic responses and pass every hard responsiveness gate.
+The full measurements and the cached-stylesheet defect found during the matrix are
+recorded in the Git-history exploration and performance experiment `exp-020`.
 
 ## Testing and Acceptance
 
@@ -332,15 +385,15 @@ The feature is accepted when:
 - revisiting an evicted page preserves commit order and graph lanes;
 - selection, keyboard focus, direct commit detail, scope, errors, and end-of-history
   behavior pass their regression tests; and
-- `make verify` and the v0.8 release comparison pass.
+- `make verify` and the v0.9 release comparison pass.
 
 ## Rollout
 
-The feature ships as the Git panel behavior in v0.8.0, without a compatibility flag.
+The feature ships as the Git panel behavior in v0.9.0, without a compatibility flag.
 The client and server are one artifact, and a flag would double an internal contract
 without providing a separately updatable consumer.
 If measurement rejects the session prototype, `mb-abu2` remains blocked until a
-continuation design meets the same acceptance criteria; the fallback is the honest v0.7
+continuation design meets the same acceptance criteria; the fallback is the honest v0.8
 bounded panel, not an unmeasured higher cutoff.
 
 ## References

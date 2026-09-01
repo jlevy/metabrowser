@@ -1,10 +1,10 @@
 # Feature: General Diff Rendering
 
-**Date:** 2026-08-17
+**Date:** 2026-08-17 (last updated 2026-08-25)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** In progress
 
 ## Overview
 
@@ -31,6 +31,8 @@ than a plugin.
 
 - Model a comparison between two snapshots, independent of what produced them
 - Ship one renderer that any source can drive, with unified and split presentations
+- Refine similar replacements to line-paired, word-readable intraline changes without
+  weakening the whole-line add/delete signal
 - Open a `.diff` or `.patch` file and render it like any other file kind
 - Show what a commit changed, per file and whole-commit, from the Git history surface
 - Return a small manifest first and fetch file bodies lazily, so a large comparison is
@@ -113,13 +115,20 @@ They stop being blockers for this plan.
 - `registerNavPanel`, the shell seam the Changes surface mounts through.
 - A bead tree under `mb-ypme` that assumed the plugin framing and needs refiling.
 
-### What we did not borrow from VS Code
+### What we borrow from VS Code
 
-`git-graph.js` derives from `scmHistory.ts` — the swimlane layout, and nothing else.
-No diff code came from VS Code, and none should: VS Code’s diff viewer is Monaco, whose
-one-file editor model and runtime footprint the research assessed as a poor fit unless
-full IDE behavior becomes the goal.
-The port is a layout algorithm, not a viewer.
+`git-graph.js` derives from `scmHistory.ts` for its swimlane layout.
+The initial diff work deliberately borrowed no Monaco renderer code: its one-file editor
+model, runtime, and styling footprint remain a poor fit for Metabrowser’s read-only,
+multi-file surface.
+
+That decision does not apply to VS Code’s pure diff computer.
+Phase 4 ports the small, DOM-free sequence algorithms and refinement heuristics from a
+pinned MIT-licensed VS Code source revision, then adapts their output to Metabrowser’s
+existing semantic line model.
+Monaco models, editor services, decorations, workers, and UI stay out.
+This is the same boundary used by the graph port: take the focused algorithm, preserve
+its attribution and tests, and keep the surrounding product architecture ours.
 
 ## Design
 
@@ -178,10 +187,10 @@ functions for the browser contract, and Pydantic `BaseModel` with
 
 **`diff/format.py`** — the Pydantic implementation of the checked-in schema.
 Enums `ChangeKind`, `EntryType`, `FileMode`, `Availability`, `Side`. Models
-`ContentRef`, `IntralineSpan`, `LineRecord`, `Hunk`, `FilePatch`, `FileChange`,
-`ChangeSetManifest`, `ResolvedComparison`, `ComparisonIntent`. `FileChange` is a
-discriminated union on `kind`, so a rename carries `old_path` and a similarity score by
-construction and a type change carries both entry types.
+`ContentRef`, `LineRecord`, `Hunk`, `FilePatch`, `FileChange`, `ChangeSetManifest`,
+`ResolvedComparison`, `ComparisonIntent`. `FileChange` is a discriminated union on
+`kind`, so a rename carries `old_path` and a similarity score by construction and a type
+change carries both entry types.
 `load_schema()` reads the checked-in JSON Schema; `validate_document(doc)` is the entry
 point the conformance corpus drives from the Python side.
 
@@ -264,9 +273,10 @@ resolution, and the shared model begins at the manifest.
   identity, classification, VCS state, size and cost, availability, and presentation
   hints. Totals declare whether they are exact or estimated; exact line counts can cost
   as much as the patches themselves and must not block the manifest.
-- **File patch** carries hunks, line records, and the intraline spans when computed.
-- **Enrichments** — syntax tokens, intraline refinement — are recomputable and cached
-  separately, so a theme change cannot invalidate a comparison.
+- **File patch** carries hunks and exact line records.
+- **Enrichments** — syntax tokens, intraline ranges, and split-row alignment — are
+  recomputable browser data, not File Diff Format fields, so a palette, algorithm, or
+  layout change cannot invalidate a comparison.
 
 Byte identities and display projections stay separate throughout: paths and blob
 contents are bytes, and the JSON projection is Unicode.
@@ -521,8 +531,11 @@ is a claim about cost.
 
 ## Implementation Plan
 
-Three phases. The first two each end at something usable; the third is the enrichment
-that makes it pleasant, and carries the dependency decision.
+Five primary phases, with focused 4.x follow-ups that refine the shipped browser view.
+The first two each end at something usable; the third establishes the shared
+syntax/layout model and carries the renderer decision; the fourth adds focused intraline
+refinement without reopening the wire contract; the fifth makes visual folding a real
+DOM and main-thread bound.
 
 ### Phase 1: Comparison model, patch-file source, and unified renderer
 
@@ -562,8 +575,8 @@ commit.
 
 ### Phase 3: Enrichment and the renderer decision gate
 
-Ends with: split view, intraline highlighting, syntax, and virtualization, on whichever
-implementation the measurements justify.
+Ends with: split view and syntax highlighting on the measured in-house renderer, with
+the remaining enrichment and virtualization work explicitly scoped.
 
 - [ ] Benchmark harness over the representative fixtures, measuring first-paint, scroll,
   and memory at stated corpus sizes
@@ -573,7 +586,7 @@ implementation the measurements justify.
   integration, and the maintenance surface each leaves behind
 - [ ] Record the decision and its evidence in this document
 - [x] Split view and bounded syntax highlighting on the in-house renderer
-- [ ] Intraline refinement and row virtualization on the chosen path
+- [ ] Row virtualization on the chosen path when the measured review corpus requires it
 - [ ] Whitespace and wrap controls, keyboard next-file and next-hunk navigation
 
 #### 2026-08-24 addendum: syntax and split layout
@@ -601,10 +614,326 @@ and call counts through `metabrowser.perf`.
 
 Those results retain the shared byte bound and do not justify an aggregate cap or
 worker. `@pierre/diffs` and `@git-diff-view/core` still offer material advantages for
-intraline refinement, virtualization, and worker tokenization, not for this completed
-slice. Intraline refinement, context expansion, whitespace controls, and virtualization
-remain on this plan and `mb-hhmb`; they can trigger another measured dependency review
-if their implementation cost justifies one.
+virtualization and worker tokenization, not for this completed slice.
+Phase 4 now uses a focused VS Code algorithm port for intraline refinement.
+Context expansion, whitespace controls, and virtualization remain on this plan and
+`mb-hhmb`; they can trigger another measured dependency review if their implementation
+cost justifies one.
+
+### Phase 4: VS Code-derived intraline refinement
+
+Ends with: similar deleted and added lines align monotonically in split view, and both
+layouts show a light replacement-row tint with a stronger background only on the text
+that changed.
+Unrelated replacements, pure additions/deletions, timed-out refinement, and
+over-budget runs retain the existing whole-line treatment.
+
+#### Product and source findings
+
+A live review of GitHub’s current pull-request UI on 2026-08-25 confirmed two visual
+layers. In the observed dark theme, deletion and addition cells used low-opacity row
+backgrounds while nested changed ranges used substantially stronger backgrounds.
+Those changed-range spans coexisted with syntax spans rather than replacing their
+foreground colors. GitHub does not publish the line-pairing algorithm, so this is
+evidence for presentation, not for implementation.
+
+Git’s `diff-highlight` documents the useful minimum: compare only groups with equal
+numbers of removed and added lines, pair by position, find a common prefix and suffix,
+and suppress a highlight that would cover the whole line.
+It also documents why that is not enough here: unequal groups and shifted-but-similar
+lines can pair incorrectly.
+CodeMirror and jsdiff provide respectable character/word differencing alternatives, but
+either requires another local algorithm adaptation or a new dependency.
+
+The checked-out VS Code source at `77f86f3d3a05cf5d6f765705e816341c918b7dae` supplies
+the stronger focused base.
+`DefaultLinesDiffComputer` uses weighted dynamic-programming alignment for small inputs,
+Myers for larger inputs, and a character refinement pass over changed regions.
+`LinesSliceCharSequence` scores line, separator, whitespace, word-category, and
+camel-case boundaries.
+Its cleanup shifts edits to readable boundaries, extends a mostly changed fragment to
+its containing word, removes misleading tiny matches, and returns an honest timeout
+fallback. The renderer then applies whole-line and inner-text decorations as separate
+theme-token layers.
+
+#### Browser-local model and algorithm
+
+The server patch remains authoritative for source order, operations, line numbers, and
+text. Phase 4 does not add `IntralineSpan` to `LineRecord`, change the JSON Schema, or
+make refinement part of apply semantics.
+The browser derives it independently for each contiguous `changedRun` already recorded
+by the renderer:
+
+1. Collect the run’s deleted lines and added lines without reordering either side.
+2. Join each side with explicit line-break sentinels and run the VS Code-derived
+   character sequence diff.
+   Use the same small-input dynamic-programming and larger-input Myers split, boundary
+   scoring, word extension, short-match cleanup, and injectable timeout/work-budget
+   seam. Do not port move detection or editor-model code.
+3. Translate the resulting range mappings back to per-line UTF-16 offsets and monotonic
+   old/new line ranges.
+   Within each mapped line range, pair in source order and insert empty split cells for
+   the longer side. Unified order never changes.
+4. Keep intraline treatment only when the cleanup leaves meaningful unchanged text.
+   If the result would darken an entire line, the only unchanged anchors are whitespace
+   or tiny unstable matches, or the computation cannot complete within its budget, keep
+   the existing whole-line tint.
+5. Normalize range edges so they never split a surrogate pair.
+   Emit sorted, non-overlapping spans satisfying `0 <= start < end <= line.text.length`;
+   concatenating all rendered runs must reproduce `line.text` exactly.
+
+The derived shape is private browser data:
+
+```text
+ChangedRunRefinement
+  rows: [{ oldIndex: number | null, newIndex: number | null }]
+  oldSpansByIndex: IntralineRange[][]
+  newSpansByIndex: IntralineRange[][]
+  status: refined | plain | timed_out | over_budget
+```
+
+Pure additions and deletions produce positional rows and no intraline ranges.
+An empty range on one side of an insertion or deletion does not invent text or a
+copyable marker; only the nonempty changed side receives an inner background.
+
+#### Files and functions
+
+- [x] Add `src/metabrowser/builtin_plugins/diff/diff-intraline.js` as the strict,
+  DOM-free port. Keep the minimal `SequenceDiff`, dynamic-programming, Myers,
+  boundary-scoring, and cleanup code needed by
+  `refineChangedRun(oldLines, newLines, budget)`. Name the upstream files and pinned
+  commit in the header, preserve the MIT notice, and update `NOTICE.md` so the existing
+  VS Code license also covers this use.
+- [x] Move the semantic record construction out of syntax-specific ownership into
+  `src/metabrowser/builtin_plugins/diff/diff-render-model.js`. Rename
+  `buildFileSyntaxModel` to `buildFileRenderModel`, move `buildHunkRecords`, and add
+  `refineHunkChangedRuns` plus private intraline/split-row fields.
+  Update every co-shipped import in one commit; add no compatibility alias.
+- [x] Keep `src/metabrowser/builtin_plugins/diff/diff-syntax.js` responsible only for
+  side-stream byte measurement, language resolution, token validation, and
+  `highlightFileSyntax`. Syntax and intraline must be independently optional and must
+  never recompute each other.
+- [x] Replace positional `pairChangedRun` in
+  `src/metabrowser/builtin_plugins/diff/diff-view.js` with the cached refinement rows.
+  Add `composeTextRuns(text, tokenRuns, intralineRanges)` and make `renderTextHost`
+  intersect syntax classes with intraline boundaries without `innerHTML`. Unified and
+  split projections consume the same composed runs.
+- [x] Extend the file-sized progressive-enrichment queue so intraline work yields
+  between files, is abortable on replacement/disposal, and settles before that file’s
+  syntax work when both are pending.
+  Unified hosts update in place; a changed split-row alignment reprojects only that file
+  while preserving fold state and the mount/layout generation guards.
+- [x] Add semantic CSS tokens in `src/metabrowser/builtin_plugins/diff/styles.css` for
+  normal add/delete rows, refined replacement rows, and inner changed text.
+  Pure changes retain the current 12% status mix.
+  Similar replacements start from a lighter candidate row mix and a stronger candidate
+  inner mix; settle the exact values through supported light/dark browser review and
+  token-palette contrast checks.
+  Syntax spans remain foreground-only.
+
+#### Bounds and fallback
+
+Do not copy a product limit or add an artificially small cutoff.
+Measure changed-run character count, edit distance, elapsed main-thread time, and
+available allocation or retained-heap evidence across ordinary code, unequal runs,
+unrelated text, minified long lines, and the existing maximum patch shapes.
+The current patch truncation and file-hydration bounds are the first candidate boundary.
+Add a separate intraline bound only if the browser trace shows a long task or
+pathological Myers work; record the fixture and measurement beside any constant.
+
+Every bound has the same fallback: retain exact selectable text, syntax tokens when
+available, current split positional rows, and the existing whole-line status tint.
+Refinement failure is contained to one changed run and never changes file availability.
+No worker or dependency is added unless the measured synchronous/yielded implementation
+misses the interaction budget.
+
+Five Chrome 151 runs selected a deterministic 1,000,000-work-unit bound per changed run.
+Ordinary code completed in at most 1.2 ms, an 8 MiB mostly-equal line in at most 20.5
+ms, and unrelated 8 MiB lines reached the bound in at most 32.6 ms.
+The latter retained no additional heap in the available `performance.memory` reading;
+the largest positive retained-heap delta was 9,470,076 bytes for the similar 8 MiB case.
+This keeps the existing patch boundary for similar input and adds no smaller size
+cutoff. The reproducible fixture and full table are in the
+[diff intraline bound benchmark](../../../../explorations/diff-intraline/).
+
+#### Tests and acceptance
+
+- [x] Add a DOM-free `diff-intraline-behavior.js` suite for single-word changes,
+  multiple edits, punctuation, indentation-only edits, camel-case boundaries, shifted
+  and unequal lines, pure one-sided runs, unrelated replacements, missing final
+  newlines, empty lines, CRLF projections, non-ASCII text, emoji/surrogate boundaries,
+  long-line fallback, timeout injection, stable ordering, and exact text round trips.
+- [x] Extend `diff-view-behavior.js` and `diff-syntax-behavior.js` for token/range
+  intersection, safe text-node construction, lighter refined rows, stronger changed
+  spans, unified source order, improved split alignment, fold persistence, rapid layout
+  switches, deferred hydration, replacement, and disposal during refinement.
+- [x] Extend `test_syntax_palette.py` to calculate every syntax foreground against
+  context, ordinary add/delete, refined add/delete, and inner changed backgrounds in all
+  supported themes. Markers and line numbers remain the non-color indication.
+- [x] Add real-browser fixtures comparing unified and split rendering for JavaScript,
+  YAML, Markdown source, long lines, unequal runs, and a large comparison.
+  Check copy and selection text, horizontal overflow, narrow layout, no layout-state
+  loss, no late mutation, no console error, and measured fallback behavior.
+- [x] Reconcile this plan, the completed syntax/layout addendum, the diff research, File
+  Diff Format architecture, Views/Models/Routes, `CHANGELOG.md`, and `NOTICE.md`. Run
+  `make format` and `make verify`, then review the complete diff.
+
+Phase 4 is complete when similar lines receive readable non-whole-line emphasis in both
+layouts; unmatched lines remain visually honest; syntax, copy, selection, folding,
+hydration, and disposal are unchanged; the exact text round trip is proven; any bound is
+backed by a recorded browser measurement; and the repository handoff gate passes.
+
+#### Implementation outcome
+
+Phase 4 ships the attributed browser-only port, the syntax-neutral render model, and one
+composed projection path for unified and split layouts.
+Similar replacement rows use a 4% status-token mix; their inner changed ranges add an 8%
+mix, while unrelated and one-sided changes retain the prior 12% whole-line mix.
+Palette tests keep every syntax foreground at or above 4.5:1 against context, ordinary,
+refined, and inner surfaces in the supported light and dark themes.
+Markers and line numbers remain the non-color signal.
+
+Real-browser validation covered JavaScript, YAML, Markdown, an unknown grammar, unequal
+alignment, persisted layout choice, folding across reprojection, narrow split-pane
+overflow, exact line text, and diff-specific console diagnostics.
+No runtime dependency, worker, schema field, compatibility alias, or new loading tier
+was added.
+
+### Phase 4.8: Intraline Visual Hierarchy and Change Gutters (`mb-qqnl`, `mb-l00d`)
+
+Ends with: every added or deleted line has a persistent status-colored gutter bar;
+wholly added or deleted lines use a strong status fill; and a refined line uses a pale
+fill for unchanged text with a substantially stronger fill on the range that changed.
+Unified and split layouts use the same classes, tokens, and contrast contract.
+
+#### Source Findings
+
+VS Code models diff emphasis as three independent decorations.
+At the reviewed revision, `registrations.contribution.ts` attaches `line-insert` or
+`line-delete` to every changed line, `char-insert` or `char-delete` to refined text
+ranges, and `gutter-insert` or `gutter-delete` to the editor margin.
+`style.css` maps those classes to separate line, text, and gutter theme colors.
+The gutter colors fall back through the line and text colors, so the structural marker
+remains present when a theme does not provide a dedicated value.
+`editorColors.ts` keeps line and text backgrounds translucent so they do not hide syntax
+or other editor decorations.
+
+Metabrowser already emits the equivalent semantic row and range classes in both layouts.
+The visual correction therefore belongs in CSS. It must not add line wrappers, per-row
+JavaScript, or a second render path.
+
+#### Files and Functions
+
+- [x] Update `src/metabrowser/builtin_plugins/diff/styles.css` so an unrefined added or
+  deleted row uses the stronger status-token fill, a refined row uses a pale
+  status-token fill for its unchanged text, refined `.diff-intraline-change` spans use
+  the stronger fill, and the first `.diff-line-number` cell carries a fixed-width inset
+  gutter bar. The bar must not change grid geometry or text alignment.
+- [x] Extend
+  `tests/test_syntax_palette.py::test_syntax_foregrounds_meet_contrast_over_diff_tints`
+  and `test_diff_syntax_hosts_and_split_geometry_keep_the_css_contract` to prove the
+  fill hierarchy, text contrast, semantic token ownership, gutter placement, and
+  layout-neutral inset treatment.
+- [x] Extend the unified and split assertions in `tests/dom/diff-view-behavior.js` only
+  if the existing row-class contract does not already prove that the selectors reach
+  every changed line. The existing assertions already pin the shared classes and direct
+  line-number children, so no DOM test or renderer change was necessary.
+- [x] Reconcile the visual contract in `docs/design-system.md`, the VS Code source
+  findings in the diff research, the implementation outcome below, and `CHANGELOG.md`.
+- [x] Validate representative refined, unrelated, addition-only, and deletion-only lines
+  in light and dark themes in a real browser.
+  Confirm that the bar remains aligned in unified and split layouts, selection and
+  syntax remain readable, and no new DOM or scripting cost appears.
+
+Phase 4.8 is complete when a changed line remains identifiable without relying on its
+fill, changed text has a clear visual priority over unchanged text within a refined
+line, the treatment is identical across layouts, computed syntax contrast remains at
+least 4.5:1, focused and full verification pass, and the exact build is inspected in a
+real browser.
+
+#### Implementation Outcome
+
+An unrefined row now uses a 9% status-token fill because its complete text is new or
+removed. A refined row uses a 3% fill so its unchanged portion recedes, while a changed
+span adds a 20% overlay, producing an effective 22.4% mix.
+Changed spans use the standard text foreground because the stronger light-theme surface
+does not preserve the 4.5:1 floor for every syntax accent.
+The hierarchy is run-scoped: if any pair in a contiguous changed run refines, every row
+in that run uses the pale background, and a wholly changed or unpaired neighboring line
+receives a full-text inner range.
+One-sided runs and runs with no meaningful refined pair retain the ordinary whole-line
+treatment. Every added or deleted line applies a solid three-pixel success or error
+border to its first line-number cell.
+`box-sizing: border-box` keeps that border inside the fixed grid cell, so unified and
+split text remain aligned without a new column or element.
+
+The computed palette keeps the worst syntax foreground above 4.5:1 and each gutter above
+3:1 against its line surface in light and dark themes.
+A representative large-repository commit exercised refined and unrefined changes in a
+real browser. Every changed row had a gutter in unified and split layouts, with no
+line-number alignment mismatches or diff console diagnostics.
+The change adds CSS only; the semantic model, renderer, selection, folding, layout
+persistence, and main-thread work are unchanged.
+
+### Phase 4.9: Default Split Layout and Control Order (`mb-k2h1`)
+
+Ends with: a first-time diff opens in Split, and the joined control presents Split on
+the left and Unified on the right.
+Existing valid preferences remain authoritative.
+
+- [x] Update `readLayoutPreference` in
+  `src/metabrowser/builtin_plugins/diff/diff-view.js` so a missing or invalid
+  `diff.layout` value resolves to `split`, while explicit `split` and `unified` values
+  remain valid.
+- [x] Update `renderLayoutControl` so its joined options are ordered Split, then
+  Unified.
+- [x] Extend `tests/dom/diff-view-behavior.js` to cover the initial default, invalid
+  fallback, persisted Unified choice, option order, immediate reprojection, lexer reuse,
+  and disposal.
+- [x] Record the shared layout convention in `docs/design-system.md` and `CHANGELOG.md`.
+
+Phase 4.9 is complete when direct and revision-hosted diffs share the same initial and
+persisted behavior, switching remains a projection of one semantic model, focused and
+full verification pass, and a visible-browser check confirms both the control order and
+the two layouts.
+
+### Phase 5: Large Folded-Comparison Responsiveness
+
+Ends with: a collapsed changed run costs only its visible prefix in the DOM, expanding
+it yields between bounded batches, and the standard browser profile rejects any hidden
+rows retained under a collapsed fold.
+
+- [x] In `diff-view.js`, keep only `FOLD_VISIBLE` rows mounted for a collapsed run.
+  Materialize an expanded run in `FOLD_MATERIALIZATION_BATCH_ROWS` batches, cancel a
+  stale batch on collapse, layout reprojection, replacement, or disposal, and remove its
+  text hosts with its DOM.
+- [x] In `diff-render-model.js`, treat one-sided additions and deletions as already
+  plain. Do not allocate cached positional split rows for work that has no old/new
+  alignment or intraline refinement to compute.
+- [x] In `plugin-sdk.js`, the diff plugin entry point, and `diff-view.js`, attribute
+  JSON decode, validation, semantic-model construction, file projection,
+  whole-comparison projection, and DOM attachment separately through `metabrowser.perf`.
+- [x] Keep syntax and intraline behavior intact for lazily materialized rows.
+  Their semantic records receive enrichment independently of DOM presence, and
+  `renderRow` composes any available token and intraline ranges when a batch mounts.
+- [x] Extend the standard DOM suite with a 2,020-line changed run.
+  Assert a 20-row collapsed prefix, one 100-row batch after a task yield, cancellation
+  on collapse, state restoration across unified/split reprojection, and no one-sided
+  alignment cache.
+- [x] Add `collapsed_diff_rows_materialized` to the browser performance profile as a
+  required zero hard gate.
+  A visual fold that hides an unbounded subtree now fails the same comparison gate as a
+  Long Task or rendered error.
+
+The reproduced comparison contained 10 files, 19,654 changed lines, and a 1.26 MB JSON
+response.
+The installed control mounted 182,686 DOM nodes, recorded a 552 ms longest task
+and two tasks over 200 ms, and attributed 282 ms to the diff mount.
+The candidate mounted 6,476 total DOM nodes, including 195 diff rows and no collapsed
+hidden rows. Its longest task was 127 ms, no task or attributed frame blocking crossed
+200 ms, JSON decode took 6 ms, validation 7 ms, whole-comparison projection 5 ms, and
+the largest remaining span was the bounded syntax lexer at 120 ms.
+Both profiles used the same payload, viewport, profiler, and settled server.
 
 ## The dependency question
 
@@ -617,11 +946,12 @@ balance than the code it replaces.
 The honest split is that the *unified* renderer is small — hunks, line records, context
 expansion, and state chrome are a few hundred lines against a model we already own, and
 Phase 1 builds it either way.
-What libraries actually sell is the expensive half: split alignment, intraline
-refinement, incremental syntax through a worker, and row virtualization that survives
-sticky headers and scroll anchoring.
-That is why the gate sits at Phase 3 rather than Phase 0 — by then the in-house renderer
-exists, and the comparison is against a known quantity instead of an estimate.
+What libraries actually sell is the expensive half: incremental syntax through a worker
+and row virtualization that survives sticky headers and scroll anchoring.
+The split projection and syntax are already complete in the owned renderer, and Phase 4
+tests a focused VS Code algorithm port for better line alignment before reopening the
+renderer dependency gate.
+The comparison is now against measured local code instead of an estimate.
 
 Two constraints hold whichever way it goes.
 A library never becomes the server contract: an adapter maps our file patch onto its
@@ -649,6 +979,10 @@ model have to render somewhere.
 - **Renderer.** DOM behavior tests for unified and split projections, context expansion,
   every availability state, and disposal — a mounted comparison must release workers,
   observers, and streams when replaced.
+- **Intraline refinement.** Pure algorithm tests pin monotonic line alignment, readable
+  word boundaries, conservative whole-line fallback, UTF-16 range safety, and exact text
+  round trips. DOM tests then prove those ranges compose with syntax tokens and both
+  projections without changing selection or copy text.
 - **Integration.** Real-browser coverage for the Changes surface: selecting a commit,
   opening a file, expanding context, and switching presentations.
 - **Performance.** The Phase 3 harness runs against the representative fixtures and
@@ -675,6 +1009,11 @@ model have to render somewhere.
 - [Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
 - [Git graph nav panel and read-only Git API](plan-2026-08-06-git-graph-view.md)
 - [Rendering large content](../../../large-content-rendering.md)
+- [File Patch Formats](../../research/research-2026-08-19-file-patch-formats.md)
+- [Git `diff-highlight`](https://github.com/git/git/tree/master/contrib/diff-highlight)
+- [VS Code default diff computer at the reviewed revision](https://github.com/microsoft/vscode/tree/77f86f3d3a05cf5d6f765705e816341c918b7dae/src/vs/editor/common/diff/defaultLinesDiffComputer)
+- [CodeMirror merge diff algorithm](https://github.com/codemirror/merge/blob/main/src/diff.ts)
+- [jsdiff](https://github.com/kpdecker/jsdiff)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -20,7 +20,7 @@ import time
 from pathlib import Path
 from textwrap import dedent
 from typing import Protocol
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import uvicorn
@@ -29,8 +29,15 @@ from typer.testing import CliRunner
 
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
+from metabrowser.cli.http_readiness import wait_for_http_ok_then
 from metabrowser.cli.main import _app, main
-from metabrowser.cli.serve import _QuietForceExitServer, _shutdown_noise_filter
+from metabrowser.cli.serve import (
+    _STOPPING_NOTICE,
+    _QuietForceExitServer,
+    _run_until_interrupted,
+    _shutdown_noise_filter,
+    _stop_now,
+)
 from metabrowser.errors import CLIError
 from metabrowser.server_utils import MAX_TCP_PORT
 
@@ -408,6 +415,31 @@ def test_server_module_execution_delegates_to_canonical_cli() -> None:
 # ── Serve mode ─────────────────────────────────────────────────
 
 
+def _wait_until_serving(process: subprocess.Popen[str], port: int, timeout_s: float = 20.0) -> None:
+    """Block until the served index answers, so a signal reaches a live server.
+
+    Reading the child's stdout would work equally well but would then have
+    to be drained for the rest of the test; the port is the same evidence
+    and leaves the pipes alone.
+    """
+    ready = False
+
+    def _mark_ready() -> None:
+        nonlocal ready
+        ready = True
+
+    wait_for_http_ok_then(
+        "127.0.0.1",
+        port,
+        f"http://127.0.0.1:{port}/view/",
+        on_ready=_mark_ready,
+        on_error=lambda message: None,
+        is_cancelled=lambda: process.poll() is not None,
+        timeout_s=timeout_s,
+    )
+    assert ready, f"server never served /view/ on port {port} (exit={process.poll()})"
+
+
 def test_shutdown_noise_filter_drops_expected_cancellation_only() -> None:
     cancelled = logging.LogRecord(
         "uvicorn.error",
@@ -442,8 +474,12 @@ def test_shutdown_noise_filter_drops_expected_cancellation_only() -> None:
     assert _shutdown_noise_filter(unexpected)
 
 
-def test_force_exit_preserves_logger_and_exits_immediately() -> None:
-    """The second Ctrl-C exits before any later logger mutation could matter."""
+def test_interrupt_exits_before_any_later_logger_mutation_could_matter() -> None:
+    """The interrupt exits from the handler, ahead of the ``finally`` in
+    ``run_serve`` that restores the uvicorn logger.
+
+    There is no second press to wait for: one Ctrl-C ends it.
+    """
 
     async def dummy_app(scope: object, receive: object, send: object) -> None: ...
 
@@ -452,29 +488,189 @@ def test_force_exit_preserves_logger_and_exits_immediately() -> None:
     uvicorn_logger = logging.getLogger("uvicorn.error")
     original_level = uvicorn_logger.level
     try:
-        server.handle_exit(signal.SIGINT, None)
-        assert server.should_exit and not server.force_exit
-        assert uvicorn_logger.level == original_level
-
         with patch("metabrowser.cli.serve.os._exit") as hard_exit:
             server.handle_exit(signal.SIGINT, None)
 
-        assert server.force_exit
+        assert server.interrupted
         assert uvicorn_logger.level == original_level
         hard_exit.assert_called_once_with(130)
     finally:
         uvicorn_logger.setLevel(original_level)
 
 
+def test_one_interrupt_announces_and_stops() -> None:
+    """One Ctrl-C announces the stop and ends the process, with no second press.
+
+    A bare ``^C`` with no output reads as a hang; and this is a local,
+    single-user browser, so there is no in-flight work whose completion is
+    worth waiting on before exiting.
+    """
+
+    async def dummy_app(scope: object, receive: object, send: object) -> None: ...
+
+    server = _QuietForceExitServer(uvicorn.Config(app=dummy_app))
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+    original_level = uvicorn_logger.level
+    try:
+        with (
+            patch("metabrowser.cli.serve.os.write") as raw_write,
+            patch("metabrowser.cli.serve.os._exit") as hard_exit,
+        ):
+            server.handle_exit(signal.SIGINT, None)
+
+        raw_write.assert_called_once_with(2, _STOPPING_NOTICE)
+        hard_exit.assert_called_once_with(130)
+        assert b"Stopping" in _STOPPING_NOTICE
+    finally:
+        uvicorn_logger.setLevel(original_level)
+
+
+def test_serving_installs_a_stopping_handler_for_uvicorn_to_restore() -> None:
+    """Uvicorn saves the handler in place when ``run()`` starts, restores it on
+    the way out, and re-raises the signal it captured.
+
+    What it saves has to be a handler that stops the process, not ``SIG_IGN``.
+    ``SIG_IGN`` made the re-raise a no-op, but it also discarded — rather than
+    deferred — any interrupt arriving before uvicorn's own handler was in
+    place, which is the whole of app startup.
+    """
+    previous = signal.getsignal(signal.SIGINT)
+    try:
+        server = MagicMock()
+        server.interrupted = False
+        server.run.side_effect = lambda: observed.append(signal.getsignal(signal.SIGINT))
+        observed: list[object] = []
+
+        assert _run_until_interrupted(server) is False
+        assert observed == [_stop_now]
+        assert signal.getsignal(signal.SIGINT) is previous
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+def test_interrupted_serving_leaves_the_stopping_handler_through_exit() -> None:
+    """A repeat Ctrl-C in the moments before exit must still land on a handler
+    that stops, not on Python's default one — where it used to raise inside
+    ``threading._shutdown`` or kill the process for exit ``-2``."""
+    previous = signal.getsignal(signal.SIGINT)
+    try:
+        server = MagicMock()
+        server.interrupted = True
+
+        assert _run_until_interrupted(server) is True
+        assert signal.getsignal(signal.SIGINT) is _stop_now
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+def test_serve_mode_installs_the_stopping_handler_before_it_starts_threads() -> None:
+    """The handler goes up at the top of the mode, not around ``run()``.
+
+    Serving brings up an fsevents watcher and worker threads. Until the handler
+    is installed an interrupt takes the default path — ``KeyboardInterrupt`` to
+    the console entry point, which returns 130 and then blocks in interpreter
+    shutdown joining those threads. Installed only around ``run()``, that left a
+    window during startup where a press was swallowed and the server came up
+    and served on regardless.
+    """
+    source = (
+        Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "cli" / "serve.py"
+    ).read_text(encoding="utf-8")
+    body = source.partition("def run_serve(")[2]
+    assert body, "run_serve moved or was renamed"
+
+    install = body.index("signal.signal(signal.SIGINT, _stop_now)")
+    for later_step in ("_load_dotenv_chain()", "apply_log_level(", "find_available_local_port"):
+        assert install < body.index(later_step), (
+            f"the SIGINT handler must be installed before {later_step}"
+        )
+
+
 def test_serve_reports_sigint_as_exit_130(tmp_path: Path) -> None:
-    with (
-        patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
-        patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
-    ):
-        server_cls.return_value.interrupted = True
-        result = runner.invoke(_app, [str(tmp_path), "--no-open"])
+    previous = signal.getsignal(signal.SIGINT)
+    try:
+        with (
+            patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
+            patch("metabrowser.cli.serve.find_available_local_port", return_value=8411),
+        ):
+            server_cls.return_value.interrupted = True
+            result = runner.invoke(_app, [str(tmp_path), "--no-open"])
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
     assert result.exit_code == 130
+
+
+def _serve_then_interrupt(root: Path, *, count: int, gap_s: float) -> tuple[int | None, str, str]:
+    """Serve *root*, wait until it answers, then send *count* interrupts."""
+    with socket.socket() as port_probe:
+        port_probe.bind(("127.0.0.1", 0))
+        port = port_probe.getsockname()[1]
+
+    console_script = Path(sys.executable).with_name("metab")
+    process = subprocess.Popen(
+        [str(console_script), str(root), "--no-open", "--port", str(port)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        _wait_until_serving(process, port)
+        for _ in range(count):
+            try:
+                process.send_signal(signal.SIGINT)
+            except ProcessLookupError:
+                break
+            time.sleep(gap_s)
+        stdout, stderr = process.communicate(timeout=15)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+    return process.returncode, stdout, stderr
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal behavior")
+def test_console_entry_point_announces_the_interrupt_it_acted_on(tmp_path: Path) -> None:
+    root = tmp_path / "served"
+    root.mkdir()
+    (root / "a.txt").write_text("a")
+
+    returncode, stdout, stderr = _serve_then_interrupt(root, count=1, gap_s=0.0)
+
+    assert returncode == 130, stderr
+    assert "Serving" in stdout
+    assert stderr.count("Stopping") == 1, stderr
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal behavior")
+def test_console_entry_point_survives_repeated_interrupts(tmp_path: Path) -> None:
+    """A double Ctrl-C is one gesture, not two events to report.
+
+    The gaps bracket the window uvicorn reopens when it restores the
+    previous SIGINT handler: too early and its own handler is still
+    installed, too late and the process is already gone. In between, a
+    repeat interrupt used to surface as a ``KeyboardInterrupt`` traceback
+    from ``threading._shutdown`` or as death by signal (exit -2).
+
+    The announcement is checked for never repeating rather than for
+    always appearing: interrupts arriving back to back can cut short the
+    write itself, since the forced exit runs from the retry that Python
+    performs when a signal interrupts a syscall.
+    """
+    root = tmp_path / "served"
+    root.mkdir()
+    (root / "a.txt").write_text("a")
+
+    for gap_s in (0.0, 0.12, 0.2, 0.3):
+        returncode, stdout, stderr = _serve_then_interrupt(root, count=3, gap_s=gap_s)
+
+        assert returncode == 130, f"gap={gap_s} stderr={stderr}"
+        assert "Traceback" not in stderr, f"gap={gap_s} stderr={stderr}"
+        assert "Exception ignored" not in stderr, f"gap={gap_s} stderr={stderr}"
+        assert stderr.count("Stopping") <= 1, f"gap={gap_s} stderr={stderr}"
+        assert "Serving" in stdout
 
 
 def test_cli_bare_path_routes_to_serve() -> None:

@@ -3,7 +3,7 @@
 // Each file renders as a section under a bar: the section-disclosure
 // primitive carrying the filename (styled as a filename, not a
 // heading), change notes, the inline +N −N stat pair, and a copy-path
-// control riding the shell's [data-copy-path] delegation. Sections
+// control riding the shared [data-mb-copy] delegation. Sections
 // start expanded; the bar collapses the body without disposing it.
 // Every availability state has exactly one rendering path — an absent
 // patch is a labeled state, never an empty box. Rendering is
@@ -11,7 +11,8 @@
 // conformance corpus and CLI goldens, and this layer only projects it.
 
 import { fileChangeLabel, validateDocument } from "./diff-model.js";
-import { buildFileSyntaxModel, highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
+import { buildFileRenderModel, refineFileChangedRuns } from "./diff-render-model.js";
+import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
 
 /**
  * @typedef {object} DiffViewApi
@@ -19,7 +20,7 @@ import { buildFileSyntaxModel, highlightFileSyntax, syntaxInputBytes } from "./d
  * @property {(source: string, language: string, options?: {signal?: AbortSignal, inputBytes?: number}) => Promise<MetabrowserSyntaxTokenLines | null>} highlightSyntax
  * @property {(pathOrName: string) => string} langForPath
  * @property {NonNullable<MetabrowserPublicSdk["filterControls"]> | undefined} [filterControls]
- * @property {Pick<MetabrowserPublicSdk["perf"], "measureAsync"> | undefined} [perf]
+ * @property {Pick<MetabrowserPublicSdk["perf"], "measure" | "measureAsync"> | undefined} [perf]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  */
 
@@ -28,23 +29,29 @@ import { buildFileSyntaxModel, highlightFileSyntax, syntaxInputBytes } from "./d
  * @property {Record<string, unknown>} change
  * @property {HTMLElement} body
  * @property {Set<string>} expandedFolds
+ * @property {Map<string, {timer: number}>} foldTasks
  * @property {Record<string, unknown>} patch
- * @property {ReturnType<typeof buildFileSyntaxModel>} syntax
- * @property {{host: HTMLElement, line: ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number], side: "old" | "new"}[]} textHosts
+ * @property {DiffViewApi} api
+ * @property {ReturnType<typeof buildFileRenderModel>} renderModel
+ * @property {{host: HTMLElement, line: ReturnType<typeof buildFileRenderModel>["hunks"][number]["lines"][number], side: "old" | "new"}[]} textHosts
  */
 
 /**
  * @typedef {object} MountedDiffState
  * @property {DiffViewApi | undefined} api
+ * @property {number} activeHydrations
  * @property {AbortController} controller
  * @property {boolean} disposed
  * @property {FileViewState[]} files
  * @property {number} generation
+ * @property {IntersectionObserver | null} hydrationObserver
  * @property {"unified" | "split"} layout
  * @property {HTMLElement | null} layoutControl
  * @property {number} layoutGeneration
  * @property {HTMLElement} root
- * @property {Promise<void>} syntaxTail
+ * @property {Promise<void>} enhancementTail
+ * @property {Map<HTMLElement, {body: HTMLElement, change: Record<string, unknown>, revision: string}>} pendingHydrations
+ * @property {{body: HTMLElement, change: Record<string, unknown>, revision: string}[]} queuedHydrations
  * @property {Set<number>} timers
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  */
@@ -88,9 +95,21 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   unsupported: "This change cannot be shown as a text diff.",
 });
 
+// Chrome 151, five runs of explorations/diff-intraline/benchmark.html:
+// ordinary edits completed in <= 1.2 ms, an 8 MiB mostly-equal line in
+// <= 20.5 ms, and unrelated 8 MiB lines reached this bound in <= 32.6 ms.
+// This deterministic limit caps edit-distance work; it does not impose a
+// smaller input-size cutoff than the existing patch bound.
+const INTRALINE_WORK_BUDGET = 1_000_000;
+
 // A load this slow is worth a console record even when it eventually
 // succeeds: a reader watching a spinner deserves a diagnosable stall.
 const SLOW_LOAD_MS = 4000;
+
+// Chrome 151 on an 88-file comparison: a bottom jump made 24 deferred
+// sections visible together. Two active requests preserve parallel progress
+// without letting one viewport turn into a Git subprocess fanout.
+const MAX_CONCURRENT_HYDRATIONS = 2;
 
 /**
  * The app's standard progress box: hidden until --loading-state-delay,
@@ -137,6 +156,11 @@ const SETTINGS = /** @type {Record<string, number>} */ (
 // build still folds sensibly. 0 disables folding.
 const FOLD_THRESHOLD = Number(SETTINGS.DIFF_FOLD_THRESHOLD ?? 40);
 const FOLD_VISIBLE = Number(SETTINGS.DIFF_FOLD_VISIBLE ?? 20);
+// The existing measured layout projection batch creates at least three row
+// elements per file. Keeping fold expansion to 100 rows is the stricter of
+// the two projection budgets and gives the browser a task boundary between
+// chunks of a very large changed run.
+const FOLD_MATERIALIZATION_BATCH_ROWS = 100;
 // Chrome 151 took 223.7 ms to reproject 1,000 ready files in one pass.
 // One-tenth-sized batches keep the same measured work below the 200 ms
 // interaction budget; explorations/diff-layout/README.md records the fixture.
@@ -166,12 +190,73 @@ function shellIcon(name) {
 }
 
 /**
- * Put scanner-validated token data into an existing text host.
- * @param {HTMLElement} host
- * @param {MetabrowserSyntaxTokenRun[]} runs
+ * @typedef {object} ComposedTextRun
+ * @property {string[]} classes
+ * @property {string} text
  */
-export function appendTokenRuns(host, runs) {
-  const spans = runs.map((run) => {
+
+/**
+ * Intersect syntax and intraline boundaries while preserving the source exactly.
+ * @param {string} text
+ * @param {MetabrowserSyntaxTokenRun[] | null} tokenRuns
+ * @param {import("./diff-intraline.js").IntralineRange[]} intralineRanges
+ * @returns {ComposedTextRun[]}
+ */
+export function composeTextRuns(text, tokenRuns, intralineRanges) {
+  const boundaries = new Set([0, text.length]);
+  /** @type {{start: number, end: number, classes: string[]}[]} */
+  const tokens = [];
+  let tokenOffset = 0;
+  for (const run of tokenRuns ?? [{ classes: [], text }]) {
+    const end = tokenOffset + run.text.length;
+    boundaries.add(tokenOffset);
+    boundaries.add(end);
+    tokens.push({ classes: run.classes, end, start: tokenOffset });
+    tokenOffset = end;
+  }
+  const ranges = intralineRanges.filter(
+    (range) => 0 <= range.start && range.start < range.end && range.end <= text.length,
+  );
+  for (const range of ranges) {
+    boundaries.add(range.start);
+    boundaries.add(range.end);
+  }
+  const offsets = [...boundaries].sort((left, right) => left - right);
+  /** @type {ComposedTextRun[]} */
+  const result = [];
+  let tokenIndex = 0;
+  let rangeIndex = 0;
+  for (let index = 0; index + 1 < offsets.length; index += 1) {
+    const start = offsets[index];
+    const end = offsets[index + 1];
+    if (start === end) {
+      continue;
+    }
+    while (tokenIndex + 1 < tokens.length && tokens[tokenIndex].end <= start) {
+      tokenIndex += 1;
+    }
+    while (rangeIndex + 1 < ranges.length && ranges[rangeIndex].end <= start) {
+      rangeIndex += 1;
+    }
+    const classes = [...(tokens[tokenIndex]?.classes ?? [])];
+    const range = ranges[rangeIndex];
+    if (range !== undefined && range.start <= start && end <= range.end) {
+      classes.push("diff-intraline-change");
+    }
+    result.push({ classes, text: text.slice(start, end) });
+  }
+  return result;
+}
+
+/**
+ * Put composed scanner and intraline runs into an existing text host.
+ * @param {HTMLElement} host
+ * @param {string} text
+ * @param {MetabrowserSyntaxTokenRun[] | null} tokenRuns
+ * @param {import("./diff-intraline.js").IntralineRange[]} intralineRanges
+ */
+function renderComposedText(host, text, tokenRuns, intralineRanges) {
+  const spans = composeTextRuns(text, tokenRuns, intralineRanges).map((run) => {
     const span = el("span", run.classes.join(" "));
     span.textContent = run.text;
     return span;
@@ -179,8 +264,8 @@ export function appendTokenRuns(host, runs) {
   host.replaceChildren(...spans);
 }
 
-/** @typedef {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]["lines"][number]} DiffLine */
-/** @typedef {{changedRun: number | null, old: DiffLine | null, new: DiffLine | null}} SplitRow */
+/** @typedef {ReturnType<typeof buildFileRenderModel>["hunks"][number]["lines"][number]} DiffLine */
+/** @typedef {import("./diff-render-model.js").DiffSplitRow} SplitRow */
 
 /**
  * @param {DiffLine} line
@@ -188,6 +273,14 @@ export function appendTokenRuns(host, runs) {
  */
 function sideTokens(line, side) {
   return side === "old" ? line.oldTokens : line.newTokens;
+}
+
+/**
+ * @param {DiffLine} line
+ * @param {"old" | "new"} side
+ */
+function sideIntralineRanges(line, side) {
+  return side === "old" ? line.oldIntralineRanges : line.newIntralineRanges;
 }
 
 /**
@@ -201,14 +294,15 @@ function renderTextHost(state, line, side) {
   // `pre code:not(.hljs)` enhancer cannot select this span.
   const host = el("span", "diff-line-text hljs", line.text);
   const runs = sideTokens(line, side);
-  if (runs !== null) {
-    appendTokenRuns(host, runs);
+  const intralineRanges = sideIntralineRanges(line, side);
+  if (runs !== null || intralineRanges.length > 0) {
+    renderComposedText(host, line.text, runs, intralineRanges);
   }
   state.textHosts.push({ host, line, side });
   return host;
 }
 
-/** @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk */
+/** @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk */
 function renderHunkHeader(hunk) {
   const heading = hunk.heading ? ` ${hunk.heading}` : "";
   return el(
@@ -218,13 +312,13 @@ function renderHunkHeader(hunk) {
   );
 }
 
-/** @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk */
+/** @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk */
 export function projectUnifiedHunk(hunk) {
   return hunk.lines.slice();
 }
 
 /** @param {DiffLine[]} lines @returns {SplitRow[]} */
-export function pairChangedRun(lines) {
+function positionalChangedRunRows(lines) {
   const oldLines = lines.filter((line) => line.op === "del");
   const newLines = lines.filter((line) => line.op === "add");
   const changedRun = lines[0]?.changedRun ?? null;
@@ -232,12 +326,13 @@ export function pairChangedRun(lines) {
     changedRun,
     new: newLines[index] ?? null,
     old: oldLines[index] ?? null,
+    refined: false,
   }));
 }
 
 /**
  * Duplicate context and positionally pair each contiguous changed run.
- * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
  * @returns {SplitRow[]}
  */
 export function projectSplitHunk(hunk) {
@@ -246,7 +341,7 @@ export function projectSplitHunk(hunk) {
   for (let index = 0; index < hunk.lines.length; ) {
     const line = hunk.lines[index];
     if (line.op === "context") {
-      rows.push({ changedRun: null, new: line, old: line });
+      rows.push({ changedRun: null, new: line, old: line, refined: false });
       index += 1;
       continue;
     }
@@ -255,7 +350,11 @@ export function projectSplitHunk(hunk) {
     while (end < hunk.lines.length && hunk.lines[end].changedRun === run) {
       end += 1;
     }
-    rows.push(...pairChangedRun(hunk.lines.slice(index, end)));
+    rows.push(
+      ...(run === null
+        ? []
+        : (hunk.changedRunRows.get(run) ?? positionalChangedRunRows(hunk.lines.slice(index, end)))),
+    );
     index = end;
   }
   return rows;
@@ -266,7 +365,8 @@ export function projectSplitHunk(hunk) {
  * @param {DiffLine} line
  */
 function renderUnifiedLine(state, line) {
-  const row = el("div", `diff-line diff-line-${line.op}`);
+  const refined = line.intralineRefined ? " diff-line-refined" : "";
+  const row = el("div", `diff-line diff-line-${line.op}${refined}`);
   row.append(
     el("span", "diff-line-number", line.oldNumber === null ? "" : String(line.oldNumber)),
     el("span", "diff-line-number", line.newNumber === null ? "" : String(line.newNumber)),
@@ -293,7 +393,8 @@ function renderSplitSide(state, line, side) {
   }
   const op = line.op === "context" ? "context" : side === "old" ? "del" : "add";
   const number = side === "old" ? line.oldNumber : line.newNumber;
-  const cell = el("div", `diff-split-side diff-split-${side} diff-line-${op}`);
+  const refined = line.intralineRefined ? " diff-line-refined" : "";
+  const cell = el("div", `diff-split-side diff-split-${side} diff-line-${op}${refined}`);
   cell.append(
     el("span", "diff-line-number", number === null ? "" : String(number)),
     el("span", "diff-line-marker", op === "del" ? "-" : op === "add" ? "+" : " "),
@@ -308,7 +409,10 @@ function renderSplitSide(state, line, side) {
 
 /** @param {FileViewState} state @param {SplitRow} row */
 function renderSplitLine(state, row) {
-  const className = row.changedRun === null ? "diff-split-context" : "diff-split-change";
+  const className =
+    row.changedRun === null
+      ? "diff-split-context"
+      : `diff-split-change${row.refined ? " diff-line-refined" : ""}`;
   const element = el("div", `diff-split-row ${className}`);
   element.append(renderSplitSide(state, row.old, "old"), renderSplitSide(state, row.new, "new"));
   return element;
@@ -344,20 +448,18 @@ function appendFoldedRows(section, rows, changedRunOf, renderRow, state, hunkInd
       continue;
     }
     section.append(...run.slice(0, FOLD_VISIBLE).map(renderRow));
-    const hidden = run.length - FOLD_VISIBLE;
     const key = `${String(state.change.id)}:${hunkIndex}:${changedRun}`;
     const expanded = state.expandedFolds.has(key);
     foldSequence += 1;
     const group = el("div", `diff-fold-group${expanded ? "" : " diff-fold-collapsed"}`);
     group.setAttribute("id", `diff-fold-group-${foldSequence}`);
-    group.append(...run.slice(FOLD_VISIBLE).map(renderRow));
-    section.append(renderFoldControl(group, hidden, state, key), group);
+    section.append(renderFoldControl(group, run.slice(FOLD_VISIBLE), renderRow, state, key), group);
     index = end;
   }
 }
 
 /**
- * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
  * @param {FileViewState} state
  * @param {number} hunkIndex
  */
@@ -377,7 +479,7 @@ function renderUnifiedHunk(hunk, state, hunkIndex) {
 }
 
 /**
- * @param {ReturnType<typeof buildFileSyntaxModel>["hunks"][number]} hunk
+ * @param {ReturnType<typeof buildFileRenderModel>["hunks"][number]} hunk
  * @param {FileViewState} state
  * @param {number} hunkIndex
  */
@@ -405,12 +507,26 @@ function renderSplitHunk(hunk, state, hunkIndex) {
  * @returns {FileViewState}
  */
 export function createFileState(change, patch, api, body) {
+  const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
   return {
+    api,
     body,
     change,
     expandedFolds: new Set(),
+    foldTasks: new Map(),
     patch,
-    syntax: buildFileSyntaxModel(change, patch, api.langForPath),
+    renderModel: measureProjection(
+      api,
+      "diffMount:model",
+      () => buildFileRenderModel(change, patch, api.langForPath),
+      {
+        hunk_count: hunks.length,
+        line_count: hunks.reduce(
+          (total, hunk) => total + (Array.isArray(hunk.lines) ? hunk.lines.length : 0),
+          0,
+        ),
+      },
+    ),
     textHosts: [],
   };
 }
@@ -421,22 +537,49 @@ export function createFileState(change, patch, api, body) {
  * @param {"unified" | "split"} layout
  */
 export function renderFileBody(state, layout) {
-  state.body.replaceChildren();
-  state.textHosts = [];
-  for (const [hunkIndex, hunk] of state.syntax.hunks.entries()) {
-    state.body.append(
-      layout === "split"
-        ? renderSplitHunk(hunk, state, hunkIndex)
-        : renderUnifiedHunk(hunk, state, hunkIndex),
-    );
-  }
-  if (state.patch.truncated) {
-    state.body.append(el("div", "diff-availability", "This patch was truncated at its bounds."));
-  }
+  cancelFoldMaterializations(state);
+  return measureProjection(
+    state.api,
+    "diffMount:fileProjection",
+    () => {
+      state.body.replaceChildren();
+      state.textHosts = [];
+      for (const [hunkIndex, hunk] of state.renderModel.hunks.entries()) {
+        state.body.append(
+          layout === "split"
+            ? renderSplitHunk(hunk, state, hunkIndex)
+            : renderUnifiedHunk(hunk, state, hunkIndex),
+        );
+      }
+      if (state.patch.truncated) {
+        state.body.append(
+          el("div", "diff-availability", "This patch was truncated at its bounds."),
+        );
+      }
+    },
+    {
+      hunk_count: state.renderModel.hunks.length,
+      layout,
+      line_count: state.renderModel.hunks.reduce((total, hunk) => total + hunk.lines.length, 0),
+    },
+  );
 }
 
 /**
- * Record diff syntax work when the host profiler is present without
+ * Record synchronous projection work when the host profiler is present.
+ * @template T
+ * @param {DiffViewApi | undefined} api
+ * @param {string} label
+ * @param {() => T} work
+ * @param {Record<string, unknown>} metadata
+ * @returns {T}
+ */
+function measureProjection(api, label, work, metadata) {
+  return api?.perf?.measure ? api.perf.measure(label, work, metadata) : work();
+}
+
+/**
+ * Record progressive diff work when the host profiler is present without
  * making progressive enhancement depend on diagnostics.
  * @template T
  * @param {DiffViewApi} api
@@ -445,8 +588,55 @@ export function renderFileBody(state, layout) {
  * @param {Record<string, unknown>} metadata
  * @returns {Promise<T>}
  */
-function measureSyntax(api, label, work, metadata) {
+function measureEnhancement(api, label, work, metadata) {
   return api.perf ? api.perf.measureAsync(label, work, metadata) : work();
+}
+
+/**
+ * Refresh current text hosts without changing unified row order or fold DOM.
+ * @param {FileViewState} state
+ */
+function refreshTextHosts(state) {
+  for (const { host, line, side } of state.textHosts) {
+    const runs = sideTokens(line, side);
+    const ranges = sideIntralineRanges(line, side);
+    renderComposedText(host, line.text, runs, ranges);
+    const row = host.closest(".diff-line");
+    row?.classList.toggle("diff-line-refined", line.intralineRefined);
+  }
+}
+
+/**
+ * Attach browser-local changed ranges before syntax for the same file.
+ * @param {FileViewState} state
+ * @param {DiffViewApi} api
+ * @param {AbortSignal} signal
+ * @param {() => boolean} isCurrent
+ * @param {() => "unified" | "split"} currentLayout
+ */
+async function enhanceFileIntraline(state, api, signal, isCurrent, currentLayout) {
+  try {
+    const enhanced = await measureEnhancement(
+      api,
+      "diffIntraline:file",
+      async () =>
+        refineFileChangedRuns(state.renderModel, { maxWork: INTRALINE_WORK_BUDGET }, signal),
+      { hunk_count: state.renderModel.hunks.length },
+    );
+    if (!enhanced || !isCurrent()) {
+      return;
+    }
+    if (currentLayout() === "split") {
+      renderFileBody(state, "split");
+    } else {
+      refreshTextHosts(state);
+    }
+  } catch (error) {
+    if (signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+      return;
+    }
+    console.warn("metabrowser diff: intraline enhancement failed", error);
+  }
 }
 
 /**
@@ -459,10 +649,10 @@ function measureSyntax(api, label, work, metadata) {
  */
 async function enhanceFileSyntax(state, api, signal, isCurrent) {
   try {
-    state.syntax.inputBytes ??= syntaxInputBytes(state.syntax.hunks);
+    state.renderModel.inputBytes ??= syntaxInputBytes(state.renderModel.hunks);
     const metadata = {
-      hunk_count: state.syntax.hunks.length,
-      input_bytes: state.syntax.inputBytes,
+      hunk_count: state.renderModel.hunks.length,
+      input_bytes: state.renderModel.inputBytes,
       lexer_calls: 0,
     };
     const measuredApi = {
@@ -470,7 +660,7 @@ async function enhanceFileSyntax(state, api, signal, isCurrent) {
       highlightSyntax: /** @type {DiffViewApi["highlightSyntax"]} */ (
         (source, language, options) => {
           metadata.lexer_calls += 1;
-          return measureSyntax(
+          return measureEnhancement(
             api,
             "diffSyntax:lexer",
             () => api.highlightSyntax(source, language, { signal: options?.signal }),
@@ -482,10 +672,10 @@ async function enhanceFileSyntax(state, api, signal, isCurrent) {
         }
       ),
     };
-    const enhanced = await measureSyntax(
+    const enhanced = await measureEnhancement(
       api,
       "diffSyntax:file",
-      () => highlightFileSyntax(state.syntax, measuredApi, signal),
+      () => highlightFileSyntax(state.renderModel, measuredApi, signal),
       metadata,
     );
     if (!enhanced || !isCurrent()) {
@@ -494,7 +684,7 @@ async function enhanceFileSyntax(state, api, signal, isCurrent) {
     for (const { host, line, side } of state.textHosts) {
       const runs = sideTokens(line, side);
       if (runs !== null) {
-        appendTokenRuns(host, runs);
+        renderComposedText(host, line.text, runs, sideIntralineRanges(line, side));
       }
     }
   } catch (error) {
@@ -516,7 +706,7 @@ function mountIsCurrent(view, generation) {
  * @param {MountedDiffState} view
  * @param {number} generation
  */
-function yieldForSyntax(view, generation) {
+function yieldForEnhancement(view, generation) {
   return new Promise((resolve) => {
     if (!mountIsCurrent(view, generation)) {
       resolve(false);
@@ -532,21 +722,24 @@ function yieldForSyntax(view, generation) {
 }
 
 /**
- * Serialize syntax enhancement in document order. Each file failure is
- * contained by enhanceFileSyntax, so the tail always reaches later files.
+ * Serialize file-sized enrichment in document order, with intraline first.
  * @param {MountedDiffState} view
  * @param {FileViewState} state
  */
-function scheduleSyntaxEnhancement(view, state) {
-  if (!view.api) {
-    return;
-  }
-  const api = view.api;
+function scheduleFileEnhancement(view, state) {
+  const api = view.api ?? plainSyntaxApi();
   const generation = view.generation;
-  view.syntaxTail = view.syntaxTail.then(async () => {
-    if (!(await yieldForSyntax(view, generation))) {
+  view.enhancementTail = view.enhancementTail.then(async () => {
+    if (!(await yieldForEnhancement(view, generation))) {
       return;
     }
+    await enhanceFileIntraline(
+      state,
+      api,
+      view.controller.signal,
+      () => mountIsCurrent(view, generation),
+      () => view.layout,
+    );
     await enhanceFileSyntax(state, api, view.controller.signal, () =>
       mountIsCurrent(view, generation),
     );
@@ -557,14 +750,17 @@ function scheduleSyntaxEnhancement(view, state) {
  * The fold expander: the tree's disclosure vocabulary on a full-width
  * row, stating the count it holds so the reader knows what is hidden.
  *
+ * @template T
  * @param {HTMLElement} group
- * @param {number} hidden
+ * @param {T[]} hiddenRows
+ * @param {(row: T) => HTMLElement} renderRow
  * @param {FileViewState} state
  * @param {string} key
  * @returns {HTMLElement}
  */
-function renderFoldControl(group, hidden, state, key) {
+function renderFoldControl(group, hiddenRows, renderRow, state, key) {
   let expanded = state.expandedFolds.has(key);
+  const hidden = hiddenRows.length;
   const control = el("button", "diff-fold-control");
   control.setAttribute("type", "button");
   control.setAttribute("aria-expanded", String(expanded));
@@ -585,6 +781,38 @@ function renderFoldControl(group, hidden, state, key) {
       : `${hidden} more changed line${hidden === 1 ? "" : "s"}`,
   );
   control.append(chevron, label);
+
+  function cancelMaterialization() {
+    const task = state.foldTasks.get(key);
+    if (task) {
+      clearTimeout(task.timer);
+      state.foldTasks.delete(key);
+    }
+    state.textHosts = state.textHosts.filter(({ host }) => !group.contains(host));
+    group.replaceChildren();
+  }
+
+  function scheduleMaterialization() {
+    cancelMaterialization();
+    let index = 0;
+    const task = { timer: 0 };
+    const appendBatch = () => {
+      if (state.foldTasks.get(key) !== task || !state.expandedFolds.has(key)) {
+        return;
+      }
+      const end = Math.min(index + FOLD_MATERIALIZATION_BATCH_ROWS, hiddenRows.length);
+      group.append(...hiddenRows.slice(index, end).map(renderRow));
+      index = end;
+      if (index >= hiddenRows.length) {
+        state.foldTasks.delete(key);
+        return;
+      }
+      task.timer = setTimeout(appendBatch, 0);
+    };
+    task.timer = setTimeout(appendBatch, 0);
+    state.foldTasks.set(key, task);
+  }
+
   control.addEventListener("click", (event) => {
     // The bar above owns clicks on the file section; a fold is its own
     // control and must not also collapse the whole file.
@@ -592,8 +820,10 @@ function renderFoldControl(group, hidden, state, key) {
     expanded = !expanded;
     if (expanded) {
       state.expandedFolds.add(key);
+      scheduleMaterialization();
     } else {
       state.expandedFolds.delete(key);
+      cancelMaterialization();
     }
     control.setAttribute("aria-expanded", String(expanded));
     control.classList.toggle("expanded", expanded);
@@ -602,7 +832,18 @@ function renderFoldControl(group, hidden, state, key) {
       ? `Hide ${hidden} line${hidden === 1 ? "" : "s"}`
       : `${hidden} more changed line${hidden === 1 ? "" : "s"}`;
   });
+  if (expanded) {
+    scheduleMaterialization();
+  }
   return control;
+}
+
+/** @param {FileViewState} state */
+function cancelFoldMaterializations(state) {
+  for (const task of state.foldTasks.values()) {
+    clearTimeout(task.timer);
+  }
+  state.foldTasks.clear();
 }
 
 /**
@@ -652,7 +893,10 @@ function renderFileBar(change, toggleId, bodyId) {
   if (side !== undefined) {
     const copy = el("button", "icon-btn icon-btn-reveal diff-file-copy");
     copy.setAttribute("type", "button");
-    copy.setAttribute("data-copy-path", String(side.path));
+    copy.setAttribute("data-mb-copy", "text");
+    copy.setAttribute("data-mb-copy-text", String(side.path));
+    copy.setAttribute("data-mb-copy-label", "Copy path");
+    copy.setAttribute("data-tip-text", "Copy path");
     copy.setAttribute("title", "Copy path");
     copy.setAttribute("aria-label", "Copy path");
     const svg = shellIcon("copy");
@@ -668,8 +912,8 @@ function renderFileBar(change, toggleId, bodyId) {
 
 /** @param {DiffViewApi | undefined} api @returns {"unified" | "split"} */
 export function readLayoutPreference(api) {
-  const value = api?.prefs?.get("diff.layout", /** @type {unknown} */ ("unified"));
-  return value === "split" ? "split" : "unified";
+  const value = api?.prefs?.get("diff.layout", /** @type {unknown} */ ("split"));
+  return value === "unified" ? "unified" : "split";
 }
 
 /**
@@ -723,8 +967,8 @@ function renderLayoutControl(view) {
     label: "Diff layout",
     layout: "joined",
     options: [
-      { label: "Unified", value: "unified" },
       { label: "Split", value: "split" },
+      { label: "Unified", value: "unified" },
     ],
     select: "one",
     value: view.layout,
@@ -797,11 +1041,12 @@ function projectLayoutBatch(view, layout, layoutGeneration, start) {
  * share its toolbar; single-file views avoid repeating their file bar.
  * @param {Record<string, unknown>} totals
  * @param {MountedDiffState} view
+ * @param {boolean} showSummary
  * @returns {{toolbar: HTMLElement, unbind: () => void}}
  */
-function renderDiffToolbar(totals, view) {
+function renderDiffToolbar(totals, view, showSummary) {
   const toolbar = el("div", "diff-toolbar");
-  if (Number(totals.files) !== 1) {
+  if (showSummary && Number(totals.files) !== 1) {
     const plus = totals.additions === null ? "?" : String(totals.additions);
     const minus = totals.deletions === null ? "?" : String(totals.deletions);
     const summary = el("div", "diff-summary");
@@ -887,7 +1132,7 @@ async function hydrateDeferred(body, change, revision, view) {
       const state = createFileState(only, patch, renderApi, body);
       view.files.push(state);
       renderFileBody(state, view.layout);
-      scheduleSyntaxEnhancement(view, state);
+      scheduleFileEnhancement(view, state);
     }
   } catch (error) {
     if (
@@ -908,6 +1153,70 @@ async function hydrateDeferred(body, change, revision, view) {
     clearTimeout(slow);
     view.timers.delete(slow);
   }
+}
+
+/** @param {MountedDiffState} view */
+function drainDeferredHydrations(view) {
+  if (view.disposed || view.controller.signal.aborted) {
+    return;
+  }
+  while (view.activeHydrations < MAX_CONCURRENT_HYDRATIONS && view.queuedHydrations.length > 0) {
+    const pending = view.queuedHydrations.shift();
+    if (!pending) {
+      return;
+    }
+    const generation = view.generation;
+    view.activeHydrations += 1;
+    void hydrateDeferred(pending.body, pending.change, pending.revision, view).finally(() => {
+      if (!mountIsCurrent(view, generation)) {
+        return;
+      }
+      view.activeHydrations -= 1;
+      drainDeferredHydrations(view);
+    });
+  }
+}
+
+/**
+ * Defer one file request until its section reaches the visible scroll area.
+ * The comparison payload already hydrates the leading files; observing the
+ * remainder prevents a large commit from launching an unbounded request fanout.
+ *
+ * @param {HTMLElement} section
+ * @param {HTMLElement} body
+ * @param {Record<string, unknown>} change
+ * @param {string} revision
+ * @param {MountedDiffState} view
+ */
+function queueDeferredHydration(section, body, change, revision, view) {
+  view.pendingHydrations.set(section, { body, change, revision });
+  if (view.hydrationObserver === null) {
+    view.hydrationObserver = new IntersectionObserver((entries, observer) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) {
+          continue;
+        }
+        const target = /** @type {HTMLElement} */ (entry.target);
+        const pending = view.pendingHydrations.get(target);
+        if (!pending) {
+          continue;
+        }
+        view.pendingHydrations.delete(target);
+        observer.unobserve(target);
+        if (!view.disposed && !view.controller.signal.aborted) {
+          view.queuedHydrations.push(pending);
+          drainDeferredHydrations(view);
+        }
+      }
+      if (view.pendingHydrations.size === 0) {
+        observer.disconnect();
+        if (view.hydrationObserver === observer) {
+          view.hydrationObserver = null;
+        }
+      }
+    });
+  }
+  view.hydrationObserver.observe(section);
 }
 
 /**
@@ -934,7 +1243,7 @@ function renderFileSection(change, patch, context, view) {
   let expanded = true;
   bar.addEventListener("click", (event) => {
     const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
-    if (typeof origin?.closest === "function" && origin.closest("[data-copy-path]")) {
+    if (typeof origin?.closest === "function" && origin.closest("[data-mb-copy]")) {
       return;
     }
     expanded = !expanded;
@@ -947,9 +1256,7 @@ function renderFileSection(change, patch, context, view) {
 
   const availability = String(change.availability);
   if (availability === "deferred" && context.revision) {
-    // Deferred is progress, not a state to explain: show the standard
-    // progress box and fetch this file's hunks.
-    void hydrateDeferred(body, change, context.revision, view);
+    queueDeferredHydration(section, body, change, context.revision, view);
     return section;
   }
   if (availability !== "ready" || patch === undefined) {
@@ -967,7 +1274,7 @@ function renderFileSection(change, patch, context, view) {
   const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body);
   view.files.push(state);
   renderFileBody(state, view.layout);
-  scheduleSyntaxEnhancement(view, state);
+  scheduleFileEnhancement(view, state);
   return section;
 }
 
@@ -977,22 +1284,27 @@ function renderFileSection(change, patch, context, view) {
  * @param {HTMLElement} container
  * @param {Record<string, unknown>} document_
  * @param {DiffViewApi} [api]
- * @returns {{dispose: () => void}}
+ * @param {{showSummary?: boolean}} [options]
+ * @returns {{cancelPending: () => void, dispose: () => void}}
  */
-export function mountDiffView(container, document_, api) {
+export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
   /** @type {MountedDiffState} */
   const view = {
+    activeHydrations: 0,
     api,
     controller: new AbortController(),
     disposed: false,
     files: [],
     generation: 1,
+    hydrationObserver: null,
     layout: readLayoutPreference(api),
     layoutControl: null,
     layoutGeneration: 0,
     root,
-    syntaxTail: Promise.resolve(),
+    enhancementTail: Promise.resolve(),
+    pendingHydrations: new Map(),
+    queuedHydrations: [],
     timers: new Set(),
     yielders: new Set(),
   };
@@ -1004,33 +1316,58 @@ export function mountDiffView(container, document_, api) {
     );
   const patches = /** @type {Record<string, Record<string, unknown>>} */ (document_.patches);
   const totals = manifest.totals;
-  const { toolbar, unbind } = renderDiffToolbar(totals, view);
+  const { toolbar, unbind } = renderDiffToolbar(totals, view, options.showSummary !== false);
   root.append(toolbar);
   const context = { revision: String(document_.__revision ?? "") };
-  for (const change of manifest.files) {
-    root.append(renderFileSection(change, patches[String(change.id)], context, view));
+  measureProjection(
+    api,
+    "diffMount:projection",
+    () => {
+      for (const change of manifest.files) {
+        root.append(renderFileSection(change, patches[String(change.id)], context, view));
+      }
+      if (manifest.truncated) {
+        root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
+      }
+    },
+    { file_count: manifest.files.length },
+  );
+  measureProjection(api, "diffMount:attach", () => container.append(root), {
+    file_count: manifest.files.length,
+  });
+
+  function cancelPendingWork() {
+    view.generation += 1;
+    view.controller.abort();
+    view.hydrationObserver?.disconnect();
+    view.hydrationObserver = null;
+    view.pendingHydrations.clear();
+    view.queuedHydrations.length = 0;
+    for (const file of view.files) {
+      cancelFoldMaterializations(file);
+    }
+    for (const timer of view.timers) {
+      clearTimeout(timer);
+    }
+    view.timers.clear();
+    for (const waiter of view.yielders) {
+      clearTimeout(waiter.timer);
+      waiter.resolve(false);
+    }
+    view.yielders.clear();
   }
-  if (manifest.truncated) {
-    root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
-  }
-  container.append(root);
   return {
+    cancelPending() {
+      if (!view.disposed) {
+        cancelPendingWork();
+      }
+    },
     dispose() {
       if (view.disposed) {
         return;
       }
       view.disposed = true;
-      view.generation += 1;
-      view.controller.abort();
-      for (const timer of view.timers) {
-        clearTimeout(timer);
-      }
-      view.timers.clear();
-      for (const waiter of view.yielders) {
-        clearTimeout(waiter.timer);
-        waiter.resolve(false);
-      }
-      view.yielders.clear();
+      cancelPendingWork();
       unbind();
       removeSelectionGate();
       root.remove();

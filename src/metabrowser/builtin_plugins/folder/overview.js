@@ -89,6 +89,8 @@ export function mountOverview(container, initialContext, mb, registry) {
   let active = mb.viewState.isActive(container);
   let stale = false;
   let context = initialContext;
+  /** @type {Promise<void> | null} */
+  let initialReady = null;
 
   /** @type {Array<PanelRecord>} */
   const records = registry.listPanels().map((descriptor) => {
@@ -237,15 +239,15 @@ export function mountOverview(container, initialContext, mb, registry) {
 
   function reconcile() {
     stale = false;
-    for (const record of records) {
-      void resolvePanel(record);
-    }
+    const work = Promise.all(records.map((record) => resolvePanel(record))).then(() => {});
+    initialReady ??= work;
+    return work;
   }
 
   const unsubscribeContext = mb.folderContext.subscribe(initialContext.path || "", (envelope) => {
     context = { ...context, path: envelope.path, raw: envelope };
     if (active) {
-      reconcile();
+      void reconcile();
     } else {
       stale = true;
     }
@@ -253,15 +255,17 @@ export function mountOverview(container, initialContext, mb, registry) {
   const unsubscribeActive = mb.viewState.subscribeActive(container, (nextActive) => {
     active = nextActive;
     if (active && stale) {
-      reconcile();
+      void reconcile();
     }
   });
   if (active && records.every((record) => record.generation === 0)) {
-    reconcile();
+    void reconcile();
   }
+  const ready = initialReady ?? Promise.resolve();
 
   publishPrintState(container, records, mb);
   return Object.freeze({
+    ready,
     dispose() {
       if (disposed) {
         return;

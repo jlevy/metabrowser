@@ -173,15 +173,100 @@ def test_a_click_joins_an_in_flight_prefetch_instead_of_refetching() -> None:
     assert "request.then(forget, forget)" in fetch_block
 
 
-def test_shell_keeps_the_previous_preview_during_fast_fetches() -> None:
+def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None:
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    css = (STATIC_ROOT / "styles.css").read_text(encoding="utf-8")
     select_file = app[
         app.index("async function selectFile(path, preferredViewId)") : app.index(
             "// ── File rendering"
         )
     ]
 
+    begin = app[app.index("function beginPreviewNavigation") :][:900]
+    end = app[app.index("function endPreviewNavigation") :][:700]
+    assert 'preview.classList.add("preview-navigation-pending")' in begin
+    assert 'preview.setAttribute("aria-busy", "true")' in begin
+    assert "data-preview-pending-claim" in begin
+    assert "isPreviewClaimCurrent(claim)" in begin
+    assert "clearPreviewNavigationState(preview);" in end
+    clear = app[app.index("function clearPreviewNavigationState") :][:500]
+    assert 'preview.classList.remove("preview-navigation-pending")' in clear
+    assert 'preview.removeAttribute("aria-busy")' in clear
+
     assert "var LOADING_INDICATOR_DELAY_MS = 120;" in app
-    assert select_file.index("loadingIndicatorTimer = setTimeout") < select_file.index(
-        "preview.innerHTML"
+    assert "var retainedPreview = beginPreviewNavigation(previewClaim);" in select_file
+    assert select_file.index("beginPreviewNavigation(previewClaim)") < select_file.index(
+        "loadingIndicatorTimer = setTimeout"
     )
+    assert "if (!retainedPreview)" in select_file
+
+    assert "--preview-navigation-pending-overlay" not in css
+    assert "--preview-navigation-pending-transition" not in css
+    assert "#preview-pane::after" not in css
+    assert "#preview-pane.preview-navigation-pending" not in css
+
+    arrival = app[app.index("function animatePreviewContentArrival") :][:1_500]
+    assert "var PREVIEW_ARRIVAL_DURATION_MS = 50;" in app
+    assert "var PREVIEW_ARRIVAL_START_OPACITY = 0.98;" in app
+    assert 'window.matchMedia("(prefers-reduced-motion: reduce)").matches' in arrival
+    assert "previewArrivalAnimation?.cancel();" in arrival
+    assert "content.animate(" in arrival
+    assert "preview.animate(" not in arrival
+    assert "duration: PREVIEW_ARRIVAL_DURATION_MS" in arrival
+    assert 'easing: "ease-out"' in arrival
+    assert "getComputedStyle" not in arrival
+
+    node_mount = app[app.index("function renderPreviewNode") :][:700]
+    assert node_mount.index("preview.replaceChildren(node)") < node_mount.index(
+        "animatePreviewContentArrival(node)"
+    )
+    file_render = app[app.index("async function renderFile(data") :][:12_000]
+    assert "createFilePreviewStage(preview)" in file_render
+    assert "stagedPluginDisposers" in file_render
+    assert "pendingFilePreviewStageCleanup = cleanupStage" in file_render
+    assert "cleanupStage()" in file_render
+    assert "preview.replaceChildren(...replacementNodes)" in file_render
+    assert "activePluginDisposers = stagedPluginDisposers" in file_render
+    assert file_render.index("await _perf.measureAsync(") < file_render.index(
+        "preview.replaceChildren(...replacementNodes)"
+    )
+    assert "preview.innerHTML = html" not in file_render
+    assert "animatePreviewContentArrival(arrivalContent)" in file_render
+    assert "preview.animate(" not in file_render
+
+    stage = app[app.index("function createFilePreviewStage") :][:1_000]
+    assert 'stage.className = "preview-file-stage"' in stage
+    assert 'stage.setAttribute("aria-hidden", "true")' in stage
+    assert "stage.inert = true" in stage
+    assert "preview.appendChild(stage)" in stage
+
+    assert ".preview-file-stage {" in css
+    stage_css = css[css.index(".preview-file-stage {") :][:600]
+    assert "position: absolute;" in stage_css
+    assert "opacity: 0;" in stage_css
+    assert "pointer-events: none;" in stage_css
+    assert "transition:" not in stage_css
+
+    claim = app[app.index("function claimPreview(owner)") :][:700]
+    assert "cancelPendingFilePreviewStage();" in claim
+    cancel = app[app.index("function cancelPendingFilePreviewStage()") :][:500]
+    assert "pendingFilePreviewStageCleanup = null" in cancel
+    assert "cleanup?.();" in cancel
+
+
+def test_git_commit_staging_has_one_shell_owned_atomic_handoff() -> None:
+    app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    git = (STATIC_ROOT / "git-panel.js").read_text(encoding="utf-8")
+    diff = (PLUGIN_ROOT / "diff" / "index.js").read_text(encoding="utf-8")
+
+    node_seam = app[app.index("function renderPreviewNode") :][:500]
+    assert "disposeActivePluginViews()" in node_seam
+    assert "preview.replaceChildren(node)" in node_seam
+
+    select = git[git.index("async function selectCommit") : git.index("function renderFileRow")]
+    assert "disposeCommitDiff();" not in select[: select.index("await preparation.detail")]
+    assert "prepareRevision(revision, false)" in select
+    assert "renderPreviewNode(stage, previewClaim)" in select
+    assert select.index("beginDiffPreparation") < select.index("renderPreviewNode")
+    assert "ctx.raw === undefined" in diff
+    assert "showSummary: !revision" in diff

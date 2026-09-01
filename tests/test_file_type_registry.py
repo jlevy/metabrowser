@@ -27,11 +27,13 @@ def _minimal_registry() -> str:
         id = "code"
         label = "Code"
         order = 10
+        icon = "alignLeft"
 
         [[group]]
         id = "other"
         label = "Other"
         order = 20
+        icon = "file"
 
         [[family]]
         id = "python"
@@ -80,7 +82,7 @@ def test_packaged_registry_is_cached_ordered_and_self_describing() -> None:
         .is_file()
     )
     projection = registry.projection()
-    assert projection["schema"] == "file-type-registry-v3"
+    assert projection["schema"] == "file-type-registry-v4"
     assert projection["fingerprint"] == registry.fingerprint
 
 

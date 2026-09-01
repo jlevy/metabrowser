@@ -223,9 +223,20 @@ metab --remote example-host --path /srv/shared-files
 # Print a machine-readable inventory without starting the web UI.
 metab ./path/to/directory --walk --format json
 
+# Ask what the browser would do with one file: route, kind, tabs, and model.
+metab ./path/to/directory --show README.md
+
+# Issue any API route through the real server, without a browser or a port.
+metab ./path/to/directory --api '/api/file?path=README.md'
+
 # Check the navigation APIs without opening a browser or port.
 metab ./path/to/directory --check-api
 ```
+
+Every route the browser reads is reachable this way, which makes `metab` usable as a
+scriptable front end to the same data the UI draws.
+See the [command-line guide](docs/command-line.md) for every mode; `metab --help` is the
+reference.
 
 The server binds to `127.0.0.1:8411` by default and walks a bounded port range if that
 port is occupied.
@@ -296,6 +307,8 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 Using Metabrowser:
 
 - [Installation](docs/installation.md) — uv setup, upgrades, and the agent skill
+- [Using the command line](docs/command-line.md) — a guide to every `metab` mode;
+  `metab --help` is the reference
 - [Changelog](CHANGELOG.md) — what changed in each release
 - [Roadmap](TODO.md) — what is planned next
 

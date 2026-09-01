@@ -43,7 +43,9 @@ mb.registerView("diff", "diff", {
     let payload;
     try {
       payload = revision
-        ? await mb.fetchPluginData("diff", "comparison", { revision })
+        ? await (ctx.raw === undefined
+            ? mb.fetchPluginData("diff", "comparison", { revision })
+            : ctx.raw)
         : await mb.fetchPluginData("diff", "document", { path: ctx.path || "" });
       if (revision && payload && typeof payload === "object") {
         // The document is source-agnostic by design, so the revision
@@ -73,10 +75,16 @@ mb.registerView("diff", "diff", {
       );
       return renderFailure(container, message);
     }
-    const result = validateDocument(payload);
+    const result = mb.perf?.measure
+      ? mb.perf.measure("diffDocument:validate", () => validateDocument(payload), {
+          source: revision ? "revision" : "path",
+        })
+      : validateDocument(payload);
     if (!result.ok) {
       return renderFailure(container, `This diff document is not valid: ${result.error}`);
     }
-    return mountDiffView(container, result.document, mb);
+    // A commit comparison already carries these totals beside its revision,
+    // author, and age. Direct diff documents own their aggregate summary.
+    return mountDiffView(container, result.document, mb, { showSummary: !revision });
   },
 });

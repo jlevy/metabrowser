@@ -1,42 +1,4 @@
-// Side-specific syntax data for File Diff Format hunks.
-
-/** @typedef {"context" | "add" | "del"} DiffLineOperation */
-
-/**
- * @typedef {object} DiffLineRecord
- * @property {number | null} changedRun
- * @property {number | null} newNumber
- * @property {MetabrowserSyntaxTokenRun[] | null} newTokens
- * @property {boolean} noNewline
- * @property {number | null} oldNumber
- * @property {MetabrowserSyntaxTokenRun[] | null} oldTokens
- * @property {DiffLineOperation} op
- * @property {string} text
- */
-
-/**
- * @typedef {object} DiffHunkRecord
- * @property {string | undefined} heading
- * @property {DiffLineRecord[]} lines
- * @property {number} newCount
- * @property {number | null} newInputBytes
- * @property {number[]} newLineIndices
- * @property {number} newStart
- * @property {string} newSource
- * @property {number} oldCount
- * @property {number | null} oldInputBytes
- * @property {number[]} oldLineIndices
- * @property {number} oldStart
- * @property {string} oldSource
- */
-
-/**
- * @typedef {object} DiffFileSyntaxModel
- * @property {DiffHunkRecord[]} hunks
- * @property {number | null} inputBytes
- * @property {string} newLanguage
- * @property {string} oldLanguage
- */
+// Side-specific syntax enrichment for the shared diff render model.
 
 /**
  * @typedef {object} DiffSyntaxApi
@@ -54,70 +16,6 @@ function syntaxInputByteLength(source) {
 }
 
 /**
- * Assign stable side numbers and source-stream membership to one validated hunk.
- * @param {Record<string, unknown>} hunk
- * @returns {DiffHunkRecord}
- */
-export function buildHunkRecords(hunk) {
-  let oldNumber = Number(hunk.old_start);
-  let newNumber = Number(hunk.new_start);
-  let changedRun = -1;
-  let insideChangedRun = false;
-  const rawLines = /** @type {Record<string, unknown>[]} */ (hunk.lines);
-  /** @type {DiffLineRecord[]} */
-  const lines = [];
-  /** @type {number[]} */
-  const oldLineIndices = [];
-  /** @type {number[]} */
-  const newLineIndices = [];
-
-  for (const rawLine of rawLines) {
-    const op = /** @type {DiffLineOperation} */ (String(rawLine.op));
-    if (op === "context") {
-      insideChangedRun = false;
-    } else if (!insideChangedRun) {
-      changedRun += 1;
-      insideChangedRun = true;
-    }
-    const record = {
-      changedRun: op === "context" ? null : changedRun,
-      newNumber: op === "del" ? null : newNumber,
-      newTokens: null,
-      noNewline: rawLine.no_newline === true,
-      oldNumber: op === "add" ? null : oldNumber,
-      oldTokens: null,
-      op,
-      text: String(rawLine.text),
-    };
-    const index = lines.length;
-    lines.push(record);
-    if (op !== "add") {
-      oldLineIndices.push(index);
-      oldNumber += 1;
-    }
-    if (op !== "del") {
-      newLineIndices.push(index);
-      newNumber += 1;
-    }
-  }
-
-  return {
-    heading: typeof hunk.heading === "string" ? hunk.heading : undefined,
-    lines,
-    newCount: Number(hunk.new_count),
-    newInputBytes: null,
-    newLineIndices,
-    newStart: Number(hunk.new_start),
-    newSource: newLineIndices.map((index) => lines[index].text).join("\n"),
-    oldCount: Number(hunk.old_count),
-    oldInputBytes: null,
-    oldLineIndices,
-    oldStart: Number(hunk.old_start),
-    oldSource: oldLineIndices.map((index) => lines[index].text).join("\n"),
-  };
-}
-
-/**
  * Resolve one side through the host path registry.
  * @param {Record<string, unknown>} change
  * @param {"old" | "new"} sideName
@@ -129,7 +27,7 @@ export function languageForSide(change, sideName, langForPath) {
   return langForPath(path);
 }
 
-/** @param {DiffHunkRecord[]} hunks */
+/** @param {import("./diff-render-model.js").DiffHunkRecord[]} hunks */
 export function syntaxInputBytes(hunks) {
   let total = 0;
   for (const hunk of hunks) {
@@ -141,27 +39,8 @@ export function syntaxInputBytes(hunks) {
 }
 
 /**
- * Build the source facts that both diff projections consume.
- * Token fields remain mutable so progressive enhancement can attach its result.
- * @param {Record<string, unknown>} change
- * @param {Record<string, unknown>} patch
- * @param {(pathOrName: string) => string} langForPath
- * @returns {DiffFileSyntaxModel}
- */
-export function buildFileSyntaxModel(change, patch, langForPath) {
-  const rawHunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
-  const hunks = rawHunks.map(buildHunkRecords);
-  return {
-    hunks,
-    inputBytes: null,
-    newLanguage: languageForSide(change, "new", langForPath),
-    oldLanguage: languageForSide(change, "old", langForPath),
-  };
-}
-
-/**
  * Attach one validated token stream to its semantic side.
- * @param {DiffHunkRecord} hunk
+ * @param {import("./diff-render-model.js").DiffHunkRecord} hunk
  * @param {"old" | "new"} sideName
  * @param {MetabrowserSyntaxTokenLines | null} tokenLines
  */
@@ -197,7 +76,7 @@ export function applySideTokens(hunk, sideName, tokenLines) {
 
 /**
  * Highlight each nonempty hunk side independently after one whole-file bound decision.
- * @param {DiffFileSyntaxModel} model
+ * @param {import("./diff-render-model.js").DiffFileRenderModel} model
  * @param {DiffSyntaxApi} api
  * @param {AbortSignal | undefined} signal
  */

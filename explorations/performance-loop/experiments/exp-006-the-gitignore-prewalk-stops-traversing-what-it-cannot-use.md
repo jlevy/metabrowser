@@ -127,8 +127,25 @@ Interleaved, three repeats each, with the cache cleared between.
 | **real tree B** (320,064 files, 16,944 dirs, 88 nested `.gitignore`) | 0.75 s (0.74–2.32) | **0.00 s (0.00–0.01)** |
 | **reproducible corpus** (246,282 files, 31,161 dirs, 251 nested `.gitignore`) | 13.36 s (12.41–15.53) | **0.81 s (0.81–0.86)** |
 
-All three agree, and tree A is the one the hypothesis came from: **twenty seconds of
-dead time before the first row, gone.**
+All three agree, and tree A is the one the hypothesis came from: **twenty seconds of the
+pre-walk phase, gone.**
+
+**What that is and is not.** These are timings of `load_gitignore` itself, not of what a
+reader waits for. Measuring the same corpus over HTTP afterwards found skeleton rows
+arriving at about 1.3 s on *both* builds, because the server answers with placeholder
+rows while it works — so this cost lands inside total index time rather than in front of
+the first row. An earlier revision of this section called it “dead time before the first
+row”, which is a claim about first paint that these numbers do not make; anyone reading
+it that way will fail to reproduce it and be right not to.
+
+**And these need a cold cache.** Re-measuring the reproducible corpus later read 2.53 s
+and then 1.33 s for the control as the page cache warmed, against the 13.36 s below,
+while the candidate repeated itself at 0.879 s and 0.897 s. That asymmetry is the
+evidence for the reading rather than an excuse for it: the control walks the whole tree
+and the candidate prunes it, so only one of them is cache-sensitive.
+The runs here cleared the cache between measurements.
+A host where it cannot be dropped will understate the control by an amount that depends
+on how recently the tree was touched.
 
 Patterns compiled fall with it, because the specs inside pruned subtrees are never read:
 10,668 → 327 on tree A, 2,022 → 36 on tree B. That is a second-order win — every

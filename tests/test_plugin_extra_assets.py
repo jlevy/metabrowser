@@ -109,6 +109,32 @@ def test_index_configures_plugin_assets_for_on_demand_loading(tmp_path: Path) ->
     assert '<link rel="stylesheet" href="/plugin-static/fixture/' not in body
 
 
+def test_asset_config_deduplicates_the_default_stylesheet(tmp_path: Path) -> None:
+    tmp_path.joinpath("styles.css").write_text("", encoding="utf-8")
+    fake_manifest = PluginManifest.model_validate(
+        {
+            "plugin": {
+                "name": "fixture",
+                "sdk_version": PLUGIN_SDK_VERSION,
+                "extra_styles": ["styles.css", "theme.css"],
+            },
+            "kind": [{"id": "fixture-kind", "match": {"ext": ".fixture"}}],
+        }
+    )
+    fake = LoadedPlugin(
+        name="fixture",
+        static_root=tmp_path,
+        manifest=fake_manifest,
+        source="builtin",
+    )
+
+    with patch.object(server, "_LOADED_PLUGINS", [fake]):
+        config = server._build_plugin_asset_config_block()
+
+    assert config.count("/plugin-static/fixture/styles.css") == 1
+    assert config.count("/plugin-static/fixture/theme.css") == 1
+
+
 def test_file_render_waits_for_the_selected_kind_plugin() -> None:
     app = (server.STATIC_DIR / "app.js").read_text(encoding="utf-8")
     helper = app[

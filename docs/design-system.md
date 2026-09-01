@@ -240,6 +240,50 @@ root-size change near a responsive breakpoint can select a different heading tie
 Verify the type boundary at a pane width that stays in the same band and confirm
 computed sizes are identical at two browser root sizes.
 
+### Reading Width
+
+Prose reads at a width the reader sets, in **characters**, through “Max text width” in
+the Metabrowser menu.
+Characters rather than a length because that is the decision a reader has: 45–75 is the
+classic range for a single column, and a browser pane is wide enough to sit above it.
+The default is 105.
+
+Three tokens, all on `:root`:
+
+| Token | Meaning |
+| --- | --- |
+| `--doc-max-chars` | the reader’s setting; the menu writes it, the pre-paint script seeds it |
+| `--doc-char-advance` | average glyph advance per em for the current reading face |
+| `--doc-measure` | the resolved length: base × chars × advance |
+
+`--doc-measure` is the single source of truth for how wide prose reads anywhere in the
+app, and the only place the character count is converted.
+Every prose surface reads it: the KPress bridge, the folder Overview’s card widths, and
+the fallback `md-body` path a plugin gets when it renders Markdown without KPress.
+A new surface that lays out prose reads `--doc-measure`, never a literal.
+
+**Never read `--kpress-measure` from host CSS.** KPress declares that token on
+`:root, .kpress, …` from a stylesheet that loads after the app’s, so on `:root` the
+app’s value is overwritten and on `.kpress` it is shadowed on the element that consumes
+it. Host CSS outside a `.kpress` scope therefore resolves KPress’s default rather than
+the reader’s setting — which is exactly how the Overview’s README came to render at a
+different width from the same file opened on its own.
+`--doc-measure` is app-owned and cannot be shadowed.
+One bridge, `.metabrowser-kpress-host .kpress { --kpress-measure: var(--doc-measure) }`,
+carries it into the document.
+
+The advance ratio is measured, not assumed, over 507 characters of representative
+English prose: 0.4335 em/char for PT Serif and 0.4039 for Source Sans 3, so the sans
+reading mode swaps the ratio and the same character count still holds.
+This is the average advance, not the CSS `ch` unit — `ch` is the advance of “0” and
+overstates a proportional face by roughly 23%. KPress ships no per-face constants
+because a host may swap the face; Metabrowser pins its own faces, so it owns the
+conversion.
+
+Verify a width change by measuring the *text* box with padding excluded, in both the
+single-column and wide bands, and against the same file opened on its own.
+A card can be the right width while the text inside it is an inset-pair too narrow.
+
 ### Embedded Document Themes
 
 Metabrowser owns one theme input for the embedded document:
@@ -323,8 +367,23 @@ KPress’s own tooltip inside an embedded document is not this tooltip and keeps
 ramp; see the note beside the radius bridge in `styles.css` for why the app flattens
 KPress’s radii but not its type scale.
 
-`data-tip-text` is read by a delegated listener on the document, so it works on markup
-that does not exist yet, including a plugin’s, and on focus as well as hover.
+`data-tip-text` is read by a delegated pointer listener on the document, so it works on
+markup that does not exist yet, including a plugin’s.
+
+### Tooltip Input Modality
+
+**Navigation tooltips are pointer-only.** Keyboard focus already communicates the active
+row or control through focus treatment, selection state, its accessible name, and the
+content it opens.
+A tooltip must not cover that content or repeat it merely because focus
+moved.
+
+Pointer hover may open supplementary tooltip detail.
+Pointer leave or any focus transition dismisses it, and focus alone never opens or
+retains it. This contract applies to delegated `data-tip-text` tooltips and rich
+navigation tooltips such as Git commit summaries.
+Tooltip content therefore cannot be the only source of an accessible name, instruction,
+or state.
 
 This is not a rule about accessible names.
 `aria-label` is unaffected and still required wherever it was: a screen reader does not
@@ -510,6 +569,15 @@ so they cannot drift.
 Shift-activation applies the same open or close direction recursively, while still
 selecting the folder and opening Overview.
 
+Every nonempty folder controls one adjacent `.tree-children[role="group"]` element.
+Server-rendered rows, live inventory inserts, and restored rows use the same child-group
+markup contract: the row’s `expanded` or `collapsed` class, `aria-expanded`, and the
+group’s `tree-children-collapsed` class always agree.
+An inline display rule must not hide the group because it would outlive later class and
+ARIA updates. `test_live_folder_insert_uses_the_canonical_collapsed_group_contract`
+enforces the shared renderer path, and the headed Git revision scenario opens a folder
+that arrived while the Files panel was inactive.
+
 ### Container Rows
 
 A file whose kind declares the container capability keeps its file identity — icon,
@@ -548,8 +616,8 @@ These defaults are not saved as user preferences.
 The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
 same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
 `expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, hovers with
-`--hover-bg`, and reveals its `[data-copy-path]` copy control on row hover or focus —
-the file-header copy affordance, present wherever a filename is.
+`--hover-bg`, and reveals its `[data-mb-copy]` copy control on row hover or focus — the
+file-header copy affordance, present wherever a filename is.
 Its content is left-aligned reading order — chevron, kind letter, filename in the
 shell’s file-path typography, then the stat pair beside the name — and the whole bar is
 one activation surface, the folder-row rule applied to a section header: clicking
@@ -685,12 +753,72 @@ still reads, and a halved branch name does not.
 Rows are independent — no shared column — which is also what lets a new page of history
 be appended to the list instead of rebuilding every row above it.
 
+### Git Commit Summary
+
+The selected commit begins with one `.git-commit-summary` component rendered by
+`renderCommitSummary` in `static/git-panel.js`. Its anatomy has one order:
+
+1. subject;
+2. metadata containing an identity group with the short revision and refs, followed by
+   author and age;
+3. `.git-commit-change-stats`, with one file-status row and one line-total row; and
+4. the commit description, when present.
+
+The identity group uses the same branch, remote, tag, trunk, and HEAD badge forms as the
+Git history row. The full summary makes the revision copyable; the compact summary keeps
+the familiar copy glyph noninteractive.
+
+The change-stats child sits below the identity metadata.
+Its first row reports exact file-status families with Git’s letters and ends in “file”
+or “files.” Its second row reports line additions and deletions and ends in “line” or
+“lines.” `M` contains modified, renamed, and type-changed files; `A` contains added and
+copied files; `D` contains deleted files.
+These families cover every supported file status exactly once.
+A zero family is omitted.
+The server computes all counts before bounding the returned file list, so a large commit
+remains exact. Line totals use the shared semantic colors and weight and render a true
+minus sign. Missing totals remain visibly unknown.
+
+The subject, ref badges, author, age, file-status counts, units, and line counts use
+`--body-font-size` in both projections.
+The revision is the one deliberate exception: it is monospace, and mono at body size
+renders optically larger than the sans text beside it, so it uses `--nav-font-size` —
+one step down the ramp — to sit level with its row.
+The compact tooltip is bounded by width and subject line count, not made denser with
+smaller type. The optional full-summary description is prose: it uses `--font-sans` at
+`--body-font-size`, wraps naturally, and preserves the newlines authored in the commit
+message.
+
+Pointer hover on a Git history row uses `.git-commit-summary-compact` as the tooltip
+projection of this component.
+It retains the subject, author, short revision, age, and two-row change stats, while
+omitting the commit description.
+Refs remain beside the revision just as they do in the full summary and Git history.
+The subject is clamped to two lines so one message cannot take over the viewport.
+The familiar mark beside the revision is a noninteractive copy glyph, not a control:
+tooltips remain supplementary and never own actions.
+Selecting the commit exposes the real copy button in the full summary.
+Keyboard focus does not open or retain the compact tooltip.
+Arrow, Enter, and Space selection dismisses any pending or visible pointer-owned tooltip
+before navigation.
+
+The component owns commit identity and message only.
+The comparison, files outside the served root, and truncation notice are siblings under
+`.git-commit-view`, because they describe the rendered change rather than the commit
+summary. A revision-hosted comparison suppresses its aggregate summary so the mounted
+view has one set of totals; direct diff documents retain their own summary.
+
+Do not assemble commit-summary fragments in `renderCommitDetail` or add a second root.
+`tests/test_design_vocabulary.py::test_git_commit_summary_is_one_component` maintains
+the renderer, root, child, styling, and documentation contract.
+
 ### Branch Chips
 
-Git ref badges (`.git-ref`) are their own vocabulary, not filter chips: at
-`--micro-font-size` the name carries the meaning, so it is always `--weight-bold`, and
-the corner is `--radius-tag` (square-ish) so “a ref” and “a filter” never read as the
-same control.
+Git ref badges (`.git-ref`) are their own vocabulary, not filter chips.
+In the dense Git history row they use `--micro-font-size`; in the commit-summary
+component they use `--body-font-size` with the same form.
+The name carries the meaning, so it is always `--weight-bold`, and the corner is
+`--radius-tag` (square-ish) so “a ref” and a “filter” never read as the same control.
 
 A chip answers two independent questions, and each has its own signal:
 
@@ -717,10 +845,63 @@ The `+N` / `−N` pair that rides beside a filename wherever a surface reports c
 size: `.diff-stat-add` in `--status-success`, `.diff-stat-del` in `--status-error`,
 always in that order, using the true minus sign, at the local small-text size, and
 always `--weight-bold` — the pair is data, and it must read at a glance.
-The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same rule.
+The git commit view’s `.git-stat-add`/`.git-stat-del` follow the same color and weight
+rule but use the commit summary’s standard body size.
 The same pair is the summary line’s vocabulary, so a change set and its files read
 identically. Kind letters reuse the same mapping — added is `--status-success`, deleted
 is `--status-error` — and no diff surface introduces a local green or red.
+
+### Diff Change Surfaces
+
+A changed diff line has three visual layers with separate jobs:
+
+1. The whole-line fill establishes the added or deleted region.
+   A wholly added or deleted line uses the stronger semantic fill.
+   When refinement finds meaningful unchanged text, the row uses a pale fill so the
+   unchanged portion recedes.
+2. A stronger intraline fill restores emphasis to the exact text that changed within a
+   refined row.
+3. A solid status-colored inset at the leading edge of the line-number gutter marks
+   every added or deleted line, including whole-line and unrefined changes.
+
+The backgrounds form three perceived depths.
+An unrefined whole-line change uses the medium 9% status-token mix.
+A refined pair uses only the lightest 3% mix for unchanged text and a 20% overlay for
+the changed intraline ranges, producing the darkest 22.4% composite depth; it does not
+also show the medium depth.
+The changed range uses the standard text foreground because several syntax accents do
+not retain 4.5:1 contrast over the darkest light-theme surface.
+
+Depth selection applies to one contiguous changed run.
+A run with no refined pair keeps the medium treatment for its wholly added or deleted
+rows.
+Once any old/new pair has meaningful unchanged text, every row in that run uses the
+lightest background.
+Exact changed ranges use the darkest fill, and a wholly added, deleted, or unpaired
+neighboring row treats its complete text as the changed range.
+This keeps a mixed rewritten paragraph coherent without making an independent new or
+removed paragraph look intraline-refined.
+
+All three layers derive from `--status-success` or `--status-error`. The diff plugin may
+define compositional custom properties for opacity, but it must not introduce local
+green or red literals.
+The gutter is an inset decoration on the first line-number cell, not a grid column or
+added element, so context and changed rows retain identical line number and text
+alignment. Unified and split layouts consume the same `.diff-line-add`/`.diff-line-del`
+and `.diff-intraline-change` vocabulary.
+
+The line marker and line numbers continue to state change direction without color.
+The gutter is a persistent structural cue, not the only cue.
+Syntax foregrounds retain at least 4.5:1 contrast over line surfaces in both themes, and
+intraline ranges use the standard text foreground to meet the same floor over their
+stronger overlay.
+
+### Diff Layout Control
+
+The joined layout control always orders **Split** on the left and **Unified** on the
+right. A reader without a valid stored `diff.layout` preference starts in Split.
+Either valid stored choice remains authoritative, and switching layouts reprojects the
+shared semantic model without re-fetching or re-running syntax highlighting.
 
 Section headings use `--section-heading-divider-gap` between their content and the
 divider. Components consume the token instead of choosing local bottom padding, so the
@@ -752,6 +933,40 @@ them edit text. It may not claim `Home` or `End`: those move the caret, and taki
 leaves the user unable to reach the start or end of what they typed.
 When a list needs first-item and last-item reach behind an editable control, its
 movement commands wrap instead of borrowing the caret keys.
+
+### Navigational Row Collections
+
+A row collection whose primary action replaces the main content behaves as one keyboard
+control. Exactly one mounted row participates in the Tab order: the current row when one
+exists, otherwise the first row.
+All other rows remain programmatically focusable with `tabindex="-1"`, so Tab enters and
+leaves the collection once instead of stopping on every item.
+
+While a row has focus, unmodified Arrow Up and Arrow Down move to the adjacent mounted
+row and open it. Key repeat remains enabled for fast traversal.
+Movement clamps at the first and last row, prevents page scrolling, and does not reopen
+the row at a clamped edge.
+Activation updates the roving anchor without stealing focus.
+Enter, Space, and pointer activation retain the control’s ordinary behavior.
+
+Interaction work is proportional to the change, not the collection size.
+Moving or selecting mutates only the prior and next anchor or selected row; a mounted
+list may scan all rows when it is first synchronized, but an Arrow-key or pointer
+activation must not rewrite every row before the main view can acknowledge the
+selection. When a retained view contains many focusable controls, the newly focused row
+may remain programmatically focusable at `tabindex="-1"` during the pending interval.
+Its visible focus, selected state, route, and claim-owned busy state update in the input
+task; the component finalizes the one-row Tab anchor after painted readiness.
+This avoids a whole-document focus-order recalculation before the browser can paint the
+acknowledgement.
+
+The component owns this focused behavior; it is not a document-level application
+shortcut. The maintained registry in
+`test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree and
+Git history. The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins
+Git’s interaction cost.
+Register every new navigational row collection in the shared check so its Tab order and
+vertical navigation cannot silently fork this contract.
 
 ### Descriptor Contract
 
@@ -861,6 +1076,26 @@ adds weight without adding information.
 
 The one sanctioned resting surface is `.icon-btn-overlay`, for a button that floats
 above content: a bare glyph over source text is unreadable, so it needs an opaque plate.
+
+### Copyable Identifiers Use One Delegate
+
+A copyable path, revision, or other exact identifier pairs its visible monospace value
+with an adjacent `.icon-btn.icon-btn-reveal` using the registry’s `copy` icon.
+The visible value may be abbreviated when its meaning remains clear, but the copy
+payload must preserve the complete identifier.
+The Git commit header therefore shows the short revision and copies the full commit ID.
+
+Explicit values use `data-mb-copy="text"`, carry their escaped payload in
+`data-mb-copy-text`, and name the resting action in `data-mb-copy-label`,
+`data-tip-text`, and `aria-label`. Source blocks use the same SDK delegate in `wrap`
+mode. Do not add a component-local clipboard listener or inline handler.
+The shared delegate owns successful, failed, and reset feedback, while the containing
+row owns when an `.icon-btn-reveal` becomes visible.
+Keep the button in the Tab order even while it is visually quiet.
+
+`test_copyable_identifiers_share_the_copy_contract` maintains the registered path,
+diff-file, and Git-revision consumers.
+Add each new exact-identifier copy surface to that check.
 
 ### Parent Navigation Is a Bordered Button
 
@@ -1265,6 +1500,9 @@ If one metric is zero while another is not, the zero metric uses the neutral tra
 the populated metric remains meaningful.
 If the whole population is empty, the parent surface renders its explicit empty state
 instead of the distribution body.
+If the selected scope contains only ignored files, the distribution body stays empty:
+the adjacent **Show ignored** checkbox already exposes the relevant action, so the body
+does not repeat it as passive instructions.
 
 ### Folder Treemap
 
@@ -1418,9 +1656,15 @@ At regular and wide Markdown breakpoints, flat surface panels and section headin
 to the README card’s outer edges; the TOC keeps its own rail in the wide band.
 In the regular band, the target is the visible `.kpress-long-text` card rather than the
 wider `.kpress-doc` frame.
-The shared width is `min(100% - 4rem, var(--kpress-measure) - 2rem)`, which accounts for
-the frame’s floating-TOC clearance and aligns section rules, labels, tallies, and bars
-with the card border.
+The shared width is
+`min(100% - 4rem, var(--doc-measure) + 2 * var(--folder-overview-regular-inset))` — the
+column box, meaning the reading measure plus KPress’s inset on each side — which puts
+the README’s text at exactly the measure and aligns section rules, labels, tallies, and
+bars with the card border.
+It reads `--doc-measure`, the app’s own reading width, and never `--kpress-measure`:
+KPress declares that token on `:root` from a stylesheet loaded after the app’s, so host
+CSS outside a `.kpress` scope resolves KPress’s default instead of the reader’s setting.
+See [Reading Width](#reading-width).
 Below the card breakpoint, KPress removes the card boundary and the alignment follows
 the README prose edge.
 The Overview composer mirrors those pinned KPress breakpoints so the rule remains exact
@@ -1470,7 +1714,7 @@ difference between a tooltip, menu, and dialog.
 
 | Pattern | Purpose and semantics | Focus and dismissal |
 | --- | --- | --- |
-| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls; anchored to the element it describes and fixed once shown | Opens for pointer hover and keyboard focus; closes on pointer leave, blur, or Escape |
+| Tooltip | Supplementary, non-interactive text with `role="tooltip"`; cannot contain essential guidance or controls; anchored to the element it describes and fixed once shown | Opens for pointer hover; closes on pointer leave, any focus transition, or Escape; keyboard focus never opens it |
 | Anchored popup | A menu, listbox, or other pattern anchored to a trigger or pointer; the content role defines its semantics | Uses that pattern’s focus model; closes on Escape and outside interaction |
 | Modal dialog | A labelled task or information surface with `role="dialog"` and `aria-modal="true"` | Moves focus inside, contains Tab, makes background content inert, and closes through Escape, an explicit control, or the scrim |
 
@@ -1604,21 +1848,58 @@ utility, whose length is `--loading-state-delay` in `styles.css`. The placeholde
 reserves its final layout immediately but stays invisible long enough for synchronous
 work and fast local requests to replace it before paint.
 
-**Nothing announces loading inside the quiet period.** This holds at every grain, not
-only for view- and panel-level placeholders: a subtree expanding under the cursor is
+**Loading chrome does not appear inside the quiet period.** This holds at every grain,
+not only for view- and panel-level placeholders: a subtree expanding under the cursor is
 exactly the case where the request usually beats the eye, and a spinner that appears and
 vanishes reads as a glitch rather than as progress.
 A spinner is the strongest form and has no reason to exist before the quiet period ends;
 below it, the most that may appear is the neutral pulsing block used by the navigation
 tally. Apply the utility rather than adding independent timers at each renderer.
 
-The shell’s own preview swap adds a longer wait on top (`LOADING_INDICATOR_DELAY_MS`),
-keeping the previous file on screen instead of blanking it — a different mechanism for a
-different problem, and not a reason to skip the utility.
+Selection feedback is distinct from loading chrome.
+When file or Git navigation can retain useful preview content, the shell immediately
+updates the selected navigation row and route while leaving the retained preview
+unchanged at full opacity.
+The shell still adds `.preview-navigation-pending` and `aria-busy` under the current
+claim, but this is an accessibility and instrumentation state, not a visual treatment.
+It adds no sheet, filter, cursor, per-element styling, or animation while work is
+pending. The state ends at the selected view’s painted-readiness boundary.
+A stale claim cannot clear or retain it.
 
-The shell separately retains the previous preview during a fast file-envelope request.
-Ready content always wins immediately: do not add a minimum spinner duration, crossfade,
-or transition that delays usable content merely to complete an animation.
+An asynchronously rendered replacement mounts in a connected, transparent, inert stage
+while the prior useful surface remains visible.
+After the active renderer and its declared readiness settle, the shell transfers the
+staged content into the preview in one replacement and transfers disposal ownership with
+it. This preserves the connected-container plugin contract without exposing an empty
+active container, duplicate interaction surface, or intermediate blank frame.
+A newer preview claim immediately disposes and removes a stale stage without touching
+the current preview.
+
+An empty initial preview has no useful surface to retain.
+It keeps the longer shell wait (`LOADING_INDICATOR_DELAY_MS`) before installing a
+neutral spinner, which still uses `.mb-delayed-loading`. Ready content always wins
+immediately: do not add a minimum spinner duration, progress bar, or transition that
+delays usable content merely to complete an animation.
+
+After a successful atomic replacement, `animatePreviewContentArrival` applies one
+compositor opacity animation to the incoming foreground content root, from 0.98 to 1
+over 50 ms with `ease-out`. The preview pane’s theme background never animates, so the
+handoff cannot pulse white in light mode or flash pale in dark mode.
+The old preview never fades out, the new preview is usable immediately, and the shell
+does not traverse or restyle the rendered document.
+This small incoming-view treatment softens the paint boundary without reading as a
+loading effect. `prefers-reduced-motion` skips it entirely.
+
+Navigation implementations measure this acknowledgement separately from content
+readiness. The synchronous selection-feedback span contains only the claim-owned busy
+state, route, and old/new selected-row mutations; it does not include cancellation,
+roving Tab order, network, parsing, syntax work, or rendering.
+The standard headed scenario requires that span and pending onset/clearance, while
+browser Event Timing remains the authority for the next painted response.
+
+High-churn navigational rows update hover, focus, and selection backgrounds without a
+transition so the visible answer does not ease in behind the input.
+Motion belongs on the single incoming preview, not on each row crossed while scrolling.
 
 ### Progress Spinners Stay Neutral
 
@@ -1628,15 +1909,37 @@ activity, not meaning.
 Prefer the shared spinner classes; custom sizes must still use the shared spinner tokens
 and keyframe.
 
-### Spinners Carry No Visible Label
+### Loading States Are Shapes, Not Sentences
 
-A spinner beside the words “Loading folder…” says the same thing twice: the surface
-being replaced already says which folder, and the spinner already says it is loading.
-Keep the label for screen readers (`sr-only`) and show the spinner alone.
+A loading state says “this will be content” by taking the shape of the content.
+It does not announce itself in words.
+“Loading history…”, “Loading file types…”, and “Loading bytes…” are all the same
+sentence, they all say what the surface being replaced already implies, and a column of
+them reads as a page in trouble rather than a page working.
 
-Visible copy is for a state the spinner cannot express on its own — a scan still running
-behind an empty result, an index that failed — and it says what that state is rather
-than that something is loading.
+Two forms, and the choice between them is about whether the shape is known:
+
+- **Skeleton blocks are the default.** When the layout is known before the data — rows,
+  cells, a tally, a list — draw that layout as neutral blocks carrying the slow pulse
+  used by the navigation tally (`.tally-pending`, `tally-pending-pulse`). The block
+  reserves the real geometry, so arriving content replaces it without reflow, and the
+  pulse reads as “loading” rather than “blinking”.
+- **A spinner is for an indeterminate wait whose shape is unknown.** A document about to
+  render, a comparison whose file count is not yet known — a skeleton there would invent
+  a structure the result may not have.
+  The spinner says only that work is happening, which is all that is honestly known.
+
+Both forms observe the quiet period above: a state that resolves inside
+`--loading-state-delay` shows nothing at all.
+
+Screen-reader text is required and is not a violation of this rule.
+A spinner or a skeleton is invisible to a screen reader, so it carries an `sr-only`
+label or an `aria-label` naming what is loading.
+That text is not visible copy; the rule is about what is painted.
+
+Visible copy is for a state neither form can express — a scan still running behind an
+empty result, an index that failed — and it says what that state is rather than that
+something is loading.
 
 ## Text Selection
 
@@ -1672,6 +1975,10 @@ Adjacent text elements must not repeat the same information.
 
 If removing a sentence loses no information because an adjacent label, control, or
 visual state already communicates it, remove the sentence.
+Instructional copy that asks the reader to change interface state must carry the
+relevant action in the same component; it must not direct the reader to a control
+somewhere else. When an adjacent control already makes the action clear and no
+explanation is needed, omit the instructional copy.
 
 ### State Language
 

@@ -829,10 +829,15 @@ def test_protocols_are_structural_and_provider_neutral() -> None:
             imported_modules.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module is not None:
             imported_modules.add(node.module)
+    # `metabrowser.inventory` was the pre-refactor singleton and no longer
+    # exists, so guarding that name guards nothing. What the rule is actually
+    # for is that the contract must not name a concrete provider or the
+    # delivery layer.
     assert not imported_modules & {
         "starlette",
         "metabrowser.events",
-        "metabrowser.inventory",
+        "metabrowser.inventory_engine.factory",
+        "metabrowser.inventory_engine.providers.python_inventory",
         "metabrowser.sse",
     }
 

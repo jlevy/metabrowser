@@ -1005,7 +1005,7 @@ The registry leaves room for them without implementing their policy now.
 
 - [Quick File finder and search providers](../active/plan-2026-07-17-scalable-file-search.md)
 - [Menu primitives and gated file actions](../active/plan-2026-08-06-menu-primitives-and-file-actions.md)
-- [Filter controls and fine-grained navigation filtering](../active/plan-2026-08-09-nav-filter-controls.md)
+- [Filter controls and fine-grained navigation filtering](plan-2026-08-09-nav-filter-controls.md)
 - [Design system](../../../design-system.md)
 - [End-to-end testing](../../../e2e-testing.md)
 - [Metabrowser on GitHub](https://github.com/jlevy/metabrowser)
