@@ -5999,7 +5999,7 @@ async function renderFile(data, preferredViewId, claim) {
             if (!container) {
               continue;
             }
-            var mount = (
+            const mount = (
               (target, pluginView) => () =>
                 mountPluginView(target, pluginView, ctx, stagedPluginDisposers)
             )(container, pr.view);

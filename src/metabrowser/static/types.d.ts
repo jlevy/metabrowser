@@ -1745,7 +1745,7 @@ declare global {
       DISTRIBUTION_COLORS?: Array<{ key: string; light: string; dark: string }>;
       FILE_TYPE_REGISTRY?: {
         schema: "file-type-registry-v4";
-        schema_version: 3;
+        schema_version: 4;
         revision: number;
         fingerprint: string;
         max_extension_components: 2;

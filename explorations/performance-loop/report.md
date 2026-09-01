@@ -56,6 +56,8 @@ against one that did.
 | exp-019 | [v0.8.0 preserves release correctness and responsiveness](experiments/exp-019-v080-preserves-release-correctness-and-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
 | exp-020 | [v0.9 Git history preserves release correctness and responsiveness](experiments/exp-020-v090-history-preserves-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
 | exp-021 | [The v0.9 candidate preserves release correctness and responsiveness](experiments/exp-021-v090-candidate-preserves-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
+| exp-022 | [The v0.9.1 lazy-plugin-tab fix preserves release correctness and responsiveness](experiments/exp-022-v091-lazy-plugin-tabs-preserve-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
+| exp-023 | [The v0.9.1 final candidate preserves release correctness and responsiveness](experiments/exp-023-v091-final-candidate-preserves-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
 
 ## Absolute numbers, per condition
 
@@ -367,6 +369,108 @@ A run loaded during a walk and a run loaded after one are different regimes.
 Walk elapsed across these runs: 5,627-21,131 ms.
 A run loaded during a walk and a run loaded after one are different regimes.
 
+### 72,040 files
+
+**What a reader gets** — browser probe
+
+| metric | exp-023-release-v0.9.0 (n=3) | exp-023-candidate-f1d36447 (n=3) |
+| --- | ---: | ---: |
+| `ttfb_ms` | 25 (20-47) | 20 (19-32) |
+| `response_download_ms` | 0 (0-1) | 1 (0-3) |
+| `dom_interactive_ms` | 162 (128-284) | 174 (154-259) |
+| `first_row_ms` | 161 (147-278) | 186 (166-272) |
+| `first_row_render_ms` | 2 (1-2) | 1 (0-1) |
+| `load_tree_ms` | 11 (7-13) | 6 (5-7) |
+| `tree_fetch_srv_ms` | 2 (1-4) | 1 (1-1) |
+| `tree_fetch_wait_ms` | 7 (4-9) | 2 (2-4) |
+| `tree_fetch_total_ms` | 8 (4-10) | 2 (2-5) |
+| `tree_fetch_kb` | 1 (1-1) | 1 (1-1) |
+| `dcl_ms` | 170 (135-302) | 181 (162-267) |
+| `load_ms` | 171 (136-302) | 181 (162-267) |
+| `last_resource_ms` | 22,800 (20,959-24,923) | 18,334 (16,557-19,394) |
+| `subtree_requests` | 8 (0-10) | 0 (0-0) |
+| `tree_items` | 8 (8-21) | 8 (8-8) |
+| `lazy_stubs` | 7 (7-11) | 7 (7-7) |
+| `collapsed_diff_rows_materialized` | 0 (0-0) | 0 (0-0) |
+| `dom_nodes` | 741 (741-883) | 965 (965-965) |
+| `transferred_kb` | 479 (473-488) | 468 (465-468) |
+| `vendor_first_start_ms` | 179 (137-316) | 188 (168-269) |
+| `fcp_ms` | 136 (112-192) | 132 (128-232) |
+| `lcp_ms` | 136 (112-476) | 256 (256-400) |
+| `cls` | 0 (0-0) | 0 (0-0) |
+| `cls_shifts` | 0 (0-0) | 0 (0-0) |
+| `frame_missing_px` | 172 (172-484) | 172 (172-172) |
+| `filter_bar_shift_px` | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 23 (23-23) | 23 (23-23) |
+| `reserved_region_shift_px` | 23 (23-23) | 23 (23-23) |
+| `tree_region_repaints` | 1 (1-1) | 1 (1-1) |
+| `long_tasks` | 0 (0-0) | 0 (0-0) |
+| `long_task_ms_total` | 0 (0-0) | 0 (0-0) |
+| `total_blocking_time_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms_first_5s` | 0 (0-0) | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_attribution_missing` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_batches` | 587 (578-589) | 592 (592-592) |
+| `inventory_delivery_items` | 72,147 (71,915-72,198) | 72,115 (72,115-72,115) |
+| `inventory_delivery_batch_items_max` | 499 (243-1,814) | 243 (243-243) |
+| `inventory_delivery_max_ms` | 2 (2-2) | 3 (3-3) |
+| `inventory_delivery_work_ms_total` | 57 (54-59) | 56 (55-58) |
+| `inventory_delivery_work_pct` | 0 (0.2-0.3) | 0 (0.3-0.3) |
+| `animation_frames` | 1 (0-1) | 1 (1-1) |
+| `animation_frame_max_ms` | 61 (0-115) | 62 (60-163) |
+| `animation_frames_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) | 0 (0-0) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `forced_style_layout_ms_max` | 0 (0-0) | 0 (0-0) |
+| `interactions` | 2 (0-2) | 2 (0-2) |
+| `interaction_inputs` | 85 (79-95) | 66 (61-69) |
+| `interaction_input_first_ms` | 187 (168-508) | 1,304 (824-1,605) |
+| `interaction_input_last_ms` | 22,083 (20,766-24,732) | 18,142 (16,366-19,203) |
+| `interaction_input_span_ms` | 21,896 (20,257-24,563) | 16,838 (15,542-17,598) |
+| `interaction_input_coverage_pct` | 97 (96.4-98.9) | 92 (91.2-94.4) |
+| `interaction_samples_retained` | 2 (0-2) | 2 (0-2) |
+| `interaction_p50_ms` | 28 (24-32) | 20 (16-24) |
+| `interaction_p95_ms` | 28 (24-32) | 20 (16-24) |
+| `interaction_max_ms` | 24 (0-32) | 16 (0-24) |
+| `render_spans` | 2 (1-2) | 1 (1-1) |
+| `render_ms_total` | 3 (2-5) | 1 (0-1) |
+| `tree_reprobe_ms` | 5 (4-5) | 5 (4-5) |
+| `tree_reprobe_srv_ms` | 3 (3-3) | 3 (3-3) |
+| `requests` | 113 (109-118) | 106 (101-106) |
+| `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
+| `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) | 0 (0-0) |
+| `rendered_preview_errors` | 0 (0-0) | 0 (0-0) |
+| `page_exceptions` | 0 (0-0) | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) | 0 (0-0) |
+| `script_transfer_kb` | 329 (329-329) | 329 (329-329) |
+| `startup_script_requests` | 22 (22-22) | 22 (22-22) |
+| `startup_script_transfer_kb` | 161 (161-161) | 161 (161-161) |
+| `startup_script_last_response_ms` | 156 (127-273) | 172 (153-258) |
+| `startup_script_duration_max_ms` | 107 (82-221) | 127 (108-208) |
+| `style_transfer_kb` | 78 (78-78) | 78 (78-78) |
+| `image_transfer_kb` | 0 (0-0) | 0 (0-0) |
+| `api_transfer_kb` | 43 (37-51) | 32 (29-32) |
+| `largest_resource_kb` | 83 (83-83) | 83 (83-83) |
+| `resource_duration_max_ms` | 415 (381-679) | 384 (379-431) |
+| `js_heap_mb` | 13 (12.6-13.5) | 14 (12.9-14.2) |
+| `js_heap_after_gc_mb` | 10 (10-10.3) | 10 (10.3-10.4) |
+| `plugin_view_containers` | 2 (2-2) | 2 (2-2) |
+| `plugin_view_nonempty` | 1 (1-1) | 1 (1-1) |
+| `shell_tools_missing` | 0 (0-0) | 0 (0-0) |
+| `file_catalog_incomplete` | 0 (0-0) | 0 (0-0) |
+| `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
+| `viewport_h` | 900 (900-900) | 900 (900-900) |
+
+Walk elapsed across these runs: 16,159-24,538 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
+
 ### 100,000 files
 
 **What a reader gets** — browser probe
@@ -657,6 +761,108 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `viewport_h` | 900 (900-900) | 900 (900-900) | 900 (900-900) | 900 (900-900) |
 
 Walk elapsed across these runs: 13,248-23,312 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
+
+### 113,430 files
+
+**What a reader gets** — browser probe
+
+| metric | exp-022-release-v0.9.0 (n=3) | exp-022-candidate-929130c1 (n=3) |
+| --- | ---: | ---: |
+| `ttfb_ms` | 11 (10-14) | 14 (13-17) |
+| `response_download_ms` | 1 (0-1) | 1 (1-1) |
+| `dom_interactive_ms` | 146 (125-156) | 137 (96-154) |
+| `first_row_ms` | 145 (121-152) | 136 (93-150) |
+| `first_row_render_ms` | 1 (1-1) | 1 (1-1) |
+| `load_tree_ms` | 6 (6-10) | 8 (5-10) |
+| `tree_fetch_srv_ms` | 2 (2-4) | 2 (2-4) |
+| `tree_fetch_wait_ms` | 4 (3-4) | 5 (3-9) |
+| `tree_fetch_total_ms` | 4 (3-5) | 6 (3-9) |
+| `tree_fetch_kb` | 1 (1-1) | 1 (1-1) |
+| `dcl_ms` | 153 (133-163) | 144 (103-161) |
+| `load_ms` | 153 (134-164) | 145 (103-161) |
+| `last_resource_ms` | 7,378 (6,561-8,236) | 7,724 (2,146-7,854) |
+| `subtree_requests` | 0 (0-10) | 10 (10-10) |
+| `tree_items` | 10 (10-10) | 10 (10-10) |
+| `lazy_stubs` | 10 (10-10) | 10 (10-10) |
+| `collapsed_diff_rows_materialized` | 0 (0-0) | 0 (0-0) |
+| `dom_nodes` | 809 (809-809) | 809 (809-809) |
+| `transferred_kb` | 525 (513-607) | 603 (602-627) |
+| `vendor_first_start_ms` | 160 (147-170) | 151 (106-163) |
+| `fcp_ms` | 120 (120-132) | 112 (96-112) |
+| `lcp_ms` | 132 (120-236) | 112 (96-112) |
+| `cls` | 0 (0-0) | 0 (0-0) |
+| `cls_shifts` | 0 (0-0) | 0 (0-0) |
+| `frame_missing_px` | 220 (220-220) | 220 (220-220) |
+| `filter_bar_shift_px` | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 23 (23-23) | 23 (23-23) |
+| `reserved_region_shift_px` | 23 (23-23) | 23 (23-23) |
+| `tree_region_repaints` | 1 (1-1) | 1 (1-1) |
+| `long_tasks` | 0 (0-0) | 0 (0-0) |
+| `long_task_ms_total` | 0 (0-0) | 0 (0-0) |
+| `total_blocking_time_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms_first_5s` | 0 (0-0) | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_attribution_missing` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_batches` | 264 (240-332) | 301 (2-306) |
+| `inventory_delivery_items` | 67,924 (64,421-81,693) | 75,742 (22,341-76,436) |
+| `inventory_delivery_batch_items_max` | 16,241 (14,321-17,561) | 15,472 (15,088-22,200) |
+| `inventory_delivery_max_ms` | 5 (4-6) | 5 (4-8) |
+| `inventory_delivery_work_ms_total` | 32 (31-38) | 36 (9-39) |
+| `inventory_delivery_work_pct` | 0 (0.4-0.5) | 0 (0.4-0.5) |
+| `animation_frames` | 1 (0-1) | 0 (0-1) |
+| `animation_frame_max_ms` | 56 (0-68) | 0 (0-53) |
+| `animation_frames_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) | 0 (0-0) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `forced_style_layout_ms_max` | 0 (0-0) | 0 (0-0) |
+| `interactions` | 1 (1-1) | 0 (0-0) |
+| `interaction_inputs` | 28 (25-31) | 29 (8-30) |
+| `interaction_input_first_ms` | 166 (162-268) | 160 (152-251) |
+| `interaction_input_last_ms` | 7,176 (6,366-8,042) | 7,525 (1,955-7,647) |
+| `interaction_input_span_ms` | 7,010 (6,203-7,774) | 7,273 (1,803-7,488) |
+| `interaction_input_coverage_pct` | 96 (95.4-96.2) | 95 (87.6-96.5) |
+| `interaction_samples_retained` | 1 (1-1) | 0 (0-0) |
+| `interaction_p50_ms` | 24 (24-32) | - |
+| `interaction_p95_ms` | 24 (24-32) | - |
+| `interaction_max_ms` | 24 (24-32) | 0 (0-0) |
+| `render_spans` | 2 (2-2) | 2 (2-2) |
+| `render_ms_total` | 2 (2-2) | 2 (2-2) |
+| `tree_reprobe_ms` | 5 (4-11) | 9 (4-12) |
+| `tree_reprobe_srv_ms` | 3 (2-7) | 4 (2-7) |
+| `requests` | 83 (80-92) | 91 (78-91) |
+| `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
+| `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) | 0 (0-0) |
+| `rendered_preview_errors` | 0 (0-0) | 0 (0-0) |
+| `page_exceptions` | 0 (0-0) | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) | 0 (0-0) |
+| `script_transfer_kb` | 329 (329-329) | 329 (329-329) |
+| `startup_script_requests` | 22 (22-22) | 22 (22-22) |
+| `startup_script_transfer_kb` | 161 (161-161) | 161 (161-161) |
+| `startup_script_last_response_ms` | 140 (103-147) | 132 (89-147) |
+| `startup_script_duration_max_ms` | 98 (63-102) | 97 (52-111) |
+| `style_transfer_kb` | 78 (78-78) | 78 (78-78) |
+| `image_transfer_kb` | 0 (0-0) | 0 (0-0) |
+| `api_transfer_kb` | 89 (77-171) | 167 (166-191) |
+| `largest_resource_kb` | 83 (83-83) | 83 (83-95) |
+| `resource_duration_max_ms` | 901 (895-920) | 897 (884-905) |
+| `js_heap_mb` | 16 (7.9-19.3) | 21 (12.1-21.2) |
+| `js_heap_after_gc_mb` | 5 (5.3-6.5) | 6 (6.3-6.6) |
+| `plugin_view_containers` | 2 (2-2) | 2 (2-2) |
+| `plugin_view_nonempty` | 1 (1-1) | 1 (1-1) |
+| `shell_tools_missing` | 0 (0-0) | 0 (0-0) |
+| `file_catalog_incomplete` | 0 (0-0) | 0 (0-0) |
+| `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
+| `viewport_h` | 900 (900-900) | 900 (900-900) |
+
+Walk elapsed across these runs: 10,759-13,151 ms.
 A run loaded during a walk and a run loaded after one are different regimes.
 
 ### 241,063 files
@@ -998,6 +1204,18 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-021 | exp021-candidate | 2026-08-31T04:15 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,622 ms |
 | exp-021 | exp021-release | 2026-08-31T04:15 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 14,021 ms |
 | exp-021 | exp021-candidate | 2026-08-31T04:16 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,718 ms |
+| exp-022 | exp-022-release-v0.9.0 | 2026-09-01T20:55 | metab 0.9.0 (3cb7e885) | v0.9.0 | tree-0eb8a51b | 1 | 16 | 13,151 ms |
+| exp-022 | exp-022-candidate-929130c1 | 2026-09-01T20:56 | metab 0.9.1.dev1+929130c1 (+1 commits, 929130c1, dirty) | 929130c1 | tree-0eb8a51b | 1 | 16 | 10,759 ms |
+| exp-022 | exp-022-release-v0.9.0 | 2026-09-01T20:56 | metab 0.9.0 (3cb7e885) | v0.9.0 | tree-0eb8a51b | 1 | 16 | 12,250 ms |
+| exp-022 | exp-022-candidate-929130c1 | 2026-09-01T20:56 | metab 0.9.1.dev1+929130c1 (+1 commits, 929130c1, dirty) | 929130c1 | tree-0eb8a51b | 1 | 16 | 12,203 ms |
+| exp-022 | exp-022-release-v0.9.0 | 2026-09-01T20:57 | metab 0.9.0 (3cb7e885) | v0.9.0 | tree-0eb8a51b | 1 | 16 | 12,282 ms |
+| exp-022 | exp-022-candidate-929130c1 | 2026-09-01T20:57 | metab 0.9.1.dev1+929130c1 (+1 commits, 929130c1, dirty) | 929130c1 | tree-0eb8a51b | 1 | 16 | 12,412 ms |
+| exp-023 | exp-023-release-v0.9.0 | 2026-09-01T21:31 | metab 0.9.0 | v0.9.0 | tree-91d23f89 | - | 16 | 21,623 ms |
+| exp-023 | exp-023-candidate-f1d36447 | 2026-09-01T21:32 | metab 0.9.1.dev2+f1d36447 | f1d36447 | tree-91d23f89 | - | 16 | 19,050 ms |
+| exp-023 | exp-023-candidate-f1d36447 | 2026-09-01T21:33 | metab 0.9.1.dev2+f1d36447 | f1d36447 | tree-91d23f89 | - | 16 | 17,971 ms |
+| exp-023 | exp-023-release-v0.9.0 | 2026-09-01T21:33 | metab 0.9.0 | v0.9.0 | tree-91d23f89 | - | 16 | 24,538 ms |
+| exp-023 | exp-023-release-v0.9.0 | 2026-09-01T21:34 | metab 0.9.0 | v0.9.0 | tree-91d23f89 | - | 16 | 21,842 ms |
+| exp-023 | exp-023-candidate-f1d36447 | 2026-09-01T21:34 | metab 0.9.1.dev2+f1d36447 | f1d36447 | tree-91d23f89 | - | 16 | 16,159 ms |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->
