@@ -13,10 +13,11 @@ restores them so `make golden-update` is a single reviewable step:
   and would make the transcript unreviewable; the POST case keeps its overridden
   heading visible so the transcript still proves the source override took effect
 * the pending-tally diagnostic's stderr line, which carries a wall clock
-* the host facts in watcher `reason` values -- the filesystem the served root
-  sits on and the backend that made available -- which differ between the
-  author's Mac and CI, and the engine sequence in the pending-tally
-  diagnostic, which counts internal change batches
+* the watcher's mode, state, and reason, which are host facts and startup
+  transients -- the filesystem the served root sits on, the backend that made
+  available, and how far selection had got when the request landed -- and the
+  engine sequence in the pending-tally diagnostic, which counts internal change
+  batches
 
 It also strips trailing whitespace, which `tryscript run --update` preserves
 from Rich's padded terminal output but `git diff --check` rejects; tryscript
@@ -55,9 +56,24 @@ FIXUPS: list[tuple[str, str]] = [
     # `golden-update`, which is the failure this rule exists to stop.
     # Everything around them stays pinned, `mode` included, which is the part
     # a regression would change.
+    # The whole watcher trio, not just the host fact in it. A backend is
+    # selected and started asynchronously, so `mode` resolves from `auto`,
+    # `state` runs from `starting`, and each `metab` invocation in a transcript
+    # is its own process with its own startup race -- one test in a file can
+    # catch the settled values while the next one does not. Waiting for the
+    # index does not settle the watcher, which starts after it.
+    #
+    # Watcher behaviour is covered by `tests/test_browser_watch_backends.py`,
+    # where it can be driven rather than raced.
     (r'"reason": "fs=[^"]*"', '"reason": "[..]"'),
-    (r'"watch_reason": "fs=[^"]*"', '"watch_reason": "[..]"'),
     (r'"reason": "inventory-[^"]*"', '"reason": "[..]"'),
+    (
+        r'"mode": "[a-z]+",(\n\s+"reason": "\[\.\.\]",\n\s+"state": )"[a-z]+"',
+        r'"mode": "[..]",\1"[..]"',
+    ),
+    (r'"watch_mode": "[a-z]+"', '"watch_mode": "[..]"'),
+    (r'"watch_state": "[a-z]+"', '"watch_state": "[..]"'),
+    (r'"watch_reason": "[^"]*"', '"watch_reason": "[..]"'),
     # The provider's change-batch counter at the moment the diagnostic ran. It
     # is worth reporting and not worth pinning: no reader depends on the count,
     # and a provider that batches differently would fail the transcript for a

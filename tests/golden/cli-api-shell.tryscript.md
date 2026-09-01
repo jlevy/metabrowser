@@ -58,10 +58,11 @@ status: 200
 
 ## Test: build capabilities
 
-The two `reason` values are host facts — the filesystem type the served root sits on,
-and which watch backend that made available — so they are elided.
-Everything around them is pinned, including the backend `mode`, which is the part a
-regression would change.
+The watcher values are host facts and startup transients: the filesystem type the served
+root sits on, the backend that made available, and how far selection had got when the
+request landed. Each `metab` invocation is its own process with its own startup race, so
+they are elided here and driven properly in `tests/test_browser_watch_backends.py`.
+Everything around them is pinned.
 
 ```console
 $ metab shellroot --api /api/capabilities
@@ -71,9 +72,9 @@ status: 200
   "backends": [
     {
       "prefix": ".",
-      "mode": "native",
+      "mode": "[..]",
       "reason": "[..]",
-      "state": "running"
+      "state": "[..]"
     }
   ],
   "index": {
@@ -94,17 +95,22 @@ status: 200
 
 ## Test: crawl progress
 
+`--api` waits for the scan before requesting this route, so the transcript records the
+settled answer rather than whichever moment the request landed in.
+Progress is read live from the browser while a scan is running, which is where the
+in-progress values mean something.
+
 ```console
 $ metab shellroot --api /api/index/progress
 api: /api/index/progress
 status: 200
 {
-  "status": "scanning",
-  "indexed_files": 0,
+  "status": "done",
+  "indexed_files": 4,
   "max_files": 500000,
   "truncated": false,
-  "complete": false,
-  "active": true,
+  "complete": true,
+  "active": false,
   "provider": "python",
   "contract": "inventory-provider-v1"
 }
@@ -143,8 +149,8 @@ status: 200
   ],
   "provider": "python",
   "contract": "inventory-provider-v1",
-  "watch_mode": "native",
-  "watch_state": "running",
+  "watch_mode": "[..]",
+  "watch_state": "[..]",
   "watch_reason": "[..]"
 }
 ? 0
