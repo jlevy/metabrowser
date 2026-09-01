@@ -421,6 +421,7 @@ A full scan on a 60,000-file synthetic corpus, timed through
 | main | 2,071 ms | — |
 | the stack, as its pull requests stood | 5,690 ms | **2.75x slower** |
 | the stack, with the two fixes below | 2,652 ms | 1.28x slower |
+| the stack, after the exp-022 campaign | 1,887 ms | 1.11x slower |
 
 Both causes are on the per-entry path, and neither was visible in any test.
 Both arrive with the bottom of the stack, which matters for merge order: the
@@ -454,12 +455,38 @@ revalidate on read, so a stale entry is a miss and never a wrong answer.
 
 Walk-to-settled on this repository, five runs: 2,640 ms to 1,117 ms median.
 
-A 28% gap against main remains, tracked as `mb-kicj`. Its profile points at the double
-representation: each entry is built as a contract `InventoryEntry`, converted to the
-provider’s retained `FsEntry`, mutated one to three times with `dataclasses.replace` in
-the walker, and converted back on read — 64,420 `replace` calls, 1.28M `getattr`, and
-125,525 generated `__init__` calls for 60,000 files.
-That is F1 again, measured from a third direction.
+A campaign against that residual is recorded as
+[exp-022](../../../../explorations/performance-loop/experiments/exp-022-the-walker-builds-each-entry-once.md)
+and
+[exp-023](../../../../explorations/performance-loop/experiments/exp-023-the-instrument-was-measuring-the-order-it-ran-in.md),
+registering H65 to H72. Two more accepts took the in-process walk from 1,847 ms to about
+1,203: the walker stamped every entry with `dataclasses.replace`, which reads twenty
+fields back through string-keyed `getattr`, and its add path allocated a delta map it
+never needed.
+
+Four hypotheses were rejected, which is the more useful half.
+Memoizing the ancestor chain measured nominally *slower*, because a four-component chain
+costs about what a dict lookup costs.
+Allocation-free path validation was refused on its microbenchmark at 0.72x for short
+paths.
+The profile that ranked them was itself misleading: `derive_ext` reads as 3 us per
+call under cProfile and measures 0.575 us without it, so at 60,000 calls the
+instrumentation is comparable to the work.
+
+And the build-to-build harness ran every trial of one build then every trial of the
+other, so all drift landed on whichever went second — always the candidate.
+That reported the gap as 19.6% on disjoint ranges; interleaved, the same comparison
+reports 11.3% on overlapping ones.
+
+Where it stands: no separable difference from `main` by median, and about 11% by
+minimum, which is the estimator noise cannot flatter.
+Everything left on the profile is below what this host can resolve except one structural
+item, `mb-vf8f`, worth roughly 190 ms.
+Its profile points at the double representation: each entry is built as a contract
+`InventoryEntry`, converted to the provider’s retained `FsEntry`, mutated one to three
+times with `dataclasses.replace` in the walker, and converted back on read — 64,420
+`replace` calls, 1.28M `getattr`, and 125,525 generated `__init__` calls for 60,000
+files. That is F1 again, measured from a third direction.
 
 ## One repository fault, found on the way
 
