@@ -23,6 +23,7 @@ from metabrowser.inventory_engine.contract import (
     RollupProjection,
     RollupQuery,
 )
+from metabrowser.settings import INVENTORY_MAX_DEPTH
 from metabrowser.watch_backends import (
     _NATIVE_FS_TYPES,
     _POLLING_FS_TYPES,
@@ -197,8 +198,8 @@ def test_stale_delete_event_reconciles_recreated_directory(tmp_path: Path) -> No
                     queries=(
                         DirectoryQuery(
                             query_id="tree",
-                            max_depth=harness.runtime.config.max_depth,
-                            max_rows=harness.runtime.config.max_files,
+                            max_depth=INVENTORY_MAX_DEPTH,
+                            max_rows=harness.runtime.config.budget.max_files,
                         ),
                         RollupQuery(
                             query_id="rollup",

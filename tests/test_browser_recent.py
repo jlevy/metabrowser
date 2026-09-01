@@ -12,6 +12,8 @@ from typing import Any, cast
 from metabrowser import paths_safe
 from metabrowser import server as proc_browser
 from metabrowser.inventory_engine.contract import (
+    CountKind,
+    CountResult,
     ReadRequest,
     RecentProjection,
     RecentQuery,
@@ -65,6 +67,7 @@ def test_recent_projection_is_flat_complete_and_newest_first(tmp_path: Path) -> 
     _build_fixture(tmp_path)
     result = _recent(tmp_path)
     assert result.total_matching == 3
+    assert result.total_matching_exact
     assert not result.truncated
     assert {entry["path"] for entry in result.entries_flat} == {
         "docs.md",
@@ -102,6 +105,20 @@ def test_recent_limit_extension_and_prefix_filters(tmp_path: Path) -> None:
     assert result.truncated
     assert len(result.entries_flat) == 1
     assert result.entries_flat[0]["path"].endswith(".jsonl")
+
+
+def test_recent_serializes_a_capped_count_without_claiming_exactness() -> None:
+    projection = RecentProjection(
+        query_id="recent",
+        entries=(),
+        total_matches=CountResult(CountKind.AT_LEAST, 10_000),
+    )
+
+    result = recent_result_from_projection(projection, window="all", limit=200)
+
+    assert result.total_matching == 10_000
+    assert not result.total_matching_exact
+    assert result.truncated
 
 
 def _gitignore_repo(root: Path, patterns: str) -> None:

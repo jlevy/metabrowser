@@ -8,7 +8,6 @@ from typing import Any, cast
 import pytest
 from conftest import SyntheticIndexWriter
 
-import metabrowser.inventory_rollup as inventory_rollup
 from metabrowser.events import FsEntry
 from metabrowser.file_type_registry import FileTypeClassification, load_file_type_registry
 from metabrowser.inventory_engine.providers.python_inventory import (
@@ -178,7 +177,6 @@ def test_rollup_classifies_each_distinct_extension_once(monkeypatch: pytest.Monk
             calls.append(extension)
             return registry.classify(name, extension)
 
-    monkeypatch.setattr(inventory_rollup, "load_file_type_registry", CountingRegistry)
     index = _synthetic_index(
         [
             ("app.js", 1, False),
@@ -188,6 +186,7 @@ def test_rollup_classifies_each_distinct_extension_once(monkeypatch: pytest.Monk
             ("README", 1, False),
         ]
     )
+    monkeypatch.setattr(index, "_registry", CountingRegistry())
 
     result = index.rollup("", depth=0, top=0, ext_top=0, remaining_top=20, ext_rank="dual")
 

@@ -10,12 +10,16 @@ from typing import cast
 
 import pytest
 
+from metabrowser.file_type_registry import load_file_type_registry_from_text
 from metabrowser.inventory_engine.contract import (
+    BoundaryMetrics,
     CatalogProjection,
     CatalogQuery,
     CatalogRecord,
     ChangeBatch,
     ChangeCursor,
+    CountKind,
+    CountResult,
     Coverage,
     DiagnosticsProjection,
     DiagnosticsQuery,
@@ -55,6 +59,8 @@ from metabrowser.inventory_engine.factory import (
 )
 from metabrowser.inventory_engine.overlay import InventoryDecoration
 from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
+from metabrowser.inventory_engine.tree_page_assembly import assemble_tree_pages
+from tests.inventory_harness import inventory_harness
 
 
 def _state() -> IndexState:
@@ -94,7 +100,9 @@ class _FakeHandle:
             session=self.session,
             sequence=self.sequence,
             scope_fingerprint=f"scope-{self.root.name}",
-            semantic_fingerprint=self.config.registry_fingerprint,
+            semantic_fingerprint=load_file_type_registry_from_text(
+                self.config.registry_document
+            ).fingerprint,
         )
 
     def cursor(self) -> ChangeCursor:
@@ -131,6 +139,7 @@ class _FakeHandle:
                                 watch_reason="disabled",
                                 read_requests=0,
                                 cumulative_work=WorkCounters(),
+                                cumulative_metrics=BoundaryMetrics(),
                             ),
                         )
                     )
@@ -167,7 +176,7 @@ class _FakeHandle:
                         CatalogProjection(
                             query_id=query.query_id,
                             records=records,
-                            total_matches=len(records),
+                            total_matches=CountResult(CountKind.EXACT, len(records)),
                         )
                     )
                 else:
@@ -265,10 +274,7 @@ def _coordinator(
 ) -> InventoryCoordinator:
     return InventoryCoordinator(
         backend=cast(InventoryBackend, backend),
-        config=InventoryConfig(
-            registry_fingerprint="test-registry",
-            change_queue_size=queue_size,
-        ),
+        config=InventoryConfig(change_queue_size=queue_size),
     )
 
 
@@ -282,6 +288,32 @@ def test_factory_is_sealed_to_the_real_python_provider() -> None:
 
     source = inspect.getsource(__import__("metabrowser.inventory_engine.factory", fromlist=["*"]))
     assert "FduInventory" not in source
+
+
+def test_tree_page_assembly_enforces_page_and_row_bounds(tmp_path: Path) -> None:
+    for index in range(7):
+        (tmp_path / f"directory-{index}").mkdir()
+
+    async def run() -> None:
+        async with inventory_harness(
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        ) as harness:
+            query = DirectoryQuery(query_id="tree", max_depth=2, max_rows=2)
+            with pytest.raises(InventoryConsistencyError, match="page bound"):
+                await assemble_tree_pages(
+                    harness.runtime.coordinator,
+                    page_query=query,
+                    max_pages=2,
+                )
+            with pytest.raises(InventoryConsistencyError, match="row bound"):
+                await assemble_tree_pages(
+                    harness.runtime.coordinator,
+                    page_query=query,
+                    max_assembled_rows=3,
+                )
+
+    asyncio.run(run())
 
 
 def test_coordinator_opens_one_handle_and_closes_before_root_replacement(
@@ -505,16 +537,16 @@ def test_provider_changes_are_coalesced_and_reset_dominates(tmp_path: Path) -> N
         handle.emit(
             dirty_paths=("a",),
             dirty_queries=frozenset({QueryKind.ENTRY}),
-            work=WorkCounters(entries_visited=1, cpu_time_ns=1),
+            work=WorkCounters(entries_visited=1, observations=1),
         )
         handle.emit(
             dirty_paths=("b",),
             dirty_queries=frozenset({QueryKind.DIRECTORY}),
-            work=WorkCounters(entries_visited=2, cpu_time_ns=2),
+            work=WorkCounters(entries_visited=2, observations=2),
         )
         handle.emit(
             dirty_paths=("a", "c"),
-            work=WorkCounters(entries_visited=3, cpu_time_ns=3),
+            work=WorkCounters(entries_visited=3, observations=3),
         )
         merged = await asyncio.wait_for(first_change, timeout=1)
         assert merged.dirty_paths == ("a", "b", "c")
@@ -522,15 +554,15 @@ def test_provider_changes_are_coalesced_and_reset_dominates(tmp_path: Path) -> N
         assert merged.dirty_queries == frozenset({QueryKind.ENTRY, QueryKind.DIRECTORY})
         assert merged.version.engine.sequence == 3
         assert merged.work.entries_visited == 6
-        assert merged.work.cpu_time_ns == 6
+        assert merged.work.observations == 6
         assert observed[-1] == merged
 
-        absent_cpu_change = asyncio.ensure_future(anext(changes))
+        second_change = asyncio.ensure_future(anext(changes))
         await asyncio.sleep(0)
-        handle.emit(dirty_paths=("d",), work=WorkCounters(cpu_time_ns=4))
+        handle.emit(dirty_paths=("d",), work=WorkCounters(stale=4))
         handle.emit(dirty_paths=("e",), work=WorkCounters())
-        merged_with_absent_cpu = await asyncio.wait_for(absent_cpu_change, timeout=1)
-        assert merged_with_absent_cpu.work.cpu_time_ns is None
+        merged_second = await asyncio.wait_for(second_change, timeout=1)
+        assert merged_second.work.stale == 4
 
         reset_change = asyncio.ensure_future(anext(changes))
         handle.emit(dirty_paths=("before-reset",))
@@ -653,7 +685,12 @@ def test_provider_fingerprint_drift_fails_reads_and_resets_stream_consumers(
         pending = asyncio.create_task(anext(changes))
         await asyncio.sleep(0)
 
-        handle.config = InventoryConfig(registry_fingerprint="illegal-replacement-semantics")
+        changed_registry = handle.config.registry_document.replace(
+            "registry_revision = 3",
+            "registry_revision = 4",
+            1,
+        )
+        handle.config = InventoryConfig(registry_document=changed_registry)
         handle.emit(dirty_paths=("changed",))
         reset = await asyncio.wait_for(pending, timeout=1)
         assert reset.reset is True

@@ -443,11 +443,18 @@ def load_file_type_registry_from_text(text: str) -> FileTypeRegistry:
 
 
 @cache
-def load_file_type_registry() -> FileTypeRegistry:
-    """Load the packaged registry once per process."""
+def load_file_type_registry_document() -> str:
+    """Load the immutable packaged registry document once per process."""
 
     resource = files("metabrowser").joinpath(FILE_TYPE_REGISTRY_RESOURCE)
-    return load_file_type_registry_from_text(resource.read_text(encoding="utf-8"))
+    return resource.read_text(encoding="utf-8")
+
+
+@cache
+def load_file_type_registry() -> FileTypeRegistry:
+    """Parse the packaged registry once per process."""
+
+    return load_file_type_registry_from_text(load_file_type_registry_document())
 
 
 def _required_positive_int(raw: Mapping[str, Any], field_name: str) -> int:
@@ -971,6 +978,7 @@ __all__ = [
     "FileTypeRegistry",
     "FileTypeRegistryError",
     "load_file_type_registry",
+    "load_file_type_registry_document",
     "load_file_type_registry_from_text",
     "normalize_logical_extension",
 ]

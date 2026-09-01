@@ -213,8 +213,8 @@ def _scandir_visible(
 async def walk_tree(
     root: Path,
     *,
-    max_depth: int = DEFAULT_MAX_DEPTH,
-    max_files: int = DEFAULT_MAX_FILES,
+    max_depth: int | None = DEFAULT_MAX_DEPTH,
+    max_files: int | None = DEFAULT_MAX_FILES,
     gitignore_check: Callable[[Path, bool], bool] | None = None,
     hidden_allowlist: Collection[str] | None = None,
 ) -> AsyncIterator[InventoryEntry]:
@@ -249,7 +249,7 @@ async def walk_tree(
     cleans up on close.
     """
 
-    if max_depth <= 0 or max_files <= 0:
+    if (max_depth is not None and max_depth <= 0) or (max_files is not None and max_files <= 0):
         return
 
     def _gi(abs_path: Path, is_dir: bool) -> bool:
@@ -383,7 +383,7 @@ async def walk_tree(
 
         abs_path, rel_path_cur, depth = queue.popleft()
 
-        if depth >= max_depth:
+        if max_depth is not None and depth >= max_depth:
             # Treat at-depth dirs as terminal — record 0 children
             # so the post-order finalize can complete the parent
             # chain without waiting forever.
@@ -410,7 +410,7 @@ async def walk_tree(
         pending[rel_path_cur] = subdir_count
 
         for ce in child_entries:
-            if files_indexed >= max_files:
+            if max_files is not None and files_indexed >= max_files:
                 truncated = True
                 break
 

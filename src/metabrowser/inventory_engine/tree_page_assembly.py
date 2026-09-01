@@ -7,6 +7,8 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 
 from metabrowser.inventory_engine.contract import (
+    MAX_ASSEMBLED_PAGES,
+    MAX_ASSEMBLED_ROWS,
     DirectoryProjection,
     DirectoryQuery,
     EngineVersion,
@@ -46,6 +48,8 @@ async def assemble_tree_pages(
     *,
     page_query: TreePageQuery,
     companion_queries: tuple[ReadQuery, ...] = (),
+    max_pages: int = MAX_ASSEMBLED_PAGES,
+    max_assembled_rows: int = MAX_ASSEMBLED_ROWS,
 ) -> TreePageAssembly:
     """Read every bounded page from one engine version and host boundary."""
 
@@ -53,6 +57,8 @@ async def assemble_tree_pages(
         raise ValueError("the page query_id must be unique among companion queries")
     if page_query.after is not None:
         raise ValueError("tree page assembly starts from the first page")
+    if max_pages <= 0 or max_assembled_rows <= 0:
+        raise ValueError("tree page assembly bounds must be positive")
     expected_projection = (
         FilteredTreeProjection if isinstance(page_query, FilteredTreeQuery) else DirectoryProjection
     )
@@ -65,11 +71,15 @@ async def assemble_tree_pages(
         page_entries: list[InventoryEntry] = []
         decorated: dict[str, DecoratedInventoryEntry] = {}
         first_read: CoordinatedRead | None = None
-        previous_remaining: int | None = None
         filtered_totals: tuple[int, int, int] | None = None
+        pages_read = 0
         try:
             async with coordinator.read_session() as session:
                 while True:
+                    if pages_read == max_pages:
+                        raise InventoryConsistencyError(
+                            "tree page assembly exceeded its page bound"
+                        )
                     current_query = replace(page_query, after=after)
                     queries = (
                         (*companion_queries, current_query)
@@ -77,7 +87,8 @@ async def assemble_tree_pages(
                         else (current_query,)
                     )
                     read = await session.read(ReadRequest(queries=queries, at_version=pinned))
-                    projection = read.result.projection(page_query.query_id)
+                    projection = read.result.completed_projection(page_query.query_id)
+                    pages_read += 1
                     if not isinstance(projection, expected_projection):
                         raise TypeError("a tree page query returned the wrong projection")
                     if len(projection.entries) > current_query.max_rows:
@@ -102,12 +113,6 @@ async def assemble_tree_pages(
                         raise InventoryConsistencyError(
                             "a version-pinned tree page changed engine version"
                         )
-                    if previous_remaining is not None and previous_remaining != (
-                        len(projection.entries) + projection.remaining_rows
-                    ):
-                        raise InventoryConsistencyError(
-                            "tree pages did not conserve the exact remaining row count"
-                        )
                     for entry in projection.entries:
                         if entry.path in seen_paths:
                             raise InventoryConsistencyError(
@@ -121,13 +126,14 @@ async def assemble_tree_pages(
                         seen_paths.add(entry.path)
                         page_entries.append(entry)
                         decorated.setdefault(entry.path, decorated_entry)
+                    if len(page_entries) > max_assembled_rows:
+                        raise InventoryConsistencyError("tree page assembly exceeded its row bound")
                     next_page = projection.next_page
                     if next_page is None:
                         complete_projection = replace(
                             projection,
                             entries=tuple(page_entries),
                             next_page=None,
-                            remaining_rows=0,
                         )
                         return TreePageAssembly(
                             first_read=first_read,
@@ -135,7 +141,6 @@ async def assemble_tree_pages(
                             projection=complete_projection,
                             decorated_entries=MappingProxyType(decorated),
                         )
-                    previous_remaining = projection.remaining_rows
                     if next_page in seen_cursors:
                         raise InventoryConsistencyError("tree page cursor did not advance")
                     seen_cursors.add(next_page)

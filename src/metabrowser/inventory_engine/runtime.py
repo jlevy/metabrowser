@@ -7,8 +7,8 @@ import os
 from pathlib import Path
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
-from metabrowser.file_type_registry import load_file_type_registry
-from metabrowser.inventory_engine.contract import InventoryConfig
+from metabrowser.file_type_registry import load_file_type_registry_document
+from metabrowser.inventory_engine.contract import DiscoveryBudget, InventoryConfig
 from metabrowser.inventory_engine.coordinator import (
     HostChange,
     HostVersion,
@@ -22,7 +22,6 @@ from metabrowser.projections import (
     invalidate_path as invalidate_projection_path,
 )
 from metabrowser.settings import (
-    INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_FILES,
     SSE_BUS_INVENTORY_QUEUE_SIZE,
 )
@@ -32,10 +31,9 @@ def default_inventory_config() -> InventoryConfig:
     """Build the provider config matching Metabrowser's current inventory scope."""
 
     return InventoryConfig(
-        max_files=INVENTORY_MAX_FILES,
-        max_depth=INVENTORY_MAX_DEPTH,
+        registry_document=load_file_type_registry_document(),
+        budget=DiscoveryBudget(max_files=INVENTORY_MAX_FILES),
         hidden_allowlist=tuple(sorted((LOGS_DIR, STATE_DIR))),
-        registry_fingerprint=load_file_type_registry().fingerprint,
         change_queue_size=SSE_BUS_INVENTORY_QUEUE_SIZE,
     )
 

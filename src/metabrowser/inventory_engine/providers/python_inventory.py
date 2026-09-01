@@ -22,6 +22,7 @@ from collections import ChainMap, deque
 from collections.abc import AsyncGenerator, Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Literal
 
 from metabrowser.cancellable_thread import run_cancellable_thread
@@ -36,21 +37,21 @@ from metabrowser.events import (
     StreamEvent,
     WriteToken,
 )
-from metabrowser.file_type_filters import (
-    canonical_extension,
-    category_for_file,
-    family_for_extension,
-)
-from metabrowser.file_type_registry import load_file_type_registry
+from metabrowser.file_type_registry import load_file_type_registry_from_text
 from metabrowser.fs_paths import is_visible_segment
 from metabrowser.inventory_engine.contract import (
+    MAX_ASSEMBLED_ROWS,
     MAX_CHANGE_PATHS,
     MAX_ISSUE_DETAIL_BYTES,
+    BoundaryMetrics,
     CatalogProjection,
     CatalogQuery,
     CatalogRecord,
     ChangeBatch,
     ChangeCursor,
+    ChangeStreamBusyError,
+    CountKind,
+    CountResult,
     Coverage,
     CoverageReason,
     DiagnosticsProjection,
@@ -70,6 +71,7 @@ from metabrowser.inventory_engine.contract import (
     InventoryClosedError,
     InventoryConfig,
     InventoryEntry,
+    InventoryHandle,
     InventoryIssue,
     IssueCode,
     LifecyclePhase,
@@ -80,6 +82,7 @@ from metabrowser.inventory_engine.contract import (
     ProjectionResult,
     ProviderDiagnostics,
     QueryKind,
+    QueryLimitProjection,
     ReadQuery,
     ReadRequest,
     ReadResult,
@@ -93,6 +96,9 @@ from metabrowser.inventory_engine.contract import (
     SourceKind,
     VersionUnavailableError,
     WorkCounters,
+    ascii_casefold,
+    canonical_inventory_name,
+    canonical_inventory_path,
     catalog_terminal_suffix,
     inventory_scope_fingerprint,
 )
@@ -146,6 +152,7 @@ _NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
 # delivery batch so request tasks run independently of directory width.
 _WALKER_COOPERATIVE_YIELD_BATCH = 64
 _NAVIGATION_TALLY_REFRESH_FLOOR_S = 0.5
+_PAGE_MEMO_CAPACITY = 64
 _CONTRACT_ID = "inventory-provider-v1"
 
 
@@ -220,7 +227,7 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
             bucket = self._index._children_index.get(parent)
             if bucket is None:
                 raise KeyError(parent)
-            return tuple(bucket.values())
+            return tuple(sorted(bucket.values(), key=_child_order))
 
     def get(  # type: ignore[override]
         self,
@@ -229,7 +236,9 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
     ) -> Sequence[FsEntry]:
         with self._index._rollup_cache_lock:
             bucket = self._index._children_index.get(parent)
-            return tuple(bucket.values()) if bucket is not None else default
+            return (
+                tuple(sorted(bucket.values(), key=_child_order)) if bucket is not None else default
+            )
 
     def __iter__(self) -> Iterator[str]:
         with self._index._rollup_cache_lock:
@@ -310,8 +319,7 @@ class _ReadImage:
 
     entries: tuple[FsEntry, ...]
     total_entries: int
-    entries_visited: int
-    directories_visited: int
+    rows_visited: int
     version: EngineVersion
     cursor: ChangeCursor
     state: IndexState
@@ -319,6 +327,7 @@ class _ReadImage:
     rollup_aggregates: SubtreeAggregateCache
     rollup_epoch: int
     rollup_passes: int
+    query_limits: Mapping[str, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,6 +340,8 @@ class _DirectoryPageMemo:
     max_depth: int
     include_ignored: bool
     rows: tuple[FsEntry, ...]
+    token: str
+    offset: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,9 +355,24 @@ class _FilteredTreePageMemo:
     matching_leaves: int
     matching_files: int
     matching_bytes: int
+    token: str
+    offset: int
 
 
-type _TreePageMemo = _DirectoryPageMemo | _FilteredTreePageMemo
+@dataclass(frozen=True, slots=True)
+class _CatalogPageMemo:
+    """One multi-page catalog projection at a coherent provider version."""
+
+    version: EngineVersion
+    state: IndexState
+    selection: tuple[object, ...]
+    records: tuple[CatalogRecord, ...]
+    total_matches: CountResult
+    token: str
+    offset: int
+
+
+type _PageMemo = _DirectoryPageMemo | _FilteredTreePageMemo | _CatalogPageMemo
 
 
 @dataclass(slots=True)
@@ -359,12 +385,21 @@ class _SelectedDirectoryTotals:
 
 
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
-    """Drop Python-engine bookkeeping and host decorations at the boundary."""
+    """Drop Python-engine bookkeeping and host decorations at the boundary.
+
+    Also the one place the retained native name becomes the contract's canonical one. The
+    store keeps what the filesystem gave it; only rows crossing this boundary are escaped,
+    so nothing is stored twice — the same split fdu makes between its native arena and the
+    canonical path it derives per returned row.
+
+    Free in the ordinary case: a name needing no escape comes back as the same object, so
+    this allocates nothing for the files everyone actually has.
+    """
 
     return InventoryEntry(
-        path=entry.path,
-        parent=entry.parent,
-        name=entry.name,
+        path=canonical_inventory_path(entry.path),
+        parent=canonical_inventory_path(entry.parent),
+        name=canonical_inventory_name(entry.name),
         type=EntryType(entry.type),
         ext=entry.ext,
         size=entry.size,
@@ -406,16 +441,31 @@ def _internal_entry(entry: InventoryEntry | FsEntry) -> FsEntry:
     )
 
 
+def _child_order(row: FsEntry) -> tuple[bool, bytes]:
+    """The contract's intra-directory order: directories first, then canonical bytes.
+
+    One definition, because there are two paths that produce a directory's children and
+    they disagreed. The snapshot builder sorted; the read-through view returned dictionary
+    insertion order, so which order a directory page came back in depended on which path
+    served it. Byte order also gives uppercase before lowercase, which is what the
+    contract states.
+
+    Ordering by the canonical form, not the raw name: `scandir` decodes an undecodable
+    byte to a surrogate, and encoding a surrogate as UTF-8 raises, so one such file made the
+    whole directory unlistable. Escaping first is also what makes this order agree with
+    fdu's, which sorts the same canonical bytes.
+    """
+
+    return (row.type != "dir", canonical_inventory_name(row.name).encode("utf-8"))
+
+
 def _children_for(entries: Sequence[FsEntry]) -> dict[str, tuple[FsEntry, ...]]:
     mutable: dict[str, list[FsEntry]] = {}
     for entry in entries:
         if entry.path == entry.parent:
             continue
         mutable.setdefault(entry.parent, []).append(entry)
-    return {
-        parent: tuple(sorted(rows, key=lambda row: (row.type != "dir", row.name)))
-        for parent, rows in mutable.items()
-    }
+    return {parent: tuple(sorted(rows, key=_child_order)) for parent, rows in mutable.items()}
 
 
 def _directory_rows(
@@ -442,16 +492,22 @@ def _directory_rows(
     return rows
 
 
-def _page_offset(after: str | None, total: int) -> int:
-    if after is None:
-        return 0
-    try:
-        offset = int(after)
-    except ValueError as error:
-        raise ValueError("page cursor must be a nonnegative integer") from error
-    if offset < 0 or offset > total:
-        raise ValueError("page cursor lies outside the result")
-    return offset
+def _catalog_selection(query: CatalogQuery) -> tuple[object, ...]:
+    return (
+        query.include_ignored,
+        query.terminal_extensions,
+        query.ancestor_names,
+        query.size_less_than,
+        query.count_cap,
+    )
+
+
+def _bounded_count(total: int, count_cap: int, returned: int) -> CountResult:
+    """Report an exact count or the strongest lower bound already proved."""
+
+    if total <= count_cap:
+        return CountResult(CountKind.EXACT, total)
+    return CountResult(CountKind.AT_LEAST, max(count_cap, returned))
 
 
 def _catalog_entry_matches(entry: FsEntry, query: CatalogQuery) -> bool:
@@ -462,8 +518,12 @@ def _catalog_entry_matches(entry: FsEntry, query: CatalogQuery) -> bool:
     if query.size_less_than is not None and entry.size >= query.size_less_than:
         return False
     if query.terminal_extensions:
+        # Both sides are folded. Folding only the candidate would silently reject a query
+        # that spelled its suffix `.PDF`, which is the kind of asymmetry that reads as a
+        # missing file rather than as a rejected filter.
         terminal = catalog_terminal_suffix(entry.name)
-        if terminal not in query.terminal_extensions:
+        wanted = {ascii_casefold(value) for value in query.terminal_extensions}
+        if terminal not in wanted:
             return False
     if query.ancestor_names:
         parts = PurePosixPath(entry.path).parts[:-1]
@@ -501,7 +561,8 @@ class _PythonInventoryStore:
         self._entries: dict[str, FsEntry] = {}
         self._rollup_cache_lock = threading.Lock()
         self._work_lock = threading.Lock()
-        self._work_totals = WorkCounters(cpu_time_ns=0)
+        self._work_totals = WorkCounters()
+        self._metrics_totals = BoundaryMetrics(cpu_time_ns=0)
         self._read_requests = 0
         # Navigation tallies are one full pass over every file entry: 486ms at
         # 100k on the reference machine, and the root nav request is the first
@@ -534,11 +595,10 @@ class _PythonInventoryStore:
         # return the older version honestly instead of pairing stale tallies with the
         # provider's current version and state.
         self._navigation_read_memo: _NavigationReadMemo | None = None
-        # Complete tree projections are retained only when a response has another
-        # page. One entry avoids repeating a full subtree pass for each continuation
-        # while keeping provider-owned paging memory bounded.
-        self._tree_page_lock = threading.Lock()
-        self._tree_page_memo: _TreePageMemo | None = None
+        # Complete projections are retained only when a response has another page.
+        # The small table supports bundled paged queries without repeating full scans.
+        self._page_lock = threading.Lock()
+        self._page_memos: dict[str, _PageMemo] = {}
         self._rollup_generation = next(_ROLLUP_REVISIONS)
         # Per-directory subtree aggregates, retained across rollup requests.
         # Without this, every ``/api/rollup`` re-walked every file under the
@@ -576,6 +636,7 @@ class _PythonInventoryStore:
         self._change_history: deque[ChangeBatch] = deque()
         self._replay_floor_sequence = self._rollup_generation
         self._change_subscribers: set[asyncio.Queue[ChangeBatch | None]] = set()
+        self._change_stream_active = False
         self._walker_task: asyncio.Task[None] | None = None
         self._watcher_task: asyncio.Task[None] | None = None
         self._watcher_mode = "off"
@@ -586,8 +647,8 @@ class _PythonInventoryStore:
         self._priority_paths: set[str] = set()
         self._done_event: asyncio.Event = asyncio.Event()
         self._status: IndexStatus = "idle"
-        self._max_files = config.max_files
-        self._max_depth = config.max_depth
+        self._registry = load_file_type_registry_from_text(config.registry_document)
+        self._max_files = config.budget.max_files
         self._files_indexed = 0
         self._directories_indexed = 0
         self._started_at_ns: int = 0
@@ -662,6 +723,17 @@ class _PythonInventoryStore:
             self._rollup_generation = next(_ROLLUP_REVISIONS)
         self._record_provider_change(dirty_queries=frozenset({QueryKind.DIAGNOSTICS}))
 
+    async def _stop_watcher_for_resource_budget(self) -> None:
+        watcher = self._watcher_task
+        if watcher is not None and not watcher.done():
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
+        self._watcher_task = None
+        self._watcher_state = "off"
+        self._watcher_reason = "resource_budget"
+        self._watcher_detail = ""
+
     def clear(self) -> None:
         """Drop all state and stop the walker. Called by
         ``paths_safe.register_root_callback`` on root swap; a
@@ -705,8 +777,8 @@ class _PythonInventoryStore:
             self._navigation_tally_cost_s = 0.0
             self._navigation_tally_memo = None
             self._navigation_read_memo = None
-        with self._tree_page_lock:
-            self._tree_page_memo = None
+        with self._page_lock:
+            self._page_memos.clear()
         self._emit(FsResyncRequired(reason="root_swap"))
 
     async def wait_until_done(self, timeout: float | None = None) -> None:
@@ -733,6 +805,9 @@ class _PythonInventoryStore:
 
     async def _changes(self, *, after: ChangeCursor | None) -> AsyncGenerator[ChangeBatch, None]:
         self._ensure_open()
+        if self._change_stream_active:
+            raise ChangeStreamBusyError("the Python inventory change stream is already active")
+        self._change_stream_active = True
         queue: asyncio.Queue[ChangeBatch | None] = asyncio.Queue(
             maxsize=self._config.change_queue_size
         )
@@ -759,6 +834,7 @@ class _PythonInventoryStore:
                 yield batch
         finally:
             self._change_subscribers.discard(queue)
+            self._change_stream_active = False
 
     async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
         """Verify bounded path hints and feed observations through the delta path."""
@@ -768,10 +844,14 @@ class _PythonInventoryStore:
         rejected: list[str] = []
         valid: list[RefreshObservation] = []
         for observation in request.observations:
-            if self._valid_relative_path(observation.path):
-                valid.append(observation)
-            else:
+            if not self._valid_relative_path(observation.path):
                 rejected.append(observation.path)
+                continue
+            retained = self.get(observation.path)
+            if self._status == "truncated" and (retained is None or retained.type == "dir"):
+                rejected.append(observation.path)
+                continue
+            valid.append(observation)
         if not valid:
             return RefreshReceipt(
                 version=self._current_version(),
@@ -801,6 +881,8 @@ class _PythonInventoryStore:
         """Schedule bounded verification without delaying the interactive read path."""
 
         self._ensure_open()
+        if self._status == "truncated":
+            return
         paths = tuple(
             rel
             for rel in request.paths
@@ -902,7 +984,7 @@ class _PythonInventoryStore:
             session=self._session,
             sequence=sequence,
             scope_fingerprint=self._scope_fingerprint,
-            semantic_fingerprint=self._config.registry_fingerprint,
+            semantic_fingerprint=self._registry.fingerprint,
         )
 
     def _current_version(self) -> EngineVersion:
@@ -937,7 +1019,7 @@ class _PythonInventoryStore:
             coverage = Coverage(complete=True)
             freshness = Freshness.FRESH
         elif status == "truncated":
-            phase = self._settled_phase()
+            phase = LifecyclePhase.STOPPED
             coverage = Coverage(complete=False, reason=CoverageReason.BUDGET)
             freshness = Freshness.PARTIAL
             issues = (
@@ -964,7 +1046,7 @@ class _PythonInventoryStore:
             freshness = Freshness.STALE
             issues += (
                 InventoryIssue(
-                    code=IssueCode.WATCHER_GAP,
+                    code=IssueCode.OBSERVATION_GAP,
                     detail=_bounded_issue_detail(
                         self._watcher_detail or "filesystem observation stopped"
                     ),
@@ -990,6 +1072,7 @@ class _PythonInventoryStore:
         directory_count: int,
         read_requests: int,
         cumulative_work: WorkCounters,
+        cumulative_metrics: BoundaryMetrics,
     ) -> ProviderDiagnostics:
         return ProviderDiagnostics(
             provider="python",
@@ -1001,11 +1084,13 @@ class _PythonInventoryStore:
             watch_reason=self._watcher_reason,
             read_requests=read_requests,
             cumulative_work=cumulative_work,
+            cumulative_metrics=cumulative_metrics,
         )
 
     def _capture_image(self, request: ReadRequest) -> _ReadImage:
         with self._work_lock:
             work_totals = self._work_totals
+            metrics_totals = self._metrics_totals
             read_requests = self._read_requests
         with self._rollup_cache_lock:
             sequence = self._rollup_generation
@@ -1015,64 +1100,76 @@ class _PythonInventoryStore:
                     "the requested Python inventory version is no longer retained"
                 )
             total_entries = len(self._entries)
-            targeted = all(
-                isinstance(
+            scanning_queries = tuple(
+                query
+                for query in request.queries
+                if isinstance(
                     query,
                     (
-                        EntryQuery,
-                        DirectoryQuery,
+                        FilteredTreeQuery,
+                        RollupQuery,
+                        NavigationQuery,
+                        RecentQuery,
                         CatalogQuery,
-                        DiagnosticsQuery,
                     ),
                 )
-                for query in request.queries
             )
-            if targeted and any(isinstance(query, CatalogQuery) for query in request.queries):
-                # Catalog predicates require a whole-index visit. Copy the immutable
-                # image under the writer lock and perform filtering, sorting, and page
-                # construction after releasing it. Filtering into a second dict here
-                # held discovery writes for the duration of the full pass and then the
-                # projection repeated the same predicates outside the lock.
-                entries = tuple(self._entries.values())
-                entries_visited = len(entries)
-                directories_visited = sum(entry.type == "dir" for entry in entries)
-            elif targeted:
-                selected: dict[str, FsEntry] = {}
-                entries_visited = 0
-                directories_visited = 0
-                for query in request.queries:
-                    if isinstance(query, EntryQuery):
-                        entries_visited += 1
-                        entry = self._entries.get(query.path)
-                        if entry is not None:
-                            selected[entry.path] = entry
-                            directories_visited += int(entry.type == "dir")
-                    elif isinstance(query, DirectoryQuery):
-                        frontier = [query.path]
-                        for _depth in range(query.max_depth):
-                            next_frontier: list[str] = []
-                            for parent in frontier:
-                                directories_visited += 1
-                                bucket = self._children_index.get(parent, {})
-                                for entry in bucket.values():
-                                    entries_visited += 1
-                                    if not query.include_ignored and entry.gitignored:
-                                        continue
-                                    selected[entry.path] = entry
-                                    if entry.type == "dir":
-                                        next_frontier.append(entry.path)
-                            frontier = next_frontier
-                            if not frontier:
+            query_limits = {
+                query.query_id: query.max_work
+                for query in scanning_queries
+                if total_entries > query.max_work
+            }
+            broad_read = any(query.query_id not in query_limits for query in scanning_queries)
+            selected: dict[str, FsEntry] = {}
+            rows_visited = sum(
+                query.max_work if query.query_id in query_limits else total_entries
+                for query in scanning_queries
+            )
+            for query in request.queries:
+                if isinstance(query, EntryQuery):
+                    rows_visited += 1
+                    entry = self._entries.get(query.path)
+                    if entry is not None:
+                        selected[entry.path] = entry
+                elif isinstance(query, DirectoryQuery):
+                    query_rows_visited = 0
+                    query_selected: dict[str, FsEntry] = {}
+                    limited = False
+                    frontier = [query.path]
+                    for _depth in range(query.max_depth):
+                        next_frontier: list[str] = []
+                        for parent in frontier:
+                            bucket = self._children_index.get(parent, {})
+                            for entry in bucket.values():
+                                if query_rows_visited == query.max_work:
+                                    limited = True
+                                    break
+                                query_rows_visited += 1
+                                if not query.include_ignored and entry.gitignored:
+                                    continue
+                                query_selected[entry.path] = entry
+                                if entry.type == "dir":
+                                    next_frontier.append(entry.path)
+                            if limited:
                                 break
-                entries = tuple(selected.values())
-            else:
-                entries = tuple(self._entries.values())
-                entries_visited = len(entries)
-                directories_visited = sum(entry.type == "dir" for entry in entries)
+                        if limited:
+                            break
+                        frontier = next_frontier
+                        if not frontier:
+                            break
+                    rows_visited += query_rows_visited
+                    if limited:
+                        query_limits[query.query_id] = query_rows_visited
+                    else:
+                        selected.update(query_selected)
+            entries = tuple(self._entries.values()) if broad_read else tuple(selected.values())
             status = self._status
             files_indexed = self._files_indexed
             directory_count = self._directories_indexed
-            rollup_passes = sum(isinstance(query, RollupQuery) for query in request.queries)
+            rollup_passes = sum(
+                isinstance(query, RollupQuery) and query.query_id not in query_limits
+                for query in request.queries
+            )
             rollup_aggregates = dict(self._subtree_aggregates) if rollup_passes else {}
             rollup_epoch = self._aggregate_epoch
             self._rollup_passes_in_flight += rollup_passes
@@ -1085,8 +1182,7 @@ class _PythonInventoryStore:
         return _ReadImage(
             entries=entries,
             total_entries=total_entries,
-            entries_visited=entries_visited,
-            directories_visited=directories_visited,
+            rows_visited=rows_visited,
             version=version,
             cursor=version.cursor,
             state=state,
@@ -1095,16 +1191,18 @@ class _PythonInventoryStore:
                 directory_count=directory_count,
                 read_requests=read_requests,
                 cumulative_work=work_totals,
+                cumulative_metrics=metrics_totals,
             ),
             rollup_aggregates=rollup_aggregates,
             rollup_epoch=rollup_epoch,
             rollup_passes=rollup_passes,
+            query_limits=MappingProxyType(query_limits),
         )
 
     def _read_sync(self, request: ReadRequest) -> ReadResult:
-        cached_tree_page = self._read_cached_tree_page_sync(request)
-        if cached_tree_page is not None:
-            return cached_tree_page
+        cached_page = self._read_cached_page_sync(request)
+        if cached_page is not None:
+            return cached_page
         navigation_shape = self._navigation_read_shape(request)
         if navigation_shape is not None:
             return self._read_navigation_sync(request, navigation_shape)
@@ -1115,13 +1213,16 @@ class _PythonInventoryStore:
 
         return self._read_snapshot_sync(request)
 
-    def _read_cached_tree_page_sync(self, request: ReadRequest) -> ReadResult | None:
+    def _read_cached_page_sync(self, request: ReadRequest) -> ReadResult | None:
         """Serve a continuation without rebuilding its complete projection."""
 
         if (
             len(request.queries) != 1
             or request.at_version is None
-            or not isinstance(request.queries[0], (DirectoryQuery, FilteredTreeQuery))
+            or not isinstance(
+                request.queries[0],
+                (DirectoryQuery, FilteredTreeQuery, CatalogQuery),
+            )
             or request.queries[0].after is None
         ):
             return None
@@ -1138,62 +1239,156 @@ class _PythonInventoryStore:
             )
 
         query = request.queries[0]
+        after = query.after
+        if after is None:  # pragma: no cover - guarded above
+            return None
         lock_started = time.monotonic_ns()
-        with self._tree_page_lock:
-            memo = self._tree_page_memo
+        with self._page_lock:
+            memo = self._page_memos.get(after)
+            if isinstance(query, DirectoryQuery):
+                if not isinstance(memo, _DirectoryPageMemo) or not (
+                    memo.version == current_version
+                    and memo.path == query.path
+                    and memo.max_depth == query.max_depth
+                    and memo.include_ignored == query.include_ignored
+                    and memo.token == query.after
+                ):
+                    raise VersionUnavailableError("the directory page cursor is unavailable")
+                rows = memo.rows[memo.offset : memo.offset + query.max_rows]
+                if len(rows) > query.max_work:
+                    projection = QueryLimitProjection(
+                        query_id=query.query_id,
+                        query_kind=query.kind,
+                        max_work=query.max_work,
+                        rows_visited=query.max_work,
+                    )
+                else:
+                    self._page_memos.pop(after)
+                    next_offset = memo.offset + len(rows)
+                    next_page = uuid.uuid4().hex if next_offset < len(memo.rows) else None
+                    if next_page is not None:
+                        self._retain_page_memo_locked(
+                            replace(memo, token=next_page, offset=next_offset)
+                        )
+                    projection = DirectoryProjection(
+                        query_id=query.query_id,
+                        entries=tuple(_semantic_entry(entry) for entry in rows),
+                        next_page=next_page,
+                    )
+            elif isinstance(query, FilteredTreeQuery):
+                if not isinstance(memo, _FilteredTreePageMemo) or not (
+                    memo.version == current_version
+                    and memo.query.path == query.path
+                    and memo.query.max_depth == query.max_depth
+                    and memo.query.filter == query.filter
+                    and memo.token == query.after
+                ):
+                    raise VersionUnavailableError("the filtered-tree page cursor is unavailable")
+                rows = memo.rows[memo.offset : memo.offset + query.max_rows]
+                if len(rows) > query.max_work:
+                    projection = QueryLimitProjection(
+                        query_id=query.query_id,
+                        query_kind=query.kind,
+                        max_work=query.max_work,
+                        rows_visited=query.max_work,
+                    )
+                else:
+                    self._page_memos.pop(after)
+                    next_offset = memo.offset + len(rows)
+                    next_page = uuid.uuid4().hex if next_offset < len(memo.rows) else None
+                    if next_page is not None:
+                        self._retain_page_memo_locked(
+                            replace(memo, token=next_page, offset=next_offset)
+                        )
+                    projection = FilteredTreeProjection(
+                        query_id=query.query_id,
+                        entries=rows,
+                        matching_leaves=memo.matching_leaves,
+                        matching_files=memo.matching_files,
+                        matching_bytes=memo.matching_bytes,
+                        next_page=next_page,
+                    )
+            else:
+                if not isinstance(memo, _CatalogPageMemo) or not (
+                    memo.version == current_version
+                    and memo.selection == _catalog_selection(query)
+                    and memo.token == query.after
+                ):
+                    raise VersionUnavailableError("the catalog page cursor is unavailable")
+                records = memo.records[memo.offset : memo.offset + query.max_rows]
+                if len(records) > query.max_work:
+                    projection = QueryLimitProjection(
+                        query_id=query.query_id,
+                        query_kind=query.kind,
+                        max_work=query.max_work,
+                        rows_visited=query.max_work,
+                    )
+                else:
+                    self._page_memos.pop(after)
+                    next_offset = memo.offset + len(records)
+                    next_page = uuid.uuid4().hex if next_offset < len(memo.records) else None
+                    if next_page is not None:
+                        self._retain_page_memo_locked(
+                            replace(memo, token=next_page, offset=next_offset)
+                        )
+                    total_matches = memo.total_matches
+                    if (
+                        total_matches.kind is CountKind.AT_LEAST
+                        and total_matches.value < next_offset
+                    ):
+                        total_matches = CountResult(CountKind.AT_LEAST, next_offset)
+                    projection = CatalogProjection(
+                        query_id=query.query_id,
+                        records=records,
+                        total_matches=total_matches,
+                        next_page=next_page,
+                    )
         lock_wait_ns += time.monotonic_ns() - lock_started
-        if isinstance(query, DirectoryQuery):
-            if not isinstance(memo, _DirectoryPageMemo) or not (
-                memo.version == current_version
-                and memo.path == query.path
-                and memo.max_depth == query.max_depth
-                and memo.include_ignored == query.include_ignored
-            ):
-                return None
-            offset = _page_offset(query.after, len(memo.rows))
-            rows = memo.rows[offset : offset + query.max_rows]
-            next_offset = offset + len(rows)
-            projection: ProjectionResult = DirectoryProjection(
-                query_id=query.query_id,
-                entries=tuple(_semantic_entry(entry) for entry in rows),
-                next_page=str(next_offset) if next_offset < len(memo.rows) else None,
-                remaining_rows=len(memo.rows) - next_offset,
-            )
-        else:
-            if not isinstance(memo, _FilteredTreePageMemo) or not (
-                memo.version == current_version
-                and memo.query.path == query.path
-                and memo.query.max_depth == query.max_depth
-                and memo.query.filter == query.filter
-            ):
-                return None
-            offset = _page_offset(query.after, len(memo.rows))
-            rows = memo.rows[offset : offset + query.max_rows]
-            next_offset = offset + len(rows)
-            projection = FilteredTreeProjection(
-                query_id=query.query_id,
-                entries=rows,
-                matching_leaves=memo.matching_leaves,
-                matching_files=memo.matching_files,
-                matching_bytes=memo.matching_bytes,
-                next_page=str(next_offset) if next_offset < len(memo.rows) else None,
-                remaining_rows=len(memo.rows) - next_offset,
-            )
 
+        projection_rows = self._projection_rows(projection)
         work = WorkCounters(
-            rows_returned=self._projection_rows(projection),
+            rows_visited=(
+                projection.rows_visited
+                if isinstance(projection, QueryLimitProjection)
+                else projection_rows
+            ),
+            rows_returned=projection_rows,
+            maintained_index_work=1,
+        )
+        metrics = BoundaryMetrics(
             lock_wait_ns=lock_wait_ns,
             cpu_time_ns=time.thread_time_ns() - cpu_started,
             wall_time_ns=time.monotonic_ns() - wall_started,
         )
-        self._record_read_work(work)
+        self._record_read_work(work, metrics)
         return ReadResult(
             version=memo.version,
             cursor=memo.version.cursor,
             state=memo.state,
             projections=(projection,),
             work=work,
+            metrics=metrics,
         )
+
+    def _retain_page_memo_locked(self, memo: _PageMemo) -> None:
+        """Retain one continuation while holding `_page_lock`."""
+
+        memo_rows = len(memo.records) if isinstance(memo, _CatalogPageMemo) else len(memo.rows)
+        if memo_rows > MAX_ASSEMBLED_ROWS:  # pragma: no cover - query validation prevents it
+            raise ValueError("page memo exceeds the provider row bound")
+        retained_rows = sum(
+            len(retained.records) if isinstance(retained, _CatalogPageMemo) else len(retained.rows)
+            for retained in self._page_memos.values()
+        )
+        while self._page_memos and (
+            len(self._page_memos) >= _PAGE_MEMO_CAPACITY
+            or retained_rows + memo_rows > MAX_ASSEMBLED_ROWS
+        ):
+            evicted = self._page_memos.pop(next(iter(self._page_memos)))
+            retained_rows -= (
+                len(evicted.records) if isinstance(evicted, _CatalogPageMemo) else len(evicted.rows)
+            )
+        self._page_memos[memo.token] = memo
 
     def _read_snapshot_sync(self, request: ReadRequest) -> ReadResult:
         """Answer from one immutable image when a query needs broad traversal."""
@@ -1224,7 +1419,7 @@ class _PythonInventoryStore:
 
         try:
             for query in request.queries:
-                if isinstance(query, RollupQuery):
+                if isinstance(query, RollupQuery) and query.query_id not in image.query_limits:
                     remaining_rollup_passes -= 1
                 projection = self._project_query(
                     query,
@@ -1239,19 +1434,22 @@ class _PythonInventoryStore:
                 self._merge_subtree_aggregates({}, image.rollup_epoch)
 
         work = WorkCounters(
-            entries_visited=image.entries_visited,
-            directories_visited=image.directories_visited,
+            rows_visited=image.rows_visited,
             rows_returned=rows_returned,
+            maintained_index_work=image.rows_visited,
+        )
+        metrics = BoundaryMetrics(
             cpu_time_ns=time.thread_time_ns() - cpu_started,
             wall_time_ns=time.monotonic_ns() - wall_started,
         )
-        self._record_read_work(work)
+        self._record_read_work(work, metrics)
         return ReadResult(
             version=image.version,
             cursor=image.cursor,
             state=image.state,
             projections=tuple(projections),
             work=work,
+            metrics=metrics,
         )
 
     @staticmethod
@@ -1332,19 +1530,25 @@ class _PythonInventoryStore:
                 else projection
                 for projection in memo.projections
             )
+            rows_returned = sum(self._projection_rows(projection) for projection in projections)
             work = WorkCounters(
-                rows_returned=sum(self._projection_rows(projection) for projection in projections),
+                rows_visited=1,
+                rows_returned=rows_returned,
+                maintained_index_work=1,
+            )
+            metrics = BoundaryMetrics(
                 lock_wait_ns=lock_wait_ns,
                 cpu_time_ns=time.thread_time_ns() - cpu_started,
                 wall_time_ns=time.monotonic_ns() - wall_started,
             )
-            self._record_read_work(work)
+            self._record_read_work(work, metrics)
             return ReadResult(
                 version=memo.version,
                 cursor=memo.cursor,
                 state=memo.state,
                 projections=projections,
                 work=work,
+                metrics=metrics,
             )
 
         result = self._read_snapshot_sync(request)
@@ -1393,6 +1597,7 @@ class _PythonInventoryStore:
         lock_started = time.monotonic_ns()
         with self._work_lock:
             work_totals = self._work_totals
+            metrics_totals = self._metrics_totals
             read_requests = self._read_requests
         with self._rollup_cache_lock:
             lock_wait_ns = time.monotonic_ns() - lock_started
@@ -1417,9 +1622,11 @@ class _PythonInventoryStore:
                 directory_count=directory_count,
                 read_requests=read_requests,
                 cumulative_work=work_totals,
+                cumulative_metrics=metrics_totals,
             )
 
         projections: list[ProjectionResult] = []
+        rows_visited = 0
         for query in request.queries:
             if isinstance(query, DiagnosticsQuery):
                 projections.append(
@@ -1431,6 +1638,17 @@ class _PythonInventoryStore:
                 continue
             if not isinstance(query, RollupQuery):
                 raise TypeError("the rollup fast path received an unsupported query")
+            if total_entries > query.max_work:
+                projections.append(
+                    QueryLimitProjection(
+                        query_id=query.query_id,
+                        query_kind=query.kind,
+                        max_work=query.max_work,
+                        rows_visited=query.max_work,
+                    )
+                )
+                rows_visited += query.max_work
+                continue
             payload = self.rollup(
                 query.path,
                 depth=query.max_depth,
@@ -1442,6 +1660,7 @@ class _PythonInventoryStore:
                 max_nodes=query.max_nodes,
             )
             projections.append(RollupProjection(query_id=query.query_id, payload=payload))
+            rows_visited += total_entries
 
         with self._rollup_cache_lock:
             stable = self._rollup_generation == sequence
@@ -1453,38 +1672,54 @@ class _PythonInventoryStore:
             return self._read_snapshot_sync(request)
 
         work = WorkCounters(
-            entries_visited=total_entries,
-            directories_visited=directory_count,
+            rows_visited=rows_visited,
             rows_returned=len(projections),
+            maintained_index_work=rows_visited,
+        )
+        metrics = BoundaryMetrics(
             lock_wait_ns=lock_wait_ns,
             cpu_time_ns=time.thread_time_ns() - cpu_started,
             wall_time_ns=time.monotonic_ns() - wall_started,
         )
-        self._record_read_work(work)
+        self._record_read_work(work, metrics)
         return ReadResult(
             version=version,
             cursor=version.cursor,
             state=state,
             projections=tuple(projections),
             work=work,
+            metrics=metrics,
         )
 
-    def _record_read_work(self, work: WorkCounters) -> None:
+    def _record_read_work(self, work: WorkCounters, metrics: BoundaryMetrics) -> None:
         with self._work_lock:
             current = self._work_totals
+            current_metrics = self._metrics_totals
             cpu_time_ns = (
-                current.cpu_time_ns + work.cpu_time_ns
-                if current.cpu_time_ns is not None and work.cpu_time_ns is not None
+                current_metrics.cpu_time_ns + metrics.cpu_time_ns
+                if current_metrics.cpu_time_ns is not None and metrics.cpu_time_ns is not None
                 else None
             )
             self._work_totals = WorkCounters(
-                entries_visited=current.entries_visited + work.entries_visited,
-                directories_visited=current.directories_visited + work.directories_visited,
+                observations=current.observations + work.observations,
+                unchanged=current.unchanged + work.unchanged,
+                stale=current.stale + work.stale,
+                resource_refused=current.resource_refused + work.resource_refused,
+                rows_visited=current.rows_visited + work.rows_visited,
                 rows_returned=current.rows_returned + work.rows_returned,
-                bytes_copied=current.bytes_copied + work.bytes_copied,
-                lock_wait_ns=current.lock_wait_ns + work.lock_wait_ns,
+                maintained_index_work=(current.maintained_index_work + work.maintained_index_work),
+                commits_visited=current.commits_visited + work.commits_visited,
+                commits_returned=current.commits_returned + work.commits_returned,
+                directories_read=current.directories_read + work.directories_read,
+                entries_visited=current.entries_visited + work.entries_visited,
+                files_visited=current.files_visited + work.files_visited,
+                bytes_visited=current.bytes_visited + work.bytes_visited,
+            )
+            self._metrics_totals = BoundaryMetrics(
+                bytes_copied=current_metrics.bytes_copied + metrics.bytes_copied,
+                lock_wait_ns=current_metrics.lock_wait_ns + metrics.lock_wait_ns,
                 cpu_time_ns=cpu_time_ns,
-                wall_time_ns=current.wall_time_ns + work.wall_time_ns,
+                wall_time_ns=current_metrics.wall_time_ns + metrics.wall_time_ns,
             )
             self._read_requests += 1
 
@@ -1496,6 +1731,24 @@ class _PythonInventoryStore:
         entries_by_path: Mapping[str, FsEntry],
         children: Mapping[str, Sequence[FsEntry]],
     ) -> ProjectionResult:
+        limited_rows = image.query_limits.get(query.query_id)
+        if limited_rows is not None and isinstance(
+            query,
+            (
+                DirectoryQuery,
+                FilteredTreeQuery,
+                RollupQuery,
+                NavigationQuery,
+                RecentQuery,
+                CatalogQuery,
+            ),
+        ):
+            return QueryLimitProjection(
+                query_id=query.query_id,
+                query_kind=query.kind,
+                max_work=query.max_work,
+                rows_visited=limited_rows,
+            )
         if isinstance(query, EntryQuery):
             entry = entries_by_path.get(query.path)
             if entry is not None:
@@ -1531,6 +1784,7 @@ class _PythonInventoryStore:
                     options,
                     ancestor_gitignored=self._ancestor_gitignored(query.path, entries_by_path),
                     aggregates=ChainMap(computed, image.rollup_aggregates),
+                    registry=self._registry,
                 )
             finally:
                 self._merge_subtree_aggregates(computed, image.rollup_epoch)
@@ -1549,28 +1803,43 @@ class _PythonInventoryStore:
         if isinstance(query, RecentQuery):
             return self._recent_projection(query, image.entries, entries_by_path)
         if isinstance(query, CatalogQuery):
-            records = sorted(
-                (
-                    CatalogRecord(
-                        path=entry.path,
-                        logical_extension=entry.ext,
-                        size=entry.size,
-                        mtime_ns=entry.mtime_ns,
-                    )
-                    for entry in image.entries
-                    if _catalog_entry_matches(entry, query)
-                ),
-                key=lambda record: record.path,
+            records = tuple(
+                sorted(
+                    (
+                        CatalogRecord(
+                            path=entry.path,
+                            logical_extension=entry.ext,
+                            size=entry.size,
+                            mtime_ns=entry.mtime_ns,
+                        )
+                        for entry in image.entries
+                        if _catalog_entry_matches(entry, query)
+                    ),
+                    key=lambda record: canonical_inventory_path(record.path).encode("utf-8"),
+                )
             )
-            offset = _page_offset(query.after, len(records))
-            page = tuple(records[offset : offset + query.max_rows])
-            next_offset = offset + len(page)
+            page = records[: query.max_rows]
+            next_offset = len(page)
+            total_matches = _bounded_count(len(records), query.count_cap, len(page))
+            next_page = uuid.uuid4().hex if next_offset < len(records) else None
+            if next_page is not None:
+                with self._page_lock:
+                    self._retain_page_memo_locked(
+                        _CatalogPageMemo(
+                            version=image.version,
+                            state=image.state,
+                            selection=_catalog_selection(query),
+                            records=records,
+                            total_matches=total_matches,
+                            token=next_page,
+                            offset=next_offset,
+                        )
+                    )
             return CatalogProjection(
                 query_id=query.query_id,
                 records=page,
-                total_matches=len(records),
-                next_page=str(next_offset) if next_offset < len(records) else None,
-                remaining_rows=len(records) - next_offset,
+                total_matches=total_matches,
+                next_page=next_page,
             )
         return DiagnosticsProjection(
             query_id=query.query_id,
@@ -1590,24 +1859,27 @@ class _PythonInventoryStore:
             max_depth=query.max_depth,
             include_ignored=query.include_ignored,
         )
-        offset = _page_offset(query.after, len(rows))
-        page = rows[offset : offset + query.max_rows]
-        next_offset = offset + len(page)
-        if query.after is None and next_offset < len(rows):
-            with self._tree_page_lock:
-                self._tree_page_memo = _DirectoryPageMemo(
-                    version=image.version,
-                    state=image.state,
-                    path=query.path,
-                    max_depth=query.max_depth,
-                    include_ignored=query.include_ignored,
-                    rows=tuple(rows),
+        page = rows[: query.max_rows]
+        next_offset = len(page)
+        next_page = uuid.uuid4().hex if next_offset < len(rows) else None
+        if next_page is not None:
+            with self._page_lock:
+                self._retain_page_memo_locked(
+                    _DirectoryPageMemo(
+                        version=image.version,
+                        state=image.state,
+                        path=query.path,
+                        max_depth=query.max_depth,
+                        include_ignored=query.include_ignored,
+                        rows=tuple(rows),
+                        token=next_page,
+                        offset=next_offset,
+                    )
                 )
         return DirectoryProjection(
             query_id=query.query_id,
             entries=tuple(_semantic_entry(entry) for entry in page),
-            next_page=str(next_offset) if next_offset < len(rows) else None,
-            remaining_rows=len(rows) - next_offset,
+            next_page=next_page,
         )
 
     def _filtered_tree_projection(
@@ -1676,19 +1948,23 @@ class _PythonInventoryStore:
                 )
             elif entry.path in matched_paths:
                 selected.append(_semantic_entry(entry))
-        offset = _page_offset(query.after, len(selected))
-        page = selected[offset : offset + query.max_rows]
-        next_offset = offset + len(page)
-        if query.after is None and next_offset < len(selected):
-            with self._tree_page_lock:
-                self._tree_page_memo = _FilteredTreePageMemo(
-                    version=image.version,
-                    state=image.state,
-                    query=query,
-                    rows=tuple(selected),
-                    matching_leaves=len(matched),
-                    matching_files=matching_files,
-                    matching_bytes=matching_bytes,
+        page = selected[: query.max_rows]
+        next_offset = len(page)
+        next_page = uuid.uuid4().hex if next_offset < len(selected) else None
+        if next_page is not None:
+            with self._page_lock:
+                self._retain_page_memo_locked(
+                    _FilteredTreePageMemo(
+                        version=image.version,
+                        state=image.state,
+                        query=query,
+                        rows=tuple(selected),
+                        matching_leaves=len(matched),
+                        matching_files=matching_files,
+                        matching_bytes=matching_bytes,
+                        token=next_page,
+                        offset=next_offset,
+                    )
                 )
         return FilteredTreeProjection(
             query_id=query.query_id,
@@ -1696,8 +1972,7 @@ class _PythonInventoryStore:
             matching_leaves=len(matched),
             matching_files=matching_files,
             matching_bytes=matching_bytes,
-            next_page=str(next_offset) if next_offset < len(selected) else None,
-            remaining_rows=len(selected) - next_offset,
+            next_page=next_page,
         )
 
     def _filter_matches(
@@ -1730,7 +2005,7 @@ class _PythonInventoryStore:
             extension_match = any(
                 lowered_ext == extension.lower()
                 or (
-                    family_for_extension(extension) is not None
+                    self._registry_family_id(extension) is not None
                     and lowered_ext.endswith(extension.lower())
                 )
                 for extension in selection.extensions
@@ -1741,10 +2016,14 @@ class _PythonInventoryStore:
             if not extension_match and not filename_match:
                 return False
         if selection.type_families:
-            match = family_for_extension(entry.ext)
-            if match is None or match.family.id not in selection.type_families:
+            family_id = self._registry_family_id(entry.ext)
+            if family_id is None or family_id not in selection.type_families:
                 return False
         return True
+
+    def _registry_family_id(self, extension: str) -> str | None:
+        match = self._registry.match("", extension)
+        return match.kind.family_id if match is not None else None
 
     @staticmethod
     def _effective_ignored_directories(entries: Sequence[FsEntry]) -> dict[str, bool]:
@@ -1774,19 +2053,42 @@ class _PythonInventoryStore:
             if entry.type == "file"
             and entry.mtime_ns >= cutoff
             and (not query.prefix or entry.path.startswith(query.prefix))
-            and (not query.extensions or entry.ext in query.extensions)
+            and (
+                not query.extensions
+                or ascii_casefold(entry.ext)
+                in {ascii_casefold(value) for value in query.extensions}
+            )
             and (query.include_ignored or not entry.gitignored)
         ]
-        matching.sort(key=lambda entry: entry.mtime_ns, reverse=True)
+        # Two orders, and they are different questions.
+        #
+        # Selection ranks ignored last, then newest, then canonical path. Presentation
+        # then restores pure recency within the page that survived.
+        #
+        # Demoting ignored entries is deliberate and load-bearing: an `npm install` writes
+        # thousands of files at once, and a pure recency ranking would hand back ten
+        # `node_modules` entries and none of the caller's own work, which is a useless
+        # answer to "what have I been working on".
+        #
+        # Applying it in *every* branch is the change. It used to fire only when the match
+        # count exceeded the row bound, so the same query name carried two different
+        # ranking contracts and which one a caller received depended on how many rows
+        # happened to match. A rule that appears at a threshold cannot be agreed with a
+        # second provider, and cannot be tested without knowing the corpus size.
+        #
+        # The path is the final key in both sorts because it is unique within one index,
+        # which makes each total. A stable sort on time alone leaves ties resolved by
+        # whatever order `entries` was built in, and that is not a contract.
+        matching.sort(
+            key=lambda entry: (
+                entry.gitignored,
+                -entry.mtime_ns,
+                canonical_inventory_path(entry.path),
+            )
+        )
         total = len(matching)
-        if total > query.max_rows:
-            capped = [entry for entry in matching if not entry.gitignored][: query.max_rows]
-            if len(capped) < query.max_rows:
-                capped.extend(entry for entry in matching if entry.gitignored)
-                capped = capped[: query.max_rows]
-            capped.sort(key=lambda entry: entry.mtime_ns, reverse=True)
-        else:
-            capped = matching
+        capped = matching[: query.max_rows]
+        capped.sort(key=lambda entry: (-entry.mtime_ns, canonical_inventory_path(entry.path)))
         ignored_directories: set[str] = set()
         for entry in capped:
             parts = entry.path.split("/")
@@ -1798,12 +2100,14 @@ class _PythonInventoryStore:
         return RecentProjection(
             query_id=query.query_id,
             entries=tuple(_semantic_entry(entry) for entry in capped),
-            total_matches=total,
+            total_matches=_bounded_count(total, query.count_cap, len(capped)),
             gitignored_directories=tuple(sorted(ignored_directories)),
         )
 
     @staticmethod
     def _projection_rows(projection: ProjectionResult) -> int:
+        if isinstance(projection, QueryLimitProjection):
+            return 0
         if isinstance(projection, (DirectoryProjection, FilteredTreeProjection)):
             return len(projection.entries)
         if isinstance(projection, RecentProjection):
@@ -2214,17 +2518,20 @@ class _PythonInventoryStore:
                     extension_counts[ext] = row
                 row[ignored_index] += 1
 
-                canonical = canonical_extension(ext)
+                extension_classification = self._registry.classify("", ext)
+                canonical = extension_classification.canonical_extension or ext
                 canonical_row = canonical_extension_counts.setdefault(canonical, [0, 0])
                 canonical_row[ignored_index] += 1
 
-                family_match = family_for_extension(ext)
-                if family_match is not None:
-                    family_row = family_counts.setdefault(family_match.family.id, [0, 0])
+                if extension_classification.family_id is not None:
+                    family_row = family_counts.setdefault(
+                        extension_classification.family_id,
+                        [0, 0],
+                    )
                     family_row[ignored_index] += 1
 
             name = entry.name.lower()
-            semantic_category = category_for_file(name, ext)
+            semantic_category = self._registry.classify(name, ext).group_id
             for preset_id, preset_extensions, preset_names in normalized_presets:
                 if (
                     preset_id == semantic_category
@@ -2265,7 +2572,7 @@ class _PythonInventoryStore:
         preset_rows: list[list[object]] = [
             [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
         ]
-        registry = load_file_type_registry()
+        registry = self._registry
         tracked_mtimes = array("q", sorted(tracked_mtimes))
         ignored_mtimes = array("q", sorted(ignored_mtimes))
         oldest_mtime_ns = min(
@@ -2376,6 +2683,7 @@ class _PythonInventoryStore:
                 options,
                 ancestor_gitignored=self._ancestor_gitignored(path, entries),
                 aggregates=ChainMap(computed, self._subtree_aggregates),
+                registry=self._registry,
             )
         except BaseException:
             # The pass is still counted in flight; retiring it here keeps a
@@ -2642,7 +2950,7 @@ class _PythonInventoryStore:
             )
         async for entry in walk_tree(
             target_resolved,
-            max_depth=(self._max_depth if max_depth is None else min(self._max_depth, max_depth)),
+            max_depth=max_depth,
             max_files=self._max_files,
             gitignore_check=gi_check,
             hidden_allowlist=self._config.hidden_allowlist,
@@ -2804,7 +3112,7 @@ class _PythonInventoryStore:
             )
             async for observation in walk_tree(
                 root,
-                max_depth=self._max_depth,
+                max_depth=None,
                 max_files=self._max_files,
                 gitignore_check=gi_check,
                 hidden_allowlist=self._config.hidden_allowlist,
@@ -2841,6 +3149,8 @@ class _PythonInventoryStore:
             return
 
         is_truncated = self._files_indexed >= self._max_files
+        if is_truncated:
+            await self._stop_watcher_for_resource_budget()
         if not is_truncated:
             try:
                 self._repair_pending_dir_aggregates()
@@ -3366,30 +3676,6 @@ class _PythonInventoryStore:
                 queue.put_nowait(self._reset_batch())
 
 
-class PythonInventoryHandle:
-    """Thin provider-contract façade over the private Python inventory store."""
-
-    __slots__ = ("_store",)
-
-    def __init__(self, store: _PythonInventoryStore) -> None:
-        self._store = store
-
-    async def read(self, request: ReadRequest) -> ReadResult:
-        return await self._store.read(request)
-
-    def changes(self, *, after: ChangeCursor | None) -> AsyncGenerator[ChangeBatch, None]:
-        return self._store.changes(after=after)
-
-    async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
-        return await self._store.refresh(request)
-
-    async def prioritize(self, request: PriorityRequest) -> None:
-        await self._store.prioritize(request)
-
-    async def close(self) -> None:
-        await self._store.close()
-
-
 class PythonInventoryBackend:
     """Construct one Python reference-provider handle per served root."""
 
@@ -3397,15 +3683,14 @@ class PythonInventoryBackend:
         self,
         root: Path,
         config: InventoryConfig,
-    ) -> PythonInventoryHandle:
+    ) -> InventoryHandle:
         canonical_root = await asyncio.to_thread(root.resolve)
         store = _PythonInventoryStore(config=config)
         store.start_watcher(canonical_root)
         store.start(canonical_root)
-        return PythonInventoryHandle(store)
+        return store
 
 
 __all__ = [
     "PythonInventoryBackend",
-    "PythonInventoryHandle",
 ]

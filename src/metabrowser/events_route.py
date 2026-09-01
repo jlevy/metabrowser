@@ -71,6 +71,8 @@ from metabrowser.http_caching import (
     matches_if_none_match,
 )
 from metabrowser.inventory_engine.contract import (
+    MAX_ASSEMBLED_PAGES,
+    MAX_ASSEMBLED_ROWS,
     CatalogProjection,
     CatalogQuery,
     CatalogRecord,
@@ -91,7 +93,7 @@ from metabrowser.inventory_engine.contract import (
     QueryKind,
     ReadRequest,
     VersionUnavailableError,
-    canonical_inventory_path,
+    parse_inventory_path,
 )
 from metabrowser.inventory_engine.coordinator import (
     DecoratedInventoryEntry,
@@ -110,6 +112,7 @@ from metabrowser.inventory_engine.tree_page_assembly import assemble_tree_pages
 from metabrowser.settings import (
     DEFAULT_EXECUTOR_WORKERS,
     INDEX_PROGRESS_UPDATE_FILES,
+    INVENTORY_MAX_DEPTH,
     INVENTORY_TREE_PAGE_ROWS,
     PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES,
     PENDING_TALLY_DIAGNOSTIC_SAMPLE_LIMIT,
@@ -291,7 +294,7 @@ class _EventBus:
     async def _read_snapshot(self, scope: _ScopeType) -> tuple[FsSnapshot, HostVersion]:
         """Assemble one lossless snapshot from version-pinned bounded pages."""
 
-        max_depth = 2 if scope == "root-depth-2" else self._config.max_depth
+        max_depth = 2 if scope == "root-depth-2" else INVENTORY_MAX_DEPTH
         assembly = await assemble_tree_pages(
             self._coordinator,
             page_query=DirectoryQuery(
@@ -412,7 +415,7 @@ class _EventBus:
         read = await self._coordinator.read(ReadRequest(queries=queries))
         ops: list[FsUpsert | FsRemove] = []
         for query, path in zip(queries, change.dirty_paths, strict=True):
-            projection = read.result.projection(query.query_id)
+            projection = read.result.completed_projection(query.query_id)
             if not isinstance(projection, EntryProjection):
                 raise TypeError("an entry query returned a non-entry projection")
             if projection.presence is EntryPresence.UNKNOWN:
@@ -441,7 +444,7 @@ class _EventBus:
         read = await self._coordinator.read(
             ReadRequest(queries=(DiagnosticsQuery(query_id="capability-change"),))
         )
-        diagnostic = read.result.projection("capability-change")
+        diagnostic = read.result.completed_projection("capability-change")
         if not isinstance(diagnostic, DiagnosticsProjection):
             raise TypeError("the capability read returned the wrong projection")
         diagnostics = diagnostic.payload
@@ -463,7 +466,7 @@ class _EventBus:
                     "complete": state.coverage.complete,
                     "truncated": truncated,
                     "indexed_files": diagnostics.files_indexed,
-                    "max_files": self._config.max_files,
+                    "max_files": self._config.budget.max_files,
                     "status": _status_from_phase(
                         state.phase,
                         complete=state.coverage.complete,
@@ -802,7 +805,7 @@ async def _read_index_progress(
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(DiagnosticsQuery(query_id="progress"),))
     )
-    diagnostic = coordinated.result.projection("progress")
+    diagnostic = coordinated.result.completed_projection("progress")
     if not isinstance(diagnostic, DiagnosticsProjection):
         raise TypeError("the progress read returned the wrong projection")
     diagnostics = diagnostic.payload
@@ -819,12 +822,12 @@ async def _read_index_progress(
     return IndexProgressEnvelope(
         status=status,
         indexed_files=diagnostics.files_indexed,
-        max_files=runtime.config.max_files,
+        max_files=runtime.config.budget.max_files,
         truncated=truncated,
         complete=state.coverage.complete or truncated,
         active=state.phase
         in {
-            LifecyclePhase.OPENING_CACHE,
+            LifecyclePhase.OPENING,
             LifecyclePhase.DISCOVERING,
             LifecyclePhase.RECONCILING,
         },
@@ -862,8 +865,8 @@ async def _read_index_meta(
             )
         )
     )
-    navigation = coordinated.result.projection("meta-navigation")
-    diagnostic = coordinated.result.projection("meta-diagnostics")
+    navigation = coordinated.result.completed_projection("meta-navigation")
+    diagnostic = coordinated.result.completed_projection("meta-diagnostics")
     if not isinstance(navigation, NavigationProjection) or not isinstance(
         diagnostic, DiagnosticsProjection
     ):
@@ -898,7 +901,7 @@ async def _read_index_meta(
         status=status,
         indexed_files=files,
         indexed_dirs=dirs,
-        max_files=runtime.config.max_files,
+        max_files=runtime.config.budget.max_files,
         truncated=truncated,
         complete=state.coverage.complete or truncated,
         oldest_mtime_ns=oldest,
@@ -954,7 +957,7 @@ def _pending_tally_paths(payload: dict[str, object]) -> list[str]:
         # is canonicalized before it can reach a provider query. A path that
         # cannot name anything under the root is dropped from the diagnostic
         # rather than failing the request the diagnostic exists to explain.
-        canonical = canonical_inventory_path(path)
+        canonical = parse_inventory_path(path)
         if canonical is not None:
             paths.append(canonical)
     return paths
@@ -1006,19 +1009,19 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
                     query_id=f"pending-children-{index}",
                     path=path,
                     max_depth=1,
-                    max_rows=runtime.config.max_files,
+                    max_rows=runtime.config.budget.max_files,
                 ),
             )
         )
     coordinated = await runtime.coordinator.read(ReadRequest(queries=tuple(queries)))
-    diagnostic = coordinated.result.projection("pending-diagnostics")
+    diagnostic = coordinated.result.completed_projection("pending-diagnostics")
     if not isinstance(diagnostic, DiagnosticsProjection):
         raise TypeError("the pending-tally read returned the wrong projection")
     diagnostics = diagnostic.payload
     path_state: list[dict[str, object]] = []
     for index, path in enumerate(requested_paths):
-        entry_projection = coordinated.result.projection(f"pending-entry-{index}")
-        children_projection = coordinated.result.projection(f"pending-children-{index}")
+        entry_projection = coordinated.result.completed_projection(f"pending-entry-{index}")
+        children_projection = coordinated.result.completed_projection(f"pending-children-{index}")
         if not isinstance(entry_projection, EntryProjection) or not isinstance(
             children_projection, DirectoryProjection
         ):
@@ -1061,7 +1064,7 @@ async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
             "active"
             if state.phase
             in {
-                LifecyclePhase.OPENING_CACHE,
+                LifecyclePhase.OPENING,
                 LifecyclePhase.DISCOVERING,
                 LifecyclePhase.RECONCILING,
             }
@@ -1211,18 +1214,19 @@ async def _read_catalog(
     # in one scan instead of rescanning and resorting the same index for each 50k page.
     # The continuation loop remains part of the application contract for a provider
     # whose own semantic scope can return more than one bounded page.
-    page_size = runtime.config.max_files
+    page_size = runtime.config.budget.max_files
     last_version_error: VersionUnavailableError | None = None
     for _attempt in range(_CATALOG_ASSEMBLY_ATTEMPTS):
         pages: list[tuple[CatalogRecord, ...]] = []
         after: str | None = None
         pinned: EngineVersion | None = None
-        expected_total: int | None = None
-        previous_remaining: int | None = None
         seen_cursors: set[str] = set()
+        pages_read = 0
         returned_rows = 0
         try:
             while True:
+                if pages_read == MAX_ASSEMBLED_PAGES:
+                    raise InventoryConsistencyError("catalog assembly exceeded its page bound")
                 coordinated = await runtime.coordinator.read(
                     ReadRequest(
                         queries=(
@@ -1235,40 +1239,24 @@ async def _read_catalog(
                         at_version=pinned,
                     )
                 )
-                projection = coordinated.result.projection("catalog")
+                projection = coordinated.result.completed_projection("catalog")
+                pages_read += 1
                 if not isinstance(projection, CatalogProjection):
                     raise TypeError("the catalog read returned the wrong projection")
                 if len(projection.records) > page_size:
                     raise InventoryConsistencyError("a catalog page exceeded its row bound")
                 if pinned is None:
                     pinned = coordinated.version.engine
-                    expected_total = projection.total_matches
-                    if expected_total != len(projection.records) + projection.remaining_rows:
-                        raise InventoryConsistencyError(
-                            "the first catalog page did not conserve total_matches"
-                        )
                 elif coordinated.version.engine != pinned:
                     raise InventoryConsistencyError(
                         "a version-pinned catalog page changed engine version"
                     )
-                if projection.total_matches != expected_total:
-                    raise InventoryConsistencyError(
-                        "catalog pages changed total_matches within one version"
-                    )
-                if previous_remaining is not None and previous_remaining != (
-                    len(projection.records) + projection.remaining_rows
-                ):
-                    raise InventoryConsistencyError(
-                        "catalog pages did not conserve the exact remaining row count"
-                    )
                 pages.append(projection.records)
                 returned_rows += len(projection.records)
+                if returned_rows > MAX_ASSEMBLED_ROWS:
+                    raise InventoryConsistencyError("catalog assembly exceeded its row bound")
                 after = projection.next_page
                 if after is None:
-                    if returned_rows != expected_total:
-                        raise InventoryConsistencyError(
-                            "catalog page assembly did not return total_matches rows"
-                        )
                     state = coordinated.result.state
                     status = _catalog_status(state)
                     engine = coordinated.version.engine
@@ -1276,7 +1264,6 @@ async def _read_catalog(
                 if after in seen_cursors:
                     raise InventoryConsistencyError("catalog page cursor did not advance")
                 seen_cursors.add(after)
-                previous_remaining = projection.remaining_rows
         except VersionUnavailableError as error:
             last_version_error = error
             continue

@@ -300,7 +300,7 @@ Every link is checked except the first, and the first is where the honest limits
   reach the provider completely, live updates end.
   Exhausting the inotify watch limit on a large tree lands here.
   The provider leaves coverage as measured, marks freshness stale, and reports a typed
-  `watcher_gap` issue and diagnostics; the coordinator projects that transition as a
+  `observation_gap` issue and diagnostics; the coordinator projects that transition as a
   `capability.update` with `state: "failed"`. This is necessary because nothing
   downstream can distinguish a quiet filesystem from a dead watch.
 - **Gitignore edits.** `FsEntry.gitignored` is stamped at write time from a checker

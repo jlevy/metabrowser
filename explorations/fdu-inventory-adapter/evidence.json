@@ -1,0 +1,873 @@
+{
+  "conformance": [
+    {
+      "detail": "",
+      "outcome": "passed",
+      "test": "test_catalog_pages_report_exact_lossless_remainders",
+      "wall_time_ns": 8237125
+    },
+    {
+      "detail": "",
+      "outcome": "passed",
+      "test": "test_catalog_predicate_semantics_are_runtime_independent_and_exact",
+      "wall_time_ns": 2923084
+    },
+    {
+      "detail": "",
+      "outcome": "passed",
+      "test": "test_checkpoint_read_returns_only_a_coherent_constant_work_envelope",
+      "wall_time_ns": 110105083
+    },
+    {
+      "detail": "",
+      "outcome": "passed",
+      "test": "test_directory_pages_are_lossless_when_directories_outnumber_file_budget",
+      "wall_time_ns": 5487542
+    },
+    {
+      "detail": "",
+      "outcome": "passed",
+      "test": "test_paged_time_dependent_reads_reuse_one_as_of",
+      "wall_time_ns": 61762500
+    },
+    {
+      "detail": "Traceback (most recent call last):\n  File \"<HOME>/.codex/worktrees/ad36/fdu/attic/metabrowser/explorations/fdu-inventory-adapter/run.py\", line 117, in _run_conformance\n    getattr(suite, name)(factory, Path(raw_root))\n    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<HOME>/.codex/worktrees/ad36/fdu/attic/metabrowser/tests/test_inventory_provider_contract.py\", line 871, in test_provider_budget_stop_is_explicit_and_absence_remains_unknown\n    assert asyncio.run(run()) == (\n           ~~~~~~~~~~~^^^^^^^\n  File \"<HOME>/.local/share/uv/python/cpython-3.14.6-macos-aarch64-none/lib/python3.14/asyncio/runners.py\", line 205, in run\n    return runner.run(main)\n           ~~~~~~~~~~^^^^^^\n  File \"<HOME>/.local/share/uv/python/cpython-3.14.6-macos-aarch64-none/lib/python3.14/asyncio/runners.py\", line 128, in run\n    return self._loop.run_until_complete(task)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"<HOME>/.local/share/uv/python/cpython-3.14.6-macos-aarch64-none/lib/python3.14/asyncio/base_events.py\", line 719, in run_until_complete\n    return future.result()\n           ~~~~~~~~~~~~~^^\n  File \"<HOME>/.codex/worktrees/ad36/fdu/attic/metabrowser/tests/test_inventory_provider_contract.py\", line 851, in run\n    handle = await _open_settled_provider(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<3 lines>...\n    )\n    ^\n  File \"<HOME>/.codex/worktrees/ad36/fdu/attic/metabrowser/tests/test_inventory_provider_contract.py\", line 128, in _open_settled_provider\n    raise AssertionError(\"inventory provider did not settle\")\nAssertionError: inventory provider did not settle\n",
+      "outcome": "failed",
+      "test": "test_provider_budget_stop_is_explicit_and_absence_remains_unknown",
+      "wall_time_ns": 3447260500
+    },
+    {
+      "detail": "Traceback (most recent call last):\n  File \"<HOME>/.codex/worktrees/ad36/fdu/attic/metabrowser/explorations/fdu-inventory-adapter/run.py\", line 117, in _run_conformance\n    getattr(suite, name)(factory, Path(raw_root))\n    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<HOME>/.codex/worktrees/ad36/fdu/attic/metabrowser/tests/test_inventory_provider_contract.py\", line 1089, in test_provider_changes_resume_and_report_history_gaps_as_reset\n    asyncio.run(run())\n    ~~~~~~~~~~~^^^^^^^\n  File \"<HOME>/.local/share/uv/python/cpython-3.14.6-macos-aarch64-none/lib/python3.14/asyncio/runners.py\", line 205, in run\n    return runner.run(main)\n           ~~~~~~~~~~^^^^^^\n  File \"<HOME>/.local/share/uv/python/cpython-3.14.6-macos-aarch64-none/lib/python3.14/asyncio/runners.py\", line 128, in run\n    return self._loop.run_until_complete(task)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"<HOME>/.local/share/uv/python/cpython-3.14.6-macos-aarch64-none/lib/python3.14/asyncio/base_events.py\", line 719, in run_until_complete\n    return future.result()\n           ~~~~~~~~~~~~~^^\n  File \"<HOME>/.codex/worktrees/ad36/fdu/attic/metabrowser/tests/test_inventory_provider_contract.py\", line 1068, in run\n    assert first.reset is False\n           ^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+      "outcome": "failed",
+      "test": "test_provider_changes_resume_and_report_history_gaps_as_reset",
+      "wall_time_ns": 4934792
+    },
+    {
+      "detail": "",
+      "outcome": "passed",
+      "test": "test_provider_close_joins_change_delivery_and_is_idempotent",
+      "wall_time_ns": 172056666
+    },
+    {
+      "detail": "",
+      "outcome": "passed",
+      "test": "test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session",
+      "wall_time_ns": 17135417
+    },
+    {
+      "detail": "",
+      "outcome": "passed",
+      "test": "test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint",
+      "wall_time_ns": 3191541
+    },
+    {
+      "detail": "Traceback (most recent call last):\n  File \"<HOME>/.codex/worktrees/ad36/fdu/attic/metabrowser/explorations/fdu-inventory-adapter/run.py\", line 117, in _run_conformance\n    getattr(suite, name)(factory, Path(raw_root))\n    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<HOME>/.codex/worktrees/ad36/fdu/attic/metabrowser/tests/test_inventory_provider_contract.py\", line 839, in test_provider_semantic_digest\n    assert actual == expected, actual\n           ^^^^^^^^^^^^^^^^^^\nAssertionError: {'state': ('watching', True, 'fresh', 'scanned'), 'link': ('bundle-link', 'symlink', '', None, False, None, None, None, None, None), 'directory': (('ignored', 'dir', '', None, True, 1, 3, 0, 0, False), ('tracked', 'dir', '', None, False, 2, 10, 2, 10, False), ('bundle-link', 'symlink', '', None, False, None, None, None, None, None), ('ignored/cache.bin', 'file', '.bin', 3, True, None, None, None, None, None), ('tracked/README', 'file', '', 6, False, None, None, None, None, None), ('tracked/bundle.min.js', 'file', '.min.js', 4, False, None, None, None, None, None)), 'filtered': (('tracked', 'tracked/bundle.min.js'), 1, 4), 'rollup': (3, 13, 2, 10, (('tracked', 'dir', 2, 10, 2, 10, False), ('ignored', 'dir', 1, 3, 0, 0, True))), 'navigation': {'files': 2, 'size': 10, 'ignored_files': 1, 'ignored_size': 3}, 'recent': ('tracked/bundle.min.js', 'tracked/README', 'ignored/cache.bin'), 'catalog': (('tracked/README', '', 6), ('tracked/bundle.min.js', '.min.js', 4)), 'diagnostics': ('fdu-spike', 'inventory-provider-v1')}\n",
+      "outcome": "failed",
+      "test": "test_provider_semantic_digest",
+      "wall_time_ns": 75596250
+    },
+    {
+      "detail": "",
+      "outcome": "passed",
+      "test": "test_provider_version_pins_fail_instead_of_moving",
+      "wall_time_ns": 3353167
+    }
+  ],
+  "corpus": {
+    "process_peak_rss_after": 99549184,
+    "process_peak_rss_before": 66732032,
+    "projection_rows": {
+      "catalog": 8360,
+      "directory": 285,
+      "markdown": 222,
+      "recent": 200
+    },
+    "python_peak_bytes": 13022932,
+    "root": "metabrowser-repository",
+    "rows_returned": 9071,
+    "settled_phase": "ready",
+    "version": {
+      "scope_fingerprint": "b5cae1a2474e08d2d228d6885d64f8190e53fdb9b3bdc6edb44676c8ef1de468",
+      "semantic_fingerprint": "562c09414e8e458e48c7a65aff7607d2fff0bed42b6197a66117f08226d1087c",
+      "sequence": 473,
+      "session": "[GENERATED]"
+    }
+  },
+  "lifecycle": {
+    "evidence": {
+      "first_phase": "watching",
+      "first_useful_rows": 1,
+      "iterator_cancel_ns": 232954417,
+      "live_change": {
+        "all_dirty": false,
+        "dirty_paths": [],
+        "reset": true
+      },
+      "poll_workers_after": 0,
+      "poll_workers_before": 0,
+      "refresh_version": {
+        "scope_fingerprint": "b5cae1a2474e08d2d228d6885d64f8190e53fdb9b3bdc6edb44676c8ef1de468",
+        "semantic_fingerprint": "562c09414e8e458e48c7a65aff7607d2fff0bed42b6197a66117f08226d1087c",
+        "sequence": 13,
+        "session": "[GENERATED]"
+      },
+      "replacement_version": {
+        "scope_fingerprint": "b5cae1a2474e08d2d228d6885d64f8190e53fdb9b3bdc6edb44676c8ef1de468",
+        "semantic_fingerprint": "562c09414e8e458e48c7a65aff7607d2fff0bed42b6197a66117f08226d1087c",
+        "sequence": 7,
+        "session": "[GENERATED]"
+      },
+      "usable_after_iterator_cancel": "ready"
+    },
+    "outcome": "passed"
+  },
+  "probe": {
+    "change_polls": 22,
+    "dropped_observations": 0,
+    "omitted_checkpoint_observations": 571,
+    "priorities": 0,
+    "read_observations": [
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 663000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 70,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["catalog"],
+        "rows_returned": 2,
+        "wall_time_ns": 1273250
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 374000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 70,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["catalog"],
+        "rows_returned": 2,
+        "wall_time_ns": 385542
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 313000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 70,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["catalog"],
+        "rows_returned": 2,
+        "wall_time_ns": 325291
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 308000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 70,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["catalog"],
+        "rows_returned": 1,
+        "wall_time_ns": 316000
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 303000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 22,
+        "materialized_rows": 5,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["catalog"],
+        "rows_returned": 2,
+        "wall_time_ns": 310167
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 1,
+        "cpu_time_ns": 369000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 77,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["directory"],
+        "rows_returned": 2,
+        "wall_time_ns": 391042
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 1,
+        "cpu_time_ns": 331000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 77,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["directory"],
+        "rows_returned": 2,
+        "wall_time_ns": 377709
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 1,
+        "cpu_time_ns": 563000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 77,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["directory"],
+        "rows_returned": 2,
+        "wall_time_ns": 633209
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 1,
+        "cpu_time_ns": 458000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 77,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["directory"],
+        "rows_returned": 1,
+        "wall_time_ns": 508459
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 1,
+        "cpu_time_ns": 357000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 36,
+        "materialized_rows": 4,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["filtered_tree"],
+        "rows_returned": 1,
+        "wall_time_ns": 377292
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 1,
+        "cpu_time_ns": 300000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 36,
+        "materialized_rows": 4,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["filtered_tree"],
+        "rows_returned": 1,
+        "wall_time_ns": 357209
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 1,
+        "cpu_time_ns": 274000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 36,
+        "materialized_rows": 4,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["filtered_tree"],
+        "rows_returned": 1,
+        "wall_time_ns": 295709
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 459000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 29,
+        "materialized_rows": 3,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "entry"],
+        "rows_returned": 2,
+        "wall_time_ns": 468083
+      },
+      {
+        "aggregate_passes": 4,
+        "child_bucket_sorts": 3,
+        "cpu_time_ns": 1255000,
+        "full_result_sorts": 4,
+        "materialized_path_bytes": 77,
+        "materialized_rows": 7,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": [
+          "entry",
+          "directory",
+          "filtered_tree",
+          "rollup",
+          "navigation",
+          "recent",
+          "catalog",
+          "diagnostics"
+        ],
+        "rows_returned": 17,
+        "wall_time_ns": 1268084
+      },
+      {
+        "aggregate_passes": 4,
+        "child_bucket_sorts": 470,
+        "cpu_time_ns": 846867000,
+        "full_result_sorts": 4,
+        "materialized_path_bytes": 412836,
+        "materialized_rows": 8830,
+        "native_calls": 3,
+        "native_pages": 3,
+        "query_kinds": [
+          "entry",
+          "directory",
+          "filtered_tree",
+          "rollup",
+          "navigation",
+          "recent",
+          "catalog",
+          "diagnostics"
+        ],
+        "rows_returned": 9071,
+        "wall_time_ns": 851645875
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 1,
+        "cpu_time_ns": 429000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 8,
+        "materialized_rows": 2,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "directory"],
+        "rows_returned": 2,
+        "wall_time_ns": 433791
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 581000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 16,
+        "materialized_rows": 3,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry"],
+        "rows_returned": 1,
+        "wall_time_ns": 585542
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 1386000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 15,
+        "materialized_rows": 2,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry"],
+        "rows_returned": 1,
+        "wall_time_ns": 1332333
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 6,
+        "cpu_time_ns": 750000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 128,
+        "materialized_rows": 11,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "directory"],
+        "rows_returned": 6,
+        "wall_time_ns": 762708
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 6,
+        "cpu_time_ns": 382000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 128,
+        "materialized_rows": 11,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "directory"],
+        "rows_returned": 6,
+        "wall_time_ns": 402375
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 6,
+        "cpu_time_ns": 586000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 128,
+        "materialized_rows": 11,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "directory"],
+        "rows_returned": 6,
+        "wall_time_ns": 634333
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 585000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 128,
+        "materialized_rows": 11,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "navigation"],
+        "rows_returned": 2,
+        "wall_time_ns": 593084
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 637000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 128,
+        "materialized_rows": 11,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "navigation"],
+        "rows_returned": 2,
+        "wall_time_ns": 657750
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 1,
+        "cpu_time_ns": 258000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 0,
+        "materialized_rows": 1,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "directory"],
+        "rows_returned": 0,
+        "wall_time_ns": 279250
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 313000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 30,
+        "materialized_rows": 4,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry"],
+        "rows_returned": 1,
+        "wall_time_ns": 333333
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 3,
+        "cpu_time_ns": 259000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 30,
+        "materialized_rows": 4,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "directory"],
+        "rows_returned": 2,
+        "wall_time_ns": 279041
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 6,
+        "cpu_time_ns": 403000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 128,
+        "materialized_rows": 11,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "directory"],
+        "rows_returned": 6,
+        "wall_time_ns": 424042
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 389000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 128,
+        "materialized_rows": 11,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "navigation"],
+        "rows_returned": 2,
+        "wall_time_ns": 409209
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 6,
+        "cpu_time_ns": 552000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 112,
+        "materialized_rows": 10,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "directory"],
+        "rows_returned": 6,
+        "wall_time_ns": 554834
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 885000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 112,
+        "materialized_rows": 10,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["catalog"],
+        "rows_returned": 2,
+        "wall_time_ns": 831166
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 877000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 112,
+        "materialized_rows": 10,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["recent"],
+        "rows_returned": 4,
+        "wall_time_ns": 829333
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 739000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 112,
+        "materialized_rows": 10,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["navigation", "diagnostics"],
+        "rows_returned": 2,
+        "wall_time_ns": 603375
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 398000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 112,
+        "materialized_rows": 10,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["navigation", "diagnostics"],
+        "rows_returned": 2,
+        "wall_time_ns": 409833
+      },
+      {
+        "aggregate_passes": 1,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 564000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 112,
+        "materialized_rows": 10,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["recent"],
+        "rows_returned": 4,
+        "wall_time_ns": 585250
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 22,
+        "cpu_time_ns": 1456000,
+        "full_result_sorts": 1,
+        "materialized_path_bytes": 249,
+        "materialized_rows": 44,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "directory"],
+        "rows_returned": 44,
+        "wall_time_ns": 1480958
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 380000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 29,
+        "materialized_rows": 4,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "entry"],
+        "rows_returned": 2,
+        "wall_time_ns": 398291
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 350000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 29,
+        "materialized_rows": 4,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["diagnostics"],
+        "rows_returned": 1,
+        "wall_time_ns": 392833
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 928000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 79,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "entry"],
+        "rows_returned": 2,
+        "wall_time_ns": 900750
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 271000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 79,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["diagnostics"],
+        "rows_returned": 1,
+        "wall_time_ns": 281750
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 281000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 79,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "entry", "entry", "entry", "entry"],
+        "rows_returned": 5,
+        "wall_time_ns": 290333
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 495000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 79,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry"],
+        "rows_returned": 1,
+        "wall_time_ns": 461667
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 661000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 79,
+        "materialized_rows": 8,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["diagnostics"],
+        "rows_returned": 1,
+        "wall_time_ns": 607958
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 721000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 19,
+        "materialized_rows": 3,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "entry"],
+        "rows_returned": 1,
+        "wall_time_ns": 697541
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 477000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 19,
+        "materialized_rows": 3,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["diagnostics"],
+        "rows_returned": 1,
+        "wall_time_ns": 441417
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 783000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 19,
+        "materialized_rows": 3,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry"],
+        "rows_returned": 1,
+        "wall_time_ns": 728000
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 1376000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 10,
+        "materialized_rows": 2,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["entry", "entry", "entry"],
+        "rows_returned": 1,
+        "wall_time_ns": 1199500
+      },
+      {
+        "aggregate_passes": 0,
+        "child_bucket_sorts": 0,
+        "cpu_time_ns": 670000,
+        "full_result_sorts": 0,
+        "materialized_path_bytes": 10,
+        "materialized_rows": 2,
+        "native_calls": 1,
+        "native_pages": 1,
+        "query_kinds": ["diagnostics"],
+        "rows_returned": 1,
+        "wall_time_ns": 677500
+      }
+    ],
+    "refreshes": 8,
+    "totals": {
+      "aggregate_passes": 18,
+      "child_bucket_sorts": 537,
+      "cpu_time_ns": 1052865000,
+      "full_result_sorts": 32,
+      "materialized_path_bytes": 416106,
+      "materialized_rows": 9179,
+      "native_calls": 620,
+      "native_pages": 49,
+      "reads": 618,
+      "rows_returned": 9228,
+      "wall_time_ns": 1074763292
+    }
+  },
+  "provenance": {
+    "fdu_revision": "0583a1a",
+    "import_origin": "uv-managed installed wheel",
+    "metabrowser_contract_revision": "3183888808b366b5ba1c381dec1cbb18b49d969e",
+    "source_tree_import": false,
+    "wheel": "fdu-0.1.0-cp312-abi3-macosx_11_0_arm64.whl",
+    "wheel_sha256": "80a077ba17f979a40f30a8dcfe59b2ceeba39285cf556543d78066b9dc5279c0"
+  },
+  "route_tests": {
+    "exit_code": 1,
+    "results": [
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_browser_inventory_api.py::test_api_tree_pages_provider_reads_independently_of_the_discovery_budget",
+        "wall_time_s": 0.17661429103463888
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_browser_inventory_api.py::test_api_tree_uses_inventory_when_populated",
+        "wall_time_s": 0.3326166248880327
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_browser_inventory_api.py::test_api_tree_tallies_share_one_provider_read",
+        "wall_time_s": 0.18229879206046462
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_browser_inventory_api.py::test_api_tree_uses_provider_presence_instead_of_parallel_filesystem_truth",
+        "wall_time_s": 0.1709307909477502
+      },
+      {
+        "detail": "tests/test_browser_inventory_api.py:294: in test_api_tree_uses_pending_inventory_without_filesystem_fallback\n    assert body[\"tally_cache_status\"] == \"scanning\"\nE   AssertionError: assert 'done' == 'scanning'\nE     \nE     - scanning\nE     + done",
+        "outcome": "failed",
+        "test": "tests/test_browser_inventory_api.py::test_api_tree_uses_pending_inventory_without_filesystem_fallback",
+        "wall_time_s": 0.17767616687342525
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_browser_inventory_api.py::test_a_row_request_does_not_pay_for_the_tallies",
+        "wall_time_s": 0.17668658308684826
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_browser_lifespan_e2e.py::test_full_lifespan_stack_serves_all_endpoints",
+        "wall_time_s": 0.17069649999029934
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_browser_lifespan_e2e.py::test_recent_filter_includes_logs_state_files",
+        "wall_time_s": 0.17485166690312326
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_e2e_filesystem_to_sse.py::test_fresh_connect_no_replay_flood",
+        "wall_time_s": 0.3962157079949975
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_e2e_filesystem_to_sse.py::test_touch_existing_file_emits_upsert_and_projection_invalidate",
+        "wall_time_s": 0.26896370807662606
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_e2e_filesystem_to_sse.py::test_mkdir_with_files_reconciles_subtree_and_root_totals",
+        "wall_time_s": 0.17434087512083352
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_e2e_filesystem_to_sse.py::test_rm_file_emits_remove_and_updates_root",
+        "wall_time_s": 0.2841244579758495
+      },
+      {
+        "detail": "",
+        "outcome": "passed",
+        "test": "tests/test_e2e_filesystem_to_sse.py::test_rm_directory_coalesces_descendant_removals",
+        "wall_time_s": 0.28451766609214246
+      }
+    ],
+    "selected": [
+      "tests/test_browser_inventory_api.py",
+      "tests/test_browser_lifespan_e2e.py::test_full_lifespan_stack_serves_all_endpoints",
+      "tests/test_browser_lifespan_e2e.py::test_recent_filter_includes_logs_state_files",
+      "tests/test_e2e_filesystem_to_sse.py"
+    ]
+  },
+  "schema": "fdu-metabrowser-spike-v1"
+}
