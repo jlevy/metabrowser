@@ -5,7 +5,8 @@
 **Author:** Reviewer (LLM-assisted)
 
 **Status:** Complete.
-Five defects were found and fixed while merging; four findings are open as beads.
+Five defects were found and fixed while merging, and a 2.75x performance regression
+against `main` was measured and mostly closed; seven findings are open as beads.
 The stack is restacked so each branch merges into the one below it.
 
 **Scope:** The whole inventory-engine stack, merged onto current `main` and reviewed as
@@ -404,6 +405,53 @@ filesystem *address* as well as an identity, so `root / path` breaks once the pa
 the escaped form. fdu carries both a native path and a canonical one per row.
 Deciding which shape to mirror is a contract decision, not an implementation detail, and
 it belongs with F1 because both are about what a row is made of.
+
+## Performance
+
+The refactor is behaviour-preserving by intent, and it was measured for that.
+It was not measured for speed: every one of the 197 rows in the performance loop’s
+recorded runs has a null `inventory_provider`, so no run has ever been taken on the
+refactored engine.
+
+A full scan on a 60,000-file synthetic corpus, timed through
+`metab CORPUS --api /api/index/meta`, three runs, median:
+
+| Build | Median | Against main |
+| --- | --- | --- |
+| main | 2,071 ms | — |
+| the stack, as its pull requests stood | 5,690 ms | **2.75x slower** |
+| the stack, with the two fixes below | 2,652 ms | 1.28x slower |
+
+Both causes are on the per-entry path, and neither was visible in any test.
+
+**Validation ran twice per entry through pathlib.** `require_canonical_inventory_path`
+built two `PurePosixPath` objects and scanned every character of every path in a
+Python-level generator looking for surrogates, about 248,000 times for 60,000 files.
+Rewritten against the string, it costs 0.36 us instead of 4.75 us, and entry
+construction 1.85 us instead of 10.12 us.
+`isascii()` is what does the work: every surrogate is non-ASCII, so an ASCII path cannot
+hold one and the expensive scan never runs.
+The rewrite was checked against the original over 10,180 inputs under both `allow_root`
+settings and agrees on every verdict and every message.
+
+**Discovery invalidated caches that were empty.** The host’s projection-invalidation
+listener was registered on the coordinator, which publishes every entry it discovers, so
+a first walk invalidated once per entry — and each of those resolves the path, a
+syscall, once per projection cache.
+That is 45,516 resolves for 22,758 entries.
+Before the provider boundary this code was reachable only from the watcher, meaning only
+when a real change had been seen.
+Skipping discovery is safe rather than merely cheap: the caches are mtime keyed and
+revalidate on read, so a stale entry is a miss and never a wrong answer.
+
+Walk-to-settled on this repository, five runs: 2,640 ms to 1,117 ms median.
+
+A 28% gap against main remains, tracked as `mb-kicj`. Its profile points at the double
+representation: each entry is built as a contract `InventoryEntry`, converted to the
+provider’s retained `FsEntry`, mutated one to three times with `dataclasses.replace` in
+the walker, and converted back on read — 64,420 `replace` calls, 1.28M `getattr`, and
+125,525 generated `__init__` calls for 60,000 files.
+That is F1 again, measured from a third direction.
 
 ## One repository fault, found on the way
 
