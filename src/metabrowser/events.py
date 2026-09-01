@@ -116,6 +116,72 @@ class FsEntry:
     # walker bookkeeping (not part of the wire payload)
     write_token: WriteToken | None = None
 
+    # `dataclasses.replace` reads all twenty fields back through string-keyed
+    # `getattr` and then runs the generated `__init__` over them. The walker calls
+    # it once per entry to stamp a write token, which on a 60,000-file tree is
+    # 64,420 replaces and about 1.3 million of those attribute lookups.
+    #
+    # These build the copy positionally instead: the same generated `__init__`,
+    # reached without the replace machinery or the by-name reads. 3.5 us to
+    # 1.3 us. Safe because this class has no `__post_init__` -- there is no
+    # validation being skipped, only reflection.
+    #
+    # They are written out rather than generated because a loop over field names
+    # is the cost being removed. A field added to this class must be added here;
+    # `test_fsentry_fast_copies_match_dataclasses_replace` fails if it is not.
+
+    def with_write_token(self, write_token: WriteToken | None) -> FsEntry:
+        """Copy carrying *write_token*, for the walker's per-entry stamp."""
+
+        return FsEntry(
+            self.path,
+            self.parent,
+            self.name,
+            self.type,
+            self.ext,
+            self.kind,
+            self.size,
+            self.mtime_ns,
+            self.mtime_hash,
+            self.active,
+            self.views,
+            self.labels,
+            self.total_files,
+            self.total_size,
+            self.unignored_files,
+            self.unignored_size,
+            self.newest_mtime_ns,
+            self.empty,
+            self.gitignored,
+            write_token,
+        )
+
+    def with_empty(self, empty: bool | None) -> FsEntry:
+        """Copy carrying *empty*, for a directory the walker has finalized."""
+
+        return FsEntry(
+            self.path,
+            self.parent,
+            self.name,
+            self.type,
+            self.ext,
+            self.kind,
+            self.size,
+            self.mtime_ns,
+            self.mtime_hash,
+            self.active,
+            self.views,
+            self.labels,
+            self.total_files,
+            self.total_size,
+            self.unignored_files,
+            self.unignored_size,
+            self.newest_mtime_ns,
+            empty,
+            self.gitignored,
+            self.write_token,
+        )
+
     @classmethod
     def for_observed_file(
         cls,

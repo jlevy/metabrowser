@@ -38,6 +38,7 @@ from metabrowser.events import (
     ProjectionInvalidate,
     ProjectionUpdate,
     RingBuffer,
+    WriteToken,
     encode_heartbeat_comment,
     encode_sse,
 )
@@ -281,3 +282,43 @@ def test_fs_entry_is_frozen_for_safe_replace() -> None:
     except FrozenInstanceError:
         return
     raise AssertionError("expected FrozenInstanceError on direct mutation")
+
+
+def test_fsentry_fast_copies_match_dataclasses_replace() -> None:
+    """The hand-written copies must stay equivalent to the reflective one.
+
+    `with_write_token` and `with_empty` list every field positionally, because
+    reading them back by name is the cost they exist to remove. That makes them
+    the one place a newly added field is silently dropped -- it would take its
+    default in the copy instead of the value being copied. Comparing against
+    `dataclasses.replace`, which is reflective and cannot miss a field, is what
+    turns that into a failure.
+    """
+
+    entry = FsEntry(
+        path="src/a/b.py",
+        parent="src/a",
+        name="b.py",
+        type="file",
+        ext=".py",
+        kind="code",
+        size=1234,
+        mtime_ns=1_700_000_000_000_000_000,
+        mtime_hash="deadbeef",
+        active=True,
+        views=("source",),
+        labels=(("run", "1"),),
+        total_files=7,
+        total_size=99,
+        unignored_files=6,
+        unignored_size=88,
+        newest_mtime_ns=1_700_000_000_000_000_001,
+        empty=False,
+        gitignored=True,
+        write_token=WriteToken(3),
+    )
+
+    for token in (None, WriteToken(11)):
+        assert entry.with_write_token(token) == replace(entry, write_token=token)
+    for empty in (None, True, False):
+        assert entry.with_empty(empty) == replace(entry, empty=empty)
