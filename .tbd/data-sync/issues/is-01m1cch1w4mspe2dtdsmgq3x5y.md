@@ -3,13 +3,13 @@ type: is
 id: is-01m1cch1w4mspe2dtdsmgq3x5y
 title: "Flaky: test_console_entry_point_survives_repeated_interrupts fails under CI load"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-08-31T17:05:32.034Z
-updated_at: 2026-08-31T17:05:32.034Z
+updated_at: 2026-09-01T22:16:14.505Z
 ---
 tests/test_cli_main.py::test_console_entry_point_survives_repeated_interrupts failed on all three Python versions in one CI run on PR #90 (run 33417171780) and passed on re-run of the same commit. Assertion: stderr.count('Stopping') <= 1, observed 2, at gap_s=0.0.
 
