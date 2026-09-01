@@ -13,9 +13,9 @@ one artifact:
 
 | Branch | Head | Contributes |
 | --- | --- | --- |
-| `codex/fdu-backend-alignment-research` | `157c101f` | the provider contract, coordinator, and Python provider |
-| `codex/fdu-opened-root-e2e-spike` | `88bebb97` | the measured fdu adapter spike, the scope/policy split, lifecycle vocabulary |
-| `codex/inventory-contract-alignment` | `e2128a35` | total row orders, unconditional recency ranking, the total canonical encoding |
+| `codex/fdu-backend-alignment-research` | `2feaa7bd` | the provider contract, coordinator, and Python provider |
+| `codex/fdu-opened-root-e2e-spike` | `0b7a7140` | the measured fdu adapter spike, the scope/policy split, lifecycle vocabulary |
+| `codex/inventory-contract-alignment` | `287bc722` | total row orders, unconditional recency ranking, the total canonical encoding |
 
 Merged with `origin/main` at `26b109e` — 130 commits, including the CLI parity
 mechanism, the released 0.9.0, and the Git history work.
@@ -211,17 +211,22 @@ single reviewable step.
 `test_active_tracker_event_loop_stall` failed on CI at 71 ms against a 50 ms budget, on
 all three Python versions, while the identical source measured 3-5 ms locally.
 
-The test reports a maximum over one run, so it is decided by the worst moment on the
-machine during that run: one garbage collection, one scheduler preemption, or a
-neighbouring test’s thread pool blows the budget while `_tick` never touches the loop.
-Load can only push the number up, so the floor across attempts is the part attributable
-to the code. It now reports the best of three and prints the spread.
+An absolute millisecond budget measures the machine as much as the code.
+Taking the best of three attempts narrowed the spread but did not change what was being
+measured, and CI failed again at 61 ms on a runner where `_tick` was doing nothing but
+waiting on its executor.
 
-This is not a softened gate.
-Reintroducing the regression it names -- `poll_observations` and `_compute_updates`
-called on the loop rather than through `asyncio.to_thread` -- measures 200 ms on the
-best of three against 6 ms clean, with the budget sitting between them.
-Both directions were verified before the change was committed.
+A slower machine inflates the stall and inflates the tick’s wall time with it, so the
+share between them is the part a machine cannot fake.
+The gate is that share now, above an absolute floor below which the loop is simply not
+blocked.
+
+The separation is not close.
+Clean, the loop is blocked for 0.7% of the tick; with the regression it guards --
+`poll_observations` and `_compute_updates` called on the loop rather than through
+`asyncio.to_thread` -- the stall *is* the tick, at 49.8%. The threshold sits at 25%, and
+the contended CI runs that prompted this would have measured about 6%. Both directions
+were verified before the change was committed.
 
 `test_simultaneous_identical_rollups_compute_once` is the same class and is left alone
 for now, tracked as `mb-rfot`: it failed once in four full-suite runs and passes in
@@ -399,6 +404,22 @@ filesystem *address* as well as an identity, so `root / path` breaks once the pa
 the escaped form. fdu carries both a native path and a canonical one per row.
 Deciding which shape to mirror is a contract decision, not an implementation detail, and
 it belongs with F1 because both are about what a row is made of.
+
+## One repository fault, found on the way
+
+The pre-push gate had not been running in any worktree, and `git status` failed in
+several of them. `extensions.worktreeConfig` is enabled here, which means `core.bare`
+must live in the main worktree’s `config.worktree` rather than the shared config --
+git’s own documentation says to move it when enabling the extension, and it had not been
+moved. The shared `bare = true` therefore applied to every linked worktree, so git
+refused every operation needing a work tree, Lefthook among them.
+
+`core.bare` now sits in the main worktree’s `config.worktree` and is absent from the
+shared config, which is the documented layout.
+All thirteen live worktrees work, the pre-push gate runs again, and two
+`tests/test_public_hygiene.py` failures that looked like defects turn out to have been
+`git check-ignore` refusing to run and the scan falling back to a full pass.
+Two worktrees whose directories were already gone were pruned.
 
 ## Validation
 
