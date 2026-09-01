@@ -81,7 +81,7 @@ import string
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
@@ -168,26 +168,29 @@ def require_canonical_inventory_path(
         if allow_root:
             return
         raise ValueError(f"{name} must be a canonical POSIX-relative path below the root")
-    pure = PurePosixPath(value)
-    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+    # This runs twice for every entry a provider builds -- once for the path and
+    # once for the parent -- so on a 500,000-file root it runs a million times.
+    # It is written against the string rather than through PurePosixPath for that
+    # reason: constructing one and asking it for `as_posix()` and `parts` cost more
+    # than every check here put together, and decide exactly the same thing.
+    #
+    # `isascii` is the guard that matters. Every surrogate is non-ASCII, so an ASCII
+    # path cannot hold one, and the character scan below -- the single most expensive
+    # step when it runs -- is skipped for the paths essentially all trees are made of.
+    if not value.isascii() and any(0xD800 <= ord(character) <= 0xDFFF for character in value):
         # A canonical path is the escaped form, so a surrogate here means some producer
         # passed a raw platform name through. Rejecting at the boundary keeps the rule
         # enforced rather than merely stated.
         raise ValueError(f"{name} must be escaped, not a raw platform name")
-    if (
-        "\\" in value
-        or "\x00" in value
-        or pure.is_absolute()
-        # PurePosixPath spells the root ".", and "." survives both the
-        # as_posix and the parts check below because its parts are empty.
-        # The root has exactly one key here, "", so any other spelling of it
-        # is a path no provider can be asked to resolve.
-        or not pure.parts
-        or pure.as_posix() != value
-        or "." in pure.parts
-        or ".." in pure.parts
-    ):
+    if "\\" in value or "\x00" in value or value.startswith("/"):
         raise ValueError(f"{name} must be a canonical POSIX-relative path")
+    # An empty segment is a trailing or doubled separator; "." and ".." are the
+    # spellings that are not the identity they resolve to. Rejecting all three is
+    # what `as_posix() != value` and the `parts` checks were doing, and it also
+    # rejects "." itself, whose PurePosixPath parts are empty.
+    for segment in value.split("/"):
+        if not segment or segment == "." or segment == "..":
+            raise ValueError(f"{name} must be a canonical POSIX-relative path")
 
 
 def parse_inventory_path(value: str) -> str | None:

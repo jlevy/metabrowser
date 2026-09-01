@@ -8,7 +8,11 @@ from pathlib import Path
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.file_type_registry import load_file_type_registry_document
-from metabrowser.inventory_engine.contract import DiscoveryBudget, InventoryConfig
+from metabrowser.inventory_engine.contract import (
+    DiscoveryBudget,
+    InventoryConfig,
+    LifecyclePhase,
+)
 from metabrowser.inventory_engine.coordinator import (
     HostChange,
     HostVersion,
@@ -71,6 +75,21 @@ class InventoryRuntime:
             invalidate_all_projection_caches()
             return
         if not change.facts_changed:
+            return
+        # Discovery is not a change to anything anyone has read. The coordinator
+        # publishes every entry it finds, so wiring this listener to all of them
+        # meant the first walk called `invalidate_projection_path` once per entry
+        # against caches that were empty, and each call resolves the path -- a
+        # syscall -- twice, once per projection cache. On this repository that was
+        # 45,516 resolves for 22,758 entries and about 2s of a 4.9s walk.
+        #
+        # Skipping it is safe rather than merely cheap: these caches are mtime
+        # keyed and revalidate on read, so a stale entry is a miss and never a
+        # wrong answer. Invalidation reclaims memory, and there is none to reclaim
+        # for a path being seen for the first time. Everything after discovery --
+        # a watcher observation, a verified refresh -- still invalidates, which is
+        # the only case that ever reached this code before the provider boundary.
+        if change.state.phase is LifecyclePhase.DISCOVERING:
             return
         for relative_path in change.dirty_paths:
             invalidate_projection_path(root / relative_path)
