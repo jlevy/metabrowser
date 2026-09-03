@@ -620,6 +620,13 @@ Context expansion, whitespace controls, and virtualization remain on this plan a
 `mb-hhmb`; they can trigger another measured dependency review if their implementation
 cost justifies one.
 
+[Historical Diff View Spike Results](../../research/archive/research-2026-07-18-diff-view-spike-results.md)
+preserves an earlier prototype comparison of both libraries, server-rendered HTML, and
+an owned table. It supports the bounded-rendering and server-patch decisions, but it
+predates the File Diff Format and did not exercise the libraries’ virtualized or worker
+paths. It therefore does not complete the three open Phase 3 benchmark and decision
+items.
+
 ### Phase 4: VS Code-derived intraline refinement
 
 Ends with: similar deleted and added lines align monotonically in split view, and both
@@ -1007,6 +1014,8 @@ model have to render somewhere.
 ## References
 
 - [Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
+- [Historical Diff View Spike Results](../../research/archive/research-2026-07-18-diff-view-spike-results.md)
+- [Browser Contributor Toolchain and Distribution](../../research/research-2026-07-18-browser-contributor-toolchain.md)
 - [Git graph nav panel and read-only Git API](plan-2026-08-06-git-graph-view.md)
 - [Rendering large content](../../../large-content-rendering.md)
 - [File Patch Formats](../../research/research-2026-08-19-file-patch-formats.md)
