@@ -58,6 +58,18 @@ Validation:
   catalog’s first-body, retained-body, and `304` paths, with semantic checks on repeated
   responses.
 
+## 0.9.1
+
+Fixes:
+
+- Inactive plugin tabs now mount their own renderer when first opened.
+  The lazy callbacks shared one function-scoped binding, so every tab after the default
+  invoked the last view’s renderer and left the selected panel blank.
+
+- Folder file-type rollups accept the schema-4 registry identity shipped by the server
+  and compare its complete schema, revision, and fingerprint with the browser runtime.
+  The stale schema-3 check made every real folder overview fail before rendering.
+
 ## 0.9.0
 
 File-type identity:
