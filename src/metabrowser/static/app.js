@@ -3824,6 +3824,7 @@ const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {}
 // wider coverage than SSE's scope.
 var recentBaseEntries = new Map(); // path -> recent-flat dict
 var recentTotalMatching = 0;
+var recentTotalMatchingExact = true;
 var recentTruncated = false;
 var recentInflight = null; // AbortController for the in-flight chip fetch
 // Server-published set of dir paths the Recent panel paints gray.
@@ -3899,6 +3900,7 @@ function fetchRecent(windowKey) {
         }
       }
       recentTotalMatching = data?.total_matching || flat.length;
+      recentTotalMatchingExact = data?.total_matching_exact !== false;
       recentTruncated = !!data?.truncated;
       var ignoredDirs = data?.gitignored_dirs || [];
       _GITIGNORED_DIR_PATHS = new Set(ignoredDirs);
@@ -5076,7 +5078,8 @@ function _renderFilteredTally(panel, state, count) {
   // A capped response has more matches than it sent, and only it can
   // say so — the client never saw the rest.
   if (filesPanelUsesRecentSource() && recentTruncated && recentTotalMatching) {
-    text += ` of ${recentTotalMatching.toLocaleString()} matching`;
+    var totalSuffix = recentTotalMatchingExact ? "" : "+";
+    text += ` of ${recentTotalMatching.toLocaleString()}${totalSuffix} matching`;
   }
   text += ".";
   if (existing) {

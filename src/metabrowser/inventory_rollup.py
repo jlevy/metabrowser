@@ -7,7 +7,7 @@ from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, cast
 
-from metabrowser.file_type_registry import load_file_type_registry
+from metabrowser.file_type_registry import FileTypeRegistry, load_file_type_registry
 from metabrowser.settings import (
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
@@ -151,6 +151,7 @@ def build_rollup(
     options: RollupOptions,
     ancestor_gitignored: bool,
     aggregates: SubtreeAggregateCache | None = None,
+    registry: FileTypeRegistry | None = None,
 ) -> RollupResult | None:
     """Build a bounded node tree from a snapshot and its reusable child index.
 
@@ -181,8 +182,9 @@ def build_rollup(
         aggregates,
         options,
     )
+    active_registry = load_file_type_registry() if registry is None else registry
     selected = _select_extension_keys(root_aggregate, options.ext_top, options.ext_rank)
-    file_types = _partition_file_types(root_aggregate)
+    file_types = _partition_file_types(root_aggregate, active_registry)
     return {
         "node": cast(RollupDirNode, root_node),
         "ext_tallies": _serialize_extension_tallies(root_aggregate, selected),
@@ -191,6 +193,7 @@ def build_rollup(
             filename_limit=options.filename_top,
             remaining_limit=options.remaining_top,
             file_types=file_types,
+            registry=active_registry,
         ),
     }
 
@@ -584,10 +587,10 @@ def _serialize_file_type_breakdown(
     filename_limit: int,
     remaining_limit: int,
     file_types: _FileTypePartition,
+    registry: FileTypeRegistry,
 ) -> FileTypeBreakdown:
     """Build the conserved File Rollup Format hierarchy before presentation."""
 
-    registry = load_file_type_registry()
     groups = []
     for group in registry.groups:
         families: list[FileTypeFamilyBreakdown] = []
@@ -697,10 +700,12 @@ def _serialize_file_type_breakdown(
     }
 
 
-def _partition_file_types(aggregate: _SubtreeAggregate) -> _FileTypePartition:
+def _partition_file_types(
+    aggregate: _SubtreeAggregate,
+    registry: FileTypeRegistry,
+) -> _FileTypePartition:
     """Classify each distinct logical extension exactly once per rollup."""
 
-    registry = load_file_type_registry()
     family_children: dict[str, dict[str, list[int]]] = {}
     remaining_keys: set[str] = set()
     extension_keys = _all_extension_keys(aggregate)

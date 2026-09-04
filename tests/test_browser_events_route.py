@@ -53,6 +53,7 @@ from metabrowser.events_route import (
     parse_sse_frames,
 )
 from metabrowser.inventory_engine.contract import (
+    DiscoveryBudget,
     InventoryConfig,
     ObservationKind,
     RefreshObservation,
@@ -238,7 +239,10 @@ def test_all_known_snapshot_pages_directory_heavy_scope_losslessly(tmp_path: Pat
     async def run() -> set[str]:
         async with inventory_harness(
             tmp_path,
-            config=InventoryConfig(max_files=1, watch_mode="off"),
+            config=InventoryConfig(
+                budget=DiscoveryBudget(max_files=1),
+                watch_mode="off",
+            ),
         ) as harness:
             snapshot = await harness.bus.snapshot("all-known")
             return {entry.path for entry in snapshot.entries}

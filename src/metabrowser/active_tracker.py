@@ -76,7 +76,7 @@ async def _read_candidates(
             queries=(
                 CatalogQuery(
                     query_id="activity-candidates",
-                    max_rows=config.max_files,
+                    max_rows=config.budget.max_files,
                     include_ignored=True,
                     terminal_extensions=tuple(sorted(BROWSER_TRACKABLE_EXTS)),
                     ancestor_names=() if root_is_scoped else tuple(sorted(_SCOPED_DIRS)),
@@ -86,7 +86,7 @@ async def _read_candidates(
         ),
         include_catalog_decorations=True,
     )
-    projection = read.result.projection("activity-candidates")
+    projection = read.result.completed_projection("activity-candidates")
     if not isinstance(projection, CatalogProjection):
         raise TypeError("the activity catalog read returned the wrong projection")
     records = projection.records

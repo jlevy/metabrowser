@@ -760,6 +760,7 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     assert "Filtered to ${" in block
     # The "of N matching" half is the capped-response disclosure only.
     assert "recentTruncated" in block
+    assert "recentTotalMatchingExact" in block
 
     # Removing the last filter must clear the line, and that path is
     # the unconstrained early return.

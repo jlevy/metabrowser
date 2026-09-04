@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from metabrowser.inventory_engine.contract import InventoryEntry, RecentProjection
+from metabrowser.inventory_engine.contract import CountKind, InventoryEntry, RecentProjection
 from metabrowser.settings import (
     RECENT_DEFAULT_LIMIT,
     RECENT_MAX_LIMIT,
@@ -28,6 +28,7 @@ class RecentResult:
     entries_flat: list[dict[str, Any]]
     gitignored_dirs: list[str]
     total_matching: int
+    total_matching_exact: bool
     truncated: bool
     window: WindowKey
     limit: int
@@ -44,7 +45,8 @@ def recent_result_from_projection(
     return RecentResult(
         entries_flat=[_entry_to_wire(entry) for entry in projection.entries],
         gitignored_dirs=list(projection.gitignored_directories),
-        total_matching=projection.total_matches,
+        total_matching=projection.total_matches.value,
+        total_matching_exact=projection.total_matches.kind is CountKind.EXACT,
         truncated=projection.truncated,
         window=window,
         limit=limit,

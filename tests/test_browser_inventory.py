@@ -53,6 +53,7 @@ from metabrowser.inventory_engine.contract import (
     ChangeBatch,
     ChangeCursor,
     DiagnosticsQuery,
+    DiscoveryBudget,
     InventoryConfig,
     InventoryEntry,
     ReadRequest,
@@ -453,7 +454,7 @@ def test_truncated_walk_summary_is_reported(
     _build_tree(tmp_path)
 
     async def _run() -> None:
-        inv = PythonInventoryStore(config=InventoryConfig(max_files=2))
+        inv = PythonInventoryStore(config=InventoryConfig(budget=DiscoveryBudget(max_files=2)))
         inv.start(tmp_path)
         await inv.wait_until_done(timeout=5.0)
         assert inv.status() == "truncated"

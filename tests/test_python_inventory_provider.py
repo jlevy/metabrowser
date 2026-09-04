@@ -18,10 +18,13 @@ from metabrowser.inventory_engine.contract import (
     CatalogProjection,
     CatalogQuery,
     ChangeBatch,
+    CountKind,
+    CountResult,
     DiagnosticsProjection,
     DiagnosticsQuery,
     DirectoryProjection,
     DirectoryQuery,
+    DiscoveryBudget,
     EntryPresence,
     EntryProjection,
     EntryQuery,
@@ -48,20 +51,26 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_engine.providers import python_inventory as python_provider
 from metabrowser.inventory_engine.providers.python_inventory import (
     PythonInventoryBackend,
-    PythonInventoryHandle,
+)
+from metabrowser.inventory_engine.providers.python_inventory import (
+    _PythonInventoryStore as PythonInventoryStore,
 )
 
 
 async def _open_settled(
     root: Path,
     config: InventoryConfig | None = None,
-) -> PythonInventoryHandle:
-    handle = await PythonInventoryBackend().open(root, config or InventoryConfig())
+) -> PythonInventoryStore:
+    handle = cast(
+        PythonInventoryStore,
+        await PythonInventoryBackend().open(root, config or InventoryConfig()),
+    )
     for _attempt in range(200):
         result = await handle.read(ReadRequest(queries=(DiagnosticsQuery(query_id="state"),)))
         if result.state.phase in {
             LifecyclePhase.READY,
             LifecyclePhase.WATCHING,
+            LifecyclePhase.STOPPED,
             LifecyclePhase.FAILED,
         }:
             return handle
@@ -105,9 +114,21 @@ async def _python_provider_answers_one_coherent_bundled_read(tmp_path: Path) -> 
         catalog = result.projection("catalog")
         assert isinstance(catalog, CatalogProjection)
         assert len(catalog.records) == 1
-        assert catalog.total_matches == 2
+        assert catalog.total_matches == CountResult(CountKind.EXACT, 2)
         assert catalog.next_page is not None
-        assert catalog.remaining_rows == 1
+        catalog_tail = await handle.read(
+            ReadRequest(
+                queries=(
+                    CatalogQuery(
+                        query_id="catalog",
+                        max_rows=1,
+                        after=catalog.next_page,
+                    ),
+                ),
+                at_version=result.version,
+            )
+        )
+        assert catalog_tail.work.entries_visited == 0
 
         diagnostics = result.projection("diagnostics")
         assert isinstance(diagnostics, DiagnosticsProjection)
@@ -272,7 +293,7 @@ async def _python_provider_implements_every_projection(tmp_path: Path) -> None:
 
         recent = result.projection("recent")
         assert isinstance(recent, RecentProjection)
-        assert recent.total_matches == 3
+        assert recent.total_matches == CountResult(CountKind.EXACT, 3)
         assert len(recent.entries) == 2
         assert recent.truncated
     finally:
@@ -285,7 +306,7 @@ async def _targeted_read_reports_bounded_work(tmp_path: Path) -> None:
     handle = await _open_settled(tmp_path)
     try:
         result = await handle.read(ReadRequest(queries=(EntryQuery(query_id="one", path="7.txt"),)))
-        assert result.work.entries_visited == 1
+        assert result.work.rows_visited == 1
         assert result.work.rows_returned == 1
     finally:
         await handle.close()
@@ -321,8 +342,8 @@ async def _tree_continuations_reuse_the_first_projection(tmp_path: Path) -> None
                 at_version=first_directory.version,
             )
         )
-        assert first_directory.work.entries_visited == file_count
-        assert second_directory.work.entries_visited == 0
+        assert first_directory.work.rows_visited == file_count
+        assert second_directory.work.rows_visited == page_rows
 
         filtered_query = FilteredTreeQuery(
             query_id="filtered-page",
@@ -348,8 +369,8 @@ async def _tree_continuations_reuse_the_first_projection(tmp_path: Path) -> None
                 at_version=first_filtered.version,
             )
         )
-        assert first_filtered.work.entries_visited == file_count + 1
-        assert second_filtered.work.entries_visited == 0
+        assert first_filtered.work.rows_visited == file_count + 1
+        assert second_filtered.work.rows_visited == page_rows
     finally:
         await handle.close()
 
@@ -423,7 +444,7 @@ async def _navigation_poll_reuses_one_coherent_read_boundary(
         first_summary = first_navigation.payload["summary"]
         assert isinstance(first_summary, dict)
         assert first.state.phase is LifecyclePhase.DISCOVERING
-        assert first.work.entries_visited > 0
+        assert first.work.rows_visited > 0
 
         (tmp_path / "new.txt").write_text("new", encoding="utf-8")
         await handle.refresh(RefreshRequest(observations=(RefreshObservation(path="new.txt"),)))
@@ -434,7 +455,7 @@ async def _navigation_poll_reuses_one_coherent_read_boundary(
         assert cached.state == first.state
         assert cached.projection("root") == first.projection("root")
         assert cached_navigation.payload["summary"] == first_navigation.payload["summary"]
-        assert cached.work.entries_visited == 0
+        assert cached.work.rows_visited < first.work.rows_visited
 
         monkeypatch.setattr(python_provider, "_NAVIGATION_TALLY_REFRESH_FLOOR_S", 0.0)
         await asyncio.sleep(0.02)
@@ -445,7 +466,7 @@ async def _navigation_poll_reuses_one_coherent_read_boundary(
         refreshed_summary = refreshed_navigation.payload["summary"]
         assert isinstance(refreshed_summary, dict)
         assert refreshed_summary["files"] == first_summary["files"] + 1
-        assert refreshed.work.entries_visited > first.work.entries_visited
+        assert refreshed.work.rows_visited > first.work.rows_visited
     finally:
         release.set()
         await handle.close()
@@ -544,7 +565,7 @@ def test_catalog_predicates_are_applied_inside_the_provider(tmp_path: Path) -> N
             )
             projection = result.projection("candidates")
             assert isinstance(projection, CatalogProjection)
-            return {record.path for record in projection.records}, result.work.entries_visited
+            return {record.path for record in projection.records}, result.work.rows_visited
         finally:
             await handle.close()
 
@@ -569,7 +590,7 @@ def test_priority_hint_returns_before_reference_refresh_finishes(
             started.set()
             await release.wait()
 
-        monkeypatch.setattr(handle._store, "_refresh_path", blocked_refresh)
+        monkeypatch.setattr(handle, "_refresh_path", blocked_refresh)
         try:
             await asyncio.wait_for(
                 handle.prioritize(PriorityRequest(paths=("later",), max_depth=1)),
@@ -578,6 +599,41 @@ def test_priority_hint_returns_before_reference_refresh_finishes(
             await asyncio.wait_for(started.wait(), timeout=1)
         finally:
             release.set()
+            await handle.close()
+
+    asyncio.run(run())
+
+
+def test_priority_hint_cannot_expand_a_budget_stopped_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("a.txt", "b.txt"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+
+    async def run() -> None:
+        handle = await _open_settled(
+            tmp_path,
+            InventoryConfig(
+                budget=DiscoveryBudget(max_files=1),
+                watch_mode="off",
+            ),
+        )
+        refresh_started = asyncio.Event()
+
+        async def unexpected_priority_refresh(*_args: object, **_kwargs: object) -> None:
+            refresh_started.set()
+
+        monkeypatch.setattr(
+            handle,
+            "_run_priority_refresh",
+            unexpected_priority_refresh,
+        )
+        try:
+            await handle.prioritize(PriorityRequest(paths=("b.txt",)))
+            await asyncio.sleep(0)
+            assert not refresh_started.is_set()
+        finally:
             await handle.close()
 
     asyncio.run(run())
@@ -719,7 +775,7 @@ def test_python_provider_surfaces_discovery_failure(
     assert "contract failure sentinel" in details[0]
 
 
-def test_python_provider_surfaces_watcher_gap(
+def test_python_provider_surfaces_observation_gap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -742,7 +798,7 @@ def test_python_provider_surfaces_watcher_gap(
                 )
                 diagnostic = result.projection("watch")
                 assert isinstance(diagnostic, DiagnosticsProjection)
-                if any(issue.code is IssueCode.WATCHER_GAP for issue in result.state.issues):
+                if any(issue.code is IssueCode.OBSERVATION_GAP for issue in result.state.issues):
                     reason = (
                         result.state.coverage.reason.value
                         if result.state.coverage.reason is not None
@@ -766,7 +822,7 @@ def test_python_provider_surfaces_watcher_gap(
     assert complete is True
     assert reason is None
     assert freshness == "stale"
-    assert IssueCode.WATCHER_GAP in issue_codes
+    assert IssueCode.OBSERVATION_GAP in issue_codes
     assert watch_state == "failed"
 
 

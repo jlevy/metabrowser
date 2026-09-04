@@ -17,15 +17,30 @@ from pathlib import Path, PurePosixPath
 from typing import Literal, Protocol, runtime_checkable
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
+from metabrowser.file_type_registry import (
+    FileTypeRegistryError,
+    load_file_type_registry_document,
+    load_file_type_registry_from_text,
+)
 from metabrowser.wire_models import NavigationTallies, RollupResult
 
 MAX_CHANGE_PATHS = 1_024
 MAX_COMMAND_PATHS = 1_024
 MAX_QUERIES_PER_READ = 1_024
+# Bound host-side materialization even when a provider returns endlessly advancing cursors.
+MAX_ASSEMBLED_PAGES = 4_096
+MAX_ASSEMBLED_ROWS = 1_000_000
 # Keep lifecycle diagnostics within the same fixed envelope as change delivery.
 MAX_INVENTORY_ISSUES = MAX_CHANGE_PATHS
 # Bound provider-supplied diagnostic text before it crosses an FFI boundary.
 MAX_ISSUE_DETAIL_BYTES = 4_096
+DEFAULT_DISCOVERY_MAX_FILES = 500_000
+DEFAULT_QUERY_MAX_WORK = 1_000_000
+DEFAULT_COUNT_CAP = 10_000
+MAX_COUNT_CAP = 1_000_000
+MAX_PORTABLE_PATH_EXAMPLES = 8
+MAX_PORTABLE_PATH_EXAMPLE_BYTES = 256
+INVENTORY_SCOPE_IDENTITY_SCHEMA = "inventory-scope-v2"
 
 
 def _require_nonempty(value: str, name: str) -> None:
@@ -41,6 +56,38 @@ def _require_positive(value: int, name: str) -> None:
 def _require_nonnegative(value: int, name: str) -> None:
     if value < 0:
         raise ValueError(f"{name} must be nonnegative")
+
+
+def _require_query_max_work(value: int) -> None:
+    _require_positive(value, "max_work")
+    if value > MAX_ASSEMBLED_ROWS:
+        raise ValueError(f"max_work must be at most {MAX_ASSEMBLED_ROWS}")
+
+
+def _require_registry_document(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError("registry document must be nonempty text")
+    return value
+
+
+def _require_positive_integer(value: object, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+
+
+def _require_discovery_budget(value: object) -> None:
+    if not isinstance(value, DiscoveryBudget):
+        raise ValueError("budget must be a DiscoveryBudget")
+
+
+def _require_scope_flags(values: tuple[object, ...]) -> None:
+    if any(not isinstance(value, bool) for value in values):
+        raise ValueError("scope flags must be boolean")
+
+
+def _require_hidden_allowlist(value: object) -> None:
+    if not isinstance(value, tuple) or any(not isinstance(name, str) for name in value):
+        raise ValueError("hidden_allowlist must be a tuple of names")
 
 
 def require_canonical_inventory_path(
@@ -116,22 +163,63 @@ def catalog_terminal_suffix(name: str) -> str:
     return name[dot:].lower()
 
 
+class AdmittedObjectKind(StrEnum):
+    """Filesystem object kinds exposed through the portable provider contract."""
+
+    FILE = "file"
+    DIRECTORY = "directory"
+    SYMLINK = "symlink"
+
+
+ALL_ADMITTED_OBJECT_KINDS = (
+    AdmittedObjectKind.FILE,
+    AdmittedObjectKind.DIRECTORY,
+    AdmittedObjectKind.SYMLINK,
+)
+
+
+def _require_admitted_object_kinds(value: object) -> None:
+    if not isinstance(value, tuple):
+        raise ValueError("admitted object kinds must be a tuple")
+    if any(not isinstance(kind, AdmittedObjectKind) for kind in value):
+        raise ValueError("admitted object kinds must use AdmittedObjectKind values")
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryBudget:
+    """Execution bound for progressive discovery, separate from semantic scope."""
+
+    max_files: int = DEFAULT_DISCOVERY_MAX_FILES
+
+    def __post_init__(self) -> None:
+        _require_positive_integer(self.max_files, "max_files")
+
+
 @dataclass(frozen=True, slots=True)
 class InventoryConfig:
-    """Semantic scope plus provider execution policy for one root session."""
+    """Validated semantic scope plus execution policy for one root session."""
 
-    max_files: int = 500_000
-    max_depth: int = 20
+    registry_document: str = field(default_factory=load_file_type_registry_document)
+    budget: DiscoveryBudget = field(default_factory=DiscoveryBudget)
     hidden_allowlist: tuple[str, ...] = (LOGS_DIR, STATE_DIR)
-    registry_fingerprint: str = "builtin"
+    include_hidden: bool = False
+    follow_symlinks: bool = False
+    one_filesystem: bool = False
+    admitted_object_kinds: tuple[AdmittedObjectKind, ...] = ALL_ADMITTED_OBJECT_KINDS
     change_queue_size: int = 1_024
     watch_mode: Literal["auto", "native", "poll", "off"] = "auto"
 
     def __post_init__(self) -> None:
-        _require_positive(self.max_files, "max_files")
-        _require_positive(self.max_depth, "max_depth")
+        _require_discovery_budget(self.budget)
+        _require_scope_flags((self.include_hidden, self.follow_symlinks, self.one_filesystem))
+        _require_hidden_allowlist(self.hidden_allowlist)
+        _require_admitted_object_kinds(self.admitted_object_kinds)
         _require_positive(self.change_queue_size, "change_queue_size")
-        _require_nonempty(self.registry_fingerprint, "registry_fingerprint")
+        registry_document = _require_registry_document(self.registry_document)
+        try:
+            load_file_type_registry_from_text(registry_document)
+        except FileTypeRegistryError as error:
+            raise ValueError(f"registry document is invalid: {error}") from error
         if self.watch_mode not in {"auto", "native", "poll", "off"}:
             raise ValueError("watch_mode must be auto, native, poll, or off")
         if len(set(self.hidden_allowlist)) != len(self.hidden_allowlist):
@@ -145,6 +233,18 @@ class InventoryConfig:
             for name in self.hidden_allowlist
         ):
             raise ValueError("hidden_allowlist entries must be exact hidden path-component names")
+        if self.include_hidden:
+            raise ValueError("the v1 scope must filter hidden path components")
+        if self.follow_symlinks:
+            raise ValueError("the v1 scope must retain symlinks without following them")
+        if self.one_filesystem:
+            raise ValueError("the v1 scope must cross filesystem boundaries")
+        if len(set(self.admitted_object_kinds)) != len(self.admitted_object_kinds):
+            raise ValueError("admitted object kinds must be unique")
+        if set(self.admitted_object_kinds) != set(ALL_ADMITTED_OBJECT_KINDS):
+            raise ValueError(
+                "the v1 admitted object kinds must be exactly file, directory, and symlink"
+            )
 
 
 def inventory_scope_fingerprint(config: InventoryConfig) -> str:
@@ -156,6 +256,7 @@ def inventory_scope_fingerprint(config: InventoryConfig) -> str:
     """
 
     components = (
+        ("schema", INVENTORY_SCOPE_IDENTITY_SCHEMA),
         (
             "hidden_allowlist",
             json.dumps(
@@ -164,8 +265,17 @@ def inventory_scope_fingerprint(config: InventoryConfig) -> str:
                 separators=(",", ":"),
             ),
         ),
-        ("max_depth", str(config.max_depth)),
-        ("max_files", str(config.max_files)),
+        ("include_hidden", json.dumps(config.include_hidden)),
+        ("follow_symlinks", json.dumps(config.follow_symlinks)),
+        ("one_filesystem", json.dumps(config.one_filesystem)),
+        (
+            "admitted_object_kinds",
+            json.dumps(
+                sorted(kind.value for kind in config.admitted_object_kinds),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        ),
     )
     payload = json.dumps(sorted(components), ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -217,7 +327,7 @@ class ChangeCursor:
 
 
 class LifecyclePhase(StrEnum):
-    OPENING_CACHE = "opening_cache"
+    OPENING = "opening"
     DISCOVERING = "discovering"
     RECONCILING = "reconciling"
     READY = "ready"
@@ -227,7 +337,7 @@ class LifecyclePhase(StrEnum):
 
 
 ALLOWED_PHASE_TRANSITIONS: Mapping[LifecyclePhase, frozenset[LifecyclePhase]] = {
-    LifecyclePhase.OPENING_CACHE: frozenset(
+    LifecyclePhase.OPENING: frozenset(
         {
             LifecyclePhase.DISCOVERING,
             LifecyclePhase.RECONCILING,
@@ -322,11 +432,10 @@ class IndexProgress:
 
 
 class IssueCode(StrEnum):
-    PERMISSION_DENIED = "permission_denied"
+    PERMISSION = "permission"
     DISAPPEARED = "disappeared"
     INVALID_METADATA = "invalid_metadata"
-    FILESYSTEM_BOUNDARY = "filesystem_boundary"
-    WATCHER_GAP = "watcher_gap"
+    OBSERVATION_GAP = "observation_gap"
     RESOURCE_BUDGET = "resource_budget"
     PROVIDER_FAILURE = "provider_failure"
 
@@ -367,11 +476,31 @@ class IndexState:
 
 @dataclass(frozen=True, slots=True)
 class WorkCounters:
-    """Measured request work, with exact CPU time when the provider can measure it."""
+    """Bounded semantic work shared with the native fdu engine."""
 
-    entries_visited: int = 0
-    directories_visited: int = 0
+    observations: int = 0
+    unchanged: int = 0
+    stale: int = 0
+    resource_refused: int = 0
+    rows_visited: int = 0
     rows_returned: int = 0
+    maintained_index_work: int = 0
+    commits_visited: int = 0
+    commits_returned: int = 0
+    directories_read: int = 0
+    entries_visited: int = 0
+    files_visited: int = 0
+    bytes_visited: int = 0
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            _require_nonnegative(getattr(self, name), name)
+
+
+@dataclass(frozen=True, slots=True)
+class BoundaryMetrics:
+    """Provider-boundary costs that are measurements, not semantic engine work."""
+
     bytes_copied: int = 0
     lock_wait_ns: int = 0
     cpu_time_ns: int | None = None
@@ -379,9 +508,6 @@ class WorkCounters:
 
     def __post_init__(self) -> None:
         for name in (
-            "entries_visited",
-            "directories_visited",
-            "rows_returned",
             "bytes_copied",
             "lock_wait_ns",
             "wall_time_ns",
@@ -404,6 +530,7 @@ class ProviderDiagnostics:
     watch_reason: str
     read_requests: int
     cumulative_work: WorkCounters
+    cumulative_metrics: BoundaryMetrics
 
     def __post_init__(self) -> None:
         for name in ("provider", "contract", "watch_mode", "watch_state", "watch_reason"):
@@ -416,6 +543,41 @@ class EntryType(StrEnum):
     FILE = "file"
     DIRECTORY = "dir"
     SYMLINK = "symlink"
+
+
+class PortablePathEncoding(StrEnum):
+    UNIX_BYTES = "unix_bytes"
+    WINDOWS_WTF16_LE = "windows_wtf16_le"
+    PLATFORM_BYTES = "platform_bytes"
+
+
+@dataclass(frozen=True, slots=True)
+class PortablePathExample:
+    encoding: PortablePathEncoding
+    encoded_hex: str
+    truncated: bool
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.encoded_hex, "encoded_hex")
+        if len(self.encoded_hex) > MAX_PORTABLE_PATH_EXAMPLE_BYTES * 2:
+            raise ValueError("portable path example exceeds its encoded-byte bound")
+        if len(self.encoded_hex) % 2 or any(
+            character not in "0123456789abcdef" for character in self.encoded_hex
+        ):
+            raise ValueError("portable path example must be lowercase hexadecimal bytes")
+
+
+@dataclass(frozen=True, slots=True)
+class PortablePathIssue:
+    omitted: int
+    examples: tuple[PortablePathExample, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_positive(self.omitted, "omitted")
+        if len(self.examples) > MAX_PORTABLE_PATH_EXAMPLES:
+            raise ValueError(
+                f"portable path issue accepts at most {MAX_PORTABLE_PATH_EXAMPLES} examples"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -550,6 +712,7 @@ class DirectoryQuery:
     path: str = ""
     max_depth: int = 2
     max_rows: int = 10_000
+    max_work: int = DEFAULT_QUERY_MAX_WORK
     after: str | None = None
     include_ignored: bool = True
     kind: Literal[QueryKind.DIRECTORY] = field(init=False, default=QueryKind.DIRECTORY)
@@ -559,6 +722,7 @@ class DirectoryQuery:
         require_canonical_inventory_path(self.path, "path", allow_root=True)
         _require_positive(self.max_depth, "max_depth")
         _require_positive(self.max_rows, "max_rows")
+        _require_query_max_work(self.max_work)
 
 
 @dataclass(frozen=True, slots=True)
@@ -588,6 +752,7 @@ class FilteredTreeQuery:
     path: str = ""
     max_depth: int = 2
     max_rows: int = 10_000
+    max_work: int = DEFAULT_QUERY_MAX_WORK
     after: str | None = None
     filter: InventoryFilter = field(default_factory=InventoryFilter)
     kind: Literal[QueryKind.FILTERED_TREE] = field(init=False, default=QueryKind.FILTERED_TREE)
@@ -597,6 +762,7 @@ class FilteredTreeQuery:
         require_canonical_inventory_path(self.path, "path", allow_root=True)
         _require_positive(self.max_depth, "max_depth")
         _require_positive(self.max_rows, "max_rows")
+        _require_query_max_work(self.max_work)
 
 
 @dataclass(frozen=True, slots=True)
@@ -610,12 +776,14 @@ class RollupQuery:
     remaining_top: int = 20
     filename_top: int = 20
     rank: Literal["bytes", "dual"] = "bytes"
+    max_work: int = DEFAULT_QUERY_MAX_WORK
     kind: Literal[QueryKind.ROLLUP] = field(init=False, default=QueryKind.ROLLUP)
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
         require_canonical_inventory_path(self.path, "path", allow_root=True)
         _require_positive(self.max_nodes, "max_nodes")
+        _require_query_max_work(self.max_work)
         for name in ("max_depth", "top", "extension_top", "remaining_top", "filename_top"):
             _require_nonnegative(getattr(self, name), name)
 
@@ -626,12 +794,14 @@ class NavigationQuery:
     presets: tuple[tuple[str, tuple[str, ...]], ...] = ()
     recency_windows: tuple[tuple[str, float], ...] = ()
     max_rows: int = 200
+    max_work: int = DEFAULT_QUERY_MAX_WORK
     as_of_ns: int | None = None
     kind: Literal[QueryKind.NAVIGATION] = field(init=False, default=QueryKind.NAVIGATION)
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
         _require_positive(self.max_rows, "max_rows")
+        _require_query_max_work(self.max_work)
         if self.recency_windows and self.as_of_ns is None:
             raise ValueError("recency windows require as_of_ns")
         if self.as_of_ns is not None:
@@ -645,6 +815,8 @@ class RecentQuery:
     query_id: str
     max_rows: int
     as_of_ns: int
+    max_work: int = DEFAULT_QUERY_MAX_WORK
+    count_cap: int = DEFAULT_COUNT_CAP
     prefix: str = ""
     extensions: tuple[str, ...] = ()
     within_seconds: float | None = None
@@ -655,6 +827,10 @@ class RecentQuery:
         _require_nonempty(self.query_id, "query_id")
         _require_positive(self.max_rows, "max_rows")
         _require_positive(self.as_of_ns, "as_of_ns")
+        _require_query_max_work(self.max_work)
+        _require_positive(self.count_cap, "count_cap")
+        if self.count_cap > MAX_COUNT_CAP:
+            raise ValueError(f"count_cap must be at most {MAX_COUNT_CAP}")
         if self.within_seconds is not None and self.within_seconds <= 0:
             raise ValueError("within_seconds must be positive")
 
@@ -663,6 +839,8 @@ class RecentQuery:
 class CatalogQuery:
     query_id: str
     max_rows: int
+    max_work: int = DEFAULT_QUERY_MAX_WORK
+    count_cap: int = DEFAULT_COUNT_CAP
     after: str | None = None
     include_ignored: bool = False
     terminal_extensions: tuple[str, ...] = ()
@@ -673,6 +851,10 @@ class CatalogQuery:
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
         _require_positive(self.max_rows, "max_rows")
+        _require_query_max_work(self.max_work)
+        _require_positive(self.count_cap, "count_cap")
+        if self.count_cap > MAX_COUNT_CAP:
+            raise ValueError(f"count_cap must be at most {MAX_COUNT_CAP}")
         if len(set(self.terminal_extensions)) != len(self.terminal_extensions):
             raise ValueError("terminal_extensions entries must be unique")
         if any(not value.startswith(".") for value in self.terminal_extensions):
@@ -749,6 +931,12 @@ class ReadRequest:
         query_ids = [query.query_id for query in self.queries]
         if len(query_ids) != len(set(query_ids)):
             raise ValueError("query_id values must be unique within a read request")
+        if self.at_version is None and any(
+            isinstance(query, (DirectoryQuery, FilteredTreeQuery, CatalogQuery))
+            and query.after is not None
+            for query in self.queries
+        ):
+            raise ValueError("a page continuation requires an exact provider version")
 
 
 class EntryPresence(StrEnum):
@@ -773,18 +961,15 @@ class EntryProjection:
 class DirectoryProjection:
     query_id: str
     entries: tuple[InventoryEntry, ...]
+    portable_issue: PortablePathIssue | None = None
     next_page: str | None = None
-    remaining_rows: int = 0
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
-        _require_nonnegative(self.remaining_rows, "remaining_rows")
         if self.next_page is not None:
             _require_nonempty(self.next_page, "next_page")
             if not self.entries:
                 raise ValueError("a tree continuation requires a nonempty page")
-        if (self.next_page is None) != (self.remaining_rows == 0):
-            raise ValueError("tree continuation and remaining_rows must describe the same suffix")
 
 
 @dataclass(frozen=True, slots=True)
@@ -794,21 +979,18 @@ class FilteredTreeProjection:
     matching_leaves: int
     matching_files: int
     matching_bytes: int
+    portable_issue: PortablePathIssue | None = None
     next_page: str | None = None
-    remaining_rows: int = 0
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
         _require_nonnegative(self.matching_leaves, "matching_leaves")
         _require_nonnegative(self.matching_files, "matching_files")
         _require_nonnegative(self.matching_bytes, "matching_bytes")
-        _require_nonnegative(self.remaining_rows, "remaining_rows")
         if self.next_page is not None:
             _require_nonempty(self.next_page, "next_page")
             if not self.entries:
                 raise ValueError("a tree continuation requires a nonempty page")
-        if (self.next_page is None) != (self.remaining_rows == 0):
-            raise ValueError("tree continuation and remaining_rows must describe the same suffix")
 
 
 @dataclass(frozen=True, slots=True)
@@ -832,18 +1014,34 @@ class NavigationProjection:
             _require_positive(self.valid_until_ns, "valid_until_ns")
 
 
+class CountKind(StrEnum):
+    EXACT = "exact"
+    AT_LEAST = "at_least"
+
+
+@dataclass(frozen=True, slots=True)
+class CountResult:
+    """Exact product count or a proven lower bound when counting stopped at a cap."""
+
+    kind: CountKind
+    value: int
+
+    def __post_init__(self) -> None:
+        _require_nonnegative(self.value, "count value")
+
+
 @dataclass(frozen=True, slots=True)
 class RecentProjection:
     query_id: str
     entries: tuple[InventoryEntry, ...]
-    total_matches: int
+    total_matches: CountResult
+    portable_issue: PortablePathIssue | None = None
     gitignored_directories: tuple[str, ...] = ()
     valid_until_ns: int | None = None
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
-        _require_nonnegative(self.total_matches, "total_matches")
-        if self.total_matches < len(self.entries):
+        if self.total_matches.value < len(self.entries):
             raise ValueError("total_matches cannot be smaller than returned entries")
         if len(self.gitignored_directories) != len(set(self.gitignored_directories)):
             raise ValueError("gitignored_directories entries must be unique")
@@ -856,7 +1054,9 @@ class RecentProjection:
     def truncated(self) -> bool:
         """Whether the query bound omitted matching rows."""
 
-        return self.total_matches > len(self.entries)
+        return self.total_matches.kind is CountKind.AT_LEAST or self.total_matches.value > len(
+            self.entries
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -875,26 +1075,18 @@ class CatalogRecord:
 class CatalogProjection:
     query_id: str
     records: tuple[CatalogRecord, ...]
-    total_matches: int
+    total_matches: CountResult
+    portable_issue: PortablePathIssue | None = None
     next_page: str | None = None
-    remaining_rows: int = 0
 
     def __post_init__(self) -> None:
         _require_nonempty(self.query_id, "query_id")
-        _require_nonnegative(self.total_matches, "total_matches")
-        _require_nonnegative(self.remaining_rows, "remaining_rows")
-        if self.total_matches < len(self.records):
+        if self.total_matches.value < len(self.records):
             raise ValueError("total_matches cannot be smaller than returned records")
         if self.next_page is not None:
             _require_nonempty(self.next_page, "next_page")
             if not self.records:
                 raise ValueError("a catalog continuation requires a nonempty page")
-        if (self.next_page is None) != (self.remaining_rows == 0):
-            raise ValueError(
-                "catalog continuation and remaining_rows must describe the same suffix"
-            )
-        if self.remaining_rows > self.total_matches - len(self.records):
-            raise ValueError("catalog remaining_rows cannot exceed unreturned matches")
 
 
 @dataclass(frozen=True, slots=True)
@@ -906,7 +1098,24 @@ class DiagnosticsProjection:
         _require_nonempty(self.query_id, "query_id")
 
 
-type ProjectionResult = (
+@dataclass(frozen=True, slots=True)
+class QueryLimitProjection:
+    """A query stopped before it could return a misleading partial answer."""
+
+    query_id: str
+    query_kind: QueryKind
+    max_work: int
+    rows_visited: int
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        _require_positive(self.max_work, "max_work")
+        _require_nonnegative(self.rows_visited, "rows_visited")
+        if self.rows_visited > self.max_work:
+            raise ValueError("rows_visited cannot exceed max_work")
+
+
+type CompletedProjectionResult = (
     EntryProjection
     | DirectoryProjection
     | FilteredTreeProjection
@@ -916,6 +1125,7 @@ type ProjectionResult = (
     | CatalogProjection
     | DiagnosticsProjection
 )
+type ProjectionResult = CompletedProjectionResult | QueryLimitProjection
 
 
 @dataclass(frozen=True, slots=True)
@@ -925,6 +1135,7 @@ class ReadResult:
     state: IndexState
     projections: tuple[ProjectionResult, ...]
     work: WorkCounters
+    metrics: BoundaryMetrics = field(default_factory=BoundaryMetrics)
 
     def __post_init__(self) -> None:
         if self.version.session != self.cursor.session:
@@ -940,6 +1151,14 @@ class ReadResult:
             if projection.query_id == query_id:
                 return projection
         raise KeyError(query_id)
+
+    def completed_projection(self, query_id: str) -> CompletedProjectionResult:
+        """Return a complete answer or raise the typed work-limit failure."""
+
+        projection = self.projection(query_id)
+        if isinstance(projection, QueryLimitProjection):
+            raise QueryWorkLimitError(projection)
+        return projection
 
 
 @dataclass(frozen=True, slots=True)
@@ -1063,6 +1282,21 @@ class InventoryClosedError(InventoryContractError):
 
 class VersionUnavailableError(InventoryContractError):
     """The requested coherent version is no longer retained."""
+
+
+class ChangeStreamBusyError(InventoryContractError):
+    """The opened provider already has its one active change iterator."""
+
+
+class QueryWorkLimitError(InventoryContractError):
+    """A query exhausted its deterministic work budget without a partial answer."""
+
+    def __init__(self, projection: QueryLimitProjection) -> None:
+        self.projection = projection
+        super().__init__(
+            f"{projection.query_kind.value} query {projection.query_id!r} exhausted "
+            f"max_work={projection.max_work} after {projection.rows_visited} rows"
+        )
 
 
 @runtime_checkable

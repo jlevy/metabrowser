@@ -34,11 +34,32 @@ from tests.inventory_harness import inventory_harness
 # The keys each consumer names. Recorded here as data because the point is the
 # contract with those two files, not this test's own idea of a good payload.
 IDENTITY_KEYS: tuple[str, ...] = ("provider", "contract", "phase", "complete", "version")
-WORK_KEYS: tuple[str, ...] = (
+# Named by `devtools/bench_serving.py` and the performance harness. Renaming one
+# of these does not fail either tool; it blanks a column.
+CONSUMER_KEYS: tuple[str, ...] = (
     "read_requests",
     "entries_visited",
-    "directories_visited",
+    "cpu_time_ns",
+    "binding_bytes_copied",
+)
+# Semantic counters shared with the native engine, so a comparison across the two
+# describes the same work rather than two vocabularies.
+SEMANTIC_KEYS: tuple[str, ...] = (
+    "observations",
+    "unchanged",
+    "stale",
+    "resource_refused",
+    "rows_visited",
     "rows_returned",
+    "maintained_index_work",
+    "commits_visited",
+    "commits_returned",
+    "directories_read",
+    "entries_visited",
+    "files_visited",
+    "bytes_visited",
+)
+TIMING_KEYS: tuple[str, ...] = (
     "binding_bytes_copied",
     "lock_wait_ns",
     "cpu_time_ns",
@@ -100,14 +121,15 @@ def test_work_counters_carry_every_name_the_benchmarks_print(
     monkeypatch.setenv("METABROWSER_DEBUG", "1")
     _status, body = _read(tmp_path)
     work = body["work"]
-    assert [key for key in WORK_KEYS if key not in work] == []
-    # Counts are exact integers. Times are integers or absent -- a provider
-    # that cannot measure its own CPU time says so with null rather than
-    # reporting a zero that reads as "free".
-    for key in ("read_requests", "entries_visited", "directories_visited", "rows_returned"):
+    assert [key for key in CONSUMER_KEYS if key not in work] == []
+    assert [key for key in SEMANTIC_KEYS if key not in work] == []
+    # Counts are exact integers. Times and copied bytes are integers or absent --
+    # a provider that cannot measure its own CPU time says so with null rather
+    # than reporting a zero that reads as "free".
+    for key in ("read_requests", *SEMANTIC_KEYS):
         assert isinstance(work[key], int), key
         assert work[key] >= 0, key
-    for key in ("binding_bytes_copied", "lock_wait_ns", "cpu_time_ns", "wall_time_ns"):
+    for key in TIMING_KEYS:
         assert work[key] is None or isinstance(work[key], int), key
 
 

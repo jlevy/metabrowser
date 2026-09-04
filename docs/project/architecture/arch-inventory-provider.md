@@ -20,14 +20,14 @@ routes and browser event projection
                 |
           InventoryHandle
           /             \
- PythonInventoryHandle  FduInventoryHandle (planned)
-          |
- _PythonInventoryStore
+ _PythonInventoryStore  fdu-backed store (planned)
 ```
 
-`PythonInventoryHandle` is a five-method façade.
-The private Python store owns walking, watching, retained indexes, and projection
-execution; none of those helpers are part of the provider interface.
+`InventoryHandle` is a structural protocol, not a wrapper class.
+The private Python store implements its five operations directly and also owns walking,
+watching, retained indexes, and projection execution.
+Those implementation helpers remain private without a forwarding object that duplicates
+the provider API.
 
 ## One Opened Root
 
@@ -63,31 +63,36 @@ Configuration separates state identity from execution policy:
 
 | Class | Fields | Effect |
 | --- | --- | --- |
-| Semantic scope | `max_files`, `max_depth`, and exact hidden-name allowlist | Included in the scope fingerprint; a file-budget stop reports partial coverage |
-| Classification | File Rollup registry fingerprint | Contributes to the semantic fingerprint; changing it opens a new session |
-| Execution | change-queue size | Reported as a provider fact; does not change a result’s meaning |
+| Semantic filesystem scope | hidden admission and exact allowlist, symlink following, filesystem boundary, and admitted object kinds | Included in the versioned scope fingerprint |
+| Classification | Immutable File Rollup registry document | Parsed by each provider; its provider-derived identity contributes to the semantic fingerprint |
+| Execution | discovery budget and change-queue size | A budget stop reports partial coverage but does not redefine semantic scope |
 | Observation | watch mode | Reported through source, freshness, and diagnostics |
+| Selection | depth, row, and work bounds carried by each query | Changes one answer without changing the opened root’s identity |
 
-`max_files` limits regular files, not directory rows.
+`DiscoveryBudget.max_files` limits regular files, not directory rows.
 Query `max_rows` bounds each returned page independently, and complete directory-style
 consumers follow every continuation.
 Metabrowser route and initial-stream tree assembly use `INVENTORY_TREE_PAGE_ROWS` rather
 than reusing the `INVENTORY_MAX_FILES` discovery budget.
 One `ReadRequest` contains at most `MAX_QUERIES_PER_READ` queries, which also bounds a
 dirty-path projection batch.
+The opened provider discovers without a depth limit.
 The walker and watcher both apply `hidden_allowlist`; a name that changes scope cannot
 be fingerprinted without also changing observation behavior.
 
-Traversal is breadth-first and symlinks are visible leaves but never followed.
-These are contract semantics, not configurable fields.
-Filesystem-boundary restriction and persistent-cache modes are absent until an
-implementation and consumer require them; providers cannot silently ignore inert
-options.
+Traversal is breadth-first.
+The v1 contract names and validates one observation-compatible scope: hidden components
+are excluded except for the allowlist, symlinks are visible leaves and never followed,
+filesystem boundaries are crossed, and files, directories, and symlinks are admitted.
+An unsupported scope fails at config construction; providers cannot silently ignore
+inert options.
 
 The scope fingerprint is SHA-256 over the UTF-8 compact JSON array of sorted
 `[name, value]` string pairs.
-Structured values, currently `hidden_allowlist`, are compact canonical JSON strings
-within that outer array.
+The payload includes the `inventory-scope-v2` schema identity.
+Structured values are compact canonical JSON strings within that outer array.
+Discovery budget, query depth, registry content, queue capacity, and observation mode
+are intentionally absent.
 Every provider adapter uses the application helper that defines this encoding; it does
 not hash a language-specific object representation.
 
@@ -98,8 +103,9 @@ complete answer changes.
 A provider with one native fingerprint returns it directly.
 A provider with several computes SHA-256 over the UTF-8 canonical JSON array of
 `[name, value]` string pairs sorted by name, with no insignificant whitespace.
-The Python provider’s sole component is the File Rollup registry, while fdu also
-includes its tag rules and reducer registrations.
+The Python provider’s current semantic component is the parsed File Rollup registry,
+while fdu also includes its reducer behavior.
+A caller never supplies a fingerprint as proof of different registry content.
 A `ChangeCursor` contains the same session and sequence at the read boundary.
 A provider may implement coherent reads with a lock, an immutable image, or
 version-check-and-retry, provided that:
@@ -114,9 +120,9 @@ This rule lets the coordinator assemble complete paged catalogs and trees withou
 joining generations.
 `InventoryReadSession` also holds the root and sparse-overlay boundary while those pages
 assemble. If the native engine stops retaining the pinned version, the whole bounded
-assembly restarts; cursors must advance and the final page must report zero remaining
-rows. Exhausted retries fail the request with `VersionUnavailableError`; a complete
-consumer never substitutes a partial first page.
+assembly restarts; cursors must advance and the final page must omit its continuation.
+Exhausted retries fail the request with `VersionUnavailableError`; a complete consumer
+never substitutes a partial first page.
 
 The Python provider retains the last coherent root-entry and navigation bundle while its
 revision is moving. A repeated root-summary read may return that earlier boundary until
@@ -143,12 +149,12 @@ must not traverse inventory entries or manufacture a diagnostics dependency.
 | Kind | Query | Required bound | Result |
 | --- | --- | --- | --- |
 | `entry` | `EntryQuery` | One relative path | Present, absent, or unknown lookup plus filesystem facts |
-| `directory` | `DirectoryQuery` | Positive depth and row count | Name-ordered rows, continuation, and exact known remainder |
-| `filtered_tree` | `FilteredTreeQuery` | Positive depth and row count | Matching tree rows and selected scalar totals |
-| `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node bound | Typed File Rollup Format record for one directory |
-| `navigation` | `NavigationQuery` | Positive tally-row count | Typed population, extension, family, preset, and recency record |
-| `recent` | `RecentQuery` | Positive row count and explicit observation time | Newest matching files and pre-bound match count; truncation is derived |
-| `catalog` | `CatalogQuery` | Positive page size; optional terminal-extension, ancestor-name, and size predicates | Matching file identities, logical extensions, continuation, and exact known remainder from one pinned version |
+| `directory` | `DirectoryQuery` | Positive depth, page-row, and work bounds | Directory-first, canonical UTF-8 name-ordered rows and an opaque continuation |
+| `filtered_tree` | `FilteredTreeQuery` | Positive depth, page-row, and work bounds | Matching tree rows and selected scalar totals |
+| `rollup` | `RollupQuery` | Nonnegative depth and ranking bounds; positive node and work bounds | Typed File Rollup Format record for one directory |
+| `navigation` | `NavigationQuery` | Positive tally-row and work bounds | Typed population, extension, family, preset, and recency record |
+| `recent` | `RecentQuery` | Positive row, count, and work bounds plus explicit observation time | Newest matching files and an exact-or-lower-bound product count; truncation is derived |
+| `catalog` | `CatalogQuery` | Positive page-row, count, and work bounds; optional terminal-extension, ancestor-name, and size predicates | Canonical UTF-8 path-ordered file identities, logical extensions, opaque continuation, and an exact-or-lower-bound product count |
 | `diagnostics` | `DiagnosticsQuery` | Fixed `ProviderDiagnostics` record | Provider identity, indexed counts, watch state, request count, and cumulative work |
 
 Recency filters carry `as_of_ns`; an unchanged engine version does not freeze a
@@ -168,6 +174,14 @@ Ancestor names are nonempty, case-sensitive path components other than `.` and `
 contain neither separator; `size_less_than` is an exclusive byte bound.
 These rules are provider semantics, not Python implementation details.
 
+Every potentially broad query carries `max_work`. A provider that cannot produce the
+complete bounded projection returns `QueryLimitProjection` with the query kind, bound,
+and deterministic charged work; it never returns a partial value in the ordinary result
+type. Recent and catalog counts stop claiming exactness after `count_cap` and return a
+proven `at_least` lower bound.
+Consumers use continuations for completeness and counts for display; neither count kind
+controls paging.
+
 The algebra has no generic report name, provider command, HTTP status, response header,
 or provider-specific options map.
 Adding a query requires adding its record and result to `REGISTERED_QUERY_TYPES`,
@@ -182,6 +196,11 @@ directory aggregates.
 Path-bearing contract records use one canonical POSIX-relative grammar: the root is
 `""`, absolute paths, backslashes, nulls, `.` and `..` segments, duplicate separators,
 and trailing separators are rejected at construction.
+Every row projection also carries an optional `PortablePathIssue` with the exact number
+of native paths omitted and at most eight bounded, lowercase-hex native examples.
+Encoding is tagged as Unix bytes, Windows WTF-16LE, or platform bytes.
+A projection without an issue is complete in the portable path domain; an adapter never
+silently drops an unrepresentable native name.
 A lookup distinguishes:
 
 - `present`: the entry is known and returned
@@ -217,7 +236,7 @@ facts. A same-phase observation is always valid; cross-phase transitions are:
 
 | Current phase | Legal next phases |
 | --- | --- |
-| `opening_cache` | `discovering`, `reconciling`, `ready`, `stopped`, `failed` |
+| `opening` | `discovering`, `reconciling`, `ready`, `stopped`, `failed` |
 | `discovering` | `reconciling`, `ready`, `watching`, `stopped`, `failed` |
 | `reconciling` | `ready`, `watching`, `stopped`, `failed` |
 | `ready` | `reconciling`, `watching`, `stopped`, `failed` |
@@ -229,36 +248,36 @@ facts. A same-phase observation is always valid; cross-phase transitions are:
 live filesystem observer.
 `watching` requires a live observer; a provider configured with observation off, or one
 whose observer has failed while the retained index remains readable, reports `ready`.
+Resource-budget refusal remains readable but shuts down observation and reports
+`stopped`; it must not claim to watch a scope it can no longer expand.
+Refresh may still verify a retained file or symlink, including its removal, but rejects
+unknown paths and retained directories because either could expand the stopped scope.
+Priority hints are inert after this stop.
 `stopped` is terminal; `failed` may only transition to `stopped`.
 
 Coverage is either complete with no reason or partial with one of `building`, `budget`,
 `cancelled`, `inaccessible`, or `failed`. Freshness is `fresh`, `reconciling`, `stale`,
-or `partial`. A watcher gap makes freshness stale and adds a typed watcher-gap issue;
-coverage changes only if reconciliation discovers or cannot resolve an enumeration hole.
+or `partial`. An observation gap makes freshness stale and adds a typed
+`observation_gap` issue; coverage changes only if reconciliation discovers or cannot
+resolve an enumeration hole.
 Typed issues also distinguish permission failures, disappearance, invalid metadata,
-filesystem-boundary skips, resource stops, and provider failures.
+resource stops, and provider failures.
 Providers preserve the original path and cause when the current layer can handle them.
 `IndexState` contains at most `MAX_INVENTORY_ISSUES` records, and each issue detail is
 at most `MAX_ISSUE_DETAIL_BYTES` UTF-8 bytes.
 A provider coalesces or summarizes larger failure sets before constructing the state
 record.
 
-The Phase 2 fdu adapter uses the following total mappings; it does not infer them from
-strings at individual call sites:
+The fdu adapter maps every shared value exhaustively; it does not infer names at
+individual call sites:
 
 | Metabrowser fact | fdu fact |
 | --- | --- |
-| `LifecyclePhase.READY` | `Ready` |
-| `SourceKind.SCANNED` | `cold_scan` |
-| `SourceKind.REVALIDATED` | `warm_revalidate` |
-| `SourceKind.CACHED` | `cache_only` |
-| `IssueCode.PERMISSION_DENIED` | `Permission` |
-| `IssueCode.WATCHER_GAP` | `ObservationGap` |
-| `IssueCode.RESOURCE_BUDGET` | `ResourceStop` |
+| `LifecyclePhase.DISCOVERING` through `FAILED` | same named fdu lifecycle value |
+| `LifecyclePhase.OPENING` | host-owned pre-provider state; no fabricated fdu value |
+| every `CoverageReason`, `Freshness`, and `SourceKind` | same named fdu value |
+| every `IssueCode` | same named fdu issue kind |
 
-`SourceKind.JOURNAL_SCOPED` has no fdu mapping because replaying a journal does not
-manufacture a new answer-shaping state.
-Other issue spellings are identical.
 Zero progress is honest for a settled provider that did not expose progressive state; an
 adapter never invents progress, and fdu must expose real mid-discovery progress before
 it can satisfy the progressive-open adoption gate.
@@ -308,13 +327,16 @@ watcher gap. It never drops one failed chunk and continues while claiming freshn
 
 ## Work and Performance Evidence
 
-Every read and change reports nonnegative counts for entries visited, directories
-visited, rows returned, bytes copied across the binding, lock wait, and wall time.
-CPU time is an exact nonnegative measurement when present and is unavailable otherwise;
-a provider never substitutes zero or infers CPU from wall time.
-Diagnostics use the fixed `ProviderDiagnostics` record rather than a provider-defined
-mapping. They identify the selected provider and contract, indexed counts, watch state,
-read count, and cumulative work.
+Every read and change reports the same semantic work vocabulary as fdu: producer
+observations and outcomes, retained rows visited and returned, maintained-index work,
+journal commits visited and returned, and filesystem directories, entries, files, and
+bytes visited. These values are deterministic charges with stable meanings across
+providers. `BoundaryMetrics` separately records binding bytes, lock wait, wall time, and
+exact CPU time when available; unavailable CPU time remains `None` rather than becoming
+zero. Diagnostics use the fixed `ProviderDiagnostics` record rather than a
+provider-defined mapping.
+They identify the selected provider and contract, indexed counts, watch state, read
+count, cumulative semantic work, and cumulative boundary metrics.
 The serving benchmark records the same identities so Python-before, Python-after, and
 fdu runs differ by a declared provider axis rather than by separate harnesses.
 
@@ -333,7 +355,7 @@ and
 | `/api/tree` | Version-pinned `DirectoryQuery` or `FilteredTreeQuery` pages, with `NavigationQuery` at the same host boundary for root tallies |
 | `/api/rollup` and folder hooks | `RollupQuery` |
 | `/api/recent` | `RecentQuery` |
-| Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages; the Python scope fits in one page bounded by `InventoryConfig.max_files` |
+| Quick File catalog | Empty checkpoint read followed, on a cache miss, by version-pinned `CatalogQuery` pages; the default Python execution budget fits in one page bounded by `InventoryConfig.budget.max_files` |
 | `/api/file` folder facts | `EntryQuery` |
 | Initial browser stream | A lossless version-pinned snapshot assembled before atomic queue attachment; covered older changes are suppressed per connection |
 | Live browser stream | `changes()` plus coherent rereads |
@@ -344,11 +366,15 @@ Safe-path validation and file-content reads remain above the engine.
 No inventory-serving route performs a second filesystem walk or reads a concrete
 provider directly.
 Every provider implements flat filtered-tree and catalog continuations
-natively with the requested version, mandatory row bound, and exact remainder.
+natively with the requested version and mandatory row bound.
 An adapter cannot materialize an unbounded result, retain a mirror solely to page it, or
 claim a truncated first page is terminal.
-The Python reference provider may retain one coherent tree projection when it returns a
-continuation, then discard or replace that memo when another projection wins the slot.
+The Python reference provider retains a small bounded table of coherent projections when
+it returns continuations.
+Continuations are opaque, one-shot, and version-pinned; table eviction reports
+unavailability rather than reconstructing cursor authority from caller data.
+A typed work-limit result does not consume a continuation, so a caller can retry the
+same version and token with an adequate bound; a successfully returned page does.
 This avoids repeating a full Python subtree pass for every page without creating a
 coordinator cache or an fdu adapter index.
 The fdu provider uses its native cursor and indexes instead.
@@ -365,12 +391,19 @@ verifies that every row resolves to a provider-parametrized test in
 | `test_checkpoint_read_returns_only_a_coherent_constant_work_envelope` |
 | `test_paged_time_dependent_reads_reuse_one_as_of` |
 | `test_provider_semantic_digest` |
+| `test_provider_derives_registry_identity_from_supplied_content` |
+| `test_provider_uses_supplied_registry_content_for_classification` |
 | `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` |
 | `test_directory_pages_are_lossless_when_directories_outnumber_file_budget` |
 | `test_catalog_predicate_semantics_are_runtime_independent_and_exact` |
-| `test_catalog_pages_report_exact_lossless_remainders` |
+| `test_catalog_pages_are_lossless_without_suffix_counts` |
+| `test_provider_applies_work_bounds_to_continuation_pages` |
+| `test_provider_returns_typed_query_limits_without_partial_answers` |
+| `test_provider_counts_are_exact_or_proven_lower_bounds` |
+| `test_provider_uses_canonical_portable_row_order` |
 | `test_provider_version_pins_fail_instead_of_moving` |
 | `test_provider_changes_resume_and_report_history_gaps_as_reset` |
+| `test_provider_allows_only_one_active_change_iterator` |
 | `test_provider_refresh_verifies_the_filesystem_instead_of_trusting_the_hint` |
 | `test_provider_close_joins_change_delivery_and_is_idempotent` |
 | `test_provider_lifecycle_is_monotonic_and_one_handle_keeps_one_session` |
