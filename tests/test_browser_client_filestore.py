@@ -550,8 +550,11 @@ def test_plugin_mount_schedules_scoped_post_paint_highlighting() -> None:
     render_start = js.index("async function renderFile(data, preferredViewId, claim)")
     render_block = js[render_start : render_start + 12_000]
     assert "mountPluginView(target, pluginView, ctx, stagedPluginDisposers)" in render_block
+    assert "const mount = (" in render_block
+    assert "var mount = (" not in render_block
     assert '"fileNavigation:activeView"' in render_block
     assert "await _perf.measureAsync(" in render_block
+    assert "container._metabrowserMount = () =>" in render_block
     assert 'await measureNextPaint("fileNavigation:paintReady"' in render_block
 
 
