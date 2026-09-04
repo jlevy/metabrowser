@@ -619,12 +619,12 @@
     global.MetabrowserFileTypeTaxonomy ||
     Object.freeze({
       schema: "file-type-registry-v4",
-      schemaVersion: 3,
+      schemaVersion: 4,
       revision: 0,
       fingerprint: "unavailable",
       maxExtensionComponents: 2,
       registryIdentity: Object.freeze({
-        schemaVersion: 3,
+        schemaVersion: 4,
         revision: 0,
         fingerprint: "unavailable",
       }),
