@@ -127,7 +127,7 @@ from metabrowser.inventory_engine.contract import (
     RollupProjection,
     RollupQuery,
     VersionUnavailableError,
-    canonical_inventory_path,
+    parse_inventory_path,
 )
 from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostVersion
 from metabrowser.inventory_engine.runtime import InventoryRuntime
@@ -1611,7 +1611,7 @@ async def _read_tree_from_provider(
 async def api_tree(request: Request) -> JSONResponse:
     requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
-    subpath = canonical_inventory_path(requested)
+    subpath = parse_inventory_path(requested)
     if subpath is None or _safe_path(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
@@ -1640,7 +1640,7 @@ async def api_rollup(request: Request) -> Response:
     """
 
     requested = request.query_params.get("path", "")
-    subpath = canonical_inventory_path(requested)
+    subpath = parse_inventory_path(requested)
     if subpath is None or _safe_path(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
@@ -1989,7 +1989,7 @@ async def _api_folder_envelope(
     while a scan is running.
     """
 
-    key = canonical_inventory_path(subpath)
+    key = parse_inventory_path(subpath)
     if key is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
     subpath = key

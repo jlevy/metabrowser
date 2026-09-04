@@ -4,12 +4,80 @@ The application owns this vocabulary. Providers implement it without exposing th
 retained-index types, concurrency model, or transport details. Every potentially large
 query carries an explicit output bound, and every read returns its state and version at
 the same observation boundary as its projections.
+
+Row order is part of that contract, and every order below is **total**: two providers
+answering one query at one version return the same rows in the same sequence, with no tie
+left to insertion order, dictionary iteration, or a stable sort's input order. An order a
+provider merely happens to produce is not a contract, and one stated only in prose is not
+either. These were undocumented here while two implementations quietly disagreed, which is
+the failure this section exists to prevent.
+
+Directory and filtered-tree pages are **breadth-first level order**: every child of the
+requested path, then every child of those directories, until `max_depth` or the row bound
+is reached. Within one parent, directories precede non-directories and each partition is
+ordered by the canonical POSIX name's UTF-8 bytes — so uppercase sorts before lowercase,
+as byte order gives.
+
+Level order rather than pre-order, because it keeps truncation honest. A pre-order page
+cut at its row bound can return one directory and a thousand of its descendants while
+leaving the caller unable to tell whether the parent held two entries or two thousand.
+Level order returns the complete shallow picture first, so what a bound withheld shows up
+as missing depth rather than as hidden breadth.
+
+Catalog pages are ordered by the complete canonical POSIX path's UTF-8 bytes.
+
+Recent answers two ordering questions and a provider must implement both.
+
+*Which rows*: ignored state, then modification time descending, then canonical path
+ascending. Ignored entries rank last on purpose — installing dependencies writes thousands
+of files at once, and pure recency would answer "what have I been working on" with ten
+`node_modules` paths and none of the caller's own work.
+
+*In what order they are returned*: modification time descending, then canonical path
+ascending, applied to the page that survived selection. So the caller sees the newest
+first among rows chosen for relevance.
+
+The path is the final key in both, because it is unique within one index and that makes
+each order total.
+
+Selection demotion applies in **every** branch, which is the part to get right. It once
+applied only when the match count exceeded the row bound, so one query name carried two
+ranking contracts and which one a caller received depended on the size of the corpus.
+Beyond these keys nothing reorders ranked rows — not size, not type, not depth.
+
+Every order above keys on the canonical path, so the canonical path has to exist for
+every entry, and it does: the encoding is **total**.
+
+A path is canonical POSIX-relative, `/`-separated, and derived from the platform name by
+escaping. Bytes that are not valid UTF-8 become `%XX` with uppercase hexadecimal digits,
+and `%` itself becomes `%25` so that the mapping stays injective and two different names
+can never collide on one canonical form. Runs that are valid UTF-8 are preserved, so a
+name that is mostly readable stays mostly readable.
+
+This is a name, not an address. It orders rows and resumes pages; it is never joined onto
+a native path or handed to the filesystem.
+
+Totality is the point. This contract once let a provider report that some entries had no
+canonical form, with an omission count and a bounded list of escaped examples, and the
+consumer then had to treat a directory as having two populations — the entries it knew
+and the entries it could name — with a separate completeness answer for each. Every mature
+system meeting this problem makes the derived name total instead: git quotes paths, Python
+escapes undecodable bytes as surrogates, and the `file://` URIs that LSP and desktop file
+managers exchange are percent-encoded. None of them tells a caller that a file has no
+name. Neither does this one, so there is no omission to report and no second population to
+describe.
+
+`include_ignored=False` **prunes the excluded directory's whole subtree**, contributing
+neither the directory nor any descendant. Filtering the row instead is an equally
+reasonable reading of an unstated rule, which is why the rule is stated.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import string
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -38,8 +106,6 @@ DEFAULT_DISCOVERY_MAX_FILES = 500_000
 DEFAULT_QUERY_MAX_WORK = 1_000_000
 DEFAULT_COUNT_CAP = 10_000
 MAX_COUNT_CAP = 1_000_000
-MAX_PORTABLE_PATH_EXAMPLES = 8
-MAX_PORTABLE_PATH_EXAMPLE_BYTES = 256
 INVENTORY_SCOPE_IDENTITY_SCHEMA = "inventory-scope-v2"
 
 
@@ -103,6 +169,11 @@ def require_canonical_inventory_path(
             return
         raise ValueError(f"{name} must be a canonical POSIX-relative path below the root")
     pure = PurePosixPath(value)
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        # A canonical path is the escaped form, so a surrogate here means some producer
+        # passed a raw platform name through. Rejecting at the boundary keeps the rule
+        # enforced rather than merely stated.
+        raise ValueError(f"{name} must be escaped, not a raw platform name")
     if (
         "\\" in value
         or "\x00" in value
@@ -119,21 +190,29 @@ def require_canonical_inventory_path(
         raise ValueError(f"{name} must be a canonical POSIX-relative path")
 
 
-def canonical_inventory_path(value: str) -> str | None:
-    """Translate a path as a client spelled it into the canonical key, or None.
+def parse_inventory_path(value: str) -> str | None:
+    """Read a path as a client spelled it, returning the key or ``None``.
+
+    This is the inbound direction, and the counterpart of
+    :func:`canonical_inventory_path`, which is outbound: that one turns a name the
+    filesystem gave us into the canonical identity, while this one turns a
+    spelling a client sent into the same identity, or says there isn't one.
 
     HTTP clients and command lines spell one directory several ways -- ``docs``,
-    ``docs/``, ``./docs``, and ``.`` or ``""`` for the root. Providers must not
-    each decide what those mean: a spelling that the reference provider treats
-    as the root and a native one treats as a miss is a difference no test above
-    the boundary would attribute correctly. So the translation happens once,
-    here, and every provider sees only what
-    :func:`require_canonical_inventory_path` accepts.
+    ``docs/``, ``./docs``, and ``.`` or ``""`` for the root. Providers must not each
+    decide what those mean: a spelling that the reference provider treats as the root
+    and a native one treats as a miss is a difference no test above the boundary would
+    attribute correctly.
 
-    ``None`` means the value cannot name anything inside the root, which callers
-    report as a miss rather than passing down. ``..`` is refused rather than
-    resolved: collapsing it would make the answer depend on whether a segment is
-    a symlink, which is a filesystem question the inventory key does not carry.
+    ``None`` means the value cannot name anything inside the root, which callers report
+    as a miss rather than passing down. ``..`` is refused rather than resolved:
+    collapsing it would make the answer depend on whether a segment is a symlink, which
+    is a filesystem question the inventory key does not carry.
+
+    The result is checked against :func:`require_canonical_inventory_path` rather than
+    assumed canonical, so this function cannot drift from the rule it feeds. Every
+    tightening of that rule -- the surrogate refusal among them -- narrows this one in
+    the same commit.
     """
 
     if "\x00" in value or "\\" in value or value.startswith("/"):
@@ -145,11 +224,98 @@ def canonical_inventory_path(value: str) -> str | None:
         if segment == "..":
             return None
         parts.append(segment)
-    return "/".join(parts)
+    candidate = "/".join(parts)
+    try:
+        require_canonical_inventory_path(candidate, "path", allow_root=True)
+    except ValueError:
+        return None
+    return candidate
+
+
+def canonical_inventory_name(name: str) -> str:
+    """Escape one platform filename into its canonical form.
+
+    Total by construction: every name has one. Undecodable bytes become `%XX` with
+    uppercase hexadecimal digits, `%` itself becomes `%25` so the mapping stays injective,
+    and everything else is preserved, so a mostly-readable name stays mostly readable.
+
+    The platform branch mirrors how the name was decoded, and mirrors fdu. On POSIX,
+    `os.scandir` decodes undecodable bytes with `surrogateescape`, mapping each byte to one
+    scalar in `U+DC80..U+DCFF`, so each becomes one escape. On Windows a name is UTF-16
+    that need not be well formed, and an unpaired surrogate has no UTF-8 encoding at all,
+    so its two code units' bytes are escaped big-endian: `U+D800` becomes `%D8%00`, whose
+    hex digits read in the order the code unit is written.
+
+    Without this, ordering a directory that holds one undecodable name raised
+    `UnicodeEncodeError` from `name.encode("utf-8")` -- surrogates are not encodable -- so
+    a single such file made the whole directory unlistable, where fdu escaped it and
+    listed it.
+    """
+
+    # The common path has to stay cheap, because it is every file. Both checks are
+    # C-level: `%` is a substring scan, and encoding raises precisely on the surrogates
+    # that mark an undecodable byte. A Python-level scan over every character of every
+    # name in every page is the version of this that shows up in a profile.
+    if "%" not in name:
+        try:
+            name.encode("utf-8")
+        except UnicodeEncodeError:
+            pass
+        else:
+            return name
+    out: list[str] = []
+    for character in name:
+        point = ord(character)
+        if character == "%":
+            out.append("%25")
+        elif _POSIX_BYTES and 0xDC80 <= point <= 0xDCFF:
+            out.append(f"%{point - 0xDC00:02X}")
+        elif 0xD800 <= point <= 0xDFFF:
+            out.append(f"%{point >> 8:02X}%{point & 0xFF:02X}")
+        else:
+            out.append(character)
+    return "".join(out)
+
+
+def canonical_inventory_path(path: str) -> str:
+    """Escape a `/`-separated relative path.
+
+    The same function as for one name, not a split-escape-join, because no escape rule
+    produces or consumes `/`: escaping is per character, and a separator passes through
+    untouched. Splitting and rejoining gives the identical string while allocating a new
+    one for every path on every page, including the paths that needed nothing done to
+    them.
+    """
+
+    return canonical_inventory_name(path)
+
+
+_POSIX_BYTES = os.name != "nt"
+
+
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def ascii_casefold(value: str) -> str:
+    """Fold ASCII letters only, leaving every other scalar untouched.
+
+    Suffix and name matching is case-insensitive because real files carry `.JPG` from
+    cameras and `.PDF` from elsewhere, and a caller filtering for `.jpg` means those too.
+    It is insensitive *only over ASCII* because that is the alphabet extensions actually
+    use, and because full Unicode lowering is locale-sensitive in ways nobody wants
+    deciding whether a file matches — Turkish dotless i being the standard example.
+
+    Stating the alphabet is what makes two providers agree. `str.lower()` folds all of
+    Unicode and fdu's `eq_ignore_ascii_case` folds only ASCII, so `archive.TÜRKÇE` matched
+    in one implementation and was dropped by the other. Identical on ASCII, divergent
+    beyond it, and invisible until a corpus stops being English.
+    """
+
+    return value.translate(_ASCII_LOWER)
 
 
 def catalog_terminal_suffix(name: str) -> str:
-    """Return the lowercase terminal suffix defined by the provider contract.
+    """Return the ASCII-folded terminal suffix defined by the provider contract.
 
     The final dot starts a suffix only when it is neither the first nor final
     character. Thus `.gitignore` and `notes.` have no suffix, while `..foo` has
@@ -160,7 +326,7 @@ def catalog_terminal_suffix(name: str) -> str:
     dot = name.rfind(".")
     if dot <= 0 or dot + 1 == len(name):
         return ""
-    return name[dot:].lower()
+    return ascii_casefold(name[dot:])
 
 
 class AdmittedObjectKind(StrEnum):
@@ -545,41 +711,6 @@ class EntryType(StrEnum):
     SYMLINK = "symlink"
 
 
-class PortablePathEncoding(StrEnum):
-    UNIX_BYTES = "unix_bytes"
-    WINDOWS_WTF16_LE = "windows_wtf16_le"
-    PLATFORM_BYTES = "platform_bytes"
-
-
-@dataclass(frozen=True, slots=True)
-class PortablePathExample:
-    encoding: PortablePathEncoding
-    encoded_hex: str
-    truncated: bool
-
-    def __post_init__(self) -> None:
-        _require_nonempty(self.encoded_hex, "encoded_hex")
-        if len(self.encoded_hex) > MAX_PORTABLE_PATH_EXAMPLE_BYTES * 2:
-            raise ValueError("portable path example exceeds its encoded-byte bound")
-        if len(self.encoded_hex) % 2 or any(
-            character not in "0123456789abcdef" for character in self.encoded_hex
-        ):
-            raise ValueError("portable path example must be lowercase hexadecimal bytes")
-
-
-@dataclass(frozen=True, slots=True)
-class PortablePathIssue:
-    omitted: int
-    examples: tuple[PortablePathExample, ...] = ()
-
-    def __post_init__(self) -> None:
-        _require_positive(self.omitted, "omitted")
-        if len(self.examples) > MAX_PORTABLE_PATH_EXAMPLES:
-            raise ValueError(
-                f"portable path issue accepts at most {MAX_PORTABLE_PATH_EXAMPLES} examples"
-            )
-
-
 @dataclass(frozen=True, slots=True)
 class InventoryEntry:
     """Provider-owned filesystem facts for one served-root-relative path."""
@@ -961,7 +1092,6 @@ class EntryProjection:
 class DirectoryProjection:
     query_id: str
     entries: tuple[InventoryEntry, ...]
-    portable_issue: PortablePathIssue | None = None
     next_page: str | None = None
 
     def __post_init__(self) -> None:
@@ -979,7 +1109,6 @@ class FilteredTreeProjection:
     matching_leaves: int
     matching_files: int
     matching_bytes: int
-    portable_issue: PortablePathIssue | None = None
     next_page: str | None = None
 
     def __post_init__(self) -> None:
@@ -1035,7 +1164,6 @@ class RecentProjection:
     query_id: str
     entries: tuple[InventoryEntry, ...]
     total_matches: CountResult
-    portable_issue: PortablePathIssue | None = None
     gitignored_directories: tuple[str, ...] = ()
     valid_until_ns: int | None = None
 
@@ -1076,7 +1204,6 @@ class CatalogProjection:
     query_id: str
     records: tuple[CatalogRecord, ...]
     total_matches: CountResult
-    portable_issue: PortablePathIssue | None = None
     next_page: str | None = None
 
     def __post_init__(self) -> None:

@@ -21,8 +21,6 @@ from metabrowser.inventory_engine.contract import (
     MAX_COUNT_CAP,
     MAX_INVENTORY_ISSUES,
     MAX_ISSUE_DETAIL_BYTES,
-    MAX_PORTABLE_PATH_EXAMPLE_BYTES,
-    MAX_PORTABLE_PATH_EXAMPLES,
     QUERY_TYPE_BY_KIND,
     REGISTERED_QUERY_TYPES,
     AdmittedObjectKind,
@@ -63,9 +61,6 @@ from metabrowser.inventory_engine.contract import (
     NavigationProjection,
     NavigationQuery,
     ObservationKind,
-    PortablePathEncoding,
-    PortablePathExample,
-    PortablePathIssue,
     PriorityRequest,
     QueryKind,
     QueryLimitProjection,
@@ -82,8 +77,11 @@ from metabrowser.inventory_engine.contract import (
     SourceKind,
     VersionUnavailableError,
     WorkCounters,
+    canonical_inventory_name,
+    canonical_inventory_path,
     catalog_terminal_suffix,
     inventory_scope_fingerprint,
+    require_canonical_inventory_path,
 )
 from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
 from metabrowser.wire_models import validate_rollup_result
@@ -656,33 +654,99 @@ def test_lifecycle_diagnostics_are_bounded_before_crossing_provider_boundaries()
         )
 
 
-def test_portable_path_loss_is_bounded_and_losslessly_encoded() -> None:
-    example = PortablePathExample(
-        encoding=PortablePathEncoding.UNIX_BYTES,
-        encoded_hex="ff00",
-        truncated=False,
-    )
-    assert PortablePathIssue(omitted=1, examples=(example,)).omitted == 1
-    with pytest.raises(ValueError, match="positive"):
-        PortablePathIssue(omitted=0)
-    with pytest.raises(ValueError, match="lowercase hexadecimal"):
-        PortablePathExample(
-            encoding=PortablePathEncoding.UNIX_BYTES,
-            encoded_hex="FF",
-            truncated=False,
-        )
-    with pytest.raises(ValueError, match="encoded-byte bound"):
-        PortablePathExample(
-            encoding=PortablePathEncoding.PLATFORM_BYTES,
-            encoded_hex="aa" * (MAX_PORTABLE_PATH_EXAMPLE_BYTES + 1),
-            truncated=True,
-        )
-    with pytest.raises(ValueError, match="at most"):
-        PortablePathIssue(
-            omitted=MAX_PORTABLE_PATH_EXAMPLES + 1,
-            examples=(example,) * (MAX_PORTABLE_PATH_EXAMPLES + 1),
-        )
+def test_the_canonical_path_is_total_and_injective() -> None:
+    """Every name has a canonical form, and two names never collide on one.
 
+    This replaced a contract in which a provider could report that some entries had no
+    canonical form, with an omission count and bounded escaped examples, leaving the
+    consumer to treat a directory as two populations. Totality removes the second
+    population rather than describing it.
+    """
+
+    undecodable = b"x\xff.txt".decode("utf-8", "surrogateescape")
+    assert canonical_inventory_name(undecodable) == "x%FF.txt"
+    assert canonical_inventory_name("README.md") == "README.md"
+
+    # `%` escapes too, or `x%FF.txt` on disk and the escape of `x\xff.txt` would be one
+    # string, and the page could not say which file a row came from.
+    assert canonical_inventory_name("x%FF.txt") == "x%25FF.txt"
+    assert canonical_inventory_name(undecodable) != canonical_inventory_name("x%FF.txt")
+
+    assert canonical_inventory_path(f"a/{undecodable}/b") == "a/x%FF.txt/b"
+
+    # The point of escaping: the result is orderable. The raw name is not, because
+    # encoding a surrogate as UTF-8 raises, so one such file made a whole directory
+    # unlistable.
+    assert canonical_inventory_name(undecodable).encode("utf-8") == b"x%FF.txt"
+    with pytest.raises(UnicodeEncodeError):
+        undecodable.encode("utf-8")
+
+    # A canonical path is the escaped form, so the boundary rejects a raw platform name
+    # rather than accepting one and ordering it inconsistently later.
+    with pytest.raises(ValueError, match="escaped"):
+        require_canonical_inventory_path(undecodable, "path", allow_root=False)
+    require_canonical_inventory_path(
+        canonical_inventory_name(undecodable), "path", allow_root=False
+    )
+
+
+def test_the_boundary_escapes_a_name_the_store_holds_natively() -> None:
+    """The store keeps the platform name; only rows crossing the boundary are escaped.
+
+    Nothing is stored twice, which is the point: the retained index holds one string per
+    entry, and the canonical form is derived for the page being returned. A name needing
+    no escape comes back as the *same object*, so the ordinary case allocates nothing.
+
+    Synthesised rather than written to disk, because APFS rejects a filename that is not
+    valid UTF-8, so the case this covers cannot be created on the machine that most often
+    runs these tests. It is reachable on Linux, which is where it would otherwise be found
+    the hard way.
+    """
+
+    from metabrowser.inventory_engine.providers.python_inventory import (
+        FsEntry,
+        _semantic_entry,
+    )
+
+    undecodable = b"x\xff.txt".decode("utf-8", "surrogateescape")
+    stored = FsEntry(
+        path=f"src/{undecodable}",
+        parent="src",
+        name=undecodable,
+        type="file",
+        ext=".txt",
+        kind="file",
+        size=1,
+        mtime_ns=1,
+        mtime_hash="",
+        active=False,
+    )
+
+    row = _semantic_entry(stored)
+    assert row.path == "src/x%FF.txt"
+    assert row.name == "x%FF.txt"
+    assert row.parent == "src"
+
+    # The store is untouched: one string per entry, still the platform's.
+    assert stored.name == undecodable
+
+    # And an ordinary name crosses without allocating a second string.
+    plain = FsEntry(
+        path="src/main.py",
+        parent="src",
+        name="main.py",
+        type="file",
+        ext=".py",
+        kind="file",
+        size=1,
+        mtime_ns=1,
+        mtime_hash="",
+        active=False,
+    )
+    assert _semantic_entry(plain).path is plain.path
+
+
+def test_lifecycle_issue_lists_are_bounded() -> None:
     issue = InventoryIssue(code=IssueCode.PROVIDER_FAILURE, detail="failed")
     with pytest.raises(ValueError, match="at most"):
         IndexState(
@@ -1552,8 +1616,6 @@ def test_provider_uses_canonical_portable_row_order(
             catalog = result.projection("catalog")
             assert isinstance(directory, DirectoryProjection)
             assert isinstance(catalog, CatalogProjection)
-            assert directory.portable_issue is None
-            assert catalog.portable_issue is None
             return (
                 tuple(entry.path for entry in directory.entries),
                 tuple(record.path for record in catalog.records),

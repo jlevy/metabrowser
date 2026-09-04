@@ -13,7 +13,7 @@ either and the difference would surface as a browser bug attributed to the
 engine swap.
 
 So the invariant asserted here is not "the routes are lenient". It is that
-:func:`canonical_inventory_path` is total over client input, that everything it
+:func:`parse_inventory_path` is total over client input, that everything it
 accepts is already canonical by :func:`require_canonical_inventory_path`, and
 that equivalent spellings are indistinguishable at the wire — leaving providers
 one input shape to implement.
@@ -32,6 +32,7 @@ import pytest
 from metabrowser import server
 from metabrowser.inventory_engine.contract import (
     canonical_inventory_path,
+    parse_inventory_path,
     require_canonical_inventory_path,
 )
 from tests.inventory_harness import InventoryHarness, inventory_harness
@@ -64,6 +65,11 @@ UNNAMEABLE: tuple[str, ...] = (
     "/",
     "a\\b",
     "docs\x00",
+    # A raw platform name. `os.scandir` decodes an undecodable byte into a
+    # surrogate, and the contract's identity for such a file is the escaped form
+    # `canonical_inventory_path` produces, so the raw spelling names nothing.
+    "x\udcff.txt",
+    "docs/x\udcff.txt",
 )
 
 
@@ -95,14 +101,14 @@ async def _json(harness: InventoryHarness, route: Any, params: dict[str, str]) -
 
 @pytest.mark.parametrize(("spelling", "expected"), EQUIVALENT_SPELLINGS)
 def test_client_spellings_translate_to_the_contract_key(spelling: str, expected: str) -> None:
-    assert canonical_inventory_path(spelling) == expected
+    assert parse_inventory_path(spelling) == expected
 
 
 @pytest.mark.parametrize("value", UNNAMEABLE)
 def test_unnameable_paths_are_a_miss_not_an_exception(value: str) -> None:
     """A query string cannot be made to raise out of the translation."""
 
-    assert canonical_inventory_path(value) is None
+    assert parse_inventory_path(value) is None
 
 
 @pytest.mark.parametrize("spelling", [pair[0] for pair in EQUIVALENT_SPELLINGS])
@@ -115,16 +121,32 @@ def test_translation_output_is_accepted_by_the_contract(spelling: str) -> None:
     boundary exists to prevent.
     """
 
-    canonical = canonical_inventory_path(spelling)
+    canonical = parse_inventory_path(spelling)
     assert canonical is not None
     require_canonical_inventory_path(canonical, "path", allow_root=True)
 
 
 @pytest.mark.parametrize("spelling", [pair[0] for pair in EQUIVALENT_SPELLINGS])
 def test_translation_is_idempotent(spelling: str) -> None:
-    once = canonical_inventory_path(spelling)
+    once = parse_inventory_path(spelling)
     assert once is not None
-    assert canonical_inventory_path(once) == once
+    assert parse_inventory_path(once) == once
+
+
+def test_a_raw_platform_name_is_a_miss_rather_than_a_raise() -> None:
+    """The two directions meet here, and must not disagree.
+
+    `canonical_inventory_path` escapes an undecodable byte into `%FF`, and
+    `require_canonical_inventory_path` refuses the unescaped form so a raw name
+    cannot be ordered inconsistently later. A client that sends the raw spelling
+    must therefore get a miss -- if this parser passed it through, the refusal
+    would arrive as an exception from a query constructor instead.
+    """
+
+    raw = "x\udcff.txt"
+    assert parse_inventory_path(raw) is None
+    assert canonical_inventory_path(raw) == "x%FF.txt"
+    assert parse_inventory_path("x%FF.txt") == "x%FF.txt"
 
 
 def test_dot_is_not_a_canonical_path() -> None:

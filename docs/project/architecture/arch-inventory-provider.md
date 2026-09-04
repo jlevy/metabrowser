@@ -196,12 +196,18 @@ directory aggregates.
 Path-bearing contract records use one canonical POSIX-relative grammar: the root is
 `""`, absolute paths, backslashes, nulls, `.` and `..` segments, duplicate separators,
 and trailing separators are rejected at construction.
-Every row projection also carries an optional `PortablePathIssue` with the exact number
-of native paths omitted and at most eight bounded, lowercase-hex native examples.
-Encoding is tagged as Unix bytes, Windows WTF-16LE, or platform bytes.
-A projection without an issue is complete in the portable path domain; an adapter never
-silently drops an unrepresentable native name.
-A lookup distinguishes:
+That grammar is **total**: every entry has a canonical path, because the form is derived
+by escaping rather than by requiring the platform name to already be representable.
+Bytes that are not valid UTF-8 become `%XX` with uppercase hexadecimal digits, and `%`
+itself becomes `%25` so two different names can never collide on one canonical form.
+Runs that are valid UTF-8 are preserved.
+
+Row projections once carried an optional issue instead, reporting how many native paths
+had been omitted with a bounded list of escaped examples, so a consumer had to treat a
+directory as two populations -- the entries it knew, and the entries it could name --
+with separate completeness for each.
+Totality removes the second population rather than describing it, so there is no
+omission to report. A lookup distinguishes:
 
 - `present`: the entry is known and returned
 - `absent`: complete coverage proves it is not present

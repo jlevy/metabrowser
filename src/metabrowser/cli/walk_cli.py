@@ -21,7 +21,7 @@ import typer
 from metabrowser.cli.common import apply_log_level, validate_contained_path
 from metabrowser.dotenv import load_dotenv_chain as _load_dotenv_chain
 from metabrowser.errors import CLIError
-from metabrowser.inventory_engine.contract import canonical_inventory_path
+from metabrowser.inventory_engine.contract import parse_inventory_path
 from metabrowser.settings import RECENT_WINDOW_SECONDS
 from metabrowser.tree_filter import TreeFilter, parse_recency, parse_types
 from metabrowser.walk import (
@@ -145,7 +145,7 @@ def _run_walk(
         # A command line spells a directory freely -- `docs`, `docs/`, `./docs`,
         # `.` for the root. The provider boundary takes one canonical key, so
         # the spelling is settled here rather than inside the walk.
-        canonical = canonical_inventory_path(subpath)
+        canonical = parse_inventory_path(subpath)
         if canonical is None:
             # Same answer as a symlink that leaves the root below: the target
             # is not somewhere this walk can go, and the two should not report

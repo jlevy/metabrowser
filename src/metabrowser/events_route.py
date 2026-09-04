@@ -93,7 +93,7 @@ from metabrowser.inventory_engine.contract import (
     QueryKind,
     ReadRequest,
     VersionUnavailableError,
-    canonical_inventory_path,
+    parse_inventory_path,
 )
 from metabrowser.inventory_engine.coordinator import (
     DecoratedInventoryEntry,
@@ -957,7 +957,7 @@ def _pending_tally_paths(payload: dict[str, object]) -> list[str]:
         # is canonicalized before it can reach a provider query. A path that
         # cannot name anything under the root is dropped from the diagnostic
         # rather than failing the request the diagnostic exists to explain.
-        canonical = canonical_inventory_path(path)
+        canonical = parse_inventory_path(path)
         if canonical is not None:
             paths.append(canonical)
     return paths
