@@ -13,6 +13,7 @@ from typing import Any, cast
 import pytest
 
 from metabrowser import inventory_rollup, walker
+from metabrowser.fs_record import FsEntry
 from metabrowser.inventory_engine import contract
 from metabrowser.inventory_engine.contract import (
     CatalogProjection,
@@ -695,7 +696,7 @@ def test_python_provider_exposes_progressive_partial_state(
         async def blocked_walk(
             *args: Any,
             **kwargs: Any,
-        ) -> AsyncIterator[contract.InventoryEntry]:
+        ) -> AsyncIterator[FsEntry]:
             await release.wait()
             async for entry in real_walk(*args, **kwargs):
                 yield entry

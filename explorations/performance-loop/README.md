@@ -8,6 +8,12 @@ The hypotheses this loop is working through are registered in
 [the load-time plan](../../docs/project/specs/active/plan-2026-08-21-load-time-performance.md#hypotheses).
 The write-ups are in [experiments/](experiments/), one file per round.
 
+The backend half measures the inventory engine.
+The rule about what may run once per entry, and the measurement discipline this bench
+enforces, are [the engine performance model](../../docs/engine-performance-model.md);
+the reference engine’s measured costs are
+[Python inventory cost](../../docs/project/architecture/arch-python-inventory-cost.md).
+
 The browser half is the Metabrowser adapter for the reusable
 [Web Performance Framework](../../docs/web-performance-framework.md).
 The navigation-time recorder supplies browser-standard loading and responsiveness

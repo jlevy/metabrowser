@@ -346,6 +346,14 @@ count, cumulative semantic work, and cumulative boundary metrics.
 The serving benchmark records the same identities so Python-before, Python-after, and
 fdu runs differ by a declared provider axis rather than by separate harnesses.
 
+The rule about what may run once per entry, and how to measure it, is
+[the engine performance model](../../engine-performance-model.md); this provider’s
+measured costs are [Python inventory cost](arch-python-inventory-cost.md).
+Together they are the reason this contract’s entry type is not what the walker yields,
+and the reason the store is keyed by the canonical identity rather than escaping on
+every row of every read.
+A native provider states its own costs against the same model.
+
 The common performance gate measures cold discovery, shallow usefulness, settled and
 concurrent rollups, tree reads, catalogs, retained bodies, validators, live convergence,
 event-loop delay, memory, CPU, I/O, and binding-copy cost.

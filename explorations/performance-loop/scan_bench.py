@@ -137,19 +137,52 @@ def _print_profile(profiler: cProfile.Profile) -> None:
         print(f"{tottime:8.3f} {cumtime:8.3f} {ncalls:10,}  {where}")
 
 
-def _time_one_scan(binary: str, root: Path) -> float:
-    """One full scan through a route that waits for the index."""
+def _time_one_scan(binary: str, root: Path) -> tuple[float, dict[str, Any]]:
+    """One full scan through a route that waits for the index.
+
+    Returns the elapsed milliseconds *and what the index actually contained*, because
+    the two are only comparable together. `metab --api` exits 0 even when the index
+    wait times out and the route answers `status: scanning, complete: false`, so timing
+    the process alone will happily compare a build that finished the tree against a
+    build that gave up partway through it -- and report the second as merely somewhat
+    slower, when it is very much worse than that.
+    """
 
     started = time.perf_counter()
     completed = subprocess.run(
         [binary, str(root), "--api", "/api/index/meta"],
         capture_output=True,
-        timeout=600,
+        timeout=1800,
         check=False,
     )
+    elapsed = (time.perf_counter() - started) * 1000.0
     if completed.returncode != 0:
         raise SystemExit(f"{binary} exited {completed.returncode}: {completed.stderr[-400:]!r}")
-    return (time.perf_counter() - started) * 1000.0
+    return elapsed, _index_facts(completed.stdout.decode("utf-8", "replace"))
+
+
+def _index_facts(stdout: str) -> dict[str, Any]:
+    """The index's own account of what it managed to do, from the route payload."""
+
+    start = stdout.find("{")
+    end = stdout.rfind("}")
+    if start < 0 or end <= start:
+        return {"parsed": False}
+    try:
+        payload = json.loads(stdout[start : end + 1])
+    except json.JSONDecodeError:
+        return {"parsed": False}
+    files = payload.get("indexed_files")
+    dirs = payload.get("indexed_dirs")
+    return {
+        "parsed": True,
+        "status": payload.get("status"),
+        "complete": payload.get("complete"),
+        "truncated": payload.get("truncated"),
+        "indexed_files": files,
+        "indexed_dirs": dirs,
+        "entries": (files + dirs) if isinstance(files, int) and isinstance(dirs, int) else None,
+    }
 
 
 def describe_build(binary: str) -> dict[str, Any]:
@@ -190,7 +223,7 @@ def describe_build(binary: str) -> dict[str, Any]:
 
 def run_binaries(
     builds: list[tuple[str, str]], root: Path, runs: int, *, warmup: bool = True
-) -> list[list[float]]:
+) -> tuple[list[list[float]], list[list[dict[str, Any]]]]:
     """Time every build, interleaved and order-alternated, one run of each per pass.
 
     Running a whole condition and then the next one lets anything that drifts
@@ -214,13 +247,78 @@ def run_binaries(
         for _label, binary in builds:
             _time_one_scan(binary, root)
     samples: list[list[float]] = [[] for _ in builds]
+    facts: list[list[dict[str, Any]]] = [[] for _ in builds]
     for pass_index in range(runs):
         order = list(range(len(builds)))
         if pass_index % 2:
             order.reverse()
         for index in order:
-            samples[index].append(_time_one_scan(builds[index][1], root))
-    return samples
+            elapsed, index_facts = _time_one_scan(builds[index][1], root)
+            samples[index].append(elapsed)
+            facts[index].append(index_facts)
+    return samples, facts
+
+
+def _summarize_facts(facts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Collapse the per-run index facts, keeping any disagreement visible."""
+
+    seen: set[int] = set()
+    for fact in facts:
+        value = fact.get("entries")
+        if isinstance(value, int):
+            seen.add(value)
+    entries = sorted(seen)
+    return {
+        "runs": len(facts),
+        "all_complete": all(fact.get("complete") is True for fact in facts),
+        "any_truncated": any(fact.get("truncated") is True for fact in facts),
+        "statuses": sorted({str(fact.get("status")) for fact in facts}),
+        "entries_seen": entries,
+        "entries": entries[-1] if entries else None,
+    }
+
+
+def _refuse_incomparable(conditions: list[dict[str, Any]]) -> None:
+    """Stop before reporting a comparison the runs do not support.
+
+    Two failure modes, both of which produce a number that looks like a result:
+
+    An **incomplete index**. `metab --api` exits 0 when its index wait times out, and the
+    route then answers `status: scanning, complete: false`. Timing that against a build
+    that finished the tree compares a whole walk to part of one, and reports the build
+    that gave up as the faster of the two.
+
+    **Different amounts of work.** Even when both complete, two builds that indexed
+    different entry counts did not do the same job -- a budget, a skipped subtree, or a
+    walker that stopped early -- and dividing their times is meaningless.
+    """
+
+    problems: list[str] = []
+    for condition in conditions:
+        index: dict[str, Any] = condition.get("index") or {}
+        if not index.get("all_complete"):
+            problems.append(
+                f"{condition['label']}: index never reached complete "
+                f"(status {index.get('statuses')}, entries {index.get('entries_seen')})"
+            )
+        if index.get("any_truncated"):
+            problems.append(f"{condition['label']}: index reports truncated")
+        if len(index.get("entries_seen") or []) > 1:
+            problems.append(
+                f"{condition['label']}: entry count varied across runs {index.get('entries_seen')}"
+            )
+    counts: dict[str, Any] = {}
+    for condition in conditions:
+        summary: dict[str, Any] = condition.get("index") or {}
+        counts[str(condition["label"])] = summary.get("entries")
+    distinct = {value for value in counts.values() if value is not None}
+    if len(distinct) > 1:
+        problems.append(f"builds indexed different entry counts: {counts}")
+    if problems:
+        raise SystemExit(
+            "refusing to report this comparison; the runs do not measure the same work:\n  "
+            + "\n  ".join(problems)
+        )
 
 
 def summarize(label: str, samples: list[float]) -> dict[str, Any]:
@@ -296,14 +394,15 @@ def main() -> None:
             if not path:
                 raise SystemExit(f"--binary wants LABEL=PATH, got {spec!r}")
             builds.append((label, path))
-        for (label, path), samples in zip(
-            builds,
-            run_binaries(builds, corpus_dir, args.runs, warmup=not args.no_warmup),
-            strict=True,
-        ):
+        all_samples, all_facts = run_binaries(
+            builds, corpus_dir, args.runs, warmup=not args.no_warmup
+        )
+        for (label, path), samples, facts in zip(builds, all_samples, all_facts, strict=True):
             condition = summarize(label, samples)
             condition["build"] = describe_build(path)
+            condition["index"] = _summarize_facts(facts)
             conditions.append(condition)
+        _refuse_incomparable(conditions)
 
     print()
     for condition in conditions:
@@ -312,10 +411,13 @@ def main() -> None:
         if build is not None:
             commit = build.get("commit") or "unknown"
             stamp = f"   [{commit}{'+dirty' if build.get('dirty') else ''}]"
+        summary: dict[str, Any] = condition.get("index") or {}
+        entry_total = summary.get("entries")
+        indexed = f"   {entry_total:,} entries" if isinstance(entry_total, int) else ""
         print(
             f"  {condition['label']:<24} median {condition['median_ms']:9.1f} ms   "
             f"range {condition['range_ms'][0]:.1f}-{condition['range_ms'][1]:.1f}   "
-            f"n={condition['runs']}{stamp}"
+            f"n={condition['runs']}{stamp}{indexed}"
         )
     if len(conditions) == 2:
         control, candidate = conditions

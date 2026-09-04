@@ -12,7 +12,7 @@ Walker semantics (verified by tests in
   ones a reader expands first — are complete long before the deep
   tail, and a request landing early in the boot scan finds them
   already populated.
-* **Post-order finalize.** A directory's ``InventoryEntry`` is replaced with
+* **Post-order finalize.** A directory's ``FsEntry`` is replaced with
   populated ``total_files`` / ``total_size`` / ``newest_mtime_ns``
   only after every descendant has been walked.
 * **Safety caps.** ``max_files`` truncates the scan; the walker still
@@ -36,10 +36,8 @@ from pathlib import Path
 from threading import Event
 
 from metabrowser.fs_paths import is_visible
-from metabrowser.inventory_engine.contract import (
-    InventoryEntry,
-    canonical_inventory_name,
-)
+from metabrowser.fs_record import FsEntry
+from metabrowser.inventory_engine.contract import canonical_inventory_name
 from metabrowser.settings import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_FILES,
@@ -98,7 +96,7 @@ def build_gitignore_check_for(
     cancel_event: Event | None = None,
 ) -> Callable[[Path, bool], bool] | None:
     """Build the gitignore checker the walker uses to populate
-    ``InventoryEntry.gitignored``. Returns ``None`` when the served root
+    ``FsEntry.gitignored``. Returns ``None`` when the served root
     isn't inside a git repo (no patterns to match), so the walker
     skips the per-entry call.
     """
@@ -220,8 +218,8 @@ async def walk_tree(
     max_files: int | None = DEFAULT_MAX_FILES,
     gitignore_check: Callable[[Path, bool], bool] | None = None,
     hidden_allowlist: Collection[str] | None = None,
-) -> AsyncIterator[InventoryEntry]:
-    """BFS the filesystem rooted at *root*; yield ``InventoryEntry``
+) -> AsyncIterator[FsEntry]:
+    """BFS the filesystem rooted at *root*; yield ``FsEntry``
     records as the tree is discovered and as directories finalize.
 
     Yield order:
@@ -241,7 +239,7 @@ async def walk_tree(
 
     *gitignore_check* is the same callable produced by
     ``tree.build_gitignore_check`` — when provided, the walker sets
-    ``InventoryEntry.gitignored`` on every yielded entry (file and dir) so
+    ``FsEntry.gitignored`` on every yielded entry (file and dir) so
     the response layer reads the flag straight off the index instead
     of re-deriving on every request. Callers that don't have a
     checker handy (tests, file-system scopes outside a git repo)
@@ -288,7 +286,7 @@ async def walk_tree(
     accum_unignored_size: dict[str, int] = {}
     accum_newest: dict[str, int] = {}
     # Placeholder entries we'll need to replace at finalize-time.
-    placeholders: dict[str, InventoryEntry] = {}
+    placeholders: dict[str, FsEntry] = {}
 
     # BFS queue: (abs_path, rel_path, depth)
     queue: deque[tuple[Path, str, int]] = deque()
@@ -305,7 +303,7 @@ async def walk_tree(
 
     root_gitignored = _gi(root, True)
     gitignored_dir[root_rel] = root_gitignored
-    root_entry = InventoryEntry.for_observed_dir(
+    root_entry = FsEntry.for_observed_dir(
         path=root_rel,
         parent="",
         name=canonical_inventory_name(root.name),
@@ -315,7 +313,7 @@ async def walk_tree(
     yield root_entry
     queue.append((root, root_rel, 0))
 
-    def _maybe_finalize(rel: str) -> list[InventoryEntry]:
+    def _maybe_finalize(rel: str) -> list[FsEntry]:
         """Walk up from *rel* finalizing every dir whose
         ``pending`` counter has reached 0. Each finalize bumps the
         parent's accumulators and decrements the parent's pending
@@ -325,7 +323,7 @@ async def walk_tree(
         Returns the chain of finalized entries in finalize order
         (deepest first; root last). The caller yields them.
         """
-        finalized: list[InventoryEntry] = []
+        finalized: list[FsEntry] = []
         cursor = rel
         while cursor in pending and pending[cursor] == 0:
             ph = placeholders.get(cursor)
@@ -437,7 +435,7 @@ async def walk_tree(
                 # node_modules / __pycache__ / runs / etc.).
                 child_gi = parent_ignored or _gi(ce.abs_path, True)
                 gitignored_dir[child_rel] = child_gi
-                placeholder = InventoryEntry.for_observed_dir(
+                placeholder = FsEntry.for_observed_dir(
                     path=child_rel,
                     parent=rel_path_cur,
                     name=child_name,
@@ -462,7 +460,7 @@ async def walk_tree(
                 queue.append((ce.abs_path, child_rel, depth + 1))
             elif ce.is_symlink:
                 link_gi = parent_ignored or _gi(ce.abs_path, False)
-                yield InventoryEntry.for_observed_symlink(
+                yield FsEntry.for_observed_symlink(
                     path=child_rel,
                     parent=rel_path_cur,
                     name=child_name,
@@ -474,7 +472,7 @@ async def walk_tree(
                 files_indexed += 1
                 # Files inherit gitignored from parent the same way dirs do.
                 file_gi = parent_ignored or _gi(ce.abs_path, False)
-                file_entry = InventoryEntry.for_observed_file(
+                file_entry = FsEntry.for_observed_file(
                     path=child_rel,
                     parent=rel_path_cur,
                     name=child_name,
