@@ -56,6 +56,7 @@ from metabrowser.inventory_engine.contract import (
     RefreshObservation,
     RefreshReceipt,
     RefreshRequest,
+    canonical_inventory_path,
 )
 
 LOG = logging.getLogger(__name__)
@@ -263,7 +264,15 @@ def _observations_for_batch(
             Change.modified: ObservationKind.MODIFIED,
             Change.deleted: ObservationKind.DELETED,
         }[change_type]
-    return tuple(RefreshObservation(path=path, kind=kind) for path, kind in sorted(by_path.items()))
+    # `_abs_to_rel` returns the platform spelling, and `RefreshObservation` carries the
+    # contract's canonical identity -- the same escape the walker applies on the way in.
+    # Without it an undecodable name did not merely fail to refresh: `RefreshObservation`
+    # rejected it, `run_watcher`'s handler returned, and observation ended for the whole
+    # root rather than for the one file.
+    return tuple(
+        RefreshObservation(path=canonical_inventory_path(path), kind=kind)
+        for path, kind in sorted(by_path.items())
+    )
 
 
 async def _emit_batch(

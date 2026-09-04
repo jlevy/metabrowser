@@ -294,6 +294,83 @@ def canonical_inventory_path(path: str) -> str:
     return canonical_inventory_name(path)
 
 
+_HEX_DIGITS = frozenset("0123456789ABCDEF")
+
+
+def native_inventory_name(name: str) -> str | None:
+    """Recover the platform filename a canonical name was escaped from.
+
+    The inverse of :func:`canonical_inventory_name`, and the reason the canonical
+    form can be an identity *and* an address. Without it the escape is a one-way
+    door: a name goes out escaped, comes back escaped, and matches nothing in a
+    store keyed by what the filesystem actually gave us. A literal ``%`` in a
+    filename is enough to trigger that -- ``report%20final.txt`` publishes as
+    ``report%2520final.txt`` and then resolves to nothing -- and such names are
+    ordinary, because that is what a URL-derived download is called.
+
+    ``None`` means the value is not in the image of the escaper, so no platform name
+    produces it. Callers report that as a miss rather than guessing, because guessing
+    is how a path that names nothing becomes a path that names something else.
+
+    Injective by construction, which is what makes an inverse exist at all: ``%``
+    escapes to ``%25`` first, so every ``%`` in a canonical name starts an escape, and
+    the escapes for undecodable bytes (``%80``..``%FF``) cannot collide with it. The
+    platform branch mirrors the forward function's exactly -- a POSIX escape is one
+    byte, a Windows one is a code unit written as two -- because a canonical name is
+    only meaningful against the platform whose names it was built from.
+    """
+
+    if "%" not in name:
+        return name
+    out: list[str] = []
+    index = 0
+    limit = len(name)
+    while index < limit:
+        character = name[index]
+        if character != "%":
+            out.append(character)
+            index += 1
+            continue
+        if index + 3 > limit:
+            return None
+        digits = name[index + 1 : index + 3]
+        if digits[0] not in _HEX_DIGITS or digits[1] not in _HEX_DIGITS:
+            return None
+        value = int(digits, 16)
+        index += 3
+        if value == 0x25:
+            out.append("%")
+        elif _POSIX_BYTES:
+            if value < 0x80:
+                # The forward function never emits these: an ASCII byte is kept as
+                # itself, so nothing escaped produces one.
+                return None
+            out.append(chr(0xDC00 + value))
+        elif 0xD8 <= value <= 0xDF:
+            # A Windows unpaired surrogate is written big-endian as two escapes.
+            if index + 3 > limit or name[index] != "%":
+                return None
+            low = name[index + 1 : index + 3]
+            if low[0] not in _HEX_DIGITS or low[1] not in _HEX_DIGITS:
+                return None
+            out.append(chr((value << 8) | int(low, 16)))
+            index += 3
+        else:
+            return None
+    return "".join(out)
+
+
+def native_inventory_path(path: str) -> str | None:
+    """Recover the platform spelling of a `/`-separated canonical path.
+
+    One call, not a split-unescape-join, for the same reason the forward direction is:
+    no escape produces or consumes `/`, so a separator passes through untouched and
+    splitting would only allocate.
+    """
+
+    return native_inventory_name(path)
+
+
 _POSIX_BYTES = os.name != "nt"
 
 

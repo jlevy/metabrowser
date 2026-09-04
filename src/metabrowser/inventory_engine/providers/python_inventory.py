@@ -97,10 +97,9 @@ from metabrowser.inventory_engine.contract import (
     VersionUnavailableError,
     WorkCounters,
     ascii_casefold,
-    canonical_inventory_name,
-    canonical_inventory_path,
     catalog_terminal_suffix,
     inventory_scope_fingerprint,
+    native_inventory_path,
 )
 from metabrowser.inventory_rollup import (
     RollupOptions,
@@ -387,19 +386,21 @@ class _SelectedDirectoryTotals:
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
     """Drop Python-engine bookkeeping and host decorations at the boundary.
 
-    Also the one place the retained native name becomes the contract's canonical one. The
-    store keeps what the filesystem gave it; only rows crossing this boundary are escaped,
-    so nothing is stored twice — the same split fdu makes between its native arena and the
-    canonical path it derives per returned row.
+    Paths cross unchanged. The store is keyed by the canonical identity, escaped once by
+    the walker when the entry was built, so this boundary has no encoding left to do --
+    it only sheds the host's bookkeeping fields.
 
-    Free in the ordinary case: a name needing no escape comes back as the same object, so
-    this allocates nothing for the files everyone actually has.
+    That is a deliberate reversal of the earlier arrangement, where the store held raw
+    platform names and this function escaped three fields of every row of every read. A
+    canonical store does the same work once per entry instead of once per row per read,
+    and -- the reason it changed -- it makes the store's keys the same strings the
+    contract's queries carry, so an inbound lookup cannot silently miss.
     """
 
     return InventoryEntry(
-        path=canonical_inventory_path(entry.path),
-        parent=canonical_inventory_path(entry.parent),
-        name=canonical_inventory_name(entry.name),
+        path=entry.path,
+        parent=entry.parent,
+        name=entry.name,
         type=EntryType(entry.type),
         ext=entry.ext,
         size=entry.size,
@@ -458,11 +459,12 @@ def _child_order(row: FsEntry) -> tuple[bool, bytes]:
 
     Ordering by the canonical form, not the raw name: `scandir` decodes an undecodable
     byte to a surrogate, and encoding a surrogate as UTF-8 raises, so one such file made the
-    whole directory unlistable. Escaping first is also what makes this order agree with
-    fdu's, which sorts the same canonical bytes.
+    whole directory unlistable. The walker escapes on the way in, so the retained name is
+    already that form and this sorts it directly -- which is also what makes this order
+    agree with fdu's, which sorts the same canonical bytes.
     """
 
-    return (row.type != "dir", canonical_inventory_name(row.name).encode("utf-8"))
+    return (row.type != "dir", row.name.encode("utf-8"))
 
 
 def _children_for(entries: Sequence[FsEntry]) -> dict[str, tuple[FsEntry, ...]]:
@@ -1821,7 +1823,7 @@ class _PythonInventoryStore:
                         for entry in image.entries
                         if _catalog_entry_matches(entry, query)
                     ),
-                    key=lambda record: canonical_inventory_path(record.path).encode("utf-8"),
+                    key=lambda record: record.path.encode("utf-8"),
                 )
             )
             page = records[: query.max_rows]
@@ -2007,17 +2009,22 @@ class _PythonInventoryStore:
             if entry.mtime_ns < cutoff:
                 return False
         if selection.extensions or selection.filenames:
-            lowered_ext = entry.ext.lower()
+            # `ascii_casefold`, not `str.lower()`: the contract pins the alphabet the
+            # fold covers, and `str.lower()` folds all of Unicode. The two agree on
+            # ASCII and diverge past it, so a filter matching `archive.TÜRKÇE` here
+            # would be dropped by a provider folding only ASCII, and nothing above the
+            # boundary could attribute the difference.
+            lowered_ext = ascii_casefold(entry.ext)
             extension_match = any(
-                lowered_ext == extension.lower()
+                lowered_ext == ascii_casefold(extension)
                 or (
                     self._registry_family_id(extension) is not None
-                    and lowered_ext.endswith(extension.lower())
+                    and lowered_ext.endswith(ascii_casefold(extension))
                 )
                 for extension in selection.extensions
             )
-            filename_match = entry.name.lower() in {
-                filename.lower() for filename in selection.filenames
+            filename_match = ascii_casefold(entry.name) in {
+                ascii_casefold(filename) for filename in selection.filenames
             }
             if not extension_match and not filename_match:
                 return False
@@ -2085,16 +2092,10 @@ class _PythonInventoryStore:
         # The path is the final key in both sorts because it is unique within one index,
         # which makes each total. A stable sort on time alone leaves ties resolved by
         # whatever order `entries` was built in, and that is not a contract.
-        matching.sort(
-            key=lambda entry: (
-                entry.gitignored,
-                -entry.mtime_ns,
-                canonical_inventory_path(entry.path),
-            )
-        )
+        matching.sort(key=lambda entry: (entry.gitignored, -entry.mtime_ns, entry.path))
         total = len(matching)
         capped = matching[: query.max_rows]
-        capped.sort(key=lambda entry: (-entry.mtime_ns, canonical_inventory_path(entry.path)))
+        capped.sort(key=lambda entry: (-entry.mtime_ns, entry.path))
         ignored_directories: set[str] = set()
         for entry in capped:
             parts = entry.path.split("/")
@@ -2146,7 +2147,15 @@ class _PythonInventoryStore:
         if root is None:
             raise InventoryClosedError("the Python inventory handle has no open root")
         rel = observation.path
-        target = root / rel
+        # `rel` is the contract's canonical identity and the store's key; the filesystem
+        # only answers to the name it gave us. This is one of the three places the
+        # provider crosses back, and the inverse is total on anything the walker stored,
+        # so `None` here means a caller invented a path no platform name produces.
+        native_rel = native_inventory_path(rel)
+        if native_rel is None:
+            self.remove(rel)
+            return
+        target = root / native_rel
         existing = self.get(rel)
         self.invalidate(rel)
         try:
@@ -2167,7 +2176,7 @@ class _PythonInventoryStore:
             entry = FsEntry.for_observed_symlink(
                 path=rel,
                 parent=parent,
-                name=target.name,
+                name=rel.rpartition("/")[2],
                 size=stat_result.st_size,
                 mtime_ns=stat_result.st_mtime_ns,
                 gitignored=gitignored,
@@ -2187,7 +2196,7 @@ class _PythonInventoryStore:
                 FsEntry.for_stat(
                     path=rel,
                     parent=parent,
-                    name=target.name,
+                    name=rel.rpartition("/")[2],
                     stat=stat_result,
                     gitignored=gitignored,
                     existing=existing,
@@ -2499,7 +2508,7 @@ class _PythonInventoryStore:
             extensions: set[str] = set()
             names: set[str] = set()
             for value in values:
-                normalized = value.lower()
+                normalized = ascii_casefold(value)
                 (extensions if normalized.startswith(".") else names).add(normalized)
             preset_counts[preset_id] = [0, 0]
             normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
@@ -2516,7 +2525,7 @@ class _PythonInventoryStore:
                 files += 1
                 size += entry.size or 0
 
-            ext = entry.ext.lower()
+            ext = ascii_casefold(entry.ext)
             if ext:
                 row = extension_counts.get(ext)
                 if row is None:
@@ -2536,7 +2545,7 @@ class _PythonInventoryStore:
                     )
                     family_row[ignored_index] += 1
 
-            name = entry.name.lower()
+            name = ascii_casefold(entry.name)
             semantic_category = self._registry.classify(name, ext).group_id
             for preset_id, preset_extensions, preset_names in normalized_presets:
                 if (
@@ -2893,7 +2902,12 @@ class _PythonInventoryStore:
             # The whole-root re-walk is what start() does; refuse to
             # avoid two walkers writing into the index simultaneously.
             return
-        target = root / rel
+        # The second crossing back to the filesystem: `rel` keys the store canonically,
+        # the filesystem answers to the platform name it gave us.
+        native_rel = native_inventory_path(rel)
+        if native_rel is None:
+            return
+        target = root / native_rel
         try:
             target_resolved = target.resolve()
         except OSError:

@@ -36,7 +36,10 @@ from pathlib import Path
 from threading import Event
 
 from metabrowser.fs_paths import is_visible
-from metabrowser.inventory_engine.contract import InventoryEntry
+from metabrowser.inventory_engine.contract import (
+    InventoryEntry,
+    canonical_inventory_name,
+)
 from metabrowser.settings import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_FILES,
@@ -305,7 +308,7 @@ async def walk_tree(
     root_entry = InventoryEntry.for_observed_dir(
         path=root_rel,
         parent="",
-        name=root.name,
+        name=canonical_inventory_name(root.name),
         gitignored=root_gitignored,
     )
     placeholders[root_rel] = root_entry
@@ -414,7 +417,15 @@ async def walk_tree(
                 truncated = True
                 break
 
-            child_rel = f"{rel_path_cur}/{ce.name}" if rel_path_cur else ce.name
+            # The one escape per entry, and the reason everything downstream of the
+            # walker can treat a path as an identity. `ce.abs_path` stays the raw
+            # platform name, so the filesystem is still addressed by what it gave us,
+            # while `child_rel` -- and every key derived from it -- is the canonical
+            # form the contract requires. Escaping here rather than on the way out of
+            # the store is also strictly less work: it happens once per entry, where
+            # `_semantic_entry` did it for three fields of every row of every read.
+            child_name = canonical_inventory_name(ce.name)
+            child_rel = f"{rel_path_cur}/{child_name}" if rel_path_cur else child_name
 
             parent_ignored = gitignored_dir.get(rel_path_cur, False)
             if ce.is_dir:
@@ -429,7 +440,7 @@ async def walk_tree(
                 placeholder = InventoryEntry.for_observed_dir(
                     path=child_rel,
                     parent=rel_path_cur,
-                    name=ce.name,
+                    name=child_name,
                     gitignored=child_gi,
                 )
                 placeholders[child_rel] = placeholder
@@ -454,7 +465,7 @@ async def walk_tree(
                 yield InventoryEntry.for_observed_symlink(
                     path=child_rel,
                     parent=rel_path_cur,
-                    name=ce.name,
+                    name=child_name,
                     size=ce.size,
                     mtime_ns=ce.mtime_ns,
                     gitignored=link_gi,
@@ -466,7 +477,7 @@ async def walk_tree(
                 file_entry = InventoryEntry.for_observed_file(
                     path=child_rel,
                     parent=rel_path_cur,
-                    name=ce.name,
+                    name=child_name,
                     size=ce.size,
                     mtime_ns=ce.mtime_ns,
                     gitignored=file_gi,

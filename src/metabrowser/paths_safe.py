@@ -66,7 +66,15 @@ def _is_within(candidate: Path, root: Path) -> bool:
 
 
 def _safe_path(requested: str) -> Path | None:
-    """Resolve a requested path, ensuring it stays within ROOT_DIR."""
+    """Resolve a requested path, ensuring it stays within ROOT_DIR.
+
+    *requested* is a platform path, not a canonical inventory identity. The two differ
+    only for names holding `%` or an undecodable byte, which is exactly where confusing
+    them goes wrong: `/view/docs/100%25.md` is the human-facing URL for a file named
+    `100%.md`, while that file's inventory identity is `100%25.md` and would arrive
+    URL-encoded as `100%2525.md`. Callers holding an identity decode it first; this
+    function stays the filesystem address.
+    """
     if not requested:
         return ROOT_DIR
     resolved = (ROOT_DIR / requested).resolve()

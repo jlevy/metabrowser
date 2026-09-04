@@ -421,7 +421,15 @@ A full scan on a 60,000-file synthetic corpus, timed through
 | main | 2,071 ms | — |
 | the stack, as its pull requests stood | 5,690 ms | **2.75x slower** |
 | the stack, with the two fixes below | 2,652 ms | 1.28x slower |
-| the stack, after the exp-022 campaign | 1,887 ms | 1.11x slower |
+| the stack, after the exp-022 campaign | 1,887 ms | see below |
+
+The last row is not comparable to the first three and its ratio has been removed.
+The first three were taken sequentially, one build’s trials after the other’s, against a
+2,071 ms `main`; the last was taken with the interleaved harness, whose `main` control
+measures 1,705 ms because the sequential ordering had been charging drift to whichever
+build ran second. Read against its own control the last row is 1.11x; read against the
+column heading it would appear *faster* than `main`, which it is not.
+This is the arithmetic exp-023 is about, and the reason the harness now interleaves.
 
 Both causes are on the per-entry path, and neither was visible in any test.
 Both arrive with the bottom of the stack, which matters for merge order: the
@@ -476,10 +484,30 @@ instrumentation is comparable to the work.
 And the build-to-build harness ran every trial of one build then every trial of the
 other, so all drift landed on whichever went second — always the candidate.
 That reported the gap as 19.6% on disjoint ranges; interleaved, the same comparison
-reports 11.3% on overlapping ones.
+reports 8.2% by median on overlapping ones, and 11.3% by minimum.
 
-Where it stands: no separable difference from `main` by median, and about 11% by
-minimum, which is the estimator noise cannot flatter.
+Where it stands: on the synthetic corpus, no separable difference from `main` by median,
+and about 11% by minimum, which is the estimator noise cannot flatter.
+
+That conclusion does not survive a real tree.
+The synthetic corpus is one shape by construction, and it is small enough to sit in the
+page cache; a real tree is neither.
+Measured against a real working tree — 208,601 files and 91,188 directories, 299,810
+entries, about five times the corpus — through the same interleaved harness, now also
+alternating order within each pass and discarding a warmup:
+
+| Build | Median | Range | Against main |
+| --- | --- | --- | --- |
+| `main` (`26b109eb`) | 42,004 ms | 37,524–43,063 | — |
+| the stack, with the fixes on this branch | 48,738 ms | 43,240–54,115 | **1.16x slower** |
+
+Five runs each, and the ranges are **disjoint**, so unlike the corpus result this one is
+separable: the regression against `main` is real and about 16% on a tree of the size
+people actually open.
+The corpus said “no detectable effect” because it is too small and too uniform to show
+it, which is worth recording as a property of the instrument rather than of the code.
+`mb-vf8f` is the structural item still outstanding, and it is now blocked on module
+placement rather than on measurement — see that bead.
 Everything left on the profile is below what this host can resolve except one structural
 item, `mb-vf8f`, worth roughly 190 ms.
 Its profile points at the double representation: each entry is built as a contract
