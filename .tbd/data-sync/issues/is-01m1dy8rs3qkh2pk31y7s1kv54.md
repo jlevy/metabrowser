@@ -5,18 +5,16 @@ title: "Walker builds each entry twice: contract InventoryEntry then provider Fs
 kind: task
 status: open
 priority: 1
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-09-01T07:34:49.378Z
-updated_at: 2026-09-01T07:34:49.378Z
+updated_at: 2026-09-04T01:30:12.371Z
 ---
-Registered as H72 in the load-time plan. The last measurable item on the inventory scan profile, and the same duplication the design review names as F1 (mb-gwlw).
+H72: the walker builds each entry twice (contract InventoryEntry, then provider FsEntry via _internal_entry). Confirmed as the largest remaining per-entry cost, and it also carries two require_canonical_inventory_path calls per entry (path and parent) that vanish with it.
 
-walk_tree yields a contract InventoryEntry, which validates its path and its parent on construction. The Python provider immediately converts it to FsEntry via _internal_entry, and converts back to InventoryEntry when a read crosses the boundary. So a first walk constructs every entry twice and validates its path four times: 124,420 validations from InventoryEntry.__post_init__ plus 124,406 from ChangeBatch.__post_init__ over a 60,000-file corpus.
+BLOCKED ON MODULE PLACEMENT, attempted 2026-09-03. Making walk_tree yield FsEntry directly is a mechanical swap -- FsEntry has matching for_observed_file/dir/symlink factories and _internal_entry already short-circuits on isinstance -- but FsEntry lives in metabrowser.events, and tests/test_python_inventory_provider.py::test_scanner_and_reducer_do_not_depend_on_browser_events forbids walker.py from importing it. That test is right: events.py is the browser-delivery module and its own docstring says providers never return FsEntry.
 
-Worth about 190 ms by microbenchmark -- InventoryEntry construction 1.85 us x 62,210, plus _internal_entry 1.23 us x 62,210. That is above what the host can resolve, unlike every other remaining candidate on the profile, all of which were rejected in exp-023 for being under the noise floor.
+So H72 depends on mb-ed9h (R3.6): move the provider's retained record into providers/, or into a low-level module both the walker and the provider may import. Do that first, then this is a small change.
 
-Approach: walk_tree has four construction sites and four consumers, two of them the CLI walk surfaces. Threading a record factory through it would let the provider build FsEntry directly while the CLI keeps the contract type. This is a contract-shaped change, not a local one, which is why exp-023 stopped short of it.
-
-Re-measure with explorations/performance-loop/scan_bench.py, which interleaves conditions now -- see exp-023 for why that matters.
+Measured context: on a real 300k-entry tree (/Users/levy/wrk/aisw/trading), main 42,004ms vs this stack 48,738ms, n=5, disjoint ranges: a separable +16.0% still outstanding.
