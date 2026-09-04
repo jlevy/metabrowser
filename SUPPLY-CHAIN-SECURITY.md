@@ -102,7 +102,15 @@ executes the tests and audits, builds the package, inspects its contents, and ex
 the installed wheel and plugin surface.
 
 CI and publishing also run `npm audit --audit-level=moderate` after installing the exact
-lock.
+lock, through `devtools/npm_audit.sh`. That wrapper exists because `npm audit` exits
+non-zero for two unrelated events: it found an advisory, or it could not reach the
+advisory endpoint. Only the first is a reason to stop.
+The wrapper retries, then reports an unreachable endpoint as **not performed** --
+loudly, and without failing the build, because a registry outage is not a finding and
+the lockfile is pinned, so the dependency set has not moved since the last run that did
+reach it. An advisory at or above the level still fails exactly as before.
+A run that reports “not performed” has not cleared the dependencies; re-run the gate
+once the registry answers before relying on it.
 
 Treat an unexpected lockfile source, install script, binary artifact, or publish-time
 change as a blocker until it is explained and reviewed.
