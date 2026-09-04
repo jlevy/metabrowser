@@ -6,15 +6,14 @@ Single source of truth for the event envelope, the discriminated
 log-tail channel) emit through these types.
 
 This module is pure types + small helpers — no I/O, no async, no
-filesystem access. The walker in
-:mod:`metabrowser.inventory` constructs ``FsEntry`` records
-and emits ``FsChange`` ops; the route layer wraps them in
+filesystem access. The inventory coordinator projects provider-neutral
+filesystem records into ``FsEntry`` records and ``FsChange`` ops; the route layer wraps them in
 ``EventEnvelope`` (id + event) and pushes through ``encode_sse``.
 
 Invariants (verified by tests):
 
-* ``RingBuffer`` overflow drops the oldest envelopes; ``Last-Event-ID``
-  resume returns only envelopes strictly newer than the requested id.
+* ``RingBuffer`` overflow drops the oldest envelopes; ``since(id)`` returns only
+  envelopes strictly newer than the requested id.
 * Envelope ids are monotonic per-process from 1 (so ``Last-Event-ID: 0``
   asks for the full buffer).
 * Round-trip: ``encode_sse(envelope)`` emits a single SSE frame; the
@@ -45,9 +44,9 @@ class WriteToken:
 
     A producer that wants race-safety reads the counter at the moment it
     starts observing a path's filesystem state and writes the resulting
-    entry with that token. If an :meth:`InventoryIndex.invalidate` bumps
-    the counter before the write lands, the inventory drops the write
-    rather than overwriting a fresher observation.
+    entry with that token. If the retained Python provider bumps the counter
+    before the write lands, it drops the write rather than overwriting a fresher
+    observation.
 
     Producers that just observed the filesystem **now** can leave
     ``FsEntry.write_token = None``; the inventory treats the write as a
@@ -62,8 +61,10 @@ class WriteToken:
 
 @dataclass(slots=True, frozen=True)
 class FsEntry:
-    """A single filesystem object — file, directory, or symlink — as
-    the inventory tracks it.
+    """One browser-event record for a file, directory, or symlink.
+
+    Filesystem facts originate in the provider contract. This host record adds preview
+    and activity decorations for browser delivery; providers never return it.
 
     Files always carry concrete ``size`` / ``mtime_ns``. Directories
     carry their immediate-child count via ``total_files`` (with the
@@ -135,9 +136,8 @@ class FsEntry:
 
         Carries forward ``active`` and ``labels`` from *existing* when
         provided so the watcher's modify path preserves run-state and
-        plugin badges across edits. Leaves ``write_token=None`` so
-        :meth:`InventoryIndex._store_walker_entry` stamps the entry
-        with the current generation at write time.
+        plugin badges across edits. Leaves ``write_token=None`` so the Python
+        provider stamps the entry with the current generation at write time.
         """
 
         return cls(
@@ -460,8 +460,7 @@ class EventEnvelope:
 
 
 class RingBuffer:
-    """Bounded fifo of ``EventEnvelope`` for short-disconnect
-    resume.
+    """Bounded FIFO of ``EventEnvelope`` values for ids and diagnostics.
 
     Capacity is a soft contract: the buffer holds at most
     ``capacity`` envelopes; oldest are dropped on append once full.
@@ -487,7 +486,7 @@ class RingBuffer:
     @property
     def latest_id(self) -> int:
         """Highest-numbered envelope id that has ever been
-        appended. Useful for ``Last-Event-ID`` resume tests; not
+        appended. Useful for reconnect-window diagnostics; not
         the same as the highest id currently in the buffer (the
         head id may have been dropped)."""
         return self._next_id - 1

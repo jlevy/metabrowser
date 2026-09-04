@@ -616,7 +616,7 @@
   --scrollbar-thumb-radius: 5px;
   --scrollbar-bg: var(--bg);
 
-  /* Skeleton cells — rendered when the InventoryIndex walker
+  /* Skeleton cells — rendered when the inventory provider
      has not yet finalized a dir's aggregate. The slow opacity
      pulse signals "loading" without the noise of a spinner.
      applyCellPatch() in app.js replaces these in place once a
@@ -4679,7 +4679,7 @@ pre.code-block code.hljs {
 
 /* ── Tally skeleton cells ───────────────────────────────────── */
 /* Rendered by sizeHtml(null) / formatAge(null) when the
-   InventoryIndex walker has not yet finalized a dir. The cell
+   inventory provider has not yet finalized a dir. The cell
    shows shape (a gray box) but no value; applyCellPatch() in
    app.js swaps the real number in place when an fs.change op
    for that path arrives on /api/events. The opacity pulse is

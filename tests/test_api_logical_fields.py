@@ -17,6 +17,7 @@ from typing import Any, cast
 
 from metabrowser import jsonl_view
 from metabrowser import server as proc_browser
+from tests.inventory_harness import inventory_harness
 
 # Real JSONL events so the parser branch produces a meaningful response,
 # not just an empty parse. Adapter-detection wants ~20 lines minimum.
@@ -48,6 +49,7 @@ class _FakeRequest:
     def __init__(self, **params: str) -> None:
         self.query_params = _Params(params)
         self.headers = _Headers({})
+        self.app: object | None = None
 
 
 def _setup_pair(tmp_path: Path) -> tuple[Path, Path]:
@@ -68,9 +70,14 @@ def _call_file(path: str, **params: str) -> dict[str, Any]:
 
 
 def _call_tree(path: str = "") -> dict[str, Any]:
-    fake = _FakeRequest(path=path)
-    response = asyncio.run(proc_browser.api_tree(fake))  # pyright: ignore[reportArgumentType]
-    return json.loads(bytes(response.body).decode())
+    async def run() -> dict[str, Any]:
+        async with inventory_harness(proc_browser._resolved_root_dir()) as harness:
+            fake = _FakeRequest(path=path)
+            fake.app = harness.app
+            response = await proc_browser.api_tree(cast(Any, fake))
+            return json.loads(bytes(response.body).decode())
+
+    return asyncio.run(run())
 
 
 # ── /api/file ──────────────────────────────────────────────────────

@@ -2,6 +2,62 @@
 
 All notable changes to Metabrowser are documented here.
 
+## Unreleased
+
+Inventory engine:
+
+- Filesystem inventory now crosses one pluggable, provider-neutral contract.
+  The current Python implementation remains the only shipped provider and preserves the
+  existing routes and browser wire; its module is named `python_inventory.py` to make
+  ownership explicit before the fdu provider is added.
+  Its public handle now exposes only the five provider operations; retained indexes,
+  walking, watching, and projection helpers live behind that façade.
+  Lifecycle state now distinguishes an open idle `ready` handle from one with a live
+  filesystem observer.
+
+- The shared provider conformance registry now covers coherent checkpoints, version
+  pins, lossless paging, change resume and gap resets, verified refresh, lifecycle and
+  session stability, and joined close against every registered backend.
+  Rollup and navigation projections carry their named typed payloads instead of generic
+  object mappings.
+
+- Complete tree responses and initial browser snapshots now follow every bounded page at
+  one engine version and sparse-overlay boundary.
+  A connection is attached only after that snapshot, and changes already represented by
+  it are suppressed, so a reconnect cannot apply an older ring-buffer delta after newer
+  state. Page work is independently bounded from the much larger discovery file budget,
+  and a bundled provider read has its own aggregate query bound.
+
+- The inventory scope now applies its exact hidden-name allowlist to both walking and
+  watching, distinguishes the regular-file budget from query row bounds, validates
+  canonical relative paths, and reports an incompletely submitted watcher batch as a
+  stale watcher gap instead of silently continuing.
+  A required aggregate-repair failure likewise marks discovery failed instead of
+  advertising incomplete rollups as done.
+  Inert cache, traversal, symlink-following, and filesystem-boundary configuration
+  fields are removed; fixed traversal and symlink semantics remain part of the contract.
+
+- Root-summary polling now reuses the Python provider’s last coherent navigation read
+  while discovery advances.
+  Cache hits return that read’s original version and state and report zero entries
+  visited; they never label older tallies as facts from the current engine version.
+
+- Quick File catalog validators and retained bodies are checked with a constant-work
+  provider checkpoint before catalog records are read.
+  A cache miss scans the bounded Python inventory once, and catalog record flattening
+  and JSON materialization stay off the request event loop.
+  Catalog decorations are joined only for the activity tracker, the one consumer that
+  reads them.
+
+Validation:
+
+- `devtools/bench_serving.py` takes `--corpus {synthetic,realistic,project}`. Two of the
+  three corpus shapes had no command-line route, including the one the scan-ordering
+  figures were measured on, so reproducing them meant importing the module by hand.
+  The same benchmark now separates first-pass and memoized navigation cost and the
+  catalog’s first-body, retained-body, and `304` paths, with semantic checks on repeated
+  responses.
+
 ## 0.9.1
 
 Fixes:

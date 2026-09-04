@@ -23,18 +23,39 @@ from pathlib import Path
 
 import pytest
 
-from metabrowser.active_tracker import _tick
-from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser.active_tracker import _tick, _TrackerState
+from metabrowser.activity import FileActivityTracker
+from tests.inventory_harness import inventory_harness
 
 # Tuneable: how many .logs JSONL files to fabricate. 200 matches a busy
 # session with several active dispatch runs; the bug shows even at 50.
 N_TRACKABLE = 200
 
-# Budget for the worst single-stall measurement during _tick. The
-# event-loop probe wakes every 1 ms; anything past this means the loop
-# was blocked. 50 ms is generous — a fix that runs the per-entry loop
-# off-thread typically lands well under 10 ms.
+# An absolute floor, below which the loop is simply not blocked. A tick that
+# stalls a few milliseconds is doing its work off-thread no matter what share
+# of its wall time that is.
 MAX_STALL_MS = 50.0
+
+# Above that floor, the question is what share of the tick the loop spent
+# blocked -- and that is the part a machine cannot fake.
+#
+# An absolute budget measures the machine as much as the code. On a contended
+# CI runner the loop thread can miss its slot for 60 ms with `_tick` doing
+# nothing but waiting on its executor, which failed this test at 71 ms and
+# again at 61 ms while the same source measured 3-5 ms locally. A slower
+# machine inflates the stall, but it inflates the tick's wall time with it, so
+# the ratio between them stays put.
+#
+# The regression this guards -- per-entry sync `glob()` and `check_pid_alive()`
+# on the loop -- makes the stall *be* the tick: roughly half its wall time,
+# against a few percent when the work runs off-thread. The threshold sits well
+# clear of both.
+MAX_STALL_SHARE = 0.25
+
+# Both figures are the best of this many attempts. Load can only push a
+# maximum up, so the floor across attempts is the part attributable to the
+# code.
+STALL_ATTEMPTS = 3
 
 
 def _make_workload(root: Path) -> None:
@@ -90,29 +111,45 @@ def test_tick_does_not_block_event_loop(tmp_path: Path) -> None:
     will spike for the duration of the stall on every tick."""
     _make_workload(tmp_path)
 
-    async def _run() -> tuple[float, float]:
-        reset_instance_for_tests()
-        inv = get_instance()
-        inv.start(tmp_path)
-        await inv.wait_until_done(timeout=20.0)
+    async def _run() -> list[tuple[float, float]]:
+        async with inventory_harness(tmp_path) as harness:
+            state = _TrackerState()
+            tracker = FileActivityTracker()
 
-        async def workload() -> None:
-            # Two ticks: the first seeds the fingerprint table; the
-            # second is the steady-state cost the user pays every 5 s.
-            await _tick(inv, tmp_path, {})
-            await _tick(inv, tmp_path, {})
+            async def workload() -> None:
+                # Two ticks: the first seeds the fingerprint table; the
+                # second is the steady-state cost the user pays every 5 s.
+                await _tick(
+                    harness.runtime.coordinator,
+                    tmp_path,
+                    harness.runtime.config,
+                    state,
+                    tracker,
+                )
+                await _tick(
+                    harness.runtime.coordinator,
+                    tmp_path,
+                    harness.runtime.config,
+                    state,
+                    tracker,
+                )
 
-        return await _measure_max_stall_during(workload)
+            return [await _measure_max_stall_during(workload) for _ in range(STALL_ATTEMPTS)]
 
-    tick_ms, stall_ms = asyncio.run(_run())
+    attempts = asyncio.run(_run())
+    tick_ms, stall_ms = min(attempts, key=lambda attempt: attempt[1])
+    spread = ", ".join(f"{stall:.1f}" for _wall, stall in attempts)
     print(
-        f"\n_tick wall-time={tick_ms:.1f}ms  max event-loop stall={stall_ms:.1f}ms  "
-        f"(N={N_TRACKABLE} trackable files)"
+        f"\n_tick wall-time={tick_ms:.1f}ms  event-loop stall={stall_ms:.1f}ms  "
+        f"({stall_ms / tick_ms:.1%} of the tick, best of {STALL_ATTEMPTS}: "
+        f"{spread} ms, N={N_TRACKABLE} trackable files)"
     )
-    if stall_ms >= MAX_STALL_MS:
+    share = stall_ms / tick_ms if tick_ms > 0 else 0.0
+    if stall_ms >= MAX_STALL_MS and share >= MAX_STALL_SHARE:
         pytest.fail(
-            f"Event loop stalled {stall_ms:.1f} ms during _tick (limit "
-            f"{MAX_STALL_MS:.0f} ms). The per-entry sync glob() + "
+            f"Event loop stalled {stall_ms:.1f} ms during a {tick_ms:.1f} ms _tick "
+            f"({share:.0%} of it, limit {MAX_STALL_SHARE:.0%} above a "
+            f"{MAX_STALL_MS:.0f} ms floor). The per-entry sync glob() + "
             "check_pid_alive() block on the loop. Wrap the per-entry "
             "loop in asyncio.to_thread."
         )

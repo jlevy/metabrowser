@@ -1,8 +1,8 @@
 """Standalone inventory walk for debugging the tree walker.
 
-The browser's left-nav tree is built by the inventory walker
-(:func:`metabrowser.inventory.walk_tree`) plus the watcher's
-incremental ``rewalk_subtree`` path. When the tree shows something
+The browser's left-nav tree is built by the Python provider's
+:func:`metabrowser.walker.walk_tree` plus its verified incremental refresh path.
+When the tree shows something
 surprising — a phantom subtree, a directory that appears to contain a
 copy of itself, a symlink that got followed when it shouldn't have —
 the fastest way to see what the walker actually produces is to run it
@@ -25,28 +25,42 @@ import json
 import os
 import time
 from collections.abc import AsyncIterator
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from metabrowser.cancellable_thread import run_cancellable_thread
-from metabrowser.events import FsEntry
-from metabrowser.inventory import (
+from metabrowser.inventory_engine.contract import (
+    DiagnosticsQuery,
+    DirectoryQuery,
+    EntryProjection,
+    EntryQuery,
+    FilteredTreeProjection,
+    FilteredTreeQuery,
+    InventoryEntry,
+    InventoryFilter,
+    LifecyclePhase,
+    ReadQuery,
+    ReadRequest,
+)
+from metabrowser.inventory_engine.runtime import (
+    InventoryRuntime,
+    default_inventory_config,
+)
+from metabrowser.inventory_engine.tree_page_assembly import (
+    TreePageQuery,
+    assemble_tree_pages,
+)
+from metabrowser.tree import build_inventory_tree_from_entries
+from metabrowser.tree_filter import TreeFilter
+from metabrowser.walker import (
     DEFAULT_MAX_DEPTH,
     DEFAULT_MAX_FILES,
-    get_instance,
+    build_gitignore_check_for,
     walk_tree,
 )
-from metabrowser.tree import (
-    _build_inventory_tree,
-    build_filtered_inventory_tree,
-    inventory_status,
-    parent_is_gitignored,
-)
-from metabrowser.tree_filter import TreeFilter
-from metabrowser.walker import build_gitignore_check_for
 
 # Detail levels, coarse → fine.
 Detail = str  # one of: "summary", "dirs", "all"
@@ -113,7 +127,7 @@ async def walk_collect(
     )
     # ``walk_tree`` yields dirs twice (placeholder then finalized); keep
     # the last write per path so dir rows carry real aggregates.
-    latest: dict[str, FsEntry] = {}
+    latest: dict[str, InventoryEntry] = {}
     truncated = False
     async for entry in walk_tree(
         root,
@@ -274,9 +288,9 @@ def filtered_walk_report(
 
     This is the CLI answer to the two questions the nav panel raises and a
     screenshot cannot settle: which folders a filter leaves standing, and what
-    each of them rolls up to. Both come from
-    :func:`metabrowser.tree.build_filtered_inventory_tree`, the same call the
-    ``/api/tree`` route makes, so what this prints is what the panel paints.
+    each of them rolls up to. Both come from the provider's
+    :class:`~metabrowser.inventory_engine.contract.FilteredTreeQuery` and the same pure
+    tree builder used by ``/api/tree``, so what this prints is what the panel paints.
     """
 
     if detail not in DETAIL_LEVELS:
@@ -313,10 +327,10 @@ def filtered_walk_report(
 #
 #   * all-at-once — the exact ``/api/tree`` envelope (root + nested
 #     ``tree`` + ``tally_cache_*``). This is what the SPA fetches to
-#     paint the tree. Built by driving the real ``InventoryIndex`` and
-#     calling the same ``_build_inventory_tree`` the route uses, so a
-#     CLI dump and a live request return byte-identical structure.
-#   * streaming — the sequence of ``FsEntry`` records the walker yields
+#     paint the tree. Built through the Python provider and the same
+#     provider-neutral tree builder the route uses, so a CLI dump and a live
+#     request return byte-identical structure.
+#   * streaming — the sequence of semantic inventory records the walker yields
 #     (and the server pushes as ``fs.change`` upserts over SSE). One
 #     record per line, in walk order.
 #
@@ -324,13 +338,31 @@ def filtered_walk_report(
 # pipeline is testable from the CLI and pinnable in golden tests.
 
 
-def _entry_to_dict(entry: FsEntry) -> dict[str, Any]:
-    """An ``FsEntry`` as a plain dict — the streaming wire record."""
-    record = asdict(entry)
-    # Subtree emptiness is inventory-derived live metadata. The raw walker
-    # stream cannot know it and keeps its established record schema.
-    record.pop("empty", None)
-    return record
+def _entry_to_dict(entry: InventoryEntry) -> dict[str, Any]:
+    """Project one semantic observation into the established CLI record."""
+
+    entry_type = entry.type.value
+    return {
+        "path": entry.path,
+        "parent": entry.parent,
+        "name": entry.name,
+        "type": entry_type,
+        "ext": entry.ext,
+        "kind": entry_type if entry_type != "file" else "file",
+        "size": entry.size,
+        "mtime_ns": entry.mtime_ns,
+        "mtime_hash": "",
+        "active": False,
+        "views": (),
+        "labels": (),
+        "total_files": entry.total_files,
+        "total_size": entry.total_size,
+        "unignored_files": entry.unignored_files,
+        "unignored_size": entry.unignored_size,
+        "newest_mtime_ns": entry.newest_mtime_ns,
+        "gitignored": entry.gitignored,
+        "write_token": None,
+    }
 
 
 def _to_yaml(data: Any) -> str:
@@ -350,59 +382,137 @@ async def build_tree_envelope(
 ) -> dict[str, Any]:
     """Reproduce the exact ``/api/tree`` response envelope for *root*.
 
-    Drives the process-wide :class:`InventoryIndex` to completion (the
-    same object the server uses) and assembles the response with the
-    same builder as the route, so this is a faithful stand-in for an
-    HTTP ``GET /api/tree?path=<subpath>``.
+    Opens and closes a local inventory runtime with the caller's caps, then
+    assembles the response from the same typed projections and pure builder as
+    the route. No process-global state or event-loop-bound object survives the
+    call.
 
     An active *tree_filter* takes the route's filtered path, so the pruning
     and the rolled-up folder totals a reader sees in the nav panel are the
     ones this dump shows.
     """
 
-    inv = get_instance()
-    # Fresh, deterministic state with the caller's caps.
-    inv.clear()
-    # The singleton's done-event may have been created under a previous
-    # ``asyncio.run`` loop (e.g. a second dump in the same process).
-    # Rebind it to the current loop so ``wait_until_done`` doesn't raise
-    # "bound to a different event loop".
-    inv._done_event = asyncio.Event()
-    inv._max_depth = max_depth
-    inv._max_files = max_files
-    inv.start(root)
-    await inv.wait_until_done(timeout=timeout)
-    filtered = None
-    if tree_filter is not None and tree_filter.active:
-        filtered = build_filtered_inventory_tree(
-            entries=inv.entries(scope="all-known"),
-            children_of=inv.children_of,
+    config = replace(
+        default_inventory_config(),
+        max_files=max_files,
+        max_depth=max_depth,
+        watch_mode="off",
+    )
+    runtime = InventoryRuntime(config=config)
+    await runtime.open(root)
+    try:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while True:
+            diagnostic = await runtime.coordinator.read(
+                ReadRequest(queries=(DiagnosticsQuery(query_id="walk-status"),))
+            )
+            if diagnostic.result.state.phase in {
+                LifecyclePhase.READY,
+                LifecyclePhase.WATCHING,
+                LifecyclePhase.FAILED,
+                LifecyclePhase.STOPPED,
+            }:
+                break
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                raise TimeoutError("inventory walk did not settle before the timeout")
+            await asyncio.sleep(min(0.01, remaining))
+
+        active_filter = tree_filter is not None and tree_filter.active
+        projection_id = "walk-filtered" if active_filter else "walk-directory"
+        companion_queries: tuple[ReadQuery, ...] = (
+            EntryQuery(query_id="walk-parent", path=subpath),
+        )
+        page_query: TreePageQuery | None = None
+        as_of_ns = time.time_ns() if now_sec is None else int(now_sec * 1_000_000_000)
+        if active_filter:
+            assert tree_filter is not None
+            extensions = tuple(value for value in tree_filter.types if value.startswith("."))
+            filenames = tuple(value for value in tree_filter.types if not value.startswith("."))
+            page_query = FilteredTreeQuery(
+                query_id=projection_id,
+                path=subpath,
+                max_depth=max(1, max_depth),
+                max_rows=max_files,
+                filter=InventoryFilter(
+                    extensions=extensions,
+                    filenames=filenames,
+                    recency_seconds=(
+                        float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
+                    ),
+                    minimum_size=tree_filter.min_size or None,
+                    include_ignored=tree_filter.include_ignored,
+                    as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
+                ),
+            )
+        elif max_depth > 0:
+            page_query = DirectoryQuery(
+                query_id=projection_id,
+                path=subpath,
+                max_depth=max_depth,
+                max_rows=max_files,
+            )
+
+        assembly = (
+            await assemble_tree_pages(
+                runtime.coordinator,
+                page_query=page_query,
+                companion_queries=companion_queries,
+            )
+            if page_query is not None
+            else None
+        )
+        read = (
+            assembly.first_read
+            if assembly is not None
+            else await runtime.coordinator.read(ReadRequest(queries=companion_queries))
+        )
+        parent = read.result.projection("walk-parent")
+        if not isinstance(parent, EntryProjection):
+            raise TypeError("the walk parent query returned the wrong projection")
+        entries = ()
+        filtered_projection: FilteredTreeProjection | None = None
+        if assembly is not None:
+            projection = assembly.projection
+            if isinstance(projection, FilteredTreeProjection):
+                filtered_projection = projection
+            entries = projection.entries
+        tree = build_inventory_tree_from_entries(
+            entries=entries,
             parent_rel=subpath,
             max_depth=max_depth,
             root_abs=root,
-            parent_ignored=parent_is_gitignored(subpath),
-            tree_filter=tree_filter,
-            now_sec=time.time() if now_sec is None else now_sec,
-            generation=inv.rollup_revision(),
+            parent_ignored=bool(parent.entry.gitignored) if parent.entry is not None else False,
         )
-        tree = filtered.tree
-    else:
-        tree = _build_inventory_tree(parent_rel=subpath, max_depth=max_depth, root_abs=root)
-    return {
-        "root": str(root),
-        "tree": tree,
-        "filtered": (
-            {
-                "files": filtered.matched_files,
-                "size": filtered.matched_size,
-                "entries": filtered.matched_leaves,
-            }
-            if filtered is not None
-            else None
-        ),
-        "tally_cache_status": inventory_status(),
-        "tally_cache_max_files": inv.max_files(),
-    }
+        state = assembly.final_read.result.state if assembly is not None else read.result.state
+        budget = any(issue.code.value == "resource_budget" for issue in state.issues)
+        if budget:
+            status = "truncated"
+        elif state.phase is LifecyclePhase.FAILED:
+            status = "failed"
+        elif state.phase is LifecyclePhase.STOPPED:
+            status = "idle"
+        elif state.coverage.complete:
+            status = "done"
+        else:
+            status = "scanning"
+        return {
+            "root": str(root),
+            "tree": tree,
+            "filtered": (
+                {
+                    "files": filtered_projection.matching_files,
+                    "size": filtered_projection.matching_bytes,
+                    "entries": filtered_projection.matching_leaves,
+                }
+                if filtered_projection is not None
+                else None
+            ),
+            "tally_cache_status": status,
+            "tally_cache_max_files": config.max_files,
+        }
+    finally:
+        await runtime.close()
 
 
 def dump_tree(
@@ -439,7 +549,7 @@ async def stream_entries(
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
-) -> AsyncIterator[FsEntry]:
+) -> AsyncIterator[InventoryEntry]:
     """Yield each walker record in walk order — the streaming surface
     (mirrors the server's ``fs.change`` upserts)."""
 

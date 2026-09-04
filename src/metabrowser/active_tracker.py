@@ -1,208 +1,288 @@
-"""Active-file tracker — background task that emits ``active``
-flag changes on ``FsEntry`` records via the inventory event
-plane, replacing client-side ``/api/activity`` polling.
+"""Provider-neutral activity tracking on the sparse host overlay.
 
-Architecture:
-
-* Periodically walks the inventory's known trackable files
-  (``.logs/`` and ``.state/`` dirs, ``BROWSER_TRACKABLE_EXTS``
-  extensions only).
-* Calls :func:`metabrowser.activity.activity_tracker.poll`
-  to fingerprint each file; the existing helper handles
-  ``mtime`` + ``size`` change detection and PID-alive checks.
-* For each file whose active state changed, replaces the
-  ``FsEntry`` with a new instance carrying the updated
-  ``active`` flag (and ``pid_alive`` label if applicable),
-  then emits an ``fs.change`` op so the SPA's FileStore picks it
-  up.
-
-Why this lives here, not as part of the walker: the walker
-finalizes structure/aggregates once. Active-file detection is a
-recurring poll on a small subset of files. Splitting them keeps
-the walker pure and lets active-tracker tune its cadence
-independently while sharing a cadence with the compatibility
-``/api/activity`` snapshot.
-
-The output is the browser's live source of truth for "is this file
-being written?" The compatibility ``/api/activity`` endpoint exposes
-the same state as a snapshot for scripted callers.
+The inventory provider remains the sole owner of filesystem facts. Each tick reads a
+bounded catalog image, probes only conventional runtime files, sends verified refresh
+hints for metadata mismatches, and then patches the activity-owned overlay fields.
+Decoration changes therefore reach the existing filesystem event wire without
+changing provider versions, rollup validators, or catalog cache keys.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import replace
-from pathlib import Path
+from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
 
-from metabrowser.activity import activity_tracker
+from metabrowser.activity import TRACKABLE_FILE_MAX_SIZE, ActivityPoll, FileActivityTracker
 from metabrowser.constants import LOGS_DIR, STATE_DIR
-from metabrowser.events import FsEntry, FsUpsert
 from metabrowser.file_extensions import BROWSER_TRACKABLE_EXTS
-from metabrowser.inventory import InventoryIndex
-from metabrowser.inventory import get_instance as get_inventory
-from metabrowser.settings import (
-    ACTIVE_TRACKER_INTERVAL_S,
-    ACTIVE_TRACKER_QUIET_POLLS,
+from metabrowser.inventory_engine.contract import (
+    MAX_COMMAND_PATHS,
+    CatalogProjection,
+    CatalogQuery,
+    CatalogRecord,
+    InventoryConfig,
+    ObservationKind,
+    ReadRequest,
+    RefreshObservation,
+    RefreshReason,
+    RefreshRequest,
 )
+from metabrowser.inventory_engine.coordinator import InventoryCoordinator
+from metabrowser.inventory_engine.overlay import (
+    InventoryDecoration,
+    InventoryDecorationPatch,
+)
+from metabrowser.settings import ACTIVE_TRACKER_INTERVAL_S, ACTIVE_TRACKER_QUIET_POLLS
 
 LOG = logging.getLogger(__name__)
+_ACTIVITY_LABEL = "pid_alive"
+_SCOPED_DIRS = frozenset({LOGS_DIR, STATE_DIR})
 
 
-def _is_trackable(entry: FsEntry) -> bool:
-    """Match the ``_discover_trackable_files`` rules:
-    ``BROWSER_TRACKABLE_EXTS`` files inside ``.logs`` /
-    ``.state`` subtrees."""
+@dataclass(slots=True)
+class _TrackerState:
+    """Mutable state owned by one lifespan tracker task."""
 
-    if entry.type != "file":
+    quiet_counters: dict[str, int] = field(default_factory=dict)
+    active_paths: set[str] = field(default_factory=set)
+    candidates: set[str] = field(default_factory=set)
+    pending_refresh: dict[str, ObservationKind] = field(default_factory=dict)
+
+
+def _is_trackable(record: CatalogRecord, *, root_is_scoped: bool = False) -> bool:
+    """Whether one catalog file belongs to the bounded activity set."""
+
+    path = PurePosixPath(record.path)
+    if path.suffix.lower() not in BROWSER_TRACKABLE_EXTS:
         return False
-    name_lower = entry.name.lower()
-    ext = ""
-    if "." in name_lower:
-        # Match against the simple extension; the inventory's
-        # bounded compound-tail ``ext`` field could be ``.tar.gz``,
-        # which doesn't appear in BROWSER_TRACKABLE_EXTS.
-        idx = name_lower.rfind(".")
-        ext = name_lower[idx:]
-    if ext not in BROWSER_TRACKABLE_EXTS:
+    if record.size >= TRACKABLE_FILE_MAX_SIZE:
         return False
-    # Path-segment match — entry.path is relative to root, e.g.
-    # "runs/x/.logs/foo.jsonl".
-    anchored = "/" + entry.path
-    return ("/" + LOGS_DIR + "/") in anchored or ("/" + STATE_DIR + "/") in anchored
+    return root_is_scoped or any(part in _SCOPED_DIRS for part in path.parts[:-1])
 
 
-def _resolved_abs(root: Path, entry: FsEntry) -> Path:
-    """Map an inventory-relative entry to its absolute path."""
-    return root / entry.path
+async def _read_candidates(
+    coordinator: InventoryCoordinator,
+    *,
+    config: InventoryConfig,
+    root: Path,
+) -> tuple[tuple[CatalogRecord, ...], dict[str, InventoryDecoration]]:
+    """Read the bounded activity candidate set at the provider boundary."""
 
-
-def _compute_ops_sync(
-    trackable: list[FsEntry],
-    abs_paths: list[Path],
-    active_set: set[str],
-    quiet_counters: dict[str, int],
-) -> list[FsUpsert]:
-    """Per-entry comparison + per-jsonl pid-alive probe. All sync
-    filesystem I/O lives here so the caller can run it via
-    ``asyncio.to_thread`` and keep the event loop free."""
-
-    ops: list[FsUpsert] = []
-    for entry, abs_path in zip(trackable, abs_paths, strict=True):
-        is_active_now = str(abs_path) in active_set
-        prev_quiet = quiet_counters.get(entry.path, ACTIVE_TRACKER_QUIET_POLLS + 1)
-
-        new_labels: dict[str, str] = dict(entry.labels)
-        # Update PID-alive for .jsonl files in scope.
-        if abs_path.suffix.lower() == ".jsonl":
-            for pid_path in abs_path.parent.glob("*.pid"):
-                alive = activity_tracker.check_pid_alive(pid_path)
-                if alive is not None:
-                    new_labels["pid_alive"] = "1" if alive else "0"
-                    break
-
-        new_active: bool
-        if is_active_now:
-            new_active = True
-            quiet_counters[entry.path] = 0
-        else:
-            quiet_counters[entry.path] = prev_quiet + 1
-            # Stay marked active until quiet_polls polls have
-            # elapsed without a change. Smooths the badge so a
-            # dispatcher pause-then-resume doesn't blink.
-            new_active = entry.active and quiet_counters[entry.path] <= ACTIVE_TRACKER_QUIET_POLLS
-
-        labels_tuple = tuple(sorted(new_labels.items()))
-        if new_active != entry.active or labels_tuple != entry.labels:
-            ops.append(
-                FsUpsert(
-                    entry=replace(
-                        entry,
-                        active=new_active,
-                        labels=labels_tuple,
-                    )
-                )
+    root_is_scoped = root.name in _SCOPED_DIRS
+    read = await coordinator.read(
+        ReadRequest(
+            queries=(
+                CatalogQuery(
+                    query_id="activity-candidates",
+                    max_rows=config.max_files,
+                    include_ignored=True,
+                    terminal_extensions=tuple(sorted(BROWSER_TRACKABLE_EXTS)),
+                    ancestor_names=() if root_is_scoped else tuple(sorted(_SCOPED_DIRS)),
+                    size_less_than=TRACKABLE_FILE_MAX_SIZE,
+                ),
             )
-    return ops
-
-
-async def _tick(inventory: InventoryIndex, root: Path, quiet_counters: dict[str, int]) -> None:
-    """One poll cycle. Emits ``fs.change`` ops for every entry
-    whose active state changed.
-
-    The per-entry compare loop runs via ``asyncio.to_thread`` because
-    the .jsonl branch glob()s ``*.pid`` siblings and reads them; with
-    hundreds of trackable files, doing that on the event loop blocks
-    every concurrent ``/api/file`` request for the duration of the
-    sweep. The walker emit path (``_apply_walker_entry``) stays on the
-    loop — it only manipulates dataclasses + asyncio queues.
-    """
-
-    # The snapshot copy must happen on the loop (the inventory is only
-    # mutated there), but with hundreds of thousands of entries the
-    # trackable filter itself is measurable, so it runs in the thread too.
-    snapshot = inventory.entries(scope="all-known")
-    trackable: list[FsEntry] = await asyncio.to_thread(
-        lambda: [e for e in snapshot if _is_trackable(e)]
+        ),
+        include_catalog_decorations=True,
     )
-    if not trackable:
-        # Trackable files can disappear wholesale (root swap, cleanup);
-        # drop their quiet counters instead of retaining them forever.
-        quiet_counters.clear()
-        return
+    projection = read.result.projection("activity-candidates")
+    if not isinstance(projection, CatalogProjection):
+        raise TypeError("the activity catalog read returned the wrong projection")
+    records = projection.records
+    if any(not _is_trackable(record, root_is_scoped=root_is_scoped) for record in records):
+        raise TypeError("the activity catalog returned a record outside its predicates")
+    decorations = dict(read.decorations)
+    return records, decorations
 
-    # Bound quiet_counters to paths that are still trackable so deleted
-    # files do not accumulate entries for the life of the process.
-    trackable_paths = {e.path for e in trackable}
-    for stale_path in [p for p in quiet_counters if p not in trackable_paths]:
-        del quiet_counters[stale_path]
 
-    # Use absolute paths for the tracker (it stat's filesystem).
-    abs_paths = [_resolved_abs(root, e) for e in trackable]
-    active_abs = await asyncio.to_thread(activity_tracker.poll, abs_paths)
-    active_set = set(active_abs)
+def _pid_label(path: Path, tracker: FileActivityTracker) -> str | None:
+    if path.suffix.lower() != ".jsonl":
+        return None
+    try:
+        pid_paths = sorted(path.parent.glob("*.pid"))
+    except OSError:
+        return None
+    if not pid_paths:
+        return None
+    return "1" if tracker.check_pid_alive(pid_paths[0]) else "0"
 
-    ops = await asyncio.to_thread(
-        _compute_ops_sync, trackable, abs_paths, active_set, quiet_counters
+
+def _compute_updates(
+    *,
+    root: Path,
+    records: tuple[CatalogRecord, ...],
+    poll: ActivityPoll,
+    tracker: FileActivityTracker,
+    state: _TrackerState,
+) -> dict[str, InventoryDecorationPatch]:
+    """Derive refresh hints and ownership-safe decoration patches off-loop."""
+
+    by_absolute = {str(root / record.path): record for record in records}
+    missing_absolute = set(poll.missing)
+    missing_relative = {
+        record.path for absolute, record in by_absolute.items() if absolute in missing_absolute
+    }
+
+    for absolute, size, mtime_ns in poll.observed:
+        record = by_absolute.get(absolute)
+        if record is None:
+            continue
+        if (size, mtime_ns) != (record.size, record.mtime_ns):
+            state.pending_refresh[record.path] = ObservationKind.MODIFIED
+    for path in missing_relative:
+        state.pending_refresh[path] = ObservationKind.DELETED
+
+    active_absolute = set(poll.active)
+    current = {record.path for record in records} - missing_relative
+    stale = state.candidates - current
+    patches: dict[str, InventoryDecorationPatch] = {
+        path: InventoryDecorationPatch(
+            active=False,
+            labels=((_ACTIVITY_LABEL, None),),
+        )
+        for path in stale | missing_relative
+    }
+
+    for record in records:
+        if record.path in missing_relative:
+            continue
+        absolute = root / record.path
+        is_recent = str(absolute) in active_absolute
+        previous_quiet = state.quiet_counters.get(
+            record.path,
+            ACTIVE_TRACKER_QUIET_POLLS + 1,
+        )
+        if is_recent:
+            active = True
+            state.quiet_counters[record.path] = 0
+        else:
+            quiet = previous_quiet + 1
+            state.quiet_counters[record.path] = quiet
+            active = record.path in state.active_paths and quiet <= ACTIVE_TRACKER_QUIET_POLLS
+        if active:
+            state.active_paths.add(record.path)
+        else:
+            state.active_paths.discard(record.path)
+        patches[record.path] = InventoryDecorationPatch(
+            active=active,
+            labels=((_ACTIVITY_LABEL, _pid_label(absolute, tracker)),),
+        )
+
+    for path in stale | missing_relative:
+        state.quiet_counters.pop(path, None)
+        state.active_paths.discard(path)
+    state.candidates = current
+    return patches
+
+
+async def _submit_pending_refreshes(
+    coordinator: InventoryCoordinator,
+    state: _TrackerState,
+) -> None:
+    """Submit bounded refresh batches, retaining any failed work for retry."""
+
+    pending = tuple(state.pending_refresh.items())
+    for offset in range(0, len(pending), MAX_COMMAND_PATHS):
+        batch = pending[offset : offset + MAX_COMMAND_PATHS]
+        receipt = await coordinator.refresh(
+            RefreshRequest(
+                observations=tuple(
+                    RefreshObservation(path=path, kind=kind) for path, kind in batch
+                ),
+                reason=RefreshReason.ACTIVITY_OBSERVATION,
+            )
+        )
+        for path in receipt.accepted_paths:
+            state.pending_refresh.pop(path, None)
+        if receipt.rejected_paths:
+            LOG.warning(
+                "activity refresh rejected %d provider-derived path(s)",
+                len(receipt.rejected_paths),
+            )
+
+
+async def _tick(
+    coordinator: InventoryCoordinator,
+    root: Path,
+    config: InventoryConfig,
+    state: _TrackerState,
+    tracker: FileActivityTracker,
+) -> None:
+    """Run one bounded probe, refresh, and overlay-update cycle."""
+
+    records, _decorations = await _read_candidates(
+        coordinator,
+        config=config,
+        root=root,
+    )
+    absolute_paths = [root / record.path for record in records]
+    poll = await asyncio.to_thread(tracker.poll_observations, absolute_paths)
+    patches = await asyncio.to_thread(
+        _compute_updates,
+        root=root,
+        records=records,
+        poll=poll,
+        tracker=tracker,
+        state=state,
     )
 
-    if ops:
-        # Single batched apply so the SSE bus sees one ``fs.change``
-        # per tick instead of N (where N is the count of active
-        # files). Per-op emit through ``_apply_walker_entry`` would
-        # push slow subscribers toward the queue-full drop path
-        # during routine polling.
-        inventory.apply_walker_entries([op.entry for op in ops])
+    refresh_error: Exception | None = None
+    try:
+        await _submit_pending_refreshes(coordinator, state)
+    except Exception as error:
+        refresh_error = error
+    if patches:
+        await coordinator.patch_decorations(patches)
+    if refresh_error is not None:
+        raise refresh_error
+
+
+async def activity_snapshot(
+    coordinator: InventoryCoordinator,
+    *,
+    config: InventoryConfig,
+    root: Path,
+) -> list[dict[str, object]]:
+    """Return the existing activity wire snapshot from one coherent host read."""
+
+    records, decorations = await _read_candidates(coordinator, config=config, root=root)
+    active_files: list[dict[str, object]] = []
+    for record in records:
+        decoration = decorations.get(record.path)
+        if decoration is None or not decoration.active:
+            continue
+        item: dict[str, object] = {"path": record.path}
+        labels = dict(decoration.labels)
+        pid_alive = labels.get(_ACTIVITY_LABEL)
+        if pid_alive is not None:
+            item["pid_alive"] = pid_alive == "1"
+        active_files.append(item)
+    return active_files
 
 
 async def run_active_tracker(
     *,
+    coordinator: InventoryCoordinator,
+    config: InventoryConfig,
     root: Path,
     interval_s: float = ACTIVE_TRACKER_INTERVAL_S,
 ) -> None:
-    """Long-running coroutine. Spawn from the lifespan hook;
-    cancel on shutdown.
+    """Poll until lifespan cancellation, isolating transient tick failures."""
 
-    Each tick reads the inventory's known trackable set, polls
-    fingerprints, and emits ``fs.change`` ops for any file
-    whose active state changed. Errors are logged and the loop
-    keeps running — a transient OS-level failure shouldn't kill
-    the badge surface.
-    """
-
-    quiet_counters: dict[str, int] = {}
-    inventory = get_inventory()
-    LOG.debug("active tracker starting at %s", root)
+    state = _TrackerState()
+    tracker = FileActivityTracker()
+    LOG.debug("activity tracker starting at %s", root)
     try:
         while True:
             try:
-                await _tick(inventory, root, quiet_counters)
+                await _tick(coordinator, root, config, state, tracker)
             except Exception:
-                LOG.exception("active tracker tick failed; continuing")
+                LOG.exception("activity tracker tick failed; continuing")
             await asyncio.sleep(interval_s)
     except asyncio.CancelledError:
-        LOG.debug("active tracker cancelled")
+        LOG.debug("activity tracker cancelled")
         raise
 
 
-__all__ = ["run_active_tracker"]
+__all__ = ["activity_snapshot", "run_active_tracker"]

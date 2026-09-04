@@ -7,7 +7,7 @@ import json
 import threading
 import zlib
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from starlette.responses import StreamingResponse
@@ -22,6 +22,7 @@ from metabrowser.gz_io import (
 )
 from metabrowser.plugin_loader.classify import CompiledKindRule, build_classifier
 from metabrowser.plugin_loader.manifest import KindMatch, KindRule
+from tests.inventory_harness import inventory_harness
 
 
 class _Params:
@@ -42,6 +43,7 @@ class _Request:
     def __init__(self, **params: str) -> None:
         self.query_params = _Params(params)
         self.headers = _Headers()
+        self.app: object | None = None
 
 
 def _json_response(response: Any) -> dict[str, Any]:
@@ -136,9 +138,13 @@ def test_zlib_text_preview_and_tree_use_logical_wire_identity(tmp_path: Path) ->
     assert body["compression"] == "zlib"
     assert body["size_uncompressed"] == len(payload)
 
-    tree_response = asyncio.run(
-        server.api_tree(_Request(path=""))  # pyright: ignore[reportArgumentType]
-    )
+    async def read_tree() -> Any:
+        async with inventory_harness(tmp_path) as harness:
+            tree_request = _Request(path="")
+            tree_request.app = harness.app
+            return await server.api_tree(cast(Any, tree_request))
+
+    tree_response = asyncio.run(read_tree())
     tree_body = _json_response(tree_response)
     entry = next(item for item in tree_body["tree"] if item["name"] == source.name)
     assert entry["logical_ext"] == ".txt"

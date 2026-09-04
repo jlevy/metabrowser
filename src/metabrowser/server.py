@@ -70,17 +70,8 @@ from starlette.staticfiles import StaticFiles
 from strif import file_mtime_hash
 
 from metabrowser import __version__, kpress_adapter
-from metabrowser.activity import (
-    ACTIVITY_POLL_INTERVAL_MS,
-    TRACKABLE_DISCOVERY_TTL_SECONDS,
-    TRACKABLE_FILE_MAX_SIZE,
-    _activity_snapshot,
-    _collect_trackable_files,
-    _collect_trackable_files_cached,
-    _discover_trackable_files,
-    activity_tracker,
-)
-from metabrowser.activity import FileActivityTracker as _FileActivityTracker
+from metabrowser.active_tracker import activity_snapshot
+from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.build_version import display_version_line
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
@@ -111,7 +102,39 @@ from metabrowser.http_caching import (
     etag_headers,
     matches_if_none_match,
 )
-from metabrowser.inventory import get_instance as get_inventory
+from metabrowser.inventory_engine.contract import (
+    DiagnosticsProjection,
+    DiagnosticsQuery,
+    DirectoryProjection,
+    DirectoryQuery,
+    EngineVersion,
+    EntryPresence,
+    EntryProjection,
+    EntryQuery,
+    EntryType,
+    FilteredTreeProjection,
+    FilteredTreeQuery,
+    InventoryFilter,
+    LifecyclePhase,
+    NavigationProjection,
+    NavigationQuery,
+    PriorityRequest,
+    ReadQuery,
+    ReadRequest,
+    RecentProjection,
+    RecentQuery,
+    RollupProjection,
+    RollupQuery,
+    VersionUnavailableError,
+    canonical_inventory_path,
+)
+from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostVersion
+from metabrowser.inventory_engine.runtime import InventoryRuntime
+from metabrowser.inventory_engine.tree_page_assembly import (
+    TreePageAssembly,
+    TreePageQuery,
+    assemble_tree_pages,
+)
 from metabrowser.inventory_rollup import RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
 
@@ -128,10 +151,16 @@ from metabrowser.paths_safe import (
 )
 from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.plugin_paths import normalize_plugin_dirs
-from metabrowser.recent import DEFAULT_LIMIT, MAX_LIMIT, collect_recent_entries
+from metabrowser.recent import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    WindowKey,
+    recent_result_from_projection,
+)
 from metabrowser.repository_context import discover_repository_context
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
+    INVENTORY_TREE_PAGE_ROWS,
     RECENT_WINDOW_SECONDS,
     ROLLUP_BODY_CACHE_ENTRIES,
     ROLLUP_DEFAULT_DEPTH,
@@ -142,6 +171,7 @@ from metabrowser.settings import (
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
     ROLLUP_MAX_DEPTH,
     ROLLUP_MAX_EXT_TOP,
+    ROLLUP_MAX_NODES,
     ROLLUP_MAX_TOP,
     SLOW_OPERATION_LOG_SECONDS,
     SYNTAX_HIGHLIGHT_MAX_BYTES,
@@ -155,7 +185,6 @@ from metabrowser.tree import (
     DEFAULT_TREE_DEPTH,
     MAX_TREE_DEPTH,
     SENTINEL_SUMMARY_DEPTH,
-    _build_inventory_tree,
     _dir_tree,
     _find_git_root,
     _has_any_leaf,
@@ -165,18 +194,14 @@ from metabrowser.tree import (
     _subtree_is_empty,
     _subtree_summary,
     _tree_depth_from_query,
-    build_filtered_inventory_tree,
     build_gitignore_check,
-    inventory_has_data,
-    inventory_status,
-    parent_is_gitignored,
+    build_inventory_tree_from_entries,
 )
 from metabrowser.tree_filter import (
     TreeFilter,
     parse_recency,
     parse_size_floor,
     parse_types,
-    reset_rollup_cache_for_tests,
 )
 from metabrowser.view_routes import (
     VIEW_ROUTE_PREFIX,
@@ -215,7 +240,6 @@ _TREE_COLD_START_WAIT_S = 0.10
 #
 # The floor matters on a small tree, where the pass is cheap enough that its
 # own duration would allow a recompute per request for no benefit.
-NAVIGATION_TALLY_MIN_STALE_S = 0.5
 # The tally pass's own row cap, passed explicitly so the memo key the route
 # asks for is the memo key the route gets.
 NAVIGATION_TALLY_LIMIT = 200
@@ -260,18 +284,10 @@ _ROLLUP_IN_FLIGHT: dict[str, asyncio.Task[bytes]] = {}
 
 
 def reset_response_caches_for_tests() -> None:
-    """Drop cached rollup responses so a fresh index cannot inherit them.
-
-    The rollup ETag is keyed on the index revision, which only ever moves
-    forward for a served root: swapping roots calls ``InventoryIndex.clear``,
-    which bumps it. Tests are the one caller that builds a whole new index,
-    starting the revision at zero again, so without this a body cached by one
-    test could be served to the next one under a colliding tag.
-    """
+    """Drop process-retained rollup responses between isolated test apps."""
 
     _ROLLUP_BODY_CACHE.clear()
     _ROLLUP_IN_FLIGHT.clear()
-    reset_rollup_cache_for_tests()
 
 
 def _release_rollup_flight(etag: str, task: asyncio.Task[bytes]) -> None:
@@ -394,22 +410,15 @@ __all__ = [
     "ACTIVITY_POLL_INTERVAL_MS",
     "DEFAULT_TREE_DEPTH",
     "FILE_KIND_DETECTORS",
-    "FileActivityTracker",
     "FileContext",
     "MAX_TREE_DEPTH",
     "SENTINEL_SUMMARY_DEPTH",
     "STATIC_DIR",
-    "TRACKABLE_DISCOVERY_TTL_SECONDS",
-    "TRACKABLE_FILE_MAX_SIZE",
     "VIEW_REGISTRY",
     "_IGNORE_CACHE",
-    "_activity_snapshot",
     "_cached_root_prefix",
     "_clear_browser_caches",
-    "_collect_trackable_files",
-    "_collect_trackable_files_cached",
     "_dir_tree",
-    "_discover_trackable_files",
     "_find_git_root",
     "_has_any_leaf",
     "_has_any_nongitignored",
@@ -425,7 +434,6 @@ __all__ = [
     "_subtree_is_empty",
     "_subtree_summary",
     "_tree_depth_from_query",
-    "activity_tracker",
     "api_activity",
     "api_file",
     "api_kpress_export",
@@ -449,24 +457,15 @@ __all__ = [
 # directly. The canonical value lives in ``paths_safe``; expose it here as a
 # property-style attribute backed by the module-level lookup.
 
-import metabrowser.paths_safe as _paths_safe
-
-# Re-export of the activity tracker class under the legacy proc_browser
-# namespace so existing tests/imports keep working. The numeric constants
-# (TRACKABLE_FILE_MAX_SIZE, TRACKABLE_DISCOVERY_TTL_SECONDS) used to be
-# duplicated here; they live exclusively in ``activity.py`` now to avoid
-# silent drift.
-FileActivityTracker = _FileActivityTracker
-
-
 # ROOT_DIR proxy: tests (and old serve.py code) read/write
 # ``proc_browser.ROOT_DIR`` directly. The canonical value now lives in
 # ``paths_safe``; bridge both directions via a module class so reads and
 # writes always go through ``_set_root_dir`` (which fires every
 # registered cache-invalidation callback).
-
 import sys as _sys
 import types as _types
+
+import metabrowser.paths_safe as _paths_safe
 
 
 class _ProcBrowserModule(_types.ModuleType):
@@ -643,7 +642,6 @@ def _clear_browser_caches() -> None:
     _subtree_summary.cache_clear()
     _has_any_leaf.cache_clear()
     _has_any_nongitignored.cache_clear()
-    _collect_trackable_files_cached.cache_clear()
     clear_charts_cache()
 
 
@@ -931,7 +929,7 @@ PREFETCH_IDLE_TIMEOUT_MS = 2000
 PREFETCH_FALLBACK_DELAY_MS = 200
 
 
-async def index(_request: Request) -> HTMLResponse:
+async def index(request: Request) -> HTMLResponse:
     """Serve the SPA page; CSS/JS are linked, not inlined."""
 
     initial_path = _initial_path_html()
@@ -994,9 +992,26 @@ async def index(_request: Request) -> HTMLResponse:
     # would risk painting rows the reader's filter excludes; the fetch that
     # follows owns every case but this one.
     initial_tree_block = ""
-    if _INLINE_INITIAL_TREE_ROWS and inventory_has_data():
+    if _INLINE_INITIAL_TREE_ROWS:
         try:
-            initial_tree = _build_inventory_tree(
+            runtime = _inventory_runtime_for(request)
+            initial_read = await runtime.coordinator.read(
+                ReadRequest(
+                    queries=(
+                        DirectoryQuery(
+                            query_id="initial-tree",
+                            path="",
+                            max_depth=1,
+                            max_rows=_INLINE_INITIAL_TREE_ROWS,
+                        ),
+                    )
+                )
+            )
+            initial_projection = initial_read.result.projection("initial-tree")
+            if not isinstance(initial_projection, DirectoryProjection):
+                raise TypeError("the initial-tree read returned the wrong projection")
+            initial_tree = build_inventory_tree_from_entries(
+                entries=initial_projection.entries,
                 parent_rel="",
                 max_depth=1,
                 root_abs=_resolved_root_dir(),
@@ -1383,39 +1398,6 @@ async def root_redirect(_request: Request) -> Response:
     return RedirectResponse(VIEW_ROUTE_PREFIX, status_code=307)
 
 
-async def _ensure_inventory_serving(subpath: str) -> bool:
-    """Start the inventory walker if needed, wait briefly on a cold
-    start, and report whether the index can serve *subpath*.
-
-    Shared by `/api/tree` and `/api/rollup`: both read the same index
-    and share the cold-start grace so a request landing right after
-    boot finds the visible tree populated.
-    """
-
-    inventory = get_inventory()
-    root_dir = _resolved_root_dir()
-    inventory_root = getattr(inventory, "_root", None)
-    if inventory_root != root_dir:
-        inventory.clear()
-    started_inventory = False
-    if inventory_status() == "idle":
-        inventory.start(root_dir)
-        started_inventory = True
-
-    if started_inventory:
-        deadline = asyncio.get_running_loop().time() + _TREE_COLD_START_WAIT_S
-        while asyncio.get_running_loop().time() < deadline:
-            if inventory_status() in ("done", "truncated"):
-                break
-            if inventory.has_direct_child(subpath):
-                break
-            await asyncio.sleep(0.005)
-
-    if not inventory_has_data():
-        return False
-    return True if not subpath else inventory.get(subpath) is not None
-
-
 def _query_values(request: Request, key: str) -> list[str]:
     """Repeated query values, tolerating the fake-request shims in tests."""
 
@@ -1445,215 +1427,201 @@ def tree_filter_from_request(request: Request) -> TreeFilter:
     )
 
 
+def _inventory_runtime_for(request: Request) -> InventoryRuntime:
+    runtime = getattr(request.app.state, "inventory_runtime", None)
+    if not isinstance(runtime, InventoryRuntime):
+        raise RuntimeError("the application inventory runtime is not available")
+    return runtime
+
+
+def _index_status_from_state(phase: LifecyclePhase, *, complete: bool, budget: bool) -> str:
+    if phase is LifecyclePhase.DISCOVERING:
+        return "scanning"
+    if phase is LifecyclePhase.FAILED:
+        return "failed"
+    if phase is LifecyclePhase.STOPPED:
+        return "idle"
+    if budget:
+        return "truncated"
+    return "done" if complete else "scanning"
+
+
+async def _read_tree_from_provider(
+    request: Request,
+    *,
+    subpath: str,
+    remaining_depth: int,
+    tree_filter: TreeFilter,
+) -> JSONResponse:
+    runtime = _inventory_runtime_for(request)
+    extensions = tuple(token for token in tree_filter.types if token.startswith("."))
+    filenames = tuple(token for token in tree_filter.types if not token.startswith("."))
+    as_of_ns = time.time_ns()
+    companion_queries: list[ReadQuery] = [EntryQuery(query_id="tree-parent", path=subpath)]
+    projection_id = "tree-filtered" if tree_filter.active else "tree-directory"
+    page_query: TreePageQuery | None = None
+    if tree_filter.active:
+        page_query = FilteredTreeQuery(
+            query_id=projection_id,
+            path=subpath,
+            max_depth=max(1, remaining_depth),
+            max_rows=INVENTORY_TREE_PAGE_ROWS,
+            filter=InventoryFilter(
+                extensions=extensions,
+                filenames=filenames,
+                recency_seconds=(
+                    float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
+                ),
+                minimum_size=tree_filter.min_size or None,
+                include_ignored=tree_filter.include_ignored,
+                as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
+            ),
+        )
+    elif remaining_depth > 0:
+        page_query = DirectoryQuery(
+            query_id=projection_id,
+            path=subpath,
+            max_depth=remaining_depth,
+            max_rows=INVENTORY_TREE_PAGE_ROWS,
+        )
+
+    navigation_id: str | None = None
+    if not subpath and remaining_depth == 0:
+        navigation_id = "tree-navigation"
+        companion_queries.append(
+            NavigationQuery(
+                query_id=navigation_id,
+                presets=tuple(
+                    (str(preset["id"]), tuple(str(value) for value in preset["values"]))
+                    for preset in FILTER_TYPE_PRESETS
+                ),
+                recency_windows=tuple(
+                    (window_key, seconds)
+                    for window_key, seconds in RECENT_WINDOW_SECONDS.items()
+                    if seconds is not None
+                ),
+                max_rows=NAVIGATION_TALLY_LIMIT,
+                as_of_ns=as_of_ns,
+            )
+        )
+
+    async def read_tree() -> tuple[CoordinatedRead, TreePageAssembly | None]:
+        query = page_query
+        if query is None:
+            return (
+                await runtime.coordinator.read(ReadRequest(queries=tuple(companion_queries))),
+                None,
+            )
+        assembly = await assemble_tree_pages(
+            runtime.coordinator,
+            page_query=query,
+            companion_queries=tuple(companion_queries),
+        )
+        return assembly.first_read, assembly
+
+    read, assembly = await read_tree()
+    parent = read.result.projection("tree-parent")
+    if not isinstance(parent, EntryProjection):
+        raise TypeError("the tree parent query returned the wrong projection")
+    if parent.presence is EntryPresence.UNKNOWN:
+        if subpath:
+            await runtime.coordinator.prioritize(
+                PriorityRequest(paths=(subpath,), max_depth=max(1, remaining_depth))
+            )
+        deadline = asyncio.get_running_loop().time() + _TREE_COLD_START_WAIT_S
+        while asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.005)
+            read, assembly = await read_tree()
+            parent = read.result.projection("tree-parent")
+            if not isinstance(parent, EntryProjection):
+                raise TypeError("the tree parent query returned the wrong projection")
+            if parent.presence is not EntryPresence.UNKNOWN:
+                break
+
+    if parent.presence is EntryPresence.ABSENT or (
+        parent.presence is EntryPresence.PRESENT
+        and (parent.entry is None or parent.entry.type is not EntryType.DIRECTORY)
+    ):
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    tree_entries = ()
+    filtered_projection: FilteredTreeProjection | None = None
+    if assembly is not None:
+        projection = assembly.projection
+        if isinstance(projection, FilteredTreeProjection):
+            filtered_projection = projection
+        tree_entries = projection.entries
+
+    root_dir = _resolved_root_dir()
+    tree = (
+        build_inventory_tree_from_entries(
+            entries=tree_entries,
+            parent_rel=subpath,
+            max_depth=remaining_depth,
+            root_abs=root_dir,
+            parent_ignored=bool(parent.entry.gitignored) if parent.entry is not None else False,
+        )
+        if remaining_depth > 0
+        else []
+    )
+    navigation = None
+    if navigation_id is not None:
+        candidate = read.result.projection(navigation_id)
+        if not isinstance(candidate, NavigationProjection):
+            raise TypeError("the navigation query returned the wrong projection")
+        navigation = candidate.payload
+    state = assembly.final_read.result.state if assembly is not None else read.result.state
+    status = _index_status_from_state(
+        state.phase,
+        complete=state.coverage.complete,
+        budget=any(issue.code.value == "resource_budget" for issue in state.issues),
+    )
+    return JSONResponse(
+        {
+            "root": str(root_dir),
+            "tree": tree,
+            "filtered": (
+                {
+                    "files": filtered_projection.matching_files,
+                    "size": filtered_projection.matching_bytes,
+                    "entries": filtered_projection.matching_leaves,
+                }
+                if filtered_projection is not None
+                else None
+            ),
+            "tally_cache_status": status,
+            "tally_cache_max_files": runtime.config.max_files,
+            "summary": navigation["summary"] if navigation is not None else None,
+            "file_type_registry": (
+                navigation["file_type_registry"] if navigation is not None else None
+            ),
+            "extensions": navigation["extensions"] if navigation is not None else None,
+            "canonical_extensions": (
+                navigation["canonical_extensions"] if navigation is not None else None
+            ),
+            "type_families": navigation["type_families"] if navigation is not None else None,
+            "type_presets": navigation["type_presets"] if navigation is not None else None,
+            "recency_tallies": (navigation["recency_tallies"] if navigation is not None else None),
+        }
+    )
+
+
 @log_async_calls()
 async def api_tree(request: Request) -> JSONResponse:
-    subpath = request.query_params.get("path", "")
+    requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
-    target = _safe_path(subpath)
-    if target is None or not target.is_dir():
+    subpath = canonical_inventory_path(requested)
+    if subpath is None or _safe_path(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     remaining_depth = _tree_depth_from_query(depth_str)
     tree_filter = tree_filter_from_request(request)
 
-    inventory = get_inventory()
-    root_dir = _resolved_root_dir()
-    inv_can_serve = await _ensure_inventory_serving(subpath)
-
-    # One snapshot and one revision for every O(index) pass this request makes.
-    # A root request with a filter active needs two of them — the filtered
-    # rollup and the nav tallies — and they read the same entries for
-    # overlapping reasons. Taking a snapshot each would copy the index twice on
-    # the request the page makes first, and would let the two passes describe
-    # different indexes.
-    #
-    # Both are read in the same loop tick, with no await between them, so the
-    # revision names exactly the entries handed over. That is what lets either
-    # pass be memoized: otherwise a worker could only ask for a revision that
-    # had already moved, and would cache its answer under a key that never
-    # matches. Inventory writes are owned by the loop, so iterating the live
-    # dictionary off-loop would race the still-running walker.
-    #
-    # The response status joins them: the walker can finish while a worker
-    # runs, and reporting that newer "done" beside partial tallies would make
-    # the browser stop polling before it requests the final snapshot.
-    index_entries: list[Any] | None = None
-    index_revision = 0
-    tally_cache_status = inventory_status()
-    if inv_can_serve and tree_filter.active:
-        # Only the filter path needs the entries here. The tally path used to
-        # share this snapshot, which meant every unfiltered root request paid a
-        # list copy of the whole index on the event loop -- 300,000 entries on
-        # the bench corpus -- before discovering its tallies were memoized.
-        # It now takes its own snapshot inside the thread, and only when it has
-        # to recompute.
-        index_entries = inventory.entries(scope="all-known")
-        index_revision = inventory.rollup_revision()
-        tally_cache_status = inventory_status()
-    elif inv_can_serve and not subpath:
-        tally_cache_status = inventory_status()
-
-    filtered = None
-    if inv_can_serve and tree_filter.active and index_entries is not None:
-        # Presence and aggregates both depend on the whole subtree, not on the
-        # slice this request returns, so the pass is O(index) and goes to a
-        # worker. Structure comes from the index's own child map instead, which
-        # is why the subtree build stays cheap for a deep, narrow request.
-        filtered = await asyncio.to_thread(
-            build_filtered_inventory_tree,
-            entries=index_entries,
-            children_of=inventory.children_of,
-            parent_rel=subpath,
-            max_depth=remaining_depth,
-            root_abs=root_dir,
-            parent_ignored=parent_is_gitignored(subpath),
-            tree_filter=tree_filter,
-            now_sec=time.time(),
-            generation=index_revision,
-        )
-        tree = filtered.tree
-        LOG.debug(
-            "api_tree (filtered) path=%r depth=%d entries=%d matched=%d status=%s",
-            subpath or "<root>",
-            remaining_depth,
-            len(tree),
-            filtered.matched_files,
-            inventory_status(),
-        )
-    elif inv_can_serve:
-        tree = _build_inventory_tree(
-            parent_rel=subpath,
-            max_depth=remaining_depth,
-            root_abs=root_dir,
-        )
-        LOG.debug(
-            "api_tree (inventory) path=%r depth=%d entries=%d status=%s",
-            subpath or "<root>",
-            remaining_depth,
-            len(tree),
-            inventory_status(),
-        )
-    else:
-        tree = []
-        if inventory_status() in ("done", "truncated"):
-            LOG.warning(
-                "api_tree: inventory has no entry for existing path=%r status=%s",
-                subpath or "<root>",
-                inventory_status(),
-            )
-        LOG.debug(
-            "api_tree (inventory-miss) path=%r depth=%d entries=%d status=%s",
-            subpath or "<root>",
-            remaining_depth,
-            len(tree),
-            inventory_status(),
-        )
-    # The nav tallies need one O(index) pass. The nav re-requests this route
-    # (depth=0) while the walk converges, so running it on the loop would stall
-    # the event stream at the design-center index size for the same reason
-    # api_catalog offloads its own pass.
-    navigation_tallies = None
-    if inv_can_serve and not subpath:
-        tally_presets = [(preset["id"], preset["values"]) for preset in FILTER_TYPE_PRESETS]
-        tally_windows = [
-            (window_key, seconds)
-            for window_key, seconds in RECENT_WINDOW_SECONDS.items()
-            if seconds is not None
-        ]
-        # Ask for a fresh-enough answer first. This is a tuple compare and a
-        # clock read, so it costs nothing when it misses -- and when it hits it
-        # skips both O(index) costs: the snapshot and the pass.
-        navigation_tallies = inventory.navigation_tallies_fresh_within(
-            tally_presets,
-            tally_windows,
-            NAVIGATION_TALLY_LIMIT,
-            min_stale_s=NAVIGATION_TALLY_MIN_STALE_S,
-        )
-        # A request carrying rows never waits for the pass that produces these.
-        #
-        # The tallies cost one visit per entry in the index; the rows do not.
-        # Sharing one response made the reader wait for the expensive half to
-        # see the cheap one, and during a scan that was most of a second at
-        # 240,000 files -- 0.37 s at 60,000 indexed, 1.30 s at 220,000, growing
-        # as the walk proceeds. Worse, the wait is not just the reader's: that
-        # work competes with the walker, so watching a scan slowed it twelvefold
-        # (exp-005).
-        #
-        # ``depth=0`` is the client's tally channel and is allowed to pay. It
-        # carries no rows to delay, ``scheduleRootSummaryRefresh`` already
-        # fetches it behind the render, and every tally field in this payload is
-        # nullable and guarded field-by-field on the client, so a row request
-        # that arrives without them is a shape the browser already handles.
-        wants_tallies = remaining_depth == 0
-        if navigation_tallies is None and wants_tallies and index_entries is not None:
-            # A filter is active, so the snapshot already exists and both
-            # passes must describe the same index. Reuse it rather than
-            # copying the index a second time.
-            tally_entries = index_entries
-            tally_revision = index_revision
-            navigation_tallies = await asyncio.to_thread(
-                lambda: inventory.navigation_tallies(
-                    tally_presets,
-                    tally_windows,
-                    NAVIGATION_TALLY_LIMIT,
-                    entries=tally_entries,
-                    revision=tally_revision,
-                )
-            )
-        elif navigation_tallies is None and wants_tallies:
-            navigation_tallies = await asyncio.to_thread(
-                inventory.navigation_tallies_snapshotting,
-                tally_presets,
-                tally_windows,
-                NAVIGATION_TALLY_LIMIT,
-            )
-    return JSONResponse(
-        {
-            "root": str(root_dir),
-            "tree": tree,
-            # What the filter selected across the whole subtree, which the
-            # payload cannot be counted for: it is capped by depth, and the
-            # browser pages long child lists. Null when nothing is filtered.
-            "filtered": (
-                {
-                    "files": filtered.matched_files,
-                    "size": filtered.matched_size,
-                    "entries": filtered.matched_leaves,
-                }
-                if filtered is not None
-                else None
-            ),
-            "tally_cache_status": tally_cache_status,
-            "tally_cache_max_files": inventory.max_files(),
-            # Tracked-versus-ignored split for the nav header, plus the age,
-            # extension, and aggregate tallies behind the nav filters. None can be
-            # derived client-side: summing top-level children
-            # miscounts nested ignored files (see
-            # InventoryIndex.root_summary), and the Quick File catalog
-            # drops gitignored entries (see navigation_tallies). Only the
-            # full-tree request needs these values.
-            "summary": (navigation_tallies["summary"] if navigation_tallies is not None else None),
-            "file_type_registry": (
-                navigation_tallies["file_type_registry"] if navigation_tallies is not None else None
-            ),
-            "extensions": (
-                navigation_tallies["extensions"] if navigation_tallies is not None else None
-            ),
-            "canonical_extensions": (
-                navigation_tallies["canonical_extensions"]
-                if navigation_tallies is not None
-                else None
-            ),
-            "type_families": (
-                navigation_tallies["type_families"] if navigation_tallies is not None else None
-            ),
-            "type_presets": (
-                navigation_tallies["type_presets"] if navigation_tallies is not None else None
-            ),
-            "recency_tallies": (
-                navigation_tallies["recency_tallies"] if navigation_tallies is not None else None
-            ),
-        }
+    return await _read_tree_from_provider(
+        request,
+        subpath=subpath,
+        remaining_depth=remaining_depth,
+        tree_filter=tree_filter,
     )
 
 
@@ -1670,9 +1638,9 @@ async def api_rollup(request: Request) -> Response:
     alongside a `rest` bucket for their omitted siblings.
     """
 
-    subpath = request.query_params.get("path", "")
-    target = _safe_path(subpath)
-    if target is None or not target.is_dir():
+    requested = request.query_params.get("path", "")
+    subpath = canonical_inventory_path(requested)
+    if subpath is None or _safe_path(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     depth = _query_bounded_int(
@@ -1709,81 +1677,110 @@ async def api_rollup(request: Request) -> Response:
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
 
-    inventory = get_inventory()
-    inv_can_serve = await _ensure_inventory_serving(subpath)
-
-    # The body is a pure function of the served root, the index revision, the
-    # path, and the bounds that shape the response, so those make an exact
-    # validator. Each part is load-bearing. The bounds: two clients asking for
-    # different depths share a revision, and a tag that ignored the difference
-    # would hand one of them the other's shape. The root: a tag identifies the
-    # resource it validates, and "the rollup of this path" is a different
-    # resource under a different root — without it, serving a second root
-    # reuses the first one's body wherever the revisions happen to line up.
-    etag = build_scoped_etag(
-        "rollup-{}-{}-{}-{}-{}".format(
-            _resolved_root_dir(),
-            inventory_status(),
-            inventory.rollup_revision(),
-            subpath,
-            f"{depth}.{top}.{ext_top}.{remaining_top}.{filename_top}.{ext_rank}",
-        )
+    runtime = _inventory_runtime_for(request)
+    preflight = await runtime.coordinator.read(
+        ReadRequest(queries=(EntryQuery(query_id="rollup-parent", path=subpath),))
     )
+    parent = preflight.result.projection("rollup-parent")
+    if not isinstance(parent, EntryProjection):
+        raise TypeError("the rollup parent query returned the wrong projection")
+    if parent.presence is EntryPresence.ABSENT or (
+        parent.presence is EntryPresence.PRESENT
+        and (parent.entry is None or parent.entry.type is not EntryType.DIRECTORY)
+    ):
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    query = RollupQuery(
+        query_id="rollup",
+        path=subpath,
+        max_depth=depth,
+        max_nodes=ROLLUP_MAX_NODES,
+        top=top,
+        extension_top=ext_top,
+        remaining_top=remaining_top,
+        filename_top=filename_top,
+        rank=ext_rank,
+    )
+    diagnostics = DiagnosticsQuery(query_id="rollup-diagnostics")
+    request_shape = f"{subpath}-{depth}.{top}.{ext_top}.{remaining_top}.{filename_top}.{ext_rank}"
+
+    def etag_for(version: HostVersion) -> str:
+        engine = version.engine
+        return build_scoped_etag(
+            f"rollup-{_resolved_root_dir()}-{engine.session}-{engine.sequence}-"
+            f"{engine.scope_fingerprint}-{engine.semantic_fingerprint}-{request_shape}"
+        )
+
+    async def encode(*, at_version: EngineVersion | None = None) -> tuple[str, bytes]:
+        coordinated = await runtime.coordinator.read(
+            ReadRequest(
+                queries=(query, diagnostics),
+                at_version=at_version,
+            )
+        )
+        rollup = coordinated.result.projection("rollup")
+        diagnostic = coordinated.result.projection("rollup-diagnostics")
+        if not isinstance(rollup, RollupProjection) or not isinstance(
+            diagnostic, DiagnosticsProjection
+        ):
+            raise TypeError("the rollup read returned the wrong projections")
+        payload = rollup.payload
+        state = coordinated.result.state
+        indexed_files = diagnostic.payload.files_indexed
+        status = _index_status_from_state(
+            state.phase,
+            complete=state.coverage.complete,
+            budget=any(issue.code.value == "resource_budget" for issue in state.issues),
+        )
+        body = bytes(
+            JSONResponse(
+                {
+                    "root": str(_resolved_root_dir()),
+                    "path": subpath,
+                    "node": payload.get("node") if payload is not None else None,
+                    "ext_tallies": (payload.get("ext_tallies", []) if payload is not None else []),
+                    "file_type_breakdown": (
+                        payload.get("file_type_breakdown") if payload is not None else None
+                    ),
+                    "index_status": status,
+                    "indexed_files": indexed_files,
+                    "max_files": runtime.config.max_files,
+                    "truncated": status == "truncated",
+                }
+            ).body
+        )
+        return etag_for(coordinated.version), body
+
+    _cursor, checkpoint_version, _state = await runtime.coordinator.checkpoint()
+    etag = etag_for(checkpoint_version)
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=etag_headers(etag))
     cached = _ROLLUP_BODY_CACHE.get(etag)
     if cached is not None:
         return Response(cached, media_type="application/json", headers=etag_headers(etag))
 
-    async def build() -> bytes:
-        result = None
-        if inv_can_serve:
-            result = await asyncio.to_thread(
-                inventory.rollup,
-                subpath,
-                depth=depth,
-                top=top,
-                ext_top=ext_top,
-                remaining_top=remaining_top,
-                filename_top=filename_top,
-                ext_rank=ext_rank,
-            )
-        # Built through JSONResponse rather than json.dumps so the bytes are
-        # identical to what every other JSON route on this server produces.
-        body = bytes(
-            JSONResponse(
-                {
-                    "root": str(_resolved_root_dir()),
-                    "path": subpath,
-                    "node": result["node"] if result is not None else None,
-                    "ext_tallies": result["ext_tallies"] if result is not None else [],
-                    "file_type_breakdown": (
-                        result["file_type_breakdown"] if result is not None else None
-                    ),
-                    "index_status": inventory_status(),
-                    "indexed_files": inventory.files_indexed(),
-                    "max_files": inventory.max_files(),
-                    "truncated": inventory_status() == "truncated",
-                }
-            ).body
-        )
+    async def build_pinned() -> bytes:
+        actual_etag, body = await encode(at_version=checkpoint_version.engine)
+        if actual_etag != etag:
+            raise VersionUnavailableError("the host rollup version moved during a pinned read")
         _remember_rollup_body(etag, body)
         return body
 
-    # Nothing between this lookup and the registration below awaits, so two
-    # requests cannot both start a build for the same answer.
     shared = _ROLLUP_IN_FLIGHT.get(etag)
     if shared is None:
-        shared = asyncio.ensure_future(build())
+        shared = asyncio.ensure_future(build_pinned())
         _ROLLUP_IN_FLIGHT[etag] = shared
         shared.add_done_callback(functools.partial(_release_rollup_flight, etag))
-    # Shielded, so a client that disconnects cancels its own wait and not the
-    # build the others are still waiting on.
-    return Response(
-        await asyncio.shield(shared),
-        media_type="application/json",
-        headers=etag_headers(etag),
-    )
+    try:
+        body = await asyncio.shield(shared)
+    except VersionUnavailableError:
+        # Discovery can advance between the checkpoint and the pinned read.
+        # Fall back to one unpinned coherent result rather than starving a
+        # request behind a continuously moving scan.
+        etag, body = await encode()
+        _remember_rollup_body(etag, body)
+        if matches_if_none_match(request, etag):
+            return Response(status_code=304, headers=etag_headers(etag))
+    return Response(body, media_type="application/json", headers=etag_headers(etag))
 
 
 @log_async_calls()
@@ -1819,18 +1816,35 @@ async def api_recent(request: Request) -> JSONResponse:
     # cap is not spent on rows they will drop on arrival.
     include_ignored = request.query_params.get("include_ignored", "1") not in ("0", "false")
 
-    # Stay conservative if the walker finishes while collection runs. A
-    # response built from a scanning inventory must remain labeled scanning so
-    # the client schedules the completed result instead of stranding a prefix.
-    tally_cache_status = inventory_status()
-    result = await asyncio.to_thread(
-        collect_recent_entries,
-        root=_resolved_root_dir(),
-        window=window,  # pyright: ignore[reportArgumentType]
+    runtime = _inventory_runtime_for(request)
+    coordinated = await runtime.coordinator.read(
+        ReadRequest(
+            queries=(
+                RecentQuery(
+                    query_id="recent",
+                    max_rows=limit,
+                    as_of_ns=time.time_ns(),
+                    prefix=prefix_filter,
+                    extensions=ext_filter,
+                    within_seconds=RECENT_WINDOW_SECONDS[window],
+                    include_ignored=include_ignored,
+                ),
+            )
+        )
+    )
+    projection = coordinated.result.projection("recent")
+    if not isinstance(projection, RecentProjection):
+        raise TypeError("the recent read returned the wrong projection")
+    result = recent_result_from_projection(
+        projection,
+        window=cast(WindowKey, window),
         limit=limit,
-        ext_filter=ext_filter,
-        prefix_filter=prefix_filter,
-        include_ignored=include_ignored,
+    )
+    state = coordinated.result.state
+    tally_cache_status = _index_status_from_state(
+        state.phase,
+        complete=state.coverage.complete,
+        budget=any(issue.code.value == "resource_budget" for issue in state.issues),
     )
     return JSONResponse(
         {
@@ -1958,7 +1972,11 @@ def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONRespo
     )
 
 
-async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
+async def _api_folder_envelope(
+    request: Request,
+    subpath: str,
+    target: Path,
+) -> JSONResponse:
     """Directory envelope for `/api/file`: the folder analog of a file response.
 
     Mirrors the file envelope shape (`type` / `kind` / `views` / `path`)
@@ -1970,8 +1988,18 @@ async def _api_folder_envelope(subpath: str, target: Path) -> JSONResponse:
     while a scan is running.
     """
 
-    inventory = get_inventory()
-    entry = inventory.get(subpath)
+    key = canonical_inventory_path(subpath)
+    if key is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    subpath = key
+    runtime = _inventory_runtime_for(request)
+    coordinated = await runtime.coordinator.read(
+        ReadRequest(queries=(EntryQuery(query_id="folder", path=subpath),))
+    )
+    projection = coordinated.result.projection("folder")
+    if not isinstance(projection, EntryProjection):
+        raise TypeError("the folder read returned the wrong projection")
+    entry = projection.entry
     discovery = await asyncio.to_thread(
         discover_folder,
         target,
@@ -2086,7 +2114,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             return container
         return _file_unavailable_response(subpath, target)
     if target.is_dir():
-        return await _api_folder_envelope(subpath, target)
+        return await _api_folder_envelope(request, subpath, target)
     if not target.is_file():
         container = await asyncio.to_thread(_resolve_container_child, subpath)
         if container is not None:
@@ -2835,7 +2863,7 @@ async def kpress_static_asset(request: Request) -> Response:
 
 
 @log_async_calls()
-async def api_activity(_request: Request) -> JSONResponse:
+async def api_activity(request: Request) -> JSONResponse:
     """Return the list of files actively being written to.
 
     The SPA uses ``fs.change`` operations on ``/api/events``
@@ -2853,7 +2881,12 @@ async def api_activity(_request: Request) -> JSONResponse:
     ``/api/events`` and reading ``entry.active`` / ``entry.labels``
     instead — that's the live-update path.
     """
-    active_files = await asyncio.to_thread(_activity_snapshot, _resolved_root_dir())
+    runtime = _inventory_runtime_for(request)
+    active_files = await activity_snapshot(
+        runtime.coordinator,
+        config=runtime.config,
+        root=_resolved_root_dir(),
+    )
     LOG.debug("api_activity: %d active files", len(active_files))
     return JSONResponse(
         {
@@ -3271,6 +3304,42 @@ async def _debug_tasks(_request: Request) -> JSONResponse:
     )
 
 
+async def _debug_inventory(request: Request) -> JSONResponse:
+    """Provider identity and cumulative contract work for performance runs."""
+
+    if os.environ.get("METABROWSER_DEBUG", "").strip() not in ("1", "true", "yes"):
+        return JSONResponse({"error": "set METABROWSER_DEBUG=1 to enable"}, status_code=404)
+    runtime = _inventory_runtime_for(request)
+    coordinated = await runtime.coordinator.read(
+        ReadRequest(queries=(DiagnosticsQuery(query_id="debug-inventory"),))
+    )
+    diagnostic = coordinated.result.projection("debug-inventory")
+    if not isinstance(diagnostic, DiagnosticsProjection):
+        raise TypeError("the inventory diagnostic returned the wrong projection")
+    diagnostics = diagnostic.payload
+    work = diagnostics.cumulative_work
+
+    return JSONResponse(
+        {
+            "provider": diagnostics.provider,
+            "contract": diagnostics.contract,
+            "phase": coordinated.result.state.phase.value,
+            "complete": coordinated.result.state.coverage.complete,
+            "version": coordinated.version.engine.sequence,
+            "work": {
+                "read_requests": diagnostics.read_requests,
+                "entries_visited": work.entries_visited,
+                "directories_visited": work.directories_visited,
+                "rows_returned": work.rows_returned,
+                "binding_bytes_copied": work.bytes_copied,
+                "lock_wait_ns": work.lock_wait_ns,
+                "cpu_time_ns": work.cpu_time_ns,
+                "wall_time_ns": work.wall_time_ns,
+            },
+        }
+    )
+
+
 async def api_routes(request: Request) -> JSONResponse:
     """List every route this build serves, so the surface is discoverable.
 
@@ -3318,6 +3387,7 @@ routes = [
     Route("/api/routes", api_routes),
     Route("/api/stream", api_stream),
     Route("/_debug/tasks", _debug_tasks),
+    Route("/_debug/inventory", _debug_inventory),
     Route("/raw", raw_file),
     Route("/kpress-static/{path:path}", kpress_static_asset),
     Mount("/static", app=StaticFiles(directory=STATIC_DIR), name="static"),
@@ -3363,8 +3433,8 @@ def _inventory_root_provider() -> object:
 
 
 @asynccontextmanager  # pyright: ignore[reportDeprecated]
-async def _lifespan(_app: Starlette) -> AsyncIterator[None]:
-    async with build_lifespan(root_provider=_inventory_root_provider):
+async def _lifespan(app: Starlette) -> AsyncIterator[None]:
+    async with build_lifespan(app=app, root_provider=_inventory_root_provider):
         try:
             yield
         finally:

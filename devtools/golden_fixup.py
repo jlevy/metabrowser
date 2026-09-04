@@ -13,6 +13,11 @@ restores them so `make golden-update` is a single reviewable step:
   and would make the transcript unreviewable; the POST case keeps its overridden
   heading visible so the transcript still proves the source override took effect
 * the pending-tally diagnostic's stderr line, which carries a wall clock
+* the watcher's mode, state, and reason, which are host facts and startup
+  transients -- the filesystem the served root sits on, the backend that made
+  available, and how far selection had got when the request landed -- and the
+  engine sequence in the pending-tally diagnostic, which counts internal change
+  batches
 
 It also strips trailing whitespace, which `tryscript run --update` preserves
 from Rich's padded terminal output but `git diff --check` rejects; tryscript
@@ -45,6 +50,39 @@ FIXUPS: list[tuple[str, str]] = [
     ),
     (r'^  "html": ".{300,}",$', '  "html": "[..]",'),
     (r"^.*pending folder tallies diagnostic.*$", "[..]"),
+    # Host facts, not behavior: the filesystem type the served root sits on
+    # (apfs here, ext4 on CI) and the watch backend it made available. These
+    # were elided by hand once and silently re-pinned by the next
+    # `golden-update`, which is the failure this rule exists to stop.
+    # Everything around them stays pinned, `mode` included, which is the part
+    # a regression would change.
+    # The whole watcher trio, not just the host fact in it. A backend is
+    # selected and started asynchronously, so `mode` resolves from `auto`,
+    # `state` runs from `starting`, and each `metab` invocation in a transcript
+    # is its own process with its own startup race -- one test in a file can
+    # catch the settled values while the next one does not. Waiting for the
+    # index does not settle the watcher, which starts after it.
+    #
+    # Watcher behaviour is covered by `tests/test_browser_watch_backends.py`,
+    # where it can be driven rather than raced.
+    (r'"reason": "fs=[^"]*"', '"reason": "[..]"'),
+    (r'"reason": "inventory-[^"]*"', '"reason": "[..]"'),
+    (
+        r'"mode": "[a-z]+",(\n\s+"reason": "\[\.\.\]",\n\s+"state": )"[a-z]+"',
+        r'"mode": "[..]",\1"[..]"',
+    ),
+    (r'"watch_mode": "[a-z]+"', '"watch_mode": "[..]"'),
+    (r'"watch_state": "[a-z]+"', '"watch_state": "[..]"'),
+    (r'"watch_reason": "[^"]*"', '"watch_reason": "[..]"'),
+    # The provider's change-batch counter at the moment the diagnostic ran. It
+    # is worth reporting and not worth pinning: no reader depends on the count,
+    # and a provider that batches differently would fail the transcript for a
+    # difference that is not a defect. Anchored to the line above so the schema
+    # versions elsewhere in these goldens keep their exact values.
+    (
+        r'(^    "contract": "inventory-provider-v1",\n    "version": )\d+',
+        r"\1[..]",
+    ),
 ]
 
 

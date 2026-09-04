@@ -22,7 +22,9 @@ from typing import Any
 import yaml
 
 from metabrowser import walker
-from metabrowser.inventory import InventoryIndex
+from metabrowser.inventory_engine.providers.python_inventory import (
+    _PythonInventoryStore as PythonInventoryStore,
+)
 from metabrowser.walk import (
     build_tree_envelope,
     collect_stream,
@@ -299,8 +301,8 @@ def test_stream_records(tmp_path: Path) -> None:
 # ── rewalk_subtree containment guard ──────────────────────────────
 
 
-async def _booted_inventory(root: Path) -> InventoryIndex:
-    inv = InventoryIndex()
+async def _booted_inventory(root: Path) -> PythonInventoryStore:
+    inv = PythonInventoryStore()
     inv.start(root)
     await inv.wait_until_done(timeout=10)
     return inv
@@ -375,7 +377,9 @@ def test_walker_uses_plain_worker_threads_for_each_directory() -> None:
     """Per-directory scans avoid cancellable-worker bookkeeping."""
 
     source = Path(walker.__file__).read_text()
-    assert "await asyncio.to_thread(_scandir_visible, abs_path)" in source
+    assert "await asyncio.to_thread(" in source
+    assert "_scandir_visible," in source
+    assert "hidden_allowlist," in source
     assert "run_cancellable_thread" not in source
 
 
@@ -386,7 +390,7 @@ def test_rewalk_subtree_refuses_escaping_and_ancestor_symlinks(tmp_path: Path) -
 
     root = _build_symlink_fixture(tmp_path)
     handler = _ListHandler()
-    inv_logger = logging.getLogger("metabrowser.inventory")
+    inv_logger = logging.getLogger("metabrowser.inventory_engine.providers.python_inventory")
 
     async def _run() -> int:
         inv = await _booted_inventory(root)

@@ -111,7 +111,7 @@ def invalidate_path(path: Path) -> None:
     _AGENT_CHARTS_CACHE.delete(path)
 
 
-def _reset_all_caches() -> None:
+def invalidate_all_projection_caches() -> None:
     """Clear every projection cache. Wired to root-swap so a
     worktree change doesn't carry stale entries forward."""
 
@@ -119,11 +119,12 @@ def _reset_all_caches() -> None:
     _AGENT_CHARTS_CACHE.cache.clear()
 
 
-register_root_callback(_reset_all_caches)
+register_root_callback(invalidate_all_projection_caches)
 
 
 __all__ = [
     "extract_agent_charts_cached",
+    "invalidate_all_projection_caches",
     "invalidate_path",
     "parse_jsonl_file_cached",
 ]

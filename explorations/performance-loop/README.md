@@ -151,7 +151,7 @@ an improvement, and exp-010 is the worked example of finding that out six rounds
 ```shell
 UV="uv --config-file uv.toml run --frozen python"
 
-$UV explorations/performance-loop/run.py serve --exp exp-004 --label before --files 300000
+$UV explorations/performance-loop/run.py serve --exp exp-004 --label before --files 300000 --provider python
 $UV explorations/performance-loop/run.py probe-server                # server-side metrics, no browser
 # ... or the browser half, for anything a reader sees:
 $UV explorations/performance-loop/run.py probe                       # prints probe.js to evaluate in the page
@@ -163,10 +163,11 @@ $UV explorations/performance-loop/run.py compare before after
 $UV explorations/performance-loop/run.py report
 ```
 
-`serve` remembers the experiment, label, port, corpus, and commit, so `record` needs
-only the paste. Provenance is filled in automatically: timestamp, commit, whether the
-tree was dirty, the selected build’s reported version, and — read back out of the
-server’s own log — how long that run’s walk took.
+`serve` remembers the experiment, label, port, corpus, commit, selected build, requested
+inventory provider, and provider contract, so `record` needs only the paste.
+Provenance is filled in automatically: timestamp, commit, whether the tree was dirty,
+the selected build’s reported version, the provider identity read from the running
+server, and — read back out of the server’s own log — how long that run’s walk took.
 A number nobody can trace is a number nobody can defend, so none of that is left to
 whoever remembers.
 
@@ -182,6 +183,13 @@ $UV explorations/performance-loop/run.py serve \
 The harness resolves the executable and verifies its reported version before starting.
 It refuses an external build without `--build-ref`; a version string alone cannot
 distinguish a modified or incorrectly installed artifact.
+
+Phase 1 accepts `--provider python`. Phase 2 adds `fdu` to this same axis.
+The server is started with `METABROWSER_INVENTORY_PROVIDER` and local diagnostics
+enabled; the result records the provider requested, provider selected, contract,
+lifecycle state, version, and cumulative work counters.
+A missing or mismatched identity invalidates the run instead of silently comparing
+different engines.
 
 ### Comparing a candidate with the previous release
 
@@ -422,7 +430,7 @@ a cold Markdown view, and a cached source revisit so an asynchronously ready ren
 cannot disappear behind otherwise synchronous cases.
 
 ```shell
-uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py serve --files 100000
+uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py serve --files 100000 --provider python
 ```
 
 That restarts the server on a port nothing has used this session and prints its URL. The
@@ -634,6 +642,26 @@ writes; H14/H17 (CLI and imports) use
 start-to-serving phase; H15 is a correctness claim.
 Each hypothesis names its instrument in the plan table, and a hypothesis whose
 instrument does not exist yet is marked blocked rather than measured badly.
+
+For a provider-level comparison, use the serving benchmark directly:
+
+```shell
+$UV -m devtools.bench_serving --files 100000 --provider python \
+  --label python-before --json .bench/inventory-provider-before.json
+$UV -m devtools.bench_serving --files 100000 --provider python \
+  --label python-after --baseline .bench/inventory-provider-before.json \
+  --json .bench/inventory-provider-after.json
+```
+
+Run the two conditions on the same immutable corpus and interleave them when the
+expected effect is below 2×. The benchmark records cold and reader-attached discovery,
+first useful rows, scanning and settled rollups, retained bodies, validators, concurrent
+clients, tree routes, navigation’s first and memoized paths, the catalog’s first body,
+retained body, and `304` paths, process CPU and memory, provider work, and binding-copy
+bytes. Navigation summaries must agree with the settled walker, and repeated catalog
+bodies and validators must remain identical, so lower latency cannot hide a semantic
+change. Fresh settled aggregation is accepted as a sample only after a visible marker
+changes the inventory ETag; non-200 route responses invalidate the phase.
 
 ## Known gaps in this loop
 

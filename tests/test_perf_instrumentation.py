@@ -27,10 +27,19 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import Mock
 
+import pytest
+
+from devtools import bench_serving
 from metabrowser import server, tree
+from metabrowser.inventory_engine.runtime import (
+    InventoryRuntime,
+    inventory_provider_from_environment,
+)
+from tests.inventory_harness import inventory_harness
 
 
 def test_perf_logging_writes_to_current_stderr(capsys) -> None:
@@ -127,7 +136,6 @@ def test_expensive_request_handlers_keep_timing_decorators() -> None:
     for handler in (server.api_tree, server.api_rollup, server.api_file):
         assert hasattr(handler, "__wrapped__"), handler.__name__
 
-    assert not hasattr(server._ensure_inventory_serving, "__wrapped__")
     assert not hasattr(server._api_folder_envelope, "__wrapped__")
 
 
@@ -249,6 +257,97 @@ def test_debug_tasks_route_returns_task_snapshot(monkeypatch) -> None:
         )
         or len(payload["tasks"]) >= 1
     )
+
+
+def test_debug_inventory_reports_provider_contract_and_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "one.txt").write_text("one", encoding="utf-8")
+    monkeypatch.setenv("METABROWSER_DEBUG", "1")
+
+    async def run_check() -> dict[str, Any]:
+        async with inventory_harness(tmp_path) as harness:
+            response = await server._debug_inventory(cast(Any, SimpleNamespace(app=harness.app)))
+            return json.loads(bytes(response.body))
+
+    payload = asyncio.run(run_check())
+    assert payload["provider"] == "python"
+    assert payload["contract"] == "inventory-provider-v1"
+    assert payload["complete"] is True
+    assert set(payload["work"]) == {
+        "read_requests",
+        "entries_visited",
+        "directories_visited",
+        "rows_returned",
+        "binding_bytes_copied",
+        "lock_wait_ns",
+        "cpu_time_ns",
+        "wall_time_ns",
+    }
+
+
+def test_inventory_provider_environment_selection_is_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("METABROWSER_INVENTORY_PROVIDER", " PYTHON ")
+    assert inventory_provider_from_environment() == " PYTHON "
+    runtime = InventoryRuntime(provider=inventory_provider_from_environment())
+    assert runtime.config.max_files > 0
+    monkeypatch.setenv("METABROWSER_INVENTORY_PROVIDER", "missing")
+    with pytest.raises(ValueError, match="unknown inventory provider"):
+        InventoryRuntime(provider=inventory_provider_from_environment())
+
+
+def test_serving_benchmark_records_and_validates_provider_identity() -> None:
+    result: dict[str, Any] = {
+        "cold_scan": {
+            "diagnostics": {
+                "provider": "python",
+                "contract": "inventory-provider-v1",
+            }
+        },
+        "scan_with_client": {
+            "diagnostics": {
+                "provider": "python",
+                "contract": "inventory-provider-v1",
+            }
+        },
+        "settled": {
+            "diagnostics": {
+                "provider": "python",
+                "contract": "inventory-provider-v1",
+            }
+        },
+    }
+    bench_serving._record_inventory_identity(result, "python")
+    assert result["inventory"] == {
+        "provider": "python",
+        "contract": "inventory-provider-v1",
+    }
+    report = bench_serving.render_report(
+        {"label": "test", "corpus": {}, "inventory": result["inventory"]},
+        None,
+    )
+    assert "provider=python contract=inventory-provider-v1" in report
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("00:00.72", 0.72), ("01:02:03", 3723.0), ("2-01:02:03.5", 176523.5)],
+)
+def test_serving_benchmark_parses_process_cpu_time(value: str, expected: float) -> None:
+    assert bench_serving._cpu_seconds(value) == expected
+
+
+def test_performance_loop_carries_provider_provenance() -> None:
+    source = (
+        Path(server.__file__).parents[2] / "explorations" / "performance-loop" / "run.py"
+    ).read_text(encoding="utf-8")
+    assert '"--provider"' in source
+    assert 'environment["METABROWSER_INVENTORY_PROVIDER"] = args.provider' in source
+    assert '"inventory_provider_requested": args.provider' in source
+    assert '"inventory_contract": payload.get("contract")' in source
 
 
 def test_response_carries_server_timing_header() -> None:

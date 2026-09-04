@@ -19,8 +19,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -34,13 +33,6 @@ from metabrowser.gz_io import ArtifactPath
 from metabrowser.ignore_filter import IgnoreMode, ignore_none, make_ignore_filter
 from metabrowser.paths_safe import _rel_path, register_root_callback
 from metabrowser.settings import SLOW_OPERATION_LOG_SECONDS
-from metabrowser.tree_filter import (
-    DirMatches,
-    TreeFilter,
-    cached_rollups,
-    leaf_matches,
-    matches_for,
-)
 
 LOG = logging.getLogger(__name__)
 
@@ -559,167 +551,32 @@ def _tree_depth_from_query(depth_str: str) -> int:
     return max(0, min(depth, MAX_TREE_DEPTH))
 
 
-# ── InventoryIndex-backed tree builder ─────────────────────────────
-#
-# When the InventoryIndex walker has populated entries, /api/tree
-# can serve from memory in milliseconds rather than walking the
-# filesystem. Cold-target budget: first-byte <500 ms on a 35k+
-# file repo. The shape of the returned list matches `_dir_tree`'s
-# output exactly, so the SPA renderer doesn't branch.
-#
-# When the index has NO data for a requested directory (e.g., the
-# walker hasn't reached this subtree yet), we emit `null` aggregate
-# fields and `has_children: true` so the client renders a skeleton
-# row. Subsequent fs.change ops on /api/events will populate the
-# cell in place.
-
-
-def _build_inventory_tree(
+def build_inventory_tree_from_entries(
     *,
+    entries: Sequence[Any],
     parent_rel: str,
     max_depth: int,
     root_abs: Path,
+    parent_ignored: bool = False,
     max_entries: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Recursive in-memory build of the tree shape for a subtree
-    rooted at *parent_rel*. Reads only from
-    ``InventoryIndex`` — no filesystem access.
+    """Build the stable tree wire shape from one provider projection."""
 
-    *parent_rel* is the relative path under the served root
-    (``""`` for root, ``"sub1"`` for a top-level dir, etc).
+    children: dict[str, list[Any]] = {}
+    for entry in entries:
+        children.setdefault(entry.parent, []).append(entry)
 
-    Returns a list of dicts shaped like ``_dir_tree``'s output:
-    each entry carries ``name``, ``path``, ``type``, plus dir
-    aggregates / file size+mtime. Aggregates that the walker has
-    not yet finalized come through as JSON ``null``; the client
-    renders them as skeleton cells and patches via
-    ``fs.change`` ops on ``/api/events``.
-
-    *max_entries* bounds each level to its first *n* entries in display order.
-    The shell uses it to inline the root's first rows: that runs synchronously
-    on the event loop for every page load, and a root with tens of thousands of
-    immediate children should not pay for all of them to send two hundred.
-    """
-
-    if max_depth <= 0:
-        return []
-    # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (
-        get_instance as get_inventory,
-    )
+    def children_of(path: str) -> Sequence[Any]:
+        return children.get(path, ())
 
     return _build_inventory_subtree(
-        children_of=get_inventory().children_of,
+        children_of=children_of,
         parent_rel=parent_rel,
         max_depth=max_depth,
-        parent_ignored=parent_is_gitignored(parent_rel),
+        parent_ignored=parent_ignored,
         root_abs=root_abs,
         max_entries=max_entries,
     )
-
-
-def parent_is_gitignored(parent_rel: str) -> bool:
-    """Carry forward "an ancestor was gitignored so this whole subtree
-    paints gray." Look the parent up in the inventory; if we don't have
-    an entry for it (stub or root), fall back to False — the per-entry
-    ``gitignored`` field written by the walker is the authoritative
-    per-row signal."""
-
-    # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (
-        get_instance as get_inventory,
-    )
-
-    parent_entry = get_inventory().get(parent_rel) if parent_rel else None
-    return bool(parent_entry.gitignored) if parent_entry else False
-
-
-@dataclass(frozen=True, slots=True)
-class FilteredTree:
-    """A tree already narrowed to what a filter selects, plus its totals.
-
-    The totals are the subtree's own rollup, not a count of emitted rows: the
-    tree is capped by depth and the browser pages long child lists, so a count
-    taken from the payload would report how much has been mounted rather than
-    how much matched. The nav's "Filtered to N files" line reads this.
-    """
-
-    tree: list[dict[str, Any]]
-    matched_files: int
-    matched_size: int
-    matched_leaves: int
-
-
-def build_filtered_inventory_tree(
-    *,
-    entries: Sequence[Any],
-    children_of: Callable[[str], Sequence[Any]],
-    parent_rel: str,
-    max_depth: int,
-    root_abs: Path,
-    parent_ignored: bool,
-    tree_filter: TreeFilter,
-    now_sec: float,
-    generation: int = 0,
-) -> FilteredTree:
-    """Tree shape for *parent_rel* containing only what *tree_filter* selects.
-
-    A directory survives when its subtree holds at least one matching leaf, and
-    its aggregates report those matches rather than the directory's own, so a
-    folder row under a filter answers "what is in here that I asked for". Both
-    facts come from one rollup over the whole index, which is why they can be
-    right for a folder whose children were never sent.
-
-    Two different reads, for two different reasons. *entries* is a snapshot the
-    caller took on the event loop, because the rollup is an O(index) pass and
-    belongs on a worker — the same split
-    :func:`InventoryIndex.navigation_tallies` already uses. Structure comes from
-    *children_of* instead, which serves each level from the index the inventory
-    maintains on write: grouping the snapshot by parent would cost a second full
-    pass to answer a question about one subtree, which is the cost
-    :func:`InventoryIndex.children_of` exists to remove. It is safe off the loop
-    because it copies each bucket under the index lock.
-
-    *generation* is the inventory's rollup generation, which keys the memo in
-    :func:`cached_rollups` so one filter change costs one pass rather than one
-    per request it fans out into. Leaving it at its default only costs a
-    recomputation.
-    """
-
-    totals = cached_rollups(
-        entries, tree_filter=tree_filter, now_sec=now_sec, generation=generation
-    )
-    subtree = matches_for(totals, parent_rel)
-    tree = (
-        _build_inventory_subtree(
-            children_of=children_of,
-            parent_rel=parent_rel,
-            max_depth=max_depth,
-            parent_ignored=parent_ignored,
-            root_abs=root_abs,
-            tree_filter=tree_filter,
-            matches=totals,
-            now_sec=now_sec,
-        )
-        if max_depth > 0
-        else []
-    )
-    return FilteredTree(
-        tree=tree,
-        matched_files=subtree.files,
-        matched_size=subtree.size,
-        matched_leaves=subtree.leaves,
-    )
-
-
-def _dir_mtime_seconds(entry: Any, dir_matches: DirMatches | None) -> float | None:
-    """Age a folder row shows: the newest matching leaf under a filter, the
-    walker's own newest mtime otherwise. ``None`` stays ``None`` so the client
-    keeps rendering a skeleton cell for an aggregate the walk has not
-    finalized."""
-
-    newest = dir_matches.newest_mtime_ns if dir_matches else entry.newest_mtime_ns
-    return newest / 1_000_000_000.0 if newest is not None else None
 
 
 def _build_inventory_subtree(
@@ -729,9 +586,6 @@ def _build_inventory_subtree(
     max_depth: int,
     parent_ignored: bool,
     root_abs: Path,
-    tree_filter: TreeFilter | None = None,
-    matches: Mapping[str, DirMatches] | None = None,
-    now_sec: float = 0.0,
     max_entries: int | None = None,
 ) -> list[dict[str, Any]]:
     if max_depth <= 0:
@@ -750,23 +604,6 @@ def _build_inventory_subtree(
         siblings = siblings[:max_entries]
     out: list[dict[str, Any]] = []
     for entry in siblings:
-        # Under a filter a row earns its place: a leaf has to match, and a
-        # directory has to have a match somewhere below it. Deciding this from
-        # the rollup rather than from the rendered children is the whole point
-        # — it is the only way a folder at the depth cap, or one whose match
-        # sits past the browser's page size, gets the right answer.
-        if tree_filter is not None and matches is not None:
-            if entry.type == "dir":
-                # A gitignored directory needs no separate test: with
-                # ``include_ignored`` off the rollup counted none of its leaves,
-                # so its subtree total is already zero.
-                if matches_for(matches, entry.path).leaves == 0:
-                    continue
-            else:
-                if not tree_filter.include_ignored and (entry.gitignored or parent_ignored):
-                    continue
-                if not leaf_matches(entry, tree_filter, now_sec):
-                    continue
         if entry.type == "dir":
             # Walker populates `entry.gitignored` once at index-write
             # time; response layer reads the flag straight off the
@@ -782,9 +619,6 @@ def _build_inventory_subtree(
                     max_depth=max_depth - 1,
                     parent_ignored=ignored,
                     root_abs=root_abs,
-                    tree_filter=tree_filter,
-                    matches=matches,
-                    now_sec=now_sec,
                 )
             else:
                 # Past the depth cap; emit a sentinel so the SPA
@@ -808,12 +642,6 @@ def _build_inventory_subtree(
             # otherwise show a lazy-load spinner that resolves to
             # nothing, leaving the spinner spinning forever.
             inv_child_count = sum(1 for c in children_of(entry.path) if c.path != entry.path)
-            # Under a filter the chip answers "what of what I asked for is in
-            # here", so the aggregates are the subtree's matches rather than
-            # the directory's own totals. The row was kept because that count
-            # is non-zero, which also means it is never empty and always has
-            # something to disclose.
-            dir_matches = matches_for(matches, entry.path) if matches is not None else None
             entry_dict: dict[str, Any] = {
                 "name": entry.name,
                 "path": entry.path,
@@ -821,23 +649,27 @@ def _build_inventory_subtree(
                 # Aggregates: None pass-through. Wire format emits
                 # JSON null for None; the client treats as
                 # "skeleton cell, fill via fs.change".
-                "total_files": dir_matches.files if dir_matches else entry.total_files,
-                "total_size": dir_matches.size if dir_matches else entry.total_size,
+                "total_files": entry.total_files,
+                "total_size": entry.total_size,
                 # Distinguish "walker still finalizing" (None → skeleton)
                 # from "finalized, dir is genuinely empty" (0 → no age
                 # text). The client renders the former as a pulsing
                 # placeholder; the latter as nothing.
-                "mtime": _dir_mtime_seconds(entry, dir_matches),
+                "mtime": (
+                    entry.newest_mtime_ns / 1_000_000_000.0
+                    if entry.newest_mtime_ns is not None
+                    else None
+                ),
                 "has_children": (
-                    True
-                    if dir_matches
-                    else (inv_child_count > 0 if children is None else bool(children))
+                    (inv_child_count > 0 or entry.empty is not True)
+                    if children is None
+                    else bool(children)
                 ),
                 "children": children,
             }
             if ignored:
                 entry_dict["gitignored"] = True
-            if is_empty and matches is None:
+            if is_empty:
                 entry_dict["empty"] = True
             out.append(entry_dict)
         elif entry.type == "symlink":
@@ -878,29 +710,3 @@ def _build_inventory_subtree(
                 file_dict["gitignored"] = True
             out.append(file_dict)
     return out
-
-
-def inventory_has_data() -> bool:
-    """True iff the InventoryIndex has at least one entry for
-    the served root. Used by the route layer to decide between
-    inventory-backed and filesystem-walked tree responses."""
-
-    # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (
-        get_instance as get_inventory,
-    )
-
-    return bool(get_inventory().entries(scope="all-known"))
-
-
-def inventory_status() -> str:
-    """Pass-through for the route layer's ``tally_cache_status``
-    envelope field. Returns 'idle' / 'scanning' / 'done' /
-    'truncated'."""
-
-    # Deferred to break the tree → inventory → walker → tree cycle.
-    from metabrowser.inventory import (
-        get_instance as get_inventory,
-    )
-
-    return get_inventory().status()

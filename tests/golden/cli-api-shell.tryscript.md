@@ -58,10 +58,11 @@ status: 200
 
 ## Test: build capabilities
 
-The two `reason` values are host facts — the filesystem type the served root sits on,
-and which watch backend that made available — so they are elided.
-Everything around them is pinned, including the backend `mode`, which is the part a
-regression would change.
+The watcher values are host facts and startup transients: the filesystem type the served
+root sits on, the backend that made available, and how far selection had got when the
+request landed. Each `metab` invocation is its own process with its own startup race, so
+they are elided here and driven properly in `tests/test_browser_watch_backends.py`.
+Everything around them is pinned.
 
 ```console
 $ metab shellroot --api /api/capabilities
@@ -71,15 +72,18 @@ status: 200
   "backends": [
     {
       "prefix": ".",
-      "mode": "native",
-      "reason": "[..]"
+      "mode": "[..]",
+      "reason": "[..]",
+      "state": "[..]"
     }
   ],
   "index": {
     "complete": true,
     "indexed_files": 4,
     "max_files": 500000,
-    "truncated": false
+    "truncated": false,
+    "provider": "python",
+    "contract": "inventory-provider-v1"
   },
   "events": {
     "stream": "live",
@@ -91,22 +95,34 @@ status: 200
 
 ## Test: crawl progress
 
+`--api` waits for the scan before requesting this route, so the transcript records the
+settled answer rather than whichever moment the request landed in.
+Progress is read live from the browser while a scan is running, which is where the
+in-progress values mean something.
+
 ```console
 $ metab shellroot --api /api/index/progress
 api: /api/index/progress
 status: 200
 {
-  "status": "scanning",
-  "indexed_files": 0,
+  "status": "done",
+  "indexed_files": 4,
   "max_files": 500000,
   "truncated": false,
-  "complete": false,
-  "active": true
+  "complete": true,
+  "active": false,
+  "provider": "python",
+  "contract": "inventory-provider-v1"
 }
 ? 0
 ```
 
 ## Test: index metadata
+
+`watch_reason` is the same host fact the capabilities transcript elides, so it is elided
+here too.
+`provider` and `contract` are pinned: they name which engine answered, which is
+exactly what a second implementation changes.
 
 ```console
 $ metab shellroot --api /api/index/meta
@@ -115,7 +131,7 @@ status: 200
 {
   "status": "done",
   "indexed_files": 4,
-  "indexed_dirs": 1,
+  "indexed_dirs": 0,
   "max_files": 500000,
   "truncated": false,
   "complete": true,
@@ -130,7 +146,12 @@ status: 200
       "ext": ".md",
       "count": 1
     }
-  ]
+  ],
+  "provider": "python",
+  "contract": "inventory-provider-v1",
+  "watch_mode": "[..]",
+  "watch_state": "[..]",
+  "watch_reason": "[..]"
 }
 ? 0
 ```
@@ -408,6 +429,14 @@ status: 200
       "kind": "browser"
     },
     {
+      "path": "/_debug/inventory",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "debug"
+    },
+    {
       "path": "/_debug/tasks",
       "methods": [
         "GET",
@@ -416,12 +445,16 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 34
+  "count": 35
 }
 ? 0
 ```
 
 ## Test: the pending-tally diagnostic accepts a POST body
+
+`version` is the provider’s change-batch counter when the diagnostic ran, elided because
+no reader depends on the count and a provider that batches differently is not thereby
+defective.
 
 The route logs a diagnostic line to stderr by design; it carries a wall-clock timestamp
 and is elided. The envelope is pinned exactly, with `elapsed_ms` normalized because it
@@ -436,18 +469,14 @@ status: 200
   "diagnostic_id": "pending-tally-unknown",
   "inventory": {
     "status": "done",
-    "elapsed_ms": "<ELAPSED>",
-    "files_indexed": 4,
-    "entries": 5,
-    "pending_dirs": 0,
-    "pending_dir_sample": [],
-    "subscribers": 0,
-    "catalog_revision": 1,
     "walker_task": "done",
+    "provider": "python",
+    "contract": "inventory-provider-v1",
+    "version": [..],
     "requested_paths": []
   },
   "events": {
-    "bus_started": false,
+    "bus_started": true,
     "connections": 0,
     "latest_event_id": 0
   }

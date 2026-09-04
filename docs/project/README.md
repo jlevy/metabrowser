@@ -15,6 +15,8 @@ links to the document that covers each in depth.
 - [Nav containers: item-like and folder-like roles](architecture/arch-nav-containers.md)
 - [State and delivery](architecture/arch-state-and-delivery.md) — what the inventory
   holds, how derived state is invalidated, and what the browser does with it
+- [Inventory provider contract](architecture/arch-inventory-provider.md) — the sealed
+  query, lifecycle, consistency, and measurement boundary for inventory engines
 - [Git and comparison sources](architecture/arch-git-and-comparison-sources.md) — the
   Git process boundary, the three-layer stack, and the rule for adding a comparison
   source
@@ -38,6 +40,8 @@ links to the document that covers each in depth.
 - [Git status and working-tree diffs](specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
 - [Repository library and open from a Git URL](specs/active/plan-2026-08-11-open-repo-from-git-url.md)
+- [Pluggable inventory engine](specs/active/plan-2026-08-23-pluggable-inventory-engine.md)
+- [Inventory provider refactor and fdu adoption](specs/active/plan-2026-08-23-inventory-provider-refactor-and-fdu-adoption.md)
 - [Unbounded logical Git history with bounded rendering](specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md)
 - [CLI-first delivery: parity, Git status, and the repository cache](specs/active/plan-2026-08-28-cli-first-delivery-map.md)
 - [A machine-readable contract for the API envelopes](specs/active/plan-2026-08-30-api-schema-and-contract.md)
@@ -48,6 +52,7 @@ links to the document that covers each in depth.
 - [Fuzzy file ranking contract and measurements](research/research-2026-07-31-fuzzy-file-ranking.md)
 - [Git status and dirty working-tree browsing](research/research-2026-08-26-git-status-and-dirty-working-trees.md)
 - [High-performance file roll-up engine](research/research-2026-08-06-file-rollup-engine.md)
+- [fdu and Metabrowser inventory-engine alignment](research/research-2026-08-23-fdu-metabrowser-inventory-engine.md)
 - [Markdown link navigation across repository browsers](research/research-2026-08-13-markdown-link-navigation.md)
 - [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
 - [Repository cache and open from a Git URL](research/research-2026-08-11-repo-cache-and-git-url-open.md)

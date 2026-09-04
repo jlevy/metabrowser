@@ -1,33 +1,9 @@
-"""End-to-end tests for the live-update chain.
-
-Drives the full producer chain in process — watcher → inventory →
-SSE bus → SSE wire — and asserts that each filesystem mutation
-produces the right ``fs.change`` / ``projection.invalidate`` event
-on the wire. Locks in the contract that the
-``metabrowser-realtime-debugging`` runbook depends on:
-
-* mkdir + populate a new subtree → ``fs.change`` upserts for every
-  new entry land on the wire (the watcher's dir branch calls
-  ``rewalk_subtree``).
-* rm a file → ``fs.change`` op=remove on the wire (the watcher's
-  delete branch calls ``inventory.remove``, not ``invalidate``).
-* rm -r a directory → one ``fs.change`` carrying op=remove for
-  every removed descendant.
-* touch a file → ``fs.change`` upsert + ``projection.invalidate``
-  for the same path.
-* Fresh SSE connect (no ``Last-Event-ID``) → snapshot only, zero
-  ``fs.change`` from the walker's startup burst (locks in the
-  replay-flood fix).
-
-The watcher is exercised by calling ``_emit_for_path`` directly
-with synthetic ``Change`` events; bypassing ``awatch`` keeps the
-test fast and deterministic without losing coverage of the
-producer logic that mattered (the dir / delete / file branches).
-"""
+"""End-to-end tests for watcher → coordinator → SSE convergence."""
 
 from __future__ import annotations
 
 import asyncio
+import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any, cast
@@ -35,14 +11,13 @@ from typing import Any, cast
 from watchfiles import Change
 
 import metabrowser.events_route as evroute
-from metabrowser.events import FsChange, FsRemove, FsUpsert
-from metabrowser.events_route import (
-    _stream_events,
-    parse_sse_frames,
-    reset_bus_for_tests,
-)
-from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser.events import EventEnvelope, FsChange, FsRemove, FsUpsert
+from metabrowser.events_route import _stream_events, parse_sse_frames
+from metabrowser.inventory_engine.contract import EntryProjection, EntryQuery, ReadRequest
 from metabrowser.watch_backends import _emit_for_path
+from tests.inventory_harness import InventoryHarness, inventory_harness
+
+_REFRESH_EVENT_TIMEOUT_S = 2.0
 
 
 class _FakeQuery:
@@ -55,26 +30,22 @@ class _FakeQuery:
 
 class _FakeHeaders:
     def __init__(self, data: dict[str, str]) -> None:
-        self._data = {k.lower(): v for k, v in data.items()}
+        self._data = {key.lower(): value for key, value in data.items()}
 
     def get(self, key: str, default: str = "") -> str:
         return self._data.get(key.lower(), default)
 
 
 class _FakeRequest:
-    """Same shape as the FakeRequest in test_browser_events_route;
-    duplicated locally so this test file doesn't reach across into
-    its sibling's private fixtures."""
-
     def __init__(
         self,
-        query: dict[str, str] | None = None,
-        headers: dict[str, str] | None = None,
         *,
+        app: object,
         disconnect_after: int | None = None,
     ) -> None:
-        self.query_params = _FakeQuery(query or {})
-        self.headers = _FakeHeaders(headers or {})
+        self.query_params = _FakeQuery({})
+        self.headers = _FakeHeaders({})
+        self.app = app
         self._is_disconnected_call_count = 0
         self._disconnect_after = disconnect_after
 
@@ -92,15 +63,11 @@ async def _drain_sse(stream: AsyncIterator[bytes], *, max_records: int) -> list[
     async for chunk in stream:
         buffer += chunk
         while b"\n\n" in buffer:
-            head, _, rest = buffer.partition(b"\n\n")
-            buffer = rest
+            head, _, buffer = buffer.partition(b"\n\n")
             for record in parse_sse_frames(head + b"\n\n"):
                 out.append(record)
                 if len(out) >= max_records:
                     return out
-    if buffer.strip():
-        for record in parse_sse_frames(buffer + b"\n\n"):
-            out.append(record)
     return out
 
 
@@ -110,217 +77,210 @@ def _build_tree(root: Path) -> None:
     (root / "sub1" / "file_b.log").write_bytes(b"b" * 100)
 
 
-async def _drive_walker(root: Path) -> None:
-    reset_instance_for_tests()
-    reset_bus_for_tests()
-    inv = get_instance()
-    inv.start(root)
-    await inv.wait_until_done(timeout=5.0)
-
-
-# ── Replay-flood regression test ────────────────────────────────
+async def _observe_refresh(
+    harness: InventoryHarness,
+    root: Path,
+    target: Path,
+    change: Change,
+    *,
+    expected_upserts: frozenset[str] = frozenset(),
+    expected_removes: frozenset[str] = frozenset(),
+) -> list[EventEnvelope]:
+    queue = harness.bus.attach_connection()
+    try:
+        await _emit_for_path(
+            harness.runtime.coordinator.refresh,
+            root,
+            str(target),
+            change,
+        )
+        events: list[EventEnvelope] = []
+        async with asyncio.timeout(_REFRESH_EVENT_TIMEOUT_S):
+            while True:
+                events.append(await queue.get())
+                upserts = {
+                    operation.entry.path
+                    for envelope in events
+                    if isinstance(envelope.event, FsChange)
+                    for operation in envelope.event.ops
+                    if isinstance(operation, FsUpsert)
+                }
+                removes = {
+                    operation.path
+                    for envelope in events
+                    if isinstance(envelope.event, FsChange)
+                    for operation in envelope.event.ops
+                    if isinstance(operation, FsRemove)
+                }
+                if expected_upserts <= upserts and expected_removes <= removes:
+                    while not queue.empty():
+                        events.append(queue.get_nowait())
+                    return events
+    finally:
+        harness.bus.detach_connection(queue)
 
 
 def test_fresh_connect_no_replay_flood(tmp_path: Path) -> None:
-    """A fresh ``EventSource`` connection (no ``Last-Event-ID``)
-    receives ONLY the snapshot — not the entire walker startup
-    burst. Pre-fix, the snapshot was followed by ~N ``fs.change``
-    events that re-delivered every walker upsert, pushing live
-    events to the tail of the per-connection queue."""
-
     _build_tree(tmp_path)
-    # Add a few more subdirs so the walker emits at least one
-    # batched fs.change event into the ring buffer.
-    for i in range(20):
-        d = tmp_path / f"d{i}"
-        d.mkdir()
-        (d / "x.log").write_bytes(b"x")
+    for index in range(20):
+        directory = tmp_path / f"d{index}"
+        directory.mkdir()
+        (directory / "x.log").write_bytes(b"x")
 
-    async def _run() -> tuple[list[str], int]:
-        await _drive_walker(tmp_path)
+    async def run() -> tuple[list[str], int]:
+        async with inventory_harness(tmp_path) as harness:
+            original = evroute.HEARTBEAT_INTERVAL_S
+            try:
+                evroute.HEARTBEAT_INTERVAL_S = 0.05  # type: ignore[assignment]
+                request = _FakeRequest(app=harness.app, disconnect_after=1)
+                records = await _drain_sse(_stream_events(cast(Any, request)), max_records=3)
+            finally:
+                evroute.HEARTBEAT_INTERVAL_S = original  # type: ignore[assignment]
+            events = [record["event"] for record in records]
+            return events, sum(event == "fs.change" for event in events)
 
-        original = evroute.HEARTBEAT_INTERVAL_S
-        try:
-            evroute.HEARTBEAT_INTERVAL_S = 0.05  # type: ignore[assignment]
-            request = _FakeRequest(disconnect_after=1)
-            stream = _stream_events(cast(Any, request))
-            records = await _drain_sse(stream, max_records=3)
-        finally:
-            evroute.HEARTBEAT_INTERVAL_S = original  # type: ignore[assignment]
-
-        events = [r["event"] for r in records]
-        # Count any fs.change in the records (must be zero on a
-        # fresh connect with no filesystem activity).
-        n_changes = sum(1 for r in records if r["event"] == "fs.change")
-        return events, n_changes
-
-    events, n_changes = asyncio.run(_run())
-    assert events[0] == "fs.snapshot", f"first event must be snapshot, got {events!r}"
-    assert n_changes == 0, (
-        f"fresh connect must not replay walker burst; got {n_changes} fs.change events. "
-        "If this fails, _stream_events is replaying the ring buffer for clients with no "
-        "Last-Event-ID — check _parse_last_event_id and the replay branch."
-    )
-
-
-# ── Filesystem-to-wire chain ────────────────────────────────────
+    events, change_count = asyncio.run(run())
+    assert events[0] == "fs.snapshot"
+    assert change_count == 0
 
 
 def test_touch_existing_file_emits_upsert_and_projection_invalidate(tmp_path: Path) -> None:
-    """A file modify event (the watcher's regular path) emits one
-    ``fs.change`` with one upsert AND a ``projection.invalidate``
-    event for the same path."""
-
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[set[str], list[str]]:
-        await _drive_walker(tmp_path)
-        inv = get_instance()
-        sub_q = inv.subscribe(max_queue=1024)
+    async def run() -> tuple[set[str], set[str]]:
+        async with inventory_harness(tmp_path) as harness:
+            target = tmp_path / "file_a.log"
+            target.write_bytes(b"a" * 75)
+            envelopes = await _observe_refresh(
+                harness,
+                tmp_path,
+                target,
+                Change.modified,
+                expected_upserts=frozenset({"file_a.log"}),
+            )
+            event_types = {envelope.event.type for envelope in envelopes}
+            upserts = {
+                operation.entry.path
+                for envelope in envelopes
+                if isinstance(envelope.event, FsChange)
+                for operation in envelope.event.ops
+                if isinstance(operation, FsUpsert)
+            }
+            return upserts, event_types
 
-        # Modify the file on disk; drive the watcher's emit path
-        # directly to skip awatch's polling/coalescing latency.
-        target = tmp_path / "file_a.log"
-        target.write_bytes(b"a" * 75)
-        await _emit_for_path(inv, tmp_path, str(target), Change.modified)
-
-        events: list[str] = []
-        upsert_paths: set[str] = set()
-        while not sub_q.empty():
-            evt = sub_q.get_nowait()
-            events.append(getattr(evt, "type", type(evt).__name__))
-            if isinstance(evt, FsChange):
-                for op in evt.ops:
-                    if isinstance(op, FsUpsert):
-                        upsert_paths.add(op.entry.path)
-        return upsert_paths, events
-
-    upserts, events = asyncio.run(_run())
+    upserts, event_types = asyncio.run(run())
     assert "file_a.log" in upserts
-    assert "fs.change" in events
-    assert "projection.invalidate" in events, (
-        "watcher's file branch must call inventory.emit_event("
-        "ProjectionInvalidate(...)) so client-side caches stay in step"
-    )
+    assert "fs.change" in event_types
+    assert "projection.invalidate" in event_types
 
 
-def test_mkdir_with_files_runs_rewalk_and_emits_upserts(tmp_path: Path) -> None:
-    """The watcher's ``is_dir()`` branch calls
-    ``inventory.rewalk_subtree(rel)``, which walks the new subtree
-    and produces an ``fs.change`` upsert for every entry. This
-    locks in the watcher → rewalk → inventory chain."""
-
+def test_mkdir_with_files_reconciles_subtree_and_root_totals(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[set[str], tuple[int | None, int | None]]:
-        await _drive_walker(tmp_path)
-        inv = get_instance()
+    async def run() -> tuple[set[str], tuple[int | None, int | None]]:
+        async with inventory_harness(tmp_path) as harness:
+            new_dir = tmp_path / "newdir"
+            new_dir.mkdir()
+            (new_dir / "x.txt").write_bytes(b"x" * 10)
+            (new_dir / "nested").mkdir()
+            (new_dir / "nested" / "y.txt").write_bytes(b"y" * 20)
+            envelopes = await _observe_refresh(
+                harness,
+                tmp_path,
+                new_dir,
+                Change.added,
+                expected_upserts=frozenset(
+                    {"", "newdir", "newdir/x.txt", "newdir/nested", "newdir/nested/y.txt"}
+                ),
+            )
+            upserts = {
+                operation.entry.path
+                for envelope in envelopes
+                if isinstance(envelope.event, FsChange)
+                for operation in envelope.event.ops
+                if isinstance(operation, FsUpsert)
+            }
+            read = await harness.runtime.coordinator.read(
+                ReadRequest(queries=(EntryQuery(query_id="root", path=""),))
+            )
+            projection = read.result.projection("root")
+            assert isinstance(projection, EntryProjection)
+            assert projection.entry is not None
+            return upserts, (
+                projection.entry.total_files,
+                projection.entry.total_size,
+            )
 
-        new_dir = tmp_path / "newdir"
-        new_dir.mkdir()
-        (new_dir / "x.txt").write_bytes(b"x" * 10)
-        (new_dir / "nested").mkdir()
-        (new_dir / "nested" / "y.txt").write_bytes(b"y" * 20)
-
-        sub_q = inv.subscribe(max_queue=1024)
-        await _emit_for_path(inv, tmp_path, str(new_dir), Change.added)
-
-        upsert_paths: set[str] = set()
-        while not sub_q.empty():
-            evt = sub_q.get_nowait()
-            if isinstance(evt, FsChange):
-                for op in evt.ops:
-                    if isinstance(op, FsUpsert):
-                        upsert_paths.add(op.entry.path)
-        root = inv.get("")
-        assert root is not None
-        return upsert_paths, (root.total_files, root.total_size)
-
-    upserts, root_totals = asyncio.run(_run())
-    assert "" in upserts
-    assert "newdir" in upserts
-    assert "newdir/x.txt" in upserts
-    assert "newdir/nested" in upserts
-    assert "newdir/nested/y.txt" in upserts
+    upserts, root_totals = asyncio.run(run())
+    assert {"", "newdir", "newdir/x.txt", "newdir/nested", "newdir/nested/y.txt"} <= upserts
     assert root_totals == (4, 180)
 
 
-def test_rm_file_emits_fs_remove(tmp_path: Path) -> None:
-    """The watcher's ``Change.deleted`` branch calls
-    ``inventory.remove(rel)`` which emits an ``fs.change`` op with
-    one ``FsRemove`` for the deleted path."""
-
+def test_rm_file_emits_remove_and_updates_root(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[set[str], bool, tuple[int | None, int | None], bool]:
-        await _drive_walker(tmp_path)
-        inv = get_instance()
+    async def run() -> tuple[set[str], tuple[int | None, int | None]]:
+        async with inventory_harness(tmp_path) as harness:
+            target = tmp_path / "file_a.log"
+            target.unlink()
+            envelopes = await _observe_refresh(
+                harness,
+                tmp_path,
+                target,
+                Change.deleted,
+                expected_removes=frozenset({"file_a.log"}),
+            )
+            removed = {
+                operation.path
+                for envelope in envelopes
+                if isinstance(envelope.event, FsChange)
+                for operation in envelope.event.ops
+                if isinstance(operation, FsRemove)
+            }
+            read = await harness.runtime.coordinator.read(
+                ReadRequest(queries=(EntryQuery(query_id="root", path=""),))
+            )
+            projection = read.result.projection("root")
+            assert isinstance(projection, EntryProjection)
+            assert projection.entry is not None
+            return removed, (
+                projection.entry.total_files,
+                projection.entry.total_size,
+            )
 
-        target = tmp_path / "file_a.log"
-        target.unlink()
-        sub_q = inv.subscribe(max_queue=1024)
-        await _emit_for_path(inv, tmp_path, str(target), Change.deleted)
-
-        removed: set[str] = set()
-        root_upserted = False
-        while not sub_q.empty():
-            evt = sub_q.get_nowait()
-            if isinstance(evt, FsChange):
-                for op in evt.ops:
-                    if isinstance(op, FsRemove):
-                        removed.add(op.path)
-                    elif op.entry.path == "":
-                        root_upserted = True
-        in_index = "file_a.log" in inv._entries
-        root = inv.get("")
-        assert root is not None
-        return removed, in_index, (root.total_files, root.total_size), root_upserted
-
-    removed, in_index, root_totals, root_upserted = asyncio.run(_run())
+    removed, root_totals = asyncio.run(run())
     assert "file_a.log" in removed
-    assert in_index is False
     assert root_totals == (1, 100)
-    assert root_upserted is True
 
 
-def test_rm_directory_coalesces_descendants_into_one_fs_change(tmp_path: Path) -> None:
-    """``rm -r dir`` arrives as a single ``Change.deleted`` for the
-    directory; the watcher's delete branch calls
-    ``inventory.remove`` which removes every descendant from the
-    index AND emits one ``fs.change`` whose ops cover every
-    removed path. One event, not N."""
-
+def test_rm_directory_coalesces_descendant_removals(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
-    async def _run() -> tuple[int, set[str]]:
-        await _drive_walker(tmp_path)
-        inv = get_instance()
+    async def run() -> tuple[int, set[str]]:
+        async with inventory_harness(tmp_path) as harness:
+            target = tmp_path / "sub1"
+            shutil.rmtree(target)
+            envelopes = await _observe_refresh(
+                harness,
+                tmp_path,
+                target,
+                Change.deleted,
+                expected_removes=frozenset({"sub1", "sub1/file_b.log"}),
+            )
+            changes = [
+                envelope.event
+                for envelope in envelopes
+                if isinstance(envelope.event, FsChange)
+                and any(isinstance(operation, FsRemove) for operation in envelope.event.ops)
+            ]
+            removed = {
+                operation.path
+                for change in changes
+                for operation in change.ops
+                if isinstance(operation, FsRemove)
+            }
+            return len(changes), removed
 
-        target = tmp_path / "sub1"
-        # Filesystem already mutated; the watcher's delete branch
-        # doesn't stat the path, it just looks up the inventory
-        # entry. Real-world the rm has already happened by the
-        # time the event fires.
-        sub_q = inv.subscribe(max_queue=1024)
-        await _emit_for_path(inv, tmp_path, str(target), Change.deleted)
-
-        n_changes = 0
-        removed: set[str] = set()
-        while not sub_q.empty():
-            evt = sub_q.get_nowait()
-            # Only count fs.change events that carry a remove op.
-            if (
-                isinstance(evt, FsChange)
-                and evt.ops
-                and any(isinstance(op, FsRemove) for op in evt.ops)
-            ):
-                n_changes += 1
-                for op in evt.ops:
-                    if isinstance(op, FsRemove):
-                        removed.add(op.path)
-        return n_changes, removed
-
-    n_changes, removed = asyncio.run(_run())
-    assert n_changes == 1, "directory remove must coalesce into one fs.change"
-    assert "sub1" in removed
-    assert "sub1/file_b.log" in removed
+    change_count, removed = asyncio.run(run())
+    assert change_count == 1
+    assert {"sub1", "sub1/file_b.log"} <= removed

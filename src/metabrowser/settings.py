@@ -76,7 +76,7 @@ TEXT_PREVIEW_REQUEST_MAX_BYTES = 16 * 1024 * 1024
 # the loaded syntax-highlighted prefix at or below this bound.
 SYNTAX_HIGHLIGHT_MAX_BYTES = 512 * 1024
 
-# ── InventoryIndex walker ────────────────────────────────────
+# ── Inventory provider walker ────────────────────────────────
 
 INVENTORY_MAX_DEPTH = 20
 # Hard ceiling on files indexed by the BFS walker at startup. The
@@ -89,6 +89,11 @@ INVENTORY_MAX_DEPTH = 20
 # their accumulated totals so the UI shows usable numbers rather
 # than skeletons.
 INVENTORY_MAX_FILES = 500_000
+# One provider read may materialize this many tree rows. Complete route and event
+# snapshots follow version-pinned pages, so this bounds individual projection work
+# without truncating the response. It is deliberately separate from ``max_files``:
+# the latter is a discovery coverage budget and can be two orders of magnitude larger.
+INVENTORY_TREE_PAGE_ROWS = 4_096
 # Refresh-TTL: re-walk an entry older than this on the walker's
 # next idle pass. Bounds staleness when the active-tracker /
 # watcher backends miss a change.
@@ -410,6 +415,7 @@ __all__ = [
     "INDEX_PROGRESS_UPDATE_FILES",
     "INVENTORY_MAX_DEPTH",
     "INVENTORY_MAX_FILES",
+    "INVENTORY_TREE_PAGE_ROWS",
     "INVENTORY_REFRESH_TTL_S",
     "INVENTORY_WALKER_EMIT_BATCH",
     "LIVE_FILE_WINDOW_S",

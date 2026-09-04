@@ -16,16 +16,22 @@ from metabrowser.server import _HostValidationMiddleware, app
 
 
 def test_default_testserver_host_is_allowed() -> None:
-    client = TestClient(app)
-    resp = client.get("/api/capabilities")
-    assert resp.status_code == 200
+    with TestClient(app) as client:
+        resp = client.get("/api/capabilities")
+        assert resp.status_code == 200
 
 
 def test_loopback_hosts_are_allowed() -> None:
-    client = TestClient(app)
-    for host in ("localhost", "127.0.0.1", "localhost:8411", "127.0.0.1:9000", "[::1]:8411"):
-        resp = client.get("/api/capabilities", headers={"host": host})
-        assert resp.status_code == 200, host
+    with TestClient(app) as client:
+        for host in (
+            "localhost",
+            "127.0.0.1",
+            "localhost:8411",
+            "127.0.0.1:9000",
+            "[::1]:8411",
+        ):
+            resp = client.get("/api/capabilities", headers={"host": host})
+            assert resp.status_code == 200, host
 
 
 def test_rebound_host_is_rejected() -> None:
@@ -37,27 +43,27 @@ def test_rebound_host_is_rejected() -> None:
 
 
 def test_extra_hosts_from_environment(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    client = TestClient(app)
-    rejected = client.get("/api/capabilities", headers={"host": "workstation.lan"})
-    assert rejected.status_code == 421
+    with TestClient(app) as client:
+        rejected = client.get("/api/capabilities", headers={"host": "workstation.lan"})
+        assert rejected.status_code == 421
 
-    monkeypatch.setenv("METABROWSER_ALLOWED_HOSTS", "workstation.lan, 10.0.0.5")
-    for host in ("workstation.lan", "workstation.lan:8411", "10.0.0.5:8411"):
-        resp = client.get("/api/capabilities", headers={"host": host})
-        assert resp.status_code == 200, host
+        monkeypatch.setenv("METABROWSER_ALLOWED_HOSTS", "workstation.lan, 10.0.0.5")
+        for host in ("workstation.lan", "workstation.lan:8411", "10.0.0.5:8411"):
+            resp = client.get("/api/capabilities", headers={"host": host})
+            assert resp.status_code == 200, host
 
 
 def test_registered_bind_host_is_allowed() -> None:
     """A concrete --host value registered by the CLI passes validation."""
-    client = TestClient(app)
-    assert client.get("/api/capabilities", headers={"host": "devbox.lan"}).status_code == 421
-    try:
-        server._register_allowed_host("devbox.lan")
-        for host in ("devbox.lan", "devbox.lan:8411", "DevBox.LAN"):
-            resp = client.get("/api/capabilities", headers={"host": host})
-            assert resp.status_code == 200, host
-    finally:
-        server._EXTRA_ALLOWED_HOSTS.discard("devbox.lan")
+    with TestClient(app) as client:
+        assert client.get("/api/capabilities", headers={"host": "devbox.lan"}).status_code == 421
+        try:
+            server._register_allowed_host("devbox.lan")
+            for host in ("devbox.lan", "devbox.lan:8411", "DevBox.LAN"):
+                resp = client.get("/api/capabilities", headers={"host": host})
+                assert resp.status_code == 200, host
+        finally:
+            server._EXTRA_ALLOWED_HOSTS.discard("devbox.lan")
 
 
 def test_wildcard_bind_hosts_are_never_registered() -> None:

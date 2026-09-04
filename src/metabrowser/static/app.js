@@ -173,8 +173,8 @@ function sizeClass(bytes) {
   return window.MetabrowserFormatters.sizeClass(Number(bytes) || 0);
 }
 function sizeHtml(bytes, extraClass) {
-  // Walker emits ``null`` aggregates while a directory is still
-  // finalizing in the InventoryIndex. Render as a skeleton cell
+  // The provider emits ``null`` aggregates while a directory is still
+  // finalizing. Render as a skeleton cell
   // so the row paints with shape; the SSE
   // ``fs.change`` patch flow (applyCellPatch below) replaces it
   // in place once the walker finalizes the dir.
@@ -900,8 +900,8 @@ var QUICK_FILE_RESULT_LIMIT = 100;
 // to, are both questions about a whole subtree — including the parts
 // this client has never been sent. Only the server can answer them, so
 // the filter travels with the request instead of being applied to the
-// rows that come back. See metabrowser/tree_filter.py for the projection
-// and static/tree-filter-model.js for how a selection becomes a request.
+// rows that come back. The inventory provider owns the projection;
+// static/tree-filter-model.js turns a selection into request parameters.
 var treeFilterModel = /** @type {any} */ (window).MetabrowserTreeFilterModel;
 
 function currentFilterSnapshot() {
@@ -1092,7 +1092,7 @@ async function loadTree() {
       // Cached so the recency source, which paints over the whole panel,
       // can keep the same tally row above its own filtered count.
       _lastTreeSummaryHtml = summaryHtml;
-      // Walker truncation banner. The InventoryIndex
+      // Walker truncation banner. The provider
       // walker stops at INVENTORY_MAX_FILES; finalized dirs still
       // emit accumulated totals so the UI is usable, but the user
       // had no signal that the tree was incomplete.
@@ -3808,8 +3808,8 @@ const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {}
 // happened to fall within ``root-depth-2``.
 //
 // New flow:
-// * On chip change, fetch ``/api/recent?window=...`` (server
-//   reads ``InventoryIndex`` at ``all-known`` scope, so the
+// * On chip change, fetch ``/api/recent?window=...`` (the server
+//   uses a bounded provider query over all known entries, so the
 //   payload covers the whole window). Use the response's
 //   ``entries_flat`` field as the base set.
 // * Live overlay: ``fs.change`` upserts/removes mutate the base

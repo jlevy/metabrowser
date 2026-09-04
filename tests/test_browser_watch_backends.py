@@ -1,188 +1,223 @@
-"""Tests for the filesystem-watcher backend.
-
-* fs-type detection from /proc/self/mountinfo (Linux); falls
-  back to "polling" with a sensible reason on unknown / missing.
-* select_watch_mode chooses native for ext4-style mounts and
-  polling for nfs/fuse.
-* run_watcher emits fs.change ops on real file writes (using
-  tmp_path which is typically tmpfs/ext4).
-* The mode override pins behaviour for tests.
-"""
+"""Tests for provider-neutral filesystem observation and watch selection."""
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from pathlib import Path
 
 import pytest
 from watchfiles import Change
 
-from metabrowser.events import FsChange, FsUpsert
-from metabrowser.inventory import get_instance, reset_instance_for_tests
+from metabrowser.events import EventEnvelope, FsChange, FsUpsert
+from metabrowser.inventory_engine.contract import (
+    MAX_COMMAND_PATHS,
+    DirectoryProjection,
+    DirectoryQuery,
+    EngineVersion,
+    EntryPresence,
+    EntryProjection,
+    EntryQuery,
+    ReadRequest,
+    RefreshReceipt,
+    RefreshRequest,
+    RollupProjection,
+    RollupQuery,
+)
 from metabrowser.watch_backends import (
     _NATIVE_FS_TYPES,
     _POLLING_FS_TYPES,
+    WatcherStatus,
+    _emit_batch,
     _emit_for_path,
     detect_fs_type,
     run_watcher,
     select_watch_mode,
 )
+from tests.inventory_harness import inventory_harness
 
-# ── fs-type fixtures ─────────────────────────────────────────
+_WATCH_VERSION = EngineVersion(
+    session="watch-test",
+    sequence=0,
+    scope_fingerprint="scope",
+    semantic_fingerprint="semantics",
+)
 
 
 def test_native_set_includes_ext4_apfs() -> None:
-    """The fs-type allowlist matches the spec contract."""
-    assert "ext4" in _NATIVE_FS_TYPES
-    assert "apfs" in _NATIVE_FS_TYPES
-    assert "btrfs" in _NATIVE_FS_TYPES
-    assert "tmpfs" in _NATIVE_FS_TYPES
+    assert {"ext4", "apfs", "btrfs", "tmpfs"} <= _NATIVE_FS_TYPES
 
 
 def test_polling_set_includes_nfs_and_fuse() -> None:
-    assert "nfs" in _POLLING_FS_TYPES
-    assert "nfs4" in _POLLING_FS_TYPES
-    assert "fuse.gcsfuse" in _POLLING_FS_TYPES
+    assert {"nfs", "nfs4", "fuse.gcsfuse"} <= _POLLING_FS_TYPES
 
 
-def test_select_watch_mode_native_for_ext4_fixture(tmp_path: Path) -> None:
-    """tmp_path on a typical Linux box is ext4 / tmpfs; both
-    native-eligible. We assert mode is native OR (if the
-    detector returned an unrecognized type for some reason)
-    polling — either is correct for an unknown-fs scenario."""
-
+def test_select_watch_mode_native_or_explained_fallback(tmp_path: Path) -> None:
     mode, reason = select_watch_mode(tmp_path)
-    # On the dev container's filesystem this should land in
-    # native; if not, the reason explains why.
     assert mode in ("native", "polling")
-    assert reason  # non-empty
+    assert reason
 
 
-def test_select_watch_mode_polling_for_nfs_synthetic(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stub detect_fs_type to return "nfs" and assert the
-    selector chooses polling."""
-
-    monkeypatch.setattr(
-        "metabrowser.watch_backends.detect_fs_type",
-        lambda _p: "nfs",
-    )
-    mode, reason = select_watch_mode(Path("/anywhere"))
-    assert mode == "polling"
-    assert reason == "fs=nfs"
+def test_select_watch_mode_polling_for_nfs_synthetic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("metabrowser.watch_backends.detect_fs_type", lambda _path: "nfs")
+    assert select_watch_mode(Path("/anywhere")) == ("polling", "fs=nfs")
 
 
-def test_select_watch_mode_polling_for_unknown_fs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An unrecognized fs type defaults to polling and surfaces
-    the type in the reason so logs aren't opaque."""
-
-    monkeypatch.setattr(
-        "metabrowser.watch_backends.detect_fs_type",
-        lambda _p: "weirdfs",
-    )
+def test_select_watch_mode_polling_for_unknown_fs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("metabrowser.watch_backends.detect_fs_type", lambda _path: "weirdfs")
     mode, reason = select_watch_mode(Path("/anywhere"))
     assert mode == "polling"
     assert "weirdfs" in reason
 
 
-def test_select_watch_mode_polling_when_detect_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "metabrowser.watch_backends.detect_fs_type",
-        lambda _p: "",
+def test_select_watch_mode_polling_when_detect_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("metabrowser.watch_backends.detect_fs_type", lambda _path: "")
+    assert select_watch_mode(Path("/anywhere")) == (
+        "polling",
+        "fs-type-unknown",
     )
-    mode, reason = select_watch_mode(Path("/anywhere"))
-    assert mode == "polling"
-    assert reason == "fs-type-unknown"
 
 
 def test_detect_fs_type_returns_string_on_real_path(tmp_path: Path) -> None:
-    """Smoke: against a real path the detector returns either
-    a plausible fs-type string or '' (if mountinfo unavailable)."""
-
-    fs = detect_fs_type(tmp_path)
-    # Don't pin a value — depends on dev env. Just assert it's
-    # either empty or a non-whitespace string.
-    assert isinstance(fs, str)
+    assert isinstance(detect_fs_type(tmp_path), str)
 
 
-# ── End-to-end watcher loop ──────────────────────────────────
+def test_backend_batch_is_deduplicated_and_submitted_once(tmp_path: Path) -> None:
+    requests: list[RefreshRequest] = []
+
+    async def refresh(request: RefreshRequest) -> RefreshReceipt:
+        requests.append(request)
+        return RefreshReceipt(version=_WATCH_VERSION, accepted_paths=request.paths)
+
+    asyncio.run(
+        _emit_batch(
+            refresh,
+            tmp_path,
+            {
+                (Change.added, str(tmp_path / "a.txt")),
+                (Change.modified, str(tmp_path / "a.txt")),
+                (Change.added, str(tmp_path / "b.txt")),
+            },
+        )
+    )
+
+    assert len(requests) == 1
+    assert requests[0].paths == ("a.txt", "b.txt")
 
 
-def _build_fixture(tmp_path: Path) -> Path:
-    (tmp_path / "runs").mkdir()
-    (tmp_path / "runs" / "x").mkdir()
-    return tmp_path / "runs" / "x" / "new.jsonl"
+def test_backend_batch_uses_the_opened_scope_hidden_allowlist(tmp_path: Path) -> None:
+    requests: list[RefreshRequest] = []
+
+    async def refresh(request: RefreshRequest) -> RefreshReceipt:
+        requests.append(request)
+        return RefreshReceipt(version=_WATCH_VERSION, accepted_paths=request.paths)
+
+    asyncio.run(
+        _emit_batch(
+            refresh,
+            tmp_path,
+            {
+                (Change.added, str(tmp_path / ".included" / "kept.txt")),
+                (Change.added, str(tmp_path / ".excluded" / "dropped.txt")),
+            },
+            hidden_allowlist=(".included",),
+        )
+    )
+
+    assert [request.paths for request in requests] == [(".included/kept.txt",)]
+
+
+def _build_fixture(root: Path) -> Path:
+    (root / "runs" / "x").mkdir(parents=True)
+    return root / "runs" / "x" / "new.jsonl"
 
 
 def test_run_watcher_emits_fs_change_on_new_file(tmp_path: Path) -> None:
-    """A file created after the watcher starts should produce
-    an fs.change op for the new path."""
-
     new_file = _build_fixture(tmp_path)
 
-    async def _run() -> set[str]:
-        reset_instance_for_tests()
-        inv = get_instance()
-        q = inv.subscribe()
-        # Pre-populate the inventory with the existing dirs so
-        # the watcher's emit path doesn't bail on a parent-not-
-        # found check (the active path checks only visibility +
-        # fs.change emission, not pre-existence).
-        inv.start(tmp_path)
-        await inv.wait_until_done(timeout=5.0)
-        # Drain pre-existing events.
-        while not q.empty():
-            q.get_nowait()
+    async def run() -> set[str]:
+        async with inventory_harness(tmp_path) as harness:
+            queue = harness.bus.attach_connection()
+            envelopes: list[EventEnvelope] = []
+            try:
+                new_file.write_text('{"event":"start"}\n')
+                deadline = asyncio.get_running_loop().time() + 4.0
+                while asyncio.get_running_loop().time() < deadline:
+                    try:
+                        envelopes.append(await asyncio.wait_for(queue.get(), timeout=0.1))
+                    except TimeoutError:
+                        continue
+                    if any(
+                        isinstance(envelope.event, FsChange)
+                        and any(
+                            isinstance(operation, FsUpsert)
+                            and operation.entry.path == "runs/x/new.jsonl"
+                            for operation in envelope.event.ops
+                        )
+                        for envelope in envelopes
+                    ):
+                        break
+            finally:
+                harness.bus.detach_connection(queue)
+            seen = {
+                operation.entry.path
+                for envelope in envelopes
+                if isinstance(envelope.event, FsChange)
+                for operation in envelope.event.ops
+                if isinstance(operation, FsUpsert)
+            }
+            return seen
 
-        # Force polling mode so the test doesn't depend on the
-        # native backend being available; poll cadence kept
-        # short so the test finishes quickly.
-        watcher = asyncio.create_task(run_watcher(root=tmp_path, mode="polling"))
-        try:
-            # Give the watcher a beat to start.
-            await asyncio.sleep(0.5)
-            new_file.write_text('{"event":"start"}\n')
-            # Wait long enough for the polling backend to detect.
-            await asyncio.sleep(3.5)
-        finally:
-            watcher.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await watcher
-
-        seen: set[str] = set()
-        while not q.empty():
-            evt = q.get_nowait()
-            if isinstance(evt, FsChange):
-                for op in evt.ops:
-                    if isinstance(op, FsUpsert):
-                        seen.add(op.entry.path)
-        return seen
-
-    seen = asyncio.run(_run())
-    # The watcher should have fired for the newly-created file.
-    assert "runs/x/new.jsonl" in seen
+    assert "runs/x/new.jsonl" in asyncio.run(run())
 
 
 def test_stale_delete_event_reconciles_recreated_directory(tmp_path: Path) -> None:
     async def run() -> tuple[set[str], int]:
-        reset_instance_for_tests()
-        inventory = get_instance()
         artifacts = tmp_path / "dist"
         artifacts.mkdir()
         (artifacts / "old.whl").write_bytes(b"old")
-        inventory.start(tmp_path)
-        await inventory.wait_until_done(timeout=5.0)
-
-        (artifacts / "old.whl").unlink()
-        artifacts.rmdir()
-        artifacts.mkdir()
-        (artifacts / "new.whl").write_bytes(b"new artifact")
-
-        await _emit_for_path(inventory, tmp_path, str(artifacts), Change.deleted)
-        rollup = inventory.rollup("dist", depth=0, top=0, ext_top=10)
-        assert rollup is not None
-        indexed_paths = {entry.path for entry in inventory.entries(scope="all-known")}
-        return indexed_paths, rollup["node"]["total_files"]
+        async with inventory_harness(tmp_path) as harness:
+            (artifacts / "old.whl").unlink()
+            artifacts.rmdir()
+            artifacts.mkdir()
+            (artifacts / "new.whl").write_bytes(b"new artifact")
+            await _emit_for_path(
+                harness.runtime.coordinator.refresh,
+                tmp_path,
+                str(artifacts),
+                Change.deleted,
+            )
+            read = await harness.runtime.coordinator.read(
+                ReadRequest(
+                    queries=(
+                        DirectoryQuery(
+                            query_id="tree",
+                            max_depth=harness.runtime.config.max_depth,
+                            max_rows=harness.runtime.config.max_files,
+                        ),
+                        RollupQuery(
+                            query_id="rollup",
+                            path="dist",
+                            max_depth=0,
+                            top=0,
+                            extension_top=10,
+                        ),
+                    )
+                )
+            )
+            tree = read.result.projection("tree")
+            rollup = read.result.projection("rollup")
+            assert isinstance(tree, DirectoryProjection)
+            assert isinstance(rollup, RollupProjection)
+            assert rollup.payload is not None
+            node = rollup.payload["node"]
+            assert isinstance(node, dict)
+            return {entry.path for entry in tree.entries}, int(node["total_files"])
 
     indexed_paths, total_files = asyncio.run(run())
     assert "dist/new.whl" in indexed_paths
@@ -192,36 +227,46 @@ def test_stale_delete_event_reconciles_recreated_directory(tmp_path: Path) -> No
 
 def test_stale_add_event_removes_now_absent_file(tmp_path: Path) -> None:
     async def run() -> tuple[bool, int]:
-        reset_instance_for_tests()
-        inventory = get_instance()
         target = tmp_path / "gone.txt"
         target.write_text("gone")
-        inventory.start(tmp_path)
-        await inventory.wait_until_done(timeout=5.0)
+        async with inventory_harness(tmp_path) as harness:
+            target.unlink()
+            await _emit_for_path(
+                harness.runtime.coordinator.refresh,
+                tmp_path,
+                str(target),
+                Change.added,
+            )
+            read = await harness.runtime.coordinator.read(
+                ReadRequest(
+                    queries=(
+                        EntryQuery(query_id="entry", path="gone.txt"),
+                        RollupQuery(
+                            query_id="rollup",
+                            path="",
+                            max_depth=0,
+                            top=0,
+                            extension_top=10,
+                        ),
+                    )
+                )
+            )
+            entry = read.result.projection("entry")
+            rollup = read.result.projection("rollup")
+            assert isinstance(entry, EntryProjection)
+            assert isinstance(rollup, RollupProjection)
+            assert rollup.payload is not None
+            node = rollup.payload["node"]
+            assert isinstance(node, dict)
+            return entry.presence is EntryPresence.ABSENT, int(node["total_files"])
 
-        target.unlink()
-        await _emit_for_path(inventory, tmp_path, str(target), Change.added)
-        root = inventory.rollup("", depth=0, top=0, ext_top=10)
-        assert root is not None
-        return inventory.get("gone.txt") is None, root["node"]["total_files"]
-
-    removed, total_files = asyncio.run(run())
-    assert removed
-    assert total_files == 0
+    assert asyncio.run(run()) == (True, 0)
 
 
 def test_watcher_announces_a_failed_watch_instead_of_dying_silently(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A watch that fails must say so on the event stream.
-
-    Everything downstream reads a still-answering index as a current one:
-    requests keep being served, and conditional ones keep answering "not
-    modified" — truthfully about the index, which has stopped being about the
-    filesystem. Exhausting the inotify watch limit on a large tree lands here,
-    so the failure has to be observable rather than a task that quietly ends.
-    """
-
     import metabrowser.watch_backends as watch_backends
 
     def exploding_awatch(*_args: object, **_kwargs: object) -> object:
@@ -229,21 +274,121 @@ def test_watcher_announces_a_failed_watch_instead_of_dying_silently(
 
     monkeypatch.setattr(watch_backends, "awatch", exploding_awatch)
 
-    async def scenario() -> list[object]:
-        inventory = get_instance()
-        queue = inventory.subscribe(max_queue=64)
-        # Returns rather than raising: the lifespan never observes this task.
-        await watch_backends.run_watcher(root=tmp_path, mode="native")
-        events: list[object] = []
-        while not queue.empty():
-            events.append(queue.get_nowait())
-        return events
+    async def run() -> list[WatcherStatus]:
+        statuses: list[WatcherStatus] = []
+        async with inventory_harness(tmp_path) as harness:
+            await run_watcher(
+                root=tmp_path,
+                refresh=harness.runtime.coordinator.refresh,
+                on_status=statuses.append,
+                mode="native",
+            )
+        return statuses
 
-    events = asyncio.run(scenario())
-    states = [
-        backend.get("state")
-        for event in events
-        for backend in getattr(event, "backends", ())
-        if backend.get("kind") == "fs-watch"
+    statuses = asyncio.run(run())
+    assert any(status.state == "failed" for status in statuses)
+
+
+def test_watcher_announces_a_failed_refresh_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metabrowser.watch_backends as watch_backends
+
+    async def yielding_awatch(*_args: object, **_kwargs: object):
+        yield {(Change.added, str(tmp_path / "changed.txt"))}
+
+    async def failing_refresh(_request: RefreshRequest) -> RefreshReceipt:
+        raise OSError("refresh failed")
+
+    monkeypatch.setattr(watch_backends, "awatch", yielding_awatch)
+
+    async def run() -> list[WatcherStatus]:
+        statuses: list[WatcherStatus] = []
+        await run_watcher(
+            root=tmp_path,
+            refresh=failing_refresh,
+            on_status=statuses.append,
+            mode="native",
+        )
+        return statuses
+
+    statuses = asyncio.run(run())
+    assert statuses[-1].state == "failed"
+    assert "refresh failed" in statuses[-1].detail
+
+
+def test_watcher_announces_a_rejected_observation_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metabrowser.watch_backends as watch_backends
+
+    async def yielding_awatch(*_args: object, **_kwargs: object):
+        yield {(Change.added, str(tmp_path / "changed.txt"))}
+
+    async def rejecting_refresh(request: RefreshRequest) -> RefreshReceipt:
+        return RefreshReceipt(
+            version=_WATCH_VERSION,
+            accepted_paths=(),
+            rejected_paths=request.paths,
+        )
+
+    monkeypatch.setattr(watch_backends, "awatch", yielding_awatch)
+
+    async def run() -> list[WatcherStatus]:
+        statuses: list[WatcherStatus] = []
+        await run_watcher(
+            root=tmp_path,
+            refresh=rejecting_refresh,
+            on_status=statuses.append,
+            mode="native",
+        )
+        return statuses
+
+    statuses = asyncio.run(run())
+    assert statuses[-1].state == "failed"
+    assert "rejected 1 watcher observation" in statuses[-1].detail
+
+
+def test_watcher_stops_after_a_middle_chunk_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metabrowser.watch_backends as watch_backends
+
+    changes = {
+        (Change.added, str(tmp_path / f"changed-{index}.txt"))
+        for index in range(MAX_COMMAND_PATHS * 2 + 1)
+    }
+
+    async def yielding_awatch(*_args: object, **_kwargs: object):
+        yield changes
+
+    requests: list[RefreshRequest] = []
+
+    async def failing_middle_refresh(request: RefreshRequest) -> RefreshReceipt:
+        requests.append(request)
+        if len(requests) == 2:
+            raise OSError("middle chunk failed")
+        return RefreshReceipt(version=_WATCH_VERSION, accepted_paths=request.paths)
+
+    monkeypatch.setattr(watch_backends, "awatch", yielding_awatch)
+
+    async def run() -> list[WatcherStatus]:
+        statuses: list[WatcherStatus] = []
+        await run_watcher(
+            root=tmp_path,
+            refresh=failing_middle_refresh,
+            on_status=statuses.append,
+            mode="native",
+        )
+        return statuses
+
+    statuses = asyncio.run(run())
+    assert [len(request.observations) for request in requests] == [
+        MAX_COMMAND_PATHS,
+        MAX_COMMAND_PATHS,
     ]
-    assert "failed" in states, f"watcher failure was not announced: {states}"
+    assert statuses[-1].state == "failed"
+    assert "middle chunk failed" in statuses[-1].detail

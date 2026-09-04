@@ -11,12 +11,14 @@ from conftest import SyntheticIndexWriter
 import metabrowser.inventory_rollup as inventory_rollup
 from metabrowser.events import FsEntry
 from metabrowser.file_type_registry import FileTypeClassification, load_file_type_registry
-from metabrowser.inventory import InventoryIndex
+from metabrowser.inventory_engine.providers.python_inventory import (
+    _PythonInventoryStore as PythonInventoryStore,
+)
 from metabrowser.inventory_rollup import RollupOptions, RollupRank
 
 
-def _synthetic_index(files: list[tuple[str, int, bool]]) -> InventoryIndex:
-    index = InventoryIndex()
+def _synthetic_index(files: list[tuple[str, int, bool]]) -> PythonInventoryStore:
+    index = PythonInventoryStore()
     entries = SyntheticIndexWriter(index)
     mtime_ns = 1_700_000_000_000_000_000
     root = FsEntry.for_observed_dir(path="", parent="", name="root")

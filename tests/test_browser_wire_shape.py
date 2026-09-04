@@ -3,7 +3,7 @@
 Locks the JSON shape returned by ``/api/tree`` so the two
 producers — :func:`metabrowser.tree._dir_tree` (filesystem
 walk) and :func:`metabrowser.tree._build_inventory_tree`
-(InventoryIndex read) — cannot drift apart.
+(Python inventory read) cannot drift apart.
 
 The SPA's ``renderTreeNodes`` reads the same shape both
 producers emit. Two historical bugs drifted
@@ -37,9 +37,14 @@ from metabrowser.events import (
     _event_to_dict,
     encode_sse,
 )
-from metabrowser.inventory import get_instance, reset_instance_for_tests
-from metabrowser.tree import _build_inventory_subtree, _build_inventory_tree, _dir_tree
+from metabrowser.inventory_engine.contract import DirectoryProjection, DirectoryQuery, ReadRequest
+from metabrowser.tree import (
+    _build_inventory_subtree,
+    _dir_tree,
+    build_inventory_tree_from_entries,
+)
 from metabrowser.wire_models import validate_tree_node
+from tests.inventory_harness import inventory_harness
 
 # ── Test fixtures ────────────────────────────────────────────
 
@@ -131,25 +136,44 @@ def test_dir_tree_empty_dir_carries_finite_mtime(tmp_path: Path) -> None:
     assert empty["mtime"] > 0
 
 
-# ── _build_inventory_tree (InventoryIndex read) ──────────────
+# ── provider-backed tree projection ───────────────────────────
 
 
-async def _drive_walker(root: Path) -> None:
-    reset_instance_for_tests()
-    inv = get_instance()
-    inv.start(root)
-    await inv.wait_until_done(timeout=5.0)
+def _provider_tree(root: Path, *, depth: int) -> list[dict[str, Any]]:
+    async def run() -> list[dict[str, Any]]:
+        async with inventory_harness(root) as harness:
+            read = await harness.runtime.coordinator.read(
+                ReadRequest(
+                    queries=(
+                        DirectoryQuery(
+                            query_id="tree",
+                            path="",
+                            max_depth=depth,
+                            max_rows=harness.runtime.config.max_files,
+                        ),
+                    )
+                )
+            )
+            projection = read.result.projection("tree")
+            assert isinstance(projection, DirectoryProjection)
+            return build_inventory_tree_from_entries(
+                entries=projection.entries,
+                parent_rel="",
+                max_depth=depth,
+                root_abs=root,
+            )
+
+    return asyncio.run(run())
 
 
 def test_build_inventory_tree_output_validates_against_typeddict(tmp_path: Path) -> None:
-    """The InventoryIndex-backed builder must produce the same
+    """The Python-inventory-backed builder must produce the same
     wire shape ``_dir_tree`` does. Drift between the two is
     a known source of wire-contract bugs."""
 
     _build_full_fixture(tmp_path)
-    asyncio.run(_drive_walker(tmp_path))
-    nodes = _build_inventory_tree(parent_rel="", max_depth=20, root_abs=tmp_path)
-    assert nodes, "InventoryIndex returned no entries; walker didn't drive"
+    nodes = _provider_tree(tmp_path, depth=20)
+    assert nodes, "Python inventory returned no entries; walker did not drive"
     for node in nodes:
         validate_tree_node(node)
 
@@ -157,12 +181,11 @@ def test_build_inventory_tree_output_validates_against_typeddict(tmp_path: Path)
 def test_build_inventory_tree_dir_always_has_children_key(tmp_path: Path) -> None:
     """Every dir node carries ``children``,
     even if its value is ``None`` (sentinel). Tests the
-    InventoryIndex path specifically because the walker's
+    Python inventory path specifically because the walker's
     finalize ordering used to elide the key."""
 
     _build_full_fixture(tmp_path)
-    asyncio.run(_drive_walker(tmp_path))
-    nodes = _build_inventory_tree(parent_rel="", max_depth=2, root_abs=tmp_path)
+    nodes = _provider_tree(tmp_path, depth=2)
 
     def _walk(rows: list[dict[str, Any]]) -> None:
         for row in rows:
@@ -184,12 +207,11 @@ def test_build_inventory_tree_finalized_empty_dir_mtime_is_finite(tmp_path: Path
     skeleton."""
 
     _build_full_fixture(tmp_path)
-    asyncio.run(_drive_walker(tmp_path))
-    nodes = _build_inventory_tree(parent_rel="", max_depth=20, root_abs=tmp_path)
+    nodes = _provider_tree(tmp_path, depth=20)
     empty = next((n for n in nodes if n["name"] == "empty_dir"), None)
     assert empty is not None
     # Walker has finished; mtime should be concrete (not None).
-    # If the InventoryIndex captures ``newest_mtime_ns=None`` for an
+    # If the Python inventory captures ``newest_mtime_ns=None`` for an
     # empty dir, the wire layer must coerce to a concrete number
     # (or 0 if no descendants).
     mtime = empty["mtime"]
@@ -269,8 +291,7 @@ def test_build_inventory_tree_root_does_not_emit_self_as_child(tmp_path: Path) -
     must not emit it as a sibling of its own children."""
 
     _build_full_fixture(tmp_path)
-    asyncio.run(_drive_walker(tmp_path))
-    nodes = _build_inventory_tree(parent_rel="", max_depth=20, root_abs=tmp_path)
+    nodes = _provider_tree(tmp_path, depth=20)
     paths = [n["path"] for n in nodes]
     assert "" not in paths, "root accidentally emitted as a child of itself"
     # Top-level paths are direct children only.
@@ -289,8 +310,7 @@ def test_dir_tree_and_inventory_tree_emit_same_top_level_paths(tmp_path: Path) -
 
     _build_full_fixture(tmp_path)
     fs_nodes = _dir_tree(tmp_path, max_depth=2)
-    asyncio.run(_drive_walker(tmp_path))
-    inv_nodes = _build_inventory_tree(parent_rel="", max_depth=2, root_abs=tmp_path)
+    inv_nodes = _provider_tree(tmp_path, depth=2)
     fs_paths = sorted(n["path"] for n in fs_nodes)
     inv_paths = sorted(n["path"] for n in inv_nodes)
     assert fs_paths == inv_paths, (
@@ -306,8 +326,7 @@ def test_dir_tree_and_inventory_tree_emit_same_keys_per_type(tmp_path: Path) -> 
 
     _build_full_fixture(tmp_path)
     fs_nodes = _dir_tree(tmp_path, max_depth=20)
-    asyncio.run(_drive_walker(tmp_path))
-    inv_nodes = _build_inventory_tree(parent_rel="", max_depth=20, root_abs=tmp_path)
+    inv_nodes = _provider_tree(tmp_path, depth=20)
     fs_by_path = {n["path"]: n for n in fs_nodes}
     inv_by_path = {n["path"]: n for n in inv_nodes}
     for path in fs_by_path.keys() & inv_by_path.keys():
