@@ -10,6 +10,7 @@ import pytest
 
 from metabrowser.cli.show_cli import run_show
 from metabrowser.errors import CLIError
+from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 
 GIT_FIXTURE_HEAD = "703de1c4a3360d55e60646f300ceb6c926377221"
 
@@ -27,11 +28,25 @@ _GIT_ENV = {
 
 @pytest.fixture
 def git_root(tmp_path: Path) -> Path:
-    """A repository whose revisions are identical on every machine and run."""
+    """A repository whose revisions are identical on every machine and run.
+
+    The repository-pinning variables are scrubbed for the same reason
+    `metabrowser.git.process` scrubs them on every spawn, and this fixture is the case
+    that comment describes. Run from inside a githook -- which the pre-push gate is --
+    git has exported ``GIT_DIR`` and ``GIT_WORK_TREE`` pointing at the real repository,
+    and they take precedence over ``cwd``. Inherited here, ``git init`` and the two
+    commits below land in *that* repository instead of building the fixture: the
+    developer's checkout acquires two stray commits, and ``tmp_path`` never becomes a
+    repository at all, so the revision this file pins by hash resolves to a 404.
+
+    It passes standalone and fails only under the hook, from a linked worktree, which is
+    the hardest version of that bug to place from the symptom.
+    """
 
     import subprocess
 
-    env = {**os.environ, **_GIT_ENV}
+    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
+    env.update(_GIT_ENV)
 
     def git(*args: str) -> None:
         subprocess.run(["git", *args], cwd=tmp_path, env=env, check=True, capture_output=True)
