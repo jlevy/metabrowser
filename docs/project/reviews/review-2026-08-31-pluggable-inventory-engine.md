@@ -5,7 +5,8 @@
 **Author:** Reviewer (LLM-assisted)
 
 **Status:** Complete.
-Five defects were found and fixed while merging; four findings are open as beads.
+Five defects were found and fixed while merging, and a 2.75x performance regression
+against `main` was measured and mostly closed; seven findings are open as beads.
 The stack is restacked so each branch merges into the one below it.
 
 **Scope:** The whole inventory-engine stack, merged onto current `main` and reviewed as
@@ -404,6 +405,116 @@ filesystem *address* as well as an identity, so `root / path` breaks once the pa
 the escaped form. fdu carries both a native path and a canonical one per row.
 Deciding which shape to mirror is a contract decision, not an implementation detail, and
 it belongs with F1 because both are about what a row is made of.
+
+## Performance
+
+The refactor is behaviour-preserving by intent, and it was measured for that.
+It was not measured for speed: every one of the 197 rows in the performance loop’s
+recorded runs has a null `inventory_provider`, so no run has ever been taken on the
+refactored engine.
+
+A full scan on a 60,000-file synthetic corpus, timed through
+`metab CORPUS --api /api/index/meta`, three runs, median:
+
+| Build | Median | Against main |
+| --- | --- | --- |
+| main | 2,071 ms | — |
+| the stack, as its pull requests stood | 5,690 ms | **2.75x slower** |
+| the stack, with the two fixes below | 2,652 ms | 1.28x slower |
+| the stack, after the exp-022 campaign | 1,887 ms | see below |
+
+The last row is not comparable to the first three and its ratio has been removed.
+The first three were taken sequentially, one build’s trials after the other’s, against a
+2,071 ms `main`; the last was taken with the interleaved harness, whose `main` control
+measures 1,705 ms because the sequential ordering had been charging drift to whichever
+build ran second. Read against its own control the last row is 1.11x; read against the
+column heading it would appear *faster* than `main`, which it is not.
+This is the arithmetic exp-023 is about, and the reason the harness now interleaves.
+
+Both causes are on the per-entry path, and neither was visible in any test.
+Both arrive with the bottom of the stack, which matters for merge order: the
+invalidation listener and the pathlib validator are
+`codex/fdu-backend-alignment-research`, and `codex/inventory-contract-alignment` adds
+the surrogate scan on top of the second.
+The fixes are at the top of the stack, so the stack has to land as one — merging the
+bottom alone ships the regression.
+
+**Validation ran twice per entry through pathlib.** `require_canonical_inventory_path`
+built two `PurePosixPath` objects and asked each for `as_posix()` and `parts`, and —
+once the alignment branch added the surrogate refusal — also scanned every character of
+every path in a Python-level generator.
+It runs once for an entry’s path and once for its parent, about 248,000 times for 60,000
+files. Rewritten against the string, it costs 0.36 us instead of 4.75 us, and entry
+construction 1.85 us instead of 10.12 us.
+`isascii()` is what does the work: every surrogate is non-ASCII, so an ASCII path cannot
+hold one and the expensive scan never runs.
+The rewrite was checked against the original over 10,180 inputs under both `allow_root`
+settings and agrees on every verdict and every message.
+
+**Discovery invalidated caches that were empty.** The host’s projection-invalidation
+listener was registered on the coordinator, which publishes every entry it discovers, so
+a first walk invalidated once per entry — and each of those resolves the path, a
+syscall, once per projection cache.
+That is 45,516 resolves for 22,758 entries.
+Before the provider boundary this code was reachable only from the watcher, meaning only
+when a real change had been seen.
+Skipping discovery is safe rather than merely cheap: the caches are mtime keyed and
+revalidate on read, so a stale entry is a miss and never a wrong answer.
+
+Walk-to-settled on this repository, five runs: 2,640 ms to 1,117 ms median.
+
+A campaign against that residual is recorded as
+[exp-022](../../../../explorations/performance-loop/experiments/exp-022-the-walker-builds-each-entry-once.md)
+and
+[exp-023](../../../../explorations/performance-loop/experiments/exp-023-the-instrument-was-measuring-the-order-it-ran-in.md),
+registering H65 to H72. Two more accepts took the in-process walk from 1,847 ms to about
+1,203: the walker stamped every entry with `dataclasses.replace`, which reads twenty
+fields back through string-keyed `getattr`, and its add path allocated a delta map it
+never needed.
+
+Four hypotheses were rejected, which is the more useful half.
+Memoizing the ancestor chain measured nominally *slower*, because a four-component chain
+costs about what a dict lookup costs.
+Allocation-free path validation was refused on its microbenchmark at 0.72x for short
+paths.
+The profile that ranked them was itself misleading: `derive_ext` reads as 3 us per
+call under cProfile and measures 0.575 us without it, so at 60,000 calls the
+instrumentation is comparable to the work.
+
+And the build-to-build harness ran every trial of one build then every trial of the
+other, so all drift landed on whichever went second — always the candidate.
+That reported the gap as 19.6% on disjoint ranges; interleaved, the same comparison
+reports 8.2% by median on overlapping ones, and 11.3% by minimum.
+
+Where it stands: on the synthetic corpus, no separable difference from `main` by median,
+and about 11% by minimum, which is the estimator noise cannot flatter.
+
+That conclusion does not survive a real tree.
+The synthetic corpus is one shape by construction, and it is small enough to sit in the
+page cache; a real tree is neither.
+Measured against a real working tree — 208,601 files and 91,188 directories, 299,810
+entries, about five times the corpus — through the same interleaved harness, now also
+alternating order within each pass and discarding a warmup:
+
+| Build | Median | Range | Against main |
+| --- | --- | --- | --- |
+| `main` (`26b109eb`) | 42,004 ms | 37,524–43,063 | — |
+| the stack, with the fixes on this branch | 48,738 ms | 43,240–54,115 | **1.16x slower** |
+
+Five runs each, and the ranges are **disjoint**, so unlike the corpus result this one is
+separable: the regression against `main` is real and about 16% on a tree of the size
+people actually open.
+The corpus said “no detectable effect” because it is too small and too uniform to show
+it, which is worth recording as a property of the instrument rather than of the code.
+`mb-vf8f` is the structural item still outstanding, and it is now blocked on module
+placement rather than on measurement — see that bead.
+Everything left on the profile is below what this host can resolve except one structural
+item, `mb-vf8f`, worth roughly 190 ms.
+Its profile points at the double representation: each entry is built as a contract
+`InventoryEntry`, converted to the provider’s retained `FsEntry`, mutated one to three
+times with `dataclasses.replace` in the walker, and converted back on read — 64,420
+`replace` calls, 1.28M `getattr`, and 125,525 generated `__init__` calls for 60,000
+files. That is F1 again, measured from a third direction.
 
 ## One repository fault, found on the way
 

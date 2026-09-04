@@ -127,6 +127,7 @@ from metabrowser.inventory_engine.contract import (
     RollupProjection,
     RollupQuery,
     VersionUnavailableError,
+    native_inventory_path,
     parse_inventory_path,
 )
 from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostVersion
@@ -1607,12 +1608,28 @@ async def _read_tree_from_provider(
     )
 
 
+def _safe_path_from_identity(requested: str) -> Path | None:
+    """Resolve a canonical inventory identity to a path inside the served root.
+
+    `/api/*` speaks the identities the inventory publishes, which are escaped: a file
+    named `report%20final.txt` is published as `report%2520final.txt`, and that is the
+    string the SPA sends back. `_safe_path` addresses the filesystem and takes the
+    platform name, so the two are joined here rather than by whichever route remembered.
+
+    `/view/*` deliberately does not go through this. It is a human-facing URL and keeps
+    naming the file the way a person would write it.
+    """
+
+    native = native_inventory_path(requested)
+    return None if native is None else _safe_path(native)
+
+
 @log_async_calls()
 async def api_tree(request: Request) -> JSONResponse:
     requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
     subpath = parse_inventory_path(requested)
-    if subpath is None or _safe_path(subpath) is None:
+    if subpath is None or _safe_path_from_identity(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     remaining_depth = _tree_depth_from_query(depth_str)
@@ -1641,7 +1658,7 @@ async def api_rollup(request: Request) -> Response:
 
     requested = request.query_params.get("path", "")
     subpath = parse_inventory_path(requested)
-    if subpath is None or _safe_path(subpath) is None:
+    if subpath is None or _safe_path_from_identity(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     depth = _query_bounded_int(
@@ -1949,7 +1966,7 @@ def _compression_envelope_fields(artifact: ArtifactPath, logical_size: int) -> d
 
 def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONResponse:
     """Return a renderable file-error envelope instead of bubbling a 500."""
-    target = _safe_path(subpath)
+    target = _safe_path_from_identity(subpath)
     size: int | None = None
     if target is not None:
         try:
@@ -2105,7 +2122,7 @@ def _file_unavailable_response(subpath: str, target: Path | None) -> JSONRespons
 
 async def _api_file_impl(request: Request) -> JSONResponse | Response:
     subpath = request.query_params.get("path", "")
-    target = _safe_path(subpath)
+    target = _safe_path_from_identity(subpath)
     if target is None or (target.exists() and not target.is_dir() and not target.is_file()):
         # Before declaring the path unavailable: a missing path whose
         # nearest file ancestor is a container kind is that container's
@@ -2509,7 +2526,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    target = _safe_path(subpath)
+    target = _safe_path_from_identity(subpath)
     if target is None or not target.is_file():
         return JSONResponse({"error": "Not found"}, status_code=404)
 
@@ -2715,7 +2732,7 @@ async def api_kpress_export(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    source = _safe_path(raw_path) if isinstance(raw_path, str) else None
+    source = _safe_path_from_identity(raw_path) if isinstance(raw_path, str) else None
     if source is None or not source.is_file():
         return JSONResponse(
             {"type": "kpress_export_error", "error": "Source path not found or unsafe"},
@@ -2727,7 +2744,7 @@ async def api_kpress_export(request: Request) -> JSONResponse:
             {"type": "kpress_export_error", "error": "`destination` is required"},
             status_code=400,
         )
-    destination = _safe_path(raw_destination)
+    destination = _safe_path_from_identity(raw_destination)
     if destination is None:
         return JSONResponse(
             {"type": "kpress_export_error", "error": "Destination escapes served root"},
@@ -2938,7 +2955,7 @@ _RAW_STREAM_CHUNK = 64 * 1024
 
 async def raw_file(request: Request) -> Response:
     subpath = request.query_params.get("path", "")
-    target = _safe_path(subpath)
+    target = _safe_path_from_identity(subpath)
     if target is None or not target.is_file():
         return PlainTextResponse("Not found", status_code=404)
 
@@ -3160,7 +3177,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
         return None
     for cut in range(len(parts) - 1, 0, -1):
         prefix = "/".join(parts[:cut])
-        target = _safe_path(prefix)
+        target = _safe_path_from_identity(prefix)
         if target is None:
             continue
         if target.is_dir():

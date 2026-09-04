@@ -81,7 +81,7 @@ import string
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
@@ -90,6 +90,7 @@ from metabrowser.file_type_registry import (
     load_file_type_registry_document,
     load_file_type_registry_from_text,
 )
+from metabrowser.fs_paths import derive_ext
 from metabrowser.wire_models import NavigationTallies, RollupResult
 
 MAX_CHANGE_PATHS = 1_024
@@ -168,26 +169,29 @@ def require_canonical_inventory_path(
         if allow_root:
             return
         raise ValueError(f"{name} must be a canonical POSIX-relative path below the root")
-    pure = PurePosixPath(value)
-    if any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+    # This runs twice for every entry a provider builds -- once for the path and
+    # once for the parent -- so on a 500,000-file root it runs a million times.
+    # It is written against the string rather than through PurePosixPath for that
+    # reason: constructing one and asking it for `as_posix()` and `parts` cost more
+    # than every check here put together, and decide exactly the same thing.
+    #
+    # `isascii` is the guard that matters. Every surrogate is non-ASCII, so an ASCII
+    # path cannot hold one, and the character scan below -- the single most expensive
+    # step when it runs -- is skipped for the paths essentially all trees are made of.
+    if not value.isascii() and any(0xD800 <= ord(character) <= 0xDFFF for character in value):
         # A canonical path is the escaped form, so a surrogate here means some producer
         # passed a raw platform name through. Rejecting at the boundary keeps the rule
         # enforced rather than merely stated.
         raise ValueError(f"{name} must be escaped, not a raw platform name")
-    if (
-        "\\" in value
-        or "\x00" in value
-        or pure.is_absolute()
-        # PurePosixPath spells the root ".", and "." survives both the
-        # as_posix and the parts check below because its parts are empty.
-        # The root has exactly one key here, "", so any other spelling of it
-        # is a path no provider can be asked to resolve.
-        or not pure.parts
-        or pure.as_posix() != value
-        or "." in pure.parts
-        or ".." in pure.parts
-    ):
+    if "\\" in value or "\x00" in value or value.startswith("/"):
         raise ValueError(f"{name} must be a canonical POSIX-relative path")
+    # An empty segment is a trailing or doubled separator; "." and ".." are the
+    # spellings that are not the identity they resolve to. Rejecting all three is
+    # what `as_posix() != value` and the `parts` checks were doing, and it also
+    # rejects "." itself, whose PurePosixPath parts are empty.
+    for segment in value.split("/"):
+        if not segment or segment == "." or segment == "..":
+            raise ValueError(f"{name} must be a canonical POSIX-relative path")
 
 
 def parse_inventory_path(value: str) -> str | None:
@@ -288,6 +292,83 @@ def canonical_inventory_path(path: str) -> str:
     """
 
     return canonical_inventory_name(path)
+
+
+_HEX_DIGITS = frozenset("0123456789ABCDEF")
+
+
+def native_inventory_name(name: str) -> str | None:
+    """Recover the platform filename a canonical name was escaped from.
+
+    The inverse of :func:`canonical_inventory_name`, and the reason the canonical
+    form can be an identity *and* an address. Without it the escape is a one-way
+    door: a name goes out escaped, comes back escaped, and matches nothing in a
+    store keyed by what the filesystem actually gave us. A literal ``%`` in a
+    filename is enough to trigger that -- ``report%20final.txt`` publishes as
+    ``report%2520final.txt`` and then resolves to nothing -- and such names are
+    ordinary, because that is what a URL-derived download is called.
+
+    ``None`` means the value is not in the image of the escaper, so no platform name
+    produces it. Callers report that as a miss rather than guessing, because guessing
+    is how a path that names nothing becomes a path that names something else.
+
+    Injective by construction, which is what makes an inverse exist at all: ``%``
+    escapes to ``%25`` first, so every ``%`` in a canonical name starts an escape, and
+    the escapes for undecodable bytes (``%80``..``%FF``) cannot collide with it. The
+    platform branch mirrors the forward function's exactly -- a POSIX escape is one
+    byte, a Windows one is a code unit written as two -- because a canonical name is
+    only meaningful against the platform whose names it was built from.
+    """
+
+    if "%" not in name:
+        return name
+    out: list[str] = []
+    index = 0
+    limit = len(name)
+    while index < limit:
+        character = name[index]
+        if character != "%":
+            out.append(character)
+            index += 1
+            continue
+        if index + 3 > limit:
+            return None
+        digits = name[index + 1 : index + 3]
+        if digits[0] not in _HEX_DIGITS or digits[1] not in _HEX_DIGITS:
+            return None
+        value = int(digits, 16)
+        index += 3
+        if value == 0x25:
+            out.append("%")
+        elif _POSIX_BYTES:
+            if value < 0x80:
+                # The forward function never emits these: an ASCII byte is kept as
+                # itself, so nothing escaped produces one.
+                return None
+            out.append(chr(0xDC00 + value))
+        elif 0xD8 <= value <= 0xDF:
+            # A Windows unpaired surrogate is written big-endian as two escapes.
+            if index + 3 > limit or name[index] != "%":
+                return None
+            low = name[index + 1 : index + 3]
+            if low[0] not in _HEX_DIGITS or low[1] not in _HEX_DIGITS:
+                return None
+            out.append(chr((value << 8) | int(low, 16)))
+            index += 3
+        else:
+            return None
+    return "".join(out)
+
+
+def native_inventory_path(path: str) -> str | None:
+    """Recover the platform spelling of a `/`-separated canonical path.
+
+    One call, not a split-unescape-join, for the same reason the forward direction is:
+    no escape produces or consumes `/`, so a separator passes through untouched and
+    splitting would only allocate.
+    """
+
+    return native_inventory_name(path)
 
 
 _POSIX_BYTES = os.name != "nt"
@@ -759,8 +840,6 @@ class InventoryEntry:
         mtime_ns: int,
         gitignored: bool = False,
     ) -> InventoryEntry:
-        from metabrowser.fs_paths import derive_ext
-
         return cls(
             path=path,
             parent=parent,

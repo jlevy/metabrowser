@@ -17,6 +17,8 @@ links to the document that covers each in depth.
   holds, how derived state is invalidated, and what the browser does with it
 - [Inventory provider contract](architecture/arch-inventory-provider.md) — the sealed
   query, lifecycle, consistency, and measurement boundary for inventory engines
+- [Python inventory cost](architecture/arch-python-inventory-cost.md) — what the
+  reference engine’s walk spends per entry, and what is still on that path
 - [Git and comparison sources](architecture/arch-git-and-comparison-sources.md) — the
   Git process boundary, the three-layer stack, and the rule for adding a comparison
   source

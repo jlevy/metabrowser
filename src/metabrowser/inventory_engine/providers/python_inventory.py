@@ -97,10 +97,9 @@ from metabrowser.inventory_engine.contract import (
     VersionUnavailableError,
     WorkCounters,
     ascii_casefold,
-    canonical_inventory_name,
-    canonical_inventory_path,
     catalog_terminal_suffix,
     inventory_scope_fingerprint,
+    native_inventory_path,
 )
 from metabrowser.inventory_rollup import (
     RollupOptions,
@@ -387,19 +386,21 @@ class _SelectedDirectoryTotals:
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
     """Drop Python-engine bookkeeping and host decorations at the boundary.
 
-    Also the one place the retained native name becomes the contract's canonical one. The
-    store keeps what the filesystem gave it; only rows crossing this boundary are escaped,
-    so nothing is stored twice — the same split fdu makes between its native arena and the
-    canonical path it derives per returned row.
+    Paths cross unchanged. The store is keyed by the canonical identity, escaped once by
+    the walker when the entry was built, so this boundary has no encoding left to do --
+    it only sheds the host's bookkeeping fields.
 
-    Free in the ordinary case: a name needing no escape comes back as the same object, so
-    this allocates nothing for the files everyone actually has.
+    That is a deliberate reversal of the earlier arrangement, where the store held raw
+    platform names and this function escaped three fields of every row of every read. A
+    canonical store does the same work once per entry instead of once per row per read,
+    and -- the reason it changed -- it makes the store's keys the same strings the
+    contract's queries carry, so an inbound lookup cannot silently miss.
     """
 
     return InventoryEntry(
-        path=canonical_inventory_path(entry.path),
-        parent=canonical_inventory_path(entry.parent),
-        name=canonical_inventory_name(entry.name),
+        path=entry.path,
+        parent=entry.parent,
+        name=entry.name,
         type=EntryType(entry.type),
         ext=entry.ext,
         size=entry.size,
@@ -415,29 +416,35 @@ def _semantic_entry(entry: FsEntry) -> InventoryEntry:
 
 
 def _internal_entry(entry: InventoryEntry | FsEntry) -> FsEntry:
-    """Convert a contract entry to the Python store's retained record."""
+    """Convert a contract entry to the Python store's retained record.
+
+    Built positionally: this runs once per discovered entry, and binding twenty
+    keywords costs measurably more than passing them in order.
+    """
 
     if isinstance(entry, FsEntry):
         return entry
     entry_type = entry.type.value
     return FsEntry(
-        path=entry.path,
-        parent=entry.parent,
-        name=entry.name,
-        type=entry_type,
-        ext=entry.ext,
-        kind=entry_type if entry_type != "file" else "file",
-        size=entry.size,
-        mtime_ns=entry.mtime_ns,
-        mtime_hash="",
-        active=False,
-        total_files=entry.total_files,
-        total_size=entry.total_size,
-        unignored_files=entry.unignored_files,
-        unignored_size=entry.unignored_size,
-        newest_mtime_ns=entry.newest_mtime_ns,
-        empty=entry.empty,
-        gitignored=entry.gitignored,
+        entry.path,
+        entry.parent,
+        entry.name,
+        entry_type,
+        entry.ext,
+        entry_type if entry_type != "file" else "file",
+        entry.size,
+        entry.mtime_ns,
+        "",
+        False,
+        (),
+        (),
+        entry.total_files,
+        entry.total_size,
+        entry.unignored_files,
+        entry.unignored_size,
+        entry.newest_mtime_ns,
+        entry.empty,
+        entry.gitignored,
     )
 
 
@@ -452,11 +459,12 @@ def _child_order(row: FsEntry) -> tuple[bool, bytes]:
 
     Ordering by the canonical form, not the raw name: `scandir` decodes an undecodable
     byte to a surrogate, and encoding a surrogate as UTF-8 raises, so one such file made the
-    whole directory unlistable. Escaping first is also what makes this order agree with
-    fdu's, which sorts the same canonical bytes.
+    whole directory unlistable. The walker escapes on the way in, so the retained name is
+    already that form and this sorts it directly -- which is also what makes this order
+    agree with fdu's, which sorts the same canonical bytes.
     """
 
-    return (row.type != "dir", canonical_inventory_name(row.name).encode("utf-8"))
+    return (row.type != "dir", row.name.encode("utf-8"))
 
 
 def _children_for(entries: Sequence[FsEntry]) -> dict[str, tuple[FsEntry, ...]]:
@@ -1815,7 +1823,7 @@ class _PythonInventoryStore:
                         for entry in image.entries
                         if _catalog_entry_matches(entry, query)
                     ),
-                    key=lambda record: canonical_inventory_path(record.path).encode("utf-8"),
+                    key=lambda record: record.path.encode("utf-8"),
                 )
             )
             page = records[: query.max_rows]
@@ -2001,17 +2009,22 @@ class _PythonInventoryStore:
             if entry.mtime_ns < cutoff:
                 return False
         if selection.extensions or selection.filenames:
-            lowered_ext = entry.ext.lower()
+            # `ascii_casefold`, not `str.lower()`: the contract pins the alphabet the
+            # fold covers, and `str.lower()` folds all of Unicode. The two agree on
+            # ASCII and diverge past it, so a filter matching `archive.TÜRKÇE` here
+            # would be dropped by a provider folding only ASCII, and nothing above the
+            # boundary could attribute the difference.
+            lowered_ext = ascii_casefold(entry.ext)
             extension_match = any(
-                lowered_ext == extension.lower()
+                lowered_ext == ascii_casefold(extension)
                 or (
                     self._registry_family_id(extension) is not None
-                    and lowered_ext.endswith(extension.lower())
+                    and lowered_ext.endswith(ascii_casefold(extension))
                 )
                 for extension in selection.extensions
             )
-            filename_match = entry.name.lower() in {
-                filename.lower() for filename in selection.filenames
+            filename_match = ascii_casefold(entry.name) in {
+                ascii_casefold(filename) for filename in selection.filenames
             }
             if not extension_match and not filename_match:
                 return False
@@ -2079,16 +2092,10 @@ class _PythonInventoryStore:
         # The path is the final key in both sorts because it is unique within one index,
         # which makes each total. A stable sort on time alone leaves ties resolved by
         # whatever order `entries` was built in, and that is not a contract.
-        matching.sort(
-            key=lambda entry: (
-                entry.gitignored,
-                -entry.mtime_ns,
-                canonical_inventory_path(entry.path),
-            )
-        )
+        matching.sort(key=lambda entry: (entry.gitignored, -entry.mtime_ns, entry.path))
         total = len(matching)
         capped = matching[: query.max_rows]
-        capped.sort(key=lambda entry: (-entry.mtime_ns, canonical_inventory_path(entry.path)))
+        capped.sort(key=lambda entry: (-entry.mtime_ns, entry.path))
         ignored_directories: set[str] = set()
         for entry in capped:
             parts = entry.path.split("/")
@@ -2140,7 +2147,15 @@ class _PythonInventoryStore:
         if root is None:
             raise InventoryClosedError("the Python inventory handle has no open root")
         rel = observation.path
-        target = root / rel
+        # `rel` is the contract's canonical identity and the store's key; the filesystem
+        # only answers to the name it gave us. This is one of the three places the
+        # provider crosses back, and the inverse is total on anything the walker stored,
+        # so `None` here means a caller invented a path no platform name produces.
+        native_rel = native_inventory_path(rel)
+        if native_rel is None:
+            self.remove(rel)
+            return
+        target = root / native_rel
         existing = self.get(rel)
         self.invalidate(rel)
         try:
@@ -2161,7 +2176,7 @@ class _PythonInventoryStore:
             entry = FsEntry.for_observed_symlink(
                 path=rel,
                 parent=parent,
-                name=target.name,
+                name=rel.rpartition("/")[2],
                 size=stat_result.st_size,
                 mtime_ns=stat_result.st_mtime_ns,
                 gitignored=gitignored,
@@ -2181,7 +2196,7 @@ class _PythonInventoryStore:
                 FsEntry.for_stat(
                     path=rel,
                     parent=parent,
-                    name=target.name,
+                    name=rel.rpartition("/")[2],
                     stat=stat_result,
                     gitignored=gitignored,
                     existing=existing,
@@ -2493,7 +2508,7 @@ class _PythonInventoryStore:
             extensions: set[str] = set()
             names: set[str] = set()
             for value in values:
-                normalized = value.lower()
+                normalized = ascii_casefold(value)
                 (extensions if normalized.startswith(".") else names).add(normalized)
             preset_counts[preset_id] = [0, 0]
             normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
@@ -2510,7 +2525,7 @@ class _PythonInventoryStore:
                 files += 1
                 size += entry.size or 0
 
-            ext = entry.ext.lower()
+            ext = ascii_casefold(entry.ext)
             if ext:
                 row = extension_counts.get(ext)
                 if row is None:
@@ -2530,7 +2545,7 @@ class _PythonInventoryStore:
                     )
                     family_row[ignored_index] += 1
 
-            name = entry.name.lower()
+            name = ascii_casefold(entry.name)
             semantic_category = self._registry.classify(name, ext).group_id
             for preset_id, preset_extensions, preset_names in normalized_presets:
                 if (
@@ -2887,7 +2902,12 @@ class _PythonInventoryStore:
             # The whole-root re-walk is what start() does; refuse to
             # avoid two walkers writing into the index simultaneously.
             return
-        target = root / rel
+        # The second crossing back to the filesystem: `rel` keys the store canonically,
+        # the filesystem answers to the platform name it gave us.
+        native_rel = native_inventory_path(rel)
+        if native_rel is None:
+            return
+        target = root / native_rel
         try:
             target_resolved = target.resolve()
         except OSError:
@@ -3126,7 +3146,7 @@ class _PythonInventoryStore:
                     observed_generation = self._walker_dir_generations.pop(
                         entry.path, self._generation.get(entry.path, 0)
                     )
-                    entry = replace(entry, write_token=WriteToken(observed_generation))
+                    entry = entry.with_write_token(WriteToken(observed_generation))
                 stored = self._store_walker_entry(entry)
                 if stored is not None:
                     batch.append(stored)
@@ -3309,90 +3329,87 @@ class _PythonInventoryStore:
         # consumers see a uniform value).
         stamped_token = WriteToken(cur_gen)
         if entry.write_token != stamped_token:
-            entry = replace(entry, write_token=stamped_token)
+            entry = entry.with_write_token(stamped_token)
         existing = self._entries.get(entry.path)
         existing_leaf = (
             existing if existing is not None and existing.type in ("file", "symlink") else None
         )
         incoming_leaf = entry if entry.type in ("file", "symlink") else None
-        if not (
-            existing_leaf is not None
-            and incoming_leaf is not None
-            and existing_leaf.parent == incoming_leaf.parent
-        ):
-            if existing_leaf is not None:
-                self._adjust_descendant_leaf_aggregates(
-                    parent=existing_leaf.parent,
-                    delta_leaves=-1,
-                )
-            if incoming_leaf is not None:
-                self._adjust_descendant_leaf_aggregates(
-                    parent=incoming_leaf.parent,
-                    delta_leaves=1,
-                )
-        existing_file = existing if existing is not None and existing.type == "file" else None
-        incoming_file = entry if entry.type == "file" else None
-        if (
-            existing_file is not None
-            and incoming_file is not None
-            and existing_file.parent == incoming_file.parent
-        ):
-            if existing_file.size != incoming_file.size:
-                self._adjust_descendant_file_aggregates(
-                    parent=incoming_file.parent,
-                    delta_files=0,
-                    delta_size=incoming_file.size - existing_file.size,
-                )
-        else:
-            if existing_file is not None:
-                self._adjust_descendant_file_aggregates(
-                    parent=existing_file.parent,
-                    delta_files=-1,
-                    delta_size=-existing_file.size,
-                )
-            if incoming_file is not None:
-                self._adjust_descendant_file_aggregates(
-                    parent=incoming_file.parent,
-                    delta_files=1,
-                    delta_size=incoming_file.size,
-                )
-        existing_unignored_file = (
-            existing_file if existing_file is not None and not existing_file.gitignored else None
-        )
-        incoming_unignored_file = (
-            incoming_file if incoming_file is not None and not incoming_file.gitignored else None
-        )
-        if (
-            existing_unignored_file is not None
-            and incoming_unignored_file is not None
-            and existing_unignored_file.parent == incoming_unignored_file.parent
-        ):
-            if existing_unignored_file.size != incoming_unignored_file.size:
-                self._adjust_descendant_unignored_file_aggregates(
-                    parent=incoming_unignored_file.parent,
-                    delta_files=0,
-                    delta_size=incoming_unignored_file.size - existing_unignored_file.size,
-                )
-        else:
-            if existing_unignored_file is not None:
-                self._adjust_descendant_unignored_file_aggregates(
-                    parent=existing_unignored_file.parent,
-                    delta_files=-1,
-                    delta_size=-existing_unignored_file.size,
-                )
-            if incoming_unignored_file is not None:
-                self._adjust_descendant_unignored_file_aggregates(
-                    parent=incoming_unignored_file.parent,
-                    delta_files=1,
-                    delta_size=incoming_unignored_file.size,
-                )
+        # Leaf, file, and tracked-file aggregates all hang off the same ancestor
+        # chain, and the ordinary walker event -- a new file -- moves all three by
+        # the same parent. Adjusting them separately climbed that chain three
+        # times, splitting every path component three times on the way up, for
+        # 180,000 climbs over a 60,000-file tree.
+        #
+        # Netting the deltas per parent first collapses that to one climb per
+        # parent, and it also subsumes the special cases the separate calls
+        # spelled out: a leaf that stays in place contributes -1 and +1 to one
+        # parent and nets to zero, and a file that only changes size nets to a
+        # size delta with no count delta. Rows that net to nothing are skipped,
+        # which is what those guards were for.
+        #
+        # The add path -- no existing entry, which is every entry of a first walk
+        # -- has exactly one parent, so it skips the map and its closure. Building
+        # a dict per entry cost more than the traversals it saved when this was
+        # first written, and measured as no change at all.
         if existing is None:
+            if entry.type == "file":
+                tracked = 0 if entry.gitignored else 1
+                self._adjust_descendant_aggregates(
+                    entry.parent,
+                    [1, 1, entry.size, tracked, entry.size if tracked else 0],
+                )
+            elif entry.type == "symlink":
+                self._adjust_descendant_aggregates(entry.parent, [1, 0, 0, 0, 0])
             self._add_direct_child(entry)
-        elif existing.parent != entry.parent:
+            if entry.type == "dir" and entry.total_files is not None:
+                entry = entry.with_empty(self._descendant_leaf_counts.get(entry.path, 0) == 0)
+            self._replace_index_entry(entry)
+            if entry.type == "dir" and entry.total_files is None:
+                self._pending_dirs.add(entry.path)
+            else:
+                self._pending_dirs.discard(entry.path)
+            self._record_child_mtime(entry)
+            return entry
+
+        deltas: dict[str, list[int]] = {}
+
+        def _delta(parent: str) -> list[int]:
+            row = deltas.get(parent)
+            if row is None:
+                row = deltas[parent] = [0, 0, 0, 0, 0]
+            return row
+
+        if existing_leaf is not None:
+            _delta(existing_leaf.parent)[0] -= 1
+        if incoming_leaf is not None:
+            _delta(incoming_leaf.parent)[0] += 1
+        existing_file = existing if existing.type == "file" else None
+        incoming_file = entry if entry.type == "file" else None
+        if existing_file is not None:
+            row = _delta(existing_file.parent)
+            row[1] -= 1
+            row[2] -= existing_file.size
+        if incoming_file is not None:
+            row = _delta(incoming_file.parent)
+            row[1] += 1
+            row[2] += incoming_file.size
+        if existing_file is not None and not existing_file.gitignored:
+            row = _delta(existing_file.parent)
+            row[3] -= 1
+            row[4] -= existing_file.size
+        if incoming_file is not None and not incoming_file.gitignored:
+            row = _delta(incoming_file.parent)
+            row[3] += 1
+            row[4] += incoming_file.size
+        for parent, row in deltas.items():
+            if any(row):
+                self._adjust_descendant_aggregates(parent, row)
+        if existing.parent != entry.parent:
             self._remove_direct_child(existing)
             self._add_direct_child(entry)
         if entry.type == "dir" and entry.total_files is not None:
-            entry = replace(entry, empty=self._descendant_leaf_counts.get(entry.path, 0) == 0)
+            entry = entry.with_empty(self._descendant_leaf_counts.get(entry.path, 0) == 0)
         self._replace_index_entry(entry)
         if entry.type == "dir" and entry.total_files is None:
             self._pending_dirs.add(entry.path)
@@ -3497,6 +3514,50 @@ class _PythonInventoryStore:
                     current[path] = (-recorded[1], path)
             heap[:] = current.values()
             heapq.heapify(heap)
+
+    def _adjust_descendant_aggregates(self, parent: str, row: list[int]) -> None:
+        """Apply one parent's netted deltas to every ancestor in a single climb.
+
+        *row* is ``[leaves, files, size, unignored_files, unignored_size]``. The
+        per-aggregate methods below remain for the callers that move exactly one
+        of them; this is the walker's path, where all five move together.
+        """
+
+        delta_leaves, delta_files, delta_size, delta_unignored, delta_unignored_size = row
+        leaf_counts = self._descendant_leaf_counts
+        file_counts = self._descendant_file_counts
+        file_sizes = self._descendant_file_sizes
+        unignored_counts = self._descendant_unignored_file_counts
+        unignored_sizes = self._descendant_unignored_file_sizes
+        cursor = parent
+        while True:
+            if delta_leaves:
+                leaves = leaf_counts.get(cursor, 0) + delta_leaves
+                if leaves <= 0:
+                    leaf_counts.pop(cursor, None)
+                else:
+                    leaf_counts[cursor] = leaves
+            if delta_files or delta_size:
+                files = file_counts.get(cursor, 0) + delta_files
+                if files <= 0:
+                    file_counts.pop(cursor, None)
+                    file_sizes.pop(cursor, None)
+                else:
+                    file_counts[cursor] = files
+                    file_sizes[cursor] = max(0, file_sizes.get(cursor, 0) + delta_size)
+            if delta_unignored or delta_unignored_size:
+                tracked = unignored_counts.get(cursor, 0) + delta_unignored
+                if tracked <= 0:
+                    unignored_counts.pop(cursor, None)
+                    unignored_sizes.pop(cursor, None)
+                else:
+                    unignored_counts[cursor] = tracked
+                    unignored_sizes[cursor] = max(
+                        0, unignored_sizes.get(cursor, 0) + delta_unignored_size
+                    )
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
 
     def _adjust_descendant_file_aggregates(
         self,

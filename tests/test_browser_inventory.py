@@ -55,7 +55,6 @@ from metabrowser.inventory_engine.contract import (
     DiagnosticsQuery,
     DiscoveryBudget,
     InventoryConfig,
-    InventoryEntry,
     ReadRequest,
 )
 from metabrowser.inventory_engine.providers.python_inventory import (
@@ -140,7 +139,7 @@ async def _collect(
     *,
     max_depth: int = 20,
     max_files: int = 20_000,
-) -> list[InventoryEntry]:
+) -> list[FsEntry]:
     return [
         e
         async for e in walk_tree(
@@ -205,7 +204,7 @@ def test_walk_tree_aggregates_match_reference(tmp_path: Path) -> None:
     reference walk over the same tree."""
     _build_tree(tmp_path)
     yielded = asyncio.run(_collect(tmp_path))
-    final_dirs: dict[str, InventoryEntry] = {}
+    final_dirs: dict[str, FsEntry] = {}
     for e in yielded:
         if e.type == "dir" and e.total_files is not None:
             final_dirs[e.path] = e

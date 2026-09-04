@@ -32,6 +32,7 @@ from typing import Any
 import yaml
 
 from metabrowser.cancellable_thread import run_cancellable_thread
+from metabrowser.fs_record import FsEntry
 from metabrowser.inventory_engine.contract import (
     DiagnosticsQuery,
     DirectoryQuery,
@@ -40,7 +41,6 @@ from metabrowser.inventory_engine.contract import (
     EntryQuery,
     FilteredTreeProjection,
     FilteredTreeQuery,
-    InventoryEntry,
     InventoryFilter,
     LifecyclePhase,
     ReadQuery,
@@ -128,7 +128,7 @@ async def walk_collect(
     )
     # ``walk_tree`` yields dirs twice (placeholder then finalized); keep
     # the last write per path so dir rows carry real aggregates.
-    latest: dict[str, InventoryEntry] = {}
+    latest: dict[str, FsEntry] = {}
     truncated = False
     async for entry in walk_tree(
         root,
@@ -339,10 +339,15 @@ def filtered_walk_report(
 # pipeline is testable from the CLI and pinnable in golden tests.
 
 
-def _entry_to_dict(entry: InventoryEntry) -> dict[str, Any]:
-    """Project one semantic observation into the established CLI record."""
+def _entry_to_dict(entry: FsEntry) -> dict[str, Any]:
+    """Project one walked record into the established CLI record.
 
-    entry_type = entry.type.value
+    The walker yields the retained record directly, whose ``type`` is already the wire
+    string; it is not the contract's enum, because this path never crosses the provider
+    boundary. See `metabrowser.fs_record`.
+    """
+
+    entry_type = entry.type
     return {
         "path": entry.path,
         "parent": entry.parent,
@@ -549,7 +554,7 @@ async def stream_entries(
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
     max_files: int = DEFAULT_MAX_FILES,
-) -> AsyncIterator[InventoryEntry]:
+) -> AsyncIterator[FsEntry]:
     """Yield each walker record in walk order — the streaming surface
     (mirrors the server's ``fs.change`` upserts)."""
 

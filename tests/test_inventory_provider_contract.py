@@ -81,6 +81,7 @@ from metabrowser.inventory_engine.contract import (
     canonical_inventory_path,
     catalog_terminal_suffix,
     inventory_scope_fingerprint,
+    native_inventory_name,
     require_canonical_inventory_path,
 )
 from metabrowser.inventory_engine.providers.python_inventory import PythonInventoryBackend
@@ -690,12 +691,14 @@ def test_the_canonical_path_is_total_and_injective() -> None:
     )
 
 
-def test_the_boundary_escapes_a_name_the_store_holds_natively() -> None:
-    """The store keeps the platform name; only rows crossing the boundary are escaped.
+def test_the_walker_escapes_on_the_way_in_and_the_boundary_passes_through() -> None:
+    """The store keys the canonical identity; the read boundary has no encoding left.
 
-    Nothing is stored twice, which is the point: the retained index holds one string per
-    entry, and the canonical form is derived for the page being returned. A name needing
-    no escape comes back as the *same object*, so the ordinary case allocates nothing.
+    This is the reverse of the arrangement it replaced, where the store held raw platform
+    names and the boundary escaped three fields of every row of every read. Escaping once
+    per entry, in the walker, costs strictly less -- and, the reason it changed, it makes
+    the store's keys the same strings the contract's queries carry, so an inbound lookup
+    cannot silently miss the entry it names.
 
     Synthesised rather than written to disk, because APFS rejects a filename that is not
     valid UTF-8, so the case this covers cannot be created on the machine that most often
@@ -709,10 +712,14 @@ def test_the_boundary_escapes_a_name_the_store_holds_natively() -> None:
     )
 
     undecodable = b"x\xff.txt".decode("utf-8", "surrogateescape")
+    canonical = canonical_inventory_name(undecodable)
+    assert canonical == "x%FF.txt"
+
+    # What the walker stores, having escaped the name it got from `scandir`.
     stored = FsEntry(
-        path=f"src/{undecodable}",
+        path=f"src/{canonical}",
         parent="src",
-        name=undecodable,
+        name=canonical,
         type="file",
         ext=".txt",
         kind="file",
@@ -727,23 +734,34 @@ def test_the_boundary_escapes_a_name_the_store_holds_natively() -> None:
     assert row.name == "x%FF.txt"
     assert row.parent == "src"
 
-    # The store is untouched: one string per entry, still the platform's.
-    assert stored.name == undecodable
+    # Pass-through, not a second escape: escaping an already-canonical name again would
+    # publish `x%25FF.txt`, an identity that names nothing.
+    assert row.path is stored.path
+    assert row.name is stored.name
 
-    # And an ordinary name crosses without allocating a second string.
-    plain = FsEntry(
-        path="src/main.py",
-        parent="src",
-        name="main.py",
-        type="file",
-        ext=".py",
-        kind="file",
-        size=1,
-        mtime_ns=1,
-        mtime_hash="",
-        active=False,
-    )
-    assert _semantic_entry(plain).path is plain.path
+    # And the identity inverts back to the platform name the filesystem answers to.
+    assert native_inventory_name(row.name) == undecodable
+
+
+def test_a_percent_in_a_filename_round_trips_through_the_identity() -> None:
+    """A literal `%` is the plain-ASCII case that made the escape need an inverse.
+
+    `report%20final.txt` is what a URL-derived download is called. It escapes to
+    `report%2520final.txt`, and without an inverse that identity resolved to nothing:
+    the folder listed, the entry expanded empty, and a refresh receipt reported
+    `accepted` for a path it could not verify.
+    """
+
+    native = "report%20final.txt"
+    canonical = canonical_inventory_name(native)
+    assert canonical == "report%2520final.txt"
+    assert native_inventory_name(canonical) == native
+
+    # A tree may genuinely hold a file *named* `%41`. Its identity is `%2541`, so the
+    # bare `%41` is not in the image of the escaper and must resolve to nothing rather
+    # than to that file.
+    assert canonical_inventory_name("%41") == "%2541"
+    assert native_inventory_name("%41") is None
 
 
 def test_lifecycle_issue_lists_are_bounded() -> None:

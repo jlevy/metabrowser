@@ -124,6 +124,21 @@ class MtimeCache[T]:
             self.stats.updates += 1
 
     def delete(self, path: Path) -> None:
+        # An empty cache has nothing to invalidate, and `_cache_key` is `path.resolve()`
+        # -- a syscall. Invalidation is driven by paths, not by cache contents, so the
+        # overwhelmingly common call is for a path this cache has never held: the cache
+        # is an LRU of 256 entries and a tree has hundreds of thousands. Checking first
+        # is what keeps a discovery walk from paying one resolve per entry per cache for
+        # answers that were never stored.
+        #
+        # Read outside the lock, deliberately, because `_cache_key` is the syscall and
+        # `read` already keeps it off the lock for the same reason. The race that buys
+        # is benign: a concurrent `update` between this check and the return leaves an
+        # entry undeleted, and entries are keyed by mtime hash, so the next `read`
+        # re-stats, compares, and misses. A stale entry is a miss and never a wrong
+        # answer -- the same property the whole cache rests on.
+        if not self.cache:
+            return
         key = self._cache_key(path)
         with self.lock:
             self.log_stats()

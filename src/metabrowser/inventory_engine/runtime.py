@@ -8,7 +8,11 @@ from pathlib import Path
 
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 from metabrowser.file_type_registry import load_file_type_registry_document
-from metabrowser.inventory_engine.contract import DiscoveryBudget, InventoryConfig
+from metabrowser.inventory_engine.contract import (
+    DiscoveryBudget,
+    InventoryConfig,
+    native_inventory_path,
+)
 from metabrowser.inventory_engine.coordinator import (
     HostChange,
     HostVersion,
@@ -72,8 +76,28 @@ class InventoryRuntime:
             return
         if not change.facts_changed:
             return
+        # The coordinator publishes every entry it discovers, so this listener sees the
+        # whole first walk. That used to cost `invalidate_projection_path` once per
+        # entry against caches that were empty, and each call resolved the path -- a
+        # syscall -- once per projection cache: 45,516 resolves for 22,758 entries on
+        # this repository, about 2s of a 4.9s walk.
+        #
+        # That cost is now removed in `MtimeCache.delete`, which returns before
+        # resolving anything when the cache is empty. Removing it there rather than
+        # here is what makes it free of semantics: an earlier version of this code
+        # skipped the whole loop while the phase was DISCOVERING, which also skipped
+        # real watcher and `refresh()` invalidations arriving during the initial walk
+        # -- the watcher starts before the walk, so those exist. They were harmless
+        # only because these caches are mtime keyed and revalidate on read, an
+        # invariant living in another module with nothing binding the two together.
+        # The membership check gets the same walk back without resting on it.
         for relative_path in change.dirty_paths:
-            invalidate_projection_path(root / relative_path)
+            # Dirty paths are canonical identities; the projection caches are keyed by
+            # resolved filesystem paths, so this crosses back to the platform spelling.
+            native_relative = native_inventory_path(relative_path)
+            if native_relative is None:
+                continue
+            invalidate_projection_path(root / native_relative)
 
     async def open(self, root: Path) -> HostVersion:
         """Open the initial served root."""
