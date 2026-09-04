@@ -53,7 +53,9 @@ function normalizeBreakdown(raw) {
       ? /** @type {Record<string, unknown>} */ (value.registry)
       : null;
   if (
-    registry?.schema_version !== 3 ||
+    !registry ||
+    !Number.isInteger(registry.schema_version) ||
+    /** @type {number} */ (registry.schema_version) < 1 ||
     !Number.isInteger(registry.revision) ||
     typeof registry.fingerprint !== "string"
   ) {
@@ -133,7 +135,7 @@ function normalizeBreakdown(raw) {
   }
   return Object.freeze({
     registry: Object.freeze({
-      schemaVersion: 1,
+      schemaVersion: /** @type {number} */ (registry.schema_version),
       revision: /** @type {number} */ (registry.revision),
       fingerprint: registry.fingerprint,
     }),
@@ -411,6 +413,7 @@ function buildRegistryRows(
     return [];
   }
   if (
+    runtime.schemaVersion !== envelope.registry.schemaVersion ||
     runtime.revision !== envelope.registry.revision ||
     runtime.fingerprint !== envelope.registry.fingerprint
   ) {
