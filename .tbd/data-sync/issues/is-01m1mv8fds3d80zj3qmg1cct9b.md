@@ -5,7 +5,7 @@ title: "Address review: PR #101 — holistic pluggable-inventory-engine review"
 kind: task
 status: open
 priority: 1
-version: 20
+version: 21
 labels: []
 dependencies: []
 child_order_hints:
@@ -28,6 +28,7 @@ child_order_hints:
   - is-01m1mva1cks2ky43dnbspjry5f
   - is-01m1mva1r2c4pfhqfj4rekhb71
   - is-01m1n2q0b5nz9a0s6y1wx3vf67
+  - is-01m1ngbxwyfaxdsmvtc83axs1e
 created_at: 2026-09-03T23:56:55.096Z
-updated_at: 2026-09-04T02:07:11.204Z
+updated_at: 2026-09-04T06:05:48.318Z
 ---

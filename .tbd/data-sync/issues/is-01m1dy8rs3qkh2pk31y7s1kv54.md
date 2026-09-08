@@ -3,13 +3,17 @@ type: is
 id: is-01m1dy8rs3qkh2pk31y7s1kv54
 title: "Walker builds each entry twice: contract InventoryEntry then provider FsEntry"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 2
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-09-01T07:34:49.378Z
-updated_at: 2026-09-04T01:30:12.371Z
+updated_at: 2026-09-08T00:02:49.734Z
+closed_at: 2026-09-08T00:02:49.733Z
+close_reason: "Already resolved in the branch by fs_record.py: walker imports the shared FsEntry record and the provider conversion short-circuits existing FsEntry values. No duplicate construction remains on the boot path. Paired startup results are in the September 7 review; the older private 300k measurement was not rerun."
+resolution: null
+duplicate_of: null
 ---
 H72: the walker builds each entry twice (contract InventoryEntry, then provider FsEntry via _internal_entry). Confirmed as the largest remaining per-entry cost, and it also carries two require_canonical_inventory_path calls per entry (path and parent) that vanish with it.
 

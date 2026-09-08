@@ -3,14 +3,18 @@ type: is
 id: is-01m1n2q0b5nz9a0s6y1wx3vf67
 title: The browser shows escaped names for files holding a literal %
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 3
 labels: []
 dependencies: []
 parent_id: is-01m1mv8fds3d80zj3qmg1cct9b
 created_at: 2026-09-04T02:07:11.204Z
-updated_at: 2026-09-04T02:07:11.204Z
+updated_at: 2026-09-08T00:02:45.047Z
+closed_at: 2026-09-08T00:02:45.046Z
+close_reason: Real-browser direct URLs, Markdown links, breadcrumbs, Quick File search, structured views, and live inserted rows display literal percent names and retain canonical API identities. URL codec tests cover POSIX invalid bytes and Windows lone surrogates.
+resolution: null
+duplicate_of: null
 ---
 The inventory publishes the canonical identity as InventoryEntry.name, so a file named 'report%20final.txt' displays in the browser as 'report%2520final.txt'. Lookups now work end to end (the API accepts the identity and _safe_path_from_identity decodes it), so this is display only -- but it is a visible regression against main, which shows the real name.
 

@@ -3,13 +3,17 @@ type: is
 id: is-01m1dt3g761rxrv1r654c4ys6w
 title: Inventory walk is 2.75x slower than main before the perf fixes
 kind: bug
-status: open
+status: closed
 priority: 0
-version: 1
+version: 2
 labels: []
 dependencies: []
 created_at: 2026-09-01T06:22:02.458Z
-updated_at: 2026-09-01T06:22:02.458Z
+updated_at: 2026-09-08T00:02:50.032Z
+closed_at: 2026-09-08T00:02:50.031Z
+close_reason: The original canonical-validation and empty-cache resolve fixes are already in the branch. Current paired synthetic/project serving runs improve startup, CPU and RSS against current main; remaining measured warm/first catalog overhead is tracked in mb-5no9.
+resolution: null
+duplicate_of: null
 ---
 Measured on a 60,000-file synthetic corpus (bench_serving build_corpus, shape 2), timing 'metab CORPUS --api /api/index/meta' which waits for the full scan. Three runs each, median:
 
