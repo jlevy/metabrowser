@@ -148,6 +148,7 @@ from metabrowser.paths_safe import (
     _relativize,
     _resolved_root_dir,
     _safe_path,
+    _safe_path_from_identity,
     _safe_subdir,
     _set_root_dir,
 )
@@ -978,6 +979,7 @@ async def index(request: Request) -> HTMLResponse:
     # duplicating constants in the source.
     settings_block = (
         f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES))};</script>"
+        f"<script>window.METABROWSER_PATH_ENCODING={_json.dumps('utf16' if os.name == 'nt' else 'bytes')};</script>"
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
@@ -1016,7 +1018,6 @@ async def index(request: Request) -> HTMLResponse:
                 entries=initial_projection.entries,
                 parent_rel="",
                 max_depth=1,
-                root_abs=_resolved_root_dir(),
                 max_entries=_INLINE_INITIAL_TREE_ROWS,
             )
         except Exception:
@@ -1560,7 +1561,6 @@ async def _read_tree_from_provider(
             entries=tree_entries,
             parent_rel=subpath,
             max_depth=remaining_depth,
-            root_abs=root_dir,
             parent_ignored=bool(parent.entry.gitignored) if parent.entry is not None else False,
         )
         if remaining_depth > 0
@@ -1606,22 +1606,6 @@ async def _read_tree_from_provider(
             "recency_tallies": (navigation["recency_tallies"] if navigation is not None else None),
         }
     )
-
-
-def _safe_path_from_identity(requested: str) -> Path | None:
-    """Resolve a canonical inventory identity to a path inside the served root.
-
-    `/api/*` speaks the identities the inventory publishes, which are escaped: a file
-    named `report%20final.txt` is published as `report%2520final.txt`, and that is the
-    string the SPA sends back. `_safe_path` addresses the filesystem and takes the
-    platform name, so the two are joined here rather than by whichever route remembered.
-
-    `/view/*` deliberately does not go through this. It is a human-facing URL and keeps
-    naming the file the way a person would write it.
-    """
-
-    native = native_inventory_path(requested)
-    return None if native is None else _safe_path(native)
 
 
 @log_async_calls()
@@ -2071,7 +2055,8 @@ def _file_unavailable_response(subpath: str, target: Path | None) -> JSONRespons
     # symlink can still be identified. Resolve and validate the parent first;
     # otherwise an absolute path, ``..``, or a symlinked parent could turn this
     # error-classification check into a probe outside the served root.
-    requested = Path(subpath)
+    native = native_inventory_path(subpath)
+    requested = Path(native) if native is not None else Path()
     candidate: Path | None = None
     try:
         parent = (_paths_safe.ROOT_DIR / requested.parent).resolve()

@@ -106,21 +106,27 @@ class InventoryOverlay:
         self._revision = 0
         self._decorations: dict[str, InventoryDecoration] = {}
 
-    def snapshot(self, paths: Iterable[str] = ()) -> OverlaySnapshot:
+    def snapshot(self, paths: Iterable[str] | None = ()) -> OverlaySnapshot:
         """Return decorations for provider-validated *paths* at one revision.
+
+        ``None`` snapshots the sparse map for a multi-page read session.
 
         Canonical-path validation belongs on overlay writes. Read paths have already
         crossed the provider contract, and repeating the same parse on every returned
         row would make a sparse join linear in validation work rather than lookups.
         """
 
-        requested = tuple(dict.fromkeys(paths))
+        requested = tuple(dict.fromkeys(paths)) if paths is not None else None
         with self._lock:
-            selected = {
-                path: decoration
-                for path in requested
-                if (decoration := self._decorations.get(path)) is not None
-            }
+            selected = (
+                dict(self._decorations)
+                if requested is None
+                else {
+                    path: decoration
+                    for path in requested
+                    if (decoration := self._decorations.get(path)) is not None
+                }
+            )
             return OverlaySnapshot(
                 revision=self._revision,
                 decorations=MappingProxyType(selected),

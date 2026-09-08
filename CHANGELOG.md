@@ -8,10 +8,10 @@ Inventory engine:
 
 - Filesystem inventory now crosses one pluggable, provider-neutral contract.
   The current Python implementation remains the only shipped provider and preserves the
-  existing routes and browser wire; its module is named `python_inventory.py` to make
-  ownership explicit before the fdu provider is added.
-  Its public handle now exposes only the five provider operations; retained indexes,
-  walking, watching, and projection helpers live behind that façade.
+  existing routes and envelope shapes; the path identity change is documented below.
+  Its module is named `python_inventory.py` to make ownership explicit before the fdu
+  provider is added. Its public handle now exposes only the five provider operations;
+  retained indexes, walking, watching, and projection helpers live behind that façade.
   Lifecycle state now distinguishes an open idle `ready` handle from one with a live
   filesystem observer.
 
@@ -48,6 +48,30 @@ Inventory engine:
   and JSON materialization stay off the request event loop.
   Catalog decorations are joined only for the activity tracker, the one consumer that
   reads them.
+
+- Coordinator shutdown is joinable after cancellation, and stale concurrent refreshes
+  cannot overwrite newer filesystem facts.
+  Refreshes reject symlink ancestors under the same scope as the boot walk.
+  Paginated reads retain a sparse overlay snapshot while allowing unrelated host updates
+  and provider reads to proceed.
+
+- Recent queries skip unused directory topology construction and compute their extension
+  filter once. Inventory metadata counts the served root consistently with earlier
+  releases, and JSON/YAML walk output honors the configured inventory provider.
+
+- Plugin SDK 0.6 pins escaped inventory identities for API paths.
+  Plugin readers, activity probes, Markdown links, browser URLs and filename search now
+  handle literal percent signs consistently.
+  See [plugin path identity](docs/plugins.md#path-identity) for the sidekick conversion
+  helpers.
+
+- Generic JSONL views load their shared agent-log renderer through the SDK when opened.
+  They no longer depend on another file kind having loaded first, and disposing a view
+  cancels its pending mount.
+
+- Filesystem changes invalidate affected lazy folder caches and stale in-flight reads.
+  Already-mounted collapsed folders receive new rows, and reopening edited files
+  revalidates cached previews, including deep files represented by ancestor updates.
 
 Validation:
 

@@ -241,7 +241,7 @@
           for (let index = chunkStart; index < chunkEnd; index += 1) {
             throwIfAborted(signal);
             const file = snapshot.files[index];
-            const match = matcher.matchPath(query, file.path);
+            const match = matcher.matchPath(query, file.path.replaceAll("%25", "%"));
             if (!match) {
               continue;
             }
@@ -262,12 +262,13 @@
       retained.sort((left, right) => matcher.compareMatches(left.match, right.match));
       const ordered = retained.slice(0, maxResults);
       const results = ordered.map(({ file, match }, index) => {
-        const separator = file.path.lastIndexOf("/");
+        const displayPath = file.path.replaceAll("%25", "%");
+        const separator = displayPath.lastIndexOf("/");
         return Object.freeze({
-          description: separator >= 0 ? file.path.slice(0, separator) : "",
+          description: separator >= 0 ? displayPath.slice(0, separator) : "",
           id: `file:${file.path}`,
           kind: /** @type {const} */ ("file"),
-          label: file.basename,
+          label: displayPath.slice(separator + 1),
           logicalExtension: file.logicalExtension,
           matchRanges: match.matchRanges,
           path: file.path,

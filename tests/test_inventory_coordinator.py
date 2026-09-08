@@ -409,6 +409,43 @@ def test_cancelled_read_drains_before_root_replacement_closes_handle(tmp_path: P
     asyncio.run(_run())
 
 
+@pytest.mark.parametrize("cancel_first", [False, True])
+def test_every_close_joins_shutdown_even_if_the_first_caller_is_cancelled(
+    tmp_path: Path, cancel_first: bool
+) -> None:
+    async def run() -> None:
+        backend = _FakeBackend()
+        coordinator = _coordinator(backend)
+        await coordinator.open(tmp_path)
+        handle = backend.handles[0]
+        handle.read_gate = asyncio.Event()
+        read = asyncio.create_task(
+            coordinator.read(ReadRequest(queries=(DirectoryQuery(query_id="tree"),)))
+        )
+        await asyncio.wait_for(handle.read_started.wait(), timeout=1)
+        first = asyncio.create_task(coordinator.close())
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        if cancel_first:
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+        second = asyncio.create_task(coordinator.close())
+        try:
+            completed, _pending = await asyncio.wait({second}, timeout=0.01)
+            assert not completed, "close returned while a provider read was still running"
+        finally:
+            handle.read_gate.set()
+            await read
+            await asyncio.gather(first, second, return_exceptions=True)
+        assert handle.closed
+        assert handle.close_count == 1
+        with pytest.raises(InventoryClosedError):
+            await coordinator.read(ReadRequest())
+
+    asyncio.run(run())
+
+
 def test_cancelled_read_logs_a_provider_failure_discovered_while_draining(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
@@ -780,3 +817,41 @@ def test_refresh_rejects_incomplete_receipts_and_provider_identity_drift(
         await coordinator.close()
 
     asyncio.run(_run())
+
+
+def test_page_session_pins_overlay_without_blocking_other_host_operations(tmp_path: Path) -> None:
+    async def run() -> None:
+        backend = _FakeBackend()
+        coordinator = InventoryCoordinator(backend=backend, config=InventoryConfig())
+        await coordinator.open(tmp_path)
+        path = "a.txt"
+        backend.handles[0].entries[path] = InventoryEntry.for_observed_file(
+            path=path,
+            parent="",
+            name=path,
+            size=1,
+            mtime_ns=1,
+        )
+        await coordinator.replace_decoration(path, InventoryDecoration(active=True))
+        patch = None
+        try:
+            async with coordinator.read_session() as session:
+                request = ReadRequest(queries=(EntryQuery(query_id="entry", path=path),))
+                before = await session.read(request)
+                patch = asyncio.create_task(
+                    coordinator.replace_decoration(path, InventoryDecoration(views=("source",)))
+                )
+                done, _ = await asyncio.wait({patch}, timeout=0.1)
+                assert patch in done, "a page assembly must not hold up unrelated host updates"
+                after = await session.read(request)
+                assert after.version.overlay_revision == before.version.overlay_revision
+                assert after.decorations == before.decorations
+                assert after.cursor == before.cursor
+            current = await coordinator.read(request)
+            assert current.version.overlay_revision > before.version.overlay_revision
+        finally:
+            if patch is not None:
+                await patch
+            await coordinator.close()
+
+    asyncio.run(run())

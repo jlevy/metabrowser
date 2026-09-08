@@ -45,10 +45,12 @@ from metabrowser.inventory_engine.contract import (
     LifecyclePhase,
     ReadQuery,
     ReadRequest,
+    native_inventory_path,
 )
 from metabrowser.inventory_engine.runtime import (
     InventoryRuntime,
     default_inventory_config,
+    inventory_provider_from_environment,
 )
 from metabrowser.inventory_engine.tree_page_assembly import (
     TreePageQuery,
@@ -140,7 +142,10 @@ async def walk_collect(
 
     rows: list[WalkRow] = []
     for path, entry in latest.items():
-        abs_path = root if path == "" else root / path
+        native = native_inventory_path(path)
+        if native is None:
+            raise ValueError("walker returned a noncanonical path")
+        abs_path = root / native
         try:
             is_symlink = abs_path.is_symlink()
         except OSError:
@@ -403,7 +408,7 @@ async def build_tree_envelope(
         budget=DiscoveryBudget(max_files=max_files),
         watch_mode="off",
     )
-    runtime = InventoryRuntime(config=config)
+    runtime = InventoryRuntime(provider=inventory_provider_from_environment(), config=config)
     await runtime.open(root)
     try:
         deadline = asyncio.get_running_loop().time() + timeout
@@ -486,7 +491,6 @@ async def build_tree_envelope(
             entries=entries,
             parent_rel=subpath,
             max_depth=max_depth,
-            root_abs=root,
             parent_ignored=bool(parent.entry.gitignored) if parent.entry is not None else False,
         )
         state = assembly.final_read.result.state if assembly is not None else read.result.state

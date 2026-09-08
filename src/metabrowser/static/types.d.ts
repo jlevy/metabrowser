@@ -59,6 +59,7 @@ type MetabrowserNavigationController = Readonly<{
 }>;
 
 type MetabrowserNavigationRouteRuntime = Readonly<{
+  displayPath(path: string): string;
   attachController(controller: MetabrowserNavigationController): () => void;
   createController(options: {
     apply(
@@ -1716,6 +1717,7 @@ declare global {
     MetabrowserKeyboardHelp: MetabrowserKeyboardHelpRuntime;
     MetabrowserOverlay: MetabrowserOverlayRuntime;
     MetabrowserNavigationRoute: MetabrowserNavigationRouteRuntime;
+    METABROWSER_PATH_ENCODING?: "utf16" | "bytes";
     MetabrowserPluginHost: MetabrowserPluginHostRuntime;
     MetabrowserContributionRegistry: MetabrowserContributionRegistryRuntime;
     MetabrowserFormatters: MetabrowserFormatterRuntime;

@@ -7,7 +7,9 @@ import asyncio
 import inspect
 import os
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
+from threading import Event
 from typing import Any, cast
 
 import pytest
@@ -827,6 +829,54 @@ def test_python_provider_surfaces_observation_gap(
     assert watch_state == "failed"
 
 
+@pytest.mark.parametrize("older_missing", [False, True])
+def test_concurrent_refresh_cannot_replace_a_newer_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, older_missing: bool
+) -> None:
+    target = tmp_path / "changing.txt"
+    target.write_text("old")
+    observed = Event()
+    release = Event()
+    original_lstat = Path.lstat
+
+    def delayed_lstat(path: Path) -> os.stat_result:
+        if path == target and not observed.is_set():
+            old = original_lstat(path)
+            observed.set()
+            if not release.wait(timeout=5):
+                raise TimeoutError("test did not release the older observation")
+            if older_missing:
+                raise FileNotFoundError(path)
+            return old
+        return original_lstat(path)
+
+    async def run() -> None:
+        handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+        monkeypatch.setattr(Path, "lstat", delayed_lstat)
+        request = RefreshRequest(observations=(RefreshObservation(path=target.name),))
+        older = asyncio.create_task(handle.refresh(request))
+        try:
+            assert await asyncio.to_thread(observed.wait, 5)
+            target.write_text("the newer observation")
+            newer = await handle.refresh(request)
+            release.set()
+            await older
+            result = await handle.read(
+                ReadRequest(queries=(EntryQuery(query_id="entry", path=target.name),))
+            )
+            entry = result.projection("entry")
+            assert isinstance(entry, EntryProjection)
+            assert entry.entry is not None
+            assert entry.entry.size == target.stat().st_size
+            assert result.version == newer.version
+        finally:
+            release.set()
+            await asyncio.gather(older, return_exceptions=True)
+            await handle.close()
+
+    asyncio.run(run())
+
+
 def test_scanner_and_reducer_do_not_depend_on_browser_events() -> None:
     for module in (walker, inventory_rollup):
         imported_modules: set[str] = set()
@@ -844,3 +894,130 @@ def test_phase_one_contract_has_no_fdu_runtime_placeholder() -> None:
         inspect.getsource(python_provider),
     )
     assert all("FduInventory" not in source for source in sources)
+
+
+@pytest.mark.parametrize("external", [False, True])
+def test_refresh_never_descends_through_symlink_ancestors(tmp_path: Path, external: bool) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    target = tmp_path / "outside" if external else root / "inside"
+    target.mkdir()
+    (target / "secret.txt").write_text("not a child of the symlink")
+    (target / "nested").mkdir()
+    (target / "nested" / "child.txt").write_text("nested")
+    (root / "link").symlink_to(target, target_is_directory=True)
+
+    async def run() -> None:
+        handle = await _open_settled(root, InventoryConfig(watch_mode="off"))
+        try:
+            paths = ("link/secret.txt", "link/nested")
+            receipt = await handle.refresh(
+                RefreshRequest(observations=tuple(RefreshObservation(path=p) for p in paths))
+            )
+            assert receipt.rejected_paths == paths
+            await handle.prioritize(PriorityRequest(paths=paths))
+            await asyncio.gather(*tuple(handle._priority_tasks))
+            result = await handle.read(
+                ReadRequest(queries=(EntryQuery(query_id="entry", path=paths[0]),))
+            )
+            entry = result.projection("entry")
+            assert isinstance(entry, EntryProjection)
+            assert entry.presence is not EntryPresence.PRESENT
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+def test_diagnostic_directory_count_includes_the_served_root(tmp_path: Path) -> None:
+    (tmp_path / "child").mkdir()
+
+    async def run() -> None:
+        handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+        try:
+            result = await handle.read(
+                ReadRequest(queries=(DiagnosticsQuery(query_id="diagnostics"),))
+            )
+            diagnostic = result.projection("diagnostics")
+            assert isinstance(diagnostic, DiagnosticsProjection)
+            assert diagnostic.payload.directories_indexed == 2
+            assert result.state.progress.directories_observed == 2
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("kind", ["directory", "filtered_tree", "catalog"])
+def test_retained_pages_remain_coherent_while_live_facts_advance(tmp_path: Path, kind: str) -> None:
+    for name in ("a.txt", "b.txt", "c.txt"):
+        (tmp_path / name).write_text("old")
+
+    async def run() -> None:
+        handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+        query = {
+            "directory": DirectoryQuery(query_id="page", max_rows=1),
+            "filtered_tree": FilteredTreeQuery(query_id="page", max_rows=1),
+            "catalog": CatalogQuery(query_id="page", max_rows=1),
+        }[kind]
+        try:
+            first = await handle.read(ReadRequest(queries=(query,)))
+            page = first.projection("page")
+            assert isinstance(
+                page, (DirectoryProjection, FilteredTreeProjection, CatalogProjection)
+            )
+            assert page.next_page is not None
+            (tmp_path / "c.txt").write_text("newer contents")
+            receipt = await handle.refresh(
+                RefreshRequest(observations=(RefreshObservation(path="c.txt"),))
+            )
+            assert receipt.version != first.version
+            rows = list(page.records if isinstance(page, CatalogProjection) else page.entries)
+            while page.next_page:
+                later = await handle.read(
+                    ReadRequest(
+                        queries=(replace(query, after=page.next_page),), at_version=first.version
+                    )
+                )
+                assert later.version == first.version
+                assert later.state == first.state
+                page = later.projection("page")
+                assert isinstance(
+                    page, (DirectoryProjection, FilteredTreeProjection, CatalogProjection)
+                )
+                rows.extend(page.records if isinstance(page, CatalogProjection) else page.entries)
+            assert [(row.path, row.size) for row in rows] == [
+                (name, 3) for name in ("a.txt", "b.txt", "c.txt")
+            ]
+        finally:
+            await handle.close()
+
+    asyncio.run(run())
+
+
+def test_evicted_continuation_fails_explicitly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(python_provider, "_PAGE_MEMO_CAPACITY", 1)
+    for name in ("a.txt", "b.txt", "c.txt"):
+        (tmp_path / name).write_text("x")
+
+    async def run() -> None:
+        handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+        query = CatalogQuery(query_id="page", max_rows=1)
+        try:
+            first = await handle.read(ReadRequest(queries=(query,)))
+            page = first.projection("page")
+            assert isinstance(page, CatalogProjection)
+            assert page.next_page is not None
+            await handle.read(ReadRequest(queries=(query,)))
+            with pytest.raises(VersionUnavailableError, match="cursor is unavailable"):
+                await handle.read(
+                    ReadRequest(
+                        queries=(replace(query, after=page.next_page),), at_version=first.version
+                    )
+                )
+        finally:
+            await handle.close()
+
+    asyncio.run(run())

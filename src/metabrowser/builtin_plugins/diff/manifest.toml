@@ -2,7 +2,7 @@
 name = "diff"
 display_name = "Diff"
 version = "0.0.1"
-sdk_version = "0.5"
+sdk_version = "0.6"
 
 # Patch files are the no-repository diff source: the server parses them
 # into File Diff Format and the view renders that document — the same

@@ -48,6 +48,7 @@ from metabrowser.inventory_engine.overlay import (
     InventoryDecoration,
     InventoryDecorationPatch,
     InventoryOverlay,
+    OverlaySnapshot,
 )
 
 LOG = logging.getLogger(__name__)
@@ -137,11 +138,15 @@ class CoordinatedRead:
 
 
 class InventoryReadSession:
-    """Serialize a bounded multi-read assembly at one host observation boundary."""
+    """Pin a root and sparse overlay without serializing provider I/O."""
 
     def __init__(self, coordinator: InventoryCoordinator, handle: InventoryHandle) -> None:
+        # Constructed under the coordinator lock; the operation lease keeps this root
+        # alive, while the immutable sparse snapshot pins only host-owned state.
         self._coordinator = coordinator
         self._handle = handle
+        self._overlay = coordinator._overlay.snapshot(None)
+        self._cursor = coordinator._current_host_cursor_locked()
         self._active = True
 
     async def read(
@@ -150,17 +155,20 @@ class InventoryReadSession:
         *,
         include_catalog_decorations: bool = False,
     ) -> CoordinatedRead:
-        """Read while root changes, overlay writes, and host publication are paused."""
+        """Read against this root and the session's retained host observation."""
 
         if not self._active:
             raise RuntimeError("the inventory read session is no longer active")
         result = await _drain_provider_operation_on_cancel(self._handle.read(request))
-        if self._handle is not self._coordinator._handle:
-            raise InventoryConsistencyError("the served root changed during a read session")
-        return self._coordinator._compose_read_locked(
-            result,
-            include_catalog_decorations=include_catalog_decorations,
-        )
+        async with self._coordinator._lock:
+            if self._handle is not self._coordinator._handle:
+                raise InventoryConsistencyError("the served root changed during a read session")
+            return self._coordinator._compose_read_locked(
+                result,
+                include_catalog_decorations=include_catalog_decorations,
+                overlay=self._overlay,
+                cursor=self._cursor,
+            )
 
     def _finish(self) -> None:
         self._active = False
@@ -281,6 +289,7 @@ class InventoryCoordinator:
         self._active_operations = 0
         self._transitioning = False
         self._closed = False
+        self._close_task: asyncio.Task[None] | None = None
 
     async def open(self, root: Path) -> HostVersion:
         """Open the first root, or atomically replace the currently served root."""
@@ -339,28 +348,23 @@ class InventoryCoordinator:
 
     @contextlib.asynccontextmanager
     async def read_session(self) -> AsyncGenerator[InventoryReadSession]:
-        """Hold one host boundary across a bounded version-pinned page assembly.
+        """Lease one root and snapshot the sparse overlay for a page assembly.
 
-        Provider mutation may still advance the native engine, so callers must pin
-        pages to the first ``EngineVersion`` and retry on ``VersionUnavailableError``.
-        The session prevents root replacement, overlay changes, and host-change
-        publication from splitting the assembled response.
+        Callers pin provider pages to the first engine version and retry if it expires.
+        Host publication and other operations continue while provider I/O is awaited;
+        only root replacement and shutdown wait for this session to finish.
         """
 
-        async with self._condition:
-            await self._wait_for_transition_locked()
-            handle = self._require_handle_locked()
-            self._active_operations += 1
-            session = InventoryReadSession(self, handle)
-            try:
-                yield session
-            finally:
+        handle = await self._begin_operation()
+        session: InventoryReadSession | None = None
+        try:
+            async with self._lock:
+                session = InventoryReadSession(self, handle)
+            yield session
+        finally:
+            if session is not None:
                 session._finish()
-                self._active_operations -= 1
-                if self._active_operations < 0:
-                    raise RuntimeError("inventory operation accounting underflow")
-                if self._active_operations == 0:
-                    self._condition.notify_all()
+            await asyncio.shield(self._end_operation())
 
     async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
         """Forward verified filesystem hints without exposing the provider."""
@@ -505,10 +509,21 @@ class InventoryCoordinator:
     async def close(self) -> None:
         """Cancel and join all work, close the handle, and end subscriptions."""
 
-        async with self._condition:
-            if self._closed:
-                return
+        task = self._close_task
+        if task is None:
             self._closed = True
+            task = asyncio.create_task(
+                self._close_owned_handle(), name="metabrowser-inventory-coordinator-close"
+            )
+            self._close_task = task
+        # Shutdown belongs to the coordinator, not whichever request first called
+        # close. Every caller joins it, even after another caller was cancelled.
+        await asyncio.shield(task)
+
+    async def _close_owned_handle(self) -> None:
+        """Drain active operations and release provider ownership exactly once."""
+
+        async with self._condition:
             await self._wait_for_transition_locked()
             self._transitioning = True
             try:
@@ -839,6 +854,8 @@ class InventoryCoordinator:
         result: ReadResult,
         *,
         include_catalog_decorations: bool,
+        overlay: OverlaySnapshot | None = None,
+        cursor: HostCursor | None = None,
     ) -> CoordinatedRead:
         """Join one provider result while the coordinator lock is held."""
 
@@ -849,7 +866,19 @@ class InventoryCoordinator:
             facts,
             include_catalog=include_catalog_decorations,
         )
-        overlay = self._overlay.snapshot(returned_paths)
+        if overlay is None:
+            overlay = self._overlay.snapshot(returned_paths)
+        else:
+            overlay = OverlaySnapshot(
+                revision=overlay.revision,
+                decorations=MappingProxyType(
+                    {
+                        path: decoration
+                        for path in returned_paths
+                        if (decoration := overlay.decorations.get(path)) is not None
+                    }
+                ),
+            )
         decorated = {
             path: DecoratedInventoryEntry(
                 facts=entry,
@@ -863,7 +892,7 @@ class InventoryCoordinator:
                 engine=result.version,
                 overlay_revision=overlay.revision,
             ),
-            cursor=self._current_host_cursor_locked(),
+            cursor=cursor if cursor is not None else self._current_host_cursor_locked(),
             entries=MappingProxyType(decorated),
             decorations=overlay.decorations,
         )

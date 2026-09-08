@@ -28,8 +28,9 @@ from metabrowser.inventory_engine.contract import (
     RefreshObservation,
     RefreshReason,
     RefreshRequest,
+    native_inventory_path,
 )
-from metabrowser.inventory_engine.coordinator import InventoryCoordinator
+from metabrowser.inventory_engine.coordinator import InventoryConsistencyError, InventoryCoordinator
 from metabrowser.inventory_engine.overlay import (
     InventoryDecoration,
     InventoryDecorationPatch,
@@ -49,6 +50,15 @@ class _TrackerState:
     active_paths: set[str] = field(default_factory=set)
     candidates: set[str] = field(default_factory=set)
     pending_refresh: dict[str, ObservationKind] = field(default_factory=dict)
+
+
+def _record_path(root: Path, record: CatalogRecord) -> Path:
+    """Cross from a provider identity to the platform name used by activity probes."""
+
+    native = native_inventory_path(record.path)
+    if native is None:
+        raise InventoryConsistencyError("activity catalog returned a noncanonical path")
+    return root / native
 
 
 def _is_trackable(record: CatalogRecord, *, root_is_scoped: bool = False) -> bool:
@@ -118,7 +128,7 @@ def _compute_updates(
 ) -> dict[str, InventoryDecorationPatch]:
     """Derive refresh hints and ownership-safe decoration patches off-loop."""
 
-    by_absolute = {str(root / record.path): record for record in records}
+    by_absolute = {str(_record_path(root, record)): record for record in records}
     missing_absolute = set(poll.missing)
     missing_relative = {
         record.path for absolute, record in by_absolute.items() if absolute in missing_absolute
@@ -147,7 +157,7 @@ def _compute_updates(
     for record in records:
         if record.path in missing_relative:
             continue
-        absolute = root / record.path
+        absolute = _record_path(root, record)
         is_recent = str(absolute) in active_absolute
         previous_quiet = state.quiet_counters.get(
             record.path,
@@ -216,7 +226,7 @@ async def _tick(
         config=config,
         root=root,
     )
-    absolute_paths = [root / record.path for record in records]
+    absolute_paths = [_record_path(root, record) for record in records]
     poll = await asyncio.to_thread(tracker.poll_observations, absolute_paths)
     patches = await asyncio.to_thread(
         _compute_updates,

@@ -73,7 +73,7 @@ def test_dotenv_drives_plugin_discovery(tmp_path: Path) -> None:
     plugin = plugins_parent / "envloaded"
     plugin.mkdir()
     (plugin / "manifest.toml").write_text(
-        '[plugin]\nname = "envloaded"\nsdk_version = "0.5"\n'
+        '[plugin]\nname = "envloaded"\nsdk_version = "0.6"\n'
         '[[kind]]\nid = "envk"\nmatch = { ext = ".envk" }\n'
     )
     (plugin / "index.js").write_text("// stub\n")

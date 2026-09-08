@@ -302,6 +302,9 @@ class Server:
             environment = os.environ.copy()
             environment["METABROWSER_INVENTORY_PROVIDER"] = self._provider
             environment["METABROWSER_DEBUG"] = "1"
+            # Fast scans report completion at DEBUG. Waiting for an INFO-only
+            # transcript otherwise turns a finished small scan into a 600s timeout.
+            environment["METABROWSER_LOG_LEVEL"] = "DEBUG"
             self._process = subprocess.Popen(
                 [
                     str(self._build.executable),

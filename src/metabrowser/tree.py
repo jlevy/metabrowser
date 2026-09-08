@@ -556,7 +556,6 @@ def build_inventory_tree_from_entries(
     entries: Sequence[Any],
     parent_rel: str,
     max_depth: int,
-    root_abs: Path,
     parent_ignored: bool = False,
     max_entries: int | None = None,
 ) -> list[dict[str, Any]]:
@@ -574,7 +573,6 @@ def build_inventory_tree_from_entries(
         parent_rel=parent_rel,
         max_depth=max_depth,
         parent_ignored=parent_ignored,
-        root_abs=root_abs,
         max_entries=max_entries,
     )
 
@@ -585,7 +583,6 @@ def _build_inventory_subtree(
     parent_rel: str,
     max_depth: int,
     parent_ignored: bool,
-    root_abs: Path,
     max_entries: int | None = None,
 ) -> list[dict[str, Any]]:
     if max_depth <= 0:
@@ -618,7 +615,6 @@ def _build_inventory_subtree(
                     parent_rel=entry.path,
                     max_depth=max_depth - 1,
                     parent_ignored=ignored,
-                    root_abs=root_abs,
                 )
             else:
                 # Past the depth cap; emit a sentinel so the SPA
@@ -701,7 +697,7 @@ def _build_inventory_subtree(
                 # ``.gz`` file gets.
                 "ext": entry.ext,
             }
-            artifact = ArtifactPath(root_abs / entry.path)
+            artifact = ArtifactPath(Path(entry.name))
             if artifact.is_compressed:
                 file_dict["logical_ext"] = artifact.logical_ext
                 file_dict["compressed"] = True

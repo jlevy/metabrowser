@@ -118,11 +118,23 @@ A version-pinned request either returns that version or raises
 `VersionUnavailableError`. It never continues on a newer version.
 This rule lets the coordinator assemble complete paged catalogs and trees without
 joining generations.
-`InventoryReadSession` also holds the root and sparse-overlay boundary while those pages
-assemble. If the native engine stops retaining the pinned version, the whole bounded
-assembly restarts; cursors must advance and the final page must omit its continuation.
+`InventoryReadSession` leases the root and retains an immutable sparse-overlay snapshot
+while those pages assemble.
+It does not hold the coordinator lock across provider I/O; root replacement and shutdown
+wait on its operation lease.
+If the native engine stops retaining the pinned version, the whole bounded assembly
+restarts; cursors must advance and the final page must omit its continuation.
 Exhausted retries fail the request with `VersionUnavailableError`; a complete consumer
 never substitutes a partial first page.
+
+The Python provider also retains immutable continuation rows and their original state
+across ordinary filesystem updates.
+Retention is bounded by `_PAGE_MEMO_CAPACITY` and `MAX_ASSEMBLED_ROWS`; consuming a page
+advances its single-use cursor, and eviction raises `VersionUnavailableError`. This is
+query-local retention, not a historical copy of the whole inventory.
+Unrelated old version-pinned requests can still expire.
+The native provider adoption gate must demonstrate useful page completion under churn
+and an explicit eviction policy; the protocol does not promise indefinite retention.
 
 The Python provider retains the last coherent root-entry and navigation bundle while its
 revision is moving. A repeated root-summary read may return that earlier boundary until

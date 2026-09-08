@@ -33,7 +33,7 @@ equal("root href", route.href({ path: "" }), "/view/");
 equal("folder href keeps its slash", route.href({ path: "docs/" }), "/view/docs/");
 equal(
   "path segments encode independently",
-  route.href({ path: "docs/a b/% notes/雪.md" }),
+  route.href({ path: "docs/a b/%25 notes/雪.md" }),
   "/view/docs/a%20b/%25%20notes/%E9%9B%AA.md",
 );
 equal(
@@ -47,7 +47,7 @@ equal("parse folder", route.parse("/view/docs/", "", ""), { path: "docs/" });
 equal(
   "parse encoded path once",
   route.parse("/view/a%20b/%25%20notes/%E9%9B%AA.md", "?plain=1&x=a%20b", "#A%2FB%20%231"),
-  { path: "a b/% notes/雪.md", query: "plain=1&x=a%20b", fragment: "A/B #1" },
+  { path: "a b/%25 notes/雪.md", query: "plain=1&x=a%20b", fragment: "A/B #1" },
 );
 equal(
   "query escapes remain data rather than delimiters",
@@ -78,8 +78,35 @@ equal(
   "/view/docs/a.md",
 );
 equal("percent-looking data is not decoded twice", route.parse("/view/docs/a%252Fb.md", "", ""), {
-  path: "docs/a%2Fb.md",
+  path: "docs/a%252Fb.md",
 });
+
+for (const [identity, url] of [
+  ["100%25.md", "/view/100%25.md"],
+  ["report%2520final.txt", "/view/report%2520final.txt"],
+  ["d%251/雪.md", "/view/d%251/%E9%9B%AA.md"],
+  ["bad%FF 雪%25.txt", "/view/bad%FF%20%E9%9B%AA%25.txt"],
+]) {
+  equal(`native URL for ${identity}`, route.href({ path: identity }), url);
+  equal(`identity from ${url}`, route.parse(url), { path: identity });
+}
+equal(
+  "display percent-looking filename literally",
+  route.displayPath("a%2520%25.txt"),
+  "a%20%.txt",
+);
+
+sandbox.METABROWSER_PATH_ENCODING = "utf16";
+for (const [identity, url] of [
+  ["lone%D8%00.txt", "/view/lone%ED%A0%80.txt"],
+  ["lone%DF%FF.txt", "/view/lone%ED%BF%BF.txt"],
+  ["lone%D8%80.txt", "/view/lone%ED%A2%80.txt"],
+  ["unicode\u0600.txt", "/view/unicode%D8%80.txt"],
+]) {
+  equal(`Windows native URL for ${identity}`, route.href({ path: identity }), url);
+  equal(`Windows identity from ${url}`, route.parse(url), { path: identity });
+}
+sandbox.METABROWSER_PATH_ENCODING = "bytes";
 
 for (const [name, pathname] of [
   ["unrelated route", "/api/tree"],

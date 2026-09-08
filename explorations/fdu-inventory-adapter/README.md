@@ -162,9 +162,11 @@ integration tests or a snapshot that can be updated without understanding its di
 
 ## Disposition
 
-Keep `probe.py`, `run.py`, this document, and the normalized evidence artifact as the
-reproducible Phase 3A record.
-Delete `adapter.py` before closing the spike bead.
+Keep `probe.py`, `run.py`, `adapter.py`, this document, and the normalized evidence
+artifact together as the reproducible Phase 3A record.
+`run.py` imports the temporary adapter; retaining the harness requires retaining that
+implementation. The exploration is excluded from the distribution and must not be
+imported by production code.
 Phase 3B should first revise the shared contract and Python oracle; Phase 3C should then
 implement only the native projections justified by these measurements and replace the
 temporary materializing adapter with a thin production handle.

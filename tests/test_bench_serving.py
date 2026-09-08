@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from devtools.bench_serving import (
+    Server,
     _record_inventory_identity,
     _rows,
     build_corpus,
@@ -104,3 +105,17 @@ def test_settled_benchmark_covers_navigation_and_catalog_cache_paths() -> None:
     assert rows["settled catalog, first body (ms)"] == 20.0
     assert rows["settled catalog, retained body p50 (ms)"] == 2.0
     assert rows["settled catalog, 304 p50 (ms)"] == 0.5
+
+
+def test_benchmark_observes_fast_scan_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("METABROWSER_LOG_LEVEL", "WARNING")
+    root = tmp_path / "corpus"
+    build_corpus(root, 1)
+    build = resolve_metab_build("metab")
+    with Server(root, tmp_path / "server.log", build, provider="python") as server:
+        completed = server.await_walk(timeout_s=10)
+        assert completed is not None
+        assert completed["files"] == 1
+        assert completed["status"] == "done"

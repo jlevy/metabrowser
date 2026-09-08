@@ -403,8 +403,16 @@ implementation changes semantics.
 
 ## Open Questions
 
-No unresolved semantic question blocks Phase 1. Two optimization questions stay open on
-purpose and are answered by the Phase 2 A/B measurements:
+Phase 1 uses reversible escaped inventory identities and the Python provider’s bounded
+query-page retention.
+The host decodes identities only at filesystem and browser URL boundaries; see the
+[provider contract](../../architecture/arch-inventory-provider.md).
+Before implementing a native adapter, settle aggregate model ownership, recovery after a
+provider failure, and a measured continuation-retention policy.
+These remain explicit adoption work rather than assumptions that the Python refactor
+proves.
+
+Two optimization questions are answered by Phase 2 A/B measurements:
 
 - Do prefix or catalog entry deltas beat bounded invalidation plus coherent read for a
   real live browser workload?

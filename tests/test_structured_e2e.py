@@ -39,12 +39,13 @@ def structured_app(tmp_path: Path) -> TestClient:
 
 
 def test_parsed_endpoint_round_trips_json(tmp_path: Path, structured_app: TestClient) -> None:
-    f = tmp_path / "bundle.json"
+    f = tmp_path / "bundle%20.json"
     f.write_text(json.dumps({"spec": "Demo/0.1", "n": 3, "items": ["a", "b"]}))
-    resp = structured_app.get("/api/plugin/structured/parsed", params={"path": "bundle.json"})
+    resp = structured_app.get("/api/plugin/structured/parsed", params={"path": "bundle%2520.json"})
     assert resp.status_code == 200, resp.text
     payload = resp.json()
     assert payload["type"] == "structured"
+    assert payload["path"] == "bundle%2520.json"
     assert payload["ext"] == ".json"
     assert payload["parse_error"] is None
     assert payload["truncated"] is False

@@ -160,7 +160,6 @@ def _provider_tree(root: Path, *, depth: int) -> list[dict[str, Any]]:
                 entries=projection.entries,
                 parent_rel="",
                 max_depth=depth,
-                root_abs=root,
             )
 
     return asyncio.run(run())
@@ -276,7 +275,6 @@ def test_build_inventory_subtree_pending_total_files_is_not_empty() -> None:
         parent_rel="",
         max_depth=2,
         parent_ignored=False,
-        root_abs=Path("/tmp"),
     )
     by_name = {n["name"]: n for n in nodes}
     assert "empty" not in by_name["pending_dir"], (

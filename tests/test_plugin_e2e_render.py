@@ -115,7 +115,7 @@ def test_namespace_rule_is_enforced(tmp_path: Path) -> None:
     bad = tmp_path / "bad_plugin"
     bad.mkdir()
     (bad / "manifest.toml").write_text(
-        '[plugin]\nname = "bad_plugin"\nsdk_version = "0.5"\n'
+        '[plugin]\nname = "bad_plugin"\nsdk_version = "0.6"\n'
         '[[kind]]\nid = "bad"\n'
         'match = { ext = ".bad" }\n[[view]]\nkind = "bad"\nid = "v"\nlabel = "V"\n'
     )
@@ -176,3 +176,17 @@ def test_extra_plugins_dir_is_loaded() -> None:
     assert "sample_plugin" in payload["plugins"], (
         f"sample_plugin fixture should load via extra-dir; got {payload['plugins']!r}"
     )
+
+
+def test_generic_jsonl_loads_its_renderer_before_mounting_and_honors_disposal() -> None:
+    if not _has_node():
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(REPO_ROOT / "tests/dom/unknown-jsonl-lazy-behavior.js"), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "unknown JSONL lazy loading OK" in result.stdout

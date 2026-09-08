@@ -24,7 +24,7 @@ from strif import file_mtime_hash
 from metabrowser.builtin_plugins.structured.parser import parse_structured
 from metabrowser.gz_io import ArtifactPath
 from metabrowser.http_caching import build_scoped_etag
-from metabrowser.paths_safe import _rel_path, _safe_path
+from metabrowser.plugin_api import relativize_path, resolve_path
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -40,7 +40,7 @@ def parsed_handler(request: Request) -> JSONResponse:
     Source view goes through ``/api/file`` like every other text kind.
     """
     raw_path = request.query_params.get("path", "")
-    target = _safe_path(raw_path)
+    target = resolve_path(raw_path)
     if target is None or not target.is_file():
         return JSONResponse({"error": "Not found", "path": raw_path}, status_code=404)
 
@@ -57,7 +57,7 @@ def parsed_handler(request: Request) -> JSONResponse:
     mtime_hash = file_mtime_hash(target)
     payload = parse_structured(target, ext, mtime_hash)
 
-    rel = _rel_path(target)
+    rel = relativize_path(str(target))
     return JSONResponse(
         {
             "type": "structured",

@@ -12,6 +12,7 @@ import contextlib
 import heapq
 import itertools
 import logging
+import os
 import stat as stat_module
 import threading
 import time
@@ -877,8 +878,10 @@ class _PythonInventoryStore:
         )
         for observation in valid:
             rel = observation.path
-            await self._refresh_path(observation, gitignore_check=gitignore_check)
-            accepted.append(rel)
+            if await self._refresh_path(observation, gitignore_check=gitignore_check):
+                accepted.append(rel)
+            else:
+                rejected.append(rel)
         return RefreshReceipt(
             version=self._current_version(),
             accepted_paths=tuple(accepted),
@@ -1086,7 +1089,7 @@ class _PythonInventoryStore:
             provider="python",
             contract=_CONTRACT_ID,
             files_indexed=files_indexed,
-            directories_indexed=max(0, directory_count - 1),
+            directories_indexed=directory_count,
             watch_mode=self._watcher_mode,
             watch_state=self._watcher_state,
             watch_reason=self._watcher_reason,
@@ -1237,25 +1240,19 @@ class _PythonInventoryStore:
 
         wall_started = time.monotonic_ns()
         cpu_started = time.thread_time_ns()
-        lock_started = time.monotonic_ns()
-        with self._rollup_cache_lock:
-            lock_wait_ns = time.monotonic_ns() - lock_started
-            current_version = self._version(self._rollup_generation)
-        if request.at_version != current_version:
-            raise VersionUnavailableError(
-                "the requested Python inventory version is no longer retained"
-            )
-
+        # Continuations own immutable rows, version and state. Ordinary live
+        # mutations do not invalidate that image; only bounded memo eviction does.
         query = request.queries[0]
         after = query.after
         if after is None:  # pragma: no cover - guarded above
             return None
         lock_started = time.monotonic_ns()
         with self._page_lock:
+            lock_wait_ns = time.monotonic_ns() - lock_started
             memo = self._page_memos.get(after)
             if isinstance(query, DirectoryQuery):
                 if not isinstance(memo, _DirectoryPageMemo) or not (
-                    memo.version == current_version
+                    memo.version == request.at_version
                     and memo.path == query.path
                     and memo.max_depth == query.max_depth
                     and memo.include_ignored == query.include_ignored
@@ -1285,7 +1282,7 @@ class _PythonInventoryStore:
                     )
             elif isinstance(query, FilteredTreeQuery):
                 if not isinstance(memo, _FilteredTreePageMemo) or not (
-                    memo.version == current_version
+                    memo.version == request.at_version
                     and memo.query.path == query.path
                     and memo.query.max_depth == query.max_depth
                     and memo.query.filter == query.filter
@@ -1318,7 +1315,7 @@ class _PythonInventoryStore:
                     )
             else:
                 if not isinstance(memo, _CatalogPageMemo) or not (
-                    memo.version == current_version
+                    memo.version == request.at_version
                     and memo.selection == _catalog_selection(query)
                     and memo.token == query.after
                 ):
@@ -1351,7 +1348,6 @@ class _PythonInventoryStore:
                         total_matches=total_matches,
                         next_page=next_page,
                     )
-        lock_wait_ns += time.monotonic_ns() - lock_started
 
         projection_rows = self._projection_rows(projection)
         work = WorkCounters(
@@ -1420,7 +1416,11 @@ class _PythonInventoryStore:
         entries_by_path = (
             {entry.path: entry for entry in image.entries} if needs_entry_graph else {}
         )
-        children = _children_for(image.entries) if needs_entry_graph else {}
+        needs_children = any(
+            isinstance(query, (DirectoryQuery, FilteredTreeQuery, RollupQuery))
+            for query in request.queries
+        )
+        children = _children_for(image.entries) if needs_children else {}
         projections: list[ProjectionResult] = []
         rows_returned = 0
         remaining_rollup_passes = image.rollup_passes
@@ -2060,17 +2060,14 @@ class _PythonInventoryStore:
             if query.within_seconds is not None
             else 0
         )
+        extensions = {ascii_casefold(value) for value in query.extensions}
         matching = [
             entry
             for entry in entries
             if entry.type == "file"
             and entry.mtime_ns >= cutoff
             and (not query.prefix or entry.path.startswith(query.prefix))
-            and (
-                not query.extensions
-                or ascii_casefold(entry.ext)
-                in {ascii_casefold(value) for value in query.extensions}
-            )
+            and (not extensions or ascii_casefold(entry.ext) in extensions)
             and (query.include_ignored or not entry.gitignored)
         ]
         # Two orders, and they are different questions.
@@ -2136,13 +2133,26 @@ class _PythonInventoryStore:
             and is_visible_segment(rel, self._config.hidden_allowlist)
         )
 
+    def _has_native_parent(self, rel: str) -> bool:
+        """Reject hints through symlink ancestors, including links inside the root."""
+
+        native = native_inventory_path(rel)
+        root = self._root
+        if native is None or root is None:
+            return False
+        target = root / native
+        try:
+            return target.is_relative_to(root) and target.parent.resolve() == target.parent
+        except OSError:
+            return False
+
     async def _refresh_path(
         self,
         observation: RefreshObservation,
         *,
         gitignore_check: Callable[[Path, bool], bool] | None,
         max_depth: int | None = None,
-    ) -> None:
+    ) -> bool:
         root = self._root
         if root is None:
             raise InventoryClosedError("the Python inventory handle has no open root")
@@ -2153,16 +2163,33 @@ class _PythonInventoryStore:
         # so `None` here means a caller invented a path no platform name produces.
         native_rel = native_inventory_path(rel)
         if native_rel is None:
-            self.remove(rel)
-            return
+            return False
         target = root / native_rel
         existing = self.get(rel)
         self.invalidate(rel)
-        try:
-            stat_result = await asyncio.to_thread(target.lstat)
-        except FileNotFoundError:
-            self.remove(rel)
-            return
+        token = self.capture_write_token(rel)
+
+        def observe() -> tuple[bool, os.stat_result | None]:
+            # Priority, watcher and activity hints share the same no-follow scope.
+            if not self._has_native_parent(rel):
+                return False, None
+            try:
+                return True, target.lstat()
+            except FileNotFoundError:
+                return True, None
+
+        allowed, stat_result = await asyncio.to_thread(observe)
+        if not allowed:
+            return False
+        if stat_result is None:
+            if self.capture_write_token(rel) == token:
+                self.remove(rel)
+            return True
+        # Watcher, activity, and explicit refreshes may observe the same path
+        # concurrently. The filesystem read must retain its generation across the
+        # await, just like a walker's delayed directory finalization.
+        if self.capture_write_token(rel) != token:
+            return True
         parent = rel.rpartition("/")[0]
         try:
             gitignored = bool(
@@ -2206,6 +2233,8 @@ class _PythonInventoryStore:
             # Keep refresh semantics aligned with the boot walker: the browser
             # wire cannot represent sockets, FIFOs, or device nodes.
             self.remove(rel)
+
+        return True
 
     def _reset_batch(self) -> ChangeBatch:
         with self._rollup_cache_lock:
@@ -2908,6 +2937,8 @@ class _PythonInventoryStore:
         if native_rel is None:
             return
         target = root / native_rel
+        if not await asyncio.to_thread(self._has_native_parent, rel):
+            return
         try:
             target_resolved = target.resolve()
         except OSError:

@@ -51,19 +51,19 @@ def test_sidekick_path_helpers_are_public_and_root_bounded(tmp_path: Path) -> No
     original_root = paths_safe.ROOT_DIR
     try:
         _set_root_dir(tmp_path)
-        folder = tmp_path / "reports"
+        folder = tmp_path / "reports%20"
         folder.mkdir()
         report = folder / "summary.md"
         report.write_text("# Summary\n")
 
-        assert resolve_path("reports/summary.md") == report
+        assert resolve_path("reports%2520/summary.md") == report
         root = resolve_path("")
         assert root == tmp_path
         assert root is not None and root.is_dir()
-        assert resolve_directory("reports") == folder
+        assert resolve_directory("reports%2520") == folder
         assert resolve_path("../outside.txt") is None
-        assert resolve_directory("reports/summary.md") is None
-        assert relativize_path(str(report)) == "reports/summary.md"
+        assert resolve_directory("reports%2520/summary.md") is None
+        assert relativize_path(str(report)) == "reports%2520/summary.md"
     finally:
         _set_root_dir(original_root)
 

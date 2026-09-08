@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -26,6 +27,7 @@ from metabrowser.inventory_engine.overlay import (
     InventoryDecoration,
     InventoryDecorationPatch,
 )
+from metabrowser.inventory_engine.runtime import default_inventory_config
 from metabrowser.settings import ACTIVE_TRACKER_QUIET_POLLS
 from tests.inventory_harness import InventoryHarness, inventory_harness
 
@@ -67,6 +69,9 @@ async def _entry(harness: InventoryHarness, path: str):
 
 def test_tick_refreshes_facts_then_marks_the_overlay_active(tmp_path: Path) -> None:
     log = _setup_fixture(tmp_path)
+    renamed = log.with_name("progress%20.jsonl")
+    log.rename(renamed)
+    log = renamed
 
     async def run() -> None:
         async with inventory_harness(tmp_path) as harness:
@@ -79,7 +84,7 @@ def test_tick_refreshes_facts_then_marks_the_overlay_active(tmp_path: Path) -> N
                 state,
                 tracker,
             )
-            baseline, baseline_entry = await _entry(harness, "runs/x/.logs/foo.jsonl")
+            baseline, baseline_entry = await _entry(harness, "runs/x/.logs/progress%2520.jsonl")
             assert not baseline_entry.decoration.active
 
             log.write_text('{"event":"start"}\n{"event":"step"}\n')
@@ -90,7 +95,7 @@ def test_tick_refreshes_facts_then_marks_the_overlay_active(tmp_path: Path) -> N
                 state,
                 tracker,
             )
-            updated, updated_entry = await _entry(harness, "runs/x/.logs/foo.jsonl")
+            updated, updated_entry = await _entry(harness, "runs/x/.logs/progress%2520.jsonl")
             assert updated_entry.decoration.active
             assert updated_entry.facts.size == log.stat().st_size
             assert updated.version.engine.sequence > baseline.version.engine.sequence
@@ -104,7 +109,10 @@ def test_quiet_overlay_transition_preserves_engine_version_and_pid_label(
     log = _setup_fixture(tmp_path, with_pid=True)
 
     async def run() -> None:
-        async with inventory_harness(tmp_path) as harness:
+        # This assertion isolates overlay writes. A delayed native watch event for
+        # the earlier file write may legitimately advance the engine version.
+        config = replace(default_inventory_config(), watch_mode="off")
+        async with inventory_harness(tmp_path, config=config) as harness:
             state = _TrackerState()
             tracker = FileActivityTracker(stale_after_s=1e-9)
             await _tick(

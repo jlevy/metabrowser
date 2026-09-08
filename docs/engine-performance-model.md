@@ -113,8 +113,12 @@ never later quoted as measurements.
 for iterating a per-entry change and an interleaved build-against-build mode for a claim
 against another build.
 It enforces the completeness and equal-work checks above.
-Neither mode is a release gate; `explorations/performance-loop/run.py` owns that, and
-`devtools/bench_serving.py` owns serving measurement inside `make verify`.
+`explorations/performance-loop/run.py` owns the explicit performance-loop gates.
+`devtools/bench_serving.py` measures serving paths and enables diagnostic logging so
+fast scan completions are visible.
+Run paired builds on the same corpus with the same flags.
+`make verify` checks the benchmark harness, but does not run these timing experiments;
+record their results separately when making a performance claim.
 
 ## References
 

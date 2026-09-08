@@ -72,7 +72,7 @@
       "id": "spaces-unicode-percent",
       "canonicalUrl": "/view/docs/a%20b/%E9%9B%AA%25.md",
       "intent": { "syntax": "markdown", "authoredTarget": "a%20b/%E9%9B%AA%25.md", "action": "navigate" },
-      "expected": { "status": "internal", "path": "docs/a b/雪%.md" }
+      "expected": { "status": "internal", "path": "docs/a b/雪%25.md" }
     },
     {
       "id": "encoded-question-and-hash-in-filename",
@@ -84,7 +84,7 @@
       "id": "double-decode-is-not-performed",
       "canonicalUrl": "/view/docs/literal%252Fname.md",
       "intent": { "syntax": "markdown", "authoredTarget": "literal%252Fname.md", "action": "navigate" },
-      "expected": { "status": "internal", "path": "docs/literal%2Fname.md" }
+      "expected": { "status": "internal", "path": "docs/literal%252Fname.md" }
     },
     {
       "id": "image-resource",
@@ -209,7 +209,7 @@
       "sourcePath": "README.md",
       "canonicalUrl": "/view/docs/100%25.md",
       "intent": { "syntax": "markdown", "authoredTarget": "docs/100%25.md", "action": "navigate" },
-      "expected": { "status": "internal", "path": "docs/100%.md" }
+      "expected": { "status": "internal", "path": "docs/100%25.md" }
     },
     {
       "id": "github-readme-reserved-characters",

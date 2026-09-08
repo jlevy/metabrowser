@@ -271,7 +271,7 @@ function headerAddressHtml(path, isFile) {
     var attr = last && isFile ? "data-nav-file" : "data-nav-dir";
     var cls = last ? "folder-crumb folder-crumb-current" : "folder-crumb";
     crumbs.push(
-      `<button type="button" class="${cls}" ${attr}="${esc(walked)}" data-tip-text="${esc(walked)}">${esc(segments[i])}</button>`,
+      `<button type="button" class="${cls}" ${attr}="${esc(walked)}" data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}">${esc(window.MetabrowserNavigationRoute.displayPath(segments[i]))}</button>`,
     );
   }
   return prefix + rootCrumb + crumbs.join('<span class="folder-crumb-sep">/</span>');
@@ -1706,10 +1706,10 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: folderLabelId,
       });
       parts.push(
-        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(node.name)}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
+        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
         `<span class="tree-toggle">${ICONS.toggle}</span>`,
         `<span class="tree-item-name" id="${folderLabelId}">`,
-        esc(node.name),
+        esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
         "</span>",
         '<span class="tree-item-age-inline">',
         dirAge,
@@ -1766,12 +1766,12 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: linkLabelId,
       });
       parts.push(
-        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(node.name)}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}" data-tip-mtime="${node.mtime || 0}">`,
         '<span class="tree-item-icon">',
         ICONS.fileSymlink,
         "</span>",
         `<span class="tree-item-name" id="${linkLabelId}">`,
-        esc(node.name),
+        esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
         "</span>",
         '<span class="tree-item-age-inline"><span class="tree-item-age">',
         linkAge,
@@ -1826,7 +1826,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         });
       }
       parts.push(
-        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(node.name)}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
         container ? `<span class="tree-toggle">${ICONS.toggle}</span>` : "",
         '<span class="',
         iconCls,
@@ -1836,7 +1836,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         compressionBadge,
         "</span>",
         `<span class="tree-item-name" id="${fileLabelId}">`,
-        esc(node.name),
+        esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
         "</span>",
         '<span class="tree-item-age-inline"><span class="tree-item-age">',
         fileAge,
@@ -1999,6 +1999,38 @@ function markFolderKnownEmpty(childrenEl) {
 // joins it instead of racing a second identical fetch.
 const subtreeRequests = new Map();
 
+function invalidateSubtreeCaches(ops) {
+  const affected = new Set();
+  const removed = new Set();
+  for (const op of ops) {
+    let path = op.op === "upsert" ? op.entry.path : op.path;
+    if (op.op === "remove") {
+      removed.add(path);
+    }
+    while (true) {
+      affected.add(path);
+      if (!path) {
+        break;
+      }
+      path = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    }
+  }
+  // Invalidate every filter variant, including requests that began before the
+  // event. Work follows changed ancestors and cached folders, not inventory size.
+  for (const key of new Set([...subtreeCache.keys(), ...subtreeRequests.keys()])) {
+    const path = key.split("\u0000", 1)[0];
+    let stale = affected.has(path);
+    for (let ancestor = path; ancestor && !stale; ) {
+      stale = removed.has(ancestor);
+      ancestor = ancestor.includes("/") ? ancestor.slice(0, ancestor.lastIndexOf("/")) : "";
+    }
+    if (stale) {
+      subtreeCache.delete(key);
+      subtreeRequests.delete(key);
+    }
+  }
+}
+
 function fetchSubtree(path) {
   const key = subtreeCacheKey(path);
   const existing = subtreeRequests.get(key);
@@ -2019,6 +2051,11 @@ function fetchSubtree(path) {
     );
     if (!Array.isArray(data.tree)) {
       throw new Error("Malformed tree response");
+    }
+    if (subtreeRequests.get(key) !== request) {
+      // An event invalidated this in-flight read. Join or start the fresh read
+      // before it can replace live rows or repopulate the prefetch cache.
+      return fetchSubtree(path);
     }
     _perf.measure(
       "knownFileCatalog:observeLazyTree",
@@ -5123,8 +5160,8 @@ function scheduleFilterReapply() {
 // files — content is still changing.
 
 const fileCache = new Map();
-// HTTP ETags associated with cached file payloads. When a file drops
-// out of the active set we move its path into ``fileNeedsRevalidate``
+// HTTP ETags associated with cached file payloads. When filesystem facts change
+// or a file drops out of the active set, mark it in ``fileNeedsRevalidate``
 // rather than evicting the cache outright; the next ``selectFile``
 // sends ``If-None-Match`` and accepts a 304 to re-confirm the payload
 // without re-downloading. Server-side this is just the existing
@@ -5352,6 +5389,9 @@ async function selectFile(path, preferredViewId) {
           if (cached && fileETags.has(path)) {
             headers["if-none-match"] = fileETags.get(path);
           }
+          // This request checks the invalidation we started with. An event
+          // arriving during the request must survive for the next selection.
+          fileNeedsRevalidate.delete(path);
           const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
             headers: headers,
             signal: selectFileSignal,
@@ -5359,7 +5399,6 @@ async function selectFile(path, preferredViewId) {
           if (resp.status === 304 && cached) {
             // Server confirmed the cached payload is still fresh — zero-byte
             // body, render from memory.
-            fileNeedsRevalidate.delete(path);
             if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
               if (loadingIndicatorTimer) {
                 clearTimeout(loadingIndicatorTimer);
@@ -5398,7 +5437,6 @@ async function selectFile(path, preferredViewId) {
               boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
             }
           }
-          fileNeedsRevalidate.delete(path);
           if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
             if (loadingIndicatorTimer) {
               clearTimeout(loadingIndicatorTimer);
@@ -5411,6 +5449,9 @@ async function selectFile(path, preferredViewId) {
           }
           return { status: "cancelled" };
         } catch (err) {
+          if (cached) {
+            fileNeedsRevalidate.add(path);
+          }
           var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
           if (caught?.name === "AbortError") {
             return { status: "cancelled" };
@@ -5839,7 +5880,7 @@ async function renderFile(data, preferredViewId, claim) {
           html +=
             '<span class="file-header-path folder-breadcrumb">' +
             headerAddressHtml(data.path, true) +
-            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(data.path)}" data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
+            `<button class="icon-btn icon-btn-reveal file-header-copy" type="button" data-mb-copy="text" data-mb-copy-text="${esc(window.MetabrowserNavigationRoute.displayPath(data.path))}" data-mb-copy-label="Copy path" data-tip-text="Copy path" aria-label="Copy path">` +
             ICON_COPY +
             "</button>" +
             "</span>";
@@ -6365,6 +6406,11 @@ function fileStoreApplySnapshotInner(scope, entries) {
   // Atomic apply: rebuild the store from this snapshot before
   // notifying any subscriber, so derived views never see a
   // half-empty state.
+  subtreeCache.clear();
+  subtreeRequests.clear();
+  for (const path of fileCache.keys()) {
+    fileNeedsRevalidate.add(path);
+  }
   knownFileCatalog?.observeEventSnapshot(entries);
   fileStore = new Map();
   for (var i = 0; i < entries.length; i++) {
@@ -6384,6 +6430,8 @@ function fileStoreApplyChange(ops) {
 }
 
 function fileStoreApplyChangeInner(ops) {
+  invalidateSubtreeCaches(ops);
+  invalidateFilePreviews(ops);
   knownFileCatalog?.applyEventChange(ops);
   for (var i = 0; i < ops.length; i++) {
     var op = ops[i];
@@ -6412,6 +6460,42 @@ function fileStoreApplyChangeInner(ops) {
   }
   window.metabrowserDirectoryTotalsStore?.applyChange(ops);
   notifyFileStoreSubscribers({ kind: "change", ops: ops });
+}
+
+function invalidateFilePreviews(ops) {
+  const changed = new Set();
+  for (const op of ops) {
+    const path = op.op === "upsert" ? op.entry.path : op.path;
+    const previous = fileStore.get(path);
+    if (
+      op.op === "remove" ||
+      !previous ||
+      previous.type !== op.entry.type ||
+      previous.size !== op.entry.size ||
+      previous.mtime_ns !== op.entry.mtime_ns ||
+      op.entry.type === "dir"
+    ) {
+      changed.add(path);
+    }
+  }
+  // The shallow event scope reports deep changes through ancestor aggregates.
+  // Check only retained/in-flight previews; never scan the whole file catalog.
+  for (const path of new Set([...fileCache.keys(), currentPath, hoverPrefetchPath])) {
+    if (!path) {
+      continue;
+    }
+    let ancestor = path;
+    while (true) {
+      if (changed.has(ancestor)) {
+        fileNeedsRevalidate.add(path);
+        break;
+      }
+      if (!ancestor) {
+        break;
+      }
+      ancestor = ancestor.includes("/") ? ancestor.slice(0, ancestor.lastIndexOf("/")) : "";
+    }
+  }
 }
 
 // Mirror entry.active + labels.pid_alive into activeFiles, the
@@ -6615,7 +6699,7 @@ function _treeKeyCmp(a, b) {
 // inserted dirs always get a collapsed, empty `.tree-children`
 // sibling — the user can expand to lazy-load.
 function _buildRowHtml(entry, options) {
-  var name = entry.name || "";
+  var name = window.MetabrowserNavigationRoute.displayPath(entry.name || "");
   var level = options?.level || 1;
   var position = options?.position || 1;
   var setSize = options?.setSize || 1;
@@ -6771,9 +6855,8 @@ function _buildRowHtml(entry, options) {
 // Find the rendered child container under which an entry's
 // siblings live — for root entries this is `#tab-files`; for
 // entries under a folder it's the `.tree-children` sibling of the
-// `.tree-folder`. Returns null when the parent isn't rendered or
-// is collapsed (in which case we don't insert — the row will
-// appear when the user expands).
+// `.tree-folder`. Hidden children that already mounted stay current too.
+// A collapsed lazy stub waits for expansion and a fresh subtree read.
 function _findChildContainerFor(parentRel, panelEl) {
   if (!parentRel) {
     return treeRootForPanel(panelEl);
@@ -6784,11 +6867,14 @@ function _findChildContainerFor(parentRel, panelEl) {
   if (!folder) {
     return null;
   }
-  if (!folder.classList.contains("expanded")) {
-    return null;
-  }
   var children = folder.nextElementSibling;
   if (!children?.classList.contains("tree-children")) {
+    return null;
+  }
+  if (
+    !folder.classList.contains("expanded") &&
+    children.querySelector(":scope > .tree-lazy-placeholder")
+  ) {
     return null;
   }
   return children;

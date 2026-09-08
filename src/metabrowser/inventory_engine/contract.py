@@ -1132,6 +1132,15 @@ QUERY_TYPE_BY_KIND: Mapping[str, type[ReadQuery]] = {
 
 @dataclass(frozen=True, slots=True)
 class ReadRequest:
+    """Read one coherent boundary, optionally an exactly retained version.
+
+    A pin is a request, not a lease: providers may evict retained query pages.
+    A continuation must return its original version and state or raise
+    VersionUnavailableError, never silently move to the current tip. Providers
+    document their retention policy and prove useful page completion under churn
+    before adoption; the protocol does not require an unbounded historical index.
+    """
+
     queries: tuple[ReadQuery, ...] = ()
     at_version: EngineVersion | None = None
 

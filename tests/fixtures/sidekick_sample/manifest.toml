@@ -2,7 +2,7 @@
 name = "sidekick-sample"
 display_name = "Sample with sidekick (test fixture)"
 version = "0.0.1"
-sdk_version = "0.5"
+sdk_version = "0.6"
 
 [[kind]]
 id = "sidekick-doc"

@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 from metabrowser import walker
@@ -410,3 +411,11 @@ def test_rewalk_subtree_refuses_escaping_and_ancestor_symlinks(tmp_path: Path) -
     delta = asyncio.run(_run())
     assert delta == 0
     assert any("refusing rewalk" in m for m in handler.messages), handler.messages
+
+
+def test_tree_dump_honors_inventory_provider_selection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("METABROWSER_INVENTORY_PROVIDER", "unavailable-provider")
+    with pytest.raises(ValueError, match="unavailable-provider"):
+        asyncio.run(build_tree_envelope(tmp_path))

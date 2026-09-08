@@ -131,7 +131,7 @@ status: 200
 {
   "status": "done",
   "indexed_files": 4,
-  "indexed_dirs": 0,
+  "indexed_dirs": 1,
   "max_files": 500000,
   "truncated": false,
   "complete": true,
