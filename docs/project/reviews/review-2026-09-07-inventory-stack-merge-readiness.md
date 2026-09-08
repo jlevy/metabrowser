@@ -53,6 +53,7 @@ The current merge should not be described as completing native-provider adoption
 | Collapsed or prefetched folders kept old children after a filesystem event | Affected cache variants and in-flight reads are invalidated; mounted hidden rows stay current | `mb-rg0h` |
 | Reopening an edited inactive file served an indefinitely stale preview | Changed facts and ancestor events flag existing ETag revalidation, including invalidations during a request | `mb-1luh` |
 | Recent queries constructed unused full-tree topology and repeated filter setup | Build only the topology a query consumes and fold extensions once | `mb-dva8` |
+| Recent rebuilt full entries and unused host decorations for every returned file | Compact validated Recent records and distinct-ancestor traversal remove this work without a cache | `mb-ulzy` |
 | The overlay-only test raced unrelated native watcher delivery | Isolate its watcher; retain separate real-watcher coverage | `mb-mibz` |
 | Fast scans never satisfied the serving benchmark’s completion detector | Child processes explicitly enable the DEBUG completion log; a small-corpus regression covers it | `mb-gan6` |
 | Index metadata omitted the served root and JSON/YAML walk ignored provider selection | Restore root-inclusive counts and honor the selected provider for model output | `mb-sb5b`, addressed portion of `mb-iyu7` |
@@ -64,11 +65,18 @@ goldens. See [plugin path identity](../../plugins.md#path-identity).
 
 ## Performance Evidence
 
+**Correction, September 8:** the September 7 paired measurements below used a
+free-threaded Python baseline and regular Python for the candidate.
+They do not establish code-only startup, CPU, memory, or serving improvements or
+regressions. The initial September 8 scratch rerun had the same flaw.
+Retain these historical observations with that limitation; use the matching-runtime
+comparison below for the file-navigation conclusion.
+
 The [sanitized serving results](evidence/inventory-stack-serving-2026-09-07.json) retain
 the full measurements and method notes.
 Both builds used the same physical corpus and machine, with eight clients in the
-concurrency phases. These single diagnostic runs identify cost and regression direction;
-they are not statistical performance budgets.
+concurrency phases.
+These single diagnostic runs are not statistical performance budgets.
 The candidate includes the provider fixes and Recent optimization, measured before the
 subsequent browser cache fixes.
 
@@ -86,9 +94,8 @@ subsequent browser cache fixes.
 | Catalog first body, ms | 73.1 | 281.0 | 4.4 | 26.0 |
 | Settled peak RSS, KiB | 175,792 | 131,568 | 97,600 | 78,448 |
 
-Startup, CPU, and memory improve on both shapes.
-Some first-body and warm serving paths are slower; `mb-5no9` tracks profiling those
-costs without weakening consistency or adding speculative caches.
+The observed startup, CPU, memory, and serving differences combine code and interpreter
+changes. `mb-5no9` tracks further scaling measurements with matched runtimes.
 The 60,000-file Recent profile also fell from 613,017 calls and 223 ms to 127,551 calls
 and 49 ms, with the same 61,105 rows visited and 50 results.
 That is a provider profile, not browser latency.
@@ -108,6 +115,69 @@ Reproduce the candidate using `devtools/bench_serving.py` with `--corpus synthet
 the synthetic shape and `--projects 1` for the project shape.
 The harness accepts `--metab` to select an independently installed build.
 See [the performance model](../../engine-performance-model.md) for the measured phases.
+
+### September 8 Controlled Navigation Comparison
+
+The [controlled summaries](evidence/navigation-serving-2026-09-08.json) compare main
+`aeef188a`, the reviewed branch at `96638a7a`, and that branch with the compact Recent
+record fix. All use regular CPython 3.14.6 with identical dependency versions.
+Each comparison ran fresh baseline/candidate/candidate/baseline processes over the same
+13,709-file repository with gzip and 20 repetitions per warm/concurrent phase.
+The two comparisons total 3,752 successful measured requests.
+Indexed populations, complete catalog membership/extensions, file content/kind/path, and
+the 5,000-row Recent selection/count matched.
+The baseline’s native percent paths were explicitly normalized to the refactor’s
+canonical identities.
+
+| Median HTTP latency, ms | Main before pair | Branch before fix | Main after pair | Fixed branch |
+| --- | --- | --- | --- | --- |
+| Warm Markdown file | 2.23 | 2.52 | 2.17 | 2.02 |
+| Warm Python file | 2.12 | 2.25 | 1.94 | 1.88 |
+| Python file, seven clients without Recent | 10.81 | 11.56 | 10.35 | 10.76 |
+| Python file, eight clients with Recent | 39.74 | 62.70 | 36.98 | 41.04 |
+| Markdown file, eight clients with Recent | 39.07 | 61.24 | 37.49 | 41.25 |
+| Recent, eight clients | 32.20 | 59.30 | 30.30 | 34.38 |
+| Catalog, first body | 2.62 | 7.38 | 2.82 | 5.11 |
+
+The fixed Python-file p95 with Recent was 60.96 ms versus main’s 60.47 ms; Markdown p95
+was 66.03 versus 60.25 ms.
+The Recent workload consumed 1.27–1.30 process CPU seconds before the fix and 0.82–0.83
+after, across 20 bursts per process.
+Main consumed 0.68–0.79 seconds.
+Host one-minute load ranged roughly 8–10 on ten cores; wall-clock differences between
+the two pairs still include host and cache variation.
+No multi-second stalls occurred in either controlled comparison.
+
+Matching-runtime thread CPU profiling isolated about 24.2 ms of Recent selection and
+serialization before the fix versus 7.6 ms on main, for 5,000 returned rows.
+Full `InventoryEntry` construction dominated the added work; coordinator composition
+also built decorations the Recent route discarded.
+`RecentRecord` keeps only the five consumed facts and validates the canonical identity
+once. Traversal now visits each distinct ancestor once instead of rewalking every
+selected file’s ancestor chain.
+No cache, unchecked constructor, or new full-index mirror was added.
+Existing ranking, cutoff, count, and coherence semantics remain.
+
+This removes most of the measured regression, with about 4 ms of median overhead
+remaining under eight-client contention.
+Ordinary reads are comparable to main.
+First catalog materialization on this repository adds about 2.3 ms; this experiment does
+not establish its cost at larger sizes.
+These residual costs stay visible in `mb-5no9`; they do not justify another structural
+layer before merging the shipped Python provider.
+Native adoption gates remain separate.
+Reproduce using the
+[CLI navigation comparison](../../engine-performance-model.md#comparing-file-navigation-without-a-browser),
+then validate interaction and rendering in a real browser.
+
+The full September 8 gate subsequently reported five new HTTPX2/HTTPCore2 advisories.
+The development client and transport were upgraded to 2.12.0 under the existing
+cool-off; see the
+[dependency review](../../../SUPPLY-CHAIN-SECURITY.md#development-http-client-review-september-8-2026).
+The paired performance measurements above retain their original, identical 2.5.0
+development environments.
+Neither package is an application runtime dependency, and the benchmark uses the
+standard-library HTTP client.
 
 ## Verification
 

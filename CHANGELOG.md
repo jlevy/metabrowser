@@ -56,8 +56,10 @@ Inventory engine:
   and provider reads to proceed.
 
 - Recent queries skip unused directory topology construction and compute their extension
-  filter once. Inventory metadata counts the served root consistently with earlier
-  releases, and JSON/YAML walk output honors the configured inventory provider.
+  filter once. They return compact validated file records without building unused full
+  entries or host decorations, and visit shared ignored ancestors only once.
+  Inventory metadata counts the served root consistently with earlier releases, and
+  JSON/YAML walk output honors the configured inventory provider.
 
 - Plugin SDK 0.6 pins escaped inventory identities for API paths.
   Plugin readers, activity probes, Markdown links, browser URLs and filename search now

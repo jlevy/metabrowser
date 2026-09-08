@@ -120,6 +120,55 @@ Run paired builds on the same corpus with the same flags.
 `make verify` checks the benchmark harness, but does not run these timing experiments;
 record their results separately when making a performance claim.
 
+### Comparing File Navigation Without a Browser
+
+`devtools/bench_navigation.py` runs baseline/candidate/candidate/baseline on the same
+existing tree. Each fresh process completes discovery before measurement.
+It exercises warm text-file reads, ETag revalidation, optional Markdown rendering, and
+concurrent tree/navigation/rollup/catalog traffic with and without a 5,000-row Recent
+request. It never populates or touches the served corpus.
+
+Install both checkouts with their committed locks and the **same explicit Python
+interpreter**, including its patch release and free-threading mode:
+
+```shell
+uv --config-file /tmp/metab-main/uv.toml sync --project /tmp/metab-main \
+  --python "$PWD/.venv/bin/python" --all-extras --all-groups --locked
+uv --config-file uv.toml run --frozen python -m devtools.bench_navigation \
+  --root . --baseline-metab /tmp/metab-main/.venv/bin/metab \
+  --baseline-paths native \
+  --file docs/engine-performance-model.md \
+  --file tests/test_active_tracker_event_loop_stall.py \
+  --render-file docs/engine-performance-model.md \
+  --rounds 20 --json /tmp/navigation-comparison.json
+```
+
+Here `/tmp/metab-main` is an independently checked-out baseline, not a corpus the tool
+creates. `--baseline-paths native` is specifically for main before the canonical path
+refactor; omit it for a baseline that already uses canonical identities.
+File arguments name native paths relative to the served root.
+The tool requires POSIX console scripts installed by uv so it can inspect the actual
+interpreter, then refuses mismatched Python builds or GIL modes.
+It records dependency versions, source hashes, code versions, host load, process CPU and
+RSS, raw latency samples, and p50/p95/max summaries.
+Dependency differences are reported explicitly and must be considered when attributing a
+result to code.
+
+The JSON and adjacent `.logs` directory must be outside the corpus.
+Keep that tree unchanged and pause tests, installs, and other benchmarks during the run.
+Status, indexed population, text content/kind/path, complete catalog membership and
+extensions, and Recent membership/counts must agree before the tool reports success.
+Catalog ordering and the explicitly selected native path spelling are normalized for
+comparison. A file aging out of the 24-hour Recent window or a changed cutoff selection
+fails the check; inspect that difference before comparing timings.
+Counts above the provider’s display-count cap can also differ from older builds and fail
+comparison; use a corpus whose 24-hour population fits that cap for this workload.
+First-render samples include process-local rendering setup, not cold filesystem caches.
+Use fewer rounds for a quick investigation, then repeat with enough samples on a quiet
+host before making a regression claim.
+Finish with the browser to check rendering and interaction costs that HTTP alone cannot
+measure.
+
 ## References
 
 - [Inventory provider contract](project/architecture/arch-inventory-provider.md) — the

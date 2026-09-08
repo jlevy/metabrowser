@@ -38,7 +38,6 @@ from metabrowser.inventory_engine.contract import (
     QueryKind,
     ReadRequest,
     ReadResult,
-    RecentProjection,
     RefreshReceipt,
     RefreshRequest,
     WorkCounters,
@@ -325,7 +324,8 @@ class InventoryCoordinator:
     ) -> CoordinatedRead:
         """Run one coherent provider read and join requested host decorations.
 
-        Entry-bearing projections always receive their sparse overlay. Catalog
+        Entry-bearing projections always receive their sparse overlay. Recent records
+        contain only file facts and do not consume decorations. Catalog
         projections carry identities rather than entries, so their decorations are
         joined only for the activity tracker that consumes them. Bulk catalog delivery
         leaves this false and therefore performs no O(catalog) work on the event loop.
@@ -906,7 +906,7 @@ class InventoryCoordinator:
                 entries = (projection.entry,) if projection.entry is not None else ()
             elif isinstance(
                 projection,
-                (DirectoryProjection, FilteredTreeProjection, RecentProjection),
+                (DirectoryProjection, FilteredTreeProjection),
             ):
                 entries = projection.entries
             else:

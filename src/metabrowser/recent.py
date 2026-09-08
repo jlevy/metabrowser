@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from metabrowser.inventory_engine.contract import CountKind, InventoryEntry, RecentProjection
+from metabrowser.inventory_engine.contract import CountKind, RecentProjection, RecentRecord
 from metabrowser.settings import (
     RECENT_DEFAULT_LIMIT,
     RECENT_MAX_LIMIT,
@@ -53,7 +53,7 @@ def recent_result_from_projection(
     )
 
 
-def _entry_to_wire(entry: InventoryEntry) -> dict[str, Any]:
+def _entry_to_wire(entry: RecentRecord) -> dict[str, Any]:
     wire: dict[str, Any] = {
         "name": entry.name,
         "path": entry.path,

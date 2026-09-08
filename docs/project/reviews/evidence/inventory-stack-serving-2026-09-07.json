@@ -6,6 +6,7 @@
   "candidate_base_commit": "7190f21f77f67c76deba03bbbeb0c801498adf0f",
   "candidate_changes": "Working tree with shutdown, refresh, read-session, path-boundary, Recent-query and directory-count fixes; measured before later browser cache fixes.",
   "method_notes": [
+    "Correction recorded September 8: baseline used free-threaded CPython 3.14.7 while the candidate used regular CPython 3.14.6. These timings mix interpreter and code changes and do not establish code-only performance differences. See navigation-serving-2026-09-08.json for a controlled navigation comparison.",
     "Same physical corpus and host for each main/candidate pair. These are single diagnostic runs, not statistical performance budgets.",
     "The cold_scan phase includes the harness readiness rollup request and is not a no-client filesystem floor.",
     "Main predates provider diagnostics. A scratch harness adapts its walker completion log regex and labels its provider pre-refactor-main; HTTP probes are otherwise shared.",

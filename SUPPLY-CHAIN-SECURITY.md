@@ -90,6 +90,29 @@ Changing any of these versions requires a new review against the checks above.
 
 ## Verification
 
+### Development HTTP Client Review (September 8, 2026)
+
+The locked development-only `httpx2` and `httpcore2` packages move from 2.5.0 to 2.12.0
+to resolve the five advisories reported by `uv audit`. The
+[HTTPX2 changelog](https://github.com/pydantic/httpx2/blob/main/src/httpx2/CHANGELOG.md)
+and
+[transport changelog](https://github.com/pydantic/httpx2/blob/main/src/httpcore2/CHANGELOG.md)
+describe the fixes.
+Both releases were published on August 18, so they satisfy the 14-day
+cool-off without an exception.
+Registry artifact hashes match `uv.lock`; the Python requirement remains compatible with
+this project’s supported range.
+
+The only new transitive record is `httpx2-jsfetch==1.0`, published August 7 and required
+by upstream solely on Emscripten.
+It is not installed on the project’s native test platforms.
+The published application gains no runtime dependency.
+No unrelated lock versions change.
+The normal full verification gate exercises the upgraded test client and audits the
+complete lock.
+
+### Automated Checks
+
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:
 npm safety settings, exact direct npm specifications, npm registry and integrity data,
 the uv cool-off, matching nvm and fnm versions, full-SHA action references, and trusted

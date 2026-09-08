@@ -1248,9 +1248,28 @@ class CountResult:
 
 
 @dataclass(frozen=True, slots=True)
+class RecentRecord:
+    """One regular-file row; Recent consumes no directory or host decorations."""
+
+    path: str
+    ext: str
+    size: int
+    mtime_ns: int
+    gitignored: bool = False
+
+    def __post_init__(self) -> None:
+        require_canonical_inventory_path(self.path, "path", allow_root=False)
+        _require_nonnegative(self.size, "size")
+
+    @property
+    def name(self) -> str:
+        return self.path.rpartition("/")[2]
+
+
+@dataclass(frozen=True, slots=True)
 class RecentProjection:
     query_id: str
-    entries: tuple[InventoryEntry, ...]
+    entries: tuple[RecentRecord, ...]
     total_matches: CountResult
     gitignored_directories: tuple[str, ...] = ()
     valid_until_ns: int | None = None

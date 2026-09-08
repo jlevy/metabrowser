@@ -89,6 +89,7 @@ from metabrowser.inventory_engine.contract import (
     ReadResult,
     RecentProjection,
     RecentQuery,
+    RecentRecord,
     RefreshObservation,
     RefreshReceipt,
     RefreshRequest,
@@ -2094,16 +2095,23 @@ class _PythonInventoryStore:
         capped = matching[: query.max_rows]
         capped.sort(key=lambda entry: (-entry.mtime_ns, entry.path))
         ignored_directories: set[str] = set()
+        seen: set[str] = set()
         for entry in capped:
-            parts = entry.path.split("/")
-            for index in range(1, len(parts)):
-                ancestor = "/".join(parts[:index])
+            ancestor = entry.parent
+            # Siblings share their entire ancestor chain. Once a directory has been
+            # visited, its parents have too; work scales with distinct ancestors.
+            while ancestor and ancestor not in seen:
+                seen.add(ancestor)
                 candidate = entries_by_path.get(ancestor)
                 if candidate is not None and candidate.gitignored:
                     ignored_directories.add(ancestor)
+                ancestor = ancestor.rpartition("/")[0]
         return RecentProjection(
             query_id=query.query_id,
-            entries=tuple(_semantic_entry(entry) for entry in capped),
+            entries=tuple(
+                RecentRecord(entry.path, entry.ext, entry.size, entry.mtime_ns, entry.gitignored)
+                for entry in capped
+            ),
             total_matches=_bounded_count(total, query.count_cap, len(capped)),
             gitignored_directories=tuple(sorted(ignored_directories)),
         )

@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 from metabrowser import paths_safe
 from metabrowser import server as proc_browser
 from metabrowser.inventory_engine.contract import (
@@ -17,6 +19,7 @@ from metabrowser.inventory_engine.contract import (
     ReadRequest,
     RecentProjection,
     RecentQuery,
+    RecentRecord,
 )
 from metabrowser.recent import DEFAULT_LIMIT, RecentResult, WindowKey, recent_result_from_projection
 from metabrowser.settings import LIVE_FILE_WINDOW_S, RECENT_WINDOW_SECONDS
@@ -58,6 +61,11 @@ def _recent(
             )
             projection = projection_read.result.projection("recent")
             assert isinstance(projection, RecentProjection)
+            assert all(isinstance(entry, RecentRecord) for entry in projection.entries)
+            # Bulk Recent responses never consume previews/activity decorations. The
+            # coordinator must not build and discard an O(page) decorated-entry map.
+            assert not projection_read.entries
+            assert not projection_read.decorations
             return recent_result_from_projection(projection, window=window, limit=limit)
 
     return asyncio.run(run())
@@ -137,6 +145,28 @@ def test_recent_carries_ignored_leaves_and_ancestor_directories(tmp_path: Path) 
     assert by_path["pkg/__pycache__/a.pyc"]["gitignored"] is True
     assert "gitignored" not in by_path["pkg/keep.py"]
     assert result.gitignored_dirs == ["pkg/__pycache__"]
+
+
+def test_recent_shared_and_nested_ignored_ancestors(tmp_path: Path) -> None:
+    _gitignore_repo(tmp_path, "build/\n")
+    (tmp_path / "build" / "deep").mkdir(parents=True)
+    for name in ("a", "b", "c"):
+        (tmp_path / "build" / "deep" / f"{name}.txt").write_text(name)
+    (tmp_path / "build" / "sibling.txt").write_text("sibling")
+
+    result = _recent(tmp_path)
+
+    assert result.gitignored_dirs == ["build", "build/deep"]
+    assert len(result.entries_flat) == 4
+
+
+def test_recent_record_has_one_canonical_identity() -> None:
+    record = RecentRecord("a/b.txt", ".txt", 3, 10)
+    assert record.name == "b.txt"
+    with pytest.raises(ValueError, match="nonnegative"):
+        RecentRecord("a.txt", ".txt", -1, 10)
+    with pytest.raises(ValueError):
+        RecentRecord("", "", 0, 0)
 
 
 def _repo_with_ignored_bulk(root: Path, bulk: int) -> None:

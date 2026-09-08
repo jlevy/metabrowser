@@ -69,6 +69,7 @@ from metabrowser.inventory_engine.contract import (
     ReadResult,
     RecentProjection,
     RecentQuery,
+    RecentRecord,
     RefreshObservation,
     RefreshReceipt,
     RefreshRequest,
@@ -596,6 +597,8 @@ def test_path_bearing_contract_records_reject_noncanonical_paths(path: str) -> N
         PriorityRequest(paths=(path,))
     with pytest.raises(ValueError, match="canonical POSIX-relative"):
         CatalogRecord(path=path, logical_extension="", size=0, mtime_ns=0)
+    with pytest.raises(ValueError, match="canonical POSIX-relative"):
+        RecentRecord(path=path, ext="", size=0, mtime_ns=0)
     with pytest.raises(ValueError, match="canonical POSIX-relative"):
         InventoryEntry(
             path=path,

@@ -171,6 +171,11 @@ must not traverse inventory entries or manufacture a diagnostics dependency.
 
 Recency filters carry `as_of_ns`; an unchanged engine version does not freeze a
 time-dependent answer.
+Recent returns `RecentRecord` rows containing path, extension, size, modification time,
+and ignored state. The name derives from the canonical path; directory aggregates and
+host preview/activity decorations are absent because the Recent response consumes
+neither. `test_browser_recent.py` checks the wire fields and absence of a coordinator
+decoration join, alongside filtering and ordering.
 Providers may return `valid_until_ns` when the answer has a known expiry.
 The coordinator includes that time boundary in request fingerprints, validators, and
 retained-body keys. A caller assembling a time-dependent result from several
