@@ -1,0 +1,1551 @@
+"""Sealed semantic contract implemented by inventory providers.
+
+The application owns this vocabulary. Providers implement it without exposing their
+retained-index types, concurrency model, or transport details. Every potentially large
+query carries an explicit output bound, and every read returns its state and version at
+the same observation boundary as its projections.
+
+Row order is part of that contract, and every order below is **total**: two providers
+answering one query at one version return the same rows in the same sequence, with no tie
+left to insertion order, dictionary iteration, or a stable sort's input order. An order a
+provider merely happens to produce is not a contract, and one stated only in prose is not
+either. These were undocumented here while two implementations quietly disagreed, which is
+the failure this section exists to prevent.
+
+Directory and filtered-tree pages are **breadth-first level order**: every child of the
+requested path, then every child of those directories, until `max_depth` or the row bound
+is reached. Within one parent, directories precede non-directories and each partition is
+ordered by the canonical POSIX name's UTF-8 bytes — so uppercase sorts before lowercase,
+as byte order gives.
+
+Level order rather than pre-order, because it keeps truncation honest. A pre-order page
+cut at its row bound can return one directory and a thousand of its descendants while
+leaving the caller unable to tell whether the parent held two entries or two thousand.
+Level order returns the complete shallow picture first, so what a bound withheld shows up
+as missing depth rather than as hidden breadth.
+
+Catalog pages are ordered by the complete canonical POSIX path's UTF-8 bytes.
+
+Recent answers two ordering questions and a provider must implement both.
+
+*Which rows*: ignored state, then modification time descending, then canonical path
+ascending. Ignored entries rank last on purpose — installing dependencies writes thousands
+of files at once, and pure recency would answer "what have I been working on" with ten
+`node_modules` paths and none of the caller's own work.
+
+*In what order they are returned*: modification time descending, then canonical path
+ascending, applied to the page that survived selection. So the caller sees the newest
+first among rows chosen for relevance.
+
+The path is the final key in both, because it is unique within one index and that makes
+each order total.
+
+Selection demotion applies in **every** branch, which is the part to get right. It once
+applied only when the match count exceeded the row bound, so one query name carried two
+ranking contracts and which one a caller received depended on the size of the corpus.
+Beyond these keys nothing reorders ranked rows — not size, not type, not depth.
+
+Every order above keys on the canonical path, so the canonical path has to exist for
+every entry, and it does: the encoding is **total**.
+
+A path is canonical POSIX-relative, `/`-separated, and derived from the platform name by
+escaping. Bytes that are not valid UTF-8 become `%XX` with uppercase hexadecimal digits,
+and `%` itself becomes `%25` so that the mapping stays injective and two different names
+can never collide on one canonical form. Runs that are valid UTF-8 are preserved, so a
+name that is mostly readable stays mostly readable.
+
+This is a name, not an address. It orders rows and resumes pages; it is never joined onto
+a native path or handed to the filesystem.
+
+Totality is the point. This contract once let a provider report that some entries had no
+canonical form, with an omission count and a bounded list of escaped examples, and the
+consumer then had to treat a directory as having two populations — the entries it knew
+and the entries it could name — with a separate completeness answer for each. Every mature
+system meeting this problem makes the derived name total instead: git quotes paths, Python
+escapes undecodable bytes as surrogates, and the `file://` URIs that LSP and desktop file
+managers exchange are percent-encoded. None of them tells a caller that a file has no
+name. Neither does this one, so there is no omission to report and no second population to
+describe.
+
+`include_ignored=False` **prunes the excluded directory's whole subtree**, contributing
+neither the directory nor any descendant. Filtering the row instead is an equally
+reasonable reading of an unstated rule, which is why the rule is stated.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import string
+from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass, field
+from enum import StrEnum
+from pathlib import Path
+from typing import Literal, Protocol, runtime_checkable
+
+from metabrowser.constants import LOGS_DIR, STATE_DIR
+from metabrowser.file_type_registry import (
+    FileTypeRegistryError,
+    load_file_type_registry_document,
+    load_file_type_registry_from_text,
+)
+from metabrowser.fs_paths import derive_ext
+from metabrowser.wire_models import NavigationTallies, RollupResult
+
+MAX_CHANGE_PATHS = 1_024
+MAX_COMMAND_PATHS = 1_024
+MAX_QUERIES_PER_READ = 1_024
+# Bound host-side materialization even when a provider returns endlessly advancing cursors.
+MAX_ASSEMBLED_PAGES = 4_096
+MAX_ASSEMBLED_ROWS = 1_000_000
+# Keep lifecycle diagnostics within the same fixed envelope as change delivery.
+MAX_INVENTORY_ISSUES = MAX_CHANGE_PATHS
+# Bound provider-supplied diagnostic text before it crosses an FFI boundary.
+MAX_ISSUE_DETAIL_BYTES = 4_096
+DEFAULT_DISCOVERY_MAX_FILES = 500_000
+DEFAULT_QUERY_MAX_WORK = 1_000_000
+DEFAULT_COUNT_CAP = 10_000
+MAX_COUNT_CAP = 1_000_000
+INVENTORY_SCOPE_IDENTITY_SCHEMA = "inventory-scope-v2"
+
+
+def _require_nonempty(value: str, name: str) -> None:
+    if not value:
+        raise ValueError(f"{name} must not be empty")
+
+
+def _require_positive(value: int, name: str) -> None:
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+
+
+def _require_nonnegative(value: int, name: str) -> None:
+    if value < 0:
+        raise ValueError(f"{name} must be nonnegative")
+
+
+def _require_query_max_work(value: int) -> None:
+    _require_positive(value, "max_work")
+    if value > MAX_ASSEMBLED_ROWS:
+        raise ValueError(f"max_work must be at most {MAX_ASSEMBLED_ROWS}")
+
+
+def _require_registry_document(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError("registry document must be nonempty text")
+    return value
+
+
+def _require_positive_integer(value: object, name: str) -> None:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+
+
+def _require_discovery_budget(value: object) -> None:
+    if not isinstance(value, DiscoveryBudget):
+        raise ValueError("budget must be a DiscoveryBudget")
+
+
+def _require_scope_flags(values: tuple[object, ...]) -> None:
+    if any(not isinstance(value, bool) for value in values):
+        raise ValueError("scope flags must be boolean")
+
+
+def _require_hidden_allowlist(value: object) -> None:
+    if not isinstance(value, tuple) or any(not isinstance(name, str) for name in value):
+        raise ValueError("hidden_allowlist must be a tuple of names")
+
+
+def require_canonical_inventory_path(
+    value: str,
+    name: str,
+    *,
+    allow_root: bool,
+) -> None:
+    """Validate the lossless POSIX-relative identity shared by all providers."""
+
+    if value == "":
+        if allow_root:
+            return
+        raise ValueError(f"{name} must be a canonical POSIX-relative path below the root")
+    # This runs twice for every entry a provider builds -- once for the path and
+    # once for the parent -- so on a 500,000-file root it runs a million times.
+    # It is written against the string rather than through PurePosixPath for that
+    # reason: constructing one and asking it for `as_posix()` and `parts` cost more
+    # than every check here put together, and decide exactly the same thing.
+    #
+    # `isascii` is the guard that matters. Every surrogate is non-ASCII, so an ASCII
+    # path cannot hold one, and the character scan below -- the single most expensive
+    # step when it runs -- is skipped for the paths essentially all trees are made of.
+    if not value.isascii() and any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        # A canonical path is the escaped form, so a surrogate here means some producer
+        # passed a raw platform name through. Rejecting at the boundary keeps the rule
+        # enforced rather than merely stated.
+        raise ValueError(f"{name} must be escaped, not a raw platform name")
+    if "\\" in value or "\x00" in value or value.startswith("/"):
+        raise ValueError(f"{name} must be a canonical POSIX-relative path")
+    # An empty segment is a trailing or doubled separator; "." and ".." are the
+    # spellings that are not the identity they resolve to. Rejecting all three is
+    # what `as_posix() != value` and the `parts` checks were doing, and it also
+    # rejects "." itself, whose PurePosixPath parts are empty.
+    for segment in value.split("/"):
+        if not segment or segment == "." or segment == "..":
+            raise ValueError(f"{name} must be a canonical POSIX-relative path")
+
+
+def parse_inventory_path(value: str) -> str | None:
+    """Read a path as a client spelled it, returning the key or ``None``.
+
+    This is the inbound direction, and the counterpart of
+    :func:`canonical_inventory_path`, which is outbound: that one turns a name the
+    filesystem gave us into the canonical identity, while this one turns a
+    spelling a client sent into the same identity, or says there isn't one.
+
+    HTTP clients and command lines spell one directory several ways -- ``docs``,
+    ``docs/``, ``./docs``, and ``.`` or ``""`` for the root. Providers must not each
+    decide what those mean: a spelling that the reference provider treats as the root
+    and a native one treats as a miss is a difference no test above the boundary would
+    attribute correctly.
+
+    ``None`` means the value cannot name anything inside the root, which callers report
+    as a miss rather than passing down. ``..`` is refused rather than resolved:
+    collapsing it would make the answer depend on whether a segment is a symlink, which
+    is a filesystem question the inventory key does not carry.
+
+    The result is checked against :func:`require_canonical_inventory_path` rather than
+    assumed canonical, so this function cannot drift from the rule it feeds. Every
+    tightening of that rule -- the surrogate refusal among them -- narrows this one in
+    the same commit.
+    """
+
+    if "\x00" in value or "\\" in value or value.startswith("/"):
+        return None
+    parts: list[str] = []
+    for segment in value.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            return None
+        parts.append(segment)
+    candidate = "/".join(parts)
+    try:
+        require_canonical_inventory_path(candidate, "path", allow_root=True)
+    except ValueError:
+        return None
+    return candidate
+
+
+def canonical_inventory_name(name: str) -> str:
+    """Escape one platform filename into its canonical form.
+
+    Total by construction: every name has one. Undecodable bytes become `%XX` with
+    uppercase hexadecimal digits, `%` itself becomes `%25` so the mapping stays injective,
+    and everything else is preserved, so a mostly-readable name stays mostly readable.
+
+    The platform branch mirrors how the name was decoded, and mirrors fdu. On POSIX,
+    `os.scandir` decodes undecodable bytes with `surrogateescape`, mapping each byte to one
+    scalar in `U+DC80..U+DCFF`, so each becomes one escape. On Windows a name is UTF-16
+    that need not be well formed, and an unpaired surrogate has no UTF-8 encoding at all,
+    so its two code units' bytes are escaped big-endian: `U+D800` becomes `%D8%00`, whose
+    hex digits read in the order the code unit is written.
+
+    Without this, ordering a directory that holds one undecodable name raised
+    `UnicodeEncodeError` from `name.encode("utf-8")` -- surrogates are not encodable -- so
+    a single such file made the whole directory unlistable, where fdu escaped it and
+    listed it.
+    """
+
+    # The common path has to stay cheap, because it is every file. Both checks are
+    # C-level: `%` is a substring scan, and encoding raises precisely on the surrogates
+    # that mark an undecodable byte. A Python-level scan over every character of every
+    # name in every page is the version of this that shows up in a profile.
+    if "%" not in name:
+        try:
+            name.encode("utf-8")
+        except UnicodeEncodeError:
+            pass
+        else:
+            return name
+    out: list[str] = []
+    for character in name:
+        point = ord(character)
+        if character == "%":
+            out.append("%25")
+        elif _POSIX_BYTES and 0xDC80 <= point <= 0xDCFF:
+            out.append(f"%{point - 0xDC00:02X}")
+        elif 0xD800 <= point <= 0xDFFF:
+            out.append(f"%{point >> 8:02X}%{point & 0xFF:02X}")
+        else:
+            out.append(character)
+    return "".join(out)
+
+
+def canonical_inventory_path(path: str) -> str:
+    """Escape a `/`-separated relative path.
+
+    The same function as for one name, not a split-escape-join, because no escape rule
+    produces or consumes `/`: escaping is per character, and a separator passes through
+    untouched. Splitting and rejoining gives the identical string while allocating a new
+    one for every path on every page, including the paths that needed nothing done to
+    them.
+    """
+
+    return canonical_inventory_name(path)
+
+
+_HEX_DIGITS = frozenset("0123456789ABCDEF")
+
+
+def native_inventory_name(name: str) -> str | None:
+    """Recover the platform filename a canonical name was escaped from.
+
+    The inverse of :func:`canonical_inventory_name`, and the reason the canonical
+    form can be an identity *and* an address. Without it the escape is a one-way
+    door: a name goes out escaped, comes back escaped, and matches nothing in a
+    store keyed by what the filesystem actually gave us. A literal ``%`` in a
+    filename is enough to trigger that -- ``report%20final.txt`` publishes as
+    ``report%2520final.txt`` and then resolves to nothing -- and such names are
+    ordinary, because that is what a URL-derived download is called.
+
+    ``None`` means the value is not in the image of the escaper, so no platform name
+    produces it. Callers report that as a miss rather than guessing, because guessing
+    is how a path that names nothing becomes a path that names something else.
+
+    Injective by construction, which is what makes an inverse exist at all: ``%``
+    escapes to ``%25`` first, so every ``%`` in a canonical name starts an escape, and
+    the escapes for undecodable bytes (``%80``..``%FF``) cannot collide with it. The
+    platform branch mirrors the forward function's exactly -- a POSIX escape is one
+    byte, a Windows one is a code unit written as two -- because a canonical name is
+    only meaningful against the platform whose names it was built from.
+    """
+
+    if "%" not in name:
+        return name
+    out: list[str] = []
+    index = 0
+    limit = len(name)
+    while index < limit:
+        character = name[index]
+        if character != "%":
+            out.append(character)
+            index += 1
+            continue
+        if index + 3 > limit:
+            return None
+        digits = name[index + 1 : index + 3]
+        if digits[0] not in _HEX_DIGITS or digits[1] not in _HEX_DIGITS:
+            return None
+        value = int(digits, 16)
+        index += 3
+        if value == 0x25:
+            out.append("%")
+        elif _POSIX_BYTES:
+            if value < 0x80:
+                # The forward function never emits these: an ASCII byte is kept as
+                # itself, so nothing escaped produces one.
+                return None
+            out.append(chr(0xDC00 + value))
+        elif 0xD8 <= value <= 0xDF:
+            # A Windows unpaired surrogate is written big-endian as two escapes.
+            if index + 3 > limit or name[index] != "%":
+                return None
+            low = name[index + 1 : index + 3]
+            if low[0] not in _HEX_DIGITS or low[1] not in _HEX_DIGITS:
+                return None
+            out.append(chr((value << 8) | int(low, 16)))
+            index += 3
+        else:
+            return None
+    return "".join(out)
+
+
+def native_inventory_path(path: str) -> str | None:
+    """Recover the platform spelling of a `/`-separated canonical path.
+
+    One call, not a split-unescape-join, for the same reason the forward direction is:
+    no escape produces or consumes `/`, so a separator passes through untouched and
+    splitting would only allocate.
+    """
+
+    return native_inventory_name(path)
+
+
+_POSIX_BYTES = os.name != "nt"
+
+
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def ascii_casefold(value: str) -> str:
+    """Fold ASCII letters only, leaving every other scalar untouched.
+
+    Suffix and name matching is case-insensitive because real files carry `.JPG` from
+    cameras and `.PDF` from elsewhere, and a caller filtering for `.jpg` means those too.
+    It is insensitive *only over ASCII* because that is the alphabet extensions actually
+    use, and because full Unicode lowering is locale-sensitive in ways nobody wants
+    deciding whether a file matches — Turkish dotless i being the standard example.
+
+    Stating the alphabet is what makes two providers agree. `str.lower()` folds all of
+    Unicode and fdu's `eq_ignore_ascii_case` folds only ASCII, so `archive.TÜRKÇE` matched
+    in one implementation and was dropped by the other. Identical on ASCII, divergent
+    beyond it, and invisible until a corpus stops being English.
+    """
+
+    return value.translate(_ASCII_LOWER)
+
+
+def catalog_terminal_suffix(name: str) -> str:
+    """Return the ASCII-folded terminal suffix defined by the provider contract.
+
+    The final dot starts a suffix only when it is neither the first nor final
+    character. Thus `.gitignore` and `notes.` have no suffix, while `..foo` has
+    `.foo`. Spelling the rule here keeps provider answers independent of path-library
+    versions.
+    """
+
+    dot = name.rfind(".")
+    if dot <= 0 or dot + 1 == len(name):
+        return ""
+    return ascii_casefold(name[dot:])
+
+
+class AdmittedObjectKind(StrEnum):
+    """Filesystem object kinds exposed through the portable provider contract."""
+
+    FILE = "file"
+    DIRECTORY = "directory"
+    SYMLINK = "symlink"
+
+
+ALL_ADMITTED_OBJECT_KINDS = (
+    AdmittedObjectKind.FILE,
+    AdmittedObjectKind.DIRECTORY,
+    AdmittedObjectKind.SYMLINK,
+)
+
+
+def _require_admitted_object_kinds(value: object) -> None:
+    if not isinstance(value, tuple):
+        raise ValueError("admitted object kinds must be a tuple")
+    if any(not isinstance(kind, AdmittedObjectKind) for kind in value):
+        raise ValueError("admitted object kinds must use AdmittedObjectKind values")
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryBudget:
+    """Execution bound for progressive discovery, separate from semantic scope."""
+
+    max_files: int = DEFAULT_DISCOVERY_MAX_FILES
+
+    def __post_init__(self) -> None:
+        _require_positive_integer(self.max_files, "max_files")
+
+
+@dataclass(frozen=True, slots=True)
+class InventoryConfig:
+    """Validated semantic scope plus execution policy for one root session."""
+
+    registry_document: str = field(default_factory=load_file_type_registry_document)
+    budget: DiscoveryBudget = field(default_factory=DiscoveryBudget)
+    hidden_allowlist: tuple[str, ...] = (LOGS_DIR, STATE_DIR)
+    include_hidden: bool = False
+    follow_symlinks: bool = False
+    one_filesystem: bool = False
+    admitted_object_kinds: tuple[AdmittedObjectKind, ...] = ALL_ADMITTED_OBJECT_KINDS
+    change_queue_size: int = 1_024
+    watch_mode: Literal["auto", "native", "poll", "off"] = "auto"
+
+    def __post_init__(self) -> None:
+        _require_discovery_budget(self.budget)
+        _require_scope_flags((self.include_hidden, self.follow_symlinks, self.one_filesystem))
+        _require_hidden_allowlist(self.hidden_allowlist)
+        _require_admitted_object_kinds(self.admitted_object_kinds)
+        _require_positive(self.change_queue_size, "change_queue_size")
+        registry_document = _require_registry_document(self.registry_document)
+        try:
+            load_file_type_registry_from_text(registry_document)
+        except FileTypeRegistryError as error:
+            raise ValueError(f"registry document is invalid: {error}") from error
+        if self.watch_mode not in {"auto", "native", "poll", "off"}:
+            raise ValueError("watch_mode must be auto, native, poll, or off")
+        if len(set(self.hidden_allowlist)) != len(self.hidden_allowlist):
+            raise ValueError("hidden_allowlist entries must be unique")
+        if any(
+            not name.startswith(".")
+            or name in {".", ".."}
+            or "/" in name
+            or "\\" in name
+            or "\x00" in name
+            for name in self.hidden_allowlist
+        ):
+            raise ValueError("hidden_allowlist entries must be exact hidden path-component names")
+        if self.include_hidden:
+            raise ValueError("the v1 scope must filter hidden path components")
+        if self.follow_symlinks:
+            raise ValueError("the v1 scope must retain symlinks without following them")
+        if self.one_filesystem:
+            raise ValueError("the v1 scope must cross filesystem boundaries")
+        if len(set(self.admitted_object_kinds)) != len(self.admitted_object_kinds):
+            raise ValueError("admitted object kinds must be unique")
+        if set(self.admitted_object_kinds) != set(ALL_ADMITTED_OBJECT_KINDS):
+            raise ValueError(
+                "the v1 admitted object kinds must be exactly file, directory, and symlink"
+            )
+
+
+def inventory_scope_fingerprint(config: InventoryConfig) -> str:
+    """Return the portable digest for filesystem scope semantics.
+
+    The canonical JSON array contains sorted ``[name, value]`` string pairs. Values
+    with internal structure are themselves compact canonical JSON so Rust and Python
+    adapters can reproduce the exact byte sequence without depending on object reprs.
+    """
+
+    components = (
+        ("schema", INVENTORY_SCOPE_IDENTITY_SCHEMA),
+        (
+            "hidden_allowlist",
+            json.dumps(
+                sorted(config.hidden_allowlist),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        ),
+        ("include_hidden", json.dumps(config.include_hidden)),
+        ("follow_symlinks", json.dumps(config.follow_symlinks)),
+        ("one_filesystem", json.dumps(config.one_filesystem)),
+        (
+            "admitted_object_kinds",
+            json.dumps(
+                sorted(kind.value for kind in config.admitted_object_kinds),
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        ),
+    )
+    payload = json.dumps(sorted(components), ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class EngineVersion:
+    """Opaque identity for one coherent provider state.
+
+    The semantic fingerprint covers every non-scope rule or reducer that can change a
+    complete answer. Providers with several native fingerprints combine them before
+    returning the version.
+    """
+
+    session: str
+    sequence: int
+    scope_fingerprint: str
+    semantic_fingerprint: str
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.session, "session")
+        _require_nonnegative(self.sequence, "sequence")
+        _require_nonempty(self.scope_fingerprint, "scope_fingerprint")
+        _require_nonempty(self.semantic_fingerprint, "semantic_fingerprint")
+
+    @property
+    def cursor(self) -> ChangeCursor:
+        """The change-stream position at this observation boundary."""
+
+        return ChangeCursor.from_version(self)
+
+
+@dataclass(frozen=True, slots=True)
+class ChangeCursor:
+    """Resume point in one provider session's ordered change stream."""
+
+    session: str
+    sequence: int
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.session, "session")
+        _require_nonnegative(self.sequence, "sequence")
+
+    @classmethod
+    def from_version(cls, version: EngineVersion) -> ChangeCursor:
+        """Derive the only valid cursor for *version*."""
+
+        return cls(session=version.session, sequence=version.sequence)
+
+
+class LifecyclePhase(StrEnum):
+    OPENING = "opening"
+    DISCOVERING = "discovering"
+    RECONCILING = "reconciling"
+    READY = "ready"
+    WATCHING = "watching"
+    STOPPED = "stopped"
+    FAILED = "failed"
+
+
+ALLOWED_PHASE_TRANSITIONS: Mapping[LifecyclePhase, frozenset[LifecyclePhase]] = {
+    LifecyclePhase.OPENING: frozenset(
+        {
+            LifecyclePhase.DISCOVERING,
+            LifecyclePhase.RECONCILING,
+            LifecyclePhase.READY,
+            LifecyclePhase.STOPPED,
+            LifecyclePhase.FAILED,
+        }
+    ),
+    LifecyclePhase.DISCOVERING: frozenset(
+        {
+            LifecyclePhase.RECONCILING,
+            LifecyclePhase.READY,
+            LifecyclePhase.WATCHING,
+            LifecyclePhase.STOPPED,
+            LifecyclePhase.FAILED,
+        }
+    ),
+    LifecyclePhase.RECONCILING: frozenset(
+        {
+            LifecyclePhase.READY,
+            LifecyclePhase.WATCHING,
+            LifecyclePhase.STOPPED,
+            LifecyclePhase.FAILED,
+        }
+    ),
+    LifecyclePhase.WATCHING: frozenset(
+        {
+            LifecyclePhase.RECONCILING,
+            LifecyclePhase.READY,
+            LifecyclePhase.STOPPED,
+            LifecyclePhase.FAILED,
+        }
+    ),
+    LifecyclePhase.READY: frozenset(
+        {
+            LifecyclePhase.RECONCILING,
+            LifecyclePhase.WATCHING,
+            LifecyclePhase.STOPPED,
+            LifecyclePhase.FAILED,
+        }
+    ),
+    LifecyclePhase.STOPPED: frozenset(),
+    LifecyclePhase.FAILED: frozenset({LifecyclePhase.STOPPED}),
+}
+
+
+class CoverageReason(StrEnum):
+    BUILDING = "building"
+    BUDGET = "budget"
+    CANCELLED = "cancelled"
+    INACCESSIBLE = "inaccessible"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True, slots=True)
+class Coverage:
+    complete: bool
+    reason: CoverageReason | None = None
+
+    def __post_init__(self) -> None:
+        if self.complete and self.reason is not None:
+            raise ValueError("complete coverage cannot carry a partial-coverage reason")
+        if not self.complete and self.reason is None:
+            raise ValueError("partial coverage requires a reason")
+
+
+class Freshness(StrEnum):
+    FRESH = "fresh"
+    RECONCILING = "reconciling"
+    STALE = "stale"
+    PARTIAL = "partial"
+
+
+class SourceKind(StrEnum):
+    SCANNED = "scanned"
+    REVALIDATED = "revalidated"
+    JOURNAL_SCOPED = "journal_scoped"
+    CACHED = "cached"
+
+
+@dataclass(frozen=True, slots=True)
+class IndexProgress:
+    entries_observed: int = 0
+    directories_observed: int = 0
+    estimated_entries: int | None = None
+
+    def __post_init__(self) -> None:
+        _require_nonnegative(self.entries_observed, "entries_observed")
+        _require_nonnegative(self.directories_observed, "directories_observed")
+        if self.estimated_entries is not None:
+            _require_nonnegative(self.estimated_entries, "estimated_entries")
+
+
+class IssueCode(StrEnum):
+    PERMISSION = "permission"
+    DISAPPEARED = "disappeared"
+    INVALID_METADATA = "invalid_metadata"
+    OBSERVATION_GAP = "observation_gap"
+    RESOURCE_BUDGET = "resource_budget"
+    PROVIDER_FAILURE = "provider_failure"
+
+
+@dataclass(frozen=True, slots=True)
+class InventoryIssue:
+    code: IssueCode
+    detail: str
+    path: str | None = None
+    transient: bool = False
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.detail, "detail")
+        if len(self.detail.encode("utf-8")) > MAX_ISSUE_DETAIL_BYTES:
+            raise ValueError(f"issue detail must be at most {MAX_ISSUE_DETAIL_BYTES} UTF-8 bytes")
+        if self.path is not None:
+            require_canonical_inventory_path(self.path, "issue path", allow_root=True)
+
+
+@dataclass(frozen=True, slots=True)
+class IndexState:
+    phase: LifecyclePhase
+    coverage: Coverage
+    freshness: Freshness
+    source: SourceKind
+    progress: IndexProgress = field(default_factory=IndexProgress)
+    issues: tuple[InventoryIssue, ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.issues) > MAX_INVENTORY_ISSUES:
+            raise ValueError(f"index state accepts at most {MAX_INVENTORY_ISSUES} issues")
+
+    def can_transition_to(self, other: IndexState) -> bool:
+        """Whether *other* is a legal next lifecycle state for this session."""
+
+        return other.phase == self.phase or other.phase in ALLOWED_PHASE_TRANSITIONS[self.phase]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkCounters:
+    """Bounded semantic work shared with the native fdu engine."""
+
+    observations: int = 0
+    unchanged: int = 0
+    stale: int = 0
+    resource_refused: int = 0
+    rows_visited: int = 0
+    rows_returned: int = 0
+    maintained_index_work: int = 0
+    commits_visited: int = 0
+    commits_returned: int = 0
+    directories_read: int = 0
+    entries_visited: int = 0
+    files_visited: int = 0
+    bytes_visited: int = 0
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            _require_nonnegative(getattr(self, name), name)
+
+
+@dataclass(frozen=True, slots=True)
+class BoundaryMetrics:
+    """Provider-boundary costs that are measurements, not semantic engine work."""
+
+    bytes_copied: int = 0
+    lock_wait_ns: int = 0
+    cpu_time_ns: int | None = None
+    wall_time_ns: int = 0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "bytes_copied",
+            "lock_wait_ns",
+            "wall_time_ns",
+        ):
+            _require_nonnegative(getattr(self, name), name)
+        if self.cpu_time_ns is not None:
+            _require_nonnegative(self.cpu_time_ns, "cpu_time_ns")
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderDiagnostics:
+    """Constant-size provider facts consumed by the host and performance tools."""
+
+    provider: str
+    contract: str
+    files_indexed: int
+    directories_indexed: int
+    watch_mode: str
+    watch_state: str
+    watch_reason: str
+    read_requests: int
+    cumulative_work: WorkCounters
+    cumulative_metrics: BoundaryMetrics
+
+    def __post_init__(self) -> None:
+        for name in ("provider", "contract", "watch_mode", "watch_state", "watch_reason"):
+            _require_nonempty(getattr(self, name), name)
+        for name in ("files_indexed", "directories_indexed", "read_requests"):
+            _require_nonnegative(getattr(self, name), name)
+
+
+class EntryType(StrEnum):
+    FILE = "file"
+    DIRECTORY = "dir"
+    SYMLINK = "symlink"
+
+
+@dataclass(frozen=True, slots=True)
+class InventoryEntry:
+    """Provider-owned filesystem facts for one served-root-relative path."""
+
+    path: str
+    parent: str
+    name: str
+    type: EntryType
+    ext: str
+    size: int
+    mtime_ns: int
+    gitignored: bool = False
+    total_files: int | None = None
+    total_size: int | None = None
+    unignored_files: int | None = None
+    unignored_size: int | None = None
+    newest_mtime_ns: int | None = None
+    empty: bool | None = None
+
+    def __post_init__(self) -> None:
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
+        require_canonical_inventory_path(self.parent, "parent", allow_root=True)
+        if self.path:
+            expected_parent, separator, expected_name = self.path.rpartition("/")
+            if not separator:
+                expected_parent = ""
+                expected_name = self.path
+            if self.parent != expected_parent or self.name != expected_name:
+                raise ValueError("entry path, parent, and name must describe one identity")
+        elif self.parent:
+            raise ValueError("the root entry must have the root as its parent")
+        _require_nonnegative(self.size, "size")
+
+    @property
+    def logical_extension(self) -> str:
+        return self.ext
+
+    @classmethod
+    def for_observed_file(
+        cls,
+        *,
+        path: str,
+        parent: str,
+        name: str,
+        size: int,
+        mtime_ns: int,
+        gitignored: bool = False,
+    ) -> InventoryEntry:
+        return cls(
+            path=path,
+            parent=parent,
+            name=name,
+            type=EntryType.FILE,
+            ext=derive_ext(name),
+            size=size,
+            mtime_ns=mtime_ns,
+            gitignored=gitignored,
+        )
+
+    @classmethod
+    def for_observed_dir(
+        cls,
+        *,
+        path: str,
+        parent: str,
+        name: str,
+        gitignored: bool = False,
+    ) -> InventoryEntry:
+        return cls(
+            path=path,
+            parent=parent,
+            name=name,
+            type=EntryType.DIRECTORY,
+            ext="",
+            size=0,
+            mtime_ns=0,
+            gitignored=gitignored,
+        )
+
+    @classmethod
+    def for_observed_symlink(
+        cls,
+        *,
+        path: str,
+        parent: str,
+        name: str,
+        size: int,
+        mtime_ns: int,
+        gitignored: bool = False,
+    ) -> InventoryEntry:
+        return cls(
+            path=path,
+            parent=parent,
+            name=name,
+            type=EntryType.SYMLINK,
+            ext="",
+            size=size,
+            mtime_ns=mtime_ns,
+            gitignored=gitignored,
+        )
+
+
+class QueryKind(StrEnum):
+    ENTRY = "entry"
+    DIRECTORY = "directory"
+    FILTERED_TREE = "filtered_tree"
+    ROLLUP = "rollup"
+    NAVIGATION = "navigation"
+    RECENT = "recent"
+    CATALOG = "catalog"
+    DIAGNOSTICS = "diagnostics"
+
+
+@dataclass(frozen=True, slots=True)
+class EntryQuery:
+    query_id: str
+    path: str
+    kind: Literal[QueryKind.ENTRY] = field(init=False, default=QueryKind.ENTRY)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
+
+
+@dataclass(frozen=True, slots=True)
+class DirectoryQuery:
+    query_id: str
+    path: str = ""
+    max_depth: int = 2
+    max_rows: int = 10_000
+    max_work: int = DEFAULT_QUERY_MAX_WORK
+    after: str | None = None
+    include_ignored: bool = True
+    kind: Literal[QueryKind.DIRECTORY] = field(init=False, default=QueryKind.DIRECTORY)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
+        _require_positive(self.max_depth, "max_depth")
+        _require_positive(self.max_rows, "max_rows")
+        _require_query_max_work(self.max_work)
+
+
+@dataclass(frozen=True, slots=True)
+class InventoryFilter:
+    extensions: tuple[str, ...] = ()
+    filenames: tuple[str, ...] = ()
+    type_families: tuple[str, ...] = ()
+    recency_seconds: float | None = None
+    minimum_size: int | None = None
+    include_ignored: bool = True
+    as_of_ns: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.recency_seconds is not None and self.recency_seconds <= 0:
+            raise ValueError("recency_seconds must be positive")
+        if self.minimum_size is not None:
+            _require_nonnegative(self.minimum_size, "minimum_size")
+        if self.recency_seconds is not None and self.as_of_ns is None:
+            raise ValueError("a recency filter requires as_of_ns")
+        if self.as_of_ns is not None:
+            _require_positive(self.as_of_ns, "as_of_ns")
+
+
+@dataclass(frozen=True, slots=True)
+class FilteredTreeQuery:
+    query_id: str
+    path: str = ""
+    max_depth: int = 2
+    max_rows: int = 10_000
+    max_work: int = DEFAULT_QUERY_MAX_WORK
+    after: str | None = None
+    filter: InventoryFilter = field(default_factory=InventoryFilter)
+    kind: Literal[QueryKind.FILTERED_TREE] = field(init=False, default=QueryKind.FILTERED_TREE)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
+        _require_positive(self.max_depth, "max_depth")
+        _require_positive(self.max_rows, "max_rows")
+        _require_query_max_work(self.max_work)
+
+
+@dataclass(frozen=True, slots=True)
+class RollupQuery:
+    query_id: str
+    path: str = ""
+    max_depth: int = 4
+    max_nodes: int = 50_000
+    top: int = 40
+    extension_top: int = 100
+    remaining_top: int = 20
+    filename_top: int = 20
+    rank: Literal["bytes", "dual"] = "bytes"
+    max_work: int = DEFAULT_QUERY_MAX_WORK
+    kind: Literal[QueryKind.ROLLUP] = field(init=False, default=QueryKind.ROLLUP)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        require_canonical_inventory_path(self.path, "path", allow_root=True)
+        _require_positive(self.max_nodes, "max_nodes")
+        _require_query_max_work(self.max_work)
+        for name in ("max_depth", "top", "extension_top", "remaining_top", "filename_top"):
+            _require_nonnegative(getattr(self, name), name)
+
+
+@dataclass(frozen=True, slots=True)
+class NavigationQuery:
+    query_id: str
+    presets: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    recency_windows: tuple[tuple[str, float], ...] = ()
+    max_rows: int = 200
+    max_work: int = DEFAULT_QUERY_MAX_WORK
+    as_of_ns: int | None = None
+    kind: Literal[QueryKind.NAVIGATION] = field(init=False, default=QueryKind.NAVIGATION)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        _require_positive(self.max_rows, "max_rows")
+        _require_query_max_work(self.max_work)
+        if self.recency_windows and self.as_of_ns is None:
+            raise ValueError("recency windows require as_of_ns")
+        if self.as_of_ns is not None:
+            _require_positive(self.as_of_ns, "as_of_ns")
+        if any(seconds <= 0 for _name, seconds in self.recency_windows):
+            raise ValueError("recency window durations must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class RecentQuery:
+    query_id: str
+    max_rows: int
+    as_of_ns: int
+    max_work: int = DEFAULT_QUERY_MAX_WORK
+    count_cap: int = DEFAULT_COUNT_CAP
+    prefix: str = ""
+    extensions: tuple[str, ...] = ()
+    within_seconds: float | None = None
+    include_ignored: bool = False
+    kind: Literal[QueryKind.RECENT] = field(init=False, default=QueryKind.RECENT)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        _require_positive(self.max_rows, "max_rows")
+        _require_positive(self.as_of_ns, "as_of_ns")
+        _require_query_max_work(self.max_work)
+        _require_positive(self.count_cap, "count_cap")
+        if self.count_cap > MAX_COUNT_CAP:
+            raise ValueError(f"count_cap must be at most {MAX_COUNT_CAP}")
+        if self.within_seconds is not None and self.within_seconds <= 0:
+            raise ValueError("within_seconds must be positive")
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogQuery:
+    query_id: str
+    max_rows: int
+    max_work: int = DEFAULT_QUERY_MAX_WORK
+    count_cap: int = DEFAULT_COUNT_CAP
+    after: str | None = None
+    include_ignored: bool = False
+    terminal_extensions: tuple[str, ...] = ()
+    ancestor_names: tuple[str, ...] = ()
+    size_less_than: int | None = None
+    kind: Literal[QueryKind.CATALOG] = field(init=False, default=QueryKind.CATALOG)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        _require_positive(self.max_rows, "max_rows")
+        _require_query_max_work(self.max_work)
+        _require_positive(self.count_cap, "count_cap")
+        if self.count_cap > MAX_COUNT_CAP:
+            raise ValueError(f"count_cap must be at most {MAX_COUNT_CAP}")
+        if len(set(self.terminal_extensions)) != len(self.terminal_extensions):
+            raise ValueError("terminal_extensions entries must be unique")
+        if any(not value.startswith(".") for value in self.terminal_extensions):
+            raise ValueError("terminal_extensions entries must start with a dot")
+        if any(value != value.lower() for value in self.terminal_extensions):
+            raise ValueError("terminal_extensions entries must be lowercase")
+        if any(
+            len(value) < 2 or "/" in value or "\\" in value or "." in value[1:]
+            for value in self.terminal_extensions
+        ):
+            raise ValueError("terminal_extensions entries must be canonical terminal suffixes")
+        if len(set(self.ancestor_names)) != len(self.ancestor_names):
+            raise ValueError("ancestor_names entries must be unique")
+        if any(
+            not name or name in {".", ".."} or "/" in name or "\\" in name
+            for name in self.ancestor_names
+        ):
+            raise ValueError("ancestor_names entries must be exact path-component names")
+        if self.size_less_than is not None:
+            _require_positive(self.size_less_than, "size_less_than")
+
+
+@dataclass(frozen=True, slots=True)
+class DiagnosticsQuery:
+    query_id: str
+    kind: Literal[QueryKind.DIAGNOSTICS] = field(init=False, default=QueryKind.DIAGNOSTICS)
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+
+
+type ReadQuery = (
+    EntryQuery
+    | DirectoryQuery
+    | FilteredTreeQuery
+    | RollupQuery
+    | NavigationQuery
+    | RecentQuery
+    | CatalogQuery
+    | DiagnosticsQuery
+)
+
+REGISTERED_QUERY_TYPES: tuple[type[ReadQuery], ...] = (
+    EntryQuery,
+    DirectoryQuery,
+    FilteredTreeQuery,
+    RollupQuery,
+    NavigationQuery,
+    RecentQuery,
+    CatalogQuery,
+    DiagnosticsQuery,
+)
+
+QUERY_TYPE_BY_KIND: Mapping[str, type[ReadQuery]] = {
+    QueryKind.ENTRY.value: EntryQuery,
+    QueryKind.DIRECTORY.value: DirectoryQuery,
+    QueryKind.FILTERED_TREE.value: FilteredTreeQuery,
+    QueryKind.ROLLUP.value: RollupQuery,
+    QueryKind.NAVIGATION.value: NavigationQuery,
+    QueryKind.RECENT.value: RecentQuery,
+    QueryKind.CATALOG.value: CatalogQuery,
+    QueryKind.DIAGNOSTICS.value: DiagnosticsQuery,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ReadRequest:
+    """Read one coherent boundary, optionally an exactly retained version.
+
+    A pin is a request, not a lease: providers may evict retained query pages.
+    A continuation must return its original version and state or raise
+    VersionUnavailableError, never silently move to the current tip. Providers
+    document their retention policy and prove useful page completion under churn
+    before adoption; the protocol does not require an unbounded historical index.
+    """
+
+    queries: tuple[ReadQuery, ...] = ()
+    at_version: EngineVersion | None = None
+
+    def __post_init__(self) -> None:
+        if len(self.queries) > MAX_QUERIES_PER_READ:
+            raise ValueError(f"a read request accepts at most {MAX_QUERIES_PER_READ} queries")
+        query_ids = [query.query_id for query in self.queries]
+        if len(query_ids) != len(set(query_ids)):
+            raise ValueError("query_id values must be unique within a read request")
+        if self.at_version is None and any(
+            isinstance(query, (DirectoryQuery, FilteredTreeQuery, CatalogQuery))
+            and query.after is not None
+            for query in self.queries
+        ):
+            raise ValueError("a page continuation requires an exact provider version")
+
+
+class EntryPresence(StrEnum):
+    PRESENT = "present"
+    ABSENT = "absent"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class EntryProjection:
+    query_id: str
+    presence: EntryPresence
+    entry: InventoryEntry | None
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        if (self.presence is EntryPresence.PRESENT) != (self.entry is not None):
+            raise ValueError("present entry projections require exactly one entry")
+
+
+@dataclass(frozen=True, slots=True)
+class DirectoryProjection:
+    query_id: str
+    entries: tuple[InventoryEntry, ...]
+    next_page: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        if self.next_page is not None:
+            _require_nonempty(self.next_page, "next_page")
+            if not self.entries:
+                raise ValueError("a tree continuation requires a nonempty page")
+
+
+@dataclass(frozen=True, slots=True)
+class FilteredTreeProjection:
+    query_id: str
+    entries: tuple[InventoryEntry, ...]
+    matching_leaves: int
+    matching_files: int
+    matching_bytes: int
+    next_page: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        _require_nonnegative(self.matching_leaves, "matching_leaves")
+        _require_nonnegative(self.matching_files, "matching_files")
+        _require_nonnegative(self.matching_bytes, "matching_bytes")
+        if self.next_page is not None:
+            _require_nonempty(self.next_page, "next_page")
+            if not self.entries:
+                raise ValueError("a tree continuation requires a nonempty page")
+
+
+@dataclass(frozen=True, slots=True)
+class RollupProjection:
+    query_id: str
+    payload: RollupResult | None
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+
+
+@dataclass(frozen=True, slots=True)
+class NavigationProjection:
+    query_id: str
+    payload: NavigationTallies
+    valid_until_ns: int | None = None
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        if self.valid_until_ns is not None:
+            _require_positive(self.valid_until_ns, "valid_until_ns")
+
+
+class CountKind(StrEnum):
+    EXACT = "exact"
+    AT_LEAST = "at_least"
+
+
+@dataclass(frozen=True, slots=True)
+class CountResult:
+    """Exact product count or a proven lower bound when counting stopped at a cap."""
+
+    kind: CountKind
+    value: int
+
+    def __post_init__(self) -> None:
+        _require_nonnegative(self.value, "count value")
+
+
+@dataclass(frozen=True, slots=True)
+class RecentRecord:
+    """One regular-file row; Recent consumes no directory or host decorations."""
+
+    path: str
+    ext: str
+    size: int
+    mtime_ns: int
+    gitignored: bool = False
+
+    def __post_init__(self) -> None:
+        require_canonical_inventory_path(self.path, "path", allow_root=False)
+        _require_nonnegative(self.size, "size")
+
+    @property
+    def name(self) -> str:
+        return self.path.rpartition("/")[2]
+
+
+@dataclass(frozen=True, slots=True)
+class RecentProjection:
+    query_id: str
+    entries: tuple[RecentRecord, ...]
+    total_matches: CountResult
+    gitignored_directories: tuple[str, ...] = ()
+    valid_until_ns: int | None = None
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        if self.total_matches.value < len(self.entries):
+            raise ValueError("total_matches cannot be smaller than returned entries")
+        if len(self.gitignored_directories) != len(set(self.gitignored_directories)):
+            raise ValueError("gitignored_directories entries must be unique")
+        for path in self.gitignored_directories:
+            require_canonical_inventory_path(path, "gitignored directory", allow_root=False)
+        if self.valid_until_ns is not None:
+            _require_positive(self.valid_until_ns, "valid_until_ns")
+
+    @property
+    def truncated(self) -> bool:
+        """Whether the query bound omitted matching rows."""
+
+        return self.total_matches.kind is CountKind.AT_LEAST or self.total_matches.value > len(
+            self.entries
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogRecord:
+    path: str
+    logical_extension: str
+    size: int
+    mtime_ns: int
+
+    def __post_init__(self) -> None:
+        require_canonical_inventory_path(self.path, "path", allow_root=False)
+        _require_nonnegative(self.size, "size")
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogProjection:
+    query_id: str
+    records: tuple[CatalogRecord, ...]
+    total_matches: CountResult
+    next_page: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        if self.total_matches.value < len(self.records):
+            raise ValueError("total_matches cannot be smaller than returned records")
+        if self.next_page is not None:
+            _require_nonempty(self.next_page, "next_page")
+            if not self.records:
+                raise ValueError("a catalog continuation requires a nonempty page")
+
+
+@dataclass(frozen=True, slots=True)
+class DiagnosticsProjection:
+    query_id: str
+    payload: ProviderDiagnostics
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+
+
+@dataclass(frozen=True, slots=True)
+class QueryLimitProjection:
+    """A query stopped before it could return a misleading partial answer."""
+
+    query_id: str
+    query_kind: QueryKind
+    max_work: int
+    rows_visited: int
+
+    def __post_init__(self) -> None:
+        _require_nonempty(self.query_id, "query_id")
+        _require_positive(self.max_work, "max_work")
+        _require_nonnegative(self.rows_visited, "rows_visited")
+        if self.rows_visited > self.max_work:
+            raise ValueError("rows_visited cannot exceed max_work")
+
+
+type CompletedProjectionResult = (
+    EntryProjection
+    | DirectoryProjection
+    | FilteredTreeProjection
+    | RollupProjection
+    | NavigationProjection
+    | RecentProjection
+    | CatalogProjection
+    | DiagnosticsProjection
+)
+type ProjectionResult = CompletedProjectionResult | QueryLimitProjection
+
+
+@dataclass(frozen=True, slots=True)
+class ReadResult:
+    version: EngineVersion
+    cursor: ChangeCursor
+    state: IndexState
+    projections: tuple[ProjectionResult, ...]
+    work: WorkCounters
+    metrics: BoundaryMetrics = field(default_factory=BoundaryMetrics)
+
+    def __post_init__(self) -> None:
+        if self.version.session != self.cursor.session:
+            raise ValueError("version and cursor must describe the same session")
+        if self.version.sequence != self.cursor.sequence:
+            raise ValueError("version and cursor must describe the same observation boundary")
+        query_ids = [projection.query_id for projection in self.projections]
+        if len(query_ids) != len(set(query_ids)):
+            raise ValueError("projection query_id values must be unique")
+
+    def projection(self, query_id: str) -> ProjectionResult:
+        for projection in self.projections:
+            if projection.query_id == query_id:
+                return projection
+        raise KeyError(query_id)
+
+    def completed_projection(self, query_id: str) -> CompletedProjectionResult:
+        """Return a complete answer or raise the typed work-limit failure."""
+
+        projection = self.projection(query_id)
+        if isinstance(projection, QueryLimitProjection):
+            raise QueryWorkLimitError(projection)
+        return projection
+
+
+@dataclass(frozen=True, slots=True)
+class ChangeBatch:
+    cursor: ChangeCursor
+    version: EngineVersion
+    state: IndexState
+    dirty_paths: tuple[str, ...] = ()
+    dirty_queries: frozenset[QueryKind] = frozenset()
+    all_dirty: bool = False
+    reset: bool = False
+    work: WorkCounters = field(default_factory=WorkCounters)
+
+    def __post_init__(self) -> None:
+        if self.version.session != self.cursor.session:
+            raise ValueError("version and cursor must describe the same session")
+        if self.version.sequence != self.cursor.sequence:
+            raise ValueError("version and cursor must describe the same change boundary")
+        if self.all_dirty and self.dirty_paths:
+            raise ValueError("all_dirty replaces individual dirty paths")
+        if self.reset and (self.all_dirty or self.dirty_paths or self.dirty_queries):
+            raise ValueError("reset replaces dirty paths and projections")
+        if len(self.dirty_paths) > MAX_CHANGE_PATHS:
+            raise ValueError("a change batch accepts at most 1024 dirty paths")
+        if len(self.dirty_paths) != len(set(self.dirty_paths)):
+            raise ValueError("change-batch dirty paths must be unique")
+        for path in self.dirty_paths:
+            require_canonical_inventory_path(path, "dirty path", allow_root=True)
+
+
+class RefreshReason(StrEnum):
+    FILESYSTEM_HINT = "filesystem_hint"
+    ACTIVITY_OBSERVATION = "activity_observation"
+    GITIGNORE_CHANGE = "gitignore_change"
+    RECONCILIATION = "reconciliation"
+    USER_REQUEST = "user_request"
+
+
+class ObservationKind(StrEnum):
+    """Best-effort source label for a path that the provider must verify."""
+
+    CREATED = "created"
+    MODIFIED = "modified"
+    DELETED = "deleted"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshObservation:
+    """One served-root-relative filesystem hint."""
+
+    path: str
+    kind: ObservationKind = ObservationKind.UNKNOWN
+
+    def __post_init__(self) -> None:
+        require_canonical_inventory_path(self.path, "path", allow_root=False)
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshRequest:
+    observations: tuple[RefreshObservation, ...]
+    reason: RefreshReason = RefreshReason.FILESYSTEM_HINT
+
+    def __post_init__(self) -> None:
+        if not self.observations:
+            raise ValueError("refresh requires at least one path")
+        if len(self.observations) > MAX_COMMAND_PATHS:
+            raise ValueError("refresh accepts at most 1024 paths")
+        paths = self.paths
+        if len(paths) != len(set(paths)):
+            raise ValueError("refresh paths must be unique")
+
+    @property
+    def paths(self) -> tuple[str, ...]:
+        return tuple(observation.path for observation in self.observations)
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshReceipt:
+    version: EngineVersion
+    accepted_paths: tuple[str, ...]
+    rejected_paths: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if len(self.accepted_paths) + len(self.rejected_paths) > MAX_COMMAND_PATHS:
+            raise ValueError(f"refresh receipt accepts at most {MAX_COMMAND_PATHS} paths")
+        if len(self.accepted_paths) != len(set(self.accepted_paths)):
+            raise ValueError("accepted refresh paths must be unique")
+        if len(self.rejected_paths) != len(set(self.rejected_paths)):
+            raise ValueError("rejected refresh paths must be unique")
+        if set(self.accepted_paths) & set(self.rejected_paths):
+            raise ValueError("refresh paths cannot be both accepted and rejected")
+        for path in (*self.accepted_paths, *self.rejected_paths):
+            require_canonical_inventory_path(path, "refresh receipt path", allow_root=False)
+
+
+@dataclass(frozen=True, slots=True)
+class PriorityRequest:
+    paths: tuple[str, ...]
+    max_depth: int = 2
+
+    def __post_init__(self) -> None:
+        if not self.paths:
+            raise ValueError("priority requires at least one path")
+        if len(self.paths) > MAX_COMMAND_PATHS:
+            raise ValueError("priority accepts at most 1024 paths")
+        if len(self.paths) != len(set(self.paths)):
+            raise ValueError("priority paths must be unique")
+        for path in self.paths:
+            require_canonical_inventory_path(path, "priority path", allow_root=False)
+        _require_positive(self.max_depth, "max_depth")
+
+
+class InventoryContractError(Exception):
+    """Base class for failures exposed at the provider boundary."""
+
+
+class InventoryClosedError(InventoryContractError):
+    """The opened-root handle has already closed."""
+
+
+class VersionUnavailableError(InventoryContractError):
+    """The requested coherent version is no longer retained."""
+
+
+class ChangeStreamBusyError(InventoryContractError):
+    """The opened provider already has its one active change iterator."""
+
+
+class QueryWorkLimitError(InventoryContractError):
+    """A query exhausted its deterministic work budget without a partial answer."""
+
+    def __init__(self, projection: QueryLimitProjection) -> None:
+        self.projection = projection
+        super().__init__(
+            f"{projection.query_kind.value} query {projection.query_id!r} exhausted "
+            f"max_work={projection.max_work} after {projection.rows_visited} rows"
+        )
+
+
+@runtime_checkable
+class InventoryHandle(Protocol):
+    async def read(self, request: ReadRequest) -> ReadResult: ...
+
+    def changes(self, *, after: ChangeCursor | None) -> AsyncIterator[ChangeBatch]: ...
+
+    async def refresh(self, request: RefreshRequest) -> RefreshReceipt: ...
+
+    async def prioritize(self, request: PriorityRequest) -> None: ...
+
+    async def close(self) -> None: ...
+
+
+@runtime_checkable
+class InventoryBackend(Protocol):
+    async def open(self, root: Path, config: InventoryConfig) -> InventoryHandle: ...

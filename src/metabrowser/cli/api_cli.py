@@ -57,6 +57,17 @@ _INDEX_DEPENDENT: tuple[str, ...] = (
     # its whole payload is inventory state, and it reported status "scanning"
     # instead of "done" the moment the wait was skipped.
     "/api/diagnostics/pending-tallies",
+    # Same reason, and the GET probe did see it -- it just could not tell a
+    # race from an answer. Its whole payload is inventory state, so without the
+    # wait what it reports is whichever moment the request happened to land in:
+    # its transcript recorded a mid-scan `scanning` on a four-file fixture,
+    # which held on one machine and flipped to `done` on a faster one.
+    #
+    # This does not blind the route. Progress is read live from the browser
+    # while a scan runs, which is where it means something; through `--api` the
+    # scan is already over by the time anyone reads the output, so the settled
+    # answer is both the honest one and the reproducible one.
+    "/api/index/progress",
 )
 
 

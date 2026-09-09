@@ -122,7 +122,9 @@
    */
   function href(target) {
     const normalized = normalizeTarget(target);
-    let result = ROUTE_PREFIX + encodePath(normalized.path);
+    // Inventory escapes represent native bytes, while URL encoding also escapes
+    // ordinary UTF-8 and URL delimiters. Do not encode the identity a second time.
+    let result = ROUTE_PREFIX + encodeIdentityPath(normalized.path);
     try {
       if (normalized.query) {
         result += `?${normalized.query}`;
@@ -202,7 +204,7 @@
     }
 
     try {
-      const decodedSegments = rawSegments.map((segment) => decodeURIComponent(segment));
+      const decodedSegments = rawSegments.map(pathFromUrl);
       if (
         decodedSegments.some(
           (segment) => segment.includes("/") || segment.includes("\\") || segment.includes("\0"),
@@ -224,6 +226,90 @@
       return normalizeTarget(target);
     } catch (_error) {
       return null;
+    }
+  }
+
+  /** @param {string} path */
+  function encodeIdentityPath(path) {
+    // Windows escapes lone UTF-16 code units in the inventory. Encode these as
+    // WTF-8 in URLs so they cannot collide with an ordinary UTF-8 scalar.
+    if (window.METABROWSER_PATH_ENCODING === "utf16") {
+      path = path.replace(/%(D[8-F])%([0-9A-F]{2})/g, (_match, high, low) => {
+        const point = Number.parseInt(high + low, 16);
+        return [0xed, 0x80 | ((point >> 6) & 63), 0x80 | (point & 63)]
+          .map((byte) => `%${byte.toString(16).toUpperCase()}`)
+          .join("");
+      });
+    }
+    return encodePath(path).replace(/%25([0-9A-F]{2})/g, "%$1");
+  }
+
+  /** Display literal percent signs; undecodable platform bytes stay visibly escaped.
+   * @param {string} path
+   */
+  function displayPath(path) {
+    return path.replaceAll("%25", "%");
+  }
+
+  /** Convert URL bytes into the provider's lossless identity, including POSIX names
+   * with isolated non-UTF-8 bytes. Ordinary UTF-8 takes the fast path.
+   * @param {string} segment
+   * @returns {string}
+   */
+  function pathFromUrl(segment) {
+    if (window.METABROWSER_PATH_ENCODING === "utf16") {
+      const units = [...segment.matchAll(/%ED%([AB][0-9A-F])%([89AB][0-9A-F])/gi)];
+      if (units.length) {
+        let result = "";
+        let start = 0;
+        for (const unit of units) {
+          result += pathFromUrl(segment.slice(start, unit.index));
+          const point =
+            0xd000 |
+            ((Number.parseInt(unit[1], 16) & 63) << 6) |
+            (Number.parseInt(unit[2], 16) & 63);
+          result += `%${(point >> 8).toString(16).toUpperCase()}%${(point & 255).toString(16).padStart(2, "0").toUpperCase()}`;
+          start = unit.index + unit[0].length;
+        }
+        return result + pathFromUrl(segment.slice(start));
+      }
+    }
+    try {
+      return decodeURIComponent(segment).replaceAll("%", "%25");
+    } catch (_error) {
+      let result = "";
+      for (let index = 0; index < segment.length; ) {
+        if (segment[index] !== "%") {
+          result += segment[index++];
+          continue;
+        }
+        const escaped = segment.slice(index, index + 3);
+        if (!/^%[0-9a-f]{2}$/i.test(escaped)) {
+          throw new URIError("malformed path escape");
+        }
+        let decoded = false;
+        // A UTF-8 scalar occupies at most four bytes. Consume valid scalars before
+        // retaining an undecodable byte; this keeps adjacent spaces and Unicode intact.
+        for (let bytes = 1; bytes <= 4; bytes++) {
+          const part = segment.slice(index, index + bytes * 3);
+          if (!new RegExp(`^(%[0-9a-f]{2}){${bytes}}$`, "i").test(part)) {
+            break;
+          }
+          try {
+            result += decodeURIComponent(part).replaceAll("%", "%25");
+            index += part.length;
+            decoded = true;
+            break;
+          } catch (_error) {
+            /* Try the next UTF-8 length. */
+          }
+        }
+        if (!decoded) {
+          result += escaped.toUpperCase();
+          index += 3;
+        }
+      }
+      return result;
     }
   }
 
@@ -451,6 +537,7 @@
     attachController,
     commitHref,
     createController,
+    displayPath,
     href,
     navigation,
     normalizeTarget,

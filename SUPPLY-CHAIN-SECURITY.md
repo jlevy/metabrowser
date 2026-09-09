@@ -90,6 +90,29 @@ Changing any of these versions requires a new review against the checks above.
 
 ## Verification
 
+### Development HTTP Client Review (September 8, 2026)
+
+The locked development-only `httpx2` and `httpcore2` packages move from 2.5.0 to 2.12.0
+to resolve the five advisories reported by `uv audit`. The
+[HTTPX2 changelog](https://github.com/pydantic/httpx2/blob/main/src/httpx2/CHANGELOG.md)
+and
+[transport changelog](https://github.com/pydantic/httpx2/blob/main/src/httpcore2/CHANGELOG.md)
+describe the fixes.
+Both releases were published on August 18, so they satisfy the 14-day
+cool-off without an exception.
+Registry artifact hashes match `uv.lock`; the Python requirement remains compatible with
+this project’s supported range.
+
+The only new transitive record is `httpx2-jsfetch==1.0`, published August 7 and required
+by upstream solely on Emscripten.
+It is not installed on the project’s native test platforms.
+The published application gains no runtime dependency.
+No unrelated lock versions change.
+The normal full verification gate exercises the upgraded test client and audits the
+complete lock.
+
+### Automated Checks
+
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:
 npm safety settings, exact direct npm specifications, npm registry and integrity data,
 the uv cool-off, matching nvm and fnm versions, full-SHA action references, and trusted
@@ -102,7 +125,15 @@ executes the tests and audits, builds the package, inspects its contents, and ex
 the installed wheel and plugin surface.
 
 CI and publishing also run `npm audit --audit-level=moderate` after installing the exact
-lock.
+lock, through `devtools/npm_audit.sh`. That wrapper exists because `npm audit` exits
+non-zero for two unrelated events: it found an advisory, or it could not reach the
+advisory endpoint. Only the first is a reason to stop.
+The wrapper retries, then reports an unreachable endpoint as **not performed** --
+loudly, and without failing the build, because a registry outage is not a finding and
+the lockfile is pinned, so the dependency set has not moved since the last run that did
+reach it. An advisory at or above the level still fails exactly as before.
+A run that reports “not performed” has not cleared the dependencies; re-run the gate
+once the registry answers before relying on it.
 
 Treat an unexpected lockfile source, install script, binary artifact, or publish-time
 change as a blocker until it is explained and reviewed.

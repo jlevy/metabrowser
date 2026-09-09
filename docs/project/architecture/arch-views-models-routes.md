@@ -34,6 +34,11 @@ model, and a model never learns which route reached it.
 That is what lets one diff renderer serve a patch file, a commit, and later a pull
 request without knowing the difference.
 
+Filesystem-backed models reach these layers through the
+[Inventory Provider Contract](arch-inventory-provider.md).
+That boundary keeps routes, wire serializers, and views independent of the Python or fdu
+engine selected for the served-root session.
+
 ## Kinds and their views
 
 Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugins/`:
@@ -121,6 +126,7 @@ reservation and its invariants, is in
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
 | `/raw` | Bounded raw bytes for embedded media |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
+| `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`.
@@ -170,6 +176,7 @@ arrives with a transcript or the build fails.
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 | `/raw` | exempt | — | asset serving; the response is the file’s bytes, covered by `tests/test_browser_assets.py` |
 | `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
+| `/_debug/inventory` | exempt | — | opt-in diagnostic; its work counters carry wall and CPU times, which no transcript can pin. Its payload shape is asserted by `tests/test_inventory_debug_route.py`, because the performance harness and `devtools/bench_serving.py` both parse it |
 | `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 
 `/api/kpress/export` is the one surface whose golden writes a file, and the rule it
@@ -180,7 +187,7 @@ content hash is identical across runs and across sandbox paths, so the write is
 deterministic evidence rather than a source of churn.
 The test runs last in its file so no earlier test observes the written file.
 
-The two exempt rows are the honest boundary.
+The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request
 and fails rather than hanging — which is behavior worth having, but not a model a
 transcript can assert.

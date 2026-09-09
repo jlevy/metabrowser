@@ -21,6 +21,8 @@ forces any future producer to use the canonical implementation.
 
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from metabrowser.constants import LOGS_DIR, STATE_DIR
 
 # Hidden directories KPress / the dev shell carry visibly even though
@@ -36,7 +38,7 @@ _VISIBLE_HIDDEN = frozenset({LOGS_DIR, STATE_DIR})
 _MAX_LOGICAL_EXTENSION_COMPONENTS = 2
 
 
-def is_visible(name: str) -> bool:
+def is_visible(name: str, hidden_allowlist: Collection[str] | None = None) -> bool:
     """Single-name visibility check.
 
     Returns ``True`` for ordinary names and the small allowlist of
@@ -45,10 +47,14 @@ def is_visible(name: str) -> bool:
 
     if not name.startswith("."):
         return True
-    return name in _VISIBLE_HIDDEN
+    allowed = _VISIBLE_HIDDEN if hidden_allowlist is None else hidden_allowlist
+    return name in allowed
 
 
-def is_visible_segment(rel_path: str) -> bool:
+def is_visible_segment(
+    rel_path: str,
+    hidden_allowlist: Collection[str] | None = None,
+) -> bool:
     """Per-segment visibility for a posix-style relative path.
 
     Used by the watcher to decide whether a deep file event lives
@@ -58,7 +64,7 @@ def is_visible_segment(rel_path: str) -> bool:
 
     if not rel_path:
         return True
-    return all(is_visible(seg) for seg in rel_path.split("/"))
+    return all(is_visible(seg, hidden_allowlist) for seg in rel_path.split("/"))
 
 
 def derive_ext(name: str) -> str:

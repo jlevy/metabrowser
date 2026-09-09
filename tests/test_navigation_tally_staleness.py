@@ -16,24 +16,24 @@ import sys
 import threading
 import time
 
-from metabrowser.inventory import InventoryIndex
-from metabrowser.walker import FsEntry
+from metabrowser.events import FsEntry
+from metabrowser.inventory_engine.providers.python_inventory import (
+    _PythonInventoryStore as PythonInventoryStore,
+)
 
 PRESETS: list[tuple[str, list[str]]] = [("code", ["py", "js"])]
 WINDOWS: list[tuple[str, float]] = [("24h", 86_400.0)]
 LIMIT = 200
 
 
-def _index_with(files: int) -> InventoryIndex:
-    index = InventoryIndex()
-    index.apply_walker_entries(
-        [
+def _index_with(files: int) -> PythonInventoryStore:
+    index = PythonInventoryStore()
+    for i in range(files):
+        index.apply_live_entry(
             FsEntry.for_observed_file(
                 path=f"f{i}.py", parent="", name=f"f{i}.py", size=1, mtime_ns=1
             )
-            for i in range(files)
-        ]
-    )
+        )
     return index
 
 
@@ -50,8 +50,8 @@ def test_a_recent_pass_is_reused_though_the_revision_moved_on() -> None:
     index.navigation_tallies_snapshotting(PRESETS, WINDOWS, LIMIT)
     before = index.rollup_revision()
 
-    index.apply_walker_entries(
-        [FsEntry.for_observed_file(path="new.py", parent="", name="new.py", size=1, mtime_ns=1)]
+    index.apply_live_entry(
+        FsEntry.for_observed_file(path="new.py", parent="", name="new.py", size=1, mtime_ns=1)
     )
     assert index.rollup_revision() != before, "a write must move the revision"
 
@@ -63,8 +63,8 @@ def test_an_old_pass_is_not_reused_once_the_revision_has_moved() -> None:
     """The bound is a bound -- but only for a revision that is moving."""
     index = _index_with(4)
     index.navigation_tallies_snapshotting(PRESETS, WINDOWS, LIMIT)
-    index.apply_walker_entries(
-        [FsEntry.for_observed_file(path="new.py", parent="", name="new.py", size=1, mtime_ns=1)]
+    index.apply_live_entry(
+        FsEntry.for_observed_file(path="new.py", parent="", name="new.py", size=1, mtime_ns=1)
     )
     time.sleep(0.01)
     assert index.navigation_tallies_fresh_within(PRESETS, WINDOWS, LIMIT, min_stale_s=0.0) is None
@@ -149,7 +149,7 @@ def test_a_freshness_probe_never_waits_for_an_in_flight_tally_pass() -> None:
 
 def test_worker_tally_pass_cooperatively_yields_to_the_event_loop() -> None:
     """Worker CPU must not depend on the interpreter's ordinary switch interval."""
-    index = InventoryIndex()
+    index = PythonInventoryStore()
     entry = FsEntry.for_observed_file(path="same.py", parent="", name="same.py", size=1, mtime_ns=1)
     snapshot = [entry] * 80_000
     previous_switch_interval = sys.getswitchinterval()

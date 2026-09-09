@@ -1,0 +1,10 @@
+{
+  "include": ["adapter.py", "probe.py", "run.py"],
+  "extraPaths": [".", "../../src", "../../tests"],
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": false,
+  "reportUnusedCallResult": false,
+  "reportImplicitStringConcatenation": false,
+  "reportImplicitOverride": false,
+  "reportPrivateUsage": false
+}

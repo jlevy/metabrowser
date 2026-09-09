@@ -7,10 +7,8 @@
 //                             agent-log data hook
 //   ("agent-log", "raw")    — pretty-printed JSON
 //
-// The renderers below also feed the unknown-jsonl plugin via
-// mb.builtins.agentLog.{renderLog, renderRaw} — same body, different kind.
-// Built-ins discover before entry-point + local plugins, so the namespace
-// is set before unknown_jsonl/index.js runs.
+// The unknown-jsonl plugin loads these shared views on demand through the SDK.
+// The agentLog namespace also exposes event rendering for live log updates.
 //
 // Helpers private to this plugin:
 //   renderLogEvent / renderFilterBar / renderSummary / logStat / fmtDuration

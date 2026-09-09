@@ -10,9 +10,11 @@ from threading import Event
 
 import pytest
 
-from metabrowser import inventory as inventory_module
 from metabrowser.events import FsEntry
-from metabrowser.inventory import InventoryIndex
+from metabrowser.inventory_engine.providers import python_inventory as python_provider
+from metabrowser.inventory_engine.providers.python_inventory import (
+    _PythonInventoryStore as PythonInventoryStore,
+)
 
 
 def test_inventory_start_offloads_gitignore_build(monkeypatch, tmp_path: Path) -> None:
@@ -28,10 +30,10 @@ def test_inventory_start_offloads_gitignore_build(monkeypatch, tmp_path: Path) -
         del cancel_event
         time.sleep(0.2)
 
-    monkeypatch.setattr(inventory_module, "_build_gitignore_check_for", slow_gitignore_build)
+    monkeypatch.setattr(python_provider, "_build_gitignore_check_for", slow_gitignore_build)
 
     async def _run() -> float:
-        inv = InventoryIndex()
+        inv = PythonInventoryStore()
         inv.start(tmp_path)
         started = time.perf_counter()
         await asyncio.sleep(0)
@@ -61,10 +63,10 @@ def test_inventory_walker_yields_to_request_tasks_between_entry_batches(
                 mtime_ns=1,
             )
 
-    monkeypatch.setattr(inventory_module, "walk_tree", immediate_entries)
+    monkeypatch.setattr(python_provider, "walk_tree", immediate_entries)
 
     async def _run() -> int:
-        inventory = InventoryIndex()
+        inventory = PythonInventoryStore()
         walker = inventory.start(tmp_path)
         finished = asyncio.Event()
         interleavings = 0

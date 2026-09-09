@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections import Counter, deque
 from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 
-from metabrowser.file_type_registry import load_file_type_registry
+from metabrowser.file_type_registry import FileTypeRegistry, load_file_type_registry
 from metabrowser.settings import (
     ROLLUP_FILE_TYPE_FILENAME_LIMIT,
     ROLLUP_FILE_TYPE_REMAINING_LIMIT,
@@ -25,8 +25,36 @@ from metabrowser.wire_models import (
     RollupResult,
 )
 
-if TYPE_CHECKING:
-    from metabrowser.events import FsEntry
+
+class RollupEntry(Protocol):
+    """Filesystem facts used by the pure rollup reducer."""
+
+    @property
+    def path(self) -> str: ...
+
+    @property
+    def parent(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def type(self) -> str: ...
+
+    @property
+    def ext(self) -> str: ...
+
+    @property
+    def size(self) -> int: ...
+
+    @property
+    def mtime_ns(self) -> int: ...
+
+    @property
+    def gitignored(self) -> bool: ...
+
+    @property
+    def total_files(self) -> int | None: ...
 
 
 ROLLUP_NO_EXT_KEY = "(none)"
@@ -117,19 +145,20 @@ class _FileTypePartition:
 
 
 def build_rollup(
-    entries: Mapping[str, FsEntry],
-    children_by_parent: Mapping[str, Sequence[FsEntry]],
+    entries: Mapping[str, RollupEntry],
+    children_by_parent: Mapping[str, Sequence[RollupEntry]],
     root_path: str,
     options: RollupOptions,
     ancestor_gitignored: bool,
     aggregates: SubtreeAggregateCache | None = None,
+    registry: FileTypeRegistry | None = None,
 ) -> RollupResult | None:
     """Build a bounded node tree from a snapshot and its reusable child index.
 
     *aggregates* is an optional persistent memo of per-directory subtree
     aggregates, reused across calls. Callers that own one must invalidate a
     directory's whole ancestor chain whenever an entry beneath it changes;
-    :class:`~metabrowser.inventory.InventoryIndex` does this on every write.
+    The Python provider does this on every write.
     Omit it for a self-contained, purely functional rollup.
     """
 
@@ -153,8 +182,9 @@ def build_rollup(
         aggregates,
         options,
     )
+    active_registry = load_file_type_registry() if registry is None else registry
     selected = _select_extension_keys(root_aggregate, options.ext_top, options.ext_rank)
-    file_types = _partition_file_types(root_aggregate)
+    file_types = _partition_file_types(root_aggregate, active_registry)
     return {
         "node": cast(RollupDirNode, root_node),
         "ext_tallies": _serialize_extension_tallies(root_aggregate, selected),
@@ -163,14 +193,17 @@ def build_rollup(
             filename_limit=options.filename_top,
             remaining_limit=options.remaining_top,
             file_types=file_types,
+            registry=active_registry,
         ),
     }
 
 
-def group_rollup_children(entries: Mapping[str, FsEntry]) -> dict[str, tuple[FsEntry, ...]]:
+def group_rollup_children(
+    entries: Mapping[str, RollupEntry],
+) -> dict[str, tuple[RollupEntry, ...]]:
     """Index immutable child sequences for repeated subtree rollups."""
 
-    grouped: dict[str, list[FsEntry]] = {}
+    grouped: dict[str, list[RollupEntry]] = {}
     for entry in entries.values():
         if entry.path == entry.parent:
             continue
@@ -181,14 +214,14 @@ def group_rollup_children(entries: Mapping[str, FsEntry]) -> dict[str, tuple[FsE
 def _aggregate_subtree(
     directory_path: str,
     parent_ignored: bool,
-    children_by_parent: Mapping[str, Sequence[FsEntry]],
+    children_by_parent: Mapping[str, Sequence[RollupEntry]],
     aggregates: SubtreeAggregateCache,
 ) -> _SubtreeAggregate:
     # ``aggregates`` doubles as a memo. A directory's aggregate is a pure
     # function of its subtree, and the inherited ignore state is fixed by
     # the real ancestor chain, so a present entry is reusable as-is. When
     # the caller passes a persistent cache (see
-    # ``InventoryIndex._subtree_aggregates``) an unchanged subtree costs one
+    # the Python provider's aggregate cache) an unchanged subtree costs one
     # dict lookup instead of a walk over every file beneath it — the
     # difference between O(subtree) and O(1) on each rollup request.
     cached = aggregates.get(directory_path)
@@ -225,7 +258,7 @@ def _aggregate_subtree(
     return aggregate
 
 
-def _file_node(entry: FsEntry, parent_ignored: bool) -> dict[str, Any]:
+def _file_node(entry: RollupEntry, parent_ignored: bool) -> dict[str, Any]:
     return {
         "name": entry.name,
         "path": entry.path,
@@ -238,7 +271,7 @@ def _file_node(entry: FsEntry, parent_ignored: bool) -> dict[str, Any]:
 
 
 def _directory_node(
-    entry: FsEntry,
+    entry: RollupEntry,
     aggregate: _SubtreeAggregate,
     ignored: bool,
 ) -> dict[str, Any]:
@@ -261,12 +294,12 @@ def _directory_node(
     }
 
 
-def _all_weight(entry: FsEntry, aggregates: Mapping[str, _SubtreeAggregate]) -> int:
+def _all_weight(entry: RollupEntry, aggregates: Mapping[str, _SubtreeAggregate]) -> int:
     return aggregates[entry.path].size_all if entry.type == "dir" else entry.size
 
 
 def _unignored_weight(
-    entry: FsEntry,
+    entry: RollupEntry,
     aggregates: Mapping[str, _SubtreeAggregate],
     parent_ignored: bool,
 ) -> int:
@@ -276,10 +309,10 @@ def _unignored_weight(
 
 
 def _ordered_children(
-    children: Sequence[FsEntry],
+    children: Sequence[RollupEntry],
     aggregates: Mapping[str, _SubtreeAggregate],
     parent_ignored: bool,
-) -> list[FsEntry]:
+) -> list[RollupEntry]:
     """Interleave all-file and visible-file rankings with stable path ties."""
 
     all_ranked = sorted(children, key=lambda child: (-_all_weight(child, aggregates), child.path))
@@ -287,7 +320,7 @@ def _ordered_children(
         children,
         key=lambda child: (-_unignored_weight(child, aggregates, parent_ignored), child.path),
     )
-    ordered: list[FsEntry] = []
+    ordered: list[RollupEntry] = []
     seen: set[str] = set()
     for index in range(len(children)):
         for ranked in (all_ranked, visible_ranked):
@@ -299,9 +332,9 @@ def _ordered_children(
 
 
 def _emit_bounded_tree(
-    root_entry: FsEntry,
+    root_entry: RollupEntry,
     root_ignored: bool,
-    children_by_parent: Mapping[str, Sequence[FsEntry]],
+    children_by_parent: Mapping[str, Sequence[RollupEntry]],
     aggregates: Mapping[str, _SubtreeAggregate],
     options: RollupOptions,
 ) -> dict[str, Any]:
@@ -322,7 +355,7 @@ def _emit_bounded_tree(
             ignored,
         )
         emitted: list[dict[str, Any]] = []
-        omitted: list[FsEntry] = []
+        omitted: list[RollupEntry] = []
         for child in children:
             if len(emitted) >= options.top or remaining_nodes <= 0:
                 omitted.append(child)
@@ -343,7 +376,7 @@ def _emit_bounded_tree(
 
 
 def _rest_bucket(
-    children: Sequence[FsEntry],
+    children: Sequence[RollupEntry],
     aggregates: Mapping[str, _SubtreeAggregate],
     parent_ignored: bool,
 ) -> dict[str, int]:
@@ -554,10 +587,10 @@ def _serialize_file_type_breakdown(
     filename_limit: int,
     remaining_limit: int,
     file_types: _FileTypePartition,
+    registry: FileTypeRegistry,
 ) -> FileTypeBreakdown:
     """Build the conserved File Rollup Format hierarchy before presentation."""
 
-    registry = load_file_type_registry()
     groups = []
     for group in registry.groups:
         families: list[FileTypeFamilyBreakdown] = []
@@ -667,10 +700,12 @@ def _serialize_file_type_breakdown(
     }
 
 
-def _partition_file_types(aggregate: _SubtreeAggregate) -> _FileTypePartition:
+def _partition_file_types(
+    aggregate: _SubtreeAggregate,
+    registry: FileTypeRegistry,
+) -> _FileTypePartition:
     """Classify each distinct logical extension exactly once per rollup."""
 
-    registry = load_file_type_registry()
     family_children: dict[str, dict[str, list[int]]] = {}
     remaining_keys: set[str] = set()
     extension_keys = _all_extension_keys(aggregate)

@@ -270,9 +270,16 @@ def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: A
     module.PENDING = tmp_path / "pending.json"
     module.RESULTS = tmp_path / "runs.jsonl"
     module._walk_facts = lambda _port: {
+        "inventory_contract": "inventory-provider-v1",
+        "inventory_provider": "python",
         "walk_elapsed_ms": 1000,
         "walk_files": 101,
         "walk_status": "done",
+    }
+    module._inventory_facts = lambda _port: {
+        "inventory_contract": "inventory-provider-v1",
+        "inventory_provider": "python",
+        "inventory_work": {},
     }
     module.PENDING.write_text(
         json.dumps(
@@ -286,6 +293,7 @@ def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: A
                 "label": "candidate",
                 "note": "",
                 "port": 8600,
+                "inventory_provider_requested": "python",
             }
         ),
         encoding="utf-8",
@@ -312,3 +320,23 @@ def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: A
     recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
     assert recorded["files"] == 101
     assert "hard performance gate failed" in capsys.readouterr().out
+
+
+def test_record_identity_rejects_missing_and_conflicting_server_facts() -> None:
+    module = _runner()
+
+    with pytest.raises(SystemExit, match="did not report an inventory provider and contract"):
+        module._require_inventory_identity({}, {}, "python")
+
+    with pytest.raises(SystemExit, match="conflicting inventory identities"):
+        module._require_inventory_identity(
+            {
+                "inventory_provider": "python",
+                "inventory_contract": "inventory-provider-v1",
+            },
+            {
+                "inventory_provider": "fdu",
+                "inventory_contract": "inventory-provider-v1",
+            },
+            "python",
+        )

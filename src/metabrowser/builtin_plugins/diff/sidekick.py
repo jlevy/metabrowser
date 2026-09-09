@@ -41,6 +41,7 @@ from metabrowser.diff.format import (
 )
 from metabrowser.git.process import GitError
 from metabrowser.git.repo import repo_info
+from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
 from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH, resolve_path, served_root
 
 if TYPE_CHECKING:
@@ -92,7 +93,8 @@ def _resolve_patch(subpath: str) -> tuple[Path, str] | None:
             # The bound is on the inner path, measured from the claiming
             # file — a deeply nested container keeps its full reach.
             return None
-        return target, "/".join(parts[cut:])
+        inner = native_inventory_path("/".join(parts[cut:]))
+        return (target, inner) if inner is not None else None
     return None
 
 
@@ -298,7 +300,7 @@ def children_handler(request: Request) -> JSONResponse:
         changes = grouped[display]
         entry: dict[str, Any] = {
             "name": display,
-            "path": f"{subpath}/{display}",
+            "path": f"{subpath}/{canonical_inventory_path(display)}",
             "badge": "T" if len(changes) > 1 else changes[0].kind.value[:1].upper(),
         }
         if all(c.availability.value != "ready" for c in changes):

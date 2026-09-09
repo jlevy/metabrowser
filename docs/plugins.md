@@ -48,6 +48,21 @@ nonzero, so scripts cannot mistake a partial registry for a complete one.
 Human-readable data goes to standard output, while human-readable errors go to standard
 error.
 
+## Path Identity
+
+SDK 0.6 uses the inventory’s escaped relative paths in API requests, browser navigation
+and catalog records.
+Keep a received `path` unchanged when passing it to another API. A literal percent sign
+in a native filename is `%25` in its identity; for example, `100%.md` has identity
+`100%25.md`. Undecodable platform bytes also have lossless escapes.
+The browser’s navigation API converts these identities to human-facing `/view/` URLs.
+
+Python sidekicks use `resolve_path()` or `resolve_directory()` to cross from an identity
+to the filesystem, and `relativize_path()` to convert a native path back to an identity.
+Do not join an API path directly onto the served root.
+The [inventory contract](project/architecture/arch-inventory-provider.md) specifies the
+encoding and scope. `/commit/` comparison paths belong to Git’s separate address space.
+
 ## Minimal Plugin
 
 Create this structure:
@@ -66,7 +81,7 @@ examples/
 name = "hello"
 display_name = "Hello"
 version = "0.1.0"
-sdk_version = "0.5"
+sdk_version = "0.6"
 
 [[kind]]
 id = "hello-document"
@@ -125,7 +140,7 @@ Extra asset entries may not contain slashes, traversal segments, or a leading do
 
 ### Plugin Asset Lifecycle
 
-SDK 0.5 loads a plugin when the browser first selects any kind declared by its
+The SDK loads a plugin when the browser first selects any kind declared by its
 `[[kind]]` or `[[view]]` entries, or when another plugin calls `ensureKindAssets(kind)`.
 Plugin CSS and module side effects therefore do not exist on an unrelated page.
 

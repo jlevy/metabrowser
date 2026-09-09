@@ -214,7 +214,7 @@ function resolveLogicalPath(sourcePath, encodedPath) {
       segments.pop();
       continue;
     }
-    segments.push(segment);
+    segments.push(segment.replaceAll("%", "%25"));
   }
   const path = segments.join("/");
   return trailingSlash && path ? `${path}/` : path;

@@ -1,10 +1,8 @@
 """Filesystem walker for the browser inventory.
 
-Single home for the BFS scanner that powers the boot scan and
-``InventoryIndex.rewalk_subtree``. Decoupled from :mod:`metabrowser.inventory`
-(which owns the live in-memory index) so tests can drive ``walk_tree``
-directly with ``async for`` without touching the singleton or the
-event bus.
+Single home for the BFS scanner used by the Python provider's discovery and subtree
+refresh paths. It emits provider-neutral observations, so tests can drive ``walk_tree``
+directly with ``async for`` without constructing a retained index.
 
 Walker semantics (verified by tests in
 ``metabrowser/tests/test_browser_inventory.py``):
@@ -30,14 +28,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import stat as stat_module
 from collections import deque
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Collection
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
-from metabrowser.events import FsEntry
 from metabrowser.fs_paths import is_visible
+from metabrowser.fs_record import FsEntry
+from metabrowser.inventory_engine.contract import canonical_inventory_name
 from metabrowser.settings import (
     INVENTORY_MAX_DEPTH,
     INVENTORY_MAX_FILES,
@@ -50,7 +50,7 @@ LOG = logging.getLogger(__name__)
 
 # Re-export the walker tunables. Authoritative defaults live in
 # :mod:`metabrowser.settings`; these names exist so callers
-# (InventoryIndex, tests) can reference them without reaching into
+# (the Python provider and tests) can reference them without reaching into
 # settings directly.
 DEFAULT_MAX_DEPTH = INVENTORY_MAX_DEPTH
 DEFAULT_MAX_FILES = INVENTORY_MAX_FILES
@@ -116,7 +116,7 @@ def build_gitignore_check_for(
 
 class _ScanItem:
     """A single visible entry from one directory's scan. Carries
-    ``size`` / ``mtime_ns`` for files (from ``DirEntry.stat``) so
+    ``size`` / ``mtime_ns`` for leaf entries (from ``DirEntry.stat``) so
     the walker doesn't re-stat. For dirs, only ``name`` / ``abs_path``
     / ``is_dir`` matter; size/mtime are populated via the
     aggregate-rollup path."""
@@ -140,7 +140,10 @@ class _ScanItem:
         self.mtime_ns = mtime_ns
 
 
-def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
+def _scandir_visible(
+    dirpath: Path,
+    hidden_allowlist: Collection[str] | None = None,
+) -> list[_ScanItem]:
     """One ``os.scandir`` call, filtered to visible names, with
     one stat per file. Symlinks are not followed.
 
@@ -151,7 +154,7 @@ def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
     try:
         with os.scandir(dirpath) as it:
             for raw in it:
-                if not is_visible(raw.name):
+                if not is_visible(raw.name, hidden_allowlist):
                     continue
                 try:
                     raw_is_symlink = raw.is_symlink()
@@ -173,6 +176,11 @@ def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
                     try:
                         st = raw.stat(follow_symlinks=False)
                     except OSError:
+                        continue
+                    if not raw_is_symlink and not stat_module.S_ISREG(st.st_mode):
+                        # The browser wire has no special-object kind. Exclude
+                        # sockets, FIFOs, and devices instead of misrepresenting
+                        # them as files.
                         continue
                     items.append(
                         _ScanItem(
@@ -206,9 +214,10 @@ def _scandir_visible(dirpath: Path) -> list[_ScanItem]:
 async def walk_tree(
     root: Path,
     *,
-    max_depth: int = DEFAULT_MAX_DEPTH,
-    max_files: int = DEFAULT_MAX_FILES,
+    max_depth: int | None = DEFAULT_MAX_DEPTH,
+    max_files: int | None = DEFAULT_MAX_FILES,
     gitignore_check: Callable[[Path, bool], bool] | None = None,
+    hidden_allowlist: Collection[str] | None = None,
 ) -> AsyncIterator[FsEntry]:
     """BFS the filesystem rooted at *root*; yield ``FsEntry``
     records as the tree is discovered and as directories finalize.
@@ -241,7 +250,7 @@ async def walk_tree(
     cleans up on close.
     """
 
-    if max_depth <= 0 or max_files <= 0:
+    if (max_depth is not None and max_depth <= 0) or (max_files is not None and max_files <= 0):
         return
 
     def _gi(abs_path: Path, is_dir: bool) -> bool:
@@ -297,7 +306,7 @@ async def walk_tree(
     root_entry = FsEntry.for_observed_dir(
         path=root_rel,
         parent="",
-        name=root.name,
+        name=canonical_inventory_name(root.name),
         gitignored=root_gitignored,
     )
     placeholders[root_rel] = root_entry
@@ -375,7 +384,7 @@ async def walk_tree(
 
         abs_path, rel_path_cur, depth = queue.popleft()
 
-        if depth >= max_depth:
+        if max_depth is not None and depth >= max_depth:
             # Treat at-depth dirs as terminal — record 0 children
             # so the post-order finalize can complete the parent
             # chain without waiting forever.
@@ -386,7 +395,11 @@ async def walk_tree(
 
         # Read directory in a worker thread; blocking call.
         try:
-            child_entries = await asyncio.to_thread(_scandir_visible, abs_path)
+            child_entries = await asyncio.to_thread(
+                _scandir_visible,
+                abs_path,
+                hidden_allowlist,
+            )
         except OSError as exc:
             LOG.debug("walk_tree scandir failed for %s: %s", abs_path, exc)
             child_entries = []
@@ -398,11 +411,19 @@ async def walk_tree(
         pending[rel_path_cur] = subdir_count
 
         for ce in child_entries:
-            if files_indexed >= max_files:
+            if max_files is not None and files_indexed >= max_files:
                 truncated = True
                 break
 
-            child_rel = f"{rel_path_cur}/{ce.name}" if rel_path_cur else ce.name
+            # The one escape per entry, and the reason everything downstream of the
+            # walker can treat a path as an identity. `ce.abs_path` stays the raw
+            # platform name, so the filesystem is still addressed by what it gave us,
+            # while `child_rel` -- and every key derived from it -- is the canonical
+            # form the contract requires. Escaping here rather than on the way out of
+            # the store is also strictly less work: it happens once per entry, where
+            # `_semantic_entry` did it for three fields of every row of every read.
+            child_name = canonical_inventory_name(ce.name)
+            child_rel = f"{rel_path_cur}/{child_name}" if rel_path_cur else child_name
 
             parent_ignored = gitignored_dir.get(rel_path_cur, False)
             if ce.is_dir:
@@ -417,7 +438,7 @@ async def walk_tree(
                 placeholder = FsEntry.for_observed_dir(
                     path=child_rel,
                     parent=rel_path_cur,
-                    name=ce.name,
+                    name=child_name,
                     gitignored=child_gi,
                 )
                 placeholders[child_rel] = placeholder
@@ -442,7 +463,7 @@ async def walk_tree(
                 yield FsEntry.for_observed_symlink(
                     path=child_rel,
                     parent=rel_path_cur,
-                    name=ce.name,
+                    name=child_name,
                     size=ce.size,
                     mtime_ns=ce.mtime_ns,
                     gitignored=link_gi,
@@ -454,7 +475,7 @@ async def walk_tree(
                 file_entry = FsEntry.for_observed_file(
                     path=child_rel,
                     parent=rel_path_cur,
-                    name=ce.name,
+                    name=child_name,
                     size=ce.size,
                     mtime_ns=ce.mtime_ns,
                     gitignored=file_gi,

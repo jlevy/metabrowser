@@ -101,7 +101,7 @@ golden-update:
 	GOLDEN_UPDATE=1 $(UV_RUN) pytest tests/test_cli_golden.py
 
 audit:
-	npm audit --audit-level=moderate
+	bash devtools/npm_audit.sh
 	$(UV) --preview-features audit-command audit --frozen
 
 lock:

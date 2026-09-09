@@ -1,0 +1,854 @@
+{
+  "date": "2026-09-07",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "main_commit": "aeef188a465f00cfe4b455cb324d9513dfd68bb9",
+  "candidate_base_commit": "7190f21f77f67c76deba03bbbeb0c801498adf0f",
+  "candidate_changes": "Working tree with shutdown, refresh, read-session, path-boundary, Recent-query and directory-count fixes; measured before later browser cache fixes.",
+  "method_notes": [
+    "Correction recorded September 8: baseline used free-threaded CPython 3.14.7 while the candidate used regular CPython 3.14.6. These timings mix interpreter and code changes and do not establish code-only performance differences. See navigation-serving-2026-09-08.json for a controlled navigation comparison.",
+    "Same physical corpus and host for each main/candidate pair. These are single diagnostic runs, not statistical performance budgets.",
+    "The cold_scan phase includes the harness readiness rollup request and is not a no-client filesystem floor.",
+    "Main predates provider diagnostics. A scratch harness adapts its walker completion log regex and labels its provider pre-refactor-main; HTTP probes are otherwise shared.",
+    "Both project runs explicitly enable DEBUG completion logs. Synthetic scans exceeded the slow-operation threshold and emitted completion without that setting.",
+    "Project corpus filesystem scope excludes hidden virtual-environment entries; compare observed counts, not raw generator counts.",
+    "Synthetic-only top00 probes are absent from the project corpus and are not valid project comparisons.",
+    "Absolute executable and corpus paths have been omitted."
+  ],
+  "runs": {
+    "main_synthetic": {
+      "label": "main-synthetic",
+      "build": {
+        "version": "metab 0.9.1.dev47+aeef188a (+47 commits, aeef188a)"
+      },
+      "inputs": {
+        "provider": "python",
+        "contract": "inventory-provider-v1",
+        "files": 60000,
+        "clients": 8
+      },
+      "corpus": {
+        "shape": 2,
+        "files": 60000,
+        "dirs": 972,
+        "ignored_files": 0
+      },
+      "cold_scan": {
+        "converged": true,
+        "provider": null,
+        "contract": null,
+        "status": "done",
+        "files": 60000,
+        "walk_ms": 9719,
+        "diagnostics": {
+          "process": {
+            "rss_kb": 128736,
+            "peak_rss_kb": 128736,
+            "cpu_seconds": 3.64,
+            "exit_code": null
+          }
+        }
+      },
+      "scan_with_client": {
+        "converged": true,
+        "wall_s": 16.5,
+        "timed_out_at_s": null,
+        "walk_ms": 15762,
+        "files": 60000,
+        "first_count_s": 0.9,
+        "requests_issued": 468,
+        "rollup_ms": {
+          "n": 468,
+          "p50": 19.9,
+          "p95": 102.1,
+          "max": 239.7
+        },
+        "diagnostics": {
+          "process": {
+            "rss_kb": 137856,
+            "peak_rss_kb": 137856,
+            "cpu_seconds": 4.72,
+            "exit_code": null
+          }
+        }
+      },
+      "settled": {
+        "converged": true,
+        "errors": [],
+        "rollup_aggregated_ms": {
+          "n": 8,
+          "p50": 25.6,
+          "p95": 52.0,
+          "max": 54.1
+        },
+        "rollup_retained_body_ms": {
+          "n": 8,
+          "p50": 7.7,
+          "p95": 10.6,
+          "max": 16.0
+        },
+        "rollup_revalidated_304_ms": {
+          "n": 8,
+          "p50": 5.8,
+          "p95": 7.0,
+          "max": 23.8
+        },
+        "navigation_first_ms": 754.7,
+        "navigation_reused_ms": {
+          "n": 10,
+          "p50": 4.6,
+          "p95": 8.4,
+          "max": 12.8
+        },
+        "catalog_first_ms": 73.1,
+        "catalog_bytes": 3030120,
+        "catalog_retained_body_ms": {
+          "n": 8,
+          "p50": 4.7,
+          "p95": 6.1,
+          "max": 9.7
+        },
+        "catalog_revalidated_304_ms": {
+          "n": 8,
+          "p50": 2.6,
+          "p95": 3.2,
+          "max": 3.4
+        },
+        "tree": [
+          {
+            "path": "<root>",
+            "depth": 1,
+            "bytes": 2371,
+            "n": 10,
+            "p50": 8.9,
+            "p95": 17.5,
+            "max": 21.1
+          },
+          {
+            "path": "<root>",
+            "depth": 2,
+            "bytes": 28135,
+            "n": 10,
+            "p50": 6.0,
+            "p95": 8.0,
+            "max": 9.0
+          },
+          {
+            "path": "top00",
+            "depth": 2,
+            "bytes": 14496,
+            "n": 10,
+            "p50": 7.2,
+            "p95": 10.1,
+            "max": 28.5
+          },
+          {
+            "path": "top00/mid00",
+            "depth": 2,
+            "bytes": 65753,
+            "n": 10,
+            "p50": 8.8,
+            "p95": 17.9,
+            "max": 28.4
+          }
+        ],
+        "clients": 8,
+        "clients_staggered_ms": {
+          "n": 8,
+          "p50": 7.3,
+          "p95": 13.5,
+          "max": 17.1
+        },
+        "clients_simultaneous_ms": {
+          "n": 8,
+          "p50": 11.3,
+          "p95": 13.9,
+          "max": 16.2
+        },
+        "diagnostics": {
+          "process": {
+            "rss_kb": 175792,
+            "peak_rss_kb": 175792,
+            "cpu_seconds": 4.27,
+            "exit_code": null
+          }
+        }
+      },
+      "inventory": {
+        "provider": "pre-refactor-main",
+        "contract": null,
+        "note": "Main predates provider diagnostics; only its log parser is adapted for this comparison."
+      }
+    },
+    "candidate_synthetic": {
+      "label": "candidate-synthetic",
+      "build": {
+        "version": "metab 0.9.1.dev93+a2d21fb7 (+119 commits, 7190f21f, dirty)"
+      },
+      "inputs": {
+        "provider": "python",
+        "contract": "inventory-provider-v1",
+        "files": 60000,
+        "clients": 8
+      },
+      "corpus": {
+        "shape": 2,
+        "files": 60000,
+        "dirs": 972,
+        "ignored_files": 0
+      },
+      "cold_scan": {
+        "converged": true,
+        "provider": "python",
+        "contract": "inventory-provider-v1",
+        "status": "done",
+        "files": 60000,
+        "walk_ms": 5673,
+        "diagnostics": {
+          "provider": "python",
+          "contract": "inventory-provider-v1",
+          "phase": "watching",
+          "complete": true,
+          "version": 62214,
+          "work": {
+            "read_requests": 5,
+            "observations": 0,
+            "unchanged": 0,
+            "stale": 0,
+            "resource_refused": 0,
+            "rows_visited": 54976,
+            "rows_returned": 2,
+            "maintained_index_work": 54976,
+            "commits_visited": 0,
+            "commits_returned": 0,
+            "directories_read": 0,
+            "entries_visited": 0,
+            "files_visited": 0,
+            "bytes_visited": 0,
+            "binding_bytes_copied": 0,
+            "lock_wait_ns": 2000,
+            "cpu_time_ns": 87711125,
+            "wall_time_ns": 159318499
+          },
+          "process": {
+            "rss_kb": 120448,
+            "peak_rss_kb": 120448,
+            "cpu_seconds": 2.95,
+            "exit_code": null
+          }
+        }
+      },
+      "scan_with_client": {
+        "converged": true,
+        "wall_s": 6.2,
+        "timed_out_at_s": null,
+        "walk_ms": 5670,
+        "files": 60000,
+        "first_count_s": 0.77,
+        "requests_issued": 186,
+        "rollup_ms": {
+          "n": 186,
+          "p50": 23.5,
+          "p95": 66.6,
+          "max": 163.5
+        },
+        "diagnostics": {
+          "provider": "python",
+          "contract": "inventory-provider-v1",
+          "phase": "watching",
+          "complete": true,
+          "version": 62214,
+          "work": {
+            "read_requests": 364,
+            "observations": 0,
+            "unchanged": 0,
+            "stale": 0,
+            "resource_refused": 0,
+            "rows_visited": 5839574,
+            "rows_returned": 521,
+            "maintained_index_work": 5839574,
+            "commits_visited": 0,
+            "commits_returned": 0,
+            "directories_read": 0,
+            "entries_visited": 0,
+            "files_visited": 0,
+            "bytes_visited": 0,
+            "binding_bytes_copied": 0,
+            "lock_wait_ns": 1257501,
+            "cpu_time_ns": 365786583,
+            "wall_time_ns": 554523989
+          },
+          "process": {
+            "rss_kb": 120320,
+            "peak_rss_kb": 120320,
+            "cpu_seconds": 3.39,
+            "exit_code": null
+          }
+        }
+      },
+      "settled": {
+        "converged": true,
+        "errors": [],
+        "rollup_aggregated_ms": {
+          "n": 8,
+          "p50": 46.8,
+          "p95": 54.2,
+          "max": 149.5
+        },
+        "rollup_retained_body_ms": {
+          "n": 8,
+          "p50": 12.2,
+          "p95": 26.9,
+          "max": 30.1
+        },
+        "rollup_revalidated_304_ms": {
+          "n": 8,
+          "p50": 18.1,
+          "p95": 25.0,
+          "max": 27.7
+        },
+        "navigation_first_ms": 482.6,
+        "navigation_reused_ms": {
+          "n": 10,
+          "p50": 8.1,
+          "p95": 17.7,
+          "max": 28.0
+        },
+        "catalog_first_ms": 281.0,
+        "catalog_bytes": 3030118,
+        "catalog_retained_body_ms": {
+          "n": 8,
+          "p50": 3.0,
+          "p95": 3.7,
+          "max": 4.9
+        },
+        "catalog_revalidated_304_ms": {
+          "n": 8,
+          "p50": 2.3,
+          "p95": 2.7,
+          "max": 3.1
+        },
+        "tree": [
+          {
+            "path": "<root>",
+            "depth": 1,
+            "bytes": 2371,
+            "n": 10,
+            "p50": 4.7,
+            "p95": 6.6,
+            "max": 7.4
+          },
+          {
+            "path": "<root>",
+            "depth": 2,
+            "bytes": 28135,
+            "n": 10,
+            "p50": 5.8,
+            "p95": 7.3,
+            "max": 7.4
+          },
+          {
+            "path": "top00",
+            "depth": 2,
+            "bytes": 14496,
+            "n": 10,
+            "p50": 5.7,
+            "p95": 6.3,
+            "max": 8.4
+          },
+          {
+            "path": "top00/mid00",
+            "depth": 2,
+            "bytes": 65753,
+            "n": 10,
+            "p50": 20.1,
+            "p95": 32.3,
+            "max": 36.6
+          }
+        ],
+        "clients": 8,
+        "clients_staggered_ms": {
+          "n": 8,
+          "p50": 4.5,
+          "p95": 7.4,
+          "max": 18.6
+        },
+        "clients_simultaneous_ms": {
+          "n": 8,
+          "p50": 11.6,
+          "p95": 12.0,
+          "max": 12.1
+        },
+        "diagnostics": {
+          "provider": "python",
+          "contract": "inventory-provider-v1",
+          "phase": "watching",
+          "complete": true,
+          "version": 62230,
+          "work": {
+            "read_requests": 140,
+            "observations": 0,
+            "unchanged": 0,
+            "stale": 0,
+            "resource_refused": 0,
+            "rows_visited": 802532,
+            "rows_returned": 68190,
+            "maintained_index_work": 802532,
+            "commits_visited": 0,
+            "commits_returned": 0,
+            "directories_read": 0,
+            "entries_visited": 0,
+            "files_visited": 0,
+            "bytes_visited": 0,
+            "binding_bytes_copied": 0,
+            "lock_wait_ns": 41918,
+            "cpu_time_ns": 695156794,
+            "wall_time_ns": 1134726584
+          },
+          "process": {
+            "rss_kb": 131568,
+            "peak_rss_kb": 131568,
+            "cpu_seconds": 3.68,
+            "exit_code": null
+          }
+        }
+      },
+      "inventory": {
+        "provider": "python",
+        "contract": "inventory-provider-v1"
+      }
+    },
+    "main_project": {
+      "label": "main-project",
+      "build": {
+        "version": "metab 0.9.1.dev47+aeef188a (+47 commits, aeef188a)"
+      },
+      "inputs": {
+        "provider": "python",
+        "contract": "inventory-provider-v1",
+        "files": 100000,
+        "clients": 8
+      },
+      "corpus": {
+        "shape": 1,
+        "projects": 1,
+        "files": 25296,
+        "dirs": 3150
+      },
+      "cold_scan": {
+        "converged": true,
+        "provider": null,
+        "contract": null,
+        "status": "done",
+        "files": 11727,
+        "walk_ms": 2452,
+        "diagnostics": {
+          "process": {
+            "rss_kb": 88992,
+            "peak_rss_kb": 88992,
+            "cpu_seconds": 1.57,
+            "exit_code": null
+          }
+        }
+      },
+      "scan_with_client": {
+        "converged": true,
+        "wall_s": 2.5,
+        "timed_out_at_s": null,
+        "walk_ms": 1795,
+        "files": 11727,
+        "first_count_s": 0.77,
+        "requests_issued": 169,
+        "rollup_ms": {
+          "n": 169,
+          "p50": 8.8,
+          "p95": 21.6,
+          "max": 44.9
+        },
+        "diagnostics": {
+          "process": {
+            "rss_kb": 92928,
+            "peak_rss_kb": 92928,
+            "cpu_seconds": 1.89,
+            "exit_code": null
+          }
+        }
+      },
+      "settled": {
+        "converged": false,
+        "errors": [
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404"
+        ],
+        "rollup_aggregated_ms": {
+          "n": 8,
+          "p50": 5.9,
+          "p95": 8.4,
+          "max": 8.4
+        },
+        "rollup_retained_body_ms": {
+          "n": 8,
+          "p50": 1.9,
+          "p95": 3.4,
+          "max": 4.3
+        },
+        "rollup_revalidated_304_ms": {
+          "n": 8,
+          "p50": 2.6,
+          "p95": 4.7,
+          "max": 4.9
+        },
+        "navigation_first_ms": 170.0,
+        "navigation_reused_ms": {
+          "n": 10,
+          "p50": 2.5,
+          "p95": 4.7,
+          "max": 4.9
+        },
+        "catalog_first_ms": 4.4,
+        "catalog_bytes": 172015,
+        "catalog_retained_body_ms": {
+          "n": 8,
+          "p50": 0.9,
+          "p95": 1.8,
+          "max": 1.9
+        },
+        "catalog_revalidated_304_ms": {
+          "n": 8,
+          "p50": 0.9,
+          "p95": 1.0,
+          "max": 1.8
+        },
+        "tree": [
+          {
+            "path": "<root>",
+            "depth": 1,
+            "bytes": 604,
+            "n": 10,
+            "p50": 1.7,
+            "p95": 3.8,
+            "max": 4.3
+          },
+          {
+            "path": "<root>",
+            "depth": 2,
+            "bytes": 2669,
+            "n": 10,
+            "p50": 1.9,
+            "p95": 3.3,
+            "max": 4.3
+          },
+          {
+            "path": "top00",
+            "depth": 2,
+            "bytes": 0,
+            "n": 0
+          },
+          {
+            "path": "top00/mid00",
+            "depth": 2,
+            "bytes": 0,
+            "n": 0
+          }
+        ],
+        "clients": 8,
+        "clients_staggered_ms": {
+          "n": 8,
+          "p50": 2.5,
+          "p95": 4.2,
+          "max": 12.1
+        },
+        "clients_simultaneous_ms": {
+          "n": 8,
+          "p50": 3.6,
+          "p95": 4.2,
+          "max": 4.4
+        },
+        "diagnostics": {
+          "process": {
+            "rss_kb": 97600,
+            "peak_rss_kb": 97600,
+            "cpu_seconds": 1.51,
+            "exit_code": null
+          }
+        }
+      },
+      "inventory": {
+        "provider": "pre-refactor-main",
+        "contract": null,
+        "note": "Main predates provider diagnostics; only its log parser is adapted for this comparison."
+      }
+    },
+    "candidate_project": {
+      "label": "candidate-project",
+      "build": {
+        "version": "metab 0.9.1.dev93+a2d21fb7 (+119 commits, 7190f21f, dirty)"
+      },
+      "inputs": {
+        "provider": "python",
+        "contract": "inventory-provider-v1",
+        "files": 100000,
+        "clients": 8
+      },
+      "corpus": {
+        "shape": 1,
+        "projects": 1,
+        "files": 25296,
+        "dirs": 3150
+      },
+      "cold_scan": {
+        "converged": true,
+        "provider": "python",
+        "contract": "inventory-provider-v1",
+        "status": "done",
+        "files": 11727,
+        "walk_ms": 672,
+        "diagnostics": {
+          "provider": "python",
+          "contract": "inventory-provider-v1",
+          "phase": "watching",
+          "complete": true,
+          "version": 13093,
+          "work": {
+            "read_requests": 4,
+            "observations": 0,
+            "unchanged": 0,
+            "stale": 0,
+            "resource_refused": 0,
+            "rows_visited": 1,
+            "rows_returned": 2,
+            "maintained_index_work": 1,
+            "commits_visited": 0,
+            "commits_returned": 0,
+            "directories_read": 0,
+            "entries_visited": 0,
+            "files_visited": 0,
+            "bytes_visited": 0,
+            "binding_bytes_copied": 0,
+            "lock_wait_ns": 1167,
+            "cpu_time_ns": 326501,
+            "wall_time_ns": 334833
+          },
+          "process": {
+            "rss_kb": 75504,
+            "peak_rss_kb": 75504,
+            "cpu_seconds": 0.93,
+            "exit_code": null
+          }
+        }
+      },
+      "scan_with_client": {
+        "converged": true,
+        "wall_s": 1.9,
+        "timed_out_at_s": null,
+        "walk_ms": 1433,
+        "files": 11727,
+        "first_count_s": 0.58,
+        "requests_issued": 131,
+        "rollup_ms": {
+          "n": 131,
+          "p50": 8.5,
+          "p95": 23.8,
+          "max": 30.5
+        },
+        "diagnostics": {
+          "provider": "python",
+          "contract": "inventory-provider-v1",
+          "phase": "watching",
+          "complete": true,
+          "version": 13093,
+          "work": {
+            "read_requests": 245,
+            "observations": 0,
+            "unchanged": 0,
+            "stale": 0,
+            "resource_refused": 0,
+            "rows_visited": 796330,
+            "rows_returned": 354,
+            "maintained_index_work": 796330,
+            "commits_visited": 0,
+            "commits_returned": 0,
+            "directories_read": 0,
+            "entries_visited": 0,
+            "files_visited": 0,
+            "bytes_visited": 0,
+            "binding_bytes_copied": 0,
+            "lock_wait_ns": 161164,
+            "cpu_time_ns": 169156887,
+            "wall_time_ns": 192821700
+          },
+          "process": {
+            "rss_kb": 77440,
+            "peak_rss_kb": 77440,
+            "cpu_seconds": 1.55,
+            "exit_code": null
+          }
+        }
+      },
+      "settled": {
+        "converged": false,
+        "errors": [
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404",
+          "tree path='top00/mid00' depth=2 returned status=404"
+        ],
+        "rollup_aggregated_ms": {
+          "n": 8,
+          "p50": 8.4,
+          "p95": 9.5,
+          "max": 12.1
+        },
+        "rollup_retained_body_ms": {
+          "n": 8,
+          "p50": 2.9,
+          "p95": 4.6,
+          "max": 7.4
+        },
+        "rollup_revalidated_304_ms": {
+          "n": 8,
+          "p50": 2.2,
+          "p95": 4.6,
+          "max": 7.3
+        },
+        "navigation_first_ms": 190.8,
+        "navigation_reused_ms": {
+          "n": 10,
+          "p50": 7.2,
+          "p95": 10.5,
+          "max": 11.3
+        },
+        "catalog_first_ms": 26.0,
+        "catalog_bytes": 172022,
+        "catalog_retained_body_ms": {
+          "n": 8,
+          "p50": 6.8,
+          "p95": 9.4,
+          "max": 13.4
+        },
+        "catalog_revalidated_304_ms": {
+          "n": 8,
+          "p50": 7.5,
+          "p95": 8.5,
+          "max": 10.0
+        },
+        "tree": [
+          {
+            "path": "<root>",
+            "depth": 1,
+            "bytes": 605,
+            "n": 10,
+            "p50": 4.7,
+            "p95": 6.1,
+            "max": 9.0
+          },
+          {
+            "path": "<root>",
+            "depth": 2,
+            "bytes": 2670,
+            "n": 10,
+            "p50": 3.3,
+            "p95": 4.5,
+            "max": 7.9
+          },
+          {
+            "path": "top00",
+            "depth": 2,
+            "bytes": 0,
+            "n": 0
+          },
+          {
+            "path": "top00/mid00",
+            "depth": 2,
+            "bytes": 0,
+            "n": 0
+          }
+        ],
+        "clients": 8,
+        "clients_staggered_ms": {
+          "n": 8,
+          "p50": 8.4,
+          "p95": 9.7,
+          "max": 13.1
+        },
+        "clients_simultaneous_ms": {
+          "n": 8,
+          "p50": 6.7,
+          "p95": 10.1,
+          "max": 11.4
+        },
+        "diagnostics": {
+          "provider": "python",
+          "contract": "inventory-provider-v1",
+          "phase": "watching",
+          "complete": true,
+          "version": 13109,
+          "work": {
+            "read_requests": 142,
+            "observations": 0,
+            "unchanged": 0,
+            "stale": 0,
+            "resource_refused": 0,
+            "rows_visited": 149186,
+            "rows_returned": 2701,
+            "maintained_index_work": 149186,
+            "commits_visited": 0,
+            "commits_returned": 0,
+            "directories_read": 0,
+            "entries_visited": 0,
+            "files_visited": 0,
+            "bytes_visited": 0,
+            "binding_bytes_copied": 0,
+            "lock_wait_ns": 28584,
+            "cpu_time_ns": 153542253,
+            "wall_time_ns": 247822661
+          },
+          "process": {
+            "rss_kb": 78448,
+            "peak_rss_kb": 78448,
+            "cpu_seconds": 1.53,
+            "exit_code": null
+          }
+        }
+      },
+      "inventory": {
+        "provider": "python",
+        "contract": "inventory-provider-v1"
+      }
+    }
+  }
+}

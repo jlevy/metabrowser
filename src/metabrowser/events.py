@@ -6,15 +6,14 @@ Single source of truth for the event envelope, the discriminated
 log-tail channel) emit through these types.
 
 This module is pure types + small helpers — no I/O, no async, no
-filesystem access. The walker in
-:mod:`metabrowser.inventory` constructs ``FsEntry`` records
-and emits ``FsChange`` ops; the route layer wraps them in
+filesystem access. The inventory coordinator projects provider-neutral
+filesystem records into ``FsEntry`` records and ``FsChange`` ops; the route layer wraps them in
 ``EventEnvelope`` (id + event) and pushes through ``encode_sse``.
 
 Invariants (verified by tests):
 
-* ``RingBuffer`` overflow drops the oldest envelopes; ``Last-Event-ID``
-  resume returns only envelopes strictly newer than the requested id.
+* ``RingBuffer`` overflow drops the oldest envelopes; ``since(id)`` returns only
+  envelopes strictly newer than the requested id.
 * Envelope ids are monotonic per-process from 1 (so ``Last-Event-ID: 0``
   asks for the full buffer).
 * Round-trip: ``encode_sse(envelope)`` emits a single SSE frame; the
@@ -29,226 +28,16 @@ Invariants (verified by tests):
 from __future__ import annotations
 
 import json
-import os
 from collections import deque
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
-from metabrowser.fs_paths import derive_ext
+# Re-exported: the record moved to `fs_record` so the scanner can name it without
+# importing this module, and every existing importer keeps working.
+from metabrowser.fs_record import FsEntry as FsEntry
+from metabrowser.fs_record import WriteToken as WriteToken
 
 # ── Filesystem entries ──────────────────────────────────────────
-
-
-@dataclass(slots=True, frozen=True)
-class WriteToken:
-    """Captured snapshot of the inventory's generation counter for a path.
-
-    A producer that wants race-safety reads the counter at the moment it
-    starts observing a path's filesystem state and writes the resulting
-    entry with that token. If an :meth:`InventoryIndex.invalidate` bumps
-    the counter before the write lands, the inventory drops the write
-    rather than overwriting a fresher observation.
-
-    Producers that just observed the filesystem **now** can leave
-    ``FsEntry.write_token = None``; the inventory treats the write as a
-    fresh observation and stamps it with the current generation at write
-    time. The ``None`` vs ``WriteToken`` distinction is type-level so the
-    contract is un-confusable — a default ``int`` field cannot be
-    accidentally interpreted as "stale snapshot N".
-    """
-
-    generation: int
-
-
-@dataclass(slots=True, frozen=True)
-class FsEntry:
-    """A single filesystem object — file, directory, or symlink — as
-    the inventory tracks it.
-
-    Files always carry concrete ``size`` / ``mtime_ns``. Directories
-    carry their immediate-child count via ``total_files`` (with the
-    cumulative subtree count for the recent/tree decoration), but
-    those aggregate fields are ``None`` while the walker is still
-    finalizing the subtree below them. The walker writes the
-    finalized values atomically (``dataclasses.replace``) once the
-    subtree is complete.
-
-    Symlinks are typed leaves: the inventory records the link itself
-    without following its target or including it in file aggregates.
-    ``empty`` reports whether a finalized directory subtree has no file or
-    symlink leaves. It stays separate from file-only aggregates because
-    symlinks are visible leaves but not files; ``None`` means unknown.
-
-    ``views`` is the ordered list of preview-pane view ids (see
-    :mod:`metabrowser.file_kinds`); empty for dirs and symlinks.
-    ``labels`` is an open dict for run-state, pid-alive, errored,
-    plugin badges; meaningful only for files.
-
-    ``write_token`` carries a captured snapshot of the inventory's
-    generation counter for race-safety; see :class:`WriteToken`.
-    ``None`` means "freshly observed; stamp at write time"; a
-    :class:`WriteToken` means the producer captured the counter at
-    observation start and the inventory should drop the write if an
-    invalidation has bumped the counter since.
-    """
-
-    path: str
-    parent: str
-    name: str
-    type: Literal["file", "dir", "symlink"]
-    ext: str
-    kind: str
-    size: int
-    mtime_ns: int
-    mtime_hash: str
-    active: bool
-    views: tuple[str, ...] = ()
-    labels: tuple[tuple[str, str], ...] = ()
-    # dir aggregates — None while the walker has not yet finalized
-    total_files: int | None = None
-    total_size: int | None = None
-    unignored_files: int | None = None
-    unignored_size: int | None = None
-    newest_mtime_ns: int | None = None
-    empty: bool | None = None
-    gitignored: bool = False
-    # walker bookkeeping (not part of the wire payload)
-    write_token: WriteToken | None = None
-
-    @classmethod
-    def for_observed_file(
-        cls,
-        *,
-        path: str,
-        parent: str,
-        name: str,
-        size: int,
-        mtime_ns: int,
-        gitignored: bool = False,
-        existing: FsEntry | None = None,
-    ) -> FsEntry:
-        """Build a freshly-observed file entry.
-
-        This is the single construction point for the walker and watcher,
-        ensuring both use the bounded compound-tail extension rule in
-        :func:`metabrowser.fs_paths.derive_ext`.
-
-        Carries forward ``active`` and ``labels`` from *existing* when
-        provided so the watcher's modify path preserves run-state and
-        plugin badges across edits. Leaves ``write_token=None`` so
-        :meth:`InventoryIndex._store_walker_entry` stamps the entry
-        with the current generation at write time.
-        """
-
-        return cls(
-            path=path,
-            parent=parent,
-            name=name,
-            type="file",
-            ext=derive_ext(name),
-            kind="file",
-            size=size,
-            mtime_ns=mtime_ns,
-            mtime_hash="",
-            active=existing.active if existing else False,
-            views=existing.views if existing else (),
-            labels=existing.labels if existing else (),
-            gitignored=gitignored,
-        )
-
-    @classmethod
-    def for_observed_dir(
-        cls,
-        *,
-        path: str,
-        parent: str,
-        name: str,
-        gitignored: bool = False,
-    ) -> FsEntry:
-        """Build a freshly-observed directory placeholder.
-
-        Aggregates (``total_files`` / ``total_size`` /
-        ``newest_mtime_ns``) stay ``None`` until the walker finalizes
-        the subtree via post-order replacement.
-        """
-
-        return cls(
-            path=path,
-            parent=parent,
-            name=name,
-            type="dir",
-            ext="",
-            kind="dir",
-            size=0,
-            mtime_ns=0,
-            mtime_hash="",
-            active=False,
-            gitignored=gitignored,
-        )
-
-    @classmethod
-    def for_observed_symlink(
-        cls,
-        *,
-        path: str,
-        parent: str,
-        name: str,
-        size: int,
-        mtime_ns: int,
-        gitignored: bool = False,
-    ) -> FsEntry:
-        """Build a symlink leaf without treating it as a regular file."""
-
-        return cls(
-            path=path,
-            parent=parent,
-            name=name,
-            type="symlink",
-            ext="",
-            kind="symlink",
-            size=size,
-            mtime_ns=mtime_ns,
-            mtime_hash="",
-            active=False,
-            gitignored=gitignored,
-        )
-
-    @classmethod
-    def for_stat(
-        cls,
-        *,
-        path: str,
-        parent: str,
-        name: str,
-        stat: os.stat_result,
-        gitignored: bool = False,
-        existing: FsEntry | None = None,
-    ) -> FsEntry:
-        """Build a freshly-observed file entry from a ``stat_result``.
-
-        Convenience wrapper for the watcher path where the producer
-        already holds an ``os.stat_result``. Equivalent to
-        :meth:`for_observed_file` but pulls ``size`` / ``mtime_ns``
-        from the stat tuple.
-        """
-
-        return cls.for_observed_file(
-            path=path,
-            parent=parent,
-            name=name,
-            size=stat.st_size,
-            mtime_ns=stat.st_mtime_ns,
-            gitignored=gitignored,
-            existing=existing,
-        )
-
-
-# ── fs.change ops ───────────────────────────────────────────────
-#
-# The discriminated union below is the unit of change in the
-# inventory plane. Producers (watch backends, app-log backend,
-# reconciliation) push ops into the shared queue; the inventory
-# consumer batches ops and emits an ``FsChange`` event per drain.
 
 
 @dataclass(slots=True, frozen=True)
@@ -460,8 +249,7 @@ class EventEnvelope:
 
 
 class RingBuffer:
-    """Bounded fifo of ``EventEnvelope`` for short-disconnect
-    resume.
+    """Bounded FIFO of ``EventEnvelope`` values for ids and diagnostics.
 
     Capacity is a soft contract: the buffer holds at most
     ``capacity`` envelopes; oldest are dropped on append once full.
@@ -487,7 +275,7 @@ class RingBuffer:
     @property
     def latest_id(self) -> int:
         """Highest-numbered envelope id that has ever been
-        appended. Useful for ``Last-Event-ID`` resume tests; not
+        appended. Useful for reconnect-window diagnostics; not
         the same as the highest id currently in the buffer (the
         head id may have been dropped)."""
         return self._next_id - 1

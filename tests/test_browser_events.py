@@ -18,7 +18,8 @@ relies on:
 from __future__ import annotations
 
 import json
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import MISSING, Field, FrozenInstanceError, fields, replace
+from typing import Any
 
 from metabrowser.events import (
     CapabilityUpdate,
@@ -38,6 +39,7 @@ from metabrowser.events import (
     ProjectionInvalidate,
     ProjectionUpdate,
     RingBuffer,
+    WriteToken,
     encode_heartbeat_comment,
     encode_sse,
 )
@@ -161,8 +163,6 @@ def test_encode_heartbeat_comment_minimal_keepalive() -> None:
 # ── Round-trip per event variant ────────────────────────────────
 
 
-from typing import Any
-
 from metabrowser.events import StreamEvent
 
 
@@ -281,3 +281,67 @@ def test_fs_entry_is_frozen_for_safe_replace() -> None:
     except FrozenInstanceError:
         return
     raise AssertionError("expected FrozenInstanceError on direct mutation")
+
+
+def _distinct_probe_value(field: Field[Any], ordinal: int) -> Any:
+    """A value for *field* that is distinguishable from its default.
+
+    The point of the probe is that every field carries something no default equals, so a
+    copy that drops one differs from a copy that keeps it. A literal cannot do that job:
+    a field appended with a default is simply absent from the literal, takes that default
+    in both copies, and compares equal while being silently dropped.
+    """
+
+    annotation = str(field.type)
+    if annotation.startswith("Literal["):
+        # The last option, so it differs from whatever a default would most likely be.
+        return annotation[len("Literal[") : -1].split(", ")[-1].strip("'\"")
+    if "WriteToken" in annotation:
+        return WriteToken(ordinal + 1)
+    if "tuple[tuple[str, str]" in annotation.replace(" ", ""):
+        return ((f"k{ordinal}", f"v{ordinal}"),)
+    if "tuple[str" in annotation.replace(" ", ""):
+        return (f"s{ordinal}",)
+    if "bool" in annotation:
+        return True
+    if "int" in annotation:
+        return 1_000 + ordinal
+    if "str" in annotation:
+        return f"probe-{ordinal}"
+    raise AssertionError(f"the probe has no value for {field.name}: {annotation}")
+
+
+def test_fsentry_fast_copies_match_dataclasses_replace() -> None:
+    """The hand-written copies must stay equivalent to the reflective one.
+
+    `with_write_token` and `with_empty` list every field positionally, because reading
+    them back by name is the cost they exist to remove. That makes them the one place a
+    newly added field is silently dropped -- it would take its default in the copy
+    instead of the value being copied. Comparing against `dataclasses.replace`, which is
+    reflective and cannot miss a field, is what turns that into a failure.
+
+    The probe is built from `dataclasses.fields` rather than written out, and that is the
+    part that does the work. A hand-written literal only catches a field inserted in the
+    *middle* of the list, because the positional arguments shift and the values land in
+    the wrong slots. A field *appended* with a default -- the ordinary way a dataclass
+    grows -- is missing from the literal too, so both copies produce the default and the
+    comparison passes while the fast copies drop it. Giving every field a value distinct
+    from its default is what closes that.
+    """
+
+    field_list = fields(FsEntry)
+    entry = FsEntry(
+        **{
+            field.name: _distinct_probe_value(field, ordinal)
+            for ordinal, field in enumerate(field_list)
+        }
+    )
+    # Every field must actually differ from its default, or the probe is not probing.
+    for field in field_list:
+        if field.default is not MISSING:
+            assert getattr(entry, field.name) != field.default, field.name
+
+    for token in (None, WriteToken(11)):
+        assert entry.with_write_token(token) == replace(entry, write_token=token)
+    for empty in (None, True, False):
+        assert entry.with_empty(empty) == replace(entry, empty=empty)

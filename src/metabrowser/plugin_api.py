@@ -17,34 +17,37 @@ from metabrowser.gz_io import (
     ArtifactDecompressionTimeoutError,
     ArtifactPath,
 )
+from metabrowser.inventory_engine.contract import canonical_inventory_path
 from metabrowser.jsonl_view import JsonlParseLimitError
 from metabrowser.logutil.parsing import LogEvent, LogParser, detect_adapter, register_log_adapter
 from metabrowser.paths_safe import (
     _relativize,
     _safe_path,
-    _safe_subdir,
+    _safe_path_from_identity,
     register_root_callback,
 )
 from metabrowser.projections import extract_agent_charts_cached
 
 
 def resolve_path(requested: str) -> Path | None:
-    """Resolve a served-root-relative path without allowing traversal.
+    """Resolve a canonical inventory path without allowing traversal.
 
     An empty string returns the served root. A successful result may be a file
     or directory; use :func:`resolve_directory` when a directory is required.
     """
-    return _safe_path(requested)
+    return _safe_path_from_identity(requested)
 
 
 def resolve_directory(requested: str) -> Path | None:
     """Resolve a served-root-relative directory without allowing traversal."""
-    return _safe_subdir(requested)
+    target = resolve_path(requested)
+    return target if target is not None and target.is_dir() else None
 
 
 def relativize_path(raw: str | None) -> str | None:
     """Convert an absolute path under the served root to its client path."""
-    return _relativize(raw)
+    relative = _relativize(raw)
+    return canonical_inventory_path(relative) if relative else relative
 
 
 # The deepest inner path a container may expose beneath its own file,

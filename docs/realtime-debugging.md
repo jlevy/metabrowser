@@ -67,18 +67,23 @@ Enable the debug endpoint only for local investigation:
 METABROWSER_DEBUG=1 uv --config-file uv.toml run --frozen metab ./path/to/directory --no-open
 ```
 
-During a stall, request `/_debug/tasks` from another terminal.
+During a stall, request `/_debug/tasks` and `/_debug/inventory` from another terminal.
 A rapidly growing task count suggests queueing or a producer that is not applying
-backpressure.
-Treat the response as diagnostic data; do not expose the debug server on an
-untrusted network.
+backpressure. The inventory response identifies the selected provider and contract,
+lifecycle phase, coverage, version, read count, entries and directories visited, rows
+returned, binding-copy bytes, lock wait, CPU time, and wall time.
+Compare those cumulative work counters before and after one slow request to distinguish
+provider work from queueing or browser time.
+Treat the response as diagnostic data; do not expose the debug server on an untrusted
+network.
 
 ## Live-Update Problems
 
 For a tree row that does not update:
 
 1. Confirm the file path is beneath the served root and is not ignored.
-2. Check the inventory endpoint for the current entry and generation.
+2. Check `/_debug/inventory` for provider state, version, and work growth, then query
+   the affected entry through its normal API route.
 3. Inspect the `/api/events` stream for a snapshot, change, or resynchronization event.
 4. Confirm the browser file store applied the operation.
 5. Verify the relevant panel subscribes to the shared store instead of a stale local

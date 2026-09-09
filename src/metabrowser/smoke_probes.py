@@ -238,9 +238,9 @@ def _parse_sse_record(record: str) -> dict[str, str]:
 
 def cmd_sse_probe(args: argparse.Namespace) -> int:
     """Touch a temp file under the served root, watch /api/events
-    for the resulting upsert. Pass Last-Event-ID huge to skip the
-    snapshot replay (otherwise the per-conn queue can overflow on
-    large repos before our touch lands)."""
+    for the resulting upsert. The server attaches the live queue after
+    its coherent snapshot, so startup inventory deltas cannot flood the
+    probe before the touch lands."""
 
     # The probe file lives under cwd, which the user is expected to
     # have set to the served root before invoking. Using a dedicated
@@ -270,7 +270,7 @@ def cmd_sse_probe(args: argparse.Namespace) -> int:
         args.host,
         args.port,
         "/api/events?scope=root-depth-2",
-        last_event_id="9999999999",
+        last_event_id="0",
         duration_s=args.timeout + 2.0,
     )
 

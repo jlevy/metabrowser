@@ -65,7 +65,7 @@ export function resolveWikiTarget(intent, snapshot) {
     return internalResult(value.sourcePath, value.action, fragment);
   }
 
-  const notePath = appendMarkdownExtension(parsed.note);
+  const notePath = appendMarkdownExtension(parsed.note.replaceAll("%", "%25"));
   const sourceDirectory = value.sourcePath.split("/").slice(0, -1);
   const explicitRelative = notePath.startsWith("./") || notePath.startsWith("../");
   const explicitRoot = notePath.startsWith("/");

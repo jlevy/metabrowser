@@ -399,7 +399,10 @@
         option.className = "search-palette-option";
         option.id = optionId(index);
         option.setAttribute("role", "option");
-        option.setAttribute("aria-label", result.path);
+        option.setAttribute(
+          "aria-label",
+          [result.description, result.label].filter(Boolean).join("/"),
+        );
         option.setAttribute("aria-selected", "false");
 
         const icon = hostDocument.createElement("span");

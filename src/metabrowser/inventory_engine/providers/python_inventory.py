@@ -1,0 +1,3796 @@
+"""Python reference provider for filesystem inventory and rollups.
+
+The public backend opens one five-method provider handle. Its private store is the sole
+owner of retained filesystem facts, aggregate indexes, discovery, watcher translation,
+and coherent read projections for that root.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import heapq
+import itertools
+import logging
+import os
+import stat as stat_module
+import threading
+import time
+import uuid
+from array import array
+from bisect import bisect_left
+from collections import ChainMap, deque
+from collections.abc import AsyncGenerator, Callable, Collection, Iterator, Mapping, Sequence
+from dataclasses import dataclass, replace
+from pathlib import Path, PurePosixPath
+from types import MappingProxyType
+from typing import Literal
+
+from metabrowser.cancellable_thread import run_cancellable_thread
+from metabrowser.events import (
+    CapabilityUpdate,
+    FsChange,
+    FsChangeOp,
+    FsEntry,
+    FsRemove,
+    FsResyncRequired,
+    FsUpsert,
+    StreamEvent,
+    WriteToken,
+)
+from metabrowser.file_type_registry import load_file_type_registry_from_text
+from metabrowser.fs_paths import is_visible_segment
+from metabrowser.inventory_engine.contract import (
+    MAX_ASSEMBLED_ROWS,
+    MAX_CHANGE_PATHS,
+    MAX_ISSUE_DETAIL_BYTES,
+    BoundaryMetrics,
+    CatalogProjection,
+    CatalogQuery,
+    CatalogRecord,
+    ChangeBatch,
+    ChangeCursor,
+    ChangeStreamBusyError,
+    CountKind,
+    CountResult,
+    Coverage,
+    CoverageReason,
+    DiagnosticsProjection,
+    DiagnosticsQuery,
+    DirectoryProjection,
+    DirectoryQuery,
+    EngineVersion,
+    EntryPresence,
+    EntryProjection,
+    EntryQuery,
+    EntryType,
+    FilteredTreeProjection,
+    FilteredTreeQuery,
+    Freshness,
+    IndexProgress,
+    IndexState,
+    InventoryClosedError,
+    InventoryConfig,
+    InventoryEntry,
+    InventoryHandle,
+    InventoryIssue,
+    IssueCode,
+    LifecyclePhase,
+    NavigationProjection,
+    NavigationQuery,
+    ObservationKind,
+    PriorityRequest,
+    ProjectionResult,
+    ProviderDiagnostics,
+    QueryKind,
+    QueryLimitProjection,
+    ReadQuery,
+    ReadRequest,
+    ReadResult,
+    RecentProjection,
+    RecentQuery,
+    RecentRecord,
+    RefreshObservation,
+    RefreshReceipt,
+    RefreshRequest,
+    RollupProjection,
+    RollupQuery,
+    SourceKind,
+    VersionUnavailableError,
+    WorkCounters,
+    ascii_casefold,
+    catalog_terminal_suffix,
+    inventory_scope_fingerprint,
+    native_inventory_path,
+)
+from metabrowser.inventory_rollup import (
+    RollupOptions,
+    RollupRank,
+    SubtreeAggregateCache,
+    build_rollup,
+)
+from metabrowser.settings import (
+    ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+    ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+    ROLLUP_MAX_NODES,
+    SLOW_OPERATION_LOG_SECONDS,
+)
+from metabrowser.walker import (
+    WALKER_EMIT_BATCH,
+    walk_tree,
+)
+from metabrowser.walker import (
+    build_gitignore_check_for as _build_gitignore_check_for,
+)
+from metabrowser.walker import (
+    depth_of as _depth_of,
+)
+from metabrowser.watch_backends import WatcherStatus, WatchMode, run_watcher
+from metabrowser.wire_models import (
+    FileTypeRegistryIdentity,
+    NavigationTallies,
+    RollupResult,
+)
+
+LOG = logging.getLogger(__name__)
+
+# Unit conversion for comparing second-based filter windows with inventory mtimes.
+_NANOSECONDS_PER_SECOND = 1_000_000_000
+# The first exact v0.7 release comparison found one 928.9 ms tally pass on a
+# 123,658-file corpus and a 291.7 ms unrelated-request delay. At that cold-tail
+# rate, 2,048 entries are about 15 ms of work. GitHub's shared Linux runner
+# later measured that batch at 52 ms under contention, just beyond the
+# deterministic 50 ms heartbeat guard. Yield every 1,024 entries so the same
+# guard remains meaningful across supported CI hosts. A one-microsecond
+# timer-backed pause releases the GIL and prevents the worker from immediately
+# reacquiring it, keeping the request loop independent of the interpreter's
+# ordinary thread-switch interval.
+_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH = 1_024
+_NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
+# The exact installed-build browser comparison in exp-014 measured a 1 ms
+# `/api/tree` handler queued for 33-37 ms while the startup walker applied a
+# wide directory without suspending. Yield four times inside each 256-entry
+# delivery batch so request tasks run independently of directory width.
+_WALKER_COOPERATIVE_YIELD_BATCH = 64
+_NAVIGATION_TALLY_REFRESH_FLOOR_S = 0.5
+_PAGE_MEMO_CAPACITY = 64
+_CONTRACT_ID = "inventory-provider-v1"
+
+
+def _bounded_issue_detail(detail: str) -> str:
+    """Keep provider diagnostics inside the contract's UTF-8 envelope."""
+
+    encoded = detail.encode("utf-8")
+    if len(encoded) <= MAX_ISSUE_DETAIL_BYTES:
+        return detail
+    suffix = b"..."
+    prefix = encoded[: MAX_ISSUE_DETAIL_BYTES - len(suffix)].decode("utf-8", errors="ignore")
+    return f"{prefix}{suffix.decode()}"
+
+
+# Rollup revisions come from one process-wide sequence rather than a
+# per-instance counter. The revision is what an /api/rollup ETag is keyed on,
+# so it must never repeat for different content within a process: two handles
+# must not hand out the same tag for different trees.
+_ROLLUP_REVISIONS = itertools.count(1)
+
+
+IndexStatus = Literal["idle", "scanning", "done", "truncated", "failed"]
+
+
+@dataclass(frozen=True, slots=True)
+class _NavigationTallyBase:
+    """The clock-independent half of the navigation tallies, plus sorted mtimes.
+
+    Everything here is a pure function of the index entries, so it can be
+    memoized on the index revision with no time term. The mtimes are kept
+    sorted and typed rather than as row counts, because that is what lets a
+    recency window be answered by a binary search instead of another pass:
+    the answer to "how many files are newer than this cutoff" is the length
+    minus the insertion point.
+
+    ``array("q")`` rather than a list: at the half-million-entry cap two lists
+    of Python ints cost tens of megabytes where two int64 arrays cost about
+    eight.
+    """
+
+    summary: dict[str, int]
+    file_type_registry: FileTypeRegistryIdentity
+    extensions: list[list[object]]
+    canonical_extensions: list[list[object]]
+    type_families: list[list[object]]
+    type_presets: list[list[object]]
+    tracked_mtimes: array[int]
+    ignored_mtimes: array[int]
+    oldest_mtime_ns: int
+    newest_mtime_ns: int
+
+
+# Python inventory handle
+
+
+class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
+    """Read-through view of ``_PythonInventoryStore._children_index``.
+
+    A rollup visits only the directories whose aggregates are missing, so
+    copying every bucket up front is wasted work. Each lookup instead takes
+    the index lock and copies just that directory's children, which keeps the
+    walker's writes from resizing a bucket mid-iteration.
+    """
+
+    __slots__ = ("_index",)
+
+    def __init__(self, index: _PythonInventoryStore) -> None:
+        self._index = index
+
+    def __getitem__(self, parent: str) -> Sequence[FsEntry]:
+        with self._index._rollup_cache_lock:
+            bucket = self._index._children_index.get(parent)
+            if bucket is None:
+                raise KeyError(parent)
+            return tuple(sorted(bucket.values(), key=_child_order))
+
+    def get(  # type: ignore[override]
+        self,
+        parent: str,
+        default: Sequence[FsEntry] = (),
+    ) -> Sequence[FsEntry]:
+        with self._index._rollup_cache_lock:
+            bucket = self._index._children_index.get(parent)
+            return (
+                tuple(sorted(bucket.values(), key=_child_order)) if bucket is not None else default
+            )
+
+    def __iter__(self) -> Iterator[str]:
+        with self._index._rollup_cache_lock:
+            return iter(tuple(self._index._children_index))
+
+    def __len__(self) -> int:
+        return len(self._index._children_index)
+
+
+def _with_recency(
+    base: _NavigationTallyBase,
+    recency_windows: Sequence[tuple[str, float]],
+    current_ns: int,
+) -> NavigationTallies:
+    """Add the clock-dependent rows to a memoized base.
+
+    Each window is one binary search per population rather than a pass over
+    the index: the mtimes are sorted ascending, so everything at or after the
+    cutoff's insertion point is inside the window.
+
+    The row lists from *base* are shared rather than copied. Every consumer
+    treats them as read-only -- they are serialized straight to JSON -- and
+    copying them per request would reintroduce a cost proportional to the
+    index, which is the thing being removed.
+    """
+
+    rows: list[list[object]] = []
+    for window_key, seconds in recency_windows:
+        cutoff_ns = current_ns - int(seconds * _NANOSECONDS_PER_SECOND)
+        tracked = len(base.tracked_mtimes) - bisect_left(base.tracked_mtimes, cutoff_ns)
+        ignored = len(base.ignored_mtimes) - bisect_left(base.ignored_mtimes, cutoff_ns)
+        rows.append([window_key, tracked, ignored])
+    return {
+        "summary": base.summary,
+        "file_type_registry": base.file_type_registry,
+        "extensions": base.extensions,
+        "canonical_extensions": base.canonical_extensions,
+        "type_families": base.type_families,
+        "type_presets": base.type_presets,
+        "recency_tallies": rows,
+        "oldest_mtime_ns": base.oldest_mtime_ns,
+        "newest_mtime_ns": base.newest_mtime_ns,
+    }
+
+
+# The navigation tally memo's key: the index revision it was computed at, the
+# row cap, and the caller's preset shape. Only the last two identify *what* was
+# computed -- the revision says when, and the staleness bound reads it from the
+# clock instead, because during a walk the revision moves on every write.
+_NavigationTallyKey = tuple[int, int, tuple[tuple[str, tuple[str, ...]], ...]]
+_NavigationReadShape = tuple[
+    str,
+    str,
+    str,
+    int,
+    tuple[tuple[str, tuple[str, ...]], ...],
+    tuple[tuple[str, float], ...],
+]
+
+
+@dataclass(frozen=True, slots=True)
+class _NavigationReadMemo:
+    """One coherent root-summary read retained across moving revisions."""
+
+    shape: _NavigationReadShape
+    version: EngineVersion
+    cursor: ChangeCursor
+    state: IndexState
+    projections: tuple[ProjectionResult, ...]
+    base: _NavigationTallyBase
+    computed_at: float
+    compute_cost_s: float
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadImage:
+    """One immutable entry and state image captured under the writer lock."""
+
+    entries: tuple[FsEntry, ...]
+    total_entries: int
+    rows_visited: int
+    version: EngineVersion
+    cursor: ChangeCursor
+    state: IndexState
+    diagnostics: ProviderDiagnostics
+    rollup_aggregates: SubtreeAggregateCache
+    rollup_epoch: int
+    rollup_passes: int
+    query_limits: Mapping[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class _DirectoryPageMemo:
+    """One multi-page directory projection at a coherent provider version."""
+
+    version: EngineVersion
+    state: IndexState
+    path: str
+    max_depth: int
+    include_ignored: bool
+    rows: tuple[FsEntry, ...]
+    token: str
+    offset: int
+
+
+@dataclass(frozen=True, slots=True)
+class _FilteredTreePageMemo:
+    """One multi-page filtered projection at a coherent provider version."""
+
+    version: EngineVersion
+    state: IndexState
+    query: FilteredTreeQuery
+    rows: tuple[InventoryEntry, ...]
+    matching_leaves: int
+    matching_files: int
+    matching_bytes: int
+    token: str
+    offset: int
+
+
+@dataclass(frozen=True, slots=True)
+class _CatalogPageMemo:
+    """One multi-page catalog projection at a coherent provider version."""
+
+    version: EngineVersion
+    state: IndexState
+    selection: tuple[object, ...]
+    records: tuple[CatalogRecord, ...]
+    total_matches: CountResult
+    token: str
+    offset: int
+
+
+type _PageMemo = _DirectoryPageMemo | _FilteredTreePageMemo | _CatalogPageMemo
+
+
+@dataclass(slots=True)
+class _SelectedDirectoryTotals:
+    """Regular-file totals for one directory in a filtered projection."""
+
+    file_count: int = 0
+    size: int = 0
+    newest_mtime_ns: int | None = None
+
+
+def _semantic_entry(entry: FsEntry) -> InventoryEntry:
+    """Drop Python-engine bookkeeping and host decorations at the boundary.
+
+    Paths cross unchanged. The store is keyed by the canonical identity, escaped once by
+    the walker when the entry was built, so this boundary has no encoding left to do --
+    it only sheds the host's bookkeeping fields.
+
+    That is a deliberate reversal of the earlier arrangement, where the store held raw
+    platform names and this function escaped three fields of every row of every read. A
+    canonical store does the same work once per entry instead of once per row per read,
+    and -- the reason it changed -- it makes the store's keys the same strings the
+    contract's queries carry, so an inbound lookup cannot silently miss.
+    """
+
+    return InventoryEntry(
+        path=entry.path,
+        parent=entry.parent,
+        name=entry.name,
+        type=EntryType(entry.type),
+        ext=entry.ext,
+        size=entry.size,
+        mtime_ns=entry.mtime_ns,
+        gitignored=entry.gitignored,
+        total_files=entry.total_files,
+        total_size=entry.total_size,
+        unignored_files=entry.unignored_files,
+        unignored_size=entry.unignored_size,
+        newest_mtime_ns=entry.newest_mtime_ns,
+        empty=entry.empty,
+    )
+
+
+def _internal_entry(entry: InventoryEntry | FsEntry) -> FsEntry:
+    """Convert a contract entry to the Python store's retained record.
+
+    Built positionally: this runs once per discovered entry, and binding twenty
+    keywords costs measurably more than passing them in order.
+    """
+
+    if isinstance(entry, FsEntry):
+        return entry
+    entry_type = entry.type.value
+    return FsEntry(
+        entry.path,
+        entry.parent,
+        entry.name,
+        entry_type,
+        entry.ext,
+        entry_type if entry_type != "file" else "file",
+        entry.size,
+        entry.mtime_ns,
+        "",
+        False,
+        (),
+        (),
+        entry.total_files,
+        entry.total_size,
+        entry.unignored_files,
+        entry.unignored_size,
+        entry.newest_mtime_ns,
+        entry.empty,
+        entry.gitignored,
+    )
+
+
+def _child_order(row: FsEntry) -> tuple[bool, bytes]:
+    """The contract's intra-directory order: directories first, then canonical bytes.
+
+    One definition, because there are two paths that produce a directory's children and
+    they disagreed. The snapshot builder sorted; the read-through view returned dictionary
+    insertion order, so which order a directory page came back in depended on which path
+    served it. Byte order also gives uppercase before lowercase, which is what the
+    contract states.
+
+    Ordering by the canonical form, not the raw name: `scandir` decodes an undecodable
+    byte to a surrogate, and encoding a surrogate as UTF-8 raises, so one such file made the
+    whole directory unlistable. The walker escapes on the way in, so the retained name is
+    already that form and this sorts it directly -- which is also what makes this order
+    agree with fdu's, which sorts the same canonical bytes.
+    """
+
+    return (row.type != "dir", row.name.encode("utf-8"))
+
+
+def _children_for(entries: Sequence[FsEntry]) -> dict[str, tuple[FsEntry, ...]]:
+    mutable: dict[str, list[FsEntry]] = {}
+    for entry in entries:
+        if entry.path == entry.parent:
+            continue
+        mutable.setdefault(entry.parent, []).append(entry)
+    return {parent: tuple(sorted(rows, key=_child_order)) for parent, rows in mutable.items()}
+
+
+def _directory_rows(
+    children: Mapping[str, Sequence[FsEntry]],
+    *,
+    path: str,
+    max_depth: int,
+    include_ignored: bool,
+) -> list[FsEntry]:
+    rows: list[FsEntry] = []
+    frontier = [path]
+    for _depth in range(max_depth):
+        next_frontier: list[str] = []
+        for parent in frontier:
+            for entry in children.get(parent, ()):
+                if not include_ignored and entry.gitignored:
+                    continue
+                rows.append(entry)
+                if entry.type == "dir":
+                    next_frontier.append(entry.path)
+        frontier = next_frontier
+        if not frontier:
+            break
+    return rows
+
+
+def _catalog_selection(query: CatalogQuery) -> tuple[object, ...]:
+    return (
+        query.include_ignored,
+        query.terminal_extensions,
+        query.ancestor_names,
+        query.size_less_than,
+        query.count_cap,
+    )
+
+
+def _bounded_count(total: int, count_cap: int, returned: int) -> CountResult:
+    """Report an exact count or the strongest lower bound already proved."""
+
+    if total <= count_cap:
+        return CountResult(CountKind.EXACT, total)
+    return CountResult(CountKind.AT_LEAST, max(count_cap, returned))
+
+
+def _catalog_entry_matches(entry: FsEntry, query: CatalogQuery) -> bool:
+    """Apply catalog predicates before records cross the provider boundary."""
+
+    if entry.type != "file" or (entry.gitignored and not query.include_ignored):
+        return False
+    if query.size_less_than is not None and entry.size >= query.size_less_than:
+        return False
+    if query.terminal_extensions:
+        # Both sides are folded. Folding only the candidate would silently reject a query
+        # that spelled its suffix `.PDF`, which is the kind of asymmetry that reads as a
+        # missing file rather than as a rejected filter.
+        terminal = catalog_terminal_suffix(entry.name)
+        wanted = {ascii_casefold(value) for value in query.terminal_extensions}
+        if terminal not in wanted:
+            return False
+    if query.ancestor_names:
+        parts = PurePosixPath(entry.path).parts[:-1]
+        if not any(name in parts for name in query.ancestor_names):
+            return False
+    return True
+
+
+class _PythonInventoryStore:
+    """Private retained Python implementation for one opened filesystem root.
+
+    Every consumer reads from this object. The walker writes into
+    it. Per-path generation counters serialize concurrent
+    invalidations against in-flight walker writes.
+
+    This is the provider's only retained filesystem state. Walker and watcher
+    observations pass through it so reads and change cursors share one ordered
+    view of each path.
+    """
+
+    def __init__(
+        self,
+        *,
+        config: InventoryConfig | None = None,
+    ) -> None:
+        if config is None:
+            config = InventoryConfig()
+        self._config = config
+        self._session = uuid.uuid4().hex
+        self._scope_fingerprint = inventory_scope_fingerprint(config)
+        self._closed = False
+        self._close_task: asyncio.Task[None] | None = None
+        self._last_error: str | None = None
+        self._root: Path | None = None
+        self._entries: dict[str, FsEntry] = {}
+        self._rollup_cache_lock = threading.Lock()
+        self._work_lock = threading.Lock()
+        self._work_totals = WorkCounters()
+        self._metrics_totals = BoundaryMetrics(cpu_time_ns=0)
+        self._read_requests = 0
+        # Navigation tallies are one full pass over every file entry: 486ms at
+        # 100k on the reference machine, and the root nav request is the first
+        # one the browser makes. The pass is a pure function of the entries and
+        # the clock, so it is memoized on the index revision rather than
+        # recomputed per request.
+        #
+        # A dedicated lock, held across the computation. Not
+        # ``_rollup_cache_lock``: the walker takes that on every write, and
+        # holding it for half a second would stall the crawl. Held across the
+        # pass rather than around the dict operations because that is what makes
+        # simultaneous askers share one pass -- under the GIL, running the same
+        # aggregation N times in parallel costs N times as much as running it
+        # once, so serializing identical work loses nothing and saves N-1 of it.
+        self._navigation_tally_lock = threading.Lock()
+        # When the memoized tallies were computed, monotonic. During a walk the
+        # revision they key on advances on every write, so revision equality can
+        # never hold and age is the only usable freshness test.
+        self._navigation_tally_at: float = 0.0
+        # How long the last tally pass took, seconds. The staleness bound is
+        # derived from this rather than fixed: the pass costs one visit per
+        # entry, so what is affordable to repeat scales with the tree, and a
+        # constant that is right at 10,000 files is wrong at a million.
+        self._navigation_tally_cost_s: float = 0.0
+        # One entry. A superseded revision can never be requested again, so
+        # there is nothing to evict and nothing to bound.
+        self._navigation_tally_memo: tuple[_NavigationTallyKey, _NavigationTallyBase] | None = None
+        # The root-summary route bundles its root lookup with the navigation
+        # projection. Retain that complete observation boundary so a cache hit can
+        # return the older version honestly instead of pairing stale tallies with the
+        # provider's current version and state.
+        self._navigation_read_memo: _NavigationReadMemo | None = None
+        # Complete projections are retained only when a response has another page.
+        # The small table supports bundled paged queries without repeating full scans.
+        self._page_lock = threading.Lock()
+        self._page_memos: dict[str, _PageMemo] = {}
+        self._rollup_generation = next(_ROLLUP_REVISIONS)
+        # Per-directory subtree aggregates, retained across rollup requests.
+        # Without this, every ``/api/rollup`` re-walked every file under the
+        # requested path: measured at 580-720ms for a 100k-file root, and the
+        # cost grows with the index, so a scanning root got slower with each
+        # refresh until the client could never catch up. Writes evict the
+        # changed path's ancestor chain (see ``_evict_subtree_aggregates``),
+        # so a rollup during a scan recomputes only what actually moved.
+        self._subtree_aggregates: SubtreeAggregateCache = {}
+        # Monotonic eviction counter and the epoch each path was last evicted
+        # at. Together they let a rollup pass that ran concurrently with the
+        # walker publish only the aggregates the walker has not invalidated.
+        self._aggregate_epoch = 0
+        self._aggregate_evicted_at: dict[str, int] = {}
+        # Rollup passes between _rollup_view and their merge. The eviction
+        # epochs above are only consulted by a merge, so at zero they can go.
+        self._rollup_passes_in_flight = 0
+        # Parent path -> {child path: entry}, maintained on every write. The
+        # rollup used to rebuild this grouping from a full copy of the index on
+        # each request, which cost ~155ms at 100k entries and grew with the
+        # index; keeping it incrementally lets a request read the few buckets
+        # it actually visits instead.
+        self._children_index: dict[str, dict[str, FsEntry]] = {}
+        self._direct_child_counts: dict[str, int] = {}
+        self._child_mtime_heaps: dict[str, list[tuple[int, str]]] = {}
+        self._recorded_child_mtimes: dict[str, tuple[str, int]] = {}
+        self._pending_dirs: set[str] = set()
+        self._descendant_file_counts: dict[str, int] = {}
+        self._descendant_file_sizes: dict[str, int] = {}
+        self._descendant_unignored_file_counts: dict[str, int] = {}
+        self._descendant_unignored_file_sizes: dict[str, int] = {}
+        self._descendant_leaf_counts: dict[str, int] = {}
+        self._walker_dir_generations: dict[str, int] = {}
+        self._generation: dict[str, int] = {}
+        self._change_history: deque[ChangeBatch] = deque()
+        self._replay_floor_sequence = self._rollup_generation
+        self._change_subscribers: set[asyncio.Queue[ChangeBatch | None]] = set()
+        self._change_stream_active = False
+        self._walker_task: asyncio.Task[None] | None = None
+        self._watcher_task: asyncio.Task[None] | None = None
+        self._watcher_mode = "off"
+        self._watcher_state = "off"
+        self._watcher_reason = "disabled"
+        self._watcher_detail = ""
+        self._priority_tasks: set[asyncio.Task[None]] = set()
+        self._priority_paths: set[str] = set()
+        self._done_event: asyncio.Event = asyncio.Event()
+        self._status: IndexStatus = "idle"
+        self._registry = load_file_type_registry_from_text(config.registry_document)
+        self._max_files = config.budget.max_files
+        self._files_indexed = 0
+        self._directories_indexed = 0
+        self._started_at_ns: int = 0
+        # Monotonic per handle, bumped on every catalog-relevant mutation and
+        # on ``clear()``.
+        self._catalog_revision = 0
+
+    # Lifecycle
+
+    def start(self, root: Path) -> asyncio.Task[None]:
+        """Spawn the walker if not already running. Idempotent —
+        a second call returns the existing task without spawning a
+        new walker. The boot lifespan hook is the only caller in
+        production; tests call this directly."""
+
+        if self._walker_task is not None and not self._walker_task.done():
+            return self._walker_task
+        self._root = root
+        with self._rollup_cache_lock:
+            self._status = "scanning"
+            self._rollup_generation = next(_ROLLUP_REVISIONS)
+        self._done_event.clear()
+        self._files_indexed = 0
+        self._directories_indexed = 0
+        self._started_at_ns = time.monotonic_ns()
+        self._walker_task = asyncio.create_task(
+            self._run_walker(root), name="metabrowser-inventory-walker"
+        )
+        return self._walker_task
+
+    def start_watcher(self, root: Path) -> asyncio.Task[None] | None:
+        """Start the provider-owned observation task once for this root."""
+
+        if self._config.watch_mode == "off":
+            return None
+        if self._watcher_task is not None and not self._watcher_task.done():
+            return self._watcher_task
+        self._root = root
+        mode: WatchMode | None = None
+        if self._config.watch_mode == "native":
+            mode = "native"
+        elif self._config.watch_mode == "poll":
+            mode = "polling"
+        self._watcher_mode = mode or "auto"
+        self._watcher_state = "starting"
+        self._watcher_reason = "selecting"
+        self._watcher_task = asyncio.create_task(
+            run_watcher(
+                root=root,
+                refresh=self.refresh,
+                on_status=self._observe_watcher_status,
+                mode=mode,
+                hidden_allowlist=self._config.hidden_allowlist,
+            ),
+            name="metabrowser-python-inventory-watcher",
+        )
+        return self._watcher_task
+
+    def _observe_watcher_status(self, status: WatcherStatus) -> None:
+        if (
+            status.mode == self._watcher_mode
+            and status.state == self._watcher_state
+            and status.reason == self._watcher_reason
+            and status.detail == self._watcher_detail
+        ):
+            return
+        self._watcher_mode = status.mode
+        self._watcher_state = status.state
+        self._watcher_reason = status.reason
+        self._watcher_detail = status.detail
+        with self._rollup_cache_lock:
+            self._rollup_generation = next(_ROLLUP_REVISIONS)
+        self._record_provider_change(dirty_queries=frozenset({QueryKind.DIAGNOSTICS}))
+
+    async def _stop_watcher_for_resource_budget(self) -> None:
+        watcher = self._watcher_task
+        if watcher is not None and not watcher.done():
+            watcher.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
+        self._watcher_task = None
+        self._watcher_state = "off"
+        self._watcher_reason = "resource_budget"
+        self._watcher_detail = ""
+
+    def clear(self) -> None:
+        """Drop all state and stop the walker. Called by
+        ``paths_safe.register_root_callback`` on root swap; a
+        subsequent ``start()`` against the new root rebuilds.
+
+        Records a reset batch so coordinator consumers know to take a fresh
+        snapshot.
+        """
+
+        if self._walker_task is not None and not self._walker_task.done():
+            self._walker_task.cancel()
+        self._walker_task = None
+        if self._watcher_task is not None and not self._watcher_task.done():
+            self._watcher_task.cancel()
+        self._watcher_task = None
+        with self._rollup_cache_lock:
+            self._entries.clear()
+            self._files_indexed = 0
+            self._directories_indexed = 0
+            self._status = "idle"
+            self._rollup_generation = next(_ROLLUP_REVISIONS)
+            self._children_index.clear()
+            self._subtree_aggregates.clear()
+            self._aggregate_evicted_at.clear()
+            self._aggregate_epoch += 1
+        self._direct_child_counts.clear()
+        self._child_mtime_heaps.clear()
+        self._recorded_child_mtimes.clear()
+        self._pending_dirs.clear()
+        self._descendant_file_counts.clear()
+        self._descendant_file_sizes.clear()
+        self._descendant_unignored_file_counts.clear()
+        self._descendant_unignored_file_sizes.clear()
+        self._descendant_leaf_counts.clear()
+        self._walker_dir_generations.clear()
+        self._generation.clear()
+        self._done_event.clear()
+        self._catalog_revision += 1
+        with self._navigation_tally_lock:
+            self._navigation_tally_at = 0.0
+            self._navigation_tally_cost_s = 0.0
+            self._navigation_tally_memo = None
+            self._navigation_read_memo = None
+        with self._page_lock:
+            self._page_memos.clear()
+        self._emit(FsResyncRequired(reason="root_swap"))
+
+    async def wait_until_done(self, timeout: float | None = None) -> None:
+        """Resolve when the walker completes (or hits truncation or
+        failure). For tests; production code reads ``status()``
+        instead. Raises ``asyncio.TimeoutError`` on timeout.
+        Returning normally does NOT imply success — callers that need
+        to distinguish must check ``status()`` for ``"failed"``."""
+
+        if self._status in ("done", "truncated", "failed"):
+            return
+        await asyncio.wait_for(self._done_event.wait(), timeout)
+
+    async def read(self, request: ReadRequest) -> ReadResult:
+        """Answer a bundled request from one immutable entry image."""
+
+        self._ensure_open()
+        return await asyncio.to_thread(self._read_sync, request)
+
+    def changes(self, *, after: ChangeCursor | None) -> AsyncGenerator[ChangeBatch, None]:
+        """Yield resumable provider invalidations after *after*."""
+
+        return self._changes(after=after)
+
+    async def _changes(self, *, after: ChangeCursor | None) -> AsyncGenerator[ChangeBatch, None]:
+        self._ensure_open()
+        if self._change_stream_active:
+            raise ChangeStreamBusyError("the Python inventory change stream is already active")
+        self._change_stream_active = True
+        queue: asyncio.Queue[ChangeBatch | None] = asyncio.Queue(
+            maxsize=self._config.change_queue_size
+        )
+
+        if after is not None and (
+            after.session != self._session
+            or after.sequence > self._rollup_generation
+            or after.sequence < self._replay_floor_sequence
+        ):
+            replay = (self._reset_batch(),)
+        else:
+            history = tuple(self._change_history)
+            sequence = after.sequence if after is not None else self._rollup_generation
+            replay = tuple(batch for batch in history if batch.cursor.sequence > sequence)
+
+        self._change_subscribers.add(queue)
+        try:
+            for batch in replay:
+                yield batch
+            while True:
+                batch = await queue.get()
+                if batch is None:
+                    return
+                yield batch
+        finally:
+            self._change_subscribers.discard(queue)
+            self._change_stream_active = False
+
+    async def refresh(self, request: RefreshRequest) -> RefreshReceipt:
+        """Verify bounded path hints and feed observations through the delta path."""
+
+        self._ensure_open()
+        accepted: list[str] = []
+        rejected: list[str] = []
+        valid: list[RefreshObservation] = []
+        for observation in request.observations:
+            if not self._valid_relative_path(observation.path):
+                rejected.append(observation.path)
+                continue
+            retained = self.get(observation.path)
+            if self._status == "truncated" and (retained is None or retained.type == "dir"):
+                rejected.append(observation.path)
+                continue
+            valid.append(observation)
+        if not valid:
+            return RefreshReceipt(
+                version=self._current_version(),
+                accepted_paths=(),
+                rejected_paths=tuple(rejected),
+            )
+        root = self._root
+        if root is None:
+            raise InventoryClosedError("the Python inventory handle has no open root")
+        gitignore_check = await run_cancellable_thread(
+            lambda cancel_event: _build_gitignore_check_for(
+                root,
+                cancel_event=cancel_event,
+            )
+        )
+        for observation in valid:
+            rel = observation.path
+            if await self._refresh_path(observation, gitignore_check=gitignore_check):
+                accepted.append(rel)
+            else:
+                rejected.append(rel)
+        return RefreshReceipt(
+            version=self._current_version(),
+            accepted_paths=tuple(accepted),
+            rejected_paths=tuple(rejected),
+        )
+
+    async def prioritize(self, request: PriorityRequest) -> None:
+        """Schedule bounded verification without delaying the interactive read path."""
+
+        self._ensure_open()
+        if self._status == "truncated":
+            return
+        paths = tuple(
+            rel
+            for rel in request.paths
+            if self._valid_relative_path(rel)
+            and self.get(rel) is None
+            and rel not in self._priority_paths
+        )
+        if not paths:
+            return
+        self._priority_paths.update(paths)
+        task = asyncio.create_task(
+            self._run_priority_refresh(paths, max_depth=request.max_depth),
+            name="metabrowser-python-inventory-priority",
+        )
+        self._priority_tasks.add(task)
+        task.add_done_callback(self._priority_finished)
+
+    async def _run_priority_refresh(
+        self,
+        paths: tuple[str, ...],
+        *,
+        max_depth: int,
+    ) -> None:
+        try:
+            root = self._root
+            if root is None:
+                return
+            gitignore_check = await run_cancellable_thread(
+                lambda cancel_event: _build_gitignore_check_for(
+                    root,
+                    cancel_event=cancel_event,
+                )
+            )
+            for rel in paths:
+                if self.get(rel) is None:
+                    await self._refresh_path(
+                        RefreshObservation(path=rel),
+                        gitignore_check=gitignore_check,
+                        max_depth=max_depth,
+                    )
+        finally:
+            self._priority_paths.difference_update(paths)
+
+    def _priority_finished(self, task: asyncio.Task[None]) -> None:
+        self._priority_tasks.discard(task)
+        if task.cancelled():
+            return
+        error = task.exception()
+        if error is not None:
+            LOG.error("inventory priority refresh failed: %s", error)
+
+    async def close(self) -> None:
+        """Cancel and join discovery, then wake every change consumer."""
+
+        task = self._close_task
+        if task is None:
+            self._closed = True
+            task = asyncio.create_task(
+                self._close_owned_tasks(),
+                name="metabrowser-python-inventory-close",
+            )
+            self._close_task = task
+        await asyncio.shield(task)
+
+    async def _close_owned_tasks(self) -> None:
+        """Perform shutdown once while every ``close`` caller joins the task."""
+
+        watcher_task = self._watcher_task
+        if watcher_task is not None and not watcher_task.done():
+            watcher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher_task
+        self._watcher_task = None
+        task = self._walker_task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._walker_task = None
+        priority_tasks = tuple(self._priority_tasks)
+        for priority_task in priority_tasks:
+            priority_task.cancel()
+        if priority_tasks:
+            await asyncio.gather(*priority_tasks, return_exceptions=True)
+        self._priority_tasks.clear()
+        self._priority_paths.clear()
+        self._status = "idle"
+        for queue in tuple(self._change_subscribers):
+            while not queue.empty():
+                queue.get_nowait()
+            queue.put_nowait(None)
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise InventoryClosedError("the Python inventory handle is closed")
+
+    def _version(self, sequence: int) -> EngineVersion:
+        return EngineVersion(
+            session=self._session,
+            sequence=sequence,
+            scope_fingerprint=self._scope_fingerprint,
+            semantic_fingerprint=self._registry.fingerprint,
+        )
+
+    def _current_version(self) -> EngineVersion:
+        """Capture the provider boundary after a completed command."""
+
+        with self._rollup_cache_lock:
+            return self._version(self._rollup_generation)
+
+    def _settled_phase(self) -> LifecyclePhase:
+        """Report whether the settled store has a live observation task."""
+
+        watcher = self._watcher_task
+        if watcher is None or watcher.done() or self._watcher_state == "failed":
+            return LifecyclePhase.READY
+        return LifecyclePhase.WATCHING
+
+    def _state_for(
+        self,
+        status: IndexStatus,
+        *,
+        entries_observed: int,
+        files_indexed: int,
+        directory_count: int,
+    ) -> IndexState:
+        issues: tuple[InventoryIssue, ...] = ()
+        if status == "scanning":
+            phase = LifecyclePhase.DISCOVERING
+            coverage = Coverage(complete=False, reason=CoverageReason.BUILDING)
+            freshness = Freshness.PARTIAL
+        elif status == "done":
+            phase = self._settled_phase()
+            coverage = Coverage(complete=True)
+            freshness = Freshness.FRESH
+        elif status == "truncated":
+            phase = LifecyclePhase.STOPPED
+            coverage = Coverage(complete=False, reason=CoverageReason.BUDGET)
+            freshness = Freshness.PARTIAL
+            issues = (
+                InventoryIssue(
+                    code=IssueCode.RESOURCE_BUDGET,
+                    detail="the retained-entry budget stopped discovery",
+                ),
+            )
+        elif status == "failed":
+            phase = LifecyclePhase.FAILED
+            coverage = Coverage(complete=False, reason=CoverageReason.FAILED)
+            freshness = Freshness.PARTIAL
+            issues = (
+                InventoryIssue(
+                    code=IssueCode.PROVIDER_FAILURE,
+                    detail=_bounded_issue_detail(self._last_error or "the Python walker failed"),
+                ),
+            )
+        else:
+            phase = LifecyclePhase.STOPPED
+            coverage = Coverage(complete=False, reason=CoverageReason.CANCELLED)
+            freshness = Freshness.STALE
+        if self._watcher_state == "failed":
+            freshness = Freshness.STALE
+            issues += (
+                InventoryIssue(
+                    code=IssueCode.OBSERVATION_GAP,
+                    detail=_bounded_issue_detail(
+                        self._watcher_detail or "filesystem observation stopped"
+                    ),
+                    transient=True,
+                ),
+            )
+        return IndexState(
+            phase=phase,
+            coverage=coverage,
+            freshness=freshness,
+            source=SourceKind.SCANNED,
+            progress=IndexProgress(
+                entries_observed=entries_observed,
+                directories_observed=directory_count,
+            ),
+            issues=issues,
+        )
+
+    def _provider_diagnostics(
+        self,
+        *,
+        files_indexed: int,
+        directory_count: int,
+        read_requests: int,
+        cumulative_work: WorkCounters,
+        cumulative_metrics: BoundaryMetrics,
+    ) -> ProviderDiagnostics:
+        return ProviderDiagnostics(
+            provider="python",
+            contract=_CONTRACT_ID,
+            files_indexed=files_indexed,
+            directories_indexed=directory_count,
+            watch_mode=self._watcher_mode,
+            watch_state=self._watcher_state,
+            watch_reason=self._watcher_reason,
+            read_requests=read_requests,
+            cumulative_work=cumulative_work,
+            cumulative_metrics=cumulative_metrics,
+        )
+
+    def _capture_image(self, request: ReadRequest) -> _ReadImage:
+        with self._work_lock:
+            work_totals = self._work_totals
+            metrics_totals = self._metrics_totals
+            read_requests = self._read_requests
+        with self._rollup_cache_lock:
+            sequence = self._rollup_generation
+            version = self._version(sequence)
+            if request.at_version is not None and request.at_version != version:
+                raise VersionUnavailableError(
+                    "the requested Python inventory version is no longer retained"
+                )
+            total_entries = len(self._entries)
+            scanning_queries = tuple(
+                query
+                for query in request.queries
+                if isinstance(
+                    query,
+                    (
+                        FilteredTreeQuery,
+                        RollupQuery,
+                        NavigationQuery,
+                        RecentQuery,
+                        CatalogQuery,
+                    ),
+                )
+            )
+            query_limits = {
+                query.query_id: query.max_work
+                for query in scanning_queries
+                if total_entries > query.max_work
+            }
+            broad_read = any(query.query_id not in query_limits for query in scanning_queries)
+            selected: dict[str, FsEntry] = {}
+            rows_visited = sum(
+                query.max_work if query.query_id in query_limits else total_entries
+                for query in scanning_queries
+            )
+            for query in request.queries:
+                if isinstance(query, EntryQuery):
+                    rows_visited += 1
+                    entry = self._entries.get(query.path)
+                    if entry is not None:
+                        selected[entry.path] = entry
+                elif isinstance(query, DirectoryQuery):
+                    query_rows_visited = 0
+                    query_selected: dict[str, FsEntry] = {}
+                    limited = False
+                    frontier = [query.path]
+                    for _depth in range(query.max_depth):
+                        next_frontier: list[str] = []
+                        for parent in frontier:
+                            bucket = self._children_index.get(parent, {})
+                            for entry in bucket.values():
+                                if query_rows_visited == query.max_work:
+                                    limited = True
+                                    break
+                                query_rows_visited += 1
+                                if not query.include_ignored and entry.gitignored:
+                                    continue
+                                query_selected[entry.path] = entry
+                                if entry.type == "dir":
+                                    next_frontier.append(entry.path)
+                            if limited:
+                                break
+                        if limited:
+                            break
+                        frontier = next_frontier
+                        if not frontier:
+                            break
+                    rows_visited += query_rows_visited
+                    if limited:
+                        query_limits[query.query_id] = query_rows_visited
+                    else:
+                        selected.update(query_selected)
+            entries = tuple(self._entries.values()) if broad_read else tuple(selected.values())
+            status = self._status
+            files_indexed = self._files_indexed
+            directory_count = self._directories_indexed
+            rollup_passes = sum(
+                isinstance(query, RollupQuery) and query.query_id not in query_limits
+                for query in request.queries
+            )
+            rollup_aggregates = dict(self._subtree_aggregates) if rollup_passes else {}
+            rollup_epoch = self._aggregate_epoch
+            self._rollup_passes_in_flight += rollup_passes
+        state = self._state_for(
+            status,
+            entries_observed=total_entries,
+            files_indexed=files_indexed,
+            directory_count=directory_count,
+        )
+        return _ReadImage(
+            entries=entries,
+            total_entries=total_entries,
+            rows_visited=rows_visited,
+            version=version,
+            cursor=version.cursor,
+            state=state,
+            diagnostics=self._provider_diagnostics(
+                files_indexed=files_indexed,
+                directory_count=directory_count,
+                read_requests=read_requests,
+                cumulative_work=work_totals,
+                cumulative_metrics=metrics_totals,
+            ),
+            rollup_aggregates=rollup_aggregates,
+            rollup_epoch=rollup_epoch,
+            rollup_passes=rollup_passes,
+            query_limits=MappingProxyType(query_limits),
+        )
+
+    def _read_sync(self, request: ReadRequest) -> ReadResult:
+        cached_page = self._read_cached_page_sync(request)
+        if cached_page is not None:
+            return cached_page
+        navigation_shape = self._navigation_read_shape(request)
+        if navigation_shape is not None:
+            return self._read_navigation_sync(request, navigation_shape)
+        if any(isinstance(query, RollupQuery) for query in request.queries) and all(
+            isinstance(query, (RollupQuery, DiagnosticsQuery)) for query in request.queries
+        ):
+            return self._read_rollup_sync(request)
+
+        return self._read_snapshot_sync(request)
+
+    def _read_cached_page_sync(self, request: ReadRequest) -> ReadResult | None:
+        """Serve a continuation without rebuilding its complete projection."""
+
+        if (
+            len(request.queries) != 1
+            or request.at_version is None
+            or not isinstance(
+                request.queries[0],
+                (DirectoryQuery, FilteredTreeQuery, CatalogQuery),
+            )
+            or request.queries[0].after is None
+        ):
+            return None
+
+        wall_started = time.monotonic_ns()
+        cpu_started = time.thread_time_ns()
+        # Continuations own immutable rows, version and state. Ordinary live
+        # mutations do not invalidate that image; only bounded memo eviction does.
+        query = request.queries[0]
+        after = query.after
+        if after is None:  # pragma: no cover - guarded above
+            return None
+        lock_started = time.monotonic_ns()
+        with self._page_lock:
+            lock_wait_ns = time.monotonic_ns() - lock_started
+            memo = self._page_memos.get(after)
+            if isinstance(query, DirectoryQuery):
+                if not isinstance(memo, _DirectoryPageMemo) or not (
+                    memo.version == request.at_version
+                    and memo.path == query.path
+                    and memo.max_depth == query.max_depth
+                    and memo.include_ignored == query.include_ignored
+                    and memo.token == query.after
+                ):
+                    raise VersionUnavailableError("the directory page cursor is unavailable")
+                rows = memo.rows[memo.offset : memo.offset + query.max_rows]
+                if len(rows) > query.max_work:
+                    projection = QueryLimitProjection(
+                        query_id=query.query_id,
+                        query_kind=query.kind,
+                        max_work=query.max_work,
+                        rows_visited=query.max_work,
+                    )
+                else:
+                    self._page_memos.pop(after)
+                    next_offset = memo.offset + len(rows)
+                    next_page = uuid.uuid4().hex if next_offset < len(memo.rows) else None
+                    if next_page is not None:
+                        self._retain_page_memo_locked(
+                            replace(memo, token=next_page, offset=next_offset)
+                        )
+                    projection = DirectoryProjection(
+                        query_id=query.query_id,
+                        entries=tuple(_semantic_entry(entry) for entry in rows),
+                        next_page=next_page,
+                    )
+            elif isinstance(query, FilteredTreeQuery):
+                if not isinstance(memo, _FilteredTreePageMemo) or not (
+                    memo.version == request.at_version
+                    and memo.query.path == query.path
+                    and memo.query.max_depth == query.max_depth
+                    and memo.query.filter == query.filter
+                    and memo.token == query.after
+                ):
+                    raise VersionUnavailableError("the filtered-tree page cursor is unavailable")
+                rows = memo.rows[memo.offset : memo.offset + query.max_rows]
+                if len(rows) > query.max_work:
+                    projection = QueryLimitProjection(
+                        query_id=query.query_id,
+                        query_kind=query.kind,
+                        max_work=query.max_work,
+                        rows_visited=query.max_work,
+                    )
+                else:
+                    self._page_memos.pop(after)
+                    next_offset = memo.offset + len(rows)
+                    next_page = uuid.uuid4().hex if next_offset < len(memo.rows) else None
+                    if next_page is not None:
+                        self._retain_page_memo_locked(
+                            replace(memo, token=next_page, offset=next_offset)
+                        )
+                    projection = FilteredTreeProjection(
+                        query_id=query.query_id,
+                        entries=rows,
+                        matching_leaves=memo.matching_leaves,
+                        matching_files=memo.matching_files,
+                        matching_bytes=memo.matching_bytes,
+                        next_page=next_page,
+                    )
+            else:
+                if not isinstance(memo, _CatalogPageMemo) or not (
+                    memo.version == request.at_version
+                    and memo.selection == _catalog_selection(query)
+                    and memo.token == query.after
+                ):
+                    raise VersionUnavailableError("the catalog page cursor is unavailable")
+                records = memo.records[memo.offset : memo.offset + query.max_rows]
+                if len(records) > query.max_work:
+                    projection = QueryLimitProjection(
+                        query_id=query.query_id,
+                        query_kind=query.kind,
+                        max_work=query.max_work,
+                        rows_visited=query.max_work,
+                    )
+                else:
+                    self._page_memos.pop(after)
+                    next_offset = memo.offset + len(records)
+                    next_page = uuid.uuid4().hex if next_offset < len(memo.records) else None
+                    if next_page is not None:
+                        self._retain_page_memo_locked(
+                            replace(memo, token=next_page, offset=next_offset)
+                        )
+                    total_matches = memo.total_matches
+                    if (
+                        total_matches.kind is CountKind.AT_LEAST
+                        and total_matches.value < next_offset
+                    ):
+                        total_matches = CountResult(CountKind.AT_LEAST, next_offset)
+                    projection = CatalogProjection(
+                        query_id=query.query_id,
+                        records=records,
+                        total_matches=total_matches,
+                        next_page=next_page,
+                    )
+
+        projection_rows = self._projection_rows(projection)
+        work = WorkCounters(
+            rows_visited=(
+                projection.rows_visited
+                if isinstance(projection, QueryLimitProjection)
+                else projection_rows
+            ),
+            rows_returned=projection_rows,
+            maintained_index_work=1,
+        )
+        metrics = BoundaryMetrics(
+            lock_wait_ns=lock_wait_ns,
+            cpu_time_ns=time.thread_time_ns() - cpu_started,
+            wall_time_ns=time.monotonic_ns() - wall_started,
+        )
+        self._record_read_work(work, metrics)
+        return ReadResult(
+            version=memo.version,
+            cursor=memo.version.cursor,
+            state=memo.state,
+            projections=(projection,),
+            work=work,
+            metrics=metrics,
+        )
+
+    def _retain_page_memo_locked(self, memo: _PageMemo) -> None:
+        """Retain one continuation while holding `_page_lock`."""
+
+        memo_rows = len(memo.records) if isinstance(memo, _CatalogPageMemo) else len(memo.rows)
+        if memo_rows > MAX_ASSEMBLED_ROWS:  # pragma: no cover - query validation prevents it
+            raise ValueError("page memo exceeds the provider row bound")
+        retained_rows = sum(
+            len(retained.records) if isinstance(retained, _CatalogPageMemo) else len(retained.rows)
+            for retained in self._page_memos.values()
+        )
+        while self._page_memos and (
+            len(self._page_memos) >= _PAGE_MEMO_CAPACITY
+            or retained_rows + memo_rows > MAX_ASSEMBLED_ROWS
+        ):
+            evicted = self._page_memos.pop(next(iter(self._page_memos)))
+            retained_rows -= (
+                len(evicted.records) if isinstance(evicted, _CatalogPageMemo) else len(evicted.rows)
+            )
+        self._page_memos[memo.token] = memo
+
+    def _read_snapshot_sync(self, request: ReadRequest) -> ReadResult:
+        """Answer from one immutable image when a query needs broad traversal."""
+
+        wall_started = time.monotonic_ns()
+        cpu_started = time.thread_time_ns()
+        image = self._capture_image(request)
+        needs_entry_graph = any(
+            isinstance(
+                query,
+                (
+                    EntryQuery,
+                    DirectoryQuery,
+                    FilteredTreeQuery,
+                    RollupQuery,
+                    RecentQuery,
+                ),
+            )
+            for query in request.queries
+        )
+        entries_by_path = (
+            {entry.path: entry for entry in image.entries} if needs_entry_graph else {}
+        )
+        needs_children = any(
+            isinstance(query, (DirectoryQuery, FilteredTreeQuery, RollupQuery))
+            for query in request.queries
+        )
+        children = _children_for(image.entries) if needs_children else {}
+        projections: list[ProjectionResult] = []
+        rows_returned = 0
+        remaining_rollup_passes = image.rollup_passes
+
+        try:
+            for query in request.queries:
+                if isinstance(query, RollupQuery) and query.query_id not in image.query_limits:
+                    remaining_rollup_passes -= 1
+                projection = self._project_query(
+                    query,
+                    image=image,
+                    entries_by_path=entries_by_path,
+                    children=children,
+                )
+                projections.append(projection)
+                rows_returned += self._projection_rows(projection)
+        finally:
+            for _unused in range(remaining_rollup_passes):
+                self._merge_subtree_aggregates({}, image.rollup_epoch)
+
+        work = WorkCounters(
+            rows_visited=image.rows_visited,
+            rows_returned=rows_returned,
+            maintained_index_work=image.rows_visited,
+        )
+        metrics = BoundaryMetrics(
+            cpu_time_ns=time.thread_time_ns() - cpu_started,
+            wall_time_ns=time.monotonic_ns() - wall_started,
+        )
+        self._record_read_work(work, metrics)
+        return ReadResult(
+            version=image.version,
+            cursor=image.cursor,
+            state=image.state,
+            projections=tuple(projections),
+            work=work,
+            metrics=metrics,
+        )
+
+    @staticmethod
+    def _navigation_read_shape(request: ReadRequest) -> _NavigationReadShape | None:
+        """The one bounded bundle polled while the root inventory is moving."""
+
+        if len(request.queries) != 2:
+            return None
+        entry, navigation = request.queries
+        if (
+            not isinstance(entry, EntryQuery)
+            or entry.path
+            or not isinstance(navigation, NavigationQuery)
+        ):
+            return None
+        return (
+            entry.query_id,
+            entry.path,
+            navigation.query_id,
+            navigation.max_rows,
+            navigation.presets,
+            navigation.recency_windows,
+        )
+
+    def _read_navigation_sync(
+        self,
+        request: ReadRequest,
+        shape: _NavigationReadShape,
+    ) -> ReadResult:
+        """Reuse one coherent root-summary boundary before copying the index."""
+
+        lock_started = time.monotonic_ns()
+        with self._rollup_cache_lock:
+            lock_wait_ns = time.monotonic_ns() - lock_started
+            current_sequence = self._rollup_generation
+            current_status = self._status
+        now = time.monotonic()
+        with self._navigation_tally_lock:
+            memo = self._navigation_read_memo
+            if memo is not None and memo.shape == shape:
+                if request.at_version is not None:
+                    reusable = request.at_version == memo.version
+                elif memo.version.sequence == current_sequence:
+                    reusable = True
+                elif current_status == "scanning":
+                    refresh_after = max(
+                        _NAVIGATION_TALLY_REFRESH_FLOOR_S,
+                        memo.compute_cost_s,
+                    )
+                    reusable = now - memo.computed_at <= refresh_after
+                else:
+                    # A finalized walk or a live mutation needs one exact refresh.
+                    # Otherwise a single debounced browser request could consume a
+                    # completed-but-stale summary and have no later event that asks
+                    # again. The cost-aware concession exists only while discovery is
+                    # already labelling every tally provisional.
+                    reusable = False
+            else:
+                reusable = False
+
+        if reusable and memo is not None:
+            wall_started = time.monotonic_ns()
+            cpu_started = time.thread_time_ns()
+            navigation = request.queries[1]
+            if not isinstance(navigation, NavigationQuery):  # pragma: no cover - shape proves it
+                raise TypeError("the navigation cache received the wrong query shape")
+            current_ns = time.time_ns() if navigation.as_of_ns is None else navigation.as_of_ns
+            projections = tuple(
+                NavigationProjection(
+                    query_id=projection.query_id,
+                    payload=_with_recency(
+                        memo.base,
+                        navigation.recency_windows,
+                        current_ns,
+                    ),
+                )
+                if isinstance(projection, NavigationProjection)
+                else projection
+                for projection in memo.projections
+            )
+            rows_returned = sum(self._projection_rows(projection) for projection in projections)
+            work = WorkCounters(
+                rows_visited=1,
+                rows_returned=rows_returned,
+                maintained_index_work=1,
+            )
+            metrics = BoundaryMetrics(
+                lock_wait_ns=lock_wait_ns,
+                cpu_time_ns=time.thread_time_ns() - cpu_started,
+                wall_time_ns=time.monotonic_ns() - wall_started,
+            )
+            self._record_read_work(work, metrics)
+            return ReadResult(
+                version=memo.version,
+                cursor=memo.cursor,
+                state=memo.state,
+                projections=projections,
+                work=work,
+                metrics=metrics,
+            )
+
+        result = self._read_snapshot_sync(request)
+        navigation = request.queries[1]
+        if not isinstance(navigation, NavigationQuery):  # pragma: no cover - shape proves it
+            raise TypeError("the navigation cache received the wrong query shape")
+        expected_key: _NavigationTallyKey = (
+            result.version.sequence,
+            navigation.max_rows,
+            tuple((preset_id, tuple(sorted(values))) for preset_id, values in navigation.presets),
+        )
+        with self._navigation_tally_lock:
+            tally_memo = self._navigation_tally_memo
+            existing = self._navigation_read_memo
+            if (
+                tally_memo is not None
+                and tally_memo[0] == expected_key
+                and (existing is None or existing.version.sequence <= result.version.sequence)
+            ):
+                self._navigation_read_memo = _NavigationReadMemo(
+                    shape=shape,
+                    version=result.version,
+                    cursor=result.cursor,
+                    state=result.state,
+                    projections=result.projections,
+                    base=tally_memo[1],
+                    computed_at=self._navigation_tally_at,
+                    compute_cost_s=self._navigation_tally_cost_s,
+                )
+        return result
+
+    def _read_rollup_sync(self, request: ReadRequest) -> ReadResult:
+        """Answer rollup bundles atomically without copying the whole index.
+
+        The retained entry and child maps already have the lookup shape the
+        reducer needs. A stable generation proves the optimistic reduction and
+        its metadata came from one version. If discovery races the reduction,
+        a pinned read reports that its version moved; an unpinned read falls
+        back to the immutable-image path. The provider therefore avoids an
+        O(index) copy for settled reads without holding the writer lock while
+        it reduces a large tree.
+        """
+
+        wall_started = time.monotonic_ns()
+        cpu_started = time.thread_time_ns()
+        lock_started = time.monotonic_ns()
+        with self._work_lock:
+            work_totals = self._work_totals
+            metrics_totals = self._metrics_totals
+            read_requests = self._read_requests
+        with self._rollup_cache_lock:
+            lock_wait_ns = time.monotonic_ns() - lock_started
+            sequence = self._rollup_generation
+            version = self._version(sequence)
+            if request.at_version is not None and request.at_version != version:
+                raise VersionUnavailableError(
+                    "the requested Python inventory version is no longer retained"
+                )
+            total_entries = len(self._entries)
+            status = self._status
+            files_indexed = self._files_indexed
+            directory_count = self._directories_indexed
+            state = self._state_for(
+                status,
+                entries_observed=total_entries,
+                files_indexed=files_indexed,
+                directory_count=directory_count,
+            )
+            diagnostics = self._provider_diagnostics(
+                files_indexed=files_indexed,
+                directory_count=directory_count,
+                read_requests=read_requests,
+                cumulative_work=work_totals,
+                cumulative_metrics=metrics_totals,
+            )
+
+        projections: list[ProjectionResult] = []
+        rows_visited = 0
+        for query in request.queries:
+            if isinstance(query, DiagnosticsQuery):
+                projections.append(
+                    DiagnosticsProjection(
+                        query_id=query.query_id,
+                        payload=diagnostics,
+                    )
+                )
+                continue
+            if not isinstance(query, RollupQuery):
+                raise TypeError("the rollup fast path received an unsupported query")
+            if total_entries > query.max_work:
+                projections.append(
+                    QueryLimitProjection(
+                        query_id=query.query_id,
+                        query_kind=query.kind,
+                        max_work=query.max_work,
+                        rows_visited=query.max_work,
+                    )
+                )
+                rows_visited += query.max_work
+                continue
+            payload = self.rollup(
+                query.path,
+                depth=query.max_depth,
+                top=query.top,
+                ext_top=query.extension_top,
+                remaining_top=query.remaining_top,
+                filename_top=query.filename_top,
+                ext_rank=query.rank,
+                max_nodes=query.max_nodes,
+            )
+            projections.append(RollupProjection(query_id=query.query_id, payload=payload))
+            rows_visited += total_entries
+
+        with self._rollup_cache_lock:
+            stable = self._rollup_generation == sequence
+        if not stable:
+            if request.at_version is not None:
+                raise VersionUnavailableError(
+                    "the requested Python inventory version moved during the rollup read"
+                )
+            return self._read_snapshot_sync(request)
+
+        work = WorkCounters(
+            rows_visited=rows_visited,
+            rows_returned=len(projections),
+            maintained_index_work=rows_visited,
+        )
+        metrics = BoundaryMetrics(
+            lock_wait_ns=lock_wait_ns,
+            cpu_time_ns=time.thread_time_ns() - cpu_started,
+            wall_time_ns=time.monotonic_ns() - wall_started,
+        )
+        self._record_read_work(work, metrics)
+        return ReadResult(
+            version=version,
+            cursor=version.cursor,
+            state=state,
+            projections=tuple(projections),
+            work=work,
+            metrics=metrics,
+        )
+
+    def _record_read_work(self, work: WorkCounters, metrics: BoundaryMetrics) -> None:
+        with self._work_lock:
+            current = self._work_totals
+            current_metrics = self._metrics_totals
+            cpu_time_ns = (
+                current_metrics.cpu_time_ns + metrics.cpu_time_ns
+                if current_metrics.cpu_time_ns is not None and metrics.cpu_time_ns is not None
+                else None
+            )
+            self._work_totals = WorkCounters(
+                observations=current.observations + work.observations,
+                unchanged=current.unchanged + work.unchanged,
+                stale=current.stale + work.stale,
+                resource_refused=current.resource_refused + work.resource_refused,
+                rows_visited=current.rows_visited + work.rows_visited,
+                rows_returned=current.rows_returned + work.rows_returned,
+                maintained_index_work=(current.maintained_index_work + work.maintained_index_work),
+                commits_visited=current.commits_visited + work.commits_visited,
+                commits_returned=current.commits_returned + work.commits_returned,
+                directories_read=current.directories_read + work.directories_read,
+                entries_visited=current.entries_visited + work.entries_visited,
+                files_visited=current.files_visited + work.files_visited,
+                bytes_visited=current.bytes_visited + work.bytes_visited,
+            )
+            self._metrics_totals = BoundaryMetrics(
+                bytes_copied=current_metrics.bytes_copied + metrics.bytes_copied,
+                lock_wait_ns=current_metrics.lock_wait_ns + metrics.lock_wait_ns,
+                cpu_time_ns=cpu_time_ns,
+                wall_time_ns=current_metrics.wall_time_ns + metrics.wall_time_ns,
+            )
+            self._read_requests += 1
+
+    def _project_query(
+        self,
+        query: ReadQuery,
+        *,
+        image: _ReadImage,
+        entries_by_path: Mapping[str, FsEntry],
+        children: Mapping[str, Sequence[FsEntry]],
+    ) -> ProjectionResult:
+        limited_rows = image.query_limits.get(query.query_id)
+        if limited_rows is not None and isinstance(
+            query,
+            (
+                DirectoryQuery,
+                FilteredTreeQuery,
+                RollupQuery,
+                NavigationQuery,
+                RecentQuery,
+                CatalogQuery,
+            ),
+        ):
+            return QueryLimitProjection(
+                query_id=query.query_id,
+                query_kind=query.kind,
+                max_work=query.max_work,
+                rows_visited=limited_rows,
+            )
+        if isinstance(query, EntryQuery):
+            entry = entries_by_path.get(query.path)
+            if entry is not None:
+                return EntryProjection(
+                    query_id=query.query_id,
+                    presence=EntryPresence.PRESENT,
+                    entry=_semantic_entry(entry),
+                )
+            presence = (
+                EntryPresence.ABSENT if image.state.coverage.complete else EntryPresence.UNKNOWN
+            )
+            return EntryProjection(query_id=query.query_id, presence=presence, entry=None)
+        if isinstance(query, DirectoryQuery):
+            return self._directory_projection(query, children, image=image)
+        if isinstance(query, FilteredTreeQuery):
+            return self._filtered_tree_projection(query, image.entries, children, image=image)
+        if isinstance(query, RollupQuery):
+            options = RollupOptions(
+                depth=query.max_depth,
+                top=query.top,
+                ext_top=query.extension_top,
+                remaining_top=query.remaining_top,
+                filename_top=query.filename_top,
+                ext_rank=query.rank,
+                max_nodes=query.max_nodes,
+            )
+            computed: SubtreeAggregateCache = {}
+            try:
+                payload = build_rollup(
+                    entries_by_path,
+                    children,
+                    query.path,
+                    options,
+                    ancestor_gitignored=self._ancestor_gitignored(query.path, entries_by_path),
+                    aggregates=ChainMap(computed, image.rollup_aggregates),
+                    registry=self._registry,
+                )
+            finally:
+                self._merge_subtree_aggregates(computed, image.rollup_epoch)
+            return RollupProjection(query_id=query.query_id, payload=payload)
+        if isinstance(query, NavigationQuery):
+            presets = tuple((name, values) for name, values in query.presets)
+            payload = self.navigation_tallies(
+                presets,
+                query.recency_windows,
+                query.max_rows,
+                now_ns=query.as_of_ns,
+                entries=image.entries,
+                revision=image.version.sequence,
+            )
+            return NavigationProjection(query_id=query.query_id, payload=payload)
+        if isinstance(query, RecentQuery):
+            return self._recent_projection(query, image.entries, entries_by_path)
+        if isinstance(query, CatalogQuery):
+            records = tuple(
+                sorted(
+                    (
+                        CatalogRecord(
+                            path=entry.path,
+                            logical_extension=entry.ext,
+                            size=entry.size,
+                            mtime_ns=entry.mtime_ns,
+                        )
+                        for entry in image.entries
+                        if _catalog_entry_matches(entry, query)
+                    ),
+                    key=lambda record: record.path.encode("utf-8"),
+                )
+            )
+            page = records[: query.max_rows]
+            next_offset = len(page)
+            total_matches = _bounded_count(len(records), query.count_cap, len(page))
+            next_page = uuid.uuid4().hex if next_offset < len(records) else None
+            if next_page is not None:
+                with self._page_lock:
+                    self._retain_page_memo_locked(
+                        _CatalogPageMemo(
+                            version=image.version,
+                            state=image.state,
+                            selection=_catalog_selection(query),
+                            records=records,
+                            total_matches=total_matches,
+                            token=next_page,
+                            offset=next_offset,
+                        )
+                    )
+            return CatalogProjection(
+                query_id=query.query_id,
+                records=page,
+                total_matches=total_matches,
+                next_page=next_page,
+            )
+        return DiagnosticsProjection(
+            query_id=query.query_id,
+            payload=image.diagnostics,
+        )
+
+    def _directory_projection(
+        self,
+        query: DirectoryQuery,
+        children: Mapping[str, Sequence[FsEntry]],
+        *,
+        image: _ReadImage,
+    ) -> DirectoryProjection:
+        rows = _directory_rows(
+            children,
+            path=query.path,
+            max_depth=query.max_depth,
+            include_ignored=query.include_ignored,
+        )
+        page = rows[: query.max_rows]
+        next_offset = len(page)
+        next_page = uuid.uuid4().hex if next_offset < len(rows) else None
+        if next_page is not None:
+            with self._page_lock:
+                self._retain_page_memo_locked(
+                    _DirectoryPageMemo(
+                        version=image.version,
+                        state=image.state,
+                        path=query.path,
+                        max_depth=query.max_depth,
+                        include_ignored=query.include_ignored,
+                        rows=tuple(rows),
+                        token=next_page,
+                        offset=next_offset,
+                    )
+                )
+        return DirectoryProjection(
+            query_id=query.query_id,
+            entries=tuple(_semantic_entry(entry) for entry in page),
+            next_page=next_page,
+        )
+
+    def _filtered_tree_projection(
+        self,
+        query: FilteredTreeQuery,
+        entries: Sequence[FsEntry],
+        children: Mapping[str, Sequence[FsEntry]],
+        *,
+        image: _ReadImage,
+    ) -> FilteredTreeProjection:
+        ignored_dirs = self._effective_ignored_directories(entries)
+        matched: list[FsEntry] = []
+        matching_files = 0
+        matching_bytes = 0
+        directory_totals: dict[str, _SelectedDirectoryTotals] = {}
+        prefix = f"{query.path}/" if query.path else ""
+        for entry in entries:
+            if entry.path == query.path or (prefix and not entry.path.startswith(prefix)):
+                continue
+            if not query.path and not entry.path:
+                continue
+            if entry.type == "dir":
+                continue
+            if not self._filter_matches(entry, query, ignored_dirs):
+                continue
+            matched.append(entry)
+            if entry.type == "file":
+                matching_files += 1
+                matching_bytes += entry.size
+            cursor = entry.parent
+            while True:
+                bucket = directory_totals.setdefault(cursor, _SelectedDirectoryTotals())
+                if entry.type == "file":
+                    bucket.file_count += 1
+                    bucket.size += entry.size
+                    bucket.newest_mtime_ns = (
+                        entry.mtime_ns
+                        if bucket.newest_mtime_ns is None
+                        else max(bucket.newest_mtime_ns, entry.mtime_ns)
+                    )
+                if cursor == query.path or not cursor:
+                    break
+                cursor = cursor.rpartition("/")[0]
+
+        rows = _directory_rows(
+            children,
+            path=query.path,
+            max_depth=query.max_depth,
+            include_ignored=query.filter.include_ignored,
+        )
+        matched_paths = {entry.path for entry in matched}
+        selected: list[InventoryEntry] = []
+        for entry in rows:
+            if entry.type == "dir":
+                totals = directory_totals.get(entry.path)
+                if totals is None:
+                    continue
+                selected.append(
+                    replace(
+                        _semantic_entry(entry),
+                        total_files=totals.file_count,
+                        total_size=totals.size,
+                        newest_mtime_ns=totals.newest_mtime_ns,
+                        empty=False,
+                    )
+                )
+            elif entry.path in matched_paths:
+                selected.append(_semantic_entry(entry))
+        page = selected[: query.max_rows]
+        next_offset = len(page)
+        next_page = uuid.uuid4().hex if next_offset < len(selected) else None
+        if next_page is not None:
+            with self._page_lock:
+                self._retain_page_memo_locked(
+                    _FilteredTreePageMemo(
+                        version=image.version,
+                        state=image.state,
+                        query=query,
+                        rows=tuple(selected),
+                        matching_leaves=len(matched),
+                        matching_files=matching_files,
+                        matching_bytes=matching_bytes,
+                        token=next_page,
+                        offset=next_offset,
+                    )
+                )
+        return FilteredTreeProjection(
+            query_id=query.query_id,
+            entries=tuple(page),
+            matching_leaves=len(matched),
+            matching_files=matching_files,
+            matching_bytes=matching_bytes,
+            next_page=next_page,
+        )
+
+    def _filter_matches(
+        self,
+        entry: FsEntry,
+        query: FilteredTreeQuery,
+        ignored_dirs: Mapping[str, bool],
+    ) -> bool:
+        selection = query.filter
+        if not selection.include_ignored and (
+            entry.gitignored or ignored_dirs.get(entry.parent, False)
+        ):
+            return False
+        if entry.type == "symlink":
+            return not (
+                selection.extensions
+                or selection.filenames
+                or selection.type_families
+                or selection.recency_seconds
+                or selection.minimum_size
+            )
+        if selection.minimum_size is not None and entry.size < selection.minimum_size:
+            return False
+        if selection.recency_seconds is not None and selection.as_of_ns is not None:
+            cutoff = selection.as_of_ns - int(selection.recency_seconds * _NANOSECONDS_PER_SECOND)
+            if entry.mtime_ns < cutoff:
+                return False
+        if selection.extensions or selection.filenames:
+            # `ascii_casefold`, not `str.lower()`: the contract pins the alphabet the
+            # fold covers, and `str.lower()` folds all of Unicode. The two agree on
+            # ASCII and diverge past it, so a filter matching `archive.TÜRKÇE` here
+            # would be dropped by a provider folding only ASCII, and nothing above the
+            # boundary could attribute the difference.
+            lowered_ext = ascii_casefold(entry.ext)
+            extension_match = any(
+                lowered_ext == ascii_casefold(extension)
+                or (
+                    self._registry_family_id(extension) is not None
+                    and lowered_ext.endswith(ascii_casefold(extension))
+                )
+                for extension in selection.extensions
+            )
+            filename_match = ascii_casefold(entry.name) in {
+                ascii_casefold(filename) for filename in selection.filenames
+            }
+            if not extension_match and not filename_match:
+                return False
+        if selection.type_families:
+            family_id = self._registry_family_id(entry.ext)
+            if family_id is None or family_id not in selection.type_families:
+                return False
+        return True
+
+    def _registry_family_id(self, extension: str) -> str | None:
+        match = self._registry.match("", extension)
+        return match.kind.family_id if match is not None else None
+
+    @staticmethod
+    def _effective_ignored_directories(entries: Sequence[FsEntry]) -> dict[str, bool]:
+        resolved: dict[str, bool] = {"": False}
+        directories = sorted(
+            (entry for entry in entries if entry.type == "dir" and entry.path),
+            key=lambda entry: _depth_of(entry.path),
+        )
+        for entry in directories:
+            resolved[entry.path] = entry.gitignored or resolved.get(entry.parent, False)
+        return resolved
+
+    def _recent_projection(
+        self,
+        query: RecentQuery,
+        entries: Sequence[FsEntry],
+        entries_by_path: Mapping[str, FsEntry],
+    ) -> RecentProjection:
+        cutoff = (
+            query.as_of_ns - int(query.within_seconds * _NANOSECONDS_PER_SECOND)
+            if query.within_seconds is not None
+            else 0
+        )
+        extensions = {ascii_casefold(value) for value in query.extensions}
+        matching = [
+            entry
+            for entry in entries
+            if entry.type == "file"
+            and entry.mtime_ns >= cutoff
+            and (not query.prefix or entry.path.startswith(query.prefix))
+            and (not extensions or ascii_casefold(entry.ext) in extensions)
+            and (query.include_ignored or not entry.gitignored)
+        ]
+        # Two orders, and they are different questions.
+        #
+        # Selection ranks ignored last, then newest, then canonical path. Presentation
+        # then restores pure recency within the page that survived.
+        #
+        # Demoting ignored entries is deliberate and load-bearing: an `npm install` writes
+        # thousands of files at once, and a pure recency ranking would hand back ten
+        # `node_modules` entries and none of the caller's own work, which is a useless
+        # answer to "what have I been working on".
+        #
+        # Applying it in *every* branch is the change. It used to fire only when the match
+        # count exceeded the row bound, so the same query name carried two different
+        # ranking contracts and which one a caller received depended on how many rows
+        # happened to match. A rule that appears at a threshold cannot be agreed with a
+        # second provider, and cannot be tested without knowing the corpus size.
+        #
+        # The path is the final key in both sorts because it is unique within one index,
+        # which makes each total. A stable sort on time alone leaves ties resolved by
+        # whatever order `entries` was built in, and that is not a contract.
+        matching.sort(key=lambda entry: (entry.gitignored, -entry.mtime_ns, entry.path))
+        total = len(matching)
+        capped = matching[: query.max_rows]
+        capped.sort(key=lambda entry: (-entry.mtime_ns, entry.path))
+        ignored_directories: set[str] = set()
+        seen: set[str] = set()
+        for entry in capped:
+            ancestor = entry.parent
+            # Siblings share their entire ancestor chain. Once a directory has been
+            # visited, its parents have too; work scales with distinct ancestors.
+            while ancestor and ancestor not in seen:
+                seen.add(ancestor)
+                candidate = entries_by_path.get(ancestor)
+                if candidate is not None and candidate.gitignored:
+                    ignored_directories.add(ancestor)
+                ancestor = ancestor.rpartition("/")[0]
+        return RecentProjection(
+            query_id=query.query_id,
+            entries=tuple(
+                RecentRecord(entry.path, entry.ext, entry.size, entry.mtime_ns, entry.gitignored)
+                for entry in capped
+            ),
+            total_matches=_bounded_count(total, query.count_cap, len(capped)),
+            gitignored_directories=tuple(sorted(ignored_directories)),
+        )
+
+    @staticmethod
+    def _projection_rows(projection: ProjectionResult) -> int:
+        if isinstance(projection, QueryLimitProjection):
+            return 0
+        if isinstance(projection, (DirectoryProjection, FilteredTreeProjection)):
+            return len(projection.entries)
+        if isinstance(projection, RecentProjection):
+            return len(projection.entries)
+        if isinstance(projection, CatalogProjection):
+            return len(projection.records)
+        if isinstance(projection, EntryProjection):
+            return int(projection.entry is not None)
+        return 1
+
+    def _valid_relative_path(self, rel: str) -> bool:
+        path = PurePosixPath(rel)
+        return (
+            bool(rel)
+            and "\\" not in rel
+            and not path.is_absolute()
+            and ".." not in path.parts
+            and path.as_posix() == rel
+            and is_visible_segment(rel, self._config.hidden_allowlist)
+        )
+
+    def _has_native_parent(self, rel: str) -> bool:
+        """Reject hints through symlink ancestors, including links inside the root."""
+
+        native = native_inventory_path(rel)
+        root = self._root
+        if native is None or root is None:
+            return False
+        target = root / native
+        try:
+            return target.is_relative_to(root) and target.parent.resolve() == target.parent
+        except OSError:
+            return False
+
+    async def _refresh_path(
+        self,
+        observation: RefreshObservation,
+        *,
+        gitignore_check: Callable[[Path, bool], bool] | None,
+        max_depth: int | None = None,
+    ) -> bool:
+        root = self._root
+        if root is None:
+            raise InventoryClosedError("the Python inventory handle has no open root")
+        rel = observation.path
+        # `rel` is the contract's canonical identity and the store's key; the filesystem
+        # only answers to the name it gave us. This is one of the three places the
+        # provider crosses back, and the inverse is total on anything the walker stored,
+        # so `None` here means a caller invented a path no platform name produces.
+        native_rel = native_inventory_path(rel)
+        if native_rel is None:
+            return False
+        target = root / native_rel
+        existing = self.get(rel)
+        self.invalidate(rel)
+        token = self.capture_write_token(rel)
+
+        def observe() -> tuple[bool, os.stat_result | None]:
+            # Priority, watcher and activity hints share the same no-follow scope.
+            if not self._has_native_parent(rel):
+                return False, None
+            try:
+                return True, target.lstat()
+            except FileNotFoundError:
+                return True, None
+
+        allowed, stat_result = await asyncio.to_thread(observe)
+        if not allowed:
+            return False
+        if stat_result is None:
+            if self.capture_write_token(rel) == token:
+                self.remove(rel)
+            return True
+        # Watcher, activity, and explicit refreshes may observe the same path
+        # concurrently. The filesystem read must retain its generation across the
+        # await, just like a walker's delayed directory finalization.
+        if self.capture_write_token(rel) != token:
+            return True
+        parent = rel.rpartition("/")[0]
+        try:
+            gitignored = bool(
+                gitignore_check(target, stat_module.S_ISDIR(stat_result.st_mode))
+                if gitignore_check is not None
+                else False
+            )
+        except Exception:
+            gitignored = existing.gitignored if existing is not None else False
+        if stat_module.S_ISLNK(stat_result.st_mode):
+            entry = FsEntry.for_observed_symlink(
+                path=rel,
+                parent=parent,
+                name=rel.rpartition("/")[2],
+                size=stat_result.st_size,
+                mtime_ns=stat_result.st_mtime_ns,
+                gitignored=gitignored,
+            )
+            self.apply_live_entry(entry)
+        elif stat_module.S_ISDIR(stat_result.st_mode):
+            if observation.kind is ObservationKind.DELETED and existing is not None:
+                self.remove(rel)
+            await self.rewalk_subtree(
+                rel,
+                gitignore_check=gitignore_check,
+                gitignore_prepared=True,
+                max_depth=max_depth,
+            )
+        elif stat_module.S_ISREG(stat_result.st_mode):
+            self.apply_live_entry(
+                FsEntry.for_stat(
+                    path=rel,
+                    parent=parent,
+                    name=rel.rpartition("/")[2],
+                    stat=stat_result,
+                    gitignored=gitignored,
+                    existing=existing,
+                )
+            )
+        else:
+            # Keep refresh semantics aligned with the boot walker: the browser
+            # wire cannot represent sockets, FIFOs, or device nodes.
+            self.remove(rel)
+
+        return True
+
+    def _reset_batch(self) -> ChangeBatch:
+        with self._rollup_cache_lock:
+            sequence = self._rollup_generation
+            entry_count = len(self._entries)
+            directory_count = self._directories_indexed
+            state = self._state_for(
+                self._status,
+                entries_observed=entry_count,
+                files_indexed=self._files_indexed,
+                directory_count=directory_count,
+            )
+        version = self._version(sequence)
+        return ChangeBatch(
+            cursor=version.cursor,
+            version=version,
+            state=state,
+            reset=True,
+        )
+
+    # Reads
+
+    def status(self) -> IndexStatus:
+        return self._status
+
+    def get(self, path: str) -> FsEntry | None:
+        return self._entries.get(path)
+
+    def has_direct_child(self, path: str) -> bool:
+        """Return whether *path* has a child already present in the index."""
+
+        return self._direct_child_counts.get(path, 0) > 0
+
+    def entries(
+        self,
+        scope: Literal["root-depth-2", "all-known"] = "all-known",
+        *,
+        max_depth: int | None = None,
+    ) -> list[FsEntry]:
+        """Snapshot of currently-known entries filtered by scope.
+
+        ``root-depth-2`` returns entries at depth 0–2 (matches the
+        default ``/api/tree`` first-paint).
+        ``all-known`` returns everything currently in the index.
+        """
+
+        if scope == "all-known":
+            base = list(self._entries.values())
+        elif scope == "root-depth-2":
+            depth_cap = 2 if max_depth is None else max_depth
+            base = [e for e in self._entries.values() if _depth_of(e.path) <= depth_cap]
+        else:  # pragma: no cover — type-checked at the boundary
+            raise ValueError(f"unknown scope: {scope!r}")
+        return base
+
+    def files_indexed(self) -> int:
+        return self._files_indexed
+
+    def rollup_revision(self) -> int:
+        """Counter that advances on every index write.
+
+        A rollup response is a pure function of the index contents and the
+        request's bounds, so an unchanged revision means an unchanged body.
+        That is what lets ``/api/rollup`` answer a repeat request with a
+        validator instead of re-aggregating and re-serializing the same
+        answer. Advances constantly during a scan, which is correct: the
+        answer really is changing then.
+        """
+
+        with self._rollup_cache_lock:
+            return self._rollup_generation
+
+    def root_summary(
+        self,
+        *,
+        entries: Sequence[FsEntry] | None = None,
+    ) -> dict[str, int]:
+        """Whole-index file counts and bytes, split by gitignore status.
+
+        The per-directory ``total_files`` / ``total_size`` aggregates
+        are gitignore-blind, and they have to stay that way: a folder's
+        size is its size. But the nav header wants to say how much of
+        the tree is tracked versus ignored, and summing top-level
+        children cannot answer that — ignored files nested under
+        tracked directories would be counted as tracked.
+
+        One pass over the entries is the honest way to get it. Navigation
+        requests use :meth:`navigation_tallies` to perform the same calculation
+        alongside filter counts; this focused method avoids doing that extra work for
+        callers that need only the summary.
+        """
+
+        snapshot = self.entries(scope="all-known") if entries is None else entries
+        files = size = ignored_files = ignored_size = 0
+        for entry in snapshot:
+            if entry.type != "file":
+                continue
+            if entry.gitignored:
+                ignored_files += 1
+                ignored_size += entry.size or 0
+            else:
+                files += 1
+                size += entry.size or 0
+        return {
+            "files": files,
+            "size": size,
+            "ignored_files": ignored_files,
+            "ignored_size": ignored_size,
+        }
+
+    def navigation_tallies(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        recency_windows: Sequence[tuple[str, float]],
+        limit: int = 200,
+        *,
+        now_ns: int | None = None,
+        entries: Sequence[FsEntry] | None = None,
+        revision: int | None = None,
+    ) -> NavigationTallies:
+        """
+        Return root, file-type, and cumulative recency tallies in one index pass.
+
+        Every row is ``[key, tracked_files, ignored_files]``. Keeping the two
+        populations separate lets the browser use the same snapshot when the user
+        changes whether gitignored files are shown.
+
+        Pass *revision* -- the value :meth:`rollup_revision` reported when
+        *entries* was snapshotted -- to memoize the result. The pass costs one
+        visit per file entry, so on a settled index every root request would
+        otherwise redo the same half-second of work, once per open tab. Omit it
+        for a self-contained tally.
+        """
+
+        snapshot = self.entries(scope="all-known") if entries is None else entries
+        current_ns = time.time_ns() if now_ns is None else now_ns
+        if revision is None:
+            base = self._compute_navigation_tallies(presets, limit, snapshot)
+            return _with_recency(base, recency_windows, current_ns)
+        # Everything the pass depends on, and nothing else. The bounds and the
+        # preset definitions are caller-supplied, so they belong in the key
+        # even though the server passes module constants: a key that assumed
+        # them would hand a future second caller the first one's shape.
+        #
+        # No clock term, deliberately. An earlier version keyed on a rounded
+        # second, which fails exactly where this is needed: at 400,000 entries
+        # the pass takes about two seconds, so every request landed in a later
+        # bucket than the one before it and the memo never hit. The recency
+        # windows are the only clock-dependent part, and they are now answered
+        # from sorted mtimes below rather than recomputed.
+        key = (
+            revision,
+            limit,
+            tuple((preset_id, tuple(sorted(values))) for preset_id, values in presets),
+        )
+        with self._navigation_tally_lock:
+            memo = self._navigation_tally_memo
+            if memo is not None and memo[0] == key:
+                base = memo[1]
+            else:
+                started = time.monotonic()
+                base = self._compute_navigation_tallies(presets, limit, snapshot)
+                finished = time.monotonic()
+                self._navigation_tally_memo = (key, base)
+                self._navigation_tally_at = finished
+                self._navigation_tally_cost_s = finished - started
+        return _with_recency(base, recency_windows, current_ns)
+
+    def navigation_tallies_fresh_within(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        recency_windows: Sequence[tuple[str, float]],
+        limit: int,
+        *,
+        min_stale_s: float,
+        now_ns: int | None = None,
+    ) -> NavigationTallies | None:
+        """The memoized tallies if they are still current, else None.
+
+        Cheap enough for the event loop: a nonblocking lock attempt, a tuple
+        compare, and a clock read, with no index pass or snapshot. Contention is
+        a cache miss rather than a wait because the same lock is held across the
+        O(index) worker pass. That is the point of having this separate: the
+        caller can find out whether it needs to pay O(index) *before* paying the
+        O(index) list copy that feeding the pass requires.
+
+        Freshness is by age rather than by revision because during a walk
+        ``rollup_revision`` advances on every write -- roughly ninety times a
+        second at the emit batch size -- so a revision test can never hold
+        while scanning, which is exactly when the pass is most expensive and
+        most repeated. The numbers are already labelled provisional to the
+        client (``tally_cache_status``), so serving them a beat stale says
+        nothing new; recomputing them per request during a scan is what the
+        client never asked for.
+
+        The bound is *at least* ``min_stale_s`` and at least as long as the
+        last pass took. Deriving it from the measured cost is what keeps it
+        right across corpus sizes: the pass visits every entry, so a bound
+        that is generous at ten thousand files starves the event loop at a
+        million. Refusing to spend more than about half the time recomputing a
+        number the client is already told is provisional is the rule; the
+        constant is only the floor for a tree small enough that the pass is
+        free.
+        """
+
+        key_presets = tuple((preset_id, tuple(sorted(values))) for preset_id, values in presets)
+        if not self._navigation_tally_lock.acquire(blocking=False):
+            return None
+        try:
+            memo = self._navigation_tally_memo
+            if memo is None:
+                return None
+            memo_key, base = memo
+            # Everything after the revision is what this caller's shape has to
+            # match; a different limit or preset set is a different question.
+            if memo_key[1:] != (limit, key_presets):
+                return None
+            # An unchanged revision *proves* the memo current, so age has
+            # nothing to add and must not gate it. Letting it do so killed this
+            # fast path exactly where it should always hit: the timestamp is
+            # written only when the pass runs, so once a walk finishes and the
+            # revision stops moving, the memo aged past the bound and every
+            # later poll missed forever -- each one then paying a full index
+            # copy before discovering the revision had not moved after all.
+            #
+            # The bound is a concession to a revision that is *moving*, which
+            # is the scan. It has no business deciding anything once the tree
+            # has settled.
+            if memo_key[0] != self._rollup_generation:
+                bound = max(min_stale_s, self._navigation_tally_cost_s)
+                if time.monotonic() - self._navigation_tally_at > bound:
+                    return None
+        finally:
+            self._navigation_tally_lock.release()
+        current_ns = time.time_ns() if now_ns is None else now_ns
+        return _with_recency(base, recency_windows, current_ns)
+
+    def navigation_tallies_snapshotting(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        recency_windows: Sequence[tuple[str, float]],
+        limit: int,
+    ) -> NavigationTallies:
+        """Take the index snapshot and compute the tallies, both off the loop.
+
+        The snapshot is a list copy of every known entry -- 300,000 of them on
+        the bench corpus -- so taking it in the caller means the event loop
+        pays it even when the pass that needs it is about to be memoized away.
+        Pairing the two here lets the route hand the whole cost to a thread.
+        """
+
+        # One lock covering both reads, for two reasons that happen to share a fix.
+        #
+        # This is the first call site that reads the index from a worker thread
+        # rather than from the event loop, so the writers' lock was no longer
+        # doing anything for this reader. Benign under the GIL today -- a
+        # ``list(dict.values())`` does not tear -- and not benign on a
+        # free-threaded build, which CI already exercises on 3.14.
+        #
+        # And the revision has to be read with the snapshot, not after it. The
+        # walker can write in between, which keys the memo to a revision newer
+        # than the contents it summarizes; if that lands on the walk's final
+        # writes, the settled tree serves under-counted tallies from that memo
+        # forever, because the revision never advances again to evict it. A
+        # narrow window with a permanent consequence.
+        with self._rollup_cache_lock:
+            snapshot = list(self._entries.values())
+            revision = self._rollup_generation
+        return self.navigation_tallies(
+            presets,
+            recency_windows,
+            limit,
+            entries=snapshot,
+            revision=revision,
+        )
+
+    def _compute_navigation_tallies(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        limit: int,
+        snapshot: Sequence[FsEntry],
+    ) -> _NavigationTallyBase:
+        """One pass over *snapshot*, with nothing in it that depends on the clock.
+
+        Recency is the only clock-dependent part, and bucketing it here would
+        tie the whole result to the moment it was computed. Instead the pass
+        collects sorted mtimes, which the caller searches per window. That
+        keeps everything above memoizable on the index revision alone.
+        """
+
+        files = size = ignored_files = ignored_size = 0
+        tracked_mtimes: array[int] = array("q")
+        ignored_mtimes: array[int] = array("q")
+        extension_counts: dict[str, list[int]] = {}
+        canonical_extension_counts: dict[str, list[int]] = {}
+        family_counts: dict[str, list[int]] = {}
+        preset_counts: dict[str, list[int]] = {}
+        normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
+        for preset_id, values in presets:
+            extensions: set[str] = set()
+            names: set[str] = set()
+            for value in values:
+                normalized = ascii_casefold(value)
+                (extensions if normalized.startswith(".") else names).add(normalized)
+            preset_counts[preset_id] = [0, 0]
+            normalized_presets.append((preset_id, frozenset(extensions), frozenset(names)))
+        for entry_index, entry in enumerate(snapshot):
+            if entry_index > 0 and entry_index % _NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH == 0:
+                time.sleep(_NAVIGATION_TALLY_COOPERATIVE_YIELD_S)
+            if entry.type != "file":
+                continue
+            ignored_index = 1 if entry.gitignored else 0
+            if entry.gitignored:
+                ignored_files += 1
+                ignored_size += entry.size or 0
+            else:
+                files += 1
+                size += entry.size or 0
+
+            ext = ascii_casefold(entry.ext)
+            if ext:
+                row = extension_counts.get(ext)
+                if row is None:
+                    row = [0, 0]
+                    extension_counts[ext] = row
+                row[ignored_index] += 1
+
+                extension_classification = self._registry.classify("", ext)
+                canonical = extension_classification.canonical_extension or ext
+                canonical_row = canonical_extension_counts.setdefault(canonical, [0, 0])
+                canonical_row[ignored_index] += 1
+
+                if extension_classification.family_id is not None:
+                    family_row = family_counts.setdefault(
+                        extension_classification.family_id,
+                        [0, 0],
+                    )
+                    family_row[ignored_index] += 1
+
+            name = ascii_casefold(entry.name)
+            semantic_category = self._registry.classify(name, ext).group_id
+            for preset_id, preset_extensions, preset_names in normalized_presets:
+                if (
+                    preset_id == semantic_category
+                    or ext in preset_extensions
+                    or name in preset_names
+                ):
+                    preset_counts[preset_id][ignored_index] += 1
+
+            (ignored_mtimes if entry.gitignored else tracked_mtimes).append(entry.mtime_ns)
+
+        summary = {
+            "files": files,
+            "size": size,
+            "ignored_files": ignored_files,
+            "ignored_size": ignored_size,
+        }
+        ranked = sorted(
+            extension_counts.items(),
+            key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+        )
+        extension_rows: list[list[object]] = [
+            [ext, counts[0], counts[1]] for ext, counts in ranked[:limit]
+        ]
+        canonical_ranked = sorted(
+            canonical_extension_counts.items(),
+            key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+        )
+        canonical_rows: list[list[object]] = [
+            [ext, counts[0], counts[1]] for ext, counts in canonical_ranked[:limit]
+        ]
+        family_rows: list[list[object]] = [
+            [family_id, counts[0], counts[1]]
+            for family_id, counts in sorted(
+                family_counts.items(),
+                key=lambda item: (-(item[1][0] + item[1][1]), item[0]),
+            )
+        ]
+        preset_rows: list[list[object]] = [
+            [preset_id, counts[0], counts[1]] for preset_id, counts in preset_counts.items()
+        ]
+        registry = self._registry
+        tracked_mtimes = array("q", sorted(tracked_mtimes))
+        ignored_mtimes = array("q", sorted(ignored_mtimes))
+        oldest_mtime_ns = min(
+            tracked_mtimes[0] if tracked_mtimes else 0,
+            ignored_mtimes[0] if ignored_mtimes else 0,
+        )
+        if not tracked_mtimes:
+            oldest_mtime_ns = ignored_mtimes[0] if ignored_mtimes else 0
+        elif not ignored_mtimes:
+            oldest_mtime_ns = tracked_mtimes[0]
+        newest_mtime_ns = max(
+            tracked_mtimes[-1] if tracked_mtimes else 0,
+            ignored_mtimes[-1] if ignored_mtimes else 0,
+        )
+        return _NavigationTallyBase(
+            summary=summary,
+            file_type_registry={
+                "schema_version": registry.schema_version,
+                "revision": registry.revision,
+                "fingerprint": registry.fingerprint,
+            },
+            extensions=extension_rows,
+            canonical_extensions=canonical_rows,
+            type_families=family_rows,
+            type_presets=preset_rows,
+            tracked_mtimes=tracked_mtimes,
+            ignored_mtimes=ignored_mtimes,
+            oldest_mtime_ns=oldest_mtime_ns,
+            newest_mtime_ns=newest_mtime_ns,
+        )
+
+    def file_type_tallies(
+        self,
+        presets: Sequence[tuple[str, Collection[str]]],
+        limit: int = 200,
+        *,
+        entries: Sequence[FsEntry] | None = None,
+    ) -> tuple[list[list[object]], list[list[object]]]:
+        """Return extension and aggregate-preset rows in one index pass.
+
+        Both shapes are ``[key, tracked_files, ignored_files]``. Dotted
+        preset tokens match the indexed logical extension; other tokens
+        match a complete filename case-insensitively. A file is counted
+        at most once per preset.
+        """
+
+        tallies = self.navigation_tallies(presets, (), limit=limit, entries=entries)
+        return tallies["extensions"], tallies["type_presets"]
+
+    def extension_tally(self, limit: int = 200) -> list[list[object]]:
+        """``[ext, tracked_files, ignored_files]`` rows, most frequent first.
+
+        The nav's extension filter cannot tally from the Quick File
+        catalog: ``catalog_files`` drops gitignored entries by design
+        (nobody wants to fuzzy-find into ``node_modules``), so a menu
+        built from it undercounts every extension the tree still shows
+        while gitignored rows are visible.
+
+        Tracked and ignored are kept apart rather than summed so the
+        menu can report whichever total matches the user's current
+        gitignored setting instead of one that is wrong half the time.
+
+        Bounded by ``limit`` on the way out; the tail of one-off
+        extensions is exactly what a filter menu does not need.
+        """
+
+        rows, _presets = self.file_type_tallies((), limit=limit)
+        return rows
+
+    def rollup(
+        self,
+        path: str,
+        *,
+        depth: int,
+        top: int,
+        ext_top: int,
+        remaining_top: int = ROLLUP_FILE_TYPE_REMAINING_LIMIT,
+        filename_top: int = ROLLUP_FILE_TYPE_FILENAME_LIMIT,
+        ext_rank: RollupRank = "bytes",
+        max_nodes: int | None = None,
+    ) -> RollupResult | None:
+        """Return the bounded rollup for an indexed directory."""
+
+        options = RollupOptions(
+            depth=depth,
+            top=top,
+            ext_top=ext_top,
+            remaining_top=remaining_top,
+            filename_top=filename_top,
+            ext_rank=ext_rank,
+            max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
+        )
+        entries, children_by_parent, snapshot_epoch = self._rollup_view()
+        # Reads fall through to the shared memo; writes land in ``computed``.
+        # ``build_rollup`` runs in a worker thread while the walker keeps
+        # mutating the index on the event loop, so writing the shared memo in
+        # place would let an aggregate computed here land *after* a newer
+        # write evicted it, leaving a tally that is wrong and never corrects
+        # itself. Keeping this pass's own results separate also means the
+        # guarded merge below touches only what this pass actually computed
+        # rather than everything already cached.
+        computed: SubtreeAggregateCache = {}
+        try:
+            result = build_rollup(
+                entries,
+                children_by_parent,
+                path,
+                options,
+                ancestor_gitignored=self._ancestor_gitignored(path, entries),
+                aggregates=ChainMap(computed, self._subtree_aggregates),
+                registry=self._registry,
+            )
+        except BaseException:
+            # The pass is still counted in flight; retiring it here keeps a
+            # failed rollup from pinning the eviction-epoch map forever.
+            self._merge_subtree_aggregates({}, snapshot_epoch)
+            raise
+        self._merge_subtree_aggregates(computed, snapshot_epoch)
+        return result
+
+    def _merge_subtree_aggregates(
+        self,
+        memo: SubtreeAggregateCache,
+        snapshot_epoch: int,
+    ) -> None:
+        """Publish aggregates from one rollup pass, dropping the stale ones.
+
+        A directory is only republished when nothing has evicted it since
+        *snapshot_epoch* — the epoch that was current when the pass took its
+        entry snapshot. Anything evicted after that was computed from data the
+        walker has already moved past, so it is discarded rather than cached.
+        """
+
+        with self._rollup_cache_lock:
+            for directory_path, aggregate in memo.items():
+                if self._aggregate_evicted_at.get(directory_path, 0) <= snapshot_epoch:
+                    self._subtree_aggregates[directory_path] = aggregate
+            self._rollup_passes_in_flight -= 1
+            if self._rollup_passes_in_flight == 0:
+                # The map only exists to let a merge refuse an aggregate the
+                # walker has moved past. With no pass in flight there is no
+                # merge left to consult it, so every epoch in it is now dead
+                # weight. Without this it grows with every directory path seen
+                # in the process lifetime rather than with the directory count,
+                # and a long session over a churning tree (build outputs,
+                # node_modules reinstalls, temp dirs) never gives any of it back.
+                self._aggregate_evicted_at.clear()
+
+    def _rollup_view(
+        self,
+    ) -> tuple[Mapping[str, FsEntry], Mapping[str, Sequence[FsEntry]], int]:
+        """Return live read views of the index plus the current eviction epoch.
+
+        Nothing is copied. ``build_rollup`` reads both mappings only by key,
+        and a single ``dict`` lookup on string keys is atomic under the GIL,
+        so the entry map is safe to read from the rollup worker thread while
+        the walker keeps writing on the event loop. Child buckets are iterated
+        rather than looked up, so those go through ``_ChildrenView``, which
+        holds the index lock for the copy.
+
+        Reading live means a rollup can observe writes that land mid-build.
+        That is why the epoch returned here gates
+        :meth:`_merge_subtree_aggregates`: any directory written since this
+        moment is refused a cache entry, so only aggregates whose subtree
+        provably did not move are retained.
+        """
+
+        with self._rollup_cache_lock:
+            epoch = self._aggregate_epoch
+            self._rollup_passes_in_flight += 1
+        return self._entries, _ChildrenView(self), epoch
+
+    def _evict_subtree_aggregates(self, path: str, *, is_dir: bool) -> None:
+        """Drop the cached aggregate for *path* and every ancestor up to root.
+
+        Caller must hold ``_rollup_cache_lock``.
+
+        A directory's aggregate summarizes everything beneath it, so a write
+        at *path* only invalidates *path* and its ancestors; sibling subtrees
+        stay valid and are reused, which is what keeps a rollup during a scan
+        proportional to what moved rather than to the whole index.
+
+        Only directories are tracked. Eviction epochs are recorded even for a
+        directory that holds no aggregate right now, because a rollup pass
+        already in flight may be about to publish one, and the epoch is what
+        tells the merge to refuse it. Files are skipped so the epoch map stays
+        proportional to the directory count rather than the entry count.
+
+        Cost is one chain walk per stored entry, bounded by ``INVENTORY_MAX_DEPTH``.
+        """
+
+        self._aggregate_epoch += 1
+        epoch = self._aggregate_epoch
+        if is_dir:
+            self._subtree_aggregates.pop(path, None)
+            self._aggregate_evicted_at[path] = epoch
+        cursor = path
+        while cursor:
+            cursor = cursor.rpartition("/")[0]
+            self._subtree_aggregates.pop(cursor, None)
+            self._aggregate_evicted_at[cursor] = epoch
+            if not cursor:
+                return
+
+    def _replace_index_entry(self, entry: FsEntry) -> None:
+        """Store an entry and invalidate cached rollup topology atomically."""
+
+        with self._rollup_cache_lock:
+            existing = self._entries.get(entry.path)
+            if entry.type == "file" and (existing is None or existing.type != "file"):
+                self._files_indexed += 1
+            elif entry.type != "file" and existing is not None and existing.type == "file":
+                self._files_indexed -= 1
+            if entry.type == "dir" and (existing is None or existing.type != "dir"):
+                self._directories_indexed += 1
+            elif entry.type != "dir" and existing is not None and existing.type == "dir":
+                self._directories_indexed -= 1
+            self._entries[entry.path] = entry
+            self._rollup_generation = next(_ROLLUP_REVISIONS)
+            # The served root is its own parent; listing it as its own child
+            # would make subtree aggregation recurse forever.
+            if entry.path != entry.parent:
+                self._children_index.setdefault(entry.parent, {})[entry.path] = entry
+            self._evict_subtree_aggregates(entry.path, is_dir=entry.type == "dir")
+
+    def _pop_index_entry(self, path: str) -> FsEntry | None:
+        """Remove an entry and invalidate cached rollup topology atomically."""
+
+        with self._rollup_cache_lock:
+            entry = self._entries.pop(path, None)
+            if entry is not None:
+                if entry.type == "file":
+                    self._files_indexed -= 1
+                elif entry.type == "dir":
+                    self._directories_indexed -= 1
+                self._rollup_generation = next(_ROLLUP_REVISIONS)
+                siblings = self._children_index.get(entry.parent)
+                if siblings is not None:
+                    siblings.pop(path, None)
+                    if not siblings:
+                        del self._children_index[entry.parent]
+                self._children_index.pop(path, None)
+                self._evict_subtree_aggregates(path, is_dir=entry.type == "dir")
+            return entry
+
+    def _ancestor_gitignored(self, path: str, entries: Mapping[str, FsEntry]) -> bool:
+        """Whether any strict ancestor of *path* carries the gitignore flag."""
+
+        if not path:
+            return False
+        segments = path.split("/")
+        prefix = ""
+        for segment in segments[:-1]:
+            prefix = f"{prefix}/{segment}" if prefix else segment
+            ancestor = entries.get(prefix)
+            if ancestor is not None and ancestor.gitignored:
+                return True
+        return False
+
+    # Writes
+
+    def invalidate(self, path: str) -> None:
+        """Bump the generation counter on *path* and every
+        ancestor up to root. The walker (or a subsequent watcher
+        op) only writes a result if the generation it started with
+        matches the current one; stale writes are dropped on the
+        floor. Cheap: an ancestor chain is at most ``MAX_DEPTH``
+        entries.
+        """
+
+        cursor = path
+        while True:
+            self._generation[cursor] = self._generation.get(cursor, 0) + 1
+            if not cursor:
+                break
+            slash = cursor.rfind("/")
+            cursor = cursor[:slash] if slash >= 0 else ""
+
+    async def rewalk_subtree(
+        self,
+        rel: str,
+        *,
+        gitignore_check: Callable[[Path, bool], bool] | None = None,
+        gitignore_prepared: bool = False,
+        max_depth: int | None = None,
+    ) -> None:
+        """Run ``walk_tree`` rooted at ``self._root / rel`` and apply
+        each yielded entry through :meth:`_apply_walker_entry`. Used
+        by the watcher to ingest a newly-created directory subtree
+        without waiting for a process restart.
+
+        Race-safety: walker entries arrive with
+        ``write_token=None`` (fresh observation) and
+        :meth:`_store_walker_entry` stamps them with the current
+        generation at write time. Producers that need to detect a
+        write-while-invalidating race opt in by reading
+        :meth:`capture_write_token` before observing the filesystem
+        and passing the token back on the resulting entry.
+
+        Caller's responsibility: only point this at subtrees the
+        watcher reported as created. Capping depth/file-count is
+        shared with the boot walker — pointing this at a
+        multi-million-file subtree will block the watcher's task
+        until the walk hits the cap.
+        """
+
+        if self._root is None:
+            return
+        root = self._root
+        previous_subtree = self._entries.get(rel)
+        if not rel:
+            # The whole-root re-walk is what start() does; refuse to
+            # avoid two walkers writing into the index simultaneously.
+            return
+        # The second crossing back to the filesystem: `rel` keys the store canonically,
+        # the filesystem answers to the platform name it gave us.
+        native_rel = native_inventory_path(rel)
+        if native_rel is None:
+            return
+        target = root / native_rel
+        if not await asyncio.to_thread(self._has_native_parent, rel):
+            return
+        try:
+            target_resolved = target.resolve()
+        except OSError:
+            return
+
+        # Containment and symlink safety
+        #
+        # A rewalk must never escape the served root. ``rel`` is
+        # joined onto the root and then ``resolve()``-d, which
+        # collapses ``..`` and *follows symlinks*. Two failure modes
+        # this guards against, both observed as a phantom subtree in
+        # the nav (a directory appearing to contain a copy of itself
+        # or of a sibling repo):
+        #
+        #   1. ``rel`` (or an ancestor of it) is a symlink that
+        #      resolves *outside* the served root — e.g. an
+        #      ``attic/foo`` link pointing at ``/repos/bar`` or back
+        #      up to the root's own parent. Following it would graft
+        #      a foreign tree into the inventory under ``rel``.
+        #   2. ``rel``'s final component is a symlink to a directory.
+        #      The boot walker records symlinks as *leaf* entries
+        #      (``follow_symlinks=False``); descending into one here
+        #      would diverge from the boot tree and, because the
+        #      rebased entries keep the *resolved* target's basename
+        #      as their ``name``, mislabel the grafted node.
+        #
+        # In both cases we refuse and warn rather than walk, so an
+        # unexpected filesystem shape is visible in the logs instead
+        # of silently corrupting the tree.
+        root_resolved = root.resolve()
+        if target_resolved != root_resolved and root_resolved not in target_resolved.parents:
+            LOG.warning(
+                "inventory: refusing rewalk of %r — resolves to %s, outside served root %s",
+                rel,
+                target_resolved,
+                root_resolved,
+            )
+            return
+        if target.is_symlink():
+            LOG.warning(
+                "inventory: refusing rewalk of symlinked dir %r -> %s "
+                "(boot walker treats symlinks as leaf entries)",
+                rel,
+                target_resolved,
+            )
+            return
+        if not target_resolved.is_dir():
+            return
+        # Verbose trace at DEBUG so a high log level (``--log-level debug``
+        # / ``METABROWSER_LOG_LEVEL=DEBUG``) shows every rewalk target and
+        # its resolved path, making symlink-following auditable.
+        LOG.debug("inventory: rewalk_subtree rel=%s resolved=%s", rel, target_resolved)
+        gi_check = gitignore_check
+        if not gitignore_prepared:
+            gi_check = await run_cancellable_thread(
+                lambda cancel_event: _build_gitignore_check_for(
+                    root,
+                    cancel_event=cancel_event,
+                )
+            )
+        async for entry in walk_tree(
+            target_resolved,
+            max_depth=max_depth,
+            max_files=self._max_files,
+            gitignore_check=gi_check,
+            hidden_allowlist=self._config.hidden_allowlist,
+        ):
+            # ``walk_tree`` yields paths relative to *target_resolved*,
+            # not the served root. Re-key under the served root so
+            # entries land at the right place in ``_entries``.
+            if entry.path == "":
+                rebased_path = rel
+                rebased_parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
+                rebased_parent = rebased_parent if rebased_parent != rel else ""
+            else:
+                rebased_path = f"{rel}/{entry.path}"
+                rebased_parent = f"{rel}/{entry.parent}" if entry.parent else rel
+            rebased = _internal_entry(replace(entry, path=rebased_path, parent=rebased_parent))
+            self._apply_walker_entry(rebased)
+
+        current_subtree = self._entries.get(rel)
+        if current_subtree is not None and current_subtree.type == "dir":
+            previous_files = 0
+            previous_size = 0
+            previous_unignored_files = 0
+            previous_unignored_size = 0
+            if previous_subtree is not None:
+                if previous_subtree.type == "file":
+                    previous_files = 1
+                    previous_size = previous_subtree.size
+                    if not previous_subtree.gitignored:
+                        previous_unignored_files = 1
+                        previous_unignored_size = previous_subtree.size
+                else:
+                    previous_files = previous_subtree.total_files or 0
+                    previous_size = previous_subtree.total_size or 0
+                    previous_unignored_files = previous_subtree.unignored_files or 0
+                    previous_unignored_size = previous_subtree.unignored_size or 0
+            current_files = current_subtree.total_files or 0
+            current_size = current_subtree.total_size or 0
+            current_unignored_files = current_subtree.unignored_files or 0
+            current_unignored_size = current_subtree.unignored_size or 0
+            aggregate_updates = self._update_ancestor_aggregates(
+                parent=current_subtree.parent,
+                delta_files=current_files - previous_files,
+                delta_size=current_size - previous_size,
+                delta_unignored_files=current_unignored_files - previous_unignored_files,
+                delta_unignored_size=current_unignored_size - previous_unignored_size,
+            )
+            if aggregate_updates:
+                self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in aggregate_updates)))
+
+    def remove(self, path: str) -> None:
+        """Remove *path* and every descendant from the index. Emits
+        one ``FsChange`` event whose ops cover every removed path so
+        subscribers can drop the corresponding rows in a single
+        batch. Idempotent: removing a path that isn't in the index
+        is a no-op.
+
+        For files and symlinks this drops one entry. For directories it walks
+        ``_entries`` for any path equal to ``{path}`` or under
+        ``{path}/`` and drops them all. The order of ops in the
+        emitted ``FsChange`` is unspecified — clients should treat
+        each op independently.
+        """
+
+        if not path:
+            # Refuse to remove the served root.
+            return
+        # The whole method runs synchronously: every inventory writer
+        # (walker, rewalk_subtree, watcher, active_tracker) lives on
+        # the same asyncio event loop and only yields at explicit
+        # ``await`` points. No await happens here, so no other
+        # coroutine can mutate ``_entries`` between the snapshot and
+        # the pops. A producer that wants to land a write *across*
+        # this region opts into race-safety via
+        # :meth:`capture_write_token` — the bumped generation drops
+        # any stale captured write that lands after the remove.
+        target = self._entries.get(path)
+        if target is None:
+            return
+        if target.type == "dir":
+            prefix = path + "/"
+            removed = [
+                cur for cur in list(self._entries.keys()) if cur == path or cur.startswith(prefix)
+            ]
+        else:
+            removed = [path]
+        removed_entries = [self._entries[cur] for cur in removed]
+        removed_files = [entry for entry in removed_entries if entry.type == "file"]
+        removed_unignored_files = [entry for entry in removed_files if not entry.gitignored]
+        outer_parent = target.parent
+        for cur in removed:
+            entry = self._pop_index_entry(cur)
+            if entry is not None:
+                if entry.type in ("file", "symlink"):
+                    self._adjust_descendant_leaf_aggregates(
+                        parent=entry.parent,
+                        delta_leaves=-1,
+                    )
+                if entry.type == "file":
+                    self._adjust_descendant_file_aggregates(
+                        parent=entry.parent,
+                        delta_files=-1,
+                        delta_size=-entry.size,
+                    )
+                    if not entry.gitignored:
+                        self._adjust_descendant_unignored_file_aggregates(
+                            parent=entry.parent,
+                            delta_files=-1,
+                            delta_size=-entry.size,
+                        )
+                elif entry.type == "dir":
+                    self._pending_dirs.discard(entry.path)
+                    self._child_mtime_heaps.pop(entry.path, None)
+                self._remove_direct_child(entry)
+                self._recorded_child_mtimes.pop(entry.path, None)
+            # Bump the generation so any in-flight walker write for
+            # this path with a captured WriteToken is dropped on
+            # store rather than resurrecting a removed entry.
+            self.invalidate(cur)
+        aggregate_updates = self._update_ancestor_aggregates(
+            parent=outer_parent,
+            delta_files=-len(removed_files),
+            delta_size=-sum(entry.size for entry in removed_files),
+            delta_unignored_files=-len(removed_unignored_files),
+            delta_unignored_size=-sum(entry.size for entry in removed_unignored_files),
+        )
+        ops: list[FsChangeOp] = [FsRemove(path=cur) for cur in removed]
+        ops.extend(FsUpsert(entry=entry) for entry in aggregate_updates)
+        self._emit(FsChange(ops=tuple(ops)))
+
+    # Internals
+
+    def _mark_discovery_failed(self, error: Exception) -> None:
+        with self._rollup_cache_lock:
+            self._last_error = f"{type(error).__name__}: {error}"
+            self._status = "failed"
+            self._rollup_generation = next(_ROLLUP_REVISIONS)
+        self._done_event.set()
+        self._record_provider_change(dirty_queries=frozenset({QueryKind.DIAGNOSTICS}))
+
+    async def _run_walker(self, root: Path) -> None:
+        """Drive ``walk_tree`` and apply each yielded entry. On
+        completion, set ``done_event`` so ``wait_until_done()``
+        resolves.
+
+        Walker upserts are batched into ``fs.change`` events with up
+        to ``WALKER_EMIT_BATCH`` ops apiece. Per-entry emits would
+        produce one event per file, overflowing every subscriber's
+        queue on the initial scan.
+        """
+
+        batch: list[FsEntry] = []
+        entries_since_yield = 0
+        try:
+            gi_check = await run_cancellable_thread(
+                lambda cancel_event: _build_gitignore_check_for(
+                    root,
+                    cancel_event=cancel_event,
+                )
+            )
+            async for observation in walk_tree(
+                root,
+                max_depth=None,
+                max_files=self._max_files,
+                gitignore_check=gi_check,
+                hidden_allowlist=self._config.hidden_allowlist,
+            ):
+                entry = _internal_entry(observation)
+                if entry.type == "dir" and entry.total_files is None:
+                    self._walker_dir_generations.setdefault(
+                        entry.path, self._generation.get(entry.path, 0)
+                    )
+                elif entry.type == "dir":
+                    observed_generation = self._walker_dir_generations.pop(
+                        entry.path, self._generation.get(entry.path, 0)
+                    )
+                    entry = entry.with_write_token(WriteToken(observed_generation))
+                stored = self._store_walker_entry(entry)
+                if stored is not None:
+                    batch.append(stored)
+                    if len(batch) >= WALKER_EMIT_BATCH:
+                        self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
+                        batch.clear()
+                entries_since_yield += 1
+                if entries_since_yield >= _WALKER_COOPERATIVE_YIELD_BATCH:
+                    entries_since_yield = 0
+                    await asyncio.sleep(0)
+            if batch:
+                self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
+                batch.clear()
+        except asyncio.CancelledError:
+            self._status = "idle"
+            raise
+        except Exception as error:
+            LOG.exception("inventory walker crashed")
+            self._mark_discovery_failed(error)
+            return
+
+        is_truncated = self._files_indexed >= self._max_files
+        if is_truncated:
+            await self._stop_watcher_for_resource_budget()
+        if not is_truncated:
+            try:
+                self._repair_pending_dir_aggregates()
+            except Exception as error:
+                LOG.exception("inventory repair of pending dir aggregates failed")
+                self._mark_discovery_failed(error)
+                return
+        with self._rollup_cache_lock:
+            self._status = "truncated" if is_truncated else "done"
+            self._rollup_generation = next(_ROLLUP_REVISIONS)
+        self._done_event.set()
+        # Push-based completion for stream clients: the Quick File
+        # catalog converges through live ops, so all it needs at
+        # walk end is the completeness flip — not a refetch.
+        self._emit(
+            CapabilityUpdate(
+                backends=(),
+                index={
+                    "complete": True,
+                    "truncated": is_truncated,
+                    "indexed_files": self._files_indexed,
+                    "max_files": self._max_files,
+                    "status": self._status,
+                },
+                events={},
+            )
+        )
+        elapsed_ms = (time.monotonic_ns() - self._started_at_ns) // 1_000_000
+        # INFO only when the walk is worth a line in someone's terminal:
+        # a truncated index means the browser is showing part of the tree,
+        # and a slow one explains a wait the user just sat through. The
+        # ordinary case — a small tree indexed before the first paint —
+        # is routine lifecycle, which belongs at DEBUG with the rest.
+        notable = is_truncated or elapsed_ms >= SLOW_OPERATION_LOG_SECONDS * 1000
+        LOG.log(
+            logging.INFO if notable else logging.DEBUG,
+            "inventory walker complete: provider=python contract=%s status=%s "
+            "files=%d entries=%d elapsed=%dms",
+            _CONTRACT_ID,
+            self._status,
+            self._files_indexed,
+            len(self._entries),
+            elapsed_ms,
+        )
+
+    def _repair_pending_dir_aggregates(self) -> None:
+        """Finalize any directory placeholders left by stale writes.
+
+        Watcher invalidations can bump an ancestor generation while
+        the boot walker is still running. That correctly rejects the
+        stale final write, but after an uncapped walk the inventory
+        already contains the descendant file entries needed to compute
+        a useful aggregate. Rebuild those pending dir totals from the
+        known files so ``status=done`` never exposes null tallies.
+
+        Descendant counts and sizes are maintained as entries change, so
+        completion visits only pending directories. Processing deepest
+        paths first lets each repaired mtime feed its parent's child heap.
+        """
+
+        pending_dirs = sorted(self._pending_dirs, key=_depth_of, reverse=True)
+        if not pending_dirs:
+            return
+
+        batch: list[FsEntry] = []
+        repaired_count = 0
+        for path in pending_dirs:
+            existing = self._entries.get(path)
+            if existing is None or existing.type != "dir" or existing.total_files is not None:
+                self._pending_dirs.discard(path)
+                continue
+            newest_mtime = self._direct_child_newest(path)
+            repaired = replace(
+                existing,
+                total_files=self._descendant_file_counts.get(path, 0),
+                total_size=self._descendant_file_sizes.get(path, 0),
+                unignored_files=self._descendant_unignored_file_counts.get(path, 0),
+                unignored_size=self._descendant_unignored_file_sizes.get(path, 0),
+                newest_mtime_ns=newest_mtime,
+                empty=self._descendant_leaf_counts.get(path, 0) == 0,
+                mtime_ns=newest_mtime,
+                write_token=WriteToken(self._generation.get(path, 0)),
+            )
+            self._replace_index_entry(repaired)
+            self._pending_dirs.discard(path)
+            self._record_child_mtime(repaired)
+            repaired_count += 1
+            batch.append(repaired)
+            if len(batch) >= WALKER_EMIT_BATCH:
+                self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
+                batch.clear()
+        if batch:
+            self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
+        LOG.debug("inventory repaired %d pending dir aggregate(s)", repaired_count)
+
+    def capture_write_token(self, path: str) -> WriteToken:
+        """Capture the inventory's current generation counter for *path*.
+
+        Producers that want race-safety call this before doing slow
+        observation (stat, scandir, file hash) and pass the result on
+        the resulting :class:`FsEntry`'s ``write_token`` field. If an
+        :meth:`invalidate` bumps the counter before the write lands,
+        :meth:`_store_walker_entry` drops the write.
+
+        Producers that need no race-safety (the entry reflects the
+        filesystem *now*) leave ``write_token=None``; the inventory
+        stamps the entry at write time.
+        """
+
+        return WriteToken(self._generation.get(path, 0))
+
+    def _store_walker_entry(self, entry: FsEntry) -> FsEntry | None:
+        """Apply *entry* to in-memory state. Returns the canonical
+        entry (with the latest generation stamped) for downstream
+        emit, or ``None`` if a concurrent invalidation made it stale.
+
+        Split from :meth:`_apply_walker_entry` so the walker can
+        batch the resulting upserts into one ``fs.change`` event.
+
+        Contract on ``entry.write_token``:
+
+        * ``None`` — freshly observed: the producer (walker / watcher
+          / active_tracker) read the filesystem right now and wants
+          the inventory to stamp the entry with the current
+          generation. Always accepted.
+        * :class:`WriteToken(generation=N)` — captured snapshot: the
+          producer called :meth:`capture_write_token` before its
+          observation and is asking for race-safety. If an
+          invalidation has bumped the counter to ``> N`` since,
+          the write is dropped.
+
+        The type-level discriminator distinguishes fresh observations from
+        captured generations so an unstamped observation cannot be silently
+        dropped.
+        """
+
+        cur_gen = self._generation.get(entry.path, 0)
+        token = entry.write_token
+        if token is not None and token.generation < cur_gen:
+            # The producer captured the counter at observation start,
+            # but an invalidation has bumped it since; drop the stale
+            # write and let the next observer pass refresh. This is the
+            # expected result of a watcher invalidation racing the boot walk,
+            # so retain it for concurrency debugging without presenting
+            # normal conflict resolution as a failure.
+            LOG.debug(
+                "inventory: dropped stale walker write path=%s token_gen=%d cur_gen=%d",
+                entry.path,
+                token.generation,
+                cur_gen,
+            )
+            return None
+        # Either token is None (fresh observation; stamp with cur_gen)
+        # or token.generation >= cur_gen (captured snapshot still
+        # current; restamp at the latest cur_gen so downstream
+        # consumers see a uniform value).
+        stamped_token = WriteToken(cur_gen)
+        if entry.write_token != stamped_token:
+            entry = entry.with_write_token(stamped_token)
+        existing = self._entries.get(entry.path)
+        existing_leaf = (
+            existing if existing is not None and existing.type in ("file", "symlink") else None
+        )
+        incoming_leaf = entry if entry.type in ("file", "symlink") else None
+        # Leaf, file, and tracked-file aggregates all hang off the same ancestor
+        # chain, and the ordinary walker event -- a new file -- moves all three by
+        # the same parent. Adjusting them separately climbed that chain three
+        # times, splitting every path component three times on the way up, for
+        # 180,000 climbs over a 60,000-file tree.
+        #
+        # Netting the deltas per parent first collapses that to one climb per
+        # parent, and it also subsumes the special cases the separate calls
+        # spelled out: a leaf that stays in place contributes -1 and +1 to one
+        # parent and nets to zero, and a file that only changes size nets to a
+        # size delta with no count delta. Rows that net to nothing are skipped,
+        # which is what those guards were for.
+        #
+        # The add path -- no existing entry, which is every entry of a first walk
+        # -- has exactly one parent, so it skips the map and its closure. Building
+        # a dict per entry cost more than the traversals it saved when this was
+        # first written, and measured as no change at all.
+        if existing is None:
+            if entry.type == "file":
+                tracked = 0 if entry.gitignored else 1
+                self._adjust_descendant_aggregates(
+                    entry.parent,
+                    [1, 1, entry.size, tracked, entry.size if tracked else 0],
+                )
+            elif entry.type == "symlink":
+                self._adjust_descendant_aggregates(entry.parent, [1, 0, 0, 0, 0])
+            self._add_direct_child(entry)
+            if entry.type == "dir" and entry.total_files is not None:
+                entry = entry.with_empty(self._descendant_leaf_counts.get(entry.path, 0) == 0)
+            self._replace_index_entry(entry)
+            if entry.type == "dir" and entry.total_files is None:
+                self._pending_dirs.add(entry.path)
+            else:
+                self._pending_dirs.discard(entry.path)
+            self._record_child_mtime(entry)
+            return entry
+
+        deltas: dict[str, list[int]] = {}
+
+        def _delta(parent: str) -> list[int]:
+            row = deltas.get(parent)
+            if row is None:
+                row = deltas[parent] = [0, 0, 0, 0, 0]
+            return row
+
+        if existing_leaf is not None:
+            _delta(existing_leaf.parent)[0] -= 1
+        if incoming_leaf is not None:
+            _delta(incoming_leaf.parent)[0] += 1
+        existing_file = existing if existing.type == "file" else None
+        incoming_file = entry if entry.type == "file" else None
+        if existing_file is not None:
+            row = _delta(existing_file.parent)
+            row[1] -= 1
+            row[2] -= existing_file.size
+        if incoming_file is not None:
+            row = _delta(incoming_file.parent)
+            row[1] += 1
+            row[2] += incoming_file.size
+        if existing_file is not None and not existing_file.gitignored:
+            row = _delta(existing_file.parent)
+            row[3] -= 1
+            row[4] -= existing_file.size
+        if incoming_file is not None and not incoming_file.gitignored:
+            row = _delta(incoming_file.parent)
+            row[3] += 1
+            row[4] += incoming_file.size
+        for parent, row in deltas.items():
+            if any(row):
+                self._adjust_descendant_aggregates(parent, row)
+        if existing.parent != entry.parent:
+            self._remove_direct_child(existing)
+            self._add_direct_child(entry)
+        if entry.type == "dir" and entry.total_files is not None:
+            entry = entry.with_empty(self._descendant_leaf_counts.get(entry.path, 0) == 0)
+        self._replace_index_entry(entry)
+        if entry.type == "dir" and entry.total_files is None:
+            self._pending_dirs.add(entry.path)
+        else:
+            self._pending_dirs.discard(entry.path)
+        self._record_child_mtime(entry)
+        return entry
+
+    def apply_live_entry(self, entry: FsEntry) -> None:
+        """Store a watcher observation and refresh finalized ancestor totals."""
+
+        existing = self._entries.get(entry.path)
+        stored = self._store_walker_entry(entry)
+        if stored is None:
+            return
+        old_file = existing if existing is not None and existing.type == "file" else None
+        new_file = stored if stored.type == "file" else None
+        aggregate_updates = self._update_ancestor_aggregates(
+            parent=stored.parent,
+            delta_files=int(new_file is not None) - int(old_file is not None),
+            delta_size=(new_file.size if new_file is not None else 0)
+            - (old_file.size if old_file is not None else 0),
+            delta_unignored_files=int(new_file is not None and not new_file.gitignored)
+            - int(old_file is not None and not old_file.gitignored),
+            delta_unignored_size=(
+                new_file.size if new_file is not None and not new_file.gitignored else 0
+            )
+            - (old_file.size if old_file is not None and not old_file.gitignored else 0),
+        )
+        ops = [FsUpsert(entry=stored)]
+        ops.extend(FsUpsert(entry=ancestor) for ancestor in aggregate_updates)
+        self._emit(FsChange(ops=tuple(ops)))
+
+    def _update_ancestor_aggregates(
+        self,
+        *,
+        parent: str,
+        delta_files: int,
+        delta_size: int,
+        delta_unignored_files: int,
+        delta_unignored_size: int,
+    ) -> list[FsEntry]:
+        updates: list[FsEntry] = []
+        cursor = parent
+        while True:
+            existing = self._entries.get(cursor)
+            if (
+                existing is not None
+                and existing.type == "dir"
+                and existing.total_files is not None
+                and existing.total_size is not None
+            ):
+                newest_mtime_ns = self._direct_child_newest(cursor)
+                current_unignored_files = (
+                    existing.unignored_files
+                    if existing.unignored_files is not None
+                    else existing.total_files
+                )
+                current_unignored_size = (
+                    existing.unignored_size
+                    if existing.unignored_size is not None
+                    else existing.total_size
+                )
+                updated = replace(
+                    existing,
+                    total_files=max(0, existing.total_files + delta_files),
+                    total_size=max(0, existing.total_size + delta_size),
+                    unignored_files=max(0, current_unignored_files + delta_unignored_files),
+                    unignored_size=max(0, current_unignored_size + delta_unignored_size),
+                    newest_mtime_ns=newest_mtime_ns,
+                    empty=self._descendant_leaf_counts.get(cursor, 0) == 0,
+                    write_token=WriteToken(self._generation.get(cursor, 0)),
+                )
+                self._replace_index_entry(updated)
+                self._record_child_mtime(updated)
+                updates.append(updated)
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
+        return updates
+
+    def _record_child_mtime(self, entry: FsEntry) -> None:
+        if entry.path == entry.parent:
+            return
+        newest = entry.mtime_ns if entry.type == "file" else entry.newest_mtime_ns or 0
+        recorded = (entry.parent, newest)
+        if self._recorded_child_mtimes.get(entry.path) == recorded:
+            return
+        self._recorded_child_mtimes[entry.path] = recorded
+        heap = self._child_mtime_heaps.setdefault(entry.parent, [])
+        heapq.heappush(heap, (-newest, entry.path))
+        # Heap entries are versioned implicitly by `_recorded_child_mtimes`.
+        # Real mtime changes leave stale versions behind until they reach the
+        # top, so compact occasionally to keep a frequently-written file from
+        # growing this auxiliary index for the lifetime of the process.
+        compact_after = max(64, self._direct_child_counts.get(entry.parent, 0) * 4)
+        if len(heap) > compact_after:
+            current: dict[str, tuple[int, str]] = {}
+            for _negative_mtime, path in heap:
+                recorded = self._recorded_child_mtimes.get(path)
+                if recorded is not None and recorded[0] == entry.parent:
+                    current[path] = (-recorded[1], path)
+            heap[:] = current.values()
+            heapq.heapify(heap)
+
+    def _adjust_descendant_aggregates(self, parent: str, row: list[int]) -> None:
+        """Apply one parent's netted deltas to every ancestor in a single climb.
+
+        *row* is ``[leaves, files, size, unignored_files, unignored_size]``. The
+        per-aggregate methods below remain for the callers that move exactly one
+        of them; this is the walker's path, where all five move together.
+        """
+
+        delta_leaves, delta_files, delta_size, delta_unignored, delta_unignored_size = row
+        leaf_counts = self._descendant_leaf_counts
+        file_counts = self._descendant_file_counts
+        file_sizes = self._descendant_file_sizes
+        unignored_counts = self._descendant_unignored_file_counts
+        unignored_sizes = self._descendant_unignored_file_sizes
+        cursor = parent
+        while True:
+            if delta_leaves:
+                leaves = leaf_counts.get(cursor, 0) + delta_leaves
+                if leaves <= 0:
+                    leaf_counts.pop(cursor, None)
+                else:
+                    leaf_counts[cursor] = leaves
+            if delta_files or delta_size:
+                files = file_counts.get(cursor, 0) + delta_files
+                if files <= 0:
+                    file_counts.pop(cursor, None)
+                    file_sizes.pop(cursor, None)
+                else:
+                    file_counts[cursor] = files
+                    file_sizes[cursor] = max(0, file_sizes.get(cursor, 0) + delta_size)
+            if delta_unignored or delta_unignored_size:
+                tracked = unignored_counts.get(cursor, 0) + delta_unignored
+                if tracked <= 0:
+                    unignored_counts.pop(cursor, None)
+                    unignored_sizes.pop(cursor, None)
+                else:
+                    unignored_counts[cursor] = tracked
+                    unignored_sizes[cursor] = max(
+                        0, unignored_sizes.get(cursor, 0) + delta_unignored_size
+                    )
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
+
+    def _adjust_descendant_file_aggregates(
+        self,
+        *,
+        parent: str,
+        delta_files: int,
+        delta_size: int,
+    ) -> None:
+        cursor = parent
+        while True:
+            file_count = self._descendant_file_counts.get(cursor, 0) + delta_files
+            if file_count <= 0:
+                self._descendant_file_counts.pop(cursor, None)
+                self._descendant_file_sizes.pop(cursor, None)
+            else:
+                self._descendant_file_counts[cursor] = file_count
+                self._descendant_file_sizes[cursor] = max(
+                    0, self._descendant_file_sizes.get(cursor, 0) + delta_size
+                )
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
+
+    def _adjust_descendant_unignored_file_aggregates(
+        self,
+        *,
+        parent: str,
+        delta_files: int,
+        delta_size: int,
+    ) -> None:
+        """Adjust tracked-file counts and sizes for every ancestor."""
+
+        cursor = parent
+        while True:
+            file_count = self._descendant_unignored_file_counts.get(cursor, 0) + delta_files
+            if file_count <= 0:
+                self._descendant_unignored_file_counts.pop(cursor, None)
+                self._descendant_unignored_file_sizes.pop(cursor, None)
+            else:
+                self._descendant_unignored_file_counts[cursor] = file_count
+                self._descendant_unignored_file_sizes[cursor] = max(
+                    0, self._descendant_unignored_file_sizes.get(cursor, 0) + delta_size
+                )
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
+
+    def _adjust_descendant_leaf_aggregates(self, *, parent: str, delta_leaves: int) -> None:
+        """Adjust visible file-or-symlink leaf counts for every ancestor."""
+
+        cursor = parent
+        while True:
+            leaf_count = self._descendant_leaf_counts.get(cursor, 0) + delta_leaves
+            if leaf_count <= 0:
+                self._descendant_leaf_counts.pop(cursor, None)
+            else:
+                self._descendant_leaf_counts[cursor] = leaf_count
+            if cursor == "":
+                break
+            cursor = cursor.rsplit("/", 1)[0] if "/" in cursor else ""
+
+    def _direct_child_newest(self, parent: str) -> int:
+        heap = self._child_mtime_heaps.get(parent)
+        if heap is None:
+            return 0
+        while heap:
+            negative_mtime, path = heap[0]
+            entry = self._entries.get(path)
+            current_mtime = (
+                entry.mtime_ns
+                if entry is not None and entry.type == "file"
+                else (entry.newest_mtime_ns or 0 if entry is not None else 0)
+            )
+            if (
+                entry is not None
+                and entry.parent == parent
+                and current_mtime == -negative_mtime
+                and self._recorded_child_mtimes.get(path) == (parent, current_mtime)
+            ):
+                return current_mtime
+            heapq.heappop(heap)
+        self._child_mtime_heaps.pop(parent, None)
+        return 0
+
+    def _add_direct_child(self, entry: FsEntry) -> None:
+        if entry.path == entry.parent:
+            return
+        self._direct_child_counts[entry.parent] = self._direct_child_counts.get(entry.parent, 0) + 1
+
+    def _remove_direct_child(self, entry: FsEntry) -> None:
+        if entry.path == entry.parent:
+            return
+        count = self._direct_child_counts.get(entry.parent, 0)
+        if count <= 1:
+            self._direct_child_counts.pop(entry.parent, None)
+        else:
+            self._direct_child_counts[entry.parent] = count - 1
+
+    def _apply_walker_entry(self, entry: FsEntry) -> None:
+        """Single-entry path used by the watcher and other live
+        producers. Writes the entry and emits one ``fs.change``."""
+
+        stored = self._store_walker_entry(entry)
+        if stored is not None:
+            self._emit(FsChange(ops=(FsUpsert(entry=stored),)))
+
+    def _emit(self, event: StreamEvent) -> None:
+        """Translate an internal mutation into the provider change contract."""
+
+        if isinstance(event, FsResyncRequired):
+            self._record_provider_change(reset=True)
+        elif isinstance(event, FsChange):
+            self._catalog_revision += 1
+            dirty_paths = tuple(
+                dict.fromkeys(
+                    op.path if isinstance(op, FsRemove) else op.entry.path for op in event.ops
+                )
+            )
+            self._record_provider_change(
+                dirty_paths=dirty_paths,
+                dirty_queries=frozenset(
+                    {
+                        QueryKind.ENTRY,
+                        QueryKind.DIRECTORY,
+                        QueryKind.FILTERED_TREE,
+                        QueryKind.ROLLUP,
+                        QueryKind.NAVIGATION,
+                        QueryKind.RECENT,
+                        QueryKind.CATALOG,
+                        QueryKind.DIAGNOSTICS,
+                    }
+                ),
+            )
+        elif isinstance(event, CapabilityUpdate):
+            self._record_provider_change(dirty_queries=frozenset({QueryKind.DIAGNOSTICS}))
+
+    def _record_provider_change(
+        self,
+        *,
+        dirty_paths: tuple[str, ...] = (),
+        dirty_queries: frozenset[QueryKind] = frozenset(),
+        reset: bool = False,
+    ) -> None:
+        """Translate one retained-state mutation into a bounded invalidation."""
+
+        with self._rollup_cache_lock:
+            sequence = self._rollup_generation
+            entry_count = len(self._entries)
+            directory_count = self._directories_indexed
+            state = self._state_for(
+                self._status,
+                entries_observed=entry_count,
+                files_indexed=self._files_indexed,
+                directory_count=directory_count,
+            )
+        version = self._version(sequence)
+        all_dirty = len(dirty_paths) > MAX_CHANGE_PATHS
+        batch = ChangeBatch(
+            cursor=version.cursor,
+            version=version,
+            state=state,
+            dirty_paths=() if all_dirty or reset else dirty_paths,
+            dirty_queries=frozenset() if reset else dirty_queries,
+            all_dirty=all_dirty and not reset,
+            reset=reset,
+        )
+        if len(self._change_history) >= self._config.change_queue_size:
+            dropped = self._change_history.popleft()
+            self._replay_floor_sequence = dropped.cursor.sequence
+        self._change_history.append(batch)
+        for queue in tuple(self._change_subscribers):
+            try:
+                queue.put_nowait(batch)
+            except asyncio.QueueFull:
+                while not queue.empty():
+                    queue.get_nowait()
+                queue.put_nowait(self._reset_batch())
+
+
+class PythonInventoryBackend:
+    """Construct one Python reference-provider handle per served root."""
+
+    async def open(
+        self,
+        root: Path,
+        config: InventoryConfig,
+    ) -> InventoryHandle:
+        canonical_root = await asyncio.to_thread(root.resolve)
+        store = _PythonInventoryStore(config=config)
+        store.start_watcher(canonical_root)
+        store.start(canonical_root)
+        return store
+
+
+__all__ = [
+    "PythonInventoryBackend",
+]

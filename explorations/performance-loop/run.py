@@ -151,7 +151,9 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 16
+HARNESS_VERSION = 17
+INVENTORY_PROVIDERS = ("python",)
+INVENTORY_CONTRACT = "inventory-provider-v1"
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -418,7 +420,8 @@ def _build_provenance(build_version: str, *, build_ref: str, external: bool) -> 
 
 
 _WALK_LINE = re.compile(
-    r"inventory walker complete: status=(?P<status>\w+) files=(?P<files>\d+) "
+    r"inventory walker complete: provider=(?P<provider>[\w-]+) "
+    r"contract=(?P<contract>[\w-]+) status=(?P<status>\w+) files=(?P<files>\d+) "
     r"entries=(?P<entries>\d+) elapsed=(?P<elapsed>\d+)ms"
 )
 
@@ -445,10 +448,78 @@ def _walk_facts(port: int) -> dict[str, Any]:
     if match is None:
         return {"walk_status": "unfinished"}
     return {
+        "inventory_provider": match["provider"],
+        "inventory_contract": match["contract"],
         "walk_status": match["status"],
         "walk_elapsed_ms": int(match["elapsed"]),
         "walk_files": int(match["files"]),
     }
+
+
+def _inventory_facts(port: int) -> dict[str, Any]:
+    """Read the selected provider and cumulative work from the debug plane."""
+
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/_debug/inventory",
+            timeout=30,
+        ) as response:
+            loaded: Any = json.loads(response.read())
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(loaded, dict):
+        return {}
+    payload = cast("dict[str, Any]", loaded)
+    return {
+        "inventory_provider": payload.get("provider"),
+        "inventory_contract": payload.get("contract"),
+        "inventory_work": payload.get("work"),
+    }
+
+
+def _require_inventory_identity(
+    walk_facts: dict[str, Any],
+    inventory_facts: dict[str, Any],
+    requested_provider: object,
+) -> tuple[str, str]:
+    """Return one complete, consistent identity for a measured server."""
+
+    observations: list[tuple[str, str, str]] = []
+    for source, facts in (("walker log", walk_facts), ("debug endpoint", inventory_facts)):
+        provider = facts.get("inventory_provider")
+        contract = facts.get("inventory_contract")
+        if provider is None and contract is None:
+            continue
+        if (
+            not isinstance(provider, str)
+            or not provider
+            or not isinstance(contract, str)
+            or not contract
+        ):
+            raise SystemExit(f"{source} reported an incomplete inventory identity")
+        observations.append((source, provider, contract))
+
+    if not observations:
+        raise SystemExit("server did not report an inventory provider and contract")
+    identities = {(provider, contract) for _source, provider, contract in observations}
+    if len(identities) != 1:
+        details = ", ".join(
+            f"{source}={provider}/{contract}" for source, provider, contract in observations
+        )
+        raise SystemExit(f"server reported conflicting inventory identities: {details}")
+
+    provider, contract = identities.pop()
+    if not isinstance(requested_provider, str) or not requested_provider:
+        raise SystemExit("pending run does not name the requested inventory provider")
+    if provider != requested_provider:
+        raise SystemExit(
+            f"requested inventory provider {requested_provider!r}, but server reported {provider!r}"
+        )
+    if contract != INVENTORY_CONTRACT:
+        raise SystemExit(
+            f"expected inventory contract {INVENTORY_CONTRACT!r}, but server reported {contract!r}"
+        )
+    return provider, contract
 
 
 def _read_pending() -> dict[str, Any]:
@@ -550,6 +621,9 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
         handle.write(f"{port}\n")
     log = HERE / "results" / f"server-{port}.log"
     with log.open("w", encoding="utf-8") as handle:
+        environment = os.environ.copy()
+        environment["METABROWSER_INVENTORY_PROVIDER"] = args.provider
+        environment["METABROWSER_DEBUG"] = "1"
         process = subprocess.Popen(
             [str(build.executable), str(root), "--no-open", "--port", str(port)],
             # An immutable external build must not import or discover files
@@ -560,6 +634,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
             stdout=handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            env=environment,
         )
 
     url = f"http://127.0.0.1:{port}/view/"
@@ -587,6 +662,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "corpus": corpus_label,
                 "corpus_shape": _corpus_shape(root),
                 **provenance,
+                "inventory_provider_requested": args.provider,
                 "note": args.note,
                 "server_executable": str(build.executable),
                 "server_pid": process.pid,
@@ -604,6 +680,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     print(f"port        {port}   (unused, so the browser cache starts empty)")
     count = f"{files} files" if files is not None else "file count recorded from completed walk"
     print(f"corpus      {corpus_label}  ({count})")
+    print(f"provider    {args.provider}")
     print(f"url         {url}")
     print()
     print("1. size the browser pane to at least 1280x900, keep it visible, and load that URL cold")
@@ -648,6 +725,13 @@ def cmd_record(args: argparse.Namespace) -> int:
     # cannot replace the commit, corpus, timestamp, or other run identity that
     # `serve` established.
     walk_facts = _walk_facts(port)
+    inventory_facts = _inventory_facts(port)
+    requested_provider = pending.get("inventory_provider_requested")
+    inventory_provider, inventory_contract = _require_inventory_identity(
+        walk_facts,
+        inventory_facts,
+        requested_provider,
+    )
     run: dict[str, Any] = {
         **payload,
         "experiment": pending.get("experiment"),
@@ -661,8 +745,12 @@ def cmd_record(args: argparse.Namespace) -> int:
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "harness_version": HARNESS_VERSION,
         "corpus_shape": pending.get("corpus_shape"),
+        "inventory_provider_requested": pending.get("inventory_provider_requested"),
         "note": args.note or pending.get("note", ""),
         **walk_facts,
+        **inventory_facts,
+        "inventory_provider": inventory_provider,
+        "inventory_contract": inventory_contract,
     }
     if not is_server_sample:
         config = load_performance_config(Path(args.budgets))
@@ -1190,8 +1278,11 @@ def cmd_report(_args: argparse.Namespace) -> int:
 
     add("## Provenance")
     add("")
-    add("| experiment | label | recorded | build | commit | corpus | shape | harness | walk |")
-    add("| --- | --- | --- | --- | --- | --- | ---: | ---: | --- |")
+    add(
+        "| experiment | label | provider | contract | recorded | build | commit | corpus | "
+        "shape | harness | walk |"
+    )
+    add("| --- | --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- |")
     for run in runs:
         walk = run.get("walk_elapsed_ms")
         walk_text = f"{walk:,} ms" if isinstance(walk, int) else str(run.get("walk_status", "-"))
@@ -1200,6 +1291,8 @@ def cmd_report(_args: argparse.Namespace) -> int:
             commit += "+dirty"
         add(
             f"| {run.get('experiment') or '-'} | {run.get('label')} "
+            f"| {run.get('inventory_provider') or '-'} "
+            f"| {run.get('inventory_contract') or '-'} "
             f"| {str(run.get('recorded_at') or '-')[:16]} "
             f"| {run.get('build_version') or '-'} | {commit} "
             f"| {run.get('corpus') or run.get('files') or '-'} "
@@ -1232,6 +1325,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     serve.add_argument("--exp", default="", help="experiment id this run belongs to, e.g. exp-003")
     serve.add_argument("--label", default="", help="condition name, e.g. before / after")
+    serve.add_argument(
+        "--provider",
+        choices=INVENTORY_PROVIDERS,
+        default="python",
+        help="inventory provider under test (default python)",
+    )
     serve.add_argument("--note", default="")
     serve.add_argument(
         "--metab",

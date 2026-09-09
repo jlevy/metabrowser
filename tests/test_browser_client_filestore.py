@@ -166,8 +166,8 @@ def test_apply_snapshot_rebuilds_store_before_notifying() -> None:
     verify by ordering of code inside the function body."""
 
     js = _read_app_js()
-    fn_start = js.index("function fileStoreApplySnapshot(scope, entries)")
-    fn_block = js[fn_start : fn_start + 900]
+    fn_start = js.index("function fileStoreApplySnapshotInner(scope, entries)")
+    fn_block = js[fn_start : js.index("\nfunction ", fn_start + 1)]
     # ``fileStore = new Map()`` must appear before the subscribers call.
     assert fn_block.index("fileStore = new Map()") < fn_block.index("notifyFileStoreSubscribers")
     assert "applyCellPatch(entries[i], false)" in fn_block
@@ -717,7 +717,9 @@ def test_main_view_address_dims_the_root_and_leaves_no_dead_segment() -> None:
     # component on hover rather than only the head of it — through the app's
     # own tooltip, because the browser's would be a second one on the same
     # surface. See devtools/check_tooltips.py.
-    assert 'data-tip-text="${esc(walked)}"' in fn_block
+    assert (
+        'data-tip-text="${esc(window.MetabrowserNavigationRoute.displayPath(walked))}"' in fn_block
+    )
     assert "title=" not in fn_block
 
 

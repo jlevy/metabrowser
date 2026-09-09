@@ -36,10 +36,179 @@ api: /api/rollup?path=.&depth=1
 status: 200
 {
   "root": "<ROOT>",
-  "path": ".",
-  "node": null,
-  "ext_tallies": [],
-  "file_type_breakdown": null,
+  "path": "",
+  "node": {
+    "name": "navroot",
+    "path": "",
+    "type": "dir",
+    "state": "complete",
+    "total_files": 3,
+    "total_size": 22,
+    "unignored_files": 3,
+    "unignored_size": 22,
+    "mtime": 1700000000.0,
+    "gitignored": false,
+    "dominant_ext": ".md",
+    "children": [
+      {
+        "name": "README.md",
+        "path": "README.md",
+        "type": "file",
+        "size": 9,
+        "mtime": 1700000000.0,
+        "ext": ".md",
+        "gitignored": false
+      },
+      {
+        "name": "docs",
+        "path": "docs",
+        "type": "dir",
+        "state": "complete",
+        "total_files": 1,
+        "total_size": 7,
+        "unignored_files": 1,
+        "unignored_size": 7,
+        "mtime": 1700000000.0,
+        "gitignored": false,
+        "dominant_ext": ".md",
+        "children": null
+      },
+      {
+        "name": "notes.txt",
+        "path": "notes.txt",
+        "type": "file",
+        "size": 6,
+        "mtime": 1700000000.0,
+        "ext": ".txt",
+        "gitignored": false
+      }
+    ]
+  },
+  "ext_tallies": [
+    [
+      ".md",
+      2,
+      16,
+      2,
+      16
+    ],
+    [
+      ".txt",
+      1,
+      6,
+      1,
+      6
+    ]
+  ],
+  "file_type_breakdown": {
+    "schema": "file-type-breakdown-v1",
+    "registry": {
+      "schema_version": 4,
+      "revision": 3,
+      "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c"
+    },
+    "metrics": {
+      "all": {
+        "files": 3,
+        "bytes": 22
+      },
+      "unignored": {
+        "files": 3,
+        "bytes": 22
+      }
+    },
+    "groups": [
+      {
+        "id": "docs",
+        "families": [
+          {
+            "id": "markdown",
+            "metrics": {
+              "all": {
+                "files": 2,
+                "bytes": 16
+              },
+              "unignored": {
+                "files": 2,
+                "bytes": 16
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".md",
+                "metrics": {
+                  "all": {
+                    "files": 2,
+                    "bytes": 16
+                  },
+                  "unignored": {
+                    "files": 2,
+                    "bytes": 16
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "plain-text",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 6
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 6
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".txt",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 6
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 6
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "no_extension": {
+      "metrics": {
+        "all": {
+          "files": 0,
+          "bytes": 0
+        },
+        "unignored": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "filenames": [],
+      "others": null
+    },
+    "remaining_types": {
+      "metrics": {
+        "all": {
+          "files": 0,
+          "bytes": 0
+        },
+        "unignored": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "extensions": [],
+      "others": null
+    }
+  },
   "index_status": "done",
   "indexed_files": 3,
   "max_files": 500000,
