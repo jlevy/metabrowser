@@ -97,6 +97,12 @@ Inventory engine:
 
 CLI and validation:
 
+- Real-tree performance runs retain an explicitly supplied `--files` count as
+  provenance, so a completed cold profile does not depend on a detached server log
+  containing an INFO-level completion line before it can be recorded.
+  When a fast scan stays below that logging threshold, the harness reads its status and
+  actual count from `/api/index/progress`.
+
 - `metab` gains two data modes that reach the server without a browser or a listening
   port. `--api <route>` issues any registered `/api/` route through the real application
   and prints the normalized envelope, in JSON or YAML, with `--data` for routes that

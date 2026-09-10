@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -119,6 +120,79 @@ def test_external_browser_benchmark_requires_an_immutable_build_reference() -> N
         "build_version": "metab 0.6.0",
         "commit": "v0.6.0",
         "dirty": False,
+    }
+
+
+def test_real_tree_preserves_the_explicit_inventory_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    observed: list[tuple[Path, int | None]] = []
+
+    def record_serve(_args: argparse.Namespace, root: Path, _corpus: str, files: int | None) -> int:
+        observed.append((root, files))
+        return 0
+
+    monkeypatch.setattr(module, "_serve_root", record_serve)
+
+    assert module.cmd_serve(argparse.Namespace(tree=str(tmp_path), files=60_000)) == 0
+    assert observed == [(tmp_path, 60_000)]
+
+
+def test_synthetic_serve_keeps_its_default_file_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    observed: list[int | None] = []
+    monkeypatch.setattr(module, "REPO", tmp_path.parent)
+    monkeypatch.setattr(module, "_corpus_dir", lambda _files: tmp_path)
+
+    def record_serve(
+        _args: argparse.Namespace, _root: Path, _corpus: str, files: int | None
+    ) -> int:
+        observed.append(files)
+        return 0
+
+    monkeypatch.setattr(module, "_serve_root", record_serve)
+
+    assert module.cmd_serve(argparse.Namespace(tree="", files=None)) == 0
+    assert observed == [module.DEFAULT_CORPUS_FILES]
+
+
+def test_fast_walk_uses_the_progress_route_when_no_info_log_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    monkeypatch.setattr(module, "HERE", tmp_path)
+
+    class ProgressResponse(io.BytesIO):
+        def __enter__(self) -> ProgressResponse:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.close()
+
+    def read_progress(url: str, *, timeout: int) -> ProgressResponse:
+        assert url == "http://127.0.0.1:8765/api/index/progress"
+        assert timeout == 30
+        return ProgressResponse(
+            json.dumps(
+                {
+                    "status": "done",
+                    "indexed_files": 60_000,
+                    "provider": "python",
+                    "contract": "inventory-provider-v1",
+                }
+            ).encode()
+        )
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", read_progress)
+
+    assert module._walk_facts(8765) == {
+        "walk_status": "done",
+        "walk_files": 60_000,
+        "inventory_provider": "python",
+        "inventory_contract": "inventory-provider-v1",
     }
 
 
