@@ -343,6 +343,10 @@ An adapter cannot return before it can name that terminal version or fan a bound
 request into untracked background work.
 The primary native-or-polling watcher belongs to the opened provider so baseline
 discovery, observation capture, reconciliation, and freshness share one lifecycle.
+The Python provider waits until that observer is installed or has failed explicitly
+before initial discovery begins, so no path can be scanned before the watch boundary
+exists. Shutdown signals the observer’s cooperative stop event and joins its worker
+before releasing the backend.
 `refresh()` also accepts bounded external hints from activity probes or application
 writes; it is not a second watcher.
 If a watch batch cannot be submitted completely, the observer stops and reports a

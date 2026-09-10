@@ -75,6 +75,41 @@ Inventory engine:
   Already-mounted collapsed folders receive new rows, and reopening edited files
   revalidates cached previews, including deep files represented by ancestor updates.
 
+- Inventory rollups now detect a concurrent topology change and retry from one coherent
+  snapshot instead of mixing pre-change aggregates with post-change children.
+  This prevents intermittent `/api/rollup` failures when filesystem discovery and
+  summary reads overlap under free-threaded Python.
+  CI now includes CPython 3.14’s free-threaded build so the shared-state discipline
+  remains enforced.
+
+- The filesystem observer is installed before initial discovery begins and stops
+  cooperatively before its worker is joined.
+  This closes the startup observation gap and prevents a `watchfiles` PyO3 borrow panic
+  during free-threaded CLI teardown.
+  HTTP readiness probes also close each response before its connection, eliminating
+  unraisable response-finalizer errors on the same interpreter.
+
+CLI and validation:
+
+- `metab` gains two data modes that reach the server without a browser or a listening
+  port. `--api <route>` issues any registered `/api/` route through the real application
+  and prints the normalized envelope, in JSON or YAML, with `--data` for routes that
+  take a POST body and a nonzero exit status when the route answers outside 2xx.
+  `--show <path>` reports the four layers behind one selection: the route it resolves
+  to, the kind it classifies as, the views it offers, and a summary of its model.
+  It accepts browser addresses as well as paths, including `/view/<container>/<inner>`,
+  `/commit/<rev>`, and `/commit/<rev>/<inner>`. See the
+  [command-line guide](docs/command-line.md).
+
+- Every registered route the browser consumes and every built-in kind is reachable from
+  `metab` and pinned by a golden transcript.
+  `devtools/check_parity.py` fails the build when a route loses executable CLI evidence
+  or a kind is absent from golden console output.
+  Browser-independent behavior therefore stays at the CLI and model boundary; DOM tests
+  cover view-only behavior.
+  The table and the streaming exemptions are in
+  [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+
 Validation:
 
 - `devtools/bench_serving.py` takes `--corpus {synthetic,realistic,project}`. Two of the
@@ -135,23 +170,6 @@ Features:
   than the same pixel width.
   The choice persists like the theme and font settings, and is applied before first
   paint so the column never renders at one width and reflows to another.
-
-- `metab` gains two data modes that reach the server without a browser or a listening
-  port. `--api <route>` issues any registered `/api/` route through the real application
-  and prints the normalized envelope, in JSON or YAML, with `--data` for routes that
-  take a POST body and a non-zero exit status when the route answers outside 2xx.
-  `--show <path>` reports the four layers behind one selection — the route it resolves
-  to, the kind it classifies as, the views it offers, and a summary of its model — and
-  accepts browser addresses as well as paths, including `/view/<container>/<inner>`,
-  `/commit/<rev>`, and `/commit/<rev>/<inner>`. See the
-  [command-line guide](docs/command-line.md).
-
-- Every route the browser consumes is now reachable from `metab` and pinned by a golden
-  transcript, and `devtools/check_parity.py` fails the build when a registered route has
-  no CLI equivalent or no golden.
-  Plugin authors adding a `[[data_hook]]` need a transcript for it; the table and the
-  two streaming exemptions are in
-  [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
 
 - Git history pages now come from a bounded server session that advances one ordered Git
   walk on demand and replays visited pages by indexed seek.

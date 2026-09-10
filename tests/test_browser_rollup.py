@@ -497,6 +497,60 @@ def test_eviction_epochs_are_released_once_no_rollup_is_in_flight(tmp_path: Path
     assert index._rollup_passes_in_flight == 0
 
 
+def test_rollup_retries_when_child_topology_moves_between_aggregate_and_emit(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """A live child added after aggregation cannot crash bounded-tree emission."""
+
+    import metabrowser.inventory_rollup as inventory_rollup
+
+    (tmp_path / "stable").mkdir()
+    (tmp_path / "stable" / "before.txt").write_text("before")
+    index = _build_index(tmp_path)
+
+    aggregated = threading.Event()
+    mutation_landed = threading.Event()
+    original = inventory_rollup._aggregate_subtree
+
+    def aggregate_then_wait(
+        directory_path: str,
+        parent_ignored: bool,
+        children_by_parent: Any,
+        aggregates: Any,
+    ) -> Any:
+        result = original(directory_path, parent_ignored, children_by_parent, aggregates)
+        if directory_path == "" and not aggregated.is_set():
+            aggregated.set()
+            assert mutation_landed.wait(5), "writer never ran"
+        return result
+
+    monkeypatch.setattr(inventory_rollup, "_aggregate_subtree", aggregate_then_wait)
+
+    async def scenario() -> RollupResult | None:
+        pass_done = asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: index.rollup("", depth=2, top=40, ext_top=12),
+        )
+        assert await asyncio.to_thread(aggregated.wait, 5), "rollup never aggregated root"
+        index._replace_index_entry(FsEntry.for_observed_dir(path="new", parent="", name="new"))
+        index._replace_index_entry(
+            FsEntry.for_observed_file(
+                path="new/after.txt",
+                parent="new",
+                name="after.txt",
+                size=5,
+                mtime_ns=1_700_000_000_000_000_000,
+            )
+        )
+        mutation_landed.set()
+        return await pass_done
+
+    result = asyncio.run(scenario())
+    assert result is not None
+    assert result["node"]["total_files"] == 2
+
+
 def test_aggregate_computed_against_moved_data_is_never_published(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

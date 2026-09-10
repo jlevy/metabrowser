@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import time
 from collections.abc import Callable
+from contextlib import closing
 from urllib.parse import urlsplit
 
 
@@ -39,26 +40,25 @@ def wait_for_http_ok_then(
     while time.monotonic() < deadline:
         if is_cancelled():
             return
-        conn: http.client.HTTPConnection | None = None
         try:
-            conn = http.client.HTTPConnection(host, port, timeout=0.2)
-            conn.request("GET", path, headers={"Connection": "close"})
-            response = conn.getresponse()
-            last_status = response.status
-            response.read(256)
-            if 200 <= response.status < 300:
-                on_ready()
-                return
-            if 400 <= response.status < 500:
-                on_error(f"Server returned HTTP {response.status} for {url}; not opening browser.")
-                return
+            with closing(http.client.HTTPConnection(host, port, timeout=0.2)) as conn:
+                conn.request("GET", path, headers={"Connection": "close"})
+                with conn.getresponse() as response:
+                    last_status = response.status
+                    response.read(256)
+                    if 200 <= response.status < 300:
+                        on_ready()
+                        return
+                    if 400 <= response.status < 500:
+                        on_error(
+                            f"Server returned HTTP {response.status} for {url}; "
+                            "not opening browser."
+                        )
+                        return
             time.sleep(0.05)
         except (OSError, http.client.HTTPException) as exc:
             last_error = exc
             time.sleep(0.05)
-        finally:
-            if conn is not None:
-                conn.close()
 
     detail = f"last HTTP status {last_status}" if last_status is not None else "no HTTP response"
     if last_error is not None:

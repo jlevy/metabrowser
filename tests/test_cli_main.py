@@ -361,7 +361,7 @@ def test_console_entry_point_treats_closed_output_pipe_as_success(tmp_path: Path
     for index in range(1_000):
         (root / f"artifact-{index:04d}.txt").write_text("payload")
 
-    process = subprocess.Popen(
+    with subprocess.Popen(
         [
             sys.executable,
             "-m",
@@ -375,13 +375,13 @@ def test_console_entry_point_treats_closed_output_pipe_as_success(tmp_path: Path
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-    )
-    assert process.stdout is not None
-    assert process.stderr is not None
-    assert process.stdout.readline().startswith("{")
-    process.stdout.close()
-    stderr = process.stderr.read()
-    returncode = process.wait(timeout=30)
+    ) as process:
+        assert process.stdout is not None
+        assert process.stderr is not None
+        assert process.stdout.readline().startswith("{")
+        process.stdout.close()
+        stderr = process.stderr.read()
+        returncode = process.wait(timeout=30)
 
     assert returncode == 0, stderr
     assert "BrokenPipeError" not in stderr

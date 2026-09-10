@@ -134,16 +134,18 @@ Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/compa
 ## CLI parity
 
 Every data surface the browser consumes is reachable from `metab` without a browser or a
-listening port, and should be pinned by a golden transcript.
-`--api` makes reachability true by construction; the remaining debt is coverage, and it
-is listed here rather than left implicit.
-`devtools/check_parity.py` fails the build when this table drifts from the registered
-routes.
+listening port and is pinned by a golden transcript.
+`--api` makes route reachability true by construction, while `--show` records the kind,
+views, and model selected for a path.
+`devtools/check_parity.py` fails the build when this table drifts from registered routes
+or when any kind declared or consumed by a built-in manifest is absent from exact
+`kind: <id>` output inside an executable golden console block.
+`cli-show.tryscript.md` currently exercises every built-in kind in one small fixture.
 
 Status values: **covered** names the goldens that pin it and **exempt** gives the reason
 it has no model to pin.
 There is no third value: `check_parity.py` rejects a `gap` row outright, so a new route
-arrives with a transcript or the build fails.
+or kind arrives with transcript evidence or the build fails.
 
 | Surface | Status | CLI | Golden or reason |
 | --- | --- | --- | --- |
@@ -195,8 +197,9 @@ Their content is covered by `tests/dom/` and the event tests instead.
 
 ## Adding something
 
-- **A kind**: add a `[[kind]]` block with a match predicate, and at least one
-  `[[view]]`. Nothing else in core changes.
+- **A kind**: add a `[[kind]]` block with a match predicate and at least one `[[view]]`,
+  then add a representative `--show` case to the golden transcript.
+  Nothing else in core changes.
 - **A view on an existing kind**: add a `[[view]]` block and `mb.registerView`; give it
   a disposal path.
 - **A container**: add `container = { children = "<data_hook route>" }` to the kind and
@@ -208,7 +211,9 @@ Their content is covered by `tests/dom/` and the event tests instead.
   A new kind of thing *within* an existing space extends that space’s path instead.
 
 `tests/test_views_models_routes.py` checks the tables above against the manifests and
-the route table, so this document fails the build rather than drifting.
+route table. `devtools/check_parity.py` binds the registered routes and kinds to their
+CLI transcript evidence, so the map and executable coverage fail together rather than
+drifting.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

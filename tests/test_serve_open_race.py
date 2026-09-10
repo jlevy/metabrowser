@@ -18,6 +18,9 @@ from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
+import pytest
+
+from metabrowser.cli import http_readiness
 from metabrowser.cli import serve as serve_module
 
 
@@ -47,6 +50,53 @@ def _start_http_server(
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, server.server_address[1]
+
+
+def test_readiness_closes_response_before_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[str] = []
+
+    class Response:
+        status = 200
+
+        def read(self, _limit: int) -> bytes:
+            return b"ok"
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            closed.append("response")
+
+    class Connection:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def request(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            closed.append("connection")
+
+    monkeypatch.setattr(http_readiness.http.client, "HTTPConnection", Connection)
+    ready: list[bool] = []
+    errors: list[str] = []
+
+    http_readiness.wait_for_http_ok_then(
+        "127.0.0.1",
+        8411,
+        "http://localhost:8411/view/",
+        on_ready=lambda: ready.append(True),
+        on_error=errors.append,
+    )
+
+    assert ready == [True]
+    assert errors == []
+    assert closed == ["response", "connection"]
 
 
 def test_wait_for_http_ok_then_open_invokes_webbrowser_when_index_ready() -> None:

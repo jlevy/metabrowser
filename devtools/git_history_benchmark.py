@@ -341,6 +341,11 @@ def spool_history(root: Path, *, page_size: int = DEFAULT_PAGE_SIZE) -> HistoryS
         process.wait()
         temporary_directory.cleanup()
         raise
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
 
     return HistorySpool(
         temporary_directory,

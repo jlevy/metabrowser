@@ -22,12 +22,19 @@ def _write_map(tmp_path: Path, rows: str) -> Path:
 
 
 @pytest.fixture
-def only_tree(monkeypatch: pytest.MonkeyPatch) -> None:
+def no_registered_kinds(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(check_parity, "registered_kinds", lambda: set())
+
+
+@pytest.fixture
+def only_tree(monkeypatch: pytest.MonkeyPatch, no_registered_kinds: None) -> None:
     monkeypatch.setattr(check_parity, "registered_surfaces", lambda: {"/api/tree"})
 
 
 def test_a_registered_route_with_no_row_is_reported(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_registered_kinds: None,
 ) -> None:
     monkeypatch.setattr(check_parity, "registered_surfaces", lambda: {"/api/tree", "/api/rollup"})
     monkeypatch.setattr(
@@ -183,7 +190,9 @@ def test_a_route_named_in_a_command_is_evidence(
 
 
 def test_a_mode_that_resolves_a_route_internally_is_evidence(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_registered_kinds: None,
 ) -> None:
     """`--show` issues /api/file without naming it, so the mode is the evidence."""
 
@@ -221,3 +230,45 @@ def test_a_mode_is_not_evidence_for_a_route_it_cannot_issue(
     problems = check_parity.check()
 
     assert any("/api/tree" in problem and "never exercises it" in problem for problem in problems)
+
+
+def test_a_registered_kind_without_console_output_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    golden_dir = tmp_path / "golden"
+    golden_dir.mkdir()
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(check_parity, "registered_surfaces", lambda: {"/api/tree"})
+    monkeypatch.setattr(check_parity, "registered_kinds", lambda: {"markdown"})
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | exempt | — | streaming |"),
+    )
+
+    problems = check_parity.check()
+
+    assert any("markdown" in problem and "golden console output" in problem for problem in problems)
+
+
+def test_a_kind_named_only_in_prose_is_not_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir,
+        "prose.tryscript.md",
+        "A future selection should report kind: markdown.\n",
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(check_parity, "registered_surfaces", lambda: {"/api/tree"})
+    monkeypatch.setattr(check_parity, "registered_kinds", lambda: {"markdown"})
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | exempt | — | streaming |"),
+    )
+
+    problems = check_parity.check()
+
+    assert any("markdown" in problem and "golden console output" in problem for problem in problems)

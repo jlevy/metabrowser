@@ -1,13 +1,14 @@
-"""Fail the build when the CLI parity table drifts from the registered routes.
+"""Fail the build when CLI goldens drift from registered routes and kinds.
 
 Every data surface the browser consumes should be reachable from ``metab`` and
 pinned by a golden transcript. A table nobody checks is worse than no table, so
 this reads the parity table in the views/models/routes map and compares it to
-what the code actually registers.
+what the code actually registers. Kind coverage is read from executable console
+blocks, so mentioning a kind in surrounding prose cannot satisfy the gate.
 
 Gap rows were permitted while the debt was paid down, and are not any more:
 every registered surface is either covered by a transcript or exempt with a
-reason. A new route arrives with its golden or the build fails.
+reason. A new route or kind arrives with its golden or the build fails.
 """
 
 from __future__ import annotations
@@ -95,6 +96,52 @@ def registered_surfaces() -> set[str]:
     return surfaces
 
 
+def registered_kinds() -> set[str]:
+    """Every built-in kind declared or consumed by a manifest view."""
+
+    kinds: set[str] = set()
+    for manifest_path in sorted(BUILTIN_PLUGINS.glob("*/manifest.toml")):
+        manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+        for rule in manifest.get("kind", []):
+            kinds.add(rule["id"])
+        # Core fallbacks such as text, binary, folder, and unknown-jsonl are
+        # assigned imperatively, then consumed by manifest-declared views.
+        # Reading both tables keeps those registered kinds in the same gate.
+        for view in manifest.get("view", []):
+            kinds.add(view["kind"])
+    return kinds
+
+
+def _console_lines(golden: str) -> list[str]:
+    """Lines inside executable ``console`` fences in one tryscript file."""
+
+    lines: list[str] = []
+    in_console = False
+    for line in golden.splitlines():
+        stripped = line.strip()
+        if stripped == "```console":
+            in_console = True
+            continue
+        if stripped == "```":
+            in_console = False
+            continue
+        if in_console:
+            lines.append(stripped)
+    return lines
+
+
+def golden_kinds() -> set[str]:
+    """Kind ids emitted as exact fields by executable golden transcripts."""
+
+    kinds: set[str] = set()
+    for path in sorted(GOLDEN_DIR.glob("*.tryscript.md")):
+        for line in _console_lines(path.read_text(encoding="utf-8")):
+            match = re.fullmatch(r"kind: ([a-z0-9][a-z0-9-]*)", line)
+            if match is not None:
+                kinds.add(match.group(1))
+    return kinds
+
+
 def parity_rows(doc: str) -> list[ParityRow]:
     """Rows of the parity table, which is the one whose header names Surface."""
 
@@ -137,6 +184,9 @@ def check() -> list[str]:
     for surface in sorted(listed - registered):
         problems.append(f"{surface} has a parity row but is not registered")
 
+    for kind in sorted(registered_kinds() - golden_kinds()):
+        problems.append(f"kind {kind!r} has no golden console output")
+
     for row in rows:
         if row.status not in _STATUSES:
             problems.append(
@@ -167,7 +217,10 @@ def main() -> int:
     rows = parity_rows(MAP_DOC.read_text(encoding="utf-8"))
     exempt = sum(1 for row in rows if row.status == "exempt")
     covered = sum(1 for row in rows if row.status == "covered")
-    print(f"Parity checks passed: {covered} covered, {exempt} exempt.")
+    kinds = len(registered_kinds())
+    print(
+        f"Parity checks passed: {covered} routes covered, {exempt} exempt; {kinds} kinds covered."
+    )
     return 0
 
 

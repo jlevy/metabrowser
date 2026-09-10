@@ -674,7 +674,13 @@ def test_api_index_meta_etag_round_trip(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> tuple[int, str, int]:
-        async with inventory_harness(tmp_path) as harness:
+        # Hold the provider state still: watcher startup has its own coverage,
+        # and a legitimate starting -> running transition must change this
+        # endpoint's diagnostics and ETag.
+        async with inventory_harness(
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        ) as harness:
             resp1 = await api_index_meta(cast(Any, _FakeRequest(app=harness.app)))
             etag = resp1.headers.get("etag", "")
             resp2 = await api_index_meta(

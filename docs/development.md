@@ -456,12 +456,18 @@ command names it, or the row names a mode that resolves it internally, which is 
 `--show` stands for `/api/file` without spelling it.
 `check_parity.py` enforces that distinction, and `--api` is deliberately not such a
 mode, because it always names its route.
+The same check reads the built-in manifests and requires each registered kind to appear
+as exact `kind: <id>` console output in a golden.
+A prose mention does not count.
 
 **Why goldens rather than more integration tests.**
 `tbd guidelines golden-testing-guidelines` makes the case: capture a broad, stable slice
 of what the system does, keep it in the repository, and read the diffs.
-The discipline that keeps it honest is that `make golden-update` records an *intended*
-change and is never run to clear a failure.
+The CLI starts the real application in process, so these transcripts exercise route,
+kind, and model behavior without browser automation.
+Browser tests remain focused on the view layer: mounting, interaction, disposal, and DOM
+output. The discipline that keeps it honest is that `make golden-update` records an
+*intended* change and is never run to clear a failure.
 A regenerated transcript nobody read converts a regression into a committed expectation.
 
 **Normalize only what a fixture cannot pin.** `metabrowser/normalize.py` is the stated

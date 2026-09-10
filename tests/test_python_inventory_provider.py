@@ -685,6 +685,59 @@ def test_refresh_rejects_noncanonical_paths_at_the_contract_boundary(path: str) 
         RefreshObservation(path=path)
 
 
+def test_python_provider_installs_watcher_before_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def run() -> tuple[bool, bool]:
+        watcher_entered = asyncio.Event()
+        release_watcher = asyncio.Event()
+        walk_started = asyncio.Event()
+        real_walk = python_provider.walk_tree
+
+        async def blocked_watcher(**kwargs: Any) -> None:
+            watcher_entered.set()
+            await release_watcher.wait()
+            kwargs["on_status"](
+                python_provider.WatcherStatus(
+                    mode="native",
+                    state="running",
+                    reason="test",
+                )
+            )
+            await asyncio.Event().wait()
+
+        async def recording_walk(
+            *args: Any,
+            **kwargs: Any,
+        ) -> AsyncIterator[FsEntry]:
+            walk_started.set()
+            async for entry in real_walk(*args, **kwargs):
+                yield entry
+
+        monkeypatch.setattr(python_provider, "run_watcher", blocked_watcher)
+        monkeypatch.setattr(python_provider, "walk_tree", recording_walk)
+
+        opening = asyncio.create_task(
+            PythonInventoryBackend().open(
+                tmp_path,
+                InventoryConfig(watch_mode="native"),
+            )
+        )
+        await asyncio.wait_for(watcher_entered.wait(), timeout=1.0)
+        await asyncio.sleep(0)
+        discovery_started_early = walk_started.is_set()
+        release_watcher.set()
+        handle = await asyncio.wait_for(opening, timeout=1.0)
+        try:
+            await asyncio.wait_for(walk_started.wait(), timeout=1.0)
+            return discovery_started_early, walk_started.is_set()
+        finally:
+            await handle.close()
+
+    assert asyncio.run(run()) == (False, True)
+
+
 def test_python_provider_exposes_progressive_partial_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

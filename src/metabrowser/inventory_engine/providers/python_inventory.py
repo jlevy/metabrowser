@@ -24,7 +24,7 @@ from collections.abc import AsyncGenerator, Callable, Collection, Iterator, Mapp
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Literal
+from typing import Literal, cast
 
 from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import (
@@ -106,6 +106,7 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_rollup import (
     RollupOptions,
     RollupRank,
+    SubtreeAggregate,
     SubtreeAggregateCache,
     build_rollup,
 )
@@ -209,6 +210,10 @@ class _NavigationTallyBase:
 # Python inventory handle
 
 
+class _RollupViewMoved(RuntimeError):
+    """The retained index changed while an optimistic rollup was reading it."""
+
+
 class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
     """Read-through view of ``_PythonInventoryStore._children_index``.
 
@@ -218,13 +223,19 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
     walker's writes from resizing a bucket mid-iteration.
     """
 
-    __slots__ = ("_index",)
+    __slots__ = ("_expected_epoch", "_index")
 
-    def __init__(self, index: _PythonInventoryStore) -> None:
+    def __init__(self, index: _PythonInventoryStore, expected_epoch: int) -> None:
         self._index = index
+        self._expected_epoch = expected_epoch
+
+    def _require_current(self) -> None:
+        if self._index._aggregate_epoch != self._expected_epoch:
+            raise _RollupViewMoved
 
     def __getitem__(self, parent: str) -> Sequence[FsEntry]:
         with self._index._rollup_cache_lock:
+            self._require_current()
             bucket = self._index._children_index.get(parent)
             if bucket is None:
                 raise KeyError(parent)
@@ -236,6 +247,7 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
         default: Sequence[FsEntry] = (),
     ) -> Sequence[FsEntry]:
         with self._index._rollup_cache_lock:
+            self._require_current()
             bucket = self._index._children_index.get(parent)
             return (
                 tuple(sorted(bucket.values(), key=_child_order)) if bucket is not None else default
@@ -243,10 +255,42 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
 
     def __iter__(self) -> Iterator[str]:
         with self._index._rollup_cache_lock:
+            self._require_current()
             return iter(tuple(self._index._children_index))
 
     def __len__(self) -> int:
-        return len(self._index._children_index)
+        with self._index._rollup_cache_lock:
+            self._require_current()
+            return len(self._index._children_index)
+
+
+class _AggregateView(Mapping[str, SubtreeAggregate]):
+    """Generation-checked read-through view of retained subtree aggregates."""
+
+    __slots__ = ("_expected_epoch", "_index")
+
+    def __init__(self, index: _PythonInventoryStore, expected_epoch: int) -> None:
+        self._index = index
+        self._expected_epoch = expected_epoch
+
+    def _require_current(self) -> None:
+        if self._index._aggregate_epoch != self._expected_epoch:
+            raise _RollupViewMoved
+
+    def __getitem__(self, path: str) -> SubtreeAggregate:
+        with self._index._rollup_cache_lock:
+            self._require_current()
+            return self._index._subtree_aggregates[path]
+
+    def __iter__(self) -> Iterator[str]:
+        with self._index._rollup_cache_lock:
+            self._require_current()
+            return iter(tuple(self._index._subtree_aggregates))
+
+    def __len__(self) -> int:
+        with self._index._rollup_cache_lock:
+            self._require_current()
+            return len(self._index._subtree_aggregates)
 
 
 def _with_recency(
@@ -649,6 +693,7 @@ class _PythonInventoryStore:
         self._change_stream_active = False
         self._walker_task: asyncio.Task[None] | None = None
         self._watcher_task: asyncio.Task[None] | None = None
+        self._watcher_started = asyncio.Event()
         self._watcher_mode = "off"
         self._watcher_state = "off"
         self._watcher_reason = "disabled"
@@ -702,6 +747,7 @@ class _PythonInventoryStore:
             mode = "native"
         elif self._config.watch_mode == "poll":
             mode = "polling"
+        self._watcher_started.clear()
         self._watcher_mode = mode or "auto"
         self._watcher_state = "starting"
         self._watcher_reason = "selecting"
@@ -715,9 +761,17 @@ class _PythonInventoryStore:
             ),
             name="metabrowser-python-inventory-watcher",
         )
+        self._watcher_task.add_done_callback(lambda _task: self._watcher_started.set())
         return self._watcher_task
 
+    async def wait_until_watcher_started(self) -> None:
+        """Wait until observation is installed or has failed explicitly."""
+
+        if self._watcher_task is not None:
+            await self._watcher_started.wait()
+
     def _observe_watcher_status(self, status: WatcherStatus) -> None:
+        self._watcher_started.set()
         if (
             status.mode == self._watcher_mode
             and status.state == self._watcher_state
@@ -1011,6 +1065,8 @@ class _PythonInventoryStore:
         watcher = self._watcher_task
         if watcher is None or watcher.done() or self._watcher_state == "failed":
             return LifecyclePhase.READY
+        if self._watcher_state == "starting":
+            return LifecyclePhase.RECONCILING
         return LifecyclePhase.WATCHING
 
     def _state_for(
@@ -1029,7 +1085,9 @@ class _PythonInventoryStore:
         elif status == "done":
             phase = self._settled_phase()
             coverage = Coverage(complete=True)
-            freshness = Freshness.FRESH
+            freshness = (
+                Freshness.RECONCILING if phase is LifecyclePhase.RECONCILING else Freshness.FRESH
+            )
         elif status == "truncated":
             phase = LifecyclePhase.STOPPED
             coverage = Coverage(complete=False, reason=CoverageReason.BUDGET)
@@ -2717,7 +2775,29 @@ class _PythonInventoryStore:
             ext_rank=ext_rank,
             max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
         )
-        entries, children_by_parent, snapshot_epoch = self._rollup_view()
+        try:
+            return self._build_rollup_pass(path, options, self._rollup_view(path))
+        except _RollupViewMoved:
+            # A write landed between two optimistic reads. Retrying from one
+            # immutable image is the rare collision path: ordinary rollups
+            # still copy only the requested entry's ancestor chain and the
+            # child buckets they visit.
+            return self._build_rollup_pass(path, options, self._rollup_snapshot())
+
+    def _build_rollup_pass(
+        self,
+        path: str,
+        options: RollupOptions,
+        view: tuple[
+            Mapping[str, FsEntry],
+            Mapping[str, Sequence[FsEntry]],
+            Mapping[str, SubtreeAggregate],
+            int,
+        ],
+    ) -> RollupResult | None:
+        """Build and retire one optimistic or immutable rollup pass."""
+
+        entries, children_by_parent, retained_aggregates, snapshot_epoch = view
         # Reads fall through to the shared memo; writes land in ``computed``.
         # ``build_rollup`` runs in a worker thread while the walker keeps
         # mutating the index on the event loop, so writing the shared memo in
@@ -2734,7 +2814,10 @@ class _PythonInventoryStore:
                 path,
                 options,
                 ancestor_gitignored=self._ancestor_gitignored(path, entries),
-                aggregates=ChainMap(computed, self._subtree_aggregates),
+                aggregates=ChainMap(
+                    computed,
+                    cast(SubtreeAggregateCache, retained_aggregates),
+                ),
                 registry=self._registry,
             )
         except BaseException:
@@ -2775,27 +2858,63 @@ class _PythonInventoryStore:
 
     def _rollup_view(
         self,
-    ) -> tuple[Mapping[str, FsEntry], Mapping[str, Sequence[FsEntry]], int]:
-        """Return live read views of the index plus the current eviction epoch.
+        path: str,
+    ) -> tuple[
+        Mapping[str, FsEntry],
+        Mapping[str, Sequence[FsEntry]],
+        Mapping[str, SubtreeAggregate],
+        int,
+    ]:
+        """Return a bounded optimistic view tied to one eviction epoch.
 
-        Nothing is copied. ``build_rollup`` reads both mappings only by key,
-        and a single ``dict`` lookup on string keys is atomic under the GIL,
-        so the entry map is safe to read from the rollup worker thread while
-        the walker keeps writing on the event loop. Child buckets are iterated
-        rather than looked up, so those go through ``_ChildrenView``, which
-        holds the index lock for the copy.
-
-        Reading live means a rollup can observe writes that land mid-build.
-        That is why the epoch returned here gates
-        :meth:`_merge_subtree_aggregates`: any directory written since this
-        moment is refused a cache entry, so only aggregates whose subtree
-        provably did not move are retained.
+        The reducer needs only the selected entry and its strict ancestors
+        from the entry map, so those are copied under the writer lock. Child
+        buckets and retained aggregates stay lazy for the normal path, but
+        every lookup verifies the same epoch. A concurrent write therefore
+        asks :meth:`rollup` to retry from an immutable image instead of mixing
+        pre-write aggregates with post-write topology.
         """
 
         with self._rollup_cache_lock:
             epoch = self._aggregate_epoch
+            entries: dict[str, FsEntry] = {}
+            cursor = path
+            while True:
+                entry = self._entries.get(cursor)
+                if entry is not None:
+                    entries[cursor] = entry
+                if not cursor:
+                    break
+                cursor = cursor.rpartition("/")[0]
             self._rollup_passes_in_flight += 1
-        return self._entries, _ChildrenView(self), epoch
+        return (
+            MappingProxyType(entries),
+            _ChildrenView(self, epoch),
+            _AggregateView(self, epoch),
+            epoch,
+        )
+
+    def _rollup_snapshot(
+        self,
+    ) -> tuple[
+        Mapping[str, FsEntry],
+        Mapping[str, Sequence[FsEntry]],
+        Mapping[str, SubtreeAggregate],
+        int,
+    ]:
+        """Capture the full immutable fallback used only after a live-view collision."""
+
+        with self._rollup_cache_lock:
+            entries = dict(self._entries)
+            retained_aggregates = dict(self._subtree_aggregates)
+            epoch = self._aggregate_epoch
+            self._rollup_passes_in_flight += 1
+        return (
+            MappingProxyType(entries),
+            MappingProxyType(_children_for(tuple(entries.values()))),
+            MappingProxyType(retained_aggregates),
+            epoch,
+        )
 
     def _evict_subtree_aggregates(self, path: str, *, is_dir: bool) -> None:
         """Drop the cached aggregate for *path* and every ancestor up to root.
@@ -3786,7 +3905,13 @@ class PythonInventoryBackend:
     ) -> InventoryHandle:
         canonical_root = await asyncio.to_thread(root.resolve)
         store = _PythonInventoryStore(config=config)
-        store.start_watcher(canonical_root)
+        watcher = store.start_watcher(canonical_root)
+        if watcher is not None:
+            try:
+                await store.wait_until_watcher_started()
+            except BaseException:
+                await store.close()
+                raise
         store.start(canonical_root)
         return store
 
