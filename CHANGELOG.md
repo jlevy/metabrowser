@@ -95,6 +95,11 @@ Inventory engine:
   The startup walker also uses a timer-backed cooperative yield so provider reads can
   acquire the GIL promptly while discovery is active.
 
+- Quick File catalog completion now also follows the lightweight index-progress poll.
+  If bounded stream backpressure replaces a slow browser connection and drops the
+  terminal capability event, the catalog performs one coalesced authoritative refetch
+  instead of remaining incomplete until the reconnect backoff expires.
+
 - The browser shell builds its two versioned KPress font URLs from locked distribution
   metadata without importing the document-rendering runtime.
   This keeps the font URLs identical while removing the renderer import from the cold

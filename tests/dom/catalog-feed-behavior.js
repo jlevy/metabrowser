@@ -176,8 +176,10 @@ async function main() {
     await tick();
 
     feed.onIndexComplete();
+    feed.onIndexComplete();
     await tick();
     check("completion after a partial reconnect payload refetches", pending.length === 3);
+    check("duplicate completion signals share one authoritative refetch", pending.length === 3);
     check(
       "partial reconnect does not claim completion before an authoritative payload",
       !catalog.calls.some((call) => call.kind === "markComplete"),

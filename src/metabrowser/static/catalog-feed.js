@@ -57,6 +57,7 @@
     let refetchWanted = false;
     let suppressNextSentinelRefetch = false;
     let authoritativeRefetchPending = false;
+    let terminalRefetchRequested = false;
     let lastBulkWasAuthoritative = false;
     let lastBulkHadCompleteCoverage = false;
 
@@ -149,6 +150,7 @@
           lastBulkHadCompleteCoverage = completeCoverage;
           if (authoritative) {
             authoritativeRefetchPending = false;
+            terminalRefetchRequested = false;
           }
         } else if (lastBulkWasAuthoritative) {
           authoritativeRefetchPending = false;
@@ -207,6 +209,7 @@
     /** Require the next accepted bulk payload to establish membership. */
     function requestContinuityRefetch() {
       authoritativeRefetchPending = true;
+      terminalRefetchRequested = false;
       catalog.markIncomplete();
       requestRefetch();
     }
@@ -290,7 +293,14 @@
         return;
       }
       if (authoritativeRefetchPending) {
-        requestRefetch();
+        // Completion can arrive from both the SSE capability event and the
+        // independent progress poll. One authoritative refetch repairs the
+        // current continuity gap; duplicate terminal signals must not download
+        // the full catalog again.
+        if (!terminalRefetchRequested) {
+          terminalRefetchRequested = true;
+          requestRefetch();
+        }
         return;
       }
       if (!truncated) {

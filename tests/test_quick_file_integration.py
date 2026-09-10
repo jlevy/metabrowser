@@ -200,6 +200,10 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
     # receives its truncated state so it cannot promote root coverage.
     assert "data.index.truncated !== true" not in capability_block
 
+    progress_start = js.index("async function refreshIndexProgress(force)")
+    progress_block = js[progress_start : js.index("function startIndexProgressPolling()")]
+    assert "quickFileCatalogFeed?.onIndexComplete(meta?.truncated === true)" in progress_block
+
     resync_start = js.index('addEventListener("fs.resync_required"')
     resync_block = js[resync_start : resync_start + 700]
     assert "quickFileCatalogFeed?.onResync()" in resync_block
