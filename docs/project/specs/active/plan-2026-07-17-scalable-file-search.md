@@ -411,8 +411,11 @@ tree-decoration data the catalog never reads; the minimal shape is ~60–80 byte
 **Deltas: `catalog.change` on the existing event stream.** Every `fs.change` batch
 already flows through one inventory choke point; that point also derives a minimal
 `catalog.change` event — file upserts as `{p, e}` (an upsert whose entry is gitignored
-becomes a catalog *remove*, handling ignore-state flips), removes passed through, and
-directory-only batches emitting nothing.
+becomes an exact catalog removal, handling ignore-state flips), retained
+file-to-directory or file-to-symlink transitions as provenance-independent exact
+invalidations, removes passed through, and ordinary directory-only batches emitting
+nothing. The provider carries only those type transitions through the bounded change
+contract; the empty field is omitted from ordinary wire payloads.
 Event-scope filtering passes non-`fs.change` event types through unchanged on every
 scope, so the depth-two tree stream carries complete catalog deltas with no filter
 changes, no second `EventSource`, and no separate resync story.
@@ -515,7 +518,8 @@ results hierarchical.
 ### Phase 2: Client-Complete Catalog Feed
 
 - [x] Add the `catalog.change` derivation at the inventory emit choke point, with
-  ignore-flip removes and directory skipping
+  ignore-flip removals, exact file-to-non-file invalidations, and ordinary directory
+  skipping
 - [x] Emit `capability.update` on walker completion so completeness is push-based
 - [x] Add `GET /api/catalog` with the minimal non-gitignored file shape, off-event-loop
   encoding, an ETag with 304 support, and honest complete/truncated metadata

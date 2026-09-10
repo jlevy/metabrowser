@@ -14,6 +14,7 @@ exercises:
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
@@ -98,7 +99,10 @@ def test_index_configures_plugin_assets_for_on_demand_loading(tmp_path: Path) ->
     body = bytes(response.body).decode("utf-8")
 
     config_idx = body.index("MetabrowserPluginHost.configureAssets")
+    composition_idx = body.index('<script src="/static/view-composition.js')
+    sdk_idx = body.index('<script src="/static/plugin-sdk.js')
     app_idx = body.index('<script src="/static/app.js')
+    assert sdk_idx < composition_idx < app_idx
     assert config_idx < app_idx
     assert body.index("/plugin-static/fixture/alpha.js") < body.index(
         "/plugin-static/fixture/beta.js"
@@ -135,18 +139,33 @@ def test_asset_config_deduplicates_the_default_stylesheet(tmp_path: Path) -> Non
     assert config.count("/plugin-static/fixture/theme.css") == 1
 
 
-def test_file_render_waits_for_the_selected_kind_plugin() -> None:
-    app = (server.STATIC_DIR / "app.js").read_text(encoding="utf-8")
-    helper = app[
-        app.index("async function renderFileWithPlugins") : app.index(
-            "/** @returns {Promise<QuickFileOpenOutcome>} */"
-        )
+def test_image_asset_config_includes_its_on_demand_stylesheet() -> None:
+    config = server._build_plugin_asset_config_block()
+    prefix = "<script>window.MetabrowserPluginHost.configureAssets("
+    assets = json.loads(config.removeprefix(prefix).removesuffix(");</script>"))
+
+    assert assets["image"] == [
+        {
+            "name": "image",
+            "module": "/plugin-static/image/index.js",
+            "scripts": [],
+            "styles": ["/plugin-static/image/styles.css"],
+        }
     ]
 
-    assert "ensureKindAssets(data.kind)" in helper
-    assert "MetabrowserPluginHost" not in helper
-    assert "await _perf.measureAsync" in helper
-    assert "return renderFile(data, preferredViewId, previewClaim)" in helper
+
+def test_file_render_waits_for_the_selected_kind_plugin() -> None:
+    app = (server.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    composition = (server.STATIC_DIR / "view-composition.js").read_text(encoding="utf-8")
+    render = app[app.index("async function renderFile(data") :][:2_500]
+
+    assert "MetabrowserViewComposition.prepare" in render
+    assert 'const compositionKind = data.kind || data.type || "unknown"' in render
+    assert "window.metabrowser.ensureKindAssets(kind)" in render
+    assert "window.metabrowser.getRegisteredView(kind, viewId)" in render
+    assert composition.index("await options.ensureKindAssets(options.kind)") < composition.index(
+        "options.getRegisteredView(options.kind, view.id)"
+    )
 
 
 def test_server_no_hardcoded_optional_asset_paths() -> None:

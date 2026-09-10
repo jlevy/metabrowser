@@ -41,6 +41,12 @@ DEFAULT_BROWSER_PORT = 8411
 # Routine details stay behind DEBUG without obscuring failures.
 SLOW_OPERATION_LOG_SECONDS = 2.0
 
+# ── Document reading width ──────────────────────────────────
+
+# New profiles read documents at this many logical characters per line. The
+# host-wide browser preference overrides it after the reader makes a choice.
+DOC_MAX_CHARS_DEFAULT = 102
+
 # ── Text preview chunking ────────────────────────────────────
 
 # See docs/large-content-rendering.md for the cost model these come from.
@@ -353,6 +359,7 @@ def client_settings_dict(
         "FILE_TYPE_REGISTRY": serialize_file_type_registry(),
         "DISTRIBUTION_COLORS": serialize_distribution_colors(),
         "FILTER_TYPE_PRESETS": FILTER_TYPE_PRESETS,
+        "DOC_MAX_CHARS_DEFAULT": DOC_MAX_CHARS_DEFAULT,
         "RECENT_DEFAULT_WINDOW": RECENT_DEFAULT_WINDOW,
         "RECENT_LIMIT": RECENT_DEFAULT_LIMIT,
         "RECENT_WINDOW_SECONDS": RECENT_WINDOW_SECONDS,
@@ -393,6 +400,7 @@ __all__ = [
     "ACTIVE_TRACKER_QUIET_POLLS",
     "DEFAULT_BROWSER_PORT",
     "DEFAULT_EXECUTOR_WORKERS",
+    "DOC_MAX_CHARS_DEFAULT",
     "FOLDER_DISCOVERY_MAX_ENTRIES",
     "GIT_COMMIT_MAX_FILES",
     "GIT_DETAIL_CACHE_SIZE",

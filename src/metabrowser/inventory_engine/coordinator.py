@@ -181,6 +181,7 @@ class HostChange:
     version: HostVersion
     state: IndexState
     dirty_paths: tuple[str, ...] = ()
+    non_file_paths: tuple[str, ...] = ()
     dirty_queries: frozenset[QueryKind] = frozenset()
     all_dirty: bool = False
     reset: bool = False
@@ -188,14 +189,22 @@ class HostChange:
     work: WorkCounters = field(default_factory=WorkCounters)
 
     def __post_init__(self) -> None:
-        if self.all_dirty and self.dirty_paths:
+        if self.all_dirty and (self.dirty_paths or self.non_file_paths):
             raise ValueError("all_dirty replaces individual dirty paths")
-        if self.reset and (self.all_dirty or self.dirty_paths or self.dirty_queries):
+        if self.reset and (
+            self.all_dirty or self.dirty_paths or self.non_file_paths or self.dirty_queries
+        ):
             raise ValueError("reset replaces dirty paths and projections")
         if len(self.dirty_paths) > MAX_CHANGE_PATHS:
             raise ValueError(f"a host change accepts at most {MAX_CHANGE_PATHS} dirty paths")
-        if len(self.dirty_paths) != len(set(self.dirty_paths)):
+        dirty_path_set = set(self.dirty_paths)
+        if len(self.dirty_paths) != len(dirty_path_set):
             raise ValueError("host-change dirty paths must be unique")
+        non_file_path_set = set(self.non_file_paths)
+        if len(self.non_file_paths) != len(non_file_path_set):
+            raise ValueError("host-change non-file paths must be unique")
+        if not non_file_path_set.issubset(dirty_path_set):
+            raise ValueError("host-change non-file paths must also be dirty paths")
 
 
 type InvalidationListener = Callable[[HostChange], None]
@@ -706,6 +715,7 @@ class InventoryCoordinator:
                 version=self._current_host_version_locked(),
                 state=self._require_state_locked(),
                 dirty_paths=merged.dirty_paths,
+                non_file_paths=merged.non_file_paths,
                 dirty_queries=merged.dirty_queries,
                 all_dirty=merged.all_dirty,
                 reset=merged.reset,
@@ -745,11 +755,15 @@ class InventoryCoordinator:
             )
         dirty_paths = tuple(dict.fromkeys(path for batch in batches for path in batch.dirty_paths))
         all_dirty = any(batch.all_dirty for batch in batches) or len(dirty_paths) > MAX_CHANGE_PATHS
+        non_file_paths = tuple(
+            dict.fromkeys(path for batch in batches for path in batch.non_file_paths)
+        )
         return ChangeBatch(
             cursor=latest.cursor,
             version=latest.version,
             state=latest.state,
             dirty_paths=() if all_dirty else dirty_paths,
+            non_file_paths=() if all_dirty else non_file_paths,
             dirty_queries=frozenset(query for batch in batches for query in batch.dirty_queries),
             all_dirty=all_dirty,
             work=work,
@@ -801,6 +815,7 @@ class InventoryCoordinator:
         version: HostVersion,
         state: IndexState,
         dirty_paths: tuple[str, ...] = (),
+        non_file_paths: tuple[str, ...] = (),
         dirty_queries: frozenset[QueryKind] = frozenset(),
         all_dirty: bool = False,
         reset: bool = False,
@@ -816,6 +831,7 @@ class InventoryCoordinator:
             version=version,
             state=state,
             dirty_paths=dirty_paths,
+            non_file_paths=non_file_paths,
             dirty_queries=dirty_queries,
             all_dirty=all_dirty,
             reset=reset,

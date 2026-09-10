@@ -438,12 +438,13 @@ did when the import was at the top.
 If a deferral cannot meet all three, put the import back at the top and find the time
 somewhere else.
 
-## CLI Parity and Goldens
+## CLI and Functional UI Parity
 
 A selection travels four layers — route, kind, model, view.
-Three of those are data and need no screen, which is why parity is stated at the model
-layer and only the view is exempt.
-The rule itself is in [AGENTS.md](../AGENTS.md); the reasoning is here.
+Three of those are data and need no screen.
+The fourth is not one indivisible exemption: view code mixes deterministic product
+behavior with paint and browser-platform behavior, and only the latter requires a
+browser. The rule itself is in [AGENTS.md](../AGENTS.md); the reasoning is here.
 
 **Why a rule rather than a habit.** Two of eleven data surfaces had CLI coverage when
 this was written, and the two that did — the tree and the diff — are where this project
@@ -464,14 +465,24 @@ The same check reads the built-in manifests and requires each registered kind to
 as exact `kind: <id>` console output in a golden.
 A prose mention does not count.
 
+**Functional UI parity is about ownership, not simulation.** Membership, ordering,
+counts, bounds, state, actions, and errors move behind a route or model and are
+exercised through `metab`. Focus, disclosure, pagination, and lifecycle may remain in
+JavaScript, but a browserless CLI session loads the exact production module and records
+the composed behavior.
+Do not create a Python mirror of JavaScript behavior and do not grow a general fake DOM.
+Geometry, animation, real paint timing, and browser APIs are the narrow browser-only
+tier, with an explicit reason in the functional parity table.
+
 **Why goldens rather than more integration tests.**
 `tbd guidelines golden-testing-guidelines` makes the case: capture a broad, stable slice
 of what the system does, keep it in the repository, and read the diffs.
 The CLI starts the real application in process, so these transcripts exercise route,
 kind, and model behavior without browser automation.
-Browser tests remain focused on the view layer: mounting, interaction, disposal, and DOM
-output. The discipline that keeps it honest is that `make golden-update` records an
-*intended* change and is never run to clear a failure.
+Browserless JavaScript sessions cover deterministic interaction behavior against
+production modules; real-browser tests stay focused on paint and platform integration.
+The discipline that keeps this honest is that `make golden-update` records an *intended*
+change and is never run to clear a failure.
 A regenerated transcript nobody read converts a regression into a committed expectation.
 
 **Normalize only what a fixture cannot pin.** `metabrowser/normalize.py` is the stated

@@ -216,6 +216,7 @@ class _FakeHandle:
         self,
         *,
         dirty_paths: tuple[str, ...] = (),
+        non_file_paths: tuple[str, ...] = (),
         dirty_queries: frozenset[QueryKind] = frozenset(),
         reset: bool = False,
         work: WorkCounters = WorkCounters(),
@@ -226,6 +227,7 @@ class _FakeHandle:
             version=self.version(),
             state=_state(),
             dirty_paths=() if reset else dirty_paths,
+            non_file_paths=() if reset else non_file_paths,
             dirty_queries=frozenset() if reset else dirty_queries,
             reset=reset,
             work=work,
@@ -578,6 +580,7 @@ def test_provider_changes_are_coalesced_and_reset_dominates(tmp_path: Path) -> N
         )
         handle.emit(
             dirty_paths=("b",),
+            non_file_paths=("b",),
             dirty_queries=frozenset({QueryKind.DIRECTORY}),
             work=WorkCounters(entries_visited=2, observations=2),
         )
@@ -587,6 +590,7 @@ def test_provider_changes_are_coalesced_and_reset_dominates(tmp_path: Path) -> N
         )
         merged = await asyncio.wait_for(first_change, timeout=1)
         assert merged.dirty_paths == ("a", "b", "c")
+        assert merged.non_file_paths == ("b",)
         assert merged.facts_changed is True
         assert merged.dirty_queries == frozenset({QueryKind.ENTRY, QueryKind.DIRECTORY})
         assert merged.version.engine.sequence == 3
@@ -607,6 +611,7 @@ def test_provider_changes_are_coalesced_and_reset_dominates(tmp_path: Path) -> N
         reset = await asyncio.wait_for(reset_change, timeout=1)
         assert reset.reset is True
         assert reset.dirty_paths == ()
+        assert reset.non_file_paths == ()
         assert reset.dirty_queries == frozenset()
         await changes.aclose()
         await coordinator.close()

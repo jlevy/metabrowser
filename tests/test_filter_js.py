@@ -37,3 +37,7 @@ def test_filter_controls_js_assertions_pass() -> None:
 
 def test_tree_filter_model_js_assertions_pass() -> None:
     _run_node_suite(DOM_DIR / "tree-filter-model-behavior.js", "OK tree filter model")
+
+
+def test_recent_filter_session_runs_against_production_modules() -> None:
+    _run_node_suite(DOM_DIR / "recent-filter-session.js", '{\n  "request":')

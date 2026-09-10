@@ -145,11 +145,18 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
         "subtreeCache.set(key, data.tree)"
     )
 
-    recent = js[
-        js.index("function fetchRecent(windowKey)") : js.index("function renderRecentFromBase()")
+    fetch_recent = js[
+        js.index("function fetchRecent(cursor, preserveRows)") : js.index(
+            "function commitRecentResponse(data)"
+        )
     ]
-    assert "knownFileCatalog?.observeRecent(flat)" in recent
-    assert recent.index("observeRecent") < recent.index("renderRecentFromBase();")
+    assert "commit: () => commitRecentResponse(data)" in fetch_recent
+    commit_recent = js[
+        js.index("function commitRecentResponse(data)") : js.index(
+            "function renderRecentFromBase()"
+        )
+    ]
+    assert "knownFileCatalog?.observeRecent(flat)" in commit_recent
 
     snapshot = js[
         js.index("function fileStoreApplySnapshot(scope, entries)") : js.index(
@@ -237,11 +244,12 @@ def test_catalog_delivery_is_attributed_with_bounded_work_volume() -> None:
     feed = proc_browser.STATIC_DIR.joinpath("catalog-feed.js").read_text()
 
     assert '"knownFileCatalog:applyCatalogChange"' in feed
-    assert "work_items: upserts + subtreeRemoves + fileRemoves" in feed
+    assert "work_items: upserts + subtreeRemoves + fileRemoves + nonFilePaths" in feed
     assert '"knownFileCatalog:applyBulkSnapshot"' in feed
     assert "work_items: Array.isArray(payload.files) ? payload.files.length : 0" in feed
     assert "subtree_removes: subtreeRemoves" in feed
     assert "file_removes: fileRemoves" in feed
+    assert "non_file_paths: nonFilePaths" in feed
 
 
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
@@ -298,6 +306,7 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     """Folder visualizations can carry their view intent across navigation."""
     js = _read_app_js()
     sdk = (proc_browser.STATIC_DIR / "plugin-sdk.js").read_text()
+    composition = (proc_browser.STATIC_DIR / "view-composition.js").read_text()
     types = (proc_browser.STATIC_DIR / "types.d.ts").read_text()
     treemap = (
         proc_browser.STATIC_DIR.parent / "builtin_plugins" / "folder" / "treemap.js"
@@ -316,8 +325,9 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
 
     render_start = js.index("function renderFile(data, preferredViewId, claim)")
     render = js[render_start : render_start + 5000]
-    assert "view.id === preferredViewId" in render
-    assert "views.find((view) => view.default)" in render
+    assert "preferredViewId: preferredViewId" in render
+    assert "options.views.find((view) => view.id === options.preferredViewId)" in composition
+    assert "options.views.find((view) => view.default)" in composition
 
     assert 'const TREEMAP_VIEW_ID = "treemap";' in treemap
     assert "mb.navigation.open({ path: cell.path }, { viewId: TREEMAP_VIEW_ID })" in treemap

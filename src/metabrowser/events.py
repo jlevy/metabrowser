@@ -93,19 +93,21 @@ class CatalogUpsert:
 class CatalogChange:
     """Minimal companion to ``fs.change`` for the client filename
     catalog. Derived at the inventory emit choke point from the same
-    ops: non-gitignored file upserts shrink to ``{p, e}``; an upsert
-    whose entry is gitignored becomes an exact-file removal so
-    ignore-state flips converge; directory upserts are dropped.
-    ``removes`` retains subtree semantics for filesystem removals,
-    while ``remove_files`` must never make the browser scan for
-    descendants a file cannot have. Rides every stream scope
-    unfiltered — the depth-scoped tree stream still carries complete
-    catalog deltas — and the whole batch is a few percent of the
-    ``FsChange`` wire weight."""
+    ops: non-gitignored file upserts shrink to ``{p, e}``; gitignored
+    upserts become exact-file removals; retained file-to-non-file transitions
+    become exact-path invalidations so replacements converge without deleting
+    directory descendants. ``removes`` retains subtree semantics for
+    filesystem removals. ``remove_files`` preserves explicitly navigated
+    ignored files, while ``non_file_paths`` cannot: the provider proved that
+    the path is no longer a file. Both exact arrays must remain ``Map.delete``
+    operations rather than making the browser scan for descendants. Rides
+    every stream scope unfiltered — the depth-scoped tree stream still carries
+    complete catalog deltas — and remains bounded by the ``FsChange`` batch."""
 
     upserts: tuple[CatalogUpsert, ...]
     removes: tuple[str, ...]
     remove_files: tuple[str, ...]
+    non_file_paths: tuple[str, ...]
     type: Literal["catalog.change"] = "catalog.change"
 
 
@@ -291,12 +293,16 @@ def _wire_dict_factory(items: list[tuple[str, Any]]) -> dict[str, Any]:
     would leak it (as ``null`` or ``{"generation": N}``) into every
     entry on the wire. Unknown ``empty`` values are also omitted; the field
     becomes actionable only when directory finalization supplies a boolean.
-    Applied to every dataclass in the tree.
+    Empty ``non_file_paths`` is omitted so the rare replacement signal adds
+    no bytes to ordinary catalog deltas. Applied to every dataclass in the
+    tree.
     """
     return {
         key: value
         for key, value in items
-        if key != "write_token" and not (key == "empty" and value is None)
+        if key != "write_token"
+        and not (key == "empty" and value is None)
+        and not (key == "non_file_paths" and not value)
     }
 
 

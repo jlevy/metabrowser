@@ -103,10 +103,16 @@ async function main() {
         catalog.calls[2].payload.upserts[0].p === "during.txt",
     );
 
-    feed.onCatalogChange({ upserts: [{ p: "live.txt", e: ".txt" }], removes: [] });
+    feed.onCatalogChange({
+      non_file_paths: ["replaced-link"],
+      upserts: [{ p: "live.txt", e: ".txt" }],
+      removes: [],
+    });
     check(
       "post-fetch changes apply directly",
-      catalog.calls.length === 4 && catalog.calls[3].payload.upserts[0].p === "live.txt",
+      catalog.calls.length === 4 &&
+        catalog.calls[3].payload.upserts[0].p === "live.txt" &&
+        catalog.calls[3].payload.non_file_paths[0] === "replaced-link",
     );
   }
 

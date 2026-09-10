@@ -430,6 +430,7 @@ verifies that every row resolves to a provider-parametrized test in
 | `test_provider_uses_supplied_registry_content_for_classification` |
 | `test_provider_budget_stop_is_explicit_and_absence_remains_unknown` |
 | `test_directory_pages_are_lossless_when_directories_outnumber_file_budget` |
+| `test_filtered_tree_and_recent_share_filter_semantics_before_caps` |
 | `test_catalog_predicate_semantics_are_runtime_independent_and_exact` |
 | `test_catalog_pages_are_lossless_without_suffix_counts` |
 | `test_provider_applies_work_bounds_to_continuation_pages` |

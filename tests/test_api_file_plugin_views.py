@@ -117,6 +117,28 @@ def test_binary_files_get_a_default_bytes_view(tmp_path: Path) -> None:
     ]
 
 
+def test_image_files_get_a_default_plugin_preview(tmp_path: Path) -> None:
+    """Image classification stays in the server; its view comes from the manifest."""
+    server._set_root_dir(tmp_path)
+    image = tmp_path / "pixel.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    result = _api_file("pixel.png")
+
+    assert result["kind"] == "image"
+    assert result["views"] == [
+        {
+            "id": "preview",
+            "label": "Image",
+            "default": True,
+            "container_class": "content-body metabrowser-image-host",
+            "printable": False,
+            "print_profile": "plain",
+            "render_runtime": "client",
+        }
+    ]
+
+
 def test_plugin_classification_runs_off_the_request_event_loop(tmp_path: Path, monkeypatch) -> None:
     server._set_root_dir(tmp_path)
     (tmp_path / "data.json").write_text('{"schema":"example"}\n')

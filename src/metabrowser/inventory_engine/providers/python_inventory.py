@@ -72,6 +72,7 @@ from metabrowser.inventory_engine.contract import (
     InventoryClosedError,
     InventoryConfig,
     InventoryEntry,
+    InventoryFilter,
     InventoryHandle,
     InventoryIssue,
     IssueCode,
@@ -430,6 +431,20 @@ class _SelectedDirectoryTotals:
     file_count: int = 0
     size: int = 0
     newest_mtime_ns: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _CompiledInventoryFilter:
+    """One query's normalized filter values, reused across every candidate row."""
+
+    include_ignored: bool
+    extensions: frozenset[str]
+    semantic_suffixes: tuple[str, ...]
+    filenames: frozenset[str]
+    type_families: frozenset[str]
+    cutoff_ns: int | None
+    minimum_size: int | None
+    rejects_symlinks: bool
 
 
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
@@ -2032,7 +2047,10 @@ class _PythonInventoryStore:
         *,
         image: _ReadImage,
     ) -> FilteredTreeProjection:
-        ignored_dirs = self._effective_ignored_directories(entries)
+        selection = self._compile_inventory_filter(query.filter)
+        ignored_dirs = (
+            {} if selection.include_ignored else self._effective_ignored_directories(entries)
+        )
         matched: list[FsEntry] = []
         matching_files = 0
         matching_bytes = 0
@@ -2045,7 +2063,7 @@ class _PythonInventoryStore:
                 continue
             if entry.type == "dir":
                 continue
-            if not self._filter_matches(entry, query, ignored_dirs):
+            if not self._filter_matches(entry, selection, ignored_dirs):
                 continue
             matched.append(entry)
             if entry.type == "file":
@@ -2120,28 +2138,19 @@ class _PythonInventoryStore:
     def _filter_matches(
         self,
         entry: FsEntry,
-        query: FilteredTreeQuery,
+        selection: _CompiledInventoryFilter,
         ignored_dirs: Mapping[str, bool],
     ) -> bool:
-        selection = query.filter
         if not selection.include_ignored and (
             entry.gitignored or ignored_dirs.get(entry.parent, False)
         ):
             return False
         if entry.type == "symlink":
-            return not (
-                selection.extensions
-                or selection.filenames
-                or selection.type_families
-                or selection.recency_seconds
-                or selection.minimum_size
-            )
+            return not selection.rejects_symlinks
         if selection.minimum_size is not None and entry.size < selection.minimum_size:
             return False
-        if selection.recency_seconds is not None and selection.as_of_ns is not None:
-            cutoff = selection.as_of_ns - int(selection.recency_seconds * _NANOSECONDS_PER_SECOND)
-            if entry.mtime_ns < cutoff:
-                return False
+        if selection.cutoff_ns is not None and entry.mtime_ns < selection.cutoff_ns:
+            return False
         if selection.extensions or selection.filenames:
             # `ascii_casefold`, not `str.lower()`: the contract pins the alphabet the
             # fold covers, and `str.lower()` folds all of Unicode. The two agree on
@@ -2149,17 +2158,10 @@ class _PythonInventoryStore:
             # would be dropped by a provider folding only ASCII, and nothing above the
             # boundary could attribute the difference.
             lowered_ext = ascii_casefold(entry.ext)
-            extension_match = any(
-                lowered_ext == ascii_casefold(extension)
-                or (
-                    self._registry_family_id(extension) is not None
-                    and lowered_ext.endswith(ascii_casefold(extension))
-                )
-                for extension in selection.extensions
+            extension_match = lowered_ext in selection.extensions or any(
+                lowered_ext.endswith(extension) for extension in selection.semantic_suffixes
             )
-            filename_match = ascii_casefold(entry.name) in {
-                ascii_casefold(filename) for filename in selection.filenames
-            }
+            filename_match = ascii_casefold(entry.name) in selection.filenames
             if not extension_match and not filename_match:
                 return False
         if selection.type_families:
@@ -2167,6 +2169,35 @@ class _PythonInventoryStore:
             if family_id is None or family_id not in selection.type_families:
                 return False
         return True
+
+    def _compile_inventory_filter(self, selection: InventoryFilter) -> _CompiledInventoryFilter:
+        """Normalize query constants once rather than once per indexed entry."""
+
+        extensions = frozenset(ascii_casefold(value) for value in selection.extensions)
+        return _CompiledInventoryFilter(
+            include_ignored=selection.include_ignored,
+            extensions=extensions,
+            semantic_suffixes=tuple(
+                extension
+                for extension in extensions
+                if self._registry_family_id(extension) is not None
+            ),
+            filenames=frozenset(ascii_casefold(value) for value in selection.filenames),
+            type_families=frozenset(selection.type_families),
+            cutoff_ns=(
+                selection.as_of_ns - int(selection.recency_seconds * _NANOSECONDS_PER_SECOND)
+                if selection.as_of_ns is not None and selection.recency_seconds is not None
+                else None
+            ),
+            minimum_size=selection.minimum_size,
+            rejects_symlinks=bool(
+                selection.extensions
+                or selection.filenames
+                or selection.type_families
+                or selection.recency_seconds
+                or selection.minimum_size
+            ),
+        )
 
     def _registry_family_id(self, extension: str) -> str | None:
         match = self._registry.match("", extension)
@@ -2189,20 +2220,16 @@ class _PythonInventoryStore:
         entries: Sequence[FsEntry],
         entries_by_path: Mapping[str, FsEntry],
     ) -> RecentProjection:
-        cutoff = (
-            query.as_of_ns - int(query.within_seconds * _NANOSECONDS_PER_SECOND)
-            if query.within_seconds is not None
-            else 0
+        selection = self._compile_inventory_filter(query.filter)
+        ignored_dirs = (
+            {} if selection.include_ignored else self._effective_ignored_directories(entries)
         )
-        extensions = {ascii_casefold(value) for value in query.extensions}
         matching = [
             entry
             for entry in entries
             if entry.type == "file"
-            and entry.mtime_ns >= cutoff
             and (not query.prefix or entry.path.startswith(query.prefix))
-            and (not extensions or ascii_casefold(entry.ext) in extensions)
-            and (query.include_ignored or not entry.gitignored)
+            and self._filter_matches(entry, selection, ignored_dirs)
         ]
         # Two orders, and they are different questions.
         #
@@ -3674,7 +3701,10 @@ class _PythonInventoryStore:
         )
         ops = [FsUpsert(entry=stored)]
         ops.extend(FsUpsert(entry=ancestor) for ancestor in aggregate_updates)
-        self._emit(FsChange(ops=tuple(ops)))
+        self._emit(
+            FsChange(ops=tuple(ops)),
+            non_file_paths=(stored.path,) if old_file is not None and new_file is None else (),
+        )
 
     def _update_ancestor_aggregates(
         self,
@@ -3893,11 +3923,17 @@ class _PythonInventoryStore:
         """Single-entry path used by the watcher and other live
         producers. Writes the entry and emits one ``fs.change``."""
 
+        existing = self._entries.get(entry.path)
         stored = self._store_walker_entry(entry)
         if stored is not None:
-            self._emit(FsChange(ops=(FsUpsert(entry=stored),)))
+            self._emit(
+                FsChange(ops=(FsUpsert(entry=stored),)),
+                non_file_paths=(stored.path,)
+                if existing is not None and existing.type == "file" and stored.type != "file"
+                else (),
+            )
 
-    def _emit(self, event: StreamEvent) -> None:
+    def _emit(self, event: StreamEvent, *, non_file_paths: tuple[str, ...] = ()) -> None:
         """Translate an internal mutation into the provider change contract."""
 
         if isinstance(event, FsResyncRequired):
@@ -3911,6 +3947,7 @@ class _PythonInventoryStore:
             )
             self._record_provider_change(
                 dirty_paths=dirty_paths,
+                non_file_paths=non_file_paths,
                 dirty_queries=frozenset(
                     {
                         QueryKind.ENTRY,
@@ -3931,6 +3968,7 @@ class _PythonInventoryStore:
         self,
         *,
         dirty_paths: tuple[str, ...] = (),
+        non_file_paths: tuple[str, ...] = (),
         dirty_queries: frozenset[QueryKind] = frozenset(),
         reset: bool = False,
     ) -> None:
@@ -3953,6 +3991,7 @@ class _PythonInventoryStore:
             version=version,
             state=state,
             dirty_paths=() if all_dirty or reset else dirty_paths,
+            non_file_paths=() if all_dirty or reset else non_file_paths,
             dirty_queries=frozenset() if reset else dirty_queries,
             all_dirty=all_dirty and not reset,
             reset=reset,

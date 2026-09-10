@@ -203,7 +203,10 @@ browser stays local.
 Every route the browser consumes is reachable from `metab` and pinned by a golden
 transcript, so a change to a route’s envelope shows up as a readable diff rather than as
 a browser that quietly renders the wrong thing.
-The rule and its enforcement are in [CLI parity](../AGENTS.md#cli-parity); the table of
+Deterministic browser-owned behavior has the same command-line evidence through golden
+sessions that load the production JavaScript.
+The rule and its enforcement are in
+[CLI and functional UI parity](../AGENTS.md#cli-and-functional-ui-parity); the table of
 what is covered is in
 [Views, Models, and Routes](project/architecture/arch-views-models-routes.md).
 

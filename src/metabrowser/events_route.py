@@ -233,12 +233,18 @@ def _wire_entry(entry: DecoratedInventoryEntry) -> FsEntry:
     )
 
 
-def _catalog_change(change: FsChange) -> CatalogChange | None:
+def _catalog_change(
+    change: FsChange,
+    *,
+    non_file_paths: tuple[str, ...] = (),
+) -> CatalogChange | None:
     """Derive the Quick File delta from one host-projected filesystem change."""
 
     upserts: list[CatalogUpsert] = []
     removes: list[str] = []
     remove_files: list[str] = []
+    non_file_path_set = set(non_file_paths)
+    current_non_file_paths: list[str] = []
     for operation in change.ops:
         if isinstance(operation, FsRemove):
             removes.append(operation.path)
@@ -247,12 +253,19 @@ def _catalog_change(change: FsChange) -> CatalogChange | None:
                 remove_files.append(operation.entry.path)
             else:
                 upserts.append(CatalogUpsert(p=operation.entry.path, e=operation.entry.ext))
-    if not upserts and not removes and not remove_files:
+        else:
+            # Only a retained file -> non-file transition is meaningful here.
+            # Ordinary directory aggregate upserts remain absent from the
+            # catalog companion.
+            if operation.entry.path in non_file_path_set:
+                current_non_file_paths.append(operation.entry.path)
+    if not upserts and not removes and not remove_files and not current_non_file_paths:
         return None
     return CatalogChange(
         upserts=tuple(upserts),
         removes=tuple(removes),
         remove_files=tuple(remove_files),
+        non_file_paths=tuple(current_non_file_paths),
     )
 
 
@@ -426,7 +439,7 @@ class _EventBus:
         fs_change = FsChange(ops=tuple(ops))
         self._forward_event(fs_change, change=change)
         if QueryKind.CATALOG in change.dirty_queries:
-            catalog = _catalog_change(fs_change)
+            catalog = _catalog_change(fs_change, non_file_paths=change.non_file_paths)
             if catalog is not None:
                 self._forward_event(catalog, change=change)
         if QueryKind.DIAGNOSTICS in change.dirty_queries:

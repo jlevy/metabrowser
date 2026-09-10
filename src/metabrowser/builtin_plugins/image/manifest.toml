@@ -1,0 +1,17 @@
+[plugin]
+name = "image"
+display_name = "Image"
+version = "0.0.1"
+sdk_version = "0.6"
+
+# Image extensions are classified by metabrowser.server because that decision
+# precedes the text/binary content fallback. The manifest owns the view and its
+# on-demand renderer and stylesheet.
+
+[[view]]
+kind = "image"
+id = "preview"
+label = "Image"
+default = true
+container_class = "content-body metabrowser-image-host"
+render_runtime = "client"

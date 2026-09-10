@@ -23,6 +23,7 @@ from typing import Any
 
 from metabrowser.events import (
     CapabilityUpdate,
+    CatalogChange,
     FileAppend,
     FileClosed,
     FileCoalesced,
@@ -206,6 +207,23 @@ def test_round_trip_fs_change_with_upsert_and_remove() -> None:
     assert out["ops"][0]["op"] == "upsert"
     assert out["ops"][0]["entry"]["path"] == "a/b.log"
     assert out["ops"][1] == {"path": "a/c.log", "op": "remove"}
+
+
+def test_catalog_non_file_paths_are_absent_until_a_replacement() -> None:
+    ordinary = _round_trip(
+        CatalogChange(upserts=(), removes=("gone",), remove_files=(), non_file_paths=())
+    )
+    replacement = _round_trip(
+        CatalogChange(
+            upserts=(),
+            removes=(),
+            remove_files=(),
+            non_file_paths=("deep/replaced",),
+        )
+    )
+
+    assert "non_file_paths" not in ordinary
+    assert replacement["non_file_paths"] == ["deep/replaced"]
 
 
 def test_round_trip_fs_resync_required() -> None:

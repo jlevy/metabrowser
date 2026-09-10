@@ -1028,9 +1028,7 @@ class RecentQuery:
     max_work: int = DEFAULT_QUERY_MAX_WORK
     count_cap: int = DEFAULT_COUNT_CAP
     prefix: str = ""
-    extensions: tuple[str, ...] = ()
-    within_seconds: float | None = None
-    include_ignored: bool = False
+    filter: InventoryFilter = field(default_factory=lambda: InventoryFilter(include_ignored=False))
     kind: Literal[QueryKind.RECENT] = field(init=False, default=QueryKind.RECENT)
 
     def __post_init__(self) -> None:
@@ -1041,8 +1039,8 @@ class RecentQuery:
         _require_positive(self.count_cap, "count_cap")
         if self.count_cap > MAX_COUNT_CAP:
             raise ValueError(f"count_cap must be at most {MAX_COUNT_CAP}")
-        if self.within_seconds is not None and self.within_seconds <= 0:
-            raise ValueError("within_seconds must be positive")
+        if self.filter.as_of_ns is not None and self.filter.as_of_ns != self.as_of_ns:
+            raise ValueError("recent filter as_of_ns must match query as_of_ns")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1401,6 +1399,10 @@ class ChangeBatch:
     version: EngineVersion
     state: IndexState
     dirty_paths: tuple[str, ...] = ()
+    # Dirty paths whose prior retained entry was a file and whose current
+    # retained entry is a directory or symlink. This transition cannot be
+    # reconstructed after consumers reread the provider at this boundary.
+    non_file_paths: tuple[str, ...] = ()
     dirty_queries: frozenset[QueryKind] = frozenset()
     all_dirty: bool = False
     reset: bool = False
@@ -1411,14 +1413,22 @@ class ChangeBatch:
             raise ValueError("version and cursor must describe the same session")
         if self.version.sequence != self.cursor.sequence:
             raise ValueError("version and cursor must describe the same change boundary")
-        if self.all_dirty and self.dirty_paths:
+        if self.all_dirty and (self.dirty_paths or self.non_file_paths):
             raise ValueError("all_dirty replaces individual dirty paths")
-        if self.reset and (self.all_dirty or self.dirty_paths or self.dirty_queries):
+        if self.reset and (
+            self.all_dirty or self.dirty_paths or self.non_file_paths or self.dirty_queries
+        ):
             raise ValueError("reset replaces dirty paths and projections")
         if len(self.dirty_paths) > MAX_CHANGE_PATHS:
             raise ValueError("a change batch accepts at most 1024 dirty paths")
-        if len(self.dirty_paths) != len(set(self.dirty_paths)):
+        dirty_path_set = set(self.dirty_paths)
+        if len(self.dirty_paths) != len(dirty_path_set):
             raise ValueError("change-batch dirty paths must be unique")
+        non_file_path_set = set(self.non_file_paths)
+        if len(self.non_file_paths) != len(non_file_path_set):
+            raise ValueError("change-batch non-file paths must be unique")
+        if not non_file_path_set.issubset(dirty_path_set):
+            raise ValueError("change-batch non-file paths must also be dirty paths")
         for path in self.dirty_paths:
             require_canonical_inventory_path(path, "dirty path", allow_root=True)
 

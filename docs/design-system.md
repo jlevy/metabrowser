@@ -246,7 +246,7 @@ Prose reads at a width the reader sets, in **characters**, through “Max text w
 the Metabrowser menu.
 Characters rather than a length because that is the decision a reader has: 45–75 is the
 classic range for a single column, and a browser pane is wide enough to sit above it.
-The default is 105.
+The default is 102.
 
 Three tokens, all on `:root`:
 

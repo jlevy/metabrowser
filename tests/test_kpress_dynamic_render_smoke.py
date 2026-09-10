@@ -149,7 +149,7 @@ def test_dynamic_render_includes_doc_chrome_without_fragment_theme_state(
 
 
 def test_dynamic_render_collapses_deep_toc_entries_by_default(served_root: Path) -> None:
-    # KPress 0.3.3 renders an "auto" TOC only for a document that clears both a
+    # KPress 0.3.5 renders an "auto" TOC only for a document that clears both a
     # heading count and a length, so the fixture has to earn one before its
     # collapse depth can be asserted. The nested H3 is what collapse acts on.
     body = " ".join(["word"] * 120)
@@ -163,6 +163,8 @@ def test_dynamic_render_collapses_deep_toc_entries_by_default(served_root: Path)
     html = _render({"path": "docs/long.md", "view": "rendered"})["html"]
     assert 'data-kpress-toc-collapse-depth="1"' in html
     assert "data-kpress-toc-expand-all" in html
+    assert "#kpress-icon-chevrons-up-down" in html
+    assert "#kpress-icon-chevrons-down-up" in html
 
 
 def test_dynamic_render_sanitizes_untrusted_worktree_markup(served_root: Path) -> None:

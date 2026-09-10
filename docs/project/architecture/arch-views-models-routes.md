@@ -52,6 +52,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `diff` | `.patch`, `.diff` | Diff | [File Diff Format](file-diff-format/file-diff-format.md) |
 | `agent-log` | `.jsonl` sniffed as an agent log | Log, Charts, Raw JSON | File envelope, charts hook |
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
+| `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
@@ -119,7 +120,9 @@ reservation and its invariants, is in
 | Route | Serves |
 | --- | --- |
 | `/api/file` | The file or folder envelope: kind, views, content window |
-| `/api/tree`, `/api/rollup`, `/api/recent` | Navigation: subtrees, rollups, the recency window. `/api/tree` also resolves the nav filter (`types`, `recency`, `min_size`, `include_ignored`), returning only subtrees that contain a match and folder aggregates rolled up from those matches |
+| `/api/tree` | Navigation subtrees. Resolves `types`, `recency`, `min_size`, and `include_ignored` over the inventory, returning only subtrees that contain a match and folder aggregates rolled up from those matches |
+| `/api/rollup` | Bounded directory rollups for Overview and the treemap |
+| `/api/recent` | Flat newest-first matching leaves. Resolves `window`, `types`, `min_size`, and `include_ignored` before ranking and the response cap; the browser clusters the complete returned leaf model |
 | `/api/activity`, `/api/stream` | Live inventory and activity events |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
@@ -131,7 +134,7 @@ reservation and its invariants, is in
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`.
 
-## CLI parity
+## CLI and functional UI parity
 
 Every data surface the browser consumes is reachable from `metab` without a browser or a
 listening port and is pinned by a golden transcript.
@@ -176,7 +179,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
-| `/raw` | exempt | — | asset serving; the response is the file’s bytes, covered by `tests/test_browser_assets.py` |
+| `/raw` | exempt | — | asset serving; the response is the file’s bytes, covered by `tests/test_raw_passthrough.py` |
 | `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
 | `/_debug/inventory` | exempt | — | opt-in diagnostic; its work counters carry wall and CPU times, which no transcript can pin. Its payload shape is asserted by `tests/test_inventory_debug_route.py`, because the performance harness and `devtools/bench_serving.py` both parse it |
 | `/api/stream` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
@@ -195,13 +198,63 @@ and fails rather than hanging — which is behavior worth having, but not a mode
 transcript can assert.
 Their content is covered by `tests/dom/` and the event tests instead.
 
+### User-visible functional aspects
+
+Route reachability is necessary and insufficient.
+A view can combine two correct models incorrectly, as Recent did when its tally counted
+the complete response while its folder visibility depended on descendants mounted in the
+DOM.
+
+Every user-visible functional aspect belongs to one of three checked tiers:
+
+- **data** — membership, ordering, grouping inputs, counts, bounds, persisted state,
+  actions, and errors belong to a route or model reached through `metab`;
+- **interaction** — browser-owned state machines run from a command line against the
+  exact production JavaScript, with a golden transcript;
+- **paint-exempt** — geometry, animation, real paint timing, or browser platform
+  behavior may require a browser, but the row must give a specific reason and focused
+  evidence.
+
+There is no blanket exemption for the view layer.
+The functional table is seeded with the navigation-filter composition that exposed the
+old gap; subsequent user-visible work adds or refines rows at the level of the
+observable contract it changes.
+`devtools/check_parity.py` rejects missing evidence, prose-only mentions, commands a
+golden never runs, data behavior that bypasses `metab`, and unexplained paint
+exemptions. For an interaction row, it also runs the session and compares the declared
+owners with checker-controlled V8 coverage.
+Only a canonical path contained beneath the production source root whose executed
+top-level range spans the file’s exact UTF-16 length receives credit, so stdout claims,
+comments, and relabeled snippets are not evidence.
+The Recent session enters through the same production filter transition, request launch,
+response settlement, complete-leaf projection, and live-change batch APIs as `app.js`;
+the shell retains only transport and paint glue around those decisions.
+KPress owns TOC disclosure; Metabrowser’s disclosure row proves that the installed
+control remains wired through the production Markdown mount, including collapsed-row
+state, accessible labels, and disposal.
+It cannot infer an undeclared product behavior from source code; review is the gate that
+requires a row whenever a change adds or alters an observable contract.
+
+| Aspect | Tier | Owner | CLI command | Golden or reason |
+| --- | --- | --- | --- | --- |
+| `navigation.recent-filter-membership` | data | `/api/recent` | `metab navroot --api '/api/recent?window=all&types=.md&min_size=7&include_ignored=0'` | `cli-api-nav.tryscript.md` |
+| `navigation.recent-tree` | interaction | `static/filter-state.js`, `static/tree-filter-model.js`, `static/tree-expansion.js` | `node tests/dom/recent-filter-session.js` | `cli-ui-navigation.tryscript.md` |
+| `navigation.recent-continuity` | interaction | `static/tree-filter-model.js` | `node tests/dom/recent-filter-session.js` | `cli-ui-navigation.tryscript.md` |
+| `navigation.file-type-replacement` | interaction | `static/tree-filter-model.js`, `static/known-file-catalog.js` | `node tests/dom/recent-filter-session.js` | `cli-ui-navigation.tryscript.md` |
+| `markdown.same-document-fragment-links` | interaction | `builtin_plugins/markdown/rendered.js`, `builtin_plugins/markdown/link-enhancer.js` | `node tests/dom/markdown-toc-scrollspy-session.js` | `cli-ui-markdown-scrollspy.tryscript.md` |
+| `markdown.toc-scrollspy` | interaction | `builtin_plugins/markdown/rendered.js`, `builtin_plugins/markdown/toc-intersection-fallback.js` | `node tests/dom/markdown-toc-scrollspy-session.js` | `cli-ui-markdown-scrollspy.tryscript.md` |
+| `markdown.toc-disclosure` | interaction | `builtin_plugins/markdown/rendered.js` | `node tests/dom/markdown-toc-scrollspy-session.js` | `cli-ui-markdown-scrollspy.tryscript.md` |
+| `image.raw-preview` | interaction | `static/view-composition.js`, `builtin_plugins/image/index.js` | `node tests/dom/image-preview-session.js` | `cli-ui-image-preview.tryscript.md` |
+| `document.reading-width` | interaction | `static/document-width.js` | `node tests/dom/document-width-session.js` | `cli-ui-document-width.tryscript.md` |
+| `navigation.filter-layout` | paint-exempt | `static/styles.css` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
+
 ## Adding something
 
 - **A kind**: add a `[[kind]]` block with a match predicate and at least one `[[view]]`,
   then add a representative `--show` case to the golden transcript.
   Nothing else in core changes.
 - **A view on an existing kind**: add a `[[view]]` block and `mb.registerView`; give it
-  a disposal path.
+  a disposal path, then register each new observable behavior in the functional table.
 - **A container**: add `container = { children = "<data_hook route>" }` to the kind and
   serve child rows from that hook.
   The tree, keyboard, ARIA, and URL behavior follow.

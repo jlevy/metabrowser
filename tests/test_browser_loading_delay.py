@@ -226,7 +226,7 @@ def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None
     assert "pendingFilePreviewStageCleanup = cleanupStage" in file_render
     assert "cleanupStage()" in file_render
     assert "preview.replaceChildren(...replacementNodes)" in file_render
-    assert "activePluginDisposers = stagedPluginDisposers" in file_render
+    assert "stagedPluginLifecycle.commit" in file_render
     assert file_render.index("await _perf.measureAsync(") < file_render.index(
         "preview.replaceChildren(...replacementNodes)"
     )

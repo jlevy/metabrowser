@@ -38,6 +38,7 @@ if __name__ == "__main__":
     raise SystemExit
 
 import asyncio
+import contextlib
 import datetime as _dt
 import json as _json
 import logging
@@ -79,7 +80,11 @@ from metabrowser.build_version import display_version_line
 from metabrowser.charts import clear_charts_cache
 from metabrowser.content_sniff import ContentClass, sniff_artifact
 from metabrowser.dotenv import load_dotenv_chain
-from metabrowser.file_extensions import syntax_language_for_path
+from metabrowser.file_extensions import (
+    BROWSER_IMAGE_EXTS,
+    BROWSER_TEXT_EXTS,
+    syntax_language_for_path,
+)
 from metabrowser.file_kinds import (
     FILE_KIND_DETECTORS,
     VIEW_REGISTRY,
@@ -162,6 +167,7 @@ from metabrowser.recent import (
 )
 from metabrowser.repository_context import discover_repository_context
 from metabrowser.settings import (
+    DOC_MAX_CHARS_DEFAULT,
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_TREE_PAGE_ROWS,
     RECENT_WINDOW_SECONDS,
@@ -532,19 +538,7 @@ def _etag_for(mtime_hash: str) -> str:
     return build_scoped_etag(mtime_hash)
 
 
-# File-extension sets used by ``api_file`` to decide which branch to
-# take. They are bound to module-level names for compatibility with
-# callers that import ``_TEXT_EXTS`` / ``_IMAGE_EXTS`` directly.
-import contextlib
-
-from metabrowser.file_extensions import (
-    BROWSER_IMAGE_EXTS as _IMAGE_EXTS,
-)
-from metabrowser.file_extensions import (
-    BROWSER_TEXT_EXTS as _TEXT_EXTS,
-)
-
-# Files outside ``_TEXT_EXTS`` are decided by looking at their content —
+# Files outside ``BROWSER_TEXT_EXTS`` are decided by looking at their content —
 # see metabrowser.content_sniff and _prefers_text_body below. Size used to
 # stand in for that check (under 512 KiB meant "try it as text"), which read
 # every small binary through `errors="replace"` and rendered it as a field of
@@ -946,6 +940,7 @@ async def index(request: Request) -> HTMLResponse:
     formatters_url = _static_asset_url("formatters.js")
     inventory_scope_url = _static_asset_url("inventory-scope.js")
     directory_totals_store_url = _static_asset_url("directory-totals-store.js")
+    document_width_url = _static_asset_url("document-width.js")
     contribution_registry_url = _static_asset_url("contribution-registry.js")
     resource_context_url = _static_asset_url("resource-context.js")
     view_state_url = _static_asset_url("view-state.js")
@@ -953,6 +948,7 @@ async def index(request: Request) -> HTMLResponse:
     source_append_url = _static_asset_url("source-append.js")
     file_type_taxonomy_url = _static_asset_url("file-type-taxonomy.js")
     plugin_sdk_url = _static_asset_url("plugin-sdk.js")
+    view_composition_url = _static_asset_url("view-composition.js")
     filter_state_url = _static_asset_url("filter-state.js")
     filter_controls_url = _static_asset_url("filter-controls.js")
     icons_url = _static_asset_url("icons.js")
@@ -1068,7 +1064,7 @@ async def index(request: Request) -> HTMLResponse:
     // Reading width, seeded before first paint for the same reason as the
     // theme: app.js runs after the document has already been laid out, so
     // setting it there would render the column at the default and then reflow
-    // it to the reader's choice. Bounds mirror app.js (normalizeDocMaxChars).
+    // it to the reader's choice. Bounds mirror document-width.js.
     var chars = Math.round(Number(cookie("metabrowser.docMaxChars")));
     if (Number.isFinite(chars) && chars > 0) {
       de.style.setProperty("--doc-max-chars", String(Math.min(160, Math.max(40, chars))));
@@ -1215,7 +1211,7 @@ async def index(request: Request) -> HTMLResponse:
     )
 
     html = f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="--doc-max-chars: {DOC_MAX_CHARS_DEFAULT}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1338,6 +1334,7 @@ async def index(request: Request) -> HTMLResponse:
   {repository_context_block}
   {initial_tree_block}
   {asset_bundles_block}
+  <script src="{document_width_url}"></script>
   <script src="{asset_loader_url}"></script>
   <script src="{theme_state_url}"></script>
   <script src="{request_error_url}"></script>
@@ -1351,6 +1348,7 @@ async def index(request: Request) -> HTMLResponse:
   <script src="{source_append_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
+  <script src="{view_composition_url}"></script>
   <script src="{perf_url}"></script>
   <script src="{filter_state_url}"></script>
   <script src="{filter_controls_url}"></script>
@@ -1430,6 +1428,23 @@ def tree_filter_from_request(request: Request) -> TreeFilter:
     )
 
 
+def _inventory_filter(tree_filter: TreeFilter, *, as_of_ns: int) -> InventoryFilter:
+    """Translate the shared navigation vocabulary into the provider contract."""
+
+    extensions = tuple(token for token in tree_filter.types if token.startswith("."))
+    filenames = tuple(token for token in tree_filter.types if not token.startswith("."))
+    return InventoryFilter(
+        extensions=extensions,
+        filenames=filenames,
+        recency_seconds=(
+            float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
+        ),
+        minimum_size=tree_filter.min_size or None,
+        include_ignored=tree_filter.include_ignored,
+        as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
+    )
+
+
 def _inventory_runtime_for(request: Request) -> InventoryRuntime:
     runtime = getattr(request.app.state, "inventory_runtime", None)
     if not isinstance(runtime, InventoryRuntime):
@@ -1457,8 +1472,6 @@ async def _read_tree_from_provider(
     tree_filter: TreeFilter,
 ) -> JSONResponse:
     runtime = _inventory_runtime_for(request)
-    extensions = tuple(token for token in tree_filter.types if token.startswith("."))
-    filenames = tuple(token for token in tree_filter.types if not token.startswith("."))
     as_of_ns = time.time_ns()
     companion_queries: list[ReadQuery] = [EntryQuery(query_id="tree-parent", path=subpath)]
     projection_id = "tree-filtered" if tree_filter.active else "tree-directory"
@@ -1469,16 +1482,7 @@ async def _read_tree_from_provider(
             path=subpath,
             max_depth=max(1, remaining_depth),
             max_rows=INVENTORY_TREE_PAGE_ROWS,
-            filter=InventoryFilter(
-                extensions=extensions,
-                filenames=filenames,
-                recency_seconds=(
-                    float(tree_filter.recency_seconds) if tree_filter.recency_seconds else None
-                ),
-                minimum_size=tree_filter.min_size or None,
-                include_ignored=tree_filter.include_ignored,
-                as_of_ns=as_of_ns if tree_filter.recency_seconds else None,
-            ),
+            filter=_inventory_filter(tree_filter, as_of_ns=as_of_ns),
         )
     elif remaining_depth > 0:
         page_query = DirectoryQuery(
@@ -1789,8 +1793,9 @@ async def api_rollup(request: Request) -> Response:
 async def api_recent(request: Request) -> JSONResponse:
     """``GET /api/recent`` — top-N files by mtime within a
     rolling window (1h / 24h / 7d / 30d / all), filtered by
-    optional ``ext`` and ``prefix`` query params, returned as
-    a clustered tree (see :mod:`metabrowser.recent`).
+    the navigation filter vocabulary plus optional ``prefix`` and
+    legacy ``ext`` query params, returned as flat leaves for browser
+    clustering (see :mod:`metabrowser.recent`).
     """
 
     window = request.query_params.get("window", "24h")
@@ -1814,9 +1819,19 @@ async def api_recent(request: Request) -> JSONResponse:
         ext_raw = [s for s in single.split(",") if s] if single else []
     ext_filter = tuple(e if e.startswith(".") else "." + e for e in ext_raw)
     prefix_filter = request.query_params.get("prefix", "")
-    # Callers that hide gitignored entries pass include_ignored=0 so the
-    # cap is not spent on rows they will drop on arrival.
-    include_ignored = request.query_params.get("include_ignored", "1") not in ("0", "false")
+    requested_filter = tree_filter_from_request(request)
+    # `ext` predates the navigation vocabulary and remains useful for direct
+    # CLI inspection. Merge it into `types` so one provider predicate decides
+    # both spellings before the response cap is applied.
+    types = parse_types((*requested_filter.types, *ext_filter))
+    recent_filter = TreeFilter(
+        recency_seconds=int(RECENT_WINDOW_SECONDS[window] or 0),
+        types=types,
+        min_size=requested_filter.min_size,
+        include_ignored=requested_filter.include_ignored,
+    )
+    as_of_ns = time.time_ns()
+    selection = _inventory_filter(recent_filter, as_of_ns=as_of_ns)
 
     runtime = _inventory_runtime_for(request)
     coordinated = await runtime.coordinator.read(
@@ -1825,11 +1840,9 @@ async def api_recent(request: Request) -> JSONResponse:
                 RecentQuery(
                     query_id="recent",
                     max_rows=limit,
-                    as_of_ns=time.time_ns(),
+                    as_of_ns=as_of_ns,
                     prefix=prefix_filter,
-                    extensions=ext_filter,
-                    within_seconds=RECENT_WINDOW_SECONDS[window],
-                    include_ignored=include_ignored,
+                    filter=selection,
                 ),
             )
         )
@@ -1862,6 +1875,7 @@ async def api_recent(request: Request) -> JSONResponse:
             "window": result.window,
             "limit": result.limit,
             "total_matching": result.total_matching,
+            "total_matching_exact": result.total_matching_exact,
             "truncated": result.truncated,
             "tally_cache_status": tally_cache_status,
         }
@@ -2259,14 +2273,22 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
                 headers=etag_headers,
             )
         except (OSError, TypeError, ValueError) as exc:
-            return JSONResponse({"type": "error", "path": subpath, "error": str(exc)})
+            return JSONResponse(
+                {
+                    "type": "error",
+                    "kind": "error",
+                    "views": [],
+                    "path": subpath,
+                    "error": str(exc),
+                }
+            )
 
-    if ext in _IMAGE_EXTS:
+    if ext in BROWSER_IMAGE_EXTS:
         return JSONResponse(
             {
                 "type": "image",
                 "kind": "image",
-                "views": [],
+                "views": _views_for_kind("image"),
                 "path": subpath,
                 "size": disk_size,
                 "mtime_hash": mtime_hash,
@@ -2275,7 +2297,7 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
             headers=etag_headers,
         )
 
-    if ext in _TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target):
+    if ext in BROWSER_TEXT_EXTS or await asyncio.to_thread(_prefers_text_body, target):
         try:
             content_has_more = False
             if (
@@ -2568,7 +2590,7 @@ async def api_kpress_render(request: Request) -> JSONResponse:
         )
     except OSError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
-    if ext not in _TEXT_EXTS and not await asyncio.to_thread(_prefers_text_body, target):
+    if ext not in BROWSER_TEXT_EXTS and not await asyncio.to_thread(_prefers_text_body, target):
         return JSONResponse(
             {
                 "type": "kpress_render_error",

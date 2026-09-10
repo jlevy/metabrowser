@@ -15,6 +15,7 @@ def _read(path: Path) -> str:
 
 def test_shell_messages_explain_state_and_recovery() -> None:
     app = _read(STATIC / "app.js")
+    composition = _read(STATIC / "view-composition.js")
     styles = _read(STATIC / "styles.css")
 
     assert "Could not load files. Refresh the page to try again." in app
@@ -24,10 +25,9 @@ def test_shell_messages_explain_state_and_recovery() -> None:
     assert "Could not load more content.</strong> Select Load more to try again." in app
     assert "No files were modified in the past" in app
     assert "No preview is available for this binary file" in app
-    assert "This JSONL file is too large to preview." in app
     assert "function responseErrorDetail(body, status)" in app
     assert "new Error(responseErrorDetail(text, resp.status))" in app
-    assert "Could not display this view. Refresh the page to try again." in app
+    assert "Could not display this view. Refresh the page to try again." in composition
     assert "function previewErrorHtml(summary, detail)" in app
     assert 'class="preview-error-title"' in app
     assert 'class="preview-error-detail"' in app

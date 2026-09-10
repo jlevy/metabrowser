@@ -498,22 +498,21 @@ overloaded subscriber from creating a reconnect loop.
 
 ## Where Filtering Happens
 
-Navigation filtering is split across two tiers, and which tier owns a dimension is a
-consequence of where the information lives rather than a preference.
+Navigation membership is resolved over the retained inventory, never over rows mounted
+in the DOM. `/api/tree` accepts type, recency, size, and ignored-file constraints and
+returns only matching leaves plus their rolled-up folder ancestry.
+A collapsed or paged subtree is therefore unknown only to the renderer, not to the
+filter.
 
-**Client, over rendered rows.** Type, size, and gitignored visibility are decided in the
-browser by walking the rows already in the DOM. Every predicate input — extension, byte
-count, gitignore flag — is on the row before any filter runs, so this costs one pass and
-no round trip, and it stays responsive while the user toggles.
-Its ceiling is what has been rendered: a collapsed subtree is unknown, so the pass keeps
-those folders and reports how many it could not speak for.
-
-**Server, as the source of the tree.** Recency is different.
-`/api/recent` scans the whole inventory rather than the loaded subtrees, which is the
-one thing a DOM walk cannot do, so setting a recency window swaps the panel’s data
-source instead of decorating it.
-Gitignored visibility rides along as a request parameter because it changes what the
-response cap is spent on, not just which rows are painted.
+Setting a recency window swaps the panel’s source to `/api/recent`, which applies the
+same non-recency constraints before its relevance ranking and response cap.
+It returns a flat newest-first leaf model; the browser clusters those complete leaves
+before rendering. Live event leaves are rechecked in the browser between authoritative
+fetches, but mounted descendants never decide folder membership or counts.
+The retained live overlay is capped at the route limit.
+Deep catalog changes, reconnects, and subtractive changes on a truncated page schedule
+one coalesced authoritative repair, while an event that overlaps an in-flight read
+invalidates that snapshot before it can replace newer state.
 
 The category, family, canonical-extension, and raw tallies behind the type menu come
 from one complete-index pass too.

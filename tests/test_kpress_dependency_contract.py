@@ -5,6 +5,8 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+from kpress.runtime import get_static_asset
+
 PROJECT_FILE = Path(__file__).resolve().parent.parent / "pyproject.toml"
 SOURCE_DIR = PROJECT_FILE.parent / "src" / "metabrowser"
 
@@ -75,3 +77,18 @@ def test_runtime_has_no_optional_kpress_branch() -> None:
     assert "KPressUnavailableError" not in adapter
     assert "KPressUnavailableError" not in server
     assert "kpress_unavailable" not in server
+
+
+def test_pinned_kpress_owns_the_inline_code_base_style() -> None:
+    css = get_static_asset("css/document.css").content.decode("utf-8")
+    code_start = css.index(".kpress code,\n.kpress-code {")
+    code_block = css[code_start : css.index("}\n", code_start) + 2]
+    inline_start = css.index(".kpress code:not(pre code) {")
+    inline_block = css[inline_start : css.index("}\n", inline_start) + 2]
+
+    assert "background: var(--kpress-doc-surface-bg);" in code_block
+    assert "font-family: var(--kpress-font-mono, ui-monospace, monospace);" in code_block
+    assert "font-size: var(--kpress-font-size-mono);" in code_block
+    assert "border: 1px solid var(--color-hint-gentle);" in inline_block
+    assert "border-radius: var(--kpress-radius-sm);" in inline_block
+    assert "padding: 0.25em 0.2em 0.1em 0.2em;" in inline_block

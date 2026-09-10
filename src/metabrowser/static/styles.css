@@ -296,14 +296,13 @@
      length and stays one — it cannot convert, because a host may swap the face
      through --kpress-host-font-prose and invalidate any ratio KPress shipped.
      Metabrowser CAN convert: it pins its own faces, so it owns the ratio. */
-  --doc-max-chars: 105;
   /* Average glyph advance per em for the current reading face, measured over
      507 characters of representative English prose at 100px (not the CSS `ch`
      unit, which is the advance of "0" and overstates a proportional face by
      ~23%). Serif here; the [data-prose-font="sans"] rule below swaps it. Remeasure
      if the vendored faces change:
-       PT Serif       0.4335  -> 105 chars = 45.5em
-       Source Sans 3  0.4039  -> 105 chars = 42.4em */
+       PT Serif       0.4335  -> 102 chars = 44.2em
+       Source Sans 3  0.4039  -> 102 chars = 41.2em */
   --doc-char-advance: 0.4335;
   /* The resolved reading width, as a length. THE single source of truth for
      how wide prose reads anywhere in the app, and the only place the character
@@ -3000,6 +2999,12 @@ html[data-prose-font="sans"] {
   font-size: var(--ui-small-font-size);
   text-align: center;
 }
+.recent-stale-note {
+  padding: 3px 12px 6px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  border-bottom: 1px solid var(--border);
+}
 /* Second line under the tally: what the filter narrowed the tree to.
    Muted, because the totals above are the constant a reader orients
    against and this is the delta from them. */
@@ -3638,15 +3643,6 @@ html[data-prose-font="sans"] {
   font-family: var(--font-mono);
   font-size: var(--ui-small-font-size);
 }
-/* Image preview — scale to fit the pane without ever forcing a
-   horizontal scrollbar; height is intrinsic so aspect ratio is
-   preserved. Outer padding comes from the .content-body wrapper. */
-.file-image {
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
 /* ── Code blocks (highlight.js integration) ─────────────────── */
 
 /* Highlight.js supplies token classes but no stylesheet. These two layout

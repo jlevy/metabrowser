@@ -119,6 +119,50 @@ Inventory engine:
 
 CLI and validation:
 
+- Recent navigation filtering now applies age, type, filename, size, and ignored-file
+  constraints through the provider before ranking and the response cap.
+  The browser clusters complete matching leaves and never infers folder membership from
+  descendants currently mounted in the DOM, so collapsed folders no longer disappear
+  while the panel reports their files.
+  The bounded live model now repairs itself after deep catalog changes, reconnects,
+  expiry, and capped-page changes whose prior match is absent from the retained top N.
+  While that repair is pending, its tally falls back to the retained-page lower bound;
+  event bursts coalesce without retaining an unbounded operation log or starting one
+  full provider scan per event.
+  Deep file-to-directory and file-to-symlink replacements now preserve their prior-type
+  transition through the inventory boundary, remove the exact Quick File candidate, and
+  prune the bounded Recent overlay to a safe lower-bound tally before the same coalesced
+  repair; routine directory aggregates remain absent from the catalog event and exact
+  invalidations never scan descendants.
+  A nonempty API golden and a composed browserless navigation session pin the route,
+  counts, clustering, bounded expansion, and repair decisions together.
+
+- CLI parity now defines checked evidence for declared user-visible functional aspects
+  as well as routes, kinds, and models.
+  Data behavior must run through `metab`, browser-owned interaction behavior must have
+  an executable production-module golden session, and only paint or platform behavior
+  may be explicitly exempt.
+  The gate derives executed owners from checker-controlled V8 coverage, requires an
+  exact canonical source span, and rejects stdout owner claims, route suffixes, failed
+  commands, and option-value spoofs.
+  The first registry rows cover the release-critical Recent and Markdown compositions;
+  migration of unchanged legacy UI behavior is tracked separately rather than presented
+  as complete coverage.
+
+- Image previews now use a manifest-owned, on-demand renderer and stylesheet through the
+  shell’s generic preview compositor.
+  Its browserless golden crosses asset resolution, registry lookup, mounting,
+  replacement, cancellation, disposal, and accessible error handling in the exact
+  production modules; the shell no longer carries a separate image rendering branch.
+
+- Rendered Markdown keeps same-document TOC links as fragments while preserving
+  Metabrowser’s delegated navigation target, so KPress can bind headings and highlight
+  the current section again.
+  A scoped, frame-coalesced observer fallback preserves scrollspy in runtimes without
+  `IntersectionObserver`, including long documents, and a browserless golden pins
+  selection, the installed KPress expand-all control, native-runtime preservation, and
+  disposal.
+
 - Real-tree performance runs retain an explicitly supplied `--files` count as
   provenance, so a completed cold profile does not depend on a detached server log
   containing an INFO-level completion line before it can be recorded.
@@ -197,7 +241,7 @@ File-type identity:
 Features:
 
 - Rendered documents now read at a width the reader chooses, in characters, through
-  **Max text width** in the Metabrowser menu (default 105). The setting is expressed in
+  **Max text width** in the Metabrowser menu (default 102). The setting is expressed in
   characters rather than pixels because that is the decision a reader has, and it is
   converted using each reading face’s measured average glyph advance — so switching
   between the serif and sans reading fonts holds the same characters per line rather
