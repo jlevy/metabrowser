@@ -336,9 +336,13 @@ replayed after it.
 | `catalog.change` | Quick File catalog upserts, exact file evictions, and subtree removals, emitted beside every `fs.change` |
 | `fs.resync_required` | A gap marker: drop derived state and resubscribe |
 | `capability.update` | Index completeness, watcher backends |
-| `projection.invalidate` / `projection.update` | Plugin projection lifecycle |
 | `file.append` / `truncate` / `rotate` / `closed` / `coalesced` | Live-file tailing |
 | `heartbeat` | Liveness |
+
+`fs.change` is the authoritative changed-path invalidation for file previews, directory
+projections, SDK rollup watches, and the Quick File catalog delta beside it.
+The event bus does not send a second per-path projection event; duplicating the same
+invalidation would consume bounded queue capacity without adding information.
 
 A subscriber whose queue fills cannot be sent a correct ordered stream any more, so the
 event bus drains its backlog, replaces it with `fs.resync_required`, and detaches that

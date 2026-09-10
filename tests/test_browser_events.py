@@ -36,8 +36,6 @@ from metabrowser.events import (
     FsUpsert,
     Heartbeat,
     ParserReset,
-    ProjectionInvalidate,
-    ProjectionUpdate,
     RingBuffer,
     WriteToken,
     encode_heartbeat_comment,
@@ -225,20 +223,6 @@ def test_round_trip_capability_update() -> None:
     assert out["type"] == "capability.update"
     assert out["backends"][0]["mode"] == "polling"
     assert out["index"]["indexed_files"] == 4231
-
-
-def test_round_trip_projection_events() -> None:
-    inv = _round_trip(ProjectionInvalidate(path="a/b.jsonl", projection="charts"))
-    assert inv == {"path": "a/b.jsonl", "projection": "charts", "type": "projection.invalidate"}
-    upd = _round_trip(
-        ProjectionUpdate(
-            path="a/b.jsonl",
-            projection="charts",
-            payload={"series": [1, 2, 3]},
-        )
-    )
-    assert upd["type"] == "projection.update"
-    assert upd["payload"] == {"series": [1, 2, 3]}
 
 
 def test_round_trip_tail_events() -> None:

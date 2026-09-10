@@ -435,11 +435,11 @@ accompany the first diff plugin:
    Posting a comparison intent, streaming NDJSON file patches, and subscribing to
    server-sent events all need supported SDK calls whose cleanup integrates with view
    disposal.
-3. **Event subscription.** The inventory event bus and the
-   `ProjectionInvalidate`/`ProjectionUpdate` event types are exactly the invalidation
-   mechanism this design assumes, but they are not exposed through the plugin API.
-   Watcher-driven comparison invalidation requires a supported subscription and emission
-   surface for installed plugins.
+3. **Event subscription.** The inventory event bus carries the core filesystem change
+   batches this design could use, but it is not exposed through the plugin API.
+   Watcher-driven comparison invalidation requires a supported subscription plus a
+   plugin-scoped emission surface for comparison results; it cannot depend on private
+   core event types.
 4. **A mount point for repository-scoped UI.** Views bind to file kinds, file kinds come
    from classifying files, and the file endpoint rejects directories.
    A review surface is not a view of any one file.

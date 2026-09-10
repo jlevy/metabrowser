@@ -100,6 +100,12 @@ Inventory engine:
   terminal capability event, the catalog performs one coalesced authoritative refetch
   instead of remaining incomplete until the reconnect backoff expires.
 
+- Filesystem changes no longer emit an unconsumed `projection.invalidate` event for
+  every changed path before emitting the authoritative `fs.change` batch.
+  The duplicate per-path stream flooded bounded browser queues during discovery; the
+  existing filesystem batch already invalidates file previews, directory projections,
+  and SDK rollup watches from the same changed paths.
+
 - The browser shell builds its two versioned KPress font URLs from locked distribution
   metadata without importing the document-rendering runtime.
   This keeps the font URLs identical while removing the renderer import from the cold

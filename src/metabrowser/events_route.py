@@ -59,7 +59,6 @@ from metabrowser.events import (
     FsResyncRequired,
     FsSnapshot,
     FsUpsert,
-    ProjectionInvalidate,
     RingBuffer,
     StreamEvent,
     encode_heartbeat_comment,
@@ -400,13 +399,6 @@ class _EventBus:
             if QueryKind.DIAGNOSTICS in change.dirty_queries:
                 await self._project_capability_change(change)
             return
-
-        if change.facts_changed:
-            for path in change.dirty_paths:
-                self._forward_event(
-                    ProjectionInvalidate(path=path, projection="*"),
-                    change=change,
-                )
 
         queries = tuple(
             EntryQuery(query_id=f"change-{index}", path=path)

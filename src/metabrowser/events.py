@@ -134,27 +134,6 @@ class CapabilityUpdate:
 
 
 @dataclass(slots=True, frozen=True)
-class ProjectionInvalidate:
-    """A derived view (chart, jsonl summary) is now stale for
-    *path* and must be refreshed before reuse."""
-
-    path: str
-    projection: str
-    type: Literal["projection.invalidate"] = "projection.invalidate"
-
-
-@dataclass(slots=True, frozen=True)
-class ProjectionUpdate:
-    """A derived view's new payload is ready. Carries enough for the
-    client to swap the rendered view without a refetch."""
-
-    path: str
-    projection: str
-    payload: dict[str, Any]
-    type: Literal["projection.update"] = "projection.update"
-
-
-@dataclass(slots=True, frozen=True)
 class Heartbeat:
     """Empty frame on a 15 s cadence. Keeps proxies / load
     balancers from culling idle SSE connections; client ignores."""
@@ -223,8 +202,6 @@ StreamEvent = (
     | CatalogChange
     | FsResyncRequired
     | CapabilityUpdate
-    | ProjectionInvalidate
-    | ProjectionUpdate
     | Heartbeat
     | FileAppend
     | FileTruncate
