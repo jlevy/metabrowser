@@ -11,7 +11,13 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock
 
-from kpress import ASSET_MANIFEST_SCHEMA_VERSION, __version__
+from kpress import (
+    ASSET_MANIFEST_SCHEMA_VERSION,
+    __version__,
+)
+from kpress import (
+    runtime as kpress_runtime,
+)
 from starlette.testclient import TestClient
 
 from metabrowser import kpress_adapter, server
@@ -49,6 +55,19 @@ def _empty_asset_manifest() -> dict[str, object]:
         "assets": [],
         "import_map": {},
     }
+
+
+def test_shell_kpress_asset_url_does_not_load_the_renderer_runtime(monkeypatch) -> None:
+    sentinel = object()
+    monkeypatch.setattr(kpress_adapter, "_kpress_runtime", sentinel)
+    kpress_adapter._kpress_static_prefix.cache_clear()
+
+    rel_path = "fonts/source sans.woff2"
+    actual = kpress_adapter.kpress_static_url(rel_path)
+
+    assert actual == kpress_runtime.static_asset_url(rel_path)
+    assert actual == f"/kpress-static/v{__version__}/fonts/source%20sans.woff2"
+    assert kpress_adapter._kpress_runtime is sentinel
 
 
 def test_kpress_render_invalid_request_maps_to_400(tmp_path: Path, monkeypatch) -> None:

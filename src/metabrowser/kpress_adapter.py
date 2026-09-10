@@ -7,10 +7,11 @@ this module.
 The reason is measured. Importing `metabrowser.server` costs about 345 ms, of
 which KPress and its rendering stack are the single largest contributor, and
 every `metab` invocation pays it -- `--help`, `--walk`, and every `--api` route
-included. Only four surfaces actually need KPress: the browser shell's HTML
-(for its font URLs), `/api/kpress/render`, `/api/kpress/export`, and
-`/kpress-static/*`. No data route touches it, so the whole CLI was paying for a
-renderer it does not use.
+included. Only three surfaces need the runtime: `/api/kpress/render`,
+`/api/kpress/export`, and `/kpress-static/*`. The browser shell needs two KPress
+font URLs, but their public versioned shape can be built from distribution
+metadata without importing the renderer. No data route touches KPress, so the
+whole CLI must not pay for a renderer it does not use.
 
 The exception is narrow on purpose. Deferring an import trades a startup cost
 for a first-call cost and hides an unavailable dependency until run time, so it
@@ -21,8 +22,11 @@ three things; see `docs/development.md`.
 
 from __future__ import annotations
 
+from functools import cache
+from importlib.metadata import version as distribution_version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
+from urllib.parse import quote
 
 if TYPE_CHECKING:
     # Annotations only. `from __future__ import annotations` makes these
@@ -83,10 +87,21 @@ def kpress_static_url(rel_path: str) -> str:
 
     Matches the URL embedded documents request, so chrome that preloads or links
     the same asset shares one download and cache entry instead of fetching a
-    second copy.
+    second copy. KPress defines this public path as
+    ``/kpress-static/v<distribution-version>/<quoted-path>``. Building that
+    small contract here keeps the shell from importing the renderer; the host
+    integration test compares it with KPress' own helper so an upstream change
+    cannot drift silently.
     """
 
-    return _runtime().static_asset_url(rel_path)
+    return f"{_kpress_static_prefix()}{quote(rel_path.lstrip('/'))}"
+
+
+@cache
+def _kpress_static_prefix() -> str:
+    """Return the stable KPress asset namespace without importing its runtime."""
+
+    return f"/kpress-static/v{distribution_version('kpress')}/"
 
 
 def clear_render_cache() -> None:

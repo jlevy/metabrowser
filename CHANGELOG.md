@@ -95,6 +95,11 @@ Inventory engine:
   The startup walker also uses a timer-backed cooperative yield so provider reads can
   acquire the GIL promptly while discovery is active.
 
+- The browser shell builds its two versioned KPress font URLs from locked distribution
+  metadata without importing the document-rendering runtime.
+  This keeps the font URLs identical while removing the renderer import from the cold
+  HTML response and preserving the lazy boundary for CLI and API-only commands.
+
 CLI and validation:
 
 - Real-tree performance runs retain an explicitly supplied `--files` count as
