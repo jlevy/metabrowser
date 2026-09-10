@@ -202,7 +202,11 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
 
     progress_start = js.index("async function refreshIndexProgress(force)")
     progress_block = js[progress_start : js.index("function startIndexProgressPolling()")]
-    assert "quickFileCatalogFeed?.onIndexComplete(meta?.truncated === true)" in progress_block
+    completion_guard = progress_block.index("if (meta?.complete === true)")
+    completion_call = progress_block.index(
+        "quickFileCatalogFeed?.onIndexComplete(meta.truncated === true)"
+    )
+    assert completion_guard < completion_call
 
     resync_start = js.index('addEventListener("fs.resync_required"')
     resync_block = js[resync_start : resync_start + 700]

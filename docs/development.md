@@ -408,10 +408,14 @@ so the next one has to argue for itself rather than cite precedent.
 **Why that one.** A CLI’s startup cost is a tax on every invocation, paid by humans
 waiting and by agents making many calls.
 Importing `metabrowser.server` cost about 345 ms, of which KPress and its rendering
-stack were the largest single contributor — and only four surfaces need it: the browser
-shell’s HTML, `/api/kpress/render`, `/api/kpress/export`, and `/kpress-static/*`. No
-data route touches KPress, so every `--api` call was paying for a renderer it never
-used. Deferring it took `metab --api` from 451 ms to 364 ms, about 19%.
+stack were the largest single contributor — and only three request surfaces need the
+runtime: `/api/kpress/render`, `/api/kpress/export`, and `/kpress-static/*`. The browser
+shell needs KPress font URLs, but derives them from package metadata without loading the
+renderer. No data route touches KPress, so every `--api` call was paying for a renderer
+it never used. Deferring it took `metab --api` from 451 ms to 364 ms, about 19%; the
+later
+[cold-shell experiment](../explorations/performance-loop/experiments/exp-028-v091-candidate-rejected-on-cold-shell-import.md)
+measures the shell-specific boundary.
 
 **What a deferral costs.** It trades a startup cost for a first-call cost, and it turns
 a missing dependency from an import error into a run-time one.

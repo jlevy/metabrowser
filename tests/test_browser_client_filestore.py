@@ -798,7 +798,8 @@ def test_scan_completion_is_announced_on_the_inventory_change_channel() -> None:
 
     js = _read_app_js()
     fn_start = js.index("async function refreshIndexProgress(force)")
-    fn_block = js[fn_start : fn_start + 1600]
+    fn_end = js.index("function startIndexProgressPolling()", fn_start)
+    fn_block = js[fn_start:fn_end]
     # Read before rendering: renderIndexProgress overwrites the record the
     # transition is detected against.
     assert fn_block.index('indexProgressLastRendered?.status === "scanning"') < fn_block.index(
@@ -807,7 +808,8 @@ def test_scan_completion_is_announced_on_the_inventory_change_channel() -> None:
     assert "announceScanCompletion()" in fn_block
 
     announce_start = js.index("function announceScanCompletion()")
-    announce_block = js[announce_start : announce_start + 400]
+    announce_end = js.index("async function refreshTreeIfPendingTallies()", announce_start)
+    announce_block = js[announce_start:announce_end]
     assert 'new CustomEvent("metabrowser:inventory-change"' in announce_block
     # Null paths mean "anything may have changed", which is what makes every
     # watch re-fetch rather than only those matching some path list.

@@ -79,13 +79,17 @@ Inventory engine:
   snapshot instead of mixing pre-change aggregates with post-change children.
   This prevents intermittent `/api/rollup` failures when filesystem discovery and
   summary reads overlap under free-threaded Python.
-  CI now includes CPython 3.14’s free-threaded build so the shared-state discipline
-  remains enforced.
+  The provider read boundary owns the retry, so one collision runs one optimistic
+  attempt and one snapshot fallback and reports the discarded attempt in its work and
+  timing metrics. CI now includes CPython 3.14’s free-threaded build so the shared-state
+  discipline remains enforced.
 
 - The filesystem observer is installed before initial discovery begins and stops
   cooperatively before its worker is joined.
   This closes the startup observation gap and prevents a `watchfiles` PyO3 borrow panic
   during free-threaded CLI teardown.
+  Repeated shutdown requests continue joining the same Rust-backed consumer until it has
+  finalized, including when the discovery budget and provider close race.
   HTTP readiness probes also close each response before its connection, eliminating
   unraisable response-finalizer errors on the same interpreter.
 
@@ -99,6 +103,8 @@ Inventory engine:
   If bounded stream backpressure replaces a slow browser connection and drops the
   terminal capability event, the catalog performs one coalesced authoritative refetch
   instead of remaining incomplete until the reconnect backoff expires.
+  Failed and idle providers remain incomplete; only a completed or capped walk can
+  trigger that repair.
 
 - Filesystem changes no longer emit an unconsumed `projection.invalidate` event for
   every changed path before emitting the authoritative `fs.change` batch.

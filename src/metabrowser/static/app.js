@@ -3456,10 +3456,15 @@ async function refreshIndexProgress(force) {
       renderIndexProgress(meta);
       // Queue overflow deliberately replaces the SSE connection. Its terminal
       // capability event can therefore be the event that was dropped. The
-      // lightweight progress poll is an independent completion source: let it
-      // finish or repair the Quick File catalog before the reconnect backoff
-      // expires. CatalogFeed coalesces this with the normal SSE notification.
-      quickFileCatalogFeed?.onIndexComplete(meta?.truncated === true);
+      // lightweight progress poll is an independent completion source: let a
+      // successfully completed (including capped) walk finish or repair the
+      // Quick File catalog before the reconnect backoff expires. A failed or
+      // idle provider is also inactive, but must not promote partial membership
+      // to complete coverage. CatalogFeed coalesces this with the normal SSE
+      // notification.
+      if (meta?.complete === true) {
+        quickFileCatalogFeed?.onIndexComplete(meta.truncated === true);
+      }
       if (wasScanning) {
         announceScanCompletion();
       }

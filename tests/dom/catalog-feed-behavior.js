@@ -492,6 +492,66 @@ async function main() {
     check("disposed feed applies nothing", catalog.calls.length === 1);
   }
 
+  // The lightweight progress poll is a second source of terminal catalog
+  // repair when the SSE capability event is dropped. Inactive is broader than
+  // complete: provider failure is inactive but must not promote a partial
+  // catalog. Execute the actual app.js function so this wiring cannot regress
+  // behind a source-string assertion.
+  {
+    const appSource = fs.readFileSync(
+      path.join(repoRoot, "src/metabrowser/static/app.js"),
+      "utf-8",
+    );
+    const refreshSource = appSource.match(
+      /^async function refreshIndexProgress\(force\) \{[\s\S]*?^\}/m,
+    )?.[0];
+    check("progress poll function is extractable", typeof refreshSource === "string");
+
+    async function completionCalls(meta) {
+      const calls = [];
+      const progressSandbox = {
+        console,
+        indexProgressInFlight: false,
+        indexProgressLastRendered: { status: "scanning" },
+        fetch: async () => ({ ok: true, status: 200, json: async () => meta }),
+        shouldRenderIndexProgress: () => false,
+        renderIndexProgress() {},
+        indexProgressIsActive: () => false,
+        ensureTreeTruncationNote() {},
+        quickFileCatalogFeed: {
+          onIndexComplete(truncated) {
+            calls.push(truncated);
+          },
+        },
+        announceScanCompletion() {},
+        refreshTreeIfPendingTallies: async () => {},
+        stopIndexProgressPolling() {},
+      };
+      vm.createContext(progressSandbox);
+      vm.runInContext(refreshSource, progressSandbox, { filename: "app.js:refreshIndexProgress" });
+      await progressSandbox.refreshIndexProgress(false);
+      return calls;
+    }
+
+    const failedCalls = await completionCalls({
+      status: "failed",
+      complete: false,
+      truncated: false,
+    });
+    check("failed progress does not complete the catalog", failedCalls.length === 0);
+
+    const cappedCalls = await completionCalls({
+      status: "truncated",
+      complete: true,
+      truncated: true,
+      max_files: 100,
+    });
+    check(
+      "capped progress repairs without claiming complete coverage",
+      cappedCalls.length === 1 && cappedCalls[0] === true,
+    );
+  }
+
   // A walk that stopped at the max-files cap reports complete AND truncated.
   // Files past the cap were never indexed, so the catalog is not a complete
   // view of the root and must not claim to be (senior review R10).

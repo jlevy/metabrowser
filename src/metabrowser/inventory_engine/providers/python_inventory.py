@@ -1657,7 +1657,9 @@ class _PythonInventoryStore:
         reducer needs. A stable generation proves the optimistic reduction and
         its metadata came from one version. If discovery races the reduction,
         a pinned read reports that its version moved; an unpinned read falls
-        back to the immutable-image path. The provider therefore avoids an
+        back to the immutable-image path. This boundary owns that retry so the
+        payload and version are captured together and a collision runs at most
+        one discarded optimistic bundle. The provider therefore avoids an
         O(index) copy for settled reads without holding the writer lock while
         it reduces a large tree.
         """
@@ -1719,8 +1721,7 @@ class _PythonInventoryStore:
                 )
                 rows_visited += query.max_work
                 continue
-            payload = self.rollup(
-                query.path,
+            options = RollupOptions(
                 depth=query.max_depth,
                 top=query.top,
                 ext_top=query.extension_top,
@@ -1729,17 +1730,36 @@ class _PythonInventoryStore:
                 ext_rank=query.rank,
                 max_nodes=query.max_nodes,
             )
-            projections.append(RollupProjection(query_id=query.query_id, payload=payload))
+            # Count the attempt before entering the reducer: a moved view is
+            # discarded output, but still real provider work that the fallback
+            # result and cumulative diagnostics must report.
             rows_visited += total_entries
+            try:
+                payload = self._build_rollup_pass(
+                    query.path,
+                    options,
+                    self._rollup_view(query.path),
+                )
+            except _RollupViewMoved:
+                return self._read_rollup_collision_fallback(
+                    request,
+                    rows_visited=rows_visited,
+                    lock_wait_ns=lock_wait_ns,
+                    cpu_started=cpu_started,
+                    wall_started=wall_started,
+                )
+            projections.append(RollupProjection(query_id=query.query_id, payload=payload))
 
         with self._rollup_cache_lock:
             stable = self._rollup_generation == sequence
         if not stable:
-            if request.at_version is not None:
-                raise VersionUnavailableError(
-                    "the requested Python inventory version moved during the rollup read"
-                )
-            return self._read_snapshot_sync(request)
+            return self._read_rollup_collision_fallback(
+                request,
+                rows_visited=rows_visited,
+                lock_wait_ns=lock_wait_ns,
+                cpu_started=cpu_started,
+                wall_started=wall_started,
+            )
 
         work = WorkCounters(
             rows_visited=rows_visited,
@@ -1761,7 +1781,59 @@ class _PythonInventoryStore:
             metrics=metrics,
         )
 
-    def _record_read_work(self, work: WorkCounters, metrics: BoundaryMetrics) -> None:
+    def _read_rollup_collision_fallback(
+        self,
+        request: ReadRequest,
+        *,
+        rows_visited: int,
+        lock_wait_ns: int,
+        cpu_started: int,
+        wall_started: int,
+    ) -> ReadResult:
+        """Retry one moved optimistic rollup from a coherent immutable image."""
+
+        if request.at_version is not None:
+            raise VersionUnavailableError(
+                "the requested Python inventory version moved during the rollup read"
+            )
+        attempted_work = WorkCounters(
+            rows_visited=rows_visited,
+            maintained_index_work=rows_visited,
+        )
+        attempted_cpu_ns = time.thread_time_ns() - cpu_started
+        attempted_metrics = BoundaryMetrics(
+            lock_wait_ns=lock_wait_ns,
+            cpu_time_ns=attempted_cpu_ns,
+            wall_time_ns=time.monotonic_ns() - wall_started,
+        )
+        fallback = self._read_snapshot_sync(request)
+        # _read_snapshot_sync records the one logical request. Add the discarded
+        # attempt to cumulative costs without counting a second request, then
+        # expose the same combined costs on the returned boundary.
+        self._record_read_work(attempted_work, attempted_metrics, count_request=False)
+        fallback_cpu_ns = fallback.metrics.cpu_time_ns
+        combined_metrics = BoundaryMetrics(
+            bytes_copied=attempted_metrics.bytes_copied + fallback.metrics.bytes_copied,
+            lock_wait_ns=attempted_metrics.lock_wait_ns + fallback.metrics.lock_wait_ns,
+            cpu_time_ns=(None if fallback_cpu_ns is None else attempted_cpu_ns + fallback_cpu_ns),
+            wall_time_ns=attempted_metrics.wall_time_ns + fallback.metrics.wall_time_ns,
+        )
+        combined_work = replace(
+            fallback.work,
+            rows_visited=attempted_work.rows_visited + fallback.work.rows_visited,
+            maintained_index_work=(
+                attempted_work.maintained_index_work + fallback.work.maintained_index_work
+            ),
+        )
+        return replace(fallback, work=combined_work, metrics=combined_metrics)
+
+    def _record_read_work(
+        self,
+        work: WorkCounters,
+        metrics: BoundaryMetrics,
+        *,
+        count_request: bool = True,
+    ) -> None:
         with self._work_lock:
             current = self._work_totals
             current_metrics = self._metrics_totals
@@ -1791,7 +1863,7 @@ class _PythonInventoryStore:
                 cpu_time_ns=cpu_time_ns,
                 wall_time_ns=current_metrics.wall_time_ns + metrics.wall_time_ns,
             )
-            self._read_requests += 1
+            self._read_requests += int(count_request)
 
     def _project_query(
         self,

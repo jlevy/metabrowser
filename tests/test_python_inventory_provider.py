@@ -512,6 +512,74 @@ def test_close_is_idempotent_and_refuses_later_reads(tmp_path: Path) -> None:
     asyncio.run(_close_is_idempotent_and_refuses_later_reads(tmp_path))
 
 
+def test_resource_budget_stop_and_close_both_join_the_watcher(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Overlapping shutdown owners cannot abandon the backend consumer."""
+
+    import metabrowser.watch_backends as watch_backends
+
+    async def run() -> None:
+        saw_stop = asyncio.Event()
+        permit_exit = asyncio.Event()
+        finalized = asyncio.Event()
+
+        async def controlled_awatch(
+            *_args: object,
+            stop_event: asyncio.Event | None = None,
+            **_kwargs: object,
+        ) -> AsyncIterator[set[object]]:
+            assert stop_event is not None
+            try:
+                await stop_event.wait()
+                saw_stop.set()
+                await permit_exit.wait()
+                yield set()
+            finally:
+                finalized.set()
+
+        monkeypatch.setattr(watch_backends, "awatch", controlled_awatch)
+        store = PythonInventoryStore(config=InventoryConfig(watch_mode="native"))
+        store.start_watcher(tmp_path)
+        await asyncio.wait_for(store.wait_until_watcher_started(), timeout=1.0)
+        watcher = store._watcher_task
+        assert watcher is not None
+
+        budget_stop = asyncio.create_task(store._stop_watcher_for_resource_budget())
+        close_task: asyncio.Task[None] | None = None
+        try:
+            await asyncio.wait_for(saw_stop.wait(), timeout=1.0)
+            close_task = asyncio.create_task(store.close())
+            for _attempt in range(10):
+                await asyncio.sleep(0)
+                if watcher.cancelling() >= 2:
+                    break
+            assert watcher.cancelling() >= 2
+            # Let the second cancellation reach run_watcher's cooperative join.
+            await asyncio.sleep(0)
+            assert not watcher.done()
+            assert not close_task.done()
+            assert not finalized.is_set()
+
+            permit_exit.set()
+            await asyncio.wait_for(asyncio.gather(budget_stop, close_task), timeout=1.0)
+            assert finalized.is_set()
+            assert not any(
+                task.get_name() == "metabrowser-watchfiles-consumer"
+                for task in asyncio.all_tasks()
+                if task is not asyncio.current_task()
+            )
+        finally:
+            permit_exit.set()
+            pending = [budget_stop]
+            if close_task is not None:
+                pending.append(close_task)
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    asyncio.run(run())
+
+
 def test_configured_hidden_allowlist_defines_provider_scope(tmp_path: Path) -> None:
     asyncio.run(_configured_hidden_allowlist_defines_provider_scope(tmp_path))
 
@@ -526,6 +594,55 @@ def test_filtered_directory_newest_time_uses_regular_files(tmp_path: Path) -> No
 
 def test_targeted_read_reports_bounded_work(tmp_path: Path) -> None:
     asyncio.run(_targeted_read_reports_bounded_work(tmp_path))
+
+
+def test_rollup_collision_retries_once_and_reports_discarded_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+
+    async def run() -> tuple[int, int, int, int]:
+        handle = await _open_settled(tmp_path, InventoryConfig(watch_mode="off"))
+        build_started = Event()
+        release_build = Event()
+        build_calls = 0
+        real_build = python_provider.build_rollup
+
+        def gated_build(*args: Any, **kwargs: Any) -> Any:
+            nonlocal build_calls
+            build_calls += 1
+            if build_calls == 1:
+                build_started.set()
+                assert release_build.wait(timeout=5.0)
+            return real_build(*args, **kwargs)
+
+        monkeypatch.setattr(python_provider, "build_rollup", gated_build)
+        before_entries = len(handle._entries)
+        read_task = asyncio.create_task(
+            handle.read(ReadRequest(queries=(RollupQuery(query_id="rollup"),)))
+        )
+        try:
+            assert await asyncio.to_thread(build_started.wait, 1.0)
+            (tmp_path / "b.txt").write_text("b", encoding="utf-8")
+            await handle.refresh(RefreshRequest(observations=(RefreshObservation(path="b.txt"),)))
+            after_entries = len(handle._entries)
+            release_build.set()
+            result = await asyncio.wait_for(read_task, timeout=5.0)
+            return (
+                build_calls,
+                result.work.rows_visited,
+                result.work.maintained_index_work,
+                before_entries + after_entries,
+            )
+        finally:
+            release_build.set()
+            await asyncio.gather(read_task, return_exceptions=True)
+            await handle.close()
+
+    calls, rows_visited, maintained_work, expected_work = asyncio.run(run())
+    assert calls == 2
+    assert rows_visited == maintained_work == expected_work
 
 
 def test_tree_continuations_reuse_the_first_projection(tmp_path: Path) -> None:
