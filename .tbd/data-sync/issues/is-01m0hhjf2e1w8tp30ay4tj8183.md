@@ -5,7 +5,7 @@ title: "Nav panel filtering: correct rollups, no empty folders, stable expansion
 kind: epic
 status: open
 priority: 1
-version: 15
+version: 16
 labels: []
 dependencies: []
 child_order_hints:
@@ -21,8 +21,9 @@ child_order_hints:
   - is-01m0hma35277yxv02a4ac0dq7d
   - is-01m268n67pgzr03gg2taf6fb3f
   - is-01m26d2kxsnpj6wjp8zeq09s9t
+  - is-01m26qpgdzgr9mptjprzzgqbfk
 created_at: 2026-08-21T06:54:11.533Z
-updated_at: 2026-09-10T19:35:22.807Z
+updated_at: 2026-09-10T22:41:00.337Z
 extensions:
   linear:
     id: e89638bb-383b-4fef-882b-93118c6efc17
