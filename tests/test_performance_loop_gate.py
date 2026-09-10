@@ -87,6 +87,17 @@ def _run(label: str, **overrides: object) -> dict[str, Any]:
     return result
 
 
+def test_report_reader_rejects_duplicate_experiment_ids(tmp_path: Path) -> None:
+    module = _runner()
+    module.EXPERIMENTS = tmp_path
+    frontmatter = "---\nexperiment:\n  id: exp-001\n---\n"
+    (tmp_path / "exp-001-first.md").write_text(frontmatter, encoding="utf-8")
+    (tmp_path / "exp-001-second.md").write_text(frontmatter, encoding="utf-8")
+
+    with pytest.raises(SystemExit, match=r"duplicate experiment id exp-001.*first.*second"):
+        module._experiment_records()
+
+
 def _compare(module: Any, runs: list[dict[str, Any]]) -> int:
     module._load_runs = lambda: runs
     return int(

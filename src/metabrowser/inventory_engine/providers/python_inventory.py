@@ -151,8 +151,11 @@ _NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
 # The exact installed-build browser comparison in exp-014 measured a 1 ms
 # `/api/tree` handler queued for 33-37 ms while the startup walker applied a
 # wide directory without suspending. Yield four times inside each 256-entry
-# delivery batch so request tasks run independently of directory width.
+# delivery batch so request tasks run independently of directory width. The
+# positive timer delay matters: `sleep(0)` can immediately resume this task and
+# reacquire the GIL before a provider-read worker gets a turn.
 _WALKER_COOPERATIVE_YIELD_BATCH = 64
+_WALKER_COOPERATIVE_YIELD_S = 0.000_001
 _NAVIGATION_TALLY_REFRESH_FLOOR_S = 0.5
 _PAGE_MEMO_CAPACITY = 64
 _CONTRACT_ID = "inventory-provider-v1"
@@ -3314,7 +3317,7 @@ class _PythonInventoryStore:
                 entries_since_yield += 1
                 if entries_since_yield >= _WALKER_COOPERATIVE_YIELD_BATCH:
                     entries_since_yield = 0
-                    await asyncio.sleep(0)
+                    await asyncio.sleep(_WALKER_COOPERATIVE_YIELD_S)
             if batch:
                 self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
                 batch.clear()

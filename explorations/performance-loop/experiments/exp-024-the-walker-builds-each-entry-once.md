@@ -6,7 +6,7 @@ softschema:
   envelope: experiment
   status: enforced
 experiment:
-  id: exp-022
+  id: exp-024
   title: The walker builds each entry once instead of three times
   date: "2026-09-01"
   hypotheses: [H65, H66, H67]
@@ -71,7 +71,7 @@ experiment:
       allocation removed from the path that never needs it.
     commit: d765421a
 ---
-# exp-022: The walker builds each entry once instead of three times
+# exp-024: The walker builds each entry once instead of three times
 
 ## Why
 
@@ -124,7 +124,7 @@ branches unreachable, which basedpyright caught.
 Measured in process, so the number excludes interpreter startup and HTTP. That is
 deliberate — it is the instrument that can see a per-entry change — but it means these
 figures are not what a user waits for.
-The build-to-build comparison against `main` is exp-023.
+The build-to-build comparison against `main` is exp-025.
 
 One corpus, one shape, one host.
 Synthetic shape 2 is shallow, roughly four components deep, which is exactly the regime

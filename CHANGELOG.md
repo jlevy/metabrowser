@@ -89,6 +89,12 @@ Inventory engine:
   HTTP readiness probes also close each response before its connection, eliminating
   unraisable response-finalizer errors on the same interpreter.
 
+- Discovery-completion refreshes reconcile the standing keyed tree instead of replacing
+  the complete Files region, preserving one whole-tree paint while partial inventory
+  converges to its final rows.
+  The startup walker also uses a timer-backed cooperative yield so provider reads can
+  acquire the GIL promptly while discovery is active.
+
 CLI and validation:
 
 - `metab` gains two data modes that reach the server without a browser or a listening

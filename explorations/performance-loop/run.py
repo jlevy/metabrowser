@@ -1095,6 +1095,7 @@ def _experiment_records() -> list[dict[str, Any]]:
     malformed one should fail.
     """
     records: list[dict[str, Any]] = []
+    paths_by_id: dict[str, str] = {}
     for path in sorted(EXPERIMENTS.glob("exp-*.md")):
         text = path.read_text(encoding="utf-8")
         if not text.startswith("---"):
@@ -1113,6 +1114,12 @@ def _experiment_records() -> list[dict[str, Any]]:
                 match = re.search(rf"^    {key}: \"?([^\"\n]+)\"?$", verdict[1], re.MULTILINE)
                 if match:
                     record[key] = match.group(1).strip()
+        experiment_id = record.get("id")
+        if isinstance(experiment_id, str):
+            earlier = paths_by_id.get(experiment_id)
+            if earlier is not None:
+                raise SystemExit(f"duplicate experiment id {experiment_id}: {earlier}, {path.name}")
+            paths_by_id[experiment_id] = path.name
         records.append(record)
     return records
 

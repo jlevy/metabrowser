@@ -130,7 +130,7 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
     js = _read_app_js()
 
     load_tree = js[
-        js.index("async function loadTree()") : js.index("function treeTruncationNoteHtml")
+        js.index("async function loadTree(") : js.index("function treeTruncationNoteHtml")
     ]
     assert "knownFileCatalog?.observeInitialTree(data.tree)" in load_tree
     assert load_tree.index("observeInitialTree") < load_tree.index('"renderTreeNodes:root"')

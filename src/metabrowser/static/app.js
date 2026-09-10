@@ -979,7 +979,16 @@ function renderInitialTreeRows() {
   return painted;
 }
 
-async function loadTree() {
+/**
+ * Load the authoritative root tree.
+ *
+ * A discovery-completion refresh already has a useful keyed tree mounted. It
+ * reconciles that tree in place instead of rebuilding the whole Files region.
+ *
+ * @param {{ reconcileMountedRoot?: boolean }} [options]
+ */
+async function loadTree(options = {}) {
+  const reconcileMountedRoot = options.reconcileMountedRoot === true;
   _rootTreeRequestsInFlight += 1;
   try {
     return await _perf.measureAsync("loadTree", async () => {
@@ -1117,8 +1126,8 @@ async function loadTree() {
       // flight. Keep the authoritative cache current without painting over the
       // newer source selection.
       if (!filesPanelUsesRecentSource()) {
-        if (_inlineTreeBaseline) {
-          reconcileInlineTree(data.tree, truncationHtml + summaryHtml);
+        if (_inlineTreeBaseline || reconcileMountedRoot) {
+          reconcileMountedTree(data.tree, truncationHtml + summaryHtml);
         } else {
           renderFilesFromTree();
         }
@@ -1349,11 +1358,13 @@ function reconcileTreeContainer(container, nextNodes, work) {
   }
 }
 
-// The shell's inline tree is already useful and visible. Reconcile the first
-// fetched answer into that keyed DOM instead of assigning panel.innerHTML a
-// second time. Mounted work is bounded by the root page and viewport expansion
-// plan; unmounted descendants remain data until the reader asks for them.
-function reconcileInlineTree(nextTree, chromeHtml) {
+// A mounted tree is already useful and visible. Reconcile a newer root answer
+// into that keyed DOM instead of assigning panel.innerHTML again. This covers
+// both the first fetch after the shell's inline paint and the terminal refresh
+// that replaces a partial discovery snapshot. Mounted work is bounded by the
+// root page and viewport expansion plan; unmounted descendants remain data
+// until the reader asks for them.
+function reconcileMountedTree(nextTree, chromeHtml) {
   const panel = document.getElementById("tab-files");
   const root = treeRootForPanel(panel);
   if (!panel || !root) {
@@ -3261,7 +3272,7 @@ async function refreshAfterPendingTallyDiagnostic(serverDiagnostic) {
   ) {
     return;
   }
-  await loadTree();
+  await loadTree({ reconcileMountedRoot: true });
   // The user can change or clear the filter while the tree request is in
   // flight. Re-read the current window after the await so recovery never
   // restores an obsolete recency source over the user's newer selection.
@@ -3391,7 +3402,7 @@ async function refreshTreeIfPendingTallies() {
   }
   indexProgressCompletionRefreshInFlight = true;
   try {
-    await loadTree();
+    await loadTree({ reconcileMountedRoot: true });
     // Match diagnostic recovery: the tree request updates the authoritative
     // cache but deliberately does not paint over an active recency source.
     // Re-read after the await so a filter change during the request wins.

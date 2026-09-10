@@ -428,7 +428,7 @@ def test_index_progress_completion_refreshes_pending_tallies() -> None:
     fn_start = js.index("function refreshTreeIfPendingTallies()")
     fn_block = js[fn_start : fn_start + 900]
     assert 'document.querySelector("#tab-files .tally-pending")' in fn_block
-    tree_refresh = fn_block.index("await loadTree();")
+    tree_refresh = fn_block.index("await loadTree({ reconcileMountedRoot: true });")
     current_recency = fn_block.index("filterState.get().recency")
     assert tree_refresh < current_recency
     assert "loadRecent(recency);" in fn_block
@@ -455,7 +455,7 @@ def test_pending_tally_recovery_rechecks_recency_after_tree_refresh() -> None:
     js = _read_app_js()
     start = js.index("async function refreshAfterPendingTallyDiagnostic")
     block = js[start : js.index("async function reportPendingTallyDiagnostic", start)]
-    tree_refresh = block.index("await loadTree();")
+    tree_refresh = block.index("await loadTree({ reconcileMountedRoot: true });")
     current_recency = block.index("filterState.get().recency")
     assert tree_refresh < current_recency
     assert "loadRecent(recency);" in block
@@ -470,7 +470,7 @@ def test_load_tree_renders_single_file_tally() -> None:
     state instead of a partial "0 files / 0 B" snapshot."""
 
     js = _read_app_js()
-    fn_start = js.index("async function loadTree()")
+    fn_start = js.index("async function loadTree(")
     fn_block = js[fn_start : js.index("function treeSummaryHtml", fn_start)]
     summary_start = js.index("function treeSummaryHtml")
     summary_block = js[
@@ -1033,7 +1033,7 @@ def test_load_tree_renders_truncation_banner_when_status_truncated() -> None:
     partial."""
 
     js = _read_app_js()
-    fn_start = js.index("async function loadTree()")
+    fn_start = js.index("async function loadTree(")
     # To the end of the function rather than a fixed window: a hand-tuned
     # character count silently stops covering the branch it was written for the
     # first time anything above it grows.

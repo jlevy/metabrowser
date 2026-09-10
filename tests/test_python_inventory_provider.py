@@ -738,6 +738,48 @@ def test_python_provider_installs_watcher_before_discovery(
     assert asyncio.run(run()) == (False, True)
 
 
+def test_python_walker_uses_a_timer_backed_yield_for_provider_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A zero-delay yield can reacquire the GIL before a waiting read worker."""
+
+    async def run() -> list[float]:
+        real_sleep = asyncio.sleep
+        delays: list[float] = []
+
+        async def fixed_walk(*_args: Any, **_kwargs: Any) -> AsyncIterator[FsEntry]:
+            for index in range(python_provider._WALKER_COOPERATIVE_YIELD_BATCH + 1):
+                name = f"{index}.txt"
+                yield FsEntry.for_observed_file(
+                    path=name,
+                    parent="",
+                    name=name,
+                    size=1,
+                    mtime_ns=1,
+                )
+
+        async def record_sleep(delay: float) -> None:
+            delays.append(delay)
+            await real_sleep(0)
+
+        monkeypatch.setattr(python_provider, "walk_tree", fixed_walk)
+        monkeypatch.setattr(python_provider, "_build_gitignore_check_for", lambda *_a, **_kw: None)
+        monkeypatch.setattr(python_provider.asyncio, "sleep", record_sleep)
+
+        handle = cast(
+            PythonInventoryStore,
+            await PythonInventoryBackend().open(tmp_path, InventoryConfig(watch_mode="off")),
+        )
+        try:
+            await handle.wait_until_done(timeout=1)
+        finally:
+            await handle.close()
+        return delays
+
+    assert asyncio.run(run()) == [python_provider._WALKER_COOPERATIVE_YIELD_S]
+
+
 def test_python_provider_exposes_progressive_partial_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

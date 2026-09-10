@@ -26,6 +26,7 @@ fast -- only that it moved.
 | `reserved_region_shift_px` | 67 | **23** | exp-009 |
 | `index_done_ms_project` | 29,989 | **11,928** | exp-011 |
 | `long_tasks_over_500ms` | 3 | **0** | exp-012 |
+| `require_canonical_inventory_path_calls_per_entry` | 0 | **2** (accepted on other grounds; see the round) | exp-026 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -58,6 +59,10 @@ against one that did.
 | exp-021 | [The v0.9 candidate preserves release correctness and responsiveness](experiments/exp-021-v090-candidate-preserves-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
 | exp-022 | [The v0.9.1 lazy-plugin-tab fix preserves release correctness and responsiveness](experiments/exp-022-v091-lazy-plugin-tabs-preserve-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
 | exp-023 | [The v0.9.1 final candidate preserves release correctness and responsiveness](experiments/exp-023-v091-final-candidate-preserves-release-responsiveness.md) | - | `every candidate backend and browser run passes correctness and hard responsiveness gates` | accepted |
+| exp-024 | [The walker builds each entry once instead of three times](experiments/exp-024-the-walker-builds-each-entry-once.md) | - | `walk_to_settled_ms` | accepted |
+| exp-025 | [The instrument was measuring the order it ran in](experiments/exp-025-the-instrument-was-measuring-the-order-it-ran-in.md) | - | `walk_to_settled_ms` | rejected |
+| exp-026 | [The refactor added a rule that forced a second build of every entry](experiments/exp-026-the-refactor-added-a-rule-that-forced-a-second-build.md) | - | `require_canonical_inventory_path_calls_per_entry` | accepted |
+| exp-027 | [The first v0.9.1-to-current candidate is rejected on a second root repaint](experiments/exp-027-v091-candidate-rejected-on-root-repaint.md) | - | `browser_tree_region_repaints` | rejected |
 
 ## Absolute numbers, per condition
 
@@ -265,6 +270,108 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | `viewport_h` | 900 (900-900) | 900 (900-900) | 900 (900-900) | 900 | 900 (900-900) | 900 (900-900) | 900 (900-900) | 900 (900-900) |
 
 Walk elapsed across these runs: 4,771-44,359 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
+
+### 60,000 files
+
+**What a reader gets** — browser probe
+
+| metric | exp-027-release-v091 (n=3) | exp-027-candidate-f097c667 (n=3) |
+| --- | ---: | ---: |
+| `ttfb_ms` | 12 (11-13) | 77 (76-132) |
+| `response_download_ms` | 1 (0-1) | 1 (0-1) |
+| `dom_interactive_ms` | 113 (111-189) | 156 (150-216) |
+| `first_row_ms` | 109 (107-185) | 151 (149-215) |
+| `first_row_render_ms` | 1 (1-1) | 1 (1-1) |
+| `load_tree_ms` | 5 (5-17) | 11 (6-11) |
+| `tree_fetch_srv_ms` | 2 (2-3) | 7 (4-8) |
+| `tree_fetch_wait_ms` | 3 (3-14) | 8 (4-9) |
+| `tree_fetch_total_ms` | 3 (3-15) | 9 (5-9) |
+| `tree_fetch_kb` | 3 (3-3) | 3 (3-3) |
+| `dcl_ms` | 119 (118-197) | 162 (158-224) |
+| `load_ms` | 120 (118-197) | 163 (158-225) |
+| `last_resource_ms` | 2,705 (2,692-3,386) | 3,781 (3,213-3,898) |
+| `subtree_requests` | 0 (0-13) | 26 (26-26) |
+| `tree_items` | 13 (13-13) | 23 (23-23) |
+| `lazy_stubs` | 13 (13-13) | 22 (22-22) |
+| `collapsed_diff_rows_materialized` | 0 (0-0) | 0 (0-0) |
+| `dom_nodes` | 1,262 (1,262-1,262) | 1,371 (1,371-1,371) |
+| `transferred_kb` | 604 (568-612) | 868 (858-1,044) |
+| `vendor_first_start_ms` | 127 (126-200) | 165 (162-227) |
+| `fcp_ms` | 100 (100-140) | 140 (140-200) |
+| `lcp_ms` | 100 (100-140) | 140 (140-200) |
+| `cls` | 0 (0-0) | 0 (0-0) |
+| `cls_shifts` | 0 (0-1) | 0 (0-0) |
+| `frame_missing_px` | 269 (269-269) | 509 (509-509) |
+| `filter_bar_shift_px` | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 0 (0-0) | 0 (0-0) |
+| `reserved_region_shift_px` | 0 (0-0) | 0 (0-0) |
+| `tree_region_repaints` | 1 (1-1) | 2 (2-2) |
+| `long_tasks` | 0 (0-0) | 0 (0-0) |
+| `long_task_ms_total` | 0 (0-0) | 0 (0-0) |
+| `total_blocking_time_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms_first_5s` | 0 (0-0) | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_attribution_missing` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_batches` | 125 (113-214) | 3 (3-4) |
+| `inventory_delivery_items` | 60,606 (60,514-60,620) | 60,394 (60,394-83,148) |
+| `inventory_delivery_batch_items_max` | 40,672 (26,164-42,780) | 60,000 (60,000-60,000) |
+| `inventory_delivery_max_ms` | 9 (6-10) | 22 (18-22) |
+| `inventory_delivery_work_ms_total` | 26 (26-34) | 26 (26-27) |
+| `inventory_delivery_work_pct` | 1 (1-1) | 1 (0.7-0.8) |
+| `animation_frames` | 0 (0-1) | 0 (0-0) |
+| `animation_frame_max_ms` | 0 (0-62) | 0 (0-0) |
+| `animation_frames_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) | 0 (0-0) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `forced_style_layout_ms_max` | 0 (0-0) | 0 (0-0) |
+| `interactions` | 0 (0-2) | 1 (0-1) |
+| `interaction_inputs` | 10 (10-12) | 14 (12-14) |
+| `interaction_input_first_ms` | 165 (158-292) | 196 (194-254) |
+| `interaction_input_last_ms` | 2,509 (2,501-3,190) | 3,580 (3,015-3,674) |
+| `interaction_input_span_ms` | 2,345 (2,342-2,898) | 3,384 (2,820-3,419) |
+| `interaction_input_coverage_pct` | 90 (87.9-89.9) | 90 (90.3-91.7) |
+| `interaction_samples_retained` | 0 (0-2) | 1 (0-1) |
+| `interaction_p50_ms` | 32 | 20 (16-24) |
+| `interaction_p95_ms` | 32 | 20 (16-24) |
+| `interaction_max_ms` | 0 (0-32) | 16 (0-24) |
+| `render_spans` | 2 (2-2) | 3 (3-3) |
+| `render_ms_total` | 3 (2-3) | 4 (3-4) |
+| `tree_reprobe_ms` | 6 (3-6) | 5 (5-31) |
+| `tree_reprobe_srv_ms` | 3 (1-3) | 2 (2-16) |
+| `requests` | 72 (72-87) | 103 (101-105) |
+| `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
+| `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) | 0 (0-0) |
+| `rendered_preview_errors` | 0 (0-0) | 0 (0-0) |
+| `page_exceptions` | 0 (0-0) | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) | 0 (0-0) |
+| `script_transfer_kb` | 329 (329-329) | 331 (331-331) |
+| `startup_script_requests` | 22 (22-22) | 22 (22-22) |
+| `startup_script_transfer_kb` | 161 (161-161) | 163 (163-163) |
+| `startup_script_last_response_ms` | 104 (102-180) | 147 (145-211) |
+| `startup_script_duration_max_ms` | 65 (62-127) | 67 (66-75) |
+| `style_transfer_kb` | 78 (78-78) | 78 (78-78) |
+| `image_transfer_kb` | 0 (0-0) | 0 (0-0) |
+| `api_transfer_kb` | 168 (132-176) | 430 (420-606) |
+| `largest_resource_kb` | 157 (101-165) | 232 (232-232) |
+| `resource_duration_max_ms` | 343 (341-382) | 364 (338-596) |
+| `js_heap_mb` | 12 (12.3-13.3) | 11 (10.6-11.1) |
+| `js_heap_after_gc_mb` | 9 (9.1-9.3) | 9 (9.2-9.2) |
+| `plugin_view_containers` | 2 (2-2) | 2 (2-2) |
+| `plugin_view_nonempty` | 1 (1-1) | 1 (1-1) |
+| `shell_tools_missing` | 0 (0-0) | 0 (0-0) |
+| `file_catalog_incomplete` | 0 (0-0) | 0 (0-0) |
+| `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
+| `viewport_h` | 900 (900-900) | 900 (900-900) |
+
+Walk elapsed across these runs: 2,149-3,044 ms.
 A run loaded during a walk and a run loaded after one are different regimes.
 
 ### 67,290 files
@@ -1005,217 +1112,223 @@ A run loaded during a walk and a run loaded after one are different regimes.
 
 ## Provenance
 
-| experiment | label | recorded | build | commit | corpus | shape | harness | walk |
-| --- | --- | --- | --- | --- | --- | ---: | ---: | --- |
-| exp-001 | prefetch-on-dcl | - | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-dcl | - | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-dcl | - | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-idle | - | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-idle | - | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-idle | - | - | - | 100000 | - | - | - |
-| exp-001 | prefetch-on-idle | - | - | - | 100000 | - | - | - |
-| exp-002 | viewport-bounded-sweep | - | - | - | 300000 | - | - | - |
-| exp-002 | dom-order-sweep | - | - | - | 300000 | - | - | - |
-| exp-002 | dom-order-sweep | - | - | - | 300000 | - | - | - |
-| exp-002 | dom-order-sweep | - | - | - | 300000 | - | - | - |
-| exp-002 | viewport-bounded-sweep | - | - | - | 300000 | - | - | - |
-| exp-002 | viewport-bounded-sweep | - | - | - | 300000 | - | - | - |
-| exp-003 | revision-keyed-tallies | 2026-08-22T17:55 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 12,613 ms |
-| exp-003 | revision-keyed-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | revision-keyed-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | revision-keyed-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | bounded-stale-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | bounded-stale-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | bounded-stale-tallies | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:03 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:03 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:03 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:05 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 15,843 ms |
-| exp-003 | warmed-tallies | 2026-08-22T18:07 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
-| exp-003 | warmed-tallies | 2026-08-22T18:07 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
-| exp-003 | warmed-tallies | 2026-08-22T18:07 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
-| exp-003 | cost-derived-tallies | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
-| exp-003 | revision-keyed-tallies | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
-| exp-004 | inline-first-rows | 2026-08-22T18:26 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,263 ms |
-| exp-004 | inline-first-rows | 2026-08-22T18:27 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 16,953 ms |
-| exp-004 | inline-first-rows | 2026-08-22T18:28 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,828 ms |
-| exp-004 | fetch-first-rows | 2026-08-22T18:28 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 14,147 ms |
-| exp-004 | fetch-first-rows | 2026-08-22T18:29 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 16,880 ms |
-| exp-004 | fetch-first-rows | 2026-08-22T18:30 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,728 ms |
-| exp-005 | real-tree-browser | 2026-08-22T20:06 | - | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
-| exp-005 | real-tree-with-client | 2026-08-22T20:06 | - | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
-| exp-005 | real-tree-baseline | 2026-08-22T20:06 | - | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
-| exp-007 | rows-with-tallies | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
-| exp-007 | rows-with-tallies | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
-| exp-007 | rows-without-tallies | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
-| exp-007 | rows-without-tallies | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
-| exp-008 | before-main | 2026-08-23T00:39 | - | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
-| exp-008 | after-branch | 2026-08-23T00:39 | - | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
-| exp-009 | reserved-skeleton | 2026-08-23T04:51 | - | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
-| exp-009 | shifting-skeleton | 2026-08-23T04:52 | - | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
-| exp-010 | p0-before-perf | 2026-08-23T06:14 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,609 ms |
-| exp-010 | p1-rows-partial-index | 2026-08-23T06:15 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 14,546 ms |
-| exp-010 | p2-main | 2026-08-23T06:17 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,806 ms |
-| exp-010 | p3-skeleton-paint | 2026-08-23T06:18 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,397 ms |
-| exp-010 | p3-skeleton-paint | 2026-08-23T06:19 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,139 ms |
-| exp-010 | p3-skeleton-paint | 2026-08-23T06:20 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,161 ms |
-| exp-010 | p2-main | 2026-08-23T06:21 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,920 ms |
-| exp-010 | p2-main | 2026-08-23T06:22 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,781 ms |
-| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:51 | - | 5501200+dirty | tree-e167d99b | 1 | 3 | 14,894 ms |
-| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:53 | - | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,493 ms |
-| exp-009 | reserved-skeleton-h3 | 2026-08-23T07:54 | - | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,593 ms |
-| exp-014 | inline-reconcile | 2026-08-24T00:23 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-2962a2a1 | 1 | 5 | 15,414 ms |
-| exp-014 | inline-reconcile | 2026-08-24T00:24 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-2962a2a1 | 1 | 5 | 15,414 ms |
-| exp-014 | wide-root | 2026-08-24T00:34 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-97a7c6d8 | - | 6 | 24 ms |
-| exp-014 | wide-root-v6 | 2026-08-24T00:41 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-97a7c6d8 | - | 6 | 24 ms |
-| exp-014 | v060-final-h6 | 2026-08-24T01:08 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 6 | 17,740 ms |
-| exp-014 | candidate-final-h6-clean | 2026-08-24T01:09 | metab 0.6.1.dev56+9a409c2 | 9a409c2 | tree-2962a2a1 | 1 | 6 | 14,952 ms |
-| exp-014 | v060-final-h6-clean | 2026-08-24T01:13 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 6 | 25,945 ms |
-| exp-014 | candidate-final-h6-clean | 2026-08-24T01:14 | metab 0.6.1.dev56+9a409c2 | 9a409c2 | tree-2962a2a1 | 1 | 6 | 24,738 ms |
-| exp-014 | v060-final-h7-clean | 2026-08-24T01:30 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 7 | 19,223 ms |
-| exp-014 | candidate-final-h7-clean | 2026-08-24T01:31 | metab 0.6.1.dev57+e27e77d | e27e77d | tree-2962a2a1 | 1 | 7 | 17,053 ms |
-| exp-014 | v060-final-h7-clean | 2026-08-24T01:32 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 7 | 20,271 ms |
-| exp-014 | candidate-final-h7-clean | 2026-08-24T01:32 | metab 0.6.1.dev57+e27e77d | e27e77d | tree-2962a2a1 | 1 | 7 | 18,705 ms |
-| exp-014 | v060-final-h7-clean | 2026-08-24T01:33 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 7 | 19,753 ms |
-| exp-014 | candidate-final-h7-clean | 2026-08-24T01:34 | metab 0.6.1.dev57+e27e77d | e27e77d | tree-2962a2a1 | 1 | 7 | 17,612 ms |
-| exp-014 | v060-final-h8-clean | 2026-08-24T02:14 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 8 | 17,900 ms |
-| exp-014 | candidate-final-h8-clean | 2026-08-24T02:15 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 8 | 14,157 ms |
-| exp-014 | candidate-final-h8-clean | 2026-08-24T02:15 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 8 | 13,953 ms |
-| exp-014 | v060-final-h8-clean | 2026-08-24T02:17 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 8 | 37,268 ms |
-| exp-014 | v060-final-h9-clean | 2026-08-24T02:21 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 9 | 24,562 ms |
-| exp-014 | candidate-final-h9-clean | 2026-08-24T02:22 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 9 | 24,295 ms |
-| exp-014 | candidate-final-h9-clean | 2026-08-24T02:23 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 9 | 14,142 ms |
-| exp-014 | v060-final-h9-clean | 2026-08-24T02:23 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 9 | 16,949 ms |
-| exp-014 | v060-final-h9-clean | 2026-08-24T02:24 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 9 | 17,226 ms |
-| exp-014 | candidate-final-h9-clean | 2026-08-24T02:24 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 9 | 20,261 ms |
-| exp-014 | candidate-final-h9-clean | 2026-08-24T02:25 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 9 | 27,928 ms |
-| exp-014 | v060-final-h9-clean | 2026-08-24T02:26 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 9 | 26,003 ms |
-| exp-014 | v060-final-h10-clean | 2026-08-24T02:41 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 10 | 16,477 ms |
-| exp-014 | candidate-final-h10-clean | 2026-08-24T02:42 | metab 0.6.1.dev60+29aa8d8 | 29aa8d8 | tree-2962a2a1 | 1 | 10 | 14,300 ms |
-| exp-014 | candidate-final-h10-clean | 2026-08-24T02:43 | metab 0.6.1.dev60+29aa8d8 | 29aa8d8 | tree-2962a2a1 | 1 | 10 | 13,712 ms |
-| exp-014 | v060-final-h10-clean | 2026-08-24T02:43 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 10 | 15,992 ms |
-| exp-014 | v060-final-h10-clean | 2026-08-24T02:44 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 10 | 15,698 ms |
-| exp-014 | candidate-final-h10-clean | 2026-08-24T02:44 | metab 0.6.1.dev60+29aa8d8 | 29aa8d8 | tree-2962a2a1 | 1 | 10 | 13,062 ms |
-| exp-014 | candidate-final-h10-clean | 2026-08-24T02:45 | metab 0.6.1.dev60+29aa8d8 | 29aa8d8 | tree-2962a2a1 | 1 | 10 | 11,955 ms |
-| exp-014 | v060-final-h10-clean | 2026-08-24T02:45 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 10 | 15,357 ms |
-| exp-014 | candidate-h11-diagnostic | 2026-08-24T02:53 | metab 0.6.1.dev52+b6e1433 (+60 commits, 29aa8d8, dirty) | 29aa8d8+dirty | tree-2962a2a1 | 1 | 11 | 15,655 ms |
-| exp-014 | v060-final-h11-clean | 2026-08-24T03:08 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 11 | 16,927 ms |
-| exp-014 | candidate-final-h11-clean | 2026-08-24T03:09 | metab 0.6.1.dev61+1edb2bb | 1edb2bb | tree-2962a2a1 | 1 | 11 | 14,544 ms |
-| exp-014 | candidate-final-h11-clean | 2026-08-24T03:09 | metab 0.6.1.dev61+1edb2bb | 1edb2bb | tree-2962a2a1 | 1 | 11 | 15,582 ms |
-| exp-014 | v060-final-h11-clean | 2026-08-24T03:10 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 11 | 16,465 ms |
-| exp-014 | v060-final-h11-clean | 2026-08-24T03:10 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 11 | 16,157 ms |
-| exp-014 | candidate-h12-diagnostic | 2026-08-24T03:15 | metab 0.6.1.dev52+b6e1433 (+61 commits, 1edb2bb, dirty) | 1edb2bb+dirty | tree-2962a2a1 | 1 | 12 | 11,995 ms |
-| exp-014 | v060-final-h12-clean | 2026-08-24T03:19 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 12 | 16,114 ms |
-| exp-014 | candidate-final-h12-clean | 2026-08-24T03:21 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 12 | 13,481 ms |
-| exp-014 | candidate-final-h12-clean | 2026-08-24T03:21 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 12 | 13,601 ms |
-| exp-014 | v060-final-h12-clean | 2026-08-24T03:22 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 12 | 15,315 ms |
-| exp-014 | v060-final-h12-clean | 2026-08-24T03:24 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 12 | 16,197 ms |
-| exp-014 | candidate-final-h12-clean | 2026-08-24T03:24 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 12 | 13,012 ms |
-| exp-014 | candidate-final-h12-clean | 2026-08-24T03:24 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 12 | 11,631 ms |
-| exp-014 | v060-final-h12-clean | 2026-08-24T03:25 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 12 | 14,948 ms |
-| exp-014 | v060-final-h13-clean | 2026-08-24T03:33 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 13 | 16,177 ms |
-| exp-014 | candidate-final-h13-clean | 2026-08-24T03:33 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 13 | 14,276 ms |
-| exp-014 | candidate-final-h13-clean | 2026-08-24T03:34 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 13 | 13,159 ms |
-| exp-014 | v060-final-h13-clean | 2026-08-24T03:34 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 13 | 15,115 ms |
-| exp-014 | v060-final-h13-clean | 2026-08-24T03:34 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 13 | 15,218 ms |
-| exp-014 | candidate-final-h13-clean | 2026-08-24T03:35 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 13 | 12,731 ms |
-| exp-014 | candidate-final-h13-clean | 2026-08-24T03:35 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 13 | 11,383 ms |
-| exp-014 | v060-final-h13-clean | 2026-08-24T03:36 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 13 | 14,867 ms |
-| exp-014 | v060-final-h14-clean | 2026-08-24T03:38 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,518 ms |
-| exp-014 | candidate-final-h14-clean | 2026-08-24T03:38 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 14 | 13,580 ms |
-| exp-014 | candidate-final-h14-clean | 2026-08-24T03:39 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 14 | 13,513 ms |
-| exp-014 | v060-final-h14-clean | 2026-08-24T03:39 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,661 ms |
-| exp-014 | v060-final-h14-clean | 2026-08-24T03:39 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,269 ms |
-| exp-014 | candidate-final-h14-clean | 2026-08-24T03:40 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 14 | 13,140 ms |
-| exp-014 | candidate-final-h14-clean | 2026-08-24T03:40 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 14 | 13,247 ms |
-| exp-014 | v060-final-h14-clean | 2026-08-24T03:41 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,366 ms |
-| exp-014 | v060-final-h14-priority | 2026-08-24T03:48 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 16,057 ms |
-| exp-014 | candidate-final-h14-priority | 2026-08-24T03:48 | metab 0.6.1.dev64+6d11d5d | 6d11d5d | tree-2962a2a1 | 1 | 14 | 13,710 ms |
-| exp-014 | candidate-final-h14-priority | 2026-08-24T03:49 | metab 0.6.1.dev64+6d11d5d | 6d11d5d | tree-2962a2a1 | 1 | 14 | 12,071 ms |
-| exp-014 | v060-final-h14-priority | 2026-08-24T03:49 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 14,404 ms |
-| exp-014 | v060-final-h14-priority | 2026-08-24T03:50 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,345 ms |
-| exp-014 | candidate-final-h14-priority | 2026-08-24T03:50 | metab 0.6.1.dev64+6d11d5d | 6d11d5d | tree-2962a2a1 | 1 | 14 | 13,176 ms |
-| exp-014 | candidate-final-h14-priority | 2026-08-24T03:51 | metab 0.6.1.dev64+6d11d5d | 6d11d5d | tree-2962a2a1 | 1 | 14 | 13,725 ms |
-| exp-014 | v060-final-h14-priority | 2026-08-24T03:51 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,399 ms |
-| exp-014 | v060-final-h14-bf7771b | 2026-08-24T04:00 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 17,380 ms |
-| exp-014 | candidate-final-h14-bf7771b | 2026-08-24T04:00 | metab 0.6.1.dev65+bf7771b | bf7771b | tree-2962a2a1 | 1 | 14 | 14,185 ms |
-| exp-014 | candidate-final-h14-bf7771b | 2026-08-24T04:01 | metab 0.6.1.dev65+bf7771b | bf7771b | tree-2962a2a1 | 1 | 14 | 14,370 ms |
-| exp-014 | v060-final-h14-bf7771b | 2026-08-24T04:01 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,850 ms |
-| exp-014 | candidate-final-h14-bf7771b | 2026-08-24T04:02 | metab 0.6.1.dev65+bf7771b | bf7771b | tree-2962a2a1 | 1 | 14 | 12,939 ms |
-| exp-014 | v060-final-h14-bf7771b | 2026-08-24T04:03 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 14,285 ms |
-| exp-014 | v060-final-h14-bf7771b | 2026-08-24T04:03 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 13,380 ms |
-| exp-014 | candidate-final-h14-bf7771b | 2026-08-24T04:03 | metab 0.6.1.dev65+bf7771b | bf7771b | tree-2962a2a1 | 1 | 14 | 11,776 ms |
-| exp-016 | prefix-c123ae6 | 2026-08-25T03:39 | metab 0.6.1.dev70+c123ae6 (+73 commits, c3f5f0f) | c123ae60073ba418ceafa06f3945106ca527e49d | tree-48d6a4c7 | 1 | 14 | 5,246 ms |
-| exp-016 | candidate-c3f5f0f | 2026-08-25T03:40 | metab 0.6.1.dev73+c3f5f0f (+73 commits, c3f5f0f, dirty) | c3f5f0f | tree-48d6a4c7 | 1 | 14 | 4,771 ms |
-| exp-016 | release-v060 | 2026-08-25T03:40 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 14 | 6,055 ms |
-| exp-016 | prefix-c123ae6 | 2026-08-25T03:41 | metab 0.6.1.dev70+c123ae6 (+73 commits, c3f5f0f, dirty) | c123ae60073ba418ceafa06f3945106ca527e49d | tree-48d6a4c7 | 1 | 14 | 5,947 ms |
-| exp-016 | candidate-c3f5f0f | 2026-08-25T03:41 | metab 0.6.1.dev73+c3f5f0f (+73 commits, c3f5f0f, dirty) | c3f5f0f | tree-48d6a4c7 | 1 | 14 | 5,512 ms |
-| exp-016 | release-v060 | 2026-08-25T03:41 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 14 | 6,793 ms |
-| exp-016 | prefix-c123ae6 | 2026-08-25T03:42 | metab 0.6.1.dev70+c123ae6 (+73 commits, c3f5f0f, dirty) | c123ae60073ba418ceafa06f3945106ca527e49d | tree-48d6a4c7 | 1 | 14 | 6,533 ms |
-| exp-016 | candidate-c3f5f0f | 2026-08-25T03:42 | metab 0.6.1.dev73+c3f5f0f (+73 commits, c3f5f0f, dirty) | c3f5f0f | tree-48d6a4c7 | 1 | 14 | 5,428 ms |
-| exp-016 | release-v060 | 2026-08-25T03:42 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 14 | 5,333 ms |
-| exp-016 | prefix-c123ae6 | 2026-08-25T03:43 | metab 0.6.1.dev70+c123ae6 (+73 commits, c3f5f0f, dirty) | c123ae60073ba418ceafa06f3945106ca527e49d | tree-48d6a4c7 | 1 | 14 | 5,229 ms |
-| exp-016 | candidate-c3f5f0f | 2026-08-25T03:43 | metab 0.6.1.dev73+c3f5f0f (+73 commits, c3f5f0f, dirty) | c3f5f0f | tree-48d6a4c7 | 1 | 14 | 5,700 ms |
-| exp-016 | release-v060 | 2026-08-25T03:43 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 14 | 5,320 ms |
-| exp-016 | candidate-9edff6b | 2026-08-25T04:07 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 14 | 15,303 ms |
-| exp-016 | release-v060-h15-clean | 2026-08-25T04:25 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 15 | 21,525 ms |
-| exp-016 | candidate-9edff6b-h15-clean | 2026-08-25T04:26 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 15 | 31,027 ms |
-| exp-016 | release-v060-h15-clean | 2026-08-25T04:27 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 15 | 44,359 ms |
-| exp-016 | candidate-9edff6b-h15-clean | 2026-08-25T04:27 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 15 | 6,694 ms |
-| exp-016 | candidate-9edff6b-h15-clean | 2026-08-25T04:28 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 15 | 6,581 ms |
-| exp-016 | release-v060-h15-clean | 2026-08-25T04:29 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 15 | 17,148 ms |
-| exp-016 | candidate-9edff6b-h15-clean | 2026-08-25T04:30 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 15 | 6,011 ms |
-| exp-016 | release-v060-h15-clean | 2026-08-25T04:30 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 15 | 10,102 ms |
-| exp-017 | release-v070-v071 | 2026-08-25T06:35 | metab 0.7.0 (+3 commits, 7eb4157) | v0.7.0 | tree-f1184cd1 | 1 | 15 | 7,925 ms |
-| exp-017 | candidate-7eb4157-v071 | 2026-08-25T06:36 | metab 0.7.1.dev3+7eb4157 (+3 commits, 7eb4157, dirty) | 7eb4157 | tree-f1184cd1 | 1 | 15 | 6,159 ms |
-| exp-017 | candidate-7eb4157-v071 | 2026-08-25T06:36 | metab 0.7.1.dev3+7eb4157 (+3 commits, 7eb4157, dirty) | 7eb4157 | tree-f1184cd1 | 1 | 15 | 5,580 ms |
-| exp-017 | release-v070-v071 | 2026-08-25T06:36 | metab 0.7.0 (+3 commits, 7eb4157, dirty) | v0.7.0 | tree-f1184cd1 | 1 | 15 | 6,025 ms |
-| exp-017 | release-v070-v071 | 2026-08-25T06:37 | metab 0.7.0 (+3 commits, 7eb4157, dirty) | v0.7.0 | tree-f1184cd1 | 1 | 15 | 5,022 ms |
-| exp-017 | candidate-7eb4157-v071 | 2026-08-25T06:37 | metab 0.7.1.dev3+7eb4157 (+3 commits, 7eb4157, dirty) | 7eb4157 | tree-f1184cd1 | 1 | 15 | 5,863 ms |
-| exp-019 | release-v0.7.1 | 2026-08-27T00:05 | metab 0.7.1 (+55 commits, ec2ede9) | v0.7.1 | tree-114a927f | 1 | 16 | 8,478 ms |
-| exp-019 | candidate-ec2ede9 | 2026-08-27T00:06 | metab 0.7.2.dev55+ec2ede9 (+55 commits, ec2ede9, dirty) | ec2ede93cd83faa13016cbb97c1266f38d94aa41 | tree-114a927f | 1 | 16 | 21,131 ms |
-| exp-019 | candidate-ec2ede9 | 2026-08-27T00:07 | metab 0.7.2.dev55+ec2ede9 (+55 commits, ec2ede9, dirty) | ec2ede93cd83faa13016cbb97c1266f38d94aa41 | tree-114a927f | 1 | 16 | 9,244 ms |
-| exp-019 | release-v0.7.1 | 2026-08-27T00:07 | metab 0.7.1 (+55 commits, ec2ede9, dirty) | v0.7.1 | tree-114a927f | 1 | 16 | 7,211 ms |
-| exp-019 | release-v0.7.1 | 2026-08-27T00:07 | metab 0.7.1 (+55 commits, ec2ede9, dirty) | v0.7.1 | tree-114a927f | 1 | 16 | 7,071 ms |
-| exp-019 | candidate-ec2ede9 | 2026-08-27T00:08 | metab 0.7.2.dev55+ec2ede9 (+55 commits, ec2ede9, dirty) | ec2ede93cd83faa13016cbb97c1266f38d94aa41 | tree-114a927f | 1 | 16 | 8,705 ms |
-| exp-019 | release-v0.7.1-refresh | 2026-08-27T00:24 | metab 0.7.1 (+57 commits, 5674cb6) | v0.7.1 | tree-114a927f | 1 | 16 | 6,616 ms |
-| exp-019 | candidate-5674cb6 | 2026-08-27T00:24 | metab 0.7.2.dev57+5674cb6 (+57 commits, 5674cb6, dirty) | 5674cb6d806986c1de15eb95010dd7edfdeb7438 | tree-114a927f | 1 | 16 | 5,787 ms |
-| exp-019 | candidate-5674cb6 | 2026-08-27T00:24 | metab 0.7.2.dev57+5674cb6 (+57 commits, 5674cb6, dirty) | 5674cb6d806986c1de15eb95010dd7edfdeb7438 | tree-114a927f | 1 | 16 | 6,182 ms |
-| exp-019 | release-v0.7.1-refresh | 2026-08-27T00:24 | metab 0.7.1 (+57 commits, 5674cb6, dirty) | v0.7.1 | tree-114a927f | 1 | 16 | 5,641 ms |
-| exp-019 | release-v0.7.1-refresh | 2026-08-27T00:25 | metab 0.7.1 (+57 commits, 5674cb6, dirty) | v0.7.1 | tree-114a927f | 1 | 16 | 6,768 ms |
-| exp-019 | candidate-5674cb6 | 2026-08-27T00:25 | metab 0.7.2.dev57+5674cb6 (+57 commits, 5674cb6, dirty) | 5674cb6d806986c1de15eb95010dd7edfdeb7438 | tree-114a927f | 1 | 16 | 5,627 ms |
-| exp-020 | release-v0.8.0 | 2026-08-27T07:13 | metab 0.8.0 (+5 commits, 1c7bdf8) | v0.8.0 | tree-114a927f | 1 | 16 | 8,375 ms |
-| exp-020 | candidate-1c7bdf8 | 2026-08-27T07:13 | metab 0.8.1.dev5+1c7bdf8 (+5 commits, 1c7bdf8, dirty) | 1c7bdf8baddb0b379b70cbd51003125935d8edba | tree-114a927f | 1 | 16 | 7,528 ms |
-| exp-020 | candidate-1c7bdf8 | 2026-08-27T07:14 | metab 0.8.1.dev5+1c7bdf8 (+5 commits, 1c7bdf8, dirty) | 1c7bdf8baddb0b379b70cbd51003125935d8edba | tree-114a927f | 1 | 16 | 7,177 ms |
-| exp-020 | release-v0.8.0 | 2026-08-27T07:14 | metab 0.8.0 (+5 commits, 1c7bdf8, dirty) | v0.8.0 | tree-114a927f | 1 | 16 | 7,558 ms |
-| exp-020 | release-v0.8.0 | 2026-08-27T07:14 | metab 0.8.0 (+5 commits, 1c7bdf8, dirty) | v0.8.0 | tree-114a927f | 1 | 16 | 7,506 ms |
-| exp-020 | candidate-1c7bdf8 | 2026-08-27T07:15 | metab 0.8.1.dev5+1c7bdf8 (+5 commits, 1c7bdf8, dirty) | 1c7bdf8baddb0b379b70cbd51003125935d8edba | tree-114a927f | 1 | 16 | 7,018 ms |
-| exp-021 | release-v0.8.0 | 2026-08-31T04:08 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 23,312 ms |
-| exp-021 | candidate-3160965 | 2026-08-31T04:08 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 14,264 ms |
-| exp-021 | release-v0.8.0 | 2026-08-31T04:09 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 16,150 ms |
-| exp-021 | candidate-3160965 | 2026-08-31T04:09 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,966 ms |
-| exp-021 | release-v0.8.0 | 2026-08-31T04:11 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 13,303 ms |
-| exp-021 | candidate-3160965 | 2026-08-31T04:11 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,248 ms |
-| exp-021 | exp021-release | 2026-08-31T04:14 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 18,074 ms |
-| exp-021 | exp021-candidate | 2026-08-31T04:14 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 14,198 ms |
-| exp-021 | exp021-release | 2026-08-31T04:15 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 13,267 ms |
-| exp-021 | exp021-candidate | 2026-08-31T04:15 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,622 ms |
-| exp-021 | exp021-release | 2026-08-31T04:15 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 14,021 ms |
-| exp-021 | exp021-candidate | 2026-08-31T04:16 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,718 ms |
-| exp-022 | exp-022-release-v0.9.0 | 2026-09-01T20:55 | metab 0.9.0 (3cb7e885) | v0.9.0 | tree-0eb8a51b | 1 | 16 | 13,151 ms |
-| exp-022 | exp-022-candidate-929130c1 | 2026-09-01T20:56 | metab 0.9.1.dev1+929130c1 (+1 commits, 929130c1, dirty) | 929130c1 | tree-0eb8a51b | 1 | 16 | 10,759 ms |
-| exp-022 | exp-022-release-v0.9.0 | 2026-09-01T20:56 | metab 0.9.0 (3cb7e885) | v0.9.0 | tree-0eb8a51b | 1 | 16 | 12,250 ms |
-| exp-022 | exp-022-candidate-929130c1 | 2026-09-01T20:56 | metab 0.9.1.dev1+929130c1 (+1 commits, 929130c1, dirty) | 929130c1 | tree-0eb8a51b | 1 | 16 | 12,203 ms |
-| exp-022 | exp-022-release-v0.9.0 | 2026-09-01T20:57 | metab 0.9.0 (3cb7e885) | v0.9.0 | tree-0eb8a51b | 1 | 16 | 12,282 ms |
-| exp-022 | exp-022-candidate-929130c1 | 2026-09-01T20:57 | metab 0.9.1.dev1+929130c1 (+1 commits, 929130c1, dirty) | 929130c1 | tree-0eb8a51b | 1 | 16 | 12,412 ms |
-| exp-023 | exp-023-release-v0.9.0 | 2026-09-01T21:31 | metab 0.9.0 | v0.9.0 | tree-91d23f89 | - | 16 | 21,623 ms |
-| exp-023 | exp-023-candidate-f1d36447 | 2026-09-01T21:32 | metab 0.9.1.dev2+f1d36447 | f1d36447 | tree-91d23f89 | - | 16 | 19,050 ms |
-| exp-023 | exp-023-candidate-f1d36447 | 2026-09-01T21:33 | metab 0.9.1.dev2+f1d36447 | f1d36447 | tree-91d23f89 | - | 16 | 17,971 ms |
-| exp-023 | exp-023-release-v0.9.0 | 2026-09-01T21:33 | metab 0.9.0 | v0.9.0 | tree-91d23f89 | - | 16 | 24,538 ms |
-| exp-023 | exp-023-release-v0.9.0 | 2026-09-01T21:34 | metab 0.9.0 | v0.9.0 | tree-91d23f89 | - | 16 | 21,842 ms |
-| exp-023 | exp-023-candidate-f1d36447 | 2026-09-01T21:34 | metab 0.9.1.dev2+f1d36447 | f1d36447 | tree-91d23f89 | - | 16 | 16,159 ms |
+| experiment | label | provider | contract | recorded | build | commit | corpus | shape | harness | walk |
+| --- | --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- |
+| exp-001 | prefetch-on-dcl | - | - | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-dcl | - | - | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-dcl | - | - | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-idle | - | - | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-idle | - | - | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-idle | - | - | - | - | - | 100000 | - | - | - |
+| exp-001 | prefetch-on-idle | - | - | - | - | - | 100000 | - | - | - |
+| exp-002 | viewport-bounded-sweep | - | - | - | - | - | 300000 | - | - | - |
+| exp-002 | dom-order-sweep | - | - | - | - | - | 300000 | - | - | - |
+| exp-002 | dom-order-sweep | - | - | - | - | - | 300000 | - | - | - |
+| exp-002 | dom-order-sweep | - | - | - | - | - | 300000 | - | - | - |
+| exp-002 | viewport-bounded-sweep | - | - | - | - | - | 300000 | - | - | - |
+| exp-002 | viewport-bounded-sweep | - | - | - | - | - | 300000 | - | - | - |
+| exp-003 | revision-keyed-tallies | - | - | 2026-08-22T17:55 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 12,613 ms |
+| exp-003 | revision-keyed-tallies | - | - | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | revision-keyed-tallies | - | - | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | revision-keyed-tallies | - | - | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | bounded-stale-tallies | - | - | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | bounded-stale-tallies | - | - | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | bounded-stale-tallies | - | - | 2026-08-22T18:00 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 23,591 ms |
+| exp-003 | cost-derived-tallies | - | - | 2026-08-22T18:03 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
+| exp-003 | cost-derived-tallies | - | - | 2026-08-22T18:03 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
+| exp-003 | cost-derived-tallies | - | - | 2026-08-22T18:03 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 19,182 ms |
+| exp-003 | cost-derived-tallies | - | - | 2026-08-22T18:05 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 15,843 ms |
+| exp-003 | warmed-tallies | - | - | 2026-08-22T18:07 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
+| exp-003 | warmed-tallies | - | - | 2026-08-22T18:07 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
+| exp-003 | warmed-tallies | - | - | 2026-08-22T18:07 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 18,562 ms |
+| exp-003 | cost-derived-tallies | - | - | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
+| exp-003 | cost-derived-tallies | - | - | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
+| exp-003 | cost-derived-tallies | - | - | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
+| exp-003 | revision-keyed-tallies | - | - | 2026-08-22T18:18 | - | 5a9897a+dirty | .bench/corpus-300000 | - | - | 21,676 ms |
+| exp-004 | inline-first-rows | - | - | 2026-08-22T18:26 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,263 ms |
+| exp-004 | inline-first-rows | - | - | 2026-08-22T18:27 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 16,953 ms |
+| exp-004 | inline-first-rows | - | - | 2026-08-22T18:28 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,828 ms |
+| exp-004 | fetch-first-rows | - | - | 2026-08-22T18:28 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 14,147 ms |
+| exp-004 | fetch-first-rows | - | - | 2026-08-22T18:29 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 16,880 ms |
+| exp-004 | fetch-first-rows | - | - | 2026-08-22T18:30 | - | 6115a41+dirty | .bench/corpus-300000 | - | - | 15,728 ms |
+| exp-005 | real-tree-browser | - | - | 2026-08-22T20:06 | - | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
+| exp-005 | real-tree-with-client | - | - | 2026-08-22T20:06 | - | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
+| exp-005 | real-tree-baseline | - | - | 2026-08-22T20:06 | - | d3c4c95+dirty | tree-a01f4187 | - | - | 208,885 ms |
+| exp-007 | rows-with-tallies | - | - | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-007 | rows-with-tallies | - | - | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-007 | rows-without-tallies | - | - | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-007 | rows-without-tallies | - | - | 2026-08-22T22:08 | - | dbecd08+dirty | tree-585f5500 | - | 2 | 1,439 ms |
+| exp-008 | before-main | - | - | 2026-08-23T00:39 | - | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
+| exp-008 | after-branch | - | - | 2026-08-23T00:39 | - | 6add9af | tree-a01f4187 | - | 2 | 44,503 ms |
+| exp-009 | reserved-skeleton | - | - | 2026-08-23T04:51 | - | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
+| exp-009 | shifting-skeleton | - | - | 2026-08-23T04:52 | - | 4ced70c | tree-e167d99b | 1 | 2 | 14,273 ms |
+| exp-010 | p0-before-perf | - | - | 2026-08-23T06:14 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,609 ms |
+| exp-010 | p1-rows-partial-index | - | - | 2026-08-23T06:15 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 14,546 ms |
+| exp-010 | p2-main | - | - | 2026-08-23T06:17 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,806 ms |
+| exp-010 | p3-skeleton-paint | - | - | 2026-08-23T06:18 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,397 ms |
+| exp-010 | p3-skeleton-paint | - | - | 2026-08-23T06:19 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,139 ms |
+| exp-010 | p3-skeleton-paint | - | - | 2026-08-23T06:20 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 12,161 ms |
+| exp-010 | p2-main | - | - | 2026-08-23T06:21 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,920 ms |
+| exp-010 | p2-main | - | - | 2026-08-23T06:22 | - | 61ed8e0+dirty | tree-e167d99b | 1 | 2 | 13,781 ms |
+| exp-009 | reserved-skeleton-h3 | - | - | 2026-08-23T07:51 | - | 5501200+dirty | tree-e167d99b | 1 | 3 | 14,894 ms |
+| exp-009 | reserved-skeleton-h3 | - | - | 2026-08-23T07:53 | - | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,493 ms |
+| exp-009 | reserved-skeleton-h3 | - | - | 2026-08-23T07:54 | - | 5501200+dirty | tree-e167d99b | 1 | 3 | 13,593 ms |
+| exp-014 | inline-reconcile | - | - | 2026-08-24T00:23 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-2962a2a1 | 1 | 5 | 15,414 ms |
+| exp-014 | inline-reconcile | - | - | 2026-08-24T00:24 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-2962a2a1 | 1 | 5 | 15,414 ms |
+| exp-014 | wide-root | - | - | 2026-08-24T00:34 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-97a7c6d8 | - | 6 | 24 ms |
+| exp-014 | wide-root-v6 | - | - | 2026-08-24T00:41 | metab 0.6.1.dev52+b6e1433 (+55 commits, 62759c1, dirty) | 62759c1+dirty | tree-97a7c6d8 | - | 6 | 24 ms |
+| exp-014 | v060-final-h6 | - | - | 2026-08-24T01:08 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 6 | 17,740 ms |
+| exp-014 | candidate-final-h6-clean | - | - | 2026-08-24T01:09 | metab 0.6.1.dev56+9a409c2 | 9a409c2 | tree-2962a2a1 | 1 | 6 | 14,952 ms |
+| exp-014 | v060-final-h6-clean | - | - | 2026-08-24T01:13 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 6 | 25,945 ms |
+| exp-014 | candidate-final-h6-clean | - | - | 2026-08-24T01:14 | metab 0.6.1.dev56+9a409c2 | 9a409c2 | tree-2962a2a1 | 1 | 6 | 24,738 ms |
+| exp-014 | v060-final-h7-clean | - | - | 2026-08-24T01:30 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 7 | 19,223 ms |
+| exp-014 | candidate-final-h7-clean | - | - | 2026-08-24T01:31 | metab 0.6.1.dev57+e27e77d | e27e77d | tree-2962a2a1 | 1 | 7 | 17,053 ms |
+| exp-014 | v060-final-h7-clean | - | - | 2026-08-24T01:32 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 7 | 20,271 ms |
+| exp-014 | candidate-final-h7-clean | - | - | 2026-08-24T01:32 | metab 0.6.1.dev57+e27e77d | e27e77d | tree-2962a2a1 | 1 | 7 | 18,705 ms |
+| exp-014 | v060-final-h7-clean | - | - | 2026-08-24T01:33 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 7 | 19,753 ms |
+| exp-014 | candidate-final-h7-clean | - | - | 2026-08-24T01:34 | metab 0.6.1.dev57+e27e77d | e27e77d | tree-2962a2a1 | 1 | 7 | 17,612 ms |
+| exp-014 | v060-final-h8-clean | - | - | 2026-08-24T02:14 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 8 | 17,900 ms |
+| exp-014 | candidate-final-h8-clean | - | - | 2026-08-24T02:15 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 8 | 14,157 ms |
+| exp-014 | candidate-final-h8-clean | - | - | 2026-08-24T02:15 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 8 | 13,953 ms |
+| exp-014 | v060-final-h8-clean | - | - | 2026-08-24T02:17 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 8 | 37,268 ms |
+| exp-014 | v060-final-h9-clean | - | - | 2026-08-24T02:21 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 9 | 24,562 ms |
+| exp-014 | candidate-final-h9-clean | - | - | 2026-08-24T02:22 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 9 | 24,295 ms |
+| exp-014 | candidate-final-h9-clean | - | - | 2026-08-24T02:23 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 9 | 14,142 ms |
+| exp-014 | v060-final-h9-clean | - | - | 2026-08-24T02:23 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 9 | 16,949 ms |
+| exp-014 | v060-final-h9-clean | - | - | 2026-08-24T02:24 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 9 | 17,226 ms |
+| exp-014 | candidate-final-h9-clean | - | - | 2026-08-24T02:24 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 9 | 20,261 ms |
+| exp-014 | candidate-final-h9-clean | - | - | 2026-08-24T02:25 | metab 0.6.1.dev58+c3b724b | c3b724b | tree-2962a2a1 | 1 | 9 | 27,928 ms |
+| exp-014 | v060-final-h9-clean | - | - | 2026-08-24T02:26 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 9 | 26,003 ms |
+| exp-014 | v060-final-h10-clean | - | - | 2026-08-24T02:41 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 10 | 16,477 ms |
+| exp-014 | candidate-final-h10-clean | - | - | 2026-08-24T02:42 | metab 0.6.1.dev60+29aa8d8 | 29aa8d8 | tree-2962a2a1 | 1 | 10 | 14,300 ms |
+| exp-014 | candidate-final-h10-clean | - | - | 2026-08-24T02:43 | metab 0.6.1.dev60+29aa8d8 | 29aa8d8 | tree-2962a2a1 | 1 | 10 | 13,712 ms |
+| exp-014 | v060-final-h10-clean | - | - | 2026-08-24T02:43 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 10 | 15,992 ms |
+| exp-014 | v060-final-h10-clean | - | - | 2026-08-24T02:44 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 10 | 15,698 ms |
+| exp-014 | candidate-final-h10-clean | - | - | 2026-08-24T02:44 | metab 0.6.1.dev60+29aa8d8 | 29aa8d8 | tree-2962a2a1 | 1 | 10 | 13,062 ms |
+| exp-014 | candidate-final-h10-clean | - | - | 2026-08-24T02:45 | metab 0.6.1.dev60+29aa8d8 | 29aa8d8 | tree-2962a2a1 | 1 | 10 | 11,955 ms |
+| exp-014 | v060-final-h10-clean | - | - | 2026-08-24T02:45 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 10 | 15,357 ms |
+| exp-014 | candidate-h11-diagnostic | - | - | 2026-08-24T02:53 | metab 0.6.1.dev52+b6e1433 (+60 commits, 29aa8d8, dirty) | 29aa8d8+dirty | tree-2962a2a1 | 1 | 11 | 15,655 ms |
+| exp-014 | v060-final-h11-clean | - | - | 2026-08-24T03:08 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 11 | 16,927 ms |
+| exp-014 | candidate-final-h11-clean | - | - | 2026-08-24T03:09 | metab 0.6.1.dev61+1edb2bb | 1edb2bb | tree-2962a2a1 | 1 | 11 | 14,544 ms |
+| exp-014 | candidate-final-h11-clean | - | - | 2026-08-24T03:09 | metab 0.6.1.dev61+1edb2bb | 1edb2bb | tree-2962a2a1 | 1 | 11 | 15,582 ms |
+| exp-014 | v060-final-h11-clean | - | - | 2026-08-24T03:10 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 11 | 16,465 ms |
+| exp-014 | v060-final-h11-clean | - | - | 2026-08-24T03:10 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 11 | 16,157 ms |
+| exp-014 | candidate-h12-diagnostic | - | - | 2026-08-24T03:15 | metab 0.6.1.dev52+b6e1433 (+61 commits, 1edb2bb, dirty) | 1edb2bb+dirty | tree-2962a2a1 | 1 | 12 | 11,995 ms |
+| exp-014 | v060-final-h12-clean | - | - | 2026-08-24T03:19 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 12 | 16,114 ms |
+| exp-014 | candidate-final-h12-clean | - | - | 2026-08-24T03:21 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 12 | 13,481 ms |
+| exp-014 | candidate-final-h12-clean | - | - | 2026-08-24T03:21 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 12 | 13,601 ms |
+| exp-014 | v060-final-h12-clean | - | - | 2026-08-24T03:22 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 12 | 15,315 ms |
+| exp-014 | v060-final-h12-clean | - | - | 2026-08-24T03:24 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 12 | 16,197 ms |
+| exp-014 | candidate-final-h12-clean | - | - | 2026-08-24T03:24 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 12 | 13,012 ms |
+| exp-014 | candidate-final-h12-clean | - | - | 2026-08-24T03:24 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 12 | 11,631 ms |
+| exp-014 | v060-final-h12-clean | - | - | 2026-08-24T03:25 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 12 | 14,948 ms |
+| exp-014 | v060-final-h13-clean | - | - | 2026-08-24T03:33 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 13 | 16,177 ms |
+| exp-014 | candidate-final-h13-clean | - | - | 2026-08-24T03:33 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 13 | 14,276 ms |
+| exp-014 | candidate-final-h13-clean | - | - | 2026-08-24T03:34 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 13 | 13,159 ms |
+| exp-014 | v060-final-h13-clean | - | - | 2026-08-24T03:34 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 13 | 15,115 ms |
+| exp-014 | v060-final-h13-clean | - | - | 2026-08-24T03:34 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 13 | 15,218 ms |
+| exp-014 | candidate-final-h13-clean | - | - | 2026-08-24T03:35 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 13 | 12,731 ms |
+| exp-014 | candidate-final-h13-clean | - | - | 2026-08-24T03:35 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 13 | 11,383 ms |
+| exp-014 | v060-final-h13-clean | - | - | 2026-08-24T03:36 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 13 | 14,867 ms |
+| exp-014 | v060-final-h14-clean | - | - | 2026-08-24T03:38 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,518 ms |
+| exp-014 | candidate-final-h14-clean | - | - | 2026-08-24T03:38 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 14 | 13,580 ms |
+| exp-014 | candidate-final-h14-clean | - | - | 2026-08-24T03:39 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 14 | 13,513 ms |
+| exp-014 | v060-final-h14-clean | - | - | 2026-08-24T03:39 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,661 ms |
+| exp-014 | v060-final-h14-clean | - | - | 2026-08-24T03:39 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,269 ms |
+| exp-014 | candidate-final-h14-clean | - | - | 2026-08-24T03:40 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 14 | 13,140 ms |
+| exp-014 | candidate-final-h14-clean | - | - | 2026-08-24T03:40 | metab 0.6.1.dev62+a004a36 | a004a36 | tree-2962a2a1 | 1 | 14 | 13,247 ms |
+| exp-014 | v060-final-h14-clean | - | - | 2026-08-24T03:41 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,366 ms |
+| exp-014 | v060-final-h14-priority | - | - | 2026-08-24T03:48 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 16,057 ms |
+| exp-014 | candidate-final-h14-priority | - | - | 2026-08-24T03:48 | metab 0.6.1.dev64+6d11d5d | 6d11d5d | tree-2962a2a1 | 1 | 14 | 13,710 ms |
+| exp-014 | candidate-final-h14-priority | - | - | 2026-08-24T03:49 | metab 0.6.1.dev64+6d11d5d | 6d11d5d | tree-2962a2a1 | 1 | 14 | 12,071 ms |
+| exp-014 | v060-final-h14-priority | - | - | 2026-08-24T03:49 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 14,404 ms |
+| exp-014 | v060-final-h14-priority | - | - | 2026-08-24T03:50 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,345 ms |
+| exp-014 | candidate-final-h14-priority | - | - | 2026-08-24T03:50 | metab 0.6.1.dev64+6d11d5d | 6d11d5d | tree-2962a2a1 | 1 | 14 | 13,176 ms |
+| exp-014 | candidate-final-h14-priority | - | - | 2026-08-24T03:51 | metab 0.6.1.dev64+6d11d5d | 6d11d5d | tree-2962a2a1 | 1 | 14 | 13,725 ms |
+| exp-014 | v060-final-h14-priority | - | - | 2026-08-24T03:51 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,399 ms |
+| exp-014 | v060-final-h14-bf7771b | - | - | 2026-08-24T04:00 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 17,380 ms |
+| exp-014 | candidate-final-h14-bf7771b | - | - | 2026-08-24T04:00 | metab 0.6.1.dev65+bf7771b | bf7771b | tree-2962a2a1 | 1 | 14 | 14,185 ms |
+| exp-014 | candidate-final-h14-bf7771b | - | - | 2026-08-24T04:01 | metab 0.6.1.dev65+bf7771b | bf7771b | tree-2962a2a1 | 1 | 14 | 14,370 ms |
+| exp-014 | v060-final-h14-bf7771b | - | - | 2026-08-24T04:01 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 15,850 ms |
+| exp-014 | candidate-final-h14-bf7771b | - | - | 2026-08-24T04:02 | metab 0.6.1.dev65+bf7771b | bf7771b | tree-2962a2a1 | 1 | 14 | 12,939 ms |
+| exp-014 | v060-final-h14-bf7771b | - | - | 2026-08-24T04:03 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 14,285 ms |
+| exp-014 | v060-final-h14-bf7771b | - | - | 2026-08-24T04:03 | metab 0.6.0 | v0.6.0 | tree-2962a2a1 | 1 | 14 | 13,380 ms |
+| exp-014 | candidate-final-h14-bf7771b | - | - | 2026-08-24T04:03 | metab 0.6.1.dev65+bf7771b | bf7771b | tree-2962a2a1 | 1 | 14 | 11,776 ms |
+| exp-016 | prefix-c123ae6 | - | - | 2026-08-25T03:39 | metab 0.6.1.dev70+c123ae6 (+73 commits, c3f5f0f) | c123ae60073ba418ceafa06f3945106ca527e49d | tree-48d6a4c7 | 1 | 14 | 5,246 ms |
+| exp-016 | candidate-c3f5f0f | - | - | 2026-08-25T03:40 | metab 0.6.1.dev73+c3f5f0f (+73 commits, c3f5f0f, dirty) | c3f5f0f | tree-48d6a4c7 | 1 | 14 | 4,771 ms |
+| exp-016 | release-v060 | - | - | 2026-08-25T03:40 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 14 | 6,055 ms |
+| exp-016 | prefix-c123ae6 | - | - | 2026-08-25T03:41 | metab 0.6.1.dev70+c123ae6 (+73 commits, c3f5f0f, dirty) | c123ae60073ba418ceafa06f3945106ca527e49d | tree-48d6a4c7 | 1 | 14 | 5,947 ms |
+| exp-016 | candidate-c3f5f0f | - | - | 2026-08-25T03:41 | metab 0.6.1.dev73+c3f5f0f (+73 commits, c3f5f0f, dirty) | c3f5f0f | tree-48d6a4c7 | 1 | 14 | 5,512 ms |
+| exp-016 | release-v060 | - | - | 2026-08-25T03:41 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 14 | 6,793 ms |
+| exp-016 | prefix-c123ae6 | - | - | 2026-08-25T03:42 | metab 0.6.1.dev70+c123ae6 (+73 commits, c3f5f0f, dirty) | c123ae60073ba418ceafa06f3945106ca527e49d | tree-48d6a4c7 | 1 | 14 | 6,533 ms |
+| exp-016 | candidate-c3f5f0f | - | - | 2026-08-25T03:42 | metab 0.6.1.dev73+c3f5f0f (+73 commits, c3f5f0f, dirty) | c3f5f0f | tree-48d6a4c7 | 1 | 14 | 5,428 ms |
+| exp-016 | release-v060 | - | - | 2026-08-25T03:42 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 14 | 5,333 ms |
+| exp-016 | prefix-c123ae6 | - | - | 2026-08-25T03:43 | metab 0.6.1.dev70+c123ae6 (+73 commits, c3f5f0f, dirty) | c123ae60073ba418ceafa06f3945106ca527e49d | tree-48d6a4c7 | 1 | 14 | 5,229 ms |
+| exp-016 | candidate-c3f5f0f | - | - | 2026-08-25T03:43 | metab 0.6.1.dev73+c3f5f0f (+73 commits, c3f5f0f, dirty) | c3f5f0f | tree-48d6a4c7 | 1 | 14 | 5,700 ms |
+| exp-016 | release-v060 | - | - | 2026-08-25T03:43 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 14 | 5,320 ms |
+| exp-016 | candidate-9edff6b | - | - | 2026-08-25T04:07 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 14 | 15,303 ms |
+| exp-016 | release-v060-h15-clean | - | - | 2026-08-25T04:25 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 15 | 21,525 ms |
+| exp-016 | candidate-9edff6b-h15-clean | - | - | 2026-08-25T04:26 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 15 | 31,027 ms |
+| exp-016 | release-v060-h15-clean | - | - | 2026-08-25T04:27 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 15 | 44,359 ms |
+| exp-016 | candidate-9edff6b-h15-clean | - | - | 2026-08-25T04:27 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 15 | 6,694 ms |
+| exp-016 | candidate-9edff6b-h15-clean | - | - | 2026-08-25T04:28 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 15 | 6,581 ms |
+| exp-016 | release-v060-h15-clean | - | - | 2026-08-25T04:29 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 15 | 17,148 ms |
+| exp-016 | candidate-9edff6b-h15-clean | - | - | 2026-08-25T04:30 | metab 0.6.1.dev74+9edff6b (+74 commits, 9edff6b, dirty) | 9edff6b | tree-48d6a4c7 | 1 | 15 | 6,011 ms |
+| exp-016 | release-v060-h15-clean | - | - | 2026-08-25T04:30 | metab 0.6.0 | v0.6.0 | tree-48d6a4c7 | 1 | 15 | 10,102 ms |
+| exp-017 | release-v070-v071 | - | - | 2026-08-25T06:35 | metab 0.7.0 (+3 commits, 7eb4157) | v0.7.0 | tree-f1184cd1 | 1 | 15 | 7,925 ms |
+| exp-017 | candidate-7eb4157-v071 | - | - | 2026-08-25T06:36 | metab 0.7.1.dev3+7eb4157 (+3 commits, 7eb4157, dirty) | 7eb4157 | tree-f1184cd1 | 1 | 15 | 6,159 ms |
+| exp-017 | candidate-7eb4157-v071 | - | - | 2026-08-25T06:36 | metab 0.7.1.dev3+7eb4157 (+3 commits, 7eb4157, dirty) | 7eb4157 | tree-f1184cd1 | 1 | 15 | 5,580 ms |
+| exp-017 | release-v070-v071 | - | - | 2026-08-25T06:36 | metab 0.7.0 (+3 commits, 7eb4157, dirty) | v0.7.0 | tree-f1184cd1 | 1 | 15 | 6,025 ms |
+| exp-017 | release-v070-v071 | - | - | 2026-08-25T06:37 | metab 0.7.0 (+3 commits, 7eb4157, dirty) | v0.7.0 | tree-f1184cd1 | 1 | 15 | 5,022 ms |
+| exp-017 | candidate-7eb4157-v071 | - | - | 2026-08-25T06:37 | metab 0.7.1.dev3+7eb4157 (+3 commits, 7eb4157, dirty) | 7eb4157 | tree-f1184cd1 | 1 | 15 | 5,863 ms |
+| exp-019 | release-v0.7.1 | - | - | 2026-08-27T00:05 | metab 0.7.1 (+55 commits, ec2ede9) | v0.7.1 | tree-114a927f | 1 | 16 | 8,478 ms |
+| exp-019 | candidate-ec2ede9 | - | - | 2026-08-27T00:06 | metab 0.7.2.dev55+ec2ede9 (+55 commits, ec2ede9, dirty) | ec2ede93cd83faa13016cbb97c1266f38d94aa41 | tree-114a927f | 1 | 16 | 21,131 ms |
+| exp-019 | candidate-ec2ede9 | - | - | 2026-08-27T00:07 | metab 0.7.2.dev55+ec2ede9 (+55 commits, ec2ede9, dirty) | ec2ede93cd83faa13016cbb97c1266f38d94aa41 | tree-114a927f | 1 | 16 | 9,244 ms |
+| exp-019 | release-v0.7.1 | - | - | 2026-08-27T00:07 | metab 0.7.1 (+55 commits, ec2ede9, dirty) | v0.7.1 | tree-114a927f | 1 | 16 | 7,211 ms |
+| exp-019 | release-v0.7.1 | - | - | 2026-08-27T00:07 | metab 0.7.1 (+55 commits, ec2ede9, dirty) | v0.7.1 | tree-114a927f | 1 | 16 | 7,071 ms |
+| exp-019 | candidate-ec2ede9 | - | - | 2026-08-27T00:08 | metab 0.7.2.dev55+ec2ede9 (+55 commits, ec2ede9, dirty) | ec2ede93cd83faa13016cbb97c1266f38d94aa41 | tree-114a927f | 1 | 16 | 8,705 ms |
+| exp-019 | release-v0.7.1-refresh | - | - | 2026-08-27T00:24 | metab 0.7.1 (+57 commits, 5674cb6) | v0.7.1 | tree-114a927f | 1 | 16 | 6,616 ms |
+| exp-019 | candidate-5674cb6 | - | - | 2026-08-27T00:24 | metab 0.7.2.dev57+5674cb6 (+57 commits, 5674cb6, dirty) | 5674cb6d806986c1de15eb95010dd7edfdeb7438 | tree-114a927f | 1 | 16 | 5,787 ms |
+| exp-019 | candidate-5674cb6 | - | - | 2026-08-27T00:24 | metab 0.7.2.dev57+5674cb6 (+57 commits, 5674cb6, dirty) | 5674cb6d806986c1de15eb95010dd7edfdeb7438 | tree-114a927f | 1 | 16 | 6,182 ms |
+| exp-019 | release-v0.7.1-refresh | - | - | 2026-08-27T00:24 | metab 0.7.1 (+57 commits, 5674cb6, dirty) | v0.7.1 | tree-114a927f | 1 | 16 | 5,641 ms |
+| exp-019 | release-v0.7.1-refresh | - | - | 2026-08-27T00:25 | metab 0.7.1 (+57 commits, 5674cb6, dirty) | v0.7.1 | tree-114a927f | 1 | 16 | 6,768 ms |
+| exp-019 | candidate-5674cb6 | - | - | 2026-08-27T00:25 | metab 0.7.2.dev57+5674cb6 (+57 commits, 5674cb6, dirty) | 5674cb6d806986c1de15eb95010dd7edfdeb7438 | tree-114a927f | 1 | 16 | 5,627 ms |
+| exp-020 | release-v0.8.0 | - | - | 2026-08-27T07:13 | metab 0.8.0 (+5 commits, 1c7bdf8) | v0.8.0 | tree-114a927f | 1 | 16 | 8,375 ms |
+| exp-020 | candidate-1c7bdf8 | - | - | 2026-08-27T07:13 | metab 0.8.1.dev5+1c7bdf8 (+5 commits, 1c7bdf8, dirty) | 1c7bdf8baddb0b379b70cbd51003125935d8edba | tree-114a927f | 1 | 16 | 7,528 ms |
+| exp-020 | candidate-1c7bdf8 | - | - | 2026-08-27T07:14 | metab 0.8.1.dev5+1c7bdf8 (+5 commits, 1c7bdf8, dirty) | 1c7bdf8baddb0b379b70cbd51003125935d8edba | tree-114a927f | 1 | 16 | 7,177 ms |
+| exp-020 | release-v0.8.0 | - | - | 2026-08-27T07:14 | metab 0.8.0 (+5 commits, 1c7bdf8, dirty) | v0.8.0 | tree-114a927f | 1 | 16 | 7,558 ms |
+| exp-020 | release-v0.8.0 | - | - | 2026-08-27T07:14 | metab 0.8.0 (+5 commits, 1c7bdf8, dirty) | v0.8.0 | tree-114a927f | 1 | 16 | 7,506 ms |
+| exp-020 | candidate-1c7bdf8 | - | - | 2026-08-27T07:15 | metab 0.8.1.dev5+1c7bdf8 (+5 commits, 1c7bdf8, dirty) | 1c7bdf8baddb0b379b70cbd51003125935d8edba | tree-114a927f | 1 | 16 | 7,018 ms |
+| exp-021 | release-v0.8.0 | - | - | 2026-08-31T04:08 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 23,312 ms |
+| exp-021 | candidate-3160965 | - | - | 2026-08-31T04:08 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 14,264 ms |
+| exp-021 | release-v0.8.0 | - | - | 2026-08-31T04:09 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 16,150 ms |
+| exp-021 | candidate-3160965 | - | - | 2026-08-31T04:09 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,966 ms |
+| exp-021 | release-v0.8.0 | - | - | 2026-08-31T04:11 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 13,303 ms |
+| exp-021 | candidate-3160965 | - | - | 2026-08-31T04:11 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,248 ms |
+| exp-021 | exp021-release | - | - | 2026-08-31T04:14 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 18,074 ms |
+| exp-021 | exp021-candidate | - | - | 2026-08-31T04:14 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 14,198 ms |
+| exp-021 | exp021-release | - | - | 2026-08-31T04:15 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 13,267 ms |
+| exp-021 | exp021-candidate | - | - | 2026-08-31T04:15 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,622 ms |
+| exp-021 | exp021-release | - | - | 2026-08-31T04:15 | metab 0.8.0 (552f084) | v0.8.0 | tree-a1a7991c | 1 | 16 | 14,021 ms |
+| exp-021 | exp021-candidate | - | - | 2026-08-31T04:16 | metab 0.8.1.dev42+3160965 (+42 commits, 3160965, dirty) | 3160965 | tree-a1a7991c | 1 | 16 | 13,718 ms |
+| exp-022 | exp-022-release-v0.9.0 | - | - | 2026-09-01T20:55 | metab 0.9.0 (3cb7e885) | v0.9.0 | tree-0eb8a51b | 1 | 16 | 13,151 ms |
+| exp-022 | exp-022-candidate-929130c1 | - | - | 2026-09-01T20:56 | metab 0.9.1.dev1+929130c1 (+1 commits, 929130c1, dirty) | 929130c1 | tree-0eb8a51b | 1 | 16 | 10,759 ms |
+| exp-022 | exp-022-release-v0.9.0 | - | - | 2026-09-01T20:56 | metab 0.9.0 (3cb7e885) | v0.9.0 | tree-0eb8a51b | 1 | 16 | 12,250 ms |
+| exp-022 | exp-022-candidate-929130c1 | - | - | 2026-09-01T20:56 | metab 0.9.1.dev1+929130c1 (+1 commits, 929130c1, dirty) | 929130c1 | tree-0eb8a51b | 1 | 16 | 12,203 ms |
+| exp-022 | exp-022-release-v0.9.0 | - | - | 2026-09-01T20:57 | metab 0.9.0 (3cb7e885) | v0.9.0 | tree-0eb8a51b | 1 | 16 | 12,282 ms |
+| exp-022 | exp-022-candidate-929130c1 | - | - | 2026-09-01T20:57 | metab 0.9.1.dev1+929130c1 (+1 commits, 929130c1, dirty) | 929130c1 | tree-0eb8a51b | 1 | 16 | 12,412 ms |
+| exp-023 | exp-023-release-v0.9.0 | - | - | 2026-09-01T21:31 | metab 0.9.0 | v0.9.0 | tree-91d23f89 | - | 16 | 21,623 ms |
+| exp-023 | exp-023-candidate-f1d36447 | - | - | 2026-09-01T21:32 | metab 0.9.1.dev2+f1d36447 | f1d36447 | tree-91d23f89 | - | 16 | 19,050 ms |
+| exp-023 | exp-023-candidate-f1d36447 | - | - | 2026-09-01T21:33 | metab 0.9.1.dev2+f1d36447 | f1d36447 | tree-91d23f89 | - | 16 | 17,971 ms |
+| exp-023 | exp-023-release-v0.9.0 | - | - | 2026-09-01T21:33 | metab 0.9.0 | v0.9.0 | tree-91d23f89 | - | 16 | 24,538 ms |
+| exp-023 | exp-023-release-v0.9.0 | - | - | 2026-09-01T21:34 | metab 0.9.0 | v0.9.0 | tree-91d23f89 | - | 16 | 21,842 ms |
+| exp-023 | exp-023-candidate-f1d36447 | - | - | 2026-09-01T21:34 | metab 0.9.1.dev2+f1d36447 | f1d36447 | tree-91d23f89 | - | 16 | 16,159 ms |
+| exp-027 | exp-027-release-v091 | - | - | 2026-09-10T05:21 | metab 0.9.1 (16211ccb) | v0.9.1 | tree-6dbe6989 | 2 | 17 | 3,014 ms |
+| exp-027 | exp-027-candidate-f097c667 | python | inventory-provider-v1 | 2026-09-10T05:22 | metab 0.9.2.dev124+f097c667 | f097c667 | tree-6dbe6989 | 2 | 17 | 3,044 ms |
+| exp-027 | exp-027-candidate-f097c667 | python | inventory-provider-v1 | 2026-09-10T05:23 | metab 0.9.2.dev124+f097c667 | f097c667 | tree-6dbe6989 | 2 | 17 | 2,706 ms |
+| exp-027 | exp-027-release-v091 | - | - | 2026-09-10T05:23 | metab 0.9.1 (16211ccb) | v0.9.1 | tree-6dbe6989 | 2 | 17 | 2,149 ms |
+| exp-027 | exp-027-release-v091 | - | - | 2026-09-10T05:24 | metab 0.9.1 (16211ccb) | v0.9.1 | tree-6dbe6989 | 2 | 17 | 2,185 ms |
+| exp-027 | exp-027-candidate-f097c667 | python | inventory-provider-v1 | 2026-09-10T05:24 | metab 0.9.2.dev124+f097c667 | f097c667 | tree-6dbe6989 | 2 | 17 | 2,164 ms |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->

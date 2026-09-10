@@ -114,7 +114,7 @@ It is tracked as its own item rather than folded into a performance change.
   cross, and why the store is keyed by the canonical identity
 - [State and delivery](arch-state-and-delivery.md) — what the change pipeline owes a
   consumer
-- [exp-024](../../../explorations/performance-loop/experiments/exp-024-the-refactor-added-a-rule-that-forced-a-second-build.md)
+- [exp-026](../../../explorations/performance-loop/experiments/exp-026-the-refactor-added-a-rule-that-forced-a-second-build.md)
   — the round these numbers come from
 
 <!-- This document follows common-doc-guidelines.md.

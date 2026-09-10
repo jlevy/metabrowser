@@ -6,7 +6,7 @@ softschema:
   envelope: experiment
   status: enforced
 experiment:
-  id: exp-023
+  id: exp-025
   title: The instrument was measuring the order it ran in
   date: "2026-09-01"
   hypotheses: [H68, H69, H70, H71]
@@ -20,7 +20,7 @@ experiment:
     runs_per_condition: 9
     interleaved: true
     control: installed main build, metab 0.8.1.dev65+838459e
-    candidate: this branch after exp-022, plus H71
+    candidate: this branch after exp-024, plus H71
     record: explorations/performance-loop/scan_bench.py binary --files 60000 --runs 9
   results:
     - metric: walk_to_settled_ms_H68_ancestor_memo
@@ -73,11 +73,11 @@ experiment:
       earlier figure was partly an artifact of ordering.
     commit: d765421a
 ---
-# exp-023: The instrument was measuring the order it ran in
+# exp-025: The instrument was measuring the order it ran in
 
 ## Why
 
-exp-022 left the scan 1,203 ms in process and the gap against `main` unclosed.
+exp-024 left the scan 1,203 ms in process and the gap against `main` unclosed.
 Four more hypotheses came off the profile.
 
 ## What happened to each
@@ -115,7 +115,7 @@ keywords.
 Together 34 ms in isolation, and no detectable effect at walk scale, exactly as
 that number predicts against a ±50 ms spread.
 Kept anyway: one half deletes a function-level import and the other matches the
-positional construction exp-022 already introduced.
+positional construction exp-024 already introduced.
 
 ## What the round actually found
 

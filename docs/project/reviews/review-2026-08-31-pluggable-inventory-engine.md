@@ -421,7 +421,7 @@ A full scan on a 60,000-file synthetic corpus, timed through
 | main | 2,071 ms | — |
 | the stack, as its pull requests stood | 5,690 ms | **2.75x slower** |
 | the stack, with the two fixes below | 2,652 ms | 1.28x slower |
-| the stack, after the exp-022 campaign | 1,887 ms | see below |
+| the stack, after the exp-024 campaign | 1,887 ms | see below |
 
 The last row is not comparable to the first three and its ratio has been removed.
 The first three were taken sequentially, one build’s trials after the other’s, against a
@@ -429,7 +429,7 @@ The first three were taken sequentially, one build’s trials after the other’
 measures 1,705 ms because the sequential ordering had been charging drift to whichever
 build ran second. Read against its own control the last row is 1.11x; read against the
 column heading it would appear *faster* than `main`, which it is not.
-This is the arithmetic exp-023 is about, and the reason the harness now interleaves.
+This is the arithmetic exp-025 is about, and the reason the harness now interleaves.
 
 Both causes are on the per-entry path, and neither was visible in any test.
 Both arrive with the bottom of the stack, which matters for merge order: the
@@ -464,9 +464,9 @@ revalidate on read, so a stale entry is a miss and never a wrong answer.
 Walk-to-settled on this repository, five runs: 2,640 ms to 1,117 ms median.
 
 A campaign against that residual is recorded as
-[exp-022](../../../../explorations/performance-loop/experiments/exp-022-the-walker-builds-each-entry-once.md)
+[exp-024](../../../../explorations/performance-loop/experiments/exp-024-the-walker-builds-each-entry-once.md)
 and
-[exp-023](../../../../explorations/performance-loop/experiments/exp-023-the-instrument-was-measuring-the-order-it-ran-in.md),
+[exp-025](../../../../explorations/performance-loop/experiments/exp-025-the-instrument-was-measuring-the-order-it-ran-in.md),
 registering H65 to H72. Two more accepts took the in-process walk from 1,847 ms to about
 1,203: the walker stamped every entry with `dataclasses.replace`, which reads twenty
 fields back through string-keyed `getattr`, and its add path allocated a delta map it
