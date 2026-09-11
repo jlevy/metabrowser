@@ -338,14 +338,20 @@ async def run_watcher(
 
     force_polling = mode == "polling"
     poll_delay_ms = 2000 if force_polling else 50
-    on_status(WatcherStatus(mode=mode, state="running", reason=reason))
 
-    try:
+    # Keep cancellation out of watchfiles' Rust-backed iterator. On free-threaded
+    # Python, cancelling the task while RustNotify was unwinding could race the
+    # worker thread and panic with a PyO3 ``Already mutably borrowed`` error. A
+    # cooperative stop lets the worker return before the iterator's context exits.
+    stop_event = asyncio.Event()
+
+    async def consume_watch_stream() -> None:
         async for changes in awatch(
             str(root),
             force_polling=force_polling,
             poll_delay_ms=poll_delay_ms,
             recursive=True,
+            stop_event=stop_event,
         ):
             LOG.debug("watcher: batch n=%d", len(changes))
             await _emit_batch(
@@ -354,8 +360,43 @@ async def run_watcher(
                 changes,
                 hidden_allowlist=hidden_allowlist,
             )
-        raise RuntimeError("watch stream ended before provider close")
+        if not stop_event.is_set():
+            raise RuntimeError("watch stream ended before provider close")
+
+    consumer = asyncio.create_task(
+        consume_watch_stream(),
+        name="metabrowser-watchfiles-consumer",
+    )
+
+    try:
+        # Give the consumer one turn to enter ``awatch``. Its RustNotify context is
+        # constructed synchronously before its first wait, so ``running`` now means
+        # the backend is installed rather than merely scheduled.
+        await asyncio.sleep(0)
+        if not consumer.done():
+            on_status(WatcherStatus(mode=mode, state="running", reason=reason))
+        await asyncio.shield(consumer)
     except asyncio.CancelledError:
+        stop_event.set()
+        # Cancellation is a request, not permission to abandon the Rust-backed
+        # iterator. More than one owner can request shutdown concurrently (for
+        # example the discovery budget and provider close). Each ``cancel()``
+        # can inject another CancelledError into this task, including while it
+        # is already shielding the cooperative join. Keep joining until the
+        # consumer has actually left ``awatch``; otherwise event-loop teardown
+        # can race a still-live RustNotify context on free-threaded Python.
+        while not consumer.done():
+            try:
+                await asyncio.shield(consumer)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
+        if consumer.done() and not consumer.cancelled():
+            try:
+                consumer.result()
+            except Exception:
+                LOG.exception("watcher failed while stopping at %s mode=%s", root, mode)
         LOG.debug("watcher cancelled")
         raise
     except Exception as error:

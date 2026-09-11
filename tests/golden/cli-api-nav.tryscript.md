@@ -338,19 +338,82 @@ status: 200
 ? 0
 ```
 
-## Test: the recency window
+## Test: the complete recency model is nonempty
 
 ```console
-$ metab navroot --api '/api/recent?window=24h'
-api: /api/recent?window=24h
+$ metab navroot --api '/api/recent?window=all'
+api: /api/recent?window=all
 status: 200
 {
   "root": "<ROOT>",
-  "entries_flat": [],
+  "entries_flat": [
+    {
+      "name": "README.md",
+      "path": "README.md",
+      "type": "file",
+      "size": 9,
+      "mtime": 1700000000.0,
+      "ext": ".md"
+    },
+    {
+      "name": "a.md",
+      "path": "docs/a.md",
+      "type": "file",
+      "size": 7,
+      "mtime": 1700000000.0,
+      "ext": ".md"
+    },
+    {
+      "name": "notes.txt",
+      "path": "notes.txt",
+      "type": "file",
+      "size": 6,
+      "mtime": 1700000000.0,
+      "ext": ".txt"
+    }
+  ],
   "gitignored_dirs": [],
-  "window": "24h",
+  "window": "all",
   "limit": 5000,
-  "total_matching": 0,
+  "total_matching": 3,
+  "total_matching_exact": true,
+  "truncated": false,
+  "tally_cache_status": "done"
+}
+? 0
+```
+
+## Test: Recent applies the full filter before clustering and capping
+
+```console
+$ metab navroot --api '/api/recent?window=all&types=.md&min_size=7&include_ignored=0'
+api: /api/recent?window=all&types=.md&min_size=7&include_ignored=0
+status: 200
+{
+  "root": "<ROOT>",
+  "entries_flat": [
+    {
+      "name": "README.md",
+      "path": "README.md",
+      "type": "file",
+      "size": 9,
+      "mtime": 1700000000.0,
+      "ext": ".md"
+    },
+    {
+      "name": "a.md",
+      "path": "docs/a.md",
+      "type": "file",
+      "size": 7,
+      "mtime": 1700000000.0,
+      "ext": ".md"
+    }
+  ],
+  "gitignored_dirs": [],
+  "window": "all",
+  "limit": 5000,
+  "total_matching": 2,
+  "total_matching_exact": true,
   "truncated": false,
   "tally_cache_status": "done"
 }
@@ -370,6 +433,7 @@ status: 200
   "window": "live",
   "limit": 5000,
   "total_matching": 0,
+  "total_matching_exact": true,
   "truncated": false,
   "tally_cache_status": "done"
 }

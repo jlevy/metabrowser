@@ -159,18 +159,19 @@ UV="uv --config-file uv.toml run --frozen python"
 
 $UV explorations/performance-loop/run.py serve --exp exp-004 --label before --files 300000 --provider python
 $UV explorations/performance-loop/run.py probe-server                # server-side metrics, no browser
-# ... or the browser half, for anything a reader sees:
-$UV explorations/performance-loop/run.py probe                       # prints probe.js to evaluate in the page
-$UV explorations/performance-loop/run.py record --json '<paste>'
-$UV explorations/performance-loop/run.py record --json-file .bench/profile.json
+# ... and the browser half, for anything a reader sees:
 $UV explorations/performance-loop/run.py capture \
   --headed --output .bench/profile.json --record                    # trusted Chrome input
+# Manual diagnostic fallback when headed capture is unavailable:
+$UV explorations/performance-loop/run.py probe                       # prints committed probe.js
+$UV explorations/performance-loop/run.py record --json '<paste>'
 $UV explorations/performance-loop/run.py compare before after
 $UV explorations/performance-loop/run.py report
 ```
 
 `serve` remembers the experiment, label, port, corpus, commit, selected build, requested
-inventory provider, and provider contract, so `record` needs only the paste.
+inventory provider, and provider contract, so headed capture records directly and the
+manual fallback needs only the probe output.
 Provenance is filled in automatically: timestamp, commit, whether the tree was dirty,
 the selected build’s reported version, the provider identity read from the running
 server, and — read back out of the server’s own log — how long that run’s walk took.
@@ -316,8 +317,10 @@ the luck picked. Thirteen samples per run beats one draw.
 **`probe.js`** measures what a reader gets: time to first row, render spans, request
 count, transferred bytes.
 Use it for anything above the wire.
-Paste what `run.py probe` prints rather than retyping it, so what runs is what is
-committed.
+Prefer `run.py capture --headed`, which evaluates the committed probe in a fresh Chrome
+profile and records the result.
+If headed capture is unavailable, use `run.py probe` and paste its exact output into the
+visible page rather than retyping it.
 
 Most rounds want both.
 exp-003 is the worked example of why: the route got 40% faster server-side and time to
@@ -461,27 +464,25 @@ same code will disagree depending on how long each waited.
 Request counts and transferred bytes do not care; scheduling does.
 Record which one a finding depends on.
 
-Load the URL, let the tree settle, evaluate [probe.js](probe.js) in the page, and record
-what it prints:
+The normal browser path starts a visible Chrome profile, evaluates [probe.js](probe.js),
+and records the result:
 
 ```shell
-uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py record --label before --port 8600 --json '<paste>'
+uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py capture --headed --output .bench/profile.json --record
 uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py compare before after
 ```
 
 `compare` prints each metric’s median with its range beside it.
 
-### Why the browser half is driven by hand
+### How the browser half is driven
 
-Time to first row is a browser fact, and this repository has no committed browser
-automation — adding one is a dependency decision under
-[SUPPLY-CHAIN-SECURITY.md](../../SUPPLY-CHAIN-SECURITY.md), not a detail of this
-harness. So the loop is: the script owns the server, the corpus, the port, and the
-record; a person or an agent with a browser owns the load and the paste.
-That is enough to answer a question, and it adds nothing to the dependency surface.
-Automating it is worth doing when the loop’s answers start needing to be defended
-continuously rather than decided once — that is `mb-pwnw`, and it is where the page-load
-phase of `bench_serving.py` belongs.
+Time to first row is a browser fact.
+`run.py capture --headed` owns the server, corpus, port, visible Chrome load, trusted
+input, committed probe, and record without adding an automation package to the
+dependency surface. That keeps the standard run repeatable under
+[SUPPLY-CHAIN-SECURITY.md](../../SUPPLY-CHAIN-SECURITY.md).
+Manual loading and probe pasting remain a diagnostic fallback for environments where the
+headed driver cannot control Chrome; they are not the release-comparison workflow.
 
 ## Responsiveness, and the one precondition that invalidates it
 
@@ -517,8 +518,8 @@ That mismatch did not prove throttling was the whole signal: exp-012 later found
 multi-second catalog scan in a visible tab.
 So check `document.visibilityState === "visible"`, record it beside the numbers, and
 discard any run that cannot say it stayed visible.
-This is the reason the browser half is driven by hand rather than through an automation
-surface that may not be showing the page.
+This is why the browser half runs in a visible headed window with trusted input rather
+than through an automation surface that may not be showing the page.
 
 **How to run it.** The recorder is part of the document and attaches before application
 work, because the interesting part is the start:
@@ -526,24 +527,11 @@ work, because the interesting part is the start:
 ```shell
 UV="uv --config-file uv.toml run --frozen python"
 $UV explorations/performance-loop/run.py serve --exp exp-0NN --label before --files 300000
+$UV explorations/performance-loop/run.py capture --headed --output .bench/profile.json --record
 ```
 
-1. Load the URL in a **visible** browser window.
-2. Use the app throughout the load — expand a folder, switch a tab, then interact again
-   while later inventory updates arrive.
-   `interaction_inputs` and `interaction_input_coverage_pct` prove that trusted input
-   spans the loading window.
-   An untouched page or one early click is not evidence of a responsive progressive
-   load, so `record` refuses either.
-3. Paste `probe.js` once the tree settles.
-   It reads exact whole-window aggregates from `metabrowser.perf`. If that
-   navigation-time source is absent, the probe labels its bounded responsiveness and
-   visual history `late-buffer`, and `record` refuses it rather than letting a floor
-   read as a total.
-
-`run.py capture --headed` performs the same sequence in a fresh Chrome profile through
-the Chrome DevTools Protocol.
-It foregrounds the headed browser on macOS and pulses a tiny inert paint target through
+The headed capture opens a fresh Chrome profile through the Chrome DevTools Protocol.
+It foregrounds the browser on macOS and pulses a tiny inert paint target through
 Chromium’s trusted input pipeline from first usable state until client quiescence.
 The target changes no application state, while Event Timing observes input-to-next-paint
 latency throughout the update stream.
@@ -562,6 +550,16 @@ It then asks V8 to collect garbage and records the resulting retained heap separ
 from both UI timing and the runtime-timed `performance.memory` sample.
 The driver uses Node and browser APIs already present in the development environment; it
 adds no automation package or product dependency.
+
+For a manual diagnostic fallback, load the served URL in a visible browser window and
+interact throughout the load while later inventory updates arrive.
+Then evaluate the exact output of `run.py probe` once the tree settles and pass its JSON
+to `run.py record`. `interaction_inputs` and `interaction_input_coverage_pct` prove that
+trusted input spans the loading window, so `record` refuses an untouched page or one
+early click. The probe reads exact whole-window aggregates from `metabrowser.perf`; if
+that navigation-time source is absent, it labels its bounded responsiveness and visual
+history `late-buffer`, and `record` refuses it rather than letting a floor read as a
+total.
 
 ## What is measured
 

@@ -333,12 +333,16 @@ replayed after it.
 | --- | --- |
 | `fs.snapshot` | Authoritative initial state at the connection’s scope |
 | `fs.change` | Ordered upsert and remove ops |
-| `catalog.change` | Quick File catalog upserts, exact file evictions, and subtree removals, emitted beside every `fs.change` |
+| `catalog.change` | Quick File catalog upserts, exact eligibility evictions, file-type invalidations, and subtree removals, emitted beside relevant `fs.change` batches |
 | `fs.resync_required` | A gap marker: drop derived state and resubscribe |
 | `capability.update` | Index completeness, watcher backends |
-| `projection.invalidate` / `projection.update` | Plugin projection lifecycle |
 | `file.append` / `truncate` / `rotate` / `closed` / `coalesced` | Live-file tailing |
 | `heartbeat` | Liveness |
+
+`fs.change` is the authoritative changed-path invalidation for file previews, directory
+projections, SDK rollup watches, and the Quick File catalog delta beside it.
+The event bus does not send a second per-path projection event; duplicating the same
+invalidation would consume bounded queue capacity without adding information.
 
 A subscriber whose queue fills cannot be sent a correct ordered stream any more, so the
 event bus drains its backlog, replaces it with `fs.resync_required`, and detaches that
@@ -354,13 +358,25 @@ a shared transaction because ops are idempotent by path.
 
 Removal semantics stay explicit on that event.
 `remove_files` names files made ineligible by a gitignored upsert, so the browser
-applies each with one exact `Map.delete`. `removes` names filesystem paths that
-disappeared and may therefore name directories, so the browser performs the prefix sweep
-needed to evict descendants.
-Combining the two is a correctness-preserving but unbounded-cost mistake: the client has
-to interpret every exact file as a possible directory and scan the complete catalog.
+applies each with one exact `Map.delete` while preserving the explicit-navigation
+exception for an ignored file the user opened.
+`non_file_paths` names retained files the provider observed becoming directories or
+symlinks. The browser deletes those exact paths regardless of provenance but preserves
+any descendant files under a replacement directory.
+Because the companion is unscoped, the shared Recent transition also removes those paths
+from its retained page, publishes the remaining matches as a safe lower bound, and
+coalesces one authoritative repair for replacements below the tree stream’s depth.
+The provider carries this rare transition through the bounded change contract because
+the event bus rereads current entries and cannot reconstruct their prior types.
+Ordinary directory aggregate upserts carry no transition and still emit no catalog
+companion; an empty `non_file_paths` field is omitted from the wire.
+`removes` names filesystem paths that disappeared and may therefore name directories, so
+the browser performs the prefix sweep needed to evict descendants.
+Combining exact invalidations with subtree removals is a correctness-preserving but
+unbounded-cost mistake: the client has to interpret every exact path as a possible
+directory and scan the complete catalog.
 `tests/dom/known-file-catalog-behavior.js` installs a `Map` that counts key enumeration
-and is the named check that exact removals never enter that path.
+and is the named check that neither exact-removal path enters that scan.
 
 ### Routes
 
@@ -370,7 +386,7 @@ and is the named check that exact removals never enter that path.
 | `/api/tree` | Nav subtree, bounded by depth |
 | `/api/rollup` | Bounded subtree aggregation for Overview and treemap |
 | `/api/file` | File envelope: kind, view descriptors, preview |
-| `/api/recent` | Top-N by mtime within a window, clustered |
+| `/api/recent` | Filtered top-N leaves by recency; the browser owns clustering |
 | `/api/catalog` | One-shot Quick File universe |
 | `/api/events`, `/api/stream` | Delta streams |
 | `/api/index/progress`, `/api/index/meta`, `/api/capabilities` | Index and backend status |

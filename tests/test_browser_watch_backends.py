@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
@@ -175,6 +176,101 @@ def test_run_watcher_emits_fs_change_on_new_file(tmp_path: Path) -> None:
             return seen
 
     assert "runs/x/new.jsonl" in asyncio.run(run())
+
+
+def test_run_watcher_stops_backend_cooperatively_before_cancellation_returns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import metabrowser.watch_backends as watch_backends
+
+    async def run() -> tuple[bool, bool]:
+        backend_started = asyncio.Event()
+        backend_saw_stop = asyncio.Event()
+        backend_finalized = asyncio.Event()
+
+        async def blocked_awatch(
+            *_args: object,
+            stop_event: asyncio.Event | None = None,
+            **_kwargs: object,
+        ) -> AsyncIterator[set[tuple[Change, str]]]:
+            backend_started.set()
+            try:
+                if stop_event is None:
+                    await asyncio.Event().wait()
+                else:
+                    await stop_event.wait()
+                    backend_saw_stop.set()
+                    yield set()
+            finally:
+                backend_finalized.set()
+
+        monkeypatch.setattr(watch_backends, "awatch", blocked_awatch)
+
+        async def refresh(request: RefreshRequest) -> RefreshReceipt:
+            return RefreshReceipt(version=_WATCH_VERSION, accepted_paths=request.paths)
+
+        watcher = asyncio.create_task(run_watcher(root=tmp_path, refresh=refresh, mode="native"))
+        await asyncio.wait_for(backend_started.wait(), timeout=1.0)
+        watcher.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await watcher
+        return backend_saw_stop.is_set(), backend_finalized.is_set()
+
+    assert asyncio.run(run()) == (True, True)
+
+
+def test_run_watcher_finishes_cooperative_stop_after_repeated_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concurrent shutdown requests cannot strand the Rust-backed consumer."""
+
+    import metabrowser.watch_backends as watch_backends
+
+    async def run() -> tuple[bool, bool]:
+        backend_started = asyncio.Event()
+        backend_saw_stop = asyncio.Event()
+        release_backend = asyncio.Event()
+        backend_finalized = asyncio.Event()
+
+        async def blocked_awatch(
+            *_args: object,
+            stop_event: asyncio.Event | None = None,
+            **_kwargs: object,
+        ) -> AsyncIterator[set[tuple[Change, str]]]:
+            backend_started.set()
+            try:
+                assert stop_event is not None
+                await stop_event.wait()
+                backend_saw_stop.set()
+                await release_backend.wait()
+                yield set()
+            finally:
+                backend_finalized.set()
+
+        monkeypatch.setattr(watch_backends, "awatch", blocked_awatch)
+
+        async def refresh(request: RefreshRequest) -> RefreshReceipt:
+            return RefreshReceipt(version=_WATCH_VERSION, accepted_paths=request.paths)
+
+        watcher = asyncio.create_task(run_watcher(root=tmp_path, refresh=refresh, mode="native"))
+        await asyncio.wait_for(backend_started.wait(), timeout=1.0)
+        watcher.cancel()
+        await asyncio.wait_for(backend_saw_stop.wait(), timeout=1.0)
+
+        # A second owner asks the same task to stop while its first cancellation
+        # is already cooperatively joining the backend.
+        watcher.cancel()
+        await asyncio.sleep(0)
+        still_joining = not watcher.done()
+
+        release_backend.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(watcher, timeout=1.0)
+        return still_joining, backend_finalized.is_set()
+
+    assert asyncio.run(run()) == (True, True)
 
 
 def test_stale_delete_event_reconciles_recreated_directory(tmp_path: Path) -> None:

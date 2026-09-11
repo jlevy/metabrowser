@@ -132,7 +132,8 @@ class _SubtreeAggregate:
 # path. The aggregate values stay opaque to holders: only this module reads or
 # writes their fields. Owners are responsible for eviction — see
 # ``build_rollup``.
-SubtreeAggregateCache = MutableMapping[str, "_SubtreeAggregate"]
+SubtreeAggregate = _SubtreeAggregate
+SubtreeAggregateCache = MutableMapping[str, SubtreeAggregate]
 
 
 @dataclass(frozen=True, slots=True)

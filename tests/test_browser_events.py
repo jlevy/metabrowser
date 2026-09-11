@@ -23,6 +23,7 @@ from typing import Any
 
 from metabrowser.events import (
     CapabilityUpdate,
+    CatalogChange,
     FileAppend,
     FileClosed,
     FileCoalesced,
@@ -36,8 +37,6 @@ from metabrowser.events import (
     FsUpsert,
     Heartbeat,
     ParserReset,
-    ProjectionInvalidate,
-    ProjectionUpdate,
     RingBuffer,
     WriteToken,
     encode_heartbeat_comment,
@@ -210,6 +209,23 @@ def test_round_trip_fs_change_with_upsert_and_remove() -> None:
     assert out["ops"][1] == {"path": "a/c.log", "op": "remove"}
 
 
+def test_catalog_non_file_paths_are_absent_until_a_replacement() -> None:
+    ordinary = _round_trip(
+        CatalogChange(upserts=(), removes=("gone",), remove_files=(), non_file_paths=())
+    )
+    replacement = _round_trip(
+        CatalogChange(
+            upserts=(),
+            removes=(),
+            remove_files=(),
+            non_file_paths=("deep/replaced",),
+        )
+    )
+
+    assert "non_file_paths" not in ordinary
+    assert replacement["non_file_paths"] == ["deep/replaced"]
+
+
 def test_round_trip_fs_resync_required() -> None:
     out = _round_trip(FsResyncRequired(reason="root_swap"))
     assert out == {"reason": "root_swap", "type": "fs.resync_required"}
@@ -225,20 +241,6 @@ def test_round_trip_capability_update() -> None:
     assert out["type"] == "capability.update"
     assert out["backends"][0]["mode"] == "polling"
     assert out["index"]["indexed_files"] == 4231
-
-
-def test_round_trip_projection_events() -> None:
-    inv = _round_trip(ProjectionInvalidate(path="a/b.jsonl", projection="charts"))
-    assert inv == {"path": "a/b.jsonl", "projection": "charts", "type": "projection.invalidate"}
-    upd = _round_trip(
-        ProjectionUpdate(
-            path="a/b.jsonl",
-            projection="charts",
-            payload={"series": [1, 2, 3]},
-        )
-    )
-    assert upd["type"] == "projection.update"
-    assert upd["payload"] == {"series": [1, 2, 3]}
 
 
 def test_round_trip_tail_events() -> None:

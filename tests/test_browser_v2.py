@@ -331,9 +331,37 @@ def test_api_file_internal_error_degrades_to_error_view(tmp_path: Path, monkeypa
         body = json.loads(bytes(resp.body))
         assert resp.status_code == 200
         assert body["type"] == "error"
+        assert body["kind"] == "error"
+        assert body["views"] == []
         assert "Internal error while rendering this file" in body["error"]
         assert "RuntimeError: boom" in body["error"]
         assert "server 500" in body["warning"]
+    finally:
+        proc_browser._set_root_dir(Path())
+
+
+def test_api_file_parse_error_has_a_composable_error_envelope(tmp_path: Path, monkeypatch) -> None:
+    fixture = tmp_path / "broken.jsonl"
+    fixture.write_text('{"type":"thread.started","thread_id":"abc"}\n')
+
+    def _raise(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise ValueError("malformed event")
+
+    monkeypatch.setattr("metabrowser.projections.parse_jsonl_file_cached", _raise)
+    proc_browser._set_root_dir(tmp_path)
+    try:
+        response = asyncio.run(
+            proc_browser.api_file(cast(Any, _FakeRequest({"path": "broken.jsonl"})))
+        )
+        body = json.loads(bytes(response.body))
+        assert response.status_code == 200
+        assert body == {
+            "type": "error",
+            "kind": "error",
+            "views": [],
+            "path": "broken.jsonl",
+            "error": "malformed event",
+        }
     finally:
         proc_browser._set_root_dir(Path())
 

@@ -9,6 +9,7 @@ from typing import Any, cast
 from kpress.runtime import get_static_asset
 
 from metabrowser import server as proc_browser
+from metabrowser.settings import DOC_MAX_CHARS_DEFAULT, client_settings_dict
 
 KPRESS_DOC_MIN_WIDTH_QUERY_RE = re.compile(r"@container kpress-doc \(min-width: [\d.]+rem\) \{")
 
@@ -86,6 +87,26 @@ def test_app_theme_control_contract() -> None:
     assert 'var PROSE_FONT_KEY = "metabrowser.proseFont"' in src
     assert "function applyProseFont" in src
     assert 'setAttribute("data-prose-font", normalized)' in src
+
+
+def test_document_width_default_reaches_the_shell_from_client_settings() -> None:
+    """One Python default seeds first paint and the exact browser state machine."""
+
+    html = _render_index_html()
+    src = _read_app_js()
+    css = _read_styles_css()
+
+    assert DOC_MAX_CHARS_DEFAULT == 102
+    assert client_settings_dict()["DOC_MAX_CHARS_DEFAULT"] == DOC_MAX_CHARS_DEFAULT
+    assert f'<html lang="en" style="--doc-max-chars: {DOC_MAX_CHARS_DEFAULT}">' in html
+    assert f'"DOC_MAX_CHARS_DEFAULT": {DOC_MAX_CHARS_DEFAULT}' in html
+    assert html.index("window.METABROWSER_SETTINGS=") < html.index("/static/document-width.js?v=")
+    assert html.index("/static/document-width.js?v=") < html.index("/static/app.js?v=")
+    assert "window.MetabrowserDocumentWidth" in src
+    assert "var DOC_MAX_CHARS_DEFAULT = documentWidth.DEFAULT;" in src
+    assert "return documentWidth.readStored(readPrefCookie);" in src
+    assert "return documentWidth.apply(chars, persist" in src
+    assert "--doc-max-chars: 105;" not in css
 
 
 def test_print_css_hides_chrome_and_preserves_active_printable_surface() -> None:

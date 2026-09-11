@@ -16,10 +16,11 @@ before: >-
   printf '{"type":"system","subtype":"init","session_id":"s1","model":"m1"}\n' > showroot/session.jsonl &&
   printf '{"event":"start"}\n{"event":"stop"}\n' > showroot/events.jsonl &&
   printf '\000\001\002binary\n' > showroot/blob.bin &&
+  printf '\211PNG\r\n\032\n' > showroot/pixel.png &&
   printf 'nested\n' > showroot/docs/a.md &&
   touch -t 202311142213.20 showroot/README.md showroot/notes.txt showroot/data.json
   showroot/change.patch showroot/session.jsonl showroot/events.jsonl showroot/blob.bin
-  showroot/docs/a.md showroot/docs showroot
+  showroot/pixel.png showroot/docs/a.md showroot/docs showroot
 ---
 # Golden tests: `--show`, the four layers for one selection
 
@@ -114,6 +115,18 @@ model: binary envelope; size=10
 ? 0
 ```
 
+## Test: image
+
+```console
+$ metab showroot --show pixel.png
+show: pixel.png
+route: /view/pixel.png
+kind: image
+views: preview (default)
+model: image envelope; size=8
+? 0
+```
+
 ## Test: a folder
 
 ```console
@@ -185,3 +198,7 @@ views: rendered (default), source
 model: text envelope; size=17 content_bytes=17 content_truncated=False
 ? 0
 ```
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

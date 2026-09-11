@@ -16,6 +16,7 @@ from metabrowser import server as proc_browser
 from metabrowser.inventory_engine.contract import (
     CountKind,
     CountResult,
+    InventoryFilter,
     ReadRequest,
     RecentProjection,
     RecentQuery,
@@ -39,22 +40,31 @@ def _recent(
     window: WindowKey = "all",
     limit: int = 200,
     extensions: tuple[str, ...] = (),
+    filenames: tuple[str, ...] = (),
+    minimum_size: int | None = None,
     prefix: str = "",
     include_ignored: bool = True,
 ) -> RecentResult:
     async def run() -> RecentResult:
         async with inventory_harness(root) as harness:
+            as_of_ns = time.time_ns()
+            within_seconds = RECENT_WINDOW_SECONDS[window]
             projection_read = await harness.runtime.coordinator.read(
                 ReadRequest(
                     queries=(
                         RecentQuery(
                             query_id="recent",
                             max_rows=limit,
-                            as_of_ns=time.time_ns(),
-                            extensions=extensions,
+                            as_of_ns=as_of_ns,
                             prefix=prefix,
-                            within_seconds=RECENT_WINDOW_SECONDS[window],
-                            include_ignored=include_ignored,
+                            filter=InventoryFilter(
+                                extensions=extensions,
+                                filenames=filenames,
+                                recency_seconds=within_seconds,
+                                minimum_size=minimum_size,
+                                include_ignored=include_ignored,
+                                as_of_ns=as_of_ns if within_seconds is not None else None,
+                            ),
                         ),
                     )
                 )
@@ -89,6 +99,9 @@ def test_recent_projection_is_flat_complete_and_newest_first(tmp_path: Path) -> 
 
 def test_recent_window_uses_mtime_for_every_file(tmp_path: Path) -> None:
     _build_fixture(tmp_path)
+    epoch = tmp_path / "epoch.md"
+    epoch.write_text("epoch", encoding="utf-8")
+    os.utime(epoch, (0, 0))
     assert LIVE_FILE_WINDOW_S == 90.0
     assert RECENT_WINDOW_SECONDS["live"] == LIVE_FILE_WINDOW_S
     now = time.time()
@@ -99,6 +112,7 @@ def test_recent_window_uses_mtime_for_every_file(tmp_path: Path) -> None:
     paths = {entry["path"] for entry in result.entries_flat}
     assert "docs.md" in paths
     assert "runs/x/a.jsonl" not in paths
+    assert "epoch.md" not in paths
 
 
 def test_recent_limit_extension_and_prefix_filters(tmp_path: Path) -> None:
@@ -113,6 +127,31 @@ def test_recent_limit_extension_and_prefix_filters(tmp_path: Path) -> None:
     assert result.truncated
     assert len(result.entries_flat) == 1
     assert result.entries_flat[0]["path"].endswith(".jsonl")
+
+
+def test_recent_applies_the_navigation_filter_before_the_response_cap(tmp_path: Path) -> None:
+    """A narrow selection must not spend its page on newer nonmatches."""
+
+    (tmp_path / "old").mkdir()
+    (tmp_path / "new").mkdir()
+    matching = tmp_path / "old" / "README"
+    matching.write_text("matching", encoding="utf-8")
+    old = time.time() - 60
+    os.utime(matching, (old, old))
+    for index in range(5):
+        candidate = tmp_path / "new" / f"noise-{index}.txt"
+        candidate.write_text("noise", encoding="utf-8")
+
+    result = _recent(
+        tmp_path,
+        limit=1,
+        filenames=("readme",),
+        minimum_size=8,
+    )
+
+    assert result.total_matching == 1
+    assert [entry["path"] for entry in result.entries_flat] == ["old/README"]
+    assert not result.truncated
 
 
 def test_recent_serializes_a_capped_count_without_claiming_exactness() -> None:
@@ -257,3 +296,44 @@ def test_api_recent_preserves_envelope_and_validation(tmp_path: Path) -> None:
         reverse=True,
     )
     assert all("mtime_ns" not in entry for entry in body["entries_flat"])
+
+
+def test_api_recent_accepts_the_full_navigation_filter_vocabulary(tmp_path: Path) -> None:
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "bravo").mkdir()
+    (tmp_path / "charlie").mkdir()
+    (tmp_path / "alpha" / "large.md").write_text("12345678", encoding="utf-8")
+    (tmp_path / "bravo" / "small.md").write_text("x", encoding="utf-8")
+    (tmp_path / "charlie" / "README").write_text("read me", encoding="utf-8")
+    (tmp_path / "charlie" / "noise.txt").write_text("12345678", encoding="utf-8")
+
+    async def run() -> dict[str, Any]:
+        original_root = paths_safe.ROOT_DIR
+        paths_safe._set_root_dir(tmp_path)
+        try:
+            async with inventory_harness(tmp_path) as harness:
+                response = await proc_browser.api_recent(
+                    cast(
+                        Any,
+                        _FakeRequest(
+                            harness.app,
+                            {
+                                "window": "all",
+                                "types": ".md,README",
+                                "min_size": "7",
+                                "include_ignored": "0",
+                            },
+                        ),
+                    )
+                )
+        finally:
+            paths_safe._set_root_dir(original_root)
+        return cast(dict[str, Any], json.loads(bytes(response.body)))
+
+    body = asyncio.run(run())
+
+    assert body["total_matching"] == 2
+    assert {entry["path"] for entry in body["entries_flat"]} == {
+        "alpha/large.md",
+        "charlie/README",
+    }

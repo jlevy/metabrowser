@@ -144,7 +144,7 @@ def test_fresh_connect_no_replay_flood(tmp_path: Path) -> None:
     assert change_count == 0
 
 
-def test_touch_existing_file_emits_upsert_and_projection_invalidate(tmp_path: Path) -> None:
+def test_touch_existing_file_emits_one_upsert_path(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def run() -> tuple[set[str], set[str]]:
@@ -171,7 +171,7 @@ def test_touch_existing_file_emits_upsert_and_projection_invalidate(tmp_path: Pa
     upserts, event_types = asyncio.run(run())
     assert "file_a.log" in upserts
     assert "fs.change" in event_types
-    assert "projection.invalidate" in event_types
+    assert event_types <= {"fs.change", "catalog.change"}
 
 
 def test_mkdir_with_files_reconciles_subtree_and_root_totals(tmp_path: Path) -> None:

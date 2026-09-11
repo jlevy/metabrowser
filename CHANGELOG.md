@@ -75,6 +75,119 @@ Inventory engine:
   Already-mounted collapsed folders receive new rows, and reopening edited files
   revalidates cached previews, including deep files represented by ancestor updates.
 
+- Inventory rollups now detect a concurrent topology change and retry from one coherent
+  snapshot instead of mixing pre-change aggregates with post-change children.
+  This prevents intermittent `/api/rollup` failures when filesystem discovery and
+  summary reads overlap under free-threaded Python.
+  The provider read boundary owns the retry, so one collision runs one optimistic
+  attempt and one snapshot fallback and reports the discarded attempt in its work and
+  timing metrics. CI now includes CPython 3.14’s free-threaded build so the shared-state
+  discipline remains enforced.
+
+- The filesystem observer is installed before initial discovery begins and stops
+  cooperatively before its worker is joined.
+  This closes the startup observation gap and prevents a `watchfiles` PyO3 borrow panic
+  during free-threaded CLI teardown.
+  Repeated shutdown requests continue joining the same Rust-backed consumer until it has
+  finalized, including when the discovery budget and provider close race.
+  HTTP readiness probes also close each response before its connection, eliminating
+  unraisable response-finalizer errors on the same interpreter.
+
+- Discovery-completion refreshes reconcile the standing keyed tree instead of replacing
+  the complete Files region, preserving one whole-tree paint while partial inventory
+  converges to its final rows.
+  The startup walker also uses a timer-backed cooperative yield so provider reads can
+  acquire the GIL promptly while discovery is active.
+
+- Quick File catalog completion now also follows the lightweight index-progress poll.
+  If bounded stream backpressure replaces a slow browser connection and drops the
+  terminal capability event, the catalog performs one coalesced authoritative refetch
+  instead of remaining incomplete until the reconnect backoff expires.
+  Failed and idle providers remain incomplete; only a completed or capped walk can
+  trigger that repair.
+
+- Filesystem changes no longer emit an unconsumed `projection.invalidate` event for
+  every changed path before emitting the authoritative `fs.change` batch.
+  The duplicate per-path stream flooded bounded browser queues during discovery; the
+  existing filesystem batch already invalidates file previews, directory projections,
+  and SDK rollup watches from the same changed paths.
+
+- The browser shell builds its two versioned KPress font URLs from locked distribution
+  metadata without importing the document-rendering runtime.
+  This keeps the font URLs identical while removing the renderer import from the cold
+  HTML response and preserving the lazy boundary for CLI and API-only commands.
+
+CLI and validation:
+
+- Recent navigation filtering now applies age, type, filename, size, and ignored-file
+  constraints through the provider before ranking and the response cap.
+  The browser clusters complete matching leaves and never infers folder membership from
+  descendants currently mounted in the DOM, so collapsed folders no longer disappear
+  while the panel reports their files.
+  The bounded live model now repairs itself after deep catalog changes, reconnects,
+  expiry, and capped-page changes whose prior match is absent from the retained top N.
+  While that repair is pending, its tally falls back to the retained-page lower bound;
+  event bursts coalesce without retaining an unbounded operation log or starting one
+  full provider scan per event.
+  Deep file-to-directory and file-to-symlink replacements now preserve their prior-type
+  transition through the inventory boundary, remove the exact Quick File candidate, and
+  prune the bounded Recent overlay to a safe lower-bound tally before the same coalesced
+  repair; routine directory aggregates remain absent from the catalog event and exact
+  invalidations never scan descendants.
+  A nonempty API golden and a composed browserless navigation session pin the route,
+  counts, clustering, bounded expansion, and repair decisions together.
+
+- CLI parity now defines checked evidence for declared user-visible functional aspects
+  as well as routes, kinds, and models.
+  Data behavior must run through `metab`, browser-owned interaction behavior must have
+  an executable production-module golden session, and only paint or platform behavior
+  may be explicitly exempt.
+  The gate derives executed owners from checker-controlled V8 coverage, requires an
+  exact canonical source span, and rejects stdout owner claims, route suffixes, failed
+  commands, and option-value spoofs.
+  The first registry rows cover the release-critical Recent and Markdown compositions;
+  migration of unchanged legacy UI behavior is tracked separately rather than presented
+  as complete coverage.
+
+- Image previews now use a manifest-owned, on-demand renderer and stylesheet through the
+  shell’s generic preview compositor.
+  Its browserless golden crosses asset resolution, registry lookup, mounting,
+  replacement, cancellation, disposal, and accessible error handling in the exact
+  production modules; the shell no longer carries a separate image rendering branch.
+
+- Rendered Markdown keeps same-document TOC links as fragments while preserving
+  Metabrowser’s delegated navigation target, so KPress can bind headings and highlight
+  the current section again.
+  A scoped, frame-coalesced observer fallback preserves scrollspy in runtimes without
+  `IntersectionObserver`, including long documents, and a browserless golden pins
+  selection, the installed KPress expand-all control, native-runtime preservation, and
+  disposal.
+
+- Real-tree performance runs retain an explicitly supplied `--files` count as
+  provenance, so a completed cold profile does not depend on a detached server log
+  containing an INFO-level completion line before it can be recorded.
+  When a fast scan stays below that logging threshold, the harness reads its status and
+  actual count from `/api/index/progress`.
+
+- `metab` gains two data modes that reach the server without a browser or a listening
+  port. `--api <route>` issues any registered `/api/` route through the real application
+  and prints the normalized envelope, in JSON or YAML, with `--data` for routes that
+  take a POST body and a nonzero exit status when the route answers outside 2xx.
+  `--show <path>` reports the four layers behind one selection: the route it resolves
+  to, the kind it classifies as, the views it offers, and a summary of its model.
+  It accepts browser addresses as well as paths, including `/view/<container>/<inner>`,
+  `/commit/<rev>`, and `/commit/<rev>/<inner>`. See the
+  [command-line guide](docs/command-line.md).
+
+- Every registered route the browser consumes and every built-in kind is reachable from
+  `metab` and pinned by a golden transcript.
+  `devtools/check_parity.py` fails the build when a route loses executable CLI evidence
+  or a kind is absent from golden console output.
+  Browser-independent behavior therefore stays at the CLI and model boundary; DOM tests
+  cover view-only behavior.
+  The table and the streaming exemptions are in
+  [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+
 Validation:
 
 - `devtools/bench_serving.py` takes `--corpus {synthetic,realistic,project}`. Two of the
@@ -128,30 +241,13 @@ File-type identity:
 Features:
 
 - Rendered documents now read at a width the reader chooses, in characters, through
-  **Max text width** in the Metabrowser menu (default 105). The setting is expressed in
+  **Max text width** in the Metabrowser menu (default 102). The setting is expressed in
   characters rather than pixels because that is the decision a reader has, and it is
   converted using each reading face’s measured average glyph advance — so switching
   between the serif and sans reading fonts holds the same characters per line rather
   than the same pixel width.
   The choice persists like the theme and font settings, and is applied before first
   paint so the column never renders at one width and reflows to another.
-
-- `metab` gains two data modes that reach the server without a browser or a listening
-  port. `--api <route>` issues any registered `/api/` route through the real application
-  and prints the normalized envelope, in JSON or YAML, with `--data` for routes that
-  take a POST body and a non-zero exit status when the route answers outside 2xx.
-  `--show <path>` reports the four layers behind one selection — the route it resolves
-  to, the kind it classifies as, the views it offers, and a summary of its model — and
-  accepts browser addresses as well as paths, including `/view/<container>/<inner>`,
-  `/commit/<rev>`, and `/commit/<rev>/<inner>`. See the
-  [command-line guide](docs/command-line.md).
-
-- Every route the browser consumes is now reachable from `metab` and pinned by a golden
-  transcript, and `devtools/check_parity.py` fails the build when a registered route has
-  no CLI equivalent or no golden.
-  Plugin authors adding a `[[data_hook]]` need a transcript for it; the table and the
-  two streaming exemptions are in
-  [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
 
 - Git history pages now come from a bounded server session that advances one ordered Git
   walk on demand and replays visited pages by indexed seek.

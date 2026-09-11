@@ -78,6 +78,7 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/static/app.js",
             "metabrowser/static/charts.js",
             "metabrowser/static/contribution-registry.js",
+            "metabrowser/static/document-width.js",
             "metabrowser/static/resource-context.js",
             "metabrowser/static/view-state.js",
             "metabrowser/static/source-append.js",
@@ -174,19 +175,21 @@ def _smoke_install(wheel: Path) -> None:
             "registry = load_file_type_registry(); "
             "plugins = discover_plugins(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
-            "required = {'agent-log', 'binary', 'diff', 'folder', 'markdown', 'structured', "
-            "'text', 'unknown-jsonl'}; "
+            "required = {'agent-log', 'binary', 'diff', 'folder', 'image', 'markdown', "
+            "'structured', 'text', 'unknown-jsonl'}; "
             "rendered = render_kpress_view(source_text='# Wheel smoke\\n', "
             "source_path='smoke.md', kind='markdown', view='rendered', ext='.md', "
             "mtime_hash='wheel-smoke', size=14); "
             "assert metabrowser.__version__; "
             "assert registry.family('javascript') is not None; "
             "static = files('metabrowser').joinpath('static'); "
-            "assets = ('app.js', 'keyboard-help.js', 'keyboard-shortcuts.js', "
-            "'overlay-layer.js', 'tree-keyboard-navigation.js'); "
+            "assets = ('app.js', 'document-width.js', 'keyboard-help.js', 'keyboard-shortcuts.js', "
+            "'overlay-layer.js', 'tree-keyboard-navigation.js', 'view-composition.js'); "
             "assert all(static.joinpath(asset).is_file() for asset in assets); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/overview.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/diff/diff-view.js').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/image/index.js').is_file(); "
+            "assert files('metabrowser').joinpath('builtin_plugins/image/styles.css').is_file(); "
             "assert files('metabrowser').joinpath("
             "'data/file-diff-format/file-diff.schema.json').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "

@@ -88,7 +88,12 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     const path = adapted?.status === "internal" ? adapted.path : resolved.path;
     const target = navigationTarget({ ...resolved, path });
     clearDisabledTarget(anchor);
-    anchor.setAttribute("href", mb.navigation.href(target));
+    anchor.setAttribute(
+      "href",
+      isSameDocumentFragment(authoredTarget, target, sourcePath)
+        ? authoredTarget
+        : mb.navigation.href(target),
+    );
     if (adapted?.status === "internal") {
       anchor.setAttribute("data-metabrowser-link-adapter", adapted.adapter);
     } else {
@@ -346,4 +351,20 @@ function findFragmentTarget(container, fragment) {
 /** @param {string} path */
 function normalizedFilePath(path) {
   return path.endsWith("/") ? path.slice(0, -1) : path;
+}
+
+/**
+ * KPress identifies TOC entries from their fragment-only hrefs. Keep that
+ * authored form while retaining the resolved navigation target in the
+ * delegated-click map, so Metabrowser still owns history and file navigation.
+ *
+ * @param {string} authoredTarget
+ * @param {NavigationTarget} target
+ * @param {string} sourcePath
+ */
+function isSameDocumentFragment(authoredTarget, target, sourcePath) {
+  return (
+    authoredTarget.startsWith("#") &&
+    normalizedFilePath(target.path) === normalizedFilePath(sourcePath)
+  );
 }

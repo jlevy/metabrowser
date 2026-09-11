@@ -1,4 +1,5 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
+import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 import { transclusionKey } from "./transclusion.js";
 import { preprocessObsidianWiki } from "./wiki-parser.js";
 
@@ -142,7 +143,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
             transclusionChain: Object.freeze([transclusionKey(ctx.path)]),
           }).dispose;
         }
-        disposeToc = mb.kpressInitToc(container);
+        disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
       }
     } catch (error) {
       if (!disposed && !mb.errors.isAbortError(error)) {

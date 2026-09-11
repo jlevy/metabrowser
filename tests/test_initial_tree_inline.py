@@ -66,7 +66,7 @@ def test_the_inline_rows_are_painted_once_and_only_unfiltered() -> None:
     rather than a shortcut."""
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
     block = app[app.index("function renderInitialTreeRows()") :]
-    block = block[: block.index("async function loadTree()")]
+    block = block[: block.index("async function loadTree(")]
 
     assert "_inlineTreeRows = null;" in block, "the inline rows must be consumed once"
     assert "_inlineTreeBaseline = painted ? rows : null;" in block
@@ -75,9 +75,9 @@ def test_the_inline_rows_are_painted_once_and_only_unfiltered() -> None:
     assert "if (!Array.isArray(rows) || rows.length === 0 || _lastTreeRender)" in block
 
     # And loadTree still owns the authoritative render that follows.
-    load_tree = app[app.index("async function loadTree()") : app.index("function treeSummaryHtml")]
+    load_tree = app[app.index("async function loadTree(") : app.index("function treeSummaryHtml")]
     assert "renderInitialTreeRows()" in load_tree
-    assert "if (_inlineTreeBaseline)" in load_tree
+    assert "if (_inlineTreeBaseline || reconcileMountedRoot)" in load_tree
     init = app[app.index("// ── Init") :]
     assert init.index("renderInitialTreeRows();") < init.index(
         'document.addEventListener("DOMContentLoaded"'
@@ -88,17 +88,36 @@ def test_the_inline_rows_are_painted_once_and_only_unfiltered() -> None:
 def test_the_fetched_tree_reconciles_an_inline_paint_in_place() -> None:
     """The fast shell paint must not be paid for with a second root rebuild."""
     app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
-    load_tree = app[app.index("async function loadTree()") : app.index("function treeSummaryHtml")]
+    load_tree = app[app.index("async function loadTree(") : app.index("function treeSummaryHtml")]
     reconcile = app[
         app.index("function reconcileTreeContainer") : app.index("function treeTruncationNoteHtml")
     ]
 
-    assert "reconcileInlineTree(data.tree" in load_tree
+    assert "reconcileMountedTree(data.tree" in load_tree
     assert "reconcileTreeNodes:root" in reconcile
     assert "nextNodes.slice(0, TREE_PAGE_SIZE)" in reconcile
     assert "deferredTreePageHtml(tail" in reconcile
     assert "subtreeCache.set(subtreeCacheKey(node.path), node.children)" in reconcile
     assert "panel.innerHTML =" not in reconcile
+
+
+def test_discovery_completion_reconciles_the_mounted_tree_in_place() -> None:
+    """A partial progressive tree must not become a second whole-region paint."""
+    app = (STATIC_ROOT / "app.js").read_text(encoding="utf-8")
+    progress_start = app.index("async function refreshTreeIfPendingTallies()")
+    progress = app[
+        progress_start : app.index("async function refreshIndexProgress", progress_start)
+    ]
+    diagnostic_start = app.index("async function refreshAfterPendingTallyDiagnostic")
+    diagnostic = app[
+        diagnostic_start : app.index(
+            "async function reportPendingTallyDiagnostic", diagnostic_start
+        )
+    ]
+
+    expected = "await loadTree({ reconcileMountedRoot: true });"
+    assert expected in progress
+    assert expected in diagnostic
 
 
 def test_collapsed_inline_descendants_stay_cached_out_of_the_dom() -> None:

@@ -32,6 +32,36 @@ stubs. They verify:
 These are contract tests, not visual browser tests.
 Keep the shims small instead of growing an incomplete DOM implementation.
 
+### Browserless Functional Sessions
+
+Deterministic view behavior runs from a command line against the same production
+JavaScript the shell loads.
+A session composes the relevant modules and prints the observable request and state
+transitions as a golden transcript.
+It does not duplicate the behavior in Python and does not invent a general fake browser.
+Platform fallbacks that change interaction remain interaction behavior rather than a
+paint exemption. Pin the native-capability path, fallback path, scheduling bound, and
+disposal against the exact production modules.
+
+`cli-ui-navigation.tryscript.md` is the reference case.
+It combines the production filter-control transition, request launch, Recent tree model,
+and bounded expansion planner over several collapsed matching folders.
+The transcript records the exact API request, selected leaves, folder counts, and
+bounded expansion plan.
+It also records the exact live-change batch, deep-change and reconnect repair decisions,
+capped-page backfill, retained-map bound, and fixed-window event coalescing.
+A focused source invariant ensures the Recent path cannot apply DOM-row membership after
+that model is rendered; focused Node assertions remain beside the golden so a failure
+identifies the responsible transform.
+
+`cli-ui-markdown-scrollspy.tryscript.md` applies the same pattern to rendered Markdown
+in one composed command.
+It enters through the production rendered-Markdown mount, which runs the link enhancer
+over authored same-document TOC anchors before passing them to the installed KPress TOC
+through the production observation fallback.
+The transcript records the delegated target and active section through a long document,
+including frame coalescing and lifecycle disposal.
+
 ### Golden CLI Transcripts
 
 `tests/golden/*.tryscript.md` are markdown files holding shell commands and their exact
@@ -87,13 +117,18 @@ Choose the narrowest layer that proves the behavior:
 - response shape, ETag, path validation, or middleware: route test;
 - background tasks and live changes: lifespan test;
 - SDK registration or renderer lifecycle: Node contract test;
+- deterministic browser-owned state or composition: browserless production-module
+  session with a golden transcript;
 - package-data or import-boundary behavior: distribution test;
 - a new `/api/` route, or the envelope a view draws from: golden transcript.
 
-The last one is not a preference.
-`devtools/check_parity.py` fails the build when a registered route has no transcript, so
-a route arrives with its golden or it does not arrive.
-See [CLI parity](../AGENTS.md#cli-parity) for the rule and
+The last two are not preferences.
+`devtools/check_parity.py` fails the build when a registered route has no transcript or
+a listed functional aspect lacks the command-line evidence it claims.
+A data aspect must run through `metab`; an interaction aspect must name an executable
+browserless session; only paint or platform behavior may carry a specific browser-only
+exemption. See [CLI and functional UI parity](../AGENTS.md#cli-and-functional-ui-parity)
+for the rule and
 [Views, Models, and Routes](project/architecture/arch-views-models-routes.md) for the
 table it checks.
 

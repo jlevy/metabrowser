@@ -503,28 +503,11 @@ function proseFontIcon(font) {
 // multiplies it by the type base and the current face's advance-per-character
 // to get KPress's --kpress-measure. Characters, not pixels, because that is
 // the decision a reader has — see the token comment in styles.css.
-var DOC_MAX_CHARS_KEY = "metabrowser.docMaxChars";
-var DOC_MAX_CHARS_DEFAULT = 105;
-// 45-75 characters is the classic single-column range; a browser pane is wide
-// enough to sit above it, and the default does. The bounds are deliberately
-// wider than the advice on both sides: the floor still holds a readable column
-// in a narrow pane, and the ceiling is where a line stops being followable at
-// all rather than where it stops being ideal.
-var DOC_MAX_CHARS_MIN = 40;
-var DOC_MAX_CHARS_MAX = 160;
-
-/** @returns {number} */
-function normalizeDocMaxChars(value) {
-  var n = Math.round(Number(value));
-  if (!Number.isFinite(n)) {
-    return DOC_MAX_CHARS_DEFAULT;
-  }
-  return Math.min(DOC_MAX_CHARS_MAX, Math.max(DOC_MAX_CHARS_MIN, n));
-}
+var documentWidth = window.MetabrowserDocumentWidth;
+var DOC_MAX_CHARS_DEFAULT = documentWidth.DEFAULT;
 
 function getStoredDocMaxChars() {
-  var raw = readPrefCookie(DOC_MAX_CHARS_KEY);
-  return raw ? normalizeDocMaxChars(raw) : DOC_MAX_CHARS_DEFAULT;
+  return documentWidth.readStored(readPrefCookie);
 }
 
 // Interface-font preference: the chosen font set's value (e.g. "clean",
@@ -576,20 +559,14 @@ function applyProseFont(font, persist) {
 }
 
 function applyDocMaxChars(chars, persist) {
-  var normalized = normalizeDocMaxChars(chars);
-  document.documentElement.style.setProperty("--doc-max-chars", String(normalized));
-  if (persist) {
-    writePrefCookie(DOC_MAX_CHARS_KEY, String(normalized));
-  }
   var input = /** @type {HTMLInputElement | null} */ (
     document.getElementById("doc-max-chars-input")
   );
-  // Only when it differs: writing the value back mid-edit would move the
-  // caret, and normalization can legitimately differ from what is typed
-  // (a partial "4" on the way to "45" clamps to the floor).
-  if (input && input.value !== String(normalized)) {
-    input.value = String(normalized);
-  }
+  return documentWidth.apply(chars, persist, {
+    input,
+    root: document.documentElement,
+    writePreference: writePrefCookie,
+  });
 }
 
 function applyInterfaceFont(font, persist) {
@@ -979,7 +956,16 @@ function renderInitialTreeRows() {
   return painted;
 }
 
-async function loadTree() {
+/**
+ * Load the authoritative root tree.
+ *
+ * A discovery-completion refresh already has a useful keyed tree mounted. It
+ * reconciles that tree in place instead of rebuilding the whole Files region.
+ *
+ * @param {{ reconcileMountedRoot?: boolean }} [options]
+ */
+async function loadTree(options = {}) {
+  const reconcileMountedRoot = options.reconcileMountedRoot === true;
   _rootTreeRequestsInFlight += 1;
   try {
     return await _perf.measureAsync("loadTree", async () => {
@@ -1117,8 +1103,8 @@ async function loadTree() {
       // flight. Keep the authoritative cache current without painting over the
       // newer source selection.
       if (!filesPanelUsesRecentSource()) {
-        if (_inlineTreeBaseline) {
-          reconcileInlineTree(data.tree, truncationHtml + summaryHtml);
+        if (_inlineTreeBaseline || reconcileMountedRoot) {
+          reconcileMountedTree(data.tree, truncationHtml + summaryHtml);
         } else {
           renderFilesFromTree();
         }
@@ -1349,11 +1335,13 @@ function reconcileTreeContainer(container, nextNodes, work) {
   }
 }
 
-// The shell's inline tree is already useful and visible. Reconcile the first
-// fetched answer into that keyed DOM instead of assigning panel.innerHTML a
-// second time. Mounted work is bounded by the root page and viewport expansion
-// plan; unmounted descendants remain data until the reader asks for them.
-function reconcileInlineTree(nextTree, chromeHtml) {
+// A mounted tree is already useful and visible. Reconcile a newer root answer
+// into that keyed DOM instead of assigning panel.innerHTML again. This covers
+// both the first fetch after the shell's inline paint and the terminal refresh
+// that replaces a partial discovery snapshot. Mounted work is bounded by the
+// root page and viewport expansion plan; unmounted descendants remain data
+// until the reader asks for them.
+function reconcileMountedTree(nextTree, chromeHtml) {
   const panel = document.getElementById("tab-files");
   const root = treeRootForPanel(panel);
   if (!panel || !root) {
@@ -3087,10 +3075,10 @@ function renderSelectionOutsideFilterNote(selectedPath) {
 // One Files panel, two data sources. The default source is the
 // /api/tree walk. When the recency filter is set and the treatment is
 // hide, the panel instead renders /api/recent's flat newest-first leaf
-// list (filter + gitignore resolved server-side), clustered here via
-// ``clusterRecentTreeJs`` — clustering is a rendering concern, owned
-// by this layer. See ``metabrowser/recent.py`` for the layering
-// rationale, and the nav filter bar section below for the switch.
+// list (membership and gitignore resolved server-side), clustered by
+// the browser-owned tree filter model before this layer renders it.
+// See ``metabrowser/recent.py`` for the layering rationale, and the
+// nav filter bar section below for the switch.
 
 // Client constants come from window.METABROWSER_SETTINGS (injected
 // by the Starlette index handler). The server-side
@@ -3261,13 +3249,13 @@ async function refreshAfterPendingTallyDiagnostic(serverDiagnostic) {
   ) {
     return;
   }
-  await loadTree();
+  await loadTree({ reconcileMountedRoot: true });
   // The user can change or clear the filter while the tree request is in
   // flight. Re-read the current window after the await so recovery never
   // restores an obsolete recency source over the user's newer selection.
   var recency = filterState ? filterState.get().recency : null;
   if (recency && recency !== "all") {
-    loadRecent(recency);
+    loadRecent(currentRecentFilterCursor());
   }
 }
 
@@ -3391,13 +3379,13 @@ async function refreshTreeIfPendingTallies() {
   }
   indexProgressCompletionRefreshInFlight = true;
   try {
-    await loadTree();
+    await loadTree({ reconcileMountedRoot: true });
     // Match diagnostic recovery: the tree request updates the authoritative
     // cache but deliberately does not paint over an active recency source.
     // Re-read after the await so a filter change during the request wins.
     var recency = filterState ? filterState.get().recency : null;
     if (recency && recency !== "all") {
-      loadRecent(recency);
+      loadRecent(currentRecentFilterCursor());
     }
     if (currentPath) {
       setSelectedPath(currentPath);
@@ -3443,6 +3431,17 @@ async function refreshIndexProgress(force) {
         ensureTreeTruncationNote(meta.max_files);
       }
       renderIndexProgress(meta);
+      // Queue overflow deliberately replaces the SSE connection. Its terminal
+      // capability event can therefore be the event that was dropped. The
+      // lightweight progress poll is an independent completion source: let a
+      // successfully completed (including capped) walk finish or repair the
+      // Quick File catalog before the reconnect backoff expires. A failed or
+      // idle provider is also inactive, but must not promote partial membership
+      // to complete coverage. CatalogFeed coalesces this with the normal SSE
+      // notification.
+      if (meta?.complete === true) {
+        quickFileCatalogFeed?.onIndexComplete(meta.truncated === true);
+      }
       if (wasScanning) {
         announceScanCompletion();
       }
@@ -3844,15 +3843,16 @@ const _RECENT_WINDOW_SECONDS = _METABROWSER_SETTINGS.RECENT_WINDOW_SECONDS || {}
 // but silently truncated 24h / 7d / 30d / all to whatever
 // happened to fall within ``root-depth-2``.
 //
-// New flow:
+// Data flow:
 // * On chip change, fetch ``/api/recent?window=...`` (the server
 //   uses a bounded provider query over all known entries, so the
 //   payload covers the whole window). Use the response's
 //   ``entries_flat`` field as the base set.
 // * Live overlay: ``fs.change`` upserts/removes mutate the base
 //   set in place when they fall inside the active window. The
-//   panel re-clusters + re-paints (debounced) so newly-written
-//   files appear without a refetch.
+//   panel re-clusters + re-paints (debounced); a change observed
+//   while the snapshot request is in flight invalidates that
+//   response and schedules one authoritative refetch.
 // * The base set is keyed by path so a file edited twice doesn't
 //   double-count.
 //
@@ -3864,29 +3864,118 @@ var recentTotalMatching = 0;
 var recentTotalMatchingExact = true;
 var recentTruncated = false;
 var recentInflight = null; // AbortController for the in-flight chip fetch
+var recentViewCommitted = false;
+const RECENT_REPAIR_RETRY_BASE_MS = 500;
+const RECENT_REPAIR_RETRY_MAX_MS = 8000;
+const RECENT_REPAIR_MAX_RETRIES = 4;
+var recentFilterRefetch = treeFilterModel.createRecentRefetchScheduler(
+  RECENT_RECLUSTER_DEBOUNCE_MS,
+  (request) => {
+    if (
+      filesPanelUsesRecentSource() &&
+      currentRecentWindow === request.windowKey &&
+      recentFilterKey() === request.requestKey
+    ) {
+      fetchRecent(currentRecentFilterCursor());
+    }
+  },
+  window,
+);
+function recentRepairDescriptor() {
+  var cursor = currentRecentFilterCursor();
+  return {
+    preserveRows: recentViewCommitted,
+    windowKey: cursor.windowKey,
+    requestKey: cursor.recentRequestKey,
+  };
+}
+
+var recentContinuity = treeFilterModel.createRecentContinuity({
+  delayMs: RECENT_RECLUSTER_DEBOUNCE_MS,
+  retryBaseMs: RECENT_REPAIR_RETRY_BASE_MS,
+  maxRetryDelayMs: RECENT_REPAIR_RETRY_MAX_MS,
+  maxRetries: RECENT_REPAIR_MAX_RETRIES,
+  clock: window,
+  onRepair: (request) => {
+    treeFilterModel.runRecentRepair(recentContinuity, request, {
+      current:
+        filesPanelUsesRecentSource() &&
+        currentRecentWindow === request.windowKey &&
+        recentFilterKey() === request.requestKey,
+      filterRefetchPending: recentFilterRefetch.pending(),
+      recentLoaded: recentEverLoaded,
+      viewCommitted: recentViewCommitted,
+      // A repair is an invisible data replacement. Keep the reader's current
+      // rows mounted until the authoritative answer is ready.
+      fetch: (_windowKey, preserveRows) => fetchRecent(currentRecentFilterCursor(), preserveRows),
+    });
+  },
+  onStatus: setRecentContinuityStatus,
+});
+
+var recentRecompute = treeFilterModel.createRecentRecomputeScheduler(
+  RECENT_RECLUSTER_DEBOUNCE_MS,
+  () => renderRecentFromBase(),
+  (request) =>
+    filesPanelUsesRecentSource() &&
+    currentRecentWindow === request.windowKey &&
+    recentFilterKey() === request.requestKey,
+  window,
+);
+
+function scheduleRecentAuthoritativeRefetch() {
+  treeFilterModel.invalidateRecent(recentContinuity, {
+    recentActive: recentEverLoaded && filesPanelUsesRecentSource(),
+    filterRefetchPending: recentFilterRefetch.pending(),
+    repair: recentRepairDescriptor(),
+  });
+}
+
+/** @param {number} lowerBound */
+function markRecentTotalAsRetainedLowerBound(lowerBound) {
+  recentTotalMatching = lowerBound;
+  recentTotalMatchingExact = false;
+  if (!filterState) {
+    return;
+  }
+  var state = filterState.get();
+  var panel = recentResultsHost();
+  if (panel) {
+    _renderFilteredTally(panel, state, recentTotalMatching);
+  }
+}
 // Server-published set of dir paths the Recent panel paints gray.
 // Pathspec is a backend concern; the SPA never re-derives this. A
-// dir node produced by ``clusterRecentTreeJs`` is gray iff its
+// dir node produced by the Recent tree model is gray iff its
 // compact path appears here. Refreshed on every /api/recent fetch;
 // live fs.change ops can't grow it (a newly recent dir under a
 // gitignored subtree goes un-marked until the next chip refetch).
 var _GITIGNORED_DIR_PATHS = new Set();
 
-function loadRecent(windowKey) {
+function loadRecent(cursor) {
   // A timer scheduled for the previous window must not repaint its
   // cached rows while this replacement request is still loading.
   clearRecentExpiryRecheck();
+  recentFilterRefetch.cancel();
+  recentContinuity.cancelRepairs();
   // Lock the user's window intent synchronously so a second chip
   // click can dedup against it.
-  currentRecentWindow = windowKey;
+  currentRecentWindow = cursor.windowKey;
   recentEverLoaded = true;
-  fetchRecent(windowKey);
+  fetchRecent(cursor);
 }
 
-function fetchRecent(windowKey) {
+function fetchRecent(cursor, preserveRows) {
+  // A queued repaint owns the snapshot that existed before this request.
+  // Cancel it now; the scheduler's identity guard also rejects a callback
+  // already moved into the browser task queue.
+  recentRecompute.cancel();
   if (recentInflight) {
     recentInflight.abort();
     recentInflight = null;
+  }
+  if (preserveRows !== true) {
+    recentViewCommitted = false;
   }
   var results = recentResultsHost();
   // Always replace the panel, not just on a cold start. This source
@@ -3894,22 +3983,20 @@ function fetchRecent(windowKey) {
   // would show an unfiltered tree under a recency window that is
   // already selected — and a warm `recentBaseEntries` from an earlier
   // window is the wrong window's answer, not this one's.
-  if (results) {
+  if (results && preserveRows !== true) {
     results.innerHTML =
       '<div class="recent-loading mb-delayed-loading" role="status"' +
       ' aria-label="Loading recent files"></div>';
   }
   var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   recentInflight = ctrl;
-  var url =
-    "/api/recent?window=" +
-    encodeURIComponent(windowKey) +
-    "&limit=" +
-    encodeURIComponent(String(RECENT_LIMIT)) +
-    // Asking for rows we are about to hide would spend the server's
-    // cap on them; the filter drops gitignored entries anyway when
-    // Show ignored is off.
-    (filterState && filterState.get().showIgnored === false ? "&include_ignored=0" : "");
+  var load = treeFilterModel.beginRecentRequest(recentContinuity, cursor, preserveRows === true);
+  var url = load.url;
+  // Object identity, rather than this URL alone, distinguishes two successive
+  // requests for the same selection. Abort is only a transport optimization:
+  // it does not stop a provider query that has already begun.
+  var request = load.request;
+  var repair = load.repair;
   var fetchOpts = ctrl ? { signal: ctrl.signal } : undefined;
   _perf
     .measureAsync(
@@ -3917,122 +4004,125 @@ function fetchRecent(windowKey) {
       () =>
         fetch(url, fetchOpts).then((resp) => {
           if (!resp.ok) {
-            throw new Error(`recent fetch failed: ${resp.status}`);
+            throw new window.MetabrowserRequestErrors.RequestError(
+              "Could not refresh recently modified files.",
+              { status: resp.status, operation: "recent" },
+            );
           }
           return resp.json();
         }),
-      { window: windowKey },
+      { window: cursor.windowKey },
     )
     .then((data) => {
-      var flat = data?.entries_flat || [];
-      knownFileCatalog?.observeRecent(flat);
-      if (windowKey !== currentRecentWindow) {
-        return; // user clicked another chip
-      }
-      recentBaseEntries = new Map();
-      for (var i = 0; i < flat.length; i++) {
-        var f = flat[i];
-        if (f?.path) {
-          recentBaseEntries.set(f.path, f);
-        }
-      }
-      recentTotalMatching = data?.total_matching || flat.length;
-      recentTotalMatchingExact = data?.total_matching_exact !== false;
-      recentTruncated = !!data?.truncated;
-      var ignoredDirs = data?.gitignored_dirs || [];
-      _GITIGNORED_DIR_PATHS = new Set(ignoredDirs);
-      // renderRecentFromBase reapplies filters and restores the
-      // selection; nothing more to do here.
-      renderRecentFromBase();
+      treeFilterModel.settleRecentSuccess(recentContinuity, request, repair, {
+        current: filesPanelUsesRecentSource() && recentFilterKey() === load.url,
+        commit: () => commitRecentResponse(data),
+        render: renderRecentFromBase,
+      });
     })
     .catch((err) => {
-      if (err && err.name === "AbortError") {
+      if (window.MetabrowserRequestErrors.isAbortError(err)) {
+        recentContinuity.abandonRequest(request);
         return;
       }
-      if (windowKey !== currentRecentWindow) {
-        return;
-      }
-      if (results) {
-        results.innerHTML =
-          '<div class="recent-empty" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
-      }
+      treeFilterModel.settleRecentFailure(recentContinuity, request, repair, err, {
+        current: filesPanelUsesRecentSource() && recentFilterKey() === load.url,
+        classify: window.MetabrowserRequestErrors.classifyRequestError,
+        showInitialError: () => {
+          if (results) {
+            results.innerHTML =
+              '<div class="recent-empty" role="alert">Could not load recently modified files. Refresh the page to try again.</div>';
+          }
+        },
+      });
     })
     .finally(() => {
+      recentContinuity.abandonRequest(request);
       if (recentInflight === ctrl) {
         recentInflight = null;
       }
     });
 }
 
-// Render the Recent panel from ``recentBaseEntries`` (the chip-
-// fetched base + any live ``fs.change`` overlay). Called by
-// fetchRecent on chip change AND by ``_scheduleRecentRecompute``
-// on every fs.change burst.
-// Files the recency response still shows once the other dimensions
-// apply. The recency window itself was resolved server-side, so only
-// type, size, and gitignored visibility can rule an entry out here.
-//
-// Recomputed on every filter pass rather than cached from the last
-// render: type and size changes run applyTreeFilters alone, so a
-// cached count kept the previous value while the rows updated.
-function countRecentMatches(entries, nowSec) {
-  if (!filterState) {
-    return entries.length;
-  }
-  var st = filterState.get();
-  var n = 0;
-  for (var i = 0; i < entries.length; i++) {
-    var e = entries[i];
-    if (!st.showIgnored && e.gitignored) {
-      continue;
-    }
-    if (
-      filterState.rowMatches(
-        { mtime: e.mtime, size: e.size, path: e.path, ext: e.logical_ext || e.ext || "" },
-        // The window already selected these rows; asking again here
-        // would re-test an mtime the server has ruled on.
-        Object.assign({}, st, { recency: "all" }),
-        nowSec,
-      )
-    ) {
-      n += 1;
+/** Commit one accepted provider response without rendering it. */
+function commitRecentResponse(data) {
+  var flat = data?.entries_flat || [];
+  knownFileCatalog?.observeRecent(flat);
+  recentBaseEntries = new Map();
+  for (var i = 0; i < flat.length; i++) {
+    var file = flat[i];
+    if (file?.path) {
+      recentBaseEntries.set(file.path, file);
     }
   }
-  return n;
+  recentTotalMatching = data?.total_matching ?? flat.length;
+  recentTotalMatchingExact = data?.total_matching_exact !== false;
+  recentTruncated = !!data?.truncated;
+  _GITIGNORED_DIR_PATHS = new Set(data?.gitignored_dirs || []);
+  // The response is already filtered before its cap; the browser repeats the
+  // leaf predicate only for filesystem events merged after this fetch.
+  recentViewCommitted = true;
 }
 
+// Render the Recent panel from the server-filtered snapshot plus live
+// filesystem updates. Membership is decided over complete leaves before
+// clustering; mounted DOM rows never participate in that decision.
 function renderRecentFromBase() {
   const results = recentResultsHost();
-  if (!results) {
+  if (!results || !filterState) {
     return;
   }
   treeKeyboard?.prepareForMutation();
-  var entries = recentEntriesFromBase({
-    window: currentRecentWindow,
-    limit: RECENT_LIMIT,
-  });
+  var nowSec = Date.now() / 1000;
+  var state = filterState.get();
+  var inputCount = recentBaseEntries.size;
+  treeFilterModel.renderRecentView(
+    Array.from(recentBaseEntries.values()),
+    {
+      filterState: filterState,
+      ignoredDirectoryPaths: _GITIGNORED_DIR_PATHS,
+      limit: RECENT_LIMIT,
+      nowSec: nowSec,
+      clusterPct: RECENT_CLUSTER_PCT,
+      state: state,
+    },
+    (view) => paintRecentView(results, state, inputCount, view),
+  );
+}
+
+/** Paint one already-decided Recent projection. */
+function paintRecentView(results, state, inputCount, view) {
+  var entries = view.entries;
+  var lostKnownMember = view.matchingCount < inputCount;
+  // A fetched page and its live overlay never retain more than the measured
+  // route cap. The model chooses the same top-N order as the provider before
+  // this replacement, so dropping the overflow does not change the view.
+  recentBaseEntries = new Map(entries.map((entry) => [entry.path, entry]));
   _perf.measure(
     "renderRecent:root",
     () => {
-      if (entries.length === 0) {
-        results.innerHTML = renderRecentList({ tree: [] });
-        return;
-      }
-      var nowSec = Date.now() / 1000;
-      var tree = clusterRecentTreeJs(entries, nowSec, RECENT_CLUSTER_PCT);
-      results.innerHTML = renderRecentList({ tree: tree });
+      results.innerHTML = renderRecentList({ tree: view.tree });
     },
-    { items: recentBaseEntries.size },
+    { items: inputCount },
   );
   scheduleRecentExpiryRecheck(entries);
-  // Recency is already resolved server-side; the remaining
-  // dimensions still apply over these rows.
-  applyTreeFilters();
+  _renderFilteredTally(results, state, entries.length);
+  // Rendering replaces the whole panel, so restore any retry status that a
+  // live repaint displaced while the authoritative repair is still pending.
+  setRecentContinuityStatus(recentContinuity.status());
+  renderSelectionOutsideFilterNote();
   if (currentPath) {
     setSelectedPath(currentPath);
   }
   reconcilePendingTallyDiagnostics();
   synchronizeTreeNow();
+  // A capped snapshot cannot fill a hole from data it never received. This
+  // catches time-window expiry between paints; explicit removals and rank
+  // regressions take the same coalesced repair path below.
+  if (recentTruncated && lostKnownMember && entries.length < RECENT_LIMIT) {
+    markRecentTotalAsRetainedLowerBound(entries.length);
+    scheduleRecentAuthoritativeRefetch();
+  }
 }
 
 const RECENT_EXPIRY_MIN_DELAY_MS = 250;
@@ -4076,299 +4166,42 @@ function scheduleRecentExpiryRecheck(entries) {
   }, due);
 }
 
-// Apply a live FileStore-equivalent op to the recent base. Used
-// by the fs.change subscriber so an upsert in the active window
-// shows up without a /api/recent refetch. Out-of-window upserts
-// are dropped; in-window upserts overwrite by path. ``op`` is the
-// fs.change op shape: ``{op, entry?, path?}`` matching events.py.
-function recentBaseApplyOp(op) {
-  if (!recentEverLoaded) {
-    return false;
-  }
-  // No active window means the panel is not on this source, so there
-  // is no overlay to keep current — and every op would otherwise be
-  // retained, since none of them can be judged against a window that
-  // does not exist.
-  if (!currentRecentWindow) {
-    return false;
-  }
-  if (!op) {
-    return false;
-  }
-  if (op.op === "upsert") {
-    var e = op.entry;
-    if (e?.type !== "file") {
-      return false;
-    }
-    var dict = recentEntryFromFsEntry(e);
-    // Only retain entries that fall inside the active window;
-    // anything older than the window's seconds-back is dropped.
-    var seconds = _RECENT_WINDOW_SECONDS[currentRecentWindow];
-    // `undefined`, not `null`, is what an unknown key gives — and the
-    // window is cleared to "" when the panel leaves this source. The
-    // old `!== null` guard let that through, so the cutoff became NaN,
-    // every comparison against it was false, and the base map grew
-    // without bound while the plain tree was on screen.
-    if (typeof seconds === "number") {
-      var cutoffSec = Date.now() / 1000 - seconds;
-      if (dict.mtime < cutoffSec) {
-        // Out-of-window upsert — make sure any stale base entry
-        // for this path is removed (e.g. a file aged past 1h).
-        if (recentBaseEntries.has(dict.path)) {
-          recentBaseEntries.delete(dict.path);
-          return true;
-        }
-        return false;
-      }
-    }
-    recentBaseEntries.set(dict.path, dict);
-    return true;
-  }
-  if (op.op === "remove") {
-    if (recentBaseEntries.has(op.path)) {
-      recentBaseEntries.delete(op.path);
-      return true;
-    }
-    return false;
-  }
-  if (op.op === "move") {
-    var prev = recentBaseEntries.get(op.from_path);
-    if (!prev) {
-      return false;
-    }
-    recentBaseEntries.delete(op.from_path);
-    var moved = Object.assign({}, prev, {
-      path: op.to_path,
-      name: op.to_path.split("/").pop(),
-    });
-    recentBaseEntries.set(op.to_path, moved);
-    return true;
-  }
-  return false;
-}
-
-// Convert an FsEntry (the FileStore wire shape) into the recent-
-// flat dict shape (mtime in seconds, no mtime_ns / kind / labels).
-// Mirror of metabrowser.recent._file_entry_to_recent_dict.
-function recentEntryFromFsEntry(entry) {
-  var out = {
-    name: entry.name,
-    path: entry.path,
-    type: "file",
-    size: entry.size || 0,
-    mtime: (entry.mtime_ns || 0) / 1e9,
-    // Mirror _file_entry_to_recent_dict: without the index's compound
-    // tail, a file that reaches this panel only through the live
-    // overlay would be matched on its last dotted suffix while the
-    // rendered rows are matched on the tail, so a compound pick could
-    // hide it.
-    ext: entry.ext || "",
-  };
-  if (entry.gitignored) {
-    out.gitignored = true;
-  }
-  return out;
-}
-
-// Produce a flat newest-first list of recent-flat dicts from the
-// chip-fetched + live-overlaid ``recentBaseEntries`` map. Same
-// shape the cluster helper expects. Window predicate re-applied
-// here so a base entry that has aged out since the last fetch is
-// dropped on the floor.
-function recentEntriesFromBase(opts) {
-  opts = opts || {};
-  var windowKey = opts.window || currentRecentWindow;
-  var limit = opts.limit || RECENT_LIMIT;
-  var extFilter = opts.ext || null; // null or string[]
-  var prefixFilter = opts.prefix || null; // null or string
-
-  var seconds = _RECENT_WINDOW_SECONDS[windowKey];
-  var nowSec = Date.now() / 1000;
-  var minMtime = seconds === null ? 0 : nowSec - seconds;
-
-  var matches = [];
-  recentBaseEntries.forEach((entry) => {
-    if (entry?.type !== "file") {
-      return;
-    }
-    if ((entry.mtime || 0) < minMtime) {
-      return;
-    }
-    if (extFilter || prefixFilter) {
-      // Recent-flat dicts don't carry ``ext`` (server pre-filters
-      // by extension); pull it from the path tail when callers
-      // pass an ext filter.
-      if (extFilter) {
-        var name = entry.name || (entry.path || "").split("/").pop();
-        var dot = name.lastIndexOf(".");
-        var ext = dot >= 0 ? name.slice(dot) : "";
-        if (extFilter.indexOf(ext) === -1) {
-          return;
-        }
-      }
-      if (prefixFilter && (entry.path || "").indexOf(prefixFilter) !== 0) {
-        return;
-      }
-    }
-    matches.push(entry);
-  });
-  matches.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
-  if (matches.length > limit) {
-    matches = matches.slice(0, limit);
-  }
-  return matches;
-}
-
-// Authoritative implementation of Recent clustering. Single-dir
-// compaction + RECENT_CLUSTER_PCT cluster-collapse are presentation
-// rules and live here; the Python side filters and resolves
-// gitignore but does not cluster.
-//
-// Inputs the server is responsible for: ``files`` (filtered, sorted,
-// per-leaf gitignored flag set) and ``_GITIGNORED_DIR_PATHS`` (the
-// pathspec-derived set of dirs to gray). This function never decides
-// gitignore status — it only maps a server-published path into a
-// node flag.
-function clusterRecentTreeJs(files, nowSec, pct) {
-  pct = typeof pct === "number" ? pct : 0.05;
-  // Build the directory tree.
-  /** @type {{name: string, subdirs: Record<string, any>, leaves: Array<any>}} */
-  var root = { name: "", subdirs: {}, leaves: [] };
-  for (var fi = 0; fi < files.length; fi++) {
-    var f = files[fi];
-    var parts = f.path.split("/");
-    var node = root;
-    for (var pi = 0; pi < parts.length - 1; pi++) {
-      var part = parts[pi];
-      if (!node.subdirs[part]) {
-        node.subdirs[part] = { name: part, subdirs: {}, leaves: [] };
-      }
-      node = node.subdirs[part];
-    }
-    node.leaves.push(f);
-  }
-
-  function emitDir(node, path) {
-    var children = [];
-    var subnames = Object.keys(node.subdirs).sort();
-    for (var si = 0; si < subnames.length; si++) {
-      var subname = subnames[si];
-      var sub = node.subdirs[subname];
-      var subPath = path ? `${path}/${subname}` : subname;
-      children.push(emitDir(sub, subPath));
-    }
-    for (var li = 0; li < node.leaves.length; li++) {
-      var leaf = node.leaves[li];
-      var leafCopy = {};
-      for (var k in leaf) {
-        leafCopy[k] = leaf[k];
-      }
-      leafCopy.type = "file";
-      children.push(leafCopy);
-    }
-
-    // Single-dir compaction.
-    var compactName = node.name;
-    var compactPath = path;
-    while (children.length === 1 && children[0].type === "dir") {
-      var sole = children[0];
-      compactName = compactName ? `${compactName}/${sole.name}` : sole.name;
-      compactPath = sole.path;
-      children = sole.children;
-    }
-    children.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
-
-    var totalFiles = 0,
-      totalSize = 0,
-      newestMtime = 0;
-    for (var ci = 0; ci < children.length; ci++) {
-      var c = children[ci];
-      if (c.type === "dir") {
-        totalFiles += c.total_files || 0;
-        totalSize += c.total_size || 0;
-      } else {
-        totalFiles += 1;
-        totalSize += c.size || 0;
-      }
-      if ((c.mtime || 0) > newestMtime) {
-        newestMtime = c.mtime || 0;
-      }
-    }
-
-    var ages = [];
-    for (var ai = 0; ai < children.length; ai++) {
-      var ac = children[ai];
-      if ((ac.mtime || 0) > 0) {
-        ages.push(nowSec - ac.mtime);
-      }
-    }
-    var coherent = _agesWithinPctJs(ages, pct);
-
-    var out = {
-      type: "dir",
-      name: compactName,
-      path: compactPath,
-      children: children,
-      total_files: totalFiles,
-      total_size: totalSize,
-      mtime: newestMtime,
-      clustered: coherent,
-    };
-    // Coherent (clustered) dirs collapse explicitly so the cluster
-    // chip stands in for its children. For non-clustered dirs we
-    // leave ``expanded`` unset so renderTreeNodes can apply the same
-    // viewport-bounded expansion plan as the Files panel.
-    if (coherent) {
-      out.expanded = false;
-    }
-    if (_GITIGNORED_DIR_PATHS?.has(compactPath)) {
-      out.gitignored = true;
-    }
-    return out;
-  }
-
-  var topNames = Object.keys(root.subdirs).sort();
-  var out = [];
-  for (var ti = 0; ti < topNames.length; ti++) {
-    var n = topNames[ti];
-    out.push(emitDir(root.subdirs[n], n));
-  }
-  for (var lj = 0; lj < root.leaves.length; lj++) {
-    var lc = {};
-    for (var lk in root.leaves[lj]) {
-      lc[lk] = root.leaves[lj][lk];
-    }
-    lc.type = "file";
-    out.push(lc);
-  }
-  out.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
-  return out;
-}
-
-function _agesWithinPctJs(ages, pct) {
-  if (ages.length <= 1) {
-    return true;
-  }
-  var lo = ages[0],
-    hi = ages[0];
-  for (var i = 1; i < ages.length; i++) {
-    if (ages[i] < lo) {
-      lo = ages[i];
-    }
-    if (ages[i] > hi) {
-      hi = ages[i];
-    }
-  }
-  if (hi <= 0) {
-    return true;
-  }
-  return (hi - lo) / hi <= pct;
-}
-
 // Both tree sources paint into the Files panel now that Recent is a
 // filter rather than a tab.
 function recentResultsHost() {
   return document.getElementById("tab-files");
+}
+
+/** @param {"fresh" | "retrying" | "stale"} status */
+function setRecentContinuityStatus(status) {
+  var panel = recentResultsHost();
+  if (!panel) {
+    return;
+  }
+  var existing = panel.querySelector(".recent-stale-note");
+  if (status === "fresh" || !filesPanelUsesRecentSource()) {
+    existing?.remove();
+    return;
+  }
+  var text =
+    status === "retrying"
+      ? "Recent files may be out of date; retrying…"
+      : "Recent files may be out of date. Change the filter or refresh to try again.";
+  if (existing) {
+    existing.textContent = text;
+    return;
+  }
+  var note = document.createElement("div");
+  note.className = "recent-stale-note";
+  note.setAttribute("role", "status");
+  note.textContent = text;
+  var anchor =
+    panel.querySelector(".tree-summary-filtered") || panel.querySelector(".tree-summary");
+  if (anchor) {
+    anchor.insertAdjacentElement("afterend", note);
+  } else {
+    panel.insertAdjacentElement("afterbegin", note);
+  }
 }
 
 function renderRecentList(data) {
@@ -4388,10 +4221,9 @@ function renderRecentList(data) {
   // the Recent tree builder leaves ``expanded`` unset on those
   // nodes so explicit cluster-collapse state still wins.
   var body = renderTreeNodes(tree, true, { dirMetric: TREE_DIR_METRIC_COUNT });
-  // Keep the tally row this source would otherwise paint over. The
-  // filtered count that hangs off it is written by applyTreeFilters,
-  // which runs next and is the only place that knows how many rows
-  // survived every dimension rather than just the recency one.
+  // Keep the summary row this source would otherwise paint over.
+  // renderRecentFromBase writes its filtered tally from the exact
+  // model entries after this markup is mounted.
   return (_lastTreeSummaryHtml || "") + body;
 }
 
@@ -4858,47 +4690,63 @@ function initFilterBar() {
   });
   // Seed the source tracking from the persisted state so the first
   // user change is compared against reality, not against null.
-  _filterLastSource = filesPanelUsesRecentSource();
-  _filterLastRecency = filterState.get().recency;
-  _filterLastShowIgnored = filterState.get().showIgnored;
-  _filterLastTreeQuery = treeFilterKey();
+  _filterCursor = currentRecentFilterCursor();
   filterState.subscribe(onFilterStateChange);
 }
 
 // One place decides what a filter change costs. Both sources resolve the
 // filter on the server, so a change to any dimension either source reads
 // is a refetch, not a repaint.
-var _filterLastSource = false;
-var _filterLastRecency = "all";
-var _filterLastShowIgnored = true;
-var _filterLastTreeQuery = "";
+var _filterCursor = null;
+
+function currentRecentFilterCursor(state = currentFilterSnapshot()) {
+  return treeFilterModel.recentFilterCursor(state, RECENT_LIMIT, treeFilterSizeFloors());
+}
+
+function recentFilterKey() {
+  return currentRecentFilterCursor().recentRequestKey;
+}
+
 function onFilterStateChange(state) {
   renderNavFilterBar();
-  var usesRecent = filesPanelUsesRecentSource();
-  var sourceChanged = _filterLastSource !== usesRecent;
-  var windowChanged = usesRecent && _filterLastRecency !== state.recency;
-  // Gitignored visibility is a server-side parameter on the recency
-  // source, not just a class on the rows: it decides what the response
-  // cap gets spent on, so changing it has to refetch.
-  var ignoredChanged = usesRecent && _filterLastShowIgnored !== state.showIgnored;
-  var treeQuery = treeFilterKey();
-  var treeQueryChanged = !usesRecent && _filterLastTreeQuery !== treeQuery;
-  _filterLastSource = usesRecent;
-  _filterLastRecency = state.recency;
-  _filterLastShowIgnored = state.showIgnored;
-  _filterLastTreeQuery = treeQuery;
-  if (usesRecent && (sourceChanged || windowChanged || ignoredChanged)) {
-    loadRecent(state.recency);
+  var transition = treeFilterModel.recentFilterTransition(
+    _filterCursor,
+    currentRecentFilterCursor(state),
+  );
+  _filterCursor = transition.current;
+  if (transition.action === "load-recent") {
+    loadRecent(transition.current);
     return;
   }
-  if (!usesRecent && (sourceChanged || treeQueryChanged)) {
-    // Abandon any recency fetch still in flight and drop the window it
-    // was for. Otherwise a late response repaints the panel with the
-    // old window's list under a trigger that now reads "Any age".
+  if (transition.action === "refetch-recent") {
+    // Filter menus can emit several type/size selections in one gesture. An
+    // HTTP abort does not cancel the provider's O(N) scan, so invalidate the
+    // old response now and launch only the final selection after the burst.
+    recentRecompute.cancel();
     if (recentInflight) {
       recentInflight.abort();
       recentInflight = null;
     }
+    recentContinuity.abandonRequest();
+    recentContinuity.cancelRepairs();
+    recentFilterRefetch.schedule({
+      windowKey: transition.current.windowKey,
+      requestKey: transition.current.recentRequestKey,
+    });
+    return;
+  }
+  if (transition.action === "load-tree") {
+    // Abandon any recency fetch still in flight and drop the window it
+    // was for. Otherwise a late response repaints the panel with the
+    // old window's list under a trigger that now reads "Any age".
+    recentRecompute.cancel();
+    if (recentInflight) {
+      recentInflight.abort();
+      recentInflight = null;
+    }
+    recentContinuity.abandonRequest();
+    recentFilterRefetch.cancel();
+    recentContinuity.cancelRepairs();
     // Empty, not a window key: a late response compares against this
     // and must never find a match.
     currentRecentWindow = "";
@@ -4914,18 +4762,11 @@ function onFilterStateChange(state) {
 
 // ── Applying filters to the tree ────────────────────────────────
 //
-// Two sources, two answers. /api/tree is filtered server-side (see
-// treeFilterModel.requestParams), so in that source there is nothing here to
-// decide: every row that arrived belongs, and folder aggregates already
-// report their matches. /api/recent returns a flat list of files inside a
-// recency window, clustered into folders here, and the type and size
-// dimensions are still resolved over those rows — which is sound
-// because a cluster holds every matching file it has, unlike a
-// collapsed folder in the tree source whose contents were never sent.
-//
-// That distinction is the bug this replaced: deciding a folder's fate
-// from mounted rows kept every folder whose subtree had not loaded, and
-// then removed it the moment expanding proved it held nothing.
+// Both sources are filtered before rendering. /api/tree returns pruned folder
+// aggregates; /api/recent returns matching leaves and the browser clusters
+// those leaves before render. This pass only handles tree leaves inserted by
+// the live event stream. It must never infer membership from mounted folders:
+// collapsed and paged descendants are deliberately absent from the DOM.
 
 function _childContainerFor(row) {
   var next = row.nextElementSibling;
@@ -4943,110 +4784,13 @@ function applyTreeFiltersInner() {
     return;
   }
   var st = filterState.get();
-  if (!filesPanelUsesRecentSource()) {
-    _applyTreeSourceFilters(panel, st);
-    scheduleTreeSynchronize();
-    return;
-  }
-  var rows = /** @type {HTMLElement[]} */ (
-    Array.prototype.slice.call(panel.querySelectorAll(".tree-item:not(.tree-page-more)"))
-  );
-  var pageRows = /** @type {HTMLElement[]} */ (
-    Array.prototype.slice.call(panel.querySelectorAll(".tree-page-more"))
-  );
-  var constrained = filterHasConstraints(st);
-  if (!constrained) {
-    for (var c = 0; c < rows.length; c++) {
-      rows[c].classList.remove("tree-item-filter-hidden");
-    }
-    for (var pageIndex = 0; pageIndex < pageRows.length; pageIndex++) {
-      pageRows[pageIndex].classList.remove("tree-item-filter-hidden");
-    }
-    // Clear the lines too: this early return is the path taken when the last
-    // filter is removed, so leaving them would strand a "Filtered to N files"
-    // over an unfiltered tree.
-    _renderFilteredTally(panel, st, null);
+  if (filesPanelUsesRecentSource()) {
     renderSelectionOutsideFilterNote();
     scheduleTreeSynchronize();
     return;
   }
-  var nowSec = Date.now() / 1000;
-  // Describe the rows, let the model decide, write the verdicts back. The
-  // decision — a cluster folder survives iff a child does, and a pruned
-  // folder takes its descendants with it — is in tree-filter-model.js, where
-  // it can be tested without a document.
-  var hidden = treeFilterModel.clusterHiddenIds(
-    rows.map((row, index) => ({
-      id: String(index),
-      parentId: _clusterParentId(row, rows),
-      isDir: row.classList.contains("tree-folder"),
-      matched: _rowPassesFilter(row, st, nowSec),
-    })),
-  );
-  for (var j = 0; j < rows.length; j++) {
-    rows[j].classList.toggle("tree-item-filter-hidden", hidden.has(String(j)));
-  }
-  for (var pageRowIndex = 0; pageRowIndex < pageRows.length; pageRowIndex++) {
-    var pageParent = pageRows[pageRowIndex].parentElement?.previousElementSibling;
-    pageRows[pageRowIndex].classList.toggle(
-      "tree-item-filter-hidden",
-      Boolean(pageParent?.classList.contains("tree-item-filter-hidden")),
-    );
-  }
-  // Counted from this source's entries, not from the rendered rows:
-  // renderTreeNodes pages at TREE_PAGE_SIZE, so a DOM count reports how
-  // much has been paged in rather than how many files passed.
-  _renderFilteredTally(
-    panel,
-    st,
-    countRecentMatches(
-      recentEntriesFromBase({ window: currentRecentWindow, limit: RECENT_LIMIT }),
-      nowSec,
-    ),
-  );
-  renderSelectionOutsideFilterNote();
-  // Scheduled, not immediate: every caller that needs focus repaired in this
-  // turn follows applyTreeFilters() with synchronizeTreeNow(), which cancels
-  // this task and runs once instead of walking the tree twice.
+  _applyTreeSourceFilters(panel, st);
   scheduleTreeSynchronize();
-}
-
-// The row's own verdict, before anything about its descendants is considered.
-// Gitignored visibility is handled here rather than in the shared predicate
-// because only the caller knows a row's class.
-function _rowPassesFilter(row, state, nowSec) {
-  if (!state.showIgnored && row.classList.contains("tree-item-gitignored")) {
-    return false;
-  }
-  var isDir = row.classList.contains("tree-folder");
-  return filterState.rowMatches(
-    {
-      mtime: parseTipNumber(row.dataset.tipMtime),
-      size: isDir ? null : parseTipNumber(row.dataset.tipSize),
-      path: row.dataset.path || "",
-      // The renderer stamps the index's bounded compound-tail extension on
-      // every file row; matching on it keeps a compound pick (".min.js")
-      // agreeing with the tally that offered it.
-      ext: row.dataset.ext || "",
-      isDir: isDir,
-      isSymlink: row.classList.contains("tree-symlink"),
-    },
-    state,
-    nowSec,
-  );
-}
-
-// Index of the row that owns *row*'s group, as the model's parent id.
-// Rows nest through a .tree-children wrapper, so the owner is the element
-// before the wrapper rather than the wrapper itself.
-function _clusterParentId(row, rows) {
-  var container = row.parentElement;
-  if (!container?.classList.contains("tree-children")) {
-    return null;
-  }
-  var owner = container.previousElementSibling;
-  var index = owner ? rows.indexOf(/** @type {HTMLElement} */ (owner)) : -1;
-  return index >= 0 ? String(index) : null;
 }
 
 // The tree source: /api/tree was asked the question and answered it over the
@@ -5111,14 +4855,16 @@ function _renderFilteredTally(panel, state, count) {
     }
     return;
   }
-  var text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}`;
-  // A capped response has more matches than it sent, and only it can
-  // say so — the client never saw the rest.
-  if (filesPanelUsesRecentSource() && recentTruncated && recentTotalMatching) {
-    var totalSuffix = recentTotalMatchingExact ? "" : "+";
-    text += ` of ${recentTotalMatching.toLocaleString()}${totalSuffix} matching`;
+  var text;
+  if (filesPanelUsesRecentSource()) {
+    text = treeFilterModel.recentFilteredTallyText(count, {
+      totalMatching: recentTotalMatching,
+      totalMatchingExact: recentTotalMatchingExact,
+      truncated: recentTruncated,
+    });
+  } else {
+    text = `Filtered to ${count.toLocaleString()} ${count === 1 ? "file" : "files"}.`;
   }
-  text += ".";
   if (existing) {
     existing.textContent = text;
     return;
@@ -5303,15 +5049,6 @@ var LOADING_INDICATOR_DELAY_MS = 120;
 var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
 
-async function renderFileWithPlugins(data, preferredViewId, previewClaim) {
-  await _perf.measureAsync(
-    "fileNavigation:assets",
-    () => window.metabrowser.ensureKindAssets(data.kind),
-    { kind: data.kind || "" },
-  );
-  return renderFile(data, preferredViewId, previewClaim);
-}
-
 /** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, preferredViewId) {
   var previewClaim = claimPreview("file");
@@ -5353,7 +5090,7 @@ async function selectFile(path, preferredViewId) {
         const needsRevalidate = fileNeedsRevalidate.has(path);
         if (cached && !needsRevalidate && !activeFiles.has(path)) {
           navigationController.canonicalizePath(path, cached.kind === "folder");
-          await renderFileWithPlugins(cached, preferredViewId, previewClaim);
+          await renderFile(cached, preferredViewId, previewClaim);
           maybeOpenLiveStream(path, cached);
           return openedFileOutcome(path, cached, preview);
         }
@@ -5405,7 +5142,7 @@ async function selectFile(path, preferredViewId) {
                 loadingIndicatorTimer = null;
               }
               navigationController.canonicalizePath(path, cached.kind === "folder");
-              await renderFileWithPlugins(cached, preferredViewId, previewClaim);
+              await renderFile(cached, preferredViewId, previewClaim);
               maybeOpenLiveStream(path, cached);
               return openedFileOutcome(path, cached, preview);
             }
@@ -5443,7 +5180,7 @@ async function selectFile(path, preferredViewId) {
               loadingIndicatorTimer = null;
             }
             navigationController.canonicalizePath(path, data.kind === "folder");
-            await renderFileWithPlugins(data, preferredViewId, previewClaim);
+            await renderFile(data, preferredViewId, previewClaim);
             maybeOpenLiveStream(path, data);
             return openedFileOutcome(path, data, preview);
           }
@@ -5764,67 +5501,15 @@ document.addEventListener("metabrowser:view-print-state", () => {
   }
 });
 
-var activePluginDisposers = [];
-
-/** @param {Array<() => void>} disposers */
-function disposePluginViews(disposers) {
-  for (var i = 0; i < disposers.length; i++) {
-    try {
-      disposers[i]();
-    } catch (err) {
-      console.error("plugin dispose error:", err);
-    }
-  }
-}
+var pluginViewLifecycle = window.MetabrowserViewComposition.createLifecycle({
+  onDisposeError(error) {
+    console.error("plugin dispose error:", error);
+  },
+});
 
 function disposeActivePluginViews() {
   stopFolderHeaderSubscription();
-  var disposers = activePluginDisposers;
-  activePluginDisposers = [];
-  disposePluginViews(disposers);
-}
-
-async function mountPluginView(container, pluginView, ctx, disposers = activePluginDisposers) {
-  /** @type {{disposed: boolean, handle: {dispose?: () => void, ready?: Promise<void>} | null}} */
-  var record = { disposed: false, handle: null };
-  disposers.push(() => {
-    if (record.disposed) {
-      return;
-    }
-    record.disposed = true;
-    if (typeof record.handle?.dispose === "function") {
-      record.handle.dispose();
-    }
-    if (typeof pluginView.dispose === "function") {
-      pluginView.dispose(container);
-    }
-  });
-  try {
-    var rendered = await Promise.resolve(pluginView.render(container, ctx));
-    var handle =
-      rendered && typeof rendered === "object"
-        ? /** @type {{dispose?: () => void, ready?: Promise<void>}} */ (rendered)
-        : null;
-    if (record.disposed) {
-      handle?.dispose?.();
-      return;
-    }
-    record.handle = handle;
-    if (handle?.ready) {
-      await handle.ready;
-    }
-    if (record.disposed) {
-      return;
-    }
-    scheduleHighlightCode(container);
-  } catch (err) {
-    if (record.disposed) {
-      return;
-    }
-    console.error("plugin render error:", err);
-    container.innerHTML =
-      '<div class="preview-empty" role="alert">Could not display this view. Refresh the page to try again.</div>';
-  }
+  pluginViewLifecycle.disposeActive();
 }
 
 /** @param {HTMLElement} preview */
@@ -5848,12 +5533,35 @@ async function renderFile(data, preferredViewId, claim) {
   return _perf.measureAsync(
     `renderFile:${data.kind || data.type || "?"}`,
     async () => {
+      const compositionKind = data.kind || data.type || "unknown";
+      var composition = await window.MetabrowserViewComposition.prepare({
+        kind: compositionKind,
+        views: Array.isArray(data.views) ? data.views : [],
+        preferredViewId: preferredViewId,
+        ensureKindAssets(kind) {
+          return _perf.measureAsync(
+            "fileNavigation:assets",
+            () => window.metabrowser.ensureKindAssets(kind),
+            { kind: kind },
+          );
+        },
+        getRegisteredView(kind, viewId) {
+          return window.metabrowser.getRegisteredView(kind, viewId);
+        },
+        isCurrent() {
+          return isPreviewClaimCurrent(renderClaim);
+        },
+      });
+      if (composition.status === "cancelled") {
+        return;
+      }
       const preview = document.getElementById("preview-pane");
       if (!preview) {
         return;
       }
       const stage = createFilePreviewStage(preview);
-      const stagedPluginDisposers = [];
+      const stagedPluginLifecycle = pluginViewLifecycle.begin();
+      const stagedPluginDisposers = stagedPluginLifecycle.disposers;
       let installed = false;
       let stageCleaned = false;
       const cleanupStage = () => {
@@ -5861,7 +5569,7 @@ async function renderFile(data, preferredViewId, claim) {
           return;
         }
         stageCleaned = true;
-        disposePluginViews(stagedPluginDisposers);
+        stagedPluginLifecycle.cancel();
         stage.remove();
       };
       cancelPendingFilePreviewStage();
@@ -5903,16 +5611,11 @@ async function renderFile(data, preferredViewId, claim) {
         // (kind, viewId) we paint an unavailable-view message — never a
         // fallback that pulls renderers out of the shell. This is the
         // contract: every kind is a plugin.
-        var views = data.views;
-        var initialActiveView = null;
-        if (views?.length) {
-          // Plugin navigation can preserve a working mode across resources.
-          // An unavailable preference falls through to the server default.
-          initialActiveView =
-            views.find((view) => view.id === preferredViewId) ||
-            views.find((view) => view.default) ||
-            views[0];
-        }
+        var preparedViews = composition.views;
+        var views = preparedViews.map((prepared) => prepared.view);
+        // Plugin navigation can preserve a working mode across resources. An
+        // unavailable preference falls through to the server default.
+        var initialActiveView = composition.initialView;
         var pluginRenders = [];
         if (views && views.length > 0) {
           if (views.length > 1) {
@@ -5935,10 +5638,7 @@ async function renderFile(data, preferredViewId, claim) {
           }
           for (let i = 0; i < views.length; i++) {
             const view = views[i];
-            var pluginView =
-              window.metabrowser && data.kind
-                ? window.metabrowser.getRegisteredView(data.kind, view.id)
-                : null;
+            var pluginView = preparedViews[i].renderer;
             // container_class can be set per-view in the plugin manifest as
             // [[view]].container_class; defaults to "content-body".
             var containerClass = view.container_class || "content-body";
@@ -5982,28 +5682,8 @@ async function renderFile(data, preferredViewId, claim) {
                 '><div class="preview-empty" role="alert">This view is unavailable. Refresh the page to try again.</div></div>';
             }
           }
-        } else if (data.type === "image") {
-          // No tab bar — the browser renders the image directly via /raw,
-          // which already returns the right mimetype. The .content-body
-          // wrapper gives the same outer padding a plain text view has.
-          html +=
-            '<div class="content-body"><img class="file-image" src="/raw?path=' +
-            encodeURIComponent(data.path) +
-            '" alt="' +
-            esc(data.path) +
-            '"></div>';
         } else if (data.type === "binary") {
           html += `<div class="content-body"><div class="preview-empty">No preview is available for this binary file (${formatSize(data.size || 0)}).</div></div>`;
-        } else if (data.type === "jsonl_too_large") {
-          html +=
-            '<div class="content-body"><div class="preview-empty">' +
-            "<strong>This JSONL file is too large to preview.</strong><br><br>" +
-            "File size: " +
-            formatSize(data.size || 0) +
-            "<br>Preview limit: " +
-            formatSize(data.max_size || 0) +
-            "<br><br>Open it with a tool that can stream large files." +
-            "</div></div>";
         } else if (data.type === "error") {
           html += `<div class="content-body">${previewErrorHtml("Could not preview this file.", data.error)}</div>`;
         }
@@ -6029,7 +5709,7 @@ async function renderFile(data, preferredViewId, claim) {
         if (pluginRenders?.length) {
           var ctx = {
             path: data.path,
-            kind: data.kind,
+            kind: compositionKind,
             ext: data.ext,
             size: data.size,
             frontmatter: data.frontmatter || {},
@@ -6040,12 +5720,23 @@ async function renderFile(data, preferredViewId, claim) {
           for (var pi = 0; pi < pluginRenders.length; pi++) {
             var pr = pluginRenders[pi];
             var container = stage.querySelector(`[data-plugin-view="${pr.tabId}"]`);
-            if (!container) {
+            if (!(container instanceof HTMLElement)) {
               continue;
             }
             const mount = (
               (target, pluginView) => () =>
-                mountPluginView(target, pluginView, ctx, stagedPluginDisposers)
+                window.MetabrowserViewComposition.mount(
+                  target,
+                  pluginView,
+                  ctx,
+                  stagedPluginDisposers,
+                  {
+                    afterMount: scheduleHighlightCode,
+                    onError(error) {
+                      console.error("plugin render error:", error);
+                    },
+                  },
+                )
             )(container, pr.view);
             if (initialActiveView && pr.tabId === initialActiveView.id) {
               await _perf.measureAsync(
@@ -6068,9 +5759,10 @@ async function renderFile(data, preferredViewId, claim) {
           return;
         }
         const replacementNodes = Array.from(stage.childNodes);
-        disposeActivePluginViews();
-        preview.replaceChildren(...replacementNodes);
-        activePluginDisposers = stagedPluginDisposers;
+        stopFolderHeaderSubscription();
+        if (!stagedPluginLifecycle.commit(() => preview.replaceChildren(...replacementNodes))) {
+          return;
+        }
         installed = true;
         if (pendingFilePreviewStageCleanup === cleanupStage) {
           pendingFilePreviewStageCleanup = null;
@@ -6403,6 +6095,10 @@ function fileStoreApplySnapshot(scope, entries) {
 }
 
 function fileStoreApplySnapshotInner(scope, entries) {
+  // A baseline or reconnect snapshot is another observation made after an
+  // in-flight Recent request began. Even an empty snapshot can represent
+  // removals, so it invalidates that response like a nonempty fs.change batch.
+  recentContinuity.dirtyActiveRequest();
   // Atomic apply: rebuild the store from this snapshot before
   // notifying any subscriber, so derived views never see a
   // half-empty state.
@@ -6430,9 +6126,26 @@ function fileStoreApplyChange(ops) {
 }
 
 function fileStoreApplyChangeInner(ops) {
+  if (ops.length > 0) {
+    recentContinuity.dirtyActiveRequest();
+  }
   invalidateSubtreeCaches(ops);
   invalidateFilePreviews(ops);
   knownFileCatalog?.applyEventChange(ops);
+  // Decide the whole Recent overlay transition before FileStore mutates. The
+  // production model needs the pre-batch row type to distinguish a file that
+  // became a directory from ordinary directory aggregate traffic.
+  var recentEffect = null;
+  if (recentEverLoaded && currentRecentWindow && filterState && ops.length > 0) {
+    recentEffect = treeFilterModel.applyRecentChangeBatch(recentBaseEntries, ops, {
+      filterState: filterState,
+      limit: RECENT_LIMIT,
+      nowSec: Date.now() / 1000,
+      previousEntries: fileStore,
+      state: filterState.get(),
+      truncated: recentTruncated,
+    });
+  }
   for (var i = 0; i < ops.length; i++) {
     var op = ops[i];
     if (op.op === "upsert") {
@@ -6452,11 +6165,13 @@ function fileStoreApplyChangeInner(ops) {
       // idempotence against partial deliveries.
       _removeRenderedRows(op.path);
     }
-    // Live overlay for the Recent panel. The panel
-    // reads from a separate base map so it can show files outside
-    // the SSE ``root-depth-2`` scope; when an op falls inside the
-    // active window, mirror it into that base too.
-    recentBaseApplyOp(op);
+  }
+  if (recentEffect) {
+    recentTruncated = recentEffect.truncated;
+  }
+  if (recentEffect?.needsAuthoritativeRepair) {
+    markRecentTotalAsRetainedLowerBound(recentEffect.retainedLowerBound ?? 0);
+    scheduleRecentAuthoritativeRefetch();
   }
   window.metabrowserDirectoryTotalsStore?.applyChange(ops);
   notifyFileStoreSubscribers({ kind: "change", ops: ops });
@@ -7326,9 +7041,9 @@ function _removeRenderedRowsImmediately(path) {
 // Recency re-cluster scheduling: debounced so a burst of fs.change
 // ops doesn't render-thrash. The recency source reads from
 // ``recentBaseEntries`` (fetched from /api/recent plus a live overlay
-// from fs.change), so updates inside the active window flow through
-// without a refetch.
-var _recentRecomputeHandle = null;
+// from fs.change), so updates inside the active window normally flow
+// through without a refetch. In-flight snapshots are invalidated as
+// described above.
 function _scheduleRecentRecompute() {
   if (!recentEverLoaded) {
     return; // never fetched; nothing to recompute
@@ -7336,13 +7051,11 @@ function _scheduleRecentRecompute() {
   if (!filesPanelUsesRecentSource()) {
     return; // the panel is showing the full tree; that path has its own updates
   }
-  if (_recentRecomputeHandle) {
-    return; // already pending
-  }
-  _recentRecomputeHandle = setTimeout(() => {
-    _recentRecomputeHandle = null;
-    renderRecentFromBase();
-  }, RECENT_RECLUSTER_DEBOUNCE_MS);
+  var cursor = currentRecentFilterCursor();
+  recentRecompute.schedule({
+    windowKey: cursor.windowKey,
+    requestKey: cursor.recentRequestKey,
+  });
 }
 
 var _esConsecutiveErrors = 0;
@@ -7414,10 +7127,17 @@ function _createInventoryEventSource() {
         inventoryChangeHighlightingActive = true;
       }
       _scheduleRecentRecompute();
-      // A fresh snapshot after the first one means the connection
-      // was rebuilt and catalog deltas may have been dropped; the
-      // feed refetches the bulk catalog to restore continuity.
+      // Every depth-limited sentinel establishes a transport boundary. The
+      // first must cover a Recent request/page that started before the SSE
+      // baseline; later ones cover deltas dropped across reconnect. If Recent
+      // starts after the first sentinel, this call had no active view and
+      // retained no deferred repair.
       quickFileCatalogFeed?.onSentinelSnapshot();
+      treeFilterModel.observeRecentSentinel(recentContinuity, {
+        recentActive: recentEverLoaded && filesPanelUsesRecentSource(),
+        filterRefetchPending: recentFilterRefetch.pending(),
+        repair: recentRepairDescriptor(),
+      });
     } catch (_e) {
       /* malformed frame; ignore */
     }
@@ -7435,6 +7155,25 @@ function _createInventoryEventSource() {
     try {
       var data = JSON.parse(e.data);
       quickFileCatalogFeed?.onCatalogChange(data);
+      var recentCatalogEffect = filterState
+        ? treeFilterModel.applyRecentCatalogChange(recentBaseEntries, data, {
+            filterState: filterState,
+            nowSec: Date.now() / 1000,
+            state: filterState.get(),
+            visibleDepth: 2,
+          })
+        : null;
+      if (recentCatalogEffect?.needsAuthoritativeRepair) {
+        // catalog.change rides every stream scope, so it is the authoritative
+        // signal for file changes too deep for root-depth-2 fs.change.
+        if (recentEverLoaded && filesPanelUsesRecentSource()) {
+          markRecentTotalAsRetainedLowerBound(recentCatalogEffect.retainedLowerBound ?? 0);
+          if (recentCatalogEffect.changed) {
+            _scheduleRecentRecompute();
+          }
+        }
+        scheduleRecentAuthoritativeRefetch();
+      }
     } catch (_e) {
       /* ignore */
     }
@@ -7456,6 +7195,8 @@ function _createInventoryEventSource() {
     // A resync marks a gap in the ordered delta stream. Clear derived state,
     // then replace this connection so the server sends an authoritative
     // snapshot before live updates resume.
+    recentRecompute.cancel();
+    scheduleRecentAuthoritativeRefetch();
     knownFileCatalog?.clear();
     fileStore = new Map();
     notifyFileStoreSubscribers({ kind: "resync" });
@@ -7886,7 +7627,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
   });
   if (filesPanelUsesRecentSource()) {
-    loadRecent(filterState.get().recency);
+    loadRecent(currentRecentFilterCursor());
   }
   initPaneResize("tree-resize", ".tree-pane", 180, null);
   if (initialPath) {

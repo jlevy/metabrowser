@@ -5,8 +5,9 @@
   ``complete``/``truncated`` flags and a revision-backed ETag.
 * Every ``fs.change`` emits a minimal ``catalog.change`` companion:
   file upserts shrink to ``{p, e}``, a gitignored upsert becomes an
-  exact-file removal, filesystem removals retain subtree semantics,
-  and directory-only upsert batches emit nothing.
+  exact-file removal, known file-to-non-file transitions become exact-path
+  invalidations, filesystem removals retain subtree semantics, and ordinary
+  directory-only batches emit nothing.
 * ``catalog.change`` passes the ``root-depth-2`` scope filter
   unchanged, so the depth-scoped tree stream carries complete
   catalog deltas.
@@ -26,7 +27,14 @@ from typing import Any, cast
 import pytest
 
 from metabrowser import events_route
-from metabrowser.events import CapabilityUpdate, CatalogChange, CatalogUpsert
+from metabrowser.events import (
+    CapabilityUpdate,
+    CatalogChange,
+    CatalogUpsert,
+    FsChange,
+    FsEntry,
+    FsUpsert,
+)
 from metabrowser.events_route import _filter_event_for_scope, api_catalog
 from metabrowser.inventory_engine.contract import (
     CatalogQuery,
@@ -74,6 +82,18 @@ async def _catalog_event(queue: asyncio.Queue[Any]) -> CatalogChange:
         envelope = await asyncio.wait_for(queue.get(), timeout=2.0)
         if isinstance(envelope.event, CatalogChange):
             return envelope.event
+
+
+async def _catalog_event_naming(
+    queue: asyncio.Queue[Any],
+    *,
+    field: str,
+    path: str,
+) -> CatalogChange:
+    while True:
+        event = await _catalog_event(queue)
+        if path in getattr(event, field):
+            return event
 
 
 def test_api_catalog_lists_the_complete_nonignored_file_universe(tmp_path: Path) -> None:
@@ -261,11 +281,110 @@ def test_catalog_live_add_ignore_and_remove_deltas(tmp_path: Path) -> None:
     assert [(upsert.p, upsert.e) for upsert in added.upserts] == [("docs/live.txt", ".txt")]
     assert added.removes == ()
     assert added.remove_files == ()
+    assert added.non_file_paths == ()
     assert ignored.upserts == ()
     assert ignored.removes == ()
     assert ignored.remove_files == ("ignored/other.txt",)
+    assert ignored.non_file_paths == ()
     assert removed.removes == ("docs/notes.md",)
     assert removed.remove_files == ()
+    assert removed.non_file_paths == ()
+
+
+def test_file_to_non_file_metadata_becomes_exact_catalog_invalidations() -> None:
+    """A deep file replaced by a directory or symlink must leave Quick File."""
+
+    directory = FsEntry.for_observed_dir(
+        path="runs/day/job/replaced-dir",
+        parent="runs/day/job",
+        name="replaced-dir",
+    )
+    symlink = FsEntry.for_observed_symlink(
+        path="runs/day/job/replaced-link",
+        parent="runs/day/job",
+        name="replaced-link",
+        size=7,
+        mtime_ns=1,
+    )
+
+    change = events_route._catalog_change(
+        FsChange(ops=(FsUpsert(entry=directory), FsUpsert(entry=symlink))),
+        non_file_paths=(directory.path, symlink.path),
+    )
+
+    assert change == CatalogChange(
+        upserts=(),
+        removes=(),
+        remove_files=(),
+        non_file_paths=("runs/day/job/replaced-dir", "runs/day/job/replaced-link"),
+    )
+    assert (
+        events_route._catalog_change(
+            FsChange(ops=(FsUpsert(entry=directory), FsUpsert(entry=symlink)))
+        )
+        is None
+    )
+
+
+def test_live_deep_file_to_directory_and_symlink_emit_exact_invalidations(
+    tmp_path: Path,
+) -> None:
+    """Provider transition metadata survives coordinator and event projection."""
+
+    _build_fixture(tmp_path)
+    replaced_dir = tmp_path / "docs" / "deep" / "replaced-dir"
+    replaced_link = tmp_path / "docs" / "deep" / "replaced-link"
+    replaced_dir.write_text("file before directory")
+    replaced_link.write_text("file before symlink")
+
+    async def run() -> tuple[CatalogChange, CatalogChange]:
+        async with inventory_harness(tmp_path) as harness:
+            queue = harness.bus.attach_connection()
+            try:
+                replaced_dir.unlink()
+                replaced_dir.mkdir()
+                await harness.runtime.coordinator.refresh(
+                    RefreshRequest(
+                        observations=(
+                            RefreshObservation(
+                                path="docs/deep/replaced-dir",
+                                kind=ObservationKind.MODIFIED,
+                            ),
+                        )
+                    )
+                )
+                directory = await _catalog_event_naming(
+                    queue,
+                    field="non_file_paths",
+                    path="docs/deep/replaced-dir",
+                )
+
+                replaced_link.unlink()
+                replaced_link.symlink_to(tmp_path / "README.md")
+                await harness.runtime.coordinator.refresh(
+                    RefreshRequest(
+                        observations=(
+                            RefreshObservation(
+                                path="docs/deep/replaced-link",
+                                kind=ObservationKind.MODIFIED,
+                            ),
+                        )
+                    )
+                )
+                symlink = await _catalog_event_naming(
+                    queue,
+                    field="non_file_paths",
+                    path="docs/deep/replaced-link",
+                )
+                return directory, symlink
+            finally:
+                harness.bus.detach_connection(queue)
+
+    directory, symlink = asyncio.run(run())
+    assert directory.non_file_paths == ("docs/deep/replaced-dir",)
+    assert directory.upserts == directory.removes == directory.remove_files == ()
+    assert symlink.non_file_paths == ("docs/deep/replaced-link",)
+    assert symlink.upserts == symlink.removes == symlink.remove_files == ()
 
 
 def test_catalog_change_passes_depth_scope_filter() -> None:
@@ -273,6 +392,7 @@ def test_catalog_change_passes_depth_scope_filter() -> None:
         upserts=(CatalogUpsert(p="very/deep/nested/path/file.txt", e=".txt"),),
         removes=(),
         remove_files=(),
+        non_file_paths=(),
     )
     assert _filter_event_for_scope(event, "root-depth-2") is event
 

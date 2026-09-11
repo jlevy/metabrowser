@@ -502,6 +502,29 @@ check(
   catalogKeySweeps === 0,
   String(catalogKeySweeps),
 );
+exactEvictionCatalog.applyCatalogChange({
+  remove_files: [],
+  removes: [],
+  upserts: [{ e: ".txt", p: "cache/child.txt" }],
+});
+exactEvictionCatalog.observeNavigation("cache/replaced-link", ".md");
+catalogKeySweeps = 0;
+exactEvictionCatalog.applyCatalogChange({
+  non_file_paths: ["cache", "cache/replaced-link"],
+  remove_files: [],
+  removes: [],
+  upserts: [],
+});
+equal(
+  "non-file invalidations retire navigated files but preserve directory descendants",
+  exactEvictionCatalog.snapshot().files.map((file) => file.path),
+  ["cache/child.txt", "keep.txt"],
+);
+check(
+  "non-file exact invalidations do not scan catalog keys",
+  catalogKeySweeps === 0,
+  String(catalogKeySweeps),
+);
 
 exactEvictionCatalog.observeNavigation("cache/opened.pyc", ".pyc");
 exactEvictionCatalog.applyCatalogChange({

@@ -426,7 +426,7 @@
     /**
      * Apply one `catalog.change` event from the live stream.
      * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[],
-     *   remove_files?: string[]}} payload
+     *   remove_files?: string[], non_file_paths?: string[]}} payload
      */
     function applyCatalogChange(payload) {
       let changed = false;
@@ -435,15 +435,24 @@
           changed = put(upsert.p, upsert.e || null, "catalog-event") || changed;
         }
       }
-      // An ignored-file upsert means one exact catalog leaf stopped being
-      // eligible. It is not a directory deletion and cannot have descendants;
-      // preserving that distinction on the wire keeps this O(remove_files).
-      // Explicitly navigated ignored files remain the documented exception.
+      // A gitignored-file upsert means one exact catalog leaf stopped being
+      // feed-eligible. It is not a directory deletion, and explicitly
+      // navigated ignored files remain the documented exception. Preserving
+      // that distinction keeps this O(remove_files).
       for (const path of payload?.remove_files || []) {
         if (typeof path !== "string" || filesByPath.get(path)?.source === NAVIGATION_SOURCE) {
           continue;
         }
         changed = filesByPath.delete(path) || changed;
+      }
+      // A non-file upsert is stronger than feed ineligibility: the provider
+      // observed that the exact path is now a directory or symlink. Remove it
+      // even when navigation originally seated it, without touching file
+      // descendants under a directory aggregate.
+      for (const path of payload?.non_file_paths || []) {
+        if (typeof path === "string") {
+          changed = filesByPath.delete(path) || changed;
+        }
       }
       // Upserts and removes arrive as separate arrays here, so the whole
       // remove list is one consecutive run and sweeps in a single pass.

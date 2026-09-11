@@ -44,6 +44,10 @@ def _read_styles_css() -> str:
     return proc_browser.STATIC_DIR.joinpath("styles.css").read_text()
 
 
+def _read_view_composition_js() -> str:
+    return proc_browser.STATIC_DIR.joinpath("view-composition.js").read_text()
+
+
 def _read_design_system_md() -> str:
     return proc_browser.STATIC_DIR.parents[2].joinpath("docs/design-system.md").read_text()
 
@@ -91,7 +95,7 @@ def test_event_source_opens_against_api_events_scope_root_depth_2() -> None:
 def test_event_source_registers_fs_snapshot_listener() -> None:
     js = _read_app_js()
     fn_start = js.index("function _createInventoryEventSource()")
-    fn_block = js[fn_start : fn_start + 3000]
+    fn_block = js[fn_start : js.index("function startInventoryEventStream()", fn_start)]
     assert 'addEventListener("fs.snapshot"' in fn_block
     assert 'addEventListener("fs.change"' in fn_block
     assert 'addEventListener("fs.resync_required"' in fn_block
@@ -182,8 +186,8 @@ def test_apply_change_handles_upsert_and_remove_ops() -> None:
     ``FsMove``: ``upsert`` and ``remove``. A future rename-detection
     contract can re-introduce ``move``."""
     js = _read_app_js()
-    fn_start = js.index("function fileStoreApplyChange(ops)")
-    fn_block = js[fn_start : fn_start + 1200]
+    fn_start = js.index("function fileStoreApplyChangeInner(ops)")
+    fn_block = js[fn_start : js.index("function invalidateFilePreviews(ops)", fn_start)]
     assert 'op.op === "upsert"' in fn_block
     assert 'op.op === "remove"' in fn_block
     assert 'op.op === "move"' not in fn_block
@@ -295,8 +299,8 @@ def test_apply_cell_patch_called_from_apply_change_upsert() -> None:
     each upsert. Otherwise skeleton cells never get filled."""
 
     js = _read_app_js()
-    fn_start = js.index("function fileStoreApplyChange(ops)")
-    fn_block = js[fn_start : fn_start + 1200]
+    fn_start = js.index("function fileStoreApplyChangeInner(ops)")
+    fn_block = js[fn_start : js.index("function invalidateFilePreviews(ops)", fn_start)]
     assert "applyCellPatch(op.entry, inventoryChangeHighlightingActive)" in fn_block
 
 
@@ -314,11 +318,11 @@ def test_initial_inventory_upserts_do_not_flash_until_completion() -> None:
     assert "= false" in state_block
 
     snapshot_start = js.index("function fileStoreApplySnapshotInner(scope, entries)")
-    snapshot_block = js[snapshot_start : snapshot_start + 800]
+    snapshot_block = js[snapshot_start : snapshot_start + 1400]
     assert "applyCellPatch(entries[i], false)" in snapshot_block
 
     change_start = js.index("function fileStoreApplyChangeInner(ops)")
-    change_block = js[change_start : change_start + 900]
+    change_block = js[change_start : js.index("function invalidateFilePreviews(ops)", change_start)]
     assert "applyCellPatch(op.entry, inventoryChangeHighlightingActive)" in change_block
 
     source_start = js.index("function _createInventoryEventSource()")
@@ -428,10 +432,10 @@ def test_index_progress_completion_refreshes_pending_tallies() -> None:
     fn_start = js.index("function refreshTreeIfPendingTallies()")
     fn_block = js[fn_start : fn_start + 900]
     assert 'document.querySelector("#tab-files .tally-pending")' in fn_block
-    tree_refresh = fn_block.index("await loadTree();")
+    tree_refresh = fn_block.index("await loadTree({ reconcileMountedRoot: true });")
     current_recency = fn_block.index("filterState.get().recency")
     assert tree_refresh < current_recency
-    assert "loadRecent(recency);" in fn_block
+    assert "loadRecent(currentRecentFilterCursor());" in fn_block
 
     progress_start = js.index("async function refreshIndexProgress(force)")
     progress_block = js[progress_start : progress_start + 2000]
@@ -455,10 +459,10 @@ def test_pending_tally_recovery_rechecks_recency_after_tree_refresh() -> None:
     js = _read_app_js()
     start = js.index("async function refreshAfterPendingTallyDiagnostic")
     block = js[start : js.index("async function reportPendingTallyDiagnostic", start)]
-    tree_refresh = block.index("await loadTree();")
+    tree_refresh = block.index("await loadTree({ reconcileMountedRoot: true });")
     current_recency = block.index("filterState.get().recency")
     assert tree_refresh < current_recency
-    assert "loadRecent(recency);" in block
+    assert "loadRecent(currentRecentFilterCursor());" in block
 
 
 def test_load_tree_renders_single_file_tally() -> None:
@@ -470,7 +474,7 @@ def test_load_tree_renders_single_file_tally() -> None:
     state instead of a partial "0 files / 0 B" snapshot."""
 
     js = _read_app_js()
-    fn_start = js.index("async function loadTree()")
+    fn_start = js.index("async function loadTree(")
     fn_block = js[fn_start : js.index("function treeSummaryHtml", fn_start)]
     summary_start = js.index("function treeSummaryHtml")
     summary_block = js[
@@ -535,21 +539,20 @@ def test_enhance_after_optional_asset_only_schedules_highlight() -> None:
 def test_plugin_mount_schedules_scoped_post_paint_highlighting() -> None:
     """Default and lazy views share one post-mount enhancement lifecycle."""
     js = _read_app_js()
-    mount_start = js.index("async function mountPluginView(container, pluginView, ctx,")
-    mount_block = js[mount_start : mount_start + 2600]
-    assert "async function mountPluginView" in mount_block
-    assert "await Promise.resolve(pluginView.render(container, ctx))" in mount_block
+    mount_block = _read_view_composition_js()
+    assert "async function mount(container, renderer, context, disposers" in mount_block
+    assert "await Promise.resolve(renderer.render(container, context))" in mount_block
     assert "await handle.ready" in mount_block
     assert "if (record.disposed)" in mount_block
-    assert "handle.dispose()" in mount_block
-    assert "scheduleHighlightCode(container);" in mount_block
+    assert "handle?.dispose?.()" in mount_block
     assert "requestAnimationFrame(afterFrame)" in js
     assert "root !== document && !root.isConnected" in js
     assert 'rawLogHost.closest(".log-event.expanded")' in js
 
     render_start = js.index("async function renderFile(data, preferredViewId, claim)")
     render_block = js[render_start : render_start + 12_000]
-    assert "mountPluginView(target, pluginView, ctx, stagedPluginDisposers)" in render_block
+    assert "window.MetabrowserViewComposition.mount(" in render_block
+    assert "afterMount: scheduleHighlightCode" in render_block
     assert "const mount = (" in render_block
     assert "var mount = (" not in render_block
     assert '"fileNavigation:activeView"' in render_block
@@ -798,7 +801,8 @@ def test_scan_completion_is_announced_on_the_inventory_change_channel() -> None:
 
     js = _read_app_js()
     fn_start = js.index("async function refreshIndexProgress(force)")
-    fn_block = js[fn_start : fn_start + 1600]
+    fn_end = js.index("function startIndexProgressPolling()", fn_start)
+    fn_block = js[fn_start:fn_end]
     # Read before rendering: renderIndexProgress overwrites the record the
     # transition is detected against.
     assert fn_block.index('indexProgressLastRendered?.status === "scanning"') < fn_block.index(
@@ -807,7 +811,8 @@ def test_scan_completion_is_announced_on_the_inventory_change_channel() -> None:
     assert "announceScanCompletion()" in fn_block
 
     announce_start = js.index("function announceScanCompletion()")
-    announce_block = js[announce_start : announce_start + 400]
+    announce_end = js.index("async function refreshTreeIfPendingTallies()", announce_start)
+    announce_block = js[announce_start:announce_end]
     assert 'new CustomEvent("metabrowser:inventory-change"' in announce_block
     # Null paths mean "anything may have changed", which is what makes every
     # watch re-fetch rather than only those matching some path list.
@@ -991,8 +996,8 @@ def test_remove_rendered_rows_is_called_from_fs_change_remove_branch() -> None:
 
     js = _read_app_js()
     assert "function _removeRenderedRows(path)" in js
-    fn_start = js.index("function fileStoreApplyChange(ops)")
-    fn_block = js[fn_start : fn_start + 1500]
+    fn_start = js.index("function fileStoreApplyChangeInner(ops)")
+    fn_block = js[fn_start : js.index("function invalidateFilePreviews(ops)", fn_start)]
     assert "_removeRenderedRows(op.path)" in fn_block
 
 
@@ -1033,7 +1038,7 @@ def test_load_tree_renders_truncation_banner_when_status_truncated() -> None:
     partial."""
 
     js = _read_app_js()
-    fn_start = js.index("async function loadTree()")
+    fn_start = js.index("async function loadTree(")
     # To the end of the function rather than a fixed window: a hand-tuned
     # character count silently stops covering the branch it was written for the
     # first time anything above it grows.

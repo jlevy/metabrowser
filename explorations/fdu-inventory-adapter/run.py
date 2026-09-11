@@ -183,7 +183,7 @@ async def _representative_read(
                         query_id="recent",
                         max_rows=200,
                         as_of_ns=as_of_ns,
-                        include_ignored=True,
+                        filter=InventoryFilter(include_ignored=True),
                     ),
                     CatalogQuery(
                         query_id="catalog",

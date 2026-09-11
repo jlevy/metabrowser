@@ -640,6 +640,28 @@ def test_live_file_changes_refresh_root_aggregates(tmp_path: Path) -> None:
         assert "" in change.dirty_paths
 
 
+def test_live_file_to_symlink_preserves_transition_metadata(tmp_path: Path) -> None:
+    _build_tree(tmp_path)
+
+    async def _run() -> tuple[FsEntry | None, list[ChangeBatch]]:
+        inv = await _drive_inventory(tmp_path)
+        cursor = await _checkpoint(inv)
+        inv.apply_live_entry(
+            FsEntry.for_observed_symlink(
+                path="file_a.log",
+                parent="",
+                name="file_a.log",
+                size=9,
+                mtime_ns=2,
+            )
+        )
+        return inv.get("file_a.log"), await _changes_since(inv, cursor)
+
+    stored, changes = asyncio.run(_run())
+    assert stored is not None and stored.type == "symlink"
+    assert tuple(path for batch in changes for path in batch.non_file_paths) == ("file_a.log",)
+
+
 def test_live_ignore_state_flip_updates_only_unignored_ancestor_totals(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
@@ -1240,10 +1262,11 @@ def test_rewalk_subtree_replaces_file_without_double_counting_root(tmp_path: Pat
     replacement = tmp_path / "replacement"
     replacement.write_bytes(b"old-file")
 
-    async def _run() -> tuple[FsEntry, FsEntry, FsEntry]:
+    async def _run() -> tuple[FsEntry, FsEntry, FsEntry, tuple[str, ...]]:
         inv = await _drive_inventory(tmp_path)
         root_before = inv.get("")
         assert root_before is not None
+        cursor = await _checkpoint(inv)
 
         replacement.unlink()
         replacement.mkdir()
@@ -1254,9 +1277,11 @@ def test_rewalk_subtree_replaces_file_without_double_counting_root(tmp_path: Pat
         subtree = inv.get("replacement")
         assert root_after is not None
         assert subtree is not None
-        return root_before, root_after, subtree
+        changes = await _changes_since(inv, cursor)
+        non_file_paths = tuple(path for batch in changes for path in batch.non_file_paths)
+        return root_before, root_after, subtree, non_file_paths
 
-    root_before, root_after, subtree = asyncio.run(_run())
+    root_before, root_after, subtree, non_file_paths = asyncio.run(_run())
     assert subtree.type == "dir"
     assert subtree.total_files == 1
     assert root_after.total_files == root_before.total_files
@@ -1265,6 +1290,7 @@ def test_rewalk_subtree_replaces_file_without_double_counting_root(tmp_path: Pat
     assert root_after.total_size == root_before.total_size - len(b"old-file") + len(
         b"new-child-data"
     )
+    assert non_file_paths == ("replacement",)
 
 
 # ── remove ────────────────────────────────────────────────────

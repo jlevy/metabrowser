@@ -1,3 +1,4 @@
+import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 import { findMarkdownHeading, findNamedBlock, preprocessObsidianWiki } from "./wiki-parser.js";
 
 /** Bounds recursive embedding depth. */
@@ -240,7 +241,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
           chain: claim.chain,
           signal: controller.signal,
         }) || null;
-      disposeToc = mb.kpressInitToc?.(aside) || null;
+      disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc?.(aside) || null);
     } catch (error) {
       if (disposed || options.signal?.aborted) {
         return;

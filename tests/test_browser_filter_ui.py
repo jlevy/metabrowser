@@ -711,28 +711,41 @@ def test_the_first_tree_row_clears_the_tally_rule() -> None:
 
 
 def test_the_overlay_stops_when_the_recency_window_is_cleared() -> None:
-    """Leaving the source sets the window to "", and an unknown key
-    gives `undefined`, not `null`. The old `!== null` guard let that
-    through, so the cutoff became NaN, every comparison against it was
-    false, and the base map grew without bound behind the plain tree."""
+    """Leaving the source returns before eligibility or retained insertion.
+
+    The old cutoff-only guard admitted every update after the window became
+    unknown, so the base map grew behind the plain tree. Active batches use
+    the same predicate and one post-batch cap selection.
+    """
 
     js = _read("app.js")
-    start = js.index("function recentBaseApplyOp(op)")
-    block = js[start : start + 1600]
-    assert "if (!currentRecentWindow) {" in block
-    assert 'typeof seconds === "number"' in block
+    change_start = js.index("function fileStoreApplyChangeInner(ops)")
+    change_block = js[change_start : js.index("function invalidateFilePreviews(ops)", change_start)]
+    assert "recentEverLoaded && currentRecentWindow && filterState" in change_block
+    assert "treeFilterModel.applyRecentChangeBatch(recentBaseEntries, ops" in change_block
+
+    model = _read("tree-filter-model.js")
+    batch = model[
+        model.index("function applyRecentChangeBatch") : model.index(
+            "function trimRecentEntriesToLimit"
+        )
+    ]
+    assert "recentEntryMatches(replacement, matchOptions)" in batch
+    assert "entries.set(replacement.path, replacement)" in batch
 
 
 def test_live_overlay_rows_carry_the_index_extension() -> None:
-    """recentEntryFromFsEntry mirrors _file_entry_to_recent_dict; without
-    the compound tail a file reaching the panel only through the overlay
-    is matched on its last suffix while rendered rows are matched on the
-    tail, so a compound pick hides it."""
+    """Batch conversion mirrors _file_entry_to_recent_dict.
 
-    js = _read("app.js")
-    start = js.index("function recentEntryFromFsEntry(entry)")
-    block = js[start : start + 900]
-    assert "ext: entry.ext" in block
+    Without the compound tail, a file reaching the panel only through the
+    overlay is matched on its last suffix while rendered rows are matched on
+    the tail, so a compound pick hides it.
+    """
+
+    model = _read("tree-filter-model.js")
+    start = model.index("function applyRecentChangeBatch")
+    block = model[start : model.index("function trimRecentEntriesToLimit", start)]
+    assert 'ext: wireEntry.ext || ""' in block
 
 
 def _apply_tree_filters_body(js: str) -> str:
@@ -741,12 +754,14 @@ def _apply_tree_filters_body(js: str) -> str:
 
 
 def test_the_recency_tally_is_recomputed_not_cached() -> None:
-    """Type and size changes run applyTreeFilters alone, so a count
-    cached at render time kept its previous value while rows updated."""
+    """The count comes from the same selected leaves handed to clustering."""
 
     js = _read("app.js")
     assert "_recentFilteredCount" not in js
-    assert "countRecentMatches(" in _apply_tree_filters_body(js)
+    start = js.index("function renderRecentFromBase()")
+    block = js[start : start + 1900]
+    assert "var entries = view.entries;" in block
+    assert "_renderFilteredTally(results, state, entries.length);" in block
 
 
 def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
@@ -758,13 +773,25 @@ def test_the_filtered_tally_shows_whenever_anything_is_filtered() -> None:
     block = js[start : start + 1800]
     assert "filterHasConstraints(state)" in block
     assert "Filtered to ${" in block
-    # The "of N matching" half is the capped-response disclosure only.
-    assert "recentTruncated" in block
-    assert "recentTotalMatchingExact" in block
+    assert "treeFilterModel.recentFilteredTallyText(count" in block
+    assert "totalMatching: recentTotalMatching" in block
+    assert "totalMatchingExact: recentTotalMatchingExact" in block
+    assert "truncated: recentTruncated" in block
 
-    # Removing the last filter must clear the line, and that path is
-    # the unconstrained early return.
-    assert "_renderFilteredTally(panel, st, null);" in _apply_tree_filters_body(js)
+    # Removing the last filter clears the line through the shared tally helper.
+    assert "existing.remove();" in block
+
+
+def test_a_non_exact_recent_tally_is_visible_even_when_the_original_page_was_complete() -> None:
+    """Deep live changes can invalidate an untruncated snapshot's exact total."""
+
+    model = _read("tree-filter-model.js")
+    start = model.index("function recentFilteredTallyText(")
+    block = model[start : start + 1400]
+    assert "!options.totalMatchingExact && !options.truncated" in block
+    assert "${count.toLocaleString()}+" in block
+    assert "options.truncated" in block
+    assert 'options.totalMatchingExact ? "" : "+"' in block
 
 
 def test_the_filtered_tally_counts_a_subtree_not_rendered_rows() -> None:
@@ -774,8 +801,14 @@ def test_the_filtered_tally_counts_a_subtree_not_rendered_rows() -> None:
     server's for the tree, the window's own entries for recency."""
 
     js = _read("app.js")
-    assert "function countRecentMatches(entries, nowSec)" in js
-    assert "countRecentMatches(" in _apply_tree_filters_body(js)
+    recent_start = js.index("function renderRecentFromBase()")
+    recent = js[recent_start : recent_start + 1900]
+    assert "treeFilterModel.renderRecentView(" in recent
+    paint = js[
+        js.index("function paintRecentView(") : js.index("function clearRecentExpiryRecheck()")
+    ]
+    assert "_renderFilteredTally(results, state, entries.length);" in paint
+    assert "querySelectorAll" not in recent
     leaf_start = js.index("function _applyTreeSourceFilters(panel, state)")
     assert (
         "_filteredTreeTotals ? _filteredTreeTotals.files : null"
@@ -881,7 +914,7 @@ def test_leaving_the_recency_source_abandons_its_fetch() -> None:
 
     js = _read("app.js")
     start = js.index("function onFilterStateChange(state)")
-    block = js[start : start + 1800]
+    block = js[start : start + 2400]
     assert "recentInflight.abort()" in block
     assert 'currentRecentWindow = ""' in block
 
@@ -1006,9 +1039,10 @@ def test_no_filters_leaves_the_rendered_dom_alone() -> None:
     nothing set, the pass removes its own classes and returns."""
 
     js = _read("app.js")
-    fn_block = _apply_tree_filters_body(js)
-    assert "if (!constrained) {" in fn_block
-    assert 'rows[c].classList.remove("tree-item-filter-hidden")' in fn_block
+    leaf_start = js.index("function _applyTreeSourceFilters(panel, state)")
+    fn_block = js[leaf_start : js.index("function _renderFilteredTally(")]
+    assert "var constrained = filterHasConstraints(state);" in fn_block
+    assert "constrained &&" in fn_block
 
 
 def test_the_tree_source_asks_the_server_rather_than_judging_mounted_rows() -> None:
@@ -1038,9 +1072,9 @@ def test_the_tree_source_asks_the_server_rather_than_judging_mounted_rows() -> N
     # And the tree source never re-decides a folder: it judges leaves only,
     # which is all that rows arriving live can get wrong.
     fn_block = _apply_tree_filters_body(js)
-    tree_source = fn_block[: fn_block.index("var rows =")]
-    assert "if (!filesPanelUsesRecentSource()) {" in tree_source
-    assert "_applyTreeSourceFilters(panel, st);" in tree_source
+    assert "if (filesPanelUsesRecentSource()) {" in fn_block
+    assert "_applyTreeSourceFilters(panel, st);" in fn_block
+    assert "querySelectorAll" not in fn_block
 
     leaf_start = js.index("function _applyTreeSourceFilters(panel, state)")
     leaf_block = js[leaf_start : js.index("function _renderFilteredTally(")]
@@ -1087,19 +1121,33 @@ def test_a_filter_that_excludes_where_you_are_standing_says_so() -> None:
     assert "var(--muted)" in css[note_start : css.index("}", note_start)]
 
 
-def test_hidden_folders_suppress_their_descendants() -> None:
-    """Otherwise a matching row could survive inside a pruned subtree
-    and float under the wrong parent.
-
-    The rule itself lives in static/tree-filter-model.js and is exercised
-    there; this pins that app.js still routes the clustered source through it
-    rather than growing a second copy of the walk."""
+def test_recent_membership_never_depends_on_mounted_folder_rows() -> None:
+    """Collapsed descendants live in cache, so DOM child presence is not data."""
 
     js = _read("app.js")
-    assert "treeFilterModel.clusterHiddenIds(" in _apply_tree_filters_body(js)
+    assert "clusterHiddenIds" not in js
+    # This is the ownership boundary that would have caught the regression:
+    # only live leaves in the ordinary tree source may receive this class.
+    assert js.count('classList.toggle("tree-item-filter-hidden"') == 1
+    writer_start = js.index("function _applyTreeSourceFilters(panel, state)")
+    writer_end = js.index("function _renderFilteredTally(", writer_start)
+    assert 'classList.toggle("tree-item-filter-hidden"' in js[writer_start:writer_end]
+
     model = _read("tree-filter-model.js")
-    assert "function clusterHiddenIds(rows)" in model
-    assert "hidden.has(row.parentId)" in model
+    assert "clusterHiddenIds" not in model
+    block = _apply_tree_filters_body(js)
+    recent_branch = block.index("if (filesPanelUsesRecentSource()) {")
+    branch_return = block.index("return;", recent_branch)
+    tree_writer = block.index("_applyTreeSourceFilters(panel, st);")
+    assert recent_branch < branch_return < tree_writer
+    assert "querySelectorAll" not in block
+
+    render_start = js.index("function renderRecentFromBase()")
+    render_end = js.index("function clearRecentExpiryRecheck()", render_start)
+    render = js[render_start:render_end]
+    assert "treeFilterModel.renderRecentView(" in render
+    assert "renderRecentList({ tree: view.tree })" in render
+    assert "rowMatches" not in render
 
 
 def test_filters_reapply_after_live_row_inserts() -> None:
@@ -1211,12 +1259,14 @@ def test_recency_fetch_carries_the_gitignored_setting() -> None:
     entries and none of the user's own files."""
 
     js = _read("app.js")
-    assert "&include_ignored=0" in js
-    # Changing it has to refetch, not just re-decorate.
+    model = _read("tree-filter-model.js")
+    assert 'params.push("include_ignored=0")' in model
+    # Every server-owned dimension changes the request identity and refetches.
     start = js.index("function onFilterStateChange(state)")
     block = js[start : start + 1400]
-    assert "_filterLastShowIgnored !== state.showIgnored" in block
-    assert "ignoredChanged" in block
+    assert "treeFilterModel.recentFilterTransition(" in block
+    assert 'transition.action === "refetch-recent"' in block
+    assert "loadRecent(transition.current)" in block
 
 
 def test_live_uses_the_server_owned_ninety_second_window() -> None:

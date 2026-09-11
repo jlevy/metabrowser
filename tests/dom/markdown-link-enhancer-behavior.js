@@ -145,11 +145,15 @@ async function loadModule() {
     "utf8",
   );
   const wikiParserUrl = `data:text/javascript;base64,${Buffer.from(wikiParserSource).toString("base64")}`;
+  const tocFallbackStub =
+    "export function initTocWithIntersectionFallback(init){return init()||(()=>{})}";
+  const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const transclusionSource = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/transclusion.js"),
       "utf8",
     )
+    .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(wikiParserUrl));
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
   const wikiEnhancerSource = fs
@@ -175,6 +179,7 @@ async function loadModule() {
 
 (async () => {
   const module = await loadModule();
+  const sameDocument = new FakeElement("a", { href: "#Install" });
   const internal = new FakeElement("a", { href: "guide.md#Install" });
   const published = new FakeElement("a", { href: "/published/" });
   const external = new FakeElement("a", { href: "https://example.com/docs" });
@@ -190,6 +195,7 @@ async function loadModule() {
   const unsafeImage = new FakeElement("img", { src: "data:image/png;base64,AA" });
   const heading = new FakeElement("h2", { id: "Install" });
   const container = new FakeContainer([
+    sameDocument,
     internal,
     published,
     external,
@@ -239,6 +245,7 @@ async function loadModule() {
     },
   });
 
+  check("same-document fragment preserved", sameDocument.getAttribute("href") === "#Install");
   check("canonical internal href", internal.getAttribute("href") === "/view/docs/guide.md#Install");
   check(
     "configured published route href",
@@ -283,6 +290,17 @@ async function loadModule() {
   check("plain click opened once", opened.length === 1);
   check("resolved click target", opened[0].path === "docs/guide.md");
 
+  const sameDocumentClick = click(sameDocument);
+  container.listeners.get("click")(sameDocumentClick);
+  await new Promise((resolve) => setImmediate(resolve));
+  check("same-document click intercepted", sameDocumentClick.defaultPrevented);
+  check("same-document click opened once", opened.length === 2);
+  check(
+    "same-document click target",
+    opened[1].path === "docs/readme.md" && opened[1].fragment === "Install",
+    JSON.stringify(opened[1]),
+  );
+
   for (const [name, anchor, overrides] of [
     ["modifier", internal, { metaKey: true }],
     ["middle", internal, { button: 1 }],
@@ -293,7 +311,7 @@ async function loadModule() {
     container.listeners.get("click")(nativeClick);
     check(`${name} click preserved`, !nativeClick.defaultPrevented);
   }
-  check("native variants did not open", opened.length === 1);
+  check("native variants did not open", opened.length === 2);
 
   heading.scrolled = false;
   current = { path: "docs/readme.md", fragment: "Install" };
@@ -310,7 +328,21 @@ async function loadModule() {
     console.error(`markdown link enhancer FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);
   }
-  console.log("markdown link enhancer OK");
+  if (process.argv.includes("--report")) {
+    console.log(
+      JSON.stringify(
+        {
+          crossDocumentHref: internal.getAttribute("href"),
+          sameDocumentDelegatedTarget: opened[1],
+          sameDocumentHref: sameDocument.getAttribute("href"),
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    console.log("markdown link enhancer OK");
+  }
 })().catch((error) => {
   console.error(error);
   process.exit(1);

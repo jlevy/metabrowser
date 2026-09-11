@@ -15,6 +15,7 @@ testable without a browser.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any, cast
 
 from metabrowser import __version__
@@ -24,6 +25,10 @@ from metabrowser.build_version import display_version_line
 
 def _read_app_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("app.js").read_text()
+
+
+def _read_tree_filter_model() -> str:
+    return proc_browser.STATIC_DIR.joinpath("tree-filter-model.js").read_text()
 
 
 def _function_source(js: str, name: str) -> str:
@@ -121,6 +126,7 @@ def test_index_template_versions_core_static_assets() -> None:
     assert 'href="/static/styles.css?v=' in html
     assert '<link rel="preload" href="/static/app.js?v=' not in html
     assets = (
+        "/static/document-width.js",
         "/static/plugin-sdk.js",
         "/static/icons.js",
         "/static/tree-expansion.js",
@@ -305,34 +311,40 @@ def test_load_recent_fetches_api_recent_for_full_window_coverage() -> None:
     via the ``recentBaseEntries`` overlay."""
 
     js = _read_app_js()
-    fn_start = js.index("function loadRecent(windowKey)")
+    fn_start = js.index("function loadRecent(cursor)")
     fn_block = js[fn_start : fn_start + 1500]
-    # The chip-change path delegates to fetchRecent.
-    assert "fetchRecent(windowKey)" in fn_block
-    # fetchRecent is the function that hits the endpoint.
-    fr_start = js.index("function fetchRecent(windowKey)")
+    # The chip-change path delegates the exact filter cursor to fetchRecent.
+    assert "fetchRecent(cursor)" in fn_block
+    # fetchRecent launches the cursor-selected production request.
+    fr_start = js.index("function fetchRecent(cursor, preserveRows)")
     fr_block = js[fr_start : fr_start + 2500]
-    assert '"/api/recent?window=' in fr_block
+    assert "treeFilterModel.beginRecentRequest(recentContinuity, cursor" in fr_block
     # Aborts an in-flight chip fetch so a fast double-click doesn't
     # race two responses against each other.
     assert "AbortController" in fr_block
 
 
-def test_recent_entries_from_base_filters_window_ext_prefix() -> None:
-    """Recent reads from the chip-fetched ``recentBaseEntries``
-    map, not from the SSE-scoped FileStore. Live
-    fs.change ops in the active window are merged in via
-    ``recentBaseApplyOp``."""
+def test_recent_view_filters_complete_leaves_before_clustering() -> None:
+    """Recent reads the complete fetched-and-overlaid leaf map through the
+    production model before any bounded DOM rendering occurs."""
 
     js = _read_app_js()
-    fn_start = js.index("function recentEntriesFromBase(opts)")
-    fn_block = js[fn_start : fn_start + 2500]
-    assert "recentBaseEntries.forEach" in fn_block
-    assert "_RECENT_WINDOW_SECONDS" in fn_block
-    assert "extFilter" in fn_block
-    assert "prefixFilter" in fn_block
-    # newest-first sort on recent-flat (mtime in seconds, not ns).
-    assert "(b.mtime || 0) - (a.mtime || 0)" in fn_block
+    fn_start = js.index("function renderRecentFromBase()")
+    fn_block = js[fn_start : fn_start + 1900]
+    assert "treeFilterModel.renderRecentView(" in fn_block
+    assert "Array.from(recentBaseEntries.values())" in fn_block
+    assert "paintRecentView(results, state, inputCount, view)" in fn_block
+    assert "querySelectorAll" not in fn_block
+    paint = _function_source(js, "paintRecentView")
+    assert "renderRecentList({ tree: view.tree })" in paint
+    assert "querySelectorAll" not in paint
+    assert "rowMatches" not in paint
+
+    model = _read_tree_filter_model()
+    projection = model[
+        model.index("function renderRecentView") : model.index("function runRecentRepair")
+    ]
+    assert projection.index("recentView(entries, options)") < projection.index("render(view)")
 
 
 def test_recent_window_cutoffs_come_from_the_server_settings() -> None:
@@ -342,41 +354,101 @@ def test_recent_window_cutoffs_come_from_the_server_settings() -> None:
     assert '"1h": 60 * 60' not in js[start : start + 500]
 
 
-def test_recent_base_apply_op_handles_upsert_remove_move() -> None:
-    """fs.change ops mutate ``recentBaseEntries`` in place so
-    files written after the chip fetch show up live without a
-    /api/recent refetch."""
+def test_recent_change_batch_handles_the_real_wire_operations() -> None:
+    """The shared model accepts only events.py's upsert/remove contract."""
 
-    js = _read_app_js()
-    fn_start = js.index("function recentBaseApplyOp(op)")
-    fn_block = js[fn_start : fn_start + 2500]
-    assert 'op.op === "upsert"' in fn_block
-    assert 'op.op === "remove"' in fn_block
-    assert 'op.op === "move"' in fn_block
-    # Out-of-window upserts are dropped; the active-window cutoff
-    # is checked against ``_RECENT_WINDOW_SECONDS[currentRecentWindow]``.
-    assert "_RECENT_WINDOW_SECONDS[currentRecentWindow]" in fn_block
+    batch = _function_source(_read_tree_filter_model(), "applyRecentChangeBatch")
+    assert 'operation.op === "upsert"' in batch
+    assert 'operation.op === "remove"' in batch
+    assert 'operation.op === "move"' not in batch
+    assert 'wireEntry.type !== "file"' in batch
+    assert "options.previousEntries.get(upsertPath)" in batch
 
 
 def test_file_store_apply_change_mirrors_into_recent_overlay() -> None:
-    """The Recent overlay only stays in sync if every fs.change op
-    fans out to ``recentBaseApplyOp``. Tests guard the wiring."""
+    """The app delegates one complete batch before mutating FileStore."""
 
     js = _read_app_js()
-    fn_start = js.index("function fileStoreApplyChange(ops)")
-    fn_block = js[fn_start : fn_start + 1500]
-    assert "recentBaseApplyOp(op)" in fn_block
+    change = _function_source(js, "fileStoreApplyChangeInner")
+    assert change.count("treeFilterModel.applyRecentChangeBatch(") == 1
+    assert "previousEntries: fileStore" in change
+    assert change.index("treeFilterModel.applyRecentChangeBatch(") < change.index(
+        "for (var i = 0; i < ops.length; i++)"
+    )
+    assert "recentBaseApplyOp" not in js
 
 
-def test_cluster_recent_tree_js_pure_function_present() -> None:
-    """``clusterRecentTreeJs`` is the authoritative implementation
-    of Recent clustering — single-dir compaction + cluster-collapse
-    are presentation rules and live in the SPA. The server filters
-    leaves and resolves gitignore but does not cluster."""
+def test_change_during_recent_request_invalidates_the_snapshot() -> None:
+    """An HTTP snapshot has no cursor comparable with the SSE stream.
+
+    A change received after the request starts therefore invalidates the whole
+    response; replaying that delta could resurrect a path removed and recreated
+    in a different order.
+    """
 
     js = _read_app_js()
-    assert "function clusterRecentTreeJs(files, nowSec, pct)" in js
-    assert "function _agesWithinPctJs(ages, pct)" in js
+    change_start = js.index("function fileStoreApplyChangeInner(ops)")
+    change_block = js[change_start : change_start + 500]
+    assert "recentContinuity.dirtyActiveRequest()" in change_block
+    snapshot_start = js.index("function fileStoreApplySnapshotInner(scope, entries)")
+    snapshot_block = js[snapshot_start : snapshot_start + 500]
+    assert "recentContinuity.dirtyActiveRequest()" in snapshot_block
+
+    fetch_block = _function_source(js, "fetchRecent")
+    assert "treeFilterModel.beginRecentRequest(recentContinuity, cursor" in fetch_block
+    assert "treeFilterModel.settleRecentSuccess(" in fetch_block
+    assert "treeFilterModel.settleRecentFailure(" in fetch_block
+    assert fetch_block.count("recentFilterKey() === load.url") == 2
+    model = _read_tree_filter_model()
+    begin = model[
+        model.index("function beginRecentRequest") : model.index("function createRecentRequest")
+    ]
+    assert "continuity.abandonRequest()" in begin
+    assert "continuity.startRequest(cursor.recentRequestKey)" in begin
+    success = model[
+        model.index("function settleRecentSuccess") : model.index("function settleRecentFailure")
+    ]
+    assert "continuity.settleRequest(request)" in success
+    assert 'disposition === "refetch"' in success
+    assert "continuity.scheduleRepair(repair)" in success
+
+
+def test_failed_dirty_recent_request_retries_only_after_it_settles() -> None:
+    """Failure cannot consume the one-bit invalidation or overlap its repair."""
+
+    fetch = _function_source(_read_app_js(), "fetchRecent")
+    catch = fetch[fetch.index(".catch((err) => {") : fetch.index(".finally(() => {")]
+    assert "treeFilterModel.settleRecentFailure(" in catch
+    assert "fetchRecent(" not in catch
+    model = _read_tree_filter_model()
+    failure = model[
+        model.index("function settleRecentFailure") : model.index("function invalidateRecent")
+    ]
+    assert "continuity.settleRequest(request)" in failure
+    assert 'disposition === "refetch"' in failure
+    assert "continuity.repairFailed(repair, failure.retryable)" in failure
+    assert "continuity.scheduleRepair(repair)" in failure
+
+
+def test_recent_request_settles_before_commit_render_can_schedule_expiry() -> None:
+    model = _read_tree_filter_model()
+    success = model[
+        model.index("function settleRecentSuccess") : model.index("function settleRecentFailure")
+    ]
+    settled = success.index("continuity.settleRequest(request)")
+    committed = success.index("continuity.repairSucceeded(repair)")
+    rendered = success.index("context.render()")
+    assert settled < committed < rendered
+
+
+def test_recent_cluster_is_in_the_headless_production_model() -> None:
+    """The browser and the CLI session execute the same clustering code."""
+
+    js = _read_app_js()
+    model = (proc_browser.STATIC_DIR / "tree-filter-model.js").read_text()
+    assert "function clusterRecentTree(files, nowSec, pct, ignoredDirectoryPaths)" in model
+    assert "function agesWithinPct(ages, pct)" in model
+    assert "function clusterRecentTree" not in js
 
 
 def test_recent_recompute_is_debounced() -> None:
@@ -388,9 +460,229 @@ def test_recent_recompute_is_debounced() -> None:
     assert "RECENT_RECLUSTER_DEBOUNCE_MS" in js
     fn_start = js.index("function _scheduleRecentRecompute()")
     fn_block = js[fn_start : fn_start + 1000]
-    assert "setTimeout" in fn_block
-    # Debounce: skip if a recompute is already pending.
-    assert "_recentRecomputeHandle" in fn_block
+    assert "recentRecompute.schedule(" in fn_block
+    assert "currentRecentFilterCursor()" in fn_block
+
+    model = _function_source(_read_tree_filter_model(), "createRecentRecomputeScheduler")
+    assert "clock.setTimeout" in model
+    assert "handle !== null && pending" in model
+    assert 'return "coalesced"' in model
+
+
+def test_authoritative_recent_repairs_are_constant_state_and_coalesced() -> None:
+    """Live invalidation dirties one active request or schedules one repair.
+
+    It never retains an operation log, and a pending filter fetch already
+    covers the same provider state.
+    """
+
+    js = _read_app_js()
+    fn_block = _function_source(js, "scheduleRecentAuthoritativeRefetch")
+    assert "treeFilterModel.invalidateRecent(recentContinuity" in fn_block
+    assert "recentRepairDescriptor()" in fn_block
+    assert "for (" not in fn_block
+
+
+def test_deep_catalog_changes_repair_recent_without_widening_tree_sse() -> None:
+    """The unscoped catalog companion exposes paths omitted from fs.change."""
+
+    js = _read_app_js()
+    source = _function_source(js, "_createInventoryEventSource")
+    catalog = source[
+        source.index('addEventListener("catalog.change"') : source.index(
+            'addEventListener("capability.update"'
+        )
+    ]
+    assert "treeFilterModel.applyRecentCatalogChange(recentBaseEntries, data" in catalog
+    assert "markRecentTotalAsRetainedLowerBound(" in catalog
+    assert "recentCatalogEffect.retainedLowerBound" in catalog
+    assert "scheduleRecentAuthoritativeRefetch()" in catalog
+    assert 'new EventSource("/api/events?scope=root-depth-2")' in source
+    model = _function_source(_read_tree_filter_model(), "applyRecentCatalogChange")
+    assert "change.non_file_paths" in model
+    assert "removeRecentEntriesByPrefix(entries, removalPrefixes)" in model
+    assert "recentMatchingCount(Array.from(entries.values()), matchOptions)" in model
+
+
+def test_recent_recompute_timers_are_cancelled_and_identity_guarded() -> None:
+    """A queued live repaint cannot overwrite a newer source or request."""
+
+    js = _read_app_js()
+    scheduler = _function_source(_read_tree_filter_model(), "createRecentRecomputeScheduler")
+    assert "generation" in scheduler
+    assert "isCurrent(request)" in scheduler
+
+    recompute = _function_source(js, "_scheduleRecentRecompute")
+    assert "recentRecompute.schedule(" in recompute
+    assert "currentRecentFilterCursor()" in recompute
+
+    fetch = _function_source(js, "fetchRecent")
+    assert "recentRecompute.cancel()" in fetch
+    filter_change = _function_source(js, "onFilterStateChange")
+    assert filter_change.count("recentRecompute.cancel()") >= 2
+
+
+def test_resync_invalidates_recent_before_reconnecting() -> None:
+    """A transport gap dirties an active request or repairs a settled view."""
+
+    source = _function_source(_read_app_js(), "_createInventoryEventSource")
+    resync = source[
+        source.index('addEventListener("fs.resync_required"') : source.index(
+            "inventoryEventSource.onopen"
+        )
+    ]
+    assert "recentRecompute.cancel()" in resync
+    assert "scheduleRecentAuthoritativeRefetch()" in resync
+    assert resync.index("scheduleRecentAuthoritativeRefetch()") < resync.index(
+        "_scheduleInventoryReconnect()"
+    )
+
+
+def test_every_sentinel_repairs_prebaseline_or_reconnect_recent_state() -> None:
+    js = _read_app_js()
+    source = _function_source(js, "_createInventoryEventSource")
+    snapshot = source[
+        source.index('addEventListener("fs.snapshot"') : source.index(
+            'addEventListener("fs.change"'
+        )
+    ]
+    assert "treeFilterModel.observeRecentSentinel(recentContinuity" in snapshot
+    assert "recentEverLoaded && filesPanelUsesRecentSource()" in snapshot
+    assert "recentFilterRefetch.pending()" in snapshot
+    assert "_inventorySentinelSeen" not in js
+
+
+def test_capped_recent_page_repairs_subtractive_changes_and_expiry() -> None:
+    js = _read_app_js()
+    change = _function_source(js, "fileStoreApplyChangeInner")
+    assert "recentEffect?.needsAuthoritativeRepair" in change
+    assert "recentTruncated = recentEffect.truncated" in change
+    assert "scheduleRecentAuthoritativeRefetch()" in change
+
+    paint = _function_source(js, "paintRecentView")
+    assert "view.matchingCount < inputCount" in paint
+    assert "recentTruncated && lostKnownMember && entries.length < RECENT_LIMIT" in paint
+    assert "scheduleRecentAuthoritativeRefetch()" in paint
+
+
+def test_capped_recent_page_repairs_every_ambiguous_unseen_op_shape() -> None:
+    """A missing page row is unknown, not evidence that it never matched."""
+
+    model = _read_tree_filter_model()
+    batch = _function_source(model, "applyRecentChangeBatch")
+    assert "recentUnseenBeforeMayMatch(" in batch
+    assert "recentReplacementNeedsBackfill(" in batch
+    assert "!previous && unseenBeforeMayMatch" in batch
+    assert "removalPrefixes.push(operation.path)" in batch
+    assert "removeRecentEntriesByPrefix(entries, removalPrefixes)" in batch
+    assert 'operation.op === "move"' not in batch
+
+    # The golden session executes this same production function over eligible
+    # and ineligible unseen files, unknown and subtree removes, file-to-dir,
+    # ordinary directory aggregates, and the known/uncapped fast paths.
+    session = (Path(__file__).parent / "dom" / "recent-filter-session.js").read_text()
+    for case in (
+        "eligibleUnseenFileUpsert",
+        "ineligibleUnseenFileUpsert",
+        "unknownRemove",
+        "unseenFileToDirectory",
+        "subtreeRemove",
+        "ordinaryDirectoryAggregate",
+        "ordinaryKnownWrite",
+        "knownRankRegression",
+        "uncappedEligibleUpsert",
+    ):
+        assert case in session
+
+
+def test_ambiguous_recent_count_downgrades_to_a_safe_bounded_lower_bound() -> None:
+    js = _read_app_js()
+    lower_bound = _function_source(js, "markRecentTotalAsRetainedLowerBound")
+    assert "recentTotalMatching = lowerBound" in lower_bound
+    assert "recentTotalMatchingExact = false" in lower_bound
+    assert "_renderFilteredTally(panel, state, recentTotalMatching)" in lower_bound
+    assert "for (" not in lower_bound
+
+    change = _function_source(js, "fileStoreApplyChangeInner")
+    assert "recentEffect.retainedLowerBound ?? 0" in change
+    assert change.index("markRecentTotalAsRetainedLowerBound(") < change.index(
+        "scheduleRecentAuthoritativeRefetch()"
+    )
+
+    batch = _function_source(_read_tree_filter_model(), "applyRecentChangeBatch")
+    assert "needsAuthoritativeRepair" in batch
+    assert "recentMatchingCount(Array.from(entries.values()), matchOptions)" in batch
+
+
+def test_recent_live_overlay_is_pruned_to_the_route_cap() -> None:
+    js = _read_app_js()
+    paint = _function_source(js, "paintRecentView")
+    assert "recentBaseEntries = new Map(entries.map(" in paint
+    change = _function_source(js, "fileStoreApplyChangeInner")
+    assert change.count("treeFilterModel.applyRecentChangeBatch(") == 1
+    model = _read_tree_filter_model()
+    batch = _function_source(model, "applyRecentChangeBatch")
+    assert batch.count("trimRecentEntriesToLimit(entries, options.limit)") == 1
+    assert batch.index("trimRecentEntriesToLimit(entries, options.limit)") > batch.index(
+        "for (const operation of operations)"
+    )
+
+
+def test_upsert_only_recent_batch_skips_the_retained_subtree_scan() -> None:
+    batch = _function_source(_read_tree_filter_model(), "applyRecentChangeBatch")
+    guarded_prune = (
+        "removalPrefixes.length > 0 ? removeRecentEntriesByPrefix(entries, removalPrefixes) : 0"
+    )
+    assert guarded_prune in batch
+
+
+def test_background_recent_repair_preserves_the_reader_view() -> None:
+    js = _read_app_js()
+    fetch = _function_source(js, "fetchRecent")
+    assert "results && preserveRows !== true" in fetch
+    assert "recentViewCommitted = false" in fetch
+    assert "treeFilterModel.settleRecentFailure(" in fetch
+    commit = _function_source(js, "commitRecentResponse")
+    assert "recentViewCommitted = true" in commit
+    repair_setup = js[
+        js.index("var recentContinuity") : js.index("function scheduleRecentAuthoritativeRefetch")
+    ]
+    assert "treeFilterModel.runRecentRepair(recentContinuity, request" in repair_setup
+    model = _read_tree_filter_model()
+    repair = model[
+        model.index("function runRecentRepair") : model.index("function settleRecentSuccess")
+    ]
+    assert "continuity.repairReady(" in repair
+    assert "request.preserveRows === true && context.viewCommitted" in repair
+
+
+def test_background_recent_failure_retries_with_visible_stale_state() -> None:
+    js = _read_app_js()
+    assert "const RECENT_REPAIR_MAX_RETRIES = 4;" in js
+    assert "maxRetries: RECENT_REPAIR_MAX_RETRIES" in js
+    fetch = _function_source(js, "fetchRecent")
+    assert "classify: window.MetabrowserRequestErrors.classifyRequestError" in fetch
+    assert "treeFilterModel.settleRecentFailure(" in fetch
+    model = _read_tree_filter_model()
+    failure = model[
+        model.index("function settleRecentFailure") : model.index("function invalidateRecent")
+    ]
+    assert "continuity.repairFailed(repair, failure.retryable)" in failure
+    assert "if (repair.preserveRows === true)" in failure
+    status = _function_source(js, "setRecentContinuityStatus")
+    assert 'note.setAttribute("role", "status")' in status
+    assert "Recent files may be out of date; retrying…" in status
+    assert "Change the filter or refresh to try again." in status
+    assert ".recent-stale-note" in _read_styles_css()
+
+
+def test_recent_context_changes_cancel_retry_and_stale_state() -> None:
+    js = _read_app_js()
+    load = _function_source(js, "loadRecent")
+    assert "recentContinuity.cancelRepairs()" in load
+    change = _function_source(js, "onFilterStateChange")
+    assert change.count("recentContinuity.cancelRepairs()") >= 2
+    assert change.count("recentContinuity.abandonRequest()") >= 2
 
 
 def test_recent_windows_repaint_when_the_oldest_file_expires() -> None:
@@ -414,7 +706,7 @@ def test_loading_a_recent_window_cancels_the_previous_expiry_timer() -> None:
     rows while the replacement request is still loading."""
 
     js = _read_app_js()
-    start = js.index("function loadRecent(windowKey)")
+    start = js.index("function loadRecent(cursor)")
     block = js[start : start + 500]
     assert "clearRecentExpiryRecheck();" in block
 
@@ -454,16 +746,17 @@ def test_render_tree_nodes_dir_metric_switches_chip_html() -> None:
     assert "sizeHtml(totalSize" in chip_block
 
 
-def test_recency_refetch_dedups_against_the_current_window() -> None:
-    """Re-selecting the same recency window must not refetch. The
-    filter-change handler compares against the last window it acted
-    on before delegating to loadRecent."""
+def test_recency_refetch_dedups_against_the_full_request() -> None:
+    """An unchanged selection does not refetch, while any server-owned
+    dimension changes the request identity."""
 
     js = _read_app_js()
-    fn_start = js.index("function onFilterStateChange(state)")
-    fn_block = js[fn_start : fn_start + 1200]
-    assert "_filterLastRecency !== state.recency" in fn_block
-    assert "loadRecent(state.recency)" in fn_block
+    fn_block = _function_source(js, "onFilterStateChange")
+    assert "treeFilterModel.recentFilterTransition(" in fn_block
+    assert 'transition.action === "load-recent"' in fn_block
+    assert 'transition.action === "refetch-recent"' in fn_block
+    assert "loadRecent(transition.current)" in fn_block
+    assert "recentFilterRefetch.schedule(" in fn_block
 
 
 def test_load_recent_locks_window_synchronously_before_fetching() -> None:
@@ -472,10 +765,10 @@ def test_load_recent_locks_window_synchronously_before_fetching() -> None:
     the wrong order."""
 
     js = _read_app_js()
-    fn_start = js.index("function loadRecent(windowKey)")
+    fn_start = js.index("function loadRecent(cursor)")
     fn_block = js[fn_start : fn_start + 1500]
-    assign_idx = fn_block.index("currentRecentWindow = windowKey;")
-    fetch_idx = fn_block.index("fetchRecent(windowKey)")
+    assign_idx = fn_block.index("currentRecentWindow = cursor.windowKey;")
+    fetch_idx = fn_block.index("fetchRecent(cursor)")
     assert assign_idx < fetch_idx
 
 

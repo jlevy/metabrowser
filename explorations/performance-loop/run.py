@@ -158,6 +158,7 @@ INVENTORY_CONTRACT = "inventory-provider-v1"
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
 MIN_VIEWPORT = (900, 600)
+DEFAULT_CORPUS_FILES = 100_000
 FIRST_PORT = 8600
 LAST_PORT = 65_535
 # The metrics compare prints, in the order they matter to a reader.
@@ -431,22 +432,43 @@ def _walk_facts(port: int) -> dict[str, Any]:
 
     The scan regime decides almost every number in this loop -- root
     `/api/tree` is 15 ms settled and over a second while walking -- and it is
-    not visible in anything the browser can see. The server says it plainly;
-    this reads it rather than asking anyone to remember.
+    not visible in anything the browser can see. Slow scans retain exact elapsed
+    time in the log. Fast scans deliberately log completion at DEBUG, so the
+    authoritative progress route supplies their status and file count instead.
     """
     log = HERE / "results" / f"server-{port}.log"
-    if not log.is_file():
-        return {}
-    try:
-        text = log.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return {}
+    text = ""
+    if log.is_file():
+        with suppress(OSError):
+            text = log.read_text(encoding="utf-8", errors="replace")
     # The last completion line, not the first: a server restarted onto the same
     # log would otherwise report the earlier run's walk.
     matches = list(_WALK_LINE.finditer(text))
     match = matches[-1] if matches else None
     if match is None:
-        return {"walk_status": "unfinished"}
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/api/index/progress",
+                timeout=30,
+            ) as response:
+                loaded: Any = json.loads(response.read())
+        except (OSError, ValueError):
+            return {"walk_status": "unfinished"}
+        if not isinstance(loaded, dict):
+            return {"walk_status": "unfinished"}
+        progress = cast("dict[str, Any]", loaded)
+        status = progress.get("status")
+        files = progress.get("indexed_files")
+        facts: dict[str, Any] = {"walk_status": status if isinstance(status, str) else "unfinished"}
+        if isinstance(files, int):
+            facts["walk_files"] = files
+        provider = progress.get("provider")
+        contract = progress.get("contract")
+        if isinstance(provider, str):
+            facts["inventory_provider"] = provider
+        if isinstance(contract, str):
+            facts["inventory_contract"] = contract
+        return facts
     return {
         "inventory_provider": match["provider"],
         "inventory_contract": match["contract"],
@@ -536,16 +558,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
         real = Path(args.tree).expanduser().resolve()
         if not real.is_dir():
             raise SystemExit(f"not a directory: {real}")
-        return _serve_root(args, real, _tree_label(real), None)
-    corpus = _corpus_dir(args.files)
+        return _serve_root(args, real, _tree_label(real), args.files)
+    files = args.files if args.files is not None else DEFAULT_CORPUS_FILES
+    corpus = _corpus_dir(files)
     if not corpus.is_dir():
-        print(f"building corpus ({args.files} files) at {corpus} ...", flush=True)
+        print(f"building corpus ({files} files) at {corpus} ...", flush=True)
         corpus.mkdir(parents=True, exist_ok=True)
         sys.path.insert(0, str(REPO))
         from devtools.bench_serving import build_corpus
 
-        build_corpus(corpus, args.files)
-    return _serve_root(args, corpus, str(corpus.relative_to(REPO)), args.files)
+        build_corpus(corpus, files)
+    return _serve_root(args, corpus, str(corpus.relative_to(REPO)), files)
 
 
 def _load_probe_payload(json_text: str, json_file: str) -> Any:
@@ -1095,6 +1118,7 @@ def _experiment_records() -> list[dict[str, Any]]:
     malformed one should fail.
     """
     records: list[dict[str, Any]] = []
+    paths_by_id: dict[str, str] = {}
     for path in sorted(EXPERIMENTS.glob("exp-*.md")):
         text = path.read_text(encoding="utf-8")
         if not text.startswith("---"):
@@ -1113,6 +1137,12 @@ def _experiment_records() -> list[dict[str, Any]]:
                 match = re.search(rf"^    {key}: \"?([^\"\n]+)\"?$", verdict[1], re.MULTILINE)
                 if match:
                     record[key] = match.group(1).strip()
+        experiment_id = record.get("id")
+        if isinstance(experiment_id, str):
+            earlier = paths_by_id.get(experiment_id)
+            if earlier is not None:
+                raise SystemExit(f"duplicate experiment id {experiment_id}: {earlier}, {path.name}")
+            paths_by_id[experiment_id] = path.name
         records.append(record)
     return records
 
@@ -1316,7 +1346,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     serve = sub.add_parser("serve", help="restart the server on an unused port")
-    serve.add_argument("--files", type=int, default=100_000)
+    serve.add_argument("--files", type=int)
     serve.add_argument(
         "--tree",
         default="",

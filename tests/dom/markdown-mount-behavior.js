@@ -32,6 +32,11 @@ function makeContainer() {
     "globalThis.__markdownEnhanceCalls.push({sourcePath,options});" +
     "return {dispose(){globalThis.__markdownEnhanceDisposals.push(container)}}}";
   const enhancerUrl = `data:text/javascript;base64,${Buffer.from(enhancerStub).toString("base64")}`;
+  const tocFallbackStub =
+    "export function initTocWithIntersectionFallback(init){" +
+    "globalThis.__markdownTocFallbackCalls=(globalThis.__markdownTocFallbackCalls||0)+1;" +
+    "return init()||(()=>{})}";
+  const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const wikiStub =
     "export function preprocessObsidianWiki(source){return {changed:source.includes('[[wiki]]'),source:'processed '+source}}";
   const wikiUrl = `data:text/javascript;base64,${Buffer.from(wikiStub).toString("base64")}`;
@@ -42,6 +47,7 @@ function makeContainer() {
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionStub).toString("base64")}`;
   const importableSource = source
     .replace('"./link-enhancer.js"', JSON.stringify(enhancerUrl))
+    .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(wikiUrl));
   const module = await import(
@@ -78,6 +84,7 @@ function makeContainer() {
   const secondHandle = secondMount;
   check("first painted", first.innerHTML.includes("first"), first.innerHTML);
   check("second painted", second.innerHTML.includes("second"), second.innerHTML);
+  check("TOC fallback wraps every mount", globalThis.__markdownTocFallbackCalls === 2);
   firstHandle.dispose();
   firstHandle.dispose();
   check("first disposer exactly once", tocDisposals.length === 1, String(tocDisposals.length));

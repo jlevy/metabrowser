@@ -1,0 +1,7 @@
+/* Preserve an image's intrinsic aspect ratio while fitting it to the preview
+   pane. Outer spacing belongs to the shared content-body container. */
+.metabrowser-image-host .file-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}

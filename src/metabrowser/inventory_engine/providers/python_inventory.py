@@ -24,7 +24,7 @@ from collections.abc import AsyncGenerator, Callable, Collection, Iterator, Mapp
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Literal
+from typing import Literal, cast
 
 from metabrowser.cancellable_thread import run_cancellable_thread
 from metabrowser.events import (
@@ -72,6 +72,7 @@ from metabrowser.inventory_engine.contract import (
     InventoryClosedError,
     InventoryConfig,
     InventoryEntry,
+    InventoryFilter,
     InventoryHandle,
     InventoryIssue,
     IssueCode,
@@ -106,6 +107,7 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_rollup import (
     RollupOptions,
     RollupRank,
+    SubtreeAggregate,
     SubtreeAggregateCache,
     build_rollup,
 )
@@ -150,8 +152,11 @@ _NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
 # The exact installed-build browser comparison in exp-014 measured a 1 ms
 # `/api/tree` handler queued for 33-37 ms while the startup walker applied a
 # wide directory without suspending. Yield four times inside each 256-entry
-# delivery batch so request tasks run independently of directory width.
+# delivery batch so request tasks run independently of directory width. The
+# positive timer delay matters: `sleep(0)` can immediately resume this task and
+# reacquire the GIL before a provider-read worker gets a turn.
 _WALKER_COOPERATIVE_YIELD_BATCH = 64
+_WALKER_COOPERATIVE_YIELD_S = 0.000_001
 _NAVIGATION_TALLY_REFRESH_FLOOR_S = 0.5
 _PAGE_MEMO_CAPACITY = 64
 _CONTRACT_ID = "inventory-provider-v1"
@@ -209,6 +214,10 @@ class _NavigationTallyBase:
 # Python inventory handle
 
 
+class _RollupViewMoved(RuntimeError):
+    """The retained index changed while an optimistic rollup was reading it."""
+
+
 class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
     """Read-through view of ``_PythonInventoryStore._children_index``.
 
@@ -218,13 +227,19 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
     walker's writes from resizing a bucket mid-iteration.
     """
 
-    __slots__ = ("_index",)
+    __slots__ = ("_expected_epoch", "_index")
 
-    def __init__(self, index: _PythonInventoryStore) -> None:
+    def __init__(self, index: _PythonInventoryStore, expected_epoch: int) -> None:
         self._index = index
+        self._expected_epoch = expected_epoch
+
+    def _require_current(self) -> None:
+        if self._index._aggregate_epoch != self._expected_epoch:
+            raise _RollupViewMoved
 
     def __getitem__(self, parent: str) -> Sequence[FsEntry]:
         with self._index._rollup_cache_lock:
+            self._require_current()
             bucket = self._index._children_index.get(parent)
             if bucket is None:
                 raise KeyError(parent)
@@ -236,6 +251,7 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
         default: Sequence[FsEntry] = (),
     ) -> Sequence[FsEntry]:
         with self._index._rollup_cache_lock:
+            self._require_current()
             bucket = self._index._children_index.get(parent)
             return (
                 tuple(sorted(bucket.values(), key=_child_order)) if bucket is not None else default
@@ -243,10 +259,42 @@ class _ChildrenView(Mapping[str, "Sequence[FsEntry]"]):
 
     def __iter__(self) -> Iterator[str]:
         with self._index._rollup_cache_lock:
+            self._require_current()
             return iter(tuple(self._index._children_index))
 
     def __len__(self) -> int:
-        return len(self._index._children_index)
+        with self._index._rollup_cache_lock:
+            self._require_current()
+            return len(self._index._children_index)
+
+
+class _AggregateView(Mapping[str, SubtreeAggregate]):
+    """Generation-checked read-through view of retained subtree aggregates."""
+
+    __slots__ = ("_expected_epoch", "_index")
+
+    def __init__(self, index: _PythonInventoryStore, expected_epoch: int) -> None:
+        self._index = index
+        self._expected_epoch = expected_epoch
+
+    def _require_current(self) -> None:
+        if self._index._aggregate_epoch != self._expected_epoch:
+            raise _RollupViewMoved
+
+    def __getitem__(self, path: str) -> SubtreeAggregate:
+        with self._index._rollup_cache_lock:
+            self._require_current()
+            return self._index._subtree_aggregates[path]
+
+    def __iter__(self) -> Iterator[str]:
+        with self._index._rollup_cache_lock:
+            self._require_current()
+            return iter(tuple(self._index._subtree_aggregates))
+
+    def __len__(self) -> int:
+        with self._index._rollup_cache_lock:
+            self._require_current()
+            return len(self._index._subtree_aggregates)
 
 
 def _with_recency(
@@ -383,6 +431,20 @@ class _SelectedDirectoryTotals:
     file_count: int = 0
     size: int = 0
     newest_mtime_ns: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _CompiledInventoryFilter:
+    """One query's normalized filter values, reused across every candidate row."""
+
+    include_ignored: bool
+    extensions: frozenset[str]
+    semantic_suffixes: tuple[str, ...]
+    filenames: frozenset[str]
+    type_families: frozenset[str]
+    cutoff_ns: int | None
+    minimum_size: int | None
+    rejects_symlinks: bool
 
 
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
@@ -649,6 +711,7 @@ class _PythonInventoryStore:
         self._change_stream_active = False
         self._walker_task: asyncio.Task[None] | None = None
         self._watcher_task: asyncio.Task[None] | None = None
+        self._watcher_started = asyncio.Event()
         self._watcher_mode = "off"
         self._watcher_state = "off"
         self._watcher_reason = "disabled"
@@ -702,6 +765,7 @@ class _PythonInventoryStore:
             mode = "native"
         elif self._config.watch_mode == "poll":
             mode = "polling"
+        self._watcher_started.clear()
         self._watcher_mode = mode or "auto"
         self._watcher_state = "starting"
         self._watcher_reason = "selecting"
@@ -715,9 +779,17 @@ class _PythonInventoryStore:
             ),
             name="metabrowser-python-inventory-watcher",
         )
+        self._watcher_task.add_done_callback(lambda _task: self._watcher_started.set())
         return self._watcher_task
 
+    async def wait_until_watcher_started(self) -> None:
+        """Wait until observation is installed or has failed explicitly."""
+
+        if self._watcher_task is not None:
+            await self._watcher_started.wait()
+
     def _observe_watcher_status(self, status: WatcherStatus) -> None:
+        self._watcher_started.set()
         if (
             status.mode == self._watcher_mode
             and status.state == self._watcher_state
@@ -1011,6 +1083,8 @@ class _PythonInventoryStore:
         watcher = self._watcher_task
         if watcher is None or watcher.done() or self._watcher_state == "failed":
             return LifecyclePhase.READY
+        if self._watcher_state == "starting":
+            return LifecyclePhase.RECONCILING
         return LifecyclePhase.WATCHING
 
     def _state_for(
@@ -1029,7 +1103,9 @@ class _PythonInventoryStore:
         elif status == "done":
             phase = self._settled_phase()
             coverage = Coverage(complete=True)
-            freshness = Freshness.FRESH
+            freshness = (
+                Freshness.RECONCILING if phase is LifecyclePhase.RECONCILING else Freshness.FRESH
+            )
         elif status == "truncated":
             phase = LifecyclePhase.STOPPED
             coverage = Coverage(complete=False, reason=CoverageReason.BUDGET)
@@ -1596,7 +1672,9 @@ class _PythonInventoryStore:
         reducer needs. A stable generation proves the optimistic reduction and
         its metadata came from one version. If discovery races the reduction,
         a pinned read reports that its version moved; an unpinned read falls
-        back to the immutable-image path. The provider therefore avoids an
+        back to the immutable-image path. This boundary owns that retry so the
+        payload and version are captured together and a collision runs at most
+        one discarded optimistic bundle. The provider therefore avoids an
         O(index) copy for settled reads without holding the writer lock while
         it reduces a large tree.
         """
@@ -1658,8 +1736,7 @@ class _PythonInventoryStore:
                 )
                 rows_visited += query.max_work
                 continue
-            payload = self.rollup(
-                query.path,
+            options = RollupOptions(
                 depth=query.max_depth,
                 top=query.top,
                 ext_top=query.extension_top,
@@ -1668,17 +1745,36 @@ class _PythonInventoryStore:
                 ext_rank=query.rank,
                 max_nodes=query.max_nodes,
             )
-            projections.append(RollupProjection(query_id=query.query_id, payload=payload))
+            # Count the attempt before entering the reducer: a moved view is
+            # discarded output, but still real provider work that the fallback
+            # result and cumulative diagnostics must report.
             rows_visited += total_entries
+            try:
+                payload = self._build_rollup_pass(
+                    query.path,
+                    options,
+                    self._rollup_view(query.path),
+                )
+            except _RollupViewMoved:
+                return self._read_rollup_collision_fallback(
+                    request,
+                    rows_visited=rows_visited,
+                    lock_wait_ns=lock_wait_ns,
+                    cpu_started=cpu_started,
+                    wall_started=wall_started,
+                )
+            projections.append(RollupProjection(query_id=query.query_id, payload=payload))
 
         with self._rollup_cache_lock:
             stable = self._rollup_generation == sequence
         if not stable:
-            if request.at_version is not None:
-                raise VersionUnavailableError(
-                    "the requested Python inventory version moved during the rollup read"
-                )
-            return self._read_snapshot_sync(request)
+            return self._read_rollup_collision_fallback(
+                request,
+                rows_visited=rows_visited,
+                lock_wait_ns=lock_wait_ns,
+                cpu_started=cpu_started,
+                wall_started=wall_started,
+            )
 
         work = WorkCounters(
             rows_visited=rows_visited,
@@ -1700,7 +1796,59 @@ class _PythonInventoryStore:
             metrics=metrics,
         )
 
-    def _record_read_work(self, work: WorkCounters, metrics: BoundaryMetrics) -> None:
+    def _read_rollup_collision_fallback(
+        self,
+        request: ReadRequest,
+        *,
+        rows_visited: int,
+        lock_wait_ns: int,
+        cpu_started: int,
+        wall_started: int,
+    ) -> ReadResult:
+        """Retry one moved optimistic rollup from a coherent immutable image."""
+
+        if request.at_version is not None:
+            raise VersionUnavailableError(
+                "the requested Python inventory version moved during the rollup read"
+            )
+        attempted_work = WorkCounters(
+            rows_visited=rows_visited,
+            maintained_index_work=rows_visited,
+        )
+        attempted_cpu_ns = time.thread_time_ns() - cpu_started
+        attempted_metrics = BoundaryMetrics(
+            lock_wait_ns=lock_wait_ns,
+            cpu_time_ns=attempted_cpu_ns,
+            wall_time_ns=time.monotonic_ns() - wall_started,
+        )
+        fallback = self._read_snapshot_sync(request)
+        # _read_snapshot_sync records the one logical request. Add the discarded
+        # attempt to cumulative costs without counting a second request, then
+        # expose the same combined costs on the returned boundary.
+        self._record_read_work(attempted_work, attempted_metrics, count_request=False)
+        fallback_cpu_ns = fallback.metrics.cpu_time_ns
+        combined_metrics = BoundaryMetrics(
+            bytes_copied=attempted_metrics.bytes_copied + fallback.metrics.bytes_copied,
+            lock_wait_ns=attempted_metrics.lock_wait_ns + fallback.metrics.lock_wait_ns,
+            cpu_time_ns=(None if fallback_cpu_ns is None else attempted_cpu_ns + fallback_cpu_ns),
+            wall_time_ns=attempted_metrics.wall_time_ns + fallback.metrics.wall_time_ns,
+        )
+        combined_work = replace(
+            fallback.work,
+            rows_visited=attempted_work.rows_visited + fallback.work.rows_visited,
+            maintained_index_work=(
+                attempted_work.maintained_index_work + fallback.work.maintained_index_work
+            ),
+        )
+        return replace(fallback, work=combined_work, metrics=combined_metrics)
+
+    def _record_read_work(
+        self,
+        work: WorkCounters,
+        metrics: BoundaryMetrics,
+        *,
+        count_request: bool = True,
+    ) -> None:
         with self._work_lock:
             current = self._work_totals
             current_metrics = self._metrics_totals
@@ -1730,7 +1878,7 @@ class _PythonInventoryStore:
                 cpu_time_ns=cpu_time_ns,
                 wall_time_ns=current_metrics.wall_time_ns + metrics.wall_time_ns,
             )
-            self._read_requests += 1
+            self._read_requests += int(count_request)
 
     def _project_query(
         self,
@@ -1899,7 +2047,10 @@ class _PythonInventoryStore:
         *,
         image: _ReadImage,
     ) -> FilteredTreeProjection:
-        ignored_dirs = self._effective_ignored_directories(entries)
+        selection = self._compile_inventory_filter(query.filter)
+        ignored_dirs = (
+            {} if selection.include_ignored else self._effective_ignored_directories(entries)
+        )
         matched: list[FsEntry] = []
         matching_files = 0
         matching_bytes = 0
@@ -1912,7 +2063,7 @@ class _PythonInventoryStore:
                 continue
             if entry.type == "dir":
                 continue
-            if not self._filter_matches(entry, query, ignored_dirs):
+            if not self._filter_matches(entry, selection, ignored_dirs):
                 continue
             matched.append(entry)
             if entry.type == "file":
@@ -1987,28 +2138,19 @@ class _PythonInventoryStore:
     def _filter_matches(
         self,
         entry: FsEntry,
-        query: FilteredTreeQuery,
+        selection: _CompiledInventoryFilter,
         ignored_dirs: Mapping[str, bool],
     ) -> bool:
-        selection = query.filter
         if not selection.include_ignored and (
             entry.gitignored or ignored_dirs.get(entry.parent, False)
         ):
             return False
         if entry.type == "symlink":
-            return not (
-                selection.extensions
-                or selection.filenames
-                or selection.type_families
-                or selection.recency_seconds
-                or selection.minimum_size
-            )
+            return not selection.rejects_symlinks
         if selection.minimum_size is not None and entry.size < selection.minimum_size:
             return False
-        if selection.recency_seconds is not None and selection.as_of_ns is not None:
-            cutoff = selection.as_of_ns - int(selection.recency_seconds * _NANOSECONDS_PER_SECOND)
-            if entry.mtime_ns < cutoff:
-                return False
+        if selection.cutoff_ns is not None and entry.mtime_ns < selection.cutoff_ns:
+            return False
         if selection.extensions or selection.filenames:
             # `ascii_casefold`, not `str.lower()`: the contract pins the alphabet the
             # fold covers, and `str.lower()` folds all of Unicode. The two agree on
@@ -2016,17 +2158,10 @@ class _PythonInventoryStore:
             # would be dropped by a provider folding only ASCII, and nothing above the
             # boundary could attribute the difference.
             lowered_ext = ascii_casefold(entry.ext)
-            extension_match = any(
-                lowered_ext == ascii_casefold(extension)
-                or (
-                    self._registry_family_id(extension) is not None
-                    and lowered_ext.endswith(ascii_casefold(extension))
-                )
-                for extension in selection.extensions
+            extension_match = lowered_ext in selection.extensions or any(
+                lowered_ext.endswith(extension) for extension in selection.semantic_suffixes
             )
-            filename_match = ascii_casefold(entry.name) in {
-                ascii_casefold(filename) for filename in selection.filenames
-            }
+            filename_match = ascii_casefold(entry.name) in selection.filenames
             if not extension_match and not filename_match:
                 return False
         if selection.type_families:
@@ -2034,6 +2169,35 @@ class _PythonInventoryStore:
             if family_id is None or family_id not in selection.type_families:
                 return False
         return True
+
+    def _compile_inventory_filter(self, selection: InventoryFilter) -> _CompiledInventoryFilter:
+        """Normalize query constants once rather than once per indexed entry."""
+
+        extensions = frozenset(ascii_casefold(value) for value in selection.extensions)
+        return _CompiledInventoryFilter(
+            include_ignored=selection.include_ignored,
+            extensions=extensions,
+            semantic_suffixes=tuple(
+                extension
+                for extension in extensions
+                if self._registry_family_id(extension) is not None
+            ),
+            filenames=frozenset(ascii_casefold(value) for value in selection.filenames),
+            type_families=frozenset(selection.type_families),
+            cutoff_ns=(
+                selection.as_of_ns - int(selection.recency_seconds * _NANOSECONDS_PER_SECOND)
+                if selection.as_of_ns is not None and selection.recency_seconds is not None
+                else None
+            ),
+            minimum_size=selection.minimum_size,
+            rejects_symlinks=bool(
+                selection.extensions
+                or selection.filenames
+                or selection.type_families
+                or selection.recency_seconds
+                or selection.minimum_size
+            ),
+        )
 
     def _registry_family_id(self, extension: str) -> str | None:
         match = self._registry.match("", extension)
@@ -2056,20 +2220,16 @@ class _PythonInventoryStore:
         entries: Sequence[FsEntry],
         entries_by_path: Mapping[str, FsEntry],
     ) -> RecentProjection:
-        cutoff = (
-            query.as_of_ns - int(query.within_seconds * _NANOSECONDS_PER_SECOND)
-            if query.within_seconds is not None
-            else 0
+        selection = self._compile_inventory_filter(query.filter)
+        ignored_dirs = (
+            {} if selection.include_ignored else self._effective_ignored_directories(entries)
         )
-        extensions = {ascii_casefold(value) for value in query.extensions}
         matching = [
             entry
             for entry in entries
             if entry.type == "file"
-            and entry.mtime_ns >= cutoff
             and (not query.prefix or entry.path.startswith(query.prefix))
-            and (not extensions or ascii_casefold(entry.ext) in extensions)
-            and (query.include_ignored or not entry.gitignored)
+            and self._filter_matches(entry, selection, ignored_dirs)
         ]
         # Two orders, and they are different questions.
         #
@@ -2717,7 +2877,29 @@ class _PythonInventoryStore:
             ext_rank=ext_rank,
             max_nodes=ROLLUP_MAX_NODES if max_nodes is None else max_nodes,
         )
-        entries, children_by_parent, snapshot_epoch = self._rollup_view()
+        try:
+            return self._build_rollup_pass(path, options, self._rollup_view(path))
+        except _RollupViewMoved:
+            # A write landed between two optimistic reads. Retrying from one
+            # immutable image is the rare collision path: ordinary rollups
+            # still copy only the requested entry's ancestor chain and the
+            # child buckets they visit.
+            return self._build_rollup_pass(path, options, self._rollup_snapshot())
+
+    def _build_rollup_pass(
+        self,
+        path: str,
+        options: RollupOptions,
+        view: tuple[
+            Mapping[str, FsEntry],
+            Mapping[str, Sequence[FsEntry]],
+            Mapping[str, SubtreeAggregate],
+            int,
+        ],
+    ) -> RollupResult | None:
+        """Build and retire one optimistic or immutable rollup pass."""
+
+        entries, children_by_parent, retained_aggregates, snapshot_epoch = view
         # Reads fall through to the shared memo; writes land in ``computed``.
         # ``build_rollup`` runs in a worker thread while the walker keeps
         # mutating the index on the event loop, so writing the shared memo in
@@ -2734,7 +2916,10 @@ class _PythonInventoryStore:
                 path,
                 options,
                 ancestor_gitignored=self._ancestor_gitignored(path, entries),
-                aggregates=ChainMap(computed, self._subtree_aggregates),
+                aggregates=ChainMap(
+                    computed,
+                    cast(SubtreeAggregateCache, retained_aggregates),
+                ),
                 registry=self._registry,
             )
         except BaseException:
@@ -2775,27 +2960,63 @@ class _PythonInventoryStore:
 
     def _rollup_view(
         self,
-    ) -> tuple[Mapping[str, FsEntry], Mapping[str, Sequence[FsEntry]], int]:
-        """Return live read views of the index plus the current eviction epoch.
+        path: str,
+    ) -> tuple[
+        Mapping[str, FsEntry],
+        Mapping[str, Sequence[FsEntry]],
+        Mapping[str, SubtreeAggregate],
+        int,
+    ]:
+        """Return a bounded optimistic view tied to one eviction epoch.
 
-        Nothing is copied. ``build_rollup`` reads both mappings only by key,
-        and a single ``dict`` lookup on string keys is atomic under the GIL,
-        so the entry map is safe to read from the rollup worker thread while
-        the walker keeps writing on the event loop. Child buckets are iterated
-        rather than looked up, so those go through ``_ChildrenView``, which
-        holds the index lock for the copy.
-
-        Reading live means a rollup can observe writes that land mid-build.
-        That is why the epoch returned here gates
-        :meth:`_merge_subtree_aggregates`: any directory written since this
-        moment is refused a cache entry, so only aggregates whose subtree
-        provably did not move are retained.
+        The reducer needs only the selected entry and its strict ancestors
+        from the entry map, so those are copied under the writer lock. Child
+        buckets and retained aggregates stay lazy for the normal path, but
+        every lookup verifies the same epoch. A concurrent write therefore
+        asks :meth:`rollup` to retry from an immutable image instead of mixing
+        pre-write aggregates with post-write topology.
         """
 
         with self._rollup_cache_lock:
             epoch = self._aggregate_epoch
+            entries: dict[str, FsEntry] = {}
+            cursor = path
+            while True:
+                entry = self._entries.get(cursor)
+                if entry is not None:
+                    entries[cursor] = entry
+                if not cursor:
+                    break
+                cursor = cursor.rpartition("/")[0]
             self._rollup_passes_in_flight += 1
-        return self._entries, _ChildrenView(self), epoch
+        return (
+            MappingProxyType(entries),
+            _ChildrenView(self, epoch),
+            _AggregateView(self, epoch),
+            epoch,
+        )
+
+    def _rollup_snapshot(
+        self,
+    ) -> tuple[
+        Mapping[str, FsEntry],
+        Mapping[str, Sequence[FsEntry]],
+        Mapping[str, SubtreeAggregate],
+        int,
+    ]:
+        """Capture the full immutable fallback used only after a live-view collision."""
+
+        with self._rollup_cache_lock:
+            entries = dict(self._entries)
+            retained_aggregates = dict(self._subtree_aggregates)
+            epoch = self._aggregate_epoch
+            self._rollup_passes_in_flight += 1
+        return (
+            MappingProxyType(entries),
+            MappingProxyType(_children_for(tuple(entries.values()))),
+            MappingProxyType(retained_aggregates),
+            epoch,
+        )
 
     def _evict_subtree_aggregates(self, path: str, *, is_dir: bool) -> None:
         """Drop the cached aggregate for *path* and every ancestor up to root.
@@ -3195,7 +3416,7 @@ class _PythonInventoryStore:
                 entries_since_yield += 1
                 if entries_since_yield >= _WALKER_COOPERATIVE_YIELD_BATCH:
                     entries_since_yield = 0
-                    await asyncio.sleep(0)
+                    await asyncio.sleep(_WALKER_COOPERATIVE_YIELD_S)
             if batch:
                 self._emit(FsChange(ops=tuple(FsUpsert(entry=e) for e in batch)))
                 batch.clear()
@@ -3480,7 +3701,10 @@ class _PythonInventoryStore:
         )
         ops = [FsUpsert(entry=stored)]
         ops.extend(FsUpsert(entry=ancestor) for ancestor in aggregate_updates)
-        self._emit(FsChange(ops=tuple(ops)))
+        self._emit(
+            FsChange(ops=tuple(ops)),
+            non_file_paths=(stored.path,) if old_file is not None and new_file is None else (),
+        )
 
     def _update_ancestor_aggregates(
         self,
@@ -3699,11 +3923,17 @@ class _PythonInventoryStore:
         """Single-entry path used by the watcher and other live
         producers. Writes the entry and emits one ``fs.change``."""
 
+        existing = self._entries.get(entry.path)
         stored = self._store_walker_entry(entry)
         if stored is not None:
-            self._emit(FsChange(ops=(FsUpsert(entry=stored),)))
+            self._emit(
+                FsChange(ops=(FsUpsert(entry=stored),)),
+                non_file_paths=(stored.path,)
+                if existing is not None and existing.type == "file" and stored.type != "file"
+                else (),
+            )
 
-    def _emit(self, event: StreamEvent) -> None:
+    def _emit(self, event: StreamEvent, *, non_file_paths: tuple[str, ...] = ()) -> None:
         """Translate an internal mutation into the provider change contract."""
 
         if isinstance(event, FsResyncRequired):
@@ -3717,6 +3947,7 @@ class _PythonInventoryStore:
             )
             self._record_provider_change(
                 dirty_paths=dirty_paths,
+                non_file_paths=non_file_paths,
                 dirty_queries=frozenset(
                     {
                         QueryKind.ENTRY,
@@ -3737,6 +3968,7 @@ class _PythonInventoryStore:
         self,
         *,
         dirty_paths: tuple[str, ...] = (),
+        non_file_paths: tuple[str, ...] = (),
         dirty_queries: frozenset[QueryKind] = frozenset(),
         reset: bool = False,
     ) -> None:
@@ -3759,6 +3991,7 @@ class _PythonInventoryStore:
             version=version,
             state=state,
             dirty_paths=() if all_dirty or reset else dirty_paths,
+            non_file_paths=() if all_dirty or reset else non_file_paths,
             dirty_queries=frozenset() if reset else dirty_queries,
             all_dirty=all_dirty and not reset,
             reset=reset,
@@ -3786,7 +4019,13 @@ class PythonInventoryBackend:
     ) -> InventoryHandle:
         canonical_root = await asyncio.to_thread(root.resolve)
         store = _PythonInventoryStore(config=config)
-        store.start_watcher(canonical_root)
+        watcher = store.start_watcher(canonical_root)
+        if watcher is not None:
+            try:
+                await store.wait_until_watcher_started()
+            except BaseException:
+                await store.close()
+                raise
         store.start(canonical_root)
         return store
 

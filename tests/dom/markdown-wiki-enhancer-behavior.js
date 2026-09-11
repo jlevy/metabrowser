@@ -62,11 +62,15 @@ async function loadModule() {
     "utf8",
   );
   const parserUrl = `data:text/javascript;base64,${Buffer.from(parserSource).toString("base64")}`;
+  const tocFallbackStub =
+    "export function initTocWithIntersectionFallback(init){return init()||(()=>{})}";
+  const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const transclusionSource = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/transclusion.js"),
       "utf8",
     )
+    .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(parserUrl));
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
   const resolverSource = fs.readFileSync(

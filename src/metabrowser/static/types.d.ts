@@ -11,6 +11,56 @@ type MetabrowserViewSpec = {
   dispose?: (container: HTMLElement) => void;
 };
 
+type MetabrowserViewDescriptor = {
+  id: string;
+  label?: string;
+  default?: boolean;
+  container_class?: string;
+  printable?: boolean;
+  print_profile?: string;
+  render_runtime?: string;
+};
+
+type MetabrowserPreparedViewComposition = Readonly<{
+  initialView: MetabrowserViewDescriptor | null;
+  status: "ready" | "cancelled";
+  views: ReadonlyArray<
+    Readonly<{ renderer: MetabrowserViewSpec | null; view: MetabrowserViewDescriptor }>
+  >;
+}>;
+
+type MetabrowserViewLifecycleStage = Readonly<{
+  disposers: Array<() => void>;
+  cancel(): boolean;
+  commit(replace: () => void): boolean;
+}>;
+
+type MetabrowserViewCompositionRuntime = Readonly<{
+  createLifecycle(options?: { onDisposeError?: (error: unknown) => void }): Readonly<{
+    begin(): MetabrowserViewLifecycleStage;
+    disposeActive(): void;
+  }>;
+  mount(
+    container: HTMLElement,
+    renderer: MetabrowserViewSpec,
+    context: MetabrowserRenderContext,
+    disposers: Array<() => void>,
+    options?: {
+      afterMount?: (container: HTMLElement) => void;
+      onError?: (error: unknown) => void;
+      renderError?: (container: HTMLElement, error: unknown) => void;
+    },
+  ): Promise<"mounted" | "cancelled" | "error">;
+  prepare(options: {
+    kind: string;
+    views: Array<MetabrowserViewDescriptor>;
+    preferredViewId?: string;
+    ensureKindAssets(kind: string): Promise<void>;
+    getRegisteredView(kind: string, viewId: string): MetabrowserViewSpec | null | undefined;
+    isCurrent?: () => boolean;
+  }): Promise<MetabrowserPreparedViewComposition>;
+}>;
+
 type MetabrowserNavigationOpenOptions = {
   /** Activate this view when the destination declares it; otherwise use its default. */
   viewId?: string;
@@ -29,6 +79,24 @@ type MetabrowserNavigationTarget = Readonly<{
   path: string;
   query?: string;
   fragment?: string;
+}>;
+
+type MetabrowserDocumentWidthRuntime = Readonly<{
+  DEFAULT: number;
+  KEY: string;
+  MAX: number;
+  MIN: number;
+  apply(
+    value: unknown,
+    persist: boolean,
+    dependencies: {
+      input: { value: string } | null;
+      root: { style: { setProperty(name: string, value: string): void } };
+      writePreference(key: string, value: string): void;
+    },
+  ): number;
+  normalize(value: unknown): number;
+  readStored(readPreference: (key: string) => string | null): number;
 }>;
 
 type MetabrowserRepositoryContext = Readonly<{
@@ -873,26 +941,363 @@ type MetabrowserTreeExpansion = {
   visibleRowBudget(viewportHeight: number, rowHeight: number, fallbackRows: number): number;
 };
 
-type MetabrowserClusterRow = {
-  id: string;
-  parentId: string | null;
-  isDir: boolean;
-  matched: boolean;
+type MetabrowserRecentEntry = {
+  ext?: string;
+  gitignored?: boolean;
+  logical_ext?: string;
+  mtime?: number;
+  name?: string;
+  path: string;
+  size?: number;
+  type: "file";
+};
+
+type MetabrowserRecentFsEntry = {
+  ext?: string;
+  gitignored?: boolean;
+  mtime_ns?: number;
+  name?: string;
+  path: string;
+  size?: number;
+  type: string;
+};
+
+type MetabrowserRecentFsChange =
+  | { entry: MetabrowserRecentFsEntry; op: "upsert" }
+  | { op: "remove"; path: string };
+
+type MetabrowserRecentBatchEffect = Readonly<{
+  changed: boolean;
+  needsAuthoritativeRepair: boolean;
+  overflowed: boolean;
+  removedDescendants: number;
+  retainedLowerBound: number | null;
+  truncated: boolean;
+}>;
+
+type MetabrowserRecentCatalogEffect = Readonly<{
+  changed: boolean;
+  needsAuthoritativeRepair: boolean;
+  removedEntries: number;
+  retainedLowerBound: number | null;
+}>;
+
+type MetabrowserRecentRequest = {
+  dirty: boolean;
+  key: string;
+};
+
+type MetabrowserRecentRefetch = {
+  preserveRows?: boolean;
+  requestKey: string;
+  windowKey: string;
+};
+
+type MetabrowserRecentFilterCursor = Readonly<{
+  recentRequestKey: string;
+  source: "recent" | "tree";
+  treeRequestKey: string;
+  windowKey: string;
+}>;
+
+type MetabrowserRecentLoad = Readonly<{
+  cursor: MetabrowserRecentFilterCursor;
+  repair: MetabrowserRecentRefetch;
+  request: MetabrowserRecentRequest;
+  url: string;
+}>;
+
+type MetabrowserRecentRepairStatus = "fresh" | "retrying" | "stale";
+
+type MetabrowserRecentInvalidationContext = {
+  filterRefetchPending: boolean;
+  recentActive: boolean;
+  repair: MetabrowserRecentRefetch;
+};
+
+type MetabrowserRecentRepairContext = {
+  current: boolean;
+  fetch(windowKey: string, preserveRows: boolean): void;
+  filterRefetchPending: boolean;
+  recentLoaded: boolean;
+  viewCommitted: boolean;
+};
+
+type MetabrowserRecentSuccessContext = {
+  commit(): void;
+  current: boolean;
+  render(): void;
+};
+
+type MetabrowserRecentFailureContext = {
+  classify(error: unknown): { retryable: boolean };
+  current: boolean;
+  showInitialError(): void;
+};
+
+type MetabrowserRecentContinuity = {
+  abandonRequest(request?: MetabrowserRecentRequest | null): void;
+  cancelRepairs(): void;
+  dirtyActiveRequest(): void;
+  hasActiveRequest(): boolean;
+  invalidate(
+    recentActive: boolean,
+    filterRefetchPending: boolean,
+    request: MetabrowserRecentRefetch,
+  ): "ignore" | "dirty" | "covered" | "repair";
+  observeSentinel(
+    recentActive: boolean,
+    filterRefetchPending: boolean,
+    request: MetabrowserRecentRefetch,
+  ): Readonly<{
+    disposition: "ignore" | "dirty" | "covered" | "repair";
+    phase: "baseline" | "reconnect";
+  }>;
+  pending(): boolean;
+  repairFailed(
+    request: MetabrowserRecentRefetch,
+    retryable: boolean,
+  ): "ignored" | "retrying" | "stale";
+  repairReady(
+    recentActive: boolean,
+    filterRefetchPending: boolean,
+  ): "ignore" | "dirty" | "covered" | "repair";
+  repairSucceeded(request: MetabrowserRecentRefetch): void;
+  scheduleRepair(
+    request: MetabrowserRecentRefetch,
+    delayMs?: number,
+  ): "scheduled" | "coalesced" | "exhausted";
+  startRequest(key: string): MetabrowserRecentRequest;
+  status(): MetabrowserRecentRepairStatus;
+  settleRequest(request: MetabrowserRecentRequest): "commit" | "refetch" | "superseded";
 };
 
 type MetabrowserTreeFilterModel = {
-  clusterHiddenIds(rows: Array<MetabrowserClusterRow>): Set<string>;
+  beginRecentRequest(
+    continuity: MetabrowserRecentContinuity,
+    cursor: MetabrowserRecentFilterCursor,
+    preserveRows: boolean,
+  ): MetabrowserRecentLoad;
+  applyRecentChangeBatch(
+    entries: Map<string, MetabrowserRecentEntry>,
+    operations: MetabrowserRecentFsChange[],
+    options: {
+      filterState: {
+        rowMatches(
+          row: { ext?: string; mtime?: number; path?: string; size?: number },
+          state: MetabrowserFilterSnapshot,
+          nowSec: number,
+        ): boolean;
+      };
+      limit: number;
+      nowSec: number;
+      previousEntries: Map<string, { type?: string }>;
+      state: MetabrowserFilterSnapshot;
+      truncated: boolean;
+    },
+  ): MetabrowserRecentBatchEffect;
+  applyRecentCatalogChange(
+    entries: Map<string, MetabrowserRecentEntry>,
+    change: MetabrowserCatalogChangePayload | null | undefined,
+    options: {
+      filterState: {
+        rowMatches(
+          row: { ext?: string; mtime?: number; path?: string; size?: number },
+          state: MetabrowserFilterSnapshot,
+          nowSec: number,
+        ): boolean;
+      };
+      nowSec: number;
+      state: MetabrowserFilterSnapshot;
+      visibleDepth: number;
+    },
+  ): MetabrowserRecentCatalogEffect;
+  createRecentRefetchScheduler(
+    delayMs: number,
+    callback: (request: MetabrowserRecentRefetch) => void,
+    clock: {
+      clearTimeout(handle: number): void;
+      setTimeout(callback: () => void, delayMs: number): number;
+    },
+  ): {
+    cancel(): void;
+    pending(): boolean;
+    schedule(request: MetabrowserRecentRefetch): void;
+  };
+  createRecentRecomputeScheduler(
+    delayMs: number,
+    callback: (request: MetabrowserRecentRefetch) => void,
+    isCurrent: (request: MetabrowserRecentRefetch) => boolean,
+    clock: {
+      clearTimeout(handle: number): void;
+      setTimeout(callback: () => void, delayMs: number): number;
+    },
+  ): {
+    cancel(): void;
+    pending(): boolean;
+    schedule(request: MetabrowserRecentRefetch): "coalesced" | "scheduled";
+  };
+  createRecentRepairScheduler(
+    delayMs: number,
+    callback: (request: MetabrowserRecentRefetch) => void,
+    clock: {
+      clearTimeout(handle: number): void;
+      setTimeout(callback: () => void, delayMs: number): number;
+    },
+  ): {
+    cancel(): void;
+    pending(): boolean;
+    schedule(request: MetabrowserRecentRefetch, delayMs?: number): void;
+  };
+  createRecentContinuity(options: {
+    clock: {
+      clearTimeout(handle: number): void;
+      setTimeout(callback: () => void, delayMs: number): number;
+    };
+    delayMs: number;
+    maxRetries: number;
+    maxRetryDelayMs: number;
+    onRepair(request: MetabrowserRecentRefetch): void;
+    onStatus?(status: MetabrowserRecentRepairStatus): void;
+    retryBaseMs: number;
+  }): MetabrowserRecentContinuity;
+  createRecentRequest(key: string): MetabrowserRecentRequest;
+  dirtyRecentRequest(request: MetabrowserRecentRequest | null): void;
+  invalidateRecent(
+    continuity: MetabrowserRecentContinuity,
+    context: MetabrowserRecentInvalidationContext,
+  ): "ignore" | "dirty" | "covered" | "repair";
+  observeRecentSentinel(
+    continuity: MetabrowserRecentContinuity,
+    context: MetabrowserRecentInvalidationContext,
+  ): Readonly<{
+    disposition: "ignore" | "dirty" | "covered" | "repair";
+    phase: "baseline" | "reconnect";
+  }>;
+  recentFilterCursor(
+    state: MetabrowserFilterSnapshot | null,
+    limit: number,
+    sizeFloors: Record<string, number>,
+  ): MetabrowserRecentFilterCursor;
+  recentFilterTransition(
+    previous: MetabrowserRecentFilterCursor | null,
+    current: MetabrowserRecentFilterCursor,
+  ): Readonly<{
+    action: "apply" | "load-recent" | "load-tree" | "refetch-recent";
+    current: MetabrowserRecentFilterCursor;
+  }>;
+  recentFilteredTallyText(
+    count: number,
+    options: {
+      totalMatching: number;
+      totalMatchingExact: boolean;
+      truncated: boolean;
+    },
+  ): string;
+  recentRequestDisposition(
+    active: MetabrowserRecentRequest | null,
+    request: MetabrowserRecentRequest,
+  ): "commit" | "refetch" | "superseded";
+  recentRepairDisposition(
+    recentActive: boolean,
+    requestInFlight: boolean,
+    filterRefetchPending: boolean,
+  ): "ignore" | "dirty" | "covered" | "repair";
+  recentRequestKey(
+    windowKey: string,
+    limit: number,
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+  ): string;
+  recentEntryMatches(
+    entry: MetabrowserRecentEntry | null | undefined,
+    options: {
+      filterState: {
+        rowMatches(
+          row: { ext?: string; mtime?: number; path?: string; size?: number },
+          state: MetabrowserFilterSnapshot,
+          nowSec: number,
+        ): boolean;
+      };
+      nowSec: number;
+      state: MetabrowserFilterSnapshot;
+    },
+  ): boolean;
+  recentUrl(
+    windowKey: string,
+    limit: number,
+    state: MetabrowserFilterSnapshot | null,
+    sizeFloors: Record<string, number>,
+  ): string;
+  recentView(
+    entries: MetabrowserRecentEntry[],
+    options: {
+      clusterPct: number;
+      filterState: {
+        rowMatches(
+          row: { ext?: string; mtime?: number; path?: string; size?: number },
+          state: MetabrowserFilterSnapshot,
+          nowSec: number,
+        ): boolean;
+      };
+      ignoredDirectoryPaths: Set<string>;
+      limit: number;
+      nowSec: number;
+      state: MetabrowserFilterSnapshot;
+    },
+  ): { entries: MetabrowserRecentEntry[]; matchingCount: number; tree: TreeNode[] };
+  renderRecentView(
+    entries: MetabrowserRecentEntry[],
+    options: {
+      clusterPct: number;
+      filterState: {
+        rowMatches(
+          row: { ext?: string; mtime?: number; path?: string; size?: number },
+          state: MetabrowserFilterSnapshot,
+          nowSec: number,
+        ): boolean;
+      };
+      ignoredDirectoryPaths: Set<string>;
+      limit: number;
+      nowSec: number;
+      state: MetabrowserFilterSnapshot;
+    },
+    render: (view: {
+      entries: MetabrowserRecentEntry[];
+      matchingCount: number;
+      tree: TreeNode[];
+    }) => void,
+  ): { entries: MetabrowserRecentEntry[]; matchingCount: number; tree: TreeNode[] };
   requestKey(state: MetabrowserFilterSnapshot | null, sizeFloors: Record<string, number>): string;
   requestParams(
     state: MetabrowserFilterSnapshot | null,
     sizeFloors: Record<string, number>,
   ): string[];
+  runRecentRepair(
+    continuity: MetabrowserRecentContinuity,
+    request: MetabrowserRecentRefetch,
+    context: MetabrowserRecentRepairContext,
+  ): "cancelled" | "ignore" | "dirty" | "covered" | "repair";
+  settleRecentFailure(
+    continuity: MetabrowserRecentContinuity,
+    request: MetabrowserRecentRequest,
+    repair: MetabrowserRecentRefetch,
+    error: unknown,
+    context: MetabrowserRecentFailureContext,
+  ): "ignored" | "repair-failed" | "repair-scheduled" | "initial-failed";
+  settleRecentSuccess(
+    continuity: MetabrowserRecentContinuity,
+    request: MetabrowserRecentRequest,
+    repair: MetabrowserRecentRefetch,
+    context: MetabrowserRecentSuccessContext,
+  ): "ignored" | "repair-scheduled" | "committed";
   treeUrl(
     path: string,
     state: MetabrowserFilterSnapshot | null,
     sizeFloors: Record<string, number>,
     extraParams?: string[],
   ): string;
+  trimRecentEntriesToLimit(entries: Map<string, MetabrowserRecentEntry>, limit: number): boolean;
 };
 
 type MetabrowserPendingTallyWatchdog = Readonly<{
@@ -937,6 +1342,7 @@ type MetabrowserKnownFileCatalogSnapshot = Readonly<{
 }>;
 
 type MetabrowserCatalogChangePayload = {
+  non_file_paths?: string[];
   remove_files?: string[];
   upserts?: Array<{ p: string; e: string }>;
   removes?: string[];
@@ -1660,8 +2066,11 @@ declare global {
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
+  type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;
   type MetabrowserPublicSdk = MetabrowserSdk;
+  type MetabrowserPublicViewDescriptor = MetabrowserViewDescriptor;
+  type MetabrowserPublicViewSpec = MetabrowserViewSpec;
 
   var hljs: {
     getLanguage(language: string): unknown;
@@ -1697,6 +2106,7 @@ declare global {
       assetLoaded(name: string): boolean;
     };
     MetabrowserCharts?: MetabrowserChartRuntime;
+    MetabrowserDocumentWidth: MetabrowserDocumentWidthRuntime;
     MetabrowserFileTypes?: {
       classFor(path: string): string;
       /** `style` carries the family colour as custom properties; "" when the
@@ -1734,6 +2144,7 @@ declare global {
     MetabrowserTreeKeyboardNavigation: MetabrowserTreeKeyboardRuntime;
     MetabrowserSourceAppend: MetabrowserSourceAppendRuntime;
     MetabrowserViewState: MetabrowserViewStateRuntime;
+    MetabrowserViewComposition: MetabrowserViewCompositionRuntime;
     MetabrowserTreemapLayout: MetabrowserTreemapLayoutApi;
     MetabrowserTooltip?: {
       hide(): void;
@@ -1743,6 +2154,7 @@ declare global {
     /** Container kinds by extension; see arch-nav-containers.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
+      DOC_MAX_CHARS_DEFAULT?: number;
       /** Each family's distribution key with its color on each theme. */
       DISTRIBUTION_COLORS?: Array<{ key: string; light: string; dark: string }>;
       FILE_TYPE_REGISTRY?: {

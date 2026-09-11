@@ -50,11 +50,17 @@ async function loadModule() {
     "utf8",
   );
   const parserUrl = `data:text/javascript;base64,${Buffer.from(parserSource).toString("base64")}`;
+  const tocFallbackStub =
+    "export function initTocWithIntersectionFallback(init){" +
+    "globalThis.__transclusionTocFallbackCalls=(globalThis.__transclusionTocFallbackCalls||0)+1;" +
+    "return init()||(()=>{})}";
+  const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const source = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/transclusion.js"),
       "utf8",
     )
+    .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(parserUrl));
   return import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
 }
@@ -178,6 +184,7 @@ and second line ^block-id
     aside.getAttribute("data-metabrowser-transclusion-status") === "ready",
   );
   check("nested enhancement uses embedded source", nestedSource === "docs/note.md");
+  check("embedded TOC uses observer fallback", globalThis.__transclusionTocFallbackCalls === 1);
   handle.dispose();
   check("nested enhancement disposed", nestedDisposed === 1);
   check("embedded table of contents disposed", tocDisposed === 1);

@@ -12,7 +12,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SHIM = Path(__file__).resolve().parent / "dom" / "agent-log-plugin-behavior.js"
 PLUGIN_JS = REPO_ROOT / "src/metabrowser/builtin_plugins/agent_log/index.js"
-APP_JS = REPO_ROOT / "src/metabrowser/static/app.js"
+VIEW_COMPOSITION_JS = REPO_ROOT / "src/metabrowser/static/view-composition.js"
 
 
 def test_agent_log_escapes_kinds_and_disposes_charts() -> None:
@@ -64,10 +64,8 @@ def test_agent_log_scopes_filter_and_raw_state_to_each_container() -> None:
 
 
 def test_shell_disposes_the_specific_plugin_container() -> None:
-    source = APP_JS.read_text()
-    start = source.index("function mountPluginView(container, pluginView, ctx,")
-    block = source[start : start + 1_500]
+    block = VIEW_COMPOSITION_JS.read_text()
     assert "disposers.push(() =>" in block
-    assert "pluginView.dispose(container)" in block
+    assert "renderer.dispose(container)" in block
     assert "record.handle.dispose()" in block
     assert "if (record.disposed)" in block

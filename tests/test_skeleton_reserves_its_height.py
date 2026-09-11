@@ -135,7 +135,7 @@ def test_the_inline_span_is_recorded_around_the_paint_not_around_the_decision() 
     assert '_perf.measure("renderTreeNodes:inline", () => renderFilesFromTree())' in inline, (
         "the inline span must wrap the paint itself"
     )
-    load_tree = _function_source(app, "async function loadTree()")
+    load_tree = _function_source(app, "async function loadTree(")
     assert "renderTreeNodes:inline" not in load_tree, (
         "wrapping the call records a span whether or not it painted"
     )

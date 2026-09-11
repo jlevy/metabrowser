@@ -22,7 +22,7 @@
    * @property {(files: Array<{p: string, e: string}>, complete: boolean,
    *   authoritative?: boolean) => void} applyBulkSnapshot
    * @property {(payload: {upserts?: Array<{p: string, e: string}>, removes?: string[],
-   *   remove_files?: string[]}) => void} applyCatalogChange
+   *   remove_files?: string[], non_file_paths?: string[]}) => void} applyCatalogChange
    * @property {() => void} markComplete
    * @property {() => void} markIncomplete
    */
@@ -44,7 +44,7 @@
     const cancelRetry = options.cancelRetry || ((handle) => window.clearTimeout(handle));
 
     /** @type {Array<{upserts?: Array<{p: string, e: string}>, removes?: string[],
-     *   remove_files?: string[]}>} */
+     *   remove_files?: string[], non_file_paths?: string[]}>} */
     let pendingChanges = [];
     let fetchSerial = 0;
     let fetchedOnce = false;
@@ -57,25 +57,30 @@
     let refetchWanted = false;
     let suppressNextSentinelRefetch = false;
     let authoritativeRefetchPending = false;
+    let terminalRefetchRequested = false;
     let lastBulkWasAuthoritative = false;
     let lastBulkHadCompleteCoverage = false;
 
     /**
      * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[],
-     *   remove_files?: string[]}} payload
+     *   remove_files?: string[], non_file_paths?: string[]}} payload
      */
     function applyChange(payload) {
       const upserts = Array.isArray(payload?.upserts) ? payload.upserts.length : 0;
       const subtreeRemoves = Array.isArray(payload?.removes) ? payload.removes.length : 0;
       const fileRemoves = Array.isArray(payload?.remove_files) ? payload.remove_files.length : 0;
+      const nonFilePaths = Array.isArray(payload?.non_file_paths)
+        ? payload.non_file_paths.length
+        : 0;
       return perf.measure(
         "knownFileCatalog:applyCatalogChange",
         () => catalog.applyCatalogChange(payload),
         {
-          work_items: upserts + subtreeRemoves + fileRemoves,
+          work_items: upserts + subtreeRemoves + fileRemoves + nonFilePaths,
           upserts,
           subtree_removes: subtreeRemoves,
           file_removes: fileRemoves,
+          non_file_paths: nonFilePaths,
         },
       );
     }
@@ -149,6 +154,7 @@
           lastBulkHadCompleteCoverage = completeCoverage;
           if (authoritative) {
             authoritativeRefetchPending = false;
+            terminalRefetchRequested = false;
           }
         } else if (lastBulkWasAuthoritative) {
           authoritativeRefetchPending = false;
@@ -207,6 +213,7 @@
     /** Require the next accepted bulk payload to establish membership. */
     function requestContinuityRefetch() {
       authoritativeRefetchPending = true;
+      terminalRefetchRequested = false;
       catalog.markIncomplete();
       requestRefetch();
     }
@@ -236,7 +243,7 @@
      * directly once the bulk payload has landed; buffered before
      * that so replay order preserves convergence.
      * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[],
-     *   remove_files?: string[]}} payload
+     *   remove_files?: string[], non_file_paths?: string[]}} payload
      */
     function onCatalogChange(payload) {
       if (disposed || !payload) {
@@ -290,7 +297,14 @@
         return;
       }
       if (authoritativeRefetchPending) {
-        requestRefetch();
+        // Completion can arrive from both the SSE capability event and the
+        // independent progress poll. One authoritative refetch repairs the
+        // current continuity gap; duplicate terminal signals must not download
+        // the full catalog again.
+        if (!terminalRefetchRequested) {
+          terminalRefetchRequested = true;
+          requestRefetch();
+        }
         return;
       }
       if (!truncated) {

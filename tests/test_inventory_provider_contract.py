@@ -115,6 +115,7 @@ PROVIDER_CONFORMANCE_TESTS = frozenset(
         "test_provider_uses_supplied_registry_content_for_classification",
         "test_provider_budget_stop_is_explicit_and_absence_remains_unknown",
         "test_directory_pages_are_lossless_when_directories_outnumber_file_budget",
+        "test_filtered_tree_and_recent_share_filter_semantics_before_caps",
         "test_catalog_predicate_semantics_are_runtime_independent_and_exact",
         "test_catalog_pages_are_lossless_without_suffix_counts",
         "test_provider_applies_work_bounds_to_continuation_pages",
@@ -440,6 +441,29 @@ def test_query_work_and_count_bounds_are_enforced() -> None:
             )
         with pytest.raises(ValueError, match="count_cap"):
             CatalogQuery(query_id="catalog", max_rows=1, count_cap=count_cap)
+
+
+def test_recent_filter_uses_the_query_observation_time() -> None:
+    assert RecentQuery(query_id="default", max_rows=1, as_of_ns=1).filter == InventoryFilter(
+        include_ignored=False
+    )
+    selection = InventoryFilter(recency_seconds=10, as_of_ns=2)
+    assert (
+        RecentQuery(
+            query_id="recent",
+            max_rows=1,
+            as_of_ns=2,
+            filter=selection,
+        ).filter
+        is selection
+    )
+    with pytest.raises(ValueError, match="filter as_of_ns must match"):
+        RecentQuery(
+            query_id="recent",
+            max_rows=1,
+            as_of_ns=1,
+            filter=selection,
+        )
 
 
 def test_inventory_scope_fingerprint_is_portable_and_semantic() -> None:
@@ -808,6 +832,13 @@ def test_change_batches_are_bounded_and_reset_dominates_dirtiness() -> None:
             reset=True,
             dirty_paths=("changed",),
         )
+    with pytest.raises(ValueError, match="must also be dirty paths"):
+        ChangeBatch(
+            version=version,
+            cursor=cursor,
+            state=state,
+            non_file_paths=("changed",),
+        )
 
 
 def test_version_and_cursor_share_a_session() -> None:
@@ -1072,7 +1103,7 @@ def test_provider_semantic_digest(
                             query_id="recent",
                             max_rows=20,
                             as_of_ns=10**30,
-                            include_ignored=True,
+                            filter=InventoryFilter(include_ignored=True),
                         ),
                         CatalogQuery(
                             query_id="catalog",
@@ -1322,6 +1353,101 @@ def test_directory_pages_are_lossless_when_directories_outnumber_file_budget(
             await handle.close()
 
     assert asyncio.run(run()) == expected
+
+
+@pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)
+def test_filtered_tree_and_recent_share_filter_semantics_before_caps(
+    provider_factory: Callable[[], InventoryBackend],
+    tmp_path: Path,
+) -> None:
+    """Both projections apply the shared file predicates to the full population."""
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("scope/ignored/\n", encoding="utf-8")
+    scope = tmp_path / "scope"
+    scope.mkdir()
+    ignored = scope / "ignored"
+    ignored.mkdir()
+
+    files = {
+        "00-wrong.txt": (b"wrong type", 99_000_000_000),
+        "01-too-small.js": (b"tiny", 98_000_000_000),
+        "02-too-old.js": (b"old enough", 89_000_000_000),
+        "10-current.js": (b"exact", 91_000_000_000),
+        "20-bundle.min.js": (b"compound", 92_000_000_000),
+        "README": (b"basename", 93_000_000_000),
+    }
+    for name, (content, mtime_ns) in files.items():
+        path = scope / name
+        path.write_bytes(content)
+        os.utime(path, ns=(mtime_ns, mtime_ns))
+    ignored_path = ignored / "newest.js"
+    ignored_path.write_bytes(b"ignored")
+    os.utime(ignored_path, ns=(100_000_000_000, 100_000_000_000))
+
+    as_of_ns = 100_000_000_000
+    expected = {
+        "scope/10-current.js",
+        "scope/20-bundle.min.js",
+        "scope/README",
+    }
+
+    async def run() -> tuple[FilteredTreeProjection, RecentProjection]:
+        selection = InventoryFilter(
+            extensions=(".JS",),
+            filenames=("readme",),
+            recency_seconds=10,
+            minimum_size=5,
+            include_ignored=False,
+            as_of_ns=as_of_ns,
+        )
+        handle = await _open_settled_provider(
+            provider_factory,
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        )
+        try:
+            result = await handle.read(
+                ReadRequest(
+                    queries=(
+                        FilteredTreeQuery(
+                            query_id="filtered",
+                            path="scope",
+                            max_depth=2,
+                            max_rows=len(expected),
+                            filter=selection,
+                        ),
+                        RecentQuery(
+                            query_id="recent",
+                            prefix="scope/",
+                            max_rows=len(expected),
+                            count_cap=len(expected),
+                            as_of_ns=as_of_ns,
+                            filter=selection,
+                        ),
+                    )
+                )
+            )
+            filtered = result.projection("filtered")
+            recent = result.projection("recent")
+            assert isinstance(filtered, FilteredTreeProjection)
+            assert isinstance(recent, RecentProjection)
+            return filtered, recent
+        finally:
+            await handle.close()
+
+    filtered, recent = asyncio.run(run())
+    filtered_paths = {entry.path for entry in filtered.entries if entry.type is EntryType.FILE}
+    recent_paths = {entry.path for entry in recent.entries}
+    assert filtered_paths == recent_paths == expected
+    assert (filtered.matching_leaves, filtered.matching_files, filtered.matching_bytes) == (
+        3,
+        3,
+        21,
+    )
+    assert filtered.next_page is None
+    assert recent.total_matches == CountResult(CountKind.EXACT, 3)
 
 
 @pytest.mark.parametrize("provider_factory", PROVIDER_FACTORIES)

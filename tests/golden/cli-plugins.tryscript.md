@@ -24,6 +24,7 @@ agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
 diff           builtin  diff        1      document,children,comparison
 folder         builtin  -           2      -
+image          builtin  -           1      -
 markdown       builtin  markdown    2      -
 structured     builtin  structured  2      parsed
 text           builtin  -           1      -
@@ -105,6 +106,20 @@ $ metab --plugins --json
         "treemap"
       ],
       "view_count": 2,
+      "data_hooks": [],
+      "disabled_data_hooks": []
+    },
+    {
+      "name": "image",
+      "display_name": "Image",
+      "version": "0.0.1",
+      "source": "builtin",
+      "static_root": "[BUILTIN]/image",
+      "kinds": [],
+      "views": [
+        "preview"
+      ],
+      "view_count": 1,
       "data_hooks": [],
       "disabled_data_hooks": []
     },
@@ -209,9 +224,11 @@ assets in static_root:
   - links.js
   - manifest.toml
   - markdown.css
+  - package.json
   - project-adapters.js
   - rendered.js
   - source.js
+  - toc-intersection-fallback.js
   - transclusion.js
   - wiki-enhancer.js
   - wiki-parser.js
@@ -273,9 +290,11 @@ $ metab --plugin markdown --json
       "links.js",
       "manifest.toml",
       "markdown.css",
+      "package.json",
       "project-adapters.js",
       "rendered.js",
       "source.js",
+      "toc-intersection-fallback.js",
       "transclusion.js",
       "wiki-enhancer.js",
       "wiki-parser.js",
@@ -291,7 +310,7 @@ $ metab --plugin markdown --json
 
 ```console
 $ metab --doctor
-metab --doctor: 8 plugin(s) OK
+metab --doctor: 9 plugin(s) OK
 ? 0
 ```
 
@@ -301,8 +320,12 @@ metab --doctor: 8 plugin(s) OK
 $ metab --doctor --json
 {
   "ok": true,
-  "plugin_count": 8,
+  "plugin_count": 9,
   "problems": []
 }
 ? 0
 ```
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

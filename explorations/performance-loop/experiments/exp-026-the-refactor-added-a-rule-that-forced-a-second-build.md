@@ -6,7 +6,7 @@ softschema:
   envelope: experiment
   status: enforced
 experiment:
-  id: exp-024
+  id: exp-026
   title: The refactor added a rule that forced a second build of every entry
   date: "2026-09-03"
   hypotheses: [H72]
@@ -72,7 +72,7 @@ experiment:
       this corpus; the interleaved medians moved 429 ms.
     commit: pending
 ---
-# exp-024: The refactor added a rule that forced a second build of every entry
+# exp-026: The refactor added a rule that forced a second build of every entry
 
 ## Why
 

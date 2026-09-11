@@ -35,6 +35,7 @@ import pytest
 import metabrowser.events_route as evroute
 from metabrowser import paths_safe
 from metabrowser.events import (
+    CatalogChange,
     FsChange,
     FsEntry,
     FsRemove,
@@ -56,9 +57,11 @@ from metabrowser.inventory_engine.contract import (
     DiscoveryBudget,
     InventoryConfig,
     ObservationKind,
+    QueryKind,
     RefreshObservation,
     RefreshRequest,
 )
+from metabrowser.inventory_engine.coordinator import HostChange
 from tests.inventory_harness import inventory_harness
 
 # ── Fake request plumbing ──────────────────────────────────────
@@ -341,6 +344,45 @@ def test_event_bus_overflow_restarts_slow_connection(tmp_path: Path) -> None:
     assert connection_count == 0
     assert isinstance(event, FsResyncRequired)
     assert event.reason == "connection_queue_overflow"
+
+
+def test_multi_path_change_fits_one_filesystem_and_catalog_pair(tmp_path: Path) -> None:
+    """Changed paths share bounded batch records instead of consuming one slot each."""
+
+    _build_tree(tmp_path)
+
+    async def _run() -> tuple[int, tuple[object, ...]]:
+        original_size = evroute.PER_CONNECTION_QUEUE_SIZE
+        evroute.PER_CONNECTION_QUEUE_SIZE = 2
+        try:
+            async with inventory_harness(tmp_path) as harness:
+                await harness.bus.close()
+                cursor, version, state = await harness.runtime.coordinator.checkpoint()
+                queue = harness.bus.attach_connection()
+                await harness.bus._project_change(
+                    HostChange(
+                        cursor=cursor,
+                        version=version,
+                        state=state,
+                        dirty_paths=(
+                            "file_a.log",
+                            "sub1/file_b.log",
+                            "sub2/file_d.log",
+                        ),
+                        dirty_queries=frozenset({QueryKind.CATALOG}),
+                        facts_changed=True,
+                    )
+                )
+                events = tuple(queue.get_nowait().event for _ in range(queue.qsize()))
+                return harness.bus.connection_count(), events
+        finally:
+            evroute.PER_CONNECTION_QUEUE_SIZE = original_size
+
+    connection_count, events = asyncio.run(_run())
+    assert connection_count == 1
+    assert len(events) == 2
+    assert isinstance(events[0], FsChange)
+    assert isinstance(events[1], CatalogChange)
 
 
 def test_event_bus_defers_provider_projection_until_a_browser_connects(
@@ -674,7 +716,13 @@ def test_api_index_meta_etag_round_trip(tmp_path: Path) -> None:
     _build_tree(tmp_path)
 
     async def _run() -> tuple[int, str, int]:
-        async with inventory_harness(tmp_path) as harness:
+        # Hold the provider state still: watcher startup has its own coverage,
+        # and a legitimate starting -> running transition must change this
+        # endpoint's diagnostics and ETag.
+        async with inventory_harness(
+            tmp_path,
+            config=InventoryConfig(watch_mode="off"),
+        ) as harness:
             resp1 = await api_index_meta(cast(Any, _FakeRequest(app=harness.app)))
             etag = resp1.headers.get("etag", "")
             resp2 = await api_index_meta(

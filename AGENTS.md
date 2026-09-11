@@ -24,18 +24,32 @@ isolated installed-wheel smoke tests.
 Run `make hooks-install` once per checkout to install the Lefthook pre-commit and
 pre-push gates.
 
-## CLI Parity
+## CLI and Functional UI Parity
 
 Every route, kind, and model the browser consumes, and every state the system persists,
 has a `metab` equivalent and a golden transcript.
-Only the view layer is exempt, and its behaviour is pinned in `tests/dom/`.
+Every user-visible functional aspect is also runnable from a command line.
+
+- Data semantics — membership, ordering, grouping inputs, counts, bounds, persisted
+  state, actions, and errors — belong to a route or model reached through `metab` and a
+  nontrivial golden.
+
+- Browser-owned interaction state machines run browserlessly against the exact
+  production JavaScript and have a golden session plus focused invariants.
+
+- Only paint and platform behavior may be browser-only.
+  Each exemption names the exact behavior, why a browserless representation would be
+  dishonest, and its focused evidence.
+  There is no blanket view-layer exemption.
 
 - Prefer adding a route to adding a CLI mode.
   `--api` reaches every registered route by construction, so a surface exposed as a
   route is inspectable and golden-pinned for free.
-- `devtools/check_parity.py` enforces this and names what is missing.
-  The table, the exemption list, and their reasons live in
+
+- `devtools/check_parity.py` enforces route and functional evidence and names what is
+  missing. The tables, exemption list, and reasons live in
   [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
+
 - A new route arrives with its parity row and a golden, or the build fails.
   There is no `gap` status: every registered surface is either covered by a transcript
   or exempt with a stated reason.
