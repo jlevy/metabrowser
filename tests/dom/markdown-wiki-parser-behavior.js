@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { createHash } = require("node:crypto");
 
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
@@ -78,12 +79,132 @@ function check(name, condition, detail = "failed") {
   check("target attribute escaped", result.source.includes('data-mb-wiki-target="A&amp;B"'));
   check("label text escaped", result.source.includes("&lt;Label&gt;"));
 
+  const literalCases = [
+    ["unmatched inline delimiter", "`broken [[Target]]", 1],
+    ["multiline exact-run code span", "`code\n[[Target]]`", 0],
+    ["short opener cannot use longer closer", "`code [[Target]] ``", 1],
+    ["long opener cannot use shorter closer", "``code [[Target]] `", 1],
+    ["wiki before ordinary link", "[[Target]] [ordinary](target.md)", 1],
+    ["wiki after ordinary link", "[ordinary](target.md) [[Target]]", 1],
+    ["wiki inside ordinary link label", "[ordinary [[Hidden]]](target.md)", 0],
+    ["wiki inside reference link label", "[ordinary [[Hidden]]][target]", 0],
+    ["wiki inside fenced CRLF code", "```md\r\n[[Target]]\r\n```\r\n", 0],
+    ["wiki inside indented code", "    [[Target]]\n", 0],
+    ["wiki inside HTML comment", "<!-- [[Target]] -->\n", 0],
+    ["wiki inside raw HTML block", "<details>\n[[Target]]\n</details>\n\n", 0],
+  ];
+  for (const [name, input, targetCount] of literalCases) {
+    const actual = module.preprocessObsidianWiki(input);
+    check(name, actual.targetCount === targetCount, String(actual.targetCount));
+  }
+
+  const escapedCounts = [1, 2, 3, 4].map(
+    (slashes) => module.preprocessObsidianWiki(`${"\\".repeat(slashes)}[[Target]]`).targetCount,
+  );
+  check(
+    "wiki escape uses odd/even backslash parity",
+    JSON.stringify(escapedCounts) === JSON.stringify([0, 1, 0, 1]),
+    JSON.stringify(escapedCounts),
+  );
+
+  let seed = 0x5eed1234;
+  const random = () => {
+    seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
+    return seed;
+  };
+  const corpusTokens = [
+    "plain",
+    "[[Note]]",
+    "![[image.png|640x480]]",
+    "`[[code]]`",
+    "[ordinary [[hidden]]](target.md)",
+    String.raw`\[[escaped]]`,
+    "# Heading\n",
+    "paragraph ^block-id\n",
+    "```md\n[[fenced]]\n```\n",
+    "<em>inline</em>",
+    "A&amp;B",
+    "\r\n",
+  ];
+  const seededOutputs = Array.from({ length: 512 }, () => {
+    const pieces = 1 + (random() % 12);
+    let input = "";
+    for (let index = 0; index < pieces; index += 1) {
+      input += corpusTokens[random() % corpusTokens.length];
+      input += random() % 2 ? " " : "\n";
+    }
+    const actual = module.preprocessObsidianWiki(input);
+    return [actual.blockCount, actual.changed, actual.source, actual.targetCount];
+  });
+  const seededDigest = createHash("sha256").update(JSON.stringify(seededOutputs)).digest("hex");
+  // This fixed seed and digest are the intended legacy-output oracle for syntax
+  // unaffected by the explicit CommonMark bug corrections above. It catches a
+  // precedence or escaping drift without retaining the retired quadratic parser.
+  check(
+    "seeded intended-output differential corpus",
+    seededDigest === "11d923b70586b9aaf0913646651d350e36e74f5e1c3ef079c70a03683a3a936e",
+    seededDigest,
+  );
+
   const capped = module.preprocessObsidianWiki("[[Note]] ".repeat(4_100));
   check("target budget", capped.targetCount === 4_096, String(capped.targetCount));
   check("over-budget source remains visible", capped.source.includes("[[Note]]"));
+  check(
+    "target budget reports explicit incompleteness",
+    capped.complete === false && capped.diagnostics[0]?.code === "wiki-target-limit",
+  );
   const oversized = module.preprocessObsidianWiki(`${"x".repeat(2_000_001)}[[Note]]`);
   check("oversized source unchanged", oversized.changed === false);
   check("oversized target count", oversized.targetCount === 0);
+  check(
+    "oversized source is explicitly incomplete",
+    oversized.complete === false && oversized.diagnostics[0]?.code === "source-too-large",
+  );
+
+  const bracketHeavy = module.preprocessObsidianWiki("[".repeat(2_000_000));
+  const nestedHeavySource = `${"[a".repeat(999_999)}x]`;
+  const nestedHeavy = module.preprocessObsidianWiki(nestedHeavySource);
+  for (const [name, inputLength, actual] of [
+    ["bracket-heavy", 2_000_000, bracketHeavy],
+    ["nested-bracket", nestedHeavySource.length, nestedHeavy],
+  ]) {
+    const totalWork = Object.values(actual.metrics).reduce((total, count) => total + count, 0);
+    check(
+      `${name} work is linearly bounded`,
+      totalWork <= inputLength * 14,
+      `${totalWork}/${inputLength}`,
+    );
+  }
+
+  const expandingOccurrence = `[[${"&".repeat(480)}]]\n`;
+  const expandingSource = expandingOccurrence.repeat(4096);
+  const outputLimited = module.preprocessObsidianWiki(expandingSource);
+  check(
+    "transformed output cap rejects atomically",
+    outputLimited.changed === false &&
+      outputLimited.complete === false &&
+      outputLimited.source === expandingSource &&
+      outputLimited.targetCount === 0 &&
+      outputLimited.diagnostics[0]?.code === "transformed-source-byte-limit",
+    JSON.stringify({
+      changed: outputLimited.changed,
+      complete: outputLimited.complete,
+      diagnostics: outputLimited.diagnostics,
+      targetCount: outputLimited.targetCount,
+    }),
+  );
+
+  const missingSelectionSource = "line\r\n".repeat(250_000);
+  const missingSelection = module.selectTransclusionSource(
+    missingSelectionSource,
+    "obsidian-heading-not-present",
+  );
+  check(
+    "missing tail selection streams line offsets once",
+    missingSelection.status === "missing" &&
+      missingSelection.metrics.lineCodeUnitsVisited <= missingSelectionSource.length,
+    JSON.stringify(missingSelection),
+  );
 
   if (failures.length) {
     console.error(`markdown wiki parser FAILURES:\n- ${failures.join("\n- ")}`);

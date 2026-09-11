@@ -2,27 +2,63 @@
 //
 // Bulk state comes from one gzipped `GET /api/catalog` fetch; live
 // deltas arrive as `catalog.change` events on the existing inventory
-// stream. The two converge without a shared transaction because ops
-// are idempotent by path — provided deltas observed before the bulk
-// payload applies are buffered and replayed after it, which is this
-// module's whole job. It owns no EventSource and no DOM: app.js
+// stream. Deltas observed before a bulk commit fold into that same staged
+// transaction; larger steady-state changes use the same bounded scheduler.
+// This module owns no EventSource and no DOM: app.js
 // forwards stream events in, so the module is testable in Node with
 // a stubbed fetch.
 
 (() => {
   const RETRY_BASE_MS = 2_000;
   const RETRY_MAX_MS = 60_000;
+  // The 300k exact-release profile for mb-gp3m measures and gates this ceiling.
+  // Keep the item bound beside its production scheduler; the durable artifact
+  // records elapsed timing rather than pretending item count is time.
+  const BULK_APPLY_SLICE_ITEMS = 4_096;
   const perf = window.metabrowser?.perf || {
     measure: (_label, fn) => fn(),
     measureAsync: (_label, fn) => fn(),
   };
 
   /**
+   * @typedef {object} BulkSnapshotApplication
+   * @property {() => void} cancel
+   * @property {(payload: CatalogChangePayload) => void} enqueueCatalogChange
+   * @property {(ops: EventChangeOperation[]) => void} enqueueEventChange
+   * @property {(maxWorkItems: number) => {cancelled: boolean, done: boolean,
+   *   candidateVisits: number, workItems: number}} step
+   */
+
+  /**
+   * @typedef {object} CatalogChangePayload
+   * @property {Array<{p: string, e: string}>} [upserts]
+   * @property {string[]} [removes]
+   * @property {string[]} [remove_files]
+   * @property {string[]} [non_file_paths]
+   */
+
+  /**
+   * @typedef {object} EventChangeOperation
+   * @property {{path: string, type: string, logical_ext?: string, gitignored?: boolean}} [entry]
+   * @property {string} op
+   * @property {string} [path]
+   */
+
+  /** @typedef {{kind: "catalog", payload: CatalogChangePayload} |
+   *   {kind: "event", ops: EventChangeOperation[]}} PendingChange */
+
+  /**
    * @typedef {object} CatalogFeedTarget
    * @property {(files: Array<{p: string, e: string}>, complete: boolean,
-   *   authoritative?: boolean) => void} applyBulkSnapshot
-   * @property {(payload: {upserts?: Array<{p: string, e: string}>, removes?: string[],
-   *   remove_files?: string[], non_file_paths?: string[]}) => void} applyCatalogChange
+   *   authoritative?: boolean) => BulkSnapshotApplication} beginBulkSnapshot
+   * @property {(payload: CatalogChangePayload, maxWorkItems: number) =>
+   *   BulkSnapshotApplication | null} beginCatalogChange
+   * @property {(ops: EventChangeOperation[], maxWorkItems: number) =>
+   *   BulkSnapshotApplication | null} beginEventChange
+   * @property {(payload: CatalogChangePayload) => {candidateVisits: number,
+   *   changed: boolean, workItems: number}} applyCatalogChange
+   * @property {(ops: EventChangeOperation[]) => {candidateVisits: number,
+   *   changed: boolean, workItems: number}} applyEventChange
    * @property {() => void} markComplete
    * @property {() => void} markIncomplete
    */
@@ -34,6 +70,7 @@
    * @param {typeof fetch} [options.fetchImpl]
    * @param {(callback: () => void, delayMs: number) => number} [options.scheduleRetry]
    * @param {(handle: number) => void} [options.cancelRetry]
+   * @param {() => Promise<void>} [options.yieldControl]
    */
   function create(options) {
     const catalog = options.catalog;
@@ -42,9 +79,11 @@
     const scheduleRetry =
       options.scheduleRetry || ((callback, delayMs) => window.setTimeout(callback, delayMs));
     const cancelRetry = options.cancelRetry || ((handle) => window.clearTimeout(handle));
+    const taskYielder = options.yieldControl ? null : createTaskYielder();
+    const yieldControl =
+      options.yieldControl || taskYielder?.yieldControl || (() => Promise.resolve());
 
-    /** @type {Array<{upserts?: Array<{p: string, e: string}>, removes?: string[],
-     *   remove_files?: string[], non_file_paths?: string[]}>} */
+    /** @type {PendingChange[]} */
     let pendingChanges = [];
     let fetchSerial = 0;
     let fetchedOnce = false;
@@ -60,35 +99,118 @@
     let terminalRefetchRequested = false;
     let lastBulkWasAuthoritative = false;
     let lastBulkHadCompleteCoverage = false;
-
-    /**
-     * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[],
-     *   remove_files?: string[], non_file_paths?: string[]}} payload
-     */
-    function applyChange(payload) {
-      const upserts = Array.isArray(payload?.upserts) ? payload.upserts.length : 0;
-      const subtreeRemoves = Array.isArray(payload?.removes) ? payload.removes.length : 0;
-      const fileRemoves = Array.isArray(payload?.remove_files) ? payload.remove_files.length : 0;
-      const nonFilePaths = Array.isArray(payload?.non_file_paths)
-        ? payload.non_file_paths.length
-        : 0;
-      return perf.measure(
-        "knownFileCatalog:applyCatalogChange",
-        () => catalog.applyCatalogChange(payload),
-        {
-          work_items: upserts + subtreeRemoves + fileRemoves + nonFilePaths,
-          upserts,
-          subtree_removes: subtreeRemoves,
-          file_removes: fileRemoves,
-          non_file_paths: nonFilePaths,
-        },
-      );
-    }
+    /** @type {BulkSnapshotApplication | null} */
+    let activeBulkApplication = null;
 
     function clearRetry() {
       if (retryHandle !== null) {
         cancelRetry(retryHandle);
         retryHandle = null;
+      }
+    }
+
+    /**
+     * Drive one staged application through posted-task slices. `pendingChanges`
+     * remains its cancellation journal until the atomic commit succeeds.
+     * @param {BulkSnapshotApplication} application
+     * @param {string} label
+     * @param {number} files
+     * @param {number | null} serial
+     * @param {boolean} [firstPendingAlreadyQueued=false]
+     */
+    async function driveApplication(
+      application,
+      label,
+      files,
+      serial,
+      firstPendingAlreadyQueued = false,
+    ) {
+      activeBulkApplication = application;
+      for (const change of pendingChanges.slice(firstPendingAlreadyQueued ? 1 : 0)) {
+        if (change.kind === "catalog") {
+          application.enqueueCatalogChange(change.payload);
+        } else {
+          application.enqueueEventChange(change.ops);
+        }
+      }
+      while (true) {
+        if (
+          disposed ||
+          activeBulkApplication !== application ||
+          (serial !== null && serial !== fetchSerial)
+        ) {
+          application.cancel();
+          if (activeBulkApplication === application) {
+            activeBulkApplication = null;
+          }
+          return false;
+        }
+        const metadata = { candidate_visits: 0, files, work_items: 0 };
+        const result = perf.measure(
+          label,
+          () => {
+            const step = application.step(BULK_APPLY_SLICE_ITEMS);
+            metadata.candidate_visits = step.candidateVisits;
+            metadata.work_items = step.workItems;
+            return step;
+          },
+          metadata,
+        );
+        if (result.cancelled) {
+          if (activeBulkApplication === application) {
+            activeBulkApplication = null;
+          }
+          return false;
+        }
+        if (result.done) {
+          if (activeBulkApplication === application) {
+            activeBulkApplication = null;
+          }
+          pendingChanges = [];
+          return true;
+        }
+        await yieldControl();
+      }
+    }
+
+    async function applyPendingChanges() {
+      if (disposed || fetching || activeBulkApplication || pendingChanges.length === 0) {
+        return;
+      }
+      while (!disposed && !fetching && !activeBulkApplication && pendingChanges.length > 0) {
+        const change = pendingChanges[0];
+        const application =
+          change.kind === "catalog"
+            ? catalog.beginCatalogChange(change.payload, BULK_APPLY_SLICE_ITEMS)
+            : catalog.beginEventChange(change.ops, BULK_APPLY_SLICE_ITEMS);
+        if (application) {
+          await driveApplication(
+            application,
+            change.kind === "catalog"
+              ? "knownFileCatalog:applyCatalogChange"
+              : "knownFileCatalog:applyEventChange",
+            0,
+            null,
+            true,
+          );
+          return;
+        }
+        pendingChanges.shift();
+        const metadata = { candidate_visits: 0, work_items: 0 };
+        perf.measure(
+          change.kind === "catalog"
+            ? "knownFileCatalog:applyCatalogChange"
+            : "knownFileCatalog:applyEventChange",
+          () => {
+            const result =
+              change.kind === "catalog"
+                ? catalog.applyCatalogChange(change.payload)
+                : catalog.applyEventChange(change.ops);
+            metadata.candidate_visits = result.candidateVisits;
+            metadata.work_items = result.workItems;
+          },
+          metadata,
+        );
       }
     }
 
@@ -112,9 +234,17 @@
           if (!response.ok) {
             throw new Error(`catalog fetch failed: ${response.status}`);
           }
-          const payload = await perf.measureAsync("apiCatalog:json", () => response.json(), {
+          const responseMetadata = {
             content_length: Number(response.headers?.get?.("content-length")) || null,
             content_encoding: response.headers?.get?.("content-encoding") || null,
+          };
+          const body = await perf.measureAsync(
+            "apiCatalog:body",
+            () => response.text(),
+            responseMetadata,
+          );
+          const payload = perf.measure("apiCatalog:parse", () => JSON.parse(body), {
+            characters: body.length,
           });
           if (disposed || serial !== fetchSerial) {
             return;
@@ -137,19 +267,18 @@
           // must merge instead.
           const authoritative = payload.complete === true;
           const completeCoverage = authoritative && payload.truncated !== true;
-          perf.measure(
-            "knownFileCatalog:applyBulkSnapshot",
-            () =>
-              catalog.applyBulkSnapshot(
-                Array.isArray(payload.files) ? payload.files : [],
-                completeCoverage,
-                authoritative,
-              ),
-            {
-              files: Array.isArray(payload.files) ? payload.files.length : 0,
-              work_items: Array.isArray(payload.files) ? payload.files.length : 0,
-            },
-          );
+          const files = Array.isArray(payload.files) ? payload.files : [];
+          const application = catalog.beginBulkSnapshot(files, completeCoverage, authoritative);
+          if (
+            !(await driveApplication(
+              application,
+              "knownFileCatalog:applyBulkSnapshot",
+              files.length,
+              serial,
+            ))
+          ) {
+            return;
+          }
           lastBulkWasAuthoritative = authoritative;
           lastBulkHadCompleteCoverage = completeCoverage;
           if (authoritative) {
@@ -157,19 +286,19 @@
             terminalRefetchRequested = false;
           }
         } else if (lastBulkWasAuthoritative) {
-          authoritativeRefetchPending = false;
-          if (lastBulkHadCompleteCoverage) {
-            catalog.markComplete();
+          const application = catalog.beginBulkSnapshot([], lastBulkHadCompleteCoverage, false);
+          if (
+            !(await driveApplication(application, "knownFileCatalog:applyBulkSnapshot", 0, serial))
+          ) {
+            return;
           }
+          authoritativeRefetchPending = false;
         }
         fetchedOnce = true;
         retryAttempts = 0;
-        const replay = pendingChanges;
-        pendingChanges = [];
-        for (const change of replay) {
-          applyChange(change);
-        }
       } catch (_error) {
+        activeBulkApplication?.cancel();
+        activeBulkApplication = null;
         if (disposed || serial !== fetchSerial) {
           return;
         }
@@ -189,6 +318,8 @@
         if (refetchWanted && !disposed) {
           refetchWanted = false;
           void runFetch();
+        } else if (!disposed && fetchedOnce && pendingChanges.length > 0) {
+          void applyPendingChanges();
         }
       }
     }
@@ -212,6 +343,15 @@
 
     /** Require the next accepted bulk payload to establish membership. */
     function requestContinuityRefetch() {
+      // A continuity boundary makes every delta buffered before it ambiguous:
+      // the disconnected stream may have omitted a later inverse operation.
+      // Rotate the buffer before invalidating the fetch so only events from
+      // the new continuity generation replay over its authoritative payload.
+      // Ordinary fetch retries and terminal completion refetches do not take
+      // this path and therefore keep their ordered buffers.
+      pendingChanges = [];
+      activeBulkApplication?.cancel();
+      activeBulkApplication = null;
       authoritativeRefetchPending = true;
       terminalRefetchRequested = false;
       catalog.markIncomplete();
@@ -242,17 +382,34 @@
      * A `catalog.change` event arrived on the stream. Applied
      * directly once the bulk payload has landed; buffered before
      * that so replay order preserves convergence.
-     * @param {{upserts?: Array<{p: string, e: string}>, removes?: string[],
-     *   remove_files?: string[], non_file_paths?: string[]}} payload
+     * @param {CatalogChangePayload} payload
      */
     function onCatalogChange(payload) {
       if (disposed || !payload) {
         return;
       }
-      if (fetchedOnce && !fetching) {
-        applyChange(payload);
-      } else {
-        pendingChanges.push(payload);
+      const change = { kind: /** @type {const} */ ("catalog"), payload };
+      pendingChanges.push(change);
+      if (activeBulkApplication) {
+        activeBulkApplication.enqueueCatalogChange(payload);
+      } else if (fetchedOnce && !fetching) {
+        void applyPendingChanges();
+      }
+    }
+
+    /** Route the general fs.change seam through the same bounded scheduler.
+     * @param {EventChangeOperation[]} ops
+     */
+    function onEventChange(ops) {
+      if (disposed || !Array.isArray(ops) || ops.length === 0) {
+        return;
+      }
+      const change = { kind: /** @type {const} */ ("event"), ops };
+      pendingChanges.push(change);
+      if (activeBulkApplication) {
+        activeBulkApplication.enqueueEventChange(ops);
+      } else if (fetchedOnce && !fetching) {
+        void applyPendingChanges();
       }
     }
 
@@ -316,11 +473,15 @@
       disposed = true;
       clearRetry();
       pendingChanges = [];
+      activeBulkApplication?.cancel();
+      activeBulkApplication = null;
+      taskYielder?.dispose();
     }
 
     return Object.freeze({
       dispose,
       onCatalogChange,
+      onEventChange,
       onIndexComplete,
       onResync,
       onSentinelSnapshot,
@@ -328,5 +489,45 @@
     });
   }
 
-  window.MetabrowserCatalogFeed = Object.freeze({ create });
+  /**
+   * Yield with a posted task instead of a nested timer. Browsers clamp a long
+   * chain of zero-delay timers, which would turn safe slices into avoidable
+   * end-to-end catalog latency.
+   */
+  function createTaskYielder() {
+    if (typeof MessageChannel !== "function") {
+      return Object.freeze({
+        dispose() {},
+        yieldControl: () => new Promise((resolve) => window.setTimeout(resolve, 0)),
+      });
+    }
+    const channel = new MessageChannel();
+    /** @type {Array<() => void>} */
+    const pending = [];
+    let disposed = false;
+    channel.port1.onmessage = () => {
+      pending.shift()?.();
+    };
+    return Object.freeze({
+      dispose() {
+        disposed = true;
+        channel.port1.close();
+        channel.port2.close();
+        for (const resolve of pending.splice(0)) {
+          resolve();
+        }
+      },
+      yieldControl() {
+        if (disposed) {
+          return Promise.resolve();
+        }
+        return new Promise((resolve) => {
+          pending.push(() => resolve(undefined));
+          channel.port2.postMessage(null);
+        });
+      },
+    });
+  }
+
+  window.MetabrowserCatalogFeed = Object.freeze({ BULK_APPLY_SLICE_ITEMS, create });
 })();

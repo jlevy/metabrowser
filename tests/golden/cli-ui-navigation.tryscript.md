@@ -83,6 +83,26 @@ $ node tests/dom/recent-filter-session.js
           }
         ],
         "pending": false
+      },
+      "replacementOwnership": {
+        "eventAfterStart": {
+          "schedule": "scheduled",
+          "renders": 0
+        },
+        "expiryAfterStart": {
+          "mayPaint": false
+        },
+        "eventAfterFailure": {
+          "schedule": "scheduled",
+          "renders": 0
+        },
+        "sameSelectionRepair": {
+          "schedule": "scheduled",
+          "renderedRequest": {
+            "windowKey": "24h",
+            "requestKey": "/api/recent?window=24h&limit=5000&types=.md"
+          }
+        }
       }
     },
     "resync": {
@@ -437,6 +457,55 @@ $ node tests/dom/recent-filter-session.js
     }
   }
 }
+```
+
+The catalog feed session pins connect-before-fetch ordering, buffered delta replay,
+bounded snapshot commits, sentinel resynchronization, and retry without data loss.
+
+```console
+$ node tests/dom/catalog-feed-behavior.js
+OK catalog feed
+```
+
+The catalog ordering session feeds the exact production modules with a valid
+UTF-8-ordered payload whose BMP private-use paths precede its astral paths.
+It pins the browser’s complete UTF-16-ordered projection and runs the larger 200,000-row
+responsiveness gate through the focused pytest wrapper.
+
+```console
+$ node tests/dom/catalog-unicode-order-session.js
+{
+  "browserOrder": [
+    "astral",
+    "bmp-private-use"
+  ],
+  "complete": true,
+  "files": 40000,
+  "providerOrder": [
+    "bmp-private-use",
+    "astral"
+  ],
+  "sliced": true,
+  "workItemLimit": 4096
+}
+```
+
+The navigation route session pins the canonical file and comparison identities used by
+history updates, including segment encoding, fragments, Windows-native identities, and
+invalid path rejection.
+
+```console
+$ node tests/dom/navigation-route-behavior.js
+navigation route OK
+```
+
+The asset loader session pins lazy construction, dependency order, concurrent request
+coalescing, partial-failure recovery, and validation of promised globals.
+
+```console
+$ node tests/dom/asset-loader-behavior.js
+{"appendedBeforeAnyRequest":0,"orderedLoad":["chart.js","plugin.js","adapter.js"],"notifiedPerScript":["chart.js","plugin.js","adapter.js"],"loadedFlag":true,"appendsOnSecondRequest":0,"skippedUngatedDependency":["chart.js"],"appendsWhileThreeCallersWait":1,"appendsAfterSharedLoadSettled":1,"unknownBundle":"Unknown asset bundle: absent","failedScript":"Failed to load asset: chart.js","loadedFlagAfterFailure":false,"appendsAfterFailedRetry":2,"partialFailureRetryAppends":["chart.js","charts-runtime.js","adapter.js","adapter.js"],"partialFailureNotifications":["chart.js","charts-runtime.js","adapter.js"],"partialFailureLoaded":true,"missingProvidedGlobal":"Asset chart.js did not provide expected global: Chart","missingProvidedGlobalFirstAppends":["chart.js"],"missingProvidedGlobalFirstNotifications":[],"missingProvidedGlobalLatched":false,"missingProvidedGlobalRetryAppends":["chart.js","chart.js","plugin.js"],"missingProvidedGlobalRetryNotifications":["chart.js","plugin.js"],"missingProvidedGlobalRetryLoaded":true,"concurrentStrongFailure":"Asset shared.js did not provide expected global: Shared","concurrentStrongRetryAppends":["shared.js","shared.js"],"concurrentStrongRetryLoaded":true}
+? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.

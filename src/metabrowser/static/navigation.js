@@ -3,6 +3,10 @@
 (() => {
   const ROUTE_PREFIX = "/view/";
   const COMMIT_PREFIX = "/commit/";
+  // Keep this grammar byte-for-byte aligned with view_routes._ROUTE_REVISION.
+  // The revision occupies one encoded URL segment, but its decoded Git ref may
+  // contain slashes (for example refs/heads/main).
+  const COMMIT_REVISION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z._/@^~-]{0,255}$/;
 
   /**
    * Encode a commit route: `/commit/<rev>` for the whole change set,
@@ -15,8 +19,8 @@
    * @returns {string}
    */
   function commitHref(revision, file = "") {
-    if (typeof revision !== "string" || !revision) {
-      throw new TypeError("commit route requires a revision");
+    if (typeof revision !== "string" || !COMMIT_REVISION_PATTERN.test(revision)) {
+      throw new TypeError("commit route requires a valid revision");
     }
     const head = COMMIT_PREFIX + encodeURIComponent(revision);
     if (!file) {
@@ -45,7 +49,17 @@
     }
     try {
       const [revision, ...rest] = rawSegments.map((segment) => decodeURIComponent(segment));
-      if (!revision || rest.some((segment) => segment === "." || segment === "..")) {
+      if (
+        !COMMIT_REVISION_PATTERN.test(revision) ||
+        rest.some(
+          (segment) =>
+            segment === "." ||
+            segment === ".." ||
+            segment.includes("/") ||
+            segment.includes("\\") ||
+            segment.includes("\0"),
+        )
+      ) {
         return null;
       }
       return Object.freeze({ revision, file: rest.join("/") });
@@ -339,6 +353,206 @@
   }
 
   /**
+   * Create a bounded, Set-like invalidation tracker whose captures distinguish
+   * the event one request started from from a newer event on the same path.
+   * Keeping a dirty marker present until an owned response settles also means a
+   * same-path replacement request cannot mistake an in-flight revalidation for
+   * a hot cache hit.
+   *
+   * @param {number} maxEntries
+   */
+  function createFileRevalidationTracker(maxEntries) {
+    if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
+      throw new TypeError("file revalidation tracker requires a positive integer bound");
+    }
+    /** @type {Map<string, Readonly<{id: number}>>} */
+    const markers = new Map();
+    let nextId = 0;
+
+    /** @param {string} path */
+    function add(path) {
+      if (typeof path !== "string" || !path) {
+        throw new TypeError("file revalidation path must be a non-empty string");
+      }
+      nextId += 1;
+      const marker = Object.freeze({ id: nextId });
+      markers.delete(path);
+      markers.set(path, marker);
+      while (markers.size > maxEntries) {
+        markers.delete(/** @type {string} */ (markers.keys().next().value));
+      }
+    }
+
+    return Object.freeze({
+      add,
+      /** @param {string} path */
+      capture(path) {
+        return markers.get(path) ?? null;
+      },
+      clear() {
+        markers.clear();
+      },
+      /** @param {string} path */
+      delete(path) {
+        return markers.delete(path);
+      },
+      /** @param {string} path */
+      has(path) {
+        return markers.has(path);
+      },
+      keys() {
+        return markers.keys();
+      },
+      /**
+       * @param {string} path
+       * @param {Readonly<{id: number}> | null} marker
+       */
+      settle(path, marker) {
+        if (marker === null || markers.get(path) !== marker) {
+          return false;
+        }
+        markers.delete(path);
+        return true;
+      },
+      get size() {
+        return markers.size;
+      },
+    });
+  }
+
+  /**
+   * Replace one authoritative, scoped file-store snapshot as a transaction.
+   *
+   * The caller installs the complete next Map before any row callback runs, so
+   * every derived read sees one revision. Only paths present in the previous
+   * scoped store and absent from the replacement are retired; lazily rendered
+   * rows outside that stream scope are deliberately untouched.
+   *
+   * @param {Map<string, Record<string, any>>} previous
+   * @param {Set<string>} previousOwnedPaths
+   * @param {Array<Record<string, any> & {path: string}>} entries
+   * @param {{
+   *   install: (next: Map<string, Record<string, any>>, ownedPaths: Set<string>) => void,
+   *   retire: (path: string) => void,
+   *   upsert: (entry: Record<string, any> & {path: string}) => void,
+   * }} callbacks
+   * @returns {Readonly<{store: Map<string, Record<string, any>>, ownedPaths: Set<string>}>}
+   */
+  function replaceFileSnapshot(previous, previousOwnedPaths, entries, callbacks) {
+    // FileStore can also retain rows learned outside the stream snapshot (for
+    // example by a future lazy-tree integration). Start from the full store,
+    // remove only the prior snapshot's owned keys, then install the next
+    // snapshot. Absence is authoritative only inside that explicit ownership
+    // set.
+    const next = new Map(previous);
+    for (const path of previousOwnedPaths) {
+      next.delete(path);
+    }
+    const ownedPaths = new Set();
+    for (const entry of entries) {
+      next.set(entry.path, entry);
+      ownedPaths.add(entry.path);
+    }
+    callbacks.install(next, ownedPaths);
+    for (const path of previousOwnedPaths) {
+      if (!ownedPaths.has(path)) {
+        callbacks.retire(path);
+      }
+    }
+    for (const entry of entries) {
+      callbacks.upsert(entry);
+    }
+    return Object.freeze({ ownedPaths, store: next });
+  }
+
+  /**
+   * Attach both fulfillment and rejection handlers immediately when an
+   * independent navigation dependency begins. The caller may await an HTTP
+   * result first without creating an unhandled-rejection window.
+   *
+   * @template T
+   * @param {Promise<T>} pending
+   * @returns {Promise<Readonly<{status: "ready", value: T} | {status: "error", error: unknown}>>}
+   */
+  function settleNavigationDependency(pending) {
+    return pending.then(
+      (value) => Object.freeze({ status: /** @type {"ready"} */ ("ready"), value }),
+      (error) => Object.freeze({ error, status: /** @type {"error"} */ ("error") }),
+    );
+  }
+
+  /**
+   * Classify one file-selection failure and run mutations only for the
+   * selection that still owns the pane.
+   *
+   * @param {{
+   *   cached: boolean,
+   *   error: unknown,
+   *   isCurrent: () => boolean,
+   *   markForRevalidation: () => void,
+   *   path: string,
+   *   showError: (error: unknown) => void,
+   * }} options
+   * @returns {{message?: string, status: "cancelled" | "error" | "not-found"}}
+   */
+  function settleFileSelectionFailure(options) {
+    const caught = /** @type {{name?: string, notFound?: boolean}} */ (options.error);
+    if (caught?.name === "AbortError" || !options.isCurrent()) {
+      return { status: "cancelled" };
+    }
+    if (options.cached) {
+      options.markForRevalidation();
+    }
+    options.showError(options.error);
+    return caught?.notFound === true
+      ? { message: `${options.path} is no longer available.`, status: "not-found" }
+      : {
+          message: `Could not open ${options.path}. Check that the file still exists and is readable.`,
+          status: "error",
+        };
+  }
+
+  /**
+   * Commit a fresh file response only while the selection that requested it
+   * still owns the preview.
+   *
+   * Cache payload, validator, and ownership are one transaction. In
+   * particular, a late response from same-path navigation A must not poison
+   * the hot cache after navigation B has already won. Folder envelopes are
+   * deliberately no-store, but still evict a previous file payload when a path
+   * changes shape. Neither branch clears a dirty marker: a filesystem event
+   * that arrived during the request belongs to the next selection.
+   *
+   * @param {{
+   *   cacheFile: (data: Record<string, any>) => void,
+   *   cacheValidator: (etag: string) => void,
+   *   data: Record<string, any>,
+   *   etag: string | null,
+   *   evictFile: () => void,
+   *   evictValidator: () => void,
+   *   isCurrent: () => boolean,
+   * }} options
+   * @returns {"cancelled" | "file" | "folder"}
+   */
+  function commitFreshFileResponse(options) {
+    if (!options.isCurrent()) {
+      return "cancelled";
+    }
+    if (options.data.kind === "folder") {
+      options.evictFile();
+      options.evictValidator();
+      return "folder";
+    }
+    options.cacheFile(options.data);
+    if (options.etag) {
+      options.cacheValidator(options.etag);
+    } else {
+      options.evictValidator();
+    }
+    return "file";
+  }
+
+  /**
    * Compose route identity with browser history and application rendering.
    *
    * @param {{
@@ -535,13 +749,18 @@
 
   window.MetabrowserNavigationRoute = Object.freeze({
     attachController,
+    commitFreshFileResponse,
     commitHref,
     createController,
+    createFileRevalidationTracker,
     displayPath,
     href,
     navigation,
     normalizeTarget,
     parse,
     parseCommit,
+    replaceFileSnapshot,
+    settleFileSelectionFailure,
+    settleNavigationDependency,
   });
 })();

@@ -138,10 +138,13 @@ This is a presentation model, not a second implementation of server filtering.
 
 ### Markdown TOC integration
 
-Same-document Markdown links keep their fragment-only authored `href`, which is the
-contract KPress uses to associate TOC links with headings.
-Metabrowser still retains the resolved navigation target for delegated clicks, history,
-and cross-document links.
+Same-document Markdown links keep their fragment-only authored `href` only when their
+source is the primary document in the address bar, which is the contract KPress uses to
+associate TOC links with headings.
+The enhancer gives embedded Markdown a canonical source-aware `/view/` link so Copy
+Link, modified clicks, and `target="_blank"` resolve against the embedded document.
+Metabrowser retains the resolved navigation target for delegated plain clicks and
+history in both cases.
 
 KPress continues to own TOC selection, disclosure, active-link state, and disposal.
 When the host lacks `IntersectionObserver`, a scoped adapter supplies only the missing
@@ -202,7 +205,8 @@ responsible for declaring the smaller set of observable aspects within each surf
 
 ### Phase 3: Restore Markdown TOC composition
 
-- [x] Preserve same-document fragment links while retaining delegated navigation.
+- [x] Preserve primary-document fragment links while retaining delegated navigation;
+  give embedded-document fragments their canonical source-aware links.
 - [x] Add a scoped observation fallback for hosts without `IntersectionObserver`.
 - [x] Run the link enhancer and KPress’s exact production TOC module over the same
   anchors in one browserless long-document session.

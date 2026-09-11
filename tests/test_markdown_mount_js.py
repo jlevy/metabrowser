@@ -17,14 +17,18 @@ ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown-link-enhancer-
 WIKI_PARSER_JS = Path(__file__).resolve().parent / "dom" / "markdown-wiki-parser-behavior.js"
 WIKI_RESOLVER_JS = Path(__file__).resolve().parent / "dom" / "markdown-wiki-resolver-behavior.js"
 WIKI_ENHANCER_JS = Path(__file__).resolve().parent / "dom" / "markdown-wiki-enhancer-behavior.js"
+RECONCILIATION_COORDINATOR_JS = (
+    Path(__file__).resolve().parent / "dom" / "markdown-reconciliation-coordinator-behavior.js"
+)
 PROJECT_ADAPTER_JS = (
     Path(__file__).resolve().parent / "dom" / "markdown-project-adapter-behavior.js"
 )
 GITHUB_LOCALIZER_JS = (
     Path(__file__).resolve().parent / "dom" / "markdown-github-localizer-behavior.js"
 )
-GRAPH_ANALYSIS_JS = Path(__file__).resolve().parent / "dom" / "markdown-graph-analysis-behavior.js"
 TRANSCLUSION_JS = Path(__file__).resolve().parent / "dom" / "markdown-transclusion-behavior.js"
+MARKDOWN_WORKER_JS = Path(__file__).resolve().parent / "dom" / "markdown-worker-behavior.js"
+DOM_TRAVERSAL_JS = Path(__file__).resolve().parent / "dom" / "markdown-dom-traversal-behavior.js"
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -124,6 +128,23 @@ def test_obsidian_wiki_dom_enhancer() -> None:
     assert "markdown wiki enhancer OK" in result.stdout
 
 
+def test_root_scoped_markdown_reconciliation_coordinator() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(RECONCILIATION_COORDINATOR_JS), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        "Markdown reconciliation coordinator failed:\n"
+        f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "markdown reconciliation coordinator OK" in result.stdout
+
+
 def test_configured_markdown_project_adapters() -> None:
     if shutil.which("node") is None:
         pytest.skip("node not available")
@@ -156,22 +177,6 @@ def test_verified_github_url_localization() -> None:
     assert "markdown GitHub localizer OK" in result.stdout
 
 
-def test_bounded_markdown_graph_analysis() -> None:
-    if shutil.which("node") is None:
-        pytest.skip("node not available")
-    result = subprocess.run(
-        ["node", str(GRAPH_ANALYSIS_JS), str(REPO_ROOT)],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-    assert result.returncode == 0, (
-        f"Markdown graph analysis failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
-    )
-    assert "markdown graph analysis OK" in result.stdout
-
-
 def test_bounded_markdown_transclusion() -> None:
     if shutil.which("node") is None:
         pytest.skip("node not available")
@@ -186,6 +191,38 @@ def test_bounded_markdown_transclusion() -> None:
         f"Markdown transclusion failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
     assert "markdown transclusion OK" in result.stdout
+
+
+def test_generic_lazy_markdown_worker() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(MARKDOWN_WORKER_JS), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"Markdown worker behavior failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "markdown worker OK" in result.stdout
+
+
+def test_bounded_markdown_dom_traversal() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(DOM_TRAVERSAL_JS), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"Markdown DOM traversal failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "markdown DOM traversal OK" in result.stdout
 
 
 def test_standard_markdown_link_fixture_matches_its_schema() -> None:

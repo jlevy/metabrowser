@@ -104,7 +104,7 @@ def test_event_source_registers_fs_snapshot_listener() -> None:
 def test_resync_event_reconnects_for_a_fresh_snapshot() -> None:
     js = _read_app_js()
     start = js.index('addEventListener("fs.resync_required"')
-    block = js[start : start + 900]
+    block = js[start : js.index("inventoryEventSource.onopen", start)]
     assert "_scheduleInventoryReconnect()" in block
     assert "_resetEsCircuitBreaker()" not in block
     assert "_createInventoryEventSource()" not in block
@@ -140,7 +140,7 @@ def test_event_source_backoff_resets_only_after_a_stable_interval() -> None:
     assert "_resetEsCircuitBreaker()" in stable_block
 
     source_start = js.index("function _createInventoryEventSource()")
-    source_block = js[source_start : source_start + 4500]
+    source_block = js[source_start : js.index("function startInventoryEventStream()", source_start)]
     assert "inventoryEventSource.onopen" in source_block
     assert "_scheduleEsStableReset()" in source_block
     for event_name in ("fs.snapshot", "fs.change", "catalog.change", "capability.update"):
@@ -172,12 +172,14 @@ def test_apply_snapshot_rebuilds_store_before_notifying() -> None:
     js = _read_app_js()
     fn_start = js.index("function fileStoreApplySnapshotInner(scope, entries)")
     fn_block = js[fn_start : js.index("\nfunction ", fn_start + 1)]
-    # ``fileStore = new Map()`` must appear before the subscribers call.
-    assert fn_block.index("fileStore = new Map()") < fn_block.index("notifyFileStoreSubscribers")
-    assert "applyCellPatch(entries[i], false)" in fn_block
-    assert fn_block.index("applyCellPatch(entries[i], false)") < fn_block.index(
+    # The shared transaction installs the complete replacement Map before row
+    # callbacks and subscribers can observe it.
+    assert "MetabrowserNavigationRoute.replaceFileSnapshot" in fn_block
+    assert fn_block.index("fileStore = next") < fn_block.index("applyCellPatch(entry, false)")
+    assert fn_block.index("applyCellPatch(entry, false)") < fn_block.index(
         "notifyFileStoreSubscribers"
     )
+    assert "_removeRenderedRowsImmediately(path)" in fn_block
 
 
 def test_apply_change_handles_upsert_and_remove_ops() -> None:
@@ -319,7 +321,7 @@ def test_initial_inventory_upserts_do_not_flash_until_completion() -> None:
 
     snapshot_start = js.index("function fileStoreApplySnapshotInner(scope, entries)")
     snapshot_block = js[snapshot_start : snapshot_start + 1400]
-    assert "applyCellPatch(entries[i], false)" in snapshot_block
+    assert "applyCellPatch(entry, false)" in snapshot_block
 
     change_start = js.index("function fileStoreApplyChangeInner(ops)")
     change_block = js[change_start : js.index("function invalidateFilePreviews(ops)", change_start)]
@@ -549,9 +551,9 @@ def test_plugin_mount_schedules_scoped_post_paint_highlighting() -> None:
     assert "root !== document && !root.isConnected" in js
     assert 'rawLogHost.closest(".log-event.expanded")' in js
 
-    render_start = js.index("async function renderFile(data, preferredViewId, claim)")
+    render_start = js.index("async function renderFile(data, preferredViewId, claim, options = {})")
     render_block = js[render_start : render_start + 12_000]
-    assert "window.MetabrowserViewComposition.mount(" in render_block
+    assert "viewComposition.composition.mount(" in render_block
     assert "afterMount: scheduleHighlightCode" in render_block
     assert "const mount = (" in render_block
     assert "var mount = (" not in render_block
@@ -657,8 +659,8 @@ def test_snapshot_entries_already_in_a_deferred_page_stay_deferred() -> None:
 
 def test_live_removals_update_deferred_pages_before_mounting() -> None:
     js = _read_app_js()
-    change_start = js.index("function fileStoreApplyChange(ops)")
-    change_block = js[change_start : change_start + 1600]
+    change_start = js.index("function fileStoreApplyChangeInner(ops)")
+    change_block = js[change_start : js.index("function invalidateFilePreviews", change_start)]
     assert "_removeDeferredTreePageEntries(op.path)" in change_block
 
     remove_start = js.index("function _removeDeferredTreePageEntries(path)")

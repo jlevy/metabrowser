@@ -64,3 +64,44 @@ def test_on_demand_assets_load_once_when_asked_and_never_before() -> None:
     # reporting a library that is not there.
     assert payload["loadedFlagAfterFailure"] is False
     assert payload["appendsAfterFailedRetry"] == 2
+
+    # A partial retry resumes at the failed entry. The successful Chart core
+    # is not evaluated again, which also prevents duplicate lifetime hooks in
+    # modules that subscribe to global events at evaluation time.
+    assert payload["partialFailureRetryAppends"] == [
+        "chart.js",
+        "charts-runtime.js",
+        "adapter.js",
+        "adapter.js",
+    ]
+    assert payload["partialFailureNotifications"] == [
+        "chart.js",
+        "charts-runtime.js",
+        "adapter.js",
+    ]
+    assert payload["partialFailureLoaded"] is True
+
+    # A script load event is not success when its declared global is absent.
+    # The missing core stops gated dependants and neither script nor bundle is
+    # latched, so a later request retries the core and can recover.
+    assert payload["missingProvidedGlobal"] == (
+        "Asset chart.js did not provide expected global: Chart"
+    )
+    assert payload["missingProvidedGlobalFirstAppends"] == ["chart.js"]
+    assert payload["missingProvidedGlobalFirstNotifications"] == []
+    assert payload["missingProvidedGlobalLatched"] is False
+    assert payload["missingProvidedGlobalRetryAppends"] == [
+        "chart.js",
+        "chart.js",
+        "plugin.js",
+    ]
+    assert payload["missingProvidedGlobalRetryNotifications"] == ["chart.js", "plugin.js"]
+    assert payload["missingProvidedGlobalRetryLoaded"] is True
+
+    # A concurrent stronger declaration must clear a weaker src-only latch
+    # when its postcondition is absent, so the first retry performs the load.
+    assert payload["concurrentStrongFailure"] == (
+        "Asset shared.js did not provide expected global: Shared"
+    )
+    assert payload["concurrentStrongRetryAppends"] == ["shared.js", "shared.js"]
+    assert payload["concurrentStrongRetryLoaded"] is True

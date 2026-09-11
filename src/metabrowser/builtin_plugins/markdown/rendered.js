@@ -1,7 +1,7 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
+import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 import { transclusionKey } from "./transclusion.js";
-import { preprocessObsidianWiki } from "./wiki-parser.js";
 
 let mountSequence = 0;
 
@@ -19,7 +19,7 @@ export function renderKpressDiagnosticsHtml(diagnostics, escapeHtml) {
         return "";
       }
       const value = /** @type {Record<string, unknown>} */ (diagnostic);
-      return ["type", "message", "severity"]
+      return ["code", "type", "message", "severity"]
         .filter((key) => value[key])
         .map((key) => `<dt>${key}</dt><dd>${escapeHtml(String(value[key]))}</dd>`)
         .join("");
@@ -82,13 +82,18 @@ export function renderKpressError(error, mb) {
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
- * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off"}} [options]
+ * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", workerClient?: ReturnType<typeof createMarkdownWorkerClient>}} [options]
  */
 export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   const controller = new AbortController();
+  const ownsWorkerClient = !options.workerClient;
+  const workerClient = options.workerClient || createMarkdownWorkerClient();
   const abort = () => controller.abort();
   if (options.signal?.aborted) {
     controller.abort();
+    if (ownsWorkerClient) {
+      workerClient.dispose();
+    }
   } else {
     options.signal?.addEventListener("abort", abort, { once: true });
   }
@@ -104,6 +109,9 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     disposed = true;
     options.signal?.removeEventListener("abort", abort);
     controller.abort();
+    if (ownsWorkerClient) {
+      workerClient.dispose();
+    }
     disposeLinks?.();
     disposeLinks = null;
     disposeToc?.();
@@ -124,7 +132,15 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       if (raw.content_truncated === true) {
         content = await mb.fetchCompleteText(ctx, { signal: controller.signal });
       }
-      const wiki = content !== null ? preprocessObsidianWiki(content) : null;
+      const wiki =
+        content === null
+          ? null
+          : await workerClient.run("prepare-primary", Object.freeze({ source: content }), {
+              signal: controller.signal,
+            });
+      if (wiki !== null && !isPrimaryPreparation(wiki)) {
+        throw new TypeError("Markdown worker returned an invalid primary preparation");
+      }
       const rendered = await mb.fetchKpressRender(ctx, "rendered", {
         dedupKey: `markdown-mount-${++mountSequence}`,
         profile: "document",
@@ -134,10 +150,15 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       });
       if (!disposed && !controller.signal.aborted) {
         container.innerHTML = rendered.html;
-        injectDiagnostics(container, rendered.diagnostics || [], mb);
+        injectDiagnostics(
+          container,
+          [...(wiki?.diagnostics || []), ...(rendered.diagnostics || [])],
+          mb,
+        );
         if (ctx.path) {
           disposeLinks = enhanceRenderedLinks(container, ctx.path, mb, {
             signal: controller.signal,
+            workerClient,
             // The rendered document is its own ancestor, so a note that embeds
             // itself is a cycle at the first embed rather than the second.
             transclusionChain: Object.freeze([transclusionKey(ctx.path)]),
@@ -153,4 +174,19 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   }
   const ready = render();
   return Object.freeze({ dispose, ready });
+}
+
+/** @param {unknown} value */
+function isPrimaryPreparation(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const result = /** @type {Record<string, unknown>} */ (value);
+  return (
+    typeof result.changed === "boolean" &&
+    typeof result.complete === "boolean" &&
+    Array.isArray(result.diagnostics) &&
+    (result.source === null || typeof result.source === "string") &&
+    (!result.changed || typeof result.source === "string")
+  );
 }

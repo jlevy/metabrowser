@@ -1,6 +1,6 @@
 # Feature: GitHub and Obsidian Markdown Navigation
 
-**Date:** 2026-08-13 (last updated 2026-08-13)
+**Date:** 2026-08-13 (last updated 2026-09-10)
 
 **Author:** Metabrowser maintainers
 
@@ -100,7 +100,7 @@ LinkIntent = {
 }
 
 ResolvedTarget = {
-  status, path?, query?, fragment?, mediaKind?, candidates?, reason?
+  status, path?, query?, fragment?, mediaKind?, candidateCount?, candidates?, reason?
 }
 
 NavigationTarget = {
@@ -275,14 +275,37 @@ Resolution is deterministic and deliberately avoids Obsidian’s private tie-bre
 3. Prefer an exact source-directory note for a bare note name.
 4. Otherwise use the bounded inventory index for a unique basename or path-suffix
    result.
-5. Return every viable candidate when multiple notes match; never choose by inventory
-   order.
+5. Return the exact candidate count and an ordered, bounded candidate preview when
+   multiple notes match; never choose by inventory order.
 6. Leave lookup in a `pending` state while the required inventory view is incomplete,
    then re-enhance only the still-current mount.
 
 Occurrence labels change display text, not target lookup.
 Frontmatter aliases do not silently redirect plain links in this baseline.
 Ordinary Markdown remains exact even inside a vault.
+
+Catalog-derived enhancement is coordinated once per rendered root, including Markdown
+mounted later by a transclusion.
+The coordinator subscribes once, shares one scheduled element and catalog-work allowance
+across every nested scope, and pins the first complete immutable catalog revision.
+Results from different revisions never mix in one pass.
+If an incomplete revision changes, exact hits and misses reconcile again; an unchanged
+resolution does not replace a link, refetch a transclusion, or consume another
+nonrefundable transclusion claim.
+Disposal cancels the queued continuation and makes a retained callback inert.
+
+The complete-revision fallback builds one basename index only when a wiki lookup needs
+it. Basename keys come from the catalog projection, singleton buckets hold one path
+reference, and collisions promote to ordered arrays.
+A qualified lookup in a large same-basename bucket adds one cooperatively sorted
+reverse-code-unit projection of path references, then uses binary suffix ranges.
+It does not copy reversed path strings or scan the same hot bucket for every distinct
+suffix. The context retains only a 20-path preview while counting all matches, and
+revision replacement or root disposal releases the index.
+A requested-key-only scan would use less memory for one query but would make late nested
+queries rescan the catalog; the root-scoped index avoids that latency.
+Any separate heap ceiling requires a browser measurement rather than an unmeasured
+constant.
 
 Heading links resolve against actual rendered IDs.
 Named block syntax is parsed from source, mapped to explicit block metadata, and given a
@@ -323,7 +346,7 @@ pretend it was transcluded.
 | `plugin-sdk.js` and `types.d.ts` | Expose the `metabrowser.navigation` namespace, migrate bundled consumers, and remove the old path event surface. |
 | New strict Markdown link modules | Resolve and enhance standard KPress links and resources, then parse and resolve Obsidian wiki syntax over the same result model. |
 | Existing Markdown mount | Install enhancement after asynchronous render and dispose it with the TOC and render controller. |
-| Inventory-derived note index | Provide bounded, completion-aware basename and path-suffix lookup for wiki targets only. |
+| Root Markdown reconciliation and inventory-derived note index | Pin one complete catalog revision, share scheduled work across nested mounts, and provide bounded basename and path-suffix lookup for wiki targets and graph analysis. |
 | Tests and fixtures | Add a machine-readable resolution matrix plus route, DOM, SDK, lifecycle, accessibility, and integration coverage. |
 
 All new browser modules enter the fully strict `tsconfig.json` project.
@@ -470,7 +493,11 @@ Coverage includes:
 - unique, duplicate, relative, vault-root, label, heading, named-block, attachment, and
   media-embed wiki targets;
 - code spans, fenced blocks, escaped wiki syntax, incomplete inventory, and bounded
-  behavior when a document exceeds its wiki-target cap; and
+  behavior when a document exceeds its wiki-target cap;
+- duplicate targets across nested transclusions, incomplete-revision add and remove
+  transitions, stale callbacks after disposal, a hot same-basename suffix bucket,
+  bounded candidate previews with exact counts, and mixed graph records above one
+  resolver-batch limit; and
 - JSDoc and declaration parity for the new SDK with no old navigation surface.
 
 Use the Node DOM harness and pytest wrappers for pure and rendered behavior, Starlette

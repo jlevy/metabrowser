@@ -555,12 +555,11 @@
 
   /* Code block backgrounds */
   --code-bg: oklch(97.6% 0.004 247.9);
-  /* Inline code in a rendered document is a tint with the faintest possible
-     edge — enough to close the shape, not enough to read as a chip. Prose that
-     names many identifiers shows dozens of these in a paragraph, so this sits
-     well below --border: it should register as a soft boundary, never as a
-     row of outlined buttons. */
-  --inline-code-border: color-mix(in srgb, var(--border) 55%, transparent);
+  /* Inline and block code in a rendered document share the faintest possible
+     solid edge. It closes the tinted surface without making dense identifiers
+     look like controls or making a fenced block heavier than the spans around
+     it. */
+  --code-border: color-mix(in srgb, var(--border) 55%, transparent);
 
   /* Syntax colors shared by Highlight.js source views and the structured
      JSON/YAML tree. Every foreground meets WCAG AA against both --bg and
@@ -3360,6 +3359,7 @@ html[data-prose-font="sans"] {
   --kpress-doc-muted: var(--muted);
   --kpress-doc-border: var(--border);
   --kpress-doc-link: var(--link);
+  --kpress-code-border: var(--code-border);
 }
 
 /* Corner radius is a host decision, unlike the size ramp KPress owns.
@@ -3383,6 +3383,7 @@ html[data-prose-font="sans"] {
   --kpress-radius-sm: var(--radius-document);
   --kpress-radius-md: var(--radius-document);
   --kpress-radius-lg: var(--radius-document);
+  --kpress-code-radius: var(--radius-document);
 }
 
 /* Reading width: the one bridge from --doc-measure (the app's resolved reading
@@ -3404,16 +3405,19 @@ html[data-prose-font="sans"] {
   --kpress-measure: var(--doc-measure);
 }
 
-/* Inline code is a tint with an edge, not a chip. KPress boxes every inline
-   <code> in a hairline border at its own contrast; in a document that names a
-   lot of identifiers — a spec with tables full of field names — that reads as a
-   paragraph of outlined buttons. Keep the border (it closes the shape against
-   the tint), but drop it to --inline-code-border so it registers as a soft
-   boundary rather than a frame. Block code (.kpress-code) keeps KPress's
-   full-contrast frame: that one IS a discrete object.
-   Overrides `.kpress code:not(pre code)` in KPress's document.css. */
+/* Inline and block code are two sizes of the same document surface. Give both
+   the same quiet, explicitly solid edge and square, host-adjustable geometry;
+   prose blockquotes, tables, callouts, and code-copy controls keep their own
+   independent borders. The public code tokens above carry this decision once
+   KPress ships them; these explicit selectors are the corresponding bridge for
+   the currently pinned KPress 0.3.5 and can leave with that pin. */
+.metabrowser-kpress-host .kpress code:not(pre code),
+.metabrowser-kpress-host .kpress .kpress-code {
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-document);
+}
+
 .metabrowser-kpress-host .kpress code:not(pre code) {
-  border-color: var(--inline-code-border);
   /* Tighter than KPress's default: with a quieter edge the box no longer needs
      to stand off the glyphs, and less padding keeps inline code on the prose
      baseline rhythm when a line carries several of them. */

@@ -13,11 +13,9 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
-const source = fs.readFileSync(
-  path.join(repoRoot, "src/metabrowser/static/catalog-feed.js"),
-  "utf-8",
-);
-vm.runInContext(source, sandbox, { filename: "catalog-feed.js" });
+const sourcePath = path.join(repoRoot, "src/metabrowser/static/catalog-feed.js");
+const source = fs.readFileSync(sourcePath, "utf-8");
+vm.runInContext(source, sandbox, { filename: sourcePath });
 
 const failures = [];
 
@@ -27,16 +25,43 @@ function check(label, condition, detail = "") {
   }
 }
 
-/** A recording catalog double for the feed's three-method target. */
+/** A recording catalog double for the feed target. */
 function makeCatalog() {
   const calls = [];
   return {
     calls,
-    applyBulkSnapshot(files, complete, authoritative) {
-      calls.push({ kind: "bulk", files, complete, authoritative });
+    beginBulkSnapshot(files, complete, authoritative) {
+      let done = false;
+      const buffered = [];
+      return {
+        cancel() {
+          done = true;
+        },
+        enqueueCatalogChange(payload) {
+          buffered.push(payload);
+        },
+        step() {
+          if (!done) {
+            calls.push({ kind: "bulk", files, complete, authoritative, buffered: [...buffered] });
+            done = true;
+          }
+          return { candidateVisits: 0, cancelled: false, done: true, workItems: files.length };
+        },
+      };
+    },
+    beginCatalogChange() {
+      return null;
+    },
+    beginEventChange() {
+      return null;
     },
     applyCatalogChange(payload) {
       calls.push({ kind: "change", payload });
+      return { candidateVisits: 0, changed: true, workItems: 1 };
+    },
+    applyEventChange(ops) {
+      calls.push({ kind: "event-change", ops });
+      return { candidateVisits: 0, changed: true, workItems: ops.length };
     },
     markComplete() {
       calls.push({ kind: "markComplete" });
@@ -67,14 +92,14 @@ function jsonResponse(payload, status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
-    json: () => Promise.resolve(payload),
+    text: () => Promise.resolve(JSON.stringify(payload)),
   };
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 async function main() {
-  // ── Buffering before the bulk payload, replay after ──────────
+  // ── Buffering before the bulk payload, folded at commit ─────
   {
     const catalog = makeCatalog();
     const { impl, pending } = makeFetch();
@@ -97,10 +122,10 @@ async function main() {
     check("bulk applies first", catalog.calls[0]?.kind === "bulk");
     check("bulk carries completeness", catalog.calls[0]?.complete === true);
     check(
-      "buffered changes replay after the bulk, in order",
-      catalog.calls.length === 3 &&
-        catalog.calls[1].payload.upserts[0].p === "early.txt" &&
-        catalog.calls[2].payload.upserts[0].p === "during.txt",
+      "buffered changes fold into the bulk in order",
+      catalog.calls.length === 1 &&
+        catalog.calls[0].buffered[0].upserts[0].p === "early.txt" &&
+        catalog.calls[0].buffered[1].upserts[0].p === "during.txt",
     );
 
     feed.onCatalogChange({
@@ -109,10 +134,17 @@ async function main() {
       removes: [],
     });
     check(
-      "post-fetch changes apply directly",
-      catalog.calls.length === 4 &&
-        catalog.calls[3].payload.upserts[0].p === "live.txt" &&
-        catalog.calls[3].payload.non_file_paths[0] === "replaced-link",
+      "small post-fetch changes use the direct point path",
+      catalog.calls.length === 2 &&
+        catalog.calls[1].payload.upserts[0].p === "live.txt" &&
+        catalog.calls[1].payload.non_file_paths[0] === "replaced-link",
+    );
+    feed.onEventChange([{ op: "remove", path: "old-dir" }]);
+    check(
+      "fs.change uses the same scheduler-backed delivery seam",
+      catalog.calls.length === 3 &&
+        catalog.calls[2].kind === "event-change" &&
+        catalog.calls[2].ops[0].path === "old-dir",
     );
   }
 
@@ -143,9 +175,9 @@ async function main() {
     await tick();
     await tick();
     check(
-      "refetch replays changes buffered during it",
-      catalog.calls.length === applied + 2 &&
-        catalog.calls[catalog.calls.length - 1].payload.upserts[0].p === "gap.txt",
+      "refetch folds changes buffered during it",
+      catalog.calls.length === applied + 1 &&
+        catalog.calls.at(-1).buffered[0].upserts[0].p === "gap.txt",
     );
   }
 
@@ -314,7 +346,9 @@ async function main() {
     const reconnectCalls = catalog.calls.slice(1).map((call) => call.kind);
     check(
       "304 reconnect restores known complete coverage",
-      reconnectCalls.includes("markIncomplete") && reconnectCalls.includes("markComplete"),
+      reconnectCalls.includes("markIncomplete") &&
+        catalog.calls.at(-1)?.kind === "bulk" &&
+        catalog.calls.at(-1)?.complete === true,
       reconnectCalls.join(","),
     );
   }
@@ -363,7 +397,11 @@ async function main() {
     pending[1].resolve(jsonResponse({ complete: false, files: [] }));
     await tick();
     await tick();
-    check("changes during resync refetch buffer and replay", catalog.calls.length === before + 2);
+    check(
+      "changes during resync refetch fold into its commit",
+      catalog.calls.length === before + 1 &&
+        catalog.calls.at(-1).buffered[0].upserts[0].p === "afterswap.txt",
+    );
   }
 
   // ── Retry on failure without losing buffered deltas ───────────
@@ -395,10 +433,10 @@ async function main() {
     await tick();
     await tick();
     check(
-      "retry applies bulk then the delta buffered across the failure",
-      catalog.calls.length === 2 &&
+      "retry folds the delta buffered across the failure into its bulk",
+      catalog.calls.length === 1 &&
         catalog.calls[0].kind === "bulk" &&
-        catalog.calls[1].payload.upserts[0].p === "kept.txt",
+        catalog.calls[0].buffered[0].upserts[0].p === "kept.txt",
     );
   }
 

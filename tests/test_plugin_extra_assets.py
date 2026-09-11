@@ -98,11 +98,13 @@ def test_index_configures_plugin_assets_for_on_demand_loading(tmp_path: Path) ->
         response = asyncio.run(server.index(Mock()))
     body = bytes(response.body).decode("utf-8")
 
+    bundles_idx = body.index("window.METABROWSER_ASSET_BUNDLES")
     config_idx = body.index("MetabrowserPluginHost.configureAssets")
-    composition_idx = body.index('<script src="/static/view-composition.js')
+    composition_idx = body.index('"view-composition":', bundles_idx)
     sdk_idx = body.index('<script src="/static/plugin-sdk.js')
     app_idx = body.index('<script src="/static/app.js')
-    assert sdk_idx < composition_idx < app_idx
+    assert bundles_idx <= composition_idx < sdk_idx < config_idx < app_idx
+    assert '<script src="/static/view-composition.js' not in body
     assert config_idx < app_idx
     assert body.index("/plugin-static/fixture/alpha.js") < body.index(
         "/plugin-static/fixture/beta.js"
@@ -111,6 +113,7 @@ def test_index_configures_plugin_assets_for_on_demand_loading(tmp_path: Path) ->
     assert '<script src="/plugin-static/fixture/' not in body
     assert '<script type="module" src="/plugin-static/fixture/' not in body
     assert '<link rel="stylesheet" href="/plugin-static/fixture/' not in body
+    assert "/plugin-static/markdown/markdown-worker.js" not in body
 
 
 def test_asset_config_deduplicates_the_default_stylesheet(tmp_path: Path) -> None:
@@ -157,9 +160,11 @@ def test_image_asset_config_includes_its_on_demand_stylesheet() -> None:
 def test_file_render_waits_for_the_selected_kind_plugin() -> None:
     app = (server.STATIC_DIR / "app.js").read_text(encoding="utf-8")
     composition = (server.STATIC_DIR / "view-composition.js").read_text(encoding="utf-8")
-    render = app[app.index("async function renderFile(data") :][:2_500]
+    render = app[app.index("async function renderFile(data") :][:3_000]
 
-    assert "MetabrowserViewComposition.prepare" in render
+    assert "options.viewComposition" in render
+    assert "value: await loadViewComposition()" in render
+    assert "viewComposition.composition.prepare" in render
     assert 'const compositionKind = data.kind || data.type || "unknown"' in render
     assert "window.metabrowser.ensureKindAssets(kind)" in render
     assert "window.metabrowser.getRegisteredView(kind, viewId)" in render

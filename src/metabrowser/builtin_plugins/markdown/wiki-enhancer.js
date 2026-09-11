@@ -1,8 +1,16 @@
+import { createMarkdownDomTraversalBudget, matchingDescendants } from "./dom-traversal.js";
+import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
+import {
+  createMarkdownEnhancementBudget,
+  createMarkdownReconciliationCoordinator,
+} from "./reconciliation-coordinator.js";
 import { createTransclusionBudget, mountWikiTransclusion } from "./transclusion.js";
-import { resolveWikiTarget } from "./wiki-resolver.js";
 
 const MAX_WIKI_ELEMENTS = 4096;
 const MAX_ANNOUNCED_CANDIDATES = 20;
+const MAX_ANNOUNCED_CANDIDATE_CODE_UNITS = 512;
+const MAX_ANNOUNCEMENT_CODE_UNITS = 2048;
+const WIKI_RESOLUTION_IDENTITY = Symbol.for("metabrowser.wiki-resolution-identity");
 
 /**
  * Resolve source-derived wiki placeholders after KPress has produced safe DOM.
@@ -11,68 +19,106 @@ const MAX_ANNOUNCED_CANDIDATES = 20;
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
  * @param {(element: Element, target: Readonly<{path: string, fragment?: string}>) => void} registerInternal
- * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<string>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<string>, signal: AbortSignal}) => {dispose?: () => void}}=} options
+ * @param {{budget?: ReturnType<typeof createTransclusionBudget>, cancel?: (handle: number) => void, chain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, elements?: ReadonlyArray<Element>, domTraversalBudget?: ReturnType<typeof createMarkdownDomTraversalBudget>, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, signal?: AbortSignal, schedule?: (callback: FrameRequestCallback) => number, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, reconciliationScope?: ReturnType<ReturnType<typeof createMarkdownReconciliationCoordinator>["createScope"]>, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, signal: AbortSignal}) => {dispose?: () => void}, workerClient?: ReturnType<typeof createMarkdownWorkerClient>}=} options
  */
 export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, options = {}) {
-  const pending = new Set(boundedElements(container.querySelectorAll("[data-mb-wiki-target]")));
   const transclusions = new Set();
+  const ownsWorkerClient = !options.workerClient;
+  const workerClient = options.workerClient || createMarkdownWorkerClient();
   let budget = options.budget || null;
+  const enhancementBudget = options.enhancementBudget || createMarkdownEnhancementBudget();
+  const domTraversalBudget = options.domTraversalBudget || createMarkdownDomTraversalBudget();
   let disposed = false;
-  /** @type {(() => void) | null} */
-  let unsubscribe = null;
+  const ownsReconciliation = !options.reconciliation;
+  const reconciliation =
+    options.reconciliation ||
+    createMarkdownReconciliationCoordinator(mb, {
+      cancel: options.cancel,
+      schedule: options.schedule,
+    });
+  const ownsScope = !options.reconciliationScope;
+  const scope =
+    options.reconciliationScope || reconciliation.createScope(options.signal, sourcePath);
 
-  function enhancePending() {
+  /**
+   * @param {{element: Element, transclusion: ReturnType<typeof mountWikiTransclusion> | null}} state
+   * @param {Element} template
+   * @param {"navigate" | "embed"} action
+   * @param {NonNullable<ReturnType<ReturnType<ReturnType<typeof import("./wiki-resolver.js").createWikiResolutionContext>["begin"]>["step"]>["result"]>} resolved
+   */
+  function enhanceElement(state, template, action, resolved) {
     if (disposed) {
-      return;
+      return state;
     }
-    const snapshot = mb.fileCatalog.snapshot();
-    for (const element of [...pending]) {
-      const authoredTarget = element.getAttribute("data-mb-wiki-target");
-      const action = element.getAttribute("data-mb-wiki-action");
-      if (authoredTarget === null || (action !== "navigate" && action !== "embed")) {
-        pending.delete(element);
-        continue;
-      }
-      const resolved = resolveWikiTarget({ action, authoredTarget, sourcePath }, snapshot);
-      if (resolved.status === "pending") {
-        describeUnresolved(element, resolved);
-        continue;
-      }
-      pending.delete(element);
-      if (resolved.status === "internal") {
-        if (action === "embed" && resolved.mediaKind === "markdown") {
-          budget ||= createTransclusionBudget();
-          transclusions.add(
-            mountWikiTransclusion(container, element, resolved, mb, {
-              budget,
-              chain: options.chain,
-              enhanceNested: options.enhanceNested,
-              signal: options.signal,
-            }),
-          );
-        } else {
-          const replacement =
-            action === "embed"
-              ? createMediaElement(container, element, resolved)
-              : createNavigationAnchor(container, element, resolved, mb);
-          element.replaceWith(replacement);
-          if (action === "navigate") {
-            registerInternal(replacement, navigationTarget(resolved));
-          }
-        }
-      } else {
-        describeUnresolved(element, resolved);
-      }
+    if (state.transclusion) {
+      state.transclusion.dispose();
+      transclusions.delete(state.transclusion);
+      state.transclusion = null;
     }
-    if (pending.size === 0 && unsubscribe) {
-      unsubscribe();
-      unsubscribe = null;
+    if (resolved.status !== "internal") {
+      let unresolved = state.element;
+      if (unresolved.tagName.toLowerCase() !== template.tagName.toLowerCase()) {
+        unresolved = createWikiPlaceholder(container, template);
+        state.element.replaceWith(unresolved);
+      }
+      describeUnresolved(unresolved, resolved);
+      state.element = unresolved;
+      return state;
     }
+    if (action === "embed" && resolved.mediaKind === "markdown") {
+      let placeholder = state.element;
+      if (placeholder !== template) {
+        placeholder = createWikiPlaceholder(container, template);
+        state.element.replaceWith(placeholder);
+      }
+      budget ||= createTransclusionBudget();
+      const transclusion = mountWikiTransclusion(container, placeholder, resolved, mb, {
+        budget,
+        chain: options.chain,
+        enhanceNested: options.enhanceNested,
+        signal: options.signal,
+        workerClient,
+      });
+      transclusions.add(transclusion);
+      state.element = transclusion.element;
+      state.transclusion = transclusion;
+      return state;
+    }
+    const replacement =
+      action === "embed"
+        ? createMediaElement(container, template, resolved)
+        : createNavigationAnchor(container, template, resolved, mb);
+    state.element.replaceWith(replacement);
+    state.element = replacement;
+    if (action === "navigate") {
+      registerInternal(replacement, navigationTarget(resolved));
+    }
+    return state;
   }
 
-  if (pending.size > 0) {
-    unsubscribe = mb.fileCatalog.subscribe(enhancePending);
-    enhancePending();
+  const elements =
+    options.elements ||
+    admittedElements(
+      matchingDescendants(container, "[data-mb-wiki-target]", domTraversalBudget),
+      enhancementBudget,
+    );
+  for (const element of elements) {
+    const authoredTarget = element.getAttribute("data-mb-wiki-target");
+    const action = element.getAttribute("data-mb-wiki-action");
+    if (authoredTarget === null || (action !== "navigate" && action !== "embed")) {
+      continue;
+    }
+    /** @type {Parameters<typeof sameResolution>[0]} */
+    let previousResolution = null;
+    /** @type {{element: Element, transclusion: ReturnType<typeof mountWikiTransclusion> | null}} */
+    const state = { element, transclusion: null };
+    scope.wiki({ action, authoredTarget, sourcePath }, (resolved) => {
+      if (sameResolution(previousResolution, resolved)) {
+        return;
+      }
+      enhanceElement(state, element, action, resolved);
+      previousResolution = resolved;
+    });
   }
 
   return Object.freeze({
@@ -81,15 +127,47 @@ export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, op
         return;
       }
       disposed = true;
-      pending.clear();
+      if (ownsScope) {
+        scope.dispose();
+      }
       for (const transclusion of transclusions) {
         transclusion.dispose();
       }
       transclusions.clear();
-      unsubscribe?.();
-      unsubscribe = null;
+      if (ownsReconciliation) {
+        reconciliation.dispose();
+      }
+      if (ownsWorkerClient) {
+        workerClient.dispose();
+      }
     },
   });
+}
+
+/**
+ * Recreate the inert source placeholder when a later catalog revision changes a
+ * previously mounted result. Only authored presentation metadata is copied; stale
+ * navigation, media, status, and accessibility state belong to the old result.
+ *
+ * @param {HTMLElement} container
+ * @param {Element} template
+ */
+function createWikiPlaceholder(container, template) {
+  const placeholder = ownerDocument(container).createElement(template.tagName.toLowerCase());
+  copyPresentation(template, placeholder);
+  for (const attribute of [
+    "data-mb-wiki-action",
+    "data-mb-wiki-height",
+    "data-mb-wiki-label",
+    "data-mb-wiki-target",
+    "data-mb-wiki-width",
+  ]) {
+    const value = template.getAttribute(attribute);
+    if (value !== null) {
+      placeholder.setAttribute(attribute, value);
+    }
+  }
+  return placeholder;
 }
 
 /** @param {HTMLElement} container @param {Element} source @param {{path: string, fragment?: string}} resolved @param {MetabrowserPublicSdk} mb */
@@ -132,7 +210,7 @@ function createMediaElement(container, source, resolved) {
   return resource;
 }
 
-/** @param {Element} element @param {{status: string, reason: string, candidates?: ReadonlyArray<string>}} resolved */
+/** @param {Element} element @param {{status: string, reason: string, candidateCount?: number, candidates?: ReadonlyArray<string>}} resolved */
 function describeUnresolved(element, resolved) {
   const label = labelFor(element);
   element.setAttribute("data-mb-wiki-label", label);
@@ -147,8 +225,8 @@ function describeUnresolved(element, resolved) {
   }
   const suffix = statusLabel(resolved.status);
   const candidates = resolved.candidates || [];
-  const announced = candidates.slice(0, MAX_ANNOUNCED_CANDIDATES);
-  const remainder = candidates.length - announced.length;
+  const announced = boundedCandidateAnnouncement(candidates);
+  const remainder = Math.max(0, (resolved.candidateCount ?? candidates.length) - announced.length);
   const candidateDetail = announced.length
     ? ` Candidates: ${announced.join(", ")}${remainder ? `, and ${remainder} more` : ""}.`
     : "";
@@ -156,6 +234,63 @@ function describeUnresolved(element, resolved) {
   element.setAttribute("title", explanation);
   element.setAttribute("aria-label", `${label}. ${explanation}`);
   element.textContent = `${label} (${suffix.toLowerCase()})`;
+}
+
+/**
+ * Compare only bounded semantic identity. Exact results for one retained intent
+ * are stable across incomplete catalog revisions; a fallback result is only
+ * published from the pinned complete revision. The resolver's non-enumerable
+ * metadata lets this decision avoid copying or comparing a provider-sized path.
+ *
+ * @param {{status: string, reason?: string, candidateCount?: number} | null} previous
+ * @param {{status: string, reason?: string, candidateCount?: number}} next
+ */
+function sameResolution(previous, next) {
+  if (!previous || previous.status !== next.status) {
+    return false;
+  }
+  if (next.status !== "internal") {
+    return (
+      next.status !== "ambiguous" &&
+      previous.reason === next.reason &&
+      previous.candidateCount === next.candidateCount
+    );
+  }
+  const previousIdentity = resolutionIdentity(previous);
+  const nextIdentity = resolutionIdentity(next);
+  return (
+    previousIdentity?.kind === "exact" &&
+    nextIdentity?.kind === "exact" &&
+    previousIdentity.sourceContext === nextIdentity.sourceContext &&
+    previousIdentity.authoredTarget === nextIdentity.authoredTarget
+  );
+}
+
+/** @param {object} resolution */
+function resolutionIdentity(resolution) {
+  const value = /** @type {Record<PropertyKey, unknown>} */ (resolution)[WIKI_RESOLUTION_IDENTITY];
+  return value && typeof value === "object"
+    ? /** @type {{authoredTarget?: unknown, kind?: unknown, sourceContext?: unknown}} */ (value)
+    : null;
+}
+
+/** @param {ReadonlyArray<string>} candidates */
+function boundedCandidateAnnouncement(candidates) {
+  const announced = [];
+  let remaining = MAX_ANNOUNCEMENT_CODE_UNITS;
+  for (const candidate of candidates.slice(0, MAX_ANNOUNCED_CANDIDATES)) {
+    if (remaining < 2) {
+      break;
+    }
+    const allowance = Math.min(MAX_ANNOUNCED_CANDIDATE_CODE_UNITS, remaining);
+    const label =
+      candidate.length <= allowance
+        ? candidate
+        : `${candidate.slice(0, Math.max(allowance - 1, 0))}…`;
+    announced.push(label);
+    remaining -= label.length + 2;
+  }
+  return announced;
 }
 
 /** @param {string} status */
@@ -203,9 +338,22 @@ function ownerDocument(container) {
   return document;
 }
 
-/** @param {NodeListOf<Element>} elements */
-function boundedElements(elements) {
-  return Array.from(elements).slice(0, MAX_WIKI_ELEMENTS);
+/**
+ * Standalone wiki enhancement retains its historical 4,096 ceiling; composed
+ * rendering receives the root-shared budget and therefore cannot multiply it.
+ *
+ * @param {Iterable<Element>} elements
+ * @param {ReturnType<typeof createMarkdownEnhancementBudget>} budget
+ */
+function* admittedElements(elements, budget) {
+  let count = 0;
+  for (const element of elements) {
+    if (count >= MAX_WIKI_ELEMENTS || !budget.claim()) {
+      return;
+    }
+    count += 1;
+    yield element;
+  }
 }
 
 /** @param {{path: string, fragment?: string}} resolved */

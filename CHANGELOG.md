@@ -74,6 +74,13 @@ Inventory engine:
 - Filesystem changes invalidate affected lazy folder caches and stale in-flight reads.
   Already-mounted collapsed folders receive new rows, and reopening edited files
   revalidates cached previews, including deep files represented by ancestor updates.
+  A superseded same-path response can no longer overwrite the newer selection’s cached
+  payload or validator, and a path that changes from a file into a directory evicts its
+  obsolete file payload instead of reviving it on the next open.
+  Revalidation markers remain generation-owned until a response settles, so another
+  same-path open cannot bypass an in-flight dirty cache and a newer filesystem event
+  cannot be cleared by an older request.
+  A fresh response without a validator also retires the previous validator.
 
 - Inventory rollups now detect a concurrent topology change and retry from one coherent
   snapshot instead of mixing pre-change aggregates with post-change children.
@@ -134,8 +141,23 @@ CLI and validation:
   prune the bounded Recent overlay to a safe lower-bound tally before the same coalesced
   repair; routine directory aggregates remain absent from the catalog event and exact
   invalidations never scan descendants.
+  The retained base now carries its committed request identity, so filesystem or expiry
+  callbacks scheduled after a window or filter replacement cannot repaint the previous
+  selection while the authoritative response is still loading or after it fails; a
+  same-selection background repair still preserves and updates its owned rows.
   A nonempty API golden and a composed browserless navigation session pin the route,
   counts, clustering, bounded expansion, and repair decisions together.
+
+- Quick File bulk snapshots remain cooperatively bounded when the inventory provider’s
+  Unicode code-point order differs from the browser’s UTF-16 order.
+  The browser stages naturally ordered runs and merges them within the existing work
+  budget instead of repeatedly inserting near the front of a growing array; an
+  adversarial 200,000-path browserless session pins the under-50-ms slice requirement.
+
+- Complete inventory snapshots replace only their own FileStore rows.
+  Deep lazy rows survive an authoritative root refresh, while filesystem changes update
+  snapshot ownership explicitly; one production-module golden covers replacement,
+  invalidation, and file-to-folder transitions without a browser.
 
 - CLI parity now defines checked evidence for declared user-visible functional aspects
   as well as routes, kinds, and models.
@@ -148,6 +170,8 @@ CLI and validation:
   The first registry rows cover the release-critical Recent and Markdown compositions;
   migration of unchanged legacy UI behavior is tracked separately rather than presented
   as complete coverage.
+  Data rows must name exactly one registered route and execute that route through
+  `metab`; source-file ownership cannot stand in for a missing CLI data surface.
 
 - Image previews now use a manifest-owned, on-demand renderer and stylesheet through the
   shell’s generic preview compositor.
@@ -155,19 +179,64 @@ CLI and validation:
   replacement, cancellation, disposal, and accessible error handling in the exact
   production modules; the shell no longer carries a separate image rendering branch.
 
-- Rendered Markdown keeps same-document TOC links as fragments while preserving
+- Rendered Markdown keeps primary-document TOC links as fragments while preserving
   Metabrowser’s delegated navigation target, so KPress can bind headings and highlight
   the current section again.
+  Embedded Markdown instead receives source-aware `/view/` fragment links, so Copy Link,
+  modified clicks, and new tabs resolve against the embedded document.
   A scoped, frame-coalesced observer fallback preserves scrollspy in runtimes without
   `IntersectionObserver`, including long documents, and a browserless golden pins
   selection, the installed KPress expand-all control, native-runtime preservation, and
   disposal.
+
+- Catalog-derived Markdown link results now reconcile through one root-scoped scheduler
+  shared by the primary document and nested transclusions.
+  Provisional exact hits and misses are reconsidered until the first complete immutable
+  catalog revision, without mixing revisions or repeating work per nested mount.
+  Ambiguities retain their exact candidate count with a deterministic 20-path preview;
+  large basename and suffix lookups yield cooperatively, and replacement or disposal
+  cancels queued work and releases the snapshot-owned index.
+
+- Obsidian wiki preprocessing and transclusion selection now run in one lazy Markdown
+  Worker shared by a rendered document and every nested transclusion.
+  The worker client owns FIFO dispatch, cancellation, fatal protocol errors, and
+  disposal; ordinary non-Markdown views never fetch the worker assets.
+  Preprocessing uses source-wide monotone scans with deterministic work counters, and a
+  transformed source that would exceed the KPress request limit is rejected atomically
+  with an explicit diagnostic instead of returning a partial rewrite.
+
+- Inline and block code in KPress-backed documents now share one quiet solid border and
+  square-by-default radius, while inline code uses compact padding.
+  The bridge uses KPress’s public code-border and code-radius seams when available and
+  retains an explicit fallback for the pinned 0.3.5 renderer; prose blockquotes and
+  unrelated document surfaces keep their independent treatment.
+
+- On-demand scripts validate their declared global before the loader retains or
+  announces them. Partial and concurrent failures clear only the unsatisfied source
+  latch, so the first retry resumes at the failed script without re-evaluating already
+  successful modules.
+
+- KPress render and export JSON bodies are streamed under fixed byte limits and parsed
+  off the request event loop.
+  Invalid UTF-8 and malformed JSON return structured 400 responses, oversized requests
+  return 413, and export fields require their documented JSON types instead of coercing
+  values or raising an internal error.
 
 - Real-tree performance runs retain an explicitly supplied `--files` count as
   provenance, so a completed cold profile does not depend on a detached server log
   containing an INFO-level completion line before it can be recorded.
   When a fast scan stays below that logging threshold, the harness reads its status and
   actual count from `/api/index/progress`.
+
+- Release performance evidence now binds each external console script to an exact wheel.
+  The harness verifies the generated launcher against the wheel entry point, compares
+  installed package bytes with the wheel, rejects editable installs, and records the
+  dependency environment separately.
+  Comparisons require distinct expected identities for every condition and one corpus,
+  viewport, browser, and runtime environment; a per-run nonce rejects stale profiles,
+  and the corpus fingerprint is checked again when a run is recorded.
+  Required catalog-delivery labels fail closed, including the incremental path that
+  carries most rows during a large progressive scan.
 
 - `metab` gains two data modes that reach the server without a browser or a listening
   port. `--api <route>` issues any registered `/api/` route through the real application
@@ -176,15 +245,23 @@ CLI and validation:
   `--show <path>` reports the four layers behind one selection: the route it resolves
   to, the kind it classifies as, the views it offers, and a summary of its model.
   It accepts browser addresses as well as paths, including `/view/<container>/<inner>`,
-  `/commit/<rev>`, and `/commit/<rev>/<inner>`. See the
-  [command-line guide](docs/command-line.md).
+  `/commit/<rev>`, and `/commit/<rev>/<inner>`. Native and decoded browser paths are
+  converted to the inventory identity before the API request, then converted back before
+  route formatting, so literal-percent names and percent-looking siblings remain
+  distinct. POSIX bytes that are not UTF-8 now retain their `%XX` route spelling through
+  direct shell loads and `--show`, and a native command-line argument is rendered
+  through the printable inventory identity rather than raising on its surrogateescaped
+  byte. Slash-bearing Git refs are encoded as one revision segment and decoded without
+  allowing slash, backslash, or NUL inside the selected inner path.
+  See the [command-line guide](docs/command-line.md).
 
 - Every registered route the browser consumes and every built-in kind is reachable from
   `metab` and pinned by a golden transcript.
   `devtools/check_parity.py` fails the build when a route loses executable CLI evidence
   or a kind is absent from golden console output.
-  Browser-independent behavior therefore stays at the CLI and model boundary; DOM tests
-  cover view-only behavior.
+  Browser-owned file-selection, incremental-source, chart-request, and chart-lifecycle
+  state machines now run the complete production modules in deterministic command-line
+  sessions, and the same checker verifies both their V8 ownership and golden output.
   The table and the streaming exemptions are in
   [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
 
@@ -985,9 +1062,11 @@ Document navigation and URL scheme:
 
 - Plugins gain `window.metabrowser.fileCatalog` (`snapshot`, `subscribe`),
   `window.metabrowser.repository` (verified GitHub identity for the served tree, or
-  `null`), and the bounded source readers `fetchText` and `fetchCompleteText`.
-  `mb.builtins.markdown.analyzeGraph()` returns a bounded immutable snapshot of Markdown
-  nodes, resolved edges, unresolved destinations, backlinks, and diagnostics.
+  `null`), and the bounded source readers `fetchText` and `fetchCompleteText`. The SDK
+  0.6 Markdown built-in deliberately does not expose graph analysis: an earlier draft
+  duplicated KPress parsing in browser code and could disagree with the rendered
+  document. A future graph surface requires a server data route backed by a KPress-owned
+  link-intent manifest.
 
 - Query strings on `/view/` URLs are carried verbatim and never interpreted, so a query
   an author wrote survives resolution unchanged.

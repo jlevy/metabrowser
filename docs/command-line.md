@@ -152,6 +152,10 @@ metab ./repo --show /commit/<revision>             # a commit's change set
 metab ./repo --show /commit/<revision>/README.md   # one file inside that change set
 ```
 
+The route is lossless for platform filenames: literal percent characters stay distinct
+from the `%XX` identity of a POSIX byte that is not UTF-8, and `--show` prints that
+escaped identity instead of sending an unencodable native surrogate to the terminal.
+
 `--format json` prints the same four layers as an object.
 
 ## Reading a Tree: `--walk`

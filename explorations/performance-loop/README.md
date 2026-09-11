@@ -126,9 +126,9 @@ collide are few and named:
   It is what makes runs from different agents and different weeks comparable, and
   [re-running an old round](#re-running-an-old-round-against-todays-corpus) depends on
   it. If a round needs a different tree, serve it with `--tree` and leave the corpus
-  alone. Rebuilding it is not a disaster — the label hashes the corpus marker, so a
-  rebuilt tree records under a new label and `compare` refuses to pool it with the old
-  rounds rather than mixing them silently.
+  alone. Rebuilding it is not a disaster — every run records a filesystem-state
+  fingerprint and `record` recomputes it, so `compare` refuses to pool changed trees
+  rather than mixing them silently.
   It does mean those rounds no longer compare against new ones.
 - Take the next free `exp-NNN` and the next free `H` number by reading the plan, and say
   in the pull request which you took.
@@ -137,7 +137,9 @@ collide are few and named:
 the metric it named:
 
 1. The metric the hypothesis predicted moved, with non-overlapping ranges at n≥3.
-2. `run.py compare before after` exits successfully.
+2. `run.py compare before after --expect-build before=<identity> --expect-build after=<identity>`
+   exits successfully. Use both exact identities printed by `serve`; the comparator
+   rejects stale, identical, or mixed builds even when an old run reused the same label.
    It requires at least three admissible runs per condition and checks every candidate
    run against the hard responsiveness budgets; a median cannot hide one freeze.
 3. `long_task_max_ms` did not grow, and the run says it was measured visible.
@@ -165,16 +167,22 @@ $UV explorations/performance-loop/run.py capture \
 # Manual diagnostic fallback when headed capture is unavailable:
 $UV explorations/performance-loop/run.py probe                       # prints committed probe.js
 $UV explorations/performance-loop/run.py record --json '<paste>'
-$UV explorations/performance-loop/run.py compare before after
+$UV explorations/performance-loop/run.py compare before after \
+  --expect-build 'before=<identity printed by control serve>' \
+  --expect-build 'after=<identity printed by candidate serve>'
 $UV explorations/performance-loop/run.py report
 ```
 
 `serve` remembers the experiment, label, port, corpus, commit, selected build, requested
-inventory provider, and provider contract, so headed capture records directly and the
-manual fallback needs only the probe output.
-Provenance is filled in automatically: timestamp, commit, whether the tree was dirty,
-the selected build’s reported version, the provider identity read from the running
-server, and — read back out of the server’s own log — how long that run’s walk took.
+inventory provider, provider contract, and unique measurement nonce.
+The nonce travels in the page URL and probe output, so `record` cannot relabel a stale
+profile from another port or build.
+The corpus state is fingerprinted before launch and rechecked at record time.
+Headed capture records directly; the manual fallback is accepted only from the pending
+URL. Provenance is filled in automatically: timestamp, commit, whether the tree was
+dirty, the selected build’s reported version, the provider identity read from the
+running server, and — read back out of the server’s own log — how long that run’s walk
+took.
 A number nobody can trace is a number nobody can defend, so none of that is left to
 whoever remembers.
 
@@ -183,13 +191,23 @@ its immutable source explicitly:
 
 ```shell
 $UV explorations/performance-loop/run.py serve \
-  --metab /path/to/release/bin/metab --build-ref <release-tag-or-commit> \
+  --metab /path/to/release/bin/metab --artifact /path/to/metabrowser.whl \
+  --build-ref <full-40-character-source-commit> \
   --tree /path/to/tree --files <count> --exp exp-0NN --label release
 ```
 
-The harness resolves the executable and verifies its reported version before starting.
-It refuses an external build without `--build-ref`; a version string alone cannot
-distinguish a modified or incorrectly installed artifact.
+The harness resolves the executable, verifies its reported version, hashes the supplied
+wheel, and verifies that every wheel file is the byte installed behind the console
+script before starting.
+It rejects editable installs and launchers that do not invoke the wheel’s `metab` entry
+point.
+The wheel hash is the comparison identity; the launcher and dependency environment
+are recorded separately.
+`--build-ref` records the full source commit for auditability, but cannot make different
+installed bytes compare as the same build.
+When `metab --version` contains a commit token, the harness resolves that token to its
+full commit and rejects a different `--build-ref`; a correct short prefix cannot conceal
+an invented remainder.
 
 Phase 1 accepts `--provider python`. Phase 2 adds `fdu` to this same axis.
 The server is started with `METABROWSER_INVENTORY_PROVIDER` and local diagnostics
@@ -197,6 +215,30 @@ enabled; the result records the provider requested, provider selected, contract,
 lifecycle state, version, and cumulative work counters.
 A missing or mismatched identity invalidates the run instead of silently comparing
 different engines.
+
+An exact external release that predates provider and contract diagnostics can declare
+that evidence gap explicitly:
+
+```shell
+$UV explorations/performance-loop/run.py serve \
+  --metab /absolute/path/to/v0.9.1/bin/metab \
+  --artifact /absolute/path/to/metabrowser-0.9.1.whl \
+  --build-ref 16211ccb6459836c9a0813f0c3b096eef38e17b3 \
+  --declare-pre-contract-inventory-identity-missing \
+  --tree /path/to/unchanged/tree --files <inventory-count> \
+  --exp exp-0NN --label release-v0.9.1
+```
+
+This option is a measurement adapter, not production compatibility.
+It is accepted only with `--metab`, an attested exact wheel, and a full source commit;
+the pending and recorded evidence retain the declaration while leaving the unreported
+provider and contract null.
+`compare` binds the declaration to that condition instead of treating the missing data
+as observed identity.
+If either server diagnostic reports an identity, recording fails because that conflicts
+with the declaration.
+Do not use the option for a current build: current builds must report their provider and
+contract directly.
 
 ### Comparing a candidate with the previous release
 
@@ -264,14 +306,16 @@ normalized record to the ledger.
 
 ```shell
 $UV explorations/performance-loop/run.py serve \
-  --metab /absolute/path/to/released/metab --build-ref vX.Y.Z \
+  --metab /absolute/path/to/released/metab --artifact /absolute/path/to/released.whl \
+  --build-ref <full-release-commit> \
   --tree /path/to/unchanged/tree --files <inventory-count> \
   --exp exp-0NN --label release-vX.Y.Z
 $UV explorations/performance-loop/run.py capture --headed \
   --output "$RESULTS/browser-release-1.json" --record
 
 $UV explorations/performance-loop/run.py serve \
-  --metab "$RESULTS/candidate/bin/metab" --build-ref <candidate-commit> \
+  --metab "$RESULTS/candidate/bin/metab" --artifact "$RESULTS/candidate.whl" \
+  --build-ref <full-candidate-commit> \
   --tree /path/to/unchanged/tree --files <inventory-count> \
   --exp exp-0NN --label candidate-<commit>
 $UV explorations/performance-loop/run.py capture --headed \
@@ -279,14 +323,20 @@ $UV explorations/performance-loop/run.py capture --headed \
 ```
 
 Wait for the `recorded` confirmation before starting the next server.
-Repeat each condition at least three times, keep the tab visible, and interact through
-the complete progressive-load window.
+Repeat each condition at least three times for a large-effect experiment.
+A release comparison or any claim about a change near five percent uses at least five
+interleaved runs per side, keeps the tab visible, and exercises the complete
+progressive-load window.
+When ranges overlap, report hard-budget compliance and the absence of a repeatable
+wrong-way result rather than claiming a precise percentage.
 Then run `compare`, write an `exp-NNN` document with the ranges and verdict, and
 regenerate `report.md`:
 
 ```shell
 $UV explorations/performance-loop/run.py compare \
-  release-vX.Y.Z candidate-<commit>
+  release-vX.Y.Z candidate-<commit> \
+  --expect-build 'release-vX.Y.Z=<wheel identity printed by release serve>' \
+  --expect-build 'candidate-<commit>=<wheel identity printed by candidate serve>'
 $UV explorations/performance-loop/run.py report
 ```
 
@@ -469,7 +519,7 @@ and records the result:
 
 ```shell
 uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py capture --headed --output .bench/profile.json --record
-uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py compare before after
+uv --config-file uv.toml run --frozen python explorations/performance-loop/run.py compare before after --expect-build 'before=<control identity>' --expect-build 'after=<candidate identity>'
 ```
 
 `compare` prints each metric’s median with its range beside it.
@@ -590,6 +640,7 @@ total.
 | `fetches_in_flight`, `fetches_in_flight_max`, `fetches_in_flight_max_by_key` | Application fetches unresolved at capture, the measurement-window maximum, and maxima grouped by request class | Prevents a faster server-completion marker from cutting the browser measurement off, and exposes request fanout even when every request eventually settles |
 | `script_transfer_kb`, `style_transfer_kb`, `image_transfer_kb`, `api_transfer_kb`, `largest_resource_kb` | Transfer split by requested resource path; Resource Timing classifies preloaded JavaScript as a `link` initiator and its later script tag reuses that response | Makes an asset or API trade visible without omitting the preloaded shell or charging it to CSS |
 | `startup_script_requests`, `startup_script_transfer_kb`, `startup_script_last_response_ms`, `startup_script_duration_max_ms`, `startup_scripts_slowest`, `startup_scripts_latest` | Count, transfer, tail, worst duration, and bounded path-only attribution for non-vendor scripts started before `DOMContentLoaded`; attributed rows split response wait, server work, and download time | Catches an eager plugin or feature tier added to every page even when noisy paint timings obscure the waterfall, and distinguishes handler work from queueing or transfer |
+| `startup_style_server_ms_max`, `startup_style_wait_ms_max`, `startup_style_last_response_ms`, `startup_styles_slowest` | Worst server work, wait, response tail, and bounded path-only attribution for active stylesheet links requested before `DOMContentLoaded` | Hard-gates a cold server-side import on the render-blocking path and distinguishes it from request queueing or transfer |
 | `shell_tools_missing`, `file_catalog_incomplete`, `plugin_view_containers`, `plugin_view_nonempty` | Application-adapter readiness, final data authority, and selected-view facts after settle | Prevents an asset-tier improvement from passing by silently losing deferred controls, stopping at a partial search catalog, or omitting the requested renderer |
 | `js_heap_mb`, `js_heap_after_gc_mb` | Chromium’s optional natural used heap and the trusted driver’s controlled post-GC retained heap | The first is an in-session endurance signal; the second makes side-by-side retention comparisons robust to different GC timing |
 
@@ -764,7 +815,8 @@ git worktree add /tmp/mb-at-<sha> <sha>            # the code as it was
 cd /tmp/mb-at-<sha> && uv sync --all-extras --locked
 # Run today's harness against that checkout's installed console script:
 $UV explorations/performance-loop/run.py serve \
-  --metab /tmp/mb-at-<sha>/.venv/bin/metab --build-ref <sha> \
+  --metab /tmp/mb-at-<sha>/.venv/bin/metab --artifact /tmp/mb-at-<sha>/dist/metabrowser.whl \
+  --build-ref <full-sha> \
   --tree /path/to/corpus --files <count> --exp exp-0NN --label old
 ```
 

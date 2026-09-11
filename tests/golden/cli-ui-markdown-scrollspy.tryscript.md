@@ -10,9 +10,12 @@ This browserless session calls the exact production `mountRenderedMarkdown` path
 runs the Markdown link enhancer over KPress’s authored same-document TOC links before it
 initializes the installed KPress TOC module through the production observation fallback.
 It pins the fragment-only link contract KPress consumes, delegated Metabrowser
-navigation, the active section across a long heading interval, one update per animation
-frame, expand-all state and accessible labels, complete listener disposal, and
-preservation of a native observer when one exists.
+navigation, and canonical embedded-document fragment links used by modified clicks, new
+tabs, and Copy Link.
+It also pins the active section across a long heading interval, one update per animation
+frame, zero catalog reads for fragment-only links, expand-all state and accessible
+labels, complete listener disposal, and preservation of a native observer when one
+exists.
 
 ```console
 $ node tests/dom/markdown-toc-scrollspy-session.js
@@ -39,6 +42,14 @@ $ node tests/dom/markdown-toc-scrollspy-session.js
       "path": "docs/project/specs/active/plan.md",
       "fragment": "implementation-plan"
     },
+    "embeddedDelegatedTarget": {
+      "path": "docs/embedded.md",
+      "fragment": "details"
+    },
+    "embeddedHref": "/view/docs/embedded.md#details",
+    "embeddedModifierClickPrevented": false,
+    "embeddedNewTabClickPrevented": false,
+    "embeddedTargetBlankHref": "/view/docs/embedded.md#details",
     "enhancedHref": "#implementation-plan"
   },
   "maxHeadingGeometryReadsPerUpdate": 6,
@@ -50,7 +61,8 @@ $ node tests/dom/markdown-toc-scrollspy-session.js
     "tocIntersectionFallback": true
   },
   "productionOrder": {
-    "enhancerHadRunAtTocMount": true
+    "tocMountedWithoutCatalogSnapshot": true,
+    "catalogSnapshotsAfterFirstFlush": 0
   },
   "steps": [
     {

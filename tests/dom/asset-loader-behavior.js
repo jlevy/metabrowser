@@ -9,11 +9,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const repoRoot = path.resolve(process.argv[2]);
-const source = fs.readFileSync(
-  path.join(repoRoot, "src/metabrowser/static/asset-loader.js"),
-  "utf8",
-);
+const repoRoot = path.resolve(process.argv[2] || path.join(__dirname, "../.."));
+const sourcePath = path.join(repoRoot, "src/metabrowser/static/asset-loader.js");
+const source = fs.readFileSync(sourcePath, "utf8");
 
 /** Every src appended, in order, across the whole run. */
 const appended = [];
@@ -35,8 +33,13 @@ class FakeScript {
   }
 }
 
-function makeSandbox(bundles, { hold = [], fail = [], installs = {} } = {}) {
+function makeSandbox(
+  bundles,
+  { hold = [], fail = [], failCounts = {}, installs = {}, installAfter = {} } = {},
+) {
   const listeners = [];
+  const failuresRemaining = new Map(Object.entries(failCounts));
+  const appendCounts = new Map();
   const sandbox = {
     METABROWSER_ASSET_BUNDLES: bundles,
     console,
@@ -63,14 +66,20 @@ function makeSandbox(bundles, { hold = [], fail = [], installs = {} } = {}) {
       head: {
         appendChild(script) {
           appended.push(script.src);
+          const appendCount = Number(appendCounts.get(script.src) || 0) + 1;
+          appendCounts.set(script.src, appendCount);
           const settle = () => {
-            if (fail.includes(script.src)) {
+            const failuresLeft = Number(failuresRemaining.get(script.src) || 0);
+            if (fail.includes(script.src) || failuresLeft > 0) {
+              if (failuresLeft > 0) {
+                failuresRemaining.set(script.src, failuresLeft - 1);
+              }
               script.onerror();
               return;
             }
             // A real script installs its global before onload fires; the
             // `requires` gate on the next entry reads exactly that.
-            if (installs[script.src]) {
+            if (installs[script.src] && appendCount >= Number(installAfter[script.src] || 1)) {
               sandbox[installs[script.src]] = {};
             }
             script.onload();
@@ -88,7 +97,7 @@ function makeSandbox(bundles, { hold = [], fail = [], installs = {} } = {}) {
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(source, sandbox, { filename: "asset-loader.js" });
+  vm.runInContext(source, sandbox, { filename: sourcePath });
   return sandbox;
 }
 
@@ -194,7 +203,112 @@ async function main() {
     results.appendsAfterFailedRetry = appended.length;
   }
 
-  process.stdout.write(JSON.stringify(results));
+  // 8. A late entry can fail after the bundle's core installed global state.
+  //    Retrying must resume at the failed entry: re-executing a successful
+  //    library module can duplicate process-lifetime event subscriptions.
+  //    Simultaneous retry callers still share that one resumed load.
+  {
+    appended.length = 0;
+    notified.length = 0;
+    const sandbox = makeSandbox(
+      {
+        chart: [
+          { src: "chart.js" },
+          { src: "charts-runtime.js", requires: "Chart" },
+          { src: "adapter.js", requires: "Chart" },
+        ],
+      },
+      {
+        failCounts: { "adapter.js": 1 },
+        installs: { "chart.js": "Chart" },
+      },
+    );
+    try {
+      await sandbox.MetabrowserAssets.ensureAsset("chart");
+    } catch (_error) {
+      /* expected */
+    }
+    const resumed = Promise.all([
+      sandbox.MetabrowserAssets.ensureAsset("chart"),
+      sandbox.MetabrowserAssets.ensureAsset("chart"),
+    ]);
+    await resumed;
+    results.partialFailureRetryAppends = appended.slice();
+    results.partialFailureNotifications = notified.slice();
+    results.partialFailureLoaded = sandbox.MetabrowserAssets.assetLoaded("chart");
+  }
+
+  // 9. A load event proves only that the browser fetched and evaluated the
+  //    script. When the entry promises a global, success is earned only after
+  //    that global exists. A missing core must stop the bundle before gated
+  //    dependants, must not latch either the script or bundle, and must retry.
+  {
+    appended.length = 0;
+    notified.length = 0;
+    const sandbox = makeSandbox(
+      {
+        chart: [
+          { src: "chart.js", provides: "Chart" },
+          { src: "plugin.js", requires: "Chart" },
+        ],
+      },
+      {
+        installs: { "chart.js": "Chart" },
+        installAfter: { "chart.js": 2 },
+      },
+    );
+    try {
+      await sandbox.MetabrowserAssets.ensureAsset("chart");
+      results.missingProvidedGlobal = "resolved";
+    } catch (error) {
+      results.missingProvidedGlobal = error.message;
+    }
+    results.missingProvidedGlobalFirstAppends = appended.slice();
+    results.missingProvidedGlobalFirstNotifications = notified.slice();
+    results.missingProvidedGlobalLatched = sandbox.MetabrowserAssets.assetLoaded("chart");
+
+    await sandbox.MetabrowserAssets.ensureAsset("chart");
+    results.missingProvidedGlobalRetryAppends = appended.slice();
+    results.missingProvidedGlobalRetryNotifications = notified.slice();
+    results.missingProvidedGlobalRetryLoaded = sandbox.MetabrowserAssets.assetLoaded("chart");
+  }
+
+  // 10. A weak and strong declaration can join the same in-flight src. If the
+  // weak load does not establish the strong postcondition, the strong caller
+  // rejects and clears the src latch so its first retry performs a real load.
+  {
+    appended.length = 0;
+    held.clear();
+    const sandbox = makeSandbox(
+      {
+        weak: [{ src: "shared.js" }],
+        strong: [{ src: "shared.js", provides: "Shared" }],
+      },
+      {
+        hold: ["shared.js"],
+        installs: { "shared.js": "Shared" },
+        installAfter: { "shared.js": 2 },
+      },
+    );
+    const weak = sandbox.MetabrowserAssets.ensureAsset("weak");
+    const strong = sandbox.MetabrowserAssets.ensureAsset("strong").then(
+      () => "resolved",
+      (error) => error.message,
+    );
+    await flush();
+    held.get("shared.js")();
+    await weak;
+    results.concurrentStrongFailure = await strong;
+
+    const retry = sandbox.MetabrowserAssets.ensureAsset("strong");
+    await flush();
+    results.concurrentStrongRetryAppends = appended.slice();
+    held.get("shared.js")();
+    await retry;
+    results.concurrentStrongRetryLoaded = sandbox.MetabrowserAssets.assetLoaded("strong");
+  }
+
+  process.stdout.write(`${JSON.stringify(results)}\n`);
 }
 
 main().catch((error) => {

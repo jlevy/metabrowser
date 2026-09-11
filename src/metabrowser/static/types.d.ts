@@ -126,9 +126,32 @@ type MetabrowserNavigationController = Readonly<{
   start(): Promise<unknown>;
 }>;
 
+type MetabrowserFileRevalidationMarker = Readonly<{ id: number }>;
+
+type MetabrowserFileRevalidationTracker = Readonly<{
+  add(path: string): void;
+  capture(path: string): MetabrowserFileRevalidationMarker | null;
+  clear(): void;
+  delete(path: string): boolean;
+  has(path: string): boolean;
+  keys(): MapIterator<string>;
+  settle(path: string, marker: MetabrowserFileRevalidationMarker | null): boolean;
+  readonly size: number;
+}>;
+
 type MetabrowserNavigationRouteRuntime = Readonly<{
   displayPath(path: string): string;
   attachController(controller: MetabrowserNavigationController): () => void;
+  commitFreshFileResponse(options: {
+    cacheFile(data: Record<string, unknown>): void;
+    cacheValidator(etag: string): void;
+    data: Record<string, unknown>;
+    etag: string | null;
+    evictFile(): void;
+    evictValidator(): void;
+    isCurrent(): boolean;
+  }): "cancelled" | "file" | "folder";
+  createFileRevalidationTracker(maxEntries: number): MetabrowserFileRevalidationTracker;
   createController(options: {
     apply(
       target: MetabrowserNavigationTarget | null,
@@ -145,6 +168,30 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
   parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
   parseCommit(pathname: string): Readonly<{ revision: string; file: string }> | null;
+  replaceFileSnapshot(
+    previous: Map<string, Record<string, unknown>>,
+    previousOwnedPaths: Set<string>,
+    entries: Array<Record<string, unknown> & { path: string }>,
+    callbacks: {
+      install(next: Map<string, Record<string, unknown>>, ownedPaths: Set<string>): void;
+      retire(path: string): void;
+      upsert(entry: Record<string, unknown> & { path: string }): void;
+    },
+  ): Readonly<{
+    store: Map<string, Record<string, unknown>>;
+    ownedPaths: Set<string>;
+  }>;
+  settleFileSelectionFailure(options: {
+    cached: boolean;
+    error: unknown;
+    isCurrent(): boolean;
+    markForRevalidation(): void;
+    path: string;
+    showError(error: unknown): void;
+  }): { message?: string; status: "cancelled" | "error" | "not-found" };
+  settleNavigationDependency<T>(
+    pending: Promise<T>,
+  ): Promise<Readonly<{ status: "ready"; value: T } | { status: "error"; error: unknown }>>;
 }>;
 
 type KpressAssetLoading = "classic" | "module" | "resource" | "stylesheet";
@@ -316,7 +363,31 @@ type MetabrowserResourceContextRuntime = Readonly<{
 
 type MetabrowserSourceAppendRuntime = Readonly<{
   appendSourceText(root: ParentNode | null, text: string): boolean;
+  commitChunkCache(options: {
+    cached: Record<string, unknown>;
+    cachedForPath: Record<string, unknown> | undefined;
+    claim: number | null;
+    commit(nextCached: Record<string, unknown>): void;
+    currentPath: string | null;
+    isClaimCurrent(claim: number): boolean;
+    nextCached: Record<string, unknown>;
+    path: string;
+    requested: number;
+    requestCap: number;
+  }): number | null;
+  nextCacheValue(
+    cached: Record<string, unknown>,
+    chunk: Record<string, unknown>,
+  ): Record<string, unknown>;
   nextChunkBytes(current: number, cap: number): number;
+  requestOwnsPreview(options: {
+    cached: Record<string, unknown>;
+    cachedForPath: Record<string, unknown> | undefined;
+    claim: number | null;
+    currentPath: string | null;
+    isClaimCurrent(claim: number): boolean;
+    path: string;
+  }): boolean;
   syncLoadMoreFooter(root: ParentNode | null, markup: string): boolean;
   syncTruncationWarning(root: ParentNode | null, markup: string): boolean;
 }>;
@@ -396,7 +467,7 @@ type MetabrowserResponsiveness = {
 };
 
 type MetabrowserChartRuntime = {
-  dispose(): void;
+  dispose(container: HTMLElement): void;
   renderPayload(container: HTMLElement, chartData: MetabrowserPluginData): unknown;
 };
 
@@ -553,10 +624,6 @@ type TextBuiltins = {
 };
 
 type MarkdownBuiltins = {
-  analyzeGraph(options?: {
-    limits?: { maxFiles?: number; maxLinks?: number; maxSourceBytes?: number };
-    signal?: AbortSignal;
-  }): Promise<MarkdownGraphResult>;
   mountRendered: (
     container: HTMLElement,
     ctx: MetabrowserRenderContext,
@@ -567,34 +634,6 @@ type MarkdownBuiltins = {
   ) => DisposableHandle;
   renderSource: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
 };
-
-type MarkdownGraphResult = Readonly<{
-  backlinks: ReadonlyArray<Readonly<{ sources: ReadonlyArray<string>; target: string }>>;
-  complete: boolean;
-  diagnostics: ReadonlyArray<Readonly<{ code: string; path?: string }>>;
-  edges: ReadonlyArray<
-    Readonly<{
-      action: "navigate" | "embed";
-      fragment?: string;
-      source: string;
-      syntax: "markdown" | "html" | "wiki";
-      target: string;
-    }>
-  >;
-  nodes: ReadonlyArray<Readonly<{ path: string }>>;
-  sourceBytes: number;
-  unresolved: ReadonlyArray<
-    Readonly<{
-      action: "navigate" | "embed";
-      authoredTarget: string;
-      candidates?: ReadonlyArray<string>;
-      reason: string;
-      source: string;
-      status: string;
-      syntax: "markdown" | "html" | "wiki";
-    }>
-  >;
-}>;
 
 type MetabrowserBuiltins = {
   agentLog?: AgentLogBuiltins;
@@ -1209,6 +1248,10 @@ type MetabrowserTreeFilterModel = {
     state: MetabrowserFilterSnapshot | null,
     sizeFloors: Record<string, number>,
   ): string;
+  recentViewOwnsCursor(
+    committed: MetabrowserRecentRefetch | null,
+    cursor: MetabrowserRecentFilterCursor,
+  ): boolean;
   recentEntryMatches(
     entry: MetabrowserRecentEntry | null | undefined,
     options: {
@@ -1320,6 +1363,7 @@ type MetabrowserPendingTallyDiagnosticsRuntime = Readonly<{
 
 type MetabrowserKnownFileCatalogWireEntry = {
   children?: Array<MetabrowserKnownFileCatalogWireEntry> | null;
+  gitignored?: boolean;
   logical_ext?: string;
   name?: string;
   path: string;
@@ -1335,6 +1379,12 @@ type MetabrowserKnownFile = Readonly<{
 
 type MetabrowserKnownFileCatalogSnapshot = Readonly<{
   complete: boolean;
+  /**
+   * Safe canonical POSIX-relative file paths in ascending UTF-16 code-unit
+   * order. The catalog rejects absolute, empty-segment, dot-segment,
+   * backslash, NUL, trailing-slash, and unpaired-surrogate spellings. It does
+   * not impose a length ceiling; consumers bound only paths they operate on.
+   */
   files: ReadonlyArray<MetabrowserKnownFile>;
   observedCount: number;
   revision: number;
@@ -1348,6 +1398,32 @@ type MetabrowserCatalogChangePayload = {
   removes?: string[];
 };
 
+type MetabrowserBulkSnapshotStep = Readonly<{
+  candidateVisits: number;
+  cancelled: boolean;
+  done: boolean;
+  workItems: number;
+}>;
+
+type MetabrowserBulkSnapshotApplication = Readonly<{
+  cancel(): void;
+  enqueueCatalogChange(payload: MetabrowserCatalogChangePayload): void;
+  enqueueEventChange(ops: MetabrowserEventChangeOperation[]): void;
+  step(maxWorkItems: number): MetabrowserBulkSnapshotStep;
+}>;
+
+type MetabrowserEventChangeOperation = {
+  entry?: MetabrowserKnownFileCatalogWireEntry;
+  op: string;
+  path?: string;
+};
+
+type MetabrowserCatalogMutationResult = Readonly<{
+  candidateVisits: number;
+  changed: boolean;
+  workItems: number;
+}>;
+
 type MetabrowserKnownFileCatalogApi = Readonly<{
   /**
    * @param bulkComplete the catalog is a complete view of the root (a finished
@@ -1356,21 +1432,24 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
    *   feed-sourced paths it omits are stale and get retired. False for a
    *   payload built mid-walk, which is only a prefix.
    */
-  applyBulkSnapshot(
+  beginBulkSnapshot(
     files: Array<{ p: string; e: string }>,
     bulkComplete: boolean,
     authoritative?: boolean,
-  ): void;
-  applyCatalogChange(payload: MetabrowserCatalogChangePayload): void;
-  applyEventChange(
-    ops: Array<{
-      entry?: MetabrowserKnownFileCatalogWireEntry;
-      op: string;
-      path?: string;
-    }>,
-  ): void;
+  ): MetabrowserBulkSnapshotApplication;
+  beginCatalogChange(
+    payload: MetabrowserCatalogChangePayload,
+    maxWorkItems: number,
+  ): MetabrowserBulkSnapshotApplication | null;
+  beginEventChange(
+    ops: MetabrowserEventChangeOperation[],
+    maxWorkItems: number,
+  ): MetabrowserBulkSnapshotApplication | null;
+  applyCatalogChange(payload: MetabrowserCatalogChangePayload): MetabrowserCatalogMutationResult;
+  applyEventChange(ops: MetabrowserEventChangeOperation[]): MetabrowserCatalogMutationResult;
   clear(): void;
   markComplete(): void;
+  markIncomplete(): void;
   observeEventSnapshot(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
   observeInitialTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
   observeLazyTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
@@ -1383,10 +1462,10 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
    * Observe every catalog mutation. Returns an unsubscribe function.
    *
    * Invalidation only: the listener is told the catalog moved, not what it
-   * moved to, because projecting a snapshot per mutation would sort the whole
-   * catalog on the hot path. Call `snapshot()` when the state is needed — that
-   * also makes the value current rather than whatever held at notify time. A
-   * listener that writes back does not re-enter.
+   * moved to. Call `snapshot()` when the state is needed; its maintained
+   * immutable projection contains only safe canonical logical-file paths and
+   * is already in code-unit order. A listener that writes back does not
+   * re-enter.
    */
   subscribe(listener: () => void): () => void;
 }>;
@@ -1419,22 +1498,31 @@ type MetabrowserPluginHostRuntime = Readonly<{
 type MetabrowserCatalogFeedApi = Readonly<{
   dispose(): void;
   onCatalogChange(payload: MetabrowserCatalogChangePayload): void;
-  onIndexComplete(): void;
+  onEventChange(ops: MetabrowserEventChangeOperation[]): void;
+  onIndexComplete(truncated?: boolean): void;
   onResync(): void;
   onSentinelSnapshot(): void;
   start(): void;
 }>;
 
 type MetabrowserCatalogFeedRuntime = Readonly<{
+  BULK_APPLY_SLICE_ITEMS: number;
   create(options: {
     catalog: Pick<
       MetabrowserKnownFileCatalogApi,
-      "applyBulkSnapshot" | "applyCatalogChange" | "markComplete"
+      | "applyCatalogChange"
+      | "applyEventChange"
+      | "beginBulkSnapshot"
+      | "beginCatalogChange"
+      | "beginEventChange"
+      | "markComplete"
+      | "markIncomplete"
     >;
     endpoint?: string;
     fetchImpl?: typeof fetch;
     scheduleRetry?: (callback: () => void, delayMs: number) => number;
     cancelRetry?: (handle: number) => void;
+    yieldControl?: () => Promise<void>;
   }): MetabrowserCatalogFeedApi;
 }>;
 
@@ -2093,7 +2181,10 @@ declare global {
   interface Window {
     __structuredPreview?: StructuredPreviewGlobal;
     __structuredTree?: StructuredTreeGlobal;
-    METABROWSER_ASSET_BUNDLES?: Record<string, Array<{ src: string; requires?: string }>>;
+    METABROWSER_ASSET_BUNDLES?: Record<
+      string,
+      Array<{ src: string; requires?: string; provides?: string }>
+    >;
     /**
      * The root's immediate children, inlined by the shell so the tree can paint
      * before its first fetch returns. A snapshot from page-render time, painted

@@ -3864,7 +3864,11 @@ var recentTotalMatching = 0;
 var recentTotalMatchingExact = true;
 var recentTruncated = false;
 var recentInflight = null; // AbortController for the in-flight chip fetch
-var recentViewCommitted = false;
+// The retained base deliberately survives replacement requests so a bounded
+// same-selection repair can preserve rows. Its owner does not: a normal
+// replacement clears this identity, preventing later event/expiry callbacks
+// from painting the previous selection under the new controls.
+var recentCommittedView = null;
 const RECENT_REPAIR_RETRY_BASE_MS = 500;
 const RECENT_REPAIR_RETRY_MAX_MS = 8000;
 const RECENT_REPAIR_MAX_RETRIES = 4;
@@ -3884,10 +3888,14 @@ var recentFilterRefetch = treeFilterModel.createRecentRefetchScheduler(
 function recentRepairDescriptor() {
   var cursor = currentRecentFilterCursor();
   return {
-    preserveRows: recentViewCommitted,
+    preserveRows: recentViewOwnsCurrentCursor(),
     windowKey: cursor.windowKey,
     requestKey: cursor.recentRequestKey,
   };
+}
+
+function recentViewOwnsCurrentCursor() {
+  return treeFilterModel.recentViewOwnsCursor(recentCommittedView, currentRecentFilterCursor());
 }
 
 var recentContinuity = treeFilterModel.createRecentContinuity({
@@ -3904,7 +3912,7 @@ var recentContinuity = treeFilterModel.createRecentContinuity({
         recentFilterKey() === request.requestKey,
       filterRefetchPending: recentFilterRefetch.pending(),
       recentLoaded: recentEverLoaded,
-      viewCommitted: recentViewCommitted,
+      viewCommitted: recentViewOwnsCurrentCursor(),
       // A repair is an invisible data replacement. Keep the reader's current
       // rows mounted until the authoritative answer is ready.
       fetch: (_windowKey, preserveRows) => fetchRecent(currentRecentFilterCursor(), preserveRows),
@@ -3917,6 +3925,7 @@ var recentRecompute = treeFilterModel.createRecentRecomputeScheduler(
   RECENT_RECLUSTER_DEBOUNCE_MS,
   () => renderRecentFromBase(),
   (request) =>
+    recentViewOwnsCurrentCursor() &&
     filesPanelUsesRecentSource() &&
     currentRecentWindow === request.windowKey &&
     recentFilterKey() === request.requestKey,
@@ -3975,7 +3984,7 @@ function fetchRecent(cursor, preserveRows) {
     recentInflight = null;
   }
   if (preserveRows !== true) {
-    recentViewCommitted = false;
+    recentCommittedView = null;
   }
   var results = recentResultsHost();
   // Always replace the panel, not just on a cold start. This source
@@ -4016,7 +4025,7 @@ function fetchRecent(cursor, preserveRows) {
     .then((data) => {
       treeFilterModel.settleRecentSuccess(recentContinuity, request, repair, {
         current: filesPanelUsesRecentSource() && recentFilterKey() === load.url,
-        commit: () => commitRecentResponse(data),
+        commit: () => commitRecentResponse(data, cursor),
         render: renderRecentFromBase,
       });
     })
@@ -4045,7 +4054,7 @@ function fetchRecent(cursor, preserveRows) {
 }
 
 /** Commit one accepted provider response without rendering it. */
-function commitRecentResponse(data) {
+function commitRecentResponse(data, cursor) {
   var flat = data?.entries_flat || [];
   knownFileCatalog?.observeRecent(flat);
   recentBaseEntries = new Map();
@@ -4061,13 +4070,19 @@ function commitRecentResponse(data) {
   _GITIGNORED_DIR_PATHS = new Set(data?.gitignored_dirs || []);
   // The response is already filtered before its cap; the browser repeats the
   // leaf predicate only for filesystem events merged after this fetch.
-  recentViewCommitted = true;
+  recentCommittedView = Object.freeze({
+    windowKey: cursor.windowKey,
+    requestKey: cursor.recentRequestKey,
+  });
 }
 
 // Render the Recent panel from the server-filtered snapshot plus live
 // filesystem updates. Membership is decided over complete leaves before
 // clustering; mounted DOM rows never participate in that decision.
 function renderRecentFromBase() {
+  if (!recentViewOwnsCurrentCursor()) {
+    return;
+  }
   const results = recentResultsHost();
   if (!results || !filterState) {
     return;
@@ -4905,6 +4920,8 @@ function scheduleFilterReapply() {
 // the oldest entry and gets evicted first. Skip cache for active
 // files — content is still changing.
 
+const CACHE_MAX = 30; // file payloads are small
+const ETAG_REVALIDATE_MAX = 512;
 const fileCache = new Map();
 // HTTP ETags associated with cached file payloads. When filesystem facts change
 // or a file drops out of the active set, mark it in ``fileNeedsRevalidate``
@@ -4913,9 +4930,8 @@ const fileCache = new Map();
 // without re-downloading. Server-side this is just the existing
 // ``mtime_hash`` promoted to an HTTP-level ETag.
 const fileETags = new Map();
-const fileNeedsRevalidate = new Set();
-const CACHE_MAX = 30; // file payloads are small
-const ETAG_REVALIDATE_MAX = 512;
+const fileNeedsRevalidate =
+  window.MetabrowserNavigationRoute.createFileRevalidationTracker(ETAG_REVALIDATE_MAX);
 
 function boundMapSize(map, max) {
   while (map.size > max) {
@@ -4955,6 +4971,54 @@ function resetTextChunkGrowth() {
   textChunkNextBytes = TEXT_PREVIEW_CHUNK_BYTES;
 }
 
+/**
+ * A path can leave and return while an earlier chunk request is pending. The
+ * preview claim distinguishes that ABA sequence, and the cache identity keeps
+ * a background replacement from accepting a chunk based on its predecessor.
+ */
+function textChunkRequestOwnsPreview(path, previewClaim, cached) {
+  const sourceAppend = window.MetabrowserSourceAppend;
+  if (sourceAppend) {
+    return sourceAppend.requestOwnsPreview({
+      cached,
+      cachedForPath: fileCache.get(path),
+      claim: previewClaim,
+      currentPath,
+      isClaimCurrent: isPreviewClaimCurrent,
+      path,
+    });
+  }
+  // The only pre-module path is a failed lazy asset load. Preserve the same
+  // owned error behavior even though the production transaction could not
+  // initialize.
+  return (
+    currentPath === path &&
+    previewClaim !== null &&
+    isPreviewClaimCurrent(previewClaim) &&
+    fileCache.get(path) === cached
+  );
+}
+
+function commitTextChunkCache(path, previewClaim, cached, nextCached, requested) {
+  const nextBytes = window.MetabrowserSourceAppend.commitChunkCache({
+    cached,
+    cachedForPath: fileCache.get(path),
+    claim: previewClaim,
+    commit: (value) => cachePut(fileCache, path, value, CACHE_MAX, evictFileCacheMetadata),
+    currentPath,
+    isClaimCurrent: isPreviewClaimCurrent,
+    nextCached,
+    path,
+    requested,
+    requestCap: TEXT_PREVIEW_MAX_CHUNK_BYTES,
+  });
+  if (nextBytes === null) {
+    return false;
+  }
+  textChunkNextBytes = nextBytes;
+  return true;
+}
+
 function showTextChunkLoadError() {
   var warning = document.querySelector(".metabrowser-source-truncation-warning");
   if (!warning) {
@@ -4982,14 +5046,21 @@ async function loadMoreCurrentText() {
   var offset = cached.bytes_read || 0;
   var requested = textChunkNextBytes;
   try {
-    var resp = await fetch(
-      "/api/file?path=" +
-        encodeURIComponent(path) +
-        "&offset=" +
-        encodeURIComponent(String(offset)) +
-        "&limit=" +
-        encodeURIComponent(String(requested)),
-    );
+    const assets = window.MetabrowserAssets;
+    if (!assets) {
+      throw new Error("Metabrowser asset loader is unavailable");
+    }
+    const [resp] = await Promise.all([
+      fetch(
+        "/api/file?path=" +
+          encodeURIComponent(path) +
+          "&offset=" +
+          encodeURIComponent(String(offset)) +
+          "&limit=" +
+          encodeURIComponent(String(requested)),
+      ),
+      assets.ensureAsset("source-append"),
+    ]);
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status}`);
     }
@@ -4998,7 +5069,11 @@ async function loadMoreCurrentText() {
       () => resp.json(),
       responsePerfMeta(resp, path, { offset: offset }),
     );
-    if (currentPath !== path || previewClaim === null || !isPreviewClaimCurrent(previewClaim)) {
+    const sourceAppend = window.MetabrowserSourceAppend;
+    if (!sourceAppend) {
+      throw new Error("Metabrowser source append runtime is unavailable");
+    }
+    if (!textChunkRequestOwnsPreview(path, previewClaim, cached)) {
       return;
     }
     if (chunk.mtime_hash && cached.mtime_hash && chunk.mtime_hash !== cached.mtime_hash) {
@@ -5007,33 +5082,31 @@ async function loadMoreCurrentText() {
       await selectFile(path);
       return;
     }
-    cached.content = (cached.content || "") + (chunk.content || "");
-    cached.content_bytes = (cached.content_bytes || 0) + (chunk.content_bytes || 0);
-    cached.bytes_read = chunk.bytes_read || cached.bytes_read;
-    cached.content_truncated = !!chunk.content_truncated;
-    cached.highlight_disabled = !!chunk.highlight_disabled;
-    textChunkNextBytes = window.MetabrowserSourceAppend.nextChunkBytes(
-      requested,
-      TEXT_PREVIEW_MAX_CHUNK_BYTES,
-    );
-    if (window.MetabrowserSourceAppend.appendSourceText(document, chunk.content || "")) {
+    const nextCached = sourceAppend.nextCacheValue(cached, chunk);
+    if (sourceAppend.appendSourceText(document, chunk.content || "")) {
       // The append skipped the plugin's render, so the banner it emitted still
       // reports the byte counts from the previous chunk. Sync it rather than
       // leaving a "content truncated" notice over a fully loaded file.
-      window.MetabrowserSourceAppend.syncTruncationWarning(
+      sourceAppend.syncTruncationWarning(
         document,
-        window.metabrowser?.renderTextTruncationWarning?.(cached) || "",
+        window.metabrowser?.renderTextTruncationWarning?.(nextCached) || "",
       );
-      window.MetabrowserSourceAppend.syncLoadMoreFooter(
+      sourceAppend.syncLoadMoreFooter(
         document,
-        window.metabrowser?.renderTextLoadMoreFooter?.(cached) || "",
+        window.metabrowser?.renderTextLoadMoreFooter?.(nextCached) || "",
       );
+      commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
     } else {
-      await renderFile(cached, undefined, previewClaim);
+      await renderFile(nextCached, undefined, previewClaim, {
+        isCurrent: () => textChunkRequestOwnsPreview(path, previewClaim, cached),
+        onCommit: () => {
+          commitTextChunkCache(path, previewClaim, cached, nextCached, requested);
+        },
+      });
     }
   } catch (e) {
     console.warn("Failed to load text chunk", e);
-    if (currentPath === path) {
+    if (textChunkRequestOwnsPreview(path, previewClaim, cached)) {
       showTextChunkLoadError();
     }
   } finally {
@@ -5048,6 +5121,55 @@ async function loadMoreCurrentText() {
 var LOADING_INDICATOR_DELAY_MS = 120;
 var loadingIndicatorTimer = null;
 var selectFileAbortController = null;
+
+/**
+ * Settle an owned file-selection failure to one deterministic pane and result.
+ * The same boundary covers hot cache, 304 revalidation, and fresh responses so
+ * the on-demand compositor cannot turn one cache state into an unhandled
+ * rejection while the others show a recoverable error.
+ *
+ * @param {unknown} err
+ * @param {string} path
+ * @param {object | undefined} cached
+ * @param {HTMLElement} preview
+ * @param {number} previewClaim
+ * @returns {QuickFileOpenOutcome}
+ */
+function fileSelectionFailureOutcome(err, path, cached, preview, previewClaim) {
+  var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
+  return window.MetabrowserNavigationRoute.settleFileSelectionFailure({
+    cached: !!cached,
+    error: err,
+    isCurrent: () => currentPath === path && isPreviewClaimCurrent(previewClaim),
+    markForRevalidation: () => {
+      fileNeedsRevalidate.add(path);
+      boundMapSize(fileNeedsRevalidate, ETAG_REVALIDATE_MAX);
+    },
+    path,
+    showError: () => {
+      if (loadingIndicatorTimer) {
+        clearTimeout(loadingIndicatorTimer);
+        loadingIndicatorTimer = null;
+      }
+      disposeActivePluginViews();
+      stopFolderHeaderSubscription();
+      delete preview.dataset.renderedPath;
+      preview.innerHTML = previewErrorHtml(
+        caught?.summary || "Could not open this file.",
+        errorMessage(err),
+      );
+    },
+  });
+}
+
+/**
+ * Start the compositor without exposing a temporarily unobserved rejection.
+ * The selected render unwraps the result later; an HTTP failure can return
+ * first without leaving this independent request as an unhandled promise.
+ */
+function beginViewCompositionLoad() {
+  return window.MetabrowserNavigationRoute.settleNavigationDependency(loadViewComposition());
+}
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, preferredViewId) {
@@ -5081,6 +5203,14 @@ async function selectFile(path, preferredViewId) {
           return { status: "cancelled" };
         }
 
+        // Every file envelope uses the universal compositor. Begin that
+        // independent request before /api/file so its transfer and evaluation
+        // overlap the payload; renderFile awaits this exact promise and checks
+        // the pane claim again before it prepares or mounts anything. Attach a
+        // settled-result wrapper now because an HTTP failure may mean this
+        // selection never reaches renderFile.
+        const viewComposition = beginViewCompositionLoad();
+
         // Three-way cache state:
         //   - hot: in fileCache and not flagged → serve from cache.
         //   - revalidate: in fileCache but flagged (file recently changed in
@@ -5088,11 +5218,18 @@ async function selectFile(path, preferredViewId) {
         //   - cold: not in fileCache → unconditional fetch.
         const cached = fileCache.get(path);
         const needsRevalidate = fileNeedsRevalidate.has(path);
+        const revalidationMarker = needsRevalidate ? fileNeedsRevalidate.capture(path) : null;
         if (cached && !needsRevalidate && !activeFiles.has(path)) {
-          navigationController.canonicalizePath(path, cached.kind === "folder");
-          await renderFile(cached, preferredViewId, previewClaim);
-          maybeOpenLiveStream(path, cached);
-          return openedFileOutcome(path, cached, preview);
+          try {
+            navigationController.canonicalizePath(path, cached.kind === "folder");
+            if (!(await renderFile(cached, preferredViewId, previewClaim, { viewComposition }))) {
+              return { status: "cancelled" };
+            }
+            maybeOpenLiveStream(path, cached);
+            return openedFileOutcome(path, cached, preview);
+          } catch (err) {
+            return fileSelectionFailureOutcome(err, path, cached, preview, previewClaim);
+          }
         }
 
         if (loadingIndicatorTimer) {
@@ -5126,9 +5263,6 @@ async function selectFile(path, preferredViewId) {
           if (cached && fileETags.has(path)) {
             headers["if-none-match"] = fileETags.get(path);
           }
-          // This request checks the invalidation we started with. An event
-          // arriving during the request must survive for the next selection.
-          fileNeedsRevalidate.delete(path);
           const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
             headers: headers,
             signal: selectFileSignal,
@@ -5137,12 +5271,15 @@ async function selectFile(path, preferredViewId) {
             // Server confirmed the cached payload is still fresh — zero-byte
             // body, render from memory.
             if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
+              fileNeedsRevalidate.settle(path, revalidationMarker);
               if (loadingIndicatorTimer) {
                 clearTimeout(loadingIndicatorTimer);
                 loadingIndicatorTimer = null;
               }
               navigationController.canonicalizePath(path, cached.kind === "folder");
-              await renderFile(cached, preferredViewId, previewClaim);
+              if (!(await renderFile(cached, preferredViewId, previewClaim, { viewComposition }))) {
+                return { status: "cancelled" };
+              }
               maybeOpenLiveStream(path, cached);
               return openedFileOutcome(path, cached, preview);
             }
@@ -5164,57 +5301,35 @@ async function selectFile(path, preferredViewId) {
             () => resp.json(),
             responsePerfMeta(resp, path),
           );
-          if (data.kind !== "folder") {
-            // Folder envelopes are no-store (aggregates move during a
-            // scan): keep them out of the file cache and ETag books.
-            cachePut(fileCache, path, data, CACHE_MAX, evictFileCacheMetadata);
-            const etagHeader = resp.headers.get("etag");
-            if (etagHeader) {
-              fileETags.set(path, etagHeader);
+          const responseCommit = window.MetabrowserNavigationRoute.commitFreshFileResponse({
+            data,
+            etag: resp.headers.get("etag"),
+            isCurrent: () => currentPath === path && isPreviewClaimCurrent(previewClaim),
+            cacheFile: (fresh) =>
+              cachePut(fileCache, path, fresh, CACHE_MAX, evictFileCacheMetadata),
+            cacheValidator: (etag) => {
+              fileETags.set(path, etag);
               boundMapSize(fileETags, ETAG_REVALIDATE_MAX);
-            }
+            },
+            evictFile: () => fileCache.delete(path),
+            evictValidator: () => fileETags.delete(path),
+          });
+          if (responseCommit === "cancelled") {
+            return { status: "cancelled" };
           }
-          if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
-            if (loadingIndicatorTimer) {
-              clearTimeout(loadingIndicatorTimer);
-              loadingIndicatorTimer = null;
-            }
-            navigationController.canonicalizePath(path, data.kind === "folder");
-            await renderFile(data, preferredViewId, previewClaim);
-            maybeOpenLiveStream(path, data);
-            return openedFileOutcome(path, data, preview);
+          fileNeedsRevalidate.settle(path, revalidationMarker);
+          if (loadingIndicatorTimer) {
+            clearTimeout(loadingIndicatorTimer);
+            loadingIndicatorTimer = null;
           }
-          return { status: "cancelled" };
+          navigationController.canonicalizePath(path, data.kind === "folder");
+          if (!(await renderFile(data, preferredViewId, previewClaim, { viewComposition }))) {
+            return { status: "cancelled" };
+          }
+          maybeOpenLiveStream(path, data);
+          return openedFileOutcome(path, data, preview);
         } catch (err) {
-          if (cached) {
-            fileNeedsRevalidate.add(path);
-          }
-          var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
-          if (caught?.name === "AbortError") {
-            return { status: "cancelled" };
-          }
-          var notFound = caught?.notFound === true;
-          if (currentPath === path && isPreviewClaimCurrent(previewClaim)) {
-            if (loadingIndicatorTimer) {
-              clearTimeout(loadingIndicatorTimer);
-              loadingIndicatorTimer = null;
-            }
-            disposeActivePluginViews();
-            stopFolderHeaderSubscription();
-            delete preview.dataset.renderedPath;
-            preview.innerHTML = previewErrorHtml(
-              caught?.summary || "Could not open this file.",
-              errorMessage(err),
-            );
-          } else {
-            return { status: "cancelled" };
-          }
-          return notFound
-            ? { message: `${path} is no longer available.`, status: "not-found" }
-            : {
-                message: `Could not open ${path}. Check that the file still exists and is readable.`,
-                status: "error",
-              };
+          return fileSelectionFailureOutcome(err, path, cached, preview, previewClaim);
         }
       },
       { path: path, preferred_view: preferredViewId || "" },
@@ -5501,15 +5616,34 @@ document.addEventListener("metabrowser:view-print-state", () => {
   }
 });
 
-var pluginViewLifecycle = window.MetabrowserViewComposition.createLifecycle({
-  onDisposeError(error) {
-    console.error("plugin dispose error:", error);
-  },
-});
+/** @type {ReturnType<Window["MetabrowserViewComposition"]["createLifecycle"]> | null} */
+var pluginViewLifecycle = null;
+
+async function loadViewComposition() {
+  const assets = window.MetabrowserAssets;
+  if (!assets) {
+    throw new Error("Metabrowser asset loader is unavailable");
+  }
+  await _perf.measureAsync("fileNavigation:viewComposition", () =>
+    assets.ensureAsset("view-composition"),
+  );
+  const composition = window.MetabrowserViewComposition;
+  if (!composition) {
+    throw new Error("Metabrowser view compositor is unavailable");
+  }
+  if (!pluginViewLifecycle) {
+    pluginViewLifecycle = composition.createLifecycle({
+      onDisposeError(error) {
+        console.error("plugin dispose error:", error);
+      },
+    });
+  }
+  return Object.freeze({ composition, lifecycle: pluginViewLifecycle });
+}
 
 function disposeActivePluginViews() {
   stopFolderHeaderSubscription();
-  pluginViewLifecycle.disposeActive();
+  pluginViewLifecycle?.disposeActive();
 }
 
 /** @param {HTMLElement} preview */
@@ -5522,19 +5656,48 @@ function createFilePreviewStage(preview) {
   return stage;
 }
 
-async function renderFile(data, preferredViewId, claim) {
+/**
+ * @param {Record<string, any>} data
+ * @param {string | undefined} preferredViewId
+ * @param {number | null | undefined} claim
+ * @param {{
+ *   isCurrent?: () => boolean,
+ *   onCommit?: () => void,
+ *   viewComposition?: ReturnType<typeof beginViewCompositionLoad>,
+ * }} [options]
+ * @returns {Promise<boolean>}
+ */
+async function renderFile(data, preferredViewId, claim, options = {}) {
   // Ownership, not staleness: the Git panel renders into this same pane, so a
   // file render that lost the pane must not paint over it. currentPath cannot
   // express that, because the owner changed rather than the path.
-  var renderClaim = claim ?? filePreviewClaim;
-  if (renderClaim === null || !isPreviewClaimCurrent(renderClaim)) {
-    return;
+  const renderClaim = claim ?? filePreviewClaim;
+  if (renderClaim === null) {
+    return false;
+  }
+  const renderIsCurrent = () =>
+    isPreviewClaimCurrent(renderClaim) && (!options.isCurrent || options.isCurrent());
+  if (!renderIsCurrent()) {
+    return false;
   }
   return _perf.measureAsync(
     `renderFile:${data.kind || data.type || "?"}`,
     async () => {
+      const viewCompositionResult = options.viewComposition
+        ? await options.viewComposition
+        : {
+            status: /** @type {"ready"} */ ("ready"),
+            value: await loadViewComposition(),
+          };
+      if (viewCompositionResult.status === "error") {
+        throw viewCompositionResult.error;
+      }
+      const viewComposition = viewCompositionResult.value;
+      if (!renderIsCurrent()) {
+        return false;
+      }
       const compositionKind = data.kind || data.type || "unknown";
-      var composition = await window.MetabrowserViewComposition.prepare({
+      var composition = await viewComposition.composition.prepare({
         kind: compositionKind,
         views: Array.isArray(data.views) ? data.views : [],
         preferredViewId: preferredViewId,
@@ -5549,18 +5712,18 @@ async function renderFile(data, preferredViewId, claim) {
           return window.metabrowser.getRegisteredView(kind, viewId);
         },
         isCurrent() {
-          return isPreviewClaimCurrent(renderClaim);
+          return renderIsCurrent();
         },
       });
       if (composition.status === "cancelled") {
-        return;
+        return false;
       }
       const preview = document.getElementById("preview-pane");
       if (!preview) {
-        return;
+        return false;
       }
       const stage = createFilePreviewStage(preview);
-      const stagedPluginLifecycle = pluginViewLifecycle.begin();
+      const stagedPluginLifecycle = viewComposition.lifecycle.begin();
       const stagedPluginDisposers = stagedPluginLifecycle.disposers;
       let installed = false;
       let stageCleaned = false;
@@ -5579,8 +5742,9 @@ async function renderFile(data, preferredViewId, claim) {
         // files the path/badges/size strip.
         let html = "";
         if (data.kind === "folder") {
-          html = renderFolderHeader(data);
-          window.metabrowser?.folderContext?.seed(data.path, data);
+          const folderData = /** @type {Parameters<typeof renderFolderHeader>[0]} */ (data);
+          html = renderFolderHeader(folderData);
+          window.metabrowser?.folderContext?.seed(data.path, folderData);
         }
         if (data.kind !== "folder") {
           var badges = renderBadges(data);
@@ -5725,18 +5889,12 @@ async function renderFile(data, preferredViewId, claim) {
             }
             const mount = (
               (target, pluginView) => () =>
-                window.MetabrowserViewComposition.mount(
-                  target,
-                  pluginView,
-                  ctx,
-                  stagedPluginDisposers,
-                  {
-                    afterMount: scheduleHighlightCode,
-                    onError(error) {
-                      console.error("plugin render error:", error);
-                    },
+                viewComposition.composition.mount(target, pluginView, ctx, stagedPluginDisposers, {
+                  afterMount: scheduleHighlightCode,
+                  onError(error) {
+                    console.error("plugin render error:", error);
                   },
-                )
+                })
             )(container, pr.view);
             if (initialActiveView && pr.tabId === initialActiveView.id) {
               await _perf.measureAsync(
@@ -5755,13 +5913,18 @@ async function renderFile(data, preferredViewId, claim) {
         _perf.measure("initTabs", () => initTabs(stage), filePerfMeta(data));
         const arrivalContent =
           stage.querySelector('[data-active-view="true"]') ?? stage.querySelector(".content-body");
-        if (!isPreviewClaimCurrent(renderClaim)) {
-          return;
+        if (!renderIsCurrent()) {
+          return false;
         }
         const replacementNodes = Array.from(stage.childNodes);
         stopFolderHeaderSubscription();
-        if (!stagedPluginLifecycle.commit(() => preview.replaceChildren(...replacementNodes))) {
-          return;
+        if (
+          !stagedPluginLifecycle.commit(() => {
+            preview.replaceChildren(...replacementNodes);
+            options.onCommit?.();
+          })
+        ) {
+          return false;
         }
         installed = true;
         if (pendingFilePreviewStageCleanup === cleanupStage) {
@@ -5781,6 +5944,7 @@ async function renderFile(data, preferredViewId, claim) {
           animatePreviewContentArrival(arrivalContent);
         }
         await measureNextPaint("fileNavigation:paintReady", filePerfMeta(data));
+        return true;
       } finally {
         if (!installed) {
           if (pendingFilePreviewStageCleanup === cleanupStage) {
@@ -6072,6 +6236,10 @@ function flagRunEndedBadge() {
 //      replaces an FsEntry in the store and triggers
 //      applyCellPatch() to update the rendered tree row.
 var fileStore = new Map(); // path -> FsEntry
+// Exact keys owned by the current /api/events snapshot and its scoped deltas.
+// Keep this separate from FileStore so snapshot replacement cannot retire a
+// row learned from another source merely because the shallow stream omits it.
+var fileStoreSnapshotPaths = new Set();
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
 var catalogFeedCanStart = false;
@@ -6108,12 +6276,26 @@ function fileStoreApplySnapshotInner(scope, entries) {
     fileNeedsRevalidate.add(path);
   }
   knownFileCatalog?.observeEventSnapshot(entries);
-  fileStore = new Map();
-  for (var i = 0; i < entries.length; i++) {
-    fileStore.set(entries[i].path, entries[i]);
-    applyCellPatch(entries[i], false);
-    _mirrorActiveFromFsEntry(entries[i]);
-  }
+  window.MetabrowserNavigationRoute.replaceFileSnapshot(
+    fileStore,
+    fileStoreSnapshotPaths,
+    entries,
+    {
+      install: (next, ownedPaths) => {
+        fileStore = next;
+        fileStoreSnapshotPaths = ownedPaths;
+      },
+      retire: (path) => {
+        activeFiles.delete(path);
+        _removeDeferredTreePageEntries(path);
+        _removeRenderedRowsImmediately(path);
+      },
+      upsert: (entry) => {
+        applyCellPatch(entry, false);
+        _mirrorActiveFromFsEntry(entry);
+      },
+    },
+  );
   window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
   notifyFileStoreSubscribers({ kind: "snapshot", scope: scope });
 }
@@ -6131,12 +6313,18 @@ function fileStoreApplyChangeInner(ops) {
   }
   invalidateSubtreeCaches(ops);
   invalidateFilePreviews(ops);
-  knownFileCatalog?.applyEventChange(ops);
+  quickFileCatalogFeed?.onEventChange(ops);
   // Decide the whole Recent overlay transition before FileStore mutates. The
   // production model needs the pre-batch row type to distinguish a file that
   // became a directory from ordinary directory aggregate traffic.
   var recentEffect = null;
-  if (recentEverLoaded && currentRecentWindow && filterState && ops.length > 0) {
+  if (
+    recentEverLoaded &&
+    currentRecentWindow &&
+    filterState &&
+    ops.length > 0 &&
+    recentViewOwnsCurrentCursor()
+  ) {
     recentEffect = treeFilterModel.applyRecentChangeBatch(recentBaseEntries, ops, {
       filterState: filterState,
       limit: RECENT_LIMIT,
@@ -6150,12 +6338,14 @@ function fileStoreApplyChangeInner(ops) {
     var op = ops[i];
     if (op.op === "upsert") {
       fileStore.set(op.entry.path, op.entry);
+      fileStoreSnapshotPaths.add(op.entry.path);
       // Patch any rendered cell for this path; insert a new row if
       // the parent is rendered + expanded. Idempotent.
       applyCellPatch(op.entry, inventoryChangeHighlightingActive);
       _mirrorActiveFromFsEntry(op.entry);
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
+      fileStoreSnapshotPaths.delete(op.path);
       activeFiles.delete(op.path);
       _removeDeferredTreePageEntries(op.path);
       // Remove rendered rows in every tab panel; also drops the
@@ -7155,15 +7345,23 @@ function _createInventoryEventSource() {
     try {
       var data = JSON.parse(e.data);
       quickFileCatalogFeed?.onCatalogChange(data);
-      var recentCatalogEffect = filterState
-        ? treeFilterModel.applyRecentCatalogChange(recentBaseEntries, data, {
-            filterState: filterState,
-            nowSec: Date.now() / 1000,
-            state: filterState.get(),
-            visibleDepth: 2,
-          })
-        : null;
-      if (recentCatalogEffect?.needsAuthoritativeRepair) {
+      var recentOwnsCurrentView = recentViewOwnsCurrentCursor();
+      var recentCatalogEffect =
+        filterState && recentOwnsCurrentView
+          ? treeFilterModel.applyRecentCatalogChange(recentBaseEntries, data, {
+              filterState: filterState,
+              nowSec: Date.now() / 1000,
+              state: filterState.get(),
+              visibleDepth: 2,
+            })
+          : null;
+      if (!recentOwnsCurrentView && recentEverLoaded && filesPanelUsesRecentSource()) {
+        // The unscoped catalog is the only notice for deep changes. A normal
+        // replacement owns no retained base, so do not mutate or paint the old
+        // one; dirty its in-flight response (or schedule recovery after a
+        // failure) instead.
+        scheduleRecentAuthoritativeRefetch();
+      } else if (recentCatalogEffect?.needsAuthoritativeRepair) {
         // catalog.change rides every stream scope, so it is the authoritative
         // signal for file changes too deep for root-depth-2 fs.change.
         if (recentEverLoaded && filesPanelUsesRecentSource()) {
@@ -7198,7 +7396,18 @@ function _createInventoryEventSource() {
     recentRecompute.cancel();
     scheduleRecentAuthoritativeRefetch();
     knownFileCatalog?.clear();
-    fileStore = new Map();
+    window.MetabrowserNavigationRoute.replaceFileSnapshot(fileStore, fileStoreSnapshotPaths, [], {
+      install: (next, ownedPaths) => {
+        fileStore = next;
+        fileStoreSnapshotPaths = ownedPaths;
+      },
+      retire: (path) => {
+        activeFiles.delete(path);
+        _removeDeferredTreePageEntries(path);
+        _removeRenderedRowsImmediately(path);
+      },
+      upsert: () => {},
+    });
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();
@@ -7527,7 +7736,7 @@ function initQuickFileFinder() {
     // set it happened to get first.
     subscribeCatalog: (listener) => knownFileCatalog.subscribe(listener),
     onNotFound: (path) => {
-      knownFileCatalog.removePath(path);
+      quickFileCatalogFeed?.onEventChange([{ op: "remove", path }]);
     },
     openFile: (path) => {
       // Search hits can outlive deep inventory changes that are outside the

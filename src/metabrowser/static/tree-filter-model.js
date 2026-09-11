@@ -46,6 +46,12 @@
    */
 
   /**
+   * @typedef {object} RecentCommittedView
+   * @property {string} requestKey
+   * @property {string} windowKey
+   */
+
+  /**
    * @typedef {object} RecentFilterCursor
    * @property {string} recentRequestKey
    * @property {"recent" | "tree"} source
@@ -439,6 +445,26 @@
       },
       schedule,
     });
+  }
+
+  /**
+   * Decide whether the retained Recent base belongs to the selection now shown.
+   *
+   * A replacement request clears the committed owner while leaving the old
+   * bounded rows in memory. Filesystem and expiry callbacks may still arrive
+   * during that request, so request identity alone is insufficient: only a
+   * base committed for the current cursor may paint.
+   *
+   * @param {RecentCommittedView | null} committed
+   * @param {RecentFilterCursor} cursor
+   */
+  function recentViewOwnsCursor(committed, cursor) {
+    return Boolean(
+      committed &&
+        cursor.source === "recent" &&
+        committed.windowKey === cursor.windowKey &&
+        committed.requestKey === cursor.recentRequestKey,
+    );
   }
 
   /**
@@ -1391,6 +1417,7 @@
     recentRequestDisposition,
     recentRequestKey,
     recentUrl,
+    recentViewOwnsCursor,
     recentView,
     renderRecentView,
     requestKey,

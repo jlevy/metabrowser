@@ -2,10 +2,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const repoRoot = path.resolve(process.argv[2]);
+const repoRoot = path.resolve(__dirname, "../..");
 const listeners = {};
 let chartDisposeCalls = 0;
 let chartRenderCalls = 0;
+const chartRenderPayloads = [];
 
 const dynamicChipAttributes = new Map([
   ["data-chip-key", "agent-event-kind"],
@@ -75,8 +76,9 @@ sandbox.MetabrowserCharts = {
   dispose: () => {
     chartDisposeCalls += 1;
   },
-  renderPayload: () => {
+  renderPayload: (target, payload) => {
     chartRenderCalls += 1;
+    chartRenderPayloads.push({ container: target.name || "primary", id: payload.id });
   },
 };
 
@@ -93,8 +95,9 @@ for (const relative of [
   "src/metabrowser/static/icons.js",
   "src/metabrowser/builtin_plugins/agent_log/index.js",
 ]) {
-  const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
-  vm.runInContext(source, sandbox, { filename: relative });
+  const filename = path.join(repoRoot, relative);
+  const source = fs.readFileSync(filename, "utf8");
+  vm.runInContext(source, sandbox, { filename });
 }
 
 const logView = sandbox.metabrowser.getRegisteredView("agent-log", "log");
@@ -159,28 +162,86 @@ const singleKindResult = {
   singleKnownKindVisible: container.innerHTML.includes(">text</span>"),
   singleKindFilterHidden: !container.innerHTML.includes("agent-log-filter-bar"),
 };
-let resolveChartFetch;
-sandbox.location = { origin: "http://127.0.0.1:8411" };
-sandbox.fetch = () =>
-  new Promise((resolve) => {
-    resolveChartFetch = resolve;
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
   });
+  return { promise, reject, resolve };
+}
 
 (async () => {
+  // The plugin data and the independent chart bundle must share the wait,
+  // rather than placing the bundle behind the network response.
+  const firstData = deferred();
+  const firstAsset = deferred();
+  let dataStarts = 0;
+  let assetStarts = 0;
+  sandbox.metabrowser.fetchPluginData = () => {
+    dataStarts += 1;
+    return firstData.promise;
+  };
+  sandbox.metabrowser.ensureAsset = () => {
+    assetStarts += 1;
+    return firstAsset.promise;
+  };
   const pendingRender = chartsView.render(container, { path: "events.jsonl" });
-  chartsView.dispose();
-  resolveChartFetch({ ok: true, json: async () => ({ series: [] }) });
+  await Promise.resolve();
+  const independentWorkOverlaps = dataStarts === 1 && assetStarts === 1;
+  chartsView.dispose(container);
+  firstData.resolve({ id: "disposed" });
+  firstAsset.resolve();
   await pendingRender;
 
+  // Reopening the same view creates a new generation even when the path is
+  // identical. The older response must not replace the newer render.
+  const sameContainerRequests = [];
+  sandbox.metabrowser.fetchPluginData = () => {
+    const request = deferred();
+    sameContainerRequests.push(request);
+    return request.promise;
+  };
+  sandbox.metabrowser.ensureAsset = () => Promise.resolve();
+  const older = chartsView.render(container, { path: "events.jsonl" });
+  const newer = chartsView.render(container, { path: "events.jsonl" });
+  sameContainerRequests[1].resolve({ id: "newer" });
+  await newer;
+  sameContainerRequests[0].resolve({ id: "older" });
+  await older;
+
+  // Separate staged containers are separate owners. Preparing a replacement
+  // alongside the active chart must not cancel or redirect either payload.
+  const left = { ...container, name: "left" };
+  const right = { ...container, name: "right" };
+  const separateRequests = [];
+  sandbox.metabrowser.fetchPluginData = () => {
+    const request = deferred();
+    separateRequests.push(request);
+    return request.promise;
+  };
+  const leftRender = chartsView.render(left, { path: "left.jsonl" });
+  const rightRender = chartsView.render(right, { path: "right.jsonl" });
+  separateRequests[0].resolve({ id: "left" });
+  separateRequests[1].resolve({ id: "right" });
+  await Promise.all([leftRender, rightRender]);
+
   process.stdout.write(
-    JSON.stringify({
-      chartDisposeCalls,
-      chartRenderCalls,
-      ...securityResult,
-      ...filterRestoreResult,
-      ...unknownKindResult,
-      ...singleKindResult,
-    }),
+    `${JSON.stringify(
+      {
+        chartDisposeCalls,
+        chartRenderCalls,
+        chartRenderPayloads,
+        independentWorkOverlaps,
+        ...securityResult,
+        ...filterRestoreResult,
+        ...unknownKindResult,
+        ...singleKindResult,
+      },
+      null,
+      2,
+    )}\n`,
   );
 })().catch((error) => {
   process.stderr.write(String(error?.stack || error));

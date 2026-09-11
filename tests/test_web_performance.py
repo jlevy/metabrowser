@@ -68,6 +68,7 @@ def _valid_run(**overrides: object) -> dict[str, Any]:
         "shell_tools_missing": 0,
         "startup_script_requests": 22,
         "startup_script_transfer_kb": 154,
+        "startup_style_server_ms_max": 24,
         "tree_region_repaints": 1,
         "unsupported": None,
         "visibility_state": "visible",
@@ -299,6 +300,13 @@ def test_eager_shell_tools_or_missing_deferred_tools_fail() -> None:
         "startup_script_requests",
         "startup_script_transfer_kb",
     }
+
+
+def test_slow_render_blocking_stylesheet_server_work_fails() -> None:
+    config = load_performance_config(BUDGETS)
+    issues = budget_issues(_valid_run(startup_style_server_ms_max=76), config)
+
+    assert {issue.metric for issue in blocking_issues(issues)} == {"startup_style_server_ms_max"}
 
 
 def test_incomplete_deferred_file_catalog_fails() -> None:

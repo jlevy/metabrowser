@@ -216,16 +216,19 @@ data hooks:
   (none)
 
 assets in static_root:
+  - dom-traversal.js
   - github-localizer.js
-  - graph-analysis.js
   - index.js
   - link-enhancer.js
-  - link-scanner.js
   - links.js
   - manifest.toml
+  - markdown-worker-client.js
+  - markdown-worker-operations.js
+  - markdown-worker.js
   - markdown.css
   - package.json
   - project-adapters.js
+  - reconciliation-coordinator.js
   - rendered.js
   - source.js
   - toc-intersection-fallback.js
@@ -282,16 +285,19 @@ $ metab --plugin markdown --json
     "data_hooks": [],
     "disabled_data_hooks": [],
     "assets": [
+      "dom-traversal.js",
       "github-localizer.js",
-      "graph-analysis.js",
       "index.js",
       "link-enhancer.js",
-      "link-scanner.js",
       "links.js",
       "manifest.toml",
+      "markdown-worker-client.js",
+      "markdown-worker-operations.js",
+      "markdown-worker.js",
       "markdown.css",
       "package.json",
       "project-adapters.js",
+      "reconciliation-coordinator.js",
       "rendered.js",
       "source.js",
       "toc-intersection-fallback.js",

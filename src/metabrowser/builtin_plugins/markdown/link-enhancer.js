@@ -1,9 +1,16 @@
+import { createMarkdownDomTraversalBudget, matchingDescendants } from "./dom-traversal.js";
 import { localizeGithubUrl } from "./github-localizer.js";
-import { resolveStandardTarget } from "./links.js";
-import { resolvePublishedRoute } from "./project-adapters.js";
+import { createTrustedStandardLinkResolutionContext } from "./links.js";
+import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
+import {
+  createMarkdownEnhancementBudget,
+  createMarkdownReconciliationCoordinator,
+} from "./reconciliation-coordinator.js";
 import { enhanceWikiLinks } from "./wiki-enhancer.js";
 
 const MAX_ENHANCED_TARGETS = 4096;
+const ENHANCEABLE_TARGET_SELECTOR =
+  "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]";
 const RESOURCE_ATTRIBUTES = Object.freeze([
   Object.freeze({ selector: "img[src]", attribute: "src" }),
   Object.freeze({ selector: "audio[src]", attribute: "src" }),
@@ -20,66 +27,104 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
- * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<string>}=} options
+ * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, domTraversalBudget?: ReturnType<typeof createMarkdownDomTraversalBudget>, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, workerClient?: ReturnType<typeof createMarkdownWorkerClient>}=} options
  */
 export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const eventTarget = options.eventTarget ?? window;
   const schedule = options.schedule ?? requestAnimationFrame;
   const cancel = options.cancel ?? cancelAnimationFrame;
+  const enhancementBudget = options.enhancementBudget || createMarkdownEnhancementBudget();
+  const domTraversalBudget = options.domTraversalBudget || createMarkdownDomTraversalBudget();
+  const ownsWorkerClient = !options.workerClient;
+  const workerClient = options.workerClient || createMarkdownWorkerClient();
+  const standardLinks = createTrustedStandardLinkResolutionContext(sourcePath);
+  const preserveFragmentOnlyHrefs = isCurrentDocument(sourcePath, mb.navigation.current());
   /** @type {WeakMap<Element, NavigationTarget>} */
   const internalTargets = new WeakMap();
-  /** @type {Array<{anchor: Element, authoredTarget: string}>} */
-  const possiblePublishedRoutes = [];
+  const ownsReconciliation = !options.reconciliation;
+  const reconciliation =
+    options.reconciliation ||
+    createMarkdownReconciliationCoordinator(
+      mb,
+      options.schedule ? { cancel, schedule } : undefined,
+    );
+  const reconciliationScope = reconciliation.createScope(options.signal, sourcePath);
+  const admittedTargets = admittedTargetElements(container, enhancementBudget, domTraversalBudget);
   let disposed = false;
-  let scheduledFrame = 0;
-  /** @type {(() => void) | null} */
-  let unsubscribeCatalog = null;
+  let fragmentFrame = 0;
 
-  for (const anchor of boundedElements(container.querySelectorAll("a[href]"))) {
+  /** @param {unknown} intent @param {(resolved: ReturnType<typeof standardLinks.resolve>) => void} commit */
+  function resolveStandard(intent, commit) {
+    if (standardLinks.canResolveSynchronously) {
+      commit(standardLinks.resolve(intent));
+      return;
+    }
+    reconciliationScope.standard(intent, commit);
+  }
+
+  for (const anchor of admittedTargets) {
+    if (
+      anchor.hasAttribute("data-mb-wiki-target") ||
+      anchor.tagName.toLowerCase() !== "a" ||
+      !anchor.hasAttribute("href")
+    ) {
+      continue;
+    }
     const authoredTarget = anchor.getAttribute("href");
     if (authoredTarget === null) {
       continue;
     }
-    const resolved = resolveStandardTarget({
-      action: "navigate",
-      authoredTarget,
-      sourcePath,
-      syntax: "html",
-    });
-    if (resolved.status === "internal") {
-      applyInternalAnchor(anchor, authoredTarget, resolved);
-      if (isPossiblePublishedRoute(authoredTarget)) {
-        possiblePublishedRoutes.push({ anchor, authoredTarget });
-      }
-    } else if (resolved.status === "external") {
-      const localized = localizeGithubUrl(authoredTarget, mb.repository);
-      if (localized) {
-        const target = navigationTarget(localized);
-        anchor.setAttribute("href", mb.navigation.href(target));
-        anchor.setAttribute("data-metabrowser-github-localization", localized.localization);
-        if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
-          anchor.setAttribute(
-            "title",
-            "Open the corresponding path in the currently served working tree.",
-          );
+    resolveStandard(
+      {
+        action: "navigate",
+        authoredTarget,
+        sourcePath,
+        syntax: "html",
+      },
+      (resolved) => {
+        if (resolved.status === "internal") {
+          if (isPossiblePublishedRoute(authoredTarget)) {
+            // A configured static-site route can map somewhere other than the
+            // repository-relative path. Keep it inert until the pinned catalog
+            // pass decides; otherwise a click before the first continuation can
+            // navigate to a transient, incorrect target.
+            internalTargets.delete(anchor);
+            disableTarget(anchor, "href", "pending", "published-route-pending");
+            reconciliationScope.published(
+              { authoredTarget, resolvedPath: resolved.path },
+              (adapted) => applyInternalAnchor(anchor, authoredTarget, resolved, adapted),
+            );
+          } else {
+            applyInternalAnchor(anchor, authoredTarget, resolved, null);
+          }
+        } else if (resolved.status === "external") {
+          const localized = localizeGithubUrl(authoredTarget, mb.repository);
+          if (localized) {
+            const target = navigationTarget(localized);
+            anchor.setAttribute("href", mb.navigation.href(target));
+            anchor.setAttribute("data-metabrowser-github-localization", localized.localization);
+            if (localized.localization === "working-tree" && !anchor.hasAttribute("title")) {
+              anchor.setAttribute(
+                "title",
+                "Open the corresponding path in the currently served working tree.",
+              );
+            }
+            internalTargets.set(anchor, target);
+          }
+        } else {
+          disableTarget(anchor, "href", resolved.status, resolved.reason);
         }
-        internalTargets.set(anchor, target);
-      }
-    } else {
-      disableTarget(anchor, "href", resolved.status, resolved.reason);
-    }
+      },
+    );
   }
 
   /**
    * @param {Element} anchor
    * @param {string} authoredTarget
    * @param {{status: "internal", path: string, query?: string, fragment?: string}} resolved
+   * @param {ReturnType<ReturnType<typeof import("./project-adapters.js").createPublishedRouteResolutionContext>["resolve"]>} adapted
    */
-  function applyInternalAnchor(anchor, authoredTarget, resolved) {
-    const adapted = resolvePublishedRoute(
-      { authoredTarget, resolvedPath: resolved.path },
-      mb.fileCatalog.snapshot(),
-    );
+  function applyInternalAnchor(anchor, authoredTarget, resolved, adapted) {
     if (adapted && adapted.status !== "internal") {
       internalTargets.delete(anchor);
       disableTarget(anchor, "href", adapted.status, adapted.reason);
@@ -90,7 +135,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     clearDisabledTarget(anchor);
     anchor.setAttribute(
       "href",
-      isSameDocumentFragment(authoredTarget, target, sourcePath)
+      preserveFragmentOnlyHrefs && isSameDocumentFragment(authoredTarget, target, sourcePath)
         ? authoredTarget
         : mb.navigation.href(target),
     );
@@ -102,46 +147,35 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     internalTargets.set(anchor, target);
   }
 
-  if (possiblePublishedRoutes.length > 0 && !mb.fileCatalog.snapshot().complete) {
-    unsubscribeCatalog = mb.fileCatalog.subscribe(() => {
-      if (disposed) {
-        return;
-      }
-      for (const candidate of possiblePublishedRoutes) {
-        const resolved = resolveStandardTarget({
-          action: "navigate",
-          authoredTarget: candidate.authoredTarget,
-          sourcePath,
-          syntax: "html",
-        });
-        if (resolved.status === "internal") {
-          applyInternalAnchor(candidate.anchor, candidate.authoredTarget, resolved);
-        }
-      }
-      if (mb.fileCatalog.snapshot().complete) {
-        unsubscribeCatalog?.();
-        unsubscribeCatalog = null;
-      }
-    });
-  }
-
   for (const descriptor of RESOURCE_ATTRIBUTES) {
-    for (const resource of boundedElements(container.querySelectorAll(descriptor.selector))) {
+    const tagName = descriptor.selector.slice(0, descriptor.selector.indexOf("[")).toLowerCase();
+    for (const resource of admittedTargets) {
+      if (
+        resource.hasAttribute("data-mb-wiki-target") ||
+        resource.tagName.toLowerCase() !== tagName ||
+        !resource.hasAttribute(descriptor.attribute)
+      ) {
+        continue;
+      }
       const authoredTarget = resource.getAttribute(descriptor.attribute);
       if (authoredTarget === null) {
         continue;
       }
-      const resolved = resolveStandardTarget({
-        action: "embed",
-        authoredTarget,
-        sourcePath,
-        syntax: "html",
-      });
-      if (resolved.status === "internal") {
-        resource.setAttribute(descriptor.attribute, rawResourceHref(resolved));
-      } else if (resolved.status !== "external") {
-        disableTarget(resource, descriptor.attribute, resolved.status, resolved.reason);
-      }
+      resolveStandard(
+        {
+          action: "embed",
+          authoredTarget,
+          sourcePath,
+          syntax: "html",
+        },
+        (resolved) => {
+          if (resolved.status === "internal") {
+            resource.setAttribute(descriptor.attribute, rawResourceHref(resolved));
+          } else if (resolved.status !== "external") {
+            disableTarget(resource, descriptor.attribute, resolved.status, resolved.reason);
+          }
+        },
+      );
     }
   }
 
@@ -154,16 +188,28 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
     },
     {
       budget: options.transclusionBudget,
+      cancel,
       chain: options.transclusionChain,
+      domTraversalBudget,
+      enhancementBudget,
+      reconciliation,
+      reconciliationScope,
+      schedule,
       signal: options.signal,
+      workerClient,
+      elements: admittedTargets.filter((element) => element.hasAttribute("data-mb-wiki-target")),
       enhanceNested: (nestedContainer, nestedSourcePath, nestedOptions) =>
         enhanceRenderedLinks(nestedContainer, nestedSourcePath, mb, {
           cancel,
+          domTraversalBudget,
+          enhancementBudget,
           eventTarget,
+          reconciliation,
           schedule,
           signal: nestedOptions.signal,
           transclusionBudget: nestedOptions.budget,
           transclusionChain: nestedOptions.chain,
+          workerClient,
         }),
     },
   );
@@ -207,11 +253,11 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       return;
     }
     const fragment = target.fragment;
-    if (scheduledFrame) {
-      cancel(scheduledFrame);
+    if (fragmentFrame) {
+      cancel(fragmentFrame);
     }
-    scheduledFrame = schedule(() => {
-      scheduledFrame = 0;
+    fragmentFrame = schedule(() => {
+      fragmentFrame = 0;
       const current = mb.navigation.current();
       if (
         disposed ||
@@ -221,7 +267,9 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       ) {
         return;
       }
-      findFragmentTarget(container, fragment)?.scrollIntoView({ block: "start" });
+      findFragmentTarget(container, fragment, domTraversalBudget)?.scrollIntoView({
+        block: "start",
+      });
     });
   }
 
@@ -236,21 +284,56 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       }
       disposed = true;
       wiki.dispose();
-      unsubscribeCatalog?.();
-      unsubscribeCatalog = null;
+      reconciliationScope.dispose();
+      if (ownsReconciliation) {
+        reconciliation.dispose();
+      }
+      if (ownsWorkerClient) {
+        workerClient.dispose();
+      }
       container.removeEventListener("click", handleClick);
       eventTarget.removeEventListener("metabrowser:navigation-fragment", handleFragment);
-      if (scheduledFrame) {
-        cancel(scheduledFrame);
-        scheduledFrame = 0;
+      if (fragmentFrame) {
+        cancel(fragmentFrame);
+        fragmentFrame = 0;
       }
     },
   });
 }
 
-/** @param {NodeListOf<Element>} elements */
-function boundedElements(elements) {
-  return Array.from(elements).slice(0, MAX_ENHANCED_TARGETS);
+/**
+ * Iterate only the aggregate root budget's deterministic DOM-order prefix. This
+ * avoids materializing a full NodeList after the supported envelope is reached.
+ *
+ * @param {HTMLElement} container
+ * @param {ReturnType<typeof createMarkdownEnhancementBudget>} budget
+ * @param {ReturnType<typeof createMarkdownDomTraversalBudget>} domTraversalBudget
+ */
+function admittedTargetElements(container, budget, domTraversalBudget) {
+  const admitted = [];
+  for (const element of matchingDescendants(
+    container,
+    ENHANCEABLE_TARGET_SELECTOR,
+    domTraversalBudget,
+  )) {
+    if (!budget.claim()) {
+      break;
+    }
+    admitted.push(element);
+  }
+  return Object.freeze(admitted);
+}
+
+/** @param {Iterable<Element>} elements */
+function* boundedElements(elements) {
+  let count = 0;
+  for (const element of elements) {
+    if (count >= MAX_ENHANCED_TARGETS) {
+      return;
+    }
+    count += 1;
+    yield element;
+  }
 }
 
 /** @param {{path: string, query?: string, fragment?: string}} resolved */
@@ -338,9 +421,11 @@ function notSameBrowsingContext(anchor) {
   return Boolean(target && target.toLowerCase() !== "_self");
 }
 
-/** @param {HTMLElement} container @param {string} fragment */
-function findFragmentTarget(container, fragment) {
-  for (const element of boundedElements(container.querySelectorAll("[id]"))) {
+/** @param {HTMLElement} container @param {string} fragment @param {ReturnType<typeof createMarkdownDomTraversalBudget>} domTraversalBudget */
+function findFragmentTarget(container, fragment, domTraversalBudget) {
+  for (const element of boundedElements(
+    matchingDescendants(container, "[id]", domTraversalBudget),
+  )) {
     if (element.id === fragment) {
       return element;
     }
@@ -353,10 +438,15 @@ function normalizedFilePath(path) {
   return path.endsWith("/") ? path.slice(0, -1) : path;
 }
 
+/** @param {string} sourcePath @param {NavigationTarget | null | undefined} current */
+function isCurrentDocument(sourcePath, current) {
+  return Boolean(current && normalizedFilePath(current.path) === normalizedFilePath(sourcePath));
+}
+
 /**
- * KPress identifies TOC entries from their fragment-only hrefs. Keep that
- * authored form while retaining the resolved navigation target in the
- * delegated-click map, so Metabrowser still owns history and file navigation.
+ * KPress identifies the primary document's TOC entries from their fragment-only
+ * hrefs. The caller separately verifies that the source is the current document;
+ * embedded documents need canonical hrefs relative to their own source.
  *
  * @param {string} authoredTarget
  * @param {NavigationTarget} target

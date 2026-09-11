@@ -31,6 +31,7 @@ def test_rendered_markdown_toc_scrollspy_session() -> None:
     assert '"enhancedHref": "#implementation-plan"' in result.stdout
     assert '"fragment": "implementation-plan"' in result.stdout
     assert '"renderedMarkdownMount": true' in result.stdout
-    assert '"enhancerHadRunAtTocMount": true' in result.stdout
+    assert '"tocMountedWithoutCatalogSnapshot": true' in result.stdout
+    assert '"catalogSnapshotsAfterFirstFlush": 0' in result.stdout
     assert '"collapsedRows": 65' in result.stdout
     assert '"label": "Collapse TOC"' in result.stdout

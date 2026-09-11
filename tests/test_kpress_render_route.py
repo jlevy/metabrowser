@@ -70,6 +70,50 @@ def test_shell_kpress_asset_url_does_not_load_the_renderer_runtime(monkeypatch) 
     assert kpress_adapter._kpress_runtime is sentinel
 
 
+def test_prepare_browser_assets_resolves_the_two_shell_dependencies(monkeypatch) -> None:
+    resolved: list[str] = []
+
+    class RuntimeAssetNotFoundError(FileNotFoundError):
+        pass
+
+    fake_runtime = SimpleNamespace(
+        KPressAssetNotFoundError=RuntimeAssetNotFoundError,
+        get_static_asset=lambda path: resolved.append(path),
+    )
+    monkeypatch.setattr(kpress_adapter, "_kpress_runtime", fake_runtime)
+
+    kpress_adapter.prepare_browser_assets()
+
+    assert resolved == [
+        "fonts/source-sans-3-latin-wght-normal.woff2",
+        "css/style-tokens.css",
+    ]
+
+
+def test_prepare_browser_assets_preserves_missing_asset_context(monkeypatch) -> None:
+    class RuntimeAssetNotFoundError(FileNotFoundError):
+        pass
+
+    missing = RuntimeAssetNotFoundError("not found: source-sans.woff2")
+
+    def fail(_path: str) -> None:
+        raise missing
+
+    fake_runtime = SimpleNamespace(
+        KPressAssetNotFoundError=RuntimeAssetNotFoundError,
+        get_static_asset=fail,
+    )
+    monkeypatch.setattr(kpress_adapter, "_kpress_runtime", fake_runtime)
+
+    try:
+        kpress_adapter.prepare_browser_assets()
+    except kpress_adapter.KPressAssetNotFoundError as exc:
+        assert str(exc) == "not found: source-sans.woff2"
+        assert exc.__cause__ is missing
+    else:
+        raise AssertionError("missing browser asset did not fail serve preparation")
+
+
 def test_kpress_render_invalid_request_maps_to_400(tmp_path: Path, monkeypatch) -> None:
     """``server.py`` catches ``KPressInvalidRequestError`` and returns 400 with
     type ``kpress_render_error`` for malformed requests such as a bogus print

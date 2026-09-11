@@ -5,7 +5,8 @@ Four commands, and a browser sits between the first two:
     explorations/performance-loop/run.py serve --exp exp-003 --label before --files 300000
     explorations/performance-loop/run.py probe          # prints probe.js; evaluate it in the page
     explorations/performance-loop/run.py record --json '<paste>'
-    explorations/performance-loop/run.py compare before after
+    explorations/performance-loop/run.py compare before after \\
+        --expect-build before=<identity> --expect-build after=<identity>
     explorations/performance-loop/run.py report         # regenerate the ledger
 
 ``serve`` restarts the server on a port nothing has used, which is the whole
@@ -38,6 +39,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import shutil
 import signal
 import socket
@@ -59,7 +61,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(REPO))
 
-from devtools.bench_serving import MetabBuild, resolve_metab_build
+from devtools.bench_serving import MetabBuild, attest_installed_wheel, resolve_metab_build
 from devtools.web_performance import (
     blocking_issues,
     budget_issues,
@@ -86,6 +88,18 @@ PENDING = HERE / "results" / "pending.json"
 # Bumped when a change to run.py or probe.js makes a number incomparable with
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
+#
+# 20: a measurement-only declaration admits exact external releases that predate
+# inventory identity diagnostics while recording that evidence gap. External source
+# refs are checked against an embedded version commit when one is available.
+#
+# 19: external builds are bound to verified wheel bytes; the browser origin,
+# run nonce, viewport, browser, runtime environment, and corpus state are
+# comparison identity rather than operator convention.
+#
+# 18: startup render-blocking stylesheets report their response tail, queue
+# wait, and server work separately. The server-work maximum is a hard gate, so
+# a deferred package import cannot hide inside a cold first paint again.
 #
 # 15: correctness now includes rendered main-panel error states and uncaught
 # page exceptions observed from navigation through settled profile export. A
@@ -151,9 +165,10 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 17
+HARNESS_VERSION = 20
 INVENTORY_PROVIDERS = ("python",)
 INVENTORY_CONTRACT = "inventory-provider-v1"
+PRE_CONTRACT_INVENTORY_IDENTITY_MISSING = "pre-contract-provider-and-contract-unreported/v1"
 # Ports climb so a rerun never reuses one and never inherits its cache.
 # A run below this is refused: the tree pages its rows against the viewport, so
 # numbers taken in a collapsed pane describe a layout no reader has.
@@ -252,6 +267,9 @@ METRICS = (
     "startup_script_transfer_kb",
     "startup_script_last_response_ms",
     "startup_script_duration_max_ms",
+    "startup_style_server_ms_max",
+    "startup_style_wait_ms_max",
+    "startup_style_last_response_ms",
     "style_transfer_kb",
     "image_transfer_kb",
     "api_transfer_kb",
@@ -301,8 +319,10 @@ def _tree_label(root: Path) -> str:
     which is all a ledger needs; what kind of tree it was belongs in the
     experiment's prose, described rather than named.
 
-    A generated corpus folds its marker into the hash, so the label changes when
-    the tree does. The path alone is not enough: the corpus lives at a fixed
+    A generated corpus folds its marker into this short display label. Exact
+    filesystem state is recorded separately by ``_corpus_fingerprint`` and
+    rechecked when the measurement is recorded. The path alone is not enough:
+    the corpus lives at a fixed
     `.bench/project-10`, and its tracked half is the working tree's own source,
     so rebuilding at a later commit gives a different tree at the same path --
     246,282 files in August against 248,872 a week later. Keyed on the path
@@ -310,16 +330,54 @@ def _tree_label(root: Path) -> str:
     while reporting the size difference as a regression. That is the same
     failure the pooling guard exists for, in the one form it cannot see.
 
-    A real tree passed with `--tree` has no marker and keeps the path-only
-    label, which is what a sanity check against a working directory can offer:
-    it changes under you, and the README says to record it as a sanity check
-    rather than as a baseline for that reason.
+    A real tree passed with `--tree` has no marker and keeps the path-only short
+    label, while its state fingerprint still changes if an entry changes.
     """
     seed = str(root)
     marker = root / ".bench-corpus.json"
     with suppress(OSError):
         seed += "\n" + marker.read_text(encoding="utf-8")
     return "tree-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8]
+
+
+def _corpus_fingerprint(root: Path) -> str:
+    """Identify tree state without warming every file into the page cache.
+
+    Paths, types, sizes, nanosecond mtimes, symlink targets, and ignore/control-file
+    contents identify the filesystem the server sees. Reading every byte of a
+    multi-gigabyte corpus before a cold benchmark would alter the measured cache state.
+    """
+
+    digest = hashlib.sha256()
+    control_names = {".bench-corpus.json", ".gitignore", ".ignore", ".metabrowserignore"}
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dirnames.sort()
+        filenames.sort()
+        directory = Path(dirpath)
+        for name in [*dirnames, *filenames]:
+            path = directory / name
+            relative = path.relative_to(root).as_posix().encode("utf-8", errors="surrogateescape")
+            try:
+                facts = path.lstat()
+            except OSError as error:
+                raise SystemExit(
+                    f"could not fingerprint corpus entry {relative!r}: {error}"
+                ) from error
+            kind = b"l" if path.is_symlink() else b"d" if path.is_dir() else b"f"
+            digest.update(len(relative).to_bytes(4, "big"))
+            digest.update(relative)
+            digest.update(kind)
+            digest.update(facts.st_size.to_bytes(8, "big", signed=False))
+            digest.update(facts.st_mtime_ns.to_bytes(8, "big", signed=False))
+            if path.is_symlink():
+                target = os.readlink(path).encode("utf-8", errors="surrogateescape")
+                digest.update(len(target).to_bytes(4, "big"))
+                digest.update(target)
+            elif name in control_names and path.is_file():
+                content = path.read_bytes()
+                digest.update(len(content).to_bytes(8, "big"))
+                digest.update(content)
+    return digest.hexdigest()
 
 
 def _count_tree(root: Path) -> tuple[int, int]:
@@ -403,21 +461,150 @@ def _git_dirty() -> bool:
     return bool(result.stdout.strip())
 
 
-def _build_provenance(build_version: str, *, build_ref: str, external: bool) -> dict[str, Any]:
+def _runtime_tree_fingerprint() -> str:
+    """Identify the exact local runtime bytes a browser measurement executes.
+
+    Dirty worktrees are normal while testing a hypothesis, so a commit plus a
+    boolean cannot distinguish two candidate implementations measured under
+    the same HEAD. Hash the shipped source and dependency/build declarations;
+    performance ledgers and other generated evidence are intentionally outside
+    this set, so recording run one does not change the identity for runs two
+    and three.
+    """
+
+    roots = [REPO / "src"]
+    declared = [
+        REPO / "pyproject.toml",
+        REPO / "uv.lock",
+        REPO / "package-lock.json",
+    ]
+    paths = [
+        path
+        for root in roots
+        for path in root.rglob("*")
+        if path.is_file()
+        and "__pycache__" not in path.parts
+        and not any(part.endswith(".egg-info") for part in path.parts)
+        and path.suffix not in {".pyc", ".pyo"}
+        and path.name != ".DS_Store"
+    ]
+    paths.extend(path for path in declared if path.is_file())
+    digest = hashlib.sha256()
+    for path in sorted(paths, key=lambda item: item.relative_to(REPO).as_posix()):
+        relative = path.relative_to(REPO).as_posix().encode("utf-8")
+        content = path.read_bytes()
+        digest.update(len(relative).to_bytes(4, "big"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return digest.hexdigest()
+
+
+def _build_provenance(
+    build: MetabBuild,
+    *,
+    build_ref: str,
+    artifact: str,
+    external: bool,
+    declare_pre_contract_inventory_identity_missing: bool = False,
+) -> dict[str, Any]:
     """Identify the artifact behind a browser benchmark run."""
+    if declare_pre_contract_inventory_identity_missing and not external:
+        raise SystemExit(
+            "--declare-pre-contract-inventory-identity-missing is only valid with an "
+            "external --metab build"
+        )
     if external:
         if not build_ref:
             raise SystemExit("--build-ref is required when --metab selects an external build")
+        if not re.fullmatch(r"[0-9a-f]{40}", build_ref):
+            raise SystemExit("--build-ref must be the full 40-character source commit")
+        if not artifact:
+            raise SystemExit("--artifact is required when --metab selects an external build")
+        version_commit_token = _version_commit_token(build.version)
+        version_commit = (
+            _resolve_version_commit(version_commit_token)
+            if version_commit_token is not None
+            else None
+        )
+        if version_commit is not None and build_ref != version_commit:
+            raise SystemExit(
+                f"--build-ref {build_ref!r} does not match commit {version_commit!r} "
+                f"embedded in {build.version!r}"
+            )
+        attestation = attest_installed_wheel(build, Path(artifact).resolve())
         return {
-            "build_version": build_version,
+            "build_identity": f"wheel:sha256:{attestation.wheel_sha256}",
+            "build_version": build.version,
+            "artifact_sha256": attestation.wheel_sha256,
+            "launcher_sha256": attestation.launcher_sha256,
+            "environment_identity": f"environment:sha256:{attestation.environment_sha256}",
             "commit": build_ref,
             "dirty": False,
+            "inventory_identity_declaration": (
+                PRE_CONTRACT_INVENTORY_IDENTITY_MISSING
+                if declare_pre_contract_inventory_identity_missing
+                else None
+            ),
         }
+    if artifact:
+        raise SystemExit("--artifact is only valid with an external --metab build")
+    commit = _git_commit()
+    dirty = _git_dirty()
+    identity = f"worktree:{_runtime_tree_fingerprint()}" if dirty else f"git:{commit}"
     return {
-        "build_version": build_version,
-        "commit": _git_commit(),
-        "dirty": _git_dirty(),
+        "build_identity": identity,
+        "build_version": build.version,
+        "artifact_sha256": None,
+        "launcher_sha256": None,
+        "environment_identity": None,
+        "commit": commit,
+        "dirty": dirty,
+        "inventory_identity_declaration": None,
     }
+
+
+_DISPLAY_VERSION_COMMIT = re.compile(
+    r"\((?:\+\d+ commits,\s*)?(?P<commit>[0-9a-f]{7,40})(?:,\s*dirty)?\)\s*$"
+)
+_PACKAGE_VERSION_COMMIT = re.compile(r"\+(?:g)?(?P<commit>[0-9a-f]{7,40})(?=$|[\s.(])")
+
+
+def _version_commit_token(version: str) -> str | None:
+    """Return the source commit token embedded in a displayed build version."""
+
+    displayed = _DISPLAY_VERSION_COMMIT.search(version)
+    if displayed is not None:
+        return displayed["commit"]
+    packaged = _PACKAGE_VERSION_COMMIT.search(version)
+    return packaged["commit"] if packaged is not None else None
+
+
+def _resolve_version_commit(token: str) -> str:
+    """Resolve a short reported commit to the full repository identity."""
+
+    if len(token) == 40:
+        return token
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "--verify", f"{token}^{{commit}}"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            env=environment,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise SystemExit(
+            f"could not resolve version commit {token!r} in the Metabrowser repository"
+        ) from error
+    resolved = result.stdout.strip()
+    if result.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40}", resolved):
+        raise SystemExit(
+            f"could not resolve version commit {token!r} in the Metabrowser repository"
+        )
+    return resolved
 
 
 _WALK_LINE = re.compile(
@@ -503,8 +690,14 @@ def _require_inventory_identity(
     walk_facts: dict[str, Any],
     inventory_facts: dict[str, Any],
     requested_provider: object,
-) -> tuple[str, str]:
+    identity_declaration: object,
+) -> tuple[str | None, str | None]:
     """Return one complete, consistent identity for a measured server."""
+
+    if not isinstance(requested_provider, str) or not requested_provider:
+        raise SystemExit("pending run does not name the requested inventory provider")
+    if identity_declaration not in (None, PRE_CONTRACT_INVENTORY_IDENTITY_MISSING):
+        raise SystemExit("pending run has an unknown inventory identity declaration")
 
     observations: list[tuple[str, str, str]] = []
     for source, facts in (("walker log", walk_facts), ("debug endpoint", inventory_facts)):
@@ -521,6 +714,16 @@ def _require_inventory_identity(
             raise SystemExit(f"{source} reported an incomplete inventory identity")
         observations.append((source, provider, contract))
 
+    if identity_declaration == PRE_CONTRACT_INVENTORY_IDENTITY_MISSING:
+        if observations:
+            details = ", ".join(
+                f"{source}={provider}/{contract}" for source, provider, contract in observations
+            )
+            raise SystemExit(
+                "pre-contract declaration conflicts with server-reported inventory identity: "
+                f"{details}"
+            )
+        return None, None
     if not observations:
         raise SystemExit("server did not report an inventory provider and contract")
     identities = {(provider, contract) for _source, provider, contract in observations}
@@ -531,8 +734,6 @@ def _require_inventory_identity(
         raise SystemExit(f"server reported conflicting inventory identities: {details}")
 
     provider, contract = identities.pop()
-    if not isinstance(requested_provider, str) or not requested_provider:
-        raise SystemExit("pending run does not name the requested inventory provider")
     if provider != requested_provider:
         raise SystemExit(
             f"requested inventory provider {requested_provider!r}, but server reported {provider!r}"
@@ -632,11 +833,17 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     requested_build = args.metab or "metab"
     build: MetabBuild = resolve_metab_build(requested_build)
     provenance = _build_provenance(
-        build.version,
+        build,
         build_ref=args.build_ref,
+        artifact=args.artifact,
         external=bool(args.metab),
+        declare_pre_contract_inventory_identity_missing=(
+            args.declare_pre_contract_inventory_identity_missing
+        ),
     )
     _stop_pending_server()
+    corpus_fingerprint = _corpus_fingerprint(root)
+    measurement_run_id = secrets.token_hex(16)
 
     port = _next_port()
     PORTS_USED.parent.mkdir(parents=True, exist_ok=True)
@@ -660,7 +867,8 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
             env=environment,
         )
 
-    url = f"http://127.0.0.1:{port}/view/"
+    origin = f"http://127.0.0.1:{port}"
+    url = f"{origin}/view/?measurement_run_id={measurement_run_id}"
     # Wait for the socket, not for a rendered page. The scan is the regime this
     # loop is about, and asking for `/` during one can take most of the scan to
     # answer -- a readiness check that waits for it hands back a server that has
@@ -683,6 +891,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "port": port,
                 "files": files,
                 "corpus": corpus_label,
+                "corpus_fingerprint": corpus_fingerprint,
                 "corpus_shape": _corpus_shape(root),
                 **provenance,
                 "inventory_provider_requested": args.provider,
@@ -690,6 +899,10 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "server_executable": str(build.executable),
                 "server_pid": process.pid,
                 "server_root": str(root),
+                "measurement_origin": origin,
+                "measurement_run_id": measurement_run_id,
+                "url": url,
+                "artifact_path": str(Path(args.artifact).resolve()) if args.artifact else None,
             },
             indent=2,
             sort_keys=True,
@@ -700,6 +913,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
 
     print(f"experiment  {args.exp or '(unset)'}   label {args.label or '(unset)'}")
     print(f"build       {build.version}   ref {provenance['commit']}")
+    print(f"identity    {provenance['build_identity']}")
     print(f"port        {port}   (unused, so the browser cache starts empty)")
     count = f"{files} files" if files is not None else "file count recorded from completed walk"
     print(f"corpus      {corpus_label}  ({count})")
@@ -741,6 +955,39 @@ def cmd_record(args: argparse.Namespace) -> int:
         )
     pending = _read_pending()
     port = int(pending["port"])
+    if not is_server_sample:
+        if probe.get("measurement_run_id") != pending.get("measurement_run_id"):
+            raise SystemExit("browser profile belongs to a different pending measurement run")
+        if probe.get("measurement_origin") != pending.get("measurement_origin"):
+            raise SystemExit("browser profile origin does not match the pending measurement run")
+    server_root = pending.get("server_root")
+    if not isinstance(server_root, str):
+        raise SystemExit("pending browser run has no corpus root")
+    corpus_fingerprint = _corpus_fingerprint(Path(server_root))
+    if corpus_fingerprint != pending.get("corpus_fingerprint"):
+        raise SystemExit("corpus changed between serve and record; discard this measurement")
+    artifact_path = pending.get("artifact_path")
+    identity_declaration = pending.get("inventory_identity_declaration")
+    if identity_declaration == PRE_CONTRACT_INVENTORY_IDENTITY_MISSING and artifact_path is None:
+        raise SystemExit("pending pre-contract declaration has no external wheel attestation")
+    if artifact_path is not None:
+        executable = pending.get("server_executable")
+        if not isinstance(artifact_path, str) or not isinstance(executable, str):
+            raise SystemExit("pending external build attestation is incomplete")
+        current_build = resolve_metab_build(executable)
+        current_attestation = attest_installed_wheel(current_build, Path(artifact_path))
+        expected_attestation = (
+            pending.get("artifact_sha256"),
+            pending.get("launcher_sha256"),
+            pending.get("environment_identity"),
+        )
+        observed_attestation = (
+            current_attestation.wheel_sha256,
+            current_attestation.launcher_sha256,
+            f"environment:sha256:{current_attestation.environment_sha256}",
+        )
+        if observed_attestation != expected_attestation:
+            raise SystemExit("external build changed between serve and record")
     label = args.label or pending.get("label")
     if not label:
         raise SystemExit("no label: pass --label, or set one on `serve`")
@@ -754,6 +1001,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         walk_facts,
         inventory_facts,
         requested_provider,
+        identity_declaration,
     )
     run: dict[str, Any] = {
         **payload,
@@ -762,13 +1010,19 @@ def cmd_record(args: argparse.Namespace) -> int:
         "port": port,
         "files": walk_facts.get("walk_files", pending.get("files")),
         "corpus": pending.get("corpus"),
+        "corpus_fingerprint": corpus_fingerprint,
         "commit": pending.get("commit"),
         "build_version": pending.get("build_version"),
+        "build_identity": pending.get("build_identity"),
+        "artifact_sha256": pending.get("artifact_sha256"),
+        "launcher_sha256": pending.get("launcher_sha256"),
+        "environment_identity": pending.get("environment_identity"),
         "dirty": pending.get("dirty"),
         "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "harness_version": HARNESS_VERSION,
         "corpus_shape": pending.get("corpus_shape"),
         "inventory_provider_requested": pending.get("inventory_provider_requested"),
+        "inventory_identity_declaration": identity_declaration,
         "note": args.note or pending.get("note", ""),
         **walk_facts,
         **inventory_facts,
@@ -823,6 +1077,9 @@ def cmd_capture(args: argparse.Namespace) -> int:
     port = pending.get("port")
     if not isinstance(port, int):
         raise SystemExit("pending browser run has no valid port")
+    url = pending.get("url")
+    if not isinstance(url, str):
+        raise SystemExit("pending browser run has no measurement URL")
     node = shutil.which("node")
     if node is None:
         raise SystemExit("node is required for browser capture")
@@ -831,7 +1088,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
         node,
         str(CAPTURE_BROWSER),
         "--url",
-        f"http://127.0.0.1:{port}/view/",
+        url,
         "--probe",
         str(PROBE),
         "--output",
@@ -877,10 +1134,158 @@ def _summarize(runs: list[dict[str, Any]], metric: str) -> str:
 def cmd_compare(args: argparse.Namespace) -> int:
     runs = _load_runs()
     labels = args.labels
+    if len(labels) < 2 or len(set(labels)) != len(labels):
+        raise SystemExit("compare requires at least two distinct condition labels")
     by_label = {label: [r for r in runs if r.get("label") == label] for label in labels}
     missing = [label for label, rows in by_label.items() if not rows]
     if missing:
         raise SystemExit(f"no runs recorded for: {', '.join(missing)}")
+
+    identity_fields = (
+        "build_identity",
+        "build_version",
+        "commit",
+        "dirty",
+        "experiment",
+        "harness_version",
+        "corpus",
+        "corpus_fingerprint",
+        "corpus_shape",
+        "files",
+        "inventory_identity_declaration",
+        "inventory_provider_requested",
+        "inventory_provider",
+        "inventory_contract",
+    )
+    identity_errors: list[str] = []
+    for label, rows in by_label.items():
+        declarations = {
+            json.dumps(row.get("inventory_identity_declaration"), sort_keys=True) for row in rows
+        }
+        declaration = rows[0].get("inventory_identity_declaration")
+        for field in identity_fields:
+            values = {json.dumps(row.get(field), sort_keys=True) for row in rows}
+            if len(values) != 1:
+                identity_errors.append(f"{label} spans multiple {field} values")
+            elif (
+                next(iter(values)) == "null"
+                and field not in {"inventory_identity_declaration"}
+                and not (
+                    declaration == PRE_CONTRACT_INVENTORY_IDENTITY_MISSING
+                    and field in {"inventory_provider", "inventory_contract"}
+                )
+            ):
+                identity_errors.append(f"{label} has no {field}")
+        if len(declarations) == 1 and declaration not in (
+            None,
+            PRE_CONTRACT_INVENTORY_IDENTITY_MISSING,
+        ):
+            identity_errors.append(f"{label} has an unknown inventory identity declaration")
+        if declaration == PRE_CONTRACT_INVENTORY_IDENTITY_MISSING:
+            if any(
+                row.get(field) is not None
+                for row in rows
+                for field in ("inventory_provider", "inventory_contract")
+            ):
+                identity_errors.append(
+                    f"{label} declares a pre-contract identity gap but records an identity"
+                )
+            if any(
+                not str(row.get("build_identity", "")).startswith("wheel:sha256:") for row in rows
+            ):
+                identity_errors.append(
+                    f"{label} uses a pre-contract identity declaration without an attested wheel"
+                )
+    shared_fields = (
+        "experiment",
+        "harness_version",
+        "corpus",
+        "corpus_fingerprint",
+        "corpus_shape",
+        "files",
+        "inventory_provider_requested",
+    )
+    for field in shared_fields:
+        values = {
+            json.dumps(rows[0].get(field), sort_keys=True) for rows in by_label.values() if rows
+        }
+        if len(values) != 1:
+            identity_errors.append(f"conditions do not share one {field}")
+    observed_conditions = [
+        rows[0]
+        for rows in by_label.values()
+        if rows[0].get("inventory_identity_declaration") is None
+    ]
+    for field in ("inventory_provider", "inventory_contract"):
+        values = {json.dumps(row.get(field), sort_keys=True) for row in observed_conditions}
+        if len(values) > 1:
+            identity_errors.append(f"observed conditions do not share one {field}")
+    browser_identity_fields = (
+        "viewport_w",
+        "viewport_h",
+        "device_scale_factor",
+        "browser_identity",
+        "browser_platform",
+    )
+    browser_rows_by_label = {
+        label: [row for row in rows if "route" not in row] for label, rows in by_label.items()
+    }
+    for label, rows in browser_rows_by_label.items():
+        if not rows:
+            continue
+        for field in browser_identity_fields:
+            values = {json.dumps(row.get(field), sort_keys=True) for row in rows}
+            if len(values) != 1:
+                identity_errors.append(f"{label} spans multiple {field} values")
+            elif not values or next(iter(values)) == "null":
+                identity_errors.append(f"{label} has no {field}")
+    if any(browser_rows_by_label.values()):
+        missing_browser = [label for label, rows in browser_rows_by_label.items() if not rows]
+        if missing_browser:
+            identity_errors.append(f"conditions have no browser rows: {', '.join(missing_browser)}")
+        for field in browser_identity_fields:
+            values = {
+                json.dumps(rows[0].get(field), sort_keys=True)
+                for rows in browser_rows_by_label.values()
+                if rows
+            }
+            if len(values) != 1:
+                identity_errors.append(f"conditions do not share one {field}")
+    expected_builds: dict[str, str] = {}
+    for declaration in args.expect_build:
+        label, separator, identity = declaration.partition("=")
+        if not separator or not label or not identity or label in expected_builds:
+            identity_errors.append(f"invalid --expect-build declaration {declaration!r}")
+            continue
+        expected_builds[label] = identity
+    if set(expected_builds) != set(labels):
+        identity_errors.append("--expect-build must name every compared label exactly once")
+    for label, rows in by_label.items():
+        actual = {str(row.get("build_identity")) for row in rows}
+        expected = expected_builds.get(label)
+        if expected is not None and actual != {expected}:
+            identity_errors.append(
+                f"{label} is {', '.join(sorted(actual))}, not expected build {expected}"
+            )
+        if all(identity.startswith("wheel:sha256:") for identity in actual):
+            for field in ("artifact_sha256", "launcher_sha256", "environment_identity"):
+                values = {json.dumps(row.get(field), sort_keys=True) for row in rows}
+                if len(values) != 1 or next(iter(values)) == "null":
+                    identity_errors.append(f"{label} has inconsistent or missing {field}")
+    actual_identities = {str(rows[0].get("build_identity")) for rows in by_label.values()}
+    if len(actual_identities) != len(labels):
+        identity_errors.append("comparison conditions do not use distinct build artifacts")
+    external_environments = {
+        str(rows[0].get("environment_identity"))
+        for rows in by_label.values()
+        if str(rows[0].get("build_identity", "")).startswith("wheel:sha256:")
+    }
+    if len(external_environments) > 1:
+        identity_errors.append("external conditions do not share one runtime environment")
+    if identity_errors:
+        raise SystemExit("incompatible performance evidence: " + "; ".join(identity_errors))
+
+    candidate_label = labels[-1]
 
     # A label pools every run that ever carried it, and the ledger is
     # append-only across rounds, so a reused label silently mixes corpora. The
@@ -947,7 +1352,6 @@ def cmd_compare(args: argparse.Namespace) -> int:
             if invalid:
                 evidence_errors.append(f"{label} run {index}:\n{format_issues(invalid)}")
 
-    candidate_label = labels[-1]
     candidate_issues = [
         issue
         for run in browser_by_label[candidate_label]
@@ -1248,13 +1652,28 @@ def cmd_report(_args: argparse.Namespace) -> int:
     add("Conditions are grouped by corpus, because none of these numbers compare across one.")
     add("")
 
-    by_corpus: dict[Any, list[dict[str, Any]]] = {}
+    by_corpus: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
     for run in runs:
-        by_corpus.setdefault(run.get("files"), []).append(run)
+        key = (
+            run.get("experiment"),
+            run.get("corpus"),
+            run.get("corpus_fingerprint"),
+            run.get("corpus_shape"),
+            run.get("harness_version"),
+            run.get("files"),
+        )
+        by_corpus.setdefault(key, []).append(run)
 
-    for files in sorted(by_corpus, key=lambda value: (value is None, value)):
-        corpus_runs = by_corpus[files]
-        add(f"### {files:,} files" if isinstance(files, int) else "### corpus unrecorded")
+    for key in sorted(by_corpus, key=lambda value: tuple(str(part) for part in value)):
+        experiment, corpus, fingerprint, shape, harness, files = key
+        corpus_runs = by_corpus[key]
+        count = f"{files:,} files" if isinstance(files, int) else "file count unrecorded"
+        add(
+            f"### {count} — {experiment or 'experiment unrecorded'} / "
+            f"{corpus or 'corpus unrecorded'}"
+        )
+        add("")
+        add(f"Corpus `{str(fingerprint or '-')[:16]}`, shape `{shape}`, harness `{harness}`.")
         add("")
         # Browser runs and route samples answer different questions and share no
         # metrics, so one grid holding both is mostly empty cells. Split them.
@@ -1309,10 +1728,10 @@ def cmd_report(_args: argparse.Namespace) -> int:
     add("## Provenance")
     add("")
     add(
-        "| experiment | label | provider | contract | recorded | build | commit | corpus | "
-        "shape | harness | walk |"
+        "| experiment | label | provider | contract | recorded | build | identity | commit | "
+        "corpus | shape | harness | walk |"
     )
-    add("| --- | --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- |")
+    add("| --- | --- | --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- |")
     for run in runs:
         walk = run.get("walk_elapsed_ms")
         walk_text = f"{walk:,} ms" if isinstance(walk, int) else str(run.get("walk_status", "-"))
@@ -1324,7 +1743,8 @@ def cmd_report(_args: argparse.Namespace) -> int:
             f"| {run.get('inventory_provider') or '-'} "
             f"| {run.get('inventory_contract') or '-'} "
             f"| {str(run.get('recorded_at') or '-')[:16]} "
-            f"| {run.get('build_version') or '-'} | {commit} "
+            f"| {run.get('build_version') or '-'} | `{run.get('build_identity') or '-'}` "
+            f"| {commit} "
             f"| {run.get('corpus') or run.get('files') or '-'} "
             f"| {run.get('corpus_shape') if run.get('corpus_shape') is not None else '-'} "
             f"| {run.get('harness_version') or '-'} | {walk_text} |"
@@ -1365,12 +1785,23 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument(
         "--metab",
         default="",
-        help="external Metabrowser console script; requires --build-ref",
+        help="external Metabrowser console script; requires --build-ref and --artifact",
     )
     serve.add_argument(
         "--build-ref",
         default="",
-        help="immutable commit or tag identifying the external build",
+        help="full 40-character source commit identifying the external build",
+    )
+    serve.add_argument(
+        "--artifact",
+        default="",
+        help="exact wheel installed behind the external console script",
+    )
+    serve.add_argument(
+        "--declare-pre-contract-inventory-identity-missing",
+        action="store_true",
+        help="measurement-only declaration that an exact external release predates "
+        "inventory provider and contract diagnostics",
     )
     serve.set_defaults(func=cmd_serve)
 
@@ -1441,6 +1872,13 @@ def main(argv: list[str] | None = None) -> int:
 
     compare = sub.add_parser("compare", help="median and range per label")
     compare.add_argument("labels", nargs="+")
+    compare.add_argument(
+        "--expect-build",
+        action="append",
+        required=True,
+        metavar="LABEL=IDENTITY",
+        help="exact build_identity printed by serve for one condition; repeat for every label",
+    )
     compare.add_argument(
         "--budgets",
         default=str(PERFORMANCE_BUDGETS),

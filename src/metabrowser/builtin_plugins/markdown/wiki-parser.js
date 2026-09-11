@@ -1,9 +1,13 @@
 const MAX_WIKI_SOURCE_CHARACTERS = 2_000_000;
 const MAX_WIKI_TARGETS = 4096;
 const MAX_WIKI_TARGET_CHARACTERS = 16_384;
+// `/api/kpress/render` accepts at most one full text-preview chunk for an
+// explicitly transformed source. Keep the Worker reply inside the same contract.
+const MAX_TRANSFORMED_SOURCE_BYTES = 8 * 1024 * 1024;
 const MAX_UNICODE_CODE_POINT = 0x10ffff;
 const MIN_UNICODE_SURROGATE = 0xd800;
 const MAX_UNICODE_SURROGATE = 0xdfff;
+const MAX_INLINE_DELIMITER_PASSES = 5;
 
 /**
  * Convert Obsidian wiki syntax to inert, sanitizable metadata before Markdown rendering.
@@ -19,29 +23,37 @@ export function preprocessObsidianWiki(source) {
     throw new TypeError("Obsidian preprocessing requires source text");
   }
   if (source.length > MAX_WIKI_SOURCE_CHARACTERS) {
-    return Object.freeze({ blockCount: 0, changed: false, source, targetCount: 0 });
+    return incompletePreprocessingResult(source, createWorkMetrics(), "source-too-large");
+  }
+
+  const metrics = createWorkMetrics();
+  if (!hasPreprocessingTrigger(source, metrics)) {
+    return preprocessingResult(source, false, 0, 0, metrics, source.length);
   }
 
   let targetCount = 0;
   let blockCount = 0;
   let changed = false;
+  let targetLimited = false;
   /** @type {{character: string, length: number} | null} */
   let fence = null;
   /** @type {string[]} */
   const headingStack = [];
   const anchorIds = new Set();
   const output = [];
-  const lines = source.match(/.*(?:\r\n|\n|\r|$)/g) || [];
+  let outputOffset = 0;
+  const outputBudget = createOutputBudget(source);
+  const literal = markdownLiteralMask(source);
+  metrics.literalMaskCodeUnitsVisited = literal.codeUnitsVisited;
+  const lines = createLineCursor(source, metrics);
+  let current = lines.next();
+  let next = lines.next();
 
-  for (const [lineIndex, lineWithEnding] of lines.entries()) {
-    if (!lineWithEnding) {
-      continue;
-    }
-    const lineEnding = /\r\n$|[\n\r]$/.exec(lineWithEnding)?.[0] || "";
-    const line = lineEnding ? lineWithEnding.slice(0, -lineEnding.length) : lineWithEnding;
+  while (current) {
+    const line = source.slice(current.start, current.contentEnd);
+    const lineEnding = source.slice(current.contentEnd, current.end);
     const fenceRun = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
     if (fence) {
-      output.push(line, lineEnding);
       if (
         fenceRun &&
         fenceRun[0] === fence.character &&
@@ -50,111 +62,486 @@ export function preprocessObsidianWiki(source) {
       ) {
         fence = null;
       }
-      continue;
-    }
-    if (fenceRun) {
+    } else if (fenceRun) {
       fence = { character: fenceRun[0], length: fenceRun.length };
-      output.push(line, lineEnding);
-      continue;
-    }
-
-    const block = findNamedBlock(line);
-    const content = block ? line.slice(0, block.start).trimEnd() : line;
-    const nextLineWithEnding = lines[lineIndex + 1] || "";
-    const nextLineEnding = /\r\n$|[\n\r]$/.exec(nextLineWithEnding)?.[0] || "";
-    const nextLine = nextLineEnding
-      ? nextLineWithEnding.slice(0, -nextLineEnding.length)
-      : nextLineWithEnding;
-    const heading = findMarkdownHeading(content, nextLine);
-    if (heading) {
-      headingStack.splice(heading.level - 1);
-      headingStack[heading.level - 1] = heading.text;
-      const hierarchy = headingStack.filter(Boolean);
-      const keys = hierarchy.map((_heading, index) => hierarchy.slice(index).join("#"));
-      for (const key of keys) {
-        const id = `obsidian-heading-${key}`;
-        if (!anchorIds.has(id)) {
-          output.push(
-            `<span class="metabrowser-wiki-heading" id="${escapeAttribute(id)}"></span>${lineEnding || "\n"}`,
-          );
+    } else {
+      let block = findNamedBlock(line);
+      if (block && literal.mask[current.start + block.start]) {
+        block = null;
+      }
+      let blockMarkup = "";
+      if (block) {
+        const id = `obsidian-block-${block.id}`;
+        const idAttribute = anchorIds.has(id) ? "" : ` id="${escapeAttribute(id)}"`;
+        blockMarkup = `<span class="metabrowser-wiki-block"${idAttribute} data-mb-wiki-block="${escapeAttribute(block.id)}"></span>`;
+        if (!claimReplacement(outputBudget, line.slice(block.start), blockMarkup)) {
+          return outputLimitedResult(source, metrics);
+        } else {
           anchorIds.add(id);
-          changed = true;
         }
       }
-    }
-    const processed = processInline(content, MAX_WIKI_TARGETS - targetCount);
-    targetCount += processed.targetCount;
-    changed ||= processed.changed;
-    output.push(processed.source);
-    if (block) {
-      blockCount += 1;
-      changed = true;
-      const id = `obsidian-block-${block.id}`;
-      const idAttribute = anchorIds.has(id) ? "" : ` id="${escapeAttribute(id)}"`;
-      anchorIds.add(id);
-      output.push(
-        `<span class="metabrowser-wiki-block"${idAttribute} data-mb-wiki-block="${escapeAttribute(block.id)}"></span>`,
+      const content = block ? line.slice(0, block.start).trimEnd() : line;
+      const nextLine = next ? source.slice(next.start, next.contentEnd) : "";
+      const firstContentOffset = content.search(/\S/);
+      const nextContentOffset = nextLine.search(/\S/);
+      const heading =
+        (firstContentOffset !== -1 && literal.mask[current.start + firstContentOffset]) ||
+        (next && nextContentOffset !== -1 && literal.mask[next.start + nextContentOffset])
+          ? null
+          : findMarkdownHeading(content, nextLine);
+      const inserted = [];
+      if (heading) {
+        headingStack.splice(heading.level - 1);
+        headingStack[heading.level - 1] = heading.text;
+        const hierarchy = headingStack.filter(Boolean);
+        for (let index = 0; index < hierarchy.length; index += 1) {
+          const key = hierarchy.slice(index).join("#");
+          const id = `obsidian-heading-${key}`;
+          if (!anchorIds.has(id)) {
+            const anchor = `<span class="metabrowser-wiki-heading" id="${escapeAttribute(id)}"></span>${lineEnding || "\n"}`;
+            if (claimReplacement(outputBudget, "", anchor)) {
+              inserted.push(anchor);
+              anchorIds.add(id);
+            } else {
+              return outputLimitedResult(source, metrics);
+            }
+          }
+        }
+      }
+      const processed = processInline(
+        content,
+        MAX_WIKI_TARGETS - targetCount,
+        metrics,
+        outputBudget,
+        literal.mask,
+        current.start,
       );
+      if (processed.outputLimited) {
+        return outputLimitedResult(source, metrics);
+      }
+      targetCount += processed.targetCount;
+      targetLimited ||= processed.targetLimited;
+      const lineChanged = inserted.length > 0 || processed.changed || Boolean(block);
+      if (lineChanged) {
+        output.push(source.slice(outputOffset, current.start), ...inserted, processed.source);
+        if (block) {
+          blockCount += 1;
+          output.push(blockMarkup);
+        }
+        output.push(lineEnding);
+        outputOffset = current.end;
+        changed = true;
+      }
     }
-    output.push(lineEnding);
+    current = next;
+    next = lines.next();
   }
 
-  return Object.freeze({
+  if (!changed) {
+    return preprocessingResult(source, false, blockCount, targetCount, metrics, source.length);
+  }
+  output.push(source.slice(outputOffset));
+  return preprocessingResult(
+    output.join(""),
+    true,
     blockCount,
-    changed,
-    source: output.join(""),
     targetCount,
-  });
+    metrics,
+    source.length,
+    targetLimited ? "wiki-target-limit" : null,
+  );
 }
 
-/** @param {string} source @param {number} budget */
-function processInline(source, budget) {
+/** @param {string} source @param {number} budget @param {ReturnType<typeof createWorkMetrics>} metrics @param {ReturnType<typeof createOutputBudget>} outputBudget @param {Uint8Array} literalMask @param {number} sourceOffset */
+function processInline(source, budget, metrics, outputBudget, literalMask, sourceOffset) {
   let targetCount = 0;
+  let targetLimited = false;
   let changed = false;
   const output = [];
+  let literalStart = 0;
+  const markdownDelimiter = createScanState();
+  const destinationClose = createScanState();
+  const referenceClose = createScanState();
+  const wikiClose = createScanState();
   for (let index = 0; index < source.length; ) {
-    if (source[index] === "\\" && source.slice(index + 1, index + 3) === "[[") {
-      output.push(source.slice(index, index + 3));
-      index += 3;
+    metrics.inlineCursorSteps += 1;
+    if (literalMask[sourceOffset + index]) {
+      index += 1;
       continue;
     }
-    if (source[index] === "`") {
-      const runLength = repeatedCharacterLength(source, index, "`");
-      const closing = source.indexOf("`".repeat(runLength), index + runLength);
-      const end = closing === -1 ? source.length : closing + runLength;
-      output.push(source.slice(index, end));
-      index = end;
+    if (source[index] === "[" && source[index + 1] === "[" && isEscaped(source, index, metrics)) {
+      index += 2;
       continue;
     }
-    const markdownLinkEnd = findMarkdownLinkEnd(source, index);
+    const markdownLinkEnd = findMarkdownLinkEnd(
+      source,
+      index,
+      markdownDelimiter,
+      destinationClose,
+      referenceClose,
+      metrics,
+    );
     if (markdownLinkEnd !== -1) {
-      output.push(source.slice(index, markdownLinkEnd));
       index = markdownLinkEnd;
       continue;
     }
 
-    const embed = source[index] === "!" && source.slice(index + 1, index + 3) === "[[";
-    const link = source.slice(index, index + 2) === "[[";
-    if ((embed || link) && targetCount < budget) {
+    const embed = source[index] === "!" && source[index + 1] === "[" && source[index + 2] === "[";
+    const link = source[index] === "[" && source[index + 1] === "[";
+    if (embed || link) {
       const openingLength = embed ? 3 : 2;
-      const closing = source.indexOf("]]", index + openingLength);
+      const closing = findPair(source, index + openingLength, "]", "]", wikiClose, metrics);
       if (closing !== -1 && closing - index - openingLength <= MAX_WIKI_TARGET_CHARACTERS) {
         const authored = source.slice(index + openingLength, closing);
         const parsed = parseOccurrence(authored, embed);
         if (parsed.target) {
-          output.push(renderPlaceholder(parsed, embed));
+          if (targetCount >= budget) {
+            targetLimited = true;
+            index = closing + 2;
+            continue;
+          }
+          const rendered = renderPlaceholder(parsed, embed);
+          if (!claimReplacement(outputBudget, source.slice(index, closing + 2), rendered)) {
+            return {
+              changed: false,
+              outputLimited: true,
+              source,
+              targetCount: 0,
+              targetLimited,
+            };
+          }
+          output.push(source.slice(literalStart, index));
+          output.push(rendered);
           targetCount += 1;
           changed = true;
           index = closing + 2;
+          literalStart = index;
           continue;
         }
       }
     }
 
-    output.push(source[index]);
     index += 1;
   }
-  return { changed, source: output.join(""), targetCount };
+  if (!changed) {
+    return { changed: false, source, targetCount, targetLimited };
+  }
+  output.push(source.slice(literalStart));
+  return { changed: true, source: output.join(""), targetCount, targetLimited };
+}
+
+/** Prepare a primary document for KPress without cloning unchanged source through a Worker reply. @param {string} source */
+export function preparePrimaryMarkdownSource(source) {
+  const prepared = preprocessObsidianWiki(source);
+  return Object.freeze({
+    blockCount: prepared.blockCount,
+    changed: prepared.changed,
+    complete: prepared.complete,
+    diagnostics: prepared.diagnostics,
+    metrics: prepared.metrics,
+    source: prepared.changed ? prepared.source : null,
+    targetCount: prepared.targetCount,
+  });
+}
+
+/** Select and preprocess one embedded Markdown region in a single pure operation. @param {string} source @param {string=} fragment */
+export function prepareTransclusionMarkdownSource(source, fragment) {
+  const selection = selectTransclusionSource(source, fragment);
+  if (selection.status !== "selected") {
+    return Object.freeze({
+      metrics: Object.freeze({ selection: selection.metrics }),
+      reason: selection.reason,
+      status: /** @type {const} */ ("missing"),
+    });
+  }
+  const prepared = preprocessObsidianWiki(selection.source);
+  return Object.freeze({
+    blockCount: prepared.blockCount,
+    changed: prepared.changed,
+    complete: prepared.complete,
+    diagnostics: prepared.diagnostics,
+    kind: selection.kind,
+    metrics: Object.freeze({
+      preprocessing: prepared.metrics,
+      selection: selection.metrics,
+    }),
+    source: prepared.source,
+    status: /** @type {const} */ ("selected"),
+    targetCount: prepared.targetCount,
+  });
+}
+
+/**
+ * Select a whole note, heading section, or named block from Markdown source.
+ *
+ * The line cursor retains only offsets. Each source code unit participates in at
+ * most one line-boundary scan, including missing near-tail selections.
+ *
+ * @param {string} source
+ * @param {string=} fragment
+ */
+export function selectTransclusionSource(source, fragment) {
+  if (typeof source !== "string") {
+    throw new TypeError("Transclusion selection requires source text");
+  }
+  const metrics = createWorkMetrics();
+  if (source.length > MAX_WIKI_SOURCE_CHARACTERS) {
+    return selectionFailure("source-too-large", metrics);
+  }
+  if (!fragment) {
+    return selected(source, "note", metrics);
+  }
+  if (fragment.startsWith("obsidian-block-")) {
+    return selectNamedBlock(source, fragment.slice("obsidian-block-".length), metrics);
+  }
+  if (fragment.startsWith("obsidian-heading-")) {
+    return selectHeadingSection(source, fragment.slice("obsidian-heading-".length), metrics);
+  }
+  return selectionFailure("unsupported-location", metrics);
+}
+
+/** @param {string} source @param {string} target @param {ReturnType<typeof createWorkMetrics>} metrics */
+function selectHeadingSection(source, target, metrics) {
+  if (!target) {
+    return selectionFailure("missing-location", metrics);
+  }
+  const lines = createLineCursor(source, metrics);
+  const headingStack = [];
+  let fence = null;
+  let selectedStart = -1;
+  let selectedLevel = 0;
+  let current = lines.next();
+  let next = lines.next();
+  while (current) {
+    const line = source.slice(current.start, current.contentEnd);
+    const fenceRun = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1] || null;
+    if (fence) {
+      if (
+        fenceRun &&
+        fenceRun[0] === fence.character &&
+        fenceRun.length >= fence.length &&
+        line.slice(line.indexOf(fenceRun) + fenceRun.length).trim() === ""
+      ) {
+        fence = null;
+      }
+    } else if (fenceRun) {
+      fence = { character: fenceRun[0], length: fenceRun.length };
+    } else {
+      const block = findNamedBlock(line);
+      const content = block ? line.slice(0, block.start).trimEnd() : line;
+      const nextLine = next ? source.slice(next.start, next.contentEnd) : "";
+      const heading = findMarkdownHeading(content, nextLine);
+      if (heading) {
+        if (selectedStart !== -1 && heading.level <= selectedLevel) {
+          return selected(source.slice(selectedStart, current.start), "heading", metrics);
+        }
+        headingStack.splice(heading.level - 1);
+        headingStack[heading.level - 1] = heading.text;
+        const hierarchy = headingStack.filter(Boolean);
+        const matches = hierarchy.some(
+          (_heading, offset) => hierarchy.slice(offset).join("#") === target,
+        );
+        if (selectedStart === -1 && matches) {
+          selectedStart = current.start;
+          selectedLevel = heading.level;
+        }
+      }
+    }
+    current = next;
+    next = lines.next();
+  }
+  return selectedStart === -1
+    ? selectionFailure("missing-location", metrics)
+    : selected(source.slice(selectedStart), "heading", metrics);
+}
+
+/** @param {string} source @param {string} target @param {ReturnType<typeof createWorkMetrics>} metrics */
+function selectNamedBlock(source, target, metrics) {
+  if (!/^[A-Za-z0-9-]+$/.test(target)) {
+    return selectionFailure("missing-location", metrics);
+  }
+  const lines = createLineCursor(source, metrics);
+  let fence = null;
+  let blockStart = 0;
+  let current = lines.next();
+  let next = lines.next();
+  while (current) {
+    const line = source.slice(current.start, current.contentEnd);
+    const lineEnding = source.slice(current.contentEnd, current.end);
+    const fenceRun = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1] || null;
+    if (fence) {
+      if (
+        fenceRun &&
+        fenceRun[0] === fence.character &&
+        fenceRun.length >= fence.length &&
+        line.slice(line.indexOf(fenceRun) + fenceRun.length).trim() === ""
+      ) {
+        fence = null;
+        blockStart = current.end;
+      }
+    } else if (fenceRun) {
+      fence = { character: fenceRun[0], length: fenceRun.length };
+      blockStart = current.end;
+    } else if (!line.trim()) {
+      blockStart = current.end;
+    } else {
+      const block = findNamedBlock(line);
+      if (block?.id === target) {
+        return selected(
+          `${source.slice(blockStart, current.start)}${line.slice(0, block.start).trimEnd()}${lineEnding}`,
+          "block",
+          metrics,
+        );
+      }
+      const nextLine = next ? source.slice(next.start, next.contentEnd) : "";
+      if (findMarkdownHeading(line, nextLine) || /^ {0,3}(?:=+|-+)[\t ]*$/.test(line)) {
+        blockStart = current.end;
+      }
+    }
+    current = next;
+    next = lines.next();
+  }
+  return selectionFailure("missing-location", metrics);
+}
+
+/** @param {string} source @param {"note" | "heading" | "block"} kind @param {ReturnType<typeof createWorkMetrics>} metrics */
+function selected(source, kind, metrics) {
+  return Object.freeze({
+    kind,
+    metrics: frozenMetrics(metrics),
+    source,
+    status: /** @type {const} */ ("selected"),
+  });
+}
+
+/** @param {string} reason @param {ReturnType<typeof createWorkMetrics>} metrics */
+function selectionFailure(reason, metrics) {
+  return Object.freeze({
+    metrics: frozenMetrics(metrics),
+    reason,
+    status: /** @type {const} */ ("missing"),
+  });
+}
+
+function createWorkMetrics() {
+  return {
+    delimiterSteps: 0,
+    inlineCursorSteps: 0,
+    literalMaskCodeUnitsVisited: 0,
+    lineCodeUnitsVisited: 0,
+    triggerCodeUnitsVisited: 0,
+  };
+}
+
+/** @param {string} source @param {ReturnType<typeof createWorkMetrics>} metrics */
+function hasPreprocessingTrigger(source, metrics) {
+  for (let index = 0; index < source.length; index += 1) {
+    metrics.triggerCodeUnitsVisited += 1;
+    const character = source[index];
+    if (
+      character === "[" ||
+      character === "#" ||
+      character === "^" ||
+      character === "=" ||
+      character === "-"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** @param {string} source @param {ReturnType<typeof createWorkMetrics>} metrics */
+function createLineCursor(source, metrics) {
+  let offset = 0;
+  return Object.freeze({
+    next() {
+      if (offset >= source.length) {
+        return null;
+      }
+      const start = offset;
+      while (offset < source.length && source[offset] !== "\n" && source[offset] !== "\r") {
+        metrics.lineCodeUnitsVisited += 1;
+        offset += 1;
+      }
+      const contentEnd = offset;
+      if (offset < source.length) {
+        metrics.lineCodeUnitsVisited += 1;
+        const first = source[offset];
+        offset += 1;
+        if (first === "\r" && source[offset] === "\n") {
+          metrics.lineCodeUnitsVisited += 1;
+          offset += 1;
+        }
+      }
+      return Object.freeze({ contentEnd, end: offset, start });
+    },
+  });
+}
+
+/** @param {string} source @param {boolean} changed @param {number} blockCount @param {number} targetCount @param {ReturnType<typeof createWorkMetrics>} metrics @param {number} inputLength @param {string | null=} diagnosticCode */
+function preprocessingResult(
+  source,
+  changed,
+  blockCount,
+  targetCount,
+  metrics,
+  inputLength,
+  diagnosticCode = null,
+) {
+  assertLinearWork(metrics, inputLength);
+  return Object.freeze({
+    blockCount,
+    changed,
+    complete: diagnosticCode === null,
+    diagnostics: Object.freeze(diagnosticCode ? [Object.freeze({ code: diagnosticCode })] : []),
+    metrics: frozenMetrics(metrics),
+    source,
+    targetCount,
+  });
+}
+
+/** @param {ReturnType<typeof createWorkMetrics>} metrics @param {number} inputLength */
+function assertLinearWork(metrics, inputLength) {
+  if (
+    metrics.inlineCursorSteps > inputLength ||
+    metrics.delimiterSteps > MAX_INLINE_DELIMITER_PASSES * inputLength ||
+    metrics.literalMaskCodeUnitsVisited > 6 * inputLength ||
+    metrics.lineCodeUnitsVisited > inputLength ||
+    metrics.triggerCodeUnitsVisited > inputLength
+  ) {
+    throw new Error("Markdown preprocessing exceeded its linear-work invariant");
+  }
+}
+
+/** @param {string} source @param {ReturnType<typeof createWorkMetrics>} metrics */
+function outputLimitedResult(source, metrics) {
+  assertLinearWork(metrics, source.length);
+  return incompletePreprocessingResult(source, metrics, "transformed-source-byte-limit");
+}
+
+/** @param {string} source @param {ReturnType<typeof createWorkMetrics>} metrics @param {string} code */
+function incompletePreprocessingResult(source, metrics, code) {
+  return Object.freeze({
+    blockCount: 0,
+    changed: false,
+    complete: false,
+    diagnostics: Object.freeze([Object.freeze({ code })]),
+    metrics: frozenMetrics(metrics),
+    source,
+    targetCount: 0,
+  });
+}
+
+/** @param {ReturnType<typeof createWorkMetrics>} metrics */
+function frozenMetrics(metrics) {
+  return Object.freeze({
+    delimiterSteps: metrics.delimiterSteps,
+    inlineCursorSteps: metrics.inlineCursorSteps,
+    literalMaskCodeUnitsVisited: metrics.literalMaskCodeUnitsVisited,
+    lineCodeUnitsVisited: metrics.lineCodeUnitsVisited,
+    triggerCodeUnitsVisited: metrics.triggerCodeUnitsVisited,
+  });
 }
 
 /** @param {string} authored @param {boolean} embed */
@@ -268,43 +655,298 @@ function insideInlineCode(source, offset) {
   return delimiter !== 0;
 }
 
-/** @param {string} source @param {number} index */
-function findMarkdownLinkEnd(source, index) {
+/**
+ * @param {string} source
+ * @param {number} index
+ * @param {ReturnType<typeof createScanState>} delimiter
+ * @param {ReturnType<typeof createScanState>} destinationClose
+ * @param {ReturnType<typeof createScanState>} referenceClose
+ * @param {ReturnType<typeof createWorkMetrics>} metrics
+ */
+function findMarkdownLinkEnd(source, index, delimiter, destinationClose, referenceClose, metrics) {
   const image = source[index] === "!" && source[index + 1] === "[" && source[index + 2] !== "[";
   const link = source[index] === "[" && source[index + 1] !== "[";
   if (!image && !link) {
     return -1;
   }
   const labelStart = index + (image ? 2 : 1);
-  const inlineEnd = source.indexOf("](", labelStart);
-  const referenceEnd = source.indexOf("][", labelStart);
-  const labelEnd =
-    inlineEnd === -1
-      ? referenceEnd
-      : referenceEnd === -1
-        ? inlineEnd
-        : Math.min(inlineEnd, referenceEnd);
+  const labelEnd = findMarkdownDelimiter(source, labelStart, delimiter, metrics);
   if (labelEnd === -1) {
     return -1;
   }
-  if (labelEnd === inlineEnd) {
-    const destinationEnd = source.indexOf(")", labelEnd + 2);
+  if (source[labelEnd + 1] === "(") {
+    const destinationEnd = findCharacter(source, labelEnd + 2, ")", destinationClose, metrics);
     return destinationEnd === -1 ? -1 : destinationEnd + 1;
   }
-  if (labelEnd === referenceEnd) {
-    const referenceEnd = source.indexOf("]", labelEnd + 2);
-    return referenceEnd === -1 ? -1 : referenceEnd + 1;
+  const referenceEnd = findCharacter(source, labelEnd + 2, "]", referenceClose, metrics);
+  return referenceEnd === -1 ? -1 : referenceEnd + 1;
+}
+
+/** @param {string} source @param {number} index @param {string} character @param {ReturnType<typeof createWorkMetrics>=} metrics */
+function repeatedCharacterLength(source, index, character, metrics) {
+  let end = index;
+  while (source[end] === character) {
+    if (metrics) {
+      metrics.delimiterSteps += 1;
+    }
+    end += 1;
+  }
+  return end - index;
+}
+
+function createScanState() {
+  return { cursor: 0, match: -1 };
+}
+
+/** @param {string} source @param {number} start @param {ReturnType<typeof createScanState>} state @param {ReturnType<typeof createWorkMetrics>} metrics */
+function findMarkdownDelimiter(source, start, state, metrics) {
+  if (state.match >= start) {
+    return state.match;
+  }
+  if (state.match !== -1) {
+    state.cursor = state.match + 1;
+    state.match = -1;
+  }
+  state.cursor = Math.max(state.cursor, start);
+  while (state.cursor + 1 < source.length) {
+    const cursor = state.cursor;
+    state.cursor += 1;
+    metrics.delimiterSteps += 1;
+    if (source[cursor] === "]" && (source[cursor + 1] === "(" || source[cursor + 1] === "[")) {
+      state.match = cursor;
+      return cursor;
+    }
+  }
+  state.cursor = source.length;
+  return -1;
+}
+
+/** @param {string} source @param {number} start @param {string} first @param {string} second @param {ReturnType<typeof createScanState>} state @param {ReturnType<typeof createWorkMetrics>} metrics */
+function findPair(source, start, first, second, state, metrics) {
+  if (state.match >= start) {
+    return state.match;
+  }
+  if (state.match !== -1) {
+    state.cursor = state.match + 1;
+    state.match = -1;
+  }
+  state.cursor = Math.max(state.cursor, start);
+  while (state.cursor + 1 < source.length) {
+    const cursor = state.cursor;
+    state.cursor += 1;
+    metrics.delimiterSteps += 1;
+    if (source[cursor] === first && source[cursor + 1] === second) {
+      state.match = cursor;
+      return cursor;
+    }
+  }
+  state.cursor = source.length;
+  return -1;
+}
+
+/** @param {string} source @param {number} start @param {string} character @param {ReturnType<typeof createScanState>} state @param {ReturnType<typeof createWorkMetrics>} metrics */
+function findCharacter(source, start, character, state, metrics) {
+  if (state.match >= start) {
+    return state.match;
+  }
+  if (state.match !== -1) {
+    state.cursor = state.match + 1;
+    state.match = -1;
+  }
+  state.cursor = Math.max(state.cursor, start);
+  while (state.cursor < source.length) {
+    const cursor = state.cursor;
+    state.cursor += 1;
+    metrics.delimiterSteps += 1;
+    if (source[cursor] === character) {
+      state.match = cursor;
+      return cursor;
+    }
   }
   return -1;
 }
 
-/** @param {string} source @param {number} index @param {string} character */
-function repeatedCharacterLength(source, index, character) {
-  let end = index;
-  while (source[end] === character) {
-    end += 1;
+/**
+ * Mark fenced code, indented code, HTML comments, and exact-run CommonMark code
+ * spans. The reverse successor table makes unmatched and asymmetric backtick
+ * runs literal without rescanning a suffix for each opener.
+ *
+ * @param {string} source
+ */
+export function markdownLiteralMask(source) {
+  const mask = new Uint8Array(source.length);
+  let codeUnitsVisited = 0;
+  let offset = 0;
+  let fence = null;
+  let inComment = false;
+  let rawLiteralElement = "";
+  let rawBlockUntilBlank = false;
+  while (offset < source.length) {
+    const start = offset;
+    while (offset < source.length && source[offset] !== "\n" && source[offset] !== "\r") {
+      offset += 1;
+      codeUnitsVisited += 1;
+    }
+    const contentEnd = offset;
+    if (offset < source.length) {
+      const first = source[offset];
+      offset += 1;
+      codeUnitsVisited += 1;
+      if (first === "\r" && source[offset] === "\n") {
+        offset += 1;
+        codeUnitsVisited += 1;
+      }
+    }
+    const line = source.slice(start, contentEnd);
+    if (rawBlockUntilBlank) {
+      if (line.trim() === "") {
+        rawBlockUntilBlank = false;
+      } else {
+        mask.fill(1, start, offset);
+      }
+      continue;
+    }
+    if (rawLiteralElement) {
+      mask.fill(1, start, offset);
+      if (new RegExp(`</${rawLiteralElement}\\s*>`, "i").test(line)) {
+        rawLiteralElement = "";
+      }
+      continue;
+    }
+    const rawOpening = inComment
+      ? null
+      : /^ {0,3}<(script|pre|style|textarea)(?:\s|>|$)/i.exec(line);
+    if (rawOpening) {
+      rawLiteralElement = rawOpening[1].toLowerCase();
+      mask.fill(1, start, offset);
+      if (new RegExp(`</${rawLiteralElement}\\s*>`, "i").test(line)) {
+        rawLiteralElement = "";
+      }
+      continue;
+    }
+    const rawBlockOpening = inComment
+      ? null
+      : /^ {0,3}<\/?(?:address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?:\s|\/?>|$)/i.exec(
+          line,
+        );
+    if (rawBlockOpening) {
+      rawBlockUntilBlank = true;
+      mask.fill(1, start, offset);
+      continue;
+    }
+    const fenceRun = inComment ? null : /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1] || null;
+    if (fence) {
+      mask.fill(1, start, offset);
+      if (
+        fenceRun &&
+        fenceRun[0] === fence.character &&
+        fenceRun.length >= fence.length &&
+        line.slice(line.indexOf(fenceRun) + fenceRun.length).trim() === ""
+      ) {
+        fence = null;
+      }
+      continue;
+    }
+    if (fenceRun) {
+      fence = { character: fenceRun[0], length: fenceRun.length };
+      mask.fill(1, start, offset);
+      continue;
+    }
+    if (!inComment && /^(?: {4}|\t)/.test(line)) {
+      mask.fill(1, start, offset);
+      continue;
+    }
+    for (let cursor = start; cursor < contentEnd; ) {
+      codeUnitsVisited += 1;
+      if (!inComment && source.startsWith("<!--", cursor)) {
+        mask.fill(1, cursor, Math.min(cursor + 4, contentEnd));
+        cursor += 4;
+        inComment = true;
+      } else if (inComment && source.startsWith("-->", cursor)) {
+        mask.fill(1, cursor, Math.min(cursor + 3, contentEnd));
+        cursor += 3;
+        inComment = false;
+      } else {
+        if (inComment) {
+          mask[cursor] = 1;
+        }
+        cursor += 1;
+      }
+    }
   }
-  return end - index;
+
+  const nextEqualRun = new Int32Array(source.length);
+  const lastRunByLength = new Map();
+  for (let index = source.length - 1; index >= 0; ) {
+    codeUnitsVisited += 1;
+    if (mask[index] || source[index] !== "`") {
+      index -= 1;
+      continue;
+    }
+    const end = index + 1;
+    while (index >= 0 && !mask[index] && source[index] === "`") {
+      index -= 1;
+    }
+    const start = index + 1;
+    const length = end - start;
+    const next = lastRunByLength.get(length);
+    if (next !== undefined) {
+      nextEqualRun[start] = next + 1;
+    }
+    lastRunByLength.set(length, start);
+  }
+
+  for (let index = 0; index < source.length; ) {
+    codeUnitsVisited += 1;
+    if (mask[index] || source[index] !== "`") {
+      index += 1;
+      continue;
+    }
+    let end = index + 1;
+    while (end < source.length && !mask[end] && source[end] === "`") {
+      end += 1;
+    }
+    const closing = nextEqualRun[index] - 1;
+    if (closing >= 0) {
+      const spanEnd = closing + (end - index);
+      mask.fill(1, index, spanEnd);
+      codeUnitsVisited += spanEnd - index;
+      index = spanEnd;
+    } else {
+      index = end;
+    }
+  }
+  return Object.freeze({ codeUnitsVisited, mask });
+}
+
+/** @param {string} source */
+function createOutputBudget(source) {
+  return { bytes: utf8ByteLength(source), limit: MAX_TRANSFORMED_SOURCE_BYTES };
+}
+
+/** @param {ReturnType<typeof createOutputBudget>} budget @param {string} original @param {string} replacement */
+function claimReplacement(budget, original, replacement) {
+  const next = budget.bytes - utf8ByteLength(original) + utf8ByteLength(replacement);
+  if (next > budget.limit) {
+    return false;
+  }
+  budget.bytes = next;
+  return true;
+}
+
+/** @param {string} value */
+function utf8ByteLength(value) {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+/** @param {string} source @param {number} index @param {ReturnType<typeof createWorkMetrics>} metrics */
+function isEscaped(source, index, metrics) {
+  let escapes = 0;
+  for (let probe = index - 1; probe >= 0 && source[probe] === "\\"; probe -= 1) {
+    metrics.delimiterSteps += 1;
+    escapes += 1;
+  }
+  return escapes % 2 === 1;
 }
 
 /** @param {string} value */

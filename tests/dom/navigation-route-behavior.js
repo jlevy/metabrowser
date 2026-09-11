@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const repoRoot = path.resolve(process.argv[2]);
+const repoRoot = path.resolve(process.argv[2] || path.join(__dirname, "../.."));
 const failures = [];
 
 function check(name, condition, detail = "failed") {
@@ -24,10 +24,46 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
-const source = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/navigation.js"), "utf8");
-vm.runInContext(source, sandbox, { filename: "navigation.js" });
+const sourcePath = path.join(repoRoot, "src/metabrowser/static/navigation.js");
+const source = fs.readFileSync(sourcePath, "utf8");
+vm.runInContext(source, sandbox, { filename: sourcePath });
 
 const route = sandbox.MetabrowserNavigationRoute;
+
+equal(
+  "slash-bearing Git ref gets one encoded revision segment",
+  route.commitHref("refs/heads/main"),
+  "/commit/refs%2Fheads%2Fmain",
+);
+equal("slash-bearing Git ref parses", route.parseCommit("/commit/refs%2Fheads%2Fmain"), {
+  revision: "refs/heads/main",
+  file: "",
+});
+equal(
+  "slash-bearing Git ref and inner path parse independently",
+  route.parseCommit("/commit/refs%2Fheads%2Ffeature/src/app.py"),
+  { revision: "refs/heads/feature", file: "src/app.py" },
+);
+for (const pathname of [
+  "/commit/main/src%2Fapp.py",
+  "/commit/main/src%5Capp.py",
+  "/commit/main/src%00app.py",
+]) {
+  equal(
+    `reject encoded separator in commit inner path ${pathname}`,
+    route.parseCommit(pathname),
+    null,
+  );
+}
+for (const revision of ["", ".bad", "bad ref", "x".repeat(257)]) {
+  let rejected = false;
+  try {
+    route.commitHref(revision);
+  } catch (error) {
+    rejected = error instanceof TypeError;
+  }
+  check(`reject invalid commit revision ${JSON.stringify(revision)}`, rejected);
+}
 
 equal("root href", route.href({ path: "" }), "/view/");
 equal("folder href keeps its slash", route.href({ path: "docs/" }), "/view/docs/");

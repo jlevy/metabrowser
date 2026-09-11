@@ -408,14 +408,24 @@ so the next one has to argue for itself rather than cite precedent.
 **Why that one.** A CLI’s startup cost is a tax on every invocation, paid by humans
 waiting and by agents making many calls.
 Importing `metabrowser.server` cost about 345 ms, of which KPress and its rendering
-stack were the largest single contributor — and only three request surfaces need the
-runtime: `/api/kpress/render`, `/api/kpress/export`, and `/kpress-static/*`. The browser
-shell needs KPress font URLs, but derives them from package metadata without loading the
-renderer. No data route touches KPress, so every `--api` call was paying for a renderer
-it never used. Deferring it took `metab --api` from 451 ms to 364 ms, about 19%; the
-later
+stack were the largest single contributor.
+Only three request surfaces need the runtime: `/api/kpress/render`,
+`/api/kpress/export`, and `/kpress-static/*`. The browser shell needs KPress font URLs,
+but derives them from package metadata without loading the renderer.
+No data route touches KPress, so every `--api` call was paying for a renderer it never
+used. Deferring it took `metab --api` from 451 ms to 364 ms, about 19%; the later
 [cold-shell experiment](../explorations/performance-loop/experiments/exp-028-v091-candidate-rejected-on-cold-shell-import.md)
 measures the shell-specific boundary.
+
+Serve is the deliberate exception within this deferred boundary.
+Immediately after its delayed server import, and before Uvicorn starts the inventory
+lifespan, it initializes KPress and resolves the Source Sans font and style-token
+stylesheet that every shell requests.
+An exact 300,000-file cold trace measured the first stylesheet request doing 196.6 ms of
+server work when it also owned the KPress import, compared with 20.9 ms for the ordinary
+shell stylesheet. Moving that fixed cost ahead of the server prevents a render-blocking
+request from competing with inventory startup.
+Non-serve modes remain lazy.
 
 **What a deferral costs.** It trades a startup cost for a first-call cost, and it turns
 a missing dependency from an import error into a run-time one.

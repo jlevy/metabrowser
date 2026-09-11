@@ -228,7 +228,12 @@ def run_serve(
     # Server import performs logging setup and plugin discovery. Keep it after
     # dotenv loading, CLI log-level application, and plugin-dir merging so all
     # startup configuration is visible on the first import.
-    from metabrowser import server
+    from metabrowser import kpress_adapter, server
+
+    # The shell requests these assets on every load. Resolve them before the
+    # inventory lifespan starts so a render-blocking request never owns the
+    # deferred KPress import while the initial walk is competing for the CPU.
+    kpress_adapter.prepare_browser_assets()
 
     try:
         actual_port = find_available_local_port(host, port_search_range(port))

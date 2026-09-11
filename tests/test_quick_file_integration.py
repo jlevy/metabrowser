@@ -68,7 +68,7 @@ def test_file_preview_claims_and_checks_shell_ownership() -> None:
     assert 'claimPreview("file")' in select_block
     assert "isPreviewClaimCurrent(previewClaim)" in select_block
 
-    render_start = js.index("function renderFile(data, preferredViewId, claim)")
+    render_start = js.index("function renderFile(data, preferredViewId, claim, options = {})")
     render_block = js[render_start : render_start + 700]
     assert "isPreviewClaimCurrent(renderClaim)" in render_block
 
@@ -147,12 +147,12 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
 
     fetch_recent = js[
         js.index("function fetchRecent(cursor, preserveRows)") : js.index(
-            "function commitRecentResponse(data)"
+            "function commitRecentResponse(data, cursor)"
         )
     ]
-    assert "commit: () => commitRecentResponse(data)" in fetch_recent
+    assert "commit: () => commitRecentResponse(data, cursor)" in fetch_recent
     commit_recent = js[
-        js.index("function commitRecentResponse(data)") : js.index(
+        js.index("function commitRecentResponse(data, cursor)") : js.index(
             "function renderRecentFromBase()"
         )
     ]
@@ -168,10 +168,10 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
     changes = js[
         js.index("function fileStoreApplyChange(ops)") : js.index("// Mirror entry.active")
     ]
-    assert "knownFileCatalog?.applyEventChange(ops)" in changes
+    assert "quickFileCatalogFeed?.onEventChange(ops)" in changes
 
     resync_start = js.index('addEventListener("fs.resync_required"')
-    resync_block = js[resync_start : resync_start + 700]
+    resync_block = js[resync_start : js.index("inventoryEventSource.onopen", resync_start)]
     assert "knownFileCatalog?.clear()" in resync_block
 
     outcome_start = js.index("function openedFileOutcome(path, data, preview)")
@@ -216,7 +216,7 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
     assert completion_guard < completion_call
 
     resync_start = js.index('addEventListener("fs.resync_required"')
-    resync_block = js[resync_start : resync_start + 700]
+    resync_block = js[resync_start : js.index("inventoryEventSource.onopen", resync_start)]
     assert "quickFileCatalogFeed?.onResync()" in resync_block
     # The catalog clears before the feed refetches, not after.
     assert resync_block.index("knownFileCatalog?.clear()") < resync_block.index("onResync")
@@ -244,24 +244,28 @@ def test_catalog_delivery_is_attributed_with_bounded_work_volume() -> None:
     feed = proc_browser.STATIC_DIR.joinpath("catalog-feed.js").read_text()
 
     assert '"knownFileCatalog:applyCatalogChange"' in feed
-    assert "work_items: upserts + subtreeRemoves + fileRemoves + nonFilePaths" in feed
+    assert '"knownFileCatalog:applyEventChange"' in feed
     assert '"knownFileCatalog:applyBulkSnapshot"' in feed
-    assert "work_items: Array.isArray(payload.files) ? payload.files.length : 0" in feed
-    assert "subtree_removes: subtreeRemoves" in feed
-    assert "file_removes: fileRemoves" in feed
-    assert "non_file_paths: nonFilePaths" in feed
+    assert "const BULK_APPLY_SLICE_ITEMS = 4_096" in feed
+    assert "application.step(BULK_APPLY_SLICE_ITEMS)" in feed
+    assert "metadata.candidate_visits = step.candidateVisits" in feed
+    assert "metadata.work_items = step.workItems" in feed
+    assert "catalog.beginCatalogChange(change.payload, BULK_APPLY_SLICE_ITEMS)" in feed
+    assert "catalog.beginEventChange(change.ops, BULK_APPLY_SLICE_ITEMS)" in feed
 
 
 def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> None:
     js = _read_app_js()
+    navigation = proc_browser.STATIC_DIR.joinpath("navigation.js").read_text()
     select_file = js[
-        js.index("async function selectFile(path, preferredViewId)") : js.index(
-            "// ── File rendering"
-        )
+        js.index("function fileSelectionFailureOutcome(") : js.index("// ── File rendering")
     ]
-    for status in ("opened", "not-found", "error", "cancelled"):
-        assert f'status: "{status}"' in select_file
+    assert 'status: "opened"' in select_file
+    for status in ("not-found", "error", "cancelled"):
+        assert f'status: "{status}"' in navigation
     assert "resp.status === 404" in select_file
+    assert "fileNeedsRevalidate.capture(path)" in select_file
+    assert "fileNeedsRevalidate.settle(path, revalidationMarker)" in select_file
 
     apply_navigation = js[
         js.index("async function applyNavigationTarget(target, context)") : js.index(
@@ -274,7 +278,7 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
     init_block = js[init_start : init_start + 2600]
     assert "fileNeedsRevalidate.add(path)" in init_block
     assert "return navigateToPath(path)" in init_block
-    assert "knownFileCatalog.removePath(path)" in init_block
+    assert 'quickFileCatalogFeed?.onEventChange([{ op: "remove", path }])' in init_block
 
 
 def test_selected_file_cancels_or_joins_matching_hover_prefetch() -> None:
@@ -318,12 +322,12 @@ def test_plugin_navigation_can_prefer_a_destination_view() -> None:
     assert "navigation: MetabrowserNavigationApi;" in types
 
     assert "async function selectFile(path, preferredViewId)" in js
-    assert "function renderFile(data, preferredViewId, claim)" in js
+    assert "function renderFile(data, preferredViewId, claim, options = {})" in js
     assert "async function navigateToPath(path, preferredViewId, routeOptions)" in js
     assert "MetabrowserNavigationRoute.attachController(navigationController)" in js
     assert "metabrowser:open-path" not in js
 
-    render_start = js.index("function renderFile(data, preferredViewId, claim)")
+    render_start = js.index("function renderFile(data, preferredViewId, claim, options = {})")
     render = js[render_start : render_start + 5000]
     assert "preferredViewId: preferredViewId" in render
     assert "options.views.find((view) => view.id === options.preferredViewId)" in composition

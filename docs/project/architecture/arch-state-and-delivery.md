@@ -352,9 +352,36 @@ Bulk state deliberately does not ride the stream.
 `/api/catalog` is a plain JSON response because the gzip middleware compresses it (SSE
 frames are never compressed), its ETag makes refetch-after-reconnect a `304`, and
 encoding runs off the event loop instead of as a synchronous dump inside the stream
-handler.
-Live catalog updates then arrive as `catalog.change`; the pair converges without
-a shared transaction because ops are idempotent by path.
+handler. The client measures response-body delivery and JSON decoding separately, then
+applies the payload through a scheduler-driven transaction.
+Changes from `catalog.change` and the companion `fs.change` seam that arrive before
+publication fold into the same stage.
+The client swaps one complete state and immutable snapshot, then queues one
+invalidation; a completeness subscriber can never finalize between the bulk payload and
+its buffered deltas.
+
+The snapshot contains only safe canonical POSIX-relative file paths and keeps them in
+ascending UTF-16 code-unit order.
+The core rejects absolute, empty-segment, dot-segment, backslash, NUL, trailing-slash,
+and unpaired-surrogate spellings at every ingestion and removal seam, so downstream
+binary-search consumers share one trustworthy contract.
+The core deliberately sets no path-length ceiling.
+A consumer may bound a path it will operate on, but an unrelated valid long path cannot
+make a catalog scan fail depending on where that entry sorts.
+That maintained projection makes exact and subtree-range lookup logarithmic and lets
+`snapshot()` return an already prepared immutable array instead of sorting the catalog
+in a subscriber. Small point changes and misses stay on the measured direct path.
+A point batch proven to contain strictly ordered new tail entries appends in linear
+batch work; replacements, non-tail entries, Unicode order inversions, and deletion
+boundaries use the general ordered merge instead.
+Bulk ingestion records maximal UTF-16-ordered runs from the provider’s UTF-8-ordered
+payload, then cooperatively merges those runs and the retained baseline.
+Every visited or emitted row is charged to the same scheduler slice bound, including the
+private-use BMP and astral ordering boundary where the two runtimes disagree.
+A change whose estimated work exceeds the production slice budget uses the staged
+scheduler, including a subtree removal that covers the entire catalog.
+Cancellation discards stream-generation work, replays independent tree and navigation
+observations, and never publishes a partial stage.
 
 Removal semantics stay explicit on that event.
 `remove_files` names files made ineligible by a gitignored upsert, so the browser
@@ -371,12 +398,13 @@ the event bus rereads current entries and cannot reconstruct their prior types.
 Ordinary directory aggregate upserts carry no transition and still emit no catalog
 companion; an empty `non_file_paths` field is omitted from the wire.
 `removes` names filesystem paths that disappeared and may therefore name directories, so
-the browser performs the prefix sweep needed to evict descendants.
-Combining exact invalidations with subtree removals is a correctness-preserving but
-unbounded-cost mistake: the client has to interpret every exact path as a possible
-directory and scan the complete catalog.
-`tests/dom/known-file-catalog-behavior.js` installs a `Map` that counts key enumeration
-and is the named check that neither exact-removal path enters that scan.
+the browser finds each exact-or-descendant interval with lexical lower bounds.
+It visits only affected candidates; large intervals are deleted through bounded
+scheduled slices. `tests/dom/known-file-catalog-behavior.js` pins membership, ordering,
+provenance, and atomicity.
+`tests/dom/catalog-feed-large-session.js` drives the exact production modules over
+300,000 files and pins slice volume, buffered-delta publication, cancellation,
+generation changes, and worst-case subtree removal without a browser.
 
 ### Routes
 

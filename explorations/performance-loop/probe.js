@@ -12,6 +12,11 @@
 //   2. load that URL in a browser, wait for the tree
 //   3. evaluate this file, copy the JSON
 //   4. explorations/performance-loop/run.py record --label <name> --json '<paste>'
+function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
+  const observed = new Set(labelTotals.map((row) => row.label));
+  return requiredLabels.filter((label) => !observed.has(label));
+}
+
 (async () => {
   const origin = performance.timeOrigin;
   // Freeze the navigation-time profile before this adapter runs its own
@@ -99,6 +104,17 @@
       !r.name.includes("/static/vendor/") && r.startTime < Number(nav.domContentLoadedEventEnd),
   );
   const styles = resources.filter((r) => new URL(r.name).pathname.endsWith(".css"));
+  const blockingStyleUrls = new Set(
+    Array.from(document.querySelectorAll('link[rel~="stylesheet"]'))
+      .filter((link) => !link.disabled && (!link.media || matchMedia(link.media).matches))
+      .map((link) => link.href),
+  );
+  const startupStyles = styles.filter(
+    (r) => blockingStyleUrls.has(r.name) && r.startTime < Number(nav.domContentLoadedEventEnd),
+  );
+  const startupStyleServerMs = startupStyles
+    .map((resource) => resource.serverTiming?.find((entry) => entry.name === "srv")?.duration)
+    .filter((duration) => typeof duration === "number" && Number.isFinite(duration));
   const images = resources.filter((r) => r.initiatorType === "img");
   const apiResources = resources.filter((r) => r.name.includes("/api/"));
 
@@ -182,12 +198,23 @@
   // measured window. Work-item totals preserve the event volume beside the
   // time, so a later optimization cannot look good merely by dropping updates.
   const inventoryDeliveryLabels = [
+    "apiCatalog:parse",
     "fileStoreApplySnapshot",
     "fileStoreApplyChange",
     "knownFileCatalog:applyBulkSnapshot",
     "knownFileCatalog:applyCatalogChange",
+    "knownFileCatalog:applyEventChange",
   ];
   const inventoryDeliveryRows = inventoryDeliveryLabels.map(totalFor).filter((row) => row !== null);
+  const requiredInitialDeliveryLabels = [
+    "apiCatalog:parse",
+    "knownFileCatalog:applyBulkSnapshot",
+    "knownFileCatalog:applyCatalogChange",
+  ];
+  const missingInitialDeliveryLabels = missingRequiredPerformanceLabels(
+    requiredInitialDeliveryLabels,
+    perf.label_totals || [],
+  );
   const inventoryDeliveryWorkMs = inventoryDeliveryRows.reduce(
     (total, row) => total + row.total_ms,
     0,
@@ -377,8 +404,13 @@
     // number — rendered rows, how many rows a page mounts, what counts as on
     // screen — is measured against nothing. A run whose viewport is 0 is not a
     // run; `record` refuses it.
+    measurement_run_id: new URLSearchParams(location.search).get("measurement_run_id"),
+    measurement_origin: location.origin,
     viewport_w: window.innerWidth,
     viewport_h: window.innerHeight,
+    device_scale_factor: window.devicePixelRatio,
+    browser_identity: navigator.userAgent,
+    browser_platform: navigator.platform,
     ttfb_ms: Math.round(nav.responseStart || 0),
     response_download_ms:
       nav.responseEnd && nav.responseStart ? Math.round(nav.responseEnd - nav.responseStart) : null,
@@ -453,7 +485,8 @@
     // browser's bounded historical buffer. The late buffer remains diagnostic
     // and is named as such; it never overwrites the admissible totals.
     ...responsiveness,
-    inventory_delivery_attribution_missing: inventoryDeliveryRows.length === 0 ? 1 : 0,
+    inventory_delivery_attribution_missing: missingInitialDeliveryLabels.length,
+    inventory_delivery_labels_missing: missingInitialDeliveryLabels,
     inventory_delivery_batches: inventoryDeliveryRows.reduce((total, row) => total + row.count, 0),
     inventory_delivery_items: inventoryDeliveryRows.reduce(
       (total, row) => total + (row.work_items_total || 0),
@@ -551,6 +584,33 @@
     startup_scripts_latest: startupScripts
       .slice()
       .sort((left, right) => right.responseEnd - left.responseEnd)
+      .slice(0, 10)
+      .map((resource) => ({
+        path: new URL(resource.name).pathname,
+        start_ms: Math.round(resource.startTime),
+        response_start_ms: Math.round(resource.responseStart),
+        response_end_ms: Math.round(resource.responseEnd),
+        duration_ms: Math.round(resource.duration),
+        wait_ms: Math.round(resource.responseStart - resource.startTime),
+        download_ms: Math.round(resource.responseEnd - resource.responseStart),
+        server_ms: resource.serverTiming?.find((entry) => entry.name === "srv")?.duration ?? null,
+        transfer_kb: Math.round((resource.transferSize || 0) / 1024),
+      })),
+    startup_style_server_ms_max:
+      startupStyles.length && startupStyleServerMs.length === startupStyles.length
+        ? Math.max(...startupStyleServerMs)
+        : null,
+    startup_style_wait_ms_max: startupStyles.length
+      ? Math.round(
+          Math.max(...startupStyles.map((resource) => resource.responseStart - resource.startTime)),
+        )
+      : null,
+    startup_style_last_response_ms: startupStyles.length
+      ? Math.round(Math.max(...startupStyles.map((resource) => resource.responseEnd || 0)))
+      : null,
+    startup_styles_slowest: startupStyles
+      .slice()
+      .sort((left, right) => right.duration - left.duration)
       .slice(0, 10)
       .map((resource) => ({
         path: new URL(resource.name).pathname,

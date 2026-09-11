@@ -12,11 +12,14 @@ function check(name, condition, detail = "failed") {
 function makeContainer() {
   return {
     innerHTML: "",
+    prepended: [],
     classList: { add() {} },
     querySelector() {
       return null;
     },
-    prepend() {},
+    prepend(node) {
+      this.prepended.push(node);
+    },
   };
 }
 
@@ -27,6 +30,17 @@ function makeContainer() {
   );
   globalThis.__markdownEnhanceDisposals = [];
   globalThis.__markdownEnhanceCalls = [];
+  globalThis.__markdownWorkerClients = [];
+  globalThis.document = {
+    createElement() {
+      return {
+        firstElementChild: null,
+        set innerHTML(value) {
+          this.firstElementChild = { html: value };
+        },
+      };
+    },
+  };
   const enhancerStub =
     "export function enhanceRenderedLinks(container,sourcePath,mb,options){" +
     "globalThis.__markdownEnhanceCalls.push({sourcePath,options});" +
@@ -40,13 +54,25 @@ function makeContainer() {
   const wikiStub =
     "export function preprocessObsidianWiki(source){return {changed:source.includes('[[wiki]]'),source:'processed '+source}}";
   const wikiUrl = `data:text/javascript;base64,${Buffer.from(wikiStub).toString("base64")}`;
+  const workerStub =
+    "export function createMarkdownWorkerClient(){const client={disposeCalls:0," +
+    "dispose(){client.disposeCalls+=1},run(_op,payload){" +
+    "const changed=payload.source.includes('[[wiki]]');" +
+    "const limited=payload.source.includes('[[limited]]');" +
+    "return Promise.resolve({changed,complete:!limited," +
+    "diagnostics:limited?[{code:'transformed-source-byte-limit'}]:[]," +
+    "source:changed?'processed '+payload.source:null})}};" +
+    "globalThis.__markdownWorkerClients.push(client);return client}";
+  const workerUrl = `data:text/javascript;base64,${Buffer.from(workerStub).toString("base64")}`;
   // A recognizable stand-in rather than a copy of the key format: this test
   // proves the mount seeds a chain derived from ctx.path, and
   // markdown-transclusion-behavior.js covers the real key spelling.
-  const transclusionStub = 'export function transclusionKey(path){return "key:" + path}';
+  const transclusionStub =
+    'export function transclusionKey(path){return Object.freeze({fragment:"",path})}';
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionStub).toString("base64")}`;
   const importableSource = source
     .replace('"./link-enhancer.js"', JSON.stringify(enhancerUrl))
+    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
     .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
     .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(wikiUrl));
@@ -76,6 +102,7 @@ function makeContainer() {
   const secondMount = module.mountRenderedMarkdown(second, { path: "b.md" }, mb);
   check("first mount declares readiness", firstMount.ready instanceof Promise);
   check("second mount declares readiness", secondMount.ready instanceof Promise);
+  await Promise.resolve();
   check("independent requests", requests.length === 2, String(requests.length));
   requests[1].resolve({ html: "<article>second</article>", diagnostics: [] });
   requests[0].resolve({ html: "<article>first</article>", diagnostics: [] });
@@ -99,16 +126,30 @@ function makeContainer() {
   const enhanceCall = globalThis.__markdownEnhanceCalls.find((call) => call.sourcePath === "a.md");
   check(
     "mount seeds its own transclusion ancestry",
-    JSON.stringify(enhanceCall?.options?.transclusionChain) === JSON.stringify(["key:a.md"]),
+    JSON.stringify(enhanceCall?.options?.transclusionChain) ===
+      JSON.stringify([{ fragment: "", path: "a.md" }]),
     JSON.stringify(globalThis.__markdownEnhanceCalls),
+  );
+  check(
+    "root passes its one owned worker client into link enhancement",
+    enhanceCall?.options?.workerClient === globalThis.__markdownWorkerClients[0],
+  );
+  check(
+    "root worker client is disposed exactly once",
+    globalThis.__markdownWorkerClients[0].disposeCalls === 1,
   );
   check("second remains mounted", !tocDisposals.includes(second));
   secondHandle.dispose();
   check("second disposer", tocDisposals.length === 2, String(tocDisposals.length));
   check("second enhancer disposer", globalThis.__markdownEnhanceDisposals.length === 2);
+  check(
+    "each root owns and disposes only its own worker client",
+    globalThis.__markdownWorkerClients[1].disposeCalls === 1,
+  );
 
   const pending = makeContainer();
   const pendingHandle = module.mountRenderedMarkdown(pending, { path: "pending.md" }, mb);
+  await Promise.resolve();
   const pendingSignal = requests[2].options.signal;
   pendingHandle.dispose();
   check("direct disposer aborts pending request", pendingSignal.aborted === true);
@@ -121,6 +162,7 @@ function makeContainer() {
   const lateMount = module.mountRenderedMarkdown(late, { path: "late.md" }, mb, {
     signal: controller.signal,
   });
+  await Promise.resolve();
   controller.abort();
   requests[3].resolve({ html: "<article>too late</article>", diagnostics: [] });
   await lateMount.ready;
@@ -134,6 +176,7 @@ function makeContainer() {
     { path: "wiki.md", raw: { content: "[[wiki]]" } },
     mb,
   );
+  await Promise.resolve();
   check(
     "wiki source sent after source-aware preprocessing",
     requests[4].options.sourceText === "processed [[wiki]]",
@@ -168,6 +211,31 @@ function makeContainer() {
   requests[5].resolve({ html: "<article>large wiki</article>", diagnostics: [] });
   await truncatedWikiMount.ready;
   truncatedWikiMount.dispose();
+
+  const limitedWiki = makeContainer();
+  const limitedWikiMount = module.mountRenderedMarkdown(
+    limitedWiki,
+    { path: "limited.md", raw: { content: "[[limited]]" } },
+    mb,
+  );
+  await Promise.resolve();
+  check(
+    "incomplete preprocessing renders the original source",
+    requests[6].options.sourceText === undefined,
+  );
+  requests[6].resolve({
+    html: "<article>limited</article>",
+    diagnostics: [{ type: "kpress-warning" }],
+  });
+  await limitedWikiMount.ready;
+  const diagnosticHtml = limitedWiki.prepended[0]?.html || "";
+  check(
+    "preprocessing diagnostics remain visible beside KPress diagnostics",
+    diagnosticHtml.includes("transformed-source-byte-limit") &&
+      diagnosticHtml.includes("kpress-warning"),
+    diagnosticHtml,
+  );
+  limitedWikiMount.dispose();
 
   if (failures.length) {
     console.error(`markdown mount FAILURES:\n- ${failures.join("\n- ")}`);
