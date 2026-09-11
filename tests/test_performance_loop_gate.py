@@ -706,6 +706,31 @@ def test_record_rejects_a_stale_profile_and_changed_corpus(tmp_path: Path) -> No
         )
 
 
+def test_record_refuses_a_measurement_nonce_already_in_the_ledger(tmp_path: Path) -> None:
+    module = _runner()
+    module.PENDING = tmp_path / "pending.json"
+    module.RESULTS = tmp_path / "runs.jsonl"
+    module.PENDING.write_text(
+        json.dumps({"measurement_run_id": "duplicate-run"}),
+        encoding="utf-8",
+    )
+    module.RESULTS.write_text(
+        json.dumps({"measurement_run_id": "duplicate-run"}) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="measurement run nonce.*already recorded"):
+        module.cmd_record(
+            argparse.Namespace(
+                budgets=str(BUDGETS),
+                json=json.dumps(_run("after")),
+                json_file=None,
+                label="",
+                note="",
+            )
+        )
+
+
 def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: Any) -> None:
     module = _runner()
     module.REPO = tmp_path
@@ -885,3 +910,37 @@ def test_record_identity_rejects_missing_and_conflicting_server_facts() -> None:
             "python",
             None,
         )
+
+
+def test_compare_rejects_a_duplicate_measurement_nonce() -> None:
+    module = _runner()
+    before = [_run("before", measurement_run_id=f"before-{index}") for index in range(3)]
+    after = [_run("after", measurement_run_id=f"after-{index}") for index in range(3)]
+    after[2]["measurement_run_id"] = after[0]["measurement_run_id"]
+
+    with pytest.raises(SystemExit, match="duplicate measurement_run_id.*after-0"):
+        _compare(module, [*before, *after])
+
+
+def test_compare_requires_a_nonce_for_current_harness_evidence() -> None:
+    module = _runner()
+    before = [
+        _run(
+            "before",
+            harness_version=module.HARNESS_VERSION,
+            measurement_run_id=f"before-{index}",
+        )
+        for index in range(3)
+    ]
+    after = [
+        _run(
+            "after",
+            harness_version=module.HARNESS_VERSION,
+            measurement_run_id=f"after-{index}",
+        )
+        for index in range(3)
+    ]
+    del after[1]["measurement_run_id"]
+
+    with pytest.raises(SystemExit, match="after row 2 has no measurement_run_id"):
+        _compare(module, [*before, *after])

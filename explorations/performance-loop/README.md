@@ -177,6 +177,10 @@ $UV explorations/performance-loop/run.py report
 inventory provider, provider contract, and unique measurement nonce.
 The nonce travels in the page URL and probe output, so `record` cannot relabel a stale
 profile from another port or build.
+Each nonce is single-use: after `record` appends one row, take another capture only from
+a fresh `serve` run.
+`record` refuses a nonce already present in the ledger, and `compare` rejects duplicate
+nonces in existing evidence.
 The corpus state is fingerprinted before launch and rechecked at record time.
 Headed capture records directly; the manual fallback is accepted only from the pending
 URL. Provenance is filled in automatically: timestamp, commit, whether the tree was

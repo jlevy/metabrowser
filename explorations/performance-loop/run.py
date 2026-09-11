@@ -89,6 +89,9 @@ PENDING = HERE / "results" / "pending.json"
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
 #
+# 21: a measurement run nonce is single-use evidence. Recording refuses a nonce
+# already in the ledger, and comparison independently rejects duplicate rows.
+#
 # 20: a measurement-only declaration admits exact external releases that predate
 # inventory identity diagnostics while recording that evidence gap. External source
 # refs are checked against an embedded version commit when one is available.
@@ -165,7 +168,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 20
+HARNESS_VERSION = 21
 INVENTORY_PROVIDERS = ("python",)
 INVENTORY_CONTRACT = "inventory-provider-v1"
 PRE_CONTRACT_INVENTORY_IDENTITY_MISSING = "pre-contract-provider-and-contract-unreported/v1"
@@ -754,6 +757,20 @@ def _read_pending() -> dict[str, Any]:
     return cast("dict[str, Any]", loaded)
 
 
+def _require_unused_measurement_run_id(pending: dict[str, Any]) -> str:
+    """Return the pending nonce only when no recorded row has consumed it."""
+
+    measurement_run_id = pending.get("measurement_run_id")
+    if not isinstance(measurement_run_id, str) or not measurement_run_id:
+        raise SystemExit("pending browser run has no valid measurement run nonce")
+    if any(run.get("measurement_run_id") == measurement_run_id for run in _load_runs()):
+        raise SystemExit(
+            f"measurement run nonce {measurement_run_id!r} is already recorded; "
+            "start a fresh `serve` run"
+        )
+    return measurement_run_id
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     if args.tree:
         real = Path(args.tree).expanduser().resolve()
@@ -954,9 +971,10 @@ def cmd_record(args: argparse.Namespace) -> int:
             "rows against the viewport, so a run measured at this size is not a run."
         )
     pending = _read_pending()
+    measurement_run_id = _require_unused_measurement_run_id(pending)
     port = int(pending["port"])
     if not is_server_sample:
-        if probe.get("measurement_run_id") != pending.get("measurement_run_id"):
+        if probe.get("measurement_run_id") != measurement_run_id:
             raise SystemExit("browser profile belongs to a different pending measurement run")
         if probe.get("measurement_origin") != pending.get("measurement_origin"):
             raise SystemExit("browser profile origin does not match the pending measurement run")
@@ -1023,6 +1041,7 @@ def cmd_record(args: argparse.Namespace) -> int:
         "corpus_shape": pending.get("corpus_shape"),
         "inventory_provider_requested": pending.get("inventory_provider_requested"),
         "inventory_identity_declaration": identity_declaration,
+        "measurement_run_id": measurement_run_id,
         "note": args.note or pending.get("note", ""),
         **walk_facts,
         **inventory_facts,
@@ -1158,6 +1177,19 @@ def cmd_compare(args: argparse.Namespace) -> int:
         "inventory_contract",
     )
     identity_errors: list[str] = []
+    nonce_locations: dict[str, list[str]] = {}
+    for label, rows in by_label.items():
+        for index, row in enumerate(rows, start=1):
+            nonce = row.get("measurement_run_id")
+            if isinstance(nonce, str) and nonce:
+                nonce_locations.setdefault(nonce, []).append(f"{label} row {index}")
+            elif isinstance(row.get("harness_version"), int) and row["harness_version"] >= 21:
+                identity_errors.append(f"{label} row {index} has no measurement_run_id")
+    for nonce, locations in nonce_locations.items():
+        if len(locations) > 1:
+            identity_errors.append(
+                f"duplicate measurement_run_id {nonce!r} in {', '.join(locations)}"
+            )
     for label, rows in by_label.items():
         declarations = {
             json.dumps(row.get("inventory_identity_declaration"), sort_keys=True) for row in rows
