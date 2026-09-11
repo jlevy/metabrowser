@@ -490,6 +490,27 @@ $ node tests/dom/catalog-unicode-order-session.js
 }
 ```
 
+The large catalog session applies the production 300,000-row shape through the exact
+bounded scheduler. It pins the one-pass initial projection and attributes every bulk,
+catalog-delta, and filesystem-delta delivery callback without requiring a live delta
+from a settled server.
+
+```console
+$ node tests/dom/catalog-feed-large-session.js
+{
+  "attributedDeliveryLabels": [
+    "apiCatalog:parse",
+    "knownFileCatalog:applyBulkSnapshot",
+    "knownFileCatalog:applyCatalogChange",
+    "knownFileCatalog:applyEventChange"
+  ],
+  "catalogRows": 300000,
+  "initialBulkWorkItems": 300003,
+  "initialFetches": 1,
+  "sliceItemLimit": 4096
+}
+```
+
 The navigation route session pins the canonical file and comparison identities used by
 history updates, including segment encoding, fragments, Windows-native identities, and
 invalid path rejection.

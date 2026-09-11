@@ -27,4 +27,5 @@ def test_large_catalog_feed_js_assertions_pass() -> None:
         "large catalog-feed assertions failed:\n"
         f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
-    assert result.stdout.startswith("OK"), f"unexpected stdout: {result.stdout!r}"
+    assert '"catalogRows": 300000' in result.stdout, f"unexpected stdout: {result.stdout!r}"
+    assert '"initialBulkWorkItems": 300003' in result.stdout

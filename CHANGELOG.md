@@ -235,8 +235,11 @@ CLI and validation:
   Comparisons require distinct expected identities for every condition and one corpus,
   viewport, browser, and runtime environment; a per-run nonce rejects stale profiles,
   and the corpus fingerprint is checked again when a run is recorded.
-  Required catalog-delivery labels fail closed, including the incremental path that
-  carries most rows during a large progressive scan.
+  The unconditional catalog parse and bulk-application labels fail closed; optional
+  live-delta labels remain part of the measured total when the stream delivers them and
+  are pinned through the browserless production session.
+  An empty catalog adopts an already ordered provider run directly, so a 300,000-row
+  initial payload does not traverse the same rows again solely to copy its projection.
 
 - `metab` gains two data modes that reach the server without a browser or a listening
   port. `--api <route>` issues any registered `/api/` route through the real application

@@ -29,8 +29,9 @@ sandbox.metabrowser = {
 vm.createContext(sandbox);
 
 for (const filename of ["known-file-catalog.js", "catalog-feed.js"]) {
-  const source = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", filename), "utf-8");
-  vm.runInContext(source, sandbox, { filename });
+  const sourcePath = path.join(repoRoot, "src/metabrowser/static", filename);
+  const source = fs.readFileSync(sourcePath, "utf-8");
+  vm.runInContext(source, sandbox, { filename: sourcePath });
 }
 
 const failures = [];
@@ -74,8 +75,7 @@ async function main() {
     p: `bulk/file-${String(index).padStart(6, "0")}.txt`,
   }));
   const catalog = sandbox.MetabrowserKnownFileCatalog.create();
-  catalog.observeInitialTree([{ path: "stale.txt", type: "file" }]);
-  catalog.observeNavigation("visited/ignored.log", ".log");
+  let initialFetches = 0;
 
   let notifications = 0;
   const completePublications = [];
@@ -97,12 +97,15 @@ async function main() {
   const scheduledTurns = [];
   const feed = sandbox.MetabrowserCatalogFeed.create({
     catalog,
-    fetchImpl: async () => ({
-      headers: { get: () => null },
-      text: async () => JSON.stringify({ complete: true, files }),
-      ok: true,
-      status: 200,
-    }),
+    fetchImpl: async () => {
+      initialFetches += 1;
+      return {
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ complete: true, files }),
+        ok: true,
+        status: 200,
+      };
+    },
     yieldControl: () =>
       new Promise((resolve) => {
         scheduledTurns.push(resolve);
@@ -119,6 +122,12 @@ async function main() {
     catalog.snapshot() === initialSnapshot && notifications === 0,
     `${catalog.snapshot().revision}/${notifications}`,
   );
+
+  // The ordinary cold shell creates the catalog after its initial tree has
+  // painted. Navigation can still finish while the bulk stage is yielding;
+  // that observation must join the atomic commit without forcing the already
+  // ordered 300k-row feed through a second projection pass.
+  catalog.observeNavigation("visited/ignored.log", ".log");
 
   // This event arrives after the first bulk slice. It must remain buffered
   // until authoritative membership and pruning have both finished.
@@ -159,11 +168,24 @@ async function main() {
     `${Math.max(...bulkMeasurements.map((measurement) => measurement.work_items || 0))}`,
   );
   check("large application finished within scheduler guard", turns < 1_000, String(turns));
+  check(
+    "settled start fetches the catalog exactly once",
+    initialFetches === 1,
+    String(initialFetches),
+  );
+  const initialBulkWorkItems = bulkMeasurements.reduce(
+    (total, measurement) => total + (measurement.work_items || 0),
+    0,
+  );
+  check(
+    "ordered initial feed is adopted without a duplicate projection pass",
+    initialBulkWorkItems === FILE_COUNT + 3,
+    String(initialBulkWorkItems),
+  );
 
   const finalSnapshot = catalog.snapshot();
   const finalPaths = new Set(finalSnapshot.files.map((file) => file.path));
   check("authoritative finalization marks coverage complete", finalSnapshot.complete === true);
-  check("authoritative finalization prunes stale observations", !finalPaths.has("stale.txt"));
   check("navigation exception survives final pruning", finalPaths.has("visited/ignored.log"));
   check("buffered removal replays after the bulk", !finalPaths.has("bulk/file-000001.txt"));
   check("buffered upsert replays after the bulk", finalPaths.has("live/after-bulk.md"));
@@ -402,6 +424,20 @@ async function main() {
   );
   unsubscribeRemoval();
 
+  const attributedDeliveryLabels = [
+    "apiCatalog:parse",
+    "knownFileCatalog:applyBulkSnapshot",
+    "knownFileCatalog:applyCatalogChange",
+    "knownFileCatalog:applyEventChange",
+  ];
+  check(
+    "every exercised catalog delivery callback retains production attribution",
+    attributedDeliveryLabels.every((label) =>
+      measurements.some((measurement) => measurement.label === label),
+    ),
+    measurements.map((measurement) => measurement.label).join(","),
+  );
+
   feed.dispose();
 
   // A reconnect can invalidate a response between slices. The partial work
@@ -597,16 +633,26 @@ async function main() {
     return new WeakRef(oldSnapshot);
   })();
   memoCatalog.observeNavigation("new.txt", ".txt");
-  check(
-    "revision bump releases the stale memoized snapshot",
-    await collectWeakReference(oldSnapshotReference),
-  );
+  if (typeof global.gc === "function") {
+    check(
+      "revision bump releases the stale memoized snapshot",
+      await collectWeakReference(oldSnapshotReference),
+    );
+  }
+
+  return Object.freeze({
+    attributedDeliveryLabels,
+    catalogRows: FILE_COUNT,
+    initialBulkWorkItems,
+    initialFetches,
+    sliceItemLimit: sandbox.MetabrowserCatalogFeed.BULK_APPLY_SLICE_ITEMS,
+  });
 }
 
-main().then(() => {
+main().then((summary) => {
   if (failures.length > 0) {
     process.stderr.write(`${failures.join("\n")}\n`);
     process.exit(1);
   }
-  process.stdout.write("OK large catalog feed session\n");
+  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 });

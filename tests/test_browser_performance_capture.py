@@ -709,7 +709,7 @@ def test_probe_hard_gates_every_synchronous_catalog_delivery_path() -> None:
     ]
     assert '"apiCatalog:parse"' in required
     assert '"knownFileCatalog:applyBulkSnapshot"' in required
-    assert '"knownFileCatalog:applyCatalogChange"' in required
+    assert '"knownFileCatalog:applyCatalogChange"' not in required
 
 
 def test_probe_requires_each_initial_catalog_delivery_label() -> None:

@@ -17,11 +17,7 @@ const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(source.slice(start, end), sandbox, { filename: probePath });
 
-const required = [
-  "apiCatalog:parse",
-  "knownFileCatalog:applyBulkSnapshot",
-  "knownFileCatalog:applyCatalogChange",
-];
+const required = ["apiCatalog:parse", "knownFileCatalog:applyBulkSnapshot"];
 const complete = required.map((label) => ({ label }));
 const missingParse = [
   { label: "knownFileCatalog:applyBulkSnapshot" },
@@ -35,7 +31,7 @@ const missingBulk = [
 ];
 
 if (sandbox.missingRequiredPerformanceLabels(required, complete).length !== 0) {
-  throw new Error("complete required attribution was rejected");
+  throw new Error("settled initial attribution was rejected without an incremental callback");
 }
 if (
   sandbox.missingRequiredPerformanceLabels(required, missingParse).join() !== "apiCatalog:parse"
@@ -48,16 +44,4 @@ if (
 ) {
   throw new Error("missing bulk attribution was hidden by another delivery label");
 }
-if (
-  sandbox
-    .missingRequiredPerformanceLabels(required, [
-      { label: "apiCatalog:parse" },
-      { label: "knownFileCatalog:applyBulkSnapshot" },
-      { label: "fileStoreApplySnapshot" },
-    ])
-    .join() !== "knownFileCatalog:applyCatalogChange"
-) {
-  throw new Error("missing incremental catalog attribution was hidden by another delivery label");
-}
-
 console.log("performance probe contract behavior: OK");

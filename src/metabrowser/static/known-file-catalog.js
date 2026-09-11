@@ -1101,6 +1101,19 @@
           phase = "mutations";
           return;
         }
+        if (
+          stagedState.orderedFiles.length === 0 &&
+          sortedFeed.length === stagedState.filesByPath.size
+        ) {
+          // An empty catalog has no retained navigation exceptions. Its
+          // single natural run is already the exact immutable projection, so
+          // walking every row again would turn one
+          // 300k-row delivery into 600k main-thread work items. The size check
+          // keeps duplicate/replacement paths on the filtering merge below.
+          stagedState.orderedFiles = sortedFeed;
+          phase = "mutations";
+          return;
+        }
         projectionBase = stagedState.orderedFiles;
         projectionFeed = sortedFeed;
         mergedProjection = [];

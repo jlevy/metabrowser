@@ -206,11 +206,10 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
     "knownFileCatalog:applyEventChange",
   ];
   const inventoryDeliveryRows = inventoryDeliveryLabels.map(totalFor).filter((row) => row !== null);
-  const requiredInitialDeliveryLabels = [
-    "apiCatalog:parse",
-    "knownFileCatalog:applyBulkSnapshot",
-    "knownFileCatalog:applyCatalogChange",
-  ];
+  // A settled index emits no live delta. Require only the two unconditional
+  // initial-delivery spans here; the production browserless catalog session
+  // executes and pins both optional delta callbacks.
+  const requiredInitialDeliveryLabels = ["apiCatalog:parse", "knownFileCatalog:applyBulkSnapshot"];
   const missingInitialDeliveryLabels = missingRequiredPerformanceLabels(
     requiredInitialDeliveryLabels,
     perf.label_totals || [],
