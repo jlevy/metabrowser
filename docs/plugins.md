@@ -430,7 +430,10 @@ path.
   The preference is transient and does not change the target URL.
 - `navigation.current()` returns the current target or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable, completion-aware view of files already
-  known to the shell.
+  known to the shell. Every entry is a canonical, safe logical-file path, ordered by
+  ascending UTF-16 code units.
+  The catalog has no global path-length ceiling; a plugin may apply a documented bound
+  only to paths it actually processes.
 - `fileCatalog.subscribe(listener)` invalidates inventory-derived plugin results and
   returns an unsubscribe function that the view must call from its disposer.
 - `repository` is either `null` or frozen public-safe GitHub identity for the served
@@ -543,12 +546,14 @@ The Markdown built-in exposes
 It uses the ordinary KPress Markdown presentation and returns an instance-specific
 handle that aborts its request and disposes its own table of contents, enhanced-link
 listeners, pending fragment work, and any nested Obsidian transclusions.
-Note, heading, and named-block transclusions share depth, document, source-byte,
-elapsed-time, cycle, abort, and disposal limits across the mounted document.
-`mb.builtins.markdown.analyzeGraph({signal, limits})` returns a bounded immutable
-snapshot of Markdown nodes, resolved edges, unresolved destinations, backlinks,
-diagnostics, aggregate source bytes, and an explicit completeness flag.
-It performs no live catalog subscription and does not provide visualization.
+One lazily constructed preprocessing Worker belongs to that handle and is shared by the
+primary document and every nested transclusion; disposal terminates it with the rest of
+the root mount. Note, heading, and named-block transclusions share depth, document,
+source-byte, elapsed-time, cycle, abort, and disposal limits across the mounted
+document. SDK 0.6 does not expose Markdown graph analysis.
+Parsing Markdown a second time in the browser can diverge from KPress’s rendered
+document; a future graph surface therefore requires a server data route backed by a
+KPress-owned link-intent manifest.
 Do not copy Markdown DOM or TOC behavior into a folder contribution.
 
 Use only the SDK surface documented here and in `static/plugin-sdk.js`. Variables in

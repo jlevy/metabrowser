@@ -38,6 +38,7 @@ GOLDEN_DIR = REPO_ROOT / "tests/golden"
 
 _STATUSES = frozenset({"covered", "exempt"})
 _FUNCTIONAL_TIERS = frozenset({"data", "interaction", "paint-exempt"})
+_INTERACTION_SYMBOL = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 # Modes that issue a route without naming it on the command line, mapped to the
 # routes each one can actually issue. The mapping matters: crediting a mode for
 # a surface it never touches is the same false evidence as crediting prose.
@@ -63,14 +64,25 @@ class FunctionalParityRow:
     aspect: str
     tier: str
     owner: str
+    data_inputs: str
     command: str
     evidence: str
 
 
 @dataclass(frozen=True, slots=True)
 class InteractionSessionContract:
-    executed_owners: frozenset[str]
+    loaded_owners: frozenset[str]
+    functions: tuple[InteractionFunctionCoverage, ...]
     problem: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class InteractionFunctionCoverage:
+    owner: str
+    symbol: str
+    start_offset: int
+    end_offset: int
+    executed: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,15 +299,16 @@ def functional_parity_rows(doc: str) -> list[FunctionalParityRow]:
             if not stripped.startswith("|"):
                 break
             cells = [cell.strip() for cell in stripped.strip("|").split("|")]
-            if len(cells) != 5 or set(cells[0]) <= {"-", " "}:
+            if len(cells) != 6 or set(cells[0]) <= {"-", " "}:
                 continue
             rows.append(
                 FunctionalParityRow(
                     aspect=cells[0].strip("`"),
                     tier=cells[1],
                     owner=cells[2],
-                    command=cells[3].strip("`"),
-                    evidence=cells[4],
+                    data_inputs=cells[3],
+                    command=cells[4].strip("`"),
+                    evidence=cells[5],
                 )
             )
     return rows
@@ -315,6 +328,21 @@ def _canonical_source_owner(owner: str) -> tuple[str | None, str | None]:
     if not candidate.is_file():
         return None, "does not exist"
     return relative, None
+
+
+def _source_owner_reference(owner: str) -> tuple[str, str | None, str | None]:
+    """Split ``path#function`` without treating a function name as a path."""
+
+    if "#" not in owner:
+        return owner, None, None
+    if owner.count("#") != 1:
+        return owner, None, "must contain at most one '#function' qualifier"
+    path, symbol = owner.split("#", 1)
+    if not path:
+        return owner, None, "must name a source path before '#function'"
+    if _INTERACTION_SYMBOL.fullmatch(symbol) is None:
+        return path, None, f"has invalid interaction function {symbol!r}"
+    return path, symbol, None
 
 
 def _coverage_owner(url: str) -> str | None:
@@ -339,12 +367,13 @@ def _coverage_owner(url: str) -> str | None:
 
 
 def _read_coverage_owners(coverage_dir: Path) -> InteractionSessionContract:
-    """Read V8's checker-controlled coverage files after a session exits."""
+    """Read checker-controlled file and function execution from V8 coverage."""
 
     owners: set[str] = set()
+    functions: dict[tuple[str, str, int, int], bool] = {}
     coverage_files = sorted(coverage_dir.glob("coverage-*.json"))
     if not coverage_files:
-        return InteractionSessionContract(frozenset(), "Node emitted no V8 coverage")
+        return InteractionSessionContract(frozenset(), (), "Node emitted no V8 coverage")
     try:
         for path in coverage_files:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -368,9 +397,42 @@ def _read_coverage_owners(coverage_dir: Path) -> InteractionSessionContract:
                 if not exact_top_level_execution:
                     continue
                 owners.add(owner)
+                for function in script.get("functions", []):
+                    symbol = function.get("functionName")
+                    ranges = function.get("ranges", [])
+                    if not isinstance(symbol, str) or not symbol or not ranges:
+                        continue
+                    primary = ranges[0]
+                    start_offset = primary.get("startOffset")
+                    end_offset = primary.get("endOffset")
+                    count = primary.get("count", 0)
+                    if (
+                        not isinstance(start_offset, int)
+                        or isinstance(start_offset, bool)
+                        or not isinstance(end_offset, int)
+                        or isinstance(end_offset, bool)
+                        or not isinstance(count, int)
+                        or isinstance(count, bool)
+                        or start_offset < 0
+                        or end_offset <= start_offset
+                        or end_offset > source_length
+                    ):
+                        continue
+                    key = (owner, symbol, start_offset, end_offset)
+                    functions[key] = functions.get(key, False) or count > 0
     except (AttributeError, json.JSONDecodeError, OSError, TypeError) as exc:
-        return InteractionSessionContract(frozenset(), f"could not read V8 coverage: {exc}")
-    return InteractionSessionContract(frozenset(owners))
+        return InteractionSessionContract(frozenset(), (), f"could not read V8 coverage: {exc}")
+    function_coverage = tuple(
+        InteractionFunctionCoverage(
+            owner=owner,
+            symbol=symbol,
+            start_offset=start_offset,
+            end_offset=end_offset,
+            executed=executed,
+        )
+        for (owner, symbol, start_offset, end_offset), executed in sorted(functions.items())
+    )
+    return InteractionSessionContract(frozenset(owners), function_coverage)
 
 
 def _interaction_session_contract(command_parts: list[str]) -> InteractionSessionContract:
@@ -391,11 +453,12 @@ def _interaction_session_contract(command_parts: list[str]) -> InteractionSessio
                 env=environment,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return InteractionSessionContract(frozenset(), f"could not execute session: {exc}")
+            return InteractionSessionContract(frozenset(), (), f"could not execute session: {exc}")
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic output"
             return InteractionSessionContract(
                 frozenset(),
+                (),
                 f"session exited {result.returncode}: {detail}",
             )
         return _read_coverage_owners(coverage_dir)
@@ -411,6 +474,7 @@ def _check_functional_parity(doc: str) -> list[str]:
     problems: list[str] = []
     seen: set[str] = set()
     registered = registered_surfaces()
+    route_rows = {row.surface: row for row in parity_rows(doc)}
     session_contracts: dict[str, InteractionSessionContract] = {}
     for row in rows:
         if row.aspect in seen:
@@ -421,21 +485,92 @@ def _check_functional_parity(doc: str) -> list[str]:
                 f"{row.aspect}: tier {row.tier!r} is not one of {sorted(_FUNCTIONAL_TIERS)}"
             )
             continue
+        data_inputs = [
+            part.strip().strip("`") for part in row.data_inputs.split(",") if part.strip()
+        ]
+        if row.tier == "data":
+            if data_inputs != ["owned-route"]:
+                problems.append(
+                    f"{row.aspect}: data semantics must declare 'owned-route' as their input"
+                )
+        elif row.tier == "paint-exempt":
+            if data_inputs != ["local-only"]:
+                problems.append(
+                    f"{row.aspect}: paint behavior must declare the canonical 'local-only' input"
+                )
+        elif not data_inputs or data_inputs == ["—"]:
+            problems.append(f"{row.aspect}: interaction must declare its data inputs")
+        elif "local-only" in data_inputs and data_inputs != ["local-only"]:
+            problems.append(f"{row.aspect}: 'local-only' cannot launder or accompany route inputs")
+        else:
+            for data_input in data_inputs:
+                transport_exempt = data_input.startswith("transport-exempt:")
+                surface = (
+                    data_input.removeprefix("transport-exempt:") if transport_exempt else data_input
+                )
+                if transport_exempt and data_input != "transport-exempt:/api/events":
+                    problems.append(
+                        f"{row.aspect}: transport exemption is limited to "
+                        "'transport-exempt:/api/events'"
+                    )
+                    continue
+                if surface == "local-only":
+                    continue
+                if not surface.startswith("/"):
+                    problems.append(
+                        f"{row.aspect}: malformed data input {data_input!r}; use a route, "
+                        "'local-only', or 'transport-exempt:/api/events'"
+                    )
+                    continue
+                if surface not in registered:
+                    problems.append(f"{row.aspect}: data input route {surface!r} is not registered")
+                    continue
+                route_row = route_rows.get(surface)
+                if route_row is None:
+                    problems.append(f"{row.aspect}: data input route {surface!r} has no parity row")
+                elif transport_exempt:
+                    if route_row.status != "exempt" or "streaming" not in route_row.evidence:
+                        problems.append(
+                            f"{row.aspect}: transport-exempt input {surface!r} must name a "
+                            "streaming route exemption"
+                        )
+                elif route_row.status != "covered":
+                    problems.append(
+                        f"{row.aspect}: data input route {surface!r} is not route-parity covered"
+                    )
         owners = [part.strip().strip("`") for part in row.owner.split(",") if part.strip()]
-        canonical_source_owners: list[str] = []
+        canonical_source_owners: list[tuple[str, str]] = []
         if not owners or row.owner == "—":
             problems.append(f"{row.aspect}: name the production owner")
+        elif row.tier == "data" and (len(owners) != 1 or not owners[0].startswith("/")):
+            problems.append(
+                f"{row.aspect}: data semantics must name exactly one registered route owner"
+            )
         else:
             for owner in owners:
                 if owner.startswith("/"):
                     if owner not in registered:
                         problems.append(f"{row.aspect}: route owner {owner!r} is not registered")
+                    if row.tier == "interaction":
+                        problems.append(
+                            f"{row.aspect}: interaction owner {owner!r} must be a "
+                            "production source function"
+                        )
                 else:
-                    canonical, problem = _canonical_source_owner(owner)
+                    source_owner, symbol, reference_problem = _source_owner_reference(owner)
+                    if reference_problem is not None:
+                        problems.append(f"{row.aspect}: source owner {owner!r} {reference_problem}")
+                        continue
+                    canonical, problem = _canonical_source_owner(source_owner)
                     if problem is not None:
-                        problems.append(f"{row.aspect}: source owner {owner!r} {problem}")
-                    elif canonical is not None:
-                        canonical_source_owners.append(canonical)
+                        problems.append(f"{row.aspect}: source owner {source_owner!r} {problem}")
+                    elif row.tier == "interaction" and symbol is None:
+                        problems.append(
+                            f"{row.aspect}: interaction source owner {source_owner!r} must name "
+                            "an executed function as 'path.js#functionName'"
+                        )
+                    elif canonical is not None and symbol is not None:
+                        canonical_source_owners.append((canonical, symbol))
         if row.tier == "paint-exempt":
             if row.command != "—":
                 problems.append(f"{row.aspect}: a paint exemption cannot claim a CLI command")
@@ -503,10 +638,33 @@ def _check_functional_parity(doc: str) -> list[str]:
                             f"{row.aspect}: interaction session contract invalid: "
                             f"{contract.problem}"
                         )
-                    for owner in canonical_source_owners:
-                        if owner not in contract.executed_owners:
+                    for owner, symbol in canonical_source_owners:
+                        if owner not in contract.loaded_owners:
                             problems.append(
                                 f"{row.aspect}: interaction session did not execute owner {owner!r}"
+                            )
+                            continue
+                        matches = [
+                            function
+                            for function in contract.functions
+                            if function.owner == owner and function.symbol == symbol
+                        ]
+                        reference = f"{owner}#{symbol}"
+                        if not matches:
+                            problems.append(
+                                f"{row.aspect}: interaction owner function {reference!r} "
+                                "does not appear in V8 coverage"
+                            )
+                        elif len(matches) > 1:
+                            problems.append(
+                                f"{row.aspect}: interaction owner function {reference!r} "
+                                f"is ambiguous across {len(matches)} source ranges; name a unique "
+                                "production function"
+                            )
+                        elif not matches[0].executed:
+                            problems.append(
+                                f"{row.aspect}: interaction session did not execute owner function "
+                                f"{reference!r}"
                             )
         goldens = [name.strip().strip("`") for name in row.evidence.split(",") if name.strip()]
         if not goldens:

@@ -8,7 +8,7 @@ env:
   METABROWSER_PLUGINS_DIRS: ""
   METABROWSER_LOG_LEVEL: "WARNING"
 before: >-
-  mkdir -p showroot/docs &&
+  mkdir -p showroot/docs 'showroot/docs%1' &&
   printf '# Sample\n\nHello.\n' > showroot/README.md &&
   printf 'plain text\n' > showroot/notes.txt &&
   printf '{"name": "sample", "version": 1}\n' > showroot/data.json &&
@@ -18,9 +18,13 @@ before: >-
   printf '\000\001\002binary\n' > showroot/blob.bin &&
   printf '\211PNG\r\n\032\n' > showroot/pixel.png &&
   printf 'nested\n' > showroot/docs/a.md &&
+  printf '# First\n' > 'showroot/%41.md' &&
+  printf '# Second sibling\n' > 'showroot/%2541.md' &&
+  printf 'nested percent\n' > 'showroot/docs%1/note%.txt' &&
   touch -t 202311142213.20 showroot/README.md showroot/notes.txt showroot/data.json
   showroot/change.patch showroot/session.jsonl showroot/events.jsonl showroot/blob.bin
-  showroot/pixel.png showroot/docs/a.md showroot/docs showroot
+  showroot/pixel.png showroot/docs/a.md 'showroot/%41.md' 'showroot/%2541.md'
+  'showroot/docs%1/note%.txt' showroot/docs 'showroot/docs%1' showroot
 ---
 # Golden tests: `--show`, the four layers for one selection
 
@@ -196,6 +200,89 @@ route: /view/README.md
 kind: markdown
 views: rendered (default), source
 model: text envelope; size=17 content_bytes=17 content_truncated=False
+? 0
+```
+
+## Test: native and browser spellings agree for a literal-percent file
+
+The native name `%41.md` looks like a URL escape, while the browser route encodes its
+literal percent as `%25`. Both inputs must select the eight-byte file on disk.
+
+```console
+$ metab showroot --show '%41.md'
+show: %41.md
+route: /view/%2541.md
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=8 content_bytes=8 content_truncated=False
+? 0
+```
+
+```console
+$ metab showroot --show '/view/%2541.md'
+show: /view/%2541.md
+route: /view/%2541.md
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=8 content_bytes=8 content_truncated=False
+? 0
+```
+
+## Test: a canonical-looking native sibling remains distinct
+
+`%2541.md` is also a real native filename.
+It is not the canonical identity of the first file when supplied on the command line, so
+it resolves to its own route and seventeen-byte model.
+
+```console
+$ metab showroot --show '%2541.md'
+show: %2541.md
+route: /view/%252541.md
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=17 content_bytes=17 content_truncated=False
+? 0
+```
+
+```console
+$ metab showroot --show '/view/%252541.md'
+show: /view/%252541.md
+route: /view/%252541.md
+kind: markdown
+views: rendered (default), source
+model: text envelope; size=17 content_bytes=17 content_truncated=False
+? 0
+```
+
+## Test: literal-percent directories and descendants use the same identity
+
+```console
+$ metab showroot --show 'docs%1'
+show: docs%1
+route: /view/docs%251
+kind: folder
+views: overview (default), treemap
+model: folder envelope; readme_path=
+? 0
+```
+
+```console
+$ metab showroot --show '/view/docs%251'
+show: /view/docs%251
+route: /view/docs%251
+kind: folder
+views: overview (default), treemap
+model: folder envelope; readme_path=
+? 0
+```
+
+```console
+$ metab showroot --show '/view/docs%251/note%25.txt'
+show: /view/docs%251/note%25.txt
+route: /view/docs%251/note%25.txt
+kind: text
+views: source (default)
+model: text envelope; size=15 content_bytes=15 content_truncated=False
 ? 0
 ```
 

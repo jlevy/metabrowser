@@ -4,21 +4,21 @@
   "completeSnapshot": {
     "complete": true,
     "files": [
-      { "path": "Folder/Guide.md" },
-      { "path": "Note.md" },
-      { "path": "archive/Nested/Unique.md" },
-      { "path": "assets/asset.png" },
-      { "path": "assets/report.pdf" },
-      { "path": "assets/song.mp3" },
-      { "path": "docs/Note.md" },
-      { "path": "docs/asset.png" },
-      { "path": "docs/current.md" },
-      { "path": "docs/雪.md" },
-      { "path": "guides/Note.md" },
-      { "path": "one/Duplicate.md" },
-      { "path": "other/Guide.md" },
-      { "path": "two/Duplicate.md" },
-      { "path": "vault/Folder/Guide.md" }
+      { "basename": "Guide.md", "path": "Folder/Guide.md" },
+      { "basename": "Note.md", "path": "Note.md" },
+      { "basename": "Unique.md", "path": "archive/Nested/Unique.md" },
+      { "basename": "asset.png", "path": "assets/asset.png" },
+      { "basename": "report.pdf", "path": "assets/report.pdf" },
+      { "basename": "song.mp3", "path": "assets/song.mp3" },
+      { "basename": "Note.md", "path": "docs/Note.md" },
+      { "basename": "asset.png", "path": "docs/asset.png" },
+      { "basename": "current.md", "path": "docs/current.md" },
+      { "basename": "雪.md", "path": "docs/雪.md" },
+      { "basename": "Note.md", "path": "guides/Note.md" },
+      { "basename": "Duplicate.md", "path": "one/Duplicate.md" },
+      { "basename": "Guide.md", "path": "other/Guide.md" },
+      { "basename": "Duplicate.md", "path": "two/Duplicate.md" },
+      { "basename": "Guide.md", "path": "vault/Folder/Guide.md" }
     ]
   },
   "cases": [
@@ -60,6 +60,7 @@
       "expected": {
         "status": "ambiguous",
         "reason": "ambiguous-target",
+        "candidateCount": 2,
         "candidates": ["one/Duplicate.md", "two/Duplicate.md"]
       }
     },

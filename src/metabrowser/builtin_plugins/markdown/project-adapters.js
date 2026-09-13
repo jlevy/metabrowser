@@ -2,6 +2,10 @@
 
 const MAX_CATALOG_FILES = 500_000;
 const MAX_ROUTE_CHARACTERS = 16_384;
+// A resolved published path is produced only from the bounded rooted authored
+// target. Three code units per authored code unit covers canonical percent
+// escaping without admitting an unrelated provider-sized identity.
+const MAX_RESOLVED_ROUTE_CHARACTERS = MAX_ROUTE_CHARACTERS * 3;
 const MAX_ADAPTER_CANDIDATES = 32;
 
 const ADAPTERS = Object.freeze([
@@ -22,81 +26,154 @@ const ADAPTERS = Object.freeze([
 ]);
 
 /**
+ * @typedef {null |
+ *   Readonly<{adapter: string, path: string, status: "internal"}> |
+ *   Readonly<{candidates: readonly string[], reason: string, status: "ambiguous"}> |
+ *   Readonly<{reason: string, status: "pending" | "unsupported"}>} PublishedRouteResolution
+ */
+
+/**
  * Resolve one published root route to a source document after exact lookup fails.
  *
  * A `null` result means ordinary exact Markdown behavior remains authoritative.
  *
  * @param {unknown} intent
  * @param {unknown} snapshot
+ * @returns {PublishedRouteResolution}
  */
 export function resolvePublishedRoute(intent, snapshot) {
-  const value = validateIntent(intent);
+  return createPublishedRouteResolutionContext(snapshot).resolve(intent);
+}
+
+/**
+ * Detect project configuration once and memoize exact catalog membership for every
+ * published route resolved against the same immutable snapshot.
+ *
+ * `resolvedPath` is the bounded output of standard resolution for the same rooted
+ * authored target, not an independently provider-authored path. The resolver
+ * verifies that pairing before any catalog lookup so its synchronous binary
+ * searches and memo keys stay within the authored-route envelope.
+ *
+ * @param {unknown} snapshot
+ */
+export function createPublishedRouteResolutionContext(snapshot) {
   const catalog = validateSnapshot(snapshot);
-  if (!isPublishedRoute(value.authoredTarget) || catalog.files.length > MAX_CATALOG_FILES) {
-    return null;
-  }
+  /** @type {Map<string, boolean>} */
+  const membership = new Map();
+  /** @type {Map<string, boolean>} */
+  const exactTargets = new Map();
 
-  const paths = safeCatalogPaths(catalog.files);
-  if (exactTargetExists(value.resolvedPath, paths)) {
-    return null;
-  }
-  const configured = ADAPTERS.filter((adapter) =>
-    adapter.configFiles.some((configPath) => paths.has(configPath)),
-  );
-  if (configured.length === 0) {
-    return null;
-  }
-
-  const route = decodedPublishedRoute(value.authoredTarget);
-  if (route === null) {
-    return null;
-  }
-  /** @type {Map<string, string>} */
-  const matches = new Map();
-  let candidateCount = 0;
-  for (const adapter of configured) {
-    for (const candidate of sourceCandidates(adapter.id, route)) {
-      candidateCount += 1;
-      if (candidateCount > MAX_ADAPTER_CANDIDATES) {
-        return Object.freeze({ reason: "too-many-adapter-candidates", status: "unsupported" });
-      }
-      if (paths.has(candidate) && !matches.has(candidate)) {
-        matches.set(candidate, adapter.id);
-      }
+  /** @param {string} path */
+  function contains(path) {
+    const cached = membership.get(path);
+    if (cached !== undefined) {
+      return cached;
     }
+    const found = hasPath(catalog.files, path);
+    membership.set(path, found);
+    return found;
   }
-  if (matches.size === 1) {
-    const [path, adapter] = /** @type {[string, string]} */ (matches.entries().next().value);
-    return Object.freeze({ adapter, path, status: /** @type {const} */ ("internal") });
+
+  /** @param {string} path */
+  function targetExists(path) {
+    const cached = exactTargets.get(path);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const found = exactTargetExists(path, catalog.files, contains);
+    exactTargets.set(path, found);
+    return found;
   }
-  if (matches.size > 1) {
-    return Object.freeze({
-      candidates: Object.freeze([...matches.keys()]),
-      reason: "ambiguous-published-route",
-      status: /** @type {const} */ ("ambiguous"),
-    });
+
+  /** @type {typeof ADAPTERS | null} */
+  let configured = null;
+
+  function configuredAdapters() {
+    configured ||=
+      catalog.files.length > MAX_CATALOG_FILES
+        ? Object.freeze([])
+        : Object.freeze(
+            ADAPTERS.filter((adapter) =>
+              adapter.configFiles.some((configPath) => contains(configPath)),
+            ),
+          );
+    return configured;
   }
-  return catalog.complete
-    ? null
-    : Object.freeze({ reason: "catalog-incomplete", status: /** @type {const} */ ("pending") });
+
+  return Object.freeze({
+    /** @param {unknown} intent @returns {PublishedRouteResolution} */
+    resolve(intent) {
+      const value = validateAuthoredIntent(intent);
+      if (!isPublishedRoute(value.authoredTarget)) {
+        return null;
+      }
+      if (typeof value.resolvedPath !== "string") {
+        throw new TypeError("published-route resolved path must be a string");
+      }
+      const route = validateResolvedPublishedRoute(value.authoredTarget, value.resolvedPath);
+      if (catalog.files.length > MAX_CATALOG_FILES) {
+        return null;
+      }
+      if (targetExists(value.resolvedPath)) {
+        return null;
+      }
+      if (!catalog.complete) {
+        return Object.freeze({
+          reason: "catalog-incomplete",
+          status: /** @type {const} */ ("pending"),
+        });
+      }
+      const adapters = configuredAdapters();
+      if (adapters.length === 0) {
+        return null;
+      }
+
+      /** @type {Map<string, string>} */
+      const matches = new Map();
+      let candidateCount = 0;
+      for (const adapter of adapters) {
+        for (const candidate of sourceCandidates(adapter.id, route)) {
+          candidateCount += 1;
+          if (candidateCount > MAX_ADAPTER_CANDIDATES) {
+            return Object.freeze({
+              reason: "too-many-adapter-candidates",
+              status: /** @type {const} */ ("unsupported"),
+            });
+          }
+          if (contains(candidate) && !matches.has(candidate)) {
+            matches.set(candidate, adapter.id);
+          }
+        }
+      }
+      if (matches.size === 1) {
+        const [path, adapter] = /** @type {[string, string]} */ (matches.entries().next().value);
+        return Object.freeze({ adapter, path, status: /** @type {const} */ ("internal") });
+      }
+      if (matches.size > 1) {
+        return Object.freeze({
+          candidates: Object.freeze([...matches.keys()].sort(codeUnitCompare)),
+          reason: "ambiguous-published-route",
+          status: /** @type {const} */ ("ambiguous"),
+        });
+      }
+      return null;
+    },
+  });
 }
 
 /** @param {unknown} intent */
-function validateIntent(intent) {
+function validateAuthoredIntent(intent) {
   if (!intent || typeof intent !== "object") {
     throw new TypeError("published-route resolver requires an intent");
   }
   const value = /** @type {Record<string, unknown>} */ (intent);
-  if (typeof value.authoredTarget !== "string" || typeof value.resolvedPath !== "string") {
-    throw new TypeError("published-route paths must be strings");
+  if (typeof value.authoredTarget !== "string") {
+    throw new TypeError("published-route authored target must be a string");
   }
-  if (
-    value.authoredTarget.length > MAX_ROUTE_CHARACTERS ||
-    value.resolvedPath.length > MAX_ROUTE_CHARACTERS
-  ) {
-    throw new TypeError("published-route path is too long");
+  if (value.authoredTarget.length > MAX_ROUTE_CHARACTERS) {
+    throw new TypeError("published-route authored target is too long");
   }
-  return /** @type {Readonly<{authoredTarget: string, resolvedPath: string}>} */ (value);
+  return /** @type {Readonly<{authoredTarget: string, resolvedPath?: unknown}>} */ (value);
 }
 
 /** @param {unknown} snapshot */
@@ -121,73 +198,125 @@ function isPublishedRoute(authoredTarget) {
   return path.endsWith("/") || !leaf.includes(".");
 }
 
-/** @param {string} authoredTarget */
+/**
+ * Decode a rooted authored route into its canonical inventory identity.
+ * Dot segments resolve lexically, as the standard resolver already did before
+ * this adapter runs, so `/a/../guide/` names `guide`; a route that climbs above
+ * the root has no identity.
+ *
+ * @param {string} authoredTarget
+ */
 function decodedPublishedRoute(authoredTarget) {
   const encoded = authoredTarget.split("#", 1)[0].split("?", 1)[0];
   const trimmed = encoded.replace(/^\/+|\/+$/g, "");
   try {
-    const decoded = trimmed
-      .split("/")
-      .filter(Boolean)
-      .map((segment) => decodeURIComponent(segment));
-    return decoded.some(
-      (segment) =>
-        !segment ||
-        segment === "." ||
-        segment === ".." ||
-        segment.includes("/") ||
-        segment.includes("\\") ||
-        segment.includes("\0"),
-    )
-      ? null
-      : decoded.join("/");
+    /** @type {string[]} */
+    const segments = [];
+    for (const raw of trimmed.split("/")) {
+      if (!raw) {
+        continue;
+      }
+      const segment = decodeURIComponent(raw);
+      if (segment === ".") {
+        continue;
+      }
+      if (segment === "..") {
+        if (segments.length === 0) {
+          return null;
+        }
+        segments.pop();
+        continue;
+      }
+      if (segment.includes("/") || segment.includes("\\") || segment.includes("\0")) {
+        return null;
+      }
+      segments.push(segment);
+    }
+    return segments.map((segment) => segment.replaceAll("%", "%25")).join("/");
   } catch (_error) {
     return null;
   }
 }
 
-/** @param {ReadonlyArray<unknown>} files */
-function safeCatalogPaths(files) {
-  const paths = new Set();
-  for (const file of files) {
-    if (!file || typeof file !== "object") {
-      continue;
-    }
-    const path = /** @type {Record<string, unknown>} */ (file).path;
-    if (typeof path === "string" && isSafePath(path)) {
-      paths.add(path);
-    }
+/**
+ * Enforce the composition boundary with the standard resolver. Published-route
+ * adaptation is reachable only after a rooted authored target resolves internally;
+ * accepting an unrelated path here would turn a bounded route lookup into an
+ * unbounded provider-string hash and comparison on the main thread.
+ *
+ * @param {string} authoredTarget
+ * @param {string} resolvedPath
+ */
+function validateResolvedPublishedRoute(authoredTarget, resolvedPath) {
+  if (resolvedPath.length > MAX_RESOLVED_ROUTE_CHARACTERS) {
+    throw new TypeError("published-route resolved path is outside the authored-route envelope");
   }
-  return paths;
+  const route = decodedPublishedRoute(authoredTarget);
+  if (route === null) {
+    throw new TypeError("published-route authored target is not a canonical rooted route");
+  }
+  const encodedPath = authoredTarget.split("#", 1)[0].split("?", 1)[0];
+  const expectedPath = route && encodedPath.endsWith("/") ? `${route}/` : route;
+  if (resolvedPath !== expectedPath) {
+    throw new TypeError("published-route resolved path does not match its authored target");
+  }
+  return route;
 }
 
-/** @param {string} path */
-function isSafePath(path) {
-  return (
-    path.length > 0 &&
-    path.length <= MAX_ROUTE_CHARACTERS &&
-    !path.startsWith("/") &&
-    !path.endsWith("/") &&
-    !path.includes("\\") &&
-    !path.includes("\0") &&
-    path.split("/").every((segment) => segment && segment !== "." && segment !== "..")
-  );
-}
-
-/** @param {string} resolvedPath @param {ReadonlySet<string>} paths */
-function exactTargetExists(resolvedPath, paths) {
+/** @param {string} resolvedPath @param {ReadonlyArray<unknown>} files @param {(path: string) => boolean} contains */
+function exactTargetExists(resolvedPath, files, contains) {
   if (!resolvedPath) {
     return true;
   }
   if (!resolvedPath.endsWith("/")) {
-    return paths.has(resolvedPath);
+    return contains(resolvedPath);
   }
-  for (const path of paths) {
-    if (path.startsWith(resolvedPath)) {
-      return true;
+  const index = lowerBound(files, resolvedPath);
+  return index < files.length && catalogPathAt(files, index).startsWith(resolvedPath);
+}
+
+/** @param {ReadonlyArray<unknown>} files @param {string} path */
+function hasPath(files, path) {
+  const index = lowerBound(files, path);
+  return index < files.length && catalogPathAt(files, index) === path;
+}
+
+/** @param {ReadonlyArray<unknown>} files @param {string} target */
+function lowerBound(files, target) {
+  let low = 0;
+  let high = files.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (codeUnitCompare(catalogPathAt(files, middle), target) < 0) {
+      low = middle + 1;
+    } else {
+      high = middle;
     }
   }
-  return false;
+  return low;
+}
+
+/**
+ * Read one path from the core catalog's immutable, canonical, code-unit-sorted
+ * projection. Core owns admission validation; consumers must not impose a
+ * position-dependent length or normalization policy while searching.
+ *
+ * @param {ReadonlyArray<unknown>} files
+ * @param {number} index
+ */
+function catalogPathAt(files, index) {
+  return /** @type {Readonly<{path: string}>} */ (files[index]).path;
+}
+
+/** @param {string} left @param {string} right */
+function codeUnitCompare(left, right) {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 }
 
 /** @param {string} adapter @param {string} route */

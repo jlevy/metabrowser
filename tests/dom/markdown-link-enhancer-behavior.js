@@ -42,6 +42,21 @@ class FakeElement extends ElementShim {
   scrollIntoView() {
     this.scrolled = true;
   }
+
+  matches(selector) {
+    if (selector === "[id]") {
+      return Boolean(this.id);
+    }
+    if (selector === "[data-mb-wiki-target]") {
+      return this.hasAttribute("data-mb-wiki-target");
+    }
+    return (
+      this.hasAttribute("data-mb-wiki-target") ||
+      (this.tagName === "A" && this.hasAttribute("href")) ||
+      (["IMG", "AUDIO", "VIDEO", "SOURCE"].includes(this.tagName) && this.hasAttribute("src")) ||
+      (this.tagName === "OBJECT" && this.hasAttribute("data"))
+    );
+  }
 }
 
 class FakeContainer extends FakeElement {
@@ -64,7 +79,29 @@ class FakeContainer extends FakeElement {
     }
   }
 
+  querySelector(selector) {
+    const match = /^\[id="((?:[^"\\]|\\.)*)"\]$/s.exec(selector);
+    if (!match) {
+      return null;
+    }
+    const id = match[1].replace(/\\(.)/g, "$1");
+    return this.elements.find((element) => element.id === id) || null;
+  }
+
   querySelectorAll(selector) {
+    if (
+      selector ===
+      "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]"
+    ) {
+      return this.elements.filter(
+        (element) =>
+          element.hasAttribute("data-mb-wiki-target") ||
+          (element.tagName === "A" && element.hasAttribute("href")) ||
+          (["IMG", "AUDIO", "VIDEO", "SOURCE"].includes(element.tagName) &&
+            element.hasAttribute("src")) ||
+          (element.tagName === "OBJECT" && element.hasAttribute("data")),
+      );
+    }
     if (selector === "a[href]") {
       return this.elements.filter(
         (element) => element.tagName === "A" && element.hasAttribute("href"),
@@ -140,11 +177,30 @@ async function loadModule() {
     "utf8",
   );
   const wikiResolverUrl = `data:text/javascript;base64,${Buffer.from(wikiResolverSource).toString("base64")}`;
+  const coordinatorSource = fs
+    .readFileSync(
+      path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/reconciliation-coordinator.js"),
+      "utf8",
+    )
+    .replace('"./links.js"', JSON.stringify(linksUrl))
+    .replace('"./project-adapters.js"', JSON.stringify(projectAdaptersUrl))
+    .replace('"./wiki-resolver.js"', JSON.stringify(wikiResolverUrl));
+  const coordinatorUrl = `data:text/javascript;base64,${Buffer.from(coordinatorSource).toString("base64")}`;
   const wikiParserSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki-parser.js"),
     "utf8",
   );
   const wikiParserUrl = `data:text/javascript;base64,${Buffer.from(wikiParserSource).toString("base64")}`;
+  const workerStub =
+    `import {prepareTransclusionMarkdownSource} from ${JSON.stringify(wikiParserUrl)};` +
+    "export function createMarkdownWorkerClient(){return {dispose(){}," +
+    "run(_op,payload){return Promise.resolve(prepareTransclusionMarkdownSource(payload.source,payload.fragment))}}}";
+  const workerUrl = `data:text/javascript;base64,${Buffer.from(workerStub).toString("base64")}`;
+  const traversalSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/dom-traversal.js"),
+    "utf8",
+  );
+  const traversalUrl = `data:text/javascript;base64,${Buffer.from(traversalSource).toString("base64")}`;
   const tocFallbackStub =
     "export function initTocWithIntersectionFallback(init){return init()||(()=>{})}";
   const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
@@ -154,6 +210,7 @@ async function loadModule() {
       "utf8",
     )
     .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
+    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(wikiParserUrl));
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
   const wikiEnhancerSource = fs
@@ -162,7 +219,9 @@ async function loadModule() {
       "utf8",
     )
     .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
-    .replace('"./wiki-resolver.js"', JSON.stringify(wikiResolverUrl));
+    .replace('"./dom-traversal.js"', JSON.stringify(traversalUrl))
+    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
+    .replace('"./reconciliation-coordinator.js"', JSON.stringify(coordinatorUrl));
   const wikiEnhancerUrl = `data:text/javascript;base64,${Buffer.from(wikiEnhancerSource).toString("base64")}`;
   const enhancerSource = fs
     .readFileSync(
@@ -171,7 +230,9 @@ async function loadModule() {
     )
     .replace('"./github-localizer.js"', JSON.stringify(githubLocalizerUrl))
     .replace('"./links.js"', JSON.stringify(linksUrl))
-    .replace('"./project-adapters.js"', JSON.stringify(projectAdaptersUrl))
+    .replace('"./dom-traversal.js"', JSON.stringify(traversalUrl))
+    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
+    .replace('"./reconciliation-coordinator.js"', JSON.stringify(coordinatorUrl))
     .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
     .replace('"./wiki-enhancer.js"', JSON.stringify(wikiEnhancerUrl));
   return import(`data:text/javascript;base64,${Buffer.from(enhancerSource).toString("base64")}`);
@@ -181,7 +242,7 @@ async function loadModule() {
   const module = await loadModule();
   const sameDocument = new FakeElement("a", { href: "#Install" });
   const internal = new FakeElement("a", { href: "guide.md#Install" });
-  const published = new FakeElement("a", { href: "/published/" });
+  const published = new FakeElement("a", { href: "/published/", title: "Published guide" });
   const external = new FakeElement("a", { href: "https://example.com/docs" });
   const revision = "a".repeat(40);
   const github = new FakeElement("a", {
@@ -211,6 +272,7 @@ async function loadModule() {
   const eventTarget = new FakeEventTarget();
   const frames = new Map();
   let frameSequence = 0;
+  let catalogSnapshotCalls = 0;
   const opened = [];
   let current = { path: "docs/readme.md", fragment: "Install" };
   const mb = {
@@ -223,10 +285,16 @@ async function loadModule() {
       served_prefix: "",
     },
     fileCatalog: {
-      snapshot: () => ({
-        complete: true,
-        files: [{ path: "mkdocs.yml" }, { path: "docs/published.md" }],
-      }),
+      snapshot: () => {
+        catalogSnapshotCalls += 1;
+        return {
+          complete: true,
+          files: [
+            { basename: "published.md", path: "docs/published.md" },
+            { basename: "mkdocs.yml", path: "mkdocs.yml" },
+          ],
+        };
+      },
       subscribe: () => () => {},
     },
     navigation: {
@@ -248,12 +316,14 @@ async function loadModule() {
   check("same-document fragment preserved", sameDocument.getAttribute("href") === "#Install");
   check("canonical internal href", internal.getAttribute("href") === "/view/docs/guide.md#Install");
   check(
-    "configured published route href",
-    published.getAttribute("href") === "/view/docs/published.md",
+    "configured published route catalog work is deferred",
+    frames.size >= 1 && catalogSnapshotCalls === 0 && !published.hasAttribute("href"),
   );
+  const earlyPublishedClick = click(published);
+  container.listeners.get("click")(earlyPublishedClick);
   check(
-    "configured adapter disclosed",
-    published.getAttribute("data-metabrowser-link-adapter") === "mkdocs",
+    "published route stays inert before its catalog pass",
+    !earlyPublishedClick.defaultPrevented && opened.length === 0,
   );
   check("external href preserved", external.getAttribute("href") === "https://example.com/docs");
   check(
@@ -282,6 +352,21 @@ async function loadModule() {
   }
   frames.clear();
   check("initial fragment after enhancement", heading.scrolled);
+  check(
+    "configured published route href",
+    published.getAttribute("href") === "/view/docs/published.md",
+  );
+  check(
+    "a resolved published route keeps its authored title",
+    published.getAttribute("title") === "Published guide" &&
+      !published.hasAttribute("data-metabrowser-authored-title"),
+    String(published.getAttribute("title")),
+  );
+  check(
+    "configured adapter disclosed",
+    published.getAttribute("data-metabrowser-link-adapter") === "mkdocs" &&
+      catalogSnapshotCalls === 1,
+  );
 
   const internalClick = click(internal);
   container.listeners.get("click")(internalClick);
@@ -313,6 +398,292 @@ async function loadModule() {
   }
   check("native variants did not open", opened.length === 2);
 
+  const embeddedFragment = new FakeElement("a", { href: "#Details" });
+  const embeddedNewTab = new FakeElement("a", { href: "#Details", target: "_blank" });
+  const embeddedContainer = new FakeContainer([embeddedFragment, embeddedNewTab]);
+  const embeddedEventTarget = new FakeEventTarget();
+  const embeddedHandle = module.enhanceRenderedLinks(embeddedContainer, "docs/embedded.md", mb, {
+    cancel: () => {},
+    eventTarget: embeddedEventTarget,
+    schedule: () => 0,
+  });
+  check(
+    "embedded fragment has canonical native href",
+    embeddedFragment.getAttribute("href") === "/view/docs/embedded.md#Details",
+    embeddedFragment.getAttribute("href"),
+  );
+  check(
+    "embedded target-blank fragment has canonical native href",
+    embeddedNewTab.getAttribute("href") === "/view/docs/embedded.md#Details",
+    embeddedNewTab.getAttribute("href"),
+  );
+
+  const embeddedClick = click(embeddedFragment);
+  embeddedContainer.listeners.get("click")(embeddedClick);
+  await new Promise((resolve) => setImmediate(resolve));
+  check("embedded plain click intercepted", embeddedClick.defaultPrevented);
+  check(
+    "embedded plain click target",
+    opened[2]?.path === "docs/embedded.md" && opened[2]?.fragment === "Details",
+    JSON.stringify(opened[2]),
+  );
+
+  const embeddedModifierClick = click(embeddedFragment, { metaKey: true });
+  embeddedContainer.listeners.get("click")(embeddedModifierClick);
+  check("embedded modifier click preserved", !embeddedModifierClick.defaultPrevented);
+  const embeddedNewTabClick = click(embeddedNewTab);
+  embeddedContainer.listeners.get("click")(embeddedNewTabClick);
+  check("embedded new-tab click preserved", !embeddedNewTabClick.defaultPrevented);
+  check("embedded native variants did not delegate", opened.length === 3);
+
+  embeddedHandle.dispose();
+  check("embedded dispose removes click listener", !embeddedContainer.listeners.has("click"));
+  check(
+    "embedded dispose removes fragment listener",
+    !embeddedEventTarget.listeners.has("metabrowser:navigation-fragment"),
+  );
+
+  const firstAdmittedImage = new FakeElement("img", { src: "first.png" });
+  const starvedAnchor = new FakeElement("a", { href: "later.md" });
+  let admissionClaims = 0;
+  const admissionContainer = new FakeContainer([firstAdmittedImage, starvedAnchor]);
+  const admissionHandle = module.enhanceRenderedLinks(admissionContainer, "docs/readme.md", mb, {
+    enhancementBudget: {
+      claim() {
+        admissionClaims += 1;
+        return admissionClaims <= 1;
+      },
+      exhausted() {
+        return admissionClaims >= 1;
+      },
+    },
+    cancel() {},
+    eventTarget: new FakeEventTarget(),
+    schedule: () => 0,
+  });
+  check(
+    "root-wide admission follows DOM order across resource and anchor kinds",
+    firstAdmittedImage.getAttribute("src") === "/raw?path=docs%2Ffirst.png" &&
+      starvedAnchor.getAttribute("href") === "later.md" &&
+      admissionClaims === 2,
+  );
+  admissionHandle.dispose();
+
+  const aggregateTargets = Array.from({ length: 4097 }, (_, index) =>
+    index % 2 === 0
+      ? new FakeElement("img", { src: `asset-${index}.png` })
+      : new FakeElement("a", { href: `target-${index}.md` }),
+  );
+  const aggregateContainer = new FakeContainer(aggregateTargets);
+  const aggregateHandle = module.enhanceRenderedLinks(aggregateContainer, "docs/readme.md", mb, {
+    cancel() {},
+    eventTarget: new FakeEventTarget(),
+    schedule: () => 0,
+  });
+  const aggregateEnhanced = aggregateTargets.filter((element) => {
+    const target = element.getAttribute(element.tagName === "IMG" ? "src" : "href");
+    return target?.startsWith(element.tagName === "IMG" ? "/raw?path=" : "/view/");
+  });
+  check(
+    "production root admission caps one DOM-order prefix across target kinds",
+    aggregateEnhanced.length === 4096 &&
+      aggregateTargets[4096].getAttribute("src") === "asset-4096.png",
+    String(aggregateEnhanced.length),
+  );
+  aggregateHandle.dispose();
+
+  const dualTargets = Array.from(
+    { length: 4096 },
+    (_, index) =>
+      new FakeElement("a", {
+        "data-mb-wiki-action": "navigate",
+        "data-mb-wiki-target": `Missing-${index}`,
+        href: `wrong-${index}.md`,
+      }),
+  );
+  const dualFrames = new Map();
+  let dualFrameSequence = 0;
+  const dualSourcePath = `${"provider-segment/".repeat(1200)}readme.md`;
+  const dualHandle = module.enhanceRenderedLinks(
+    new FakeContainer(dualTargets),
+    dualSourcePath,
+    mb,
+    {
+      cancel: (handle) => dualFrames.delete(handle),
+      eventTarget: new FakeEventTarget(),
+      schedule: (callback) => {
+        dualFrameSequence += 1;
+        dualFrames.set(dualFrameSequence, callback);
+        return dualFrameSequence;
+      },
+    },
+  );
+  while (dualFrames.size) {
+    const [frame, callback] = dualFrames.entries().next().value;
+    dualFrames.delete(frame);
+    callback(0);
+  }
+  check(
+    "wiki metadata is authoritative across the root reconciliation ceiling",
+    dualTargets.every(
+      (target, index) =>
+        target.getAttribute("href") === `wrong-${index}.md` &&
+        target.getAttribute("data-metabrowser-link-status") === "missing",
+    ),
+  );
+  dualHandle.dispose();
+
+  const publishedAnchors = Array.from(
+    { length: 65 },
+    (_, index) => new FakeElement("a", { href: `/guide-${String(index).padStart(3, "0")}/` }),
+  );
+  const publishedContainer = new FakeContainer(publishedAnchors);
+  const publishedFrames = new Map();
+  let publishedFrameSequence = 0;
+  let publishedSnapshot = {
+    complete: false,
+    files: [{ basename: "mkdocs.yml", path: "mkdocs.yml" }],
+  };
+  let publishedListener = null;
+  const publishedHandle = module.enhanceRenderedLinks(
+    publishedContainer,
+    "docs/readme.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => publishedSnapshot,
+        subscribe: (listener) => {
+          publishedListener = listener;
+          return () => {
+            publishedListener = null;
+          };
+        },
+      },
+      navigation: { ...mb.navigation, current: () => ({ path: "docs/readme.md" }) },
+    },
+    {
+      cancel: (id) => publishedFrames.delete(id),
+      eventTarget: new FakeEventTarget(),
+      schedule: (callback) => {
+        publishedFrameSequence += 1;
+        publishedFrames.set(publishedFrameSequence, callback);
+        return publishedFrameSequence;
+      },
+    },
+  );
+  check(
+    "published routes subscribe while catalog is incomplete",
+    typeof publishedListener === "function" &&
+      publishedAnchors.every(
+        (anchor) =>
+          !anchor.hasAttribute("href") &&
+          anchor.getAttribute("data-metabrowser-link-status") === "pending",
+      ),
+  );
+  const earlyIncompletePublishedClick = click(publishedAnchors[0]);
+  publishedContainer.listeners.get("click")(earlyIncompletePublishedClick);
+  check(
+    "incomplete published route stays inert before its catalog pass",
+    !earlyIncompletePublishedClick.defaultPrevented && opened.length === 3,
+  );
+  const initialPublishedFrame = [...publishedFrames.entries()][0];
+  publishedFrames.delete(initialPublishedFrame[0]);
+  initialPublishedFrame[1](0);
+  check(
+    "initial incomplete route pass is item bounded",
+    publishedAnchors.filter((anchor) =>
+      anchor.getAttribute("title")?.includes("catalog-incomplete"),
+    ).length === 32 && publishedFrames.size === 1,
+  );
+  publishedSnapshot = {
+    complete: true,
+    files: [
+      ...Array.from({ length: 65 }, (_, index) => ({
+        basename: `guide-${String(index).padStart(3, "0")}.md`,
+        path: `docs/guide-${String(index).padStart(3, "0")}.md`,
+      })),
+      { basename: "mkdocs.yml", path: "mkdocs.yml" },
+    ],
+  };
+  publishedListener();
+  check("catalog publication defers published-route DOM work", publishedFrames.size === 1);
+  check("published route unchanged before continuation", !publishedAnchors[0].hasAttribute("href"));
+  const runNextPublishedFrame = () => {
+    const next = [...publishedFrames.entries()][0];
+    publishedFrames.delete(next[0]);
+    next[1](0);
+  };
+  runNextPublishedFrame();
+  check(
+    "published-route first continuation is item bounded",
+    publishedAnchors.filter((anchor) => anchor.hasAttribute("data-metabrowser-link-adapter"))
+      .length === 32 && publishedFrames.size === 1,
+  );
+  runNextPublishedFrame();
+  check(
+    "published-route second continuation remains item bounded",
+    publishedAnchors.filter((anchor) => anchor.hasAttribute("data-metabrowser-link-adapter"))
+      .length === 64 && publishedFrames.size === 1,
+  );
+  runNextPublishedFrame();
+  check(
+    "published-route reconciliation settles complete snapshot",
+    publishedAnchors.every((anchor) => anchor.hasAttribute("data-metabrowser-link-adapter")) &&
+      publishedFrames.size === 0 &&
+      publishedListener === null,
+  );
+  publishedHandle.dispose();
+
+  const longDirectory = "provider-segment/".repeat(1200);
+  const longSourcePath = `${longDirectory}readme.md`;
+  const longSourceAnchor = new FakeElement("a", { href: "next.md" });
+  const longSourceWiki = new FakeElement("span", {
+    "data-mb-wiki-action": "navigate",
+    "data-mb-wiki-target": "./Missing",
+  });
+  const longSourceContainer = new FakeContainer([longSourceAnchor, longSourceWiki]);
+  const longSourceFrames = new Map();
+  let longSourceFrameSequence = 0;
+  const longSourceHandle = module.enhanceRenderedLinks(
+    longSourceContainer,
+    longSourcePath,
+    {
+      ...mb,
+      navigation: {
+        ...mb.navigation,
+        current: () => ({ path: longSourcePath }),
+        href: (target) => `/view/${target.path}`,
+      },
+    },
+    {
+      cancel: (handle) => longSourceFrames.delete(handle),
+      eventTarget: new FakeEventTarget(),
+      schedule: (callback) => {
+        longSourceFrameSequence += 1;
+        longSourceFrames.set(longSourceFrameSequence, callback);
+        return longSourceFrameSequence;
+      },
+    },
+  );
+  check(
+    "provider-long standard source preparation is deferred",
+    longSourceAnchor.getAttribute("href") === "next.md" && longSourceFrames.size === 1,
+  );
+  let longSourceSlices = 0;
+  while (longSourceFrames.size) {
+    const [frame, callback] = longSourceFrames.entries().next().value;
+    longSourceFrames.delete(frame);
+    callback(0);
+    longSourceSlices += 1;
+  }
+  check(
+    "provider-admitted long source identity resolves in the composed standard and wiki enhancer",
+    longSourceAnchor.getAttribute("href") === `/view/${longDirectory}next.md` &&
+      longSourceWiki.getAttribute("data-metabrowser-link-status") === "missing" &&
+      longSourceSlices > 1,
+  );
+  longSourceHandle.dispose();
+
   heading.scrolled = false;
   current = { path: "docs/readme.md", fragment: "Install" };
   eventTarget.dispatch("metabrowser:navigation-fragment", { target: current });
@@ -324,6 +695,49 @@ async function loadModule() {
   );
   check("dispose cancels pending scroll", frames.size === 0);
 
+  // A large rendered document: most elements are neither links nor ids, and
+  // the container exposes a real-DOM TreeWalker. Every in-document navigation
+  // must still scroll, however many came before it.
+  const deepHeading = new FakeElement("h2", { id: "Deep" });
+  const largeElements = Array.from({ length: 18_000 }, () => new FakeElement("p"));
+  largeElements.push(new FakeElement("a", { href: "#Deep" }), deepHeading);
+  const largeContainer = new FakeContainer(largeElements);
+  largeContainer.ownerDocument = {
+    createTreeWalker() {
+      let index = 0;
+      return { nextNode: () => largeElements[index++] || null };
+    },
+  };
+  const largeFrames = [];
+  const largeEventTarget = new FakeEventTarget();
+  let largeCurrent = { path: "docs/large.md", fragment: "" };
+  const largeHandle = module.enhanceRenderedLinks(
+    largeContainer,
+    "docs/large.md",
+    { ...mb, navigation: { ...mb.navigation, current: () => largeCurrent } },
+    {
+      cancel: () => {},
+      eventTarget: largeEventTarget,
+      schedule: (callback) => largeFrames.push(callback),
+    },
+  );
+  let largeScrolls = 0;
+  for (let navigation = 0; navigation < 12; navigation += 1) {
+    deepHeading.scrolled = false;
+    largeCurrent = { path: "docs/large.md", fragment: "Deep" };
+    largeEventTarget.dispatch("metabrowser:navigation-fragment", { target: largeCurrent });
+    while (largeFrames.length > 0) {
+      largeFrames.shift()(0);
+    }
+    largeScrolls += deepHeading.scrolled ? 1 : 0;
+  }
+  check(
+    "every in-document navigation in a large document scrolls",
+    largeScrolls === 12,
+    String(largeScrolls),
+  );
+  largeHandle.dispose();
+
   if (failures.length) {
     console.error(`markdown link enhancer FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);
@@ -333,6 +747,11 @@ async function loadModule() {
       JSON.stringify(
         {
           crossDocumentHref: internal.getAttribute("href"),
+          embeddedDelegatedTarget: opened[2],
+          embeddedFragmentHref: embeddedFragment.getAttribute("href"),
+          embeddedModifierClickPrevented: embeddedModifierClick.defaultPrevented,
+          embeddedNewTabClickPrevented: embeddedNewTabClick.defaultPrevented,
+          embeddedTargetBlankHref: embeddedNewTab.getAttribute("href"),
           sameDocumentDelegatedTarget: opened[1],
           sameDocumentHref: sameDocument.getAttribute("href"),
         },

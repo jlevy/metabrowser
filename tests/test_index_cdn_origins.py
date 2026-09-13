@@ -135,11 +135,19 @@ def test_chart_js_is_published_on_demand_rather_than_loaded_eagerly() -> None:
 
     for name in (
         "vendor/chart.umd.min.js",
+        "/static/charts.js",
         "vendor/chartjs-plugin-annotation.min.js",
         "vendor/chartjs-adapter-date-fns.bundle.min.js",
     ):
         assert name in bundles, f"on-demand asset missing from the bundle map: {name}"
         assert name not in chain, f"on-demand asset is still loaded on every page: {name}"
+
+    assert '<script src="/static/charts.js' not in html
+    assert bundles.index("vendor/chart.umd.min.js") < bundles.index("/static/charts.js")
+    assert '"provides": "Chart"' in bundles
+    assert bundles.index("/static/charts.js") < bundles.index(
+        "vendor/chartjs-plugin-annotation.min.js"
+    )
 
     # The prefetched tier still runs on load: a source view that highlights a
     # beat late is visible, and these are small.

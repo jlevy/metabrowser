@@ -1,6 +1,6 @@
 # Research: Markdown Link Navigation Across Repository Browsers
 
-**Date:** 2026-08-13
+**Date:** 2026-08-13 (last updated 2026-09-10)
 
 **Author:** Metabrowser maintainers
 
@@ -135,14 +135,15 @@ Heading and named-block targets map to stable source-derived anchors in the rend
 document. Image and media embeds use the bounded safe-resource path.
 Whole-note, heading-section, and named-block transclusion reuse KPress and the same
 resolved target under shared recursion, cycle, source-byte, elapsed-time, abort, and
-disposal limits. Bounded backlink and graph analysis reuse the click-time resolvers over
-an immutable catalog snapshot.
+disposal limits. Backlink and graph analysis are not part of the shipped Markdown
+built-in; a browser-side graph that parsed Markdown separately from KPress was removed
+because it could disagree with the rendered document.
 
 Exact source-directory, explicit relative, and explicit vault-root results may resolve
 while the file catalog is still growing.
 Unique basename and path-suffix results remain visibly pending until the inventory is
-complete, after which the still-current render is enhanced or reports every viable
-ambiguity candidate.
+complete, after which the still-current render is enhanced or reports the exact
+candidate count with an ordered, bounded preview.
 This avoids using discovery order as a hidden tie-breaker.
 
 Recognizing parsed wiki syntax does not change the meaning of ordinary Markdown links.
@@ -549,7 +550,7 @@ LinkIntent = {
 }
 
 ResolvedTarget = {
-  status, path?, query?, fragment?, mediaKind?, candidates?, reason?
+  status, path?, query?, fragment?, mediaKind?, candidateCount?, candidates?, reason?
 }
 ```
 
@@ -596,7 +597,8 @@ Its safe, deterministic compatibility policy should be:
 2. Require an extension for non-Markdown assets.
 3. Prefer an exact source-directory note when a basename alone identifies it.
 4. Use a vault basename or path-suffix index only when it produces one candidate.
-5. Return all viable candidates when several notes have the same link name.
+5. Return the exact viable-candidate count and an ordered, bounded preview when several
+   notes have the same link name.
 6. Resolve `#Heading`, hierarchical headings, and `#^block-id` against metadata from the
    selected note.
 7. Treat cross-vault heading-search forms used by Obsidian’s authoring UI as search
@@ -676,6 +678,27 @@ Large-vault indexing must be bounded and must yield rather than adding synchrono
 to a server request path.
 Navigation should remain useful while the index is incomplete.
 
+One coordinator should own catalog-derived work for the rendered root and every nested
+transclusion. It subscribes once, shares one continuation allowance, and uses the first
+complete immutable catalog revision as the pass linearization point.
+Incomplete exact results remain provisional because a later revision can add or remove
+the path. Disposal cancels scheduled work and releases snapshot indexes.
+A future backlink or graph surface should come from a server route backed by KPress’s
+own link analysis, not from a second browser parser or a links-by-catalog scan.
+
+A requested-key one-pass scan has the smallest one-query footprint, but a target added
+after that pass requires another whole-catalog scan.
+The implemented compromise builds the basename map lazily on the first fallback query
+and reuses it for late queries.
+Singleton basenames store one existing path reference and promote only collisions to an
+array. A large collision bucket gains a cooperatively sorted suffix projection only when
+a qualified lookup touches it.
+That projection stores path references rather than reversed strings and makes later
+distinct suffixes binary-searchable.
+Across disjoint buckets, the projections retain at most one additional reference per
+catalog file. Candidate summaries retain 20 paths but count every match.
+A separate heap ceiling should be set only after a representative browser measurement.
+
 ## Validation Matrix
 
 The implementation plan should create machine-readable fixtures with source path,
@@ -701,7 +724,10 @@ and canonical URL. At minimum, fixtures should cover:
 - unmodified clicks, modifier clicks, middle clicks, keyboard activation, new tabs, and
   broken or ambiguous link accessibility;
 - renderer replacement and disposal, large-vault indexing, read-size limits, and no
-  external network access in offline fixtures.
+  external network access in offline fixtures;
+- duplicate and late nested targets under one aggregate scheduler budget, catalog
+  changes between slices, early-present and early-absent exact paths, retained callbacks
+  after disposal, hot same-basename suffix buckets, and candidate count versus preview.
 
 Browser tests should include a small GitHub-style repository, an Obsidian-style vault,
 and static-site source fixtures.

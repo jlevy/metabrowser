@@ -1,5 +1,5 @@
+import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
-import { findMarkdownHeading, findNamedBlock, preprocessObsidianWiki } from "./wiki-parser.js";
 
 /** Bounds recursive embedding depth. */
 const DEFAULT_MAX_TRANSCLUSION_DEPTH = 4;
@@ -14,8 +14,9 @@ const HARD_MAX_TRANSCLUSION_DEPTH = 8;
 const HARD_MAX_TRANSCLUSION_DOCUMENTS = 64;
 const HARD_MAX_TRANSCLUSION_SOURCE_BYTES = 16 * 1024 * 1024;
 const HARD_MAX_TRANSCLUSION_DURATION_MS = 15_000;
-/** Bounds source-location selection before KPress rendering. */
-const MAX_SELECTED_SOURCE_CHARACTERS = 2_000_000;
+/** Shares the reconciliation code-unit slice for provider-long cycle identities. */
+const MAX_CYCLE_CODE_UNITS_PER_TASK = 16_384;
+const MAX_TRANSCLUSION_LABEL_CODE_UNITS = 512;
 const BUDGETS = new WeakSet();
 let transclusionSequence = 0;
 
@@ -80,29 +81,54 @@ export function createTransclusionBudget(limits = {}) {
  * @param {string=} fragment
  */
 export function transclusionKey(path, fragment) {
-  return `${path}#${fragment || ""}`;
+  if (
+    typeof path !== "string" ||
+    !path ||
+    (fragment !== undefined && typeof fragment !== "string")
+  ) {
+    throw new TypeError("Transclusion location requires a path and optional fragment");
+  }
+  // Keep the provider identity as an opaque reference. Concatenating it into a
+  // key can copy hundreds of megabytes synchronously before any fetch begins.
+  return Object.freeze({ fragment: fragment || "", path });
 }
 
 /**
  * Reserve one document and extend its immutable ancestry chain.
  *
  * @param {ReturnType<typeof createTransclusionBudget>} budget
- * @param {string} key
- * @param {ReadonlyArray<string>} chain
+ * @param {ReturnType<typeof transclusionKey>} key
+ * @param {ReadonlyArray<ReturnType<typeof transclusionKey>>} chain
+ * @param {{signal?: AbortSignal}=} options
  */
-export function claimTransclusion(budget, key, chain) {
+export async function claimTransclusion(budget, key, chain, options = {}) {
   validateBudget(budget);
-  if (typeof key !== "string" || !key || !Array.isArray(chain)) {
+  if (!isTransclusionKey(key) || !Array.isArray(chain) || !chain.every(isTransclusionKey)) {
     throw new TypeError("Transclusion claim requires a key and ancestry chain");
   }
+  options.signal?.throwIfAborted();
   if (Date.now() >= budget.deadline) {
     throw new TransclusionError("timed-out");
   }
-  if (chain.includes(key)) {
-    throw new TransclusionError("cycle");
-  }
   if (chain.length >= budget.limits.maxDepth) {
     throw new TransclusionError("depth-limit");
+  }
+  if (budget.state.documents >= budget.limits.maxDocuments) {
+    throw new TransclusionError("document-limit");
+  }
+  const yielder = createCycleTaskYielder();
+  try {
+    for (const ancestor of chain) {
+      if (await sameTransclusionLocation(ancestor, key, budget, options.signal, yielder)) {
+        throw new TransclusionError("cycle");
+      }
+    }
+  } finally {
+    yielder.dispose();
+  }
+  options.signal?.throwIfAborted();
+  if (Date.now() >= budget.deadline) {
+    throw new TransclusionError("timed-out");
   }
   if (budget.state.documents >= budget.limits.maxDocuments) {
     throw new TransclusionError("document-limit");
@@ -111,29 +137,134 @@ export function claimTransclusion(budget, key, chain) {
   return Object.freeze({ chain: Object.freeze([...chain, key]) });
 }
 
+/** @param {unknown} value */
+function isTransclusionKey(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const location = /** @type {Record<string, unknown>} */ (value);
+  return (
+    typeof location.path === "string" &&
+    location.path.length > 0 &&
+    typeof location.fragment === "string"
+  );
+}
+
 /**
- * Select a whole note, heading section, or named block from Markdown source.
+ * Compare provider identities cooperatively. Chain depth is hard-capped at eight,
+ * and each callback inspects at most the same 16,384 code units as catalog
+ * reconciliation, regardless of provider path length.
  *
- * @param {string} source
- * @param {string=} fragment
+ * @param {ReturnType<typeof transclusionKey>} left
+ * @param {ReturnType<typeof transclusionKey>} right
+ * @param {ReturnType<typeof createTransclusionBudget>} budget
+ * @param {AbortSignal | undefined} signal
+ * @param {ReturnType<typeof createCycleTaskYielder>} yielder
  */
-export function selectTransclusionSource(source, fragment) {
-  if (typeof source !== "string") {
-    throw new TypeError("Transclusion selection requires source text");
+async function sameTransclusionLocation(left, right, budget, signal, yielder) {
+  return (
+    (await sameProviderString(left.fragment, right.fragment, budget, signal, yielder)) &&
+    (await sameProviderString(left.path, right.path, budget, signal, yielder))
+  );
+}
+
+/** @param {string} left @param {string} right @param {ReturnType<typeof createTransclusionBudget>} budget @param {AbortSignal | undefined} signal @param {ReturnType<typeof createCycleTaskYielder>} yielder */
+async function sameProviderString(left, right, budget, signal, yielder) {
+  if (left.length !== right.length) {
+    return false;
   }
-  if (source.length > MAX_SELECTED_SOURCE_CHARACTERS) {
-    return selectionFailure("source-too-large");
+  let index = 0;
+  while (index < left.length) {
+    signal?.throwIfAborted();
+    if (Date.now() >= budget.deadline) {
+      throw new TransclusionError("timed-out");
+    }
+    if (yielder.remaining() < 1) {
+      await yielder.yieldTask();
+      continue;
+    }
+    const start = index;
+    const end = Math.min(left.length, index + yielder.remaining());
+    while (index < end) {
+      if (left.charCodeAt(index) !== right.charCodeAt(index)) {
+        index += 1;
+        yielder.consume(index - start);
+        return false;
+      }
+      index += 1;
+    }
+    yielder.consume(index - start);
   }
-  if (!fragment) {
-    return selected(source, "note");
+  return true;
+}
+
+function createCycleTaskYielder() {
+  let remaining = MAX_CYCLE_CODE_UNITS_PER_TASK;
+  /** @type {MessageChannel | null} */
+  let channel = null;
+  /** @type {(() => void) | null} */
+  let pending = null;
+  let disposed = false;
+
+  function ensureChannel() {
+    if (channel) {
+      return channel;
+    }
+    if (typeof globalThis.MessageChannel !== "function") {
+      return null;
+    }
+    channel = new globalThis.MessageChannel();
+    channel.port1.onmessage = () => {
+      const resolve = pending;
+      pending = null;
+      resolve?.();
+    };
+    channel.port1.start?.();
+    return channel;
   }
-  if (fragment.startsWith("obsidian-block-")) {
-    return selectNamedBlock(source, fragment.slice("obsidian-block-".length));
-  }
-  if (fragment.startsWith("obsidian-heading-")) {
-    return selectHeadingSection(source, fragment.slice("obsidian-heading-".length));
-  }
-  return selectionFailure("unsupported-location");
+
+  return Object.freeze({
+    /** @param {number} visits */
+    consume(visits) {
+      if (visits < 0 || visits > remaining) {
+        throw new Error("Transclusion cycle comparison exceeded its task budget");
+      }
+      remaining -= visits;
+    },
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      const resolve = pending;
+      pending = null;
+      channel?.port1.close();
+      channel?.port2.close();
+      channel = null;
+      resolve?.();
+    },
+    remaining() {
+      return remaining;
+    },
+    async yieldTask() {
+      if (disposed) {
+        return;
+      }
+      const activeChannel = ensureChannel();
+      if (!activeChannel) {
+        await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+      } else {
+        if (pending) {
+          throw new Error("Transclusion cycle continuation is already pending");
+        }
+        await new Promise((resolve) => {
+          pending = () => resolve(undefined);
+          activeChannel.port2.postMessage(0);
+        });
+      }
+      remaining = MAX_CYCLE_CODE_UNITS_PER_TASK;
+    },
+  });
 }
 
 /**
@@ -143,7 +274,7 @@ export function selectTransclusionSource(source, fragment) {
  * @param {Element} sourceElement
  * @param {Readonly<{path: string, fragment?: string}>} resolved
  * @param {MetabrowserPublicSdk} mb
- * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<string>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<string>, signal: AbortSignal}) => {dispose?: () => void}}=} options
+ * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal: AbortSignal}) => {dispose?: () => void}, workerClient?: ReturnType<typeof createMarkdownWorkerClient>}=} options
  */
 export function mountWikiTransclusion(container, sourceElement, resolved, mb, options = {}) {
   const document = container.ownerDocument || globalThis.document;
@@ -151,7 +282,11 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
     throw new Error("Wiki transclusion requires a document");
   }
   const aside = document.createElement("aside");
-  const label = sourceElement.textContent || resolved.path;
+  // A placeholder that was pending shows a status suffix in its text; the
+  // authored label it recorded is the name of the note.
+  const label = boundedTransclusionLabel(
+    sourceElement.getAttribute("data-mb-wiki-label") || sourceElement.textContent || resolved.path,
+  );
   aside.setAttribute("class", "metabrowser-wiki-transclusion");
   aside.setAttribute("role", "region");
   aside.setAttribute("aria-label", `Embedded note: ${label}`);
@@ -161,6 +296,8 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
   sourceElement.replaceWith(aside);
 
   const budget = options.budget || createTransclusionBudget();
+  const ownsWorkerClient = !options.workerClient;
+  const workerClient = options.workerClient || createMarkdownWorkerClient();
   const chain = options.chain || Object.freeze([]);
   const controller = new AbortController();
   let disposed = false;
@@ -174,6 +311,9 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
   if (options.signal?.aborted) {
     disposed = true;
     controller.abort(options.signal.reason);
+    if (ownsWorkerClient) {
+      workerClient.dispose();
+    }
   } else {
     options.signal?.addEventListener("abort", abortParent, { once: true });
   }
@@ -189,6 +329,9 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
       timeoutHandle = 0;
     }
     controller.abort();
+    if (ownsWorkerClient) {
+      workerClient.dispose();
+    }
     nestedHandle?.dispose?.();
     nestedHandle = null;
     disposeToc?.();
@@ -198,7 +341,12 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
   async function render() {
     try {
       const key = transclusionKey(resolved.path, resolved.fragment);
-      const claim = claimTransclusion(budget, key, chain);
+      const claim = await claimTransclusion(budget, key, chain, {
+        signal: controller.signal,
+      });
+      if (disposed || controller.signal.aborted) {
+        return;
+      }
       const remainingTime = budget.deadline - Date.now();
       if (remainingTime <= 0) {
         throw new TransclusionError("timed-out");
@@ -210,23 +358,35 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
       const source = await mb.fetchText(Object.freeze({ path: resolved.path }), {
         signal: controller.signal,
       });
-      consumeSourceBytes(budget, source);
-      const selection = selectTransclusionSource(source, resolved.fragment);
-      if (selection.status !== "selected") {
-        throw new TransclusionError(selection.reason);
+      if (disposed || controller.signal.aborted) {
+        return;
       }
-      const wiki = preprocessObsidianWiki(selection.source);
+      consumeSourceBytes(budget, source);
+      const prepared = await workerClient.run(
+        "prepare-transclusion",
+        Object.freeze({ fragment: resolved.fragment, source }),
+        { signal: controller.signal },
+      );
+      if (!isTransclusionPreparation(prepared)) {
+        throw new TypeError("Markdown worker returned an invalid transclusion preparation");
+      }
+      if (prepared.status !== "selected") {
+        throw new TransclusionError(prepared.reason);
+      }
+      if (!prepared.complete) {
+        throw new TransclusionError(preprocessingDiagnosticCode(prepared.diagnostics));
+      }
       const rendered = await mb.fetchKpressRender(
         {
           path: resolved.path,
-          raw: { content: selection.source, content_truncated: false, type: "text" },
+          raw: { content: prepared.source, content_truncated: false, type: "text" },
         },
         "rendered",
         {
           dedupKey: `markdown-transclusion-${++transclusionSequence}`,
           profile: "document",
           signal: controller.signal,
-          sourceText: wiki.source,
+          sourceText: prepared.source,
         },
       );
       if (disposed || controller.signal.aborted) {
@@ -274,110 +434,46 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
   if (!disposed) {
     void render();
   }
-  return Object.freeze({ dispose });
+  // The additive element reference lets the catalog reconciliation owner replace
+  // an early incomplete-revision embed if the pinned complete revision resolves
+  // differently. It does not expose mutable transclusion internals.
+  return Object.freeze({ dispose, element: aside });
 }
 
-/** @param {string} source @param {string} target */
-function selectHeadingSection(source, target) {
-  if (!target) {
-    return selectionFailure("missing-location");
-  }
-  const lines = sourceLines(source);
-  const headingStack = [];
-  let fence = null;
-  let selectedStart = -1;
-  let selectedLevel = 0;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lineText(lines[index]);
-    const fenceRun = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1] || null;
-    if (fence) {
-      if (
-        fenceRun &&
-        fenceRun[0] === fence.character &&
-        fenceRun.length >= fence.length &&
-        line.slice(line.indexOf(fenceRun) + fenceRun.length).trim() === ""
-      ) {
-        fence = null;
+/** @param {Array<unknown>} diagnostics */
+function preprocessingDiagnosticCode(diagnostics) {
+  for (const diagnostic of diagnostics) {
+    if (diagnostic && typeof diagnostic === "object") {
+      const code = /** @type {Record<string, unknown>} */ (diagnostic).code;
+      if (typeof code === "string") {
+        return code;
       }
-      continue;
-    }
-    if (fenceRun) {
-      fence = { character: fenceRun[0], length: fenceRun.length };
-      continue;
-    }
-    const block = findNamedBlock(line);
-    const content = block ? line.slice(0, block.start).trimEnd() : line;
-    const nextLine = index + 1 < lines.length ? lineText(lines[index + 1]) : "";
-    const heading = findMarkdownHeading(content, nextLine);
-    if (!heading) {
-      continue;
-    }
-    if (selectedStart !== -1 && heading.level <= selectedLevel) {
-      return selected(lines.slice(selectedStart, index).join(""), "heading");
-    }
-    headingStack.splice(heading.level - 1);
-    headingStack[heading.level - 1] = heading.text;
-    const hierarchy = headingStack.filter(Boolean);
-    const matches = hierarchy.some(
-      (_heading, offset) => hierarchy.slice(offset).join("#") === target,
-    );
-    if (selectedStart === -1 && matches) {
-      selectedStart = index;
-      selectedLevel = heading.level;
     }
   }
-  return selectedStart === -1
-    ? selectionFailure("missing-location")
-    : selected(lines.slice(selectedStart).join(""), "heading");
+  return "render-failed";
 }
 
-/** @param {string} source @param {string} target */
-function selectNamedBlock(source, target) {
-  if (!/^[A-Za-z0-9-]+$/.test(target)) {
-    return selectionFailure("missing-location");
+/** @param {unknown} value */
+function isTransclusionPreparation(value) {
+  if (!value || typeof value !== "object") {
+    return false;
   }
-  const lines = sourceLines(source);
-  let fence = null;
-  let blockStart = 0;
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lineText(lines[index]);
-    const fenceRun = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1] || null;
-    if (fence) {
-      if (
-        fenceRun &&
-        fenceRun[0] === fence.character &&
-        fenceRun.length >= fence.length &&
-        line.slice(line.indexOf(fenceRun) + fenceRun.length).trim() === ""
-      ) {
-        fence = null;
-        blockStart = index + 1;
-      }
-      continue;
-    }
-    if (fenceRun) {
-      fence = { character: fenceRun[0], length: fenceRun.length };
-      blockStart = index + 1;
-      continue;
-    }
-    if (!line.trim()) {
-      blockStart = index + 1;
-      continue;
-    }
-    const block = findNamedBlock(line);
-    if (!block || block.id !== target) {
-      const nextLine = index + 1 < lines.length ? lineText(lines[index + 1]) : "";
-      if (findMarkdownHeading(line, nextLine) || /^ {0,3}(?:=+|-+)[\t ]*$/.test(line)) {
-        blockStart = index + 1;
-      }
-      continue;
-    }
-    const selectedLines = lines.slice(blockStart, index + 1);
-    selectedLines[selectedLines.length - 1] = `${line.slice(0, block.start).trimEnd()}${lineEnding(
-      lines[index],
-    )}`;
-    return selected(selectedLines.join(""), "block");
-  }
-  return selectionFailure("missing-location");
+  const result = /** @type {Record<string, unknown>} */ (value);
+  return (
+    (result.status === "missing" && typeof result.reason === "string") ||
+    (result.status === "selected" &&
+      typeof result.complete === "boolean" &&
+      Array.isArray(result.diagnostics) &&
+      typeof result.kind === "string" &&
+      typeof result.source === "string")
+  );
+}
+
+/** @param {string} value */
+function boundedTransclusionLabel(value) {
+  return value.length <= MAX_TRANSCLUSION_LABEL_CODE_UNITS
+    ? value
+    : `${value.slice(0, MAX_TRANSCLUSION_LABEL_CODE_UNITS - 1)}…`;
 }
 
 /** @param {ReturnType<typeof createTransclusionBudget>} budget @param {string} source */
@@ -407,32 +503,6 @@ function boundedLimit(requested, fallback, hardLimit) {
   return Math.min(requested, hardLimit);
 }
 
-/** @param {string} source */
-function sourceLines(source) {
-  return source.match(/.*(?:\r\n|\n|\r|$)/g)?.filter(Boolean) || [];
-}
-
-/** @param {string} line */
-function lineText(line) {
-  const ending = lineEnding(line);
-  return ending ? line.slice(0, -ending.length) : line;
-}
-
-/** @param {string} line */
-function lineEnding(line) {
-  return /\r\n$|[\n\r]$/.exec(line)?.[0] || "";
-}
-
-/** @param {string} source @param {"note" | "heading" | "block"} kind */
-function selected(source, kind) {
-  return Object.freeze({ kind, source, status: /** @type {const} */ ("selected") });
-}
-
-/** @param {string} reason */
-function selectionFailure(reason) {
-  return Object.freeze({ reason, status: /** @type {const} */ ("missing") });
-}
-
 /** @param {HTMLElement} aside @param {string} label @param {string} code */
 function renderTransclusionError(aside, label, code) {
   const explanation = transclusionErrorLabel(code);
@@ -457,7 +527,9 @@ function transclusionErrorLabel(code) {
     "source-byte-limit": "The embedded source limit was reached.",
     "source-too-large": "The embedded note is too large.",
     "timed-out": "The embedded note timed out.",
+    "transformed-source-byte-limit": "The embedded note expands past the render limit.",
     "unsupported-location": "The requested embedded location is unsupported.",
+    "wiki-target-limit": "The embedded note has too many wiki targets.",
   };
   return labels[code] || "The embedded note could not be rendered.";
 }

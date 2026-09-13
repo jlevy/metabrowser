@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,7 +14,11 @@ from typer.testing import CliRunner
 
 from metabrowser import server
 from metabrowser.cli.main import _app
-from metabrowser.view_routes import format_view_href
+from metabrowser.view_routes import (
+    decode_safe_view_path,
+    format_inventory_view_href,
+    format_view_href,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROUTE_SHIM = Path(__file__).resolve().parent / "dom" / "navigation-route-behavior.js"
@@ -88,7 +93,6 @@ def test_direct_view_routes_serve_the_shell_for_safe_targets(tmp_path: Path) -> 
         "/view/a%5Cb.md",
         "/view/a%00b.md",
         "/view/a%2.md",
-        "/view/a%FFb.md",
         "/view/docs//a.md",
     ],
 )
@@ -101,6 +105,26 @@ def test_direct_view_routes_reject_malformed_or_unsafe_encodings(
     finally:
         server._set_root_dir(Path())
     assert response.status_code == 400
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX filenames retain undecodable bytes")
+def test_view_routes_round_trip_an_undecodable_posix_filename(tmp_path: Path) -> None:
+    """The shell route and both formatters cover every inventory identity."""
+
+    native = os.fsdecode(b"a\xffb.md")
+
+    assert format_view_href(native) == "/view/a%FFb.md"
+    assert format_inventory_view_href("a%FFb.md") == "/view/a%FFb.md"
+    assert format_inventory_view_href("a%25FFb.md") == "/view/a%25FFb.md"
+    assert decode_safe_view_path(b"/view/a%FFb.md") == native
+
+    server._set_root_dir(tmp_path)
+    try:
+        response = TestClient(server.app).get("/view/a%FFb.md")
+    finally:
+        server._set_root_dir(Path())
+    assert response.status_code == 200
+    assert "<title>Metabrowser</title>" in response.text
 
 
 def test_direct_view_route_rejects_symlinks_outside_root(tmp_path: Path) -> None:

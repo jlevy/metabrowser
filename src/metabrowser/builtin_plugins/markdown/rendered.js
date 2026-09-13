@@ -1,9 +1,25 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
+import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 import { transclusionKey } from "./transclusion.js";
-import { preprocessObsidianWiki } from "./wiki-parser.js";
 
 let mountSequence = 0;
+
+/** Shown when the optional wiki preprocessing step could not run. */
+const MARKDOWN_PREPROCESSING_UNAVAILABLE_DIAGNOSTIC = Object.freeze({
+  code: "markdown-preprocessing-unavailable",
+  message:
+    "Wiki links, block references, and heading anchors were not processed for this document.",
+  severity: "warning",
+});
+
+/** Shown when a document has more links, media, or wiki targets than one mount enhances. */
+const MARKDOWN_LINK_LIMIT_DIAGNOSTIC = Object.freeze({
+  code: "markdown-link-limit",
+  message:
+    "This document has more links, media, and wiki references than Metabrowser enhances at once; the rest keep their authored targets.",
+  severity: "warning",
+});
 
 /** @param {Array<unknown>} diagnostics @param {(value: string) => string} escapeHtml */
 export function renderKpressDiagnosticsHtml(diagnostics, escapeHtml) {
@@ -19,7 +35,7 @@ export function renderKpressDiagnosticsHtml(diagnostics, escapeHtml) {
         return "";
       }
       const value = /** @type {Record<string, unknown>} */ (diagnostic);
-      return ["type", "message", "severity"]
+      return ["code", "type", "message", "severity"]
         .filter((key) => value[key])
         .map((key) => `<dt>${key}</dt><dd>${escapeHtml(String(value[key]))}</dd>`)
         .join("");
@@ -82,13 +98,18 @@ export function renderKpressError(error, mb) {
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
- * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off"}} [options]
+ * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", workerClient?: ReturnType<typeof createMarkdownWorkerClient>}} [options]
  */
 export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   const controller = new AbortController();
+  const ownsWorkerClient = !options.workerClient;
+  const workerClient = options.workerClient || createMarkdownWorkerClient();
   const abort = () => controller.abort();
   if (options.signal?.aborted) {
     controller.abort();
+    if (ownsWorkerClient) {
+      workerClient.dispose();
+    }
   } else {
     options.signal?.addEventListener("abort", abort, { once: true });
   }
@@ -104,6 +125,9 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     disposed = true;
     options.signal?.removeEventListener("abort", abort);
     controller.abort();
+    if (ownsWorkerClient) {
+      workerClient.dispose();
+    }
     disposeLinks?.();
     disposeLinks = null;
     disposeToc?.();
@@ -124,7 +148,30 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       if (raw.content_truncated === true) {
         content = await mb.fetchCompleteText(ctx, { signal: controller.signal });
       }
-      const wiki = content !== null ? preprocessObsidianWiki(content) : null;
+      /** @type {Array<unknown>} */
+      const preparationDiagnostics = [];
+      let wiki = null;
+      if (content !== null) {
+        // Wiki preprocessing is an enhancement. If the worker cannot load or
+        // fails, render the authored Markdown and say what is missing rather
+        // than replacing the whole document with an error.
+        try {
+          const prepared = await workerClient.run(
+            "prepare-primary",
+            Object.freeze({ source: content }),
+            { signal: controller.signal },
+          );
+          if (!isPrimaryPreparation(prepared)) {
+            throw new TypeError("Markdown worker returned an invalid primary preparation");
+          }
+          wiki = prepared;
+        } catch (error) {
+          if (mb.errors.isAbortError(error) || controller.signal.aborted) {
+            throw error;
+          }
+          preparationDiagnostics.push(MARKDOWN_PREPROCESSING_UNAVAILABLE_DIAGNOSTIC);
+        }
+      }
       const rendered = await mb.fetchKpressRender(ctx, "rendered", {
         dedupKey: `markdown-mount-${++mountSequence}`,
         profile: "document",
@@ -134,15 +181,25 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       });
       if (!disposed && !controller.signal.aborted) {
         container.innerHTML = rendered.html;
-        injectDiagnostics(container, rendered.diagnostics || [], mb);
+        const diagnostics = [
+          ...preparationDiagnostics,
+          ...(wiki?.diagnostics || []),
+          ...(rendered.diagnostics || []),
+        ];
         if (ctx.path) {
-          disposeLinks = enhanceRenderedLinks(container, ctx.path, mb, {
+          const links = enhanceRenderedLinks(container, ctx.path, mb, {
             signal: controller.signal,
+            workerClient,
             // The rendered document is its own ancestor, so a note that embeds
             // itself is a cycle at the first embed rather than the second.
             transclusionChain: Object.freeze([transclusionKey(ctx.path)]),
-          }).dispose;
+          });
+          disposeLinks = links.dispose;
+          if (links.admissionTruncated) {
+            diagnostics.push(MARKDOWN_LINK_LIMIT_DIAGNOSTIC);
+          }
         }
+        injectDiagnostics(container, diagnostics, mb);
         disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
       }
     } catch (error) {
@@ -153,4 +210,19 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   }
   const ready = render();
   return Object.freeze({ dispose, ready });
+}
+
+/** @param {unknown} value */
+function isPrimaryPreparation(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const result = /** @type {Record<string, unknown>} */ (value);
+  return (
+    typeof result.changed === "boolean" &&
+    typeof result.complete === "boolean" &&
+    Array.isArray(result.diagnostics) &&
+    (result.source === null || typeof result.source === "string") &&
+    (!result.changed || typeof result.source === "string")
+  );
 }

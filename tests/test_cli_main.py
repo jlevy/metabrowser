@@ -586,6 +586,50 @@ def test_serve_mode_installs_the_stopping_handler_before_it_starts_threads() -> 
         )
 
 
+def test_serve_prepares_kpress_assets_before_uvicorn_can_start() -> None:
+    source = (
+        Path(__file__).resolve().parent.parent / "src" / "metabrowser" / "cli" / "serve.py"
+    ).read_text(encoding="utf-8")
+    body = source.partition("def run_serve(")[2]
+    assert body, "run_serve moved or was renamed"
+
+    server_import = body.index("from metabrowser import kpress_adapter, server")
+    prepare = body.index("kpress_adapter.prepare_browser_assets()")
+    port_selection = body.index("find_available_local_port")
+    uvicorn_start = body.index("_QuietForceExitServer(")
+
+    assert server_import < prepare < port_selection < uvicorn_start
+
+
+def test_serve_reports_unusable_kpress_as_a_cli_error(tmp_path: Path) -> None:
+    from metabrowser import kpress_adapter
+
+    missing = kpress_adapter.KPressAssetNotFoundError("css/style-tokens.css")
+    with (
+        patch("metabrowser.kpress_adapter.prepare_browser_assets", side_effect=missing),
+        patch("metabrowser.cli.serve._QuietForceExitServer") as server_cls,
+    ):
+        result = runner.invoke(_app, [str(tmp_path), "--no-open"])
+
+    assert isinstance(result.exception, CLIError)
+    assert "KPress cannot provide the browser shell's assets" in str(result.exception)
+    assert result.exception.__cause__ is missing
+    server_cls.assert_not_called()
+
+
+def test_nonserve_api_keeps_kpress_runtime_lazy(tmp_path: Path, monkeypatch) -> None:
+    from metabrowser import kpress_adapter
+
+    sentinel = object()
+    monkeypatch.setattr(kpress_adapter, "_kpress_runtime", sentinel)
+    with patch("metabrowser.kpress_adapter.prepare_browser_assets") as prepare:
+        result = runner.invoke(_app, [str(tmp_path), "--api", "/api/capabilities"])
+
+    assert result.exit_code == 0, result.exception
+    assert kpress_adapter._kpress_runtime is sentinel
+    prepare.assert_not_called()
+
+
 def test_serve_reports_sigint_as_exit_130(tmp_path: Path) -> None:
     previous = signal.getsignal(signal.SIGINT)
     try:

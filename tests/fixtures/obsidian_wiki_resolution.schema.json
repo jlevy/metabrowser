@@ -14,8 +14,11 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["path"],
-            "properties": { "path": { "type": "string", "minLength": 1 } },
+            "required": ["basename", "path"],
+            "properties": {
+              "basename": { "type": "string", "minLength": 1 },
+              "path": { "type": "string", "minLength": 1 }
+            },
             "additionalProperties": false
           }
         }
@@ -52,8 +55,15 @@
               "fragment": { "type": "string" },
               "mediaKind": { "enum": ["markdown", "image", "audio", "video", "resource"] },
               "reason": { "type": "string" },
+              "candidateCount": { "type": "integer", "minimum": 0 },
               "candidates": { "type": "array", "items": { "type": "string" } }
             },
+            "allOf": [
+              {
+                "if": { "properties": { "status": { "const": "ambiguous" } } },
+                "then": { "required": ["candidateCount", "candidates"] }
+              }
+            ],
             "additionalProperties": false
           }
         },

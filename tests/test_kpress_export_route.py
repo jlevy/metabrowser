@@ -10,23 +10,41 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
+import pytest
+
 from metabrowser import kpress_adapter, server
 
 
 def _request(
     *,
     method: str = "POST",
-    body: dict[str, Any] | str | None = None,
+    body: dict[str, Any] | str | bytes | None = None,
 ) -> Any:
-    request = Mock(spec=["method", "json"])
+    request = Mock(spec=["method", "stream"])
     request.method = method
 
-    async def _json() -> Any:
-        if isinstance(body, str):
-            return json.loads(body)
-        return body if body is not None else {}
+    async def _stream() -> Any:
+        if isinstance(body, bytes):
+            yield body
+        elif isinstance(body, str):
+            yield body.encode()
+        else:
+            yield json.dumps(body if body is not None else {}).encode()
 
-    request.json = _json
+    request.stream = _stream
+    return request
+
+
+def _chunked_request(chunks: list[bytes], consumed: list[int]) -> Any:
+    request = Mock(spec=["method", "stream"])
+    request.method = "POST"
+
+    async def _stream() -> Any:
+        for index, chunk in enumerate(chunks):
+            consumed.append(index)
+            yield chunk
+
+    request.stream = _stream
     return request
 
 
@@ -38,6 +56,48 @@ def test_kpress_export_rejects_non_post(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     response = asyncio.run(server.api_kpress_export(_request(method="GET")))
     assert response.status_code == 405
+
+
+def test_kpress_export_rejects_oversized_json_without_consuming_the_tail(
+    tmp_path: Path,
+) -> None:
+    server._set_root_dir(tmp_path)
+    consumed: list[int] = []
+    response = asyncio.run(
+        server.api_kpress_export(
+            _chunked_request(
+                [
+                    b" " * server._KPRESS_EXPORT_REQUEST_MAX_BYTES,
+                    b"x",
+                    b"unread-tail",
+                ],
+                consumed,
+            )
+        )
+    )
+
+    assert response.status_code == 413
+    assert _json_body(response) == {
+        "type": "kpress_export_error",
+        "error": "Export request exceeds safety limits",
+        "max_size": server._KPRESS_EXPORT_REQUEST_MAX_BYTES,
+    }
+    assert consumed == [0, 1]
+
+
+def test_kpress_export_rejects_invalid_utf8_as_structured_json_error(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    response = asyncio.run(
+        server.api_kpress_export(
+            _request(body=(b'{"path":"doc.md","destination":"out.html","invalid":"\xff"}'))
+        )
+    )
+
+    assert response.status_code == 400
+    payload = _json_body(response)
+    assert payload["type"] == "kpress_export_error"
+    assert payload["error"] == "Invalid JSON body"
+    assert "utf-8" in payload["detail"].lower()
 
 
 def test_kpress_export_rejects_deferred_single_file_mode(tmp_path: Path) -> None:
@@ -66,6 +126,41 @@ def test_kpress_export_rejects_unknown_export_mode(tmp_path: Path) -> None:
     )
     assert response.status_code == 400
     assert "export_mode" in _json_body(response)["error"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("path", ["doc.md"]),
+        ("destination", {"path": "out.html"}),
+        ("view", None),
+        ("profile", 1),
+        ("export_mode", ["page"]),
+        ("asset_mode", {"mode": "linked"}),
+        ("theme_mode", False),
+        ("optimize", "false"),
+        ("optimize", 0),
+        ("optimize", None),
+    ],
+)
+def test_kpress_export_rejects_invalid_field_types(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    server._set_root_dir(tmp_path)
+    (tmp_path / "doc.md").write_text("# Doc\n")
+    body: dict[str, object] = {"path": "doc.md", "destination": "out.html"}
+    body[field] = value
+
+    response = asyncio.run(server.api_kpress_export(_request(body=body)))
+
+    assert response.status_code == 400
+    assert _json_body(response) == {
+        "type": "kpress_export_error",
+        "error": "Invalid export request field types",
+        "fields": [field],
+    }
 
 
 def test_kpress_export_rejects_inline_asset_mode(tmp_path: Path) -> None:

@@ -30,7 +30,12 @@ def test_agent_log_escapes_kinds_and_disposes_charts() -> None:
     payload = json.loads(result.stdout)
     assert payload == {
         "chartDisposeCalls": 1,
-        "chartRenderCalls": 0,
+        "chartRenderCalls": 3,
+        "chartRenderPayloads": [
+            {"container": "primary", "id": "newer"},
+            {"container": "left", "id": "left"},
+            {"container": "right", "id": "right"},
+        ],
         "dynamicEndsUnpressed": True,
         "dynamicEventHidden": True,
         "dynamicLabelIsReadable": True,
@@ -39,6 +44,7 @@ def test_agent_log_escapes_kinds_and_disposes_charts() -> None:
         "hasEscapedImage": True,
         "hasInlineKindHandler": False,
         "hasRawImage": False,
+        "independentWorkOverlaps": True,
         "mixedUnknownKindHasNoChip": True,
         "singleKindFilterHidden": True,
         "singleKnownKindVisible": True,

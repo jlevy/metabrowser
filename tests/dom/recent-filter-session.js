@@ -640,13 +640,16 @@ function recentCatalogEffect(change, entries = new Map()) {
   });
 }
 const replacementCatalog = knownFileCatalog.create();
-replacementCatalog.applyBulkSnapshot(
+const replacementApplication = replacementCatalog.beginBulkSnapshot(
   [
     { p: "runs/day/job/replaced-dir", e: ".md" },
     { p: "runs/day/job/replaced-dir/child.md", e: ".md" },
   ],
   true,
 );
+while (!replacementApplication.step(4_096).done) {
+  // The focused fixture is smaller than one production slice.
+}
 replacementCatalog.observeNavigation("runs/day/job/replaced-link", ".md");
 replacementCatalog.applyCatalogChange(deepNonFileChange);
 const replacementRecentEntries = new Map(
@@ -695,11 +698,12 @@ const cancelledRecomputeTimers = [];
 const recomputeRenders = [];
 let nextRecomputeTimerId = 1;
 let currentRecomputeCursor = recentCursor;
+let committedRecomputeView = recomputeRequest(recentCursor);
 const recomputeScheduler = model.createRecentRecomputeScheduler(
   100,
   (request) => recomputeRenders.push(request),
   (request) =>
-    currentRecomputeCursor.source === "recent" &&
+    model.recentViewOwnsCursor(committedRecomputeView, currentRecomputeCursor) &&
     currentRecomputeCursor.windowKey === request.windowKey &&
     currentRecomputeCursor.recentRequestKey === request.requestKey,
   {
@@ -743,8 +747,68 @@ recomputeScheduler.cancel();
 currentRecomputeCursor = changedRecentCursor;
 lateRecomputeCallbacks.get(3)();
 const rendersAfterFilterTransition = recomputeRenders.length;
+committedRecomputeView = recomputeRequest(changedRecentCursor);
 const currentRecomputeSchedule = recomputeScheduler.schedule(recomputeRequest(changedRecentCursor));
 lateRecomputeCallbacks.get(4)();
+const currentRecomputeRenders = recomputeRenders.slice();
+const rendersBeforeReplacement = recomputeRenders.length;
+
+// A normal replacement keeps the bounded old base in memory but clears its
+// committed owner. Events and the old expiry timer must not paint that base
+// under the new controls, even when they are scheduled after replacement began.
+currentRecomputeCursor = changedWindowCursor;
+committedRecomputeView = null;
+const eventAfterReplacementStart = recomputeScheduler.schedule(
+  recomputeRequest(changedWindowCursor),
+);
+lateRecomputeCallbacks.get(5)();
+const rendersAfterReplacementEvent = recomputeRenders.length - rendersBeforeReplacement;
+const expiryMayPaintDuringReplacement = model.recentViewOwnsCursor(
+  committedRecomputeView,
+  currentRecomputeCursor,
+);
+
+// A failed initial replacement still owns no base. A later event must leave
+// the error/loading state alone until an authoritative response commits.
+const eventAfterReplacementFailure = recomputeScheduler.schedule(
+  recomputeRequest(changedWindowCursor),
+);
+lateRecomputeCallbacks.get(6)();
+const rendersAfterFailedReplacementEvent = recomputeRenders.length - rendersBeforeReplacement;
+
+// A same-selection repair deliberately preserves the committed rows, so live
+// repainting remains allowed while that background request is in flight.
+committedRecomputeView = recomputeRequest(changedWindowCursor);
+const sameSelectionRepair = recomputeScheduler.schedule(recomputeRequest(changedWindowCursor));
+lateRecomputeCallbacks.get(7)();
+const replacementOwnership = {
+  eventAfterStart: {
+    schedule: eventAfterReplacementStart,
+    renders: rendersAfterReplacementEvent,
+  },
+  expiryAfterStart: {
+    mayPaint: expiryMayPaintDuringReplacement,
+  },
+  eventAfterFailure: {
+    schedule: eventAfterReplacementFailure,
+    renders: rendersAfterFailedReplacementEvent,
+  },
+  sameSelectionRepair: {
+    schedule: sameSelectionRepair,
+    renderedRequest: recomputeRenders.at(-1),
+  },
+};
+if (
+  rendersAfterReplacementEvent !== 0 ||
+  expiryMayPaintDuringReplacement ||
+  rendersAfterFailedReplacementEvent !== 0 ||
+  recomputeRenders.length !== rendersBeforeReplacement + 1 ||
+  recomputeRenders.at(-1)?.requestKey !== changedWindowCursor.recentRequestKey
+) {
+  throw new Error(
+    `unexpected Recent replacement ownership: ${JSON.stringify(replacementOwnership)}`,
+  );
+}
 const recomputeTransitions = {
   source: {
     schedule: sourceRecomputeSchedule,
@@ -762,9 +826,10 @@ const recomputeTransitions = {
   },
   current: {
     schedule: currentRecomputeSchedule,
-    renders: recomputeRenders,
+    renders: currentRecomputeRenders,
     pending: recomputeScheduler.pending(),
   },
+  replacementOwnership,
 };
 
 const activeResync = createContinuityHarness();

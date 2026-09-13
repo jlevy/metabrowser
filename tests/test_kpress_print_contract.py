@@ -100,8 +100,16 @@ def test_document_width_default_reaches_the_shell_from_client_settings() -> None
     assert client_settings_dict()["DOC_MAX_CHARS_DEFAULT"] == DOC_MAX_CHARS_DEFAULT
     assert f'<html lang="en" style="--doc-max-chars: {DOC_MAX_CHARS_DEFAULT}">' in html
     assert f'"DOC_MAX_CHARS_DEFAULT": {DOC_MAX_CHARS_DEFAULT}' in html
-    assert html.index("window.METABROWSER_SETTINGS=") < html.index("/static/document-width.js?v=")
-    assert html.index("/static/document-width.js?v=") < html.index("/static/app.js?v=")
+    document_width = (proc_browser.STATIC_DIR / "document-width.js").read_text()
+    assert f"<script>{document_width}</script>" in html
+    assert '<script src="/static/document-width.js' not in html
+    assert html.index("window.METABROWSER_SETTINGS=") < html.index(
+        "// Persisted document reading-width state."
+    )
+    assert html.index("// Persisted document reading-width state.") < html.index(
+        "/static/app.js?v="
+    )
+    assert "String(width.readStored(cookie))" in html
     assert "window.MetabrowserDocumentWidth" in src
     assert "var DOC_MAX_CHARS_DEFAULT = documentWidth.DEFAULT;" in src
     assert "return documentWidth.readStored(readPrefCookie);" in src

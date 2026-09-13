@@ -31,13 +31,17 @@ from metabrowser.cli.common import apply_log_level
 from metabrowser.cli.plugin_paths import resolve_extra_plugin_dirs
 from metabrowser.dotenv import load_dotenv_chain
 from metabrowser.errors import CLIError
+from metabrowser.inventory_engine.contract import (
+    canonical_inventory_path,
+)
 from metabrowser.normalize import NormalizeContext, normalize_payload
 from metabrowser.view_routes import (
     COMMIT_ROUTE_PREFIX,
     VIEW_ROUTE_PREFIX,
     decode_safe_commit_route,
     decode_safe_view_path,
-    format_view_href,
+    format_commit_href,
+    format_inventory_view_href,
 )
 
 LOG = logging.getLogger(__name__)
@@ -126,6 +130,28 @@ def _describe_comparison(payload: dict[str, Any], inner: str) -> str:
     return f"comparison envelope; {detail}"
 
 
+def _display_selection(path: str) -> str:
+    """Return a terminal-safe spelling for one native or route selection."""
+
+    try:
+        path.encode("utf-8")
+    except UnicodeEncodeError:
+        # Command-line arguments on POSIX preserve undecodable bytes as
+        # surrogates. The inventory spelling is printable ASCII at exactly
+        # those positions and remains distinct from a literal percent name.
+        return canonical_inventory_path(path)
+    return path
+
+
+def _encoded_route(path: str, display_path: str) -> bytes:
+    """Encode a URL-shaped CLI selection or report its printable spelling."""
+
+    try:
+        return path.encode()
+    except UnicodeEncodeError as exc:
+        raise CLIError(f"{display_path} is not a route this grammar accepts") from exc
+
+
 def run_show(
     root: Path,
     *,
@@ -139,6 +165,7 @@ def run_show(
 
     load_dotenv_chain()
     apply_log_level(log_level)
+    display_path = _display_selection(path)
     resolved = root.expanduser().resolve()
     if not resolved.is_dir():
         raise CLIError(f"{resolved} is not a directory")
@@ -153,10 +180,11 @@ def run_show(
     server._set_root_dir(resolved)
 
     commit = None
+    native_selection: str | None = None
     if path.startswith(COMMIT_ROUTE_PREFIX):
-        commit = decode_safe_commit_route(path.encode())
+        commit = decode_safe_commit_route(_encoded_route(path, display_path))
         if commit is None:
-            raise CLIError(f"{path} is not a route this grammar accepts")
+            raise CLIError(f"{display_path} is not a route this grammar accepts")
 
     if commit is not None:
         revision, inner = commit
@@ -165,16 +193,20 @@ def run_show(
             params["file"] = inner
         route = "/api/plugin/diff/comparison"
     else:
-        selection = path
+        native_selection = path
         if path.startswith(VIEW_ROUTE_PREFIX):
-            decoded = decode_safe_view_path(path.encode())
+            decoded = decode_safe_view_path(_encoded_route(path, display_path))
             if decoded is None:
-                raise CLIError(f"{path} is not a route this grammar accepts")
-            selection = decoded
-        route, params = "/api/file", {"path": selection}
+                raise CLIError(f"{display_path} is not a route this grammar accepts")
+            native_selection = decoded
+        # Command-line paths and decoded browser routes are native filesystem
+        # spellings. `/api/file` speaks the canonical identity published by the
+        # inventory, where a literal `%` is escaped as `%25` so percent-looking
+        # siblings cannot alias each other.
+        route, params = "/api/file", {"path": canonical_inventory_path(native_selection)}
 
     # A directory's envelope carries inventory aggregates; a file's does not.
-    needs_index = commit is None and (resolved / params["path"]).is_dir()
+    needs_index = native_selection is not None and (resolved / native_selection).is_dir()
     response = asyncio.run(
         _fetch(
             server.app,
@@ -186,33 +218,40 @@ def run_show(
     )
 
     if response.incomplete:
-        raise CLIError(f"{path} failed mid-response; the model below would be truncated")
+        raise CLIError(f"{display_path} failed mid-response; the model below would be truncated")
     if response.status_code != 200:
         raise CLIError(
-            f"{path} is not a selection the browser can open (HTTP {response.status_code})"
+            f"{display_path} is not a selection the browser can open (HTTP {response.status_code})"
         )
 
     try:
         payload = response.json()
     except ValueError as exc:
-        raise CLIError(f"{path} returned a non-JSON envelope") from exc
+        raise CLIError(f"{display_path} returned a non-JSON envelope") from exc
     if not isinstance(payload, dict):
-        raise CLIError(f"{path} returned an unexpected envelope")
+        raise CLIError(f"{display_path} returned an unexpected envelope")
 
     ctx = NormalizeContext(root=resolved)
     payload = normalize_payload(payload, ctx)
 
     if commit is not None:
         revision, inner = commit
-        shown_route = COMMIT_ROUTE_PREFIX + revision + (f"/{inner}" if inner else "")
+        shown_route = format_commit_href(revision, inner)
         kind = "comparison"
         # The same registry /api/file reads, so the views reported are the real
         # registered ones rather than a second list that could drift from them.
         views: Any = server._views_for_kind("diff")
         model = _describe_comparison(payload, inner)
     else:
-        logical = str(payload.get("path", path))
-        shown_route = format_view_href(logical) if logical not in ("", ".") else "/view/"
+        identity = payload.get("path", params["path"])
+        if not isinstance(identity, str):
+            raise CLIError(f"{display_path} returned an unexpected path identity")
+        try:
+            shown_route = (
+                format_inventory_view_href(identity) if identity not in ("", ".") else "/view/"
+            )
+        except (UnicodeEncodeError, ValueError) as exc:
+            raise CLIError(f"{display_path} returned a non-canonical path identity") from exc
         kind = str(payload.get("kind", "unknown"))
         views = payload.get("views")
         model = _describe_model(payload)
@@ -221,7 +260,7 @@ def run_show(
         typer.echo(
             json.dumps(
                 {
-                    "show": path,
+                    "show": display_path,
                     "route": shown_route,
                     "kind": kind,
                     "views": views,
@@ -233,7 +272,7 @@ def run_show(
         )
         return
 
-    typer.echo(f"show: {path}")
+    typer.echo(f"show: {display_path}")
     typer.echo(f"route: {shown_route}")
     typer.echo(f"kind: {kind}")
     typer.echo(f"views: {_describe_views(views)}")

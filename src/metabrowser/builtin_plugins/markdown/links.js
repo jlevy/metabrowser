@@ -1,6 +1,5 @@
 // Exact, repository-relative resolution for standard Markdown and sanitized HTML links.
 
-const MAX_SOURCE_PATH_LENGTH = 8192;
 const MAX_AUTHORED_TARGET_LENGTH = 16384;
 const ALLOWED_EXTERNAL_SCHEMES = new Set(["http", "https", "mailto", "tel"]);
 const UNSAFE_SCHEMES = new Set(["blob", "data", "file", "javascript", "vbscript"]);
@@ -28,6 +27,9 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
  */
 
 /** @typedef {"image" | "audio" | "video" | "resource"} MediaKind */
+/** @typedef {Readonly<{completePrefix: boolean, reverseSlashes: readonly number[], sourcePath: string}>} PreparedSourcePath */
+/** @typedef {Readonly<{done: boolean, pathVisits: number, result: PreparedSourcePath | null}>} SourcePathStep */
+/** @typedef {Readonly<{step: (maxPathVisits: number) => SourcePathStep}>} TrustedSourcePathContext */
 
 /**
  * @typedef {Readonly<{status: "internal", path: string, query?: string, fragment?: string, mediaKind?: MediaKind}> | Readonly<{status: "external", url: string}> | Readonly<{status: "unsafe" | "unsupported", reason: string}>} ResolvedTarget
@@ -44,16 +46,134 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
  * @returns {ResolvedTarget}
  */
 export function resolveStandardTarget(intent) {
-  const value = validateIntent(intent);
+  const value = validateIntentShape(intent);
+  return resolvePreparedTarget(value, prepareSourcePath(value.sourcePath));
+}
+
+/**
+ * Validate and decompose a provider-admitted source identity once for every link in
+ * one rendered document. Literal percent sequences remain inventory identities;
+ * only authored URL segments are decoded and re-escaped.
+ *
+ * @param {string} sourcePath
+ */
+export function createStandardLinkResolutionContext(sourcePath) {
+  const preparedSource = prepareSourcePath(sourcePath);
+  return strictStandardLinkResolutionContext(sourcePath, preparedSource);
+}
+
+/**
+ * Create a context for a source identity already admitted by the core catalog.
+ * This is the browser/plugin boundary: core owns canonical validation, so a view
+ * must not rescan an arbitrarily long provider string once for every renderer.
+ * Direct callers use `createStandardLinkResolutionContext`, which remains strict.
+ *
+ * Source paths no longer than the already-supported authored-target envelope are
+ * prepared synchronously, preserving ordinary mount behavior. Longer provider
+ * identities expose only the cooperative `begin()` path and are prepared by the
+ * root reconciliation coordinator.
+ *
+ * @param {string} sourcePath
+ * @param {TrustedSourcePathContext=} sourceContext
+ */
+export function createTrustedStandardLinkResolutionContext(sourcePath, sourceContext) {
+  if (typeof sourcePath !== "string" || !sourcePath) {
+    throw new TypeError("standard link source path is invalid");
+  }
+  const immediateSource =
+    sourcePath.length <= MAX_AUTHORED_TARGET_LENGTH ? prepareTrustedSourcePath(sourcePath) : null;
+  return Object.freeze({
+    /** @param {unknown} intent */
+    begin(intent) {
+      return beginTrustedResolution(validateIntentShape(intent), immediateSource, sourceContext);
+    },
+    canResolveSynchronously: immediateSource !== null,
+    /** @param {unknown} intent */
+    resolve(intent) {
+      if (!immediateSource) {
+        throw new Error("provider-long standard link resolution must be stepped cooperatively");
+      }
+      return resolvePreparedTarget(validateIntentShape(intent), immediateSource);
+    },
+  });
+}
+
+/** @param {string} sourcePath @param {PreparedSourcePath} preparedSource */
+function strictStandardLinkResolutionContext(sourcePath, preparedSource) {
+  return Object.freeze({
+    /** @param {unknown} intent */
+    resolve(intent) {
+      const value = validateIntentShape(intent);
+      if (value.sourcePath !== sourcePath) {
+        throw new TypeError("standard link context source path does not match intent");
+      }
+      return resolvePreparedTarget(value, preparedSource);
+    },
+  });
+}
+
+/**
+ * @param {Readonly<LinkIntent>} value
+ * @param {PreparedSourcePath | null} immediateSource
+ * @param {TrustedSourcePathContext | undefined} sourceContext
+ */
+function beginTrustedResolution(value, immediateSource, sourceContext) {
+  let preparedSource = immediateSource;
+  /** @type {ResolvedTarget | null} */
+  let terminal = sourceIndependentResolution(value);
+  return Object.freeze({
+    /** @param {number} maxPathVisits */
+    step(maxPathVisits) {
+      const limit = positiveInteger(maxPathVisits);
+      if (terminal) {
+        return Object.freeze({ done: true, pathVisits: 0, result: terminal });
+      }
+      if (!preparedSource) {
+        if (!sourceContext) {
+          throw new Error("provider-long standard link resolution requires a source context");
+        }
+        const sourceStep = sourceContext.step(limit);
+        if (!sourceStep.done || !sourceStep.result) {
+          return Object.freeze({
+            done: false,
+            pathVisits: sourceStep.pathVisits,
+            result: null,
+          });
+        }
+        preparedSource = sourceStep.result;
+        terminal = resolvePreparedTarget(value, preparedSource);
+        return Object.freeze({
+          done: true,
+          pathVisits: sourceStep.pathVisits,
+          result: terminal,
+        });
+      }
+      terminal = resolvePreparedTarget(value, preparedSource);
+      return Object.freeze({ done: true, pathVisits: 0, result: terminal });
+    },
+  });
+}
+
+/** @param {Readonly<LinkIntent>} value */
+function sourceIndependentResolution(value) {
+  const validation = validateAuthoredTarget(value.authoredTarget);
+  if (validation) {
+    return validation;
+  }
+  const external = resolveExternal(value.authoredTarget);
+  if (external) {
+    return external;
+  }
+  const path = splitAuthoredTarget(value.authoredTarget).path;
+  return !path || path.startsWith("/") ? resolvePreparedTarget(value, null) : null;
+}
+
+/** @param {Readonly<LinkIntent>} value @param {PreparedSourcePath | null} preparedSource */
+function resolvePreparedTarget(value, preparedSource) {
   const authoredTarget = value.authoredTarget;
-  if (authoredTarget.length > MAX_AUTHORED_TARGET_LENGTH) {
-    return unsupported("target-too-long");
-  }
-  if (authoredTarget.includes("\\")) {
-    return unsafe("backslash-path");
-  }
-  if (authoredTarget.includes("\0")) {
-    return unsafe("nul-byte");
+  const validation = validateAuthoredTarget(authoredTarget);
+  if (validation) {
+    return validation;
   }
 
   const external = resolveExternal(authoredTarget);
@@ -62,7 +182,7 @@ export function resolveStandardTarget(intent) {
   }
 
   const parts = splitAuthoredTarget(authoredTarget);
-  const resolvedPath = resolveLogicalPath(value.sourcePath, parts.path);
+  const resolvedPath = resolveLogicalPath(value.sourcePath, preparedSource, parts.path);
   if (typeof resolvedPath !== "string") {
     return resolvedPath;
   }
@@ -85,13 +205,13 @@ export function resolveStandardTarget(intent) {
     resolved.fragment = fragment;
   }
   if (value.action === "embed") {
-    resolved.mediaKind = mediaKindForPath(resolvedPath);
+    resolved.mediaKind = mediaKindForAuthoredPath(parts.path);
   }
   return Object.freeze(resolved);
 }
 
 /** @param {unknown} intent @returns {Readonly<LinkIntent>} */
-function validateIntent(intent) {
+function validateIntentShape(intent) {
   if (!intent || typeof intent !== "object") {
     throw new TypeError("standard link resolver requires a LinkIntent");
   }
@@ -108,26 +228,84 @@ function validateIntent(intent) {
   if (value.label !== undefined && typeof value.label !== "string") {
     throw new TypeError("standard link label must be a string");
   }
-  validateSourcePath(value.sourcePath);
   return /** @type {Readonly<LinkIntent>} */ (value);
 }
 
-/** @param {string} sourcePath */
-function validateSourcePath(sourcePath) {
-  if (!sourcePath || sourcePath.length > MAX_SOURCE_PATH_LENGTH) {
+/** @param {string} authoredTarget @returns {ResolvedTarget | null} */
+function validateAuthoredTarget(authoredTarget) {
+  if (authoredTarget.length > MAX_AUTHORED_TARGET_LENGTH) {
+    return unsupported("target-too-long");
+  }
+  if (authoredTarget.includes("\\")) {
+    return unsafe("backslash-path");
+  }
+  if (authoredTarget.includes("\0")) {
+    return unsafe("nul-byte");
+  }
+  return null;
+}
+
+/** @param {string} sourcePath @returns {PreparedSourcePath} */
+function prepareSourcePath(sourcePath) {
+  if (typeof sourcePath !== "string" || !sourcePath) {
     throw new TypeError("standard link source path is invalid");
   }
-  if (
-    sourcePath.startsWith("/") ||
-    sourcePath.endsWith("/") ||
-    sourcePath.includes("\\") ||
-    sourcePath.includes("\0")
-  ) {
+  if (sourcePath.startsWith("/") || sourcePath.endsWith("/")) {
     throw new TypeError("standard link source path must identify a safe logical file");
   }
-  if (sourcePath.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+  let segmentStart = 0;
+  for (let index = 0; index < sourcePath.length; index += 1) {
+    const unit = sourcePath.charCodeAt(index);
+    if (unit === 0 || unit === 92) {
+      throw new TypeError("standard link source path must identify a safe logical file");
+    }
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const following = sourcePath.charCodeAt(index + 1);
+      if (following < 0xdc00 || following > 0xdfff) {
+        throw new TypeError("standard link source path must identify a safe logical file");
+      }
+      index += 1;
+      continue;
+    }
+    if (unit >= 0xdc00 && unit <= 0xdfff) {
+      throw new TypeError("standard link source path must identify a safe logical file");
+    }
+    if (unit === 47) {
+      if (invalidSourceSegment(sourcePath, segmentStart, index)) {
+        throw new TypeError("standard link source path must already be normalized");
+      }
+      segmentStart = index + 1;
+    }
+  }
+  if (invalidSourceSegment(sourcePath, segmentStart, sourcePath.length)) {
     throw new TypeError("standard link source path must already be normalized");
   }
+  return prepareTrustedSourcePath(sourcePath);
+}
+
+/** @param {string} sourcePath @returns {PreparedSourcePath} */
+function prepareTrustedSourcePath(sourcePath) {
+  const reverseSlashes = [];
+  for (let index = sourcePath.length - 1; index >= 0; index -= 1) {
+    if (sourcePath.charCodeAt(index) === 47) {
+      reverseSlashes.push(index);
+    }
+  }
+  return Object.freeze({
+    completePrefix: true,
+    reverseSlashes: Object.freeze(reverseSlashes),
+    sourcePath,
+  });
+}
+
+/** @param {string} sourcePath @param {number} start @param {number} end */
+function invalidSourceSegment(sourcePath, start, end) {
+  const length = end - start;
+  return (
+    length === 0 ||
+    (length === 1 && sourcePath.charCodeAt(start) === 46) ||
+    (length === 2 && sourcePath.charCodeAt(start) === 46 && sourcePath.charCodeAt(start + 1) === 46)
+  );
 }
 
 /** @param {string} authoredTarget @returns {ResolvedTarget | null} */
@@ -167,10 +345,11 @@ function splitAuthoredTarget(authoredTarget) {
 
 /**
  * @param {string} sourcePath
+ * @param {PreparedSourcePath | null} preparedSource
  * @param {string} encodedPath
  * @returns {string | ResolvedTarget}
  */
-function resolveLogicalPath(sourcePath, encodedPath) {
+function resolveLogicalPath(sourcePath, preparedSource, encodedPath) {
   if (!encodedPath) {
     return sourcePath;
   }
@@ -180,7 +359,8 @@ function resolveLogicalPath(sourcePath, encodedPath) {
     return "";
   }
   const trailingSlash = relative.endsWith("/");
-  const segments = rooted ? [] : sourcePath.split("/").slice(0, -1);
+  const segments = [];
+  let parentPops = 0;
   const rawSegments = relative.split("/");
   for (const [index, rawSegment] of rawSegments.entries()) {
     if (!rawSegment) {
@@ -208,15 +388,35 @@ function resolveLogicalPath(sourcePath, encodedPath) {
       continue;
     }
     if (segment === "..") {
-      if (!segments.length) {
+      if (segments.length) {
+        segments.pop();
+        continue;
+      }
+      if (rooted) {
         return unsafe("path-escapes-served-root");
       }
-      segments.pop();
+      parentPops += 1;
       continue;
     }
     segments.push(segment.replaceAll("%", "%25"));
   }
-  const path = segments.join("/");
+  const authored = segments.join("/");
+  let base = "";
+  if (!rooted) {
+    if (!preparedSource) {
+      throw new Error("source-relative standard target lacks prepared source context");
+    }
+    if (parentPops < preparedSource.reverseSlashes.length) {
+      base = preparedSource.sourcePath.slice(0, preparedSource.reverseSlashes[parentPops]);
+    } else if (preparedSource.completePrefix) {
+      if (parentPops > preparedSource.reverseSlashes.length) {
+        return unsafe("path-escapes-served-root");
+      }
+    } else {
+      throw new Error("standard source parent window was unexpectedly exhausted");
+    }
+  }
+  const path = base && authored ? `${base}/${authored}` : base || authored;
   return trailingSlash && path ? `${path}/` : path;
 }
 
@@ -241,9 +441,17 @@ function validateSerializedPart(serialized, decode) {
   return decode ? decoded : serialized;
 }
 
-/** @param {string} path @returns {MediaKind} */
-function mediaKindForPath(path) {
-  const basename = path.replace(/\/$/, "").split("/").at(-1) || "";
+/** @param {string} encodedPath @returns {MediaKind} */
+function mediaKindForAuthoredPath(encodedPath) {
+  const withoutSlash = encodedPath.endsWith("/") ? encodedPath.slice(0, -1) : encodedPath;
+  const slash = withoutSlash.lastIndexOf("/");
+  const rawBasename = slash === -1 ? withoutSlash : withoutSlash.slice(slash + 1);
+  let basename;
+  try {
+    basename = decodeURIComponent(rawBasename);
+  } catch (_error) {
+    return "resource";
+  }
   const dotIndex = basename.lastIndexOf(".");
   const extension = dotIndex === -1 ? "" : basename.slice(dotIndex).toLowerCase();
   if (IMAGE_EXTENSIONS.has(extension)) {
@@ -256,6 +464,14 @@ function mediaKindForPath(path) {
     return "video";
   }
   return "resource";
+}
+
+/** @param {number} value */
+function positiveInteger(value) {
+  if (!Number.isFinite(value) || value < 1) {
+    throw new TypeError("standard link resolution requires a positive path-visit bound");
+  }
+  return Math.floor(value);
 }
 
 /** @param {string} reason @returns {ResolvedTarget} */

@@ -29,6 +29,74 @@
   }
 
   /**
+   * Whether one chunk request still owns the exact preview and cache value it
+   * started from. Path equality alone cannot distinguish leave-and-return ABA
+   * navigation, and claim equality alone cannot detect a background cache
+   * replacement.
+   *
+   * @param {{
+   *   cached: Record<string, any>,
+   *   cachedForPath: Record<string, any> | undefined,
+   *   claim: number | null,
+   *   currentPath: string | null,
+   *   isClaimCurrent: (claim: number) => boolean,
+   *   path: string,
+   * }} options
+   */
+  function requestOwnsPreview(options) {
+    return (
+      options.currentPath === options.path &&
+      options.claim !== null &&
+      options.isClaimCurrent(options.claim) &&
+      options.cachedForPath === options.cached
+    );
+  }
+
+  /**
+   * Construct the next immutable cache value without advancing the live
+   * cursor. A fallback render can therefore fail without losing the Load more
+   * control or making retry skip bytes.
+   *
+   * @param {Record<string, any>} cached
+   * @param {Record<string, any>} chunk
+   */
+  function nextCacheValue(cached, chunk) {
+    return {
+      ...cached,
+      content: (cached.content || "") + (chunk.content || ""),
+      content_bytes: (cached.content_bytes || 0) + (chunk.content_bytes || 0),
+      bytes_read: chunk.bytes_read || cached.bytes_read,
+      content_truncated: !!chunk.content_truncated,
+      highlight_disabled: !!chunk.highlight_disabled,
+    };
+  }
+
+  /**
+   * Advance cache content and growth cursor as one owned transaction.
+   *
+   * @param {{
+   *   cached: Record<string, any>,
+   *   cachedForPath: Record<string, any> | undefined,
+   *   claim: number | null,
+   *   commit: (nextCached: Record<string, any>) => void,
+   *   currentPath: string | null,
+   *   isClaimCurrent: (claim: number) => boolean,
+   *   nextCached: Record<string, any>,
+   *   path: string,
+   *   requested: number,
+   *   requestCap: number,
+   * }} options
+   * @returns {number | null} The next request size, or null when ownership was lost.
+   */
+  function commitChunkCache(options) {
+    if (!requestOwnsPreview(options)) {
+      return null;
+    }
+    options.commit(options.nextCached);
+    return nextChunkBytes(options.requested, options.requestCap);
+  }
+
+  /**
    * Append text to a mounted source view without rebuilding it.
    *
    * Returns false when the view is not in the expected shape, so the caller
@@ -132,7 +200,10 @@
 
   /** @type {Record<string, unknown>} */ (global).MetabrowserSourceAppend = Object.freeze({
     appendSourceText,
+    commitChunkCache,
+    nextCacheValue,
     nextChunkBytes,
+    requestOwnsPreview,
     syncLoadMoreFooter,
     syncTruncationWarning,
   });

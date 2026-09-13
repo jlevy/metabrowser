@@ -17,6 +17,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const vm = require("node:vm");
 
 function fail(msg) {
@@ -59,6 +60,7 @@ const sandbox = {
   Promise,
   Set,
   Map,
+  URL,
   // Mustache and Chart globals are referenced by some plugins. We don't
   // render in the shim; just stub them so module loading does not throw.
   Mustache: { render: (tpl) => tpl },
@@ -166,6 +168,9 @@ async function moduleFor(filepath) {
   const module = new vm.SourceTextModule(source, {
     context: sandbox,
     identifier: resolved,
+    initializeImportMeta(meta) {
+      meta.url = pathToFileURL(resolved).href;
+    },
   });
   _moduleCache.set(resolved, module);
   await module.link((specifier, referencingModule) =>

@@ -56,12 +56,55 @@ class FakeContainer extends FakeElement {
   }
 }
 
+function createScheduler() {
+  const frames = new Map();
+  let sequence = 0;
+  return {
+    cancel: (handle) => frames.delete(handle),
+    frames,
+    runAll() {
+      let guard = 0;
+      while (frames.size) {
+        guard += 1;
+        if (guard > 10_000) {
+          throw new Error("wiki enhancer scheduler did not settle");
+        }
+        const [handle, callback] = frames.entries().next().value;
+        frames.delete(handle);
+        callback(0);
+      }
+    },
+    schedule(callback) {
+      sequence += 1;
+      frames.set(sequence, callback);
+      return sequence;
+    },
+  };
+}
+
+function catalogFiles(paths) {
+  return [...paths].sort().map((filePath) => ({
+    basename: filePath.slice(filePath.lastIndexOf("/") + 1),
+    path: filePath,
+  }));
+}
+
 async function loadModule() {
   const parserSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki-parser.js"),
     "utf8",
   );
   const parserUrl = `data:text/javascript;base64,${Buffer.from(parserSource).toString("base64")}`;
+  const workerStub =
+    `import {prepareTransclusionMarkdownSource} from ${JSON.stringify(parserUrl)};` +
+    "export function createMarkdownWorkerClient(){return {dispose(){}," +
+    "run(_op,payload){return Promise.resolve(prepareTransclusionMarkdownSource(payload.source,payload.fragment))}}}";
+  const workerUrl = `data:text/javascript;base64,${Buffer.from(workerStub).toString("base64")}`;
+  const traversalSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/dom-traversal.js"),
+    "utf8",
+  );
+  const traversalUrl = `data:text/javascript;base64,${Buffer.from(traversalSource).toString("base64")}`;
   const tocFallbackStub =
     "export function initTocWithIntersectionFallback(init){return init()||(()=>{})}";
   const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
@@ -71,6 +114,7 @@ async function loadModule() {
       "utf8",
     )
     .replace('"./toc-intersection-fallback.js"', JSON.stringify(tocFallbackUrl))
+    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
     .replace('"./wiki-parser.js"', JSON.stringify(parserUrl));
   const transclusionUrl = `data:text/javascript;base64,${Buffer.from(transclusionSource).toString("base64")}`;
   const resolverSource = fs.readFileSync(
@@ -78,18 +122,45 @@ async function loadModule() {
     "utf8",
   );
   const resolverUrl = `data:text/javascript;base64,${Buffer.from(resolverSource).toString("base64")}`;
+  const linksSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/links.js"),
+    "utf8",
+  );
+  const linksUrl = `data:text/javascript;base64,${Buffer.from(linksSource).toString("base64")}`;
+  const adaptersSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/project-adapters.js"),
+    "utf8",
+  );
+  const adaptersUrl = `data:text/javascript;base64,${Buffer.from(adaptersSource).toString("base64")}`;
+  const coordinatorSource = fs
+    .readFileSync(
+      path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/reconciliation-coordinator.js"),
+      "utf8",
+    )
+    .replace('"./links.js"', JSON.stringify(linksUrl))
+    .replace('"./project-adapters.js"', JSON.stringify(adaptersUrl))
+    .replace('"./wiki-resolver.js"', JSON.stringify(resolverUrl));
+  const coordinatorUrl = `data:text/javascript;base64,${Buffer.from(coordinatorSource).toString("base64")}`;
   const enhancerSource = fs
     .readFileSync(
       path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki-enhancer.js"),
       "utf8",
     )
     .replace('"./transclusion.js"', JSON.stringify(transclusionUrl))
-    .replace('"./wiki-resolver.js"', JSON.stringify(resolverUrl));
-  return import(`data:text/javascript;base64,${Buffer.from(enhancerSource).toString("base64")}`);
+    .replace('"./dom-traversal.js"', JSON.stringify(traversalUrl))
+    .replace('"./markdown-worker-client.js"', JSON.stringify(workerUrl))
+    .replace('"./reconciliation-coordinator.js"', JSON.stringify(coordinatorUrl));
+  return {
+    enhancer: await import(
+      `data:text/javascript;base64,${Buffer.from(enhancerSource).toString("base64")}`
+    ),
+    transclusion: await import(transclusionUrl),
+  };
 }
 
 (async () => {
-  const module = await loadModule();
+  const loaded = await loadModule();
+  const module = loaded.enhancer;
   const exact = new FakeElement(
     "span",
     { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": "Exact" },
@@ -127,15 +198,25 @@ async function loadModule() {
   );
   const container = new FakeContainer([exact, unique, ambiguous, missing, image, noteEmbed]);
   const files = [
-    { path: "docs/Exact.md" },
-    { path: "docs/image.png" },
-    { path: "else/Unique.md" },
-    { path: "one/Duplicate.md" },
-    { path: "two/Duplicate.md" },
+    { basename: "Exact.md", path: "docs/Exact.md" },
+    { basename: "image.png", path: "docs/image.png" },
+    { basename: "Unique.md", path: "else/Unique.md" },
+    { basename: "Duplicate.md", path: "one/Duplicate.md" },
+    { basename: "Duplicate.md", path: "two/Duplicate.md" },
   ];
   let complete = false;
   let catalogListener = null;
   let unsubscribeCount = 0;
+  let frameSequence = 0;
+  const frames = new Map();
+  const scheduler = {
+    cancel: (handle) => frames.delete(handle),
+    schedule: (callback) => {
+      frameSequence += 1;
+      frames.set(frameSequence, callback);
+      return frameSequence;
+    },
+  };
   const registered = [];
   const mb = {
     fetchKpressRender: async () => ({ html: '<article class="kpress">Embedded</article>' }),
@@ -156,9 +237,20 @@ async function loadModule() {
     },
   };
 
-  const handle = module.enhanceWikiLinks(container, "docs/current.md", mb, (element, target) => {
-    registered.push({ element, target });
-  });
+  const handle = module.enhanceWikiLinks(
+    container,
+    "docs/current.md",
+    mb,
+    (element, target) => {
+      registered.push({ element, target });
+    },
+    scheduler,
+  );
+  check("initial wiki reconciliation is deferred", frames.size === 1);
+  check("exact link unchanged before scheduled work", container.elements[0] === exact);
+  const initialFrame = [...frames.entries()][0];
+  frames.delete(initialFrame[0]);
+  initialFrame[1](0);
   check("exact link resolves before complete", container.elements[0].tagName === "A");
   check(
     "exact link canonical href",
@@ -192,6 +284,12 @@ async function loadModule() {
 
   complete = true;
   catalogListener();
+  check("catalog publication only schedules DOM reconciliation", frames.size === 1);
+  check("scheduled link remains pending", container.elements[1] === unique);
+  for (const callback of [...frames.values()]) {
+    frames.clear();
+    callback(0);
+  }
   check("unique link resolves after completion", container.elements[1].tagName === "A");
   check(
     "unique link target",
@@ -209,6 +307,40 @@ async function loadModule() {
   handle.dispose();
   check("settled disposal is idempotent", unsubscribeCount === 1);
 
+  const hugeCandidateElement = new FakeElement(
+    "span",
+    { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": "Huge" },
+    "Huge",
+  );
+  const hugeCandidateScheduler = createScheduler();
+  const hugeCandidatePaths = Array.from(
+    { length: 25 },
+    (_, index) => `${String(index).padStart(2, "0")}/${"p".repeat(100_000)}/Huge.md`,
+  );
+  const hugeCandidateHandle = module.enhanceWikiLinks(
+    new FakeContainer([hugeCandidateElement]),
+    "docs/current.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => ({ complete: true, files: catalogFiles(hugeCandidatePaths) }),
+        subscribe: () => () => {},
+      },
+    },
+    () => {},
+    hugeCandidateScheduler,
+  );
+  hugeCandidateScheduler.runAll();
+  const hugeAnnouncement = hugeCandidateElement.getAttribute("aria-label");
+  check(
+    "provider-long ambiguous candidates use a bounded display projection",
+    hugeAnnouncement.length < 2300 &&
+      hugeAnnouncement.includes("…") &&
+      hugeAnnouncement.includes("and 21 more"),
+    String(hugeAnnouncement.length),
+  );
+  hugeCandidateHandle.dispose();
+
   const pendingOnly = new FakeElement(
     "span",
     { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": "Later" },
@@ -220,6 +352,7 @@ async function loadModule() {
     "docs/current.md",
     mb,
     () => {},
+    scheduler,
   );
   check("second mount subscribed", typeof catalogListener === "function");
   pendingHandle.dispose();
@@ -227,6 +360,293 @@ async function loadModule() {
     "dispose releases pending subscription",
     catalogListener === null && unsubscribeCount === 2,
   );
+
+  const largeElements = ["MissingA", "MissingB", "MissingC"].map(
+    (target) =>
+      new FakeElement(
+        "span",
+        { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": target },
+        target,
+      ),
+  );
+  const largeContainer = new FakeContainer(largeElements);
+  const largeFrames = new Map();
+  let largeFrameSequence = 0;
+  let largeCatalogListener = null;
+  let largePathReads = 0;
+  const largeFiles = Array.from({ length: 300_000 }, (_, index) =>
+    Object.defineProperties(
+      {},
+      {
+        basename: { value: `${String(index).padStart(6, "0")}.md` },
+        path: {
+          get() {
+            largePathReads += 1;
+            return `docs/${String(index).padStart(6, "0")}.md`;
+          },
+        },
+      },
+    ),
+  );
+  const largeHandle = module.enhanceWikiLinks(
+    largeContainer,
+    "docs/current.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => ({ complete: true, files: largeFiles }),
+        subscribe: (listener) => {
+          largeCatalogListener = listener;
+          return () => {
+            largeCatalogListener = null;
+          };
+        },
+      },
+    },
+    () => {},
+    {
+      cancel: (frame) => largeFrames.delete(frame),
+      schedule: (callback) => {
+        largeFrameSequence += 1;
+        largeFrames.set(largeFrameSequence, callback);
+        return largeFrameSequence;
+      },
+    },
+  );
+  check(
+    "300k unresolved fallback is deferred before any catalog read",
+    largePathReads === 0 && largeContainer.elements.every((element) => element.tagName === "SPAN"),
+  );
+  check("300k reconciliation defers remaining targets", largeFrames.size === 1);
+  const firstLargeFrame = [...largeFrames.entries()][0];
+  largeFrames.delete(firstLargeFrame[0]);
+  firstLargeFrame[1](0);
+  const readsAfterInitialSlice = largePathReads;
+  check(
+    "300k initial slice bounds real path visits",
+    readsAfterInitialSlice > 0 && readsAfterInitialSlice <= 16_384,
+    String(readsAfterInitialSlice),
+  );
+  const secondLargeFrame = [...largeFrames.entries()][0];
+  largeFrames.delete(secondLargeFrame[0]);
+  secondLargeFrame[1](0);
+  check(
+    "300k continuation bounds real path visits",
+    largePathReads - readsAfterInitialSlice > 0 &&
+      largePathReads - readsAfterInitialSlice <= 16_384,
+    String(largePathReads - readsAfterInitialSlice),
+  );
+  check("300k continuation stays scheduled", largeFrames.size === 1);
+  check(
+    "complete reconciliation pins and releases its catalog listener",
+    largeFrames.size === 1 && largeCatalogListener === null,
+  );
+  const staleLargeFrame = [...largeFrames.values()][0];
+  const readsBeforeLargeDispose = largePathReads;
+  largeHandle.dispose();
+  check("300k disposal cancels continuation", largeFrames.size === 0);
+  staleLargeFrame(0);
+  check(
+    "stale continuation cannot read or mutate after disposal",
+    largePathReads === readsBeforeLargeDispose &&
+      largeContainer.elements.every((element) => element.tagName === "SPAN"),
+  );
+
+  const transitionNavigate = new FakeElement(
+    "span",
+    { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": "Flip" },
+    "Flip",
+  );
+  const transitionEmbed = new FakeElement(
+    "span",
+    { "data-mb-wiki-action": "embed", "data-mb-wiki-target": "Embed" },
+    "Embed",
+  );
+  const transitionContainer = new FakeContainer([transitionNavigate, transitionEmbed]);
+  const transitionScheduler = createScheduler();
+  let transitionSnapshot = {
+    complete: false,
+    files: catalogFiles(["docs/Embed.md", "docs/Flip.md"]),
+  };
+  let transitionListener = null;
+  let resolveStaleFetch = null;
+  let staleFetchSignal = null;
+  let transitionFetches = 0;
+  let transitionRenders = 0;
+  const transitionBudget = loaded.transclusion.createTransclusionBudget({ maxDocuments: 8 });
+  const transitionHandle = module.enhanceWikiLinks(
+    transitionContainer,
+    "docs/current.md",
+    {
+      fetchKpressRender: async () => {
+        transitionRenders += 1;
+        return { html: "<p>stale</p>" };
+      },
+      fetchText: (_target, options) => {
+        transitionFetches += 1;
+        staleFetchSignal = options.signal;
+        return new Promise((resolve) => {
+          resolveStaleFetch = resolve;
+        });
+      },
+      fileCatalog: {
+        snapshot: () => transitionSnapshot,
+        subscribe: (listener) => {
+          transitionListener = listener;
+          return () => {
+            transitionListener = null;
+          };
+        },
+      },
+      navigation: mb.navigation,
+    },
+    () => {},
+    { ...transitionScheduler, budget: transitionBudget },
+  );
+  transitionScheduler.runAll();
+  await Promise.resolve();
+  const firstTransitionAnchor = transitionContainer.elements[0];
+  const firstTransitionAside = transitionContainer.elements[1];
+  check("incomplete exact navigation mounts", firstTransitionAnchor.tagName === "A");
+  check("incomplete exact embed mounts", firstTransitionAside.tagName === "ASIDE");
+  check("first embed claims one document", transitionBudget.state.documents === 1);
+  check("first embed starts one fetch", transitionFetches === 1);
+
+  transitionSnapshot = {
+    complete: false,
+    files: catalogFiles(["docs/Embed.md", "docs/Flip.md"]),
+  };
+  transitionListener();
+  transitionScheduler.runAll();
+  check(
+    "same internal navigation across revisions is not replaced",
+    transitionContainer.elements[0] === firstTransitionAnchor,
+  );
+  check(
+    "same internal embed across revisions is not remounted",
+    transitionContainer.elements[1] === firstTransitionAside &&
+      transitionBudget.state.documents === 1 &&
+      transitionFetches === 1,
+  );
+
+  transitionSnapshot = { complete: true, files: [] };
+  transitionListener();
+  transitionScheduler.runAll();
+  check(
+    "internal navigation can converge to missing on the pinned complete revision",
+    transitionContainer.elements[0].tagName === "SPAN" &&
+      transitionContainer.elements[0].getAttribute("data-metabrowser-link-status") === "missing",
+  );
+  check(
+    "internal embed can converge to missing without refunding its claim",
+    transitionContainer.elements[1].tagName === "SPAN" &&
+      transitionContainer.elements[1].getAttribute("data-metabrowser-link-status") === "missing" &&
+      transitionBudget.state.documents === 1,
+  );
+  check("changed embed aborts its in-flight source fetch", staleFetchSignal.aborted);
+  resolveStaleFetch("# stale source\n");
+  await new Promise((resolve) => setImmediate(resolve));
+  check(
+    "disposed in-flight embed cannot render or replace the final state",
+    transitionRenders === 0 &&
+      transitionContainer.elements[1].getAttribute("data-metabrowser-link-status") === "missing",
+  );
+  transitionHandle.dispose();
+
+  const lateElement = new FakeElement(
+    "span",
+    { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": "Later" },
+    "Later",
+  );
+  const lateContainer = new FakeContainer([lateElement]);
+  const lateScheduler = createScheduler();
+  let lateSnapshot = { complete: false, files: [] };
+  let lateListener = null;
+  const lateHandle = module.enhanceWikiLinks(
+    lateContainer,
+    "docs/current.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => lateSnapshot,
+        subscribe: (listener) => {
+          lateListener = listener;
+          return () => {
+            lateListener = null;
+          };
+        },
+      },
+    },
+    () => {},
+    lateScheduler,
+  );
+  lateScheduler.runAll();
+  check(
+    "early absence remains pending",
+    lateContainer.elements[0].getAttribute("data-metabrowser-link-status") === "pending",
+  );
+  lateSnapshot = { complete: true, files: catalogFiles(["other/Later.md"]) };
+  lateListener();
+  lateScheduler.runAll();
+  check(
+    "missing-to-internal transition uses the pinned complete catalog",
+    lateContainer.elements[0].tagName === "A" &&
+      lateContainer.elements[0].getAttribute("href") === "/view/other/Later.md",
+  );
+  lateHandle.dispose();
+
+  const movedEmbed = new FakeElement(
+    "span",
+    { "data-mb-wiki-action": "embed", "data-mb-wiki-target": "Move" },
+    "Move",
+  );
+  const movedContainer = new FakeContainer([movedEmbed]);
+  const movedScheduler = createScheduler();
+  let movedSnapshot = { complete: false, files: catalogFiles(["docs/Move.md"]) };
+  let movedListener = null;
+  const movedPaths = [];
+  const movedBudget = loaded.transclusion.createTransclusionBudget({ maxDocuments: 8 });
+  const movedHandle = module.enhanceWikiLinks(
+    movedContainer,
+    "docs/current.md",
+    {
+      fetchKpressRender: async () => ({ html: "<p>moved</p>" }),
+      fetchText: async ({ path: filePath }) => {
+        movedPaths.push(filePath);
+        return "# Moved\n";
+      },
+      fileCatalog: {
+        snapshot: () => movedSnapshot,
+        subscribe: (listener) => {
+          movedListener = listener;
+          return () => {
+            movedListener = null;
+          };
+        },
+      },
+      navigation: mb.navigation,
+    },
+    () => {},
+    { ...movedScheduler, budget: movedBudget },
+  );
+  movedScheduler.runAll();
+  await new Promise((resolve) => setImmediate(resolve));
+  const firstMovedAside = movedContainer.elements[0];
+  movedSnapshot = { complete: true, files: catalogFiles(["other/Move.md"]) };
+  movedListener();
+  movedScheduler.runAll();
+  await new Promise((resolve) => setImmediate(resolve));
+  check(
+    "a changed internal embed remounts exactly once",
+    movedContainer.elements[0].tagName === "ASIDE" &&
+      movedContainer.elements[0] !== firstMovedAside &&
+      JSON.stringify(movedPaths) === '["docs/Move.md","other/Move.md"]',
+  );
+  check(
+    "only an actual changed remount consumes another non-refundable claim",
+    movedBudget.state.documents === 2,
+  );
+  movedHandle.dispose();
 
   if (failures.length) {
     console.error(`markdown wiki enhancer FAILURES:\n- ${failures.join("\n- ")}`);

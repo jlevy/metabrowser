@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CAPTURE = ROOT / "explorations" / "performance-loop" / "capture-browser.js"
 PROBE = ROOT / "explorations" / "performance-loop" / "probe.js"
 RUNNER = ROOT / "explorations" / "performance-loop" / "run.py"
+PROBE_CONTRACT = ROOT / "tests" / "dom" / "performance-probe-contract-behavior.js"
 
 
 def test_capture_browser_argument_contract() -> None:
@@ -690,6 +691,44 @@ def test_probe_freezes_product_responsiveness_before_diagnostic_work() -> None:
     assert snapshot < source.index('fetch("/api/tree?depth=1"')
 
 
+def test_probe_hard_gates_every_synchronous_catalog_delivery_path() -> None:
+    source = PROBE.read_text(encoding="utf-8")
+    labels = source[
+        source.index("const inventoryDeliveryLabels") : source.index("const inventoryDeliveryRows")
+    ]
+
+    assert '"apiCatalog:parse"' in labels
+    assert '"knownFileCatalog:applyBulkSnapshot"' in labels
+    assert '"knownFileCatalog:applyCatalogChange"' in labels
+    assert '"knownFileCatalog:applyEventChange"' in labels
+    assert '"apiCatalog:body"' not in labels
+    required = source[
+        source.index("const requiredInitialDeliveryLabels") : source.index(
+            "const missingInitialDeliveryLabels"
+        )
+    ]
+    assert '"apiCatalog:parse"' in required
+    assert '"knownFileCatalog:applyBulkSnapshot"' in required
+    assert '"knownFileCatalog:applyCatalogChange"' not in required
+
+
+def test_probe_requires_each_initial_catalog_delivery_label() -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+
+    result = subprocess.run(
+        [node, str(PROBE_CONTRACT)],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "behavior: OK" in result.stdout
+
+
 def test_probe_does_not_classify_script_preloads_as_stylesheets() -> None:
     source = PROBE.read_text(encoding="utf-8")
     scripts = source[source.index("const scripts =") : source.index("const startupScripts =")]
@@ -703,9 +742,29 @@ def test_probe_does_not_classify_script_preloads_as_stylesheets() -> None:
 
 def test_probe_attributes_startup_resource_queue_and_server_time() -> None:
     source = PROBE.read_text(encoding="utf-8")
-    startup = source[source.index("startup_scripts_slowest:") : source.index("style_transfer_kb:")]
+    startup = source[
+        source.index("startup_scripts_slowest:") : source.index("startup_style_server_ms_max:")
+    ]
 
     assert startup.count("response_start_ms:") == 2
     assert startup.count("wait_ms:") == 2
     assert startup.count("download_ms:") == 2
     assert startup.count('entry.name === "srv"') == 2
+
+
+def test_probe_attributes_render_blocking_startup_styles() -> None:
+    source = PROBE.read_text(encoding="utf-8")
+    selection = source[source.index("const blockingStyleUrls") : source.index("const images =")]
+    report = source[
+        source.index("startup_style_server_ms_max:") : source.index("style_transfer_kb:")
+    ]
+
+    assert "querySelectorAll('link[rel~=\"stylesheet\"]')" in selection
+    assert "!link.disabled" in selection
+    assert "matchMedia(link.media).matches" in selection
+    assert "r.startTime < Number(nav.domContentLoadedEventEnd)" in selection
+    assert "startup_style_wait_ms_max:" in report
+    assert "startup_style_last_response_ms:" in report
+    assert "response_end_ms:" in report
+    assert "wait_ms:" in report
+    assert 'entry.name === "srv"' in report

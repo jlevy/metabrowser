@@ -227,6 +227,10 @@ def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None
     assert "cleanupStage()" in file_render
     assert "preview.replaceChildren(...replacementNodes)" in file_render
     assert "stagedPluginLifecycle.commit" in file_render
+    commit_block = file_render[file_render.index("stagedPluginLifecycle.commit") :]
+    assert commit_block.index("preview.replaceChildren(...replacementNodes)") < commit_block.index(
+        "options.onCommit?.()"
+    )
     assert file_render.index("await _perf.measureAsync(") < file_render.index(
         "preview.replaceChildren(...replacementNodes)"
     )

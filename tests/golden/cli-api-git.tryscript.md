@@ -409,6 +409,23 @@ model: comparison envelope; comparison_id=git:6af1e10278161613 kind=content base
 ? 0
 ```
 
+## Test: `--show` keeps a slash-bearing Git ref in one route segment
+
+The browser emits full ref identities such as `refs/heads/main` with the slashes encoded
+inside the revision segment.
+The Python grammar must decode that same address rather than mistake the ref’s slashes
+for comparison-file separators.
+
+```console
+$ metab gitroot --show '/commit/refs%2Fheads%2Fmain'
+show: /commit/refs%2Fheads%2Fmain
+route: /commit/refs%2Fheads%2Fmain
+kind: comparison
+views: diff (default)
+model: comparison envelope; comparison_id=git:6af1e10278161613 kind=content base_policy=first_parent files=2 truncated=False
+? 0
+```
+
 ## Test: a malformed revision is refused by the grammar
 
 ```console

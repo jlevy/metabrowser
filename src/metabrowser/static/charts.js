@@ -11,19 +11,24 @@
     }
     return String(value);
   };
-  var chartInstances = [];
-  var activeChartRender = null;
+  /** @type {Map<HTMLElement, {chartData: any, instances: Array<{destroy: () => void}>}>} */
+  var chartRenders = new Map();
 
-  function destroyChartInstances() {
-    for (var i = 0; i < chartInstances.length; i++) {
-      chartInstances[i].destroy();
+  /** @param {Array<{destroy: () => void}>} instances */
+  function destroyChartInstances(instances) {
+    for (var i = 0; i < instances.length; i++) {
+      instances[i].destroy();
     }
-    chartInstances = [];
   }
 
-  function dispose() {
-    destroyChartInstances();
-    activeChartRender = null;
+  /** @param {HTMLElement} container */
+  function dispose(container) {
+    const render = chartRenders.get(container);
+    if (!render) {
+      return;
+    }
+    chartRenders.delete(container);
+    destroyChartInstances(render.instances);
   }
 
   function cssVar(ref) {
@@ -192,7 +197,7 @@
     return html;
   }
 
-  function renderChartSpecs(container, charts) {
+  function renderChartSpecs(container, charts, instances) {
     return _perf.measure(
       "renderChartSpecs",
       () => {
@@ -220,7 +225,7 @@
 
           var chart = createChart(canvas, spec);
           if (chart) {
-            chartInstances.push(chart);
+            instances.push(chart);
           }
         }
         container.appendChild(section);
@@ -429,15 +434,17 @@
     return _perf.measure(
       "renderChartsPayload",
       () => {
-        destroyChartInstances();
-        activeChartRender =
-          chartData.charts && chartData.charts.length > 0 ? { container, chartData } : null;
+        dispose(container);
+        const render = { chartData, instances: [] };
+        if (chartData.charts && chartData.charts.length > 0) {
+          chartRenders.set(container, render);
+        }
         container.innerHTML = "";
         if (chartData.summary) {
           renderSummaryTree(container, chartData.summary.counts, chartData.summary.metadata);
         }
         if (chartData.charts && chartData.charts.length > 0) {
-          renderChartSpecs(container, chartData.charts);
+          renderChartSpecs(container, chartData.charts, render.instances);
         }
         if (!chartData.summary && (!chartData.charts || chartData.charts.length === 0)) {
           container.innerHTML = '<div class="preview-empty">This file has no chart data.</div>';
@@ -451,15 +458,13 @@
   }
 
   function repaintForTheme() {
-    if (!activeChartRender) {
-      return;
+    for (const [container, render] of Array.from(chartRenders.entries())) {
+      if ("isConnected" in container && !container.isConnected) {
+        dispose(container);
+        continue;
+      }
+      renderPayload(container, render.chartData);
     }
-    var render = activeChartRender;
-    if ("isConnected" in render.container && !render.container.isConnected) {
-      dispose();
-      return;
-    }
-    renderPayload(render.container, render.chartData);
   }
 
   global.MetabrowserTheme.subscribe(repaintForTheme);

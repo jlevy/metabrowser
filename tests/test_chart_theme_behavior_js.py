@@ -49,14 +49,18 @@ def test_charts_repaint_from_theme_tokens_until_disposed() -> None:
         "repaintedSeries": "light-series",
         "specTokenPreserved": "var(--chart-series-info)",
     }
-    assert payload["replacement"] == {
-        "firstRepaintDestroyed": 1,
+    assert payload["stagedReplacement"] == {
+        "firstCommitted": True,
+        "firstDestroyedAtCommit": 1,
+        "firstSurvivesStaging": True,
+        "secondCommitted": True,
         "secondDestroyedOnRepaint": 1,
+        "secondSurvivesCommit": True,
         "repaintedLabel": "Second series",
         "repaintedSeries": "dark-series",
     }
     assert payload["disposal"]["activeDestroyed"] == 1
     assert (
-        payload["disposal"]["chartCountAfterTheme"]
-        == payload["disposal"]["chartCountBeforeDispose"]
+        payload["disposal"]["chartCountAfterPostDisposeTheme"]
+        == payload["disposal"]["chartCountBeforePostDisposeTheme"]
     )

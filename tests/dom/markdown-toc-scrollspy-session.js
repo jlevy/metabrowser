@@ -39,14 +39,16 @@ async function loadProductionModules() {
     .replace('"./overlay.js"', JSON.stringify(overlayUrl))
     .replace('"./runtime.js"', JSON.stringify(runtimeUrl))
     .replace('"./viewport.js"', JSON.stringify(viewportUrl));
-  const [rendered, fallback, kpressToc] = await Promise.all([
+  const [rendered, fallback, kpressToc, linkEnhancer] = await Promise.all([
     import(pathToFileURL(path.join(markdownModuleRoot, "rendered.js")).href),
     import(pathToFileURL(path.join(markdownModuleRoot, "toc-intersection-fallback.js")).href),
     import(dataUrl(tocSource)),
+    import(pathToFileURL(path.join(markdownModuleRoot, "link-enhancer.js")).href),
   ]);
   return {
     fallback,
     kpressToc,
+    linkEnhancer,
     rendered,
   };
 }
@@ -179,7 +181,8 @@ function plainClick(target) {
 }
 
 (async () => {
-  const { fallback, kpressToc, rendered } = await loadProductionModules();
+  const { fallback, kpressToc, linkEnhancer, rendered } = await loadProductionModules();
+  const { enhanceRenderedLinks } = linkEnhancer;
   const { initTocWithIntersectionFallback } = fallback;
   const { initKpressToc } = kpressToc;
   const { mountRenderedMarkdown } = rendered;
@@ -235,6 +238,10 @@ function plainClick(target) {
   toc.queryMany.set('ol a[href^="#"]', links);
   const container = new ElementShim("article");
   container.queryMany.set("a[href]", links);
+  container.queryMany.set(
+    "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]",
+    links,
+  );
   container.queryMany.set("[id]", headings);
   container.queryMany.set("[data-kpress-toc]", [toc]);
   for (const link of links) {
@@ -291,7 +298,7 @@ function plainClick(target) {
   const authoredHref = links[2].getAttribute("href");
   const opened = [];
   let catalogSnapshots = 0;
-  let enhancerHadRunAtTocMount = false;
+  let tocMountedWithoutCatalogSnapshot = false;
   const mb = {
     errors: { isAbortError: () => false },
     escapeHtml: (value) => value,
@@ -304,7 +311,7 @@ function plainClick(target) {
       subscribe: () => () => {},
     },
     kpressInitToc: (target) => {
-      enhancerHadRunAtTocMount = catalogSnapshots > 0;
+      tocMountedWithoutCatalogSnapshot = catalogSnapshots === 0;
       return initKpressToc(target);
     },
     navigation: {
@@ -318,6 +325,12 @@ function plainClick(target) {
     container,
     { path: sourcePath, raw: { content: "# Plan", content_truncated: false } },
     mb,
+    {
+      workerClient: {
+        dispose() {},
+        run: async () => ({ changed: false, complete: true, diagnostics: [], source: null }),
+      },
+    },
   );
   await mountHandle.ready;
   const collapsedRows = () =>
@@ -347,6 +360,34 @@ function plainClick(target) {
   await Promise.resolve();
   const delegatedTarget = opened[0] || null;
 
+  const embeddedFragment = new ElementShim("a", { href: "#details" });
+  const embeddedNewTab = new ElementShim("a", { href: "#details", target: "_blank" });
+  const embeddedContainer = new ElementShim("aside");
+  embeddedContainer.queryMany.set("a[href]", [embeddedFragment, embeddedNewTab]);
+  embeddedContainer.queryMany.set(
+    "a[href],img[src],audio[src],video[src],source[src],object[data],[data-mb-wiki-target]",
+    [embeddedFragment, embeddedNewTab],
+  );
+  embeddedFragment.parentElement = embeddedContainer;
+  embeddedNewTab.parentElement = embeddedContainer;
+  const embeddedHandle = enhanceRenderedLinks(embeddedContainer, "docs/embedded.md", mb, {
+    cancel,
+    eventTarget: windowTarget,
+    schedule,
+  });
+  const embeddedHref = embeddedFragment.getAttribute("href");
+  const embeddedTargetBlankHref = embeddedNewTab.getAttribute("href");
+  const embeddedClick = plainClick(embeddedFragment);
+  embeddedContainer.dispatch("click", embeddedClick);
+  await Promise.resolve();
+  const embeddedDelegatedTarget = opened[1] || null;
+  const embeddedModifierClick = plainClick(embeddedFragment);
+  embeddedModifierClick.metaKey = true;
+  embeddedContainer.dispatch("click", embeddedModifierClick);
+  const embeddedNewTabClick = plainClick(embeddedNewTab);
+  embeddedContainer.dispatch("click", embeddedNewTabClick);
+  embeddedHandle.dispose();
+
   const runtime = globalThis;
   if ("IntersectionObserver" in runtime) {
     throw new Error("session requires a runtime without native IntersectionObserver");
@@ -354,6 +395,7 @@ function plainClick(target) {
   const fallbackWasScoped = !("IntersectionObserver" in runtime);
   const passiveScrollListener = viewport.listenerOptions("scroll")[0]?.passive === true;
   flush();
+  const catalogSnapshotsAfterFirstFlush = catalogSnapshots;
 
   const steps = [];
   const activeId = () => {
@@ -431,6 +473,11 @@ function plainClick(target) {
       authoredHref,
       delegatedClickPrevented: delegatedClick.defaultPrevented,
       delegatedTarget,
+      embeddedDelegatedTarget,
+      embeddedHref,
+      embeddedModifierClickPrevented: embeddedModifierClick.defaultPrevented,
+      embeddedNewTabClickPrevented: embeddedNewTabClick.defaultPrevented,
+      embeddedTargetBlankHref,
       enhancedHref,
     },
     maxHeadingGeometryReadsPerUpdate: Math.max(...geometryReadsPerUpdate),
@@ -441,7 +488,10 @@ function plainClick(target) {
       renderedMarkdownMount: true,
       tocIntersectionFallback: true,
     },
-    productionOrder: { enhancerHadRunAtTocMount },
+    productionOrder: {
+      tocMountedWithoutCatalogSnapshot,
+      catalogSnapshotsAfterFirstFlush,
+    },
     steps,
     tocExpansion,
   };
@@ -459,10 +509,19 @@ function plainClick(target) {
     enhancedHref !== authoredHref ||
     !delegatedClick.defaultPrevented ||
     JSON.stringify(delegatedTarget) !== JSON.stringify(expectedTarget) ||
+    embeddedHref !== "/view/docs/embedded.md#details" ||
+    embeddedTargetBlankHref !== "/view/docs/embedded.md#details" ||
+    !embeddedClick.defaultPrevented ||
+    JSON.stringify(embeddedDelegatedTarget) !==
+      JSON.stringify({ path: "docs/embedded.md", fragment: "details" }) ||
+    embeddedModifierClick.defaultPrevented ||
+    embeddedNewTabClick.defaultPrevented ||
+    opened.length !== 2 ||
     JSON.stringify(actualActive) !== JSON.stringify(expectedActive) ||
     coalescedFrames !== 1 ||
     !fallbackWasScoped ||
-    !enhancerHadRunAtTocMount ||
+    !tocMountedWithoutCatalogSnapshot ||
+    catalogSnapshotsAfterFirstFlush !== 0 ||
     result.maxHeadingGeometryReadsPerUpdate > Math.ceil(Math.log2(headings.length)) + 1 ||
     !passiveScrollListener ||
     !nativeRuntimePreserved ||

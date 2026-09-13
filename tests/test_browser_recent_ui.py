@@ -126,7 +126,6 @@ def test_index_template_versions_core_static_assets() -> None:
     assert 'href="/static/styles.css?v=' in html
     assert '<link rel="preload" href="/static/app.js?v=' not in html
     assets = (
-        "/static/document-width.js",
         "/static/plugin-sdk.js",
         "/static/icons.js",
         "/static/tree-expansion.js",
@@ -138,7 +137,13 @@ def test_index_template_versions_core_static_assets() -> None:
         assert f'src="{asset}?v=' in html
         positions.append(html.index(f'<script src="{asset}?v='))
     assert positions == sorted(positions)
+    document_width = (proc_browser.STATIC_DIR / "document-width.js").read_text()
+    assert f"<script>{document_width}</script>" in html
+    assert '<script src="/static/document-width.js' not in html
     deferred_assets = (
+        "/static/view-composition.js",
+        "/static/source-append.js",
+        "/static/charts.js",
         "/static/known-file-catalog.js",
         "/static/catalog-feed.js",
         "/static/file-fuzzy-match.js",
@@ -522,6 +527,41 @@ def test_recent_recompute_timers_are_cancelled_and_identity_guarded() -> None:
     assert filter_change.count("recentRecompute.cancel()") >= 2
 
 
+def test_uncommitted_recent_base_cannot_repaint_a_replacement_view() -> None:
+    """Late events and expiry own the committed base, not just current controls."""
+
+    js = _read_app_js()
+    model = _function_source(_read_tree_filter_model(), "recentViewOwnsCursor")
+    assert 'cursor.source === "recent"' in model
+    assert "committed.windowKey === cursor.windowKey" in model
+    assert "committed.requestKey === cursor.recentRequestKey" in model
+
+    fetch = _function_source(js, "fetchRecent")
+    assert "recentCommittedView = null" in fetch
+    commit = _function_source(js, "commitRecentResponse")
+    assert "recentCommittedView = Object.freeze({" in commit
+    assert "windowKey: cursor.windowKey" in commit
+    assert "requestKey: cursor.recentRequestKey" in commit
+
+    render = _function_source(js, "renderRecentFromBase")
+    assert "if (!recentViewOwnsCurrentCursor())" in render
+    change = _function_source(js, "fileStoreApplyChangeInner")
+    assert "recentViewOwnsCurrentCursor()" in change
+    event_source = _function_source(js, "_createInventoryEventSource")
+    assert "filterState && recentOwnsCurrentView" in event_source
+    assert "!recentOwnsCurrentView && recentEverLoaded" in event_source
+    assert "scheduleRecentAuthoritativeRefetch()" in event_source
+
+    session = (Path(__file__).parent / "dom" / "recent-filter-session.js").read_text()
+    for case in (
+        "eventAfterReplacementStart",
+        "expiryMayPaintDuringReplacement",
+        "eventAfterReplacementFailure",
+        "sameSelectionRepair",
+    ):
+        assert case in session
+
+
 def test_resync_invalidates_recent_before_reconnecting() -> None:
     """A transport gap dirties an active request or repairs a settled view."""
 
@@ -640,14 +680,15 @@ def test_background_recent_repair_preserves_the_reader_view() -> None:
     js = _read_app_js()
     fetch = _function_source(js, "fetchRecent")
     assert "results && preserveRows !== true" in fetch
-    assert "recentViewCommitted = false" in fetch
+    assert "recentCommittedView = null" in fetch
     assert "treeFilterModel.settleRecentFailure(" in fetch
     commit = _function_source(js, "commitRecentResponse")
-    assert "recentViewCommitted = true" in commit
+    assert "recentCommittedView = Object.freeze({" in commit
     repair_setup = js[
         js.index("var recentContinuity") : js.index("function scheduleRecentAuthoritativeRefetch")
     ]
     assert "treeFilterModel.runRecentRepair(recentContinuity, request" in repair_setup
+    assert "viewCommitted: recentViewOwnsCurrentCursor()" in repair_setup
     model = _read_tree_filter_model()
     repair = model[
         model.index("function runRecentRepair") : model.index("function settleRecentSuccess")

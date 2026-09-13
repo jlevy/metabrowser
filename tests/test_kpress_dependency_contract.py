@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -92,3 +93,41 @@ def test_pinned_kpress_owns_the_inline_code_base_style() -> None:
     assert "border: 1px solid var(--color-hint-gentle);" in inline_block
     assert "border-radius: var(--kpress-radius-sm);" in inline_block
     assert "padding: 0.25em 0.2em 0.1em 0.2em;" in inline_block
+
+
+def test_host_unifies_inline_and_block_code_chrome() -> None:
+    styles = (SOURCE_DIR / "static" / "styles.css").read_text(encoding="utf-8")
+    code_border = "--code-border: color-mix(in srgb, var(--border) 55%, transparent);"
+    code_surfaces = """.metabrowser-kpress-host .kpress code:not(pre code),
+.metabrowser-kpress-host .kpress .kpress-code {
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-document);
+}"""
+
+    assert code_border in styles
+    assert "--kpress-code-border: var(--code-border);" in styles
+    assert "--kpress-code-radius: var(--radius-document);" in styles
+    assert code_surfaces in styles
+    assert "--inline-code-border" not in styles
+
+
+def test_kpress_host_monospace_css_never_uses_a_dotted_border() -> None:
+    code_selector = re.compile(r"\b(?:code|pre|mono|monospace)\b", re.IGNORECASE)
+    dotted_border = re.compile(
+        r"(?:border(?:-[a-z-]+)?\s*:[^;{}]*\bdotted\b|border-style\s*:\s*dotted)",
+        re.IGNORECASE,
+    )
+    scanned: list[str] = []
+    offenders: list[str] = []
+    for path in sorted(SOURCE_DIR.rglob("*.css")):
+        css = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
+        for selector, declarations in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+            if ".metabrowser-kpress-host" not in selector or not code_selector.search(selector):
+                continue
+            scanned.append(selector.strip())
+            if dotted_border.search(declarations):
+                offenders.append(f"{path.relative_to(PROJECT_FILE.parent)}: {selector.strip()}")
+
+    assert any(".kpress-code" in selector for selector in scanned)
+    assert any("code:not(pre code)" in selector for selector in scanned)
+    assert not offenders, f"dotted KPress-host code borders: {offenders}"

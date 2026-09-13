@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const repoRoot = path.resolve(process.argv[2]);
+const repoRoot = path.resolve(__dirname, "../..");
 const listeners = new Map();
 const chartInstances = [];
 let resolvedTheme = "light";
@@ -128,10 +128,12 @@ for (const relative of [
   "src/metabrowser/static/view-state.js",
   "src/metabrowser/static/navigation.js",
   "src/metabrowser/static/plugin-sdk.js",
+  "src/metabrowser/static/view-composition.js",
   "src/metabrowser/static/charts.js",
 ]) {
-  const source = fs.readFileSync(path.join(repoRoot, relative), "utf8");
-  vm.runInContext(source, sandbox, { filename: relative });
+  const filename = path.join(repoRoot, relative);
+  const source = fs.readFileSync(filename, "utf8");
+  vm.runInContext(source, sandbox, { filename });
 }
 
 const lazyMountCreatesNoChart = chartInstances.length === 0;
@@ -164,72 +166,113 @@ const directUpdatesAfterDestroy = directChart.updateCalls.length;
 const staticUpdateCalls = staticChart.updateCalls.length;
 staticChart.destroy();
 
-const firstContainer = new FakeElement("div");
-const firstPayload = {
-  charts: [
-    {
-      title: "First",
-      type: "line",
-      series: [
-        { label: "First series", data: [1], color: "var(--chart-series-info)" },
-        { label: "OKLCH series", data: [2], color: "oklch(70% 0.1 95)" },
-      ],
+(async () => {
+  const firstContainer = new FakeElement("div");
+  const firstPayload = {
+    charts: [
+      {
+        title: "First",
+        type: "line",
+        series: [
+          { label: "First series", data: [1], color: "var(--chart-series-info)" },
+          { label: "OKLCH series", data: [2], color: "oklch(70% 0.1 95)" },
+        ],
+      },
+    ],
+  };
+  const secondContainer = new FakeElement("div");
+  const secondPayload = {
+    charts: [
+      {
+        title: "Second",
+        type: "line",
+        series: [{ label: "Second series", data: [2], color: "var(--chart-series-info)" }],
+      },
+    ],
+  };
+  const chartRenderer = {
+    render(container, context) {
+      sandbox.MetabrowserCharts.renderPayload(container, context.raw);
     },
-  ],
-};
-sandbox.MetabrowserCharts.renderPayload(firstContainer, firstPayload);
-const firstRuntimeChart = chartInstances.at(-1);
+    dispose(container) {
+      sandbox.MetabrowserCharts.dispose(container);
+    },
+  };
+  const lifecycle = sandbox.MetabrowserViewComposition.createLifecycle();
 
-resolvedTheme = "light";
-sandbox.MetabrowserTheme.notifyChanged({ mode: "light", resolved: "light" });
-const repaintedFirstRuntimeChart = chartInstances.at(-1);
+  const firstStage = lifecycle.begin();
+  await sandbox.MetabrowserViewComposition.mount(
+    firstContainer,
+    chartRenderer,
+    { raw: firstPayload },
+    firstStage.disposers,
+  );
+  const firstRuntimeChart = chartInstances.at(-1);
+  const firstCommitted = firstStage.commit(() => {});
 
-const secondContainer = new FakeElement("div");
-const secondPayload = {
-  charts: [
-    {
-      title: "Second",
-      type: "line",
-      series: [{ label: "Second series", data: [2], color: "var(--chart-series-info)" }],
-    },
-  ],
-};
-sandbox.MetabrowserCharts.renderPayload(secondContainer, secondPayload);
-const secondRuntimeChart = chartInstances.at(-1);
+  resolvedTheme = "light";
+  sandbox.MetabrowserTheme.notifyChanged({ mode: "light", resolved: "light" });
+  const repaintedFirstRuntimeChart = chartInstances.at(-1);
 
-resolvedTheme = "dark";
-sandbox.MetabrowserTheme.notifyChanged({ mode: "dark", resolved: "dark" });
-const repaintedSecondRuntimeChart = chartInstances.at(-1);
-const chartCountBeforeDispose = chartInstances.length;
-sandbox.MetabrowserCharts.dispose();
-resolvedTheme = "light";
-sandbox.MetabrowserTheme.notifyChanged({ mode: "light", resolved: "light" });
+  // Render B while A is still the installed lifecycle. Committing B disposes
+  // A only; it must not destroy the chart B just staged in another container.
+  const secondStage = lifecycle.begin();
+  await sandbox.MetabrowserViewComposition.mount(
+    secondContainer,
+    chartRenderer,
+    { raw: secondPayload },
+    secondStage.disposers,
+  );
+  const secondRuntimeChart = chartInstances.at(-1);
+  const firstSurvivesStaging = repaintedFirstRuntimeChart.destroyCalls === 0;
+  const secondCommitted = secondStage.commit(() => {});
+  const secondSurvivesCommit = secondRuntimeChart.destroyCalls === 0;
 
-process.stdout.write(
-  JSON.stringify({
-    lazyMountCreatesNoChart,
-    directInitialColors,
-    directDarkColors,
-    directUpdatesAfterDestroy,
-    staticInputsPreserved,
-    staticUpdateCalls,
-    firstRuntime: {
-      initialSeries: firstRuntimeChart.data.datasets[0].borderColor,
-      oklchAlpha: firstRuntimeChart.data.datasets[1].backgroundColor,
-      destroyedOnRepaint: firstRuntimeChart.destroyCalls,
-      repaintedSeries: repaintedFirstRuntimeChart.data.datasets[0].borderColor,
-      specTokenPreserved: firstPayload.charts[0].series[0].color,
-    },
-    replacement: {
-      firstRepaintDestroyed: repaintedFirstRuntimeChart.destroyCalls,
-      secondDestroyedOnRepaint: secondRuntimeChart.destroyCalls,
-      repaintedLabel: repaintedSecondRuntimeChart.data.datasets[0].label,
-      repaintedSeries: repaintedSecondRuntimeChart.data.datasets[0].borderColor,
-    },
-    disposal: {
-      activeDestroyed: repaintedSecondRuntimeChart.destroyCalls,
-      chartCountBeforeDispose,
-      chartCountAfterTheme: chartInstances.length,
-    },
-  }),
-);
+  resolvedTheme = "dark";
+  sandbox.MetabrowserTheme.notifyChanged({ mode: "dark", resolved: "dark" });
+  const repaintedSecondRuntimeChart = chartInstances.at(-1);
+  lifecycle.disposeActive();
+  const chartCountBeforePostDisposeTheme = chartInstances.length;
+  resolvedTheme = "light";
+  sandbox.MetabrowserTheme.notifyChanged({ mode: "light", resolved: "light" });
+
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        lazyMountCreatesNoChart,
+        directInitialColors,
+        directDarkColors,
+        directUpdatesAfterDestroy,
+        staticInputsPreserved,
+        staticUpdateCalls,
+        firstRuntime: {
+          initialSeries: firstRuntimeChart.data.datasets[0].borderColor,
+          oklchAlpha: firstRuntimeChart.data.datasets[1].backgroundColor,
+          destroyedOnRepaint: firstRuntimeChart.destroyCalls,
+          repaintedSeries: repaintedFirstRuntimeChart.data.datasets[0].borderColor,
+          specTokenPreserved: firstPayload.charts[0].series[0].color,
+        },
+        stagedReplacement: {
+          firstCommitted,
+          firstSurvivesStaging,
+          firstDestroyedAtCommit: repaintedFirstRuntimeChart.destroyCalls,
+          secondCommitted,
+          secondSurvivesCommit,
+          secondDestroyedOnRepaint: secondRuntimeChart.destroyCalls,
+          repaintedLabel: repaintedSecondRuntimeChart.data.datasets[0].label,
+          repaintedSeries: repaintedSecondRuntimeChart.data.datasets[0].borderColor,
+        },
+        disposal: {
+          activeDestroyed: repaintedSecondRuntimeChart.destroyCalls,
+          chartCountBeforePostDisposeTheme,
+          chartCountAfterPostDisposeTheme: chartInstances.length,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+})().catch((error) => {
+  process.stderr.write(String(error?.stack || error));
+  process.exitCode = 1;
+});

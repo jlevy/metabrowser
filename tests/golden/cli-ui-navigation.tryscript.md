@@ -83,6 +83,26 @@ $ node tests/dom/recent-filter-session.js
           }
         ],
         "pending": false
+      },
+      "replacementOwnership": {
+        "eventAfterStart": {
+          "schedule": "scheduled",
+          "renders": 0
+        },
+        "expiryAfterStart": {
+          "mayPaint": false
+        },
+        "eventAfterFailure": {
+          "schedule": "scheduled",
+          "renders": 0
+        },
+        "sameSelectionRepair": {
+          "schedule": "scheduled",
+          "renderedRequest": {
+            "windowKey": "24h",
+            "requestKey": "/api/recent?window=24h&limit=5000&types=.md"
+          }
+        }
       }
     },
     "resync": {
@@ -437,6 +457,203 @@ $ node tests/dom/recent-filter-session.js
     }
   }
 }
+```
+
+The catalog feed session pins connect-before-fetch ordering, buffered delta replay,
+bounded snapshot commits, sentinel resynchronization, and retry without data loss.
+
+```console
+$ node tests/dom/catalog-feed-behavior.js
+{
+  "verified": [
+    "no apply before start",
+    "first start begins one fetch",
+    "changes during fetch stay buffered",
+    "bulk applies first",
+    "bulk carries completeness",
+    "buffered changes fold into the bulk in order",
+    "small post-fetch changes use the direct point path",
+    "fs.change uses the same scheduler-backed delivery seam",
+    "sentinel before first fetch does nothing",
+    "sentinel after a completed fetch refetches",
+    "refetch folds changes buffered during it",
+    "reconnect marks catalog coverage incomplete",
+    "reconnect open refetches before its sentinel",
+    "reconnect sentinel does not duplicate the open refetch",
+    "completion after a partial reconnect payload refetches",
+    "duplicate completion signals share one authoritative refetch",
+    "partial reconnect does not claim completion before an authoritative payload",
+    "completion refetch applies authoritative membership",
+    "truncated completion repairs reconnect membership",
+    "truncated completion never claims complete root coverage",
+    "truncated completion refetch is authoritative but incomplete",
+    "reconnect discards an unfinished initial response",
+    "reconnect queues a replacement for the initial fetch",
+    "replacement initial fetch applies",
+    "304 reconnect restores known complete coverage",
+    "304 reconnect keeps capped coverage incomplete",
+    "resync refetches",
+    "changes during resync refetch fold into its commit",
+    "failure schedules a retry",
+    "nothing applied on failure",
+    "retry folds the delta buffered across the failure into its bulk",
+    "stale pre-resync response is never applied",
+    "resync during a fetch still queues a follow-up fetch",
+    "follow-up fetch applies the new root's catalog",
+    "first sentinel refetches",
+    "response overtaken by a second sentinel is discarded",
+    "sentinel during a fetch queues a follow-up",
+    "queued follow-up applies",
+    "index completion marks the catalog",
+    "disposed feed applies nothing",
+    "progress poll function is extractable",
+    "failed progress does not complete the catalog",
+    "capped progress repairs without claiming complete coverage",
+    "truncated bulk applies its files",
+    "a truncated catalog is not reported complete",
+    "a truncated terminal event does not mark the catalog complete",
+    "a large steady change is staged",
+    "walk completion issues the authoritative refetch",
+    "a change after the refetch began survives its older authoritative payload"
+  ]
+}
+```
+
+The catalog ordering session feeds the exact production modules with a valid
+UTF-8-ordered payload whose BMP private-use paths precede its astral paths.
+It pins the browser’s complete UTF-16-ordered projection and runs the larger 200,000-row
+responsiveness gate through the focused pytest wrapper.
+
+```console
+$ node tests/dom/catalog-unicode-order-session.js
+{
+  "browserOrder": [
+    "astral",
+    "bmp-private-use"
+  ],
+  "complete": true,
+  "files": 40000,
+  "providerOrder": [
+    "bmp-private-use",
+    "astral"
+  ],
+  "sliced": true,
+  "workItemLimit": 4096
+}
+```
+
+The large catalog session applies the production 300,000-row shape through the exact
+bounded scheduler. It pins the one-pass initial projection and attributes every bulk,
+catalog-delta, and filesystem-delta delivery callback without requiring a live delta
+from a settled server.
+
+```console
+$ node tests/dom/catalog-feed-large-session.js
+{
+  "attributedDeliveryLabels": [
+    "apiCatalog:parse",
+    "knownFileCatalog:applyBulkSnapshot",
+    "knownFileCatalog:applyCatalogChange",
+    "knownFileCatalog:applyEventChange"
+  ],
+  "catalogRows": 300000,
+  "initialBulkWorkItems": 300003,
+  "initialFetches": 1,
+  "sliceItemLimit": 4096
+}
+```
+
+The navigation route session pins the canonical file and comparison identities used by
+history updates, including segment encoding, fragments, Windows-native identities, and
+invalid path rejection.
+
+```console
+$ node tests/dom/navigation-route-behavior.js
+{
+  "verified": [
+    "slash-bearing Git ref gets one encoded revision segment",
+    "slash-bearing Git ref parses",
+    "slash-bearing Git ref and inner path parse independently",
+    "reject encoded separator in commit inner path /commit/main/src%2Fapp.py",
+    "reject encoded separator in commit inner path /commit/main/src%5Capp.py",
+    "reject encoded separator in commit inner path /commit/main/src%00app.py",
+    "reject invalid commit revision \"\"",
+    "reject invalid commit revision \".bad\"",
+    "reject invalid commit revision \"bad ref\"",
+    "reject invalid commit revision \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"",
+    "root href",
+    "folder href keeps its slash",
+    "path segments encode independently",
+    "query and fragment stay outside path identity",
+    "parse root",
+    "parse folder",
+    "parse encoded path once",
+    "query escapes remain data rather than delimiters",
+    "reserved keys are carried, not yet interpreted",
+    "a query round-trips losslessly through parse and href",
+    "stripping reserved keys yields the canonical content URL",
+    "percent-looking data is not decoded twice",
+    "native URL for 100%25.md",
+    "identity from /view/100%25.md",
+    "native URL for report%2520final.txt",
+    "identity from /view/report%2520final.txt",
+    "native URL for d%251/雪.md",
+    "identity from /view/d%251/%E9%9B%AA.md",
+    "native URL for bad%FF 雪%25.txt",
+    "identity from /view/bad%FF%20%E9%9B%AA%25.txt",
+    "display percent-looking filename literally",
+    "Windows native URL for lone%D8%00.txt",
+    "Windows identity from /view/lone%ED%A0%80.txt",
+    "Windows native URL for lone%DF%FF.txt",
+    "Windows identity from /view/lone%ED%BF%BF.txt",
+    "Windows native URL for lone%D8%80.txt",
+    "Windows identity from /view/lone%ED%A2%80.txt",
+    "Windows native URL for unicode؀.txt",
+    "Windows identity from /view/unicode%D8%80.txt",
+    "reject unrelated route",
+    "reject missing canonical root slash",
+    "reject malformed escape",
+    "reject encoded slash",
+    "reject encoded backslash",
+    "reject literal backslash",
+    "reject literal parent traversal",
+    "reject encoded parent traversal",
+    "reject encoded NUL",
+    "reject empty interior segment",
+    "format rejects leading slash",
+    "format rejects dot segment",
+    "format rejects parent segment",
+    "format rejects backslash",
+    "format rejects NUL",
+    "public href uses the canonical codec",
+    "startup applies pathname route",
+    "startup does not rewrite history",
+    "public current reads controller state",
+    "user navigation pushes",
+    "path navigation reports a fetch boundary",
+    "latest navigation context is current",
+    "folder slash canonicalization replaces",
+    "canonical folder is current",
+    "same-file fragment gets a real URL",
+    "same-file fragment avoids a fetch boundary",
+    "superseded navigation context is stale",
+    "popstate restores from location",
+    "back to landing clears target",
+    "landing callback receives null",
+    "dispose removes popstate",
+    "a hash alone selects no file",
+    "a hash-only landing applies no target"
+  ]
+}
+```
+
+The asset loader session pins lazy construction, dependency order, concurrent request
+coalescing, partial-failure recovery, and validation of promised globals.
+
+```console
+$ node tests/dom/asset-loader-behavior.js
+{"appendedBeforeAnyRequest":0,"orderedLoad":["chart.js","plugin.js","adapter.js"],"notifiedPerScript":["chart.js","plugin.js","adapter.js"],"loadedFlag":true,"appendsOnSecondRequest":0,"skippedUngatedDependency":["chart.js"],"appendsWhileThreeCallersWait":1,"appendsAfterSharedLoadSettled":1,"unknownBundle":"Unknown asset bundle: absent","failedScript":"Failed to load asset: chart.js","loadedFlagAfterFailure":false,"appendsAfterFailedRetry":2,"partialFailureRetryAppends":["chart.js","charts-runtime.js","adapter.js","adapter.js"],"partialFailureNotifications":["chart.js","charts-runtime.js","adapter.js"],"partialFailureLoaded":true,"missingProvidedGlobal":"Asset chart.js did not provide expected global: Chart","missingProvidedGlobalFirstAppends":["chart.js"],"missingProvidedGlobalFirstNotifications":[],"missingProvidedGlobalLatched":false,"missingProvidedGlobalRetryAppends":["chart.js","chart.js","plugin.js"],"missingProvidedGlobalRetryNotifications":["chart.js","plugin.js"],"missingProvidedGlobalRetryLoaded":true,"concurrentStrongFailure":"Asset shared.js did not provide expected global: Shared","concurrentStrongRetryAppends":["shared.js","shared.js"],"concurrentStrongRetryLoaded":true}
+? 0
 ```
 
 <!-- This document follows common-doc-guidelines.md.

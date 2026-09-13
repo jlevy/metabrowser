@@ -503,6 +503,13 @@ _sys.modules[__name__].__class__ = _ProcBrowserModule
 # browser's HTTP cache does the work it's designed to do.
 
 STATIC_DIR: Path = Path(__file__).parent / "static"
+# The reading-width state machine is first-paint configuration and only 1 KiB
+# compressed. Embed its exact tested source once instead of spending a startup
+# request on it; keeping the file authoritative preserves the browserless
+# golden without copying a second implementation into this template.
+_DOCUMENT_WIDTH_SCRIPT = STATIC_DIR.joinpath("document-width.js").read_text(encoding="utf-8")
+if "</script" in _DOCUMENT_WIDTH_SCRIPT.lower():
+    raise RuntimeError("document-width.js cannot be safely embedded in the index shell")
 
 _SLOW_SERVER_REQUEST_MS = int(
     os.environ.get(
@@ -927,7 +934,7 @@ PREFETCH_FALLBACK_DELAY_MS = 200
 
 
 async def index(request: Request) -> HTMLResponse:
-    """Serve the SPA page; CSS/JS are linked, not inlined."""
+    """Serve the SPA page with linked assets and one pre-paint state machine."""
 
     initial_path = _initial_path_html()
     initial_root = html_escape(_display_root_str(), quote=True)
@@ -940,7 +947,6 @@ async def index(request: Request) -> HTMLResponse:
     formatters_url = _static_asset_url("formatters.js")
     inventory_scope_url = _static_asset_url("inventory-scope.js")
     directory_totals_store_url = _static_asset_url("directory-totals-store.js")
-    document_width_url = _static_asset_url("document-width.js")
     contribution_registry_url = _static_asset_url("contribution-registry.js")
     resource_context_url = _static_asset_url("resource-context.js")
     view_state_url = _static_asset_url("view-state.js")
@@ -973,8 +979,8 @@ async def index(request: Request) -> HTMLResponse:
     # Inject the client-visible settings dict before any app code
     # runs so JS can read window.METABROWSER_SETTINGS.* without
     # duplicating constants in the source.
+    client_settings_block = f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES))};</script>"
     settings_block = (
-        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES))};</script>"
         f"<script>window.METABROWSER_PATH_ENCODING={_json.dumps('utf16' if os.name == 'nt' else 'bytes')};</script>"
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
@@ -1061,14 +1067,11 @@ async def index(request: Request) -> HTMLResponse:
     var fontSets = __FONT_VALUES__;
     var fontPref = cookie("metabrowser.interfaceFont");
     de.setAttribute("data-app-font", fontSets.indexOf(fontPref) >= 0 ? fontPref : "__FONT_DEFAULT__");
-    // Reading width, seeded before first paint for the same reason as the
-    // theme: app.js runs after the document has already been laid out, so
-    // setting it there would render the column at the default and then reflow
-    // it to the reader's choice. Bounds mirror document-width.js.
-    var chars = Math.round(Number(cookie("metabrowser.docMaxChars")));
-    if (Number.isFinite(chars) && chars > 0) {
-      de.style.setProperty("--doc-max-chars", String(Math.min(160, Math.max(40, chars))));
-    }
+    // Reading width is also pre-paint. The exact browserless-tested state
+    // machine is embedded above this bootstrap, so cookie normalization has
+    // one implementation rather than a second copy of its bounds here.
+    var width = window.MetabrowserDocumentWidth;
+    de.style.setProperty("--doc-max-chars", String(width.readStored(cookie)));
   })();
   </script>"""
     theme_bootstrap = theme_bootstrap.replace(
@@ -1119,8 +1122,14 @@ async def index(request: Request) -> HTMLResponse:
             {"src": git_history_window_url},
             {"src": git_panel_url},
         ],
+        # The compositor is needed only once file navigation begins, after the
+        # first tree is usable. renderFile awaits this bundle and rechecks its
+        # ownership claim before preparing or mounting a view.
+        "view-composition": [{"src": view_composition_url}],
+        "source-append": [{"src": source_append_url}],
         "chart": [
-            {"src": _static_asset_url("vendor/chart.umd.min.js")},
+            {"src": _static_asset_url("vendor/chart.umd.min.js"), "provides": "Chart"},
+            {"src": charts_url, "requires": "Chart"},
             {
                 "src": _static_asset_url("vendor/chartjs-plugin-annotation.min.js"),
                 "requires": "Chart",
@@ -1222,6 +1231,8 @@ async def index(request: Request) -> HTMLResponse:
        document share one download. Built in kpress_font_head above from the
        required KPress package. No flash of unstyled text on first paint. -->
   {kpress_font_head}
+  {client_settings_block}
+  <script>{_DOCUMENT_WIDTH_SCRIPT}</script>
   {theme_bootstrap}
   <!-- All third-party assets are vendored into the wheel and served
        same-origin (see static/vendor/manifest.json), so the page loads
@@ -1334,7 +1345,6 @@ async def index(request: Request) -> HTMLResponse:
   {repository_context_block}
   {initial_tree_block}
   {asset_bundles_block}
-  <script src="{document_width_url}"></script>
   <script src="{asset_loader_url}"></script>
   <script src="{theme_state_url}"></script>
   <script src="{request_error_url}"></script>
@@ -1345,15 +1355,12 @@ async def index(request: Request) -> HTMLResponse:
   <script src="{resource_context_url}"></script>
   <script src="{view_state_url}"></script>
   <script src="{navigation_url}"></script>
-  <script src="{source_append_url}"></script>
   <script src="{file_type_taxonomy_url}"></script>
   <script src="{plugin_sdk_url}"></script>
-  <script src="{view_composition_url}"></script>
   <script src="{perf_url}"></script>
   <script src="{filter_state_url}"></script>
   <script src="{filter_controls_url}"></script>
   <script src="{icons_url}"></script>
-  <script src="{charts_url}"></script>
   <script src="{tree_expansion_url}"></script>
   <script src="{tree_filter_model_url}"></script>
   <script src="{pending_tally_diagnostics_url}"></script>
@@ -2441,32 +2448,44 @@ def _read_artifact_text(artifact: ArtifactPath, max_bytes: int) -> tuple[str, in
     return raw.decode(errors="replace"), len(raw)
 
 
+class _JsonRequestLimitError(ValueError):
+    """Raised as soon as a streamed JSON request crosses its byte cap."""
+
+
+async def _read_bounded_json_request(request: Request, max_bytes: int) -> Any:
+    """Parse one JSON request without consuming or retaining bytes past *max_bytes*."""
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(chunk) > max_bytes - len(body):
+            raise _JsonRequestLimitError(f"request body exceeds {max_bytes} bytes")
+        body.extend(chunk)
+    return await asyncio.to_thread(_json.loads, body)
+
+
+# Transformed source can contain one six-byte JSON escape per source byte, plus
+# bounded envelope fields. Export has no inline source, so one 64 KiB envelope
+# leaves ample room for every supported path and option without an unbounded read.
+_KPRESS_RENDER_REQUEST_MAX_BYTES = (_TEXT_PREVIEW_MAX_CHUNK_BYTES * 6) + (64 * 1024)
+_KPRESS_EXPORT_REQUEST_MAX_BYTES = 64 * 1024
+
+
 @log_async_calls(if_slower_than=0.1)
 async def api_kpress_render(request: Request) -> JSONResponse:
     """Render a safe served-root-relative file through the KPress adapter."""
 
     source_override: str | None = None
     if getattr(request, "method", "GET") == "POST":
-        # ``JSON.stringify`` can expand one UTF-8 source byte to a six-byte
-        # JSON escape. Bound the transport independently of the decoded
-        # source cap so request-body reads cannot grow without limit.
-        request_limit = (_TEXT_PREVIEW_MAX_CHUNK_BYTES * 6) + (64 * 1024)
-        chunks: list[bytes] = []
-        request_size = 0
-        async for chunk in request.stream():
-            request_size += len(chunk)
-            if request_size > request_limit:
-                return JSONResponse(
-                    {
-                        "type": "kpress_render_error",
-                        "error": "Render request exceeds safety limits",
-                        "max_size": request_limit,
-                    },
-                    status_code=413,
-                )
-            chunks.append(chunk)
         try:
-            body = _json.loads(b"".join(chunks))
+            body = await _read_bounded_json_request(request, _KPRESS_RENDER_REQUEST_MAX_BYTES)
+        except _JsonRequestLimitError:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "Render request exceeds safety limits",
+                    "max_size": _KPRESS_RENDER_REQUEST_MAX_BYTES,
+                },
+                status_code=413,
+            )
         except (_json.JSONDecodeError, UnicodeDecodeError) as exc:
             return JSONResponse(
                 {"type": "kpress_render_error", "error": "Invalid JSON body", "detail": str(exc)},
@@ -2480,17 +2499,20 @@ async def api_kpress_render(request: Request) -> JSONResponse:
         subpath = body.get("path", "")
         view = body.get("view", "document")
         profile_value = body.get("profile")
-        profile = profile_value or None
         source_override = body.get("source_text")
+        # Same JSON-type contract as export: an absent or null profile means
+        # the default, and a present one must be a string. `false` or `0` is a
+        # malformed body, not a request for the default.
         if (
             not all(isinstance(value, str) for value in (subpath, view))
             or not isinstance(source_override, str)
-            or (profile is not None and not isinstance(profile, str))
+            or (profile_value is not None and not isinstance(profile_value, str))
         ):
             return JSONResponse(
                 {"type": "kpress_render_error", "error": "Invalid render body fields"},
                 status_code=400,
             )
+        profile = profile_value or None
         try:
             source_size = len(source_override.encode())
         except UnicodeEncodeError as exc:
@@ -2688,8 +2710,17 @@ async def api_kpress_export(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Method not allowed"}, status_code=405)
 
     try:
-        body = await request.json()
-    except _json.JSONDecodeError as exc:
+        body = await _read_bounded_json_request(request, _KPRESS_EXPORT_REQUEST_MAX_BYTES)
+    except _JsonRequestLimitError:
+        return JSONResponse(
+            {
+                "type": "kpress_export_error",
+                "error": "Export request exceeds safety limits",
+                "max_size": _KPRESS_EXPORT_REQUEST_MAX_BYTES,
+            },
+            status_code=413,
+        )
+    except (_json.JSONDecodeError, UnicodeDecodeError) as exc:
         return JSONResponse(
             {"type": "kpress_export_error", "error": "Invalid JSON body", "detail": str(exc)},
             status_code=400,
@@ -2704,11 +2735,35 @@ async def api_kpress_export(request: Request) -> JSONResponse:
     raw_path = body.get("path", "")
     raw_destination = body.get("destination", "")
     view = body.get("view", "rendered")
-    profile = body.get("profile") or "document"
+    profile = body.get("profile", "document")
     export_mode = body.get("export_mode", "page")
     asset_mode = body.get("asset_mode", "linked")
-    optimize = bool(body.get("optimize", False))
+    optimize = body.get("optimize", False)
     theme_mode = body.get("theme_mode", "system")
+
+    string_fields = {
+        "path": raw_path,
+        "destination": raw_destination,
+        "view": view,
+        "profile": profile,
+        "export_mode": export_mode,
+        "asset_mode": asset_mode,
+        "theme_mode": theme_mode,
+    }
+    invalid_fields = sorted(
+        field for field, value in string_fields.items() if not isinstance(value, str)
+    )
+    if type(optimize) is not bool:
+        invalid_fields.append("optimize")
+    if invalid_fields:
+        return JSONResponse(
+            {
+                "type": "kpress_export_error",
+                "error": "Invalid export request field types",
+                "fields": invalid_fields,
+            },
+            status_code=400,
+        )
 
     if export_mode in _KPRESS_EXPORT_MODES_DEFERRED:
         return JSONResponse(
@@ -2739,14 +2794,14 @@ async def api_kpress_export(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    source = _safe_path_from_identity(raw_path) if isinstance(raw_path, str) else None
+    source = _safe_path_from_identity(raw_path)
     if source is None or not source.is_file():
         return JSONResponse(
             {"type": "kpress_export_error", "error": "Source path not found or unsafe"},
             status_code=404,
         )
 
-    if not isinstance(raw_destination, str) or not raw_destination:
+    if not raw_destination:
         return JSONResponse(
             {"type": "kpress_export_error", "error": "`destination` is required"},
             status_code=400,

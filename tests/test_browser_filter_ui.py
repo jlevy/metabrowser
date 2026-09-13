@@ -721,7 +721,10 @@ def test_the_overlay_stops_when_the_recency_window_is_cleared() -> None:
     js = _read("app.js")
     change_start = js.index("function fileStoreApplyChangeInner(ops)")
     change_block = js[change_start : js.index("function invalidateFilePreviews(ops)", change_start)]
-    assert "recentEverLoaded && currentRecentWindow && filterState" in change_block
+    assert "recentEverLoaded" in change_block
+    assert "currentRecentWindow" in change_block
+    assert "filterState" in change_block
+    assert "recentViewOwnsCurrentCursor()" in change_block
     assert "treeFilterModel.applyRecentChangeBatch(recentBaseEntries, ops" in change_block
 
     model = _read("tree-filter-model.js")

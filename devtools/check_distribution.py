@@ -89,6 +89,11 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/static/vendor/chart.umd.min.js",
             VSCODE_LICENSE_PATH,
             "metabrowser/builtin_plugins/markdown/manifest.toml",
+            "metabrowser/builtin_plugins/markdown/dom-traversal.js",
+            "metabrowser/builtin_plugins/markdown/markdown-worker.js",
+            "metabrowser/builtin_plugins/markdown/markdown-worker-client.js",
+            "metabrowser/builtin_plugins/markdown/markdown-worker-operations.js",
+            "metabrowser/builtin_plugins/markdown/reconciliation-coordinator.js",
             "metabrowser/builtin_plugins/markdown/rendered.js",
             "metabrowser/builtin_plugins/folder/overview.js",
             "metabrowser/builtin_plugins/folder/file-type-summary.js",
@@ -134,6 +139,11 @@ def _inspect_sdist(sdist: Path) -> None:
             "skills/metabrowser/agents/openai.yaml",
             "src/metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "src/metabrowser/static/app.js",
+            "src/metabrowser/builtin_plugins/markdown/dom-traversal.js",
+            "src/metabrowser/builtin_plugins/markdown/markdown-worker.js",
+            "src/metabrowser/builtin_plugins/markdown/markdown-worker-client.js",
+            "src/metabrowser/builtin_plugins/markdown/markdown-worker-operations.js",
+            "src/metabrowser/builtin_plugins/markdown/reconciliation-coordinator.js",
             *(f"src/metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
@@ -190,6 +200,16 @@ def _smoke_install(wheel: Path) -> None:
             "assert files('metabrowser').joinpath('builtin_plugins/diff/diff-view.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/image/index.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/image/styles.css').is_file(); "
+            "assert files('metabrowser').joinpath("
+            "'builtin_plugins/markdown/dom-traversal.js').is_file(); "
+            "assert files('metabrowser').joinpath("
+            "'builtin_plugins/markdown/markdown-worker.js').is_file(); "
+            "assert files('metabrowser').joinpath("
+            "'builtin_plugins/markdown/markdown-worker-client.js').is_file(); "
+            "assert files('metabrowser').joinpath("
+            "'builtin_plugins/markdown/markdown-worker-operations.js').is_file(); "
+            "assert files('metabrowser').joinpath("
+            "'builtin_plugins/markdown/reconciliation-coordinator.js').is_file(); "
             "assert files('metabrowser').joinpath("
             "'data/file-diff-format/file-diff.schema.json').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "

@@ -13,30 +13,61 @@ sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
-const source = fs.readFileSync(
-  path.join(repoRoot, "src/metabrowser/static/catalog-feed.js"),
-  "utf-8",
-);
-vm.runInContext(source, sandbox, { filename: "catalog-feed.js" });
+const sourcePath = path.join(repoRoot, "src/metabrowser/static/catalog-feed.js");
+const source = fs.readFileSync(sourcePath, "utf-8");
+vm.runInContext(source, sandbox, { filename: sourcePath });
 
 const failures = [];
+// Every distinct scenario this session verified, in first-run order. The
+// golden pins the list, so removing a scenario changes the transcript.
+const verified = [];
 
 function check(label, condition, detail = "") {
+  if (!verified.includes(label)) {
+    verified.push(label);
+  }
   if (!condition) {
     failures.push(`${label}${detail ? `: ${detail}` : ""}`);
   }
 }
 
-/** A recording catalog double for the feed's three-method target. */
+/** A recording catalog double for the feed target. */
 function makeCatalog() {
   const calls = [];
   return {
     calls,
-    applyBulkSnapshot(files, complete, authoritative) {
-      calls.push({ kind: "bulk", files, complete, authoritative });
+    beginBulkSnapshot(files, complete, authoritative) {
+      let done = false;
+      const buffered = [];
+      return {
+        cancel() {
+          done = true;
+        },
+        enqueueCatalogChange(payload) {
+          buffered.push(payload);
+        },
+        step() {
+          if (!done) {
+            calls.push({ kind: "bulk", files, complete, authoritative, buffered: [...buffered] });
+            done = true;
+          }
+          return { candidateVisits: 0, cancelled: false, done: true, workItems: files.length };
+        },
+      };
+    },
+    beginCatalogChange() {
+      return null;
+    },
+    beginEventChange() {
+      return null;
     },
     applyCatalogChange(payload) {
       calls.push({ kind: "change", payload });
+      return { candidateVisits: 0, changed: true, workItems: 1 };
+    },
+    applyEventChange(ops) {
+      calls.push({ kind: "event-change", ops });
+      return { candidateVisits: 0, changed: true, workItems: ops.length };
     },
     markComplete() {
       calls.push({ kind: "markComplete" });
@@ -67,14 +98,14 @@ function jsonResponse(payload, status = 200) {
   return {
     ok: status >= 200 && status < 300,
     status,
-    json: () => Promise.resolve(payload),
+    text: () => Promise.resolve(JSON.stringify(payload)),
   };
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
 async function main() {
-  // ── Buffering before the bulk payload, replay after ──────────
+  // ── Buffering before the bulk payload, folded at commit ─────
   {
     const catalog = makeCatalog();
     const { impl, pending } = makeFetch();
@@ -97,10 +128,10 @@ async function main() {
     check("bulk applies first", catalog.calls[0]?.kind === "bulk");
     check("bulk carries completeness", catalog.calls[0]?.complete === true);
     check(
-      "buffered changes replay after the bulk, in order",
-      catalog.calls.length === 3 &&
-        catalog.calls[1].payload.upserts[0].p === "early.txt" &&
-        catalog.calls[2].payload.upserts[0].p === "during.txt",
+      "buffered changes fold into the bulk in order",
+      catalog.calls.length === 1 &&
+        catalog.calls[0].buffered[0].upserts[0].p === "early.txt" &&
+        catalog.calls[0].buffered[1].upserts[0].p === "during.txt",
     );
 
     feed.onCatalogChange({
@@ -109,10 +140,17 @@ async function main() {
       removes: [],
     });
     check(
-      "post-fetch changes apply directly",
-      catalog.calls.length === 4 &&
-        catalog.calls[3].payload.upserts[0].p === "live.txt" &&
-        catalog.calls[3].payload.non_file_paths[0] === "replaced-link",
+      "small post-fetch changes use the direct point path",
+      catalog.calls.length === 2 &&
+        catalog.calls[1].payload.upserts[0].p === "live.txt" &&
+        catalog.calls[1].payload.non_file_paths[0] === "replaced-link",
+    );
+    feed.onEventChange([{ op: "remove", path: "old-dir" }]);
+    check(
+      "fs.change uses the same scheduler-backed delivery seam",
+      catalog.calls.length === 3 &&
+        catalog.calls[2].kind === "event-change" &&
+        catalog.calls[2].ops[0].path === "old-dir",
     );
   }
 
@@ -143,9 +181,9 @@ async function main() {
     await tick();
     await tick();
     check(
-      "refetch replays changes buffered during it",
-      catalog.calls.length === applied + 2 &&
-        catalog.calls[catalog.calls.length - 1].payload.upserts[0].p === "gap.txt",
+      "refetch folds changes buffered during it",
+      catalog.calls.length === applied + 1 &&
+        catalog.calls.at(-1).buffered[0].upserts[0].p === "gap.txt",
     );
   }
 
@@ -314,7 +352,9 @@ async function main() {
     const reconnectCalls = catalog.calls.slice(1).map((call) => call.kind);
     check(
       "304 reconnect restores known complete coverage",
-      reconnectCalls.includes("markIncomplete") && reconnectCalls.includes("markComplete"),
+      reconnectCalls.includes("markIncomplete") &&
+        catalog.calls.at(-1)?.kind === "bulk" &&
+        catalog.calls.at(-1)?.complete === true,
       reconnectCalls.join(","),
     );
   }
@@ -363,7 +403,11 @@ async function main() {
     pending[1].resolve(jsonResponse({ complete: false, files: [] }));
     await tick();
     await tick();
-    check("changes during resync refetch buffer and replay", catalog.calls.length === before + 2);
+    check(
+      "changes during resync refetch fold into its commit",
+      catalog.calls.length === before + 1 &&
+        catalog.calls.at(-1).buffered[0].upserts[0].p === "afterswap.txt",
+    );
   }
 
   // ── Retry on failure without losing buffered deltas ───────────
@@ -395,10 +439,10 @@ async function main() {
     await tick();
     await tick();
     check(
-      "retry applies bulk then the delta buffered across the failure",
-      catalog.calls.length === 2 &&
+      "retry folds the delta buffered across the failure into its bulk",
+      catalog.calls.length === 1 &&
         catalog.calls[0].kind === "bulk" &&
-        catalog.calls[1].payload.upserts[0].p === "kept.txt",
+        catalog.calls[0].buffered[0].upserts[0].p === "kept.txt",
     );
   }
 
@@ -586,10 +630,89 @@ async function main() {
   }
 }
 
-main().then(() => {
-  if (failures.length > 0) {
-    process.stderr.write(`${failures.join("\n")}\n`);
-    process.exit(1);
+// A steady staged change that finishes while a refetch is in flight must not
+// discard the journal: changes that arrive after that fetch began have to
+// replay over its payload, which predates them. Uses the production catalog.
+async function stagedChangeDuringRefetch() {
+  const catalogSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/static/known-file-catalog.js"),
+    "utf-8",
+  );
+  vm.runInContext(catalogSource, sandbox, { filename: "known-file-catalog.js" });
+  const catalog = sandbox.MetabrowserKnownFileCatalog.create();
+  const { impl, pending } = makeFetch();
+  const turns = [];
+  const feed = sandbox.MetabrowserCatalogFeed.create({
+    catalog,
+    fetchImpl: impl,
+    yieldControl: () => new Promise((resolve) => turns.push(resolve)),
+  });
+  async function settle() {
+    for (let round = 0; round < 10_000; round += 1) {
+      await tick();
+      const turn = turns.shift();
+      if (!turn) {
+        await tick();
+        if (turns.length === 0) {
+          return;
+        }
+        continue;
+      }
+      turn();
+    }
   }
-  process.stdout.write("OK catalog feed\n");
-});
+
+  // Enough rows that a staged change copies its baseline across task slices.
+  const baseline = Array.from({ length: 5_000 }, (_, index) => ({
+    e: ".txt",
+    p: `a/file-${String(index).padStart(4, "0")}.txt`,
+  }));
+  feed.start();
+  await tick();
+  pending[0].resolve(jsonResponse({ complete: false, files: baseline }));
+  await settle();
+  // A reconnect during the walk requires one terminal, authoritative payload.
+  feed.start();
+  await tick();
+  pending[1].resolve(jsonResponse({ complete: false, files: baseline }));
+  await settle();
+
+  const bulk = Array.from({ length: 300 }, (_, index) => ({
+    e: ".txt",
+    p: `bulk/file-${String(index).padStart(3, "0")}.txt`,
+  }));
+  feed.onCatalogChange({ removes: [], upserts: bulk });
+  await tick();
+  check("a large steady change is staged", turns.length === 1, String(turns.length));
+  feed.onIndexComplete();
+  await tick();
+  check("walk completion issues the authoritative refetch", pending.length === 3);
+  feed.onCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "new.txt" }] });
+  await settle();
+
+  pending[2].resolve(jsonResponse({ complete: true, files: [...baseline, ...bulk] }));
+  await settle();
+  const paths = catalog.snapshot().files.map((file) => file.path);
+  check(
+    "a change after the refetch began survives its older authoritative payload",
+    paths.includes("new.txt") &&
+      paths.length === baseline.length + bulk.length + 1 &&
+      catalog.snapshot().complete === true,
+    JSON.stringify({
+      complete: catalog.snapshot().complete,
+      count: paths.length,
+      hasNew: paths.includes("new.txt"),
+    }),
+  );
+  feed.dispose();
+}
+
+main()
+  .then(stagedChangeDuringRefetch)
+  .then(() => {
+    if (failures.length > 0) {
+      process.stderr.write(`${failures.join("\n")}\n`);
+      process.exit(1);
+    }
+    process.stdout.write(`${JSON.stringify({ verified }, null, 2)}\n`);
+  });

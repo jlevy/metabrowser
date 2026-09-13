@@ -9,9 +9,10 @@ which KPress and its rendering stack are the single largest contributor, and
 every `metab` invocation pays it -- `--help`, `--walk`, and every `--api` route
 included. Only three surfaces need the runtime: `/api/kpress/render`,
 `/api/kpress/export`, and `/kpress-static/*`. The browser shell needs two KPress
-font URLs, but their public versioned shape can be built from distribution
-metadata without importing the renderer. No data route touches KPress, so the
-whole CLI must not pay for a renderer it does not use.
+asset URLs, but their public versioned shape can be built from distribution
+metadata without importing the renderer. Serve resolves those unconditional
+assets before Uvicorn starts; non-serve modes and data routes do not pay for a
+renderer they never use.
 
 The exception is narrow on purpose. Deferring an import trades a startup cost
 for a first-call cost and hides an unavailable dependency until run time, so it
@@ -55,6 +56,14 @@ def _runtime() -> Any:
 # Keep the top-level section spine visible while scroll-follow opens the active branch.
 _TOC_COLLAPSE_DEPTH = 1
 
+# These two package assets are unconditional browser-shell dependencies. Serve
+# resolves them before Uvicorn starts so their first requests do not pay the
+# deferred KPress import while inventory startup is competing for the CPU.
+_BROWSER_SHELL_ASSET_PATHS = (
+    "fonts/source-sans-3-latin-wght-normal.woff2",
+    "css/style-tokens.css",
+)
+
 
 class KPressRenderError(RuntimeError):
     """Raised when KPress is present but cannot render the requested input."""
@@ -77,6 +86,7 @@ __all__ = [
     "export_kpress_document",
     "get_kpress_static_asset",
     "kpress_static_url",
+    "prepare_browser_assets",
     "render_kpress_view",
     "set_kpress_static_root_for_tests",
 ]
@@ -169,7 +179,7 @@ def render_kpress_view(
         toc_rail="reserved",
     )
     try:
-        return runtime.render_view(request)
+        return cast("dict[str, Any]", runtime.render_view(request))
     except runtime.KPressInvalidRequestError as exc:
         raise KPressInvalidRequestError(str(exc)) from exc
     except runtime.KPressRenderError as exc:
@@ -184,6 +194,17 @@ def get_kpress_static_asset(rel_path: str) -> KPressAsset:
         return runtime.get_static_asset(rel_path)
     except runtime.KPressAssetNotFoundError as exc:
         raise KPressAssetNotFoundError(str(exc)) from exc
+
+
+def prepare_browser_assets() -> None:
+    """Initialize KPress and resolve the browser shell's required assets.
+
+    Serve calls this before Uvicorn starts. Other CLI modes keep the deferred
+    runtime boundary and pay no KPress renderer import cost.
+    """
+
+    for rel_path in _BROWSER_SHELL_ASSET_PATHS:
+        get_kpress_static_asset(rel_path)
 
 
 def build_export_request(**kwargs: Any) -> KPressExportRequest:

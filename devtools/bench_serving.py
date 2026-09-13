@@ -50,6 +50,9 @@ pair of locks give one tree. To build it without running a benchmark, see
 from __future__ import annotations
 
 import argparse
+import ast
+import configparser
+import hashlib
 import json
 import os
 import random
@@ -61,6 +64,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -151,6 +155,227 @@ class MetabBuild:
 
     executable: Path
     version: str
+
+
+@dataclass(frozen=True)
+class WheelAttestation:
+    """Proof that a resolved console script imports the bytes from one wheel."""
+
+    wheel_sha256: str
+    launcher_sha256: str
+    environment_sha256: str
+
+
+_INSTALLED_WHEEL_PROBE = """
+import hashlib
+import importlib.metadata
+import json
+import platform
+import re
+import sys
+
+request = json.loads(sys.stdin.read())
+distribution = importlib.metadata.distribution("metabrowser")
+direct_url_text = distribution.read_text("direct_url.json")
+direct_url = json.loads(direct_url_text) if direct_url_text else {}
+files = {}
+for relative in request["paths"]:
+    path = distribution.locate_file(importlib.metadata.PackagePath(relative))
+    if not path.is_file():
+        files[relative] = None
+        continue
+    content = path.read_bytes()
+    files[relative] = {"sha256": hashlib.sha256(content).hexdigest(), "size": len(content)}
+
+environment = []
+for installed in importlib.metadata.distributions():
+    name = installed.metadata.get("Name", "")
+    normalized = re.sub(r"[-_.]+", "-", name).lower()
+    if normalized == "metabrowser":
+        continue
+    record = installed.read_text("RECORD") or ""
+    environment.append(
+        [normalized, installed.version, hashlib.sha256(record.encode()).hexdigest()]
+    )
+
+print(json.dumps({
+    "distribution_name": distribution.metadata.get("Name", ""),
+    "distribution_version": distribution.version,
+    "editable": bool(direct_url.get("dir_info", {}).get("editable")),
+    "files": files,
+    "package_files": sorted(
+        entry.as_posix()
+        for entry in (distribution.files or ())
+        if entry.as_posix().startswith("metabrowser/")
+        and "__pycache__" not in entry.parts
+        and not entry.as_posix().endswith((".pyc", ".pyo"))
+    ),
+    "environment": {
+        "python": sys.version,
+        "implementation": platform.python_implementation(),
+        "machine": platform.machine(),
+        "distributions": sorted(environment),
+    },
+}))
+"""
+
+
+def _normalized_project_name(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _wheel_release_manifest(
+    wheel: Path,
+) -> tuple[str, str, str, dict[str, dict[str, Any]]]:
+    """Return project, version, and exact installable bytes from one wheel."""
+
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            names = [name for name in archive.namelist() if not name.endswith("/")]
+            metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
+            record_names = [name for name in names if name.endswith(".dist-info/RECORD")]
+            entry_point_names = [
+                name for name in names if name.endswith(".dist-info/entry_points.txt")
+            ]
+            if len(metadata_names) != 1 or len(record_names) != 1 or len(entry_point_names) != 1:
+                raise SystemExit(
+                    "release artifact must contain one wheel metadata, RECORD, and entry points"
+                )
+            metadata = archive.read(metadata_names[0]).decode("utf-8")
+            fields = {
+                key.lower(): value.strip()
+                for line in metadata.splitlines()
+                if ":" in line
+                for key, value in [line.split(":", 1)]
+                if key.lower() in {"name", "version"}
+            }
+            project = fields.get("name", "")
+            version = fields.get("version", "")
+            if _normalized_project_name(project) != "metabrowser" or not version:
+                raise SystemExit("release artifact is not a versioned Metabrowser wheel")
+            entry_points = configparser.ConfigParser()
+            entry_points.read_string(archive.read(entry_point_names[0]).decode("utf-8"))
+            entry_point = entry_points.get("console_scripts", "metab", fallback="")
+            if not re.fullmatch(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*", entry_point):
+                raise SystemExit("release artifact has no supported `metab` console entry point")
+            expected: dict[str, dict[str, Any]] = {}
+            record_name = record_names[0]
+            for name in names:
+                if name == record_name:
+                    continue
+                content = archive.read(name)
+                expected[name] = {
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                    "size": len(content),
+                }
+    except (OSError, UnicodeDecodeError, zipfile.BadZipFile) as error:
+        raise SystemExit(f"could not inspect release artifact {wheel}: {error}") from error
+    return project, version, entry_point, expected
+
+
+def _validate_console_launcher(source: bytes, interpreter: Path, entry_point: str) -> None:
+    """Accept only the semantics of uv's generated POSIX console launcher."""
+
+    try:
+        text = source.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise SystemExit("external benchmark console script is not UTF-8") from error
+    module, function = entry_point.split(":", 1)
+    template = f"""\
+import sys
+from {module} import {function}
+if __name__ == "__main__":
+    if sys.argv[0].endswith("-script.pyw"):
+        sys.argv[0] = sys.argv[0][:-11]
+    elif sys.argv[0].endswith(".exe"):
+        sys.argv[0] = sys.argv[0][:-4]
+    sys.exit({function}())
+"""
+    body = "\n".join(text.splitlines()[1:])
+    try:
+        actual = ast.dump(ast.parse(body), include_attributes=False)
+        expected = ast.dump(ast.parse(template), include_attributes=False)
+    except SyntaxError as error:
+        raise SystemExit(
+            "external benchmark console script is not a valid Python launcher"
+        ) from error
+    if actual != expected or text.splitlines()[0] != f"#!{interpreter}":
+        raise SystemExit(
+            "external benchmark console script does not invoke the wheel's entry point"
+        )
+
+
+def attest_installed_wheel(build: MetabBuild, wheel: Path) -> WheelAttestation:
+    """Verify that ``build`` imports every shipped byte from ``wheel`` exactly."""
+
+    if not wheel.is_file():
+        raise SystemExit(f"release artifact is not a file: {wheel}")
+    project, version, entry_point, expected = _wheel_release_manifest(wheel)
+    try:
+        launcher = build.executable.read_bytes()
+        first_line = launcher.splitlines()[0]
+        interpreter = Path(first_line.removeprefix(b"#!").decode())
+    except (IndexError, OSError, UnicodeDecodeError) as error:
+        raise SystemExit("external benchmark requires a uv-installed console script") from error
+    if (
+        not first_line.startswith(b"#!")
+        or not interpreter.is_absolute()
+        or not interpreter.is_file()
+    ):
+        raise SystemExit("external benchmark requires a uv-installed console script")
+    _validate_console_launcher(launcher, interpreter, entry_point)
+    try:
+        result = subprocess.run(
+            [str(interpreter), "-c", _INSTALLED_WHEEL_PROBE],
+            input=json.dumps({"paths": sorted(expected)}),
+            capture_output=True,
+            text=True,
+            timeout=BUILD_VERSION_TIMEOUT_S,
+            check=False,
+        )
+        loaded: Any = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as error:
+        raise SystemExit(f"could not attest installed Metabrowser distribution: {error}") from error
+    if result.returncode != 0 or not isinstance(loaded, dict):
+        detail = result.stderr.strip() or "invalid attestation response"
+        raise SystemExit(f"could not attest installed Metabrowser distribution: {detail}")
+    payload = cast("dict[str, Any]", loaded)
+    if payload.get("editable") is True:
+        raise SystemExit("external release evidence cannot use an editable Metabrowser install")
+    if (
+        _normalized_project_name(str(payload.get("distribution_name", "")))
+        != _normalized_project_name(project)
+        or payload.get("distribution_version") != version
+        or build.version.split()[-1] != version
+    ):
+        raise SystemExit("installed Metabrowser version does not match the release artifact")
+    installed = payload.get("files")
+    if not isinstance(installed, dict):
+        raise SystemExit("installed Metabrowser attestation did not report package files")
+    installed_files = cast("dict[str, Any]", installed)
+    mismatches = [name for name, facts in expected.items() if installed_files.get(name) != facts]
+    if mismatches:
+        sample = ", ".join(mismatches[:3])
+        raise SystemExit(f"installed Metabrowser bytes do not match release artifact: {sample}")
+    installed_package_files = payload.get("package_files")
+    expected_package_files = sorted(name for name in expected if name.startswith("metabrowser/"))
+    if installed_package_files != expected_package_files:
+        raise SystemExit(
+            "installed Metabrowser package contains files outside the release artifact"
+        )
+    environment = payload.get("environment")
+    if not isinstance(environment, dict):
+        raise SystemExit("installed Metabrowser attestation did not report its environment")
+
+    environment_payload = cast("dict[str, Any]", environment)
+    environment_bytes = json.dumps(
+        environment_payload, sort_keys=True, separators=(",", ":")
+    ).encode()
+    return WheelAttestation(
+        wheel_sha256=hashlib.sha256(wheel.read_bytes()).hexdigest(),
+        launcher_sha256=hashlib.sha256(launcher).hexdigest(),
+        environment_sha256=hashlib.sha256(environment_bytes).hexdigest(),
+    )
 
 
 def resolve_metab_build(requested: str) -> MetabBuild:

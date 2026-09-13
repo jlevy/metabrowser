@@ -96,7 +96,7 @@ becomes a good zero.
 
 | Dimension | Standard fields | What they prevent |
 | --- | --- | --- |
-| Loading | `ttfb_ms`, `response_download_ms`, `dom_interactive_ms`, `dcl_ms`, `load_ms`, `fcp_ms`, `lcp_ms`, plus startup script count, transfer, tail, maximum duration, and bounded path-only attribution split into response wait, server work, and download | Treating a fast shell, server response, or load event as a usable application, hiding an eager feature tier inside noisy paint timing, or guessing whether a slow asset waited on the application, server, or connection pool |
+| Loading | `ttfb_ms`, `response_download_ms`, `dom_interactive_ms`, `dcl_ms`, `load_ms`, `fcp_ms`, `lcp_ms`, startup script count and transfer, and startup script and render-blocking stylesheet attribution split into response wait, server work, response tail, and download | Treating a fast shell, server response, or load event as a usable application, hiding an eager feature tier or cold import inside noisy paint timing, or guessing whether a slow asset waited on the application, server, or connection pool |
 | Responsiveness | Long Task count, total, maximum, first-five-second maximum, tasks over budget, Total Blocking Time, blocked share, and application-delivery callback maximum/share | Hiding one multi-second freeze inside a total, or an event storm inside individually short callbacks |
 | Frame attribution | Long Animation Frame count, maximum, blocking time, forced style/layout maximum, worst scripts and nearby resources | Knowing that the page froze without knowing which callback or rendering cost owned it |
 | Interaction | Trusted-input count, first and last offset, span, loading-window coverage, plus grouped Event Timing interaction count, retained count, percentile scope, p50, p95, and exact maximum | Calling an untouched or single-early-click page responsive, counting one gesture’s several DOM events as several interactions, confusing no slow entry with no input, or reporting a bounded percentile as whole-session evidence |
@@ -151,6 +151,10 @@ ms, and all such callbacks together may consume at most 5% of the measurement wi
 Metabrowser also gates the startup JavaScript tier at 25 non-vendor requests and 175 KB;
 the limits retain measured headroom above its 22-request, 154 KB directory shell while
 preventing plugins or post-usable-state shell tools from returning to the critical path.
+Render-blocking startup stylesheets separately gate server work at 75 ms.
+Their bounded attribution records wait time and response completion as well,
+distinguishing a slow handler from connection-pool queueing or transfer without allowing
+a cold package import to hide inside first paint.
 The deferred tools and their authoritative file catalog carry separate readiness gates,
 so transfer cannot improve by losing controls or stopping at partial data.
 Rejected non-abort fetches and HTTP 5xx responses must also remain zero; aborts and 4xx

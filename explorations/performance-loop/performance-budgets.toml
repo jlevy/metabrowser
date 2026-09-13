@@ -203,6 +203,17 @@ policy = "gate"
 required = true
 description = "Transferred startup JavaScript before DOMContentLoaded, excluding the separately reported vendor-prefetch tier."
 
+# The exact 300,000-file cold trace measured ordinary shell CSS server work at
+# 20.9 ms and an unprepared first KPress stylesheet request at 196.6 ms. This
+# ceiling leaves more than three times the healthy observation while rejecting
+# the deferred-import cost that held first paint.
+[metrics.startup_style_server_ms_max]
+category = "loading"
+maximum = 75
+policy = "gate"
+required = true
+description = "Maximum server work for a render-blocking stylesheet requested before DOMContentLoaded."
+
 [metrics.shell_tools_missing]
 category = "correctness"
 maximum = 0

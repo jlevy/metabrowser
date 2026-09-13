@@ -28,7 +28,13 @@
 
   // ── Per-view filter and raw-payload state ───────────────────────
   const logViewStates = new WeakMap();
-  let chartsRenderGeneration = 0;
+  const chartsRenderGenerations = new WeakMap();
+
+  function nextChartsRenderGeneration(container) {
+    const generation = (chartsRenderGenerations.get(container) || 0) + 1;
+    chartsRenderGenerations.set(container, generation);
+    return generation;
+  }
 
   function newLogViewState() {
     return {
@@ -394,20 +400,19 @@
   }
 
   async function renderCharts(container, ctx) {
-    const generation = ++chartsRenderGeneration;
+    const generation = nextChartsRenderGeneration(container);
     container.innerHTML =
       '<div class="charts-placeholder preview-empty mb-delayed-loading">' +
       '<span class="sr-only">Loading charts…</span></div>';
-    const chartData = await mb.fetchPluginData("agent-log", "charts", {
-      path: ctx.path,
-    });
-    if (generation !== chartsRenderGeneration) {
-      return;
-    }
     // Chart.js is on the on-demand tier, so this view pays for it and no
-    // other document does. Resolves immediately once it has been loaded.
-    await mb.ensureAsset("chart");
-    if (generation !== chartsRenderGeneration) {
+    // other document does. The payload and bundle are independent network
+    // work, so begin them together rather than putting one waterfall behind
+    // the other. Resolves immediately once the bundle has been loaded.
+    const [chartData] = await Promise.all([
+      mb.fetchPluginData("agent-log", "charts", { path: ctx.path }),
+      mb.ensureAsset("chart"),
+    ]);
+    if (generation !== chartsRenderGenerations.get(container)) {
       return;
     }
     if (!window.MetabrowserCharts) {
@@ -416,9 +421,9 @@
     window.MetabrowserCharts.renderPayload(container, chartData);
   }
 
-  function disposeCharts() {
-    chartsRenderGeneration += 1;
-    window.MetabrowserCharts?.dispose();
+  function disposeCharts(container) {
+    nextChartsRenderGeneration(container);
+    window.MetabrowserCharts?.dispose(container);
   }
 
   // ── Reusable namespace + registration ───────────────────────────
