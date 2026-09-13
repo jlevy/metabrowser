@@ -346,7 +346,7 @@ pretend it was transcluded.
 | `plugin-sdk.js` and `types.d.ts` | Expose the `metabrowser.navigation` namespace, migrate bundled consumers, and remove the old path event surface. |
 | New strict Markdown link modules | Resolve and enhance standard KPress links and resources, then parse and resolve Obsidian wiki syntax over the same result model. |
 | Existing Markdown mount | Install enhancement after asynchronous render and dispose it with the TOC and render controller. |
-| Root Markdown reconciliation and inventory-derived note index | Pin one complete catalog revision, share scheduled work across nested mounts, and provide bounded basename and path-suffix lookup for wiki targets and graph analysis. |
+| Root Markdown reconciliation and inventory-derived note index | Pin one complete catalog revision, share scheduled work across nested mounts, and provide bounded basename and path-suffix lookup for wiki targets. |
 | Tests and fixtures | Add a machine-readable resolution matrix plus route, DOM, SDK, lifecycle, accessibility, and integration coverage. |
 
 All new browser modules enter the fully strict `tsconfig.json` project.
@@ -495,9 +495,8 @@ Coverage includes:
 - code spans, fenced blocks, escaped wiki syntax, incomplete inventory, and bounded
   behavior when a document exceeds its wiki-target cap;
 - duplicate targets across nested transclusions, incomplete-revision add and remove
-  transitions, stale callbacks after disposal, a hot same-basename suffix bucket,
-  bounded candidate previews with exact counts, and mixed graph records above one
-  resolver-batch limit; and
+  transitions, stale callbacks after disposal, a hot same-basename suffix bucket, and
+  bounded candidate previews with exact counts; and
 - JSDoc and declaration parity for the new SDK with no old navigation surface.
 
 Use the Node DOM harness and pytest wrappers for pure and rendered behavior, Starlette

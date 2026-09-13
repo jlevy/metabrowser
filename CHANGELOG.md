@@ -4,6 +4,21 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+Plugin SDK (breaking):
+
+- The plugin SDK is now 0.6. A plugin manifest must declare `sdk_version = "0.6"`;
+  manifests for 0.5 are refused at discovery and by `metab --doctor`.
+
+- API paths are escaped inventory identities.
+  Plugin readers, activity probes, Markdown links, browser URLs, and filename search now
+  handle literal percent signs consistently.
+  See [plugin path identity](docs/plugins.md#path-identity) for the conversion helpers.
+
+- `mb.builtins.markdown.analyzeGraph()` is removed with no replacement in this release.
+  It parsed Markdown separately from KPress and could disagree with the rendered
+  document; a future graph surface will be a server route backed by KPress’s own link
+  analysis.
+
 Inventory engine:
 
 - Filesystem inventory now crosses one pluggable, provider-neutral contract.
@@ -60,12 +75,6 @@ Inventory engine:
   entries or host decorations, and visit shared ignored ancestors only once.
   Inventory metadata counts the served root consistently with earlier releases, and
   JSON/YAML walk output honors the configured inventory provider.
-
-- Plugin SDK 0.6 pins escaped inventory identities for API paths.
-  Plugin readers, activity probes, Markdown links, browser URLs and filename search now
-  handle literal percent signs consistently.
-  See [plugin path identity](docs/plugins.md#path-identity) for the sidekick conversion
-  helpers.
 
 - Generic JSONL views load their shared agent-log renderer through the SDK when opened.
   They no longer depend on another file kind having loaded first, and disposing a view
@@ -152,26 +161,22 @@ CLI and validation:
   Unicode code-point order differs from the browser’s UTF-16 order.
   The browser stages naturally ordered runs and merges them within the existing work
   budget instead of repeatedly inserting near the front of a growing array; an
-  adversarial 200,000-path browserless session pins the under-50-ms slice requirement.
+  adversarial 200,000-path browserless session pins the array work each slice may do.
 
-- Complete inventory snapshots replace only their own FileStore rows.
-  Deep lazy rows survive an authoritative root refresh, while filesystem changes update
-  snapshot ownership explicitly; one production-module golden covers replacement,
-  invalidation, and file-to-folder transitions without a browser.
+- An authoritative inventory snapshot, including the one sent after a reconnect or a
+  stream resync, retires only the Files rows it no longer contains and patches the rest
+  in place, so expanded folders keep their loaded children.
+  One production-module golden covers replacement, invalidation, and file-to-folder
+  transitions without a browser.
 
 - CLI parity now defines checked evidence for declared user-visible functional aspects
   as well as routes, kinds, and models.
   Data behavior must run through `metab`, browser-owned interaction behavior must have
   an executable production-module golden session, and only paint or platform behavior
   may be explicitly exempt.
-  The gate derives executed owners from checker-controlled V8 coverage, requires an
-  exact canonical source span, and rejects stdout owner claims, route suffixes, failed
-  commands, and option-value spoofs.
   The first registry rows cover the release-critical Recent and Markdown compositions;
   migration of unchanged legacy UI behavior is tracked separately rather than presented
   as complete coverage.
-  Data rows must name exactly one registered route and execute that route through
-  `metab`; source-file ownership cannot stand in for a missing CLI data surface.
 
 - Image previews now use a manifest-owned, on-demand renderer and stylesheet through the
   shell’s generic preview compositor.
@@ -196,6 +201,8 @@ CLI and validation:
   Ambiguities retain their exact candidate count with a deterministic 20-path preview;
   large basename and suffix lookups yield cooperatively, and replacement or disposal
   cancels queued work and releases the snapshot-owned index.
+  A document with more links, media, and wiki references than one render enhances shows
+  a diagnostic instead of leaving the rest unexplained.
 
 - Obsidian wiki preprocessing and transclusion selection now run in one lazy Markdown
   Worker shared by a rendered document and every nested transclusion.
@@ -204,12 +211,15 @@ CLI and validation:
   Preprocessing uses source-wide monotone scans with deterministic work counters, and a
   transformed source that would exceed the KPress request limit is rejected atomically
   with an explicit diagnostic instead of returning a partial rewrite.
+  If the worker cannot run, the document still renders from its authored source and
+  reports that wiki processing was skipped.
 
 - Inline and block code in KPress-backed documents now share one quiet solid border and
   square-by-default radius, while inline code uses compact padding.
-  The bridge uses KPress’s public code-border and code-radius seams when available and
-  retains an explicit fallback for the pinned 0.3.5 renderer; prose blockquotes and
+  Explicit rules apply this to the pinned KPress 0.3.5 renderer; prose blockquotes and
   unrelated document surfaces keep their independent treatment.
+
+- Rendered documents default to a **Max text width** of 102 characters.
 
 - On-demand scripts validate their declared global before the loader retains or
   announces them. Partial and concurrent failures clear only the unsatisfied source
@@ -221,25 +231,6 @@ CLI and validation:
   Invalid UTF-8 and malformed JSON return structured 400 responses, oversized requests
   return 413, and export fields require their documented JSON types instead of coercing
   values or raising an internal error.
-
-- Real-tree performance runs retain an explicitly supplied `--files` count as
-  provenance, so a completed cold profile does not depend on a detached server log
-  containing an INFO-level completion line before it can be recorded.
-  When a fast scan stays below that logging threshold, the harness reads its status and
-  actual count from `/api/index/progress`.
-
-- Release performance evidence now binds each external console script to an exact wheel.
-  The harness verifies the generated launcher against the wheel entry point, compares
-  installed package bytes with the wheel, rejects editable installs, and records the
-  dependency environment separately.
-  Comparisons require distinct expected identities for every condition and one corpus,
-  viewport, browser, and runtime environment; a per-run nonce rejects stale profiles,
-  and the corpus fingerprint is checked again when a run is recorded.
-  The unconditional catalog parse and bulk-application labels fail closed; optional
-  live-delta labels remain part of the measured total when the stream delivers them and
-  are pinned through the browserless production session.
-  An empty catalog adopts an already ordered provider run directly, so a 300,000-row
-  initial payload does not traverse the same rows again solely to copy its projection.
 
 - `metab` gains two data modes that reach the server without a browser or a listening
   port. `--api <route>` issues any registered `/api/` route through the real application
@@ -257,6 +248,8 @@ CLI and validation:
   byte. Slash-bearing Git refs are encoded as one revision segment and decoded without
   allowing slash, backslash, or NUL inside the selected inner path.
   See the [command-line guide](docs/command-line.md).
+  The bundled `metabrowser` agent skill now points agents at both modes for reading view
+  data without a browser.
 
 - Every registered route the browser consumes and every built-in kind is reachable from
   `metab` and pinned by a golden transcript.
@@ -264,18 +257,9 @@ CLI and validation:
   or a kind is absent from golden console output.
   Browser-owned file-selection, incremental-source, chart-request, and chart-lifecycle
   state machines now run the complete production modules in deterministic command-line
-  sessions, and the same checker verifies both their V8 ownership and golden output.
+  sessions pinned by golden output.
   The table and the streaming exemptions are in
   [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
-
-Validation:
-
-- `devtools/bench_serving.py` takes `--corpus {synthetic,realistic,project}`. Two of the
-  three corpus shapes had no command-line route, including the one the scan-ordering
-  figures were measured on, so reproducing them meant importing the module by hand.
-  The same benchmark now separates first-pass and memoized navigation cost and the
-  catalog’s first-body, retained-body, and `304` paths, with semantic checks on repeated
-  responses.
 
 ## 0.9.1
 
@@ -321,7 +305,7 @@ File-type identity:
 Features:
 
 - Rendered documents now read at a width the reader chooses, in characters, through
-  **Max text width** in the Metabrowser menu (default 102). The setting is expressed in
+  **Max text width** in the Metabrowser menu (default 105). The setting is expressed in
   characters rather than pixels because that is the decision a reader has, and it is
   converted using each reading face’s measured average glyph advance — so switching
   between the serif and sans reading fonts holds the same characters per line rather
@@ -1065,11 +1049,9 @@ Document navigation and URL scheme:
 
 - Plugins gain `window.metabrowser.fileCatalog` (`snapshot`, `subscribe`),
   `window.metabrowser.repository` (verified GitHub identity for the served tree, or
-  `null`), and the bounded source readers `fetchText` and `fetchCompleteText`. The SDK
-  0.6 Markdown built-in deliberately does not expose graph analysis: an earlier draft
-  duplicated KPress parsing in browser code and could disagree with the rendered
-  document. A future graph surface requires a server data route backed by a KPress-owned
-  link-intent manifest.
+  `null`), and the bounded source readers `fetchText` and `fetchCompleteText`.
+  `mb.builtins.markdown.analyzeGraph()` returns a bounded immutable snapshot of Markdown
+  nodes, resolved edges, unresolved destinations, backlinks, and diagnostics.
 
 - Query strings on `/view/` URLs are carried verbatim and never interpreted, so a query
   an author wrote survives resolution unchanged.

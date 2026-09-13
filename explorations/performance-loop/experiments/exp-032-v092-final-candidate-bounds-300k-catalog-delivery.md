@@ -216,6 +216,19 @@ These repeat across all five runs, and none approaches a hard budget:
 - Peak JS heap rises from 45 MB to 56 MB; after garbage collection the difference is 0.4
   MB, so this is transient allocation, not retained state.
 - Backend peak RSS is about 10 MiB higher, at 316.8 MiB against 306.8 MiB.
+- Backend spawn-to-serving rises from a 0.679 s to a 0.787 s median, and the whole
+  candidate range sits above the control median.
+  That fits `metab serve` importing KPress and resolving the shell’s KPress assets
+  before Uvicorn starts, which moves that cost out of the first render-blocking
+  stylesheet request.
+
+## Scope of this evidence
+
+This record measures the wheel built from `863dcd9c`. Release review afterwards changed
+shipped browser and server sources (catalog removal and compaction, Markdown literal
+masking and in-document navigation, resync handling, and KPress request validation), so
+it does not describe the final artifact.
+The quiet-machine rerun tracked in `mb-afdb` must measure the final release commit.
 
 ## Unresolved: walk completion with a browser attached
 

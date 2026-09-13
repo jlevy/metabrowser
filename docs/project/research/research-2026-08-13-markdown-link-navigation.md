@@ -135,8 +135,9 @@ Heading and named-block targets map to stable source-derived anchors in the rend
 document. Image and media embeds use the bounded safe-resource path.
 Whole-note, heading-section, and named-block transclusion reuse KPress and the same
 resolved target under shared recursion, cycle, source-byte, elapsed-time, abort, and
-disposal limits. Bounded backlink and graph analysis reuse the click-time resolvers over
-an immutable catalog snapshot.
+disposal limits. Backlink and graph analysis are not part of the shipped Markdown
+built-in; a browser-side graph that parsed Markdown separately from KPress was removed
+because it could disagree with the rendered document.
 
 Exact source-directory, explicit relative, and explicit vault-root results may resolve
 while the file catalog is still growing.
@@ -682,8 +683,8 @@ transclusion. It subscribes once, shares one continuation allowance, and uses th
 complete immutable catalog revision as the pass linearization point.
 Incomplete exact results remain provisional because a later revision can add or remove
 the path. Disposal cancels scheduled work and releases snapshot indexes.
-Backlink and graph analysis should use the same snapshot-scoped resolution contexts and
-posted-task slicing, rather than reintroducing a links-by-catalog scan off the DOM path.
+A future backlink or graph surface should come from a server route backed by KPress’s
+own link analysis, not from a second browser parser or a links-by-catalog scan.
 
 A requested-key one-pass scan has the smallest one-query footprint, but a target added
 after that pass requires another whole-catalog scan.
@@ -726,10 +727,7 @@ and canonical URL. At minimum, fixtures should cover:
   external network access in offline fixtures;
 - duplicate and late nested targets under one aggregate scheduler budget, catalog
   changes between slices, early-present and early-absent exact paths, retained callbacks
-  after disposal, hot same-basename suffix buckets, and candidate count versus preview;
-  and
-- mixed wiki, standard, and published-route graph records above one batch size, with
-  posted-task progress and mid-analysis abort.
+  after disposal, hot same-basename suffix buckets, and candidate count versus preview.
 
 Browser tests should include a small GitHub-style repository, an Obsidian-style vault,
 and static-site source fixtures.
