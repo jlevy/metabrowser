@@ -1,60 +1,51 @@
 /**
- * Yield matching descendants without materializing an unbounded NodeList.
+ * Matching descendants of one rendered Markdown container, in document order,
+ * at most `limit` of them.
  *
- * The querySelectorAll branch exists for browserless contract shims only. Real DOM
- * documents expose createTreeWalker, so production stops traversing as soon as the
- * caller stops consuming the generator.
+ * Native `querySelectorAll` walks the subtree once per call and returns only
+ * matches, so every lookup is independent: link admission, nested
+ * transclusions, and later fragment navigation cannot exhaust one another.
+ * What follows a lookup is bounded by the caller's enhancement budget, not by
+ * a count of visited elements.
  *
- * @param {HTMLElement} container
+ * @param {ParentNode} container
  * @param {string} selector
- * @param {ReturnType<typeof createMarkdownDomTraversalBudget>=} budget
+ * @param {number=} limit
+ * @returns {Element[]}
  */
-export function* matchingDescendants(
-  container,
-  selector,
-  budget = createMarkdownDomTraversalBudget(),
-) {
-  if (!DOM_BUDGETS.has(budget)) {
-    throw new TypeError("Markdown DOM traversal requires a module-created budget");
+export function matchingDescendants(container, selector, limit = Number.POSITIVE_INFINITY) {
+  const matches = container.querySelectorAll(selector);
+  const count = Math.min(matches.length, limit);
+  /** @type {Element[]} */
+  const elements = [];
+  for (let index = 0; index < count; index += 1) {
+    elements.push(matches[index]);
   }
-  const document = container.ownerDocument || globalThis.document;
-  if (document && typeof document.createTreeWalker === "function") {
-    const walker = document.createTreeWalker(container, 1);
-    let current = walker.nextNode();
-    while (current) {
-      if (!claimVisit(budget)) {
-        return;
-      }
-      const element = /** @type {Element} */ (current);
-      if (element.matches(selector)) {
-        yield element;
-      }
-      current = walker.nextNode();
-    }
-    return;
-  }
-  for (const element of container.querySelectorAll(selector)) {
-    if (!claimVisit(budget)) {
-      return;
-    }
-    yield element;
-  }
+  return elements;
 }
 
-/** @param {ReturnType<typeof createMarkdownDomTraversalBudget>} budget */
-function claimVisit(budget) {
-  if (budget.state.visits >= MAX_MARKDOWN_DOM_VISITS) {
-    return false;
+/**
+ * The first descendant whose `id` equals `id` exactly, or null.
+ *
+ * An attribute selector keeps the lookup inside `container` (a document may
+ * repeat an id outside the rendered Markdown) and needs only quoting, not
+ * identifier escaping, so any authored heading or block id is found.
+ *
+ * @param {ParentNode} container
+ * @param {string} id
+ * @returns {Element | null}
+ */
+export function findElementById(container, id) {
+  if (!id) {
+    return null;
   }
-  budget.state.visits += 1;
-  return true;
+  return container.querySelector(`[id="${quotedAttributeValue(id)}"]`);
 }
-const MAX_MARKDOWN_DOM_VISITS = 16_384;
-const DOM_BUDGETS = new WeakSet();
 
-/** Create the hard root-scoped ceiling for synchronous Markdown DOM inspection. */
-export function createMarkdownDomTraversalBudget() {
-  const budget = Object.freeze({ state: { visits: 0 } });
-  DOM_BUDGETS.add(budget);
-  return budget;
+/** @param {string} value */
+function quotedAttributeValue(value) {
+  return value
+    .replace(/["\\]/g, "\\$&")
+    .replace(/[\n\r\f]/g, (character) => `\\${character.charCodeAt(0).toString(16)} `)
+    .replace(/\0/g, "\\fffd ");
 }

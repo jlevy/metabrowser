@@ -1,4 +1,4 @@
-import { createMarkdownDomTraversalBudget, matchingDescendants } from "./dom-traversal.js";
+import { findElementById, matchingDescendants } from "./dom-traversal.js";
 import { localizeGithubUrl } from "./github-localizer.js";
 import { createTrustedStandardLinkResolutionContext } from "./links.js";
 import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
@@ -27,14 +27,13 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
- * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, domTraversalBudget?: ReturnType<typeof createMarkdownDomTraversalBudget>, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, workerClient?: ReturnType<typeof createMarkdownWorkerClient>}=} options
+ * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, workerClient?: ReturnType<typeof createMarkdownWorkerClient>}=} options
  */
 export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const eventTarget = options.eventTarget ?? window;
   const schedule = options.schedule ?? requestAnimationFrame;
   const cancel = options.cancel ?? cancelAnimationFrame;
   const enhancementBudget = options.enhancementBudget || createMarkdownEnhancementBudget();
-  const domTraversalBudget = options.domTraversalBudget || createMarkdownDomTraversalBudget();
   const ownsWorkerClient = !options.workerClient;
   const workerClient = options.workerClient || createMarkdownWorkerClient();
   const standardLinks = createTrustedStandardLinkResolutionContext(sourcePath);
@@ -49,7 +48,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       options.schedule ? { cancel, schedule } : undefined,
     );
   const reconciliationScope = reconciliation.createScope(options.signal, sourcePath);
-  const admittedTargets = admittedTargetElements(container, enhancementBudget, domTraversalBudget);
+  const admission = admittedTargetElements(container, enhancementBudget);
+  const admittedTargets = admission.elements;
   let disposed = false;
   let fragmentFrame = 0;
 
@@ -190,7 +190,6 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       budget: options.transclusionBudget,
       cancel,
       chain: options.transclusionChain,
-      domTraversalBudget,
       enhancementBudget,
       reconciliation,
       reconciliationScope,
@@ -201,7 +200,6 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       enhanceNested: (nestedContainer, nestedSourcePath, nestedOptions) =>
         enhanceRenderedLinks(nestedContainer, nestedSourcePath, mb, {
           cancel,
-          domTraversalBudget,
           enhancementBudget,
           eventTarget,
           reconciliation,
@@ -267,7 +265,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       ) {
         return;
       }
-      findFragmentTarget(container, fragment, domTraversalBudget)?.scrollIntoView({
+      findElementById(container, fragment)?.scrollIntoView({
         block: "start",
       });
     });
@@ -278,6 +276,8 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   scheduleFragment(mb.navigation.current());
 
   return Object.freeze({
+    /** Enhanceable targets beyond the aggregate budget stay authored. */
+    admissionTruncated: admission.truncated,
     dispose() {
       if (disposed) {
         return;
@@ -302,38 +302,28 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
 }
 
 /**
- * Iterate only the aggregate root budget's deterministic DOM-order prefix. This
- * avoids materializing a full NodeList after the supported envelope is reached.
+ * Admit the aggregate root budget's deterministic DOM-order prefix and report
+ * whether any enhanceable target was left out.
  *
  * @param {HTMLElement} container
  * @param {ReturnType<typeof createMarkdownEnhancementBudget>} budget
- * @param {ReturnType<typeof createMarkdownDomTraversalBudget>} domTraversalBudget
  */
-function admittedTargetElements(container, budget, domTraversalBudget) {
+function admittedTargetElements(container, budget) {
+  /** @type {Element[]} */
   const admitted = [];
+  let truncated = false;
   for (const element of matchingDescendants(
     container,
     ENHANCEABLE_TARGET_SELECTOR,
-    domTraversalBudget,
+    MAX_ENHANCED_TARGETS + 1,
   )) {
     if (!budget.claim()) {
+      truncated = true;
       break;
     }
     admitted.push(element);
   }
-  return Object.freeze(admitted);
-}
-
-/** @param {Iterable<Element>} elements */
-function* boundedElements(elements) {
-  let count = 0;
-  for (const element of elements) {
-    if (count >= MAX_ENHANCED_TARGETS) {
-      return;
-    }
-    count += 1;
-    yield element;
-  }
+  return Object.freeze({ elements: Object.freeze(admitted), truncated });
 }
 
 /** @param {{path: string, query?: string, fragment?: string}} resolved */
@@ -419,18 +409,6 @@ function isPlainPrimaryClick(event) {
 function notSameBrowsingContext(anchor) {
   const target = anchor.getAttribute("target");
   return Boolean(target && target.toLowerCase() !== "_self");
-}
-
-/** @param {HTMLElement} container @param {string} fragment @param {ReturnType<typeof createMarkdownDomTraversalBudget>} domTraversalBudget */
-function findFragmentTarget(container, fragment, domTraversalBudget) {
-  for (const element of boundedElements(
-    matchingDescendants(container, "[id]", domTraversalBudget),
-  )) {
-    if (element.id === fragment) {
-      return element;
-    }
-  }
-  return null;
 }
 
 /** @param {string} path */

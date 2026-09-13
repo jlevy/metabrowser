@@ -5,6 +5,14 @@ import { transclusionKey } from "./transclusion.js";
 
 let mountSequence = 0;
 
+/** Shown when a document has more links, media, or wiki targets than one mount enhances. */
+const MARKDOWN_LINK_LIMIT_DIAGNOSTIC = Object.freeze({
+  code: "markdown-link-limit",
+  message:
+    "This document has more links, media, and wiki references than Metabrowser enhances at once; the rest keep their authored targets.",
+  severity: "warning",
+});
+
 /** @param {Array<unknown>} diagnostics @param {(value: string) => string} escapeHtml */
 export function renderKpressDiagnosticsHtml(diagnostics, escapeHtml) {
   if (!diagnostics.length) {
@@ -150,20 +158,21 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       });
       if (!disposed && !controller.signal.aborted) {
         container.innerHTML = rendered.html;
-        injectDiagnostics(
-          container,
-          [...(wiki?.diagnostics || []), ...(rendered.diagnostics || [])],
-          mb,
-        );
+        const diagnostics = [...(wiki?.diagnostics || []), ...(rendered.diagnostics || [])];
         if (ctx.path) {
-          disposeLinks = enhanceRenderedLinks(container, ctx.path, mb, {
+          const links = enhanceRenderedLinks(container, ctx.path, mb, {
             signal: controller.signal,
             workerClient,
             // The rendered document is its own ancestor, so a note that embeds
             // itself is a cycle at the first embed rather than the second.
             transclusionChain: Object.freeze([transclusionKey(ctx.path)]),
-          }).dispose;
+          });
+          disposeLinks = links.dispose;
+          if (links.admissionTruncated) {
+            diagnostics.push(MARKDOWN_LINK_LIMIT_DIAGNOSTIC);
+          }
         }
+        injectDiagnostics(container, diagnostics, mb);
         disposeToc = initTocWithIntersectionFallback(() => mb.kpressInitToc(container));
       }
     } catch (error) {

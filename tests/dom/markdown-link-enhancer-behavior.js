@@ -42,6 +42,21 @@ class FakeElement extends ElementShim {
   scrollIntoView() {
     this.scrolled = true;
   }
+
+  matches(selector) {
+    if (selector === "[id]") {
+      return Boolean(this.id);
+    }
+    if (selector === "[data-mb-wiki-target]") {
+      return this.hasAttribute("data-mb-wiki-target");
+    }
+    return (
+      this.hasAttribute("data-mb-wiki-target") ||
+      (this.tagName === "A" && this.hasAttribute("href")) ||
+      (["IMG", "AUDIO", "VIDEO", "SOURCE"].includes(this.tagName) && this.hasAttribute("src")) ||
+      (this.tagName === "OBJECT" && this.hasAttribute("data"))
+    );
+  }
 }
 
 class FakeContainer extends FakeElement {
@@ -62,6 +77,15 @@ class FakeContainer extends FakeElement {
     if (this.listeners.get(name) === listener) {
       this.listeners.delete(name);
     }
+  }
+
+  querySelector(selector) {
+    const match = /^\[id="((?:[^"\\]|\\.)*)"\]$/s.exec(selector);
+    if (!match) {
+      return null;
+    }
+    const id = match[1].replace(/\\(.)/g, "$1");
+    return this.elements.find((element) => element.id === id) || null;
   }
 
   querySelectorAll(selector) {
@@ -664,6 +688,49 @@ async function loadModule() {
     !eventTarget.listeners.has("metabrowser:navigation-fragment"),
   );
   check("dispose cancels pending scroll", frames.size === 0);
+
+  // A large rendered document: most elements are neither links nor ids, and
+  // the container exposes a real-DOM TreeWalker. Every in-document navigation
+  // must still scroll, however many came before it.
+  const deepHeading = new FakeElement("h2", { id: "Deep" });
+  const largeElements = Array.from({ length: 18_000 }, () => new FakeElement("p"));
+  largeElements.push(new FakeElement("a", { href: "#Deep" }), deepHeading);
+  const largeContainer = new FakeContainer(largeElements);
+  largeContainer.ownerDocument = {
+    createTreeWalker() {
+      let index = 0;
+      return { nextNode: () => largeElements[index++] || null };
+    },
+  };
+  const largeFrames = [];
+  const largeEventTarget = new FakeEventTarget();
+  let largeCurrent = { path: "docs/large.md", fragment: "" };
+  const largeHandle = module.enhanceRenderedLinks(
+    largeContainer,
+    "docs/large.md",
+    { ...mb, navigation: { ...mb.navigation, current: () => largeCurrent } },
+    {
+      cancel: () => {},
+      eventTarget: largeEventTarget,
+      schedule: (callback) => largeFrames.push(callback),
+    },
+  );
+  let largeScrolls = 0;
+  for (let navigation = 0; navigation < 12; navigation += 1) {
+    deepHeading.scrolled = false;
+    largeCurrent = { path: "docs/large.md", fragment: "Deep" };
+    largeEventTarget.dispatch("metabrowser:navigation-fragment", { target: largeCurrent });
+    while (largeFrames.length > 0) {
+      largeFrames.shift()(0);
+    }
+    largeScrolls += deepHeading.scrolled ? 1 : 0;
+  }
+  check(
+    "every in-document navigation in a large document scrolls",
+    largeScrolls === 12,
+    String(largeScrolls),
+  );
+  largeHandle.dispose();
 
   if (failures.length) {
     console.error(`markdown link enhancer FAILURES:\n- ${failures.join("\n- ")}`);
