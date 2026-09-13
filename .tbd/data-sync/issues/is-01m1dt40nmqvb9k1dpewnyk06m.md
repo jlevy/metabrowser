@@ -5,11 +5,11 @@ title: "Residual: inventory walk still 28% slower than main after the perf fixes
 kind: bug
 status: open
 priority: 1
-version: 1
+version: 3
 labels: []
 dependencies: []
 created_at: 2026-09-01T06:22:19.315Z
-updated_at: 2026-09-01T06:22:19.315Z
+updated_at: 2026-09-13T21:37:38.174Z
 ---
 After the two fixes in mb-0y68, the 60,000-file A/B still shows a gap:
 
@@ -41,3 +41,5 @@ validated; or let the provider retain one representation instead of two.
 Do not attempt this without re-running the A/B: the measurement harness is
 /tmp/ab.py style timing of 'metab CORPUS --api /api/index/meta' over
 bench_serving's 60k synthetic corpus, three runs, median.
+
+Related: the release revalidation in mb-afdb measures walk completion with a browser attached on a quiet machine and should settle whether this residual still holds on the final release commit.
