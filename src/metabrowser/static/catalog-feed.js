@@ -166,7 +166,13 @@
           if (activeBulkApplication === application) {
             activeBulkApplication = null;
           }
-          pendingChanges = [];
+          // A fetch application has replayed the whole journal over its
+          // payload. A steady change that finishes while a fetch is in flight
+          // has not: that payload may predate changes journaled since, so keep
+          // them for its replay. Replaying already-applied changes converges.
+          if (serial !== null || !fetching) {
+            pendingChanges = [];
+          }
           return true;
         }
         await yieldControl();

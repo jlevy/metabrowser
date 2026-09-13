@@ -624,10 +624,89 @@ async function main() {
   }
 }
 
-main().then(() => {
-  if (failures.length > 0) {
-    process.stderr.write(`${failures.join("\n")}\n`);
-    process.exit(1);
+// A steady staged change that finishes while a refetch is in flight must not
+// discard the journal: changes that arrive after that fetch began have to
+// replay over its payload, which predates them. Uses the production catalog.
+async function stagedChangeDuringRefetch() {
+  const catalogSource = fs.readFileSync(
+    path.join(repoRoot, "src/metabrowser/static/known-file-catalog.js"),
+    "utf-8",
+  );
+  vm.runInContext(catalogSource, sandbox, { filename: "known-file-catalog.js" });
+  const catalog = sandbox.MetabrowserKnownFileCatalog.create();
+  const { impl, pending } = makeFetch();
+  const turns = [];
+  const feed = sandbox.MetabrowserCatalogFeed.create({
+    catalog,
+    fetchImpl: impl,
+    yieldControl: () => new Promise((resolve) => turns.push(resolve)),
+  });
+  async function settle() {
+    for (let round = 0; round < 10_000; round += 1) {
+      await tick();
+      const turn = turns.shift();
+      if (!turn) {
+        await tick();
+        if (turns.length === 0) {
+          return;
+        }
+        continue;
+      }
+      turn();
+    }
   }
-  process.stdout.write("OK catalog feed\n");
-});
+
+  // Enough rows that a staged change copies its baseline across task slices.
+  const baseline = Array.from({ length: 5_000 }, (_, index) => ({
+    e: ".txt",
+    p: `a/file-${String(index).padStart(4, "0")}.txt`,
+  }));
+  feed.start();
+  await tick();
+  pending[0].resolve(jsonResponse({ complete: false, files: baseline }));
+  await settle();
+  // A reconnect during the walk requires one terminal, authoritative payload.
+  feed.start();
+  await tick();
+  pending[1].resolve(jsonResponse({ complete: false, files: baseline }));
+  await settle();
+
+  const bulk = Array.from({ length: 300 }, (_, index) => ({
+    e: ".txt",
+    p: `bulk/file-${String(index).padStart(3, "0")}.txt`,
+  }));
+  feed.onCatalogChange({ removes: [], upserts: bulk });
+  await tick();
+  check("a large steady change is staged", turns.length === 1, String(turns.length));
+  feed.onIndexComplete();
+  await tick();
+  check("walk completion issues the authoritative refetch", pending.length === 3);
+  feed.onCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "new.txt" }] });
+  await settle();
+
+  pending[2].resolve(jsonResponse({ complete: true, files: [...baseline, ...bulk] }));
+  await settle();
+  const paths = catalog.snapshot().files.map((file) => file.path);
+  check(
+    "a change after the refetch began survives its older authoritative payload",
+    paths.includes("new.txt") &&
+      paths.length === baseline.length + bulk.length + 1 &&
+      catalog.snapshot().complete === true,
+    JSON.stringify({
+      complete: catalog.snapshot().complete,
+      count: paths.length,
+      hasNew: paths.includes("new.txt"),
+    }),
+  );
+  feed.dispose();
+}
+
+main()
+  .then(stagedChangeDuringRefetch)
+  .then(() => {
+    if (failures.length > 0) {
+      process.stderr.write(`${failures.join("\n")}\n`);
+      process.exit(1);
+    }
+    process.stdout.write("OK catalog feed\n");
+  });
