@@ -6236,10 +6236,6 @@ function flagRunEndedBadge() {
 //      replaces an FsEntry in the store and triggers
 //      applyCellPatch() to update the rendered tree row.
 var fileStore = new Map(); // path -> FsEntry
-// Exact keys owned by the current /api/events snapshot and its scoped deltas.
-// Keep this separate from FileStore so snapshot replacement cannot retire a
-// row learned from another source merely because the shallow stream omits it.
-var fileStoreSnapshotPaths = new Set();
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
 var catalogFeedCanStart = false;
@@ -6276,26 +6272,20 @@ function fileStoreApplySnapshotInner(scope, entries) {
     fileNeedsRevalidate.add(path);
   }
   knownFileCatalog?.observeEventSnapshot(entries);
-  window.MetabrowserNavigationRoute.replaceFileSnapshot(
-    fileStore,
-    fileStoreSnapshotPaths,
-    entries,
-    {
-      install: (next, ownedPaths) => {
-        fileStore = next;
-        fileStoreSnapshotPaths = ownedPaths;
-      },
-      retire: (path) => {
-        activeFiles.delete(path);
-        _removeDeferredTreePageEntries(path);
-        _removeRenderedRowsImmediately(path);
-      },
-      upsert: (entry) => {
-        applyCellPatch(entry, false);
-        _mirrorActiveFromFsEntry(entry);
-      },
+  window.MetabrowserNavigationRoute.replaceFileSnapshot(fileStore, entries, {
+    install: (next) => {
+      fileStore = next;
     },
-  );
+    retire: (path) => {
+      activeFiles.delete(path);
+      _removeDeferredTreePageEntries(path);
+      _removeRenderedRowsImmediately(path);
+    },
+    upsert: (entry) => {
+      applyCellPatch(entry, false);
+      _mirrorActiveFromFsEntry(entry);
+    },
+  });
   window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
   notifyFileStoreSubscribers({ kind: "snapshot", scope: scope });
 }
@@ -6338,14 +6328,12 @@ function fileStoreApplyChangeInner(ops) {
     var op = ops[i];
     if (op.op === "upsert") {
       fileStore.set(op.entry.path, op.entry);
-      fileStoreSnapshotPaths.add(op.entry.path);
       // Patch any rendered cell for this path; insert a new row if
       // the parent is rendered + expanded. Idempotent.
       applyCellPatch(op.entry, inventoryChangeHighlightingActive);
       _mirrorActiveFromFsEntry(op.entry);
     } else if (op.op === "remove") {
       fileStore.delete(op.path);
-      fileStoreSnapshotPaths.delete(op.path);
       activeFiles.delete(op.path);
       _removeDeferredTreePageEntries(op.path);
       // Remove rendered rows in every tab panel; also drops the
@@ -7396,18 +7384,11 @@ function _createInventoryEventSource() {
     recentRecompute.cancel();
     scheduleRecentAuthoritativeRefetch();
     knownFileCatalog?.clear();
-    window.MetabrowserNavigationRoute.replaceFileSnapshot(fileStore, fileStoreSnapshotPaths, [], {
-      install: (next, ownedPaths) => {
-        fileStore = next;
-        fileStoreSnapshotPaths = ownedPaths;
-      },
-      retire: (path) => {
-        activeFiles.delete(path);
-        _removeDeferredTreePageEntries(path);
-        _removeRenderedRowsImmediately(path);
-      },
-      upsert: () => {},
-    });
+    // Keep FileStore and its rendered rows as the baseline. The reconnect
+    // snapshot retires only rows that are really gone and patches the rest in
+    // place; emptying the store here would collapse the tree for the whole
+    // reconnect backoff and lose expanded folders. The server sends this on
+    // queue overflow, which is exactly when changes are arriving in bursts.
     notifyFileStoreSubscribers({ kind: "resync" });
     startIndexProgressPolling();
     quickFileCatalogFeed?.onResync();

@@ -59,9 +59,9 @@ $ node tests/dom/file-navigation-lazy-asset-session.js
       [
         "install",
         [
-          "lazy/deep.md",
           "kept.jsonl",
-          "new.jsonl"
+          "new.jsonl",
+          "src"
         ]
       ],
       [
@@ -78,19 +78,37 @@ $ node tests/dom/file-navigation-lazy-asset-session.js
         "upsert",
         "new.jsonl",
         true
+      ],
+      [
+        "upsert",
+        "src",
+        true
       ]
     ],
     "active": [
       "new.jsonl"
     ],
-    "lazyRows": [
-      "lazy/deep.md"
-    ],
     "paths": [
-      "lazy/deep.md",
       "kept.jsonl",
-      "new.jsonl"
-    ]
+      "new.jsonl",
+      "src"
+    ],
+    "renderedRows": {
+      "kept.jsonl": {
+        "children": [],
+        "expanded": false
+      },
+      "src": {
+        "children": [
+          "src/lazy/deep.md"
+        ],
+        "expanded": true
+      },
+      "new.jsonl": {
+        "children": [],
+        "expanded": false
+      }
+    }
   }
 }
 ```

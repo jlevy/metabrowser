@@ -423,46 +423,42 @@
   /**
    * Replace one authoritative, scoped file-store snapshot as a transaction.
    *
+   * FileStore holds exactly one `/api/events` connection's scope: its snapshot
+   * plus the deltas that connection filters to the same scope. Lazily expanded
+   * subtrees are rendered from `/api/tree` and never enter it. Absence from the
+   * replacement is therefore authoritative for every previous key.
+   *
    * The caller installs the complete next Map before any row callback runs, so
-   * every derived read sees one revision. Only paths present in the previous
-   * scoped store and absent from the replacement are retired; lazily rendered
-   * rows outside that stream scope are deliberately untouched.
+   * every derived read sees one revision. Rows present on both sides are
+   * upserted in place, keeping their expansion and any lazily loaded children;
+   * only rows absent from the replacement are retired. A resync must keep the
+   * current store as this baseline until the reconnect snapshot arrives:
+   * replacing it with an empty snapshot first would retire every row.
    *
    * @param {Map<string, Record<string, any>>} previous
-   * @param {Set<string>} previousOwnedPaths
    * @param {Array<Record<string, any> & {path: string}>} entries
    * @param {{
-   *   install: (next: Map<string, Record<string, any>>, ownedPaths: Set<string>) => void,
+   *   install: (next: Map<string, Record<string, any>>) => void,
    *   retire: (path: string) => void,
    *   upsert: (entry: Record<string, any> & {path: string}) => void,
    * }} callbacks
-   * @returns {Readonly<{store: Map<string, Record<string, any>>, ownedPaths: Set<string>}>}
+   * @returns {Map<string, Record<string, any>>}
    */
-  function replaceFileSnapshot(previous, previousOwnedPaths, entries, callbacks) {
-    // FileStore can also retain rows learned outside the stream snapshot (for
-    // example by a future lazy-tree integration). Start from the full store,
-    // remove only the prior snapshot's owned keys, then install the next
-    // snapshot. Absence is authoritative only inside that explicit ownership
-    // set.
-    const next = new Map(previous);
-    for (const path of previousOwnedPaths) {
-      next.delete(path);
-    }
-    const ownedPaths = new Set();
+  function replaceFileSnapshot(previous, entries, callbacks) {
+    const next = new Map();
     for (const entry of entries) {
       next.set(entry.path, entry);
-      ownedPaths.add(entry.path);
     }
-    callbacks.install(next, ownedPaths);
-    for (const path of previousOwnedPaths) {
-      if (!ownedPaths.has(path)) {
+    callbacks.install(next);
+    for (const path of previous.keys()) {
+      if (!next.has(path)) {
         callbacks.retire(path);
       }
     }
     for (const entry of entries) {
       callbacks.upsert(entry);
     }
-    return Object.freeze({ ownedPaths, store: next });
+    return next;
   }
 
   /**

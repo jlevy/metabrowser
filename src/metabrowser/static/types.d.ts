@@ -170,17 +170,13 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   parseCommit(pathname: string): Readonly<{ revision: string; file: string }> | null;
   replaceFileSnapshot(
     previous: Map<string, Record<string, unknown>>,
-    previousOwnedPaths: Set<string>,
     entries: Array<Record<string, unknown> & { path: string }>,
     callbacks: {
-      install(next: Map<string, Record<string, unknown>>, ownedPaths: Set<string>): void;
+      install(next: Map<string, Record<string, unknown>>): void;
       retire(path: string): void;
       upsert(entry: Record<string, unknown> & { path: string }): void;
     },
-  ): Readonly<{
-    store: Map<string, Record<string, unknown>>;
-    ownedPaths: Set<string>;
-  }>;
+  ): Map<string, Record<string, unknown>>;
   settleFileSelectionFailure(options: {
     cached: boolean;
     error: unknown;

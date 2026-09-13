@@ -61,16 +61,23 @@ def test_navigation_assets_share_ownership_and_failure_semantics() -> None:
         "retained": ["two.md", "three.md"],
         "size": 2,
     }
+    # Only the row absent from the reconnect snapshot retires; the expanded
+    # folder is patched in place and keeps its lazily loaded children.
     assert payload["authoritativeSnapshot"] == {
         "actions": [
-            ["install", ["lazy/deep.md", "kept.jsonl", "new.jsonl"]],
+            ["install", ["kept.jsonl", "new.jsonl", "src"]],
             ["retire", "gone.jsonl", False],
             ["upsert", "kept.jsonl", True],
             ["upsert", "new.jsonl", True],
+            ["upsert", "src", True],
         ],
         "active": ["new.jsonl"],
-        "lazyRows": ["lazy/deep.md"],
-        "paths": ["lazy/deep.md", "kept.jsonl", "new.jsonl"],
+        "paths": ["kept.jsonl", "new.jsonl", "src"],
+        "renderedRows": {
+            "kept.jsonl": {"children": [], "expanded": False},
+            "src": {"children": ["src/lazy/deep.md"], "expanded": True},
+            "new.jsonl": {"children": [], "expanded": False},
+        },
     }
 
 
@@ -87,4 +94,10 @@ def test_shell_delegates_file_ownership_to_navigation_module() -> None:
     assert "MetabrowserNavigationRoute.commitFreshFileResponse" in selection
     assert "MetabrowserNavigationRoute.settleFileSelectionFailure" in source
     assert "MetabrowserNavigationRoute.settleNavigationDependency" in source
-    assert source.count("MetabrowserNavigationRoute.replaceFileSnapshot") == 2
+    assert source.count("MetabrowserNavigationRoute.replaceFileSnapshot") == 1
+    resync_start = source.index('addEventListener("fs.resync_required"')
+    resync = source[resync_start : source.index("inventoryEventSource.onopen", resync_start)]
+    # A resync keeps FileStore as the reconnect snapshot's baseline. Replacing
+    # it with an empty snapshot retired every rendered row for the whole backoff.
+    assert "replaceFileSnapshot" not in resync
+    assert "fileStore = new Map()" not in resync

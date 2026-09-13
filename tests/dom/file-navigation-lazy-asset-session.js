@@ -107,30 +107,37 @@ async function main() {
   boundedTracker.add("two.md");
   boundedTracker.add("three.md");
 
-  const retainedLazyRows = new Set(["lazy/deep.md"]);
+  // FileStore after a snapshot and its scoped deltas: two logs and a folder
+  // the reader expanded, whose children were loaded through /api/tree and so
+  // live only in the rendered tree. A resync keeps this store as the baseline;
+  // the reconnect snapshot then omits gone.jsonl and adds new.jsonl.
+  const renderedRows = new Map([
+    ["gone.jsonl", { children: [], expanded: false }],
+    ["kept.jsonl", { children: [], expanded: false }],
+    ["src", { children: ["src/lazy/deep.md"], expanded: true }],
+  ]);
   const activeSnapshotPaths = new Set(["gone.jsonl", "kept.jsonl"]);
   let installedSnapshot = new Map([
     ["gone.jsonl", { active: true, path: "gone.jsonl" }],
     ["kept.jsonl", { active: true, path: "kept.jsonl" }],
-    ["lazy/deep.md", { active: false, path: "lazy/deep.md" }],
+    ["src", { active: false, path: "src", type: "dir" }],
   ]);
-  let snapshotOwnedPaths = new Set(["gone.jsonl", "kept.jsonl"]);
   const snapshotActions = [];
   navigation.replaceFileSnapshot(
     installedSnapshot,
-    snapshotOwnedPaths,
     [
       { active: false, path: "kept.jsonl" },
       { active: true, path: "new.jsonl" },
+      { active: false, path: "src", type: "dir" },
     ],
     {
-      install(next, ownedPaths) {
+      install(next) {
         installedSnapshot = next;
-        snapshotOwnedPaths = ownedPaths;
         snapshotActions.push(["install", Array.from(next.keys())]);
       },
       retire(pathName) {
         activeSnapshotPaths.delete(pathName);
+        renderedRows.delete(pathName);
         snapshotActions.push(["retire", pathName, installedSnapshot.has(pathName)]);
       },
       upsert(entry) {
@@ -138,6 +145,9 @@ async function main() {
           activeSnapshotPaths.add(entry.path);
         } else {
           activeSnapshotPaths.delete(entry.path);
+        }
+        if (!renderedRows.has(entry.path)) {
+          renderedRows.set(entry.path, { children: [], expanded: false });
         }
         snapshotActions.push(["upsert", entry.path, installedSnapshot.has(entry.path)]);
       },
@@ -184,8 +194,8 @@ async function main() {
         authoritativeSnapshot: {
           actions: snapshotActions,
           active: Array.from(activeSnapshotPaths),
-          lazyRows: Array.from(retainedLazyRows),
           paths: Array.from(installedSnapshot.keys()),
+          renderedRows: Object.fromEntries(renderedRows),
         },
       },
       null,
