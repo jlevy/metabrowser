@@ -405,6 +405,9 @@ provenance, and atomicity.
 `tests/dom/catalog-feed-large-session.js` drives the exact production modules over
 300,000 files and pins slice volume, buffered-delta publication, cancellation,
 generation changes, and worst-case subtree removal without a browser.
+It bounds each steady-state change by the array elements it touches, counted through
+`tests/dom/array-work-meter.js`, not by wall-clock time, which varies with machine load;
+the headed performance harness owns the real-time 50 ms gate.
 
 ### Routes
 

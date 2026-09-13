@@ -4,10 +4,14 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { performance } = require("node:perf_hooks");
 const vm = require("node:vm");
+const { installArrayWorkMeter } = require("./array-work-meter.js");
 
 const FILE_COUNT = 300_000;
+// A direct steady-state change may copy, merge, or shift the projection a
+// small constant number of times. A per-point insertion regression multiplies
+// the projection by the batch instead (256 points x 300k rows = ~77M elements).
+const DIRECT_CHANGE_LINEAR_PASSES = 4;
 const repoRoot = path.resolve(__dirname, "../..");
 const measurements = [];
 const sandbox = { clearTimeout, setTimeout };
@@ -16,9 +20,9 @@ sandbox.globalThis = sandbox;
 sandbox.metabrowser = {
   perf: {
     measure(label, fn, metadata = {}) {
-      const started = performance.now();
+      const workBefore = arrayWork.read();
       const result = fn();
-      measurements.push({ duration_ms: performance.now() - started, label, ...metadata });
+      measurements.push({ array_element_work: arrayWork.read() - workBefore, label, ...metadata });
       return result;
     },
     measureAsync(_label, fn) {
@@ -27,6 +31,7 @@ sandbox.metabrowser = {
   },
 };
 vm.createContext(sandbox);
+const arrayWork = installArrayWorkMeter(sandbox);
 
 for (const filename of ["known-file-catalog.js", "catalog-feed.js"]) {
   const sourcePath = path.join(repoRoot, "src/metabrowser/static", filename);
@@ -43,6 +48,11 @@ function check(label, condition, detail = "") {
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+/** @param {number} rows @param {number} items */
+function directChangeWorkBound(rows, items) {
+  return DIRECT_CHANGE_LINEAR_PASSES * (rows + items);
+}
 
 function hasPath(files, target) {
   let low = 0;
@@ -210,14 +220,17 @@ async function main() {
   // The inventory stream may deliver its full bounded point batch at the
   // lexical head of a 300k projection. Repeated Array.splice calls make that
   // adversarial shape quadratic in shifted suffix length, so exercise the
-  // exact production feed seam and enforce the same 50 ms main-thread gate as
-  // the headed performance probe. Replacing the same 256 points covers the
-  // update path; removing ten adjacent head entries covers a small direct
-  // subtree range without promoting it to the sliced transaction.
+  // exact production feed seam and bound the array elements it touches to a
+  // few linear passes. The headed performance probe owns the real-time 50 ms
+  // gate; a wall-clock check here would only measure machine load. Replacing
+  // the same 256 points covers the update path; removing ten adjacent head
+  // entries covers a small direct subtree range without promoting it to the
+  // sliced transaction.
   const directHeadEntries = Array.from({ length: 256 }, (_, index) => ({
     e: ".txt",
     p: `bulk/000-head/${index < 10 ? "group-00" : "group-rest"}/file-${String(index).padStart(3, "0")}.txt`,
   }));
+  const directHeadRows = catalog.snapshot().observedCount;
   const directHeadStart = measurements.length;
   feed.onCatalogChange({ removes: [], upserts: directHeadEntries });
   await tick();
@@ -225,8 +238,9 @@ async function main() {
     .slice(directHeadStart)
     .find((measurement) => measurement.label === "knownFileCatalog:applyCatalogChange");
   check(
-    "256 lexical-head insertions stay below the synchronous hard gate",
-    directHeadMeasurement?.duration_ms < 50 && directHeadMeasurement.work_items === 256,
+    "256 lexical-head insertions stay within a few linear projection passes",
+    directHeadMeasurement?.work_items === 256 &&
+      directHeadMeasurement.array_element_work <= directChangeWorkBound(directHeadRows, 256),
     JSON.stringify(directHeadMeasurement),
   );
   check(
@@ -235,6 +249,7 @@ async function main() {
     String(catalog.snapshot().observedCount),
   );
 
+  const directReplacementRows = catalog.snapshot().observedCount;
   const directReplacementStart = measurements.length;
   feed.onCatalogChange({
     removes: [],
@@ -245,9 +260,10 @@ async function main() {
     .slice(directReplacementStart)
     .find((measurement) => measurement.label === "knownFileCatalog:applyCatalogChange");
   check(
-    "256 lexical-head replacements stay below the synchronous hard gate",
-    directReplacementMeasurement?.duration_ms < 50 &&
-      directReplacementMeasurement.work_items === 256,
+    "256 lexical-head replacements stay within a few linear projection passes",
+    directReplacementMeasurement?.work_items === 256 &&
+      directReplacementMeasurement.array_element_work <=
+        directChangeWorkBound(directReplacementRows, 256),
     JSON.stringify(directReplacementMeasurement),
   );
   check(
@@ -256,6 +272,7 @@ async function main() {
       ?.logicalExtension === ".md",
   );
 
+  const smallRemovalRows = catalog.snapshot().observedCount;
   const smallRemovalStart = measurements.length;
   feed.onEventChange([{ op: "remove", path: "bulk/000-head/group-00" }]);
   await tick();
@@ -263,10 +280,10 @@ async function main() {
     .slice(smallRemovalStart)
     .find((measurement) => measurement.label === "knownFileCatalog:applyEventChange");
   check(
-    "small lexical-head subtree removal stays below the synchronous hard gate",
-    smallRemovalMeasurement?.duration_ms < 50 &&
-      smallRemovalMeasurement.candidate_visits === 10 &&
-      smallRemovalMeasurement.work_items === 20,
+    "small lexical-head subtree removal stays within a few linear projection passes",
+    smallRemovalMeasurement?.candidate_visits === 10 &&
+      smallRemovalMeasurement.work_items === 20 &&
+      smallRemovalMeasurement.array_element_work <= directChangeWorkBound(smallRemovalRows, 20),
     JSON.stringify(smallRemovalMeasurement),
   );
   check(
@@ -278,7 +295,7 @@ async function main() {
   // A staged monotonic tail is allowed to use the full production slice: its
   // proof excludes replacements and non-tail entries before any projection
   // mutation, so 4096 appends remain O(k). Drive the baseline separately to
-  // time that exact mutation slice rather than conflating it with catalog copy.
+  // meter that exact mutation slice rather than conflating it with catalog copy.
   const tailEntries = Array.from({ length: sliceLimit }, (_, index) => ({
     e: ".txt",
     p: `zzzz-tail/file-${String(index).padStart(4, "0")}.txt`,
@@ -296,13 +313,17 @@ async function main() {
     );
     remainingBaseline -= copyStep?.workItems || 0;
   }
-  const tailSliceStarted = performance.now();
+  const tailWorkBefore = arrayWork.read();
   const tailStep = tailApplication?.step(sliceLimit);
-  const tailSliceDuration = performance.now() - tailSliceStarted;
+  const tailArrayWork = arrayWork.read() - tailWorkBefore;
+  // O(k) means independent of the 300k baseline: a constant number of touches
+  // per appended point, never a copy or shift of the projection.
   check(
-    "4096 sorted new-tail points stay below the synchronous hard gate",
-    tailStep?.done === false && tailStep.workItems === sliceLimit && tailSliceDuration < 50,
-    `${tailSliceDuration}/${JSON.stringify(tailStep)}`,
+    "4096 sorted new-tail points touch only the appended slice",
+    tailStep?.done === false &&
+      tailStep.workItems === sliceLimit &&
+      tailArrayWork <= 4 * sliceLimit,
+    `${tailArrayWork}/${JSON.stringify(tailStep)}`,
   );
   const tailCommit = tailApplication?.step(sliceLimit);
   check(
@@ -324,6 +345,7 @@ async function main() {
     },
     op: "upsert",
   }));
+  const eventTailRows = catalog.snapshot().observedCount;
   const eventTailStart = measurements.length;
   feed.onEventChange(eventTailOps);
   await tick();
@@ -331,8 +353,9 @@ async function main() {
     .slice(eventTailStart)
     .find((measurement) => measurement.label === "knownFileCatalog:applyEventChange");
   check(
-    "256 sorted new event-entry tails stay below the synchronous hard gate",
-    eventTailMeasurement?.duration_ms < 50 && eventTailMeasurement.work_items === 256,
+    "256 sorted new event-entry tails stay within a few linear projection passes",
+    eventTailMeasurement?.work_items === 256 &&
+      eventTailMeasurement.array_element_work <= directChangeWorkBound(eventTailRows, 256),
     JSON.stringify(eventTailMeasurement),
   );
   check(

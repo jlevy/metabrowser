@@ -9,8 +9,8 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { performance } = require("node:perf_hooks");
 const vm = require("node:vm");
+const { installArrayWorkMeter } = require("./array-work-meter.js");
 
 const FILES_PER_PREFIX = Number(process.env.METABROWSER_TEST_UNICODE_FILES_PER_PREFIX || "20000");
 const repoRoot = path.resolve(__dirname, "../..");
@@ -21,9 +21,9 @@ sandbox.globalThis = sandbox;
 sandbox.metabrowser = {
   perf: {
     measure(label, fn, metadata = {}) {
-      const started = performance.now();
+      const workBefore = arrayWork.read();
       const result = fn();
-      measurements.push({ duration_ms: performance.now() - started, label, ...metadata });
+      measurements.push({ array_element_work: arrayWork.read() - workBefore, label, ...metadata });
       return result;
     },
     measureAsync(_label, fn) {
@@ -32,6 +32,7 @@ sandbox.metabrowser = {
   },
 };
 vm.createContext(sandbox);
+const arrayWork = installArrayWorkMeter(sandbox);
 
 for (const filename of ["known-file-catalog.js", "catalog-feed.js"]) {
   const sourcePath = path.join(repoRoot, "src/metabrowser/static", filename);
@@ -102,7 +103,7 @@ async function main() {
     (measurement) => measurement.label === "knownFileCatalog:applyBulkSnapshot",
   );
   const sliceLimit = sandbox.MetabrowserCatalogFeed.BULK_APPLY_SLICE_ITEMS;
-  const maxDuration = Math.max(...slices.map((measurement) => measurement.duration_ms));
+  const maxArrayWork = Math.max(...slices.map((measurement) => measurement.array_element_work));
   const maxWorkItems = Math.max(...slices.map((measurement) => measurement.work_items || 0));
   check("Unicode catalog finishes within scheduler guard", turns < 1_000, String(turns));
   check("Unicode ordering conversion spans multiple task slices", slices.length > 10);
@@ -112,9 +113,12 @@ async function main() {
     String(maxWorkItems),
   );
   check(
-    "every Unicode conversion slice stays below the 50 ms responsiveness gate",
-    maxDuration < 50,
-    String(maxDuration),
+    // Front-inserting each astral row would shift every already-published row
+    // in the slice; converting order in bounded runs touches each row a
+    // constant number of times.
+    "every Unicode conversion slice touches a bounded number of array elements",
+    maxArrayWork <= 2 * sliceLimit,
+    String(maxArrayWork),
   );
 
   const snapshot = catalog.snapshot();
