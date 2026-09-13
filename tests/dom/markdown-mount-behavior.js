@@ -57,6 +57,7 @@ function makeContainer() {
   const workerStub =
     "export function createMarkdownWorkerClient(){const client={disposeCalls:0," +
     "dispose(){client.disposeCalls+=1},run(_op,payload){" +
+    "if(payload.source.includes('[[fatal]]'))return Promise.reject(new Error('worker failed'));" +
     "const changed=payload.source.includes('[[wiki]]');" +
     "const limited=payload.source.includes('[[limited]]');" +
     "return Promise.resolve({changed,complete:!limited," +
@@ -146,6 +147,33 @@ function makeContainer() {
     "each root owns and disposes only its own worker client",
     globalThis.__markdownWorkerClients[1].disposeCalls === 1,
   );
+
+  // The optional preprocessing worker failing must not replace the document
+  // with an error: render the authored source and report what is missing.
+  const unprocessed = makeContainer();
+  const unprocessedMount = module.mountRenderedMarkdown(
+    unprocessed,
+    { path: "worker-failure.md", raw: { content: "[[fatal]] body" } },
+    mb,
+  );
+  for (let turn = 0; turn < 5 && requests.length < 3; turn += 1) {
+    await Promise.resolve();
+  }
+  check("worker failure still requests the rendered document", requests.length === 3);
+  check(
+    "worker failure renders the authored source",
+    requests[2]?.options?.sourceText === undefined,
+  );
+  requests[2]?.resolve({ html: "<article>authored</article>", diagnostics: [] });
+  await unprocessedMount.ready;
+  check("worker failure paints the document", unprocessed.innerHTML.includes("authored"));
+  check(
+    "worker failure is explained by a diagnostic",
+    JSON.stringify(unprocessed.prepended).includes("markdown-preprocessing-unavailable"),
+    JSON.stringify(unprocessed.prepended),
+  );
+  unprocessedMount.dispose();
+  requests.splice(2, 1);
 
   const pending = makeContainer();
   const pendingHandle = module.mountRenderedMarkdown(pending, { path: "pending.md" }, mb);

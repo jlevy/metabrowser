@@ -237,6 +237,20 @@ and second line ^block-id
   check("nested enhancement disposed", nestedDisposed === 1);
   check("embedded table of contents disposed", tocDisposed === 1);
 
+  // An embed that was pending before its catalog resolved keeps the status
+  // text on its placeholder; the mounted note must use the recorded label.
+  const formerlyPending = new FakeElement("span", "Setup (resolving link)");
+  formerlyPending.setAttribute("data-mb-wiki-label", "Setup");
+  const formerlyPendingContainer = new FakeContainer(formerlyPending);
+  module
+    .mountWikiTransclusion(formerlyPendingContainer, formerlyPending, { path: "docs/setup.md" }, mb)
+    .dispose();
+  check(
+    "a formerly pending embed is labeled by its note, not its status",
+    formerlyPendingContainer.elements[0].getAttribute("aria-label") === "Embedded note: Setup",
+    formerlyPendingContainer.elements[0].getAttribute("aria-label"),
+  );
+
   const cyclicSource = new FakeElement("span", "Cycle");
   const cyclicContainer = new FakeContainer(cyclicSource);
   module.mountWikiTransclusion(cyclicContainer, cyclicSource, { path: "a.md" }, mb, {

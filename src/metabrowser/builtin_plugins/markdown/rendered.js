@@ -5,6 +5,14 @@ import { transclusionKey } from "./transclusion.js";
 
 let mountSequence = 0;
 
+/** Shown when the optional wiki preprocessing step could not run. */
+const MARKDOWN_PREPROCESSING_UNAVAILABLE_DIAGNOSTIC = Object.freeze({
+  code: "markdown-preprocessing-unavailable",
+  message:
+    "Wiki links, block references, and heading anchors were not processed for this document.",
+  severity: "warning",
+});
+
 /** Shown when a document has more links, media, or wiki targets than one mount enhances. */
 const MARKDOWN_LINK_LIMIT_DIAGNOSTIC = Object.freeze({
   code: "markdown-link-limit",
@@ -140,14 +148,29 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       if (raw.content_truncated === true) {
         content = await mb.fetchCompleteText(ctx, { signal: controller.signal });
       }
-      const wiki =
-        content === null
-          ? null
-          : await workerClient.run("prepare-primary", Object.freeze({ source: content }), {
-              signal: controller.signal,
-            });
-      if (wiki !== null && !isPrimaryPreparation(wiki)) {
-        throw new TypeError("Markdown worker returned an invalid primary preparation");
+      /** @type {Array<unknown>} */
+      const preparationDiagnostics = [];
+      let wiki = null;
+      if (content !== null) {
+        // Wiki preprocessing is an enhancement. If the worker cannot load or
+        // fails, render the authored Markdown and say what is missing rather
+        // than replacing the whole document with an error.
+        try {
+          const prepared = await workerClient.run(
+            "prepare-primary",
+            Object.freeze({ source: content }),
+            { signal: controller.signal },
+          );
+          if (!isPrimaryPreparation(prepared)) {
+            throw new TypeError("Markdown worker returned an invalid primary preparation");
+          }
+          wiki = prepared;
+        } catch (error) {
+          if (mb.errors.isAbortError(error) || controller.signal.aborted) {
+            throw error;
+          }
+          preparationDiagnostics.push(MARKDOWN_PREPROCESSING_UNAVAILABLE_DIAGNOSTIC);
+        }
       }
       const rendered = await mb.fetchKpressRender(ctx, "rendered", {
         dedupKey: `markdown-mount-${++mountSequence}`,
@@ -158,7 +181,11 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
       });
       if (!disposed && !controller.signal.aborted) {
         container.innerHTML = rendered.html;
-        const diagnostics = [...(wiki?.diagnostics || []), ...(rendered.diagnostics || [])];
+        const diagnostics = [
+          ...preparationDiagnostics,
+          ...(wiki?.diagnostics || []),
+          ...(rendered.diagnostics || []),
+        ];
         if (ctx.path) {
           const links = enhanceRenderedLinks(container, ctx.path, mb, {
             signal: controller.signal,

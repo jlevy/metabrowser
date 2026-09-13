@@ -162,6 +162,22 @@ function throws(name, callback, message) {
     },
   );
   equal(
+    "dot segments in a published route resolve like the standard resolver",
+    module.resolvePublishedRoute(
+      { authoredTarget: "/a/../guide/", resolvedPath: "guide/" },
+      complete(["mkdocs.yml", "docs/guide.md"]),
+    ),
+    { adapter: "mkdocs", path: "docs/guide.md", status: "internal" },
+  );
+  equal(
+    "encoded dot segments resolve the same way",
+    module.resolvePublishedRoute(
+      { authoredTarget: "/./a/%2e%2e/guide/", resolvedPath: "guide/" },
+      complete(["mkdocs.yml", "docs/guide.md"]),
+    ),
+    { adapter: "mkdocs", path: "docs/guide.md", status: "internal" },
+  );
+  equal(
     "ordinary relative link is not a published route",
     module.resolvePublishedRoute(
       { authoredTarget: "guide/", resolvedPath: "docs/guide/" },

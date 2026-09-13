@@ -347,6 +347,14 @@ function rawResourceHref(resolved) {
 
 /** @param {Element} element @param {string} attribute @param {string} status @param {string} reason */
 function disableTarget(element, attribute, status, reason) {
+  if (!element.hasAttribute("data-metabrowser-link-status")) {
+    // The status explanation borrows the title only while the target is
+    // disabled; keep the author's tooltip to restore.
+    const authoredTitle = element.getAttribute("title");
+    if (authoredTitle !== null) {
+      element.setAttribute("data-metabrowser-authored-title", authoredTitle);
+    }
+  }
   element.removeAttribute(attribute);
   element.setAttribute("data-metabrowser-link-status", status);
   element.setAttribute("aria-disabled", "true");
@@ -378,7 +386,13 @@ function clearDisabledTarget(element) {
   }
   element.removeAttribute("aria-disabled");
   element.removeAttribute("data-metabrowser-link-status");
-  element.removeAttribute("title");
+  const authoredTitle = element.getAttribute("data-metabrowser-authored-title");
+  if (authoredTitle === null) {
+    element.removeAttribute("title");
+  } else {
+    element.setAttribute("title", authoredTitle);
+    element.removeAttribute("data-metabrowser-authored-title");
+  }
   if (element.getAttribute("data-metabrowser-managed-tabindex") === "true") {
     element.removeAttribute("data-metabrowser-managed-tabindex");
     element.removeAttribute("tabindex");

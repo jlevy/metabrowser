@@ -282,7 +282,11 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
     throw new Error("Wiki transclusion requires a document");
   }
   const aside = document.createElement("aside");
-  const label = boundedTransclusionLabel(sourceElement.textContent || resolved.path);
+  // A placeholder that was pending shows a status suffix in its text; the
+  // authored label it recorded is the name of the note.
+  const label = boundedTransclusionLabel(
+    sourceElement.getAttribute("data-mb-wiki-label") || sourceElement.textContent || resolved.path,
+  );
   aside.setAttribute("class", "metabrowser-wiki-transclusion");
   aside.setAttribute("role", "region");
   aside.setAttribute("aria-label", `Embedded note: ${label}`);

@@ -198,26 +198,41 @@ function isPublishedRoute(authoredTarget) {
   return path.endsWith("/") || !leaf.includes(".");
 }
 
-/** @param {string} authoredTarget */
+/**
+ * Decode a rooted authored route into its canonical inventory identity.
+ * Dot segments resolve lexically, as the standard resolver already did before
+ * this adapter runs, so `/a/../guide/` names `guide`; a route that climbs above
+ * the root has no identity.
+ *
+ * @param {string} authoredTarget
+ */
 function decodedPublishedRoute(authoredTarget) {
   const encoded = authoredTarget.split("#", 1)[0].split("?", 1)[0];
   const trimmed = encoded.replace(/^\/+|\/+$/g, "");
   try {
-    const decoded = trimmed
-      .split("/")
-      .filter(Boolean)
-      .map((segment) => decodeURIComponent(segment));
-    return decoded.some(
-      (segment) =>
-        !segment ||
-        segment === "." ||
-        segment === ".." ||
-        segment.includes("/") ||
-        segment.includes("\\") ||
-        segment.includes("\0"),
-    )
-      ? null
-      : decoded.map((segment) => segment.replaceAll("%", "%25")).join("/");
+    /** @type {string[]} */
+    const segments = [];
+    for (const raw of trimmed.split("/")) {
+      if (!raw) {
+        continue;
+      }
+      const segment = decodeURIComponent(raw);
+      if (segment === ".") {
+        continue;
+      }
+      if (segment === "..") {
+        if (segments.length === 0) {
+          return null;
+        }
+        segments.pop();
+        continue;
+      }
+      if (segment.includes("/") || segment.includes("\\") || segment.includes("\0")) {
+        return null;
+      }
+      segments.push(segment);
+    }
+    return segments.map((segment) => segment.replaceAll("%", "%25")).join("/");
   } catch (_error) {
     return null;
   }

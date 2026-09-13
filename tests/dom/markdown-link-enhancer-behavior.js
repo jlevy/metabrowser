@@ -242,7 +242,7 @@ async function loadModule() {
   const module = await loadModule();
   const sameDocument = new FakeElement("a", { href: "#Install" });
   const internal = new FakeElement("a", { href: "guide.md#Install" });
-  const published = new FakeElement("a", { href: "/published/" });
+  const published = new FakeElement("a", { href: "/published/", title: "Published guide" });
   const external = new FakeElement("a", { href: "https://example.com/docs" });
   const revision = "a".repeat(40);
   const github = new FakeElement("a", {
@@ -355,6 +355,12 @@ async function loadModule() {
   check(
     "configured published route href",
     published.getAttribute("href") === "/view/docs/published.md",
+  );
+  check(
+    "a resolved published route keeps its authored title",
+    published.getAttribute("title") === "Published guide" &&
+      !published.hasAttribute("data-metabrowser-authored-title"),
+    String(published.getAttribute("title")),
   );
   check(
     "configured adapter disclosed",
