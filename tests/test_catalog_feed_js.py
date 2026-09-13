@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -24,4 +25,4 @@ def test_catalog_feed_js_assertions_pass() -> None:
     assert result.returncode == 0, (
         f"catalog feed assertions failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
-    assert result.stdout.startswith("OK"), f"unexpected stdout: {result.stdout!r}"
+    assert json.loads(result.stdout)["verified"], f"unexpected stdout: {result.stdout!r}"

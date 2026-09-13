@@ -18,8 +18,14 @@ const source = fs.readFileSync(sourcePath, "utf-8");
 vm.runInContext(source, sandbox, { filename: sourcePath });
 
 const failures = [];
+// Every distinct scenario this session verified, in first-run order. The
+// golden pins the list, so removing a scenario changes the transcript.
+const verified = [];
 
 function check(label, condition, detail = "") {
+  if (!verified.includes(label)) {
+    verified.push(label);
+  }
   if (!condition) {
     failures.push(`${label}${detail ? `: ${detail}` : ""}`);
   }
@@ -708,5 +714,5 @@ main()
       process.stderr.write(`${failures.join("\n")}\n`);
       process.exit(1);
     }
-    process.stdout.write("OK catalog feed\n");
+    process.stdout.write(`${JSON.stringify({ verified }, null, 2)}\n`);
   });

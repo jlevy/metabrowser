@@ -6,8 +6,14 @@ const vm = require("node:vm");
 
 const repoRoot = path.resolve(process.argv[2] || path.join(__dirname, "../.."));
 const failures = [];
+// Every distinct scenario this session verified, in first-run order. The
+// golden pins the list, so removing a scenario changes the transcript.
+const verified = [];
 
 function check(name, condition, detail = "failed") {
+  if (!verified.includes(name)) {
+    verified.push(name);
+  }
   if (!condition) {
     failures.push(`${name}: ${detail}`);
   }
@@ -298,7 +304,7 @@ function makeBrowser(pathname, search = "", hash = "") {
     console.error(`navigation route FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);
   }
-  console.log("navigation route OK");
+  console.log(JSON.stringify({ verified }, null, 2));
 })().catch((error) => {
   console.error(error);
   process.exit(1);
