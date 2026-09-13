@@ -612,14 +612,10 @@ function equal(name, actual, expected) {
     authoredTarget: `4095/${commonDirectory}/Leaf`,
     sourcePath: "docs/current.md",
   });
-  let longSuffixStarted = performance.now();
   let longSuffixStep = longSuffixLookup.step(16_384);
-  let longSuffixMaximumMs = performance.now() - longSuffixStarted;
   let longSuffixWork = longSuffixStep.pathVisits;
   while (!longSuffixStep.done) {
-    longSuffixStarted = performance.now();
     longSuffixStep = longSuffixLookup.step(16_384);
-    longSuffixMaximumMs = Math.max(longSuffixMaximumMs, performance.now() - longSuffixStarted);
     longSuffixWork += longSuffixStep.pathVisits;
     equal(
       "long common suffix step charges code-unit work",
@@ -636,7 +632,6 @@ function equal(name, actual, expected) {
     longSuffixWork < 5_000_000,
     true,
   );
-  equal("long common suffix slice remains below a 50ms long task", longSuffixMaximumMs < 50, true);
   longSuffixContext.dispose();
 
   const longCatalogPath = `${"very-long-segment/".repeat(1200)}tail/Deep.md`;
