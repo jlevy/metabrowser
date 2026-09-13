@@ -84,11 +84,14 @@ export function preprocessObsidianWiki(source) {
       const nextLine = next ? source.slice(next.start, next.contentEnd) : "";
       const firstContentOffset = content.search(/\S/);
       const nextContentOffset = nextLine.search(/\S/);
+      // A masked next line (code, HTML, a comment) cannot be a setext
+      // underline, but it must not suppress an ATX heading on this line.
+      const nextLineMasked =
+        next && nextContentOffset !== -1 && literal.mask[next.start + nextContentOffset];
       const heading =
-        (firstContentOffset !== -1 && literal.mask[current.start + firstContentOffset]) ||
-        (next && nextContentOffset !== -1 && literal.mask[next.start + nextContentOffset])
+        firstContentOffset !== -1 && literal.mask[current.start + firstContentOffset]
           ? null
-          : findMarkdownHeading(content, nextLine);
+          : findMarkdownHeading(content, nextLineMasked ? "" : nextLine);
       const inserted = [];
       if (heading) {
         headingStack.splice(heading.level - 1);
@@ -769,7 +772,9 @@ function findCharacter(source, start, character, state, metrics) {
 /**
  * Mark fenced code, indented code, HTML comments, and exact-run CommonMark code
  * spans. The reverse successor table makes unmatched and asymmetric backtick
- * runs literal without rescanning a suffix for each opener.
+ * runs literal without rescanning a suffix for each opener. Code spans cannot
+ * cross a block boundary, so pairing restarts at blank lines, headings, and
+ * wholly literal lines.
  *
  * @param {string} source
  */
@@ -781,6 +786,8 @@ export function markdownLiteralMask(source) {
   let inComment = false;
   let rawLiteralElement = "";
   let rawBlockUntilBlank = false;
+  /** Line-start offsets where a code span must not continue, ascending. */
+  const blockBoundaries = [];
   while (offset < source.length) {
     const start = offset;
     while (offset < source.length && source[offset] !== "\n" && source[offset] !== "\r") {
@@ -798,16 +805,37 @@ export function markdownLiteralMask(source) {
       }
     }
     const line = source.slice(start, contentEnd);
+    const fenceRun = inComment ? null : /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1] || null;
+    // An open fence owns every line until its closing fence. Raw-HTML and
+    // indentation rules inside it are content, not block structure.
+    if (fence) {
+      mask.fill(1, start, offset);
+      blockBoundaries.push(start, offset);
+      if (
+        fenceRun &&
+        fenceRun[0] === fence.character &&
+        fenceRun.length >= fence.length &&
+        line.slice(line.indexOf(fenceRun) + fenceRun.length).trim() === ""
+      ) {
+        fence = null;
+      }
+      continue;
+    }
+    if (!inComment && (line.trim() === "" || /^ {0,3}#{1,6}(?:[\t ]|$)/.test(line))) {
+      blockBoundaries.push(start, offset);
+    }
     if (rawBlockUntilBlank) {
       if (line.trim() === "") {
         rawBlockUntilBlank = false;
       } else {
         mask.fill(1, start, offset);
+        blockBoundaries.push(start, offset);
       }
       continue;
     }
     if (rawLiteralElement) {
       mask.fill(1, start, offset);
+      blockBoundaries.push(start, offset);
       if (new RegExp(`</${rawLiteralElement}\\s*>`, "i").test(line)) {
         rawLiteralElement = "";
       }
@@ -819,6 +847,7 @@ export function markdownLiteralMask(source) {
     if (rawOpening) {
       rawLiteralElement = rawOpening[1].toLowerCase();
       mask.fill(1, start, offset);
+      blockBoundaries.push(start, offset);
       if (new RegExp(`</${rawLiteralElement}\\s*>`, "i").test(line)) {
         rawLiteralElement = "";
       }
@@ -832,28 +861,18 @@ export function markdownLiteralMask(source) {
     if (rawBlockOpening) {
       rawBlockUntilBlank = true;
       mask.fill(1, start, offset);
-      continue;
-    }
-    const fenceRun = inComment ? null : /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1] || null;
-    if (fence) {
-      mask.fill(1, start, offset);
-      if (
-        fenceRun &&
-        fenceRun[0] === fence.character &&
-        fenceRun.length >= fence.length &&
-        line.slice(line.indexOf(fenceRun) + fenceRun.length).trim() === ""
-      ) {
-        fence = null;
-      }
+      blockBoundaries.push(start, offset);
       continue;
     }
     if (fenceRun) {
       fence = { character: fenceRun[0], length: fenceRun.length };
       mask.fill(1, start, offset);
+      blockBoundaries.push(start, offset);
       continue;
     }
     if (!inComment && /^(?: {4}|\t)/.test(line)) {
       mask.fill(1, start, offset);
+      blockBoundaries.push(start, offset);
       continue;
     }
     for (let cursor = start; cursor < contentEnd; ) {
@@ -877,8 +896,16 @@ export function markdownLiteralMask(source) {
 
   const nextEqualRun = new Int32Array(source.length);
   const lastRunByLength = new Map();
+  let boundary = blockBoundaries.length - 1;
   for (let index = source.length - 1; index >= 0; ) {
     codeUnitsVisited += 1;
+    if (boundary >= 0 && index < blockBoundaries[boundary]) {
+      // Crossing into an earlier block: no later run can close a span here.
+      lastRunByLength.clear();
+      while (boundary >= 0 && index < blockBoundaries[boundary]) {
+        boundary -= 1;
+      }
+    }
     if (mask[index] || source[index] !== "`") {
       index -= 1;
       continue;

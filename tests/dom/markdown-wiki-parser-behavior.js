@@ -107,6 +107,47 @@ function check(name, condition, detail = "failed") {
     JSON.stringify(escapedCounts),
   );
 
+  // Literal masking must never outlive its block. Each case pins what the
+  // pre-worker parser emitted: HTML-looking lines are fence content, a stray
+  // backtick cannot pair with a code span blocks later, and a masked line after
+  // an ATX heading only rules out a setext underline.
+  const literalScopeCases = [
+    [
+      "HTML lines inside a fence do not open a raw block",
+      '```html\n<div class="card">\n  <p>Hello</p>\n</div>\n```\n\nSee [[Note]] and ![[Other#Part]]\n\n## Later Heading\n\nParagraph ^block-1\n',
+      { anchors: 1, blocks: 1, targets: 2 },
+    ],
+    [
+      "an iframe line inside a fence does not swallow the closing fence",
+      '```html\n<iframe src="x"></iframe>\n```\n\n## After\n[[Target]]\n',
+      { anchors: 1, blocks: 0, targets: 1 },
+    ],
+    [
+      "a script line inside a tilde fence does not open a raw element",
+      "~~~html\n<script>\nlet a = 1;\n~~~\n\n## After Script\n[[T]]\n",
+      { anchors: 1, blocks: 0, targets: 1 },
+    ],
+    [
+      "a stray backtick does not pair with a code span in a later block",
+      "Type a ` to start code.\n\n# Heading\n\n[[Note]]\n\nuse `x` here\n",
+      { anchors: 1, blocks: 0, targets: 1 },
+    ],
+    [
+      "an ATX heading directly before code keeps its anchor",
+      "## Setup\n```bash\nmake\n```\n\n## API\n`foo()` returns bar\n\n[[Doc#Setup]]\n",
+      { anchors: 2, blocks: 0, targets: 1 },
+    ],
+  ];
+  for (const [name, input, expected] of literalScopeCases) {
+    const result = module.preprocessObsidianWiki(input);
+    const actual = {
+      anchors: (result.source.match(/obsidian-heading-/g) || []).length,
+      blocks: result.blockCount,
+      targets: result.targetCount,
+    };
+    check(name, JSON.stringify(actual) === JSON.stringify(expected), JSON.stringify(actual));
+  }
+
   let seed = 0x5eed1234;
   const random = () => {
     seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
@@ -140,9 +181,11 @@ function check(name, condition, detail = "failed") {
   // This fixed seed and digest are the intended legacy-output oracle for syntax
   // unaffected by the explicit CommonMark bug corrections above. It catches a
   // precedence or escaping drift without retaining the retired quadratic parser.
+  // The digest was re-derived when literal masking was scoped to blocks; every
+  // one of the 55 seeds that changed then matches the pre-worker parser exactly.
   check(
     "seeded intended-output differential corpus",
-    seededDigest === "11d923b70586b9aaf0913646651d350e36e74f5e1c3ef079c70a03683a3a936e",
+    seededDigest === "5e5c2cd7ef10f04ec0efa3e38e061f483d39bca8052757c3d681dd75a7664fe5",
     seededDigest,
   );
 
