@@ -389,6 +389,48 @@ async function main() {
   check("257 point changes use the cooperative transaction", slicedBoundary !== null);
   slicedBoundary?.cancel();
 
+  // Scattered removals are the worst case for interval deletion: one splice
+  // per interval would shift the 300k suffix thousands of times inside one
+  // slice. The staged transaction compacts in a single charged forward pass.
+  const scatteredPaths = Array.from(
+    { length: 2_999 },
+    (_, index) => `bulk/file-${String((index + 1) * 100).padStart(6, "0")}.txt`,
+  );
+  const scatteredRows = catalog.snapshot().observedCount;
+  const scatteredApplication = catalog.beginCatalogChange(
+    { removes: scatteredPaths, upserts: [] },
+    sliceLimit,
+  );
+  check("scattered removals use the cooperative transaction", scatteredApplication !== null);
+  let scatteredSteps = 0;
+  let scatteredMaxArrayWork = 0;
+  let scatteredStep;
+  do {
+    const workBefore = arrayWork.read();
+    scatteredStep = scatteredApplication?.step(sliceLimit);
+    scatteredMaxArrayWork = Math.max(scatteredMaxArrayWork, arrayWork.read() - workBefore);
+    scatteredSteps += 1;
+  } while (scatteredStep && !scatteredStep.done && scatteredSteps < 1_000);
+  check(
+    "every scattered-removal slice touches a bounded number of array elements",
+    scatteredMaxArrayWork <= 4 * sliceLimit,
+    String(scatteredMaxArrayWork),
+  );
+  check(
+    "scattered removal spreads compaction across task slices",
+    scatteredStep?.done === true && scatteredSteps > 50,
+    `${scatteredSteps}/${JSON.stringify(scatteredStep)}`,
+  );
+  const scatteredSnapshot = catalog.snapshot();
+  check(
+    "scattered removal publishes exact membership",
+    scatteredSnapshot.observedCount === scatteredRows - scatteredPaths.length &&
+      !hasPath(scatteredSnapshot.files, scatteredPaths[0]) &&
+      !hasPath(scatteredSnapshot.files, scatteredPaths.at(-1)) &&
+      hasPath(scatteredSnapshot.files, "bulk/file-000101.txt"),
+    String(scatteredSnapshot.observedCount),
+  );
+
   // A live subtree removal can cover the complete catalog. It uses the same
   // production scheduler and staged publication path as initial delivery, so
   // even this worst-case delta stays bounded and invisible between slices.
@@ -406,7 +448,7 @@ async function main() {
   const beforeRemoval = catalog.snapshot();
   check(
     "large subtree removal remains invisible after its first slice",
-    beforeRemoval.observedCount === FILE_COUNT + 503 + sliceLimit && removalNotifications === 0,
+    beforeRemoval.observedCount === scatteredSnapshot.observedCount && removalNotifications === 0,
     `${beforeRemoval.observedCount}/${removalNotifications}`,
   );
   let removalTurns = 0;

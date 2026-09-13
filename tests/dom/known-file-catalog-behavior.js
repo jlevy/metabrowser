@@ -917,6 +917,144 @@ check(
   exactEvictionCatalog.snapshot().files.some((file) => file.path === "cache/opened.pyc"),
 );
 
+// Subtree removal against a reference model. Lexical order interleaves a
+// directory's exact entry and its descendants with siblings whose next code
+// unit sorts below `/` (`src/parser.rs` sits between `src/parser` and
+// `src/parser/a.rs`), so every removal path must be checked against the plain
+// definition: drop each path equal to, or under, any removed path. The direct,
+// staged steady-state, and bulk-replay paths each maintain their own ranges.
+{
+  let seed = 0x5eed1234;
+  function random() {
+    seed = (seed + 0x6d2b79f5) >>> 0;
+    let value = seed;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
+  }
+  function pick(values) {
+    return values[Math.floor(random() * values.length)];
+  }
+  // Names whose next code unit falls on both sides of `/` (0x2f).
+  const names = ["a", "a b", "a!", "a+", "a-b", "a.rs", "a0", "b"];
+
+  function randomCatalogPaths() {
+    const paths = new Set();
+    const count = 1 + Math.floor(random() * 24);
+    while (paths.size < count) {
+      const depth = 1 + Math.floor(random() * 3);
+      paths.add(Array.from({ length: depth }, () => pick(names)).join("/"));
+    }
+    // A path cannot be both a file and a directory in one catalog.
+    return [...paths].filter(
+      (candidate) => ![...paths].some((other) => other.startsWith(`${candidate}/`)),
+    );
+  }
+
+  function randomRemovals(paths) {
+    const removals = new Set();
+    const count = 1 + Math.floor(random() * 4);
+    while (removals.size < count) {
+      const segments = pick(paths).split("/");
+      const prefixLength = 1 + Math.floor(random() * segments.length);
+      removals.add(
+        random() < 0.15 ? `${pick(names)}/missing` : segments.slice(0, prefixLength).join("/"),
+      );
+    }
+    return [...removals];
+  }
+
+  function expectedAfterRemoval(paths, removals) {
+    return paths
+      .filter(
+        (candidate) =>
+          !removals.some((removed) => candidate === removed || candidate.startsWith(`${removed}/`)),
+      )
+      .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  }
+
+  function seeded(paths) {
+    const seededCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+    applyBulkSnapshot(
+      seededCatalog,
+      paths.map((candidate) => ({ e: ".txt", p: candidate })),
+      true,
+      true,
+    );
+    return seededCatalog;
+  }
+
+  function pathsOf(target) {
+    return target.snapshot().files.map((file) => file.path);
+  }
+
+  const mismatches = [];
+  for (let trial = 0; trial < 400 && mismatches.length < 3; trial += 1) {
+    const paths = randomCatalogPaths();
+    const removals = randomRemovals(paths);
+    const expected = expectedAfterRemoval(paths, removals);
+
+    const direct = seeded(paths);
+    direct.applyCatalogChange({ removes: removals, upserts: [] });
+
+    const staged = seeded(paths);
+    const stagedApplication = staged.beginCatalogChange({ removes: removals, upserts: [] }, 1);
+    if (stagedApplication) {
+      let result;
+      do {
+        result = stagedApplication.step(1 + Math.floor(random() * 5));
+      } while (!result.done);
+    } else if (expected.length !== paths.length) {
+      mismatches.push({ path: "staged", removals, reason: "a matching removal was not staged" });
+    }
+
+    const replay = sandbox.MetabrowserKnownFileCatalog.create();
+    const replayApplication = replay.beginBulkSnapshot(
+      paths.map((candidate) => ({ e: ".txt", p: candidate })),
+      true,
+      true,
+    );
+    replayApplication.enqueueCatalogChange({ removes: removals, upserts: [] });
+    let replayResult;
+    do {
+      replayResult = replayApplication.step(1 + Math.floor(random() * 7));
+    } while (!replayResult.done);
+
+    const events = seeded(paths);
+    events.applyEventChange(removals.map((removed) => ({ op: "remove", path: removed })));
+
+    for (const [name, target] of [
+      ["direct", direct],
+      ["staged", staged],
+      ["bulk replay", replay],
+      ["event change", events],
+    ]) {
+      const actual = pathsOf(target);
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        mismatches.push({ actual, expected, path: name, paths, removals });
+      }
+    }
+  }
+  check(
+    "subtree removal matches the reference model on every path",
+    mismatches.length === 0,
+    JSON.stringify(mismatches[0]),
+  );
+
+  const siblingCatalog = seeded([
+    "src/parser.rs",
+    "src/parser/a.rs",
+    "src/parser/b.rs",
+    "zeta.txt",
+  ]);
+  siblingCatalog.applyCatalogChange({ removes: ["src/parser", "src/parser.rs"], upserts: [] });
+  equal(
+    "removing a directory and its same-prefix sibling keeps unrelated files",
+    pathsOf(siblingCatalog),
+    ["zeta.txt"],
+  );
+}
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);

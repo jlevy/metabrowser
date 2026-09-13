@@ -228,9 +228,52 @@
   }
 
   /**
-   * Find disjoint exact-or-descendant intervals in the canonical projection.
+   * Append the exact and descendant intervals one removal path occupies.
    * Incrementing the descendant separator (`/` -> `0`) gives a strict upper
    * bound without admitting siblings such as `docs-old`.
+   *
+   * The two intervals are not adjacent in general: every sibling whose next
+   * code unit sorts below `/` (`docs.md`, `docs-old`, `docs 2`) lies between
+   * `docs` and `docs/…`, and such a sibling may itself be another removal path.
+   * @param {Readonly<KnownFile>[]} files
+   * @param {string} path
+   * @param {Array<{start: number, end: number}>} ranges
+   */
+  function appendRemovalIntervals(files, path, ranges) {
+    const exact = lowerBound(files, path);
+    if (files[exact]?.path === path) {
+      ranges.push({ end: exact + 1, start: exact });
+    }
+    const descendantStart = lowerBound(files, `${path}/`);
+    const descendantEnd = lowerBound(files, `${path}0`);
+    if (descendantEnd > descendantStart) {
+      ranges.push({ end: descendantEnd, start: descendantStart });
+    }
+  }
+
+  /**
+   * Order intervals by start and coalesce any that touch, so a single forward
+   * pass can remove them.
+   * @param {Array<{start: number, end: number}>} ranges
+   */
+  function sortedDisjointRanges(ranges) {
+    ranges.sort((left, right) => left.start - right.start);
+    /** @type {Array<{start: number, end: number}>} */
+    const merged = [];
+    for (const range of ranges) {
+      const previous = merged.at(-1);
+      if (previous && range.start <= previous.end) {
+        previous.end = Math.max(previous.end, range.end);
+      } else {
+        merged.push({ end: range.end, start: range.start });
+      }
+    }
+    return merged;
+  }
+
+  /**
+   * Find sorted, disjoint exact-or-descendant intervals in the canonical
+   * projection.
    * @param {Readonly<KnownFile>[]} files
    * @param {readonly string[]} paths
    */
@@ -238,23 +281,9 @@
     /** @type {Array<{start: number, end: number}>} */
     const ranges = [];
     for (const path of normalizeRemovalPaths(paths)) {
-      const exact = lowerBound(files, path);
-      const descendantStart = lowerBound(files, `${path}/`);
-      const descendantEnd = lowerBound(files, `${path}0`);
-      const hasExact = files[exact]?.path === path;
-      if (hasExact) {
-        ranges.push({ end: exact + 1, start: exact });
-      }
-      if (descendantEnd > descendantStart) {
-        const previous = ranges.at(-1);
-        if (previous && previous.end === descendantStart) {
-          previous.end = descendantEnd;
-        } else {
-          ranges.push({ end: descendantEnd, start: descendantStart });
-        }
-      }
+      appendRemovalIntervals(files, path, ranges);
     }
-    return ranges;
+    return sortedDisjointRanges(ranges);
   }
 
   /** Create an isolated catalog whose snapshots cannot mutate internal state. */
@@ -754,19 +783,36 @@
       const ranges = removalRanges(target.orderedFiles, removed);
       const candidateVisits = ranges.reduce((total, range) => total + range.end - range.start, 0);
       let workItems = candidateVisits;
-      if (ranges.length > 0) {
-        ensureMutableFiles(target);
+      if (ranges.length === 0) {
+        return { candidateVisits, changed: false, workItems };
       }
-      for (let rangeIndex = ranges.length - 1; rangeIndex >= 0; rangeIndex -= 1) {
-        const range = ranges[rangeIndex];
-        const removedFiles = target.orderedFiles.splice(range.start, range.end - range.start);
-        for (const file of removedFiles) {
+      ensureMutableFiles(target);
+      // One forward compaction: every retained row after the first interval
+      // moves at most once, however many intervals there are. Splicing each
+      // interval would shift the whole suffix once per interval instead.
+      const files = target.orderedFiles;
+      let write = ranges[0].start;
+      let read = write;
+      for (const range of ranges) {
+        while (read < range.start) {
+          files[write] = files[read];
+          write += 1;
+          read += 1;
+        }
+        for (; read < range.end; read += 1) {
+          const file = files[read];
           workItems += 1;
           target.filesByPath.delete(file.path);
           adjustSource(target.sourceSummary, file.source, -1);
         }
       }
-      return { candidateVisits, changed: ranges.length > 0, workItems };
+      while (read < files.length) {
+        files[write] = files[read];
+        write += 1;
+        read += 1;
+      }
+      files.length = write;
+      return { candidateVisits, changed: true, workItems };
     }
 
     /** @param {readonly string[]} paths */
@@ -1042,10 +1088,9 @@
       /** @type {BulkConcurrentMutation[]} */
       const liveMutations = [];
       let mutationIndex = 0;
-      /** @type {{paths: string[], prefixIndex: number, scanIndex: number,
-       *   ranges: Array<{start: number, end: number}>, deleteRange: number,
-       *   deleteIndex: number, spliceRange: number, phase: "seek" | "scan" |
-       *   "delete" | "splice"} | null} */
+      /** @type {{paths: string[], prefixIndex: number,
+       *   ranges: Array<{start: number, end: number}>, rangeIndex: number,
+       *   read: number, write: number, phase: "seek" | "compact"} | null} */
       let removal = null;
       let finished = false;
       let cancelled = false;
@@ -1288,73 +1333,56 @@
           }
 
           if (removal) {
+            const files = stagedState.orderedFiles;
             if (removal.phase === "seek") {
-              if (removal.prefixIndex >= removal.paths.length) {
-                removal.deleteRange = 0;
-                removal.deleteIndex = removal.ranges[0]?.start || 0;
-                removal.phase = "delete";
-                continue;
-              }
-              removal.scanIndex = lowerBound(
-                stagedState.orderedFiles,
-                removal.paths[removal.prefixIndex],
-              );
-              removal.ranges.push({ start: removal.scanIndex, end: removal.scanIndex });
-              removal.phase = "scan";
-              workItems += 1;
-              continue;
-            }
-            if (removal.phase === "scan") {
               const path = removal.paths[removal.prefixIndex];
-              const range = removal.ranges.at(-1);
-              const candidate = stagedState.orderedFiles[removal.scanIndex];
-              if (candidate && (candidate.path === path || candidate.path.startsWith(`${path}/`))) {
-                removal.scanIndex += 1;
-                if (range) {
-                  range.end = removal.scanIndex;
-                }
+              if (path !== undefined) {
+                // Binary searches only; each path is one charged item.
+                appendRemovalIntervals(files, path, removal.ranges);
+                removal.prefixIndex += 1;
                 workItems += 1;
-                candidateVisits += 1;
                 continue;
               }
-              if (range && range.end === range.start) {
-                removal.ranges.pop();
+              removal.ranges = sortedDisjointRanges(removal.ranges);
+              workItems += removal.ranges.length;
+              if (removal.ranges.length === 0) {
+                removal = null;
+                mutationIndex += 1;
+                continue;
               }
-              removal.prefixIndex += 1;
-              removal.phase = "seek";
-              if (candidate) {
-                workItems += 1;
-                candidateVisits += 1;
-              }
+              removal.rangeIndex = 0;
+              removal.read = removal.ranges[0].start;
+              removal.write = removal.read;
+              removal.phase = "compact";
               continue;
             }
-            if (removal.phase === "delete") {
-              const range = removal.ranges[removal.deleteRange];
-              if (!range) {
-                removal.spliceRange = removal.ranges.length - 1;
-                removal.phase = "splice";
-                continue;
-              }
-              if (removal.deleteIndex >= range.end) {
-                removal.deleteRange += 1;
-                removal.deleteIndex = removal.ranges[removal.deleteRange]?.start || 0;
-                continue;
-              }
-              const file = stagedState.orderedFiles[removal.deleteIndex];
-              removal.deleteIndex += 1;
+            // Delete interval rows and slide retained rows left in one
+            // forward pass. Every row visited, removed or moved, is charged,
+            // so a scattered removal cannot shift the whole suffix per
+            // interval inside one slice.
+            const range = removal.ranges[removal.rangeIndex];
+            if (range && removal.read >= range.end) {
+              removal.rangeIndex += 1;
+              continue;
+            }
+            if (range && removal.read >= range.start) {
+              const file = files[removal.read];
+              removal.read += 1;
               workItems += 1;
+              candidateVisits += 1;
               if (file && stagedState.filesByPath.delete(file.path)) {
                 adjustSource(stagedState.sourceSummary, file.source, -1);
               }
               continue;
             }
-            const range = removal.ranges[removal.spliceRange];
-            if (range) {
-              stagedState.orderedFiles.splice(range.start, range.end - range.start);
-              removal.spliceRange -= 1;
+            if (removal.read < files.length) {
+              files[removal.write] = files[removal.read];
+              removal.write += 1;
+              removal.read += 1;
               workItems += 1;
               continue;
             }
+            files.length = removal.write;
             removal = null;
             mutationIndex += 1;
             continue;
@@ -1376,14 +1404,13 @@
           } else {
             if (mutation.kind === "remove") {
               removal = {
-                deleteIndex: 0,
-                deleteRange: 0,
                 paths: normalizeRemovalPaths([...mutation.paths]),
                 phase: "seek",
                 prefixIndex: 0,
+                rangeIndex: 0,
                 ranges: [],
-                scanIndex: 0,
-                spliceRange: -1,
+                read: 0,
+                write: 0,
               };
               continue;
             }
