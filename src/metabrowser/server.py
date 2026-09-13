@@ -2499,17 +2499,20 @@ async def api_kpress_render(request: Request) -> JSONResponse:
         subpath = body.get("path", "")
         view = body.get("view", "document")
         profile_value = body.get("profile")
-        profile = profile_value or None
         source_override = body.get("source_text")
+        # Same JSON-type contract as export: an absent or null profile means
+        # the default, and a present one must be a string. `false` or `0` is a
+        # malformed body, not a request for the default.
         if (
             not all(isinstance(value, str) for value in (subpath, view))
             or not isinstance(source_override, str)
-            or (profile is not None and not isinstance(profile, str))
+            or (profile_value is not None and not isinstance(profile_value, str))
         ):
             return JSONResponse(
                 {"type": "kpress_render_error", "error": "Invalid render body fields"},
                 status_code=400,
             )
+        profile = profile_value or None
         try:
             source_size = len(source_override.encode())
         except UnicodeEncodeError as exc:

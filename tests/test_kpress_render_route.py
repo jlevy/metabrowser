@@ -196,6 +196,13 @@ def test_kpress_render_rejects_invalid_transformed_source_fields(tmp_path: Path)
             "/api/kpress/render",
             json={"path": "doc.md", "view": "rendered", "profile": 7, "source_text": "# Doc"},
         )
+        falsy_profiles = [
+            client.post(
+                "/api/kpress/render",
+                json={"path": "doc.md", "view": "rendered", "profile": falsy, "source_text": "# D"},
+            )
+            for falsy in (False, 0)
+        ]
         invalid_encoding = client.post(
             "/api/kpress/render",
             content=b'{"path":"doc.md","view":"rendered","source_text":"\\ud800"}',
@@ -206,6 +213,9 @@ def test_kpress_render_rejects_invalid_transformed_source_fields(tmp_path: Path)
 
     assert invalid_profile.status_code == 400
     assert invalid_profile.json()["error"] == "Invalid render body fields"
+    # A falsy non-string profile is malformed, as it is for export, rather than
+    # silently selecting the default profile.
+    assert [response.status_code for response in falsy_profiles] == [400, 400]
     assert invalid_encoding.status_code == 400
     assert invalid_encoding.json()["error"] == "Invalid transformed source encoding"
 
