@@ -125,11 +125,16 @@ pays that wait eight times.
 
 Two passes overlap the walk and requests: the navigation tally, which root summary
 polling repeats while discovery runs, and the activity tracker’s catalog read, every
-five seconds. Each releases the GIL with a timer-backed sleep after a bounded number of
-entries, sized to stay inside the switch interval at its measured per-entry cost.
+five seconds. The tally pass and the catalog read’s filtering loop each release the GIL
+with a timer-backed sleep after a bounded number of entries, sized to stay inside the
+switch interval at its measured per-entry cost.
 The constants in `python_inventory.py` record the measurements, and
 `tests/test_navigation_tally_staleness.py` and `tests/test_inventory_walk_work.py` count
 entries between yields.
+
+Two whole-index steps do not yield yet: the sort that follows the catalog read’s filter,
+which took 81-169 ms of CPU for the browser’s `/api/catalog` read on 300,000 files, and
+the Recent pass. Both are tracked as their own item.
 
 ## References
 

@@ -825,7 +825,9 @@ class InventoryEntry:
                 expected_name = self.path
             if self.parent != expected_parent or self.name != expected_name:
                 raise ValueError("entry path, parent, and name must describe one identity")
-        elif self.parent:
+        elif self.parent != "":
+            # Compared with the root spelling, not truthiness: `None`, `b""`, and `0` are
+            # falsy too, and the parent is no longer validated on its own.
             raise ValueError("the root entry must have the root as its parent")
         _require_nonnegative(self.size, "size")
 
