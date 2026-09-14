@@ -435,6 +435,14 @@ def _read_coverage_owners(coverage_dir: Path) -> InteractionSessionContract:
     return InteractionSessionContract(frozenset(owners), function_coverage)
 
 
+# Breaks a hung session; it is not a speed budget. A session needs well under a second
+# of CPU (markdown-functional-session.js: 0.2 s), but on a heavily loaded host it waits
+# for that CPU: 11-23 s of wall time at load average ~170, and 30 s failed `make verify`
+# while two verifies overlapped with unrelated work. A deadlock never finishes, so a
+# generous bound loses nothing.
+_SESSION_DEADLOCK_TIMEOUT_S = 300
+
+
 def _interaction_session_contract(command_parts: list[str]) -> InteractionSessionContract:
     """Execute one exact Node session and derive owners from V8 coverage."""
 
@@ -449,7 +457,7 @@ def _interaction_session_contract(command_parts: list[str]) -> InteractionSessio
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=_SESSION_DEADLOCK_TIMEOUT_S,
                 env=environment,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
