@@ -339,6 +339,12 @@ Fixes:
   now loads it again instead of leaving the error on screen.
   The same applies to a file a Git commit view has replaced.
 
+- Text of two sizes on one line now sits on one baseline: a file tree row’s name, age,
+  and size; a Git history row’s subject, author, and age; the file and folder header’s
+  path, size, and summary; and a diff file bar’s path and its mode or binary note.
+  The smaller text used to ride up to a pixel higher than the larger, by an amount that
+  changed with zoom.
+
 - Metabrowser installed into a virtual environment inside a Git repository, such as a
   project’s own `.venv/`, now reports its installed version.
   Since 0.7.0, `metab --version` and the `metab` server’s startup line, and since 0.7.1

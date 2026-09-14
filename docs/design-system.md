@@ -634,6 +634,46 @@ Row-like activation targets share `--ui-row-height` and `--hover-bg`. These agre
 are enforced by `tests/test_design_vocabulary.py`, which fails when a surface forks the
 glyph, the row height, or the hover token.
 
+### Row Text Shares a Baseline
+
+A row that sets text at two sizes on one line aligns that text on its baseline and
+centers only its boxes.
+Centering line boxes of two sizes leaves their baselines a fraction of a pixel apart,
+because ascent grows with font size.
+That fraction rounds differently at each zoom and pixel ratio, so the row looks
+unsettled rather than consistently offset.
+
+| Row | Text on the shared baseline | Boxes that stay centered |
+| --- | --- | --- |
+| File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
+| Git history row | Subject, author, and age | Graph gutter, ref chips |
+| File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
+| Diff file bar | Change letter, path, change stats, and notes | Chevron, copy button |
+
+The row keeps `align-items: center`, and each text child opts in with
+`align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
+baseline, so no opt-in selector may match one.
+Where a text slot can hold a box instead — a loading skeleton, or an age the activity
+spinner replaces — the opt-in selector excludes it with `:not()` rather than a later
+rule overriding it, so neither rule order nor specificity decides where a box sits.
+
+Baseline alignment places the text group at the top of the row’s content box, so the
+group reads as centered only while that box is no taller than the group.
+A tree row’s `--ui-row-height` is the name’s line box plus the row’s 2px pads, so change
+the row height and the name’s line height together.
+The header’s path fills the header’s content box and centers its own crumbs, so the
+header’s text stays where centering put it at any header height.
+
+The Git commit summary’s metadata line also sets two sizes and is deliberately not in
+the table.
+Its revision is monospace at `--nav-font-size` beside body-size sans text, and
+aligning the two faces on one baseline grows that line by 1.25px at a device pixel ratio
+of 2, so it stays centered.
+
+`test_row_text_shares_one_baseline` in `tests/test_design_vocabulary.py` checks this
+table against the stylesheets: every text slot opts in, and no rule that aligns to the
+baseline matches a box, including a text slot in its box state.
+
 ### Fold Expanders
 
 A run of content withheld until asked for — a long stretch of changed lines in a diff —
@@ -752,6 +792,8 @@ never the age**: an age pushed off the row is information lost, an ellipsized me
 still reads, and a halved branch name does not.
 Rows are independent — no shared column — which is also what lets a new page of history
 be appended to the list instead of rebuilding every row above it.
+The subject and the smaller author and age share a baseline; see
+[Row Text Shares a Baseline](#row-text-shares-a-baseline).
 
 ### Git Commit Summary
 

@@ -2342,6 +2342,31 @@ html[data-prose-font="sans"] {
   text-align: right;
   white-space: nowrap;
 }
+/* Row text shares one baseline; boxes stay centered. The name is
+   --nav-font-size and the age and size are --ui-small-font-size, and
+   centering line boxes of two sizes leaves their baselines a fraction of
+   a pixel apart, because ascent scales with size. The fraction rounds
+   differently at each zoom and pixel ratio, so the row looked unsettled.
+   See "Row Text Shares a Baseline" in docs/design-system.md.
+
+   The icon, chevron, spinner, and loading skeletons have no text
+   baseline, and baseline-aligning one would sit its bottom edge on the
+   baseline, so they keep the row's centering. They are excluded inside
+   the opt-in selectors rather than overridden by a later rule, so no
+   rule order or specificity decides where a box sits.
+
+   The text group sits at the top of the row's content box. It reads as
+   centered only because --ui-row-height is the name's line box plus the
+   row's 2px pads, so change the row height and the name's line height
+   together. */
+.tree-item > :is(.tree-item-name, .tree-item-size, .tree-container-badge):not(.tally-pending) {
+  align-self: baseline;
+}
+/* Its own rule: an engine without :has() drops a whole selector list,
+   and the age then keeps the row's centering. */
+.tree-item:not(.file-active) > .tree-item-age-inline:not(:has(> .tally-pending)) {
+  align-self: baseline;
+}
 /* Shared size-chip convention — every byte count anywhere uses
    these, not bespoke styles. `.size` is the neutral base (cool-blue
    hue, tabular nums); `.size-large` bumps weight + shifts to the
@@ -3232,6 +3257,27 @@ html[data-prose-font="sans"] {
 .file-header-size {
   font-size: var(--ui-small-font-size);
   flex-shrink: 0;
+}
+/* The --nav-font-size path and the --ui-small-font-size size and folder
+   summary share a baseline, as a tree row's text does (see .tree-item).
+   Buttons, badges, and skeletons are boxes and keep the header's
+   centering.
+
+   Baseline alignment puts the text group at the top of the header's
+   content box. The path fills that box and centers its own crumbs, so the
+   group lands where centering put it at any header height. Without the
+   min-height, a folder header, whose path has no 24px copy button, moved
+   its text 2.25px up. */
+.file-header > :is(.file-header-path, .file-header-size):not(.tally-pending) {
+  align-self: baseline;
+}
+.file-header > .file-header-path {
+  min-height: 100%;
+}
+/* A summary still showing a skeleton has no text baseline to share. Its
+   own rule, so an engine without :has() drops only this one. */
+.file-header > .folder-header-summary:not(:has(.tally-pending)) {
+  align-self: baseline;
 }
 /* .file-header-icon (the print action) has no block of its own: it is
    entirely the .icon-btn primitive. It sits beside the copy icon and,
@@ -5073,6 +5119,13 @@ pre.code-block code.hljs {
   white-space: nowrap;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+
+/* The subject and the author/age share a baseline, as a file row's name,
+   age, and size do (see .tree-item); ref chips are boxes and stay
+   centered. */
+.git-graph-body > :is(.git-graph-subject, .git-graph-meta) {
+  align-self: baseline;
 }
 
 /* Positioning only — colour, weight, size, and numerals come from the

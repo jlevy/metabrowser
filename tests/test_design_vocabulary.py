@@ -13,6 +13,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 STATIC = REPO_ROOT / "src" / "metabrowser" / "static"
+BUILTIN_PLUGINS = "src/metabrowser/builtin_plugins"
 
 CHEVRON_PATH = "m9 18 6-6-6-6"  # Lucide chevron-right
 
@@ -53,6 +54,383 @@ def test_row_targets_share_the_row_height_token() -> None:
     assert "min-height: var(--ui-row-height);" in _rule(styles, ".tree-item")
     assert "min-height: var(--ui-row-height);" in _rule(
         diff_css, ".metabrowser-diff-host .diff-file-bar"
+    )
+
+
+# ── Row text shares one baseline ───────────────────────────────────
+#
+# A two-size row centers its boxes and aligns its text on the baseline
+# (docs/design-system.md, "Row Text Shares a Baseline"). The check below
+# builds each registered row as a small element tree mirroring its
+# renderer, then asks every stylesheet rule that sets baseline alignment
+# which of those elements it could select. It is deliberately stricter
+# than the cascade: a box must not be selected by any baseline rule at
+# all, so a later override or a heavier selector cannot be what keeps it
+# centered, and moving or deleting an exclusion fails here.
+
+
+class _El:
+    """An element in a row: its classes, its children, and, for a row's
+    direct child, whether it is a text slot or a box."""
+
+    def __init__(self, classes: str, *children: _El, role: str = "") -> None:
+        self.classes = frozenset(classes.split())
+        self.children = list(children)
+        self.role = role
+        self.parent: _El | None = None
+        for child in children:
+            child.parent = self
+
+    def ancestors(self) -> list[_El]:
+        found: list[_El] = []
+        node = self.parent
+        while node is not None:
+            found.append(node)
+            node = node.parent
+        return found
+
+    def descendants(self) -> list[_El]:
+        found: list[_El] = []
+        for child in self.children:
+            found.append(child)
+            found.extend(child.descendants())
+        return found
+
+
+def _split_top(text: str, separators: str) -> list[str]:
+    """Split on separators that sit outside parentheses and brackets."""
+    parts: list[str] = []
+    depth = 0
+    current = ""
+    for char in text:
+        if char in "([":
+            depth += 1
+        elif char in ")]":
+            depth -= 1
+        if depth == 0 and char in separators:
+            parts.append(current)
+            current = ""
+        else:
+            current += char
+    parts.append(current)
+    return parts
+
+
+def _style_rules(css: str) -> list[tuple[str, str]]:
+    """Every style rule as (selector list, declarations), at-rules unwrapped."""
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+    rules: list[tuple[str, str]] = []
+    depth = 0
+    prelude_start = 0
+    body_start = 0
+    prelude = ""
+    quote = ""
+    for index, char in enumerate(css):
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "'\"":
+            quote = char
+        elif char == "{":
+            text = css[prelude_start:index].strip()
+            if text.startswith("@"):
+                prelude_start = index + 1
+                continue
+            if depth == 0:
+                prelude, body_start = text, index + 1
+            depth += 1
+        elif char == "}":
+            if depth == 0:
+                prelude_start = index + 1
+                continue
+            depth -= 1
+            if depth == 0:
+                rules.append((prelude, css[body_start:index]))
+                prelude_start = index + 1
+        elif char == ";" and depth == 0:
+            prelude_start = index + 1
+    return rules
+
+
+_SIMPLE = re.compile(
+    r"\*|\.[\w-]+|#[\w-]+|\[[^\]]*\]|::?[\w-]+(?:\((?:[^()]|\([^()]*\))*\))?|[\w-]+"
+)
+
+
+def _matches_compound(compound: str, element: _El) -> bool:
+    assert compound, "empty compound selector"
+    consumed = "".join(_SIMPLE.findall(compound))
+    assert consumed == compound, f"unsupported selector syntax: {compound!r}"
+    for simple in _SIMPLE.findall(compound):
+        if simple.startswith("::"):
+            return False  # a pseudo-element is not the element
+        if simple.startswith("."):
+            if simple[1:] not in element.classes:
+                return False
+        elif simple.startswith((":is(", ":where(", ":not(", ":has(")):
+            name, argument = simple[1:].split("(", 1)
+            selectors = _split_top(argument[:-1], ",")
+            if name == "has":
+                hit = any(_matches_relative(s.strip(), element) for s in selectors)
+            else:
+                hit = any(_matches_complex(s.strip(), element) for s in selectors)
+            if hit == (name == "not"):
+                return False
+        # Tags, ids, attributes, and state pseudo-classes may match: assume
+        # they do, so the check errs toward flagging a box.
+    return True
+
+
+def _compounds(selector: str) -> list[str]:
+    spaced = re.sub(r"\s*([>+~])\s*", r" \1 ", selector.strip())
+    return [token for token in _split_top(spaced, " ") if token]
+
+
+def _matches_complex(selector: str, element: _El) -> bool:
+    tokens = _compounds(selector)
+    if not _matches_compound(tokens[-1], element):
+        return False
+    rest = tokens[:-1]
+    if not rest:
+        return True
+    combinator = rest[-1] if rest[-1] in ">+~" else " "
+    left = " ".join(rest[:-1] if combinator != " " else rest)
+    if combinator == ">":
+        return element.parent is not None and _matches_complex(left, element.parent)
+    if combinator == " ":
+        return any(_matches_complex(left, ancestor) for ancestor in element.ancestors())
+    siblings = element.parent.children if element.parent else [element]
+    before = siblings[: siblings.index(element)]
+    if combinator == "+":
+        before = before[-1:]
+    return any(_matches_complex(left, sibling) for sibling in before)
+
+
+def _matches_relative(selector: str, element: _El) -> bool:
+    tokens = _compounds(selector)
+    if tokens[0] == ">":
+        assert len(tokens) == 2, f"unsupported :has() argument: {selector!r}"
+        return any(_matches_compound(tokens[1], child) for child in element.children)
+    assert len(tokens) == 1, f"unsupported :has() argument: {selector!r}"
+    return any(_matches_compound(tokens[0], node) for node in element.descendants())
+
+
+_BASELINE_SELF = re.compile(r"align-self\s*:\s*(?:first\s+|last\s+)?baseline")
+_BASELINE_ITEMS = re.compile(r"align-items\s*:\s*(?:first\s+|last\s+)?baseline")
+
+
+def _baseline_rules() -> list[tuple[str, bool]]:
+    """(complex selector, sets align-items) for every rule that aligns to a baseline."""
+    sheets = [STATIC / "styles.css", *sorted((REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css"))]
+    found: list[tuple[str, bool]] = []
+    for sheet in sheets:
+        for selectors, body in _style_rules(sheet.read_text(encoding="utf-8")):
+            for is_items, pattern in ((False, _BASELINE_SELF), (True, _BASELINE_ITEMS)):
+                if pattern.search(body):
+                    found.extend((s.strip(), is_items) for s in _split_top(selectors, ","))
+    return found
+
+
+def _text(classes: str, *children: _El) -> _El:
+    return _El(classes, *children, role="text")
+
+
+def _box(classes: str, *children: _El) -> _El:
+    return _El(classes, *children, role="box")
+
+
+def _baseline_rows() -> list[tuple[str, str, _El]]:
+    """(design-system table label, centering rule, row) per registered row.
+
+    Each row mirrors its renderer's markup, once per state that turns a
+    text slot into a box.
+    """
+    el, text, box = _El, _text, _box
+    tree = "File tree row"  # renderTreeNodes, _buildRowHtml, renderContainerChildren
+    header = "File and folder header"  # the file view header and renderFolderHeader
+    diff_host = ".metabrowser-diff-host"
+    rows = [
+        (
+            tree,
+            ".tree-item",
+            el(
+                "tree-item tree-folder expanded",
+                box("tree-toggle"),
+                text("tree-item-name"),
+                text("tree-item-age-inline", el("age-min")),
+                text("size tree-item-size"),
+            ),
+        ),
+        (
+            tree,
+            ".tree-item",
+            el(
+                "tree-item tree-file",
+                box("tree-item-icon file-identity-icon"),
+                text("tree-item-name"),
+                text(
+                    "tree-item-age-inline",
+                    el("tree-item-age", el("age-min")),
+                    el("tree-item-activity"),
+                ),
+                text("size tree-item-size"),
+            ),
+        ),
+        (
+            tree,
+            ".tree-item",
+            el(
+                "tree-item tree-file file-active",
+                box("tree-item-icon"),
+                text("tree-item-name"),
+                box("tree-item-age-inline", el("tree-item-age"), el("tree-item-activity")),
+            ),
+        ),
+        (
+            tree,
+            ".tree-item",
+            el(
+                "tree-item tree-folder collapsed",
+                box("tree-toggle"),
+                text("tree-item-name"),
+                box("tree-item-age-inline", el("tally-pending tally-pending-narrow")),
+                box("size tally-pending tree-item-size"),
+            ),
+        ),
+        (
+            tree,
+            ".tree-item",
+            el(
+                "tree-item tree-file tree-container collapsed",
+                box("tree-toggle"),
+                box("tree-item-icon file-identity-icon"),
+                text("tree-item-name"),
+            ),
+        ),
+        (
+            tree,
+            ".tree-item",
+            el(
+                "tree-item tree-file tree-container-child",
+                text("tree-container-badge"),
+                text("tree-item-name"),
+            ),
+        ),
+        (
+            tree,
+            ".tree-item",
+            el(
+                "tree-item tree-file tree-container-child",
+                box("tree-item-icon"),
+                text("tree-item-name"),
+            ),
+        ),
+        (
+            "Git history row",  # renderRow in git-panel.js
+            ".git-graph-body",
+            el(
+                "git-graph-body",
+                box("git-graph-refs", el("git-ref git-ref-local")),
+                text("git-graph-subject"),
+                text("git-graph-meta", el("git-graph-age age-min")),
+            ),
+        ),
+        (
+            header,
+            ".file-header",
+            el(
+                "file-header",
+                text("file-header-path folder-breadcrumb", el("folder-crumb folder-crumb-current")),
+                box("file-header-badge badge-live"),
+                text("size file-header-size"),
+                box("icon-btn file-header-icon file-header-print"),
+            ),
+        ),
+        (
+            header,
+            ".file-header",
+            el("file-header", text("file-header-path"), box("size tally-pending file-header-size")),
+        ),
+        (
+            header,
+            ".file-header",
+            el(
+                "file-header folder-header",
+                box("btn parent-nav-btn parent-nav-btn-icon-only folder-up"),
+                text("file-header-path folder-breadcrumb"),
+                text(
+                    "folder-header-summary",
+                    el("size file-header-size"),
+                    el("count folder-header-count"),
+                    el("folder-header-age", el("age-min")),
+                ),
+            ),
+        ),
+        (
+            header,
+            ".file-header",
+            el(
+                "file-header folder-header",
+                box("btn parent-nav-btn folder-up"),
+                text("file-header-path"),
+                box(
+                    "folder-header-summary",
+                    el("size tally-pending file-header-size"),
+                    el("count tally-pending folder-header-count"),
+                    el("folder-header-age", el("tally-pending tally-pending-narrow")),
+                ),
+            ),
+        ),
+    ]
+    # Diff file bar: renderFileBar in the diff plugin, inside its host.
+    toggle = el(
+        "diff-file-toggle expanded",
+        box("diff-file-chevron"),
+        text("diff-file-kind diff-file-kind-modified"),
+        text("diff-file-path"),
+        text("diff-file-stats", el("diff-stat-add"), el("diff-stat-del")),
+        text("diff-file-note"),
+    )
+    bar = el("diff-file-bar", toggle, box("icon-btn icon-btn-reveal diff-file-copy"))
+    el("content-body metabrowser-diff-host", el("diff-file", bar))
+    rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
+    rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
+    return rows
+
+
+def test_row_text_shares_one_baseline() -> None:
+    """Row text of two sizes aligns on its baseline; boxes stay centered.
+
+    Measured in Chromium before the rules, the smaller text sat above the
+    larger by 0.75 px at device pixel ratio 2 and 0.25 px at 1 (tree rows,
+    Git history rows, file and folder headers) and by 0.5 px at both (the
+    diff bar's note); with them it is 0 px at both.
+    """
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    diff_css = (REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css").read_text(encoding="utf-8")
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Row Text Shares a Baseline" in doc, "the row baseline rule lost its documentation"
+    section = doc.split("### Row Text Shares a Baseline", 1)[1].split("\n### ", 1)[0]
+    rules = _baseline_rules()
+    for label, row_rule, row in _baseline_rows():
+        assert f"| {label}" in section, f"{label} is missing from the design-system table"
+        css = diff_css if row_rule.startswith(".metabrowser-diff-host") else styles
+        # The row centers its children, so a box needs no rule of its own.
+        assert "align-items: center;" in _rule(css, row_rule), f"{row_rule} stopped centering"
+        for child in row.children:
+            applying = [
+                selector
+                for selector, is_items in rules
+                if _matches_complex(selector, row if is_items else child)
+            ]
+            name = " ".join(sorted(child.classes))
+            if child.role == "text":
+                assert applying, f"{label}: text slot .{name} does not opt in to the baseline"
+            elif child.role == "box":
+                assert not applying, f"{label}: box .{name} is baseline-aligned by {applying}"
+    # The header's path fills the header's content box, so the baseline
+    # group lands where centering put it at any header height.
+    assert "min-height: 100%;" in _rule(styles, ".file-header > .file-header-path"), (
+        "the header path no longer fills the header, so its text rides to the top"
     )
 
 
