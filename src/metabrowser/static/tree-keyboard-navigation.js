@@ -487,7 +487,11 @@
     function registerCommands() {
       return [
         options.shortcuts.register({
-          bindings: [{ key: "ArrowUp" }],
+          // K and J are the home-row Up and Down. The arrow leads, so a
+          // surface with room for one key names the one everyone knows. A
+          // letter binding forbids modifiers, and the registry leaves text
+          // fields alone, so K and J still type.
+          bindings: [{ key: "ArrowUp" }, { key: "k" }],
           copy: {
             action: "Previous item",
             description: "Open the previous visible item in the file tree.",
@@ -502,7 +506,7 @@
           surfaces: { help: "always" },
         }),
         options.shortcuts.register({
-          bindings: [{ key: "ArrowDown" }],
+          bindings: [{ key: "ArrowDown" }, { key: "j" }],
           copy: {
             action: "Next item",
             description: "Open the next visible item in the file tree.",

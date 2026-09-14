@@ -149,6 +149,8 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
         assert movement_helper in source
         assert '"ArrowUp"' in source
         assert '"ArrowDown"' in source
+        assert '"k"' in source
+        assert '"j"' in source
         assert 'setAttribute("tabindex"' in source
 
 

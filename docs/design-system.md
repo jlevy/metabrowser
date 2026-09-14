@@ -799,8 +799,8 @@ The familiar mark beside the revision is a noninteractive copy glyph, not a cont
 tooltips remain supplementary and never own actions.
 Selecting the commit exposes the real copy button in the full summary.
 Keyboard focus does not open or retain the compact tooltip.
-Arrow, Enter, and Space selection dismisses any pending or visible pointer-owned tooltip
-before navigation.
+Arrow, K, J, Enter, and Space selection dismisses any pending or visible pointer-owned
+tooltip before navigation.
 
 The component owns commit identity and message only.
 The comparison, files outside the served root, and truncation notice are siblings under
@@ -943,7 +943,9 @@ All other rows remain programmatically focusable with `tabindex="-1"`, so Tab en
 leaves the collection once instead of stopping on every item.
 
 While a row has focus, unmodified Arrow Up and Arrow Down move to the adjacent mounted
-row and open it. Key repeat remains enabled for fast traversal.
+row and open it. K and J are aliases for Arrow Up and Arrow Down with the same guards;
+they never act from a text field and get no first-row or last-row meaning.
+Key repeat remains enabled for fast traversal.
 Movement clamps at the first and last row, prevents page scrolling, and does not reopen
 the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.

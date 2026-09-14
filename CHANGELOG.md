@@ -19,6 +19,15 @@ Plugin SDK (breaking):
   document; a future graph surface will be a server route backed by KPress’s own link
   analysis.
 
+Features:
+
+- J and K move down and up wherever the arrow keys step through a list: the file tree in
+  Files and Recent, and the Git history.
+  They repeat and open the row they land on, as the arrows do, and Help lists them
+  beside `↓` and `↑`. They still type in text fields, do nothing with Shift, Ctrl, Alt,
+  or Meta, and are not first-item or last-item shortcuts.
+  Quick File, filter menus, and the folder treemap keep their current keys.
+
 Inventory engine:
 
 - The directory tree’s first rows no longer wait for a scan of the whole repository.
