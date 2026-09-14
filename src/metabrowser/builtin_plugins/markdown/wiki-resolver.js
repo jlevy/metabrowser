@@ -85,7 +85,8 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
  *
  * Exact paths are usable before the inventory finishes. Basename and suffix fallback
  * remain pending until completeness proves that a currently unique match is truly
- * unique.
+ * unique. A snapshot truncated at the inventory file cap is final but cannot prove
+ * uniqueness or absence, so those results settle as `catalog-truncated`.
  *
  * @param {unknown} intent
  * @param {unknown} snapshot
@@ -184,9 +185,10 @@ function completedSourcePathContext(prepared) {
  * @param {unknown} snapshot
  */
 export function createWikiResolutionContext(snapshot) {
-  /** @type {{complete: boolean, files: ReadonlyArray<unknown>} | null} */
+  /** @type {{complete: boolean, files: ReadonlyArray<unknown>, truncated: boolean} | null} */
   let validatedCatalog = validateSnapshot(snapshot);
   const catalogComplete = validatedCatalog.complete;
+  const catalogTruncated = validatedCatalog.truncated;
   /** @type {ReadonlyArray<unknown>} */
   let catalogFiles = validatedCatalog.files;
   validatedCatalog = null;
@@ -313,12 +315,16 @@ export function createWikiResolutionContext(snapshot) {
           );
           return resolutionStep(true, pathVisits, terminal);
         }
-        if (prepared.miss === "not-found") {
-          terminal = catalogComplete ? missing("not-found") : pending("catalog-incomplete");
+        if (!catalogComplete) {
+          // A capped index may hold neither the exact file nor every fallback
+          // candidate, so it cannot report a miss or a unique match.
+          terminal = catalogTruncated
+            ? unsupported("catalog-truncated")
+            : pending("catalog-incomplete");
           return resolutionStep(true, pathVisits, terminal);
         }
-        if (!catalogComplete) {
-          terminal = pending("catalog-incomplete");
+        if (prepared.miss === "not-found") {
+          terminal = missing("not-found");
           return resolutionStep(true, pathVisits, terminal);
         }
         if (pathVisits >= limit) {
@@ -1327,7 +1333,23 @@ function validateSnapshot(snapshot) {
   if (typeof value.complete !== "boolean" || !Array.isArray(value.files)) {
     throw new TypeError("wiki resolver requires snapshot completeness and files");
   }
-  return /** @type {{complete: boolean, files: ReadonlyArray<unknown>}} */ (value);
+  const truncated = snapshotTruncation(value);
+  return Object.freeze({ complete: value.complete, files: value.files, truncated });
+}
+
+/**
+ * Read the terminal truncated state. It cannot accompany complete coverage.
+ *
+ * @param {Record<string, unknown>} value
+ */
+function snapshotTruncation(value) {
+  if (value.truncated !== undefined && typeof value.truncated !== "boolean") {
+    throw new TypeError("wiki resolver requires a boolean snapshot truncation state");
+  }
+  if (value.complete && value.truncated) {
+    throw new TypeError("wiki resolver snapshot cannot be both complete and truncated");
+  }
+  return value.truncated === true;
 }
 
 /** @param {string} authoredTarget */

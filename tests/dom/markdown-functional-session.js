@@ -14,11 +14,12 @@ function knownFile(filePath) {
   });
 }
 
-function snapshot(paths, complete = true) {
+function snapshot(paths, complete = true, truncated = false) {
   return Object.freeze({
     complete,
     files: Object.freeze([...paths].sort().map(knownFile)),
-    revision: complete ? 2 : 1,
+    revision: complete || truncated ? 2 : 1,
+    truncated,
   });
 }
 
@@ -239,6 +240,17 @@ function parseFakeHtml(html, document) {
     }),
   );
   pendingContext.dispose();
+  const truncatedContext = wiki.createWikiResolutionContext(
+    snapshot(["docs/current.md", "notes/Later.md"], false, true),
+  );
+  const truncated = settle(
+    truncatedContext.begin({
+      action: "navigate",
+      authoredTarget: "Later",
+      sourcePath: "docs/current.md",
+    }),
+  );
+  truncatedContext.dispose();
   const overflowContext = wiki.createWikiResolutionContext(
     snapshot(
       Array.from({ length: 4097 }, (_, index) => `${String(index).padStart(4, "0")}/Overflow.md`),
@@ -284,6 +296,31 @@ function parseFakeHtml(html, document) {
   reconciliationScheduler.drain();
   reconciliation.dispose();
 
+  // A walk stopped at the file cap is terminal: the pending job settles once
+  // with an explanation, the revision is pinned, and later changes re-run nothing.
+  currentSnapshot = snapshot(["docs/current.md"], false);
+  const truncatedScheduler = scheduler();
+  const truncatedReconciliation = coordinatorModule.createMarkdownReconciliationCoordinator(
+    catalogApi(),
+    truncatedScheduler,
+  );
+  const truncatedRevisionStates = [];
+  truncatedReconciliation
+    .createScope()
+    .wiki(
+      { action: "navigate", authoredTarget: "Later", sourcePath: "docs/current.md" },
+      (result) => truncatedRevisionStates.push(`${result.status}:${result.reason}`),
+    );
+  truncatedScheduler.drain();
+  currentSnapshot = snapshot(["docs/current.md", "notes/Later.md"], false, true);
+  catalogListener();
+  truncatedScheduler.drain();
+  const truncatedPinned = catalogListener === null;
+  currentSnapshot = snapshot(["docs/current.md", "notes/Later.md", "zz/new.md"], false, true);
+  catalogListener?.();
+  const truncatedRerunCallbacks = truncatedScheduler.drain();
+  truncatedReconciliation.dispose();
+
   const sliceScheduler = scheduler();
   const sliceReports = [];
   const sliced = coordinatorModule.createMarkdownReconciliationCoordinator(
@@ -325,6 +362,9 @@ function parseFakeHtml(html, document) {
 
   const incompleteAdapter = adapters
     .createPublishedRouteResolutionContext(snapshot(["docs/guide.md", "mkdocs.yml"], false))
+    .resolve({ authoredTarget: "/guide/", resolvedPath: "guide/" });
+  const truncatedAdapter = adapters
+    .createPublishedRouteResolutionContext(snapshot(["docs/guide.md", "mkdocs.yml"], false, true))
     .resolve({ authoredTarget: "/guide/", resolvedPath: "guide/" });
   const completeAdapter = adapters
     .createPublishedRouteResolutionContext(
@@ -454,11 +494,17 @@ function parseFakeHtml(html, document) {
           queuedAfterFirstSlice,
           revisionStates,
           settledCommits: sliceStates.filter((status) => status === "internal").length,
+          truncated: {
+            pinned: truncatedPinned,
+            rerunCallbacks: truncatedRerunCallbacks,
+            revisionStates: truncatedRevisionStates,
+          },
         },
         publishedRoutes: {
           complete: completeAdapter,
           incomplete: incompleteAdapter,
           percent: percentAdapter,
+          truncated: truncatedAdapter,
         },
         standardLinks: {
           externalHref,
@@ -482,6 +528,7 @@ function parseFakeHtml(html, document) {
           exact: exact.result,
           overflow: overflow.result,
           pending: pending.result,
+          truncated: truncated.result,
         },
         wikiPreprocessing: {
           taskList: {

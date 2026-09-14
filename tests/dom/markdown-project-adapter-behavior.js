@@ -122,6 +122,30 @@ function throws(name, callback, message) {
     { reason: "catalog-incomplete", status: "pending" },
   );
   equal(
+    "a truncated catalog settles an unproven derived route with an explanation",
+    module.resolvePublishedRoute(
+      { authoredTarget: "/guide/", resolvedPath: "guide/" },
+      {
+        complete: false,
+        files: complete(["mkdocs.yml", "docs/guide.md"]).files,
+        truncated: true,
+      },
+    ),
+    { reason: "catalog-truncated", status: "unsupported" },
+  );
+  equal(
+    "a truncated catalog keeps an exact target authoritative",
+    module.resolvePublishedRoute(
+      { authoredTarget: "/guide/", resolvedPath: "guide/" },
+      {
+        complete: false,
+        files: complete(["guide/index.md", "mkdocs.yml"]).files,
+        truncated: true,
+      },
+    ),
+    null,
+  );
+  equal(
     "the later complete catalog can make that route ambiguous",
     module.resolvePublishedRoute(
       { authoredTarget: "/guide/", resolvedPath: "guide/" },

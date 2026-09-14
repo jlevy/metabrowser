@@ -361,6 +361,64 @@ async function loadModule() {
     catalogListener === null && unsubscribeCount === 2,
   );
 
+  // A walk that stopped at the file cap is terminal. A fallback wiki link and a
+  // note embed settle as disabled explanations instead of resolving forever.
+  const cappedLink = new FakeElement(
+    "span",
+    { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": "Unique" },
+    "Unique",
+  );
+  const cappedEmbed = new FakeElement(
+    "span",
+    { "data-mb-wiki-action": "embed", "data-mb-wiki-target": "Unique" },
+    "Unique embed",
+  );
+  const cappedScheduler = createScheduler();
+  let cappedListener = null;
+  let cappedSnapshot = { complete: false, files, truncated: false };
+  const cappedHandle = module.enhanceWikiLinks(
+    new FakeContainer([cappedLink, cappedEmbed]),
+    "docs/current.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => cappedSnapshot,
+        subscribe: (listener) => {
+          cappedListener = listener;
+          return () => {
+            cappedListener = null;
+          };
+        },
+      },
+    },
+    () => {},
+    cappedScheduler,
+  );
+  cappedScheduler.runAll();
+  check(
+    "a fallback link on a partial catalog is pending",
+    cappedLink.getAttribute("data-metabrowser-link-status") === "pending",
+  );
+  cappedSnapshot = { complete: false, files, truncated: true };
+  cappedListener();
+  cappedScheduler.runAll();
+  check(
+    "a fallback link on a truncated catalog is disabled with an explanation",
+    cappedLink.getAttribute("data-metabrowser-link-status") === "unsupported" &&
+      cappedLink.getAttribute("aria-disabled") === "true" &&
+      cappedLink.getAttribute("title") === "Unsupported link (catalog-truncated)." &&
+      !cappedLink.textContent.includes("resolving"),
+    `${cappedLink.getAttribute("title")} / ${cappedLink.textContent}`,
+  );
+  check(
+    "a note embed on a truncated catalog explains why it is not embedded",
+    cappedEmbed.getAttribute("data-metabrowser-link-status") === "unsupported" &&
+      cappedEmbed.getAttribute("title") === "Unsupported link (catalog-truncated).",
+    String(cappedEmbed.getAttribute("title")),
+  );
+  check("a truncated catalog releases the wiki subscription", cappedListener === null);
+  cappedHandle.dispose();
+
   const largeElements = ["MissingA", "MissingB", "MissingC"].map(
     (target) =>
       new FakeElement(

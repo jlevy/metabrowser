@@ -35,6 +35,20 @@ Markdown fixes:
   Brackets now pair the way CommonMark pairs them, so checkboxes, shortcut references,
   and unmatched brackets no longer hide the wiki links that follow them.
 
+- Markdown links no longer say “Resolving link” forever in a tree larger than the
+  inventory file cap. When the walk stopped at the cap, the file catalog never reached a
+  final state, so basename wiki links, note embeds, and rooted extensionless links such
+  as `/guide/` stayed pending, and every live file change re-ran their resolution.
+  A capped walk is now a final catalog state: links that exact paths resolve still work,
+  while links that need the unindexed files are disabled with the `catalog-truncated`
+  reason in their title, and later changes do not re-run them.
+
+- Plugin SDK: `fileCatalog.snapshot()` now includes `truncated`, which is true when the
+  inventory walk finished at its file cap.
+  `complete` still means every file under the root is listed, and the two are never both
+  true. A plugin waiting for a final catalog should stop on either flag.
+  See [Data and Navigation](docs/plugins.md#data-and-navigation).
+
 Inventory engine:
 
 - The directory tree’s first rows no longer wait for a scan of the whole repository.

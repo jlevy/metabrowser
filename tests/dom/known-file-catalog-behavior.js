@@ -26,8 +26,8 @@ function equal(label, actual, expected) {
   check(label, JSON.stringify(actual) === JSON.stringify(expected), `${JSON.stringify(actual)}`);
 }
 
-function applyBulkSnapshot(catalog, files, complete, authoritative = false) {
-  const application = catalog.beginBulkSnapshot(files, complete, authoritative);
+function applyBulkSnapshot(catalog, files, coverage, authoritative = false) {
+  const application = catalog.beginBulkSnapshot(files, coverage, authoritative);
   let result;
   do {
     result = application.step(4_096);
@@ -107,7 +107,7 @@ unsafeCatalog.applyEventChange(unsafeEntries.map((entry) => ({ entry, op: "upser
 applyBulkSnapshot(
   unsafeCatalog,
   unsafePaths.map((path) => ({ e: ".md", p: path })),
-  true,
+  "complete",
   true,
 );
 check(
@@ -142,7 +142,7 @@ applyBulkSnapshot(
     { e: ".md", p: "unicode/\ue000.md" },
     { e: ".md", p: "unicode/\u{1f600}.md" },
   ],
-  true,
+  "complete",
   true,
 );
 equal(
@@ -162,7 +162,7 @@ applyBulkSnapshot(
     { e: ".md", p: "c/\ue000.md" },
     { e: ".md", p: "c/\u{1f600}.md" },
   ],
-  true,
+  "complete",
   true,
 );
 equal(
@@ -266,7 +266,7 @@ applyBulkSnapshot(
     e: ".txt",
     p: `replace-${String(index).padStart(3, "0")}.txt`,
   })),
-  true,
+  "complete",
   true,
 );
 const replacementSliceApplication = replacementSliceCatalog.beginCatalogChange(
@@ -310,7 +310,7 @@ applyBulkSnapshot(
     { e: ".txt", p: "middle/remove.txt" },
     { e: ".txt", p: "middle/update.txt" },
   ],
-  true,
+  "complete",
   true,
 );
 const cowBefore = cowCatalog.snapshot();
@@ -340,7 +340,7 @@ applyBulkSnapshot(
     { p: "README.md", e: ".md" },
     { p: "docs/deep/nested/leaf.txt", e: ".txt" },
   ],
-  true,
+  "complete",
 );
 snapshot = catalog.snapshot();
 check("bulk apply invalidates the memoized snapshot", snapshot !== memoBefore);
@@ -368,7 +368,7 @@ check(
 check("catalog.change removes land", !snapshot.files.some((file) => file.path === "README.md"));
 
 const incompleteCatalog = sandbox.MetabrowserKnownFileCatalog.create();
-applyBulkSnapshot(incompleteCatalog, [{ p: "a.txt", e: ".txt" }], false);
+applyBulkSnapshot(incompleteCatalog, [{ p: "a.txt", e: ".txt" }], "partial");
 check("incomplete bulk apply stays incomplete", incompleteCatalog.snapshot().complete === false);
 incompleteCatalog.markComplete();
 check(
@@ -384,12 +384,83 @@ check(
 incompleteCatalog.clear();
 check("clear resets completeness", incompleteCatalog.snapshot().complete === false);
 
+// A walk that stops at the file cap is terminal without covering the root.
+// The snapshot states that explicitly, so a consumer can stop waiting for a
+// final revision without treating a lookup miss as proof of absence.
+check("a new catalog is not truncated", catalog.snapshot().truncated === false);
+const truncatedCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+applyBulkSnapshot(truncatedCatalog, [{ p: "capped.txt", e: ".txt" }], "truncated", true);
+equal(
+  "a truncated bulk is terminal but not complete",
+  [truncatedCatalog.snapshot().complete, truncatedCatalog.snapshot().truncated],
+  [false, true],
+);
+const truncatedRevision = truncatedCatalog.snapshot().revision;
+truncatedCatalog.markTruncated();
+check(
+  "a repeated truncated terminal signal publishes no revision",
+  truncatedCatalog.snapshot().revision === truncatedRevision,
+);
+truncatedCatalog.markIncomplete();
+equal(
+  "markIncomplete clears truncated coverage",
+  [truncatedCatalog.snapshot().complete, truncatedCatalog.snapshot().truncated],
+  [false, false],
+);
+truncatedCatalog.markTruncated();
+check("markTruncated marks a partial catalog", truncatedCatalog.snapshot().truncated === true);
+truncatedCatalog.markComplete();
+equal(
+  "complete coverage replaces truncated coverage",
+  [truncatedCatalog.snapshot().complete, truncatedCatalog.snapshot().truncated],
+  [true, false],
+);
+truncatedCatalog.markTruncated();
+applyBulkSnapshot(truncatedCatalog, [], "truncated", false);
+equal(
+  "a truncated signal or payload cannot downgrade complete coverage",
+  [truncatedCatalog.snapshot().complete, truncatedCatalog.snapshot().truncated],
+  [true, false],
+);
+truncatedCatalog.clear();
+check("clear resets truncated coverage", truncatedCatalog.snapshot().truncated === false);
+const stagedTruncation = sandbox.MetabrowserKnownFileCatalog.create();
+const stagedTruncationApplication = stagedTruncation.beginBulkSnapshot(
+  [{ p: "staged.txt", e: ".txt" }],
+  "partial",
+  false,
+);
+stagedTruncation.markTruncated();
+check(
+  "a truncated signal during a staged bulk stays invisible until commit",
+  stagedTruncation.snapshot().truncated === false,
+);
+let stagedTruncationStep;
+do {
+  stagedTruncationStep = stagedTruncationApplication.step(4_096);
+} while (!stagedTruncationStep.done);
+check(
+  "a truncated signal during a staged bulk commits with it",
+  stagedTruncation.snapshot().truncated === true &&
+    stagedTruncation.snapshot().files.some((file) => file.path === "staged.txt"),
+);
+let invalidCoverageError = null;
+try {
+  stagedTruncation.beginBulkSnapshot([], true, false);
+} catch (error) {
+  invalidCoverageError = error;
+}
+check(
+  "a bulk snapshot requires an explicit coverage state",
+  invalidCoverageError?.name === "TypeError",
+);
+
 // A bulk response built mid-walk can resolve after the one-shot
 // walk-completion event already marked the catalog complete; the
 // stale flag must not downgrade it (Bugbot R6).
 const racedCatalog = sandbox.MetabrowserKnownFileCatalog.create();
 racedCatalog.markComplete();
-applyBulkSnapshot(racedCatalog, [{ p: "late.txt", e: ".txt" }], false);
+applyBulkSnapshot(racedCatalog, [{ p: "late.txt", e: ".txt" }], "partial");
 check(
   "stale incomplete bulk cannot downgrade completeness",
   racedCatalog.snapshot().complete === true,
@@ -416,7 +487,7 @@ ignoredCatalog.observeInitialTree([
     type: "dir",
   },
 ]);
-applyBulkSnapshot(ignoredCatalog, [{ e: ".py", p: "app.py" }], true);
+applyBulkSnapshot(ignoredCatalog, [{ e: ".py", p: "app.py" }], "complete");
 const ignoredPaths = ignoredCatalog.snapshot().files.map((file) => file.path);
 check(
   "a shallow-tree ignored file never enters a complete catalog",
@@ -461,10 +532,10 @@ applyBulkSnapshot(
     { e: ".txt", p: "deleted-during-gap.txt" },
     { e: ".txt", p: "still-present.txt" },
   ],
-  true,
+  "complete",
   true,
 );
-applyBulkSnapshot(reconcileCatalog, [{ e: ".txt", p: "still-present.txt" }], true, true);
+applyBulkSnapshot(reconcileCatalog, [{ e: ".txt", p: "still-present.txt" }], "complete", true);
 const reconciled = reconcileCatalog.snapshot().files.map((file) => file.path);
 check(
   "an authoritative refetch retires a path it no longer lists",
@@ -476,8 +547,8 @@ check("the surviving path stays", reconciled.includes("still-present.txt"));
 // A mid-walk payload is a prefix, not a membership statement: merging is
 // correct there, and retiring absent paths would empty the catalog.
 const partialCatalog = sandbox.MetabrowserKnownFileCatalog.create();
-applyBulkSnapshot(partialCatalog, [{ e: ".txt", p: "first.txt" }], false, false);
-applyBulkSnapshot(partialCatalog, [{ e: ".txt", p: "second.txt" }], false, false);
+applyBulkSnapshot(partialCatalog, [{ e: ".txt", p: "first.txt" }], "partial", false);
+applyBulkSnapshot(partialCatalog, [{ e: ".txt", p: "second.txt" }], "partial", false);
 const partialPaths = partialCatalog.snapshot().files.map((file) => file.path);
 check(
   "a non-authoritative payload merges instead of retiring",
@@ -489,7 +560,7 @@ check(
 // gitignored file the user opened is absent from the feed by design.
 const navExceptionCatalog = sandbox.MetabrowserKnownFileCatalog.create();
 navExceptionCatalog.observeNavigation("__pycache__/opened.pyc", ".pyc");
-applyBulkSnapshot(navExceptionCatalog, [{ e: ".py", p: "app.py" }], true, true);
+applyBulkSnapshot(navExceptionCatalog, [{ e: ".py", p: "app.py" }], "complete", true);
 check(
   "authoritative reconciliation spares navigated paths",
   navExceptionCatalog.snapshot().files.some((file) => file.path === "__pycache__/opened.pyc"),
@@ -500,7 +571,7 @@ trackedNavigationCatalog.observeNavigation("tracked-after-navigation.txt", ".txt
 applyBulkSnapshot(
   trackedNavigationCatalog,
   [{ e: ".txt", p: "tracked-after-navigation.txt" }],
-  true,
+  "complete",
   true,
 );
 equal(
@@ -508,7 +579,7 @@ equal(
   trackedNavigationCatalog.snapshot().sourceSummary,
   { "catalog-feed": 1 },
 );
-applyBulkSnapshot(trackedNavigationCatalog, [], true, true);
+applyBulkSnapshot(trackedNavigationCatalog, [], "complete", true);
 check(
   "a later authoritative omission retires that feed-owned path",
   trackedNavigationCatalog.snapshot().observedCount === 0,
@@ -526,7 +597,7 @@ const atomicApplication = atomicCatalog.beginBulkSnapshot(
     { e: ".txt", p: "bulk/two.txt" },
     { e: ".txt", p: "retired/child.txt" },
   ],
-  true,
+  "complete",
   true,
 );
 const firstAtomicStep = atomicApplication.step(1);
@@ -561,7 +632,7 @@ equal(
 const stagedOwnershipCatalog = sandbox.MetabrowserKnownFileCatalog.create();
 const stagedOwnershipApplication = stagedOwnershipCatalog.beginBulkSnapshot(
   [{ e: ".txt", p: "tracked-during-stage.txt" }],
-  true,
+  "complete",
   true,
 );
 stagedOwnershipApplication.step(1);
@@ -574,7 +645,7 @@ equal(
   stagedOwnershipCatalog.snapshot().sourceSummary,
   { "catalog-feed": 1 },
 );
-applyBulkSnapshot(stagedOwnershipCatalog, [], true, true);
+applyBulkSnapshot(stagedOwnershipCatalog, [], "complete", true);
 check(
   "a later omission retires the concurrently navigated feed path",
   stagedOwnershipCatalog.snapshot().observedCount === 0,
@@ -587,7 +658,7 @@ const canceledApplication = canceledCatalog.beginBulkSnapshot(
     { e: ".txt", p: "partial/one.txt" },
     { e: ".txt", p: "partial/two.txt" },
   ],
-  true,
+  "complete",
   true,
 );
 canceledApplication.step(1);
@@ -605,13 +676,13 @@ const supersededApplication = supersededCatalog.beginBulkSnapshot(
     { e: ".txt", p: "superseded/one.txt" },
     { e: ".txt", p: "superseded/two.txt" },
   ],
-  true,
+  "complete",
   true,
 );
 supersededApplication.step(1);
 const winningApplication = supersededCatalog.beginBulkSnapshot(
   [{ e: ".txt", p: "winner.txt" }],
-  true,
+  "complete",
   true,
 );
 const supersededStep = supersededApplication.step(1);
@@ -642,7 +713,7 @@ applyBulkSnapshot(
     { e: ".txt", p: "b/three.txt" },
     { e: ".txt", p: "keep/four.txt" },
   ],
-  true,
+  "complete",
 );
 batchCatalog.applyEventChange([
   { op: "remove", path: "a" },
@@ -657,7 +728,7 @@ equal(
 // Ordering within a batch survives batching: the child added after its
 // parent was removed stays, and the child added before is still swept.
 const orderedCatalog = sandbox.MetabrowserKnownFileCatalog.create();
-applyBulkSnapshot(orderedCatalog, [{ e: ".txt", p: "dir/before.txt" }], true);
+applyBulkSnapshot(orderedCatalog, [{ e: ".txt", p: "dir/before.txt" }], "complete");
 orderedCatalog.applyEventChange([
   { op: "remove", path: "dir" },
   { entry: { logical_ext: ".txt", path: "dir/after.txt", type: "file" }, op: "upsert" },
@@ -672,13 +743,13 @@ equal(
 // point-tail optimization must stop at the removal boundary rather than
 // appending first and sweeping the later upsert with its predecessor.
 const stagedOrderCatalog = sandbox.MetabrowserKnownFileCatalog.create();
-applyBulkSnapshot(stagedOrderCatalog, [{ e: ".txt", p: "dir/before.txt" }], true, true);
+applyBulkSnapshot(stagedOrderCatalog, [{ e: ".txt", p: "dir/before.txt" }], "complete", true);
 let stagedOrderNotifications = 0;
 stagedOrderCatalog.subscribe(() => {
   stagedOrderNotifications += 1;
 });
 const stagedOrderBefore = stagedOrderCatalog.snapshot();
-const stagedOrderApplication = stagedOrderCatalog.beginBulkSnapshot([], false, false);
+const stagedOrderApplication = stagedOrderCatalog.beginBulkSnapshot([], "partial", false);
 stagedOrderApplication.enqueueEventChange([{ op: "remove", path: "dir" }]);
 stagedOrderApplication.enqueueEventChange([
   { entry: { logical_ext: ".txt", path: "dir/after.txt", type: "file" }, op: "upsert" },
@@ -705,7 +776,7 @@ applyBulkSnapshot(
     { e: ".txt", p: "y/two.txt" },
     { e: ".txt", p: "z/three.txt" },
   ],
-  true,
+  "complete",
 );
 changeCatalog.applyCatalogChange({ removes: ["x", "y"], upserts: [] });
 equal(
@@ -725,7 +796,7 @@ const unsubscribe = subCatalog.subscribe((...args) => {
   lastArgs = args;
   seen.push(subCatalog.snapshot().revision);
 });
-applyBulkSnapshot(subCatalog, [{ e: ".txt", p: "one.txt" }], true);
+applyBulkSnapshot(subCatalog, [{ e: ".txt", p: "one.txt" }], "complete");
 check("a bulk apply queues subscriber notification", seen.length === 0, String(seen.length));
 subCatalog.applyCatalogChange({ removes: [], upserts: [{ e: ".txt", p: "two.txt" }] });
 check(
@@ -844,7 +915,7 @@ applyBulkSnapshot(
     { e: ".txt", p: "keep.txt" },
     { e: ".pyc", p: "cache/stale.pyc" },
   ],
-  true,
+  "complete",
 );
 catalogKeySweeps = 0;
 exactEvictionCatalog.observeLazyTree([
@@ -978,7 +1049,7 @@ check(
     applyBulkSnapshot(
       seededCatalog,
       paths.map((candidate) => ({ e: ".txt", p: candidate })),
-      true,
+      "complete",
       true,
     );
     return seededCatalog;
@@ -1011,7 +1082,7 @@ check(
     const replay = sandbox.MetabrowserKnownFileCatalog.create();
     const replayApplication = replay.beginBulkSnapshot(
       paths.map((candidate) => ({ e: ".txt", p: candidate })),
-      true,
+      "complete",
       true,
     );
     replayApplication.enqueueCatalogChange({ removes: removals, upserts: [] });

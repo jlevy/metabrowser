@@ -634,6 +634,63 @@ async function loadModule() {
   );
   publishedHandle.dispose();
 
+  // A rooted extensionless link on a tree whose walk stopped at the file cap
+  // must not say "resolving" forever: the terminal state disables it with an
+  // explanation and releases the catalog subscription.
+  const cappedAnchor = new FakeElement("a", { href: "/guide/", title: "Authored guide" });
+  const cappedFrames = new Map();
+  let cappedFrameSequence = 0;
+  let cappedListener = null;
+  const cappedHandle = module.enhanceRenderedLinks(
+    new FakeContainer([cappedAnchor]),
+    "docs/readme.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => ({
+          complete: false,
+          files: [
+            { basename: "guide.md", path: "docs/guide.md" },
+            { basename: "mkdocs.yml", path: "mkdocs.yml" },
+          ],
+          truncated: true,
+        }),
+        subscribe: (listener) => {
+          cappedListener = listener;
+          return () => {
+            cappedListener = null;
+          };
+        },
+      },
+      navigation: { ...mb.navigation, current: () => ({ path: "docs/readme.md" }) },
+    },
+    {
+      cancel: (id) => cappedFrames.delete(id),
+      eventTarget: new FakeEventTarget(),
+      schedule: (callback) => {
+        cappedFrameSequence += 1;
+        cappedFrames.set(cappedFrameSequence, callback);
+        return cappedFrameSequence;
+      },
+    },
+  );
+  while (cappedFrames.size) {
+    const [frame, callback] = cappedFrames.entries().next().value;
+    cappedFrames.delete(frame);
+    callback(0);
+  }
+  check(
+    "a published route on a truncated catalog is disabled with an explanation",
+    !cappedAnchor.hasAttribute("href") &&
+      cappedAnchor.getAttribute("data-metabrowser-link-status") === "unsupported" &&
+      cappedAnchor.getAttribute("aria-disabled") === "true" &&
+      cappedAnchor.getAttribute("title") ===
+        "Metabrowser cannot resolve this destination (catalog-truncated).",
+    String(cappedAnchor.getAttribute("title")),
+  );
+  check("a truncated catalog releases the published-route subscription", cappedListener === null);
+  cappedHandle.dispose();
+
   const longDirectory = "provider-segment/".repeat(1200);
   const longSourcePath = `${longDirectory}readme.md`;
   const longSourceAnchor = new FakeElement("a", { href: "next.md" });

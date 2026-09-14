@@ -9,9 +9,9 @@ env:
 This browserless session executes the production wiki parser and resolver, root-scoped
 catalog reconciliation coordinator, published-route adapters, preprocessing Worker
 client, and the real rendered-link to wiki-enhancer to nested-transclusion chain.
-It pins exact, incomplete, ambiguous, overflow, revision, slice, disposal,
-percent-identity, shared root-budget, and task-list bracket-pairing behavior without
-requiring a browser.
+It pins exact, incomplete, truncated-catalog, ambiguous, overflow, revision, slice,
+disposal, percent-identity, shared root-budget, and task-list bracket-pairing behavior
+without requiring a browser.
 
 ```console
 $ node tests/dom/markdown-functional-session.js
@@ -24,7 +24,15 @@ $ node tests/dom/markdown-functional-session.js
       "pending",
       "internal"
     ],
-    "settledCommits": 40
+    "settledCommits": 40,
+    "truncated": {
+      "pinned": true,
+      "rerunCallbacks": 0,
+      "revisionStates": [
+        "pending:catalog-incomplete",
+        "unsupported:catalog-truncated"
+      ]
+    }
   },
   "publishedRoutes": {
     "complete": {
@@ -43,6 +51,10 @@ $ node tests/dom/markdown-functional-session.js
       "adapter": "mkdocs",
       "path": "docs/100%252F.md",
       "status": "internal"
+    },
+    "truncated": {
+      "reason": "catalog-truncated",
+      "status": "unsupported"
     }
   },
   "standardLinks": {
@@ -96,6 +108,10 @@ $ node tests/dom/markdown-functional-session.js
     "pending": {
       "status": "pending",
       "reason": "catalog-incomplete"
+    },
+    "truncated": {
+      "status": "unsupported",
+      "reason": "catalog-truncated"
     }
   },
   "wikiPreprocessing": {

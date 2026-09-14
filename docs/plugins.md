@@ -430,10 +430,18 @@ path.
   The preference is transient and does not change the target URL.
 - `navigation.current()` returns the current target or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable, completion-aware view of files already
-  known to the shell. Every entry is a canonical, safe logical-file path, ordered by
-  ascending UTF-16 code units.
+  known to the shell. Every entry in `files` is a canonical, safe logical-file path,
+  ordered by ascending UTF-16 code units.
   The catalog has no global path-length ceiling; a plugin may apply a documented bound
   only to paths it actually processes.
+  Two flags describe coverage, and they are never both true.
+  `complete` means the inventory walk finished without reaching its file cap, so the
+  catalog lists every file under the root.
+  `truncated` means the walk finished at the cap: the catalog will not grow for that
+  index, but files past the cap were never indexed, so a missing path is not proof of
+  absence. While both are false the walk is still running.
+  A plugin that waits for a final catalog should stop waiting on either flag; the
+  Markdown built-in reports such unresolved links as `catalog-truncated`.
 - `fileCatalog.subscribe(listener)` invalidates inventory-derived plugin results and
   returns an unsubscribe function that the view must call from its disposer.
 - `repository` is either `null` or frozen public-safe GitHub identity for the served

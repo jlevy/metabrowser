@@ -617,6 +617,69 @@ function countedSnapshot(count, extras = []) {
   );
   publishedRevisionCoordinator.dispose();
 
+  // A walk that stops at the file cap is terminal. Its revision is pinned like a
+  // complete one, so fallback and published-route jobs settle once with an
+  // explanation instead of staying pending and re-running on every live change.
+  const truncatedFiles = Object.freeze([
+    file("docs/current.md"),
+    file("docs/guide.md"),
+    file("mkdocs.yml"),
+    file("notes/Later.md"),
+  ]);
+  const truncatedCatalog = catalog(
+    Object.freeze({ complete: false, files: truncatedFiles, revision: 1, truncated: false }),
+  );
+  const truncatedScheduler = scheduler();
+  const truncatedCoordinator = createMarkdownReconciliationCoordinator(
+    { fileCatalog: truncatedCatalog.api },
+    truncatedScheduler,
+  );
+  const truncatedResults = [];
+  const truncatedScope = truncatedCoordinator.createScope(undefined, "docs/current.md");
+  truncatedScope.wiki(
+    { action: "navigate", authoredTarget: "Later", sourcePath: "docs/current.md" },
+    (result) => truncatedResults.push(`wiki:${result.status}:${result.reason}`),
+  );
+  truncatedScope.published({ authoredTarget: "/guide/", resolvedPath: "guide/" }, (result) =>
+    truncatedResults.push(`published:${result?.status}:${result?.reason}`),
+  );
+  truncatedScheduler.runToIdle();
+  truncatedCatalog.replace(
+    Object.freeze({ complete: false, files: truncatedFiles, revision: 2, truncated: true }),
+  );
+  truncatedCatalog.notify();
+  truncatedScheduler.runToIdle();
+  check(
+    "a truncated revision settles pending fallback and published jobs with an explanation",
+    JSON.stringify(truncatedResults) ===
+      JSON.stringify([
+        "wiki:pending:catalog-incomplete",
+        "published:pending:catalog-incomplete",
+        "wiki:unsupported:catalog-truncated",
+        "published:unsupported:catalog-truncated",
+      ]),
+    JSON.stringify(truncatedResults),
+  );
+  check(
+    "a truncated revision is pinned and releases its catalog listener",
+    truncatedCatalog.stats().listener === null && truncatedCatalog.stats().unsubscriptions === 1,
+  );
+  truncatedCatalog.replace(
+    Object.freeze({
+      complete: false,
+      files: Object.freeze([...truncatedFiles, file("zz/later-change.md")]),
+      revision: 3,
+      truncated: true,
+    }),
+  );
+  truncatedCatalog.notify();
+  check(
+    "live changes after a truncated revision re-run no reconciliation jobs",
+    truncatedScheduler.frames.size === 0 && truncatedResults.length === 4,
+    JSON.stringify(truncatedResults),
+  );
+  truncatedCoordinator.dispose();
+
   const admissionCatalog = catalog(poisonSnapshot);
   const admissionScheduler = scheduler();
   const admissionCoordinator = createMarkdownReconciliationCoordinator(

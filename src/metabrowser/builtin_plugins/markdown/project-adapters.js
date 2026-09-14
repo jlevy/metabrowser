@@ -118,10 +118,17 @@ export function createPublishedRouteResolutionContext(snapshot) {
         return null;
       }
       if (!catalog.complete) {
-        return Object.freeze({
-          reason: "catalog-incomplete",
-          status: /** @type {const} */ ("pending"),
-        });
+        // A capped index is final, but the target or an adapter source may lie
+        // past the cap, so an inferred route can never be proven unique.
+        return catalog.truncated
+          ? Object.freeze({
+              reason: "catalog-truncated",
+              status: /** @type {const} */ ("unsupported"),
+            })
+          : Object.freeze({
+              reason: "catalog-incomplete",
+              status: /** @type {const} */ ("pending"),
+            });
       }
       const adapters = configuredAdapters();
       if (adapters.length === 0) {
@@ -185,7 +192,17 @@ function validateSnapshot(snapshot) {
   if (typeof value.complete !== "boolean" || !Array.isArray(value.files)) {
     throw new TypeError("published-route snapshot requires completeness and files");
   }
-  return /** @type {{complete: boolean, files: ReadonlyArray<unknown>}} */ (value);
+  if (value.truncated !== undefined && typeof value.truncated !== "boolean") {
+    throw new TypeError("published-route snapshot truncation must be boolean");
+  }
+  if (value.complete && value.truncated) {
+    throw new TypeError("published-route snapshot cannot be both complete and truncated");
+  }
+  return Object.freeze({
+    complete: value.complete,
+    files: /** @type {ReadonlyArray<unknown>} */ (value.files),
+    truncated: value.truncated === true,
+  });
 }
 
 /** @param {string} authoredTarget */

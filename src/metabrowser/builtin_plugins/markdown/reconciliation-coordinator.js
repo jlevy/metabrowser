@@ -97,8 +97,9 @@ export function createMarkdownEnhancementBudget(maxElements = MAX_RECONCILIATION
  * A root owns exactly one instance and injects it into transclusions. Catalog
  * notifications only invalidate the coordinator; snapshot selection, resolver
  * construction, catalog reads, and DOM callbacks all run inside the shared slice.
- * The first complete immutable snapshot is pinned for the mount so existing and
- * asynchronously-added nested content cannot observe different catalog revisions.
+ * The first final immutable snapshot, complete or truncated at the inventory file
+ * cap, is pinned for the mount so existing and asynchronously-added nested content
+ * cannot observe different catalog revisions and later live changes re-run nothing.
  *
  * @param {MetabrowserPublicSdk} mb
  * @param {{schedule?: (callback: FrameRequestCallback) => number,
@@ -189,7 +190,7 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
       generation += 1;
       rescan = jobs.values();
       previousWikiContext?.dispose();
-      if (next.complete) {
+      if (isFinalSnapshot(next)) {
         pinned = true;
         unsubscribe?.();
         unsubscribe = null;
@@ -274,10 +275,10 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
             const shouldCommit = job.active && job.scope.active && !disposed;
             job.processedGeneration = generation;
             // An incomplete projection can both gain and lose exact paths. Keep
-            // every catalog-derived wiki job until the first complete revision so
+            // every catalog-derived wiki job until the first final revision so
             // early-present and early-absent states converge on the same pinned
             // snapshot rather than becoming permanent by arrival order.
-            if (snapshot.complete) {
+            if (isFinalSnapshot(snapshot)) {
               removeJob(job);
             }
             if (shouldCommit) {
@@ -306,7 +307,7 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
             const result = publishedContext.resolve(job.intent);
             const shouldCommit = job.active && job.scope.active && !disposed;
             job.processedGeneration = generation;
-            if (snapshot.complete) {
+            if (isFinalSnapshot(snapshot)) {
               removeJob(job);
             }
             if (shouldCommit) {
@@ -582,6 +583,16 @@ function createPostedTaskScheduler() {
       return sequence;
     },
   });
+}
+
+/**
+ * A complete walk and a walk truncated at the inventory file cap are both
+ * terminal: no later revision of this index can settle a pending result.
+ *
+ * @param {ReturnType<MetabrowserPublicSdk["fileCatalog"]["snapshot"]>} snapshot
+ */
+function isFinalSnapshot(snapshot) {
+  return snapshot.complete || snapshot.truncated === true;
 }
 
 /** @param {unknown} error */

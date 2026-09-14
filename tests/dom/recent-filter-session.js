@@ -645,7 +645,7 @@ const replacementApplication = replacementCatalog.beginBulkSnapshot(
     { p: "runs/day/job/replaced-dir", e: ".md" },
     { p: "runs/day/job/replaced-dir/child.md", e: ".md" },
   ],
-  true,
+  "complete",
 );
 while (!replacementApplication.step(4_096).done) {
   // The focused fixture is smaller than one production slice.

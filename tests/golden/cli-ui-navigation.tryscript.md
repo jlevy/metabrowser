@@ -492,6 +492,7 @@ $ node tests/dom/catalog-feed-behavior.js
     "replacement initial fetch applies",
     "304 reconnect restores known complete coverage",
     "304 reconnect keeps capped coverage incomplete",
+    "304 reconnect restores known truncated coverage",
     "resync refetches",
     "changes during resync refetch fold into its commit",
     "failure schedules a retry",
@@ -512,6 +513,7 @@ $ node tests/dom/catalog-feed-behavior.js
     "truncated bulk applies its files",
     "a truncated catalog is not reported complete",
     "a truncated terminal event does not mark the catalog complete",
+    "a truncated terminal event marks the catalog truncated",
     "a large steady change is staged",
     "walk completion issues the authoritative refetch",
     "a change after the refetch began survives its older authoritative payload"
