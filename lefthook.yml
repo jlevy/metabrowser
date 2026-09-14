@@ -36,4 +36,13 @@ pre-commit:
 pre-push:
   commands:
     quality:
-      run: make lint-check test
+      # From a linked worktree, git exports GIT_DIR to this hook. It outranks the
+      # working directory for every git the gate spawns, so a fixture's `git init`
+      # rewrote the shared repository configuration with core.bare = true. The gate
+      # finds its repository from the working directory, so clear the whole
+      # metabrowser.git.process._REPO_PINNING_GIT_VARS list;
+      # tests/test_git_hook_environment.py keeps this line and that list in step.
+      run: >-
+        unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
+        GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
+        make lint-check test
