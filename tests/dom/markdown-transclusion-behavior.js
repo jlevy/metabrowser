@@ -44,6 +44,51 @@ class FakeContainer extends FakeElement {
   }
 }
 
+/**
+ * Deterministic time for deadline checks. Date.now is pinned to the same value
+ * while a scenario runs, so a regression back to wall-clock reads observes the
+ * virtual time too instead of passing because real time barely moved.
+ */
+function createVirtualClock() {
+  let now = 1_000_000;
+  let sequence = 0;
+  const timers = new Map();
+  const nativeDateNow = Date.now;
+  return {
+    advance(milliseconds) {
+      now += milliseconds;
+      const due = [...timers.entries()]
+        .filter(([, timer]) => timer.due <= now)
+        .sort((left, right) => left[1].due - right[1].due);
+      for (const [handle, timer] of due) {
+        if (timers.delete(handle)) {
+          timer.callback();
+        }
+      }
+    },
+    clearTimeout(handle) {
+      timers.delete(handle);
+    },
+    install() {
+      Date.now = () => now;
+    },
+    now: () => now,
+    pending: () => timers.size,
+    restore() {
+      Date.now = nativeDateNow;
+    },
+    setTimeout(callback, delayMs) {
+      sequence += 1;
+      timers.set(sequence, { callback, due: now + delayMs });
+      return sequence;
+    },
+  };
+}
+
+function settle() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 async function loadModule() {
   const parserSource = fs.readFileSync(
     path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown/wiki-parser.js"),
@@ -57,7 +102,7 @@ async function loadModule() {
   const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const workerStub =
     `import {prepareTransclusionMarkdownSource} from ${JSON.stringify(parserUrl)};` +
-    "export function createMarkdownWorkerClient(){return {dispose(){}," +
+    "export function acquireMarkdownWorkerClient(){return {dispose(){}," +
     "run(_op,payload){return Promise.resolve(prepareTransclusionMarkdownSource(payload.source,payload.fragment))}}}";
   const workerUrl = `data:text/javascript;base64,${Buffer.from(workerStub).toString("base64")}`;
   const source = fs
@@ -188,15 +233,84 @@ and second line ^block-id
     longCycleCode === "cycle" && cycleContinuations >= 122,
     `${longCycleCode}/${cycleContinuations}`,
   );
-  const expiringBudget = module.createTransclusionBudget({ maxDurationMs: 1 });
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  let timeoutCode = null;
+  // Elapsed time is bounded per claim, not per document. An embed whose catalog
+  // resolution arrives long after an earlier embed claimed must still receive
+  // its own full load budget.
+  const claimClock = createVirtualClock();
+  claimClock.install();
   try {
-    await module.claimTransclusion(expiringBudget, module.transclusionKey("late.md"), []);
-  } catch (error) {
-    timeoutCode = error.code;
+    const perClaimBudget = module.createTransclusionBudget(
+      { maxDocuments: 2 },
+      { clock: claimClock },
+    );
+    const earlyClaim = await module.claimTransclusion(
+      perClaimBudget,
+      module.transclusionKey("early.md"),
+      [],
+    );
+    claimClock.advance(6_000);
+    let lateClaim = null;
+    let lateClaimCode = null;
+    try {
+      lateClaim = await module.claimTransclusion(
+        perClaimBudget,
+        module.transclusionKey("late.md"),
+        [],
+      );
+    } catch (error) {
+      lateClaimCode = error.code;
+    }
+    check(
+      "a claim made after another claim's deadline receives its own deadline",
+      lateClaim !== null && lateClaim.deadline === claimClock.now() + 5_000,
+      String(lateClaimCode),
+    );
+    check(
+      "each claim reports the deadline it started",
+      earlyClaim.deadline === lateClaim?.deadline - 6_000,
+    );
+    let sharedDocumentCode = null;
+    try {
+      await module.claimTransclusion(perClaimBudget, module.transclusionKey("third.md"), []);
+    } catch (error) {
+      sharedDocumentCode = error.code;
+    }
+    check(
+      "per-claim deadlines keep the aggregate document limit",
+      sharedDocumentCode === "document-limit",
+      String(sharedDocumentCode),
+    );
+
+    globalThis.MessageChannel = class AdvancingMessageChannel extends CountingMessageChannel {
+      constructor() {
+        super();
+        const post = this.port2.postMessage;
+        this.port2.postMessage = () => {
+          claimClock.advance(3_000);
+          post();
+        };
+      }
+    };
+    let slowCycleCode = null;
+    try {
+      await module.claimTransclusion(
+        module.createTransclusionBudget({}, { clock: claimClock }),
+        module.transclusionKey(providerLongPath),
+        [module.transclusionKey(` ${providerLongPath}`.slice(1))],
+      );
+    } catch (error) {
+      slowCycleCode = error.code;
+    } finally {
+      globalThis.MessageChannel = NativeMessageChannel;
+    }
+    check(
+      "a claim whose own cycle comparison outlives its deadline times out",
+      slowCycleCode === "timed-out",
+      String(slowCycleCode),
+    );
+  } finally {
+    claimClock.restore();
   }
-  check("elapsed-time budget rejected", timeoutCode === "timed-out");
 
   const source = new FakeElement("span", "Embedded setup");
   const container = new FakeContainer(source);
@@ -362,6 +476,123 @@ and second line ^block-id
     incompleteContainer.elements[0].getAttribute("data-metabrowser-transclusion-error") ===
       "transformed-source-byte-limit",
   );
+
+  const mountClock = createVirtualClock();
+  mountClock.install();
+  try {
+    const mountBudget = module.createTransclusionBudget({}, { clock: mountClock });
+    const quickSource = new FakeElement("span", "Quick");
+    const quickContainer = new FakeContainer(quickSource);
+    const quick = module.mountWikiTransclusion(
+      quickContainer,
+      quickSource,
+      { path: "quick.md" },
+      mb,
+      { budget: mountBudget },
+    );
+    await settle();
+    check(
+      "the first embed renders",
+      quickContainer.elements[0].getAttribute("data-metabrowser-transclusion-status") === "ready",
+    );
+    check("a settled embed releases its deadline timer", mountClock.pending() === 0);
+
+    // The reported bug: a later embed whose catalog resolved six seconds after
+    // the first embed was permanently timed out before it began loading.
+    mountClock.advance(6_000);
+    const laterSource = new FakeElement("span", "Later");
+    const laterContainer = new FakeContainer(laterSource);
+    const later = module.mountWikiTransclusion(
+      laterContainer,
+      laterSource,
+      { path: "later.md" },
+      mb,
+      { budget: mountBudget },
+    );
+    await settle();
+    check(
+      "an embed that starts loading after another embed's budget elapsed still renders",
+      laterContainer.elements[0].getAttribute("data-metabrowser-transclusion-status") === "ready",
+      String(laterContainer.elements[0].getAttribute("data-metabrowser-transclusion-error")),
+    );
+
+    const slowSource = new FakeElement("span", "Slow");
+    const slowContainer = new FakeContainer(slowSource);
+    module.mountWikiTransclusion(
+      slowContainer,
+      slowSource,
+      { path: "slow.md" },
+      {
+        ...mb,
+        fetchText: (_target, options) =>
+          new Promise((_resolve, reject) => {
+            options.signal.addEventListener("abort", () => reject(options.signal.reason), {
+              once: true,
+            });
+          }),
+      },
+      { budget: mountBudget },
+    );
+    await settle();
+    mountClock.advance(4_999);
+    await settle();
+    check(
+      "an embed inside its own budget keeps loading",
+      slowContainer.elements[0].getAttribute("data-metabrowser-transclusion-status") === "loading",
+    );
+    mountClock.advance(1);
+    await settle();
+    check(
+      "an embed whose own load exceeds its budget times out",
+      slowContainer.elements[0].getAttribute("data-metabrowser-transclusion-error") === "timed-out",
+      String(slowContainer.elements[0].getAttribute("data-metabrowser-transclusion-status")),
+    );
+
+    let settleIgnoringAbort = null;
+    const stubbornSource = new FakeElement("span", "Stubborn");
+    const stubbornContainer = new FakeContainer(stubbornSource);
+    module.mountWikiTransclusion(
+      stubbornContainer,
+      stubbornSource,
+      { path: "stubborn.md" },
+      {
+        ...mb,
+        fetchText: () =>
+          new Promise((resolve) => {
+            settleIgnoringAbort = resolve;
+          }),
+      },
+      { budget: mountBudget },
+    );
+    await settle();
+    mountClock.advance(5_000);
+    settleIgnoringAbort?.(note);
+    await settle();
+    check(
+      "a load that settles after its deadline without observing the abort still times out",
+      stubbornContainer.elements[0].getAttribute("data-metabrowser-transclusion-error") ===
+        "timed-out",
+      String(stubbornContainer.elements[0].getAttribute("data-metabrowser-transclusion-status")),
+    );
+
+    const disposedSource = new FakeElement("span", "Disposed");
+    const disposedContainer = new FakeContainer(disposedSource);
+    const disposedMount = module.mountWikiTransclusion(
+      disposedContainer,
+      disposedSource,
+      { path: "disposed.md" },
+      { ...mb, fetchText: () => new Promise(() => {}) },
+      { budget: mountBudget },
+    );
+    await settle();
+    check("a loading embed holds one deadline timer", mountClock.pending() === 1);
+    disposedMount.dispose();
+    check("disposal releases the deadline timer", mountClock.pending() === 0);
+    quick.dispose();
+    later.dispose();
+  } finally {
+    mountClock.restore();
+  }
 
   if (failures.length) {
     console.error(`markdown transclusion FAILURES:\n- ${failures.join("\n- ")}`);

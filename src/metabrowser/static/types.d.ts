@@ -1427,7 +1427,15 @@ type MetabrowserKnownFile = Readonly<{
   source: string;
 }>;
 
+/**
+ * Root coverage of the known-file catalog. `complete` is a finished walk that
+ * did not hit the inventory file cap; `truncated` is a finished walk that did,
+ * so membership is final for the index but does not cover the root.
+ */
+type MetabrowserKnownFileCatalogCoverage = "partial" | "truncated" | "complete";
+
 type MetabrowserKnownFileCatalogSnapshot = Readonly<{
+  /** The catalog covers every file under the root. */
   complete: boolean;
   /**
    * Safe canonical POSIX-relative file paths in ascending UTF-16 code-unit
@@ -1439,6 +1447,12 @@ type MetabrowserKnownFileCatalogSnapshot = Readonly<{
   observedCount: number;
   revision: number;
   sourceSummary: Readonly<Record<string, number>>;
+  /**
+   * The walk reached its terminal state at the inventory file cap. The walk adds
+   * no more files for this index, but files past the cap were never indexed, so
+   * a lookup miss is not proof of absence. Never true together with `complete`.
+   */
+  truncated: boolean;
 }>;
 
 type MetabrowserCatalogChangePayload = {
@@ -1476,15 +1490,16 @@ type MetabrowserCatalogMutationResult = Readonly<{
 
 type MetabrowserKnownFileCatalogApi = Readonly<{
   /**
-   * @param bulkComplete the catalog is a complete view of the root (a finished
-   *   walk that did not hit the max-files cap)
+   * @param bulkCoverage the root coverage the payload establishes: `complete`
+   *   for a finished walk that did not hit the max-files cap, `truncated` for
+   *   one that did, `partial` otherwise. It never lowers current coverage.
    * @param authoritative the payload lists every file the index holds, so
    *   feed-sourced paths it omits are stale and get retired. False for a
    *   payload built mid-walk, which is only a prefix.
    */
   beginBulkSnapshot(
     files: Array<{ p: string; e: string }>,
-    bulkComplete: boolean,
+    bulkCoverage: MetabrowserKnownFileCatalogCoverage,
     authoritative?: boolean,
   ): MetabrowserBulkSnapshotApplication;
   beginCatalogChange(
@@ -1500,6 +1515,8 @@ type MetabrowserKnownFileCatalogApi = Readonly<{
   clear(): void;
   markComplete(): void;
   markIncomplete(): void;
+  /** Record a terminal walk that stopped at the file cap; never lowers complete. */
+  markTruncated(): void;
   observeEventSnapshot(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
   observeInitialTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
   observeLazyTree(entries: Array<MetabrowserKnownFileCatalogWireEntry>): void;
@@ -1722,7 +1739,7 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
       error: unknown,
     ): Readonly<{ message: string; status: "error" | "unreachable" }>;
     document?: Document;
-    getCatalogSnapshot(): { complete: boolean; observedCount: number };
+    getCatalogSnapshot(): { complete: boolean; observedCount: number; truncated: boolean };
     getFileIcon?(path: string): { cls?: string; svg?: string };
     maxRows?: number;
     onNotFound?(path: string): void | Promise<void>;

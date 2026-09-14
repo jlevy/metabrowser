@@ -128,6 +128,7 @@
     observedCount: 0,
     revision: 0,
     sourceSummary: Object.freeze({}),
+    truncated: false,
   });
   /** @type {{snapshot: () => unknown, subscribe: (listener: () => void) => () => void} | null} */
   let _attachedFileCatalog = null;

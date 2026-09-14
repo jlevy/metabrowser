@@ -89,7 +89,7 @@
    *   controller: PaletteController,
    *   describeOpenFailure: (error: unknown) => {message: string, status: "error" | "unreachable"},
    *   document?: Document,
-   *   getCatalogSnapshot: () => {complete: boolean, observedCount: number},
+   *   getCatalogSnapshot: () => {complete: boolean, observedCount: number, truncated: boolean},
    *   subscribeCatalog?: (listener: () => void) => () => void,
    *   getFileIcon?: (path: string) => {cls?: string, svg?: string},
    *   maxRows?: number,
@@ -315,9 +315,13 @@
       if (!query) {
         const snapshot = options.getCatalogSnapshot();
         const scope = fileCount(snapshot.observedCount, snapshot.complete ? "" : "indexed");
-        status.textContent = snapshot.complete
-          ? `Search includes ${scope}.`
-          : `Search includes ${scope}. Scanning continues.`;
+        // A walk stopped at the file cap is final even though it is not complete.
+        const coverage = snapshot.complete
+          ? ""
+          : snapshot.truncated
+            ? " Indexing stopped at the file limit."
+            : " Scanning continues.";
+        status.textContent = `Search includes ${scope}.${coverage}`;
         return;
       }
       if (!searchState || searchState.phase === "searching") {

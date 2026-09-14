@@ -98,6 +98,51 @@ function check(name, condition, detail = "failed") {
     check(name, actual.targetCount === targetCount, String(actual.targetCount));
   }
 
+  // A bracket only opens an ordinary link when its own balanced `]` is followed
+  // by `(` or `[`. A task-list checkbox, a shortcut reference, or an unmatched
+  // `[` must not pair with a later link's `](` and hide the wiki links between.
+  const taskListSource = "- [ ] Review [[Meeting Notes]] per [spec](https://x)";
+  const taskList = module.preprocessObsidianWiki(taskListSource);
+  check(
+    "wiki link after an unchecked task box converts",
+    taskList.targetCount === 1 &&
+      taskList.source ===
+        '- [ ] Review <span class="metabrowser-wiki-link" data-mb-wiki-target="Meeting Notes" data-mb-wiki-action="navigate">Meeting Notes</span> per [spec](https://x)',
+    taskList.source,
+  );
+  const bracketPairingCases = [
+    ["checked task box", "- [x] Review [[Meeting Notes]] per [spec](https://x)", 1],
+    ["uppercase checked task box", "* [X] Review [[Meeting Notes]] per [spec](https://x)", 1],
+    ["ordered task box", "1. [ ] Step [[Setup]] then [guide](guide.md)", 1],
+    [
+      "nested task list",
+      "- [ ] Parent [[Top]]\n  - [x] Child [[Nested Note]] see [link](https://x)\n   1. [ ] Step [[Deep]] [ref][id]\n",
+      3,
+    ],
+    ["task box before an embed and an image", "- [ ] ![[diagram.png]] and ![alt](a.png)", 1],
+    ["wiki inside a real link after a task box", "- [ ] See [the [[Hidden]] spec](https://x)", 0],
+    ["shortcut reference before a link", "[note] then [[Target]] and [link](target.md)", 1],
+    ["unmatched opener before a link", "[draft [[Target]] [link](target.md)", 1],
+    ["balanced brackets inside a link label", "[a [b] c](target.md) [[Target]]", 1],
+    ["escaped closer inside a link label", String.raw`[a \] [[Hidden]]](target.md)`, 0],
+    ["code-span closer inside a link label", "[a `]` [[Hidden]]](target.md)", 0],
+    // An outer label with no later `)` must not hide the destination of the
+    // real link nested inside it, whose own `)` comes earlier.
+    ["destination of a link nested in an unclosed outer label", "[x [b]([[W]]) d](e", 0],
+    ["label of a link nested in an unclosed outer label", "[a [see [[W]]](c) d](e", 0],
+    // CommonMark forbids a link inside link text: once a link forms inside a
+    // label, the enclosing `[` is plain text and its wiki links convert.
+    ["inline link inside link text", "[a [b](c) [[W]]](e)", 1],
+    ["reference link inside link text", "[a [b][c] [[W]]](e)", 1],
+    ["escaped image marker inside link text is a link", String.raw`[x \![a](b) [[W]]](c)`, 1],
+    ["link inside image text keeps the image", "![a [b](c) [[W]]](e)", 0],
+    ["image inside link text keeps the link", "[a ![b](c) [[W]]](e)", 0],
+  ];
+  for (const [name, input, targetCount] of bracketPairingCases) {
+    const actual = module.preprocessObsidianWiki(input);
+    check(name, actual.targetCount === targetCount, `${actual.targetCount}: ${actual.source}`);
+  }
+
   const escapedCounts = [1, 2, 3, 4].map(
     (slashes) => module.preprocessObsidianWiki(`${"\\".repeat(slashes)}[[Target]]`).targetCount,
   );
@@ -207,9 +252,15 @@ function check(name, condition, detail = "failed") {
   const bracketHeavy = module.preprocessObsidianWiki("[".repeat(2_000_000));
   const nestedHeavySource = `${"[a".repeat(999_999)}x]`;
   const nestedHeavy = module.preprocessObsidianWiki(nestedHeavySource);
+  const taskBoxHeavySource = `${"[ ] [[a]] ".repeat(199_999)}[b](c)`;
+  const taskBoxHeavy = module.preprocessObsidianWiki(taskBoxHeavySource);
+  const closerHeavySource = `${"[".repeat(999_990)}${"]".repeat(999_990)}(x)`;
+  const closerHeavy = module.preprocessObsidianWiki(closerHeavySource);
   for (const [name, inputLength, actual] of [
     ["bracket-heavy", 2_000_000, bracketHeavy],
     ["nested-bracket", nestedHeavySource.length, nestedHeavy],
+    ["task-box-heavy", taskBoxHeavySource.length, taskBoxHeavy],
+    ["balanced-bracket-heavy", closerHeavySource.length, closerHeavy],
   ]) {
     const totalWork = Object.values(actual.metrics).reduce((total, count) => total + count, 0);
     check(

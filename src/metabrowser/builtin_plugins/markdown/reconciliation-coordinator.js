@@ -99,6 +99,10 @@ export function createMarkdownEnhancementBudget(maxElements = MAX_RECONCILIATION
  * construction, catalog reads, and DOM callbacks all run inside the shared slice.
  * The first complete immutable snapshot is pinned for the mount so existing and
  * asynchronously-added nested content cannot observe different catalog revisions.
+ * The first snapshot truncated at the inventory file cap is kept the same way, and
+ * later truncated or partial revisions re-run nothing. A truncated revision cannot
+ * rule out files past the cap, so a later complete revision still replaces it and
+ * re-runs just the jobs that reported `catalog-truncated`.
  *
  * @param {MetabrowserPublicSdk} mb
  * @param {{schedule?: (callback: FrameRequestCallback) => number,
@@ -138,6 +142,7 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
   let dirty = true;
   let blocked = false;
   let pinned = false;
+  let truncatedRevision = false;
   let generation = 0;
 
   function start() {
@@ -173,7 +178,10 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
     }
     try {
       const next = mb.fileCatalog.snapshot();
-      if (next === snapshot) {
+      // Keep a selected truncated revision through later truncated and partial
+      // revisions, such as the restarted walk after a reconnect; only a complete
+      // walk can settle what it could not.
+      if (next === snapshot || (truncatedRevision && !next.complete)) {
         dirty = false;
         return;
       }
@@ -189,6 +197,7 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
       generation += 1;
       rescan = jobs.values();
       previousWikiContext?.dispose();
+      truncatedRevision = next.truncated === true;
       if (next.complete) {
         pinned = true;
         unsubscribe?.();
@@ -274,10 +283,10 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
             const shouldCommit = job.active && job.scope.active && !disposed;
             job.processedGeneration = generation;
             // An incomplete projection can both gain and lose exact paths. Keep
-            // every catalog-derived wiki job until the first complete revision so
+            // every catalog-derived wiki job until the first final revision so
             // early-present and early-absent states converge on the same pinned
             // snapshot rather than becoming permanent by arrival order.
-            if (snapshot.complete) {
+            if (settlesJob(snapshot, step.result)) {
               removeJob(job);
             }
             if (shouldCommit) {
@@ -306,7 +315,7 @@ export function createMarkdownReconciliationCoordinator(mb, options = {}) {
             const result = publishedContext.resolve(job.intent);
             const shouldCommit = job.active && job.scope.active && !disposed;
             job.processedGeneration = generation;
-            if (snapshot.complete) {
+            if (settlesJob(snapshot, result)) {
               removeJob(job);
             }
             if (shouldCommit) {
@@ -582,6 +591,24 @@ function createPostedTaskScheduler() {
       return sequence;
     },
   });
+}
+
+/**
+ * Whether a committed result is final. A complete walk settles every result. A
+ * walk truncated at the inventory file cap settles every result except
+ * `catalog-truncated`; those jobs stay registered, without re-running on live
+ * changes, until a complete revision can settle them.
+ *
+ * @param {ReturnType<MetabrowserPublicSdk["fileCatalog"]["snapshot"]>} snapshot
+ * @param {unknown} result
+ */
+function settlesJob(snapshot, result) {
+  const capped =
+    typeof result === "object" &&
+    result !== null &&
+    "reason" in result &&
+    result.reason === "catalog-truncated";
+  return snapshot.complete || (snapshot.truncated === true && !capped);
 }
 
 /** @param {unknown} error */

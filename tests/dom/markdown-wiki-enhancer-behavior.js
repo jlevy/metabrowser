@@ -97,7 +97,7 @@ async function loadModule() {
   const parserUrl = `data:text/javascript;base64,${Buffer.from(parserSource).toString("base64")}`;
   const workerStub =
     `import {prepareTransclusionMarkdownSource} from ${JSON.stringify(parserUrl)};` +
-    "export function createMarkdownWorkerClient(){return {dispose(){}," +
+    "export function acquireMarkdownWorkerClient(){return {dispose(){}," +
     "run(_op,payload){return Promise.resolve(prepareTransclusionMarkdownSource(payload.source,payload.fragment))}}}";
   const workerUrl = `data:text/javascript;base64,${Buffer.from(workerStub).toString("base64")}`;
   const traversalSource = fs.readFileSync(
@@ -360,6 +360,78 @@ async function loadModule() {
     "dispose releases pending subscription",
     catalogListener === null && unsubscribeCount === 2,
   );
+
+  // A walk that stopped at the file cap is final for its index. A fallback wiki
+  // link and a note embed settle as disabled explanations instead of resolving
+  // forever, and a later complete walk still resolves them.
+  const cappedLink = new FakeElement(
+    "span",
+    { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": "Unique" },
+    "Unique",
+  );
+  const cappedEmbed = new FakeElement(
+    "span",
+    { "data-mb-wiki-action": "embed", "data-mb-wiki-target": "Unique" },
+    "Unique embed",
+  );
+  const cappedScheduler = createScheduler();
+  let cappedListener = null;
+  let cappedSnapshot = { complete: false, files, truncated: false };
+  const cappedContainer = new FakeContainer([cappedLink, cappedEmbed]);
+  const cappedHandle = module.enhanceWikiLinks(
+    cappedContainer,
+    "docs/current.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => cappedSnapshot,
+        subscribe: (listener) => {
+          cappedListener = listener;
+          return () => {
+            cappedListener = null;
+          };
+        },
+      },
+    },
+    () => {},
+    cappedScheduler,
+  );
+  cappedScheduler.runAll();
+  check(
+    "a fallback link on a partial catalog is pending",
+    cappedLink.getAttribute("data-metabrowser-link-status") === "pending",
+  );
+  cappedSnapshot = { complete: false, files, truncated: true };
+  cappedListener();
+  cappedScheduler.runAll();
+  check(
+    "a fallback link on a truncated catalog is disabled with an explanation",
+    cappedLink.getAttribute("data-metabrowser-link-status") === "unsupported" &&
+      cappedLink.getAttribute("aria-disabled") === "true" &&
+      cappedLink.getAttribute("title") === "Unsupported link (catalog-truncated)." &&
+      !cappedLink.textContent.includes("resolving"),
+    `${cappedLink.getAttribute("title")} / ${cappedLink.textContent}`,
+  );
+  check(
+    "a note embed on a truncated catalog explains why it is not embedded",
+    cappedEmbed.getAttribute("data-metabrowser-link-status") === "unsupported" &&
+      cappedEmbed.getAttribute("title") === "Unsupported link (catalog-truncated).",
+    String(cappedEmbed.getAttribute("title")),
+  );
+  check("a truncated catalog keeps the wiki subscription", typeof cappedListener === "function");
+  cappedSnapshot = { complete: true, files, truncated: false };
+  cappedListener();
+  cappedScheduler.runAll();
+  const upgradedLink = cappedContainer.elements[0];
+  check(
+    "a later complete catalog resolves the link the cap disabled and pins",
+    upgradedLink !== cappedLink &&
+      upgradedLink.tagName.toLowerCase() === "a" &&
+      upgradedLink.getAttribute("data-metabrowser-link-status") === null &&
+      cappedListener === null,
+    `${upgradedLink.tagName} ${upgradedLink.getAttribute("data-metabrowser-link-status")}`,
+  );
+  cappedHandle.dispose();
 
   const largeElements = ["MissingA", "MissingB", "MissingC"].map(
     (target) =>
@@ -647,6 +719,93 @@ async function loadModule() {
     movedBudget.state.documents === 2,
   );
   movedHandle.dispose();
+
+  // A fallback embed resolves only once the catalog completes, which can be long
+  // after an exact embed in the same document started loading. The late embed
+  // is timed from its own claim, not from the first embed's. Date.now follows
+  // the virtual clock so a wall-clock deadline regression is observed as well.
+  let virtualNow = 1_000_000;
+  const virtualTimers = new Map();
+  let virtualTimerSequence = 0;
+  const virtualClock = {
+    clearTimeout: (timer) => virtualTimers.delete(timer),
+    now: () => virtualNow,
+    setTimeout(callback, delayMs) {
+      virtualTimerSequence += 1;
+      virtualTimers.set(virtualTimerSequence, { callback, due: virtualNow + delayMs });
+      return virtualTimerSequence;
+    },
+  };
+  const nativeDateNow = Date.now;
+  Date.now = () => virtualNow;
+  try {
+    const earlyEmbed = new FakeElement(
+      "span",
+      { "data-mb-wiki-action": "embed", "data-mb-wiki-target": "Early" },
+      "Early",
+    );
+    const lateEmbed = new FakeElement(
+      "span",
+      { "data-mb-wiki-action": "embed", "data-mb-wiki-target": "Late" },
+      "Late",
+    );
+    const staggeredContainer = new FakeContainer([earlyEmbed, lateEmbed]);
+    const staggeredScheduler = createScheduler();
+    let staggeredSnapshot = {
+      complete: false,
+      files: catalogFiles(["docs/Early.md", "notes/Late.md"]),
+    };
+    let staggeredListener = null;
+    const staggeredHandle = module.enhanceWikiLinks(
+      staggeredContainer,
+      "docs/current.md",
+      {
+        fetchKpressRender: async () => ({ html: "<p>embedded</p>" }),
+        fetchText: async () => "# Embedded\n",
+        fileCatalog: {
+          snapshot: () => staggeredSnapshot,
+          subscribe: (listener) => {
+            staggeredListener = listener;
+            return () => {
+              staggeredListener = null;
+            };
+          },
+        },
+        navigation: mb.navigation,
+      },
+      () => {},
+      {
+        ...staggeredScheduler,
+        budget: loaded.transclusion.createTransclusionBudget({}, { clock: virtualClock }),
+      },
+    );
+    staggeredScheduler.runAll();
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "an exact embed renders before the catalog completes",
+      staggeredContainer.elements[0].getAttribute("data-metabrowser-transclusion-status") ===
+        "ready",
+    );
+    check(
+      "a fallback embed waits for the complete catalog",
+      staggeredContainer.elements[1].getAttribute("data-metabrowser-link-status") === "pending",
+    );
+    virtualNow += 6_000;
+    staggeredSnapshot = { complete: true, files: staggeredSnapshot.files };
+    staggeredListener();
+    staggeredScheduler.runAll();
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "a fallback embed resolved six seconds later renders instead of timing out",
+      staggeredContainer.elements[1].getAttribute("data-metabrowser-transclusion-status") ===
+        "ready",
+      String(staggeredContainer.elements[1].getAttribute("data-metabrowser-transclusion-error")),
+    );
+    staggeredHandle.dispose();
+    check("staggered embeds leave no deadline timer", virtualTimers.size === 0);
+  } finally {
+    Date.now = nativeDateNow;
+  }
 
   if (failures.length) {
     console.error(`markdown wiki enhancer FAILURES:\n- ${failures.join("\n- ")}`);

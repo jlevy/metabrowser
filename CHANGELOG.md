@@ -4,10 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-Plugin SDK (breaking):
+Plugin SDK:
 
-- The plugin SDK is now 0.6. A plugin manifest must declare `sdk_version = "0.6"`;
-  manifests for 0.5 are refused at discovery and by `metab --doctor`.
+- The plugin SDK is now 0.6, a breaking change.
+  A plugin manifest must declare `sdk_version = "0.6"`; manifests for 0.5 are refused at
+  discovery and by `metab --doctor`.
 
 - API paths are escaped inventory identities.
   Plugin readers, activity probes, Markdown links, browser URLs, and filename search now
@@ -18,6 +19,41 @@ Plugin SDK (breaking):
   It parsed Markdown separately from KPress and could disagree with the rendered
   document; a future graph surface will be a server route backed by KPress’s own link
   analysis.
+
+- `fileCatalog.snapshot()` now includes `truncated`, which is true when the inventory
+  walk finished at its file cap.
+  `complete` still means every file under the root is listed, and the two are never both
+  true. A plugin waiting for a final catalog should stop on either flag.
+  See [Data and Navigation](docs/plugins.md#data-and-navigation).
+
+Markdown fixes:
+
+- An embedded note no longer times out before it starts loading.
+  The 5-second transclusion allowance used to start when the first embed in a document
+  resolved and was shared by every later embed, so a note whose link resolved after the
+  file index finished could show “The embedded note timed out.”
+  without being fetched.
+  Each embed now has its own allowance from the moment it starts loading; the document,
+  depth, source-size, and cycle limits remain shared.
+
+- Wiki links in a task-list item followed by an ordinary link now convert.
+  In `- [ ] Review [[Meeting Notes]] per [spec](https://example.com)`, the checkbox’s
+  `[` was paired with the later link’s `](`, so the wiki link was left as literal text.
+  Brackets now pair the way CommonMark pairs them, so checkboxes, shortcut references,
+  and unmatched brackets no longer hide the wiki links that follow them.
+  As in CommonMark, brackets that contain a link are plain text rather than a link, so
+  the wiki links beside that inner link convert.
+
+- Markdown links no longer say “Resolving link” forever in a tree larger than the
+  inventory file cap. When the walk stopped at the cap, the file catalog never reached a
+  final state, so basename wiki links, note embeds, and rooted extensionless links such
+  as `/guide/` stayed pending, and every live file change re-ran their resolution.
+  A capped walk is now a final catalog state: links that exact paths resolve still work,
+  a wiki link with several indexed matches is reported as ambiguous, and links that need
+  the unindexed files are disabled with the `catalog-truncated` reason in their title.
+  Later changes do not re-run them unless a later walk completes, which resolves them.
+  File search now says indexing stopped at the file limit instead of “Scanning
+  continues.”
 
 Features:
 
@@ -224,14 +260,16 @@ CLI and validation:
   a diagnostic instead of leaving the rest unexplained.
 
 - Obsidian wiki preprocessing and transclusion selection now run in one lazy Markdown
-  Worker shared by a rendered document and every nested transclusion.
-  The worker client owns FIFO dispatch, cancellation, fatal protocol errors, and
-  disposal; ordinary non-Markdown views never fetch the worker assets.
-  Preprocessing uses source-wide monotone scans with deterministic work counters, and a
-  transformed source that would exceed the KPress request limit is rejected atomically
-  with an explicit diagnostic instead of returning a partial rewrite.
-  If the worker cannot run, the document still renders from its authored source and
-  reports that wiki processing was skipped.
+  Worker shared by every rendered document on the page, its nested transclusions, and
+  folder README panels, instead of a Worker constructed and terminated per document.
+  The worker client owns FIFO dispatch, per-request cancellation, fatal protocol errors,
+  and disposal; the Worker ends with the last mounted document, a fatally failed Worker
+  is replaced on the next request, and ordinary non-Markdown views never fetch the
+  worker assets. Preprocessing uses source-wide monotone scans with deterministic work
+  counters, and a transformed source that would exceed the KPress request limit is
+  rejected atomically with an explicit diagnostic instead of returning a partial
+  rewrite. If the worker cannot run, the document still renders from its authored source
+  and reports that wiki processing was skipped.
 
 - Inline and block code in KPress-backed documents now share one quiet solid border and
   square-by-default radius, while inline code uses compact padding.

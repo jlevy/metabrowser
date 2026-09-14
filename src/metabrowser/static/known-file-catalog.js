@@ -21,14 +21,45 @@
    */
 
   /**
+   * Root coverage of the catalog. `complete` means a finished, uncapped walk.
+   * `truncated` means the walk finished at the inventory file cap: membership
+   * is final for this index, but files past the cap were never indexed.
+   * @typedef {"partial" | "truncated" | "complete"} CatalogCoverage
+   */
+
+  /**
    * @typedef {object} CatalogSnapshot
    * @property {boolean} complete true once a complete bulk feed has
-   *   been applied (or the walk finished after an incomplete one)
+   *   been applied (or an uncapped walk finished after an incomplete one)
+   * @property {boolean} truncated true when the walk finished at its file cap;
+   *   never true together with `complete`
    * @property {readonly KnownFile[]} files
    * @property {number} observedCount
    * @property {number} revision
    * @property {Readonly<Record<string, number>>} sourceSummary
    */
+
+  const COVERAGE_RANK = new Map([
+    ["partial", 0],
+    ["truncated", 1],
+    ["complete", 2],
+  ]);
+
+  /** @param {CatalogCoverage} coverage */
+  function coverageRank(coverage) {
+    return COVERAGE_RANK.get(coverage) ?? 0;
+  }
+
+  /**
+   * A terminal truncated walk cannot downgrade complete coverage; resetting to
+   * partial and establishing complete coverage are explicit.
+   * @param {CatalogCoverage} current
+   * @param {CatalogCoverage} requested
+   * @returns {CatalogCoverage}
+   */
+  function nextCoverage(current, requested) {
+    return requested === "truncated" && current === "complete" ? current : requested;
+  }
 
   /** Provenance that may seat a gitignored path: the user opened it on purpose. */
   const NAVIGATION_SOURCE = "navigation";
@@ -67,7 +98,7 @@
    *   {kind: "entry", entry: CatalogWireEntry, source: string} |
    *   {kind: "delete", path: string, preserveNavigation: boolean} |
    *   {kind: "remove", paths: Set<string>} |
-   *   {kind: "complete", value: boolean}} BulkConcurrentMutation
+   *   {kind: "coverage", value: CatalogCoverage}} BulkConcurrentMutation
    */
 
   /**
@@ -291,7 +322,8 @@
     /** @type {CatalogState} */
     let state = emptyState();
     let revision = 0;
-    let catalogComplete = false;
+    /** @type {CatalogCoverage} */
+    let catalogCoverage = "partial";
     /** @type {{cancel: () => void, record: (mutation: BulkConcurrentMutation) => void} | null} */
     let activeBulkApplication = null;
     /** @type {Array<() => void>} */
@@ -977,8 +1009,9 @@
       if (mutation.kind === "remove") {
         return removeManyFrom(target, [...mutation.paths]).changed;
       }
-      const changed = catalogComplete !== mutation.value;
-      catalogComplete = mutation.value;
+      const next = nextCoverage(catalogCoverage, mutation.value);
+      const changed = catalogCoverage !== next;
+      catalogCoverage = next;
       return changed;
     }
 
@@ -1009,7 +1042,7 @@
           changed = removal.changed || changed;
           candidateVisits += removal.candidateVisits;
           workItems += removal.workItems;
-        } else if (mutation.kind === "complete") {
+        } else if (mutation.kind === "coverage") {
           flushPoints();
           changed = applyMutationNow(state, mutation) || changed;
           workItems += 1;
@@ -1047,14 +1080,20 @@
      * until ingestion and concurrent-mutation replay both finish.
      *
      * @param {Array<{p: string, e: string}>} files
-     * @param {boolean} bulkComplete whether the catalog covers the whole root
+     * @param {CatalogCoverage} bulkCoverage the root coverage this payload
+     *   establishes; it can raise, but never lower, the current coverage
      * @param {boolean} authoritative whether omitted feed paths are stale
      * @returns {BulkSnapshotApplication}
      */
-    function beginBulkSnapshot(files, bulkComplete, authoritative = false) {
+    function beginBulkSnapshot(files, bulkCoverage, authoritative = false) {
+      if (!COVERAGE_RANK.has(bulkCoverage)) {
+        throw new TypeError("Bulk catalog snapshot requires a coverage state");
+      }
       activeBulkApplication?.cancel();
       const stagedState = emptyState();
-      let stagedComplete = catalogComplete || bulkComplete;
+      /** @type {CatalogCoverage} */
+      let stagedCoverage =
+        coverageRank(bulkCoverage) > coverageRank(catalogCoverage) ? bulkCoverage : catalogCoverage;
       let fileIndex = 0;
       // Pin the baseline projection. Direct observations join the stage and
       // replay into live state only if the transaction is canceled, so this
@@ -1171,7 +1210,7 @@
       function finish() {
         Object.freeze(stagedState.orderedFiles);
         state = stagedState;
-        catalogComplete = stagedComplete;
+        catalogCoverage = stagedCoverage;
         finished = true;
         if (activeBulkApplication?.cancel === cancel) {
           activeBulkApplication = null;
@@ -1393,11 +1432,11 @@
             finish();
             return Object.freeze({ candidateVisits, cancelled: false, done: true, workItems });
           }
-          if (mutation.kind === "complete") {
+          if (mutation.kind === "coverage") {
             if (pointMutations >= DIRECT_CHANGE_MAX_ITEMS) {
               return Object.freeze({ candidateVisits, cancelled: false, done: false, workItems });
             }
-            stagedComplete = mutation.value;
+            stagedCoverage = nextCoverage(stagedCoverage, mutation.value);
             mutationIndex += 1;
             pointMutations += 1;
             workItems += 1;
@@ -1419,7 +1458,7 @@
             let points = [];
             while (points.length < availableItems) {
               const point = concurrentMutations[mutationIndex + points.length];
-              if (!point || point.kind === "remove" || point.kind === "complete") {
+              if (!point || point.kind === "remove" || point.kind === "coverage") {
                 break;
               }
               points.push(point);
@@ -1483,7 +1522,7 @@
       if (!needsSlicedApplication(mutations, maxWorkItems)) {
         return null;
       }
-      const application = beginBulkSnapshot([], false, false);
+      const application = beginBulkSnapshot([], "partial", false);
       application.enqueueCatalogChange(payload);
       return application;
     }
@@ -1494,7 +1533,7 @@
       if (!needsSlicedApplication(mutations, maxWorkItems)) {
         return null;
       }
-      const application = beginBulkSnapshot([], false, false);
+      const application = beginBulkSnapshot([], "partial", false);
       application.enqueueEventChange(ops);
       return application;
     }
@@ -1520,24 +1559,32 @@
      * contents.
      */
     function markComplete() {
-      if (activeBulkApplication) {
-        activeBulkApplication.record({ kind: "complete", value: true });
-        return;
-      }
-      if (!catalogComplete) {
-        catalogComplete = true;
-        bumpRevision();
-      }
+      setCoverage("complete");
+    }
+
+    /**
+     * The walk finished at its file cap after an incomplete bulk fetch. Live
+     * ops already converged membership to the index, which is final but does
+     * not cover the root. A complete catalog stays complete.
+     */
+    function markTruncated() {
+      setCoverage("truncated");
     }
 
     /** Retain membership while a new stream re-establishes root coverage. */
     function markIncomplete() {
+      setCoverage("partial");
+    }
+
+    /** @param {CatalogCoverage} coverage */
+    function setCoverage(coverage) {
       if (activeBulkApplication) {
-        activeBulkApplication.record({ kind: "complete", value: false });
+        activeBulkApplication.record({ kind: "coverage", value: coverage });
         return;
       }
-      if (catalogComplete) {
-        catalogComplete = false;
+      const next = nextCoverage(catalogCoverage, coverage);
+      if (next !== catalogCoverage) {
+        catalogCoverage = next;
         bumpRevision();
       }
     }
@@ -1556,7 +1603,7 @@
     function clear() {
       activeBulkApplication?.cancel();
       state = emptyState();
-      catalogComplete = false;
+      catalogCoverage = "partial";
       bumpRevision();
     }
 
@@ -1571,11 +1618,12 @@
       }
       Object.freeze(state.orderedFiles);
       memoizedSnapshot = Object.freeze({
-        complete: catalogComplete,
+        complete: catalogCoverage === "complete",
         files: state.orderedFiles,
         observedCount: state.orderedFiles.length,
         revision,
         sourceSummary: Object.freeze({ ...state.sourceSummary }),
+        truncated: catalogCoverage === "truncated",
       });
       return memoizedSnapshot;
     }
@@ -1589,6 +1637,7 @@
       clear,
       markComplete,
       markIncomplete,
+      markTruncated,
       observeEventSnapshot,
       observeInitialTree,
       observeLazyTree,

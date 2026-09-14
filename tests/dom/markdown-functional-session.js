@@ -14,11 +14,12 @@ function knownFile(filePath) {
   });
 }
 
-function snapshot(paths, complete = true) {
+function snapshot(paths, complete = true, truncated = false) {
   return Object.freeze({
     complete,
     files: Object.freeze([...paths].sort().map(knownFile)),
-    revision: complete ? 2 : 1,
+    revision: complete || truncated ? 2 : 1,
+    truncated,
   });
 }
 
@@ -206,6 +207,7 @@ function parseFakeHtml(html, document) {
   const coordinatorModule = await import(moduleUrl("reconciliation-coordinator.js"));
   const adapters = await import(moduleUrl("project-adapters.js"));
   const renderedMarkdown = await import(moduleUrl("rendered.js"));
+  const wikiParser = await import(moduleUrl("wiki-parser.js"));
 
   const ambiguousPaths = [
     ...Array.from({ length: 23 }, (_, index) => `${String(index).padStart(2, "0")}/Leaf.md`),
@@ -238,6 +240,17 @@ function parseFakeHtml(html, document) {
     }),
   );
   pendingContext.dispose();
+  const truncatedContext = wiki.createWikiResolutionContext(
+    snapshot(["docs/current.md", "notes/Later.md"], false, true),
+  );
+  const truncated = settle(
+    truncatedContext.begin({
+      action: "navigate",
+      authoredTarget: "Later",
+      sourcePath: "docs/current.md",
+    }),
+  );
+  truncatedContext.dispose();
   const overflowContext = wiki.createWikiResolutionContext(
     snapshot(
       Array.from({ length: 4097 }, (_, index) => `${String(index).padStart(4, "0")}/Overflow.md`),
@@ -283,6 +296,38 @@ function parseFakeHtml(html, document) {
   reconciliationScheduler.drain();
   reconciliation.dispose();
 
+  // A walk stopped at the file cap is final for its index: the pending job
+  // settles once with an explanation and later changes re-run nothing. Only a
+  // later complete walk, such as one after a restart with a higher file cap,
+  // re-runs that job, and then the complete revision is pinned.
+  currentSnapshot = snapshot(["docs/current.md"], false);
+  const truncatedScheduler = scheduler();
+  const truncatedReconciliation = coordinatorModule.createMarkdownReconciliationCoordinator(
+    catalogApi(),
+    truncatedScheduler,
+  );
+  const truncatedRevisionStates = [];
+  truncatedReconciliation
+    .createScope()
+    .wiki(
+      { action: "navigate", authoredTarget: "Later", sourcePath: "docs/current.md" },
+      (result) => truncatedRevisionStates.push(`${result.status}:${result.reason ?? result.path}`),
+    );
+  truncatedScheduler.drain();
+  currentSnapshot = snapshot(["docs/current.md", "notes/Later.md"], false, true);
+  catalogListener();
+  truncatedScheduler.drain();
+  const listensWhileTruncated = catalogListener !== null;
+  currentSnapshot = snapshot(["docs/current.md", "notes/Later.md", "zz/new.md"], false, true);
+  catalogListener?.();
+  truncatedScheduler.drain();
+  const commitsAfterTruncatedChange = truncatedRevisionStates.length - 2;
+  currentSnapshot = snapshot(["docs/current.md", "notes/Later.md", "zz/new.md"]);
+  catalogListener?.();
+  truncatedScheduler.drain();
+  const pinnedAfterComplete = catalogListener === null;
+  truncatedReconciliation.dispose();
+
   const sliceScheduler = scheduler();
   const sliceReports = [];
   const sliced = coordinatorModule.createMarkdownReconciliationCoordinator(
@@ -315,8 +360,18 @@ function parseFakeHtml(html, document) {
   sliceScheduler.drain();
   sliced.dispose();
 
+  // A task-list checkbox is not a link opener: its `[` must not pair with a
+  // later link's `](` and hide the wiki links between them.
+  const taskListPreparation = wikiParser.preprocessObsidianWiki(
+    "- [ ] Review [[Meeting Notes]] per [spec](https://example.com/spec)\n" +
+      "  - [x] Follow up in [[Notes#Actions|actions]] and [the [[Hidden]] log](log.md)\n",
+  );
+
   const incompleteAdapter = adapters
     .createPublishedRouteResolutionContext(snapshot(["docs/guide.md", "mkdocs.yml"], false))
+    .resolve({ authoredTarget: "/guide/", resolvedPath: "guide/" });
+  const truncatedAdapter = adapters
+    .createPublishedRouteResolutionContext(snapshot(["docs/guide.md", "mkdocs.yml"], false, true))
     .resolve({ authoredTarget: "/guide/", resolvedPath: "guide/" });
   const completeAdapter = adapters
     .createPublishedRouteResolutionContext(
@@ -437,6 +492,69 @@ function parseFakeHtml(html, document) {
     throw new Error("real nested Markdown chain did not preserve its shared root budgets");
   }
 
+  // Every Markdown mount on a page shares one Worker. References release it only
+  // when the last one is disposed, and a fatal failure is replaced on the next
+  // request rather than disabling preprocessing for the rest of the page.
+  const workerClient = await import(moduleUrl("markdown-worker-client.js"));
+  const workers = [];
+  globalThis.Worker = class SessionWorker {
+    constructor() {
+      this.messages = [];
+      this.terminated = false;
+      workers.push(this);
+    }
+
+    postMessage(message) {
+      this.messages.push(message);
+      queueMicrotask(() => {
+        if (this.terminated) {
+          return;
+        }
+        if (message.payload.source === "crash") {
+          this.onerror?.({ message: "session worker failed" });
+        } else {
+          this.onmessage?.({ data: { id: message.id, result: message.payload.source } });
+        }
+      });
+    }
+
+    terminate() {
+      this.terminated = true;
+    }
+  };
+  const documentReference = workerClient.acquireMarkdownWorkerClient();
+  const panelReference = workerClient.acquireMarkdownWorkerClient();
+  await Promise.all([
+    documentReference.run("prepare-primary", { source: "document" }),
+    panelReference.run("prepare-primary", { source: "readme panel" }),
+  ]);
+  const concurrentWorkers = workers.length;
+  // The shell waits for a staged document's primary preparation before it
+  // disposes the outgoing document, so that primary dispatches ahead of the
+  // outgoing document's queued embeds.
+  const stagedReference = workerClient.acquireMarkdownWorkerClient();
+  const dispatchStart = workers[0].messages.length;
+  await Promise.all([
+    documentReference.run("prepare-transclusion", { source: "outgoing embed 1" }),
+    documentReference.run("prepare-transclusion", { source: "outgoing embed 2" }),
+    stagedReference.run("prepare-primary", { source: "staged document" }),
+  ]);
+  const stagedDispatchOrder = workers[0].messages
+    .slice(dispatchStart)
+    .map((message) => message.payload.source);
+  stagedReference.dispose();
+  documentReference.dispose();
+  const aliveAfterOneRelease = !workers[0].terminated;
+  const fatalError = await panelReference.run("prepare-primary", { source: "crash" }).then(
+    () => null,
+    (error) => error.message,
+  );
+  const recovered = await panelReference.run("prepare-primary", { source: "after crash" });
+  const workersAfterRecovery = workers.length;
+  panelReference.dispose();
+  const terminatedAfterLastRelease = workers.every((worker) => worker.terminated);
+  delete globalThis.Worker;
+
   console.log(
     JSON.stringify(
       {
@@ -446,11 +564,18 @@ function parseFakeHtml(html, document) {
           queuedAfterFirstSlice,
           revisionStates,
           settledCommits: sliceStates.filter((status) => status === "internal").length,
+          truncated: {
+            commitsAfterTruncatedChange,
+            listensWhileTruncated,
+            pinnedAfterComplete,
+            revisionStates: truncatedRevisionStates,
+          },
         },
         publishedRoutes: {
           complete: completeAdapter,
           incomplete: incompleteAdapter,
           percent: percentAdapter,
+          truncated: truncatedAdapter,
         },
         standardLinks: {
           externalHref,
@@ -474,6 +599,22 @@ function parseFakeHtml(html, document) {
           exact: exact.result,
           overflow: overflow.result,
           pending: pending.result,
+          truncated: truncated.result,
+        },
+        wikiPreprocessing: {
+          taskList: {
+            source: taskListPreparation.source.split("\n"),
+            targetCount: taskListPreparation.targetCount,
+          },
+        },
+        workerSharing: {
+          aliveAfterOneRelease,
+          concurrentWorkers,
+          fatalError,
+          recovered,
+          stagedDispatchOrder,
+          terminatedAfterLastRelease,
+          workersAfterRecovery,
         },
       },
       null,

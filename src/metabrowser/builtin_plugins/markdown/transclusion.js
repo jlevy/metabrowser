@@ -1,4 +1,4 @@
-import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
+import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 
 /** Bounds recursive embedding depth. */
@@ -7,7 +7,11 @@ const DEFAULT_MAX_TRANSCLUSION_DEPTH = 4;
 const DEFAULT_MAX_TRANSCLUSION_DOCUMENTS = 24;
 /** Bounds aggregate UTF-8 source shared by one rendered document. */
 const DEFAULT_MAX_TRANSCLUSION_SOURCE_BYTES = 8 * 1024 * 1024;
-/** Bounds elapsed work shared by one rendered document. */
+/**
+ * Bounds one embed's own load, from its claim through its render. Each claim
+ * starts its own clock: a shared document deadline would expire an embed whose
+ * catalog resolution arrived late before that embed ever began loading.
+ */
 const DEFAULT_MAX_TRANSCLUSION_DURATION_MS = 5000;
 /** Absolute ceilings prevent callers from relaxing the renderer's safety envelope. */
 const HARD_MAX_TRANSCLUSION_DEPTH = 8;
@@ -30,23 +34,37 @@ class TransclusionError extends Error {
 }
 
 /**
+ * @typedef {Readonly<{now: () => number, setTimeout: (callback: () => void, delayMs: number) => unknown, clearTimeout: (handle: unknown) => void}>} TransclusionClock
+ */
+
+const WALL_CLOCK = Object.freeze({
+  /** @param {unknown} handle */
+  clearTimeout(handle) {
+    globalThis.clearTimeout(/** @type {ReturnType<typeof setTimeout>} */ (handle));
+  },
+  now: () => Date.now(),
+  /** @param {() => void} callback @param {number} delayMs */
+  setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
+});
+
+/**
  * Create shared limits for all embeds descended from one rendered document.
- * Caller-provided limits may reduce, but never raise, the hard ceilings.
+ * Depth, document, source-byte, and cycle limits are aggregate; the elapsed-time
+ * limit applies separately to each claimed embed. Caller-provided limits may
+ * reduce, but never raise, the hard ceilings.
  *
  * @param {Readonly<{maxDepth?: number, maxDocuments?: number, maxSourceBytes?: number, maxDurationMs?: number}>=} limits
+ * @param {Readonly<{clock?: TransclusionClock}>=} options
  */
-export function createTransclusionBudget(limits = {}) {
+export function createTransclusionBudget(limits = {}, options = {}) {
   if (!limits || typeof limits !== "object") {
     throw new TypeError("Transclusion limits must be an object");
   }
+  if (!options || typeof options !== "object") {
+    throw new TypeError("Transclusion budget options must be an object");
+  }
   const budget = Object.freeze({
-    deadline:
-      Date.now() +
-      boundedLimit(
-        limits.maxDurationMs,
-        DEFAULT_MAX_TRANSCLUSION_DURATION_MS,
-        HARD_MAX_TRANSCLUSION_DURATION_MS,
-      ),
+    clock: validClock(options.clock),
     limits: Object.freeze({
       maxDepth: boundedLimit(
         limits.maxDepth,
@@ -57,6 +75,11 @@ export function createTransclusionBudget(limits = {}) {
         limits.maxDocuments,
         DEFAULT_MAX_TRANSCLUSION_DOCUMENTS,
         HARD_MAX_TRANSCLUSION_DOCUMENTS,
+      ),
+      maxDurationMs: boundedLimit(
+        limits.maxDurationMs,
+        DEFAULT_MAX_TRANSCLUSION_DURATION_MS,
+        HARD_MAX_TRANSCLUSION_DURATION_MS,
       ),
       maxSourceBytes: boundedLimit(
         limits.maxSourceBytes,
@@ -94,7 +117,8 @@ export function transclusionKey(path, fragment) {
 }
 
 /**
- * Reserve one document and extend its immutable ancestry chain.
+ * Reserve one document and extend its immutable ancestry chain. The returned
+ * deadline belongs to this claim alone and bounds the embed's whole load.
  *
  * @param {ReturnType<typeof createTransclusionBudget>} budget
  * @param {ReturnType<typeof transclusionKey>} key
@@ -107,9 +131,7 @@ export async function claimTransclusion(budget, key, chain, options = {}) {
     throw new TypeError("Transclusion claim requires a key and ancestry chain");
   }
   options.signal?.throwIfAborted();
-  if (Date.now() >= budget.deadline) {
-    throw new TransclusionError("timed-out");
-  }
+  const deadline = budget.clock.now() + budget.limits.maxDurationMs;
   if (chain.length >= budget.limits.maxDepth) {
     throw new TransclusionError("depth-limit");
   }
@@ -119,7 +141,9 @@ export async function claimTransclusion(budget, key, chain, options = {}) {
   const yielder = createCycleTaskYielder();
   try {
     for (const ancestor of chain) {
-      if (await sameTransclusionLocation(ancestor, key, budget, options.signal, yielder)) {
+      if (
+        await sameTransclusionLocation(ancestor, key, budget, deadline, options.signal, yielder)
+      ) {
         throw new TransclusionError("cycle");
       }
     }
@@ -127,14 +151,14 @@ export async function claimTransclusion(budget, key, chain, options = {}) {
     yielder.dispose();
   }
   options.signal?.throwIfAborted();
-  if (Date.now() >= budget.deadline) {
+  if (budget.clock.now() >= deadline) {
     throw new TransclusionError("timed-out");
   }
   if (budget.state.documents >= budget.limits.maxDocuments) {
     throw new TransclusionError("document-limit");
   }
   budget.state.documents += 1;
-  return Object.freeze({ chain: Object.freeze([...chain, key]) });
+  return Object.freeze({ chain: Object.freeze([...chain, key]), deadline });
 }
 
 /** @param {unknown} value */
@@ -158,25 +182,26 @@ function isTransclusionKey(value) {
  * @param {ReturnType<typeof transclusionKey>} left
  * @param {ReturnType<typeof transclusionKey>} right
  * @param {ReturnType<typeof createTransclusionBudget>} budget
+ * @param {number} deadline
  * @param {AbortSignal | undefined} signal
  * @param {ReturnType<typeof createCycleTaskYielder>} yielder
  */
-async function sameTransclusionLocation(left, right, budget, signal, yielder) {
+async function sameTransclusionLocation(left, right, budget, deadline, signal, yielder) {
   return (
-    (await sameProviderString(left.fragment, right.fragment, budget, signal, yielder)) &&
-    (await sameProviderString(left.path, right.path, budget, signal, yielder))
+    (await sameProviderString(left.fragment, right.fragment, budget, deadline, signal, yielder)) &&
+    (await sameProviderString(left.path, right.path, budget, deadline, signal, yielder))
   );
 }
 
-/** @param {string} left @param {string} right @param {ReturnType<typeof createTransclusionBudget>} budget @param {AbortSignal | undefined} signal @param {ReturnType<typeof createCycleTaskYielder>} yielder */
-async function sameProviderString(left, right, budget, signal, yielder) {
+/** @param {string} left @param {string} right @param {ReturnType<typeof createTransclusionBudget>} budget @param {number} deadline @param {AbortSignal | undefined} signal @param {ReturnType<typeof createCycleTaskYielder>} yielder */
+async function sameProviderString(left, right, budget, deadline, signal, yielder) {
   if (left.length !== right.length) {
     return false;
   }
   let index = 0;
   while (index < left.length) {
     signal?.throwIfAborted();
-    if (Date.now() >= budget.deadline) {
+    if (budget.clock.now() >= deadline) {
       throw new TransclusionError("timed-out");
     }
     if (yielder.remaining() < 1) {
@@ -274,7 +299,7 @@ function createCycleTaskYielder() {
  * @param {Element} sourceElement
  * @param {Readonly<{path: string, fragment?: string}>} resolved
  * @param {MetabrowserPublicSdk} mb
- * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal: AbortSignal}) => {dispose?: () => void}, workerClient?: ReturnType<typeof createMarkdownWorkerClient>}=} options
+ * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal: AbortSignal}) => {dispose?: () => void}, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
  */
 export function mountWikiTransclusion(container, sourceElement, resolved, mb, options = {}) {
   const document = container.ownerDocument || globalThis.document;
@@ -297,12 +322,13 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
 
   const budget = options.budget || createTransclusionBudget();
   const ownsWorkerClient = !options.workerClient;
-  const workerClient = options.workerClient || createMarkdownWorkerClient();
+  const workerClient = options.workerClient || acquireMarkdownWorkerClient();
   const chain = options.chain || Object.freeze([]);
   const controller = new AbortController();
   let disposed = false;
   let timedOut = false;
-  let timeoutHandle = 0;
+  /** @type {unknown} */
+  let timeoutHandle = null;
   /** @type {{dispose?: () => void} | null} */
   let nestedHandle = null;
   /** @type {(() => void) | null} */
@@ -324,10 +350,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
     }
     disposed = true;
     options.signal?.removeEventListener("abort", abortParent);
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-      timeoutHandle = 0;
-    }
+    clearClaimTimeout();
     controller.abort();
     if (ownsWorkerClient) {
       workerClient.dispose();
@@ -338,27 +361,50 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
     disposeToc = null;
   }
 
+  function clearClaimTimeout() {
+    if (timeoutHandle !== null) {
+      budget.clock.clearTimeout(timeoutHandle);
+      timeoutHandle = null;
+    }
+  }
+
+  /**
+   * Report whether the load may continue after an await. Disposal ends it
+   * silently; this claim's own deadline ends it with a visible timeout even
+   * when the awaited operation settled without observing the abort.
+   */
+  function live() {
+    if (disposed) {
+      return false;
+    }
+    if (timedOut) {
+      throw new TransclusionError("timed-out");
+    }
+    return !controller.signal.aborted;
+  }
+
   async function render() {
     try {
       const key = transclusionKey(resolved.path, resolved.fragment);
       const claim = await claimTransclusion(budget, key, chain, {
         signal: controller.signal,
       });
-      if (disposed || controller.signal.aborted) {
+      if (!live()) {
         return;
       }
-      const remainingTime = budget.deadline - Date.now();
+      const remainingTime = claim.deadline - budget.clock.now();
       if (remainingTime <= 0) {
         throw new TransclusionError("timed-out");
       }
-      timeoutHandle = setTimeout(() => {
+      timeoutHandle = budget.clock.setTimeout(() => {
+        timeoutHandle = null;
         timedOut = true;
         controller.abort();
       }, remainingTime);
       const source = await mb.fetchText(Object.freeze({ path: resolved.path }), {
         signal: controller.signal,
       });
-      if (disposed || controller.signal.aborted) {
+      if (!live()) {
         return;
       }
       consumeSourceBytes(budget, source);
@@ -389,7 +435,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
           sourceText: prepared.source,
         },
       );
-      if (disposed || controller.signal.aborted) {
+      if (!live()) {
         return;
       }
       aside.innerHTML = rendered.html;
@@ -424,10 +470,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
               : "render-failed";
       renderTransclusionError(aside, label, code);
     } finally {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-        timeoutHandle = 0;
-      }
+      clearClaimTimeout();
     }
   }
 
@@ -483,6 +526,24 @@ function consumeSourceBytes(budget, source) {
     throw new TransclusionError("source-byte-limit");
   }
   budget.state.sourceBytes += bytes;
+}
+
+/** @param {unknown} clock @returns {TransclusionClock} */
+function validClock(clock) {
+  if (clock === undefined) {
+    return WALL_CLOCK;
+  }
+  const value =
+    clock && typeof clock === "object" ? /** @type {Record<string, unknown>} */ (clock) : null;
+  if (
+    !value ||
+    typeof value.now !== "function" ||
+    typeof value.setTimeout !== "function" ||
+    typeof value.clearTimeout !== "function"
+  ) {
+    throw new TypeError("Transclusion clock requires now, setTimeout, and clearTimeout");
+  }
+  return /** @type {TransclusionClock} */ (value);
 }
 
 /** @param {unknown} budget */

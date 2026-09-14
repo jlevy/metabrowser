@@ -93,6 +93,57 @@ function equal(name, actual, expected) {
     ),
     { status: "internal", path: "docs/Note.md" },
   );
+  // A walk that stopped at the file cap is final, but files past the cap were
+  // never indexed: a unique-looking fallback or an exact miss cannot be proven,
+  // so the result is a terminal explanation instead of "Resolving…" forever.
+  const truncated = { ...fixture.completeSnapshot, complete: false, truncated: true };
+  equal(
+    "truncated unique basename is final and explains the cap",
+    module.resolveWikiTarget(
+      { sourcePath: "other/current.md", authoredTarget: "雪", action: "navigate" },
+      truncated,
+    ),
+    { status: "unsupported", reason: "catalog-truncated" },
+  );
+  equal(
+    "truncated exact path still resolves",
+    module.resolveWikiTarget(
+      { sourcePath: fixture.sourcePath, authoredTarget: "Note", action: "navigate" },
+      truncated,
+    ),
+    { status: "internal", path: "docs/Note.md" },
+  );
+  equal(
+    "truncated explicit-path miss is not reported missing",
+    module.resolveWikiTarget(
+      { sourcePath: fixture.sourcePath, authoredTarget: "./Absent", action: "embed" },
+      truncated,
+    ),
+    { status: "unsupported", reason: "catalog-truncated" },
+  );
+  // Files past the cap can only add candidates, so two indexed matches already
+  // prove ambiguity; a truncated walk reports that instead of the cap.
+  const truncatedAmbiguous = module.resolveWikiTarget(
+    { sourcePath: "other/current.md", authoredTarget: "Duplicate", action: "navigate" },
+    truncated,
+  );
+  const completeAmbiguous = module.resolveWikiTarget(
+    { sourcePath: "other/current.md", authoredTarget: "Duplicate", action: "navigate" },
+    fixture.completeSnapshot,
+  );
+  equal(
+    "truncated fallback with several indexed candidates is already ambiguous",
+    truncatedAmbiguous,
+    completeAmbiguous,
+  );
+  equal("the ambiguous fixture has several candidates", completeAmbiguous.status, "ambiguous");
+  let contradictoryCoverage = null;
+  try {
+    module.createWikiResolutionContext({ ...fixture.completeSnapshot, truncated: true });
+  } catch (error) {
+    contradictoryCoverage = error.name;
+  }
+  equal("a snapshot cannot be both complete and truncated", contradictoryCoverage, "TypeError");
   equal(
     "qualified target normalized to a leaf uses basename fallback",
     module.resolveWikiTarget(

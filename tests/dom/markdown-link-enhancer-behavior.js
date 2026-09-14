@@ -193,7 +193,7 @@ async function loadModule() {
   const wikiParserUrl = `data:text/javascript;base64,${Buffer.from(wikiParserSource).toString("base64")}`;
   const workerStub =
     `import {prepareTransclusionMarkdownSource} from ${JSON.stringify(wikiParserUrl)};` +
-    "export function createMarkdownWorkerClient(){return {dispose(){}," +
+    "export function acquireMarkdownWorkerClient(){return {dispose(){}," +
     "run(_op,payload){return Promise.resolve(prepareTransclusionMarkdownSource(payload.source,payload.fragment))}}}";
   const workerUrl = `data:text/javascript;base64,${Buffer.from(workerStub).toString("base64")}`;
   const traversalSource = fs.readFileSync(
@@ -633,6 +633,82 @@ async function loadModule() {
       publishedListener === null,
   );
   publishedHandle.dispose();
+
+  // A rooted extensionless link on a tree whose walk stopped at the file cap
+  // must not say "resolving" forever: the terminal state disables it with an
+  // explanation and releases the catalog subscription.
+  const cappedAnchor = new FakeElement("a", { href: "/guide/", title: "Authored guide" });
+  const cappedFrames = new Map();
+  let cappedFrameSequence = 0;
+  let cappedListener = null;
+  let cappedComplete = false;
+  const cappedHandle = module.enhanceRenderedLinks(
+    new FakeContainer([cappedAnchor]),
+    "docs/readme.md",
+    {
+      ...mb,
+      fileCatalog: {
+        snapshot: () => ({
+          complete: cappedComplete,
+          files: [
+            { basename: "guide.md", path: "docs/guide.md" },
+            { basename: "mkdocs.yml", path: "mkdocs.yml" },
+          ],
+          truncated: !cappedComplete,
+        }),
+        subscribe: (listener) => {
+          cappedListener = listener;
+          return () => {
+            cappedListener = null;
+          };
+        },
+      },
+      navigation: { ...mb.navigation, current: () => ({ path: "docs/readme.md" }) },
+    },
+    {
+      cancel: (id) => cappedFrames.delete(id),
+      eventTarget: new FakeEventTarget(),
+      schedule: (callback) => {
+        cappedFrameSequence += 1;
+        cappedFrames.set(cappedFrameSequence, callback);
+        return cappedFrameSequence;
+      },
+    },
+  );
+  while (cappedFrames.size) {
+    const [frame, callback] = cappedFrames.entries().next().value;
+    cappedFrames.delete(frame);
+    callback(0);
+  }
+  check(
+    "a published route on a truncated catalog is disabled with an explanation",
+    !cappedAnchor.hasAttribute("href") &&
+      cappedAnchor.getAttribute("data-metabrowser-link-status") === "unsupported" &&
+      cappedAnchor.getAttribute("aria-disabled") === "true" &&
+      cappedAnchor.getAttribute("title") ===
+        "Metabrowser cannot resolve this destination (catalog-truncated).",
+    String(cappedAnchor.getAttribute("title")),
+  );
+  check(
+    "a truncated catalog keeps the published-route subscription",
+    typeof cappedListener === "function",
+  );
+  cappedComplete = true;
+  cappedListener();
+  while (cappedFrames.size) {
+    const [frame, callback] = cappedFrames.entries().next().value;
+    cappedFrames.delete(frame);
+    callback(0);
+  }
+  check(
+    "a later complete catalog resolves the published route the cap disabled",
+    cappedAnchor.getAttribute("data-metabrowser-link-status") === null &&
+      cappedAnchor.getAttribute("aria-disabled") === null &&
+      cappedAnchor.getAttribute("data-metabrowser-link-adapter") === "mkdocs" &&
+      cappedListener === null,
+    `${cappedAnchor.getAttribute("href")} ${cappedAnchor.getAttribute("title")}`,
+  );
+  cappedHandle.dispose();
 
   const longDirectory = "provider-segment/".repeat(1200);
   const longSourcePath = `${longDirectory}readme.md`;

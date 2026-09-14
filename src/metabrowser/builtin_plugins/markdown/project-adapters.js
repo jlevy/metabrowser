@@ -111,17 +111,27 @@ export function createPublishedRouteResolutionContext(snapshot) {
         throw new TypeError("published-route resolved path must be a string");
       }
       const route = validateResolvedPublishedRoute(value.authoredTarget, value.resolvedPath);
-      if (catalog.files.length > MAX_CATALOG_FILES) {
+      // Navigation and live changes add entries to a capped catalog and the walk
+      // cap is configurable, so a truncated catalog may exceed this envelope. It
+      // never infers a route, so it still explains the cap below.
+      if (catalog.files.length > MAX_CATALOG_FILES && !catalog.truncated) {
         return null;
       }
       if (targetExists(value.resolvedPath)) {
         return null;
       }
       if (!catalog.complete) {
-        return Object.freeze({
-          reason: "catalog-incomplete",
-          status: /** @type {const} */ ("pending"),
-        });
+        // A capped index is final, but the target or an adapter source may lie
+        // past the cap, so an inferred route can never be proven unique.
+        return catalog.truncated
+          ? Object.freeze({
+              reason: "catalog-truncated",
+              status: /** @type {const} */ ("unsupported"),
+            })
+          : Object.freeze({
+              reason: "catalog-incomplete",
+              status: /** @type {const} */ ("pending"),
+            });
       }
       const adapters = configuredAdapters();
       if (adapters.length === 0) {
@@ -185,7 +195,17 @@ function validateSnapshot(snapshot) {
   if (typeof value.complete !== "boolean" || !Array.isArray(value.files)) {
     throw new TypeError("published-route snapshot requires completeness and files");
   }
-  return /** @type {{complete: boolean, files: ReadonlyArray<unknown>}} */ (value);
+  if (value.truncated !== undefined && typeof value.truncated !== "boolean") {
+    throw new TypeError("published-route snapshot truncation must be boolean");
+  }
+  if (value.complete && value.truncated) {
+    throw new TypeError("published-route snapshot cannot be both complete and truncated");
+  }
+  return Object.freeze({
+    complete: value.complete,
+    files: /** @type {ReadonlyArray<unknown>} */ (value.files),
+    truncated: value.truncated === true,
+  });
 }
 
 /** @param {string} authoredTarget */

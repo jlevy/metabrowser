@@ -194,6 +194,156 @@ function rejected(promise) {
     );
   }
 
+  // The page-scoped owner shares one lazily constructed client across every
+  // reference, cancels only a released reference's requests, terminates the
+  // Worker with the last reference, and replaces a fatally failed client.
+  const { acquireMarkdownWorkerClient } = await import(moduleUrl);
+  const workersBeforeSharing = workers.length;
+  const firstReference = acquireMarkdownWorkerClient();
+  const secondReference = acquireMarkdownWorkerClient();
+  const preAbortedShared = new AbortController();
+  preAbortedShared.abort();
+  const preAbortedSharedError = await rejected(
+    firstReference.run("prepare-primary", { source: "" }, { signal: preAbortedShared.signal }),
+  );
+  check(
+    "shared references construct no Worker before a live request",
+    preAbortedSharedError?.name === "AbortError" && workers.length === workersBeforeSharing,
+  );
+  const firstShared = firstReference.run("prepare-primary", { source: "first-shared" });
+  const secondShared = secondReference.run("prepare-primary", { source: "second-shared" });
+  const sharedWorker = workers.at(-1);
+  check(
+    "references share one lazily constructed Worker",
+    workers.length === workersBeforeSharing + 1 && sharedWorker.messages.length === 1,
+  );
+  sharedWorker.reply("first-shared-result");
+  check(
+    "shared FIFO continues across references",
+    (await firstShared) === "first-shared-result" && sharedWorker.messages.length === 2,
+  );
+  const releasedQueued = rejected(
+    firstReference.run("prepare-primary", { source: "released-queued" }),
+  );
+  firstReference.dispose();
+  firstReference.dispose();
+  check(
+    "releasing a reference cancels only its own queued request",
+    (await releasedQueued)?.name === "AbortError" &&
+      !sharedWorker.terminated &&
+      sharedWorker.messages.at(-1).payload.source === "second-shared",
+  );
+  sharedWorker.reply("second-shared-result");
+  check(
+    "the remaining reference keeps the shared Worker",
+    (await secondShared) === "second-shared-result" && !sharedWorker.terminated,
+  );
+  check(
+    "a released reference refuses new work",
+    (await rejected(firstReference.run("prepare-primary", { source: "late" })))?.name ===
+      "AbortError",
+  );
+  const crashing = rejected(secondReference.run("prepare-primary", { source: "crash" }));
+  sharedWorker.onerror({ message: "shared worker failed" });
+  const crashError = await crashing;
+  const recovering = secondReference.run("prepare-primary", { source: "after-crash" });
+  const recoveredWorker = workers.at(-1);
+  check(
+    "a fatal failure rejects its request and the next request gets a new Worker",
+    crashError?.message === "shared worker failed" &&
+      sharedWorker.terminated &&
+      recoveredWorker !== sharedWorker &&
+      recoveredWorker.messages[0]?.payload.source === "after-crash",
+  );
+  recoveredWorker.reply("recovered-shared-result");
+  check("the replacement Worker serves requests", (await recovering) === "recovered-shared-result");
+  const lastReference = acquireMarkdownWorkerClient();
+  secondReference.dispose();
+  check("a remaining reference keeps the replacement Worker", !recoveredWorker.terminated);
+  lastReference.dispose();
+  check("the last reference terminates the shared Worker", recoveredWorker.terminated);
+  const reacquired = acquireMarkdownWorkerClient();
+  const reacquiredRun = reacquired.run("prepare-primary", { source: "reacquired" });
+  const reacquiredWorker = workers.at(-1);
+  check(
+    "a reference acquired after full release starts a new Worker lazily",
+    reacquiredWorker !== recoveredWorker && reacquiredWorker.messages.length === 1,
+  );
+  reacquiredWorker.reply("reacquired-result");
+  check("the new page Worker serves requests", (await reacquiredRun) === "reacquired-result");
+  reacquired.dispose();
+
+  // The shell mounts a staged document and waits for its primary preparation
+  // before it disposes the outgoing document. The incoming primary must not
+  // wait behind the outgoing document's queued transclusions, and releasing the
+  // outgoing reference must cancel them before they reach the Worker.
+  const outgoing = acquireMarkdownWorkerClient();
+  const outgoingEmbeds = [1, 2, 3].map((number) =>
+    rejected(outgoing.run("prepare-transclusion", { source: `old-embed-${number}` })),
+  );
+  const incoming = acquireMarkdownWorkerClient();
+  const incomingPrimary = incoming.run("prepare-primary", { source: "new-doc" });
+  const laneWorker = workers.at(-1);
+  laneWorker.reply("old-embed-1-result");
+  const dispatchedBeforeCommit = laneWorker.messages.map((message) => message.payload.source);
+  check(
+    "a staged primary dispatches ahead of another reference's queued transclusions",
+    JSON.stringify(dispatchedBeforeCommit) === JSON.stringify(["old-embed-1", "new-doc"]),
+    JSON.stringify(dispatchedBeforeCommit),
+  );
+  outgoing.dispose();
+  workers.at(-1).reply("new-doc-result");
+  const outgoingErrors = await Promise.all(outgoingEmbeds);
+  check(
+    "releasing the outgoing reference cancels its queued transclusions before dispatch",
+    (await incomingPrimary) === "new-doc-result" &&
+      outgoingErrors[0] === null &&
+      outgoingErrors.slice(1).every((error) => error?.name === "AbortError") &&
+      laneWorker.messages.length === 2 &&
+      !laneWorker.terminated,
+    JSON.stringify(laneWorker.messages.map((message) => message.payload.source)),
+  );
+  const laterEmbed = incoming.run("prepare-transclusion", { source: "new-embed" });
+  const laterPrimary = incoming.run("prepare-primary", { source: "readme-panel" });
+  workers.at(-1).reply("new-embed-result");
+  workers.at(-1).reply("readme-panel-result");
+  check(
+    "an active transclusion finishes before a later primary dispatches",
+    (await laterEmbed) === "new-embed-result" && (await laterPrimary) === "readme-panel-result",
+  );
+
+  // A fatal Worker failure is page-wide: it rejects every reference's pending
+  // preprocessing, including another document's queued primary, and the next
+  // request from any reference starts a fresh Worker.
+  const bystander = acquireMarkdownWorkerClient();
+  const crashingEmbed = rejected(incoming.run("prepare-transclusion", { source: "crash-embed" }));
+  const bystanderPrimary = rejected(bystander.run("prepare-primary", { source: "bystander" }));
+  const crashedWorker = workers.at(-1);
+  crashedWorker.onerror({ message: "page worker failed" });
+  const crashingEmbedError = await crashingEmbed;
+  const bystanderError = await bystanderPrimary;
+  const bystanderRetry = bystander.run("prepare-primary", { source: "bystander-retry" });
+  const pageRecoveryWorker = workers.at(-1);
+  check(
+    "a fatal failure rejects every reference's pending work and later requests recover",
+    crashingEmbedError?.message === "page worker failed" &&
+      bystanderError === crashingEmbedError &&
+      crashedWorker.terminated &&
+      pageRecoveryWorker !== crashedWorker &&
+      pageRecoveryWorker.messages[0]?.payload.source === "bystander-retry",
+  );
+  pageRecoveryWorker.reply("bystander-retry-result");
+  check(
+    "the recovered page Worker serves the other reference",
+    (await bystanderRetry) === "bystander-retry-result",
+  );
+  incoming.dispose();
+  bystander.dispose();
+  check(
+    "the last released reference terminates the recovered Worker",
+    pageRecoveryWorker.terminated,
+  );
+
   class ConstructorFailure {
     constructor() {
       throw new Error("constructor failed");

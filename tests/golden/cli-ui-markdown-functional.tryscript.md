@@ -6,11 +6,13 @@ env:
 ---
 # Golden Test: Markdown Functional Semantics
 
-This browserless session executes the production wiki resolver, root-scoped catalog
-reconciliation coordinator, published-route adapters, preprocessing Worker client, and
-the real rendered-link to wiki-enhancer to nested-transclusion chain.
-It pins exact, incomplete, ambiguous, overflow, revision, slice, disposal,
-percent-identity, and shared root-budget behavior without requiring a browser.
+This browserless session executes the production wiki parser and resolver, root-scoped
+catalog reconciliation coordinator, published-route adapters, preprocessing Worker
+client, and the real rendered-link to wiki-enhancer to nested-transclusion chain.
+It pins exact, incomplete, truncated-catalog, truncated-to-complete, ambiguous,
+overflow, revision, slice, disposal, percent-identity, shared root-budget, task-list
+bracket-pairing, and page-wide Worker sharing, primary-first dispatch, and recovery
+behavior without requiring a browser.
 
 ```console
 $ node tests/dom/markdown-functional-session.js
@@ -23,7 +25,17 @@ $ node tests/dom/markdown-functional-session.js
       "pending",
       "internal"
     ],
-    "settledCommits": 40
+    "settledCommits": 40,
+    "truncated": {
+      "commitsAfterTruncatedChange": 0,
+      "listensWhileTruncated": true,
+      "pinnedAfterComplete": true,
+      "revisionStates": [
+        "pending:catalog-incomplete",
+        "unsupported:catalog-truncated",
+        "internal:notes/Later.md"
+      ]
+    }
   },
   "publishedRoutes": {
     "complete": {
@@ -42,6 +54,10 @@ $ node tests/dom/markdown-functional-session.js
       "adapter": "mkdocs",
       "path": "docs/100%252F.md",
       "status": "internal"
+    },
+    "truncated": {
+      "reason": "catalog-truncated",
+      "status": "unsupported"
     }
   },
   "standardLinks": {
@@ -95,7 +111,34 @@ $ node tests/dom/markdown-functional-session.js
     "pending": {
       "status": "pending",
       "reason": "catalog-incomplete"
+    },
+    "truncated": {
+      "status": "unsupported",
+      "reason": "catalog-truncated"
     }
+  },
+  "wikiPreprocessing": {
+    "taskList": {
+      "source": [
+        "- [ ] Review <span class=\"metabrowser-wiki-link\" data-mb-wiki-target=\"Meeting Notes\" data-mb-wiki-action=\"navigate\">Meeting Notes</span> per [spec](https://example.com/spec)",
+        "  - [x] Follow up in <span class=\"metabrowser-wiki-link\" data-mb-wiki-target=\"Notes#Actions\" data-mb-wiki-action=\"navigate\">actions</span> and [the [[Hidden]] log](log.md)",
+        ""
+      ],
+      "targetCount": 2
+    }
+  },
+  "workerSharing": {
+    "aliveAfterOneRelease": true,
+    "concurrentWorkers": 1,
+    "fatalError": "session worker failed",
+    "recovered": "after crash",
+    "stagedDispatchOrder": [
+      "outgoing embed 1",
+      "staged document",
+      "outgoing embed 2"
+    ],
+    "terminatedAfterLastRelease": true,
+    "workersAfterRecovery": 2
   }
 }
 ```

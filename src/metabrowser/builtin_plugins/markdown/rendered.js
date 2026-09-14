@@ -1,5 +1,5 @@
 import { enhanceRenderedLinks } from "./link-enhancer.js";
-import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
+import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 import { transclusionKey } from "./transclusion.js";
 
@@ -98,12 +98,12 @@ export function renderKpressError(error, mb) {
  * @param {HTMLElement} container
  * @param {{path?: string, raw?: unknown}} ctx
  * @param {MetabrowserPublicSdk} mb
- * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", workerClient?: ReturnType<typeof createMarkdownWorkerClient>}} [options]
+ * @param {{signal?: AbortSignal, includeToc?: "auto" | "on" | "off", workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}} [options]
  */
 export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
   const controller = new AbortController();
   const ownsWorkerClient = !options.workerClient;
-  const workerClient = options.workerClient || createMarkdownWorkerClient();
+  const workerClient = options.workerClient || acquireMarkdownWorkerClient();
   const abort = () => controller.abort();
   if (options.signal?.aborted) {
     controller.abort();

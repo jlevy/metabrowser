@@ -102,6 +102,29 @@ async function main() {
     emptyIncompleteBatch.statusMessage,
     "No matches in 5 indexed files. Scanning continues.",
   );
+  // A walk that stopped at the file cap is final, so the status must not promise
+  // more files; coverage stays incomplete so the server fallback still runs.
+  catalog.markTruncated();
+  const cappedBatch = await localProvider.search(
+    { match: "fuzzy", query: "app", target: "file" },
+    { requestId: 3 },
+    new AbortController().signal,
+  );
+  const emptyCappedBatch = await localProvider.search(
+    { match: "fuzzy", query: "not-present", target: "file" },
+    { requestId: 4 },
+    new AbortController().signal,
+  );
+  equal(
+    "a capped walk reports that indexing stopped",
+    [cappedBatch.statusMessage, emptyCappedBatch.statusMessage],
+    [
+      "4 matches in 5 indexed files. Indexing stopped at the file limit.",
+      "No matches in 5 indexed files. Indexing stopped at the file limit.",
+    ],
+  );
+  check("a capped walk keeps local coverage incomplete", cappedBatch.complete === false);
+  catalog.markIncomplete();
   const alreadyAborted = new AbortController();
   alreadyAborted.abort();
   let abortName = "";

@@ -36,7 +36,7 @@ function makeCatalog() {
   const calls = [];
   return {
     calls,
-    beginBulkSnapshot(files, complete, authoritative) {
+    beginBulkSnapshot(files, coverage, authoritative) {
       let done = false;
       const buffered = [];
       return {
@@ -48,7 +48,7 @@ function makeCatalog() {
         },
         step() {
           if (!done) {
-            calls.push({ kind: "bulk", files, complete, authoritative, buffered: [...buffered] });
+            calls.push({ kind: "bulk", files, coverage, authoritative, buffered: [...buffered] });
             done = true;
           }
           return { candidateVisits: 0, cancelled: false, done: true, workItems: files.length };
@@ -74,6 +74,9 @@ function makeCatalog() {
     },
     markIncomplete() {
       calls.push({ kind: "markIncomplete" });
+    },
+    markTruncated() {
+      calls.push({ kind: "markTruncated" });
     },
   };
 }
@@ -126,7 +129,7 @@ async function main() {
     await tick();
 
     check("bulk applies first", catalog.calls[0]?.kind === "bulk");
-    check("bulk carries completeness", catalog.calls[0]?.complete === true);
+    check("bulk carries completeness", catalog.calls[0]?.coverage === "complete");
     check(
       "buffered changes fold into the bulk in order",
       catalog.calls.length === 1 &&
@@ -237,7 +240,7 @@ async function main() {
       check(
         "completion refetch applies authoritative membership",
         finalBulk?.kind === "bulk" &&
-          finalBulk.complete === true &&
+          finalBulk.coverage === "complete" &&
           finalBulk.authoritative === true,
       );
     }
@@ -281,8 +284,9 @@ async function main() {
       check(
         "truncated completion refetch is authoritative but incomplete",
         finalBulk?.kind === "bulk" &&
-          finalBulk.complete === false &&
+          finalBulk.coverage === "truncated" &&
           finalBulk.authoritative === true,
+        JSON.stringify(finalBulk?.coverage),
       );
     }
   }
@@ -354,7 +358,7 @@ async function main() {
       "304 reconnect restores known complete coverage",
       reconnectCalls.includes("markIncomplete") &&
         catalog.calls.at(-1)?.kind === "bulk" &&
-        catalog.calls.at(-1)?.complete === true,
+        catalog.calls.at(-1)?.coverage === "complete",
       reconnectCalls.join(","),
     );
   }
@@ -380,6 +384,11 @@ async function main() {
     check(
       "304 reconnect keeps capped coverage incomplete",
       !catalog.calls.some((call) => call.kind === "markComplete"),
+    );
+    check(
+      "304 reconnect restores known truncated coverage",
+      catalog.calls.at(-1)?.kind === "bulk" && catalog.calls.at(-1)?.coverage === "truncated",
+      JSON.stringify(catalog.calls.at(-1)),
     );
   }
 
@@ -619,13 +628,33 @@ async function main() {
     check("truncated bulk applies its files", catalog.calls[0]?.kind === "bulk");
     check(
       "a truncated catalog is not reported complete",
-      catalog.calls[0]?.complete === false,
-      String(catalog.calls[0]?.complete),
+      catalog.calls[0]?.coverage === "truncated",
+      String(catalog.calls[0]?.coverage),
     );
     feed.onIndexComplete(true);
     check(
       "a truncated terminal event does not mark the catalog complete",
       !catalog.calls.some((call) => call.kind === "markComplete"),
+    );
+  }
+
+  // A capped walk that finishes after a partial initial payload is terminal.
+  // Consumers waiting for a final revision, such as Markdown fallback links,
+  // must see that state rather than wait forever for complete coverage.
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+    feed.start();
+    await tick();
+    pending[0].resolve(jsonResponse({ complete: false, files: [{ p: "early.txt", e: ".txt" }] }));
+    await tick();
+    await tick();
+    feed.onIndexComplete(true);
+    check(
+      "a truncated terminal event marks the catalog truncated",
+      catalog.calls.at(-1)?.kind === "markTruncated" && pending.length === 1,
+      catalog.calls.map((call) => call.kind).join(","),
     );
   }
 }

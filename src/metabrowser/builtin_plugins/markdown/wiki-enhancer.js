@@ -1,5 +1,5 @@
 import { matchingDescendants } from "./dom-traversal.js";
-import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
+import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import {
   createMarkdownEnhancementBudget,
   createMarkdownReconciliationCoordinator,
@@ -19,12 +19,12 @@ const WIKI_RESOLUTION_IDENTITY = Symbol.for("metabrowser.wiki-resolution-identit
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
  * @param {(element: Element, target: Readonly<{path: string, fragment?: string}>) => void} registerInternal
- * @param {{budget?: ReturnType<typeof createTransclusionBudget>, cancel?: (handle: number) => void, chain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, elements?: ReadonlyArray<Element>, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, signal?: AbortSignal, schedule?: (callback: FrameRequestCallback) => number, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, reconciliationScope?: ReturnType<ReturnType<typeof createMarkdownReconciliationCoordinator>["createScope"]>, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, signal: AbortSignal}) => {dispose?: () => void}, workerClient?: ReturnType<typeof createMarkdownWorkerClient>}=} options
+ * @param {{budget?: ReturnType<typeof createTransclusionBudget>, cancel?: (handle: number) => void, chain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, elements?: ReadonlyArray<Element>, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, signal?: AbortSignal, schedule?: (callback: FrameRequestCallback) => number, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, reconciliationScope?: ReturnType<ReturnType<typeof createMarkdownReconciliationCoordinator>["createScope"]>, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, signal: AbortSignal}) => {dispose?: () => void}, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
  */
 export function enhanceWikiLinks(container, sourcePath, mb, registerInternal, options = {}) {
   const transclusions = new Set();
   const ownsWorkerClient = !options.workerClient;
-  const workerClient = options.workerClient || createMarkdownWorkerClient();
+  const workerClient = options.workerClient || acquireMarkdownWorkerClient();
   let budget = options.budget || null;
   const enhancementBudget = options.enhancementBudget || createMarkdownEnhancementBudget();
   let disposed = false;

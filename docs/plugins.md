@@ -430,10 +430,20 @@ path.
   The preference is transient and does not change the target URL.
 - `navigation.current()` returns the current target or `null` on the landing URL.
 - `fileCatalog.snapshot()` returns an immutable, completion-aware view of files already
-  known to the shell. Every entry is a canonical, safe logical-file path, ordered by
-  ascending UTF-16 code units.
+  known to the shell. Every entry in `files` is a canonical, safe logical-file path,
+  ordered by ascending UTF-16 code units.
   The catalog has no global path-length ceiling; a plugin may apply a documented bound
   only to paths it actually processes.
+  Two flags describe coverage, and they are never both true.
+  `complete` means the inventory walk finished without reaching its file cap, so the
+  catalog lists every file under the root.
+  `truncated` means the walk finished at the cap: the walk adds no more files, but files
+  past the cap were never indexed, so a missing path is not proof of absence.
+  While both are false the walk is still running.
+  A plugin that waits for a final catalog should stop waiting on either flag; the
+  Markdown built-in reports such unresolved links as `catalog-truncated`. A later walk
+  can still complete, for example after a restart with a higher file cap, so keep the
+  subscription if a complete catalog would change a result.
 - `fileCatalog.subscribe(listener)` invalidates inventory-derived plugin results and
   returns an unsubscribe function that the view must call from its disposer.
 - `repository` is either `null` or frozen public-safe GitHub identity for the served
@@ -546,11 +556,21 @@ The Markdown built-in exposes
 It uses the ordinary KPress Markdown presentation and returns an instance-specific
 handle that aborts its request and disposes its own table of contents, enhanced-link
 listeners, pending fragment work, and any nested Obsidian transclusions.
-One lazily constructed preprocessing Worker belongs to that handle and is shared by the
-primary document and every nested transclusion; disposal terminates it with the rest of
-the root mount. Note, heading, and named-block transclusions share depth, document,
-source-byte, elapsed-time, cycle, abort, and disposal limits across the mounted
-document. SDK 0.6 does not expose Markdown graph analysis.
+Every mounted document on the page, including its nested transclusions, shares one
+lazily constructed preprocessing Worker.
+Each handle holds a reference to it: disposal cancels only that handle’s pending
+preprocessing, and the Worker terminates when the last mounted document is disposed.
+The Worker runs one request at a time, and a document’s primary preparation runs before
+queued transclusions, so a newly opened document does not wait for the embeds of the
+document it replaces.
+A fatal Worker failure, such as a module that cannot load, rejects the pending
+preprocessing of every mounted document; each renders its authored Markdown with a
+diagnostic, and the next request starts a new Worker.
+Note, heading, and named-block transclusions share depth, document, source-byte, cycle,
+abort, and disposal limits across the mounted document.
+Each embed’s elapsed-time limit starts when that embed begins loading, so an embed whose
+catalog resolution arrives late still receives its full allowance.
+SDK 0.6 does not expose Markdown graph analysis.
 Parsing Markdown a second time in the browser can diverge from KPress’s rendered
 document; a future graph surface therefore requires a server data route backed by a
 KPress-owned link-intent manifest.

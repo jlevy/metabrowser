@@ -31,6 +31,7 @@
    *   files: readonly MetabrowserKnownFile[],
    *   observedCount: number,
    *   revision: number,
+   *   truncated: boolean,
    * }>} snapshot
    */
 
@@ -278,12 +279,19 @@
         });
       });
       const searchScope = fileCount(snapshot.observedCount, snapshot.complete ? "" : "indexed");
+      // A walk stopped at the file cap is final, but `complete` stays false so the
+      // server fallback still searches the files the index never reached.
+      const coverage = snapshot.complete
+        ? ""
+        : snapshot.truncated
+          ? " Indexing stopped at the file limit."
+          : " Scanning continues.";
       const statusMessage =
         results.length === 0
-          ? `No matches in ${searchScope}.${snapshot.complete ? "" : " Scanning continues."}`
+          ? `No matches in ${searchScope}.${coverage}`
           : snapshot.complete
             ? `${formattedMatchCount(matchCount)}.`
-            : `${formattedMatchCount(matchCount)} in ${searchScope}. Scanning continues.`;
+            : `${formattedMatchCount(matchCount)} in ${searchScope}.${coverage}`;
       return Object.freeze({
         candidateCount: snapshot.observedCount,
         complete: snapshot.complete,

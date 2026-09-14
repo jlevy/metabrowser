@@ -47,9 +47,11 @@
   /** @typedef {{kind: "catalog", payload: CatalogChangePayload} |
    *   {kind: "event", ops: EventChangeOperation[]}} PendingChange */
 
+  /** @typedef {"partial" | "truncated" | "complete"} CatalogCoverage */
+
   /**
    * @typedef {object} CatalogFeedTarget
-   * @property {(files: Array<{p: string, e: string}>, complete: boolean,
+   * @property {(files: Array<{p: string, e: string}>, coverage: CatalogCoverage,
    *   authoritative?: boolean) => BulkSnapshotApplication} beginBulkSnapshot
    * @property {(payload: CatalogChangePayload, maxWorkItems: number) =>
    *   BulkSnapshotApplication | null} beginCatalogChange
@@ -61,6 +63,7 @@
    *   changed: boolean, workItems: number}} applyEventChange
    * @property {() => void} markComplete
    * @property {() => void} markIncomplete
+   * @property {() => void} markTruncated
    */
 
   /**
@@ -98,7 +101,8 @@
     let authoritativeRefetchPending = false;
     let terminalRefetchRequested = false;
     let lastBulkWasAuthoritative = false;
-    let lastBulkHadCompleteCoverage = false;
+    /** @type {CatalogCoverage} */
+    let lastBulkCoverage = "partial";
     /** @type {BulkSnapshotApplication | null} */
     let activeBulkApplication = null;
 
@@ -263,7 +267,9 @@
           // never indexed and can never be searched, so a truncated catalog is
           // complete for the index and permanently incomplete for the root.
           // Forwarding `complete` alone told the user "N files" while hiding
-          // everything beyond the cap.
+          // everything beyond the cap. The catalog records that terminal
+          // state as its own `truncated` coverage, so consumers can stop
+          // waiting without claiming the root is covered.
           //
           // Authority: either way the walk stopped, so the payload lists every
           // file the index holds. That makes it authoritative membership, and
@@ -272,9 +278,14 @@
           // the stream was down. A payload built mid-walk is only a prefix and
           // must merge instead.
           const authoritative = payload.complete === true;
-          const completeCoverage = authoritative && payload.truncated !== true;
+          /** @type {CatalogCoverage} */
+          const coverage = !authoritative
+            ? "partial"
+            : payload.truncated === true
+              ? "truncated"
+              : "complete";
           const files = Array.isArray(payload.files) ? payload.files : [];
-          const application = catalog.beginBulkSnapshot(files, completeCoverage, authoritative);
+          const application = catalog.beginBulkSnapshot(files, coverage, authoritative);
           if (
             !(await driveApplication(
               application,
@@ -286,13 +297,13 @@
             return;
           }
           lastBulkWasAuthoritative = authoritative;
-          lastBulkHadCompleteCoverage = completeCoverage;
+          lastBulkCoverage = coverage;
           if (authoritative) {
             authoritativeRefetchPending = false;
             terminalRefetchRequested = false;
           }
         } else if (lastBulkWasAuthoritative) {
-          const application = catalog.beginBulkSnapshot([], lastBulkHadCompleteCoverage, false);
+          const application = catalog.beginBulkSnapshot([], lastBulkCoverage, false);
           if (
             !(await driveApplication(application, "knownFileCatalog:applyBulkSnapshot", 0, serial))
           ) {
@@ -444,7 +455,7 @@
       pendingChanges = [];
       fetchedOnce = false;
       lastBulkWasAuthoritative = false;
-      lastBulkHadCompleteCoverage = false;
+      lastBulkCoverage = "partial";
       requestContinuityRefetch();
     }
 
@@ -452,7 +463,9 @@
      * The walker reached a terminal state after an incomplete bulk
      * fetch. After a reconnect, deletions from the gap require one
      * terminal, authoritative payload even when the walk stopped at
-     * its file cap. Only an uncapped walk establishes full coverage.
+     * its file cap. Only an uncapped walk establishes full coverage; a
+     * capped walk is still terminal, and the catalog says so explicitly
+     * so consumers waiting for a final revision stop waiting.
      * @param {boolean} [truncated=false]
      */
     function onIndexComplete(truncated = false) {
@@ -470,7 +483,9 @@
         }
         return;
       }
-      if (!truncated) {
+      if (truncated) {
+        catalog.markTruncated();
+      } else {
         catalog.markComplete();
       }
     }
