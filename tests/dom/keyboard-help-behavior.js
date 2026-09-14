@@ -147,7 +147,11 @@ const sandbox = { document };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-for (const filename of ["keyboard-shortcuts.js", "keyboard-help.js"]) {
+for (const filename of [
+  "keyboard-shortcuts.js",
+  "keyboard-help.js",
+  "tree-keyboard-navigation.js",
+]) {
   vm.runInContext(
     fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", filename), "utf-8"),
     sandbox,
@@ -340,6 +344,53 @@ check(
 help.open(helpButton);
 shortcuts.invoke("help.close");
 check("Help can reopen and close", closeCount === 2);
+
+// The tree's own registrations, rendered as Help renders them: a movement row
+// lists its arrow and its letter alias as one "or" group with one spoken phrase.
+const treeShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+const treeNavigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
+  activate: () => null,
+  container: document.createElement("nav"),
+  document,
+  navigate() {},
+  setFolderExpanded() {},
+  shortcuts: treeShortcuts,
+});
+const treeHelp = document.createElement("div");
+sandbox.MetabrowserKeyboardHelp.renderHelpGroups(
+  treeHelp,
+  treeShortcuts.snapshot("help", { includeInactive: true }),
+  treeShortcuts.appendBinding,
+);
+function renderedHelpBinding(action) {
+  const row = treeHelp
+    .querySelectorAll(".help-command-row")
+    .find((candidate) => candidate.querySelector(".help-command-label").textContent === action);
+  const binding = row?.querySelector(".help-command-binding");
+  return binding
+    ? {
+        keys: binding.querySelectorAll("kbd").map((element) => element.textContent),
+        separators: binding
+          .querySelectorAll(".shortcut-binding-separator")
+          .map((element) => element.textContent),
+        spoken: binding.querySelector(".visually-hidden")?.textContent,
+      }
+    : null;
+}
+check(
+  "Help lists Down or J for Next item",
+  JSON.stringify(renderedHelpBinding("Next item")) ===
+    JSON.stringify({ keys: ["↓", "J"], separators: ["or"], spoken: "Down arrow or J" }),
+  JSON.stringify(renderedHelpBinding("Next item")),
+);
+check(
+  "Help lists Up or K for Previous item",
+  JSON.stringify(renderedHelpBinding("Previous item")) ===
+    JSON.stringify({ keys: ["↑", "K"], separators: ["or"], spoken: "Up arrow or K" }),
+  JSON.stringify(renderedHelpBinding("Previous item")),
+);
+treeNavigator.dispose();
+treeShortcuts.dispose();
 help.dispose();
 check("dispose clears hints", hintHost.children.length === 0);
 check("dispose unregisters Help", shortcuts.present("help.open") === null);

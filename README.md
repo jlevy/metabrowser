@@ -112,9 +112,9 @@ read Markdown docs.
   A persistent hint strip keeps Help and Quick File discoverable and adds contextual
   commands while you work in the file tree.
 
-- **Accessible file-tree navigation.** Move through the tree with the arrow keys, jump
-  with Home and End, and activate folders, files, or pagination with Enter or Space.
-  Focus, selection, expansion, and dynamic tree updates stay synchronized.
+- **Accessible file-tree navigation.** Move through the tree with the arrow keys or J
+  and K, jump with Home and End, and activate folders, files, or pagination with Enter
+  or Space. Focus, selection, expansion, and dynamic tree updates stay synchronized.
 
 - **A fast, framework-free frontend.** Metabrowser ships direct CSS and JavaScript with
   no browser framework.

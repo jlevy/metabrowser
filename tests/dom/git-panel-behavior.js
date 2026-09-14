@@ -1552,6 +1552,56 @@ async function run() {
     rows[0].dispatch("keydown", modified);
     assertTrue("keyboard: modified arrow is ignored", !modified.defaultPrevented);
     assertTrue("keyboard: ignored arrow leaves focus alone", document.activeElement === rows[0]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // J and K are Down and Up here as in the file tree, under the arrows' guards,
+    // and dismiss a pending pointer-owned tooltip before moving, as the arrows do.
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    const hidesBeforeJ = tooltipHideCount;
+    const j = keyboardEvent("j", { repeat: true });
+    rows[0].dispatch("keydown", j);
+    rows[0]._hovered = false;
+    assertTrue("keyboard: j dismisses the hover tooltip", tooltipHideCount > hidesBeforeJ);
+    assertTrue("keyboard: repeated j is handled", j.defaultPrevented);
+    assertTrue("keyboard: j focuses the next commit", document.activeElement === rows[1]);
+    assertEqual("keyboard: j opens the next commit", internals.stateForTests().selectedId, SHA_B);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const k = keyboardEvent("k");
+    rows[1].dispatch("keydown", k);
+    assertTrue("keyboard: k is handled", k.defaultPrevented);
+    assertTrue("keyboard: k focuses the prior commit", document.activeElement === rows[0]);
+    assertEqual("keyboard: k opens the prior commit", internals.stateForTests().selectedId, SHA_A);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Letters match in either case, as the shortcut registry matches them, so
+    // Caps Lock does not turn the aliases off.
+    const capsLock = keyboardEvent("J");
+    rows[0].dispatch("keydown", capsLock);
+    assertTrue("keyboard: an unshifted capital J is handled", capsLock.defaultPrevented);
+    assertTrue("keyboard: capital J focuses the next commit", document.activeElement === rows[1]);
+    assertEqual(
+      "keyboard: capital J opens the next commit",
+      internals.stateForTests().selectedId,
+      SHA_B,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+      for (const letter of ["j", "k"]) {
+        const key = modifier === "shiftKey" ? letter.toUpperCase() : letter;
+        const chord = keyboardEvent(key, { [modifier]: true });
+        rows[1].dispatch("keydown", chord);
+        assertTrue(`keyboard: ${modifier} with ${key} is ignored`, !chord.defaultPrevented);
+      }
+    }
+    assertTrue("keyboard: ignored chords leave focus alone", document.activeElement === rows[1]);
+    assertEqual(
+      "keyboard: ignored chords leave the selection alone",
+      internals.stateForTests().selectedId,
+      SHA_B,
+    );
     // Let the final focus-following selection release its single active
     // preparation slot before the next independent preparation case.
     await new Promise((resolve) => setTimeout(resolve, 0));

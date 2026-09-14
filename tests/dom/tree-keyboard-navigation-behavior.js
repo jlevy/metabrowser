@@ -423,6 +423,79 @@ check("unmodified Down still steps by one", document.activeElement === empty);
 folder.focus();
 container.dispatch("focusin", { target: folder });
 
+// J and K are Down and Up on the home row: the same commands, so they repeat,
+// open the row they land on, and are listed beside the arrows in Help.
+// The Down step above already opened folder:empty, so only a new entry
+// proves that j opened it.
+const beforeJ = navigationCalls.length;
+event = keyboardEvent("j", folder, { repeat: true });
+document.dispatch(event);
+check(
+  "repeated j steps down like Down",
+  event.defaultPrevented && document.activeElement === empty,
+);
+check(
+  "j opens the row it lands on",
+  navigationCalls.length === beforeJ + 1 && navigationCalls.at(-1) === "folder:empty",
+);
+const beforeLetterGuards = navigationCalls.length;
+for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+  for (const letter of ["j", "k"]) {
+    const key = modifier === "shiftKey" ? letter.toUpperCase() : letter;
+    event = keyboardEvent(key, empty, { [modifier]: true });
+    document.dispatch(event);
+    check(`${modifier} with ${key} does not move`, !event.defaultPrevented);
+  }
+}
+// A letter from a text field is typing, even while the tree scope is active.
+const editableTargets = ["input", "textarea", "select", "div"].map((tagName) => {
+  const element = document.createElement(tagName);
+  element.isContentEditable = tagName === "div";
+  return element;
+});
+for (const target of editableTargets) {
+  for (const key of ["j", "k"]) {
+    event = keyboardEvent(key, target);
+    document.dispatch(event);
+    check(`${key} in an editable ${target.tagName} does not move`, !event.defaultPrevented);
+  }
+}
+check(
+  "guarded J and K leave focus and the open row alone",
+  document.activeElement === empty && navigationCalls.length === beforeLetterGuards,
+);
+event = keyboardEvent("k", empty, { repeat: true });
+document.dispatch(event);
+check("repeated k steps up like Up", event.defaultPrevented && document.activeElement === folder);
+check("k opens the row it lands on", navigationCalls.at(-1) === "folder:src");
+equal(
+  "Next item presents Down or J",
+  [
+    shortcuts.present("tree.next").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.next").bindings.spoken,
+    shortcuts.present("tree.next").bindings.ariaKeyshortcuts,
+  ],
+  [[["↓"], ["J"]], "Down arrow or J", "ArrowDown J"],
+);
+equal(
+  "Previous item presents Up or K",
+  [
+    shortcuts.present("tree.previous").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.previous").bindings.spoken,
+    shortcuts.present("tree.previous").bindings.ariaKeyshortcuts,
+  ],
+  [[["↑"], ["K"]], "Up arrow or K", "ArrowUp K"],
+);
+// J and K step; they are not also first and last.
+equal(
+  "first and last keep only their jump bindings",
+  [
+    shortcuts.present("tree.first").bindings.ariaKeyshortcuts,
+    shortcuts.present("tree.last").bindings.ariaKeyshortcuts,
+  ],
+  ["Shift+ArrowUp Home", "Shift+ArrowDown End"],
+);
+
 const beforeExpand = navigationCalls.length;
 event = keyboardEvent("ArrowRight", folder);
 document.dispatch(event);
