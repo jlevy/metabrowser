@@ -198,6 +198,12 @@ and fails rather than hanging — which is behavior worth having, but not a mode
 transcript can assert.
 Their content is covered by `tests/dom/` and the event tests instead.
 
+One covered row pins less than the others.
+`/api/activity` marks a file active only after the tracker sees it change between two
+polls, and a one-shot `metab` process ends first, so its transcript can pin the envelope
+with an empty `active_files` and nothing more.
+The nonempty case is asserted by `tests/test_browser_active_tracker.py`.
+
 ### User-visible functional aspects
 
 Route reachability is necessary and insufficient.

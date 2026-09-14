@@ -3,25 +3,39 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from metabrowser.normalize import (
+    CURSOR_PATHS,
     CURSOR_PLACEHOLDER,
+    ELAPSED_PATHS,
     ELAPSED_PLACEHOLDER,
-    HOME_PLACEHOLDER,
-    MTIME_PLACEHOLDER,
     ROOT_PLACEHOLDER,
     NormalizeContext,
-    describe_schema,
     normalize_payload,
     normalize_text,
 )
 
 ROOT = Path("/tmp/sandbox/checkroot")
-HOME = Path("/tmp/sandbox/home")
 
 
-def _ctx(**kwargs: object) -> NormalizeContext:
-    return NormalizeContext(root=ROOT, home=HOME, **kwargs)  # type: ignore[arg-type]
+def _ctx() -> NormalizeContext:
+    return NormalizeContext(root=ROOT)
+
+
+def _place(payload: dict[str, Any], path: tuple[str, ...], value: object) -> None:
+    """Set *value* at an envelope address, creating the objects along the way."""
+
+    node = payload
+    for key in path[:-1]:
+        node = node.setdefault(key, {})
+    node[path[-1]] = value
+
+
+def _at(payload: Any, path: tuple[str, ...]) -> Any:
+    for key in path:
+        payload = payload[key]
+    return payload
 
 
 def test_absolute_root_path_becomes_a_placeholder() -> None:
@@ -34,14 +48,6 @@ def test_path_under_root_keeps_its_suffix() -> None:
     payload = {"root": f"{ROOT}/docs/guide.md"}
 
     assert normalize_payload(payload, _ctx()) == {"root": f"{ROOT_PLACEHOLDER}/docs/guide.md"}
-
-
-def test_application_home_normalizes_independently_of_root() -> None:
-    payload = {"home": str(HOME / "cache" / "layout.yml")}
-
-    normalized = normalize_payload(payload, _ctx())
-
-    assert normalized == {"home": f"{HOME_PLACEHOLDER}/cache/layout.yml"}
 
 
 def test_nested_structures_are_normalized_throughout() -> None:
@@ -66,62 +72,46 @@ def test_git_revisions_are_kept_because_fixtures_pin_them() -> None:
     assert normalize_payload(payload, _ctx()) == payload
 
 
-def test_mtime_is_kept_by_default_because_fixtures_pin_it() -> None:
+def test_mtime_is_kept_because_fixtures_pin_it() -> None:
     payload = {"mtime": 1699999999.0, "mtime_hash": "abc123"}
 
     assert normalize_payload(payload, _ctx()) == payload
 
 
-def test_mtime_is_normalized_when_the_fixture_cannot_pin_it() -> None:
-    payload = {"mtime": 1699999999.0, "mtime_hash": "abc123"}
-
-    normalized = normalize_payload(payload, _ctx(normalize_mtimes=True))
-
-    assert normalized == {"mtime": MTIME_PLACEHOLDER, "mtime_hash": MTIME_PLACEHOLDER}
-
-
 def test_a_payload_of_every_unstable_field_normalizes_to_none_of_them() -> None:
-    """The round-trip the golden guidelines ask for."""
+    """The round-trip the golden guidelines ask for, over every address the schema names.
 
-    payload = {
+    The payload is built from the schema's own path tables, so an address added
+    to either table is covered here without editing the test.
+    """
+
+    payload: dict[str, Any] = {
         "root": str(ROOT),
-        "home": str(HOME),
-        "mtime": 1699999999.0,
-        "nested": {"path": str(ROOT / "x"), "list": [str(HOME / "y")]},
+        "nested": {"path": str(ROOT / "x"), "list": [str(ROOT / "y")]},
     }
+    cursors = {path: f"session-token-{index}" for index, path in enumerate(CURSOR_PATHS)}
+    elapsed = {path: 1_699_999_000 + index for index, path in enumerate(ELAPSED_PATHS)}
+    for path, value in (*cursors.items(), *elapsed.items()):
+        _place(payload, path, value)
 
-    rendered = repr(normalize_payload(payload, _ctx(normalize_mtimes=True)))
+    normalized = normalize_payload(payload, _ctx())
+    rendered = repr(normalized)
 
     assert str(ROOT) not in rendered
-    assert str(HOME) not in rendered
-    assert "1699999999" not in rendered
+    for value in (*cursors.values(), *elapsed.values()):
+        assert str(value) not in rendered
+    for path in CURSOR_PATHS:
+        assert _at(normalized, path) == CURSOR_PLACEHOLDER
+    for path in ELAPSED_PATHS:
+        assert _at(normalized, path) == ELAPSED_PLACEHOLDER
 
 
 def test_text_normalization_covers_console_output() -> None:
-    text = f"walking {ROOT}/docs\ncache at {HOME}/cache\n"
+    text = f"walking {ROOT}/docs\nserving {ROOT}\n"
 
     normalized = normalize_text(text, _ctx())
 
-    assert normalized == f"walking {ROOT_PLACEHOLDER}/docs\ncache at {HOME_PLACEHOLDER}/cache\n"
-
-
-def test_home_inside_root_still_normalizes_to_the_more_specific_prefix() -> None:
-    """Longest prefix wins, so a home under the served root is not mislabeled."""
-
-    root = Path("/tmp/sandbox")
-    home = Path("/tmp/sandbox/home")
-    ctx = NormalizeContext(root=root, home=home)
-
-    normalized = normalize_payload({"p": str(home / "config.yml")}, ctx)
-
-    assert normalized == {"p": f"{HOME_PLACEHOLDER}/config.yml"}
-
-
-def test_schema_is_documented_for_every_rule_it_applies() -> None:
-    described = describe_schema()
-
-    for token in (ROOT_PLACEHOLDER, HOME_PLACEHOLDER, MTIME_PLACEHOLDER):
-        assert token in described
+    assert normalized == f"walking {ROOT_PLACEHOLDER}/docs\nserving {ROOT_PLACEHOLDER}\n"
 
 
 def test_a_pagination_cursor_is_always_normalized() -> None:
