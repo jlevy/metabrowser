@@ -66,6 +66,18 @@ Features:
 
 Inventory engine:
 
+- Large trees finish indexing sooner, and the server stays responsive while file-type
+  tallies compute. The activity tracker scans the whole index every five seconds,
+  including during the initial walk.
+  That scan rebuilt its extension filter for every file and never paused, so each one
+  held back the walk and every request until it finished.
+  It now does about a fifth of the work per file and pauses regularly.
+  The tally pass pauses four times as often, so a progress or tree request that arrives
+  during it is no longer delayed at each step.
+  With a browser attached during a walk, each discovered file is validated three times
+  instead of five, and change delivery no longer searches its read results once per
+  path.
+
 - The directory tree’s first rows no longer wait for a scan of the whole repository.
   Metabrowser used to walk every visible directory looking for nested `.gitignore` files
   before indexing could start, so on a large repository the top-level tree appeared only

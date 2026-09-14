@@ -181,8 +181,10 @@ class _TakenEntries(Sequence[FsEntry]):
 # The most tally work a request on the loop can queue behind before the worker
 # releases the GIL. It restates `_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH`, where
 # the measurement behind it is recorded, so raising that constant fails here
-# until someone re-measures rather than passing silently.
-MAX_ENTRIES_BETWEEN_YIELDS = 1_024
+# until someone re-measures rather than passing silently. A provider read is
+# several loop iterations, each of which can wait this long, so the batch stays
+# inside the interpreter's 5 ms switch interval.
+MAX_ENTRIES_BETWEEN_YIELDS = 256
 
 
 def test_worker_tally_pass_cooperatively_yields_to_the_event_loop() -> None:
