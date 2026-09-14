@@ -171,7 +171,9 @@
     let disposed = false;
 
     function activateTreeScope() {
-      if (!deactivateScope) {
+      // Async continuations can repair after dispose; an activation then
+      // would outlive the layer, since nothing is left to deactivate it.
+      if (!disposed && !deactivateScope) {
         deactivateScope = options.shortcuts.activateScope("tree");
       }
     }
@@ -302,6 +304,12 @@
      */
     function repairAnchor(previousFallback, hadFocusedRow, mutationSnapshot) {
       let anchor = anchorIdentity ? rowByIdentity(container, anchorIdentity) : null;
+      const focused = treeRowFromTarget(container, hostDocument.activeElement);
+      if (!anchorIdentity && focused && visible.includes(focused)) {
+        // A row focused before this layer attached (an early click) fired no
+        // focusin we could hear. Adopt it rather than moving focus elsewhere.
+        anchor = focused;
+      }
       if (!anchor || !visible.includes(anchor)) {
         const candidates = mutationSnapshot?.siblings || previousFallback.siblings;
         anchor =
@@ -328,6 +336,11 @@
         setAnchor(anchor, shouldRepairFocus && hostDocument.activeElement !== anchor);
       } else {
         anchorIdentity = null;
+      }
+      // Focus already on a row needs the tree commands whether or not this
+      // repair moved it; setAnchor activates the scope only when it focuses.
+      if (treeRowFromTarget(container, hostDocument.activeElement)) {
+        activateTreeScope();
       }
       return anchor;
     }
