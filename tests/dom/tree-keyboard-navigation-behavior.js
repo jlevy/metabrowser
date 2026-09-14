@@ -579,15 +579,47 @@ check("filtering repairs focus to the parent", document.activeElement === folder
 
 container.dispatch("click", { target: outside });
 check("pointer use updates the future tab stop", outside.tabIndex === 0);
+// Focus is still on the folder, so a repair sees a focused row that differs
+// from the durable anchor. The anchor must win; adopting focus is only for a
+// layer that has no anchor yet.
+check("the pointer anchor and the focused row differ", document.activeElement === folder);
+navigator.synchronize();
+check("a repair keeps the durable anchor over the focused row", outside.tabIndex === 0);
 
+// Tree commands are Help-only, so the compact strip cannot show whether the
+// tree scope is active. A movement key that goes unhandled can.
+document.body.focus();
 container.dispatch("focusout", { relatedTarget: document.body, target: outside });
-check("tree scope leaves with focus", shortcuts.snapshot("nav").length === 0);
+navigator.synchronize();
+event = keyboardEvent("ArrowDown", document.body);
+document.dispatch(event);
+check(
+  "a repair with focus outside the tree leaves tree commands inactive",
+  !event.defaultPrevented,
+);
 event = keyboardEvent("PageDown", document.body);
 document.dispatch(event);
 check("native main-pane scrolling keys remain untouched", !event.defaultPrevented);
 
 navigator.dispose();
 check("dispose removes tree commands", shortcuts.present("tree.next") === null);
+// The layer's own async continuations can still call synchronize after
+// disposal. With a row focused, that repair must not reactivate a tree scope
+// that nothing will ever deactivate.
+outside.focus();
+const postDisposeScopes = [];
+const unsubscribePostDispose = shortcuts.subscribe((change) => {
+  if (change.kind === "scope") {
+    postDisposeScopes.push(change.scope);
+  }
+});
+navigator.synchronize();
+check(
+  "synchronize after dispose leaves the tree scope inactive",
+  postDisposeScopes.length === 0,
+  postDisposeScopes.join(","),
+);
+unsubscribePostDispose();
 shortcuts.dispose();
 
 // A reader can click a row before the keyboard layer attaches. That focus
@@ -630,6 +662,7 @@ for (const [label, focusedKey] of [
     earlyDocument.activeElement === clicked && clicked.tabIndex === 0,
     earlyDocument.activeElement?.dataset?.treeId,
   );
+  equal(`attaching after an early click on the ${label} opens nothing`, earlyNavigations, []);
   const earlyEvent = keyboardEvent("ArrowDown", clicked);
   earlyDocument.dispatch(earlyEvent);
   const expectedNext = focusedKey === "selected" ? earlyLast : earlySelected;
@@ -637,6 +670,11 @@ for (const [label, focusedKey] of [
     `Down works on the first press after an early click on the ${label}`,
     earlyEvent.defaultPrevented && earlyDocument.activeElement === expectedNext,
     `${earlyEvent.defaultPrevented}/${earlyDocument.activeElement?.dataset?.treeId}`,
+  );
+  equal(
+    `the first Down after an early click on the ${label} opens only the next row`,
+    earlyNavigations,
+    [expectedNext.dataset.treeId],
   );
   earlyNavigator.dispose();
   earlyShortcuts.dispose();

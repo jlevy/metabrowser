@@ -171,7 +171,9 @@
     let disposed = false;
 
     function activateTreeScope() {
-      if (!deactivateScope) {
+      // Async continuations can repair after dispose; an activation then
+      // would outlive the layer, since nothing is left to deactivate it.
+      if (!disposed && !deactivateScope) {
         deactivateScope = options.shortcuts.activateScope("tree");
       }
     }
