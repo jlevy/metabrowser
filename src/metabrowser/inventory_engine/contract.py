@@ -812,8 +812,12 @@ class InventoryEntry:
     empty: bool | None = None
 
     def __post_init__(self) -> None:
+        # The path is validated once. The parent needs no second pass: the identity
+        # check below requires it to equal the path's prefix before its final `/`, or
+        # the root, and a prefix of a canonical path is itself canonical. Validating it
+        # again doubled the validation of every entry a provider returns, which a walk
+        # with a browser attached pays once per discovered entry.
         require_canonical_inventory_path(self.path, "path", allow_root=True)
-        require_canonical_inventory_path(self.parent, "parent", allow_root=True)
         if self.path:
             expected_parent, separator, expected_name = self.path.rpartition("/")
             if not separator:
@@ -821,7 +825,9 @@ class InventoryEntry:
                 expected_name = self.path
             if self.parent != expected_parent or self.name != expected_name:
                 raise ValueError("entry path, parent, and name must describe one identity")
-        elif self.parent:
+        elif self.parent != "":
+            # Compared with the root spelling, not truthiness: `None`, `b""`, and `0` are
+            # falsy too, and the parent is no longer validated on its own.
             raise ValueError("the root entry must have the root as its parent")
         _require_nonnegative(self.size, "size")
 

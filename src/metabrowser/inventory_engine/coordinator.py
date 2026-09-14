@@ -743,6 +743,12 @@ class InventoryCoordinator:
     def _merge_provider_batches(batches: tuple[ChangeBatch, ...]) -> ChangeBatch:
         if not batches:
             raise ValueError("at least one provider batch is required")
+        if len(batches) == 1:
+            # A lone batch already is its own merge: its paths are unique, within the
+            # path bound, and validated when the provider built it. Rebuilding it
+            # validated every dirty path a second time, once per discovered entry, and
+            # a walk delivers almost every batch alone.
+            return batches[0]
         latest = batches[-1]
         work = _sum_work(tuple(batch.work for batch in batches))
         if any(batch.reset for batch in batches):

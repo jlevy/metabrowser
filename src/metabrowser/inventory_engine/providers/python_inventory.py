@@ -148,8 +148,26 @@ _NANOSECONDS_PER_SECOND = 1_000_000_000
 # timer-backed pause releases the GIL and prevents the worker from immediately
 # reacquiring it, keeping the request loop independent of the interpreter's
 # ordinary thread-switch interval.
-_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH = 1_024
+#
+# At that rate 1,024 entries are still about 7.5 ms, longer than the 5 ms switch
+# interval, so a loop waiting on the GIL was served by the interpreter's forced
+# switch rather than by this yield: up to a switch interval for every loop
+# iteration. That was affordable while a request was one iteration, as v0.9.1's
+# progress route was. A provider read through the coordinator is eight loop
+# iterations and a worker hop, counted on a settled index, so a progress poll
+# during a tally paid the wait eight times over, and exp-033 recorded 213-254 ms
+# against its 200 ms budget on 300,000 files. 256 entries, about 1.9 ms, yields
+# inside the switch interval.
+_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH = 256
 _NAVIGATION_TALLY_COOPERATIVE_YIELD_S = 0.000_001
+# The same rule for the catalog pass, which the activity tracker runs over the whole
+# index every five seconds, including throughout the initial walk. Without a yield it
+# held the GIL for the pass, and every event-loop iteration -- the walker's included
+# -- waited on a forced switch until it finished. At its measured 1.56 us per entry
+# when every entry becomes a record (0.37 us for the tracker's selective query),
+# 1,024 entries is at most 1.6 ms.
+_CATALOG_COOPERATIVE_YIELD_BATCH = 1_024
+_CATALOG_COOPERATIVE_YIELD_S = 0.000_001
 # The exact installed-build browser comparison in exp-014 measured a 1 ms
 # `/api/tree` handler queued for 33-37 ms while the startup walker applied a
 # wide directory without suspending. Yield four times inside each 256-entry
@@ -378,6 +396,8 @@ class _ReadImage:
     rollup_epoch: int
     rollup_passes: int
     query_limits: Mapping[str, int]
+    # Entry-query answers, looked up under the same lock as `entries`.
+    entry_lookups: Mapping[str, FsEntry]
 
 
 @dataclass(frozen=True, slots=True)
@@ -448,6 +468,12 @@ class _CompiledInventoryFilter:
     rejects_symlinks: bool
 
 
+# The retained record spells its type as the enum's value. Calling `EntryType(value)`
+# resolves it through the enum machinery -- four Python calls -- on every row every read
+# returns, where a dictionary lookup is one.
+_ENTRY_TYPES: dict[str, EntryType] = {kind.value: kind for kind in EntryType}
+
+
 def _semantic_entry(entry: FsEntry) -> InventoryEntry:
     """Drop Python-engine bookkeeping and host decorations at the boundary.
 
@@ -466,7 +492,7 @@ def _semantic_entry(entry: FsEntry) -> InventoryEntry:
         path=entry.path,
         parent=entry.parent,
         name=entry.name,
-        type=EntryType(entry.type),
+        type=_ENTRY_TYPES[entry.type],
         ext=entry.ext,
         size=entry.size,
         mtime_ns=entry.mtime_ns,
@@ -583,26 +609,42 @@ def _bounded_count(total: int, count_cap: int, returned: int) -> CountResult:
     return CountResult(CountKind.AT_LEAST, max(count_cap, returned))
 
 
-def _catalog_entry_matches(entry: FsEntry, query: CatalogQuery) -> bool:
-    """Apply catalog predicates before records cross the provider boundary."""
+def _catalog_entry_filter(query: CatalogQuery) -> Callable[[FsEntry], bool]:
+    """Compile the catalog predicates once per query, for a pass over every entry.
 
-    if entry.type != "file" or (entry.gitignored and not query.include_ignored):
-        return False
-    if query.size_less_than is not None and entry.size >= query.size_less_than:
-        return False
-    if query.terminal_extensions:
-        # Both sides are folded. Folding only the candidate would silently reject a query
-        # that spelled its suffix `.PDF`, which is the kind of asymmetry that reads as a
-        # missing file rather than as a rejected filter.
-        terminal = catalog_terminal_suffix(entry.name)
-        wanted = {ascii_casefold(value) for value in query.terminal_extensions}
-        if terminal not in wanted:
+    A catalog read visits the whole index, and the activity tracker issues one every
+    five seconds, including throughout the initial walk. Folding the wanted suffixes
+    inside the per-entry test rebuilt that set for every entry -- eight case folds per
+    file for the tracker's seven suffixes -- and each suffix match then parsed a
+    `PurePosixPath` to read its ancestors. The tracker's pass cost 1.77 us of CPU per
+    entry, against 0.37 us compiled once; v0.9.1's equivalent filter cost about 0.4 us.
+    On the 300,000-file bench corpus it was called 1,107,519 times during one profiled
+    walk.
+
+    The answers are unchanged. The suffixes are folded exactly as before, just once;
+    and splitting a canonical path on `/` yields the same components `PurePosixPath`
+    does, because the canonical grammar has no empty, `.`, or `..` segment for it to
+    normalize.
+    """
+
+    include_ignored = query.include_ignored
+    size_less_than = query.size_less_than
+    # Both sides are folded. Folding only the candidate would silently reject a query
+    # that spelled its suffix `.PDF`, which is the kind of asymmetry that reads as a
+    # missing file rather than as a rejected filter.
+    wanted = frozenset(ascii_casefold(value) for value in query.terminal_extensions)
+    ancestor_names = frozenset(query.ancestor_names)
+
+    def matches(entry: FsEntry) -> bool:
+        if entry.type != "file" or (entry.gitignored and not include_ignored):
             return False
-    if query.ancestor_names:
-        parts = PurePosixPath(entry.path).parts[:-1]
-        if not any(name in parts for name in query.ancestor_names):
+        if size_less_than is not None and entry.size >= size_less_than:
             return False
-    return True
+        if wanted and catalog_terminal_suffix(entry.name) not in wanted:
+            return False
+        return not ancestor_names or not ancestor_names.isdisjoint(entry.path.split("/")[:-1])
+
+    return matches
 
 
 class _PythonInventoryStore:
@@ -1210,6 +1252,7 @@ class _PythonInventoryStore:
             }
             broad_read = any(query.query_id not in query_limits for query in scanning_queries)
             selected: dict[str, FsEntry] = {}
+            entry_lookups: dict[str, FsEntry] = {}
             rows_visited = sum(
                 query.max_work if query.query_id in query_limits else total_entries
                 for query in scanning_queries
@@ -1220,6 +1263,7 @@ class _PythonInventoryStore:
                     entry = self._entries.get(query.path)
                     if entry is not None:
                         selected[entry.path] = entry
+                        entry_lookups[entry.path] = entry
                 elif isinstance(query, DirectoryQuery):
                     query_rows_visited = 0
                     query_selected: dict[str, FsEntry] = {}
@@ -1286,6 +1330,7 @@ class _PythonInventoryStore:
             rollup_epoch=rollup_epoch,
             rollup_passes=rollup_passes,
             query_limits=MappingProxyType(query_limits),
+            entry_lookups=MappingProxyType(entry_lookups),
         )
 
     def _read_sync(self, request: ReadRequest) -> ReadResult:
@@ -1478,18 +1523,13 @@ class _PythonInventoryStore:
         wall_started = time.monotonic_ns()
         cpu_started = time.thread_time_ns()
         image = self._capture_image(request)
+        # Only the rollup and Recent passes walk the path graph. An entry lookup is
+        # answered from the image's own lookups, so a root navigation bundle -- one
+        # entry query beside the tallies -- no longer indexes every entry by path to
+        # find the root: a Python pass over the whole index with no cooperative yield,
+        # repeated by every root tally refresh during a walk.
         needs_entry_graph = any(
-            isinstance(
-                query,
-                (
-                    EntryQuery,
-                    DirectoryQuery,
-                    FilteredTreeQuery,
-                    RollupQuery,
-                    RecentQuery,
-                ),
-            )
-            for query in request.queries
+            isinstance(query, (RollupQuery, RecentQuery)) for query in request.queries
         )
         entries_by_path = (
             {entry.path: entry for entry in image.entries} if needs_entry_graph else {}
@@ -1908,7 +1948,7 @@ class _PythonInventoryStore:
                 rows_visited=limited_rows,
             )
         if isinstance(query, EntryQuery):
-            entry = entries_by_path.get(query.path)
+            entry = image.entry_lookups.get(query.path)
             if entry is not None:
                 return EntryProjection(
                     query_id=query.query_id,
@@ -1961,21 +2001,22 @@ class _PythonInventoryStore:
         if isinstance(query, RecentQuery):
             return self._recent_projection(query, image.entries, entries_by_path)
         if isinstance(query, CatalogQuery):
-            records = tuple(
-                sorted(
-                    (
+            matches = _catalog_entry_filter(query)
+            selected_records: list[CatalogRecord] = []
+            for entry_index, entry in enumerate(image.entries):
+                if entry_index > 0 and entry_index % _CATALOG_COOPERATIVE_YIELD_BATCH == 0:
+                    time.sleep(_CATALOG_COOPERATIVE_YIELD_S)
+                if matches(entry):
+                    selected_records.append(
                         CatalogRecord(
                             path=entry.path,
                             logical_extension=entry.ext,
                             size=entry.size,
                             mtime_ns=entry.mtime_ns,
                         )
-                        for entry in image.entries
-                        if _catalog_entry_matches(entry, query)
-                    ),
-                    key=lambda record: record.path.encode("utf-8"),
-                )
-            )
+                    )
+            selected_records.sort(key=lambda record: record.path.encode("utf-8"))
+            records = tuple(selected_records)
             page = records[: query.max_rows]
             next_offset = len(page)
             total_matches = _bounded_count(len(records), query.count_cap, len(page))

@@ -95,16 +95,46 @@ The second half is the change pipeline.
 
 ## What Is Still on the Path
 
-`_record_provider_change` and `coordinator._merge_provider_batches` each construct a
-validated contract object for every entry discovered, to publish invalidations for
-entries no reader has seen — about 2.1 us per entry.
+`_record_provider_change` constructs a validated change batch for every entry
+discovered, to publish invalidations for entries no reader has seen.
+The coordinator passes a batch that arrives alone through unchanged; it used to rebuild
+it and validate every path a second time.
 `main` had no equivalent during its boot walk, because it had no change pipeline to
 feed.
+
+A browser attached during a walk pays more, because the event bus rereads every dirty
+path through the contract: an entry query, a contract entry, its projection, the host
+decoration, and the wire record, each built once per discovered entry.
+The entry query and the contract entry each validate the path once, as the change batch
+did. `tests/test_inventory_walk_work.py` holds both walks to those counts.
 
 Suppressing publication during discovery is a change to the delivery contract rather
 than a local optimization: a consumer attaching mid-walk has to be told what it missed,
 which is [state and delivery](arch-state-and-delivery.md)’s subject.
 It is tracked as its own item rather than folded into a performance change.
+
+## Passes That Overlap the Walk
+
+The walker, request handlers, and change delivery share one event loop, and the loop
+reacquires the GIL on every iteration.
+A whole-index pass on a worker thread that never releases the GIL is served by the
+interpreter’s forced switch instead, so every loop iteration waits up to the 5 ms switch
+interval for as long as the pass runs.
+A provider read through the coordinator is eight loop iterations and a worker hop, so it
+pays that wait eight times.
+
+Two passes overlap the walk and requests: the navigation tally, which root summary
+polling repeats while discovery runs, and the activity tracker’s catalog read, every
+five seconds. The tally pass and the catalog read’s filtering loop each release the GIL
+with a timer-backed sleep after a bounded number of entries, sized to stay inside the
+switch interval at its measured per-entry cost.
+The constants in `python_inventory.py` record the measurements, and
+`tests/test_navigation_tally_staleness.py` and `tests/test_inventory_walk_work.py` count
+entries between yields.
+
+Two whole-index steps do not yield yet: the sort that follows the catalog read’s filter,
+which took 81-169 ms of CPU for the browser’s `/api/catalog` read on 300,000 files, and
+the Recent pass. Both are tracked as their own item.
 
 ## References
 

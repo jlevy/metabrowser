@@ -66,6 +66,11 @@ Features:
 
 Inventory engine:
 
+- Index progress requests that arrive while file-type tallies compute on a large tree
+  answer sooner: about 40-70 ms on a 300,000-file tree, against 60-150 ms in 0.9.1. The
+  tally pass and the activity tracker’s periodic scan of the index now pause every few
+  milliseconds instead of holding the server until they finish.
+
 - The directory tree’s first rows no longer wait for a scan of the whole repository.
   Metabrowser used to walk every visible directory looking for nested `.gitignore` files
   before indexing could start, so on a large repository the top-level tree appeared only

@@ -90,6 +90,8 @@ from metabrowser.inventory_engine.contract import (
     NavigationProjection,
     NavigationQuery,
     QueryKind,
+    QueryLimitProjection,
+    QueryWorkLimitError,
     ReadRequest,
     VersionUnavailableError,
     parse_inventory_path,
@@ -418,9 +420,16 @@ class _EventBus:
             for index, path in enumerate(change.dirty_paths)
         )
         read = await self._coordinator.read(ReadRequest(queries=queries))
+        # One index for the whole change. `completed_projection` scans the result's
+        # tuple, so asking it once per dirty path made each change quadratic in its
+        # size: 1.8 us of CPU per path at 256 paths and 7.5 us at the 1,024-path bound,
+        # for every entry a walk discovers while a browser is attached.
+        projections = {projection.query_id: projection for projection in read.result.projections}
         ops: list[FsUpsert | FsRemove] = []
         for query, path in zip(queries, change.dirty_paths, strict=True):
-            projection = read.result.completed_projection(query.query_id)
+            projection = projections[query.query_id]
+            if isinstance(projection, QueryLimitProjection):
+                raise QueryWorkLimitError(projection)
             if not isinstance(projection, EntryProjection):
                 raise TypeError("an entry query returned a non-entry projection")
             if projection.presence is EntryPresence.UNKNOWN:
