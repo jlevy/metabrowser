@@ -12,15 +12,26 @@ from typing import Any
 
 from metabrowser import server
 from metabrowser.inventory_engine.contract import (
+    EngineVersion,
+    IndexState,
     ObservationKind,
+    ReadRequest,
     RefreshObservation,
     RefreshRequest,
+    RollupQuery,
+    VersionUnavailableError,
 )
-from metabrowser.inventory_engine.coordinator import HostVersion
+from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostCursor, HostVersion
 from metabrowser.inventory_engine.runtime import default_inventory_config
 from metabrowser.settings import ROLLUP_MAX_TOP
 from metabrowser.wire_models import validate_rollup_node
 from tests.inventory_harness import InventoryHarness, inventory_harness
+
+# Tests that compare validators across requests hold the inventory version still.
+# A live watcher can move it at any moment -- even a verified refresh of an
+# unchanged file advances the sequence -- and a late event on a busy host would
+# change a tag without anything being wrong in the route.
+_WATCH_OFF = replace(default_inventory_config(), watch_mode="off")
 
 
 class _FakeQuery:
@@ -54,6 +65,11 @@ async def _response(
 async def _body(harness: InventoryHarness, params: dict[str, str]) -> dict[str, Any]:
     response = await _response(harness, params)
     return json.loads(bytes(response.body))
+
+
+async def _engine_version(harness: InventoryHarness) -> EngineVersion:
+    _cursor, version, _state = await harness.runtime.coordinator.checkpoint()
+    return version.engine
 
 
 def test_rollup_route_envelope_and_wire_shape(tmp_path: Path) -> None:
@@ -223,7 +239,8 @@ def test_rollup_revalidates_and_reuses_unchanged_body(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
 
     async def run() -> tuple[str, str, str]:
-        async with inventory_harness(tmp_path) as harness:
+        async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            before = await _engine_version(harness)
             first = await _response(harness, {"path": ""})
             etag = first.headers["etag"]
             revalidated = await _response(harness, {"path": ""}, etag)
@@ -231,6 +248,7 @@ def test_rollup_revalidates_and_reuses_unchanged_body(tmp_path: Path) -> None:
             cached = await _response(harness, {"path": ""})
             assert bytes(cached.body) == bytes(first.body)
             deeper = await _response(harness, {"path": "", "depth": "1"})
+            assert await _engine_version(harness) == before, "the version must hold"
             return etag, cached.headers["etag"], deeper.headers["etag"]
 
     etag, cached_etag, deeper_etag = asyncio.run(run())
@@ -255,9 +273,8 @@ def test_simultaneous_identical_rollups_compute_once(
     for index in range(5):
         (tmp_path / "src" / f"f{index}.py").write_text("x" * 32)
     server._set_root_dir(tmp_path)
-    config = replace(default_inventory_config(), watch_mode="off")
 
-    async def run() -> tuple[int, list[bytes], HostVersion, HostVersion]:
+    async def run() -> tuple[int, list[bytes], EngineVersion, EngineVersion]:
         import metabrowser.inventory_engine.providers.python_inventory as provider
 
         calls = 0
@@ -269,16 +286,16 @@ def test_simultaneous_identical_rollups_compute_once(
             return real_build(*args, **kwargs)
 
         monkeypatch.setattr(provider, "build_rollup", counting_build)
-        async with inventory_harness(tmp_path, config=config) as harness:
-            _cursor, before, _state = await harness.runtime.coordinator.checkpoint()
+        async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            before = await _engine_version(harness)
             responses = await asyncio.gather(
                 *(_response(harness, {"path": ""}) for _index in range(6))
             )
-            _cursor, after, _state = await harness.runtime.coordinator.checkpoint()
+            after = await _engine_version(harness)
             return calls, [bytes(response.body) for response in responses], before, after
 
     calls, bodies, before, after = asyncio.run(run())
-    assert after.engine == before.engine, "the inventory must hold one version for the gather"
+    assert after == before, "the inventory must hold one version for the gather"
     assert calls == 1
     assert len(set(bodies)) == 1
     assert json.loads(bodies[0])["node"]["total_files"] == 5
@@ -343,7 +360,7 @@ def test_rollup_payload_and_etag_share_one_version(
             return real_build(*args, **kwargs)
 
         monkeypatch.setattr(provider, "build_rollup", gated_build)
-        async with inventory_harness(tmp_path) as harness:
+        async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
             first_task = asyncio.create_task(_response(harness, {"path": ""}))
             await asyncio.to_thread(started.wait, 5.0)
             (tmp_path / "b.txt").write_text("b")
@@ -359,8 +376,10 @@ def test_rollup_payload_and_etag_share_one_version(
             )
             release.set()
             first = await first_task
+            served = await _engine_version(harness)
             first_body = json.loads(bytes(first.body))
             second = await _response(harness, {"path": ""}, first.headers["etag"])
+            assert await _engine_version(harness) == served, "the version must hold"
             return (
                 first.headers["etag"],
                 first_body["node"]["total_files"],
@@ -374,6 +393,66 @@ def test_rollup_payload_and_etag_share_one_version(
     assert status == 304
     assert second_bytes == 0
     assert second_etag == first_etag
+
+
+def test_rollup_falls_back_to_a_current_read_when_its_pinned_version_expires(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """A version that moves before the pinned read starts is served, not failed.
+
+    The route pins its build to the version it checked so the body matches its
+    tag. When discovery moves on between that check and the pinned read, the
+    provider refuses the read, and the route answers with one unpinned read
+    under that read's own tag. `test_rollup_payload_and_etag_share_one_version`
+    moves the version during the build instead.
+    """
+    (tmp_path / "a.txt").write_text("a")
+    server._set_root_dir(tmp_path)
+
+    async def run() -> tuple[list[tuple[bool, str]], int, int, int]:
+        async with inventory_harness(tmp_path, config=_WATCH_OFF) as harness:
+            coordinator = harness.runtime.coordinator
+            real_checkpoint = coordinator.checkpoint
+            real_read = coordinator.read
+            rollup_reads: list[tuple[bool, str]] = []
+
+            async def checkpoint_then_move() -> tuple[HostCursor, HostVersion, IndexState]:
+                checked = await real_checkpoint()
+                monkeypatch.setattr(coordinator, "checkpoint", real_checkpoint)
+                (tmp_path / "b.txt").write_text("b")
+                await coordinator.refresh(
+                    RefreshRequest(
+                        observations=(
+                            RefreshObservation(path="b.txt", kind=ObservationKind.CREATED),
+                        )
+                    )
+                )
+                return checked
+
+            async def recording_read(request: ReadRequest, **kwargs: Any) -> CoordinatedRead:
+                if not any(isinstance(query, RollupQuery) for query in request.queries):
+                    return await real_read(request, **kwargs)
+                pinned = request.at_version is not None
+                try:
+                    result = await real_read(request, **kwargs)
+                except VersionUnavailableError:
+                    rollup_reads.append((pinned, "expired"))
+                    raise
+                rollup_reads.append((pinned, "served"))
+                return result
+
+            monkeypatch.setattr(coordinator, "read", recording_read)
+            monkeypatch.setattr(coordinator, "checkpoint", checkpoint_then_move)
+            response = await _response(harness, {"path": ""})
+            files = json.loads(bytes(response.body))["node"]["total_files"]
+            revalidated = await _response(harness, {"path": ""}, response.headers["etag"])
+            return rollup_reads, response.status_code, files, revalidated.status_code
+
+    rollup_reads, status, files, revalidated_status = asyncio.run(run())
+    assert rollup_reads == [(True, "expired"), (False, "served")]
+    assert (status, files) == (200, 2)
+    assert revalidated_status == 304, "the fallback's tag must name the version it served"
 
 
 def test_rollup_validator_identifies_served_root(tmp_path: Path) -> None:

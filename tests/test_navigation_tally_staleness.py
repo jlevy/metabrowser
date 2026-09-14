@@ -20,6 +20,8 @@ from itertools import pairwise
 from types import FrameType
 from typing import overload
 
+import pytest
+
 from metabrowser.events import FsEntry
 from metabrowser.inventory_engine.providers.python_inventory import (
     _PythonInventoryStore as PythonInventoryStore,
@@ -197,6 +199,12 @@ def test_worker_tally_pass_cooperatively_yields_to_the_event_loop() -> None:
     run and passed in isolation, and the batch was once halved to keep that
     heartbeat under budget on a contended CI runner. How many entries pass
     between yields does not depend on the host.
+
+    The bound is entries, not time, so it assumes the per-entry work the
+    constant was measured with. If the pass starts doing several times more per
+    entry, this test still passes while the time between yields grows:
+    re-measure `_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH` rather than trusting
+    it.
     """
     index = PythonInventoryStore()
     entry = FsEntry.for_observed_file(path="same.py", parent="", name="same.py", size=1, mtime_ns=1)
@@ -216,6 +224,13 @@ def test_worker_tally_pass_cooperatively_yields_to_the_event_loop() -> None:
         sys.setprofile(previous_profile)
 
     assert snapshot.taken == len(snapshot), "the pass must visit the whole snapshot"
+    if len(yields_after) > 1 and yields_after[0] == len(snapshot) - 1:
+        pytest.fail(
+            "the tally pass took the whole snapshot before its first yield, so it "
+            "materialized a copy before processing it; counting entries taken can no "
+            "longer observe its progress between yields, so update this test to count "
+            "per-entry work instead"
+        )
     boundaries = [0, *yields_after, len(snapshot)]
     longest_run = max(later - earlier for earlier, later in pairwise(boundaries))
     assert longest_run <= MAX_ENTRIES_BETWEEN_YIELDS, (
