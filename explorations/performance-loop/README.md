@@ -159,6 +159,8 @@ an improvement, and exp-010 is the worked example of finding that out six rounds
 UV="uv --config-file uv.toml run --frozen python"
 
 $UV explorations/performance-loop/run.py serve --exp exp-004 --label before --files 300000 --provider python
+$UV explorations/performance-loop/run.py fingerprint                 # first run of a series: unrecorded warm-up
+$UV explorations/performance-loop/run.py serve --exp exp-004 --label before --files 300000 --provider python
 $UV explorations/performance-loop/run.py probe-server                # server-side metrics, no browser
 # ... and the browser half, for anything a reader sees:
 $UV explorations/performance-loop/run.py capture \
@@ -184,14 +186,31 @@ exclusive lock on the ledger as it appends, so two recorders of one run cannot b
 succeed. `compare` rejects duplicate nonces in existing evidence.
 
 `serve` does not traverse the corpus.
-On a corpus larger than the host’s vnode cache (`kern.maxvnodes` on macOS), a traversal
-just before launch decides which entries the measured walk finds cached.
-`serve` records only a marker of the corpus root, and `record` rejects the run if that
-marker changed. `record` then computes the full filesystem-state fingerprint, after the
-measurement, and stores it on the row; `compare` refuses a label or a pair of conditions
-whose fingerprints disagree, which is what catches a change below the root.
-In a back-to-back series that traversal still runs between one measurement and the next
-launch, identically for every condition, so keep the conditions interleaved.
+On a corpus larger than the host’s vnode cache (`kern.maxvnodes` on macOS), the last
+traversal before a launch decides which entries the measured walk finds cached.
+Every recorded run therefore launches after the same sequence: the previous served run’s
+completed walk, then one full traversal.
+`record` runs that traversal after the measurement and stores its filesystem-state
+fingerprint on the row.
+The next `serve` of the same root carries that fingerprint into its pending run as the
+launch baseline, provided a root-only marker shows the root unchanged since.
+`record` refuses a run whose root marker moved between `serve` and `record`, and a run
+whose fingerprint differs from its baseline.
+The baseline check catches a change below the root, including one during a series’ first
+recorded run.
+
+The first run of a series has no recorded predecessor, so open every series with one
+unrecorded cycle: `serve` the first condition, then run `fingerprint`, which waits for
+that server’s walk to complete, takes the same traversal, and hands it to the next
+`serve`. `serve` prints whether it carried a baseline.
+`record`, and `capture --record` before it starts Chrome, refuse a run launched without
+one; run `fingerprint` and serve again.
+The same step resumes a series after a refused record.
+It also starts a new series after a deliberate change to the tree, whose rows then do
+not pool with the earlier ones.
+This does not remove the traversal from a back-to-back series: consecutive measured runs
+are still separated by one, as they were under harness 21. What the harness guarantees
+is that no recorded run of any condition is an exception.
 
 Each browser row records `spawn_to_profile_start_ms`, the offset from server spawn to
 the profile’s time origin, and `compare` prints it beside `walk_elapsed_ms`. A walk that
@@ -311,11 +330,23 @@ attestation refuses it.
 Keep machine-specific reports under `.bench/`; they contain absolute executable and
 corpus paths and therefore do not belong in the public repository.
 
+Build both wheels the way `make build` builds a release: from the checkout’s locked
+environment, without build isolation.
+An isolated build resolves the build backend’s dependencies from the index at build
+time, which [supply-chain security](../../SUPPLY-CHAIN-SECURITY.md) rules out, and the
+control would no longer be built the way the release it stands for was.
+Each synced `.venv` is used only to build and is never measured.
+`--clear` empties the output directory, so each `ls` below matches exactly one wheel on
+a rerun.
+
 ```shell
 RESULTS="$PWD/.bench/release-comparisons/vX.Y.Z-to-candidate"
 git worktree add --detach /tmp/mb-at-vX.Y.Z vX.Y.Z
-(cd /tmp/mb-at-vX.Y.Z && uv --config-file uv.toml build --wheel --out-dir "$RESULTS/control")
-uv --config-file uv.toml build --wheel --out-dir "$RESULTS/candidate"
+(cd /tmp/mb-at-vX.Y.Z &&
+  uv --config-file uv.toml sync --locked --all-extras --all-groups &&
+  uv --config-file uv.toml build --clear --no-build-isolation --out-dir "$RESULTS/control")
+uv --config-file uv.toml sync --locked --all-extras --all-groups
+uv --config-file uv.toml build --clear --no-build-isolation --out-dir "$RESULTS/candidate"
 CONTROL_WHEEL=$(ls "$RESULTS"/control/metabrowser-*.whl)
 CANDIDATE_WHEEL=$(ls "$RESULTS"/candidate/metabrowser-*.whl)
 ```
@@ -326,15 +357,35 @@ environments differ, and two separately created environments differ even when th
 install the same packages.
 Install one wheel with its dependencies once; every later switch replaces only
 Metabrowser. exp-032’s admissible series was captured this way.
+This recipe takes those dependencies from the candidate’s `uv.lock`, so a rerun on
+another day installs the same versions rather than a fresh resolution.
+
+**Create the environments outside every git work tree**, including the `/tmp/mb-at-*`
+worktrees. `metab --version` annotates its version with the state of any work tree that
+contains the installed package, even from an ignored directory such as `.bench/`: a
+v0.9.1 wheel installed there reports, for example,
+`metab 0.9.1 (+153 commits, 8d111f4a)`. The harness reads that line, so `serve` then
+refuses the control’s `--build-ref` and the candidate’s wheel attestation.
+`use_wheel` and `require_version` stop on anything but the exact `metab <wheel version>`
+line. Wheels and reports stay under `.bench/`.
 
 ```shell
-uv venv "$RESULTS/env"
-uv --config-file uv.toml pip install --python "$RESULTS/env/bin/python" "$CANDIDATE_WHEEL"
+ENVS="$(mktemp -d)"
+uv --config-file uv.toml export --frozen --no-dev --no-emit-project \
+  --output-file "$RESULTS/constraints.txt"
+uv --config-file uv.toml venv "$ENVS/env"
+uv --config-file uv.toml pip install --python "$ENVS/env/bin/python" \
+  --constraints "$RESULTS/constraints.txt" "$CANDIDATE_WHEEL"
+require_version() {   # <metab> <wheel>: exactly the wheel's version, with no annotation
+  expected="metab $(basename "$2" | cut -d- -f2)"
+  actual="$("$1" --version)" || return
+  [ "$actual" = "$expected" ] || { echo "expected '$expected', got '$actual'" >&2; return 1; }
+}
 use_wheel() {
-  uv --config-file uv.toml pip install --python "$RESULTS/env/bin/python" \
-    --no-deps --reinstall-package metabrowser "$1"
-  uv --config-file uv.toml pip check --python "$RESULTS/env/bin/python"
-  "$RESULTS/env/bin/metab" --version   # confirm the release, not a dev build
+  uv --config-file uv.toml pip install --python "$ENVS/env/bin/python" \
+    --no-deps --reinstall-package metabrowser "$1" &&
+    uv --config-file uv.toml pip check --python "$ENVS/env/bin/python" &&
+    require_version "$ENVS/env/bin/metab" "$1"
 }
 ```
 
@@ -346,15 +397,20 @@ The backend comparison runs both builds interleaved inside one invocation, so ea
 its own environment:
 
 ```shell
-uv venv "$RESULTS/backend-control"
-uv --config-file uv.toml pip install --python "$RESULTS/backend-control/bin/python" "$CONTROL_WHEEL"
-uv venv "$RESULTS/backend-candidate"
-uv --config-file uv.toml pip install --python "$RESULTS/backend-candidate/bin/python" "$CANDIDATE_WHEEL"
+for side in control candidate; do
+  uv --config-file uv.toml venv "$ENVS/backend-$side"
+done
+uv --config-file uv.toml pip install --python "$ENVS/backend-control/bin/python" \
+  --constraints "$RESULTS/constraints.txt" "$CONTROL_WHEEL"
+uv --config-file uv.toml pip install --python "$ENVS/backend-candidate/bin/python" \
+  --constraints "$RESULTS/constraints.txt" "$CANDIDATE_WHEEL"
+require_version "$ENVS/backend-control/bin/metab" "$CONTROL_WHEEL"
+require_version "$ENVS/backend-candidate/bin/metab" "$CANDIDATE_WHEEL"
 
 uv --config-file uv.toml run --frozen python -m devtools.compare_builds \
   /path/to/unchanged/tree \
-  --baseline "$RESULTS/backend-control/bin/metab" \
-  --candidate "$RESULTS/backend-candidate/bin/metab" \
+  --baseline "$ENVS/backend-control/bin/metab" \
+  --candidate "$ENVS/backend-candidate/bin/metab" \
   --runs 5 --corpus-name <opaque-corpus-label> \
   --output "$RESULTS/backend.json"
 ```
@@ -381,11 +437,13 @@ the release and candidate in both orders.
 Each `serve` creates a fresh process and origin; each `capture --record` creates a fresh
 visible Chrome profile, applies the evidence and budget policy, and appends the
 normalized record to the ledger.
+Open the series with the unrecorded warm-up cycle: the first `serve` below, then
+`run.py fingerprint` in place of its capture, then that `serve` again.
 
 ```shell
 use_wheel "$CONTROL_WHEEL"
 $UV explorations/performance-loop/run.py serve \
-  --metab "$RESULTS/env/bin/metab" --artifact "$CONTROL_WHEEL" \
+  --metab "$ENVS/env/bin/metab" --artifact "$CONTROL_WHEEL" \
   --build-ref <full-release-commit> \
   --tree /path/to/unchanged/tree --files <inventory-count> \
   --exp exp-0NN --label release-vX.Y.Z
@@ -394,7 +452,7 @@ $UV explorations/performance-loop/run.py capture --headed \
 
 use_wheel "$CANDIDATE_WHEEL"
 $UV explorations/performance-loop/run.py serve \
-  --metab "$RESULTS/env/bin/metab" --artifact "$CANDIDATE_WHEEL" \
+  --metab "$ENVS/env/bin/metab" --artifact "$CANDIDATE_WHEEL" \
   --build-ref <full-candidate-commit> \
   --tree /path/to/unchanged/tree --files <inventory-count> \
   --exp exp-0NN --label candidate-<commit>
@@ -893,18 +951,23 @@ past result still holds after the fixture changed:
 
 ```shell
 git worktree add --detach /tmp/mb-at-<sha> <sha>   # the code as it was
-(cd /tmp/mb-at-<sha> && uv --config-file uv.toml build --wheel --out-dir "$RESULTS/old")
+(cd /tmp/mb-at-<sha> &&
+  uv --config-file uv.toml sync --locked --all-extras --all-groups &&
+  uv --config-file uv.toml build --clear --no-build-isolation --out-dir "$RESULTS/old")
 OLD_WHEEL=$(ls "$RESULTS"/old/metabrowser-*.whl)
 # Install it into the environment the other condition uses, then run today's harness:
 use_wheel "$OLD_WHEEL"
 $UV explorations/performance-loop/run.py serve \
-  --metab "$RESULTS/env/bin/metab" --artifact "$OLD_WHEEL" \
+  --metab "$ENVS/env/bin/metab" --artifact "$OLD_WHEEL" \
   --build-ref <full-sha> \
   --tree /path/to/corpus --files <count> --exp exp-0NN --label old
 ```
 
-`RESULTS`, the shared environment, and `use_wheel` are the ones set up in
-[Comparing a candidate with the previous release](#comparing-a-candidate-with-the-previous-release).
+`RESULTS`, `ENVS` and its shared environment, and `use_wheel` are the ones set up in
+[Comparing a candidate with the previous release](#comparing-a-candidate-with-the-previous-release),
+including its warm-up cycle.
+Every commit since the repository became a standalone package locks the `build`
+dependency group that the isolation-free build installs.
 Build the old commit as a wheel rather than syncing its checkout: an editable install is
 refused, and a second environment would not share the other condition’s dependency
 identity.

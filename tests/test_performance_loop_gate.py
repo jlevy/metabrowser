@@ -7,7 +7,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -802,6 +802,8 @@ def _recordable_run(
     pending: dict[str, Any] = {
         "commit": "abc1234",
         "corpus": "test-corpus",
+        # What `serve` carries forward from the traversal after the previous run.
+        "corpus_fingerprint_baseline": module._corpus_fingerprint(corpus),
         "corpus_launch_marker": module._corpus_launch_marker(corpus),
         "corpus_shape": 1,
         "dirty": True,
@@ -884,17 +886,50 @@ def test_record_refuses_a_profile_without_a_start_after_the_spawn(
     assert not module.RESULTS.exists()
 
 
-def test_record_fingerprints_the_corpus_after_the_measurement(tmp_path: Path) -> None:
+def test_record_stores_the_fingerprint_after_the_measurement(tmp_path: Path) -> None:
     module = _runner()
     corpus, payload = _recordable_run(module, tmp_path)
-    launched = module._corpus_fingerprint(corpus)
-    # Below the root, so the launch marker cannot see it; the recorded row must.
-    (corpus / "nested" / "sample.txt").write_text("changed during the run\n", encoding="utf-8")
 
     assert _record(module, payload) == 0
     recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
     assert recorded["corpus_fingerprint"] == module._corpus_fingerprint(corpus)
-    assert recorded["corpus_fingerprint"] != launched
+    # The traversal is handed to the next launch of this corpus as its baseline.
+    pending = json.loads(module.PENDING.read_text(encoding="utf-8"))
+    assert pending["corpus_state_after_run"] == {
+        "corpus_fingerprint": recorded["corpus_fingerprint"],
+        "corpus_launch_marker": module._corpus_launch_marker(corpus),
+    }
+
+
+def test_record_refuses_a_change_below_the_root_since_the_launch_baseline(
+    tmp_path: Path,
+) -> None:
+    module = _runner()
+    corpus, payload = _recordable_run(module, tmp_path)
+    # Below the root, so the launch marker cannot see it; persisting, so the
+    # post-measurement fingerprint alone would match every later row.
+    (corpus / "nested" / "sample.txt").write_text("changed during the run\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="corpus changed below the root"):
+        _record(module, payload)
+    assert not module.RESULTS.exists()
+    assert "corpus_state_after_run" not in json.loads(module.PENDING.read_text(encoding="utf-8"))
+
+
+def test_record_refuses_a_run_launched_without_a_traversal_baseline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    _corpus, payload = _recordable_run(module, tmp_path, corpus_fingerprint_baseline=None)
+
+    def traversal(_root: Path) -> str:
+        raise AssertionError("refusing a run without a baseline needs no traversal")
+
+    monkeypatch.setattr(module, "_corpus_fingerprint", traversal)
+
+    with pytest.raises(SystemExit, match="without a corpus traversal after the previous run"):
+        _record(module, payload)
+    assert not module.RESULTS.exists()
 
 
 def test_record_refuses_a_corpus_root_changed_since_serve(tmp_path: Path) -> None:
@@ -906,15 +941,59 @@ def test_record_refuses_a_corpus_root_changed_since_serve(tmp_path: Path) -> Non
         _record(module, payload)
 
 
-def test_serve_does_not_traverse_the_corpus_before_launch(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+@pytest.mark.parametrize("change", ["remove-top-level-entry", "replace-root", "below-root"])
+def test_corpus_launch_marker_sees_the_root_level_only(tmp_path: Path, change: str) -> None:
     module = _runner()
     corpus = tmp_path / "corpus"
-    (corpus / "nested").mkdir(parents=True)
+
+    def build(root: Path) -> None:
+        (root / "nested").mkdir(parents=True)
+        (root / "nested" / "sample.txt").write_text("sample\n", encoding="utf-8")
+        (root / "top.txt").write_text("top\n", encoding="utf-8")
+
+    build(corpus)
+    before = module._corpus_launch_marker(corpus)
+    if change == "remove-top-level-entry":
+        (corpus / "top.txt").unlink()
+    elif change == "replace-root":
+        # Built beside the old root, so the two coexist and cannot share an inode.
+        replacement = tmp_path / "replacement"
+        build(replacement)
+        corpus.rename(tmp_path / "retired")
+        replacement.rename(corpus)
+    else:
+        (corpus / "nested" / "sample.txt").write_text("changed\n", encoding="utf-8")
+
+    after = module._corpus_launch_marker(corpus)
+    if change == "below-root":
+        # Invisible here by design: the carried full fingerprint is what sees it.
+        assert after == before
+    else:
+        assert after != before
+
+
+class _JsonResponse(io.BytesIO):
+    def __enter__(self) -> _JsonResponse:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
+
+
+def _serve(
+    module: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    corpus: Path,
+    previous: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run `_serve_root` with the build, process, and socket mocked; return its pending run."""
+
     monkeypatch.setattr(module, "HERE", tmp_path)
-    monkeypatch.setattr(module, "PENDING", tmp_path / "results" / "pending.json")
+    monkeypatch.setattr(module, "PENDING", tmp_path / "pending.json")
     monkeypatch.setattr(module, "PORTS_USED", tmp_path / "results" / "ports-used.txt")
+    if previous is not None:
+        module.PENDING.write_text(json.dumps(previous), encoding="utf-8")
     monkeypatch.setattr(
         module,
         "resolve_metab_build",
@@ -927,11 +1006,6 @@ def test_serve_does_not_traverse_the_corpus_before_launch(
     )
     monkeypatch.setattr(module, "_stop_pending_server", lambda: None)
     monkeypatch.setattr(module, "_next_port", lambda: 8765)
-
-    def traversal(_root: Path) -> str:
-        raise AssertionError("serve traversed the corpus immediately before the measured walk")
-
-    monkeypatch.setattr(module, "_corpus_fingerprint", traversal)
 
     class Process:
         pid = 4321
@@ -968,13 +1042,228 @@ def test_serve_does_not_traverse_the_corpus_before_launch(
         "test-corpus",
         100,
     )
-
     assert result == 0
-    pending = json.loads(module.PENDING.read_text(encoding="utf-8"))
+    return cast("dict[str, Any]", json.loads(module.PENDING.read_text(encoding="utf-8")))
+
+
+def test_serve_does_not_traverse_the_corpus_before_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    corpus = tmp_path / "corpus"
+    (corpus / "nested").mkdir(parents=True)
+    marker = module._corpus_launch_marker(corpus)
+
+    def traversal(_root: Path) -> str:
+        raise AssertionError("serve traversed the corpus immediately before the measured walk")
+
+    monkeypatch.setattr(module, "_corpus_fingerprint", traversal)
+
+    pending = _serve(module, tmp_path, monkeypatch, corpus)
+
     assert "corpus_fingerprint" not in pending
-    assert pending["corpus_launch_marker"] == module._corpus_launch_marker(corpus)
+    assert pending["corpus_launch_marker"] == marker
     assert isinstance(pending["server_spawned_epoch_ms"], float)
     assert pending["server_spawned_at"].endswith("+00:00")
+
+
+@pytest.mark.parametrize("change", ["unchanged", "other-root", "root-marker", "no-traversal"])
+def test_serve_carries_the_previous_traversal_only_to_an_unchanged_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    module = _runner()
+    corpus = tmp_path / "corpus"
+    (corpus / "nested").mkdir(parents=True)
+    state = {
+        "corpus_fingerprint": module._corpus_fingerprint(corpus),
+        "corpus_launch_marker": module._corpus_launch_marker(corpus),
+    }
+    previous: dict[str, Any] = {"server_root": str(corpus), "corpus_state_after_run": state}
+    if change == "other-root":
+        previous["server_root"] = str(tmp_path / "elsewhere")
+    elif change == "root-marker":
+        (corpus / "added").mkdir()
+    elif change == "no-traversal":
+        del previous["corpus_state_after_run"]
+
+    pending = _serve(module, tmp_path, monkeypatch, corpus, previous)
+
+    expected = state["corpus_fingerprint"] if change == "unchanged" else None
+    assert pending["corpus_fingerprint_baseline"] == expected
+
+
+def _walk_completes_after(
+    module: Any, monkeypatch: pytest.MonkeyPatch, polls: int, events: list[str]
+) -> None:
+    states = iter([False] * polls + [True])
+
+    def read_progress(url: str, *, timeout: float) -> _JsonResponse:
+        assert url == "http://127.0.0.1:8600/api/index/progress"
+        complete = next(states)
+        events.append(f"complete={complete}")
+        return _JsonResponse(json.dumps({"complete": complete}).encode())
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", read_progress)
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+
+
+def test_fingerprint_traverses_after_the_pending_walk_and_hands_it_forward(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: Any
+) -> None:
+    module = _runner()
+    corpus = tmp_path / "corpus"
+    (corpus / "nested").mkdir(parents=True)
+    monkeypatch.setattr(module, "PENDING", tmp_path / "pending.json")
+    module.PENDING.write_text(
+        json.dumps({"port": 8600, "server_root": str(corpus), "measurement_run_id": "warm-up"}),
+        encoding="utf-8",
+    )
+    events: list[str] = []
+    _walk_completes_after(module, monkeypatch, 2, events)
+    real_fingerprint = module._corpus_fingerprint
+
+    def fingerprint(root: Path) -> str:
+        events.append("traversal")
+        return str(real_fingerprint(root))
+
+    monkeypatch.setattr(module, "_corpus_fingerprint", fingerprint)
+
+    assert module.cmd_fingerprint(argparse.Namespace(timeout=60.0)) == 0
+
+    assert events == ["complete=False", "complete=False", "complete=True", "traversal"]
+    pending = json.loads(module.PENDING.read_text(encoding="utf-8"))
+    assert pending["measurement_run_id"] == "warm-up"
+    assert pending["corpus_state_after_run"] == {
+        "corpus_fingerprint": real_fingerprint(corpus),
+        "corpus_launch_marker": module._corpus_launch_marker(corpus),
+    }
+    assert real_fingerprint(corpus) in capsys.readouterr().out
+
+
+def test_a_traversal_is_not_handed_to_a_launch_it_did_not_precede(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    monkeypatch.setattr(module, "PENDING", tmp_path / "pending.json")
+    # A newer `serve` replaced the run while its traversal was still running.
+    module.PENDING.write_text(json.dumps({"measurement_run_id": "newer"}), encoding="utf-8")
+
+    module._store_corpus_state_after_run(
+        "older", {"corpus_fingerprint": "f" * 64, "corpus_launch_marker": "m" * 64}
+    )
+
+    assert json.loads(module.PENDING.read_text(encoding="utf-8")) == {"measurement_run_id": "newer"}
+
+
+def test_fingerprint_refuses_when_the_pending_server_is_not_answering(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    monkeypatch.setattr(module, "PENDING", tmp_path / "pending.json")
+    module.PENDING.write_text(
+        json.dumps({"port": 8600, "server_root": str(corpus), "measurement_run_id": "warm-up"}),
+        encoding="utf-8",
+    )
+
+    def refused(_url: str, *, timeout: float) -> None:
+        raise ConnectionRefusedError("connection refused")
+
+    def traversal(_root: Path) -> str:
+        raise AssertionError("a traversal without a completed walk is not the series regime")
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", refused)
+    monkeypatch.setattr(module, "_corpus_fingerprint", traversal)
+
+    with pytest.raises(SystemExit, match="not answering"):
+        module.cmd_fingerprint(argparse.Namespace(timeout=60.0))
+    assert "corpus_state_after_run" not in json.loads(module.PENDING.read_text(encoding="utf-8"))
+
+
+def test_a_series_refuses_a_change_below_the_root_during_its_first_recorded_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    corpus, payload = _recordable_run(module, tmp_path)
+    # The unrecorded warm-up cycle: a served run whose walk completed, then `fingerprint`.
+    module.PENDING.write_text(
+        json.dumps({"port": 8600, "server_root": str(corpus), "measurement_run_id": "warm-up"}),
+        encoding="utf-8",
+    )
+    _walk_completes_after(module, monkeypatch, 0, [])
+    assert module.cmd_fingerprint(argparse.Namespace(timeout=60.0)) == 0
+
+    pending = _serve(module, tmp_path, monkeypatch, corpus)
+    assert pending["corpus_fingerprint_baseline"] == module._corpus_fingerprint(corpus)
+    payload.update(
+        measurement_origin=pending["measurement_origin"],
+        measurement_run_id=pending["measurement_run_id"],
+        time_origin_epoch_ms=pending["server_spawned_epoch_ms"] + 2_500,
+    )
+    # The first recorded walk meets a change below the root that persists afterwards.
+    (corpus / "nested" / "sample.txt").write_text("changed during the run\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="corpus changed below the root"):
+        _record(module, payload)
+    assert not module.RESULTS.exists()
+
+
+def test_recorded_capture_refuses_a_run_without_a_traversal_baseline_before_chrome(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    module.PENDING = tmp_path / "pending.json"
+    module.PENDING.write_text(
+        json.dumps(
+            {
+                "corpus_fingerprint_baseline": None,
+                "port": 8642,
+                "url": "http://127.0.0.1:8642/view/?measurement_run_id=test",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def launch(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Chrome launched for a run that record would refuse")
+
+    monkeypatch.setattr(module.subprocess, "run", launch)
+
+    with pytest.raises(SystemExit, match="run.py fingerprint"):
+        module.cmd_capture(
+            argparse.Namespace(
+                budgets=str(BUDGETS),
+                chrome="",
+                headed=True,
+                height=900,
+                label="",
+                note="",
+                output=str(tmp_path / "profile.json"),
+                record=True,
+                timeout_ms=30_000,
+                width=1600,
+            )
+        )
+
+
+def test_record_owns_the_walk_facts_a_paste_could_supply(tmp_path: Path) -> None:
+    module = _runner()
+    _corpus, payload = _recordable_run(module, tmp_path)
+    # A fast walk logs no completion line, so the harness has no elapsed time to record.
+    module._walk_facts = lambda _port, _declaration=None: {
+        "inventory_contract": "inventory-provider-v1",
+        "inventory_provider": "python",
+        "walk_files": 101,
+        "walk_status": "done",
+    }
+    module._inventory_facts = lambda _port: {}
+    payload.update(walk_elapsed_ms=1, inventory_work={"pasted": True})
+
+    assert _record(module, payload) == 0
+    recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
+    assert "walk_elapsed_ms" not in recorded
+    assert "inventory_work" not in recorded
 
 
 def test_record_rechecks_the_nonce_under_the_ledger_lock(
@@ -1115,6 +1404,7 @@ def test_record_persists_an_attested_pre_contract_identity_gap(tmp_path: Path) -
                 **provenance,
                 "artifact_path": "/release.whl",
                 "corpus": "test-corpus",
+                "corpus_fingerprint_baseline": module._corpus_fingerprint(corpus),
                 "corpus_launch_marker": module._corpus_launch_marker(corpus),
                 "corpus_shape": 1,
                 "experiment": "exp-test",

@@ -91,12 +91,21 @@ PENDING = HERE / "results" / "pending.json"
 # every run so a later reader can tell "measured differently" from "changed".
 #
 # 22: `serve` no longer traverses the corpus between stopping the previous
-# server and launching the measured one; it takes a root-only launch marker, and
-# `record` computes the full fingerprint after the measurement. On a corpus larger
-# than the host's vnode cache that traversal decided which entries the measured
-# walk found cached. Runs also carry the server spawn time and the offset from
-# spawn to the browser profile's time origin, route samples carry the run nonce,
-# and a pre-contract build's walk elapsed time is read from its own log line.
+# server and launching the measured one; it takes a root-only launch marker. On a
+# corpus larger than the host's vnode cache, which traversal ran last decides which
+# entries the measured walk finds cached, so every recorded run now launches after
+# one sequence: the previous served run's completed walk, then one full traversal.
+# `record` runs that traversal after each measurement, and a series opens with an
+# unrecorded `serve` plus `fingerprint`, which takes the place of a recorded
+# predecessor. `serve` carries the traversal's fingerprint into the next launch of
+# an unchanged root, and `record` refuses a run launched without it or whose tree
+# moved from it. Consecutive runs are still separated by a full traversal, as
+# under 21; what changed is its position, and that no run is an exception. Runs
+# also carry the server spawn time and the offset from spawn to the browser
+# profile's time origin, route samples carry the run nonce, and a pre-contract
+# build's walk elapsed time is read from its own log line. No row was recorded
+# under 22 before the baseline rule joined it, so it did not need a version of
+# its own.
 #
 # 21: a measurement run nonce is single-use evidence. Recording refuses a nonce
 # already in the ledger, and comparison independently rejects duplicate rows.
@@ -368,9 +377,10 @@ def _corpus_fingerprint(root: Path) -> str:
     contents identify the filesystem the server sees. Reading every byte of a
     multi-gigabyte corpus before a cold benchmark would alter the measured cache state.
 
-    This still visits every entry, so only ``record`` calls it, after the measurement.
-    Run immediately before a launch, it decided which entries the measured walk found
-    in a vnode cache smaller than the corpus.
+    This still visits every entry, so it runs only once a run's walk is over: in
+    ``record`` after the measurement, or in ``fingerprint`` to open a series. Run
+    between stopping one server and launching the next, it decided which entries the
+    measured walk found in a vnode cache smaller than the corpus.
     """
 
     digest = hashlib.sha256()
@@ -411,9 +421,10 @@ def _corpus_launch_marker(root: Path) -> str:
     One directory read and a stat per root entry, never a traversal: the root's own
     identity and mtime, each direct child's name, inode, size, and mtime, and the
     root control files' bytes. A rebuilt corpus replaces the root or its marker, and
-    adding or removing a top-level entry moves the root mtime. A change confined
-    below the first level is not visible here; the full fingerprint that ``record``
-    stores on every row is, and ``compare`` refuses conditions whose rows disagree.
+    adding or removing a top-level entry changes the entry list. A change confined
+    below the first level is not visible here. The full fingerprint taken after the
+    previous run is: ``serve`` carries it into the launch, and ``record`` refuses a
+    run whose own fingerprint differs from it.
     """
 
     digest = hashlib.sha256()
@@ -683,6 +694,20 @@ _PRE_CONTRACT_WALK_LINE = re.compile(
 )
 
 
+# Everything `_walk_facts` and `_inventory_facts` can report. `record` owns these keys
+# whether or not the server reported them.
+_SERVER_REPORTED_FIELDS = frozenset(
+    {
+        "inventory_contract",
+        "inventory_provider",
+        "inventory_work",
+        "walk_elapsed_ms",
+        "walk_files",
+        "walk_status",
+    }
+)
+
+
 def _walk_facts(port: int, identity_declaration: object = None) -> dict[str, Any]:
     """What that run's own walk did, read back out of its server log.
 
@@ -871,6 +896,70 @@ def _append_run(run: dict[str, Any], pending: dict[str, Any]) -> None:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
+def _corpus_state_after_run(root: Path) -> dict[str, str]:
+    """Traverse the corpus once a run's walk is over, for the next launch to carry.
+
+    The marker is read first, so a root change during the traversal leaves a marker
+    the next ``serve`` cannot match rather than a baseline that silently describes
+    two trees.
+    """
+
+    return {
+        "corpus_launch_marker": _corpus_launch_marker(root),
+        "corpus_fingerprint": _corpus_fingerprint(root),
+    }
+
+
+def _store_corpus_state_after_run(measurement_run_id: str, state: dict[str, str]) -> None:
+    """Attach a completed traversal to the pending run it followed.
+
+    A ``serve`` that has already replaced that run launched before the traversal
+    finished, so the state is dropped rather than handed to a launch it did not
+    precede.
+    """
+
+    pending = _read_pending()
+    if pending.get("measurement_run_id") != measurement_run_id:
+        return
+    PENDING.write_text(
+        json.dumps({**pending, "corpus_state_after_run": state}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _carried_corpus_baseline(root: Path, launch_marker: str) -> str | None:
+    """The fingerprint traversed after the previous served run, when it still applies.
+
+    It applies only to a launch of the same root whose marker has not moved since the
+    traversal. Anything else -- no previous run, a run nobody recorded or
+    fingerprinted, another tree, a rebuilt corpus -- launches without a baseline, and
+    ``record`` refuses it.
+    """
+
+    try:
+        loaded: Any = json.loads(PENDING.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    previous = cast("dict[str, Any]", loaded)
+    state = previous.get("corpus_state_after_run")
+    if previous.get("server_root") != str(root) or not isinstance(state, dict):
+        return None
+    facts = cast("dict[str, Any]", state)
+    fingerprint = facts.get("corpus_fingerprint")
+    if facts.get("corpus_launch_marker") != launch_marker or not isinstance(fingerprint, str):
+        return None
+    return fingerprint
+
+
+_NO_BASELINE = (
+    "pending run launched without a corpus traversal after the previous run's walk, so "
+    "its walk met a different cache regime from every recorded run; run "
+    "`run.py fingerprint`, then serve again"
+)
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     if args.tree:
         real = Path(args.tree).expanduser().resolve()
@@ -959,9 +1048,11 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
         ),
     )
     _stop_pending_server()
-    # Root-only: a full traversal here would run immediately before the measured
-    # walk. `record` takes the full fingerprint once the measurement is over.
+    # Root-only: a full traversal here would run between stopping the previous server
+    # and the measured walk. The full fingerprint was taken once the previous run's
+    # walk was over, and is carried forward only while it still describes this root.
     corpus_launch_marker = _corpus_launch_marker(root)
+    corpus_fingerprint_baseline = _carried_corpus_baseline(root, corpus_launch_marker)
     measurement_run_id = secrets.token_hex(16)
 
     port = _next_port()
@@ -1013,6 +1104,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "port": port,
                 "files": files,
                 "corpus": corpus_label,
+                "corpus_fingerprint_baseline": corpus_fingerprint_baseline,
                 "corpus_launch_marker": corpus_launch_marker,
                 "corpus_shape": _corpus_shape(root),
                 **provenance,
@@ -1044,6 +1136,13 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
     count = f"{files} files" if files is not None else "file count recorded from completed walk"
     print(f"corpus      {corpus_label}  ({count})")
     print(f"provider    {args.provider}")
+    if corpus_fingerprint_baseline is None:
+        print(
+            "baseline    none: a warm-up that `record` refuses. Run `run.py fingerprint` "
+            "(it waits for this walk), then serve again"
+        )
+    else:
+        print("baseline    carried from the traversal after the previous run")
     print(f"url         {url}")
     print()
     print("1. size the browser pane to at least 1280x900, keep it visible, and load that URL cold")
@@ -1108,6 +1207,9 @@ def cmd_record(args: argparse.Namespace) -> int:
         raise SystemExit("pending browser run has no corpus root")
     if _corpus_launch_marker(Path(server_root)) != pending.get("corpus_launch_marker"):
         raise SystemExit("corpus changed between serve and record; discard this measurement")
+    corpus_fingerprint_baseline = pending.get("corpus_fingerprint_baseline")
+    if not isinstance(corpus_fingerprint_baseline, str):
+        raise SystemExit(_NO_BASELINE)
     artifact_path = pending.get("artifact_path")
     identity_declaration = pending.get("inventory_identity_declaration")
     if identity_declaration == PRE_CONTRACT_INVENTORY_IDENTITY_MISSING and artifact_path is None:
@@ -1146,7 +1248,9 @@ def cmd_record(args: argparse.Namespace) -> int:
         identity_declaration,
     )
     run: dict[str, Any] = {
-        **payload,
+        # Server facts are present only when the server reported them, so a pasted
+        # value would otherwise survive exactly when the harness has none.
+        **{key: value for key, value in probe.items() if key not in _SERVER_REPORTED_FIELDS},
         "experiment": pending.get("experiment"),
         "label": label,
         "port": port,
@@ -1187,9 +1291,17 @@ def cmd_record(args: argparse.Namespace) -> int:
                 "navigation-time profiler exposed by the current build."
             )
     # After every cheap refusal, and after the measurement itself, because this visits
-    # every entry. `compare` refuses rows whose fingerprints disagree.
-    run["corpus_fingerprint"] = _corpus_fingerprint(Path(server_root))
+    # every entry. It is also the traversal the next launch follows.
+    corpus_state = _corpus_state_after_run(Path(server_root))
+    if corpus_state["corpus_fingerprint"] != corpus_fingerprint_baseline:
+        raise SystemExit(
+            "corpus changed below the root since the traversal this run launched after; "
+            "discard this measurement. To start a new series on the changed tree, run "
+            "`run.py fingerprint`, then serve again; its rows will not pool with earlier ones"
+        )
+    run["corpus_fingerprint"] = corpus_state["corpus_fingerprint"]
     _append_run(run, pending)
+    _store_corpus_state_after_run(measurement_run_id, corpus_state)
     walk = run.get("walk_elapsed_ms")
     regime = f"walk {walk} ms" if walk else f"walk {run.get('walk_status', 'unknown')}"
     print(
@@ -1219,6 +1331,9 @@ def cmd_capture(args: argparse.Namespace) -> int:
     if args.record and scenario:
         raise SystemExit("interaction scenarios are experiment evidence and cannot use --record")
     pending = _read_pending()
+    if args.record and not isinstance(pending.get("corpus_fingerprint_baseline"), str):
+        # Refused before Chrome starts: `record` would refuse the profile anyway.
+        raise SystemExit(_NO_BASELINE)
     port = pending.get("port")
     if not isinstance(port, int):
         raise SystemExit("pending browser run has no valid port")
@@ -1669,6 +1784,53 @@ def cmd_probe_server(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fingerprint(args: argparse.Namespace) -> int:
+    """Traverse the corpus after the pending run's walk, as the next launch's baseline.
+
+    ``record`` does this after every recorded run. The first run of a series has no
+    recorded predecessor, so the series opens with one unrecorded cycle: ``serve``,
+    then this. The same step resumes a series after a refused record, and starts a
+    new one after a deliberate change to the tree.
+    """
+
+    pending = _read_pending()
+    root = pending.get("server_root")
+    port = pending.get("port")
+    measurement_run_id = pending.get("measurement_run_id")
+    if (
+        not isinstance(root, str)
+        or not isinstance(port, int)
+        or not isinstance(measurement_run_id, str)
+    ):
+        raise SystemExit("pending run has no corpus root, port, or nonce; start one with `serve`")
+    # The traversal a recorded run launches after follows a completed walk; one taken
+    # mid-walk would open the series in a different regime.
+    deadline = time.monotonic() + args.timeout
+    while True:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/api/index/progress", timeout=10
+            ) as response:
+                loaded: Any = json.loads(response.read())
+        except (OSError, ValueError) as error:
+            raise SystemExit(
+                f"pending server on port {port} is not answering ({error}); the traversal "
+                "must follow that server's completed walk, so serve again"
+            ) from error
+        if isinstance(loaded, dict) and cast("dict[str, Any]", loaded).get("complete") is True:
+            break
+        if time.monotonic() >= deadline:
+            raise SystemExit(
+                f"the pending server's walk did not complete within {args.timeout:g} s"
+            )
+        time.sleep(1.0)
+    state = _corpus_state_after_run(Path(root))
+    _store_corpus_state_after_run(measurement_run_id, state)
+    print(f"fingerprint {state['corpus_fingerprint']}")
+    print("the next `serve` of this unchanged corpus launches after this traversal")
+    return 0
+
+
 def cmd_count(args: argparse.Namespace) -> int:
     root = Path(args.tree).expanduser().resolve()
     files, dirs = _count_tree(root)
@@ -2056,6 +2218,19 @@ def main(argv: list[str] | None = None) -> int:
         help="performance requirements and budgets TOML",
     )
     compare.set_defaults(func=cmd_compare)
+
+    fingerprint = sub.add_parser(
+        "fingerprint",
+        help="after the pending run's walk, traverse the corpus as the next launch's "
+        "baseline; opens a series",
+    )
+    fingerprint.add_argument(
+        "--timeout",
+        type=float,
+        default=600.0,
+        help="seconds to wait for the pending server's walk to complete",
+    )
+    fingerprint.set_defaults(func=cmd_fingerprint)
 
     count = sub.add_parser("count", help="files and directories in a real tree")
     count.add_argument("tree")
