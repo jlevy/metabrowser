@@ -5,13 +5,13 @@ title: Quiet-environment perf revalidation of v0.9.2 candidate (walk under attac
 kind: task
 status: open
 priority: 1
-version: 2
+version: 3
 labels:
   - performance
   - release-hardening
 dependencies: []
 created_at: 2026-09-13T16:43:21.362Z
-updated_at: 2026-09-13T21:36:44.722Z
+updated_at: 2026-09-14T01:29:55.906Z
 ---
 Quiet-machine performance revalidation of the release candidate, required before tagging.
 
@@ -33,3 +33,7 @@ Harness fixes to make first (from the release-lane review; harness-only, not shi
 9. README control-build recipes use uv sync (editable, refused by attestation) and a never-built dist/metabrowser.whl; document installing the exact wheel into one fresh venv and alternating with --no-deps.
 
 Method: >=5 interleaved runs per side, one environment alternating only the wheel, headed Chrome, 300k corpus, quiet machine (no other agents, no stray metab servers).
+
+## Notes
+
+Also run the first-rows release metric from mb-i2im on the repository-shaped project-10 corpus during this rerun: cold backend first_row (compare_builds) and browser first_row_ms for control and candidate, then promote first_row_ms to a hard gate at the measured value. The candidate must include commit 2e9e2066 (gitignore pre-walk removed); before it, first rows on a real repository waited 9-34 s.
