@@ -41,6 +41,9 @@ _GIT_TIMEOUT_SECONDS = 2.0
 """Long enough for a local repository, short enough to never be the reason a
 command felt slow. A version string is not worth waiting on."""
 
+_CHECKOUT_PATH = "src/metabrowser/build_version.py"
+"""Where this module sits in a Metabrowser checkout, relative to its root."""
+
 
 def _git(repository: Path, *arguments: str) -> str | None:
     """Run one git command in *repository*, or return None for any reason at all."""
@@ -51,16 +54,19 @@ def _git(repository: Path, *arguments: str) -> str | None:
     # `repository`.
     environment = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     try:
-        # Fixed argv, no shell, and git is resolved from PATH.
+        # Fixed argv, no shell, and git is resolved from PATH. Git prints tags
+        # and paths as bytes that need not be UTF-8, and surrogateescape keeps
+        # them rather than raising.
         completed = subprocess.run(
             ["git", "-C", str(repository), *arguments],
             capture_output=True,
-            text=True,
+            encoding="utf-8",
+            errors="surrogateescape",
             timeout=_GIT_TIMEOUT_SECONDS,
             check=False,
             env=environment,
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, UnicodeError):
         return None
     if completed.returncode != 0:
         return None
@@ -69,29 +75,30 @@ def _git(repository: Path, *arguments: str) -> str | None:
 
 @cache
 def source_checkout() -> Path | None:
-    """The repository this package is running from, or None if it is installed.
+    """The checkout this package is running from, or None if it is installed.
 
-    A repository describes this build only if it tracks the file that is
-    running. An enclosing work tree alone is not enough: a virtualenv created
-    inside a project's repository — a project-local ``.venv/``, or a benchmark
-    environment under an ignored ``.bench/`` — puts an installed wheel under
-    that repository without making it that repository's code, and reading the
-    repository then labels a release with someone else's commit.
+    A repository describes this build only if it is Metabrowser's repository
+    and tracks the file that is running. An enclosing work tree alone is not
+    enough: a virtualenv created inside a project's repository — a
+    project-local ``.venv/``, or a benchmark environment under an ignored
+    ``.bench/`` — puts an installed wheel under that repository without making
+    it that repository's code. Tracking alone is not enough either: a copy
+    committed into another project, by ``pip install --target vendor/`` and a
+    commit, is tracked, but that project's tags and commits say nothing about
+    which Metabrowser is running.
 
-    So ask git whether it tracks this module's own file before asking where the
-    repository is. An editable or ``uv run`` checkout imports from the tracked
-    ``src/metabrowser/`` and passes; a wheel in site-packages is untracked or
-    outside any repository and falls through to the plain version. The common
-    installed case still costs one git call, because the tracking check fails
-    outright where there is no repository at all.
+    So ask git for this file's tracked path from the repository root, and
+    accept only the path it has in a Metabrowser checkout. An editable or
+    ``uv run`` checkout, a linked worktree, or a submodule imports the tracked
+    ``src/metabrowser/`` and passes, and the root is then two directories up
+    with no second git call. An installed copy is untracked, outside any
+    repository, or tracked somewhere else, and falls through to the plain
+    version.
     """
 
     module = Path(__file__).resolve()
-    here = module.parent
-    if _git(here, "ls-files", "--error-unmatch", "--", module.name) is None:
-        return None
-    top = _git(here, "rev-parse", "--show-toplevel")
-    return Path(top) if top else None
+    tracked = _git(module.parent, "ls-files", "--error-unmatch", "--full-name", "--", module.name)
+    return module.parents[2] if tracked == _CHECKOUT_PATH else None
 
 
 @cache
@@ -111,27 +118,28 @@ def build_state() -> str:
         return ""
 
     parts: list[str] = []
-    described = _git(repository, "describe", "--tags", "--long", "--dirty=+dirty")
+    # Not `--dirty`: that refreshes the index and writes it back under
+    # index.lock whatever --no-optional-locks says, and a version string must
+    # never be the reason a concurrent `git commit` finds the index locked.
+    described = _git(repository, "describe", "--tags", "--long")
     if described:
-        # git describe gives `<tag>-<commits>-g<sha>[+dirty]`; the tag itself is
+        # git describe gives `<tag>-<commits>-g<sha>`; the tag itself is
         # already in the package version, so only the distance and sha are new.
-        marker = described.removeprefix("+dirty")
-        pieces = marker.split("-")
+        pieces = described.split("-")
         if len(pieces) >= 3:
-            commits, sha = pieces[-2], pieces[-1]
-            ahead = commits.removesuffix("+dirty")
-            sha_clean = sha.removesuffix("+dirty")
+            ahead, sha = pieces[-2], pieces[-1]
             if ahead.isdigit() and int(ahead) > 0:
                 parts.append(f"+{ahead} commits")
-            if sha_clean.startswith("g"):
-                parts.append(sha_clean[1:])
-        if described.endswith("+dirty"):
-            parts.append("dirty")
-    elif _git(repository, "rev-parse", "--short", "HEAD"):
+            if sha.startswith("g"):
+                parts.append(sha[1:])
+    else:
         # A repository with no tags at all still has a commit worth naming.
-        parts.append(str(_git(repository, "rev-parse", "--short", "HEAD")))
+        head = _git(repository, "rev-parse", "--short", "HEAD")
+        if head:
+            parts.append(head)
 
-    if "dirty" not in parts and _git(repository, "status", "--porcelain"):
+    # Tracked edits, staged changes, and new files all change the build.
+    if _git(repository, "--no-optional-locks", "status", "--porcelain"):
         parts.append("dirty")
 
     return ", ".join(parts)
