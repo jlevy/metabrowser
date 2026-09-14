@@ -7,9 +7,21 @@ from collections.abc import Generator
 
 import pytest
 
+from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+
 # Test discovery imports the server from several module scopes. Never let an
 # operator's shell or dotenv configuration alter collection or load external plugins.
 os.environ["METABROWSER_PLUGINS_DIRS"] = ""
+
+# The pre-push gate runs this suite inside a githook, and from a linked worktree git
+# exports GIT_DIR there. It outranks the working directory and `git -C`, so a fixture
+# that spawns git with the inherited environment acts on the developer's repository:
+# its `git init` writes core.bare = true into the configuration every worktree
+# shares. Scrub once, here, before any test module is imported, so a fixture that
+# forgets to scrub its own calls cannot do that. A test that needs a poisoned GIT_DIR
+# sets one itself. tests/test_git_hook_environment.py pins this.
+for _name in _REPO_PINNING_GIT_VARS:
+    os.environ.pop(_name, None)
 
 
 @pytest.fixture(autouse=True)
