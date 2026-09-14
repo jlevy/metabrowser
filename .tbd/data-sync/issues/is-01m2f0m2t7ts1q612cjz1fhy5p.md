@@ -3,14 +3,18 @@ type: is
 id: is-01m2f0m2t7ts1q612cjz1fhy5p
 title: "PR #115 review S1-S5: Non-blocking suggestions (walk_elapsed_ms ownership, uv venv config, build --clear, marker tests, env pinning)"
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels: []
 dependencies: []
 parent_id: is-01m2f0m0sdxg3fe8v091zxkby8
 created_at: 2026-09-14T03:50:53.511Z
-updated_at: 2026-09-14T03:50:53.511Z
+updated_at: 2026-09-14T04:48:11.457Z
+closed_at: 2026-09-14T04:48:11.456Z
+close_reason: "Fixed in bbd16783: S1 payload filter for server-reported keys, S2 uv --config-file venv, S3 --clear, S4 marker tests for removal/replacement/below-root, S5 constraints exported from uv.lock"
+resolution: null
+duplicate_of: null
 ---
 PR #115 review suggestions S1-S5 (non-blocking).
 
