@@ -853,10 +853,10 @@ if (typeof window !== "undefined") {
 // receive snapshots and navigation callbacks through their public constructors;
 // they never reach into app.js state directly.
 /**
- * @typedef {object} QuickFileOpenOutcome
- * @property {HTMLElement | null} [focusTarget]
- * @property {string} [message]
- * @property {"opened" | "not-found" | "error" | "cancelled"} status
+ * A failed open always carries its message, so Quick File shows it as is.
+ *
+ * @typedef {{focusTarget?: HTMLElement | null, message?: string, status: "opened" | "not-found" | "cancelled"}
+ *   | {focusTarget?: HTMLElement | null, message: string, status: "error" | "unreachable"}} QuickFileOpenOutcome
  */
 var knownFileCatalog = null;
 var quickFileSearchController = null;
@@ -1882,10 +1882,6 @@ function treeLazyFailureHtml(message) {
     esc(message || "Could not load this folder.") +
     "</div>"
   );
-}
-
-function errorMessage(e) {
-  return e?.message ? e.message : String(e || "An unknown error occurred.");
 }
 
 function responseErrorDetail(body, status) {
@@ -3499,7 +3495,9 @@ function startIndexProgressPolling() {
 var navPanels = [];
 /** @type {Set<string>} */
 var navPanelsShown = new Set();
-var previewClaimGeneration = 0;
+// The pane's claims, phases, and placeholders live in the navigation module so
+// a browserless session can drive exactly what this shell paints.
+var previewPane = window.MetabrowserNavigationRoute.createPreviewPaneLifecycle();
 /** @type {(() => void) | null} */
 var pendingFilePreviewStageCleanup = null;
 
@@ -3549,31 +3547,54 @@ function clearPreviewNavigationState(preview) {
 }
 
 /**
- * Claim the shared preview pane for one navigation owner.
+ * Claim the shared preview pane for one preview producer.
  *
  * Async preview producers keep the returned generation and check it
- * before every write. A later file, commit, or nav action increments the
- * generation, making all older writes harmless.
+ * before every write. A later file selection, commit, or landing increments
+ * the generation, making all older writes harmless. Switching navigation
+ * tabs is not a claim: it does not change what is selected.
  *
  * @param {string} owner
+ * @param {{folder: boolean, path: string, viewId?: string}} [selection]
+ *   What a `file` claim loads, so its placeholder and reconnect retry can
+ *   name it.
  * @returns {number}
  */
-function claimPreview(owner) {
+function claimPreview(owner, selection) {
   cancelPendingFilePreviewStage();
   const preview = document.getElementById("preview-pane");
   if (preview) {
     clearPreviewNavigationState(preview);
   }
-  previewClaimGeneration += 1;
+  const claim = previewPane.claim(owner, selection);
   if (preview) {
     preview.dataset.previewOwner = owner;
   }
-  return previewClaimGeneration;
+  return claim;
 }
 
 /** @param {number} claim */
 function isPreviewClaimCurrent(claim) {
-  return claim === previewClaimGeneration;
+  return previewPane.isCurrent(claim);
+}
+
+/**
+ * Markup for one pane placeholder directive from the navigation module.
+ *
+ * @param {ReturnType<typeof previewPane.placeholder>} directive
+ * @returns {string | null} Null when the directive paints nothing.
+ */
+function previewPlaceholderHtml(directive) {
+  if (directive.paint === "loading") {
+    return (
+      '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+      `<span class="sr-only">Loading ${esc(directive.subject)}…</span></div>`
+    );
+  }
+  if (directive.paint === "idle") {
+    return `<div class="preview-empty">${esc(directive.message)}</div>`;
+  }
+  return null;
 }
 
 /**
@@ -3667,17 +3688,11 @@ function activateNavPanel(panelId) {
   if (!navBar) {
     return;
   }
-  claimPreview(`nav:${panelId}`);
-  // Claiming invalidates any in-flight file or commit load, but the
-  // placeholder those loads already painted is still on screen and their
-  // responses can no longer replace it — so the pane would keep showing a
-  // spinner until some unrelated navigation redraws it. Retire the
-  // placeholder here. Rendered content is left alone: it is still a valid
-  // preview, and a tab switch is not a reason to throw it away.
-  const preview = document.getElementById("preview-pane");
-  if (preview?.firstElementChild?.classList.contains("loading")) {
-    preview.innerHTML = '<div class="preview-empty">Select a file to preview.</div>';
-  }
+  // No preview claim, and no repaint. A tab switch changes which navigation
+  // list is visible, not what is selected. Claiming here used to invalidate
+  // the selection still loading underneath, which stranded its placeholder
+  // and silently disabled the shown file's Load more; the selection's own
+  // response is what should settle the pane.
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
     const selected = btn.dataset.tab === panelId;
     btn.classList.toggle("active", selected);
@@ -5136,17 +5151,20 @@ var selectFileAbortController = null;
  * @returns {QuickFileOpenOutcome}
  */
 function fileSelectionFailureOutcome(err, path, cached, preview, previewClaim) {
-  var caught = /** @type {{name?: string, notFound?: boolean, summary?: string}} */ (err);
   return window.MetabrowserNavigationRoute.settleFileSelectionFailure({
     cached: !!cached,
+    claim: previewClaim,
     error: err,
     isCurrent: () => currentPath === path && isPreviewClaimCurrent(previewClaim),
     markForRevalidation: () => {
       fileNeedsRevalidate.add(path);
       boundMapSize(fileNeedsRevalidate, ETAG_REVALIDATE_MAX);
     },
+    pane: previewPane,
     path,
-    showError: () => {
+    // An unreachable server and a real file error share the error markup;
+    // the module decides which message it carries.
+    showError: (failure) => {
       if (loadingIndicatorTimer) {
         clearTimeout(loadingIndicatorTimer);
         loadingIndicatorTimer = null;
@@ -5154,10 +5172,7 @@ function fileSelectionFailureOutcome(err, path, cached, preview, previewClaim) {
       disposeActivePluginViews();
       stopFolderHeaderSubscription();
       delete preview.dataset.renderedPath;
-      preview.innerHTML = previewErrorHtml(
-        caught?.summary || "Could not open this file.",
-        errorMessage(err),
-      );
+      preview.innerHTML = previewErrorHtml(failure.summary, failure.detail);
     },
   });
 }
@@ -5173,7 +5188,15 @@ function beginViewCompositionLoad() {
 
 /** @returns {Promise<QuickFileOpenOutcome>} */
 async function selectFile(path, preferredViewId) {
-  var previewClaim = claimPreview("file");
+  // Folder routes carry a trailing slash and the served root is the empty
+  // path, so the route says whether this selection is a folder before its
+  // envelope arrives. The placeholder names what is loading.
+  var routePath = navigationController.current()?.path;
+  var previewClaim = claimPreview("file", {
+    folder: path === "" || routePath === `${path}/`,
+    path: path,
+    viewId: preferredViewId,
+  });
   filePreviewClaim = previewClaim;
   var selection = /** @type {Promise<QuickFileOpenOutcome>} */ (
     _perf.measureAsync(
@@ -5226,7 +5249,7 @@ async function selectFile(path, preferredViewId) {
               return { status: "cancelled" };
             }
             maybeOpenLiveStream(path, cached);
-            return openedFileOutcome(path, cached, preview);
+            return openedFileOutcome(path, cached, preview, previewClaim);
           } catch (err) {
             return fileSelectionFailureOutcome(err, path, cached, preview, previewClaim);
           }
@@ -5238,15 +5261,17 @@ async function selectFile(path, preferredViewId) {
         if (!retainedPreview) {
           loadingIndicatorTimer = setTimeout(() => {
             loadingIndicatorTimer = null;
-            if (currentPath !== path || !isPreviewClaimCurrent(previewClaim)) {
+            var loading =
+              currentPath === path
+                ? previewPlaceholderHtml(previewPane.placeholder(previewClaim))
+                : null;
+            if (loading === null) {
               return;
             }
             disposeActivePluginViews();
             stopFolderHeaderSubscription();
             delete preview.dataset.renderedPath;
-            preview.innerHTML =
-              '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
-              '<span class="sr-only">Loading file…</span></div>';
+            preview.innerHTML = loading;
             beginPreviewNavigation(previewClaim);
           }, LOADING_INDICATOR_DELAY_MS);
         }
@@ -5263,9 +5288,14 @@ async function selectFile(path, preferredViewId) {
           if (cached && fileETags.has(path)) {
             headers["if-none-match"] = fileETags.get(path);
           }
+          // A rejected fetch received no response at all: the server stopped or
+          // the connection was refused. Mark it here, where it cannot be
+          // confused with an HTTP error or a renderer exception.
           const resp = await fetch(`/api/file?path=${encodeURIComponent(path)}`, {
             headers: headers,
             signal: selectFileSignal,
+          }).catch((error) => {
+            throw window.MetabrowserNavigationRoute.requestFailure(error);
           });
           if (resp.status === 304 && cached) {
             // Server confirmed the cached payload is still fresh — zero-byte
@@ -5281,14 +5311,19 @@ async function selectFile(path, preferredViewId) {
                 return { status: "cancelled" };
               }
               maybeOpenLiveStream(path, cached);
-              return openedFileOutcome(path, cached, preview);
+              return openedFileOutcome(path, cached, preview, previewClaim);
             }
             return { status: "cancelled" };
           }
+          // `fetch` resolved at the headers, so a server that stops mid-body
+          // rejects the read instead. Mark that at the read too.
+          const bodyFailure = (error) => {
+            throw window.MetabrowserNavigationRoute.responseBodyFailure(error);
+          };
           if (!resp.ok) {
             const text = await _perf.measureAsync(
               "apiFile:errorText",
-              () => resp.text(),
+              () => resp.text().catch(bodyFailure),
               responsePerfMeta(resp, path),
             );
             throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
@@ -5298,7 +5333,7 @@ async function selectFile(path, preferredViewId) {
           }
           const data = await _perf.measureAsync(
             "apiFile:json",
-            () => resp.json(),
+            () => resp.json().catch(bodyFailure),
             responsePerfMeta(resp, path),
           );
           const responseCommit = window.MetabrowserNavigationRoute.commitFreshFileResponse({
@@ -5327,7 +5362,7 @@ async function selectFile(path, preferredViewId) {
             return { status: "cancelled" };
           }
           maybeOpenLiveStream(path, data);
-          return openedFileOutcome(path, data, preview);
+          return openedFileOutcome(path, data, preview, previewClaim);
         } catch (err) {
           return fileSelectionFailureOutcome(err, path, cached, preview, previewClaim);
         }
@@ -5352,9 +5387,12 @@ async function selectFile(path, preferredViewId) {
  * @param {string} path
  * @param {{kind?: string, logical_ext?: string}} data
  * @param {HTMLElement} preview
+ * @param {number} previewClaim
  * @returns {QuickFileOpenOutcome}
  */
-function openedFileOutcome(path, data, preview) {
+function openedFileOutcome(path, data, preview, previewClaim) {
+  // An empty folder is content too: its Overview states that it has no files.
+  previewPane.settle(previewClaim, "content");
   if (path && data.kind !== "folder") {
     knownFileCatalog?.observeNavigation(path, data.logical_ext || null);
   }
@@ -7403,6 +7441,8 @@ function _createInventoryEventSource() {
     // The first open starts the bulk catalog fetch after subscription;
     // later opens refetch to cover deltas lost while disconnected.
     quickFileCatalogFeed?.start();
+    retryUnreachablePreview();
+    quickFilePalette?.reconnected();
   };
   inventoryEventSource.onerror = () => {
     _cancelEsStableReset();
@@ -7444,11 +7484,45 @@ function showNavigationLanding() {
   closeLiveStream();
   currentPath = "";
   setSelectedPath(null);
+  // Nothing is selected, so no earlier load may still land in the pane.
+  var claim = claimPreview("none");
   disposeActivePluginViews();
   stopFolderHeaderSubscription();
   const preview = document.getElementById("preview-pane");
   if (preview) {
-    preview.innerHTML = '<div class="preview-empty">Select a file to preview.</div>';
+    delete preview.dataset.renderedPath;
+    preview.innerHTML = previewPlaceholderHtml(previewPane.placeholder(claim)) ?? "";
+  }
+}
+
+// The shell ships a loading preview because every route it serves selects
+// something. When startup ends with no producer having claimed the pane — a
+// /commit/ route whose Git panel could not restore it, or navigation that
+// failed to start — nothing is selected or loading, so show the prompt.
+function settleUnclaimedPreview() {
+  var html = previewPlaceholderHtml(previewPane.settleUnclaimed());
+  var preview = document.getElementById("preview-pane");
+  if (html !== null && preview) {
+    preview.innerHTML = html;
+  }
+}
+
+// Only a /commit/ route waits on the Git panel to select something; a /view/
+// route is claimed by its own file selection. Startup calls this once the
+// shell tools, and with them the Git panel, have settled.
+function settleCommitRoutePreview() {
+  if (window.MetabrowserNavigationRoute.parseCommit(location.pathname)) {
+    settleUnclaimedPreview();
+  }
+}
+
+// The inventory stream reopening means the server answers again. A selection
+// that failed because it could not reach the server is retried without the
+// reader having to open it again.
+function retryUnreachablePreview() {
+  var retry = previewPane.reconnected();
+  if (retry) {
+    void selectFile(retry.path, retry.viewId);
   }
 }
 
@@ -7473,7 +7547,10 @@ async function applyNavigationTarget(target, context) {
     return { status: "cancelled" };
   }
   var path = target.path.replace(/\/$/, "");
-  if (!context.pathChanged) {
+  // Only a pane that already shows or is loading this path can take the
+  // fragment alone. After a failure, or once the Git panel owns the pane,
+  // opening the same path again is a retry and has to load it.
+  if (!context.pathChanged && previewPane.holds(path)) {
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,
@@ -7708,6 +7785,9 @@ function initQuickFileFinder() {
   quickFileSearchController.registerProvider(localProvider);
   quickFilePalette = window.MetabrowserSearchPalette.create({
     controller: quickFileSearchController,
+    // The same distinction the preview pane makes: an unreachable server is a
+    // connection problem, not a reason the file could not be opened.
+    describeOpenFailure: window.MetabrowserNavigationRoute.openFailureOutcome,
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
@@ -7807,15 +7887,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   // request so a folder renderer cannot delay the navigation's usable rows.
   navigationController.start().catch((error) => {
     console.error("Could not initialize browser navigation", error);
+    settleUnclaimedPreview();
   });
   // These application-lifetime controls are not prerequisites for a usable
   // tree. Start their ordered on-demand bundle only after the first tree
   // request settles, so eleven unrelated scripts cannot delay the inline row,
   // DOMContentLoaded, that request, inventory, or navigation. The catalog feed
   // repairs the ordering when its stream opened before the bundle arrived.
-  initDeferredShellTools().catch((error) => {
-    console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
-  });
+  initDeferredShellTools()
+    .catch((error) => {
+      console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
+    })
+    .finally(settleCommitRoutePreview);
   if (filesPanelUsesRecentSource()) {
     loadRecent(currentRecentFilterCursor());
   }

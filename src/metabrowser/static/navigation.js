@@ -477,29 +477,304 @@
     );
   }
 
+  // ── Preview pane states ──────────────────────────────────────
+
+  const PREVIEW_IDLE_MESSAGE = "Select a file to preview.";
+  const FILE_ERROR_SUMMARY = "Could not open this file.";
+  const OPEN_ERROR_MESSAGE = "Could not open this file. Try again.";
+  const UNREACHABLE_SUMMARY = "Metabrowser is not reachable.";
+  const UNREACHABLE_DETAIL =
+    "It may have stopped. Start it again with metab <folder>, and this page will reconnect.";
+
+  /** @typedef {"starting" | "idle" | "loading" | "content" | "error" | "unreachable" | "external"} PreviewPanePhase */
+  /** @typedef {Readonly<{folder: boolean, path: string, viewId?: string}>} PreviewSelection */
+  /**
+   * What the pane shows while no rendered view owns it. A loading placeholder
+   * names its subject rather than carrying copy: loading is a spinner, and the
+   * shell composes the screen-reader-only name from the subject.
+   *
+   * @typedef {Readonly<{paint: "none"} | {paint: "loading", subject: "preview" | "folder" | "file"} | {paint: "idle", message: string}>} PreviewPlaceholder
+   */
+  /** @typedef {Readonly<{kind: "error" | "unreachable", summary: string, detail: string}>} PreviewFailure */
+
+  const NO_PLACEHOLDER = /** @type {PreviewPlaceholder} */ (Object.freeze({ paint: "none" }));
+
+  /**
+   * A request that received no HTTP response at all.
+   *
+   * `fetch` rejects only when nothing answered: the server stopped, the
+   * connection was refused, or the network dropped. An HTTP 4xx or 5xx still
+   * resolves. Marking the rejection where it happens is the one reliable way to
+   * tell a transport failure apart, because a renderer bug can throw the same
+   * `TypeError` a failed fetch does.
+   */
+  class ServerUnreachableError extends Error {
+    /** @param {unknown} cause */
+    constructor(cause) {
+      super(UNREACHABLE_SUMMARY, { cause });
+      this.name = "ServerUnreachableError";
+    }
+  }
+
+  /** @param {unknown} error */
+  function isAbortError(error) {
+    return (
+      !!error &&
+      typeof error === "object" &&
+      /** @type {{name?: unknown}} */ (error).name === "AbortError"
+    );
+  }
+
+  /**
+   * Classify a rejected `fetch`. Aborts pass through unchanged so superseded
+   * navigation stays silent; every other rejection means the server could not
+   * be reached.
+   *
+   * @param {unknown} error
+   * @returns {unknown}
+   */
+  function requestFailure(error) {
+    if (isAbortError(error) || error instanceof ServerUnreachableError) {
+      return error;
+    }
+    return new ServerUnreachableError(error);
+  }
+
+  /**
+   * Classify a rejected response body read.
+   *
+   * `fetch` resolves as soon as the headers arrive, so a server that stops
+   * while the body is still streaming rejects the read instead of the fetch.
+   * That is the same lost connection. Aborts still pass through, and so does a
+   * `SyntaxError`: the server answered with a body that is not JSON, which is
+   * a response problem rather than an unreachable server. A renderer cannot
+   * reach this promise, so its exceptions keep their file wording.
+   *
+   * @param {unknown} error
+   * @returns {unknown}
+   */
+  function responseBodyFailure(error) {
+    return error instanceof SyntaxError ? error : requestFailure(error);
+  }
+
+  /**
+   * The message for one failed selection: a connection state when the server
+   * could not be reached, otherwise the file error the response described.
+   *
+   * @param {unknown} error
+   * @returns {PreviewFailure}
+   */
+  function describePreviewFailure(error) {
+    if (error instanceof ServerUnreachableError) {
+      return Object.freeze({
+        detail: UNREACHABLE_DETAIL,
+        kind: /** @type {const} */ ("unreachable"),
+        summary: UNREACHABLE_SUMMARY,
+      });
+    }
+    const caught = /** @type {{message?: unknown, summary?: unknown}} */ (error ?? {});
+    const summary =
+      typeof caught.summary === "string" && caught.summary.trim()
+        ? caught.summary.trim()
+        : FILE_ERROR_SUMMARY;
+    const detail =
+      typeof caught.message === "string" && caught.message
+        ? caught.message
+        : String(error || "An unknown error occurred.");
+    return Object.freeze({ detail, kind: /** @type {const} */ ("error"), summary });
+  }
+
+  /**
+   * A Quick File result for an open that threw instead of settling.
+   *
+   * @param {unknown} error
+   * @returns {Readonly<{message: string, status: "error" | "unreachable"}>}
+   */
+  function openFailureOutcome(error) {
+    return error instanceof ServerUnreachableError
+      ? Object.freeze({
+          message: `${UNREACHABLE_SUMMARY} ${UNREACHABLE_DETAIL}`,
+          status: /** @type {const} */ ("unreachable"),
+        })
+      : Object.freeze({ message: OPEN_ERROR_MESSAGE, status: /** @type {const} */ ("error") });
+  }
+
+  /**
+   * Track who owns the preview pane and what it is doing.
+   *
+   * Every producer that paints the pane claims it first and keeps the returned
+   * generation; a later claim makes every older write harmless. A file
+   * selection names what it loads, so its placeholder can say so and a
+   * reconnect can retry it. Owner `none` records that nothing is selected, and
+   * any other owner (the Git panel) paints for itself.
+   *
+   * The pane starts in `starting`: the shell is only served for `/view/` and
+   * `/commit/` routes, and each of them selects something, so what ships is a
+   * loading indicator rather than a prompt. "Select a file to preview." is the
+   * placeholder only when nothing is selected and nothing is loading.
+   *
+   * Switching navigation tabs is not a claim. It changes which list is visible,
+   * not what is selected, so the selection underneath keeps loading and lands.
+   */
+  function createPreviewPaneLifecycle() {
+    let generation = 0;
+    let owner = "shell";
+    /** @type {PreviewPanePhase} */
+    let phase = "starting";
+    /** @type {PreviewSelection | null} */
+    let selection = null;
+
+    return Object.freeze({
+      /**
+       * @param {string} nextOwner
+       * @param {PreviewSelection} [nextSelection] Required for owner `file`.
+       * @returns {number}
+       */
+      claim(nextOwner, nextSelection) {
+        if (typeof nextOwner !== "string" || !nextOwner) {
+          throw new TypeError("preview claim requires an owner");
+        }
+        if (nextOwner === "file" && (!nextSelection || typeof nextSelection.path !== "string")) {
+          throw new TypeError("a file preview claim requires the selected path");
+        }
+        generation += 1;
+        owner = nextOwner;
+        if (nextOwner === "file" && nextSelection) {
+          selection = Object.freeze({
+            folder: nextSelection.folder === true,
+            path: nextSelection.path,
+            ...(nextSelection.viewId ? { viewId: nextSelection.viewId } : {}),
+          });
+          phase = "loading";
+        } else {
+          selection = null;
+          phase = nextOwner === "none" ? "idle" : "external";
+        }
+        return generation;
+      },
+      /**
+       * Whether the pane already shows, or is loading, this file selection.
+       * Re-opening a path the pane holds only needs its fragment delivered.
+       * A selection that failed, or a pane another owner has claimed since,
+       * holds nothing: opening the same path again has to load it, which is
+       * how a reader retries.
+       *
+       * @param {string} path
+       */
+      holds(path) {
+        return (
+          owner === "file" &&
+          selection?.path === path &&
+          (phase === "loading" || phase === "content")
+        );
+      },
+      /** @param {number} claim */
+      isCurrent(claim) {
+        return claim === generation;
+      },
+      /**
+       * @param {number} claim
+       * @returns {PreviewPlaceholder}
+       */
+      placeholder(claim) {
+        if (claim !== generation) {
+          return NO_PLACEHOLDER;
+        }
+        if (phase === "starting") {
+          // Nothing is selected yet, so the subject is the preview itself.
+          // `server.py` ships this placeholder in the shell.
+          return Object.freeze({ paint: "loading", subject: "preview" });
+        }
+        if (phase === "loading") {
+          return Object.freeze({
+            paint: "loading",
+            subject: selection?.folder ? "folder" : "file",
+          });
+        }
+        if (phase === "idle") {
+          return Object.freeze({ message: PREVIEW_IDLE_MESSAGE, paint: "idle" });
+        }
+        return NO_PLACEHOLDER;
+      },
+      /**
+       * Record how the current file selection settled.
+       *
+       * @param {number} claim
+       * @param {"content" | "error" | "unreachable"} outcome
+       */
+      settle(claim, outcome) {
+        if (claim !== generation || owner !== "file") {
+          return false;
+        }
+        phase = outcome;
+        return true;
+      },
+      /**
+       * The selection to retry once the server answers again, or null when
+       * the pane does not show a connection failure.
+       *
+       * @returns {PreviewSelection | null}
+       */
+      reconnected() {
+        return phase === "unreachable" ? selection : null;
+      },
+      /**
+       * Settle a startup no owner claimed — a `/commit/` route in a folder
+       * that is not a repository, or navigation that failed to start. Nothing
+       * is selected or loading then, so the pane shows the prompt.
+       *
+       * @returns {PreviewPlaceholder}
+       */
+      settleUnclaimed() {
+        if (phase !== "starting") {
+          return NO_PLACEHOLDER;
+        }
+        generation += 1;
+        owner = "none";
+        phase = "idle";
+        return Object.freeze({ message: PREVIEW_IDLE_MESSAGE, paint: "idle" });
+      },
+      snapshot() {
+        return Object.freeze({
+          claim: generation,
+          owner,
+          path: selection ? selection.path : null,
+          phase,
+        });
+      },
+    });
+  }
+
   /**
    * Classify one file-selection failure and run mutations only for the
    * selection that still owns the pane.
    *
    * @param {{
    *   cached: boolean,
+   *   claim: number,
    *   error: unknown,
    *   isCurrent: () => boolean,
    *   markForRevalidation: () => void,
+   *   pane: ReturnType<typeof createPreviewPaneLifecycle>,
    *   path: string,
-   *   showError: (error: unknown) => void,
+   *   showError: (failure: PreviewFailure) => void,
    * }} options
-   * @returns {{message?: string, status: "cancelled" | "error" | "not-found"}}
+   * @returns {{status: "cancelled"} | {message: string, status: "error" | "not-found" | "unreachable"}}
    */
   function settleFileSelectionFailure(options) {
-    const caught = /** @type {{name?: string, notFound?: boolean}} */ (options.error);
-    if (caught?.name === "AbortError" || !options.isCurrent()) {
+    const caught = /** @type {{notFound?: boolean}} */ (options.error);
+    if (isAbortError(options.error) || !options.isCurrent()) {
       return { status: "cancelled" };
     }
     if (options.cached) {
       options.markForRevalidation();
     }
-    options.showError(options.error);
+    const failure = describePreviewFailure(options.error);
+    options.pane.settle(options.claim, failure.kind);
+    options.showError(failure);
+    if (failure.kind === "unreachable") {
+      return { ...openFailureOutcome(options.error) };
+    }
     return caught?.notFound === true
       ? { message: `${options.path} is no longer available.`, status: "not-found" }
       : {
@@ -749,13 +1024,17 @@
     commitHref,
     createController,
     createFileRevalidationTracker,
+    createPreviewPaneLifecycle,
     displayPath,
     href,
     navigation,
     normalizeTarget,
+    openFailureOutcome,
     parse,
     parseCommit,
     replaceFileSnapshot,
+    requestFailure,
+    responseBodyFailure,
     settleFileSelectionFailure,
     settleNavigationDependency,
   });

@@ -327,7 +327,11 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
       '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
         '<span class="sr-only">Loading files…</span></div>',
     ],
-    ["#preview-pane", '<div class="preview-empty">Select a file to preview.</div>'],
+    [
+      "#preview-pane",
+      '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+        '<span class="sr-only">Loading preview…</span></div>',
+    ],
   ];
   const regions = {};
   for (const [selector, shippedHtml] of SKELETON_REGIONS) {

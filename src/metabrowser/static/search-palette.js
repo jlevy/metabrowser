@@ -34,10 +34,11 @@
    */
 
   /**
-   * @typedef {object} OpenOutcome
-   * @property {HTMLElement | null} [focusTarget]
-   * @property {string} [message]
-   * @property {"opened" | "not-found" | "error" | "cancelled"} status
+   * A failed open always carries the message to show, so the palette never
+   * classifies an outcome a second time.
+   *
+   * @typedef {{focusTarget?: HTMLElement | null, message?: string, status: "opened" | "not-found" | "cancelled"}
+   *   | {focusTarget?: HTMLElement | null, message: string, status: "error" | "unreachable"}} OpenOutcome
    */
 
   /** @param {unknown} value @returns {value is HTMLElement} */
@@ -86,6 +87,7 @@
   /**
    * @param {{
    *   controller: PaletteController,
+   *   describeOpenFailure: (error: unknown) => {message: string, status: "error" | "unreachable"},
    *   document?: Document,
    *   getCatalogSnapshot: () => {complete: boolean, observedCount: number},
    *   subscribeCatalog?: (listener: () => void) => () => void,
@@ -102,11 +104,12 @@
     if (
       !options?.controller ||
       typeof options.openFile !== "function" ||
+      typeof options.describeOpenFailure !== "function" ||
       !options.shortcuts ||
       !options.overlay
     ) {
       throw new TypeError(
-        "Search palette requires a controller, open-file action, shortcuts, and overlays",
+        "Search palette requires a controller, open-file action, failure description, shortcuts, and overlays",
       );
     }
     const hostDocument = options.document || window.document;
@@ -197,6 +200,9 @@
     let selectedResultId = null;
     let activeIndex = -1;
     let actionStatus = "";
+    // The connection message an unreachable open left on screen, so a later
+    // reconnect retires that message and nothing else.
+    let unreachableStatus = "";
     let opening = false;
     let disposed = false;
     let actionSerial = 0;
@@ -546,10 +552,7 @@
         outcome = await options.openFile(result.path);
       } catch (error) {
         console.warn("Quick File open failed", error);
-        outcome = {
-          message: "Could not open this file. Try again.",
-          status: "error",
-        };
+        outcome = options.describeOpenFailure(error);
       }
       if (disposed || actionId !== actionSerial || overlay.hidden) {
         return;
@@ -583,8 +586,11 @@
         renderStatus();
         return;
       }
-      if (outcome.status === "error") {
-        actionStatus = outcome.message || "Could not open this file. Try again.";
+      if (outcome.status === "error" || outcome.status === "unreachable") {
+        // Both keep the palette open with the query intact so the reader can
+        // retry. An unreachable server says so instead of blaming the file.
+        actionStatus = outcome.message;
+        unreachableStatus = outcome.status === "unreachable" ? outcome.message : "";
         renderStatus();
         return;
       }
@@ -626,6 +632,20 @@
     /** @param {boolean} [restoreFocus] */
     function close(restoreFocus = true) {
       modal?.close({ restoreFocus });
+    }
+
+    /**
+     * The server answers again. A status saying it is unreachable no longer
+     * describes the page, so the query's own status returns. Any other status
+     * the reader has since caused stays.
+     */
+    function reconnected() {
+      if (disposed || !unreachableStatus || actionStatus !== unreachableStatus) {
+        return;
+      }
+      actionStatus = "";
+      unreachableStatus = "";
+      renderStatus();
     }
 
     /** @param {Event} event */
@@ -775,7 +795,14 @@
       unregisterClose();
     }
 
-    return Object.freeze({ close, dispose, element: overlay, isOpen: () => !overlay.hidden, open });
+    return Object.freeze({
+      close,
+      dispose,
+      element: overlay,
+      isOpen: () => !overlay.hidden,
+      open,
+      reconnected,
+    });
   }
 
   window.MetabrowserSearchPalette = Object.freeze({ create });

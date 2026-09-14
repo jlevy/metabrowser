@@ -280,6 +280,27 @@ CLI and validation:
   The table and the streaming exemptions are in
   [Views, Models, and Routes](docs/project/architecture/arch-views-models-routes.md).
 
+Fixes:
+
+- The preview pane shows a loading indicator while a file or folder loads, including the
+  served folder’s first view, instead of “Select a file to preview.”
+  That prompt now appears only when nothing is selected.
+  Switching between the Files and Git tabs no longer abandons a selection that is still
+  loading, and the shown file’s **Load more** keeps working after a tab switch.
+  An empty folder opens to its Overview, which says it has no files to summarize.
+
+- When the Metabrowser server has stopped, selecting a file or folder, in the tree or in
+  Quick File, now says “Metabrowser is not reachable” and how to start it again, instead
+  of “Could not open this file” with “Failed to fetch.”
+  This includes a server that stops while a large file is still arriving.
+  When the server is running again, the page retries that selection on its own, and
+  Quick File clears the connection message.
+  Missing files and other server errors keep their existing messages.
+
+- Opening a file or folder again after it failed to load, from the tree or Quick File,
+  now loads it again instead of leaving the error on screen.
+  The same applies to a file a Git commit view has replaced.
+
 ## 0.9.1
 
 Fixes:
