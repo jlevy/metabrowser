@@ -3,13 +3,15 @@ type: is
 id: is-01m0k603yscgjqhrw7zhar5rae
 title: Nav row name, age, and size do not share a baseline
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 3
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2fafd1v8d5pakt6r7zxw5n8
 created_at: 2026-08-21T22:10:24.856Z
-updated_at: 2026-08-21T22:10:24.856Z
+updated_at: 2026-09-14T06:43:14.126Z
 ---
 The name, age, and size on a navigation row do not share a baseline. They are centered against each other instead, which is not the same thing once the font sizes differ.
 

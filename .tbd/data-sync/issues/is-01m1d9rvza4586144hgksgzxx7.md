@@ -3,13 +3,15 @@ type: is
 id: is-01m1d9rvza4586144hgksgzxx7
 title: "Flaky: simultaneous rollup coalescing test fails under load"
 kind: bug
-status: open
+status: in_progress
 priority: 3
-version: 1
+version: 3
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2fafd1v8d5pakt6r7zxw5n8
 created_at: 2026-09-01T01:36:36.841Z
-updated_at: 2026-09-01T01:36:36.841Z
+updated_at: 2026-09-14T06:43:13.348Z
 ---
 tests/test_rollup_route.py::test_simultaneous_identical_rollups_compute_once asserts that six concurrent /api/rollup requests call build_rollup exactly once. It failed once in four full-suite runs on the merged inventory-engine stack and passes in isolation every time.
 

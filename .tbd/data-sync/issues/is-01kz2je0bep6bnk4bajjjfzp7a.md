@@ -3,13 +3,15 @@ type: is
 id: is-01kz2je0bep6bnk4bajjjfzp7a
 title: Flaky event-loop stall test under full-suite load
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 4
+version: 6
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2fafd1v8d5pakt6r7zxw5n8
 created_at: 2026-08-03T01:04:55.662Z
-updated_at: 2026-08-16T08:06:45.140Z
+updated_at: 2026-09-14T06:43:12.478Z
 extensions:
   linear:
     id: bb3dffb2-7ca5-4e6d-8520-5f11a55eb40c

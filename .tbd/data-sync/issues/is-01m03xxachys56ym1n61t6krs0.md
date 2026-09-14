@@ -3,13 +3,15 @@ type: is
 id: is-01m03xxachys56ym1n61t6krs0
 title: "Flaky: test_tick_does_not_block_event_loop fails under full-suite load"
 kind: bug
-status: open
+status: in_progress
 priority: 3
-version: 3
+version: 5
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2fafd1v8d5pakt6r7zxw5n8
 created_at: 2026-08-16T00:00:28.038Z
-updated_at: 2026-08-28T04:16:33.117Z
+updated_at: 2026-09-14T06:43:12.932Z
 extensions:
   linear:
     id: b0453b87-1411-4b69-a101-d5f42bf89c3e

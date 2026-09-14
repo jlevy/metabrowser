@@ -5,16 +5,18 @@ title: Gate releases on time to first directory tree rows for a repository-shape
 kind: task
 status: in_progress
 priority: 0
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 labels:
   - performance
   - first-paint
   - release
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2fafd1v8d5pakt6r7zxw5n8
 parent_id: is-01m0k5wh7jgr0dgs5y78kwwke1
 created_at: 2026-09-13T23:25:34.984Z
-updated_at: 2026-09-14T01:29:40.662Z
+updated_at: 2026-09-14T06:43:05.914Z
 ---
 Make time to first directory tree rows a standard, gated release metric on a repository-shaped corpus.
 
