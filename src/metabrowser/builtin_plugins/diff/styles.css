@@ -121,6 +121,14 @@
   flex: none;
 }
 
+/* The --ui-small-font-size note shares the path's baseline, as a nav
+   tree row's text does ("Row Text Shares a Baseline" in the design
+   system); the chevron is a box and stays centered. */
+.metabrowser-diff-host .diff-file-toggle
+  > :is(.diff-file-kind, .diff-file-path, .diff-file-stats, .diff-file-note) {
+  align-self: baseline;
+}
+
 /* Inline change stats: the +N −N pair in the status palette, beside
    the filename rather than across the row. */
 .metabrowser-diff-host .diff-file-stats {
