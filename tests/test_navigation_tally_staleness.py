@@ -15,6 +15,12 @@ import inspect
 import sys
 import threading
 import time
+from collections.abc import Callable, Iterator, Sequence
+from itertools import pairwise
+from types import FrameType
+from typing import overload
+
+import pytest
 
 from metabrowser.events import FsEntry
 from metabrowser.inventory_engine.providers.python_inventory import (
@@ -147,44 +153,92 @@ def test_a_freshness_probe_never_waits_for_an_in_flight_tally_pass() -> None:
     assert heartbeat_ms < 50.0
 
 
+class _TakenEntries(Sequence[FsEntry]):
+    """A snapshot that knows how many entries a pass has taken from it so far."""
+
+    def __init__(self, entries: list[FsEntry]) -> None:
+        self._entries = entries
+        self.taken = 0
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    @overload
+    def __getitem__(self, index: int) -> FsEntry: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> Sequence[FsEntry]: ...
+
+    def __getitem__(self, index: int | slice) -> FsEntry | Sequence[FsEntry]:
+        return self._entries[index]
+
+    def __iter__(self) -> Iterator[FsEntry]:
+        for entry in self._entries:
+            self.taken += 1
+            yield entry
+
+
+# The most tally work a request on the loop can queue behind before the worker
+# releases the GIL. It restates `_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH`, where
+# the measurement behind it is recorded, so raising that constant fails here
+# until someone re-measures rather than passing silently.
+MAX_ENTRIES_BETWEEN_YIELDS = 1_024
+
+
 def test_worker_tally_pass_cooperatively_yields_to_the_event_loop() -> None:
-    """Worker CPU must not depend on the interpreter's ordinary switch interval."""
+    """Worker CPU must not depend on the interpreter's ordinary switch interval.
+
+    The pass releases the GIL itself, with a timer-backed ``time.sleep``, every
+    bounded number of entries. That cadence is the guarantee, so the test counts
+    it: a profile hook on the thread running the pass notes how many entries had
+    been taken at each sleep.
+
+    An earlier version timed a 1 ms heartbeat on the loop during the pass and
+    required it back within 50 ms. That measured how soon the OS scheduled the
+    loop thread, which a busy host decides: it failed at 102 ms in a full-suite
+    run and passed in isolation, and the batch was once halved to keep that
+    heartbeat under budget on a contended CI runner. How many entries pass
+    between yields does not depend on the host.
+
+    The bound is entries, not time, so it assumes the per-entry work the
+    constant was measured with. If the pass starts doing several times more per
+    entry, this test still passes while the time between yields grows:
+    re-measure `_NAVIGATION_TALLY_COOPERATIVE_YIELD_BATCH` rather than trusting
+    it.
+    """
     index = PythonInventoryStore()
     entry = FsEntry.for_observed_file(path="same.py", parent="", name="same.py", size=1, mtime_ns=1)
-    snapshot = [entry] * 80_000
-    previous_switch_interval = sys.getswitchinterval()
+    snapshot = _TakenEntries([entry] * 5_000)
+    yields_after: list[int] = []
 
-    async def scenario() -> float:
-        heartbeat_started = asyncio.Event()
+    def profile(_frame: FrameType, event: str, arg: object) -> None:
+        if event == "c_call" and arg is time.sleep:
+            # The entry being taken when the pass yields is not yet processed.
+            yields_after.append(snapshot.taken - 1)
 
-        async def heartbeat() -> float:
-            started = time.perf_counter()
-            heartbeat_started.set()
-            await asyncio.sleep(0.001)
-            return (time.perf_counter() - started) * 1000.0
-
-        heartbeat_task = asyncio.create_task(heartbeat())
-        await heartbeat_started.wait()
-        tally_task = asyncio.create_task(
-            asyncio.to_thread(
-                index.navigation_tallies,
-                PRESETS,
-                WINDOWS,
-                LIMIT,
-                entries=snapshot,
-            )
-        )
-        heartbeat_ms = await heartbeat_task
-        await tally_task
-        return heartbeat_ms
-
+    previous_profile: Callable[..., object] | None = sys.getprofile()
+    sys.setprofile(profile)
     try:
-        sys.setswitchinterval(0.5)
-        heartbeat_ms = asyncio.run(scenario())
+        index.navigation_tallies(PRESETS, WINDOWS, LIMIT, entries=snapshot)
     finally:
-        sys.setswitchinterval(previous_switch_interval)
+        sys.setprofile(previous_profile)
 
-    assert heartbeat_ms < 50.0
+    assert snapshot.taken == len(snapshot), "the pass must visit the whole snapshot"
+    if len(yields_after) > 1 and yields_after[0] == len(snapshot) - 1:
+        pytest.fail(
+            "the tally pass took the whole snapshot before its first yield, so it "
+            "materialized a copy before processing it; counting entries taken can no "
+            "longer observe its progress between yields, so update this test to count "
+            "per-entry work instead"
+        )
+    boundaries = [0, *yields_after, len(snapshot)]
+    longest_run = max(later - earlier for earlier, later in pairwise(boundaries))
+    assert longest_run <= MAX_ENTRIES_BETWEEN_YIELDS, (
+        f"the tally pass processed {longest_run} entries without releasing the GIL "
+        f"(limit {MAX_ENTRIES_BETWEEN_YIELDS}; it yielded {len(yields_after)} times over "
+        f"{len(snapshot)} entries), so a request on the event loop waits on the "
+        "interpreter's switch interval instead of on the pass"
+    )
 
 
 def test_the_snapshot_and_its_revision_are_read_together() -> None:
