@@ -634,6 +634,23 @@ Row-like activation targets share `--ui-row-height` and `--hover-bg`. These agre
 are enforced by `tests/test_design_vocabulary.py`, which fails when a surface forks the
 glyph, the row height, or the hover token.
 
+### Row Text Shares a Baseline
+
+A row that sets text at two sizes aligns that text on its baseline, and centers only its
+boxes. A file tree row’s name is `--nav-font-size` while its age and size are
+`--ui-small-font-size`; a Git history row’s subject stands in the same relation to its
+author and age. Centering line boxes of two sizes leaves their baselines a fraction of a
+pixel apart, because ascent grows with font size.
+That fraction rounds differently at each zoom and pixel ratio, so the row looks
+unsettled rather than consistently offset.
+
+Icons, chevrons, ref chips, activity spinners, and loading skeletons have no text
+baseline.
+They stay centered: aligned to the baseline, a box would sit its bottom edge on
+the text. The row stays `align-items: center`, and each text child opts in with
+`align-self: baseline`. `test_row_text_shares_one_baseline` in
+`tests/test_design_vocabulary.py` pins both row families.
+
 ### Fold Expanders
 
 A run of content withheld until asked for — a long stretch of changed lines in a diff —

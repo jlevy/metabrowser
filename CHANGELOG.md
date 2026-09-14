@@ -339,6 +339,11 @@ Fixes:
   now loads it again instead of leaving the error on screen.
   The same applies to a file a Git commit view has replaced.
 
+- A file tree row’s name, age, and size now sit on one baseline, as do a Git history
+  row’s subject, author, and age.
+  The smaller age and size text used to ride up to a pixel higher than the name, by an
+  amount that changed with zoom.
+
 ## 0.9.1
 
 Fixes:

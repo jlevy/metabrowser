@@ -56,6 +56,43 @@ def test_row_targets_share_the_row_height_token() -> None:
     )
 
 
+def test_row_text_shares_one_baseline() -> None:
+    """Row text of two sizes aligns on its baseline; boxes stay centered.
+
+    Centered text of two sizes lands a fraction of a pixel apart, and the
+    fraction changes with zoom. Measured in Chromium before the rule: the
+    age and size baselines sat 0.25 px above the name at device pixel ratio
+    1 and 0.75 px above at 2, and 0 px with it at both.
+    """
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Row Text Shares a Baseline" in doc, "the row baseline rule lost its documentation"
+    for row, text_rule in (
+        (
+            ".tree-item",
+            ".tree-item > :is(.tree-item-name, .tree-item-age-inline, .tree-item-size, "
+            ".tree-container-badge)",
+        ),
+        (".git-graph-body", ".git-graph-body > :is(.git-graph-subject, .git-graph-meta)"),
+    ):
+        # The row centers its children, so every box that is not text stays
+        # centered; the text opts in to the shared baseline.
+        assert "align-items: center;" in _rule(styles, row), f"{row} stopped centering its boxes"
+        assert "align-self: baseline;" in _rule(styles, text_rule), f"{row} text lost its baseline"
+    # A box has no text baseline, so aligning one would sit its bottom edge
+    # on the text: the icon, the chevron, and the ref chips keep the center.
+    for box in (".tree-item-icon", ".tree-folder > .tree-toggle", ".git-graph-refs"):
+        assert "baseline" not in _rule(styles, box), f"{box} is a box and must stay centered"
+    # Skeletons and the activity spinner replace text with a box, and return
+    # to the center when they do.
+    exemptions = _rule(
+        styles,
+        ".tree-item > .tally-pending,\n.tree-item-age-inline:has(> .tally-pending),\n"
+        ".file-active > .tree-item-age-inline",
+    )
+    assert "align-self: center;" in exemptions
+
+
 def test_disclosure_motion_is_one_recipe_everywhere() -> None:
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     diff_css = (REPO_ROOT / "src/metabrowser/builtin_plugins/diff/styles.css").read_text(

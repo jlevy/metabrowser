@@ -2342,6 +2342,22 @@ html[data-prose-font="sans"] {
   text-align: right;
   white-space: nowrap;
 }
+/* Row text shares one baseline; boxes stay centered. The name is
+   --nav-font-size and the age and size are --ui-small-font-size, and
+   centering line boxes of two sizes leaves their baselines a fraction of
+   a pixel apart, because ascent scales with size. The fraction rounds
+   differently at each zoom and pixel ratio, so the row looked unsettled.
+   The icon, chevron, spinner, and loading skeletons have no text
+   baseline — baseline-aligning one would sit its bottom edge on the
+   text — so they keep the row's centering. */
+.tree-item > :is(.tree-item-name, .tree-item-age-inline, .tree-item-size, .tree-container-badge) {
+  align-self: baseline;
+}
+.tree-item > .tally-pending,
+.tree-item-age-inline:has(> .tally-pending),
+.file-active > .tree-item-age-inline {
+  align-self: center;
+}
 /* Shared size-chip convention — every byte count anywhere uses
    these, not bespoke styles. `.size` is the neutral base (cool-blue
    hue, tabular nums); `.size-large` bumps weight + shifts to the
@@ -5073,6 +5089,13 @@ pre.code-block code.hljs {
   white-space: nowrap;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+
+/* The subject and the author/age share a baseline, as a file row's name,
+   age, and size do (see .tree-item); ref chips are boxes and stay
+   centered. */
+.git-graph-body > :is(.git-graph-subject, .git-graph-meta) {
+  align-self: baseline;
 }
 
 /* Positioning only — colour, weight, size, and numerals come from the
