@@ -3,15 +3,19 @@ type: is
 id: is-01m2etjv7bzrqm070ksxerceyn
 title: Report an unreachable server as a connection problem, not a file error
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels:
   - ux
   - resilience
 dependencies: []
 created_at: 2026-09-14T02:05:21.514Z
-updated_at: 2026-09-14T02:05:21.514Z
+updated_at: 2026-09-14T03:19:57.200Z
+closed_at: 2026-09-14T03:19:57.199Z
+close_reason: "Fixed in PR #113: unreachable server reports a connection message and retries on event-stream reconnect."
+resolution: null
+duplicate_of: null
 ---
 Report an unreachable Metabrowser server as a connection problem, not as "Could not open this file. Failed to fetch".
 

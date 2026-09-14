@@ -5,13 +5,13 @@ title: Quiet-environment perf revalidation of v0.9.2 candidate (walk under attac
 kind: task
 status: open
 priority: 1
-version: 3
+version: 4
 labels:
   - performance
   - release-hardening
 dependencies: []
 created_at: 2026-09-13T16:43:21.362Z
-updated_at: 2026-09-14T01:29:55.906Z
+updated_at: 2026-09-14T03:20:18.883Z
 ---
 Quiet-machine performance revalidation of the release candidate, required before tagging.
 
@@ -37,3 +37,6 @@ Method: >=5 interleaved runs per side, one environment alternating only the whee
 ## Notes
 
 Also run the first-rows release metric from mb-i2im on the repository-shaped project-10 corpus during this rerun: cold backend first_row (compare_builds) and browser first_row_ms for control and candidate, then promote first_row_ms to a hard gate at the measured value. The candidate must include commit 2e9e2066 (gitignore pre-walk removed); before it, first rows on a real repository waited 9-34 s.
+
+
+Harness fixes 1, 2, 4, 5, and 9 plus the README exact-wheel recipes are on branch claude/perf-harness-evidence (HARNESS_VERSION 22). Items 3 (strip PYTHON* env and verify find_spec origin), 6 (shared pure identity check for compare and report), 7 (wheel attestation in devtools/compare_builds.py), and 8 (A/A mode, mb-ot8o) remain. The quiet-machine rerun itself has not been done.

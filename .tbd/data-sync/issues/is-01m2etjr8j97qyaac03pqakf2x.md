@@ -3,15 +3,19 @@ type: is
 id: is-01m2etjr8j97qyaac03pqakf2x
 title: Add J and K as Down and Up aliases for keyboard list navigation
 kind: feature
-status: open
+status: closed
 priority: 2
-version: 1
+version: 2
 labels:
   - keyboard
   - navigation
 dependencies: []
 created_at: 2026-09-14T02:05:18.481Z
-updated_at: 2026-09-14T02:05:18.481Z
+updated_at: 2026-09-14T02:51:35.663Z
+closed_at: 2026-09-14T02:51:35.637Z
+close_reason: "Implemented in PR #111 (commit 3cd50ea7): J/K alias Down/Up in the file tree and Git commit list, Help and aria show both bindings, guards unchanged; make verify and all 7 CI checks pass; verified in a real browser from the built wheel."
+resolution: null
+duplicate_of: null
 ---
 Add J and K as aliases for Down and Up wherever a list is navigated with the arrow keys. This is common practice (vim-style list navigation) and should behave identically to the arrows.
 

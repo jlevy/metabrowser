@@ -3,15 +3,19 @@ type: is
 id: is-01m2etjshyq36sty07bh30mqzr
 title: Show loading progress, not 'Select a file to preview', while a folder view loads
 kind: bug
-status: open
+status: closed
 priority: 1
-version: 1
+version: 2
 labels:
   - navigation
   - ux
 dependencies: []
 created_at: 2026-09-14T02:05:19.803Z
-updated_at: 2026-09-14T02:05:19.803Z
+updated_at: 2026-09-14T03:19:56.354Z
+closed_at: 2026-09-14T03:19:56.353Z
+close_reason: "Fixed in PR #113 (claude/preview-pane-states): delayed loading spinner in shell and pane lifecycle; prompt only when nothing is selected or loading."
+resolution: null
+duplicate_of: null
 ---
 Never show "Select a file to preview." merely because a view has not loaded yet; show progress, then content or an explicit empty state.
 
