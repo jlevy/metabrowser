@@ -339,6 +339,14 @@ Fixes:
   now loads it again instead of leaving the error on screen.
   The same applies to a file a Git commit view has replaced.
 
+- Metabrowser installed into a virtual environment inside a Git repository, such as a
+  project’s own `.venv/`, now reports its installed version.
+  Since 0.7.0, `metab --version` and the `metab` server’s startup line annotated such an
+  install with the enclosing repository’s commit and uncommitted state, for example
+  `metab 0.9.1 (+153 commits, 8d111f4a)` or `[dev build: …]`, even when that directory
+  was gitignored. The annotation now appears only when Metabrowser runs from source files
+  the repository tracks, as in an editable checkout.
+
 ## 0.9.1
 
 Fixes:

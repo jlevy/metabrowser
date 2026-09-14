@@ -15,10 +15,10 @@ timing attributed to the wrong build is an error that survives a whole
 investigation, because nothing on screen contradicts it.
 
 So a version shown to a person is annotated with the repository state when
-there is a repository to read: how far past the tag it is, which commit, and
-whether the tree is dirty. The dirty marker is the one that matters most,
-because it is the state no version string can otherwise describe and the state
-a developer is in nearly all the time.
+the running code is that repository's tracked source: how far past the tag it
+is, which commit, and whether the tree is dirty. The dirty marker is the one
+that matters most, because it is the state no version string can otherwise
+describe and the state a developer is in nearly all the time.
 
 **This never changes what the package reports.** ``__version__`` stays exactly
 what was installed, because the publish workflow compares it against the
@@ -71,11 +71,25 @@ def _git(repository: Path, *arguments: str) -> str | None:
 def source_checkout() -> Path | None:
     """The repository this package is running from, or None if it is installed.
 
-    Installed packages live in site-packages, which is not a checkout, so the
-    ``rev-parse`` fails and every caller falls through to the plain version.
+    A repository describes this build only if it tracks the file that is
+    running. An enclosing work tree alone is not enough: a virtualenv created
+    inside a project's repository — a project-local ``.venv/``, or a benchmark
+    environment under an ignored ``.bench/`` — puts an installed wheel under
+    that repository without making it that repository's code, and reading the
+    repository then labels a release with someone else's commit.
+
+    So ask git whether it tracks this module's own file before asking where the
+    repository is. An editable or ``uv run`` checkout imports from the tracked
+    ``src/metabrowser/`` and passes; a wheel in site-packages is untracked or
+    outside any repository and falls through to the plain version. The common
+    installed case still costs one git call, because the tracking check fails
+    outright where there is no repository at all.
     """
 
-    here = Path(__file__).resolve().parent
+    module = Path(__file__).resolve()
+    here = module.parent
+    if _git(here, "ls-files", "--error-unmatch", "--", module.name) is None:
+        return None
     top = _git(here, "rev-parse", "--show-toplevel")
     return Path(top) if top else None
 

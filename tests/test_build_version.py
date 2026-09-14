@@ -9,9 +9,12 @@ contradicted it.
 
 from __future__ import annotations
 
+import importlib.util
 import os
+import shutil
 import subprocess
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -150,6 +153,78 @@ def test_a_repository_with_no_tags_still_names_its_commit(
 
     state = _state(monkeypatch, tmp_path)
     assert state, "an untagged checkout should still identify itself"
+
+
+def _place_copy(destination: Path) -> Path:
+    """Copy this module's own source to *destination*, as an installer would."""
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    (destination.parent / "__init__.py").touch()
+    shutil.copyfile(build_version.__file__, destination)
+    return destination
+
+
+def _import_copy(path: Path) -> ModuleType:
+    """Import the copy at *path* under a private name.
+
+    ``source_checkout()`` asks git about the directory holding its own file, so
+    the faithful way to learn what a copy somewhere else reports is to import
+    that copy. It carries its own caches, so nothing it answers leaks into the
+    module under test.
+    """
+
+    spec = importlib.util.spec_from_file_location("_build_version_copy", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("ignored", [False, True], ids=["untracked", "gitignored"])
+def test_an_environment_inside_a_repository_is_still_an_installed_release(
+    repository: Path, ignored: bool
+) -> None:
+    """A virtualenv inside a project's repository is not that project's source.
+
+    A project-local ``.venv/``, or a performance-loop environment under
+    ``.bench/``, sits inside a work tree while containing none of its tracked
+    code. Asking only whether a work tree enclosed the package labeled a
+    released wheel with the enclosing repository's commit —
+    ``metab 0.9.1 (+153 commits, 8d111f4a)`` — and the performance harness
+    then refused it as the wrong build. Ignoring the directory did not help.
+    """
+
+    if ignored:
+        (repository / ".gitignore").write_text(".venv/\n")
+        _git(repository, "add", ".gitignore")
+        _git(repository, "commit", "-qm", "ignore the environment")
+
+    site_packages = repository / ".venv" / "lib" / "python3.13" / "site-packages"
+    installed = _import_copy(_place_copy(site_packages / "metabrowser" / "build_version.py"))
+
+    assert installed.source_checkout() is None
+    assert installed.build_state() == ""
+    assert installed.display_version("0.9.1") == "0.9.1"
+
+
+def test_a_tracked_source_tree_still_reports_its_repository(repository: Path) -> None:
+    """The case the annotation exists for keeps it.
+
+    An editable install puts the checkout's ``src/`` on the import path, so the
+    running file is one the repository tracks, and the repository's state
+    describes this build.
+    """
+
+    module = _place_copy(repository / "src" / "metabrowser" / "build_version.py")
+    (repository / ".gitignore").write_text("__pycache__/\n")
+    _git(repository, "add", ".gitignore", "src")
+    _git(repository, "commit", "-qm", "add the package")
+    source = _import_copy(module)
+
+    assert source.source_checkout() == repository.resolve()
+    state = source.build_state()
+    assert "+1 commits" in state
+    assert "dirty" not in state
 
 
 def test_a_broken_git_never_fails_the_command(
