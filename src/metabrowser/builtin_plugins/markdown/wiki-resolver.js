@@ -379,7 +379,13 @@ export function createWikiResolutionContext(snapshot) {
     const key = directKey ? target : authoredTarget;
     let terminalCache = membership;
     let applicationCache = membershipApplications;
-    if (!directKey) {
+    if (key.length > MAX_MEMO_KEY_LENGTH) {
+      // Both names exceed the bound. Resolving without a memo repeats a bounded
+      // lookup; memoizing under a key nothing can hash by content would charge
+      // every later target a comparison against this one.
+      terminalCache = null;
+      applicationCache = null;
+    } else if (!directKey) {
       terminalCache = sourceMembership?.get(sourceContext) || null;
       if (!terminalCache && sourceMembership) {
         terminalCache = new Map();
@@ -390,13 +396,6 @@ export function createWikiResolutionContext(snapshot) {
         applicationCache = new Map();
         sourceMembershipApplications.set(sourceContext, applicationCache);
       }
-    }
-    if (key.length > MAX_MEMO_KEY_LENGTH) {
-      // Both names exceed the bound. Resolving without a memo repeats a bounded
-      // lookup; memoizing under a key nothing can hash by content would charge
-      // every later target a comparison against this one.
-      terminalCache = null;
-      applicationCache = null;
     }
     const inFlight = applicationCache?.get(key);
     if (inFlight) {
