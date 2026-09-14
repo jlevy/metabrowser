@@ -296,8 +296,10 @@ function parseFakeHtml(html, document) {
   reconciliationScheduler.drain();
   reconciliation.dispose();
 
-  // A walk stopped at the file cap is terminal: the pending job settles once
-  // with an explanation, the revision is pinned, and later changes re-run nothing.
+  // A walk stopped at the file cap is final for its index: the pending job
+  // settles once with an explanation and later changes re-run nothing. Only a
+  // later complete walk, such as one after a restart with a higher file cap,
+  // re-runs that job, and then the complete revision is pinned.
   currentSnapshot = snapshot(["docs/current.md"], false);
   const truncatedScheduler = scheduler();
   const truncatedReconciliation = coordinatorModule.createMarkdownReconciliationCoordinator(
@@ -309,16 +311,21 @@ function parseFakeHtml(html, document) {
     .createScope()
     .wiki(
       { action: "navigate", authoredTarget: "Later", sourcePath: "docs/current.md" },
-      (result) => truncatedRevisionStates.push(`${result.status}:${result.reason}`),
+      (result) => truncatedRevisionStates.push(`${result.status}:${result.reason ?? result.path}`),
     );
   truncatedScheduler.drain();
   currentSnapshot = snapshot(["docs/current.md", "notes/Later.md"], false, true);
   catalogListener();
   truncatedScheduler.drain();
-  const truncatedPinned = catalogListener === null;
+  const listensWhileTruncated = catalogListener !== null;
   currentSnapshot = snapshot(["docs/current.md", "notes/Later.md", "zz/new.md"], false, true);
   catalogListener?.();
-  const truncatedRerunCallbacks = truncatedScheduler.drain();
+  truncatedScheduler.drain();
+  const commitsAfterTruncatedChange = truncatedRevisionStates.length - 2;
+  currentSnapshot = snapshot(["docs/current.md", "notes/Later.md", "zz/new.md"]);
+  catalogListener?.();
+  truncatedScheduler.drain();
+  const pinnedAfterComplete = catalogListener === null;
   truncatedReconciliation.dispose();
 
   const sliceScheduler = scheduler();
@@ -522,6 +529,20 @@ function parseFakeHtml(html, document) {
     panelReference.run("prepare-primary", { source: "readme panel" }),
   ]);
   const concurrentWorkers = workers.length;
+  // The shell waits for a staged document's primary preparation before it
+  // disposes the outgoing document, so that primary dispatches ahead of the
+  // outgoing document's queued embeds.
+  const stagedReference = workerClient.acquireMarkdownWorkerClient();
+  const dispatchStart = workers[0].messages.length;
+  await Promise.all([
+    documentReference.run("prepare-transclusion", { source: "outgoing embed 1" }),
+    documentReference.run("prepare-transclusion", { source: "outgoing embed 2" }),
+    stagedReference.run("prepare-primary", { source: "staged document" }),
+  ]);
+  const stagedDispatchOrder = workers[0].messages
+    .slice(dispatchStart)
+    .map((message) => message.payload.source);
+  stagedReference.dispose();
   documentReference.dispose();
   const aliveAfterOneRelease = !workers[0].terminated;
   const fatalError = await panelReference.run("prepare-primary", { source: "crash" }).then(
@@ -544,8 +565,9 @@ function parseFakeHtml(html, document) {
           revisionStates,
           settledCommits: sliceStates.filter((status) => status === "internal").length,
           truncated: {
-            pinned: truncatedPinned,
-            rerunCallbacks: truncatedRerunCallbacks,
+            commitsAfterTruncatedChange,
+            listensWhileTruncated,
+            pinnedAfterComplete,
             revisionStates: truncatedRevisionStates,
           },
         },
@@ -590,6 +612,7 @@ function parseFakeHtml(html, document) {
           concurrentWorkers,
           fatalError,
           recovered,
+          stagedDispatchOrder,
           terminatedAfterLastRelease,
           workersAfterRecovery,
         },

@@ -437,11 +437,13 @@ path.
   Two flags describe coverage, and they are never both true.
   `complete` means the inventory walk finished without reaching its file cap, so the
   catalog lists every file under the root.
-  `truncated` means the walk finished at the cap: the catalog will not grow for that
-  index, but files past the cap were never indexed, so a missing path is not proof of
-  absence. While both are false the walk is still running.
+  `truncated` means the walk finished at the cap: the walk adds no more files, but files
+  past the cap were never indexed, so a missing path is not proof of absence.
+  While both are false the walk is still running.
   A plugin that waits for a final catalog should stop waiting on either flag; the
-  Markdown built-in reports such unresolved links as `catalog-truncated`.
+  Markdown built-in reports such unresolved links as `catalog-truncated`. A later walk
+  can still complete, for example after a restart with a higher file cap, so keep the
+  subscription if a complete catalog would change a result.
 - `fileCatalog.subscribe(listener)` invalidates inventory-derived plugin results and
   returns an unsubscribe function that the view must call from its disposer.
 - `repository` is either `null` or frozen public-safe GitHub identity for the served
@@ -558,7 +560,12 @@ Every mounted document on the page, including its nested transclusions, shares o
 lazily constructed preprocessing Worker.
 Each handle holds a reference to it: disposal cancels only that handle’s pending
 preprocessing, and the Worker terminates when the last mounted document is disposed.
-A Worker that fails fatally is replaced on the next request.
+The Worker runs one request at a time, and a document’s primary preparation runs before
+queued transclusions, so a newly opened document does not wait for the embeds of the
+document it replaces.
+A fatal Worker failure, such as a module that cannot load, rejects the pending
+preprocessing of every mounted document; each renders its authored Markdown with a
+diagnostic, and the next request starts a new Worker.
 Note, heading, and named-block transclusions share depth, document, source-byte, cycle,
 abort, and disposal limits across the mounted document.
 Each embed’s elapsed-time limit starts when that embed begins loading, so an embed whose

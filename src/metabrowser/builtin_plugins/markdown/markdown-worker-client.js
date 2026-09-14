@@ -23,6 +23,14 @@ let sharedReferences = 0;
  * client latched by a fatal Worker failure is replaced on the next request, so one
  * crash does not disable preprocessing for documents mounted afterward.
  *
+ * A fatal failure rejects every reference's pending requests, not only the
+ * request that was running. The Worker catches operation errors and reports
+ * them for their own request, so what remains fatal is a module that cannot
+ * load, a Worker that stops, or a reply that breaks the message protocol. The
+ * first two fail every request alike and the last is a defect, so pending work
+ * is not retried; each rejected mount renders its authored Markdown with a
+ * diagnostic instead.
+ *
  * @returns {MarkdownWorkerRunner}
  */
 export function acquireMarkdownWorkerClient() {
@@ -80,7 +88,16 @@ export function acquireMarkdownWorkerClient() {
 }
 
 /**
- * Create one lazy, FIFO Markdown CPU-work client.
+ * Create one lazy Markdown CPU-work client that runs one request at a time.
+ *
+ * Requests queue in two first-in, first-out lanes, and a queued primary
+ * preparation always dispatches before a queued transclusion preparation. The
+ * shell mounts an incoming document into a stage and waits for its primary
+ * preparation before it disposes the outgoing document, whose queued embeds
+ * are canceled only by that disposal; one shared queue would make navigation
+ * wait for the outgoing document's embeds. A dispatched request always
+ * finishes, because Worker operations are synchronous once they start. Embeds
+ * cannot starve, since primaries arrive only when a document mounts.
  *
  * Browser requests never fall back to main-thread execution. Node-based contract tests
  * use the same operation modules directly when Worker is unavailable. Mounts use
@@ -104,7 +121,9 @@ export function createMarkdownWorkerClient(options = {}) {
   /** @type {WorkerRequest | null} */
   let active = null;
   /** @type {WorkerRequest[]} */
-  const queued = [];
+  const primaryQueue = [];
+  /** @type {WorkerRequest[]} */
+  const transclusionQueue = [];
 
   const abortOwner = () => disposeWithReason(abortReason(options.signal));
   if (options.signal?.aborted) {
@@ -122,9 +141,7 @@ export function createMarkdownWorkerClient(options = {}) {
     options.signal?.removeEventListener("abort", abortOwner);
     worker?.terminate();
     worker = null;
-    const requests = active ? [active, ...queued] : [...queued];
-    active = null;
-    queued.length = 0;
+    const requests = drainRequests();
     for (const request of requests) {
       detachAbort(request);
       request.reject(reason);
@@ -139,9 +156,7 @@ export function createMarkdownWorkerClient(options = {}) {
     fatalError = error;
     worker?.terminate();
     worker = null;
-    const requests = active ? [active, ...queued] : [...queued];
-    active = null;
-    queued.length = 0;
+    const requests = drainRequests();
     for (const request of requests) {
       detachAbort(request);
       request.reject(error);
@@ -208,10 +223,10 @@ export function createMarkdownWorkerClient(options = {}) {
   }
 
   function pump() {
-    if (disposed || fatalError || active || queued.length === 0) {
+    if (disposed || fatalError || active) {
       return;
     }
-    const request = queued.shift();
+    const request = primaryQueue.shift() ?? transclusionQueue.shift();
     if (!request) {
       return;
     }
@@ -275,13 +290,28 @@ export function createMarkdownWorkerClient(options = {}) {
       pump();
       return;
     }
-    const index = queued.indexOf(request);
+    const lane = laneFor(request.op);
+    const index = lane.indexOf(request);
     if (index === -1) {
       return;
     }
-    queued.splice(index, 1);
+    lane.splice(index, 1);
     detachAbort(request);
     request.reject(abortReason(request.signal));
+  }
+
+  /** @param {MarkdownWorkerOperation} op */
+  function laneFor(op) {
+    return op === "prepare-primary" ? primaryQueue : transclusionQueue;
+  }
+
+  /** Remove the active request and both lanes, in dispatch order. */
+  function drainRequests() {
+    const requests = [...(active ? [active] : []), ...primaryQueue, ...transclusionQueue];
+    active = null;
+    primaryQueue.length = 0;
+    transclusionQueue.length = 0;
+    return requests;
   }
 
   /** @param {WorkerRequest} request */
@@ -326,7 +356,7 @@ export function createMarkdownWorkerClient(options = {}) {
           signal: requestOptions.signal,
         };
         request.signal?.addEventListener("abort", request.abort, { once: true });
-        queued.push(request);
+        laneFor(op).push(request);
         pump();
       });
     },

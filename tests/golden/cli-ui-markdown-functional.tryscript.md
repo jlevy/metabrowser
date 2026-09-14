@@ -9,9 +9,10 @@ env:
 This browserless session executes the production wiki parser and resolver, root-scoped
 catalog reconciliation coordinator, published-route adapters, preprocessing Worker
 client, and the real rendered-link to wiki-enhancer to nested-transclusion chain.
-It pins exact, incomplete, truncated-catalog, ambiguous, overflow, revision, slice,
-disposal, percent-identity, shared root-budget, task-list bracket-pairing, and page-wide
-Worker sharing and recovery behavior without requiring a browser.
+It pins exact, incomplete, truncated-catalog, truncated-to-complete, ambiguous,
+overflow, revision, slice, disposal, percent-identity, shared root-budget, task-list
+bracket-pairing, and page-wide Worker sharing, primary-first dispatch, and recovery
+behavior without requiring a browser.
 
 ```console
 $ node tests/dom/markdown-functional-session.js
@@ -26,11 +27,13 @@ $ node tests/dom/markdown-functional-session.js
     ],
     "settledCommits": 40,
     "truncated": {
-      "pinned": true,
-      "rerunCallbacks": 0,
+      "commitsAfterTruncatedChange": 0,
+      "listensWhileTruncated": true,
+      "pinnedAfterComplete": true,
       "revisionStates": [
         "pending:catalog-incomplete",
-        "unsupported:catalog-truncated"
+        "unsupported:catalog-truncated",
+        "internal:notes/Later.md"
       ]
     }
   },
@@ -129,6 +132,11 @@ $ node tests/dom/markdown-functional-session.js
     "concurrentWorkers": 1,
     "fatalError": "session worker failed",
     "recovered": "after crash",
+    "stagedDispatchOrder": [
+      "outgoing embed 1",
+      "staged document",
+      "outgoing embed 2"
+    ],
     "terminatedAfterLastRelease": true,
     "workersAfterRecovery": 2
   }

@@ -163,7 +163,6 @@ function processInline(source, budget, metrics, outputBudget, literalMask, sourc
   const output = [];
   let literalStart = 0;
   const brackets = createBracketPairs(source, literalMask, sourceOffset, metrics);
-  const destinationClose = createScanState();
   const wikiClose = createScanState();
   for (let index = 0; index < source.length; ) {
     metrics.inlineCursorSteps += 1;
@@ -175,7 +174,7 @@ function processInline(source, budget, metrics, outputBudget, literalMask, sourc
       index += 2;
       continue;
     }
-    const markdownLinkEnd = findMarkdownLinkEnd(source, index, brackets, destinationClose, metrics);
+    const markdownLinkEnd = findMarkdownLinkEnd(source, index, brackets);
     if (markdownLinkEnd !== -1) {
       index = markdownLinkEnd;
       continue;
@@ -654,21 +653,19 @@ function insideInlineCode(source, offset) {
  * @param {string} source
  * @param {number} index
  * @param {ReturnType<typeof createBracketPairs>} brackets
- * @param {ReturnType<typeof createScanState>} destinationClose
- * @param {ReturnType<typeof createWorkMetrics>} metrics
  */
-function findMarkdownLinkEnd(source, index, brackets, destinationClose, metrics) {
+function findMarkdownLinkEnd(source, index, brackets) {
   const image = source[index] === "!" && source[index + 1] === "[" && source[index + 2] !== "[";
   const link = source[index] === "[" && source[index + 1] !== "[";
   if (!image && !link) {
     return -1;
   }
-  const labelEnd = brackets.closing(index + (image ? 1 : 0));
+  const labelEnd = brackets.labelEnd(index + (image ? 1 : 0));
   if (labelEnd === -1) {
     return -1;
   }
   if (source[labelEnd + 1] === "(") {
-    const destinationEnd = findCharacter(source, labelEnd + 2, ")", destinationClose, metrics);
+    const destinationEnd = brackets.nextParenthesis(labelEnd + 2);
     return destinationEnd === -1 ? -1 : destinationEnd + 1;
   }
   if (source[labelEnd + 1] === "[") {
@@ -696,13 +693,28 @@ function createScanState() {
   return { cursor: 0, match: -1 };
 }
 
+const IMAGE_OPENER = 1;
+const CONTAINS_LINK = 2;
+const FOLLOWS_LINK_LABEL = 4;
+
 /**
  * Pair ordinary Markdown brackets on one line the way CommonMark does: each
  * unescaped `]` outside literal text closes the nearest still-open `[`. A link
  * label therefore ends at its own opener's closer, so a task-list checkbox, a
  * shortcut reference, or an unmatched `[` cannot borrow a later link's `](` and
- * hide the wiki syntax between them. The single stack pass runs on first use
- * and is charged one delimiter step per code unit; every lookup is O(1).
+ * hide the wiki syntax between them.
+ *
+ * CommonMark also forbids a link inside link text: once a link forms inside a
+ * label, every enclosing `[` is plain text, while an enclosing `![` still forms
+ * an image. The pass records that as one flag per opener and hands it to the
+ * parent when the opener closes, so `labelEnd` refuses such an opener and the
+ * wiki links beside the inner link still convert.
+ *
+ * Both tables are built lazily, once per line, and charged one delimiter step
+ * per code unit: the forward stack pass on the first label lookup, and the
+ * reverse next-`)` table on the first destination lookup. Every lookup is O(1),
+ * so a destination search that starts before an earlier one's start still sees
+ * the nearer `)`.
  *
  * @param {string} source
  * @param {Uint8Array} literalMask
@@ -718,11 +730,39 @@ function createBracketPairs(source, literalMask, sourceOffset, metrics) {
    * @type {Int32Array | null}
    */
   let pairs = null;
+  /** Per-opener `IMAGE_OPENER`, `CONTAINS_LINK`, and `FOLLOWS_LINK_LABEL` bits. @type {Uint8Array | null} */
+  let flags = null;
+  /** The first `)` at or after each offset, plus one; zero when none follows. @type {Int32Array | null} */
+  let parentheses = null;
+
+  /** @param {number} start @returns {number} */
+  function nextParenthesis(start) {
+    if (!parentheses) {
+      const built = new Int32Array(source.length + 1);
+      for (let index = source.length - 1; index >= 0; index -= 1) {
+        metrics.delimiterSteps += 1;
+        built[index] = source[index] === ")" ? index + 1 : built[index + 1];
+      }
+      parentheses = built;
+    }
+    return start < source.length ? parentheses[start] - 1 : -1;
+  }
+
+  /** @param {Uint8Array} openerFlags @param {number} opener */
+  function linkLabel(openerFlags, opener) {
+    return (
+      (openerFlags[opener] & (IMAGE_OPENER | CONTAINS_LINK)) === 0 && source[opener + 1] !== "["
+    );
+  }
 
   function build() {
     const built = new Int32Array(source.length);
+    const openerFlags = new Uint8Array(source.length);
     let top = -1;
     let backslashes = 0;
+    let bang = -1;
+    let closer = -1;
+    let closedOpener = -1;
     for (let index = 0; index < source.length; index += 1) {
       metrics.delimiterSteps += 1;
       const character = source[index];
@@ -735,25 +775,57 @@ function createBracketPairs(source, literalMask, sourceOffset, metrics) {
       if (escaped) {
         continue;
       }
-      if (character === "[") {
+      if (character === "!") {
+        bang = index;
+      } else if (character === "[") {
         built[index] = -(top + 1);
         top = index;
+        if (bang !== -1 && bang === index - 1) {
+          openerFlags[index] |= IMAGE_OPENER;
+        }
+        // `[label][reference]` forms a link when this reference label closes.
+        if (closer !== -1 && closer === index - 1 && linkLabel(openerFlags, closedOpener)) {
+          openerFlags[index] |= FOLLOWS_LINK_LABEL;
+        }
       } else if (character === "]" && top !== -1) {
         const opener = top;
         top = -built[opener] - 1;
         built[opener] = index + 1;
+        closer = index;
+        closedOpener = opener;
+        const formsLink =
+          (openerFlags[opener] & FOLLOWS_LINK_LABEL) !== 0 ||
+          (linkLabel(openerFlags, opener) &&
+            source[index + 1] === "(" &&
+            nextParenthesis(index + 2) !== -1);
+        if (top !== -1 && (formsLink || (openerFlags[opener] & CONTAINS_LINK) !== 0)) {
+          openerFlags[top] |= CONTAINS_LINK;
+        }
       }
     }
+    flags = openerFlags;
     return built;
   }
 
   return Object.freeze({
-    /** @param {number} opener @returns {number} */
+    /** The raw closer of any opener, or -1 when it is unmatched. @param {number} opener @returns {number} */
     closing(opener) {
       pairs ||= build();
       const value = pairs[opener];
       return value > 0 ? value - 1 : -1;
     },
+    /** The closer of an opener that can still form a link or image, or -1. @param {number} opener @returns {number} */
+    labelEnd(opener) {
+      pairs ||= build();
+      const value = pairs[opener];
+      if (value <= 0) {
+        return -1;
+      }
+      const openerFlags = /** @type {Uint8Array} */ (flags);
+      const deactivated = (openerFlags[opener] & (IMAGE_OPENER | CONTAINS_LINK)) === CONTAINS_LINK;
+      return deactivated ? -1 : value - 1;
+    },
+    nextParenthesis,
   });
 }
 
@@ -777,28 +849,6 @@ function findPair(source, start, first, second, state, metrics) {
     }
   }
   state.cursor = source.length;
-  return -1;
-}
-
-/** @param {string} source @param {number} start @param {string} character @param {ReturnType<typeof createScanState>} state @param {ReturnType<typeof createWorkMetrics>} metrics */
-function findCharacter(source, start, character, state, metrics) {
-  if (state.match >= start) {
-    return state.match;
-  }
-  if (state.match !== -1) {
-    state.cursor = state.match + 1;
-    state.match = -1;
-  }
-  state.cursor = Math.max(state.cursor, start);
-  while (state.cursor < source.length) {
-    const cursor = state.cursor;
-    state.cursor += 1;
-    metrics.delimiterSteps += 1;
-    if (source[cursor] === character) {
-      state.match = cursor;
-      return cursor;
-    }
-  }
   return -1;
 }
 

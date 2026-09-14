@@ -121,6 +121,22 @@ function equal(name, actual, expected) {
     ),
     { status: "unsupported", reason: "catalog-truncated" },
   );
+  // Files past the cap can only add candidates, so two indexed matches already
+  // prove ambiguity; a truncated walk reports that instead of the cap.
+  const truncatedAmbiguous = module.resolveWikiTarget(
+    { sourcePath: "other/current.md", authoredTarget: "Duplicate", action: "navigate" },
+    truncated,
+  );
+  const completeAmbiguous = module.resolveWikiTarget(
+    { sourcePath: "other/current.md", authoredTarget: "Duplicate", action: "navigate" },
+    fixture.completeSnapshot,
+  );
+  equal(
+    "truncated fallback with several indexed candidates is already ambiguous",
+    truncatedAmbiguous,
+    completeAmbiguous,
+  );
+  equal("the ambiguous fixture has several candidates", completeAmbiguous.status, "ambiguous");
   let contradictoryCoverage = null;
   try {
     module.createWikiResolutionContext({ ...fixture.completeSnapshot, truncated: true });

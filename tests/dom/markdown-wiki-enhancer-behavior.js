@@ -361,8 +361,9 @@ async function loadModule() {
     catalogListener === null && unsubscribeCount === 2,
   );
 
-  // A walk that stopped at the file cap is terminal. A fallback wiki link and a
-  // note embed settle as disabled explanations instead of resolving forever.
+  // A walk that stopped at the file cap is final for its index. A fallback wiki
+  // link and a note embed settle as disabled explanations instead of resolving
+  // forever, and a later complete walk still resolves them.
   const cappedLink = new FakeElement(
     "span",
     { "data-mb-wiki-action": "navigate", "data-mb-wiki-target": "Unique" },
@@ -376,8 +377,9 @@ async function loadModule() {
   const cappedScheduler = createScheduler();
   let cappedListener = null;
   let cappedSnapshot = { complete: false, files, truncated: false };
+  const cappedContainer = new FakeContainer([cappedLink, cappedEmbed]);
   const cappedHandle = module.enhanceWikiLinks(
-    new FakeContainer([cappedLink, cappedEmbed]),
+    cappedContainer,
     "docs/current.md",
     {
       ...mb,
@@ -416,7 +418,19 @@ async function loadModule() {
       cappedEmbed.getAttribute("title") === "Unsupported link (catalog-truncated).",
     String(cappedEmbed.getAttribute("title")),
   );
-  check("a truncated catalog releases the wiki subscription", cappedListener === null);
+  check("a truncated catalog keeps the wiki subscription", typeof cappedListener === "function");
+  cappedSnapshot = { complete: true, files, truncated: false };
+  cappedListener();
+  cappedScheduler.runAll();
+  const upgradedLink = cappedContainer.elements[0];
+  check(
+    "a later complete catalog resolves the link the cap disabled and pins",
+    upgradedLink !== cappedLink &&
+      upgradedLink.tagName.toLowerCase() === "a" &&
+      upgradedLink.getAttribute("data-metabrowser-link-status") === null &&
+      cappedListener === null,
+    `${upgradedLink.tagName} ${upgradedLink.getAttribute("data-metabrowser-link-status")}`,
+  );
   cappedHandle.dispose();
 
   const largeElements = ["MissingA", "MissingB", "MissingC"].map(

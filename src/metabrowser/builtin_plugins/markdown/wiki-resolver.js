@@ -86,7 +86,8 @@ const VIDEO_EXTENSIONS = new Set([".m4v", ".mov", ".mp4", ".ogv", ".webm"]);
  * Exact paths are usable before the inventory finishes. Basename and suffix fallback
  * remain pending until completeness proves that a currently unique match is truly
  * unique. A snapshot truncated at the inventory file cap is final but cannot prove
- * uniqueness or absence, so those results settle as `catalog-truncated`.
+ * uniqueness or absence, so those results settle as `catalog-truncated`; several
+ * indexed fallback candidates still settle as ambiguous.
  *
  * @param {unknown} intent
  * @param {unknown} snapshot
@@ -315,16 +316,13 @@ export function createWikiResolutionContext(snapshot) {
           );
           return resolutionStep(true, pathVisits, terminal);
         }
-        if (!catalogComplete) {
-          // A capped index may hold neither the exact file nor every fallback
-          // candidate, so it cannot report a miss or a unique match.
-          terminal = catalogTruncated
-            ? unsupported("catalog-truncated")
-            : pending("catalog-incomplete");
+        if (!catalogComplete && !catalogTruncated) {
+          terminal = pending("catalog-incomplete");
           return resolutionStep(true, pathVisits, terminal);
         }
         if (prepared.miss === "not-found") {
-          terminal = missing("not-found");
+          // A capped index may not hold the exact file, so it cannot report a miss.
+          terminal = catalogTruncated ? unsupported("catalog-truncated") : missing("not-found");
           return resolutionStep(true, pathVisits, terminal);
         }
         if (pathVisits >= limit) {
@@ -336,12 +334,19 @@ export function createWikiResolutionContext(snapshot) {
         if (!fallbackStep.done || !fallbackStep.summary) {
           return resolutionStep(false, pathVisits, null);
         }
-        terminal = resolutionFromSummary(
-          fallbackStep.summary,
-          prepared.action,
-          prepared.fragment,
-          prepared.mediaKind,
-        );
+        const summary = fallbackStep.summary;
+        // Files past a cap can only add fallback candidates. Several indexed
+        // candidates therefore already prove ambiguity, but none or one proves
+        // neither absence nor uniqueness.
+        terminal =
+          catalogTruncated && !summary.overflow && summary.candidateCount < 2
+            ? unsupported("catalog-truncated")
+            : resolutionFromSummary(
+                summary,
+                prepared.action,
+                prepared.fragment,
+                prepared.mediaKind,
+              );
         return resolutionStep(true, pathVisits, terminal);
       },
     });

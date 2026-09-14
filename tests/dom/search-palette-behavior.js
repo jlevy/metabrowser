@@ -421,6 +421,7 @@ async function main() {
   /** @type {Array<() => void>} */
   const catalogListeners = [];
   let catalogObservedCount = 5;
+  let catalogTruncated = false;
   const emitCatalogChange = () => {
     for (const listener of catalogListeners.slice()) {
       listener();
@@ -438,7 +439,11 @@ async function main() {
   const palette = sandbox.MetabrowserSearchPalette.create({
     controller,
     document,
-    getCatalogSnapshot: () => ({ complete: false, observedCount: catalogObservedCount }),
+    getCatalogSnapshot: () => ({
+      complete: false,
+      observedCount: catalogObservedCount,
+      truncated: catalogTruncated,
+    }),
     subscribeCatalog: (listener) => {
       catalogListeners.push(listener);
       return () => {
@@ -882,6 +887,16 @@ async function main() {
     "Search includes 4,242 indexed files. Scanning continues.",
   );
   check("an idle palette runs no search", requests.length === requestsBeforeIdle);
+  // A walk capped at the file limit is final: the idle line must not promise more.
+  catalogTruncated = true;
+  emitCatalogChange();
+  await waitMs(220);
+  equal(
+    "an idle palette says indexing stopped at the file limit",
+    status.textContent,
+    "Search includes 4,242 indexed files. Indexing stopped at the file limit.",
+  );
+  catalogTruncated = false;
   catalogObservedCount = 5;
 
   // A closed palette has nothing to converge. Schedule a refresh first and

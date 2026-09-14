@@ -4,10 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-Plugin SDK (breaking):
+Plugin SDK:
 
-- The plugin SDK is now 0.6. A plugin manifest must declare `sdk_version = "0.6"`;
-  manifests for 0.5 are refused at discovery and by `metab --doctor`.
+- The plugin SDK is now 0.6, a breaking change.
+  A plugin manifest must declare `sdk_version = "0.6"`; manifests for 0.5 are refused at
+  discovery and by `metab --doctor`.
 
 - API paths are escaped inventory identities.
   Plugin readers, activity probes, Markdown links, browser URLs, and filename search now
@@ -18,6 +19,12 @@ Plugin SDK (breaking):
   It parsed Markdown separately from KPress and could disagree with the rendered
   document; a future graph surface will be a server route backed by KPress’s own link
   analysis.
+
+- `fileCatalog.snapshot()` now includes `truncated`, which is true when the inventory
+  walk finished at its file cap.
+  `complete` still means every file under the root is listed, and the two are never both
+  true. A plugin waiting for a final catalog should stop on either flag.
+  See [Data and Navigation](docs/plugins.md#data-and-navigation).
 
 Markdown fixes:
 
@@ -34,20 +41,19 @@ Markdown fixes:
   `[` was paired with the later link’s `](`, so the wiki link was left as literal text.
   Brackets now pair the way CommonMark pairs them, so checkboxes, shortcut references,
   and unmatched brackets no longer hide the wiki links that follow them.
+  As in CommonMark, brackets that contain a link are plain text rather than a link, so
+  the wiki links beside that inner link convert.
 
 - Markdown links no longer say “Resolving link” forever in a tree larger than the
   inventory file cap. When the walk stopped at the cap, the file catalog never reached a
   final state, so basename wiki links, note embeds, and rooted extensionless links such
   as `/guide/` stayed pending, and every live file change re-ran their resolution.
   A capped walk is now a final catalog state: links that exact paths resolve still work,
-  while links that need the unindexed files are disabled with the `catalog-truncated`
-  reason in their title, and later changes do not re-run them.
-
-- Plugin SDK: `fileCatalog.snapshot()` now includes `truncated`, which is true when the
-  inventory walk finished at its file cap.
-  `complete` still means every file under the root is listed, and the two are never both
-  true. A plugin waiting for a final catalog should stop on either flag.
-  See [Data and Navigation](docs/plugins.md#data-and-navigation).
+  a wiki link with several indexed matches is reported as ambiguous, and links that need
+  the unindexed files are disabled with the `catalog-truncated` reason in their title.
+  Later changes do not re-run them unless a later walk completes, which resolves them.
+  File search now says indexing stopped at the file limit instead of “Scanning
+  continues.”
 
 Inventory engine:
 

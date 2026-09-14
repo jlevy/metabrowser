@@ -133,6 +133,26 @@ function throws(name, callback, message) {
     ),
     { reason: "catalog-truncated", status: "unsupported" },
   );
+  // Navigation and live changes add entries to a capped catalog, and the
+  // walker's cap is configurable, so a truncated catalog can hold more files
+  // than the published-route envelope. It still reports the cap rather than
+  // falling back to an ordinary link.
+  const cappedPaths = Array.from(
+    { length: 500_001 },
+    (_, index) => `capped/${String(index).padStart(6, "0")}.md`,
+  );
+  equal(
+    "a truncated catalog past the route envelope still explains the cap",
+    module.resolvePublishedRoute(
+      { authoredTarget: "/guide/", resolvedPath: "guide/" },
+      {
+        complete: false,
+        files: complete(["mkdocs.yml", "docs/guide.md", ...cappedPaths]).files,
+        truncated: true,
+      },
+    ),
+    { reason: "catalog-truncated", status: "unsupported" },
+  );
   equal(
     "a truncated catalog keeps an exact target authoritative",
     module.resolvePublishedRoute(

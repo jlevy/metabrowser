@@ -126,6 +126,17 @@ function check(name, condition, detail = "failed") {
     ["balanced brackets inside a link label", "[a [b] c](target.md) [[Target]]", 1],
     ["escaped closer inside a link label", String.raw`[a \] [[Hidden]]](target.md)`, 0],
     ["code-span closer inside a link label", "[a `]` [[Hidden]]](target.md)", 0],
+    // An outer label with no later `)` must not hide the destination of the
+    // real link nested inside it, whose own `)` comes earlier.
+    ["destination of a link nested in an unclosed outer label", "[x [b]([[W]]) d](e", 0],
+    ["label of a link nested in an unclosed outer label", "[a [see [[W]]](c) d](e", 0],
+    // CommonMark forbids a link inside link text: once a link forms inside a
+    // label, the enclosing `[` is plain text and its wiki links convert.
+    ["inline link inside link text", "[a [b](c) [[W]]](e)", 1],
+    ["reference link inside link text", "[a [b][c] [[W]]](e)", 1],
+    ["escaped image marker inside link text is a link", String.raw`[x \![a](b) [[W]]](c)`, 1],
+    ["link inside image text keeps the image", "![a [b](c) [[W]]](e)", 0],
+    ["image inside link text keeps the link", "[a ![b](c) [[W]]](e)", 0],
   ];
   for (const [name, input, targetCount] of bracketPairingCases) {
     const actual = module.preprocessObsidianWiki(input);

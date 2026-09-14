@@ -111,7 +111,10 @@ export function createPublishedRouteResolutionContext(snapshot) {
         throw new TypeError("published-route resolved path must be a string");
       }
       const route = validateResolvedPublishedRoute(value.authoredTarget, value.resolvedPath);
-      if (catalog.files.length > MAX_CATALOG_FILES) {
+      // Navigation and live changes add entries to a capped catalog and the walk
+      // cap is configurable, so a truncated catalog may exceed this envelope. It
+      // never infers a route, so it still explains the cap below.
+      if (catalog.files.length > MAX_CATALOG_FILES && !catalog.truncated) {
         return null;
       }
       if (targetExists(value.resolvedPath)) {

@@ -641,6 +641,7 @@ async function loadModule() {
   const cappedFrames = new Map();
   let cappedFrameSequence = 0;
   let cappedListener = null;
+  let cappedComplete = false;
   const cappedHandle = module.enhanceRenderedLinks(
     new FakeContainer([cappedAnchor]),
     "docs/readme.md",
@@ -648,12 +649,12 @@ async function loadModule() {
       ...mb,
       fileCatalog: {
         snapshot: () => ({
-          complete: false,
+          complete: cappedComplete,
           files: [
             { basename: "guide.md", path: "docs/guide.md" },
             { basename: "mkdocs.yml", path: "mkdocs.yml" },
           ],
-          truncated: true,
+          truncated: !cappedComplete,
         }),
         subscribe: (listener) => {
           cappedListener = listener;
@@ -688,7 +689,25 @@ async function loadModule() {
         "Metabrowser cannot resolve this destination (catalog-truncated).",
     String(cappedAnchor.getAttribute("title")),
   );
-  check("a truncated catalog releases the published-route subscription", cappedListener === null);
+  check(
+    "a truncated catalog keeps the published-route subscription",
+    typeof cappedListener === "function",
+  );
+  cappedComplete = true;
+  cappedListener();
+  while (cappedFrames.size) {
+    const [frame, callback] = cappedFrames.entries().next().value;
+    cappedFrames.delete(frame);
+    callback(0);
+  }
+  check(
+    "a later complete catalog resolves the published route the cap disabled",
+    cappedAnchor.getAttribute("data-metabrowser-link-status") === null &&
+      cappedAnchor.getAttribute("aria-disabled") === null &&
+      cappedAnchor.getAttribute("data-metabrowser-link-adapter") === "mkdocs" &&
+      cappedListener === null,
+    `${cappedAnchor.getAttribute("href")} ${cappedAnchor.getAttribute("title")}`,
+  );
   cappedHandle.dispose();
 
   const longDirectory = "provider-segment/".repeat(1200);

@@ -30,7 +30,7 @@
   /**
    * @typedef {object} CatalogSnapshot
    * @property {boolean} complete true once a complete bulk feed has
-   *   been applied (or the walk finished after an incomplete one)
+   *   been applied (or an uncapped walk finished after an incomplete one)
    * @property {boolean} truncated true when the walk finished at its file cap;
    *   never true together with `complete`
    * @property {readonly KnownFile[]} files

@@ -1394,9 +1394,9 @@ type MetabrowserKnownFileCatalogSnapshot = Readonly<{
   revision: number;
   sourceSummary: Readonly<Record<string, number>>;
   /**
-   * The walk reached its terminal state at the inventory file cap. Membership
-   * will not grow for this index, but files past the cap are absent, so a
-   * lookup miss is not proof of absence. Never true together with `complete`.
+   * The walk reached its terminal state at the inventory file cap. The walk adds
+   * no more files for this index, but files past the cap were never indexed, so
+   * a lookup miss is not proof of absence. Never true together with `complete`.
    */
   truncated: boolean;
 }>;
@@ -1671,7 +1671,7 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
   create(options: {
     controller: MetabrowserSearchController;
     document?: Document;
-    getCatalogSnapshot(): { complete: boolean; observedCount: number };
+    getCatalogSnapshot(): { complete: boolean; observedCount: number; truncated: boolean };
     getFileIcon?(path: string): { cls?: string; svg?: string };
     maxRows?: number;
     onNotFound?(path: string): void | Promise<void>;
