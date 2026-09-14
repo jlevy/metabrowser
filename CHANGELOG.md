@@ -21,6 +21,16 @@ Plugin SDK (breaking):
 
 Inventory engine:
 
+- The directory tree’s first rows no longer wait for a scan of the whole repository.
+  Metabrowser used to walk every visible directory looking for nested `.gitignore` files
+  before indexing could start, so on a large repository the top-level tree appeared only
+  after 10-30 s. Each directory’s `.gitignore` is now read the first time a path inside
+  it is checked, and the first rows appear as soon as the root is listed.
+  Nested `.gitignore` files now follow git’s rules: a pattern without a slash applies at
+  any depth below its directory, an anchored pattern such as `/*` applies within that
+  directory, a negation re-includes a path its parent file ignored, and nothing inside
+  an ignored directory is re-included.
+
 - Filesystem inventory now crosses one pluggable, provider-neutral contract.
   The current Python implementation remains the only shipped provider and preserves the
   existing routes and envelope shapes; the path identity change is documented below.

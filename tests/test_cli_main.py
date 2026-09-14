@@ -276,7 +276,9 @@ def test_console_entry_point_interrupts_background_filesystem_work(tmp_path: Pat
     root = tmp_path / "repo"
     root.mkdir()
     (root / ".git").mkdir()
-    marker = tmp_path / "gitignore-walk-started"
+    marker = tmp_path / "inventory-walk-started"
+    # The indexing walk's first directory read never returns, standing in for
+    # a slow or stalled filesystem under the served root.
     (tmp_path / "sitecustomize.py").write_text(
         dedent(
             """
@@ -284,18 +286,17 @@ def test_console_entry_point_interrupts_background_filesystem_work(tmp_path: Pat
             import time
             from pathlib import Path
 
-            real_walk = os.walk
+            real_scandir = os.scandir
 
-            def delayed_walk(root, *args, **kwargs):
-                if Path(root) == Path(os.environ["METABROWSER_TEST_SLOW_WALK_ROOT"]):
+            def stalled_scandir(path=".", *args, **kwargs):
+                target = Path(os.environ["METABROWSER_TEST_SLOW_WALK_ROOT"])
+                if Path(os.fsdecode(path)).resolve() == target.resolve():
                     while True:
                         Path(os.environ["METABROWSER_TEST_WALK_MARKER"]).touch()
-                        yield str(root), [], []
                         time.sleep(0.01)
-                else:
-                    yield from real_walk(root, *args, **kwargs)
+                return real_scandir(path, *args, **kwargs)
 
-            os.walk = delayed_walk
+            os.scandir = stalled_scandir
             """
         ).lstrip()
     )
