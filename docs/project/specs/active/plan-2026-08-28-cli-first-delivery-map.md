@@ -131,15 +131,16 @@ The rules, and why each is needed:
 | Field or shape | Becomes | Why |
 | --- | --- | --- |
 | Absolute path under `root` | `<ROOT>/...` | sandbox path varies |
-| Absolute path under `home` | `<HOME>/...`, **Phase 1A** | cache home varies |
-| `mtime`, `mtime_hash` | `<MTIME>`, **opt-in, Phase 1A** | fixtures pin these with `touch -t`; a clone into the cache cannot |
-| Pack file names, `.git` internals | omitted | never stable; see below |
+| Envelope `page_cursor`, `cursor`, `previous_cursor` | `<CURSOR>` | a random session token; no fixture can pin it |
+| Envelope `inventory.elapsed_ms`, `inventory.duration_ms` | `<ELAPSED>` | wall clock; moves with load and hardware |
 | Git revisions | **kept** | fixture repos are built deterministically |
+| Absolute path under `home` | `<HOME>/...`, **Cache 1A** | cache home varies |
+| `mtime`, `mtime_hash` | `<MTIME>`, **opt-in, Cache 1B-a** | fixtures pin these with `touch -t`; a clone into the cache cannot |
 
-The `home` and mtime rules land with the cache goldens that need them (`mb-4gnu`). They
-were first written ahead of that consumer, along with a `describe_schema()` table
-renderer no document embedded, and were removed as unused surface; no `--api` or
-`--show` transcript has an application home or an unpinnable mtime.
+The last two rows are added to `normalize.py` with the cache goldens that first need
+them (`mb-dg00`): `<HOME>` with `cli-cache-layout` in Cache 1A, and the opt-in `<MTIME>`
+with `cli-cache-acquire` in Cache 1B-a. No `--api` or `--show` transcript has an
+application home or an unpinnable mtime.
 
 The table was measured, and then it grew, which is worth recording because the first
 version of this paragraph did not.
@@ -150,7 +151,7 @@ random session token, and `/api/diagnostics/pending-tallies` carries
 Both were found later, by routes the first sweep did not request, and both are
 normalized now. The lesson is about the method rather than the fields — “no envelope
 carries X” is a claim about every envelope, and a sweep of six proves nothing of the
-sort. Mtime normalization stays opt-in for a different and better reason: the existing
+sort. Mtime normalization will be opt-in for a different and better reason: the existing
 goldens pin mtimes with `touch -t` and assert the real values, so normalizing by default
 would delete coverage a fixture already controls.
 

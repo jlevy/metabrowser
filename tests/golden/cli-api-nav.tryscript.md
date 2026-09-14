@@ -446,8 +446,11 @@ This pins reachability and the envelope, not activity.
 A file is active only when the tracker sees its size or mtime change between two of its
 polls, and a one-shot `metab` process ends before a second poll can run, so no fixture
 can make `active_files` nonempty here.
-`tests/test_browser_active_tracker.py` drives the tracker across two polls and reads a
-nonempty snapshot back through this route’s handler.
+Two tests in `tests/test_browser_active_tracker.py` cover the nonempty case:
+`test_tick_refreshes_facts_then_marks_the_overlay_active` drives the tracker across two
+polls and asserts the file is marked active, and
+`test_api_activity_reads_the_same_overlay_snapshot` reads a nonempty `active_files` back
+through this route’s handler.
 
 ```console
 $ metab navroot --api /api/activity

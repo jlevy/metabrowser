@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from metabrowser.normalize import (
+    CURSOR_PATHS,
     CURSOR_PLACEHOLDER,
+    ELAPSED_PATHS,
     ELAPSED_PLACEHOLDER,
     ROOT_PLACEHOLDER,
     NormalizeContext,
@@ -18,6 +21,21 @@ ROOT = Path("/tmp/sandbox/checkroot")
 
 def _ctx() -> NormalizeContext:
     return NormalizeContext(root=ROOT)
+
+
+def _place(payload: dict[str, Any], path: tuple[str, ...], value: object) -> None:
+    """Set *value* at an envelope address, creating the objects along the way."""
+
+    node = payload
+    for key in path[:-1]:
+        node = node.setdefault(key, {})
+    node[path[-1]] = value
+
+
+def _at(payload: Any, path: tuple[str, ...]) -> Any:
+    for key in path:
+        payload = payload[key]
+    return payload
 
 
 def test_absolute_root_path_becomes_a_placeholder() -> None:
@@ -61,20 +79,31 @@ def test_mtime_is_kept_because_fixtures_pin_it() -> None:
 
 
 def test_a_payload_of_every_unstable_field_normalizes_to_none_of_them() -> None:
-    """The round-trip the golden guidelines ask for."""
+    """The round-trip the golden guidelines ask for, over every address the schema names.
 
-    payload = {
+    The payload is built from the schema's own path tables, so an address added
+    to either table is covered here without editing the test.
+    """
+
+    payload: dict[str, Any] = {
         "root": str(ROOT),
-        "page_cursor": "eyJzIjoiUUJNUzYzTl9QTnI1QWVxVnplQWVYTjNaIn0=",
-        "inventory": {"elapsed_ms": 1699999999},
         "nested": {"path": str(ROOT / "x"), "list": [str(ROOT / "y")]},
     }
+    cursors = {path: f"session-token-{index}" for index, path in enumerate(CURSOR_PATHS)}
+    elapsed = {path: 1_699_999_000 + index for index, path in enumerate(ELAPSED_PATHS)}
+    for path, value in (*cursors.items(), *elapsed.items()):
+        _place(payload, path, value)
 
-    rendered = repr(normalize_payload(payload, _ctx()))
+    normalized = normalize_payload(payload, _ctx())
+    rendered = repr(normalized)
 
     assert str(ROOT) not in rendered
-    assert "eyJzIjoi" not in rendered
-    assert "1699999999" not in rendered
+    for value in (*cursors.values(), *elapsed.values()):
+        assert str(value) not in rendered
+    for path in CURSOR_PATHS:
+        assert _at(normalized, path) == CURSOR_PLACEHOLDER
+    for path in ELAPSED_PATHS:
+        assert _at(normalized, path) == ELAPSED_PLACEHOLDER
 
 
 def test_text_normalization_covers_console_output() -> None:
