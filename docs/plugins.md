@@ -549,8 +549,10 @@ listeners, pending fragment work, and any nested Obsidian transclusions.
 One lazily constructed preprocessing Worker belongs to that handle and is shared by the
 primary document and every nested transclusion; disposal terminates it with the rest of
 the root mount. Note, heading, and named-block transclusions share depth, document,
-source-byte, elapsed-time, cycle, abort, and disposal limits across the mounted
-document. SDK 0.6 does not expose Markdown graph analysis.
+source-byte, cycle, abort, and disposal limits across the mounted document.
+Each embed’s elapsed-time limit starts when that embed begins loading, so an embed whose
+catalog resolution arrives late still receives its full allowance.
+SDK 0.6 does not expose Markdown graph analysis.
 Parsing Markdown a second time in the browser can diverge from KPress’s rendered
 document; a future graph surface therefore requires a server data route backed by a
 KPress-owned link-intent manifest.

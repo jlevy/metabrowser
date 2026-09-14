@@ -19,6 +19,16 @@ Plugin SDK (breaking):
   document; a future graph surface will be a server route backed by KPress’s own link
   analysis.
 
+Markdown fixes:
+
+- An embedded note no longer times out before it starts loading.
+  The 5-second transclusion allowance used to start when the first embed in a document
+  resolved and was shared by every later embed, so a note whose link resolved after the
+  file index finished could show “The embedded note timed out.”
+  without being fetched.
+  Each embed now has its own allowance from the moment it starts loading; the document,
+  depth, source-size, and cycle limits remain shared.
+
 Inventory engine:
 
 - The directory tree’s first rows no longer wait for a scan of the whole repository.

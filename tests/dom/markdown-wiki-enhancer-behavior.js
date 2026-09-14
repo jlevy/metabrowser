@@ -648,6 +648,93 @@ async function loadModule() {
   );
   movedHandle.dispose();
 
+  // A fallback embed resolves only once the catalog completes, which can be long
+  // after an exact embed in the same document started loading. The late embed
+  // is timed from its own claim, not from the first embed's. Date.now follows
+  // the virtual clock so a wall-clock deadline regression is observed as well.
+  let virtualNow = 1_000_000;
+  const virtualTimers = new Map();
+  let virtualTimerSequence = 0;
+  const virtualClock = {
+    clearTimeout: (timer) => virtualTimers.delete(timer),
+    now: () => virtualNow,
+    setTimeout(callback, delayMs) {
+      virtualTimerSequence += 1;
+      virtualTimers.set(virtualTimerSequence, { callback, due: virtualNow + delayMs });
+      return virtualTimerSequence;
+    },
+  };
+  const nativeDateNow = Date.now;
+  Date.now = () => virtualNow;
+  try {
+    const earlyEmbed = new FakeElement(
+      "span",
+      { "data-mb-wiki-action": "embed", "data-mb-wiki-target": "Early" },
+      "Early",
+    );
+    const lateEmbed = new FakeElement(
+      "span",
+      { "data-mb-wiki-action": "embed", "data-mb-wiki-target": "Late" },
+      "Late",
+    );
+    const staggeredContainer = new FakeContainer([earlyEmbed, lateEmbed]);
+    const staggeredScheduler = createScheduler();
+    let staggeredSnapshot = {
+      complete: false,
+      files: catalogFiles(["docs/Early.md", "notes/Late.md"]),
+    };
+    let staggeredListener = null;
+    const staggeredHandle = module.enhanceWikiLinks(
+      staggeredContainer,
+      "docs/current.md",
+      {
+        fetchKpressRender: async () => ({ html: "<p>embedded</p>" }),
+        fetchText: async () => "# Embedded\n",
+        fileCatalog: {
+          snapshot: () => staggeredSnapshot,
+          subscribe: (listener) => {
+            staggeredListener = listener;
+            return () => {
+              staggeredListener = null;
+            };
+          },
+        },
+        navigation: mb.navigation,
+      },
+      () => {},
+      {
+        ...staggeredScheduler,
+        budget: loaded.transclusion.createTransclusionBudget({}, { clock: virtualClock }),
+      },
+    );
+    staggeredScheduler.runAll();
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "an exact embed renders before the catalog completes",
+      staggeredContainer.elements[0].getAttribute("data-metabrowser-transclusion-status") ===
+        "ready",
+    );
+    check(
+      "a fallback embed waits for the complete catalog",
+      staggeredContainer.elements[1].getAttribute("data-metabrowser-link-status") === "pending",
+    );
+    virtualNow += 6_000;
+    staggeredSnapshot = { complete: true, files: staggeredSnapshot.files };
+    staggeredListener();
+    staggeredScheduler.runAll();
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "a fallback embed resolved six seconds later renders instead of timing out",
+      staggeredContainer.elements[1].getAttribute("data-metabrowser-transclusion-status") ===
+        "ready",
+      String(staggeredContainer.elements[1].getAttribute("data-metabrowser-transclusion-error")),
+    );
+    staggeredHandle.dispose();
+    check("staggered embeds leave no deadline timer", virtualTimers.size === 0);
+  } finally {
+    Date.now = nativeDateNow;
+  }
+
   if (failures.length) {
     console.error(`markdown wiki enhancer FAILURES:\n- ${failures.join("\n- ")}`);
     process.exit(1);

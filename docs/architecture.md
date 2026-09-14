@@ -65,9 +65,9 @@ to exact paths or completion-aware unique inventory results, and creates stable 
 and named-block anchors before rendering.
 Missing and ambiguous wiki targets remain visible; media wiki embeds reuse `/raw`, and
 note, heading, and named-block transclusion returns through KPress with shared depth,
-document, source-byte, elapsed-time, cycle, abort, and disposal limits.
-The plugin also exposes bounded immutable graph analysis through the SDK; visualization
-remains outside the resolver.
+document, source-byte, cycle, abort, and disposal limits and a per-embed elapsed-time
+limit. The plugin also exposes bounded immutable graph analysis through the SDK;
+visualization remains outside the resolver.
 The shell remains Markdown-dialect agnostic: the plugin intercepts only plain primary
 activation through the public navigation SDK, while modifier clicks, new tabs,
 downloads, external URLs, and ordinary not-found handling retain browser behavior.
