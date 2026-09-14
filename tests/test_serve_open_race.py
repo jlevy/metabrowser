@@ -12,8 +12,11 @@ These tests decide what the port serves at each of the helper's attempts
 instead of racing a sleeping thread against the helper's timeout, which failed
 under heavy machine load. ``_PollClock`` stands in for the helper's clock, so
 its deadline counts poll intervals rather than wall time, and it can park the
-helper between attempts while the test changes the server. Nothing asserted
-depends on how quickly a thread is scheduled.
+helper between attempts while the test changes the server. What each attempt
+sees is decided by the test, not by how quickly a thread is scheduled. Each
+attempt still waits on a real connection with its own 0.2 s timeout, so tests
+that talk to a real server keep the helper's default 10 s budget (200 attempts):
+a merely slow server thread spends a few attempts, not the whole budget.
 """
 
 from __future__ import annotations
@@ -45,10 +48,12 @@ class _PollClock:
     """Stands in for ``time`` inside ``http_readiness``.
 
     Time advances only when the helper sleeps between attempts, by the interval
-    it asks for, so its timeout is a budget of attempts that a descheduled
-    thread cannot spend. While held, each sleep also parks the helper until the
-    test grants another attempt, which lets the test change the server between
-    attempts and know the helper has acted on each state before asserting.
+    it asks for, so its timeout is a budget of attempts rather than of wall time.
+    A descheduled test thread cannot run it out; an attempt that waits on a slow
+    server connection still spends one attempt. While held, each sleep also
+    parks the helper until the test grants another attempt, which lets the test
+    change the server between attempts and know the helper has acted on each
+    state before asserting.
     """
 
     def __init__(self, *, held: bool) -> None:
@@ -159,7 +164,11 @@ class _IndexServer:
             raise
         self.port: int = self._httpd.server_address[1]
         if listening:
-            self.listen()
+            try:
+                self.listen()
+            except BaseException:
+                self._httpd.server_close()
+                raise
 
     def listen(self) -> None:
         self._httpd.server_activate()
@@ -342,15 +351,22 @@ def test_the_cli_opens_the_browser_only_after_its_server_answers(
     index = _IndexServer(status=200, listening=False)
     browser = _install_browser(monkeypatch, clock, index)
     opened_before_serving: list[tuple[str, int, bool]] = []
+    served: list[tuple[str, int]] = []
+    readiness_threads: list[threading.Thread] = []
+    quiet_server = MagicMock()
     wait_then_open = serve_module._wait_for_http_ok_then_open
 
     def wait_then_open_and_finish(host: str, port: int, url: str) -> None:
+        readiness_threads.append(threading.current_thread())
         try:
             wait_then_open(host, port, url)
         finally:
             clock.finish()
 
     def run_in_place_of_uvicorn(_server: object) -> bool:
+        # The address uvicorn was told to bind, which must be the one being polled.
+        config = quiet_server.call_args.args[0]
+        served.append((config.host, config.port))
         clock.wait_until_parked()
         opened_before_serving.extend(browser.opened)
         index.listen()
@@ -358,14 +374,18 @@ def test_the_cli_opens_the_browser_only_after_its_server_answers(
         return False
 
     monkeypatch.setattr(serve_module, "find_available_local_port", lambda *_args: index.port)
-    monkeypatch.setattr(serve_module, "_QuietForceExitServer", MagicMock())
+    monkeypatch.setattr(serve_module, "_QuietForceExitServer", quiet_server)
     monkeypatch.setattr(serve_module, "_run_until_interrupted", run_in_place_of_uvicorn)
     monkeypatch.setattr(serve_module, "_wait_for_http_ok_then_open", wait_then_open_and_finish)
     try:
         result = runner.invoke(_app, [str(tmp_path)])
         assert result.exit_code == 0, f"{result.output}{result.exception!r}"
         assert opened_before_serving == [], "opened the browser before the server started"
+        assert served == [("127.0.0.1", index.port)], "uvicorn must serve the polled port"
         clock.wait_until_finished()
+        assert len(readiness_threads) == 1
+        readiness_threads[0].join(_DEADLOCK_BREAKER_S)
+        assert not readiness_threads[0].is_alive()
         assert browser.opened == [(f"http://127.0.0.1:{index.port}/view/", 2, True)]
         assert responses[-1] == 200
     finally:
