@@ -12,10 +12,11 @@ require_no_label_overflow = true
 require_no_fetch_concurrency_overflow = true
 require_no_resource_overflow = true
 required_observers = ["longtask", "event"]
+# `dirty` is not listed: an attested external wheel records it as null because its
+# source tree cannot be verified. `run.py compare` requires it for every other build.
 required_fields = [
   "commit",
   "corpus",
-  "dirty",
   "files",
   "harness_version",
   "recorded_at",
