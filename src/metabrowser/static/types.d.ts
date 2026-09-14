@@ -141,6 +141,15 @@ type MetabrowserFileRevalidationTracker = Readonly<{
 
 type MetabrowserPreviewSelection = Readonly<{ folder: boolean; path: string; viewId?: string }>;
 
+type MetabrowserPreviewPanePhase =
+  | "starting"
+  | "idle"
+  | "loading"
+  | "content"
+  | "error"
+  | "unreachable"
+  | "external";
+
 /** What the preview pane shows while no rendered view owns it. */
 type MetabrowserPreviewPlaceholder = Readonly<
   | { paint: "none" }
@@ -156,6 +165,8 @@ type MetabrowserPreviewFailure = Readonly<{
 
 type MetabrowserPreviewPaneLifecycle = Readonly<{
   claim(owner: string, selection?: MetabrowserPreviewSelection): number;
+  /** Whether the pane shows or is loading this file selection. */
+  holds(path: string): boolean;
   isCurrent(claim: number): boolean;
   placeholder(claim: number): MetabrowserPreviewPlaceholder;
   reconnected(): MetabrowserPreviewSelection | null;
@@ -165,7 +176,7 @@ type MetabrowserPreviewPaneLifecycle = Readonly<{
     claim: number;
     owner: string;
     path: string | null;
-    phase: "starting" | "idle" | "loading" | "content" | "error" | "unreachable" | "external";
+    phase: MetabrowserPreviewPanePhase;
   }>;
 }>;
 
@@ -214,6 +225,8 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   ): Readonly<{ message: string; status: "error" | "unreachable" }>;
   /** Mark a rejected fetch as an unreachable server; aborts pass through. */
   requestFailure(error: unknown): unknown;
+  /** Mark a rejected body read as an unreachable server; aborts and JSON syntax errors pass through. */
+  responseBodyFailure(error: unknown): unknown;
   settleFileSelectionFailure(options: {
     cached: boolean;
     claim: MetabrowserPreviewClaim;
@@ -223,7 +236,9 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
     pane: MetabrowserPreviewPaneLifecycle;
     path: string;
     showError(failure: MetabrowserPreviewFailure): void;
-  }): { message?: string; status: "cancelled" | "error" | "not-found" | "unreachable" };
+  }): Readonly<
+    { status: "cancelled" } | { message: string; status: "error" | "not-found" | "unreachable" }
+  >;
   settleNavigationDependency<T>(
     pending: Promise<T>,
   ): Promise<Readonly<{ status: "ready"; value: T } | { status: "error"; error: unknown }>>;
@@ -1675,11 +1690,19 @@ type MetabrowserSearchRuntime = Readonly<{
   }): MetabrowserSearchProvider;
 }>;
 
-type MetabrowserOpenFileOutcome = Readonly<{
-  focusTarget?: HTMLElement | null;
-  message?: string;
-  status: "opened" | "not-found" | "error" | "unreachable" | "cancelled";
-}>;
+/** A failed open always says why, so the palette never has to classify it again. */
+type MetabrowserOpenFileOutcome = Readonly<
+  | {
+      focusTarget?: HTMLElement | null;
+      message?: string;
+      status: "opened" | "not-found" | "cancelled";
+    }
+  | {
+      focusTarget?: HTMLElement | null;
+      message: string;
+      status: "error" | "unreachable";
+    }
+>;
 
 type MetabrowserSearchPaletteApi = Readonly<{
   close(): void;
@@ -1687,13 +1710,17 @@ type MetabrowserSearchPaletteApi = Readonly<{
   element: HTMLElement;
   isOpen(): boolean;
   open(trigger?: HTMLElement | null): void;
+  /** The server answers again: retire a status that says it is unreachable. */
+  reconnected(): void;
 }>;
 
 type MetabrowserSearchPaletteRuntime = Readonly<{
   create(options: {
     controller: MetabrowserSearchController;
     /** Describe an open that threw, distinguishing an unreachable server. */
-    describeOpenFailure(error: unknown): MetabrowserOpenFileOutcome;
+    describeOpenFailure(
+      error: unknown,
+    ): Readonly<{ message: string; status: "error" | "unreachable" }>;
     document?: Document;
     getCatalogSnapshot(): { complete: boolean; observedCount: number };
     getFileIcon?(path: string): { cls?: string; svg?: string };

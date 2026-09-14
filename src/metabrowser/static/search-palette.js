@@ -34,10 +34,11 @@
    */
 
   /**
-   * @typedef {object} OpenOutcome
-   * @property {HTMLElement | null} [focusTarget]
-   * @property {string} [message]
-   * @property {"opened" | "not-found" | "error" | "unreachable" | "cancelled"} status
+   * A failed open always carries the message to show, so the palette never
+   * classifies an outcome a second time.
+   *
+   * @typedef {{focusTarget?: HTMLElement | null, message?: string, status: "opened" | "not-found" | "cancelled"}
+   *   | {focusTarget?: HTMLElement | null, message: string, status: "error" | "unreachable"}} OpenOutcome
    */
 
   /** @param {unknown} value @returns {value is HTMLElement} */
@@ -86,7 +87,7 @@
   /**
    * @param {{
    *   controller: PaletteController,
-   *   describeOpenFailure: (error: unknown) => OpenOutcome,
+   *   describeOpenFailure: (error: unknown) => {message: string, status: "error" | "unreachable"},
    *   document?: Document,
    *   getCatalogSnapshot: () => {complete: boolean, observedCount: number},
    *   subscribeCatalog?: (listener: () => void) => () => void,
@@ -199,6 +200,9 @@
     let selectedResultId = null;
     let activeIndex = -1;
     let actionStatus = "";
+    // The connection message an unreachable open left on screen, so a later
+    // reconnect retires that message and nothing else.
+    let unreachableStatus = "";
     let opening = false;
     let disposed = false;
     let actionSerial = 0;
@@ -585,8 +589,8 @@
       if (outcome.status === "error" || outcome.status === "unreachable") {
         // Both keep the palette open with the query intact so the reader can
         // retry. An unreachable server says so instead of blaming the file.
-        const failure = outcome.message ? outcome : options.describeOpenFailure(outcome);
-        actionStatus = failure.message ?? "";
+        actionStatus = outcome.message;
+        unreachableStatus = outcome.status === "unreachable" ? outcome.message : "";
         renderStatus();
         return;
       }
@@ -628,6 +632,20 @@
     /** @param {boolean} [restoreFocus] */
     function close(restoreFocus = true) {
       modal?.close({ restoreFocus });
+    }
+
+    /**
+     * The server answers again. A status saying it is unreachable no longer
+     * describes the page, so the query's own status returns. Any other status
+     * the reader has since caused stays.
+     */
+    function reconnected() {
+      if (disposed || !unreachableStatus || actionStatus !== unreachableStatus) {
+        return;
+      }
+      actionStatus = "";
+      unreachableStatus = "";
+      renderStatus();
     }
 
     /** @param {Event} event */
@@ -777,7 +795,14 @@
       unregisterClose();
     }
 
-    return Object.freeze({ close, dispose, element: overlay, isOpen: () => !overlay.hidden, open });
+    return Object.freeze({
+      close,
+      dispose,
+      element: overlay,
+      isOpen: () => !overlay.hidden,
+      open,
+      reconnected,
+    });
   }
 
   window.MetabrowserSearchPalette = Object.freeze({ create });

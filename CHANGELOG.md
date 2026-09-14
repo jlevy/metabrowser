@@ -281,10 +281,16 @@ Fixes:
   An empty folder opens to its Overview, which says it has no files to summarize.
 
 - When the Metabrowser server has stopped, selecting a file or folder, in the tree or in
-  Quick File, now says “Metabrowser isn’t reachable” and how to start it again, instead
+  Quick File, now says “Metabrowser is not reachable” and how to start it again, instead
   of “Could not open this file” with “Failed to fetch.”
-  When the server is running again, the page retries that selection on its own.
+  This includes a server that stops while a large file is still arriving.
+  When the server is running again, the page retries that selection on its own, and
+  Quick File clears the connection message.
   Missing files and other server errors keep their existing messages.
+
+- Opening a file or folder again after it failed to load, from the tree or Quick File,
+  now loads it again instead of leaving the error on screen.
+  The same applies to a file a Git commit view has replaced.
 
 ## 0.9.1
 

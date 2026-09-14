@@ -482,7 +482,7 @@
   const PREVIEW_IDLE_MESSAGE = "Select a file to preview.";
   const FILE_ERROR_SUMMARY = "Could not open this file.";
   const OPEN_ERROR_MESSAGE = "Could not open this file. Try again.";
-  const UNREACHABLE_SUMMARY = "Metabrowser isn’t reachable.";
+  const UNREACHABLE_SUMMARY = "Metabrowser is not reachable.";
   const UNREACHABLE_DETAIL =
     "It may have stopped. Start it again with metab <folder>, and this page will reconnect.";
 
@@ -538,6 +538,23 @@
       return error;
     }
     return new ServerUnreachableError(error);
+  }
+
+  /**
+   * Classify a rejected response body read.
+   *
+   * `fetch` resolves as soon as the headers arrive, so a server that stops
+   * while the body is still streaming rejects the read instead of the fetch.
+   * That is the same lost connection. Aborts still pass through, and so does a
+   * `SyntaxError`: the server answered with a body that is not JSON, which is
+   * a response problem rather than an unreachable server. A renderer cannot
+   * reach this promise, so its exceptions keep their file wording.
+   *
+   * @param {unknown} error
+   * @returns {unknown}
+   */
+  function responseBodyFailure(error) {
+    return error instanceof SyntaxError ? error : requestFailure(error);
   }
 
   /**
@@ -635,6 +652,22 @@
         }
         return generation;
       },
+      /**
+       * Whether the pane already shows, or is loading, this file selection.
+       * Re-opening a path the pane holds only needs its fragment delivered.
+       * A selection that failed, or a pane another owner has claimed since,
+       * holds nothing: opening the same path again has to load it, which is
+       * how a reader retries.
+       *
+       * @param {string} path
+       */
+      holds(path) {
+        return (
+          owner === "file" &&
+          selection?.path === path &&
+          (phase === "loading" || phase === "content")
+        );
+      },
       /** @param {number} claim */
       isCurrent(claim) {
         return claim === generation;
@@ -726,7 +759,7 @@
    *   path: string,
    *   showError: (failure: PreviewFailure) => void,
    * }} options
-   * @returns {{message?: string, status: "cancelled" | "error" | "not-found" | "unreachable"}}
+   * @returns {{status: "cancelled"} | {message: string, status: "error" | "not-found" | "unreachable"}}
    */
   function settleFileSelectionFailure(options) {
     const caught = /** @type {{notFound?: boolean}} */ (options.error);
@@ -1001,6 +1034,7 @@
     parseCommit,
     replaceFileSnapshot,
     requestFailure,
+    responseBodyFailure,
     settleFileSelectionFailure,
     settleNavigationDependency,
   });

@@ -149,10 +149,18 @@ The preview pane shows a loading indicator while a selection loads, including th
 landing, and then the selected view; an empty folder settles as content, not an error.
 “Select a file to preview.”
 appears only when nothing is selected and nothing is loading.
-A navigation tab switch makes no claim, so the selection loading underneath it still
-lands. A rejected fetch is a connection state with its own wording, distinct from HTTP
-and renderer errors, and the inventory stream reopening retries only the selection that
-failed that way.
+A rejected fetch, or a body read that fails after the headers arrived, is a connection
+state with its own wording, distinct from HTTP, malformed-body, and renderer errors.
+
+The `shell` scenarios run the `app.js` functions that compose those decisions with the
+real navigation controller.
+A Files to Git to Files tab switch keeps the loading claim, and the folder still lands.
+Opening a path again after it failed, or after a Git commit replaced it, loads it again,
+while re-opening a path the pane already shows only delivers its fragment.
+The inventory stream’s `onopen` retries only a selection that failed as unreachable, and
+because `selectFile` claims before its first `await`, a duplicate open does not retry
+twice. The startup settle shows the prompt only for a `/commit/` route no Git view
+claimed.
 
 ```console
 $ node tests/dom/preview-pane-state-session.js
@@ -216,38 +224,29 @@ $ node tests/dom/preview-pane-state-session.js
       "subject": "folder"
     }
   },
-  "panelSwitchDuringLoad": {
-    "afterSettle": {
-      "claim": 1,
-      "owner": "file",
-      "path": "big",
-      "phase": "content"
+  "supersededByAnotherOwner": {
+    "fileClaimCurrent": false,
+    "gitClaimCurrent": true,
+    "lateFilePlaceholder": {
+      "paint": "none"
     },
-    "afterSwitch": {
-      "paint": "loading",
-      "subject": "folder"
-    },
-    "beforeSwitch": {
-      "paint": "loading",
-      "subject": "folder"
-    },
-    "claimCurrentAfterSwitch": true,
-    "settled": true,
-    "supersededByAnotherOwner": {
-      "fileClaimCurrent": false,
-      "gitClaimCurrent": true,
-      "lateFilePlaceholder": {
-        "paint": "none"
-      },
-      "lateFileSettled": false,
-      "reconnectRetry": null,
-      "snapshot": {
-        "claim": 2,
-        "owner": "git",
-        "path": null,
-        "phase": "external"
-      }
+    "lateFileSettled": false,
+    "reconnectRetry": null,
+    "snapshot": {
+      "claim": 2,
+      "owner": "git",
+      "path": null,
+      "phase": "external"
     }
+  },
+  "holdsSelection": {
+    "afterFileError": false,
+    "afterGitClaim": false,
+    "afterUnreachable": false,
+    "beforeAnyClaim": false,
+    "otherPathWhileLoading": false,
+    "whileLoading": true,
+    "withContent": true
   },
   "landingWithoutSelection": {
     "abandonedLoadCurrent": false,
@@ -301,6 +300,13 @@ $ node tests/dom/preview-pane-state-session.js
         "phase": "loading"
       }
     },
+    "bodyRead": {
+      "abortPassesThrough": true,
+      "interruptedName": "ServerUnreachableError",
+      "interruptedPreservesCause": "terminated",
+      "malformedJsonPassesThrough": true,
+      "markedOnce": true
+    },
     "fetchRejectionName": "ServerUnreachableError",
     "fetchRejectionPreservesCause": "Failed to fetch",
     "httpNotFound": {
@@ -351,7 +357,7 @@ $ node tests/dom/preview-pane-state-session.js
         "status": "error"
       },
       "unreachableThrow": {
-        "message": "Metabrowser isn’t reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+        "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
         "status": "unreachable"
       }
     },
@@ -377,7 +383,7 @@ $ node tests/dom/preview-pane-state-session.js
     },
     "serverUnreachable": {
       "outcome": {
-        "message": "Metabrowser isn’t reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+        "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
         "status": "unreachable"
       },
       "revalidated": [
@@ -387,7 +393,7 @@ $ node tests/dom/preview-pane-state-session.js
         {
           "detail": "It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
           "kind": "unreachable",
-          "summary": "Metabrowser isn’t reachable."
+          "summary": "Metabrowser is not reachable."
         }
       ],
       "snapshot": {
@@ -398,27 +404,283 @@ $ node tests/dom/preview-pane-state-session.js
       }
     }
   },
-  "recoveryOnReconnect": {
-    "afterRecovery": null,
-    "beforeFailure": null,
-    "duplicateOpen": null,
-    "failedLoadCurrent": false,
-    "movedOnRetry": null,
-    "retry": {
-      "folder": true,
-      "path": "empty",
-      "viewId": "overview"
+  "shell": {
+    "shippedPlaceholderHtml": "<div class=\"loading mb-delayed-loading\"><div class=\"spinner\"></div><span class=\"sr-only\">Loading preview…</span></div>",
+    "tabSwitchDuringLoad": {
+      "backOnFilesTab": {
+        "pane": {
+          "claim": 1,
+          "owner": "file",
+          "path": "big",
+          "phase": "loading",
+          "shows": "loading mb-delayed-loading: Loading preview…"
+        },
+        "tabs": [
+          "files:",
+          "git:none"
+        ]
+      },
+      "landed": {
+        "claim": 1,
+        "owner": "file",
+        "path": "big",
+        "phase": "content",
+        "shows": "rendered-view: folder big"
+      },
+      "loading": {
+        "claim": 1,
+        "owner": "file",
+        "path": "big",
+        "phase": "loading",
+        "shows": "loading mb-delayed-loading: Loading preview…"
+      },
+      "onGitTab": {
+        "pane": {
+          "claim": 1,
+          "owner": "file",
+          "path": "big",
+          "phase": "loading",
+          "shows": "loading mb-delayed-loading: Loading preview…"
+        },
+        "tabs": [
+          "files:none",
+          "git:"
+        ]
+      },
+      "panelShows": [
+        "git first show",
+        "git show"
+      ]
     },
-    "settled": true,
-    "snapshot": {
-      "claim": 2,
-      "owner": "file",
-      "path": "empty",
-      "phase": "content"
+    "reselectAfterFailure": {
+      "afterGitClaim": {
+        "fetches": 2,
+        "fragments": 6,
+        "outcome": {
+          "status": "opened",
+          "focusesPreview": true
+        },
+        "pane": {
+          "claim": 8,
+          "owner": "file",
+          "path": "notes.md",
+          "phase": "content",
+          "shows": "rendered-view: text notes.md"
+        }
+      },
+      "fileError": {
+        "fetches": 1,
+        "fragments": 3,
+        "outcome": {
+          "message": "Could not open broken.md. Check that the file still exists and is readable.",
+          "status": "error",
+          "focusesPreview": false
+        },
+        "pane": {
+          "claim": 4,
+          "owner": "file",
+          "path": "broken.md",
+          "phase": "error",
+          "shows": "preview-empty preview-error: Could not open this file. The request failed (HTTP 500)."
+        }
+      },
+      "reopenedContent": {
+        "fetches": 2,
+        "fragments": 3,
+        "outcome": {
+          "status": "opened",
+          "focusesPreview": true
+        },
+        "pane": {
+          "claim": 3,
+          "owner": "file",
+          "path": "notes.md",
+          "phase": "content",
+          "shows": "rendered-view: text notes.md"
+        }
+      },
+      "retriedFileError": {
+        "fetches": 2,
+        "fragments": 4,
+        "outcome": {
+          "status": "opened",
+          "focusesPreview": true
+        },
+        "pane": {
+          "claim": 5,
+          "owner": "file",
+          "path": "broken.md",
+          "phase": "content",
+          "shows": "rendered-view: text broken.md"
+        }
+      },
+      "retriedUnreachable": {
+        "fetches": 2,
+        "fragments": 2,
+        "outcome": {
+          "status": "opened",
+          "focusesPreview": true
+        },
+        "pane": {
+          "claim": 3,
+          "owner": "file",
+          "path": "notes.md",
+          "phase": "content",
+          "shows": "rendered-view: text notes.md"
+        }
+      },
+      "unreachable": {
+        "fetches": 1,
+        "fragments": 1,
+        "outcome": {
+          "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+          "status": "unreachable",
+          "focusesPreview": false
+        },
+        "pane": {
+          "claim": 2,
+          "owner": "file",
+          "path": "notes.md",
+          "phase": "unreachable",
+          "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+        }
+      }
     },
-    "whileRetrying": {
-      "paint": "loading",
-      "subject": "folder"
+    "bodyReadFailure": {
+      "interruptedJsonBody": {
+        "outcome": {
+          "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+          "status": "unreachable",
+          "focusesPreview": false
+        },
+        "pane": {
+          "claim": 2,
+          "owner": "file",
+          "path": "big.log",
+          "phase": "unreachable",
+          "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+        },
+        "reconnectRetry": {
+          "folder": false,
+          "path": "big.log"
+        }
+      },
+      "interruptedErrorBody": {
+        "outcome": {
+          "message": "Metabrowser is not reachable. It may have stopped. Start it again with metab <folder>, and this page will reconnect.",
+          "status": "unreachable",
+          "focusesPreview": false
+        },
+        "pane": {
+          "claim": 3,
+          "owner": "file",
+          "path": "failing.md",
+          "phase": "unreachable",
+          "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+        },
+        "reconnectRetry": {
+          "folder": false,
+          "path": "failing.md"
+        }
+      },
+      "malformedJson": {
+        "outcome": {
+          "message": "Could not open garbled.json. Check that the file still exists and is readable.",
+          "status": "error",
+          "focusesPreview": false
+        },
+        "pane": {
+          "claim": 4,
+          "owner": "file",
+          "path": "garbled.json",
+          "phase": "error",
+          "shows": "preview-empty preview-error: Could not open this file. Unexpected token &lt; in JSON at position 0"
+        },
+        "reconnectRetry": null
+      }
+    },
+    "reconnectRetry": {
+      "afterGitClaim": {
+        "fetches": 1,
+        "pane": {
+          "claim": 2,
+          "owner": "git",
+          "path": null,
+          "phase": "external",
+          "shows": "git-commit: abc123"
+        }
+      },
+      "catalogFeedStarts": 2,
+      "claimedByOpen": {
+        "claim": 2,
+        "owner": "file",
+        "path": "empty",
+        "phase": "loading",
+        "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+      },
+      "failed": {
+        "claim": 1,
+        "owner": "file",
+        "path": "empty",
+        "phase": "unreachable",
+        "shows": "preview-empty preview-error: Metabrowser is not reachable. It may have stopped. Start it again with metab &lt;folder&gt;, and this page will reconnect."
+      },
+      "fetchesForFailedFolder": 2,
+      "paletteReconnects": 2,
+      "recovered": {
+        "claim": 2,
+        "owner": "file",
+        "path": "empty",
+        "phase": "content",
+        "shows": "rendered-view: folder empty"
+      },
+      "streamUrl": "/api/events?scope=root-depth-2",
+      "whileRetrying": {
+        "claim": 2,
+        "owner": "file",
+        "path": "empty",
+        "phase": "loading",
+        "shows": "loading mb-delayed-loading: Loading folder…"
+      }
+    },
+    "startupSettle": {
+      "commitRouteWithGitOwner": {
+        "claim": 1,
+        "owner": "git",
+        "path": null,
+        "phase": "external",
+        "shows": "git-commit: abc123"
+      },
+      "commitRouteWithoutOwner": {
+        "claim": 1,
+        "owner": "none",
+        "path": null,
+        "phase": "idle",
+        "shows": "preview-empty: Select a file to preview."
+      },
+      "locationWithoutSelection": {
+        "claim": 1,
+        "owner": "none",
+        "path": null,
+        "phase": "idle",
+        "shows": "preview-empty: Select a file to preview."
+      },
+      "viewRoute": {
+        "afterSelection": {
+          "claim": 1,
+          "owner": "file",
+          "path": "docs/guide.md",
+          "phase": "content",
+          "shows": "rendered-view: text docs/guide.md"
+        },
+        "beforeSelection": {
+          "claim": 0,
+          "owner": "shell",
+          "path": null,
+          "phase": "starting",
+          "shows": "loading mb-delayed-loading: Loading preview…"
+        }
+      }
     }
   }
 }

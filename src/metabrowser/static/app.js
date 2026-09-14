@@ -853,10 +853,10 @@ if (typeof window !== "undefined") {
 // receive snapshots and navigation callbacks through their public constructors;
 // they never reach into app.js state directly.
 /**
- * @typedef {object} QuickFileOpenOutcome
- * @property {HTMLElement | null} [focusTarget]
- * @property {string} [message]
- * @property {"opened" | "not-found" | "error" | "unreachable" | "cancelled"} status
+ * A failed open always carries its message, so Quick File shows it as is.
+ *
+ * @typedef {{focusTarget?: HTMLElement | null, message?: string, status: "opened" | "not-found" | "cancelled"}
+ *   | {focusTarget?: HTMLElement | null, message: string, status: "error" | "unreachable"}} QuickFileOpenOutcome
  */
 var knownFileCatalog = null;
 var quickFileSearchController = null;
@@ -5315,10 +5315,15 @@ async function selectFile(path, preferredViewId) {
             }
             return { status: "cancelled" };
           }
+          // `fetch` resolved at the headers, so a server that stops mid-body
+          // rejects the read instead. Mark that at the read too.
+          const bodyFailure = (error) => {
+            throw window.MetabrowserNavigationRoute.responseBodyFailure(error);
+          };
           if (!resp.ok) {
             const text = await _perf.measureAsync(
               "apiFile:errorText",
-              () => resp.text(),
+              () => resp.text().catch(bodyFailure),
               responsePerfMeta(resp, path),
             );
             throw Object.assign(new Error(responseErrorDetail(text, resp.status)), {
@@ -5328,7 +5333,7 @@ async function selectFile(path, preferredViewId) {
           }
           const data = await _perf.measureAsync(
             "apiFile:json",
-            () => resp.json(),
+            () => resp.json().catch(bodyFailure),
             responsePerfMeta(resp, path),
           );
           const responseCommit = window.MetabrowserNavigationRoute.commitFreshFileResponse({
@@ -7437,6 +7442,7 @@ function _createInventoryEventSource() {
     // later opens refetch to cover deltas lost while disconnected.
     quickFileCatalogFeed?.start();
     retryUnreachablePreview();
+    quickFilePalette?.reconnected();
   };
   inventoryEventSource.onerror = () => {
     _cancelEsStableReset();
@@ -7501,9 +7507,18 @@ function settleUnclaimedPreview() {
   }
 }
 
+// Only a /commit/ route waits on the Git panel to select something; a /view/
+// route is claimed by its own file selection. Startup calls this once the
+// shell tools, and with them the Git panel, have settled.
+function settleCommitRoutePreview() {
+  if (window.MetabrowserNavigationRoute.parseCommit(location.pathname)) {
+    settleUnclaimedPreview();
+  }
+}
+
 // The inventory stream reopening means the server answers again. A selection
-// that failed because it could not reach the server is retried rather than
-// left on screen as an error the reader has to dismiss by navigating.
+// that failed because it could not reach the server is retried without the
+// reader having to open it again.
 function retryUnreachablePreview() {
   var retry = previewPane.reconnected();
   if (retry) {
@@ -7532,7 +7547,10 @@ async function applyNavigationTarget(target, context) {
     return { status: "cancelled" };
   }
   var path = target.path.replace(/\/$/, "");
-  if (!context.pathChanged) {
+  // Only a pane that already shows or is loading this path can take the
+  // fragment alone. After a failure, or once the Git panel owns the pane,
+  // opening the same path again is a retry and has to load it.
+  if (!context.pathChanged && previewPane.holds(path)) {
     deliverNavigationFragment(target);
     return {
       focusTarget: document.getElementById("preview-pane") || undefined,
@@ -7880,13 +7898,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     .catch((error) => {
       console.error("metabrowser shell tools: init failed", { url: location.pathname }, error);
     })
-    .finally(() => {
-      // Only a /commit/ route waits on the Git panel to select something; a
-      // /view/ route is claimed by its own file selection.
-      if (window.MetabrowserNavigationRoute.parseCommit(location.pathname)) {
-        settleUnclaimedPreview();
-      }
-    });
+    .finally(settleCommitRoutePreview);
   if (filesPanelUsesRecentSource()) {
     loadRecent(currentRecentFilterCursor());
   }
