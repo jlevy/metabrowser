@@ -11,19 +11,10 @@ import logging
 import os
 from enum import StrEnum
 from pathlib import Path
-from threading import Event
+from threading import Event, Lock
 from typing import Protocol
 
 from pathspec.gitignore import GitIgnoreSpec
-
-from metabrowser.fs_paths import is_visible
-
-# Rebuild the pruning spec once the pattern set has grown by this factor. A
-# rebuild costs O(patterns); doing one per `.gitignore` found makes the total
-# quadratic in a tree that has many -- which is exactly the tree where pruning
-# is worth most.
-PRUNE_SPEC_REBUILD_GROWTH = 1.25
-
 
 log = logging.getLogger(__name__)
 
@@ -92,113 +83,115 @@ ignore_none: IgnoreFilter = lambda path, *, is_dir=False: False
 """No-op filter that ignores nothing."""
 
 
-def load_gitignore(root: Path, *, cancel_event: Event | None = None) -> IgnoreFilter:
-    """Load ``.gitignore`` files from *root* and its subdirectories.
+class HierarchicalGitIgnore:
+    """Decide paths under one repository root from its ``.gitignore`` files, lazily.
 
-    Collects patterns from the root ``.gitignore`` and any nested ``.gitignore``
-    files, prefixing nested patterns with their relative directory so that
-    ``pathspec`` matches them correctly. Returns ``ignore_none`` if no
-    ``.gitignore`` files exist.
+    Git decides a path from the ``.gitignore`` files in the directories above
+    it: each file's patterns are relative to its own directory, a deeper file
+    overrides a shallower one, and nothing inside an ignored directory can be
+    re-included. So a verdict needs only the files on its ancestor chain, and
+    this reads each directory's file the first time a path inside that
+    directory is checked.
+
+    That removes the eager alternative, a second traversal of the whole tree to
+    collect every nested ``.gitignore`` before the indexing walk may start. On
+    a real repository it visited 40,832 directories to find 25 files and
+    held back the first directory rows for 9-34 s, while the breadth-first
+    walk that needs the verdicts reaches every directory before anything inside
+    it and so can supply each file just in time.
+
+    The instance caches files and directory verdicts for its lifetime; its
+    owner decides how long that is. Calls may come from the walker and from
+    request handlers at once, so cache updates are serialized.
     """
-    all_lines: list[str] = []
 
-    root_gitignore = root / ".gitignore"
-    if root_gitignore.is_file():
-        with open(root_gitignore) as f:
-            for line in f:
-                if cancel_event is not None and cancel_event.is_set():
-                    return ignore_none
-                all_lines.append(line)
+    def __init__(self, root: Path) -> None:
+        self._root = root
+        self._lock = Lock()
+        # Directory (relative to root, "" for root) -> its parsed .gitignore.
+        self._specs: dict[str, GitIgnoreSpec | None] = {}
+        # Directory -> the (directory, spec) chain governing paths inside it.
+        self._chains: dict[str, tuple[tuple[str, GitIgnoreSpec], ...]] = {}
+        # Directory -> whether the directory itself is ignored.
+        self._directory_verdicts: dict[str, bool] = {}
 
-    # Walk for nested .gitignore files, pruning as we go.
-    #
-    # This is a second full traversal of the tree, before the one that actually
-    # indexes it, and unpruned it was the larger of the two: on a real
-    # 241,000-file working tree it cost 19-23 s against a 21 s index walk,
-    # because it descended into every vendored, built, and hidden directory
-    # looking for files that cannot matter. Two prunes remove that, and both
-    # are semantics rather than shortcuts.
-    #
-    # A directory an accumulated pattern already ignores is pruned because git
-    # does not read ``.gitignore`` files inside an ignored directory either --
-    # its contents are excluded wholesale, so a nested pattern there could not
-    # change any answer. Patterns are hierarchical and ``os.walk`` is top-down,
-    # so everything governing a directory has been collected before it is
-    # reached.
-    #
-    # A directory this shell will never show is pruned because a pattern found
-    # inside it could only govern paths that are themselves never shown. See
-    # ``fs_paths.is_visible``: the indexing walk skips these, so collecting
-    # ignore rules for them is work spent on rows nobody can see.
-    # The spec used for pruning is allowed to lag the patterns collected so far,
-    # and that is what keeps it cheap. Rebuilding it on every ``.gitignore``
-    # found costs O(patterns) each time -- on a tree with a few hundred of them
-    # that dominated the traversal it was meant to save.
-    #
-    # Lagging is safe in one direction only, which is the direction it lags: a
-    # spec with fewer patterns matches fewer paths, so a stale one prunes less
-    # than it could and never prunes something a current one would have kept.
-    # Pruning less costs a little traversal; pruning wrongly would drop a
-    # pattern and change an answer.
-    accumulated: GitIgnoreSpec | None = GitIgnoreSpec.from_lines(all_lines) if all_lines else None
-    patterns_at_last_rebuild = max(len(all_lines), 1)
-    for dirpath, dirnames, filenames in os.walk(root):
-        if cancel_event is not None and cancel_event.is_set():
-            return ignore_none
-        here = Path(dirpath)
-        kept: list[str] = []
-        for name in dirnames:
-            if name == ".git" or not is_visible(name):
-                continue
-            if accumulated is not None:
-                rel = os.path.relpath(str(here / name), str(root))
-                if accumulated.match_file(f"{rel}/"):
-                    continue
-            kept.append(name)
-        dirnames[:] = kept
-        if dirpath == str(root):
-            continue  # already handled above
-        if ".gitignore" in filenames:
-            rel_dir = os.path.relpath(dirpath, root)
-            nested_path = Path(dirpath) / ".gitignore"
-            added = 0
-            with open(nested_path) as f:
-                for line in f:
-                    if cancel_event is not None and cancel_event.is_set():
-                        return ignore_none
-                    stripped = line.strip()
-                    # Skip blank lines and comments.
-                    if not stripped or stripped.startswith("#"):
-                        all_lines.append(line)
-                        added += 1
-                    else:
-                        # Prefix pattern with relative directory for correct matching.
-                        all_lines.append(f"{rel_dir}/{stripped}\n")
-                        added += 1
-            # Rebuild only here, which is once per ``.gitignore`` found --
-            # hundreds of times on a large tree, not once per directory.
-            # A negation would break the lag's whole safety argument: it makes
-            # a larger pattern set match *fewer* paths, so a stale spec could
-            # prune a directory the current one would have kept -- and that
-            # loses a subtree's rules rather than one file's verdict.
-            #
-            # None can reach here today, because a nested pattern is prefixed
-            # as f"{rel_dir}/{stripped}" and that turns "!keep.log" into the
-            # literal "pkg/!keep.log". That prefixing is wrong and predates
-            # this code; when it is fixed, this branch is what keeps the prune
-            # sound instead of silently becoming unsafe. It costs nothing until
-            # then, which is the point of writing it now.
-            negated = any(line.lstrip().startswith("!") for line in all_lines[-added:])
-            grown = len(all_lines) >= patterns_at_last_rebuild * PRUNE_SPEC_REBUILD_GROWTH
-            if negated or grown:
-                accumulated = GitIgnoreSpec.from_lines(all_lines)
-                patterns_at_last_rebuild = len(all_lines)
+    def __call__(self, path: str | Path, *, is_dir: bool = False) -> bool:
+        rel = str(path).replace(os.sep, "/").strip("/")
+        if rel in ("", "."):
+            return False
+        parent = rel.rpartition("/")[0]
+        with self._lock:
+            if parent and self._directory_ignored(parent):
+                return True
+            return self._matches(rel, parent, is_dir=is_dir)
 
-    if not all_lines:
-        return ignore_none
+    def _matches(self, rel: str, parent: str, *, is_dir: bool) -> bool:
+        """Apply the chain above *rel*, deeper files overriding shallower ones."""
 
-    log.debug("Loaded gitignore patterns (%s lines) from %s", len(all_lines), root)
-    return IgnoreChecker(all_lines)
+        verdict: bool | None = None
+        suffix = "/" if is_dir else ""
+        for directory, spec in self._chain(parent):
+            relative = rel[len(directory) + 1 :] if directory else rel
+            result = spec.check_file(relative + suffix)
+            if result.include is not None:
+                verdict = result.include
+        return bool(verdict)
+
+    def _directory_ignored(self, directory: str) -> bool:
+        cached = self._directory_verdicts.get(directory)
+        if cached is not None:
+            return cached
+        parts = directory.split("/")
+        ignored = False
+        for depth in range(1, len(parts) + 1):
+            prefix = "/".join(parts[:depth])
+            verdict = self._directory_verdicts.get(prefix)
+            if verdict is None:
+                # An ignored ancestor settles every descendant; git never reads
+                # a .gitignore inside it, and neither does this.
+                verdict = ignored or self._matches(
+                    prefix, "/".join(parts[: depth - 1]), is_dir=True
+                )
+                self._directory_verdicts[prefix] = verdict
+            ignored = verdict
+        return ignored
+
+    def _chain(self, directory: str) -> tuple[tuple[str, GitIgnoreSpec], ...]:
+        cached = self._chains.get(directory)
+        if cached is not None:
+            return cached
+        pending = [directory]
+        chain: tuple[tuple[str, GitIgnoreSpec], ...] = ()
+        current = directory
+        while current:
+            current = current.rpartition("/")[0]
+            found = self._chains.get(current)
+            if found is not None:
+                chain = found
+                break
+            pending.append(current)
+        for pending_directory in reversed(pending):
+            spec = self._spec(pending_directory)
+            if spec is not None:
+                chain = (*chain, (pending_directory, spec))
+            self._chains[pending_directory] = chain
+        return chain
+
+    def _spec(self, directory: str) -> GitIgnoreSpec | None:
+        if directory in self._specs:
+            return self._specs[directory]
+        path = self._root / directory / ".gitignore" if directory else self._root / ".gitignore"
+        spec: GitIgnoreSpec | None = None
+        try:
+            with open(path, encoding="utf-8", errors="surrogateescape") as f:
+                lines = f.readlines()
+        except OSError:
+            lines = []
+        if any(line.strip() and not line.lstrip().startswith("#") for line in lines):
+            spec = GitIgnoreSpec.from_lines(lines)
+            log.debug("Loaded gitignore patterns (%s lines) from %s", len(lines), path)
+        self._specs[directory] = spec
+        return spec
 
 
 def make_ignore_filter(
@@ -213,11 +206,11 @@ def make_ignore_filter(
     - ``gitignore``: returns a strict gitignore filter.
     - ``default``: returns a gitignore filter that exempts ``ALLOWLIST_DIRS``.
     """
-    if mode is IgnoreMode.show_all:
+    if mode is IgnoreMode.show_all or (cancel_event is not None and cancel_event.is_set()):
         return ignore_none
 
-    base = load_gitignore(root, cancel_event=cancel_event)
-    if base is ignore_none or mode is IgnoreMode.gitignore:
+    base: IgnoreFilter = HierarchicalGitIgnore(root)
+    if mode is IgnoreMode.gitignore:
         return base
 
     # default mode: wrap the base filter to exempt allowlisted directories at any depth.

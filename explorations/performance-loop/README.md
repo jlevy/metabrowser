@@ -254,6 +254,26 @@ corpus, semantic response comparison, and the full responsiveness gate.
 Build the corpus first if this machine has none (see
 [Building the corpus](#building-the-corpus)).
 
+**Time to first directory rows is a required release metric, on a repository-shaped
+corpus.** The first paint of the directory tree must be rapid, and a release comparison
+has to be able to see it fail.
+Run the release comparison on `project-10`, which has nested `.gitignore` files, ignored
+installs, and about 31k directories.
+The synthetic `build_corpus` can supplement that round but cannot replace it.
+From a cold start of each condition, report:
+
+- backend `first_row` from `compare_builds`: spawn to the first nonempty root
+  `/api/tree`;
+- browser `first_row_ms` from the headed captures.
+
+A candidate whose first rows regress past the control’s range, or exceed the
+`first_row_ms` budget, is not accepted.
+exp-032 is why this is written down: it used the synthetic corpus, where first rows took
+about 0.1 s, while a real repository waited 9-34 s for a whole-repository `.gitignore`
+pre-walk, a delay present since v0.1.0. `tests/test_gitignore_hierarchical.py` pins the
+structural half in `make verify`: root rows land while a deeper directory has not been
+read.
+
 **Label the round, not the side.** `--label release` or `--label v0.8.0` pools with
 every earlier round that used the same word, and the ledger is append-only across rounds
 and across corpora. `compare` refuses a label that spans more than one corpus, but the
