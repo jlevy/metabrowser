@@ -118,15 +118,12 @@ The session schema the golden guidelines ask for, stated once.
 @dataclass(frozen=True, slots=True)
 class NormalizeContext:
     root: Path
-    home: Path | None          # METABROWSER_HOME, when set
-    normalize_mtimes: bool      # only where a fixture cannot pin them
 
 CURSOR_PATHS: tuple[tuple[str, ...], ...]   # addressed by position, not key name
 ELAPSED_PATHS: tuple[tuple[str, ...], ...]
 
 def normalize_payload(value: Any, ctx: NormalizeContext) -> Any: ...
 def normalize_text(text: str, ctx: NormalizeContext) -> str: ...
-def describe_schema() -> str:   # renders the table for docs and for the round-trip test
 ```
 
 The rules, and why each is needed:
@@ -134,10 +131,15 @@ The rules, and why each is needed:
 | Field or shape | Becomes | Why |
 | --- | --- | --- |
 | Absolute path under `root` | `<ROOT>/...` | sandbox path varies |
-| Absolute path under `home` | `<HOME>/...` | cache home varies |
-| `mtime`, `mtime_hash` | `<MTIME>`, **opt-in** | fixtures pin these with `touch -t`; a clone into the cache cannot |
+| Absolute path under `home` | `<HOME>/...`, **Phase 1A** | cache home varies |
+| `mtime`, `mtime_hash` | `<MTIME>`, **opt-in, Phase 1A** | fixtures pin these with `touch -t`; a clone into the cache cannot |
 | Pack file names, `.git` internals | omitted | never stable; see below |
 | Git revisions | **kept** | fixture repos are built deterministically |
+
+The `home` and mtime rules land with the cache goldens that need them (`mb-4gnu`). They
+were first written ahead of that consumer, along with a `describe_schema()` table
+renderer no document embedded, and were removed as unused surface; no `--api` or
+`--show` transcript has an application home or an unpinnable mtime.
 
 The table was measured, and then it grew, which is worth recording because the first
 version of this paragraph did not.

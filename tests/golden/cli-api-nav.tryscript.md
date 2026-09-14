@@ -442,6 +442,13 @@ status: 200
 
 ## Test: active files
 
+This pins reachability and the envelope, not activity.
+A file is active only when the tracker sees its size or mtime change between two of its
+polls, and a one-shot `metab` process ends before a second poll can run, so no fixture
+can make `active_files` nonempty here.
+`tests/test_browser_active_tracker.py` drives the tracker across two polls and reads a
+nonempty snapshot back through this route’s handler.
+
 ```console
 $ metab navroot --api /api/activity
 api: /api/activity
