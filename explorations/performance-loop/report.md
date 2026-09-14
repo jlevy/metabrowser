@@ -149,6 +149,7 @@ Corpus `-`, shape `None`, harness `None`.
 | `render_ms_total` | 78 | 92 |
 | `tree_reprobe_ms` | 15 | 17 |
 | `tree_reprobe_srv_ms` | 11 | 13 |
+| `walk_elapsed_ms` | 12,613 | 15,843 |
 | `requests` | 99 | 108 |
 | `viewport_w` | 1,280 | 1,280 |
 | `viewport_h` | 900 | 900 |
@@ -157,6 +158,7 @@ Corpus `-`, shape `None`, harness `None`.
 
 | metric | revision-keyed-tallies (n=4) | bounded-stale-tallies (n=3) | cost-derived-tallies (n=6) | warmed-tallies (n=3) |
 | --- | ---: | ---: | ---: | ---: |
+| `walk_elapsed_ms` | 23,591 (21,676-23,591) | 23,591 (23,591-23,591) | 20,429 (19,182-21,676) | 18,562 (18,562-18,562) |
 | `srv_scanning_ms` | 650 (621-690) | 518 (452-558) | 394 (342-561) | 380 (368-409) |
 | `srv_settled_ms` | 12 (11-13) | 13 (11-14) | 6 (6-6) | 9 (9-9) |
 | `wall_scanning_ms` | 650 (622-692) | 519 (453-558) | 394 (343-562) | 381 (369-410) |
@@ -191,6 +193,7 @@ Corpus `-`, shape `None`, harness `None`.
 | `render_ms_total` | 51 (15-72) | 63 (55-89) |
 | `tree_reprobe_ms` | 17 (16-20) | 17 (16-40) |
 | `tree_reprobe_srv_ms` | 13 (11-15) | 12 (12-16) |
+| `walk_elapsed_ms` | 15,828 (15,263-16,953) | 15,728 (14,147-16,880) |
 | `requests` | 126 (121-129) | 107 (106-111) |
 | `viewport_w` | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) |
 | `viewport_h` | 900 (900-900) | 900 (900-900) |
@@ -225,6 +228,7 @@ Corpus `-`, shape `None`, harness `None`.
 | `render_ms_total` | 8 |
 | `tree_reprobe_ms` | 191 |
 | `tree_reprobe_srv_ms` | 188 |
+| `walk_elapsed_ms` | 208,885 |
 | `requests` | 144 |
 | `viewport_w` | 1,280 |
 | `viewport_h` | 900 |
@@ -233,6 +237,7 @@ Corpus `-`, shape `None`, harness `None`.
 
 | metric | real-tree-with-client (n=1) | real-tree-baseline (n=1) |
 | --- | ---: | ---: |
+| `walk_elapsed_ms` | 208,885 | 208,885 |
 | `srv_scanning_ms` | 746 | 822 |
 | `srv_settled_ms` | 6 | 8 |
 | `wall_scanning_ms` | 749 | 829 |
@@ -249,6 +254,7 @@ Corpus `-`, shape `None`, harness `2`.
 
 | metric | rows-with-tallies (n=2) | rows-without-tallies (n=2) |
 | --- | ---: | ---: |
+| `walk_elapsed_ms` | 1,439 (1,439-1,439) | 1,439 (1,439-1,439) |
 | `srv_scanning_ms` | 311 (292-330) | 2 (2-2) |
 | `srv_settled_ms` | 3 (3-3) | 4 (3-4) |
 | `wall_scanning_ms` | 313 (296-330) | 4 (3-4) |
@@ -265,6 +271,7 @@ Corpus `-`, shape `None`, harness `2`.
 
 | metric | before-main (n=1) | after-branch (n=1) |
 | --- | ---: | ---: |
+| `walk_elapsed_ms` | 44,503 | 44,503 |
 | `srv_scanning_ms` | 830 | 6 |
 | `srv_settled_ms` | 21 | 10 |
 | `wall_scanning_ms` | 833 | 7 |
@@ -309,6 +316,7 @@ Corpus `-`, shape `1`, harness `2`.
 | `render_ms_total` | 24 | 25 |
 | `tree_reprobe_ms` | 7 | 6 |
 | `tree_reprobe_srv_ms` | 3 | 3 |
+| `walk_elapsed_ms` | 14,273 | 14,273 |
 | `requests` | 123 | 113 |
 | `viewport_w` | 1,280 | 1,280 |
 | `viewport_h` | 900 | 900 |
@@ -351,6 +359,7 @@ Corpus `-`, shape `1`, harness `3`.
 | `render_ms_total` | 7 (7-23) |
 | `tree_reprobe_ms` | 8 (7-8) |
 | `tree_reprobe_srv_ms` | 3 (3-4) |
+| `walk_elapsed_ms` | 13,593 (13,493-14,894) |
 | `requests` | 128 (127-140) |
 | `viewport_w` | 1,280 (1,280-1,280) |
 | `viewport_h` | 900 (900-900) |
@@ -394,6 +403,7 @@ Corpus `-`, shape `1`, harness `2`.
 | `render_ms_total` | 55 | 8 | 7 (7-8) | 8 (7-14) |
 | `tree_reprobe_ms` | 15 | 21 | 6 (6-6) | 8 (6-15) |
 | `tree_reprobe_srv_ms` | 4 | 14 | 3 (3-3) | 3 (3-3) |
+| `walk_elapsed_ms` | 13,609 | 14,546 | 13,781 (12,806-13,920) | 12,397 (12,161-13,139) |
 | `requests` | 132 | 136 | 126 (120-127) | 126 (124-131) |
 | `viewport_w` | 1,280 | 1,280 | 1,280 (1,280-1,280) | 1,280 (1,280-1,280) |
 | `viewport_h` | 900 | 900 | 900 (900-900) | 900 (900-900) |
@@ -472,6 +482,7 @@ Corpus `-`, shape `1`, harness `10`.
 | `render_ms_total` | 1 (1-4) | 2 (2-3) |
 | `tree_reprobe_ms` | 6 (5-668) | 4 (4-4) |
 | `tree_reprobe_srv_ms` | 4 (3-608) | 2 (2-3) |
+| `walk_elapsed_ms` | 15,845 (15,357-16,477) | 13,387 (11,955-14,300) |
 | `requests` | 125 (123-142) | 96 (85-97) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -572,6 +583,7 @@ Corpus `-`, shape `1`, harness `11`.
 | `render_ms_total` | 2 | 4 (4-4) | 2 (2-2) |
 | `tree_reprobe_ms` | 4 | 7 (6-15) | 4 (4-4) |
 | `tree_reprobe_srv_ms` | 2 | 5 (4-10) | 2 (2-2) |
+| `walk_elapsed_ms` | 15,655 | 16,465 (16,157-16,927) | 15,063 (14,544-15,582) |
 | `requests` | 86 | 143 (140-151) | 92 (88-96) |
 | `fetches_in_flight` | 0 | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 | 0 (0-0) | 0 (0-0) |
@@ -673,6 +685,7 @@ Corpus `-`, shape `1`, harness `12`.
 | `render_ms_total` | 3 | 1 (1-4) | 2 (2-2) |
 | `tree_reprobe_ms` | 4 | 6 (5-17) | 4 (4-6) |
 | `tree_reprobe_srv_ms` | 2 | 4 (3-10) | 2 (2-5) |
+| `walk_elapsed_ms` | 11,995 | 15,714 (14,948-16,197) | 13,246 (11,631-13,601) |
 | `requests` | 67 | 124 (123-136) | 96 (83-100) |
 | `fetches_in_flight` | 0 | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 | 0 (0-0) | 0 (0-0) |
@@ -774,6 +787,7 @@ Corpus `-`, shape `1`, harness `13`.
 | `render_ms_total` | 1 (1-4) | 2 (1-2) |
 | `tree_reprobe_ms` | 10 (5-16) | 8 (4-14) |
 | `tree_reprobe_srv_ms` | 8 (3-10) | 4 (2-7) |
+| `walk_elapsed_ms` | 15,166 (14,867-16,177) | 12,945 (11,383-14,276) |
 | `requests` | 124 (124-143) | 97 (87-101) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -875,6 +889,7 @@ Corpus `-`, shape `1`, harness `14`.
 | `render_ms_total` | 1 (0-1) | 2 (1-2) | 1 (1-1) | 2 (2-2) | 1 (1-1) | 2 (2-2) |
 | `tree_reprobe_ms` | 5 (5-6) | 8 (5-12) | 5 (4-13) | 10 (4-13) | 6 (5-15) | 7 (4-35) |
 | `tree_reprobe_srv_ms` | 4 (3-4) | 4 (3-7) | 4 (3-8) | 6 (2-7) | 4 (3-10) | 4 (2-11) |
+| `walk_elapsed_ms` | 15,442 (15,269-15,661) | 13,380 (13,140-13,580) | 15,372 (14,404-16,057) | 13,443 (12,071-13,725) | 15,068 (13,380-17,380) | 13,562 (11,776-14,370) |
 | `requests` | 124 (123-125) | 98 (97-101) | 124 (124-127) | 98 (95-101) | 124 (120-126) | 98 (96-101) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
@@ -971,6 +986,7 @@ Corpus `-`, shape `1`, harness `5`.
 | `render_ms_total` | 6 (5-6) |
 | `tree_reprobe_ms` | 6 (5-7) |
 | `tree_reprobe_srv_ms` | 4 (3-5) |
+| `walk_elapsed_ms` | 15,414 (15,414-15,414) |
 | `requests` | 111 (109-113) |
 | `fetch_network_errors` | 0 (0-0) |
 | `fetch_aborts` | 0 (0-0) |
@@ -1058,6 +1074,7 @@ Corpus `-`, shape `1`, harness `6`.
 | `render_ms_total` | 7 | 6 (6-6) | 5 |
 | `tree_reprobe_ms` | 7 | 5 (5-5) | 9 |
 | `tree_reprobe_srv_ms` | 5 | 3 (3-3) | 7 |
+| `walk_elapsed_ms` | 17,740 | 19,845 (14,952-24,738) | 25,945 |
 | `requests` | 175 | 126 (109-144) | 158 |
 | `fetches_in_flight` | 0 | 0 (0-0) | 0 |
 | `fetch_network_errors` | 0 | 0 (0-0) | 0 |
@@ -1151,6 +1168,7 @@ Corpus `-`, shape `1`, harness `7`.
 | `render_ms_total` | 4 (1-5) | 2 (2-2) |
 | `tree_reprobe_ms` | 6 (6-7) | 6 (5-10) |
 | `tree_reprobe_srv_ms` | 4 (4-5) | 4 (3-4) |
+| `walk_elapsed_ms` | 19,753 (19,223-20,271) | 17,612 (17,053-18,705) |
 | `requests` | 141 (129-145) | 138 (137-139) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -1244,6 +1262,7 @@ Corpus `-`, shape `1`, harness `8`.
 | `render_ms_total` | 1 (1-1) | 1 (1-1) |
 | `tree_reprobe_ms` | 9 (7-11) | 4 (4-4) |
 | `tree_reprobe_srv_ms` | 7 (5-9) | 2 (2-2) |
+| `walk_elapsed_ms` | 27,584 (17,900-37,268) | 14,055 (13,953-14,157) |
 | `requests` | 143 (126-160) | 96 (90-103) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -1343,6 +1362,7 @@ Corpus `-`, shape `1`, harness `9`.
 | `render_ms_total` | 1 (1-4) | 2 (1-2) |
 | `tree_reprobe_ms` | 6 (5-15) | 5 (4-9) |
 | `tree_reprobe_srv_ms` | 4 (3-10) | 3 (2-5) |
+| `walk_elapsed_ms` | 20,894 (16,949-26,003) | 22,278 (14,142-27,928) |
 | `requests` | 132 (126-149) | 108 (101-121) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -1437,6 +1457,7 @@ Corpus `-`, shape `None`, harness `6`.
 | `render_ms_total` | 16 | 13 |
 | `tree_reprobe_ms` | 3 | 4 |
 | `tree_reprobe_srv_ms` | 1 | 2 |
+| `walk_elapsed_ms` | 24 | 24 |
 | `requests` | 99 | 98 |
 | `fetches_in_flight` | - | 0 |
 | `fetch_network_errors` | 0 | 0 |
@@ -1530,6 +1551,7 @@ Corpus `-`, shape `1`, harness `14`.
 | `render_ms_total` | 2 (2-2) | 2 (2-3) | 2 (1-3) | 2 |
 | `tree_reprobe_ms` | 3 (3-4) | 4 (3-4) | 4 (4-5) | 3 |
 | `tree_reprobe_srv_ms` | 1 (1-2) | 2 (1-2) | 2 (2-3) | 1 |
+| `walk_elapsed_ms` | 5,596 (5,229-6,533) | 5,470 (4,771-5,700) | 5,694 (5,320-6,793) | 15,303 |
 | `requests` | 78 (72-82) | 80 (79-82) | 118 (102-133) | 96 |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 |
@@ -1631,6 +1653,7 @@ Corpus `-`, shape `1`, harness `15`.
 | `render_ms_total` | 1 (1-3) | 2 (2-3) |
 | `tree_reprobe_ms` | 6 (4-7) | 3 (3-5) |
 | `tree_reprobe_srv_ms` | 2 (2-5) | 2 (1-2) |
+| `walk_elapsed_ms` | 19,336 (10,102-44,359) | 6,638 (6,011-31,027) |
 | `requests` | 138 (114-154) | 80 (75-125) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -1734,6 +1757,7 @@ Corpus `-`, shape `1`, harness `15`.
 | `render_ms_total` | 2 (2-3) | 2 (2-3) |
 | `tree_reprobe_ms` | 3 (3-4) | 4 (3-7) |
 | `tree_reprobe_srv_ms` | 2 (2-2) | 2 (2-2) |
+| `walk_elapsed_ms` | 6,025 (5,022-7,925) | 5,863 (5,580-6,159) |
 | `requests` | 79 (72-82) | 80 (75-80) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -1838,6 +1862,7 @@ Corpus `-`, shape `1`, harness `16`.
 | `render_ms_total` | 2 (2-3) | 4 (3-5) | 2 (2-2) | 2 (2-2) |
 | `tree_reprobe_ms` | 3 (3-7) | 6 (4-6) | 3 (3-7) | 3 (3-3) |
 | `tree_reprobe_srv_ms` | 2 (2-4) | 3 (2-4) | 1 (1-4) | 1 (1-2) |
+| `walk_elapsed_ms` | 7,211 (7,071-8,478) | 9,244 (8,705-21,131) | 6,616 (5,641-6,768) | 5,787 (5,627-6,182) |
 | `requests` | 85 (85-85) | 85 (85-102) | 81 (67-84) | 83 (75-83) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
@@ -1942,6 +1967,7 @@ Corpus `-`, shape `1`, harness `16`.
 | `render_ms_total` | 2 (2-3) | 3 (2-3) |
 | `tree_reprobe_ms` | 3 (3-5) | 3 (3-5) |
 | `tree_reprobe_srv_ms` | 1 (1-2) | 2 (1-2) |
+| `walk_elapsed_ms` | 7,558 (7,506-8,375) | 7,177 (7,018-7,528) |
 | `requests` | 85 (77-86) | 86 (86-86) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -2046,6 +2072,7 @@ Corpus `-`, shape `1`, harness `16`.
 | `render_ms_total` | 3 (2-5) | 3 (2-3) | 3 (2-3) | 3 (2-3) |
 | `tree_reprobe_ms` | 5 (4-6) | 5 (4-5) | 4 (4-5) | 5 (5-5) |
 | `tree_reprobe_srv_ms` | 3 (2-3) | 3 (3-3) | 3 (3-3) | 3 (3-3) |
+| `walk_elapsed_ms` | 16,150 (13,303-23,312) | 13,966 (13,248-14,264) | 14,021 (13,267-18,074) | 13,718 (13,622-14,198) |
 | `requests` | 104 (97-104) | 99 (98-99) | 98 (96-104) | 99 (89-100) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
@@ -2150,6 +2177,7 @@ Corpus `-`, shape `1`, harness `16`.
 | `render_ms_total` | 2 (2-2) | 2 (2-2) |
 | `tree_reprobe_ms` | 5 (4-11) | 9 (4-12) |
 | `tree_reprobe_srv_ms` | 3 (2-7) | 4 (2-7) |
+| `walk_elapsed_ms` | 12,282 (12,250-13,151) | 12,203 (10,759-12,412) |
 | `requests` | 83 (80-92) | 91 (78-91) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -2254,6 +2282,7 @@ Corpus `-`, shape `None`, harness `16`.
 | `render_ms_total` | 3 (2-5) | 1 (0-1) |
 | `tree_reprobe_ms` | 5 (4-5) | 5 (4-5) |
 | `tree_reprobe_srv_ms` | 3 (3-3) | 3 (3-3) |
+| `walk_elapsed_ms` | 21,842 (21,623-24,538) | 17,971 (16,159-19,050) |
 | `requests` | 113 (109-118) | 106 (101-106) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -2358,6 +2387,7 @@ Corpus `-`, shape `2`, harness `17`.
 | `render_ms_total` | 3 (2-3) | 4 (3-4) |
 | `tree_reprobe_ms` | 6 (3-6) | 5 (5-31) |
 | `tree_reprobe_srv_ms` | 3 (1-3) | 2 (2-16) |
+| `walk_elapsed_ms` | 2,185 (2,149-3,014) | 2,706 (2,164-3,044) |
 | `requests` | 72 (72-87) | 103 (101-105) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -2563,6 +2593,7 @@ Corpus `-`, shape `2`, harness `17`.
 | `render_ms_total` | 3 | 3 (3-3) |
 | `tree_reprobe_ms` | 3 | 10 (2-17) |
 | `tree_reprobe_srv_ms` | 1 | 4 (1-7) |
+| `walk_elapsed_ms` | - | 4,830 (4,187-5,473) |
 | `requests` | 81 | 96 (92-100) |
 | `fetches_in_flight` | 0 | 0 (0-0) |
 | `fetch_network_errors` | 0 | 0 (0-0) |
@@ -2667,6 +2698,7 @@ Corpus `-`, shape `2`, harness `17`.
 | `render_ms_total` | 2 (2-3) | 2 (2-3) |
 | `tree_reprobe_ms` | 3 (3-11) | 2 (2-4) |
 | `tree_reprobe_srv_ms` | 1 (1-4) | 1 (1-1) |
+| `walk_elapsed_ms` | - | 2,511 (2,137-2,856) |
 | `requests` | 85 (85-87) | 96 (91-96) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -2771,6 +2803,7 @@ Corpus `-`, shape `2`, harness `17`.
 | `render_ms_total` | 3 (2-3) | 3 (2-3) |
 | `tree_reprobe_ms` | 3 (3-6) | 2 (2-16) |
 | `tree_reprobe_srv_ms` | 2 (1-2) | 1 (1-1) |
+| `walk_elapsed_ms` | - | 3,079 (2,763-7,095) |
 | `requests` | 76 (68-87) | 90 (74-97) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
@@ -2875,6 +2908,7 @@ Corpus `e9d2f7d8b240908c`, shape `2`, harness `20`.
 | `render_ms_total` | 2 (2-3) | 2 | 2 (2-3) | 2 (2-3) | 2 (2-3) |
 | `tree_reprobe_ms` | 7 (7-8) | 2 | 2 (2-150) | 7 (7-8) | 2 (2-118) |
 | `tree_reprobe_srv_ms` | 6 (5-6) | 1 | 1 (1-129) | 6 (5-6) | 1 (1-94) |
+| `walk_elapsed_ms` | - | 11,240 | 17,260 (11,352-18,027) | - | 11,639 (11,032-12,338) |
 | `requests` | 108 (81-109) | 83 | 117 (83-118) | 81 (81-81) | 83 (83-87) |
 | `fetches_in_flight` | 0 (0-0) | 0 | 0 (0-0) | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 | 0 (0-0) | 0 (0-0) | 0 (0-0) |
@@ -2982,6 +3016,7 @@ Corpus `e9d2f7d8b240908c`, shape `2`, harness `21`.
 | `render_ms_total` | 2 (2-2) | 2 (2-3) |
 | `tree_reprobe_ms` | 7 (7-8) | 2 (2-133) |
 | `tree_reprobe_srv_ms` | 5 (5-6) | 1 (1-116) |
+| `walk_elapsed_ms` | - | 16,767 (16,600-18,140) |
 | `requests` | 108 (95-121) | 117 (117-120) |
 | `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
 | `fetch_network_errors` | 0 (0-0) | 0 (0-0) |

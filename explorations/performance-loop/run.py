@@ -35,6 +35,7 @@ invalid evidence and a responsiveness regression are not.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -88,6 +89,14 @@ PENDING = HERE / "results" / "pending.json"
 # Bumped when a change to run.py or probe.js makes a number incomparable with
 # earlier ones -- a new metric definition, a changed sampling rule. Recorded on
 # every run so a later reader can tell "measured differently" from "changed".
+#
+# 22: `serve` no longer traverses the corpus between stopping the previous
+# server and launching the measured one; it takes a root-only launch marker, and
+# `record` computes the full fingerprint after the measurement. On a corpus larger
+# than the host's vnode cache that traversal decided which entries the measured
+# walk found cached. Runs also carry the server spawn time and the offset from
+# spawn to the browser profile's time origin, route samples carry the run nonce,
+# and a pre-contract build's walk elapsed time is read from its own log line.
 #
 # 21: a measurement run nonce is single-use evidence. Recording refuses a nonce
 # already in the ledger, and comparison independently rejects duplicate rows.
@@ -168,7 +177,7 @@ PENDING = HERE / "results" / "pending.json"
 # layout, which is what made them report a confident 0 in a pane that cannot
 # see a shift; and `regions_non_empty` is gone, having counted screen-reader
 # text and so passed on the hole it existed to catch.
-HARNESS_VERSION = 21
+HARNESS_VERSION = 22
 INVENTORY_PROVIDERS = ("python",)
 INVENTORY_CONTRACT = "inventory-provider-v1"
 PRE_CONTRACT_INVENTORY_IDENTITY_MISSING = "pre-contract-provider-and-contract-unreported/v1"
@@ -251,6 +260,10 @@ METRICS = (
     "render_ms_total",
     "tree_reprobe_ms",
     "tree_reprobe_srv_ms",
+    # The walk regime a run met, and when the browser arrived in it. A slower walk
+    # under an attached browser reads differently when the profile also started later.
+    "walk_elapsed_ms",
+    "spawn_to_profile_start_ms",
     "srv_scanning_ms",
     "srv_settled_ms",
     "wall_scanning_ms",
@@ -323,8 +336,8 @@ def _tree_label(root: Path) -> str:
     experiment's prose, described rather than named.
 
     A generated corpus folds its marker into this short display label. Exact
-    filesystem state is recorded separately by ``_corpus_fingerprint`` and
-    rechecked when the measurement is recorded. The path alone is not enough:
+    filesystem state is recorded separately by ``_corpus_fingerprint`` when the
+    measurement is recorded. The path alone is not enough:
     the corpus lives at a fixed
     `.bench/project-10`, and its tracked half is the working tree's own source,
     so rebuilding at a later commit gives a different tree at the same path --
@@ -343,16 +356,25 @@ def _tree_label(root: Path) -> str:
     return "tree-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8]
 
 
+_CORPUS_CONTROL_NAMES = frozenset(
+    {".bench-corpus.json", ".gitignore", ".ignore", ".metabrowserignore"}
+)
+
+
 def _corpus_fingerprint(root: Path) -> str:
     """Identify tree state without warming every file into the page cache.
 
     Paths, types, sizes, nanosecond mtimes, symlink targets, and ignore/control-file
     contents identify the filesystem the server sees. Reading every byte of a
     multi-gigabyte corpus before a cold benchmark would alter the measured cache state.
+
+    This still visits every entry, so only ``record`` calls it, after the measurement.
+    Run immediately before a launch, it decided which entries the measured walk found
+    in a vnode cache smaller than the corpus.
     """
 
     digest = hashlib.sha256()
-    control_names = {".bench-corpus.json", ".gitignore", ".ignore", ".metabrowserignore"}
+    control_names = _CORPUS_CONTROL_NAMES
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames.sort()
         filenames.sort()
@@ -380,6 +402,40 @@ def _corpus_fingerprint(root: Path) -> str:
                 content = path.read_bytes()
                 digest.update(len(content).to_bytes(8, "big"))
                 digest.update(content)
+    return digest.hexdigest()
+
+
+def _corpus_launch_marker(root: Path) -> str:
+    """Identify the corpus root cheaply enough to take just before a launch.
+
+    One directory read and a stat per root entry, never a traversal: the root's own
+    identity and mtime, each direct child's name, inode, size, and mtime, and the
+    root control files' bytes. A rebuilt corpus replaces the root or its marker, and
+    adding or removing a top-level entry moves the root mtime. A change confined
+    below the first level is not visible here; the full fingerprint that ``record``
+    stores on every row is, and ``compare`` refuses conditions whose rows disagree.
+    """
+
+    digest = hashlib.sha256()
+    try:
+        facts = root.lstat()
+        with os.scandir(root) as iterator:
+            entries = sorted(iterator, key=lambda entry: entry.name)
+        digest.update(f"{facts.st_dev}:{facts.st_ino}:{facts.st_mtime_ns}\n".encode())
+        for entry in entries:
+            name = entry.name.encode("utf-8", errors="surrogateescape")
+            entry_facts = entry.stat(follow_symlinks=False)
+            digest.update(len(name).to_bytes(4, "big"))
+            digest.update(name)
+            digest.update(
+                f"{entry_facts.st_ino}:{entry_facts.st_size}:{entry_facts.st_mtime_ns}\n".encode()
+            )
+            if entry.name in _CORPUS_CONTROL_NAMES and entry.is_file(follow_symlinks=False):
+                content = Path(entry.path).read_bytes()
+                digest.update(len(content).to_bytes(8, "big"))
+                digest.update(content)
+    except OSError as error:
+        raise SystemExit(f"could not read corpus root {root}: {error}") from error
     return digest.hexdigest()
 
 
@@ -543,7 +599,10 @@ def _build_provenance(
             "launcher_sha256": attestation.launcher_sha256,
             "environment_identity": f"environment:sha256:{attestation.environment_sha256}",
             "commit": build_ref,
-            "dirty": False,
+            # Wheel bytes are the identity; nothing here can observe the tree they were
+            # built from, and a displayed `dirty` marker describes whichever checkout
+            # the installed package sits in. Null is unverified, not clean.
+            "dirty": None,
             "inventory_identity_declaration": (
                 PRE_CONTRACT_INVENTORY_IDENTITY_MISSING
                 if declare_pre_contract_inventory_identity_missing
@@ -615,9 +674,16 @@ _WALK_LINE = re.compile(
     r"contract=(?P<contract>[\w-]+) status=(?P<status>\w+) files=(?P<files>\d+) "
     r"entries=(?P<entries>\d+) elapsed=(?P<elapsed>\d+)ms"
 )
+# The completion line of a release that predates provider and contract diagnostics
+# (v0.9.1 and earlier). It names neither, so it can only stand in for the line above
+# when the run declared that identity gap; otherwise it means the wrong build is running.
+_PRE_CONTRACT_WALK_LINE = re.compile(
+    r"inventory walker complete: status=(?P<status>\w+) files=(?P<files>\d+) "
+    r"entries=(?P<entries>\d+) elapsed=(?P<elapsed>\d+)ms"
+)
 
 
-def _walk_facts(port: int) -> dict[str, Any]:
+def _walk_facts(port: int, identity_declaration: object = None) -> dict[str, Any]:
     """What that run's own walk did, read back out of its server log.
 
     The scan regime decides almost every number in this loop -- root
@@ -635,6 +701,19 @@ def _walk_facts(port: int) -> dict[str, Any]:
     # log would otherwise report the earlier run's walk.
     matches = list(_WALK_LINE.finditer(text))
     match = matches[-1] if matches else None
+    pre_contract = list(_PRE_CONTRACT_WALK_LINE.finditer(text))
+    if pre_contract and identity_declaration != PRE_CONTRACT_INVENTORY_IDENTITY_MISSING:
+        raise SystemExit(
+            "server log has a pre-contract walker completion line, but this run did not "
+            "declare the pre-contract inventory identity gap"
+        )
+    if match is None and pre_contract:
+        legacy = pre_contract[-1]
+        return {
+            "walk_status": legacy["status"],
+            "walk_elapsed_ms": int(legacy["elapsed"]),
+            "walk_files": int(legacy["files"]),
+        }
     if match is None:
         try:
             with urllib.request.urlopen(
@@ -771,6 +850,27 @@ def _require_unused_measurement_run_id(pending: dict[str, Any]) -> str:
     return measurement_run_id
 
 
+def _append_run(run: dict[str, Any], pending: dict[str, Any]) -> None:
+    """Append one row while no other recorder can consume the same nonce.
+
+    The nonce check in ``cmd_record`` runs before the slow work, so two recorders of
+    one pending run (an automated capture and a manual retry, say) could both pass it
+    and both append. Re-checking under an exclusive lock on the ledger makes the check
+    and the append one step. The row is flushed before the lock is released so the
+    next holder's re-check reads it.
+    """
+
+    RESULTS.parent.mkdir(parents=True, exist_ok=True)
+    with RESULTS.open("a", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            _require_unused_measurement_run_id(pending)
+            handle.write(json.dumps(run, sort_keys=True) + "\n")
+            handle.flush()
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     if args.tree:
         real = Path(args.tree).expanduser().resolve()
@@ -859,7 +959,9 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
         ),
     )
     _stop_pending_server()
-    corpus_fingerprint = _corpus_fingerprint(root)
+    # Root-only: a full traversal here would run immediately before the measured
+    # walk. `record` takes the full fingerprint once the measurement is over.
+    corpus_launch_marker = _corpus_launch_marker(root)
     measurement_run_id = secrets.token_hex(16)
 
     port = _next_port()
@@ -883,6 +985,9 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
             start_new_session=True,
             env=environment,
         )
+        # Popen returns once the child has executed the console script. Wall-clock
+        # epoch, because the browser profile's time origin is on the same clock.
+        spawned_epoch_ms = time.time() * 1000.0
 
     origin = f"http://127.0.0.1:{port}"
     url = f"{origin}/view/?measurement_run_id={measurement_run_id}"
@@ -908,7 +1013,7 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "port": port,
                 "files": files,
                 "corpus": corpus_label,
-                "corpus_fingerprint": corpus_fingerprint,
+                "corpus_launch_marker": corpus_launch_marker,
                 "corpus_shape": _corpus_shape(root),
                 **provenance,
                 "inventory_provider_requested": args.provider,
@@ -916,6 +1021,10 @@ def _serve_root(args: argparse.Namespace, root: Path, corpus_label: str, files: 
                 "server_executable": str(build.executable),
                 "server_pid": process.pid,
                 "server_root": str(root),
+                "server_spawned_at": datetime.fromtimestamp(
+                    spawned_epoch_ms / 1000.0, UTC
+                ).isoformat(timespec="milliseconds"),
+                "server_spawned_epoch_ms": round(spawned_epoch_ms, 1),
                 "measurement_origin": origin,
                 "measurement_run_id": measurement_run_id,
                 "url": url,
@@ -973,16 +1082,31 @@ def cmd_record(args: argparse.Namespace) -> int:
     pending = _read_pending()
     measurement_run_id = _require_unused_measurement_run_id(pending)
     port = int(pending["port"])
+    # Route samples carry the nonce too: without it, a sample taken from an earlier
+    # server or build would be filed under whatever `serve` ran last.
+    kind = "server route sample" if is_server_sample else "browser profile"
+    if probe.get("measurement_run_id") != measurement_run_id:
+        raise SystemExit(f"{kind} belongs to a different pending measurement run")
+    if probe.get("measurement_origin") != pending.get("measurement_origin"):
+        raise SystemExit(f"{kind} origin does not match the pending measurement run")
+    spawned_epoch_ms = pending.get("server_spawned_epoch_ms")
+    if not isinstance(spawned_epoch_ms, (int, float)) or isinstance(spawned_epoch_ms, bool):
+        raise SystemExit("pending run has no server spawn time; start a fresh `serve` run")
+    spawn_to_profile_start_ms: int | None = None
     if not is_server_sample:
-        if probe.get("measurement_run_id") != measurement_run_id:
-            raise SystemExit("browser profile belongs to a different pending measurement run")
-        if probe.get("measurement_origin") != pending.get("measurement_origin"):
-            raise SystemExit("browser profile origin does not match the pending measurement run")
+        time_origin = probe.get("time_origin_epoch_ms")
+        if not isinstance(time_origin, (int, float)) or isinstance(time_origin, bool):
+            raise SystemExit("browser profile has no time origin; re-run with the current probe.js")
+        spawn_to_profile_start_ms = round(time_origin - spawned_epoch_ms)
+        if spawn_to_profile_start_ms < 0:
+            raise SystemExit(
+                "browser profile started before the pending server was spawned; "
+                "discard this measurement"
+            )
     server_root = pending.get("server_root")
     if not isinstance(server_root, str):
         raise SystemExit("pending browser run has no corpus root")
-    corpus_fingerprint = _corpus_fingerprint(Path(server_root))
-    if corpus_fingerprint != pending.get("corpus_fingerprint"):
+    if _corpus_launch_marker(Path(server_root)) != pending.get("corpus_launch_marker"):
         raise SystemExit("corpus changed between serve and record; discard this measurement")
     artifact_path = pending.get("artifact_path")
     identity_declaration = pending.get("inventory_identity_declaration")
@@ -1012,7 +1136,7 @@ def cmd_record(args: argparse.Namespace) -> int:
     # The harness owns provenance. Put the browser payload first so pasted JSON
     # cannot replace the commit, corpus, timestamp, or other run identity that
     # `serve` established.
-    walk_facts = _walk_facts(port)
+    walk_facts = _walk_facts(port, identity_declaration)
     inventory_facts = _inventory_facts(port)
     requested_provider = pending.get("inventory_provider_requested")
     inventory_provider, inventory_contract = _require_inventory_identity(
@@ -1028,7 +1152,6 @@ def cmd_record(args: argparse.Namespace) -> int:
         "port": port,
         "files": walk_facts.get("walk_files", pending.get("files")),
         "corpus": pending.get("corpus"),
-        "corpus_fingerprint": corpus_fingerprint,
         "commit": pending.get("commit"),
         "build_version": pending.get("build_version"),
         "build_identity": pending.get("build_identity"),
@@ -1042,6 +1165,8 @@ def cmd_record(args: argparse.Namespace) -> int:
         "inventory_provider_requested": pending.get("inventory_provider_requested"),
         "inventory_identity_declaration": identity_declaration,
         "measurement_run_id": measurement_run_id,
+        "server_spawned_at": pending.get("server_spawned_at"),
+        "spawn_to_profile_start_ms": spawn_to_profile_start_ms,
         "note": args.note or pending.get("note", ""),
         **walk_facts,
         **inventory_facts,
@@ -1061,9 +1186,10 @@ def cmd_record(args: argparse.Namespace) -> int:
                 "Keep the tab visible, interact while it loads, wait for settle, and use the "
                 "navigation-time profiler exposed by the current build."
             )
-    RESULTS.parent.mkdir(parents=True, exist_ok=True)
-    with RESULTS.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(run, sort_keys=True) + "\n")
+    # After every cheap refusal, and after the measurement itself, because this visits
+    # every entry. `compare` refuses rows whose fingerprints disagree.
+    run["corpus_fingerprint"] = _corpus_fingerprint(Path(server_root))
+    _append_run(run, pending)
     walk = run.get("walk_elapsed_ms")
     regime = f"walk {walk} ms" if walk else f"walk {run.get('walk_status', 'unknown')}"
     print(
@@ -1205,6 +1331,15 @@ def cmd_compare(args: argparse.Namespace) -> int:
                 and not (
                     declaration == PRE_CONTRACT_INVENTORY_IDENTITY_MISSING
                     and field in {"inventory_provider", "inventory_contract"}
+                )
+                # An attested wheel's source-tree state is unverifiable and recorded
+                # as null; its bytes, not a dirty flag, identify the build.
+                and not (
+                    field == "dirty"
+                    and all(
+                        str(row.get("build_identity", "")).startswith("wheel:sha256:")
+                        for row in rows
+                    )
                 )
             ):
                 identity_errors.append(f"{label} has no {field}")
@@ -1505,6 +1640,10 @@ def cmd_probe_server(args: argparse.Namespace) -> int:
 
     payload = {
         "route": args.path,
+        # The same binding a browser profile carries in its URL: `record` files this
+        # sample only against the `serve` run it was taken from.
+        "measurement_run_id": pending.get("measurement_run_id"),
+        "measurement_origin": pending.get("measurement_origin"),
         "srv_scanning_ms": round(
             median([float(s["srv_ms"]) for s in scanning if s["srv_ms"] is not None]), 1
         )

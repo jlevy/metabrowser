@@ -154,7 +154,8 @@ def test_external_browser_benchmark_requires_an_immutable_build_reference() -> N
         "launcher_sha256": "b" * 64,
         "environment_identity": f"environment:sha256:{'c' * 64}",
         "commit": "d" * 40,
-        "dirty": False,
+        # Nothing observes the tree an external wheel was built from.
+        "dirty": None,
         "inventory_identity_declaration": None,
     }
 
@@ -635,6 +636,44 @@ def test_compare_accepts_an_attested_pre_contract_identity_gap() -> None:
     )
 
 
+def test_compare_accepts_an_unverified_dirty_flag_only_for_attested_wheels() -> None:
+    module = _runner()
+    environment_identity = f"environment:sha256:{'e' * 64}"
+
+    def wheel_rows(label: str, digest: str) -> list[dict[str, Any]]:
+        return [
+            _run(
+                label,
+                artifact_sha256=digest * 64,
+                build_identity=f"wheel:sha256:{digest * 64}",
+                dirty=None,
+                environment_identity=environment_identity,
+                launcher_sha256="b" * 64,
+            )
+            for _index in range(3)
+        ]
+
+    module._load_runs = lambda: [*wheel_rows("before", "a"), *wheel_rows("after", "d")]
+    assert (
+        module.cmd_compare(
+            argparse.Namespace(
+                labels=["before", "after"],
+                budgets=str(BUDGETS),
+                expect_build=[
+                    f"before=wheel:sha256:{'a' * 64}",
+                    f"after=wheel:sha256:{'d' * 64}",
+                ],
+            )
+        )
+        == 0
+    )
+
+    before = [_run("before") for _index in range(3)]
+    after = [_run("after", dirty=None) for _index in range(3)]
+    with pytest.raises(SystemExit, match="after has no dirty"):
+        _compare(module, [*before, *after])
+
+
 def test_compare_rejects_a_label_that_mixes_pre_contract_declarations() -> None:
     module = _runner()
     before = [_run("before") for _index in range(3)]
@@ -665,6 +704,9 @@ def test_compare_rejects_incomparable_conditions(field: str, replacement: object
         _compare(module, [*before, *after])
 
 
+SPAWNED_EPOCH_MS = 1_780_000_000_000.0
+
+
 def test_record_rejects_a_stale_profile_and_changed_corpus(tmp_path: Path) -> None:
     module = _runner()
     module.PENDING = tmp_path / "pending.json"
@@ -675,7 +717,8 @@ def test_record_rejects_a_stale_profile_and_changed_corpus(tmp_path: Path) -> No
     pending = {
         "port": 8600,
         "server_root": str(corpus),
-        "corpus_fingerprint": module._corpus_fingerprint(corpus),
+        "server_spawned_epoch_ms": SPAWNED_EPOCH_MS,
+        "corpus_launch_marker": module._corpus_launch_marker(corpus),
         "measurement_origin": "http://127.0.0.1:8600",
         "measurement_run_id": "current",
     }
@@ -684,6 +727,7 @@ def test_record_rejects_a_stale_profile_and_changed_corpus(tmp_path: Path) -> No
         "after",
         measurement_origin=pending["measurement_origin"],
         measurement_run_id="previous",
+        time_origin_epoch_ms=SPAWNED_EPOCH_MS + 2_000,
     )
     with pytest.raises(SystemExit, match="different pending measurement"):
         module.cmd_record(
@@ -731,12 +775,16 @@ def test_record_refuses_a_measurement_nonce_already_in_the_ledger(tmp_path: Path
         )
 
 
-def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: Any) -> None:
-    module = _runner()
+def _recordable_run(
+    module: Any, tmp_path: Path, **pending_overrides: object
+) -> tuple[Path, dict[str, Any]]:
+    """A pending local run, its corpus, and a matching admissible browser payload."""
+
     module.REPO = tmp_path
+    module.HERE = tmp_path
     module.PENDING = tmp_path / "pending.json"
     module.RESULTS = tmp_path / "runs.jsonl"
-    module._walk_facts = lambda _port: {
+    module._walk_facts = lambda _port, _declaration=None: {
         "inventory_contract": "inventory-provider-v1",
         "inventory_provider": "python",
         "walk_elapsed_ms": 1000,
@@ -749,64 +797,301 @@ def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: A
         "inventory_work": {},
     }
     corpus = tmp_path / "corpus"
-    corpus.mkdir()
-    (corpus / "sample.txt").write_text("sample\n", encoding="utf-8")
-    corpus_fingerprint = module._corpus_fingerprint(corpus)
-    module.PENDING.write_text(
-        json.dumps(
-            {
-                "commit": "abc1234",
-                "corpus": "test-corpus",
-                "corpus_fingerprint": corpus_fingerprint,
-                "corpus_shape": 1,
-                "dirty": True,
-                "experiment": "exp-test",
-                "files": 100,
-                "label": "candidate",
-                "note": "",
-                "port": 8600,
-                "inventory_provider_requested": "python",
-                "measurement_origin": "http://127.0.0.1:8600",
-                "measurement_run_id": "test-run",
-                "server_root": str(corpus),
-            }
-        ),
-        encoding="utf-8",
-    )
+    (corpus / "nested").mkdir(parents=True)
+    (corpus / "nested" / "sample.txt").write_text("sample\n", encoding="utf-8")
+    pending: dict[str, Any] = {
+        "commit": "abc1234",
+        "corpus": "test-corpus",
+        "corpus_launch_marker": module._corpus_launch_marker(corpus),
+        "corpus_shape": 1,
+        "dirty": True,
+        "experiment": "exp-test",
+        "files": 100,
+        "label": "candidate",
+        "note": "",
+        "port": 8600,
+        "inventory_provider_requested": "python",
+        "measurement_origin": "http://127.0.0.1:8600",
+        "measurement_run_id": "test-run",
+        "server_root": str(corpus),
+        "server_spawned_at": "2026-05-28T20:26:40.000+00:00",
+        "server_spawned_epoch_ms": SPAWNED_EPOCH_MS,
+    }
+    pending.update(pending_overrides)
+    module.PENDING.write_text(json.dumps(pending), encoding="utf-8")
     payload = _run(
         "candidate",
-        long_task_max_ms=6393,
-        long_tasks_over_200ms=1,
-        viewport_h=900,
-        viewport_w=1280,
         measurement_origin="http://127.0.0.1:8600",
         measurement_run_id="test-run",
+        time_origin_epoch_ms=SPAWNED_EPOCH_MS + 2_500,
     )
+    return corpus, payload
 
-    result = module.cmd_record(
-        argparse.Namespace(
-            budgets=str(BUDGETS),
-            json=json.dumps(payload),
-            json_file=None,
-            label=None,
-            note="",
+
+def _record(module: Any, payload: dict[str, Any]) -> int:
+    return int(
+        module.cmd_record(
+            argparse.Namespace(
+                budgets=str(BUDGETS),
+                json=json.dumps(payload),
+                json_file=None,
+                label=None,
+                note="",
+            )
         )
     )
 
-    assert result == 1
+
+def test_record_retains_a_freeze_but_fails_immediately(tmp_path: Path, capsys: Any) -> None:
+    module = _runner()
+    _corpus, payload = _recordable_run(module, tmp_path)
+    payload.update(long_task_max_ms=6393, long_tasks_over_200ms=1)
+
+    assert _record(module, payload) == 1
     recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
     assert recorded["files"] == 101
     assert "hard performance gate failed" in capsys.readouterr().out
 
 
+def test_record_attributes_the_profile_start_to_the_server_spawn(tmp_path: Path) -> None:
+    module = _runner()
+    _corpus, payload = _recordable_run(module, tmp_path)
+
+    assert _record(module, payload) == 0
+    recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
+    assert recorded["server_spawned_at"] == "2026-05-28T20:26:40.000+00:00"
+    assert recorded["spawn_to_profile_start_ms"] == 2_500
+    assert recorded["walk_elapsed_ms"] == 1000
+    assert {"walk_elapsed_ms", "spawn_to_profile_start_ms"} <= set(module.METRICS)
+
+
+@pytest.mark.parametrize(
+    ("time_origin", "message"),
+    [
+        (None, "no time origin"),
+        (SPAWNED_EPOCH_MS - 1, "started before the pending server was spawned"),
+    ],
+)
+def test_record_refuses_a_profile_without_a_start_after_the_spawn(
+    tmp_path: Path, time_origin: float | None, message: str
+) -> None:
+    module = _runner()
+    _corpus, payload = _recordable_run(module, tmp_path)
+    payload["time_origin_epoch_ms"] = time_origin
+
+    with pytest.raises(SystemExit, match=message):
+        _record(module, payload)
+    assert not module.RESULTS.exists()
+
+
+def test_record_fingerprints_the_corpus_after_the_measurement(tmp_path: Path) -> None:
+    module = _runner()
+    corpus, payload = _recordable_run(module, tmp_path)
+    launched = module._corpus_fingerprint(corpus)
+    # Below the root, so the launch marker cannot see it; the recorded row must.
+    (corpus / "nested" / "sample.txt").write_text("changed during the run\n", encoding="utf-8")
+
+    assert _record(module, payload) == 0
+    recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
+    assert recorded["corpus_fingerprint"] == module._corpus_fingerprint(corpus)
+    assert recorded["corpus_fingerprint"] != launched
+
+
+def test_record_refuses_a_corpus_root_changed_since_serve(tmp_path: Path) -> None:
+    module = _runner()
+    corpus, payload = _recordable_run(module, tmp_path)
+    (corpus / ".bench-corpus.json").write_text('{"shape": 3}', encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="corpus changed between serve and record"):
+        _record(module, payload)
+
+
+def test_serve_does_not_traverse_the_corpus_before_launch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    corpus = tmp_path / "corpus"
+    (corpus / "nested").mkdir(parents=True)
+    monkeypatch.setattr(module, "HERE", tmp_path)
+    monkeypatch.setattr(module, "PENDING", tmp_path / "results" / "pending.json")
+    monkeypatch.setattr(module, "PORTS_USED", tmp_path / "results" / "ports-used.txt")
+    monkeypatch.setattr(
+        module,
+        "resolve_metab_build",
+        lambda _requested: module.MetabBuild(Path("/installed/metab"), "metab 0.9.2"),
+    )
+    monkeypatch.setattr(
+        module,
+        "_build_provenance",
+        lambda *_args, **_kwargs: {"build_identity": "git:abc1234", "commit": "abc1234"},
+    )
+    monkeypatch.setattr(module, "_stop_pending_server", lambda: None)
+    monkeypatch.setattr(module, "_next_port", lambda: 8765)
+
+    def traversal(_root: Path) -> str:
+        raise AssertionError("serve traversed the corpus immediately before the measured walk")
+
+    monkeypatch.setattr(module, "_corpus_fingerprint", traversal)
+
+    class Process:
+        pid = 4321
+
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_args, **_kwargs: Process())
+
+    class Socket:
+        def __enter__(self) -> Socket:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def settimeout(self, _timeout: float) -> None:
+            return None
+
+        def connect_ex(self, _address: tuple[str, int]) -> int:
+            return 0
+
+    monkeypatch.setattr(module.socket, "socket", Socket)
+
+    result = module._serve_root(
+        argparse.Namespace(
+            artifact="",
+            build_ref="",
+            declare_pre_contract_inventory_identity_missing=False,
+            exp="exp-test",
+            label="candidate",
+            metab="",
+            note="",
+            provider="python",
+        ),
+        corpus,
+        "test-corpus",
+        100,
+    )
+
+    assert result == 0
+    pending = json.loads(module.PENDING.read_text(encoding="utf-8"))
+    assert "corpus_fingerprint" not in pending
+    assert pending["corpus_launch_marker"] == module._corpus_launch_marker(corpus)
+    assert isinstance(pending["server_spawned_epoch_ms"], float)
+    assert pending["server_spawned_at"].endswith("+00:00")
+
+
+def test_record_rechecks_the_nonce_under_the_ledger_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    _corpus, payload = _recordable_run(module, tmp_path)
+    walk_facts = module._walk_facts
+    lock_operations: list[int] = []
+    real_flock = module.fcntl.flock
+
+    def concurrent_recorder(port: int, declaration: object = None) -> dict[str, Any]:
+        # Another recorder of the same pending run appends after the early check.
+        module.RESULTS.write_text(
+            json.dumps({"measurement_run_id": "test-run"}) + "\n", encoding="utf-8"
+        )
+        return walk_facts(port, declaration)
+
+    def flock(descriptor: int, operation: int) -> None:
+        lock_operations.append(operation)
+        real_flock(descriptor, operation)
+
+    module._walk_facts = concurrent_recorder
+    monkeypatch.setattr(module.fcntl, "flock", flock)
+
+    with pytest.raises(SystemExit, match="measurement run nonce.*already recorded"):
+        _record(module, payload)
+    assert module.RESULTS.read_text(encoding="utf-8").count("test-run") == 1
+    assert lock_operations[0] == module.fcntl.LOCK_EX
+
+
+def test_record_requires_the_pending_nonce_on_a_server_route_sample(tmp_path: Path) -> None:
+    module = _runner()
+    _recordable_run(module, tmp_path)
+    sample = {
+        "route": "/api/tree?depth=1",
+        "measurement_origin": "http://127.0.0.1:8600",
+        "srv_settled_ms": 3.0,
+    }
+
+    with pytest.raises(SystemExit, match="server route sample belongs to a different pending"):
+        _record(module, sample)
+    assert not module.RESULTS.exists()
+
+    assert _record(module, {**sample, "measurement_run_id": "test-run"}) == 0
+    recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
+    assert recorded["measurement_run_id"] == "test-run"
+    assert recorded["spawn_to_profile_start_ms"] is None
+
+
+def test_server_route_sample_carries_the_pending_nonce(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: Any
+) -> None:
+    module = _runner()
+    module.PENDING = tmp_path / "pending.json"
+    module.PENDING.write_text(
+        json.dumps(
+            {
+                "port": 8600,
+                "measurement_origin": "http://127.0.0.1:8600",
+                "measurement_run_id": "route-run",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class Progress(io.BytesIO):
+        pass
+
+    monkeypatch.setattr(
+        module.urllib.request,
+        "urlopen",
+        lambda _url, *, timeout: Progress(json.dumps({"complete": True}).encode()),
+    )
+    monkeypatch.setattr(module, "_sample_route", lambda _port, _path: (5.0, 3.0, 100))
+    monkeypatch.setattr(module.time, "sleep", lambda _seconds: None)
+
+    assert (
+        module.cmd_probe_server(
+            argparse.Namespace(path="/api/tree?depth=1", every=0.0, settled=1, timeout=30.0)
+        )
+        == 0
+    )
+    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["measurement_run_id"] == "route-run"
+    assert payload["measurement_origin"] == "http://127.0.0.1:8600"
+
+
+def test_pre_contract_walk_line_is_read_only_under_its_declaration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = _runner()
+    monkeypatch.setattr(module, "HERE", tmp_path)
+    (tmp_path / "results").mkdir()
+    # The v0.9.1 completion line, which names no provider or contract.
+    (tmp_path / "results" / "server-8765.log").write_text(
+        "INFO inventory walker complete: status=done files=300000 entries=301105 elapsed=12871ms\n",
+        encoding="utf-8",
+    )
+
+    def unreachable(_url: str, *, timeout: int) -> None:
+        raise AssertionError("a logged walk must not fall back to the progress route")
+
+    monkeypatch.setattr(module.urllib.request, "urlopen", unreachable)
+
+    assert module._walk_facts(8765, module.PRE_CONTRACT_INVENTORY_IDENTITY_MISSING) == {
+        "walk_status": "done",
+        "walk_elapsed_ms": 12_871,
+        "walk_files": 300_000,
+    }
+    with pytest.raises(SystemExit, match="did not declare the pre-contract"):
+        module._walk_facts(8765, None)
+
+
 def test_record_persists_an_attested_pre_contract_identity_gap(tmp_path: Path) -> None:
     module = _runner()
-    module.REPO = tmp_path
-    module.PENDING = tmp_path / "pending.json"
-    module.RESULTS = tmp_path / "runs.jsonl"
-    corpus = tmp_path / "corpus"
-    corpus.mkdir()
-    (corpus / "sample.txt").write_text("sample\n", encoding="utf-8")
+    corpus, _payload = _recordable_run(module, tmp_path)
     attestation = argparse.Namespace(
         wheel_sha256="a" * 64,
         launcher_sha256="b" * 64,
@@ -815,7 +1100,7 @@ def test_record_persists_an_attested_pre_contract_identity_gap(tmp_path: Path) -
     build = module.MetabBuild(executable=Path("/installed/metab"), version="metab 0.9.1")
     module.resolve_metab_build = lambda _executable: build
     module.attest_installed_wheel = lambda _build, _artifact: attestation
-    module._walk_facts = lambda _port: {"walk_files": 1, "walk_status": "done"}
+    module._walk_facts = lambda _port, _declaration=None: {"walk_files": 1, "walk_status": "done"}
     module._inventory_facts = lambda _port: {}
     provenance = module._build_provenance(
         build,
@@ -830,7 +1115,7 @@ def test_record_persists_an_attested_pre_contract_identity_gap(tmp_path: Path) -
                 **provenance,
                 "artifact_path": "/release.whl",
                 "corpus": "test-corpus",
-                "corpus_fingerprint": module._corpus_fingerprint(corpus),
+                "corpus_launch_marker": module._corpus_launch_marker(corpus),
                 "corpus_shape": 1,
                 "experiment": "exp-test",
                 "files": 1,
@@ -842,6 +1127,7 @@ def test_record_persists_an_attested_pre_contract_identity_gap(tmp_path: Path) -
                 "port": 8600,
                 "server_executable": str(build.executable),
                 "server_root": str(corpus),
+                "server_spawned_epoch_ms": SPAWNED_EPOCH_MS,
             }
         ),
         encoding="utf-8",
@@ -850,20 +1136,10 @@ def test_record_persists_an_attested_pre_contract_identity_gap(tmp_path: Path) -
         "before",
         measurement_origin="http://127.0.0.1:8600",
         measurement_run_id="test-run",
+        time_origin_epoch_ms=SPAWNED_EPOCH_MS + 1_000,
     )
 
-    assert (
-        module.cmd_record(
-            argparse.Namespace(
-                budgets=str(BUDGETS),
-                json=json.dumps(payload),
-                json_file=None,
-                label="",
-                note="",
-            )
-        )
-        == 0
-    )
+    assert _record(module, payload) == 0
     recorded = json.loads(module.RESULTS.read_text(encoding="utf-8"))
     assert recorded["inventory_identity_declaration"] == (
         module.PRE_CONTRACT_INVENTORY_IDENTITY_MISSING
@@ -871,6 +1147,8 @@ def test_record_persists_an_attested_pre_contract_identity_gap(tmp_path: Path) -
     assert recorded["inventory_provider"] is None
     assert recorded["inventory_contract"] is None
     assert recorded["artifact_sha256"] == "a" * 64
+    # An unverified source tree stays null rather than reading as clean.
+    assert recorded["dirty"] is None
 
 
 def test_record_identity_rejects_missing_and_conflicting_server_facts() -> None:

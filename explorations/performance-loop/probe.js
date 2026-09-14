@@ -405,6 +405,10 @@ function missingRequiredPerformanceLabels(requiredLabels, labelTotals) {
     // run; `record` refuses it.
     measurement_run_id: new URLSearchParams(location.search).get("measurement_run_id"),
     measurement_origin: location.origin,
+    // Wall-clock start of this document's profile. `record` subtracts the server's
+    // spawn time from it, so walk variance under a browser can be read against when
+    // the browser arrived.
+    time_origin_epoch_ms: origin,
     viewport_w: window.innerWidth,
     viewport_h: window.innerHeight,
     device_scale_factor: window.devicePixelRatio,
