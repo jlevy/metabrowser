@@ -361,11 +361,15 @@ This recipe takes those dependencies from the candidate’s `uv.lock`, so a reru
 another day installs the same versions rather than a fresh resolution.
 
 **Create the environments outside every git work tree**, including the `/tmp/mb-at-*`
-worktrees. `metab --version` annotates its version with the state of any work tree that
-contains the installed package, even from an ignored directory such as `.bench/`: a
-v0.9.1 wheel installed there reports, for example,
-`metab 0.9.1 (+153 commits, 8d111f4a)`. The harness reads that line, so `serve` then
-refuses the control’s `--build-ref` and the candidate’s wheel attestation.
+worktrees. The control is an earlier release, and releases 0.7.0 through 0.9.1 annotate
+`metab --version` with the state of any work tree that contains the installed package,
+even from an ignored directory such as `.bench/`. A v0.9.1 wheel installed there
+reports, for example, `metab 0.9.1 (+153 commits, 8d111f4a)`. The harness reads that
+line, so `serve` then refuses the control’s `--build-ref`. From 0.10.0, only a run from
+Metabrowser’s own tracked source is annotated, and a wheel installed inside the checkout
+reports its version correctly.
+Until the control is 0.10.0 or later, it still needs an environment outside every work
+tree, and the recipe installs the candidate the same way.
 `use_wheel` and `require_version` stop on anything but the exact `metab <wheel version>`
 line. Wheels and reports stay under `.bench/`.
 

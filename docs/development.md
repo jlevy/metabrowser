@@ -802,6 +802,11 @@ Code that spawns `git` must first scrub the repository-pinning variables — `GI
 `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR`, `GIT_OBJECT_DIRECTORY`,
 `GIT_ALTERNATE_OBJECT_DIRECTORIES`, `GIT_PREFIX`, `GIT_NAMESPACE`, and
 `GIT_CEILING_DIRECTORIES` — and a test should pin that behavior.
+A push from a linked worktree is the case that exports `GIT_DIR`; one from the primary
+checkout does not, which is why the bug can look unreproducible.
+The pre-push command in `lefthook.yml` and `tests/conftest.py` each clear the list for
+everything they start, and `tests/test_git_hook_environment.py` checks both, along with
+the console goldens that build repositories.
 
 **`npm` refuses to install.** npm 11.10 and newer enforce the `before` and
 `minimum-release-age` settings and error when a shell environment sets both.
