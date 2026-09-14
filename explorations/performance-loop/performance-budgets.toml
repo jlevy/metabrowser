@@ -229,10 +229,16 @@ policy = "gate"
 required = true
 description = "Quick File did not converge to an authoritative complete catalog after the index settled."
 
+# A rough-cut hard gate, not a tuned budget. It is 1.3x the worst candidate first row
+# on the repository-shaped project-10 corpus in exp-033 (269 ms, 1.3x = 349.7 ms,
+# rounded up), measured while an unrelated workload held the host's load average
+# between 16 and 34. It exists to reject the class of regression v0.1.0-v0.9.1
+# shipped, where a whole-repository .gitignore pre-walk held first rows for 9-34 s.
+# Recalibrate it from a quiet-machine measurement at the careful 1.1x tolerance.
 [metrics.first_row_ms]
 category = "application"
-maximum = 500
-policy = "target"
+maximum = 350
+policy = "gate"
 required = true
 description = "Metabrowser's first usable navigation row."
 
