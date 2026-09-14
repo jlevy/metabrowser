@@ -5,7 +5,7 @@ title: Quiet-environment perf revalidation of the v0.10.0 candidate (walk under 
 kind: task
 status: open
 priority: 1
-version: 7
+version: 8
 labels:
   - performance
   - release-hardening
@@ -13,7 +13,7 @@ dependencies:
   - type: blocks
     target: is-01m2fafd1v8d5pakt6r7zxw5n8
 created_at: 2026-09-13T16:43:21.362Z
-updated_at: 2026-09-14T06:43:05.914Z
+updated_at: 2026-09-14T16:07:38.507Z
 ---
 Quiet-machine performance revalidation of the release candidate, required before tagging.
 
@@ -38,8 +38,16 @@ Method: >=5 interleaved runs per side, one environment alternating only the whee
 
 ## Notes
 
-Also run the first-rows release metric from mb-i2im on the repository-shaped project-10 corpus during this rerun: cold backend first_row (compare_builds) and browser first_row_ms for control and candidate, then promote first_row_ms to a hard gate at the measured value. The candidate must include commit 2e9e2066 (gitignore pre-walk removed); before it, first rows on a real repository waited 9-34 s.
+Rough-cut run done, regression found; the quiet-machine rerun is still pending and must follow the mb-kicj fix.
 
-Harness fixes 1 (pre-contract walk line, walk_elapsed_ms, spawn_to_profile_start_ms), 2 (no corpus traversal between stopping one server and launching the next), 4 (probe-server nonce, plus the nonce re-check and append under a ledger file lock), 8 (external wheels record dirty=null), and 9 (README exact-wheel recipes) are in PR #115, branch claude/perf-harness-evidence (HARNESS_VERSION 22). Items 3 (strip PYTHON* env and verify find_spec origin), 5 (annotate report.md labels compare would refuse, via one pure identity check shared by compare and report), 6 (wheel attestation in devtools/compare_builds.py), and 7 (A/A mode, mb-ot8o) remain. The quiet-machine rerun itself has not been done.
+exp-033 (PR #120, branch claude/release-v0.10.0-perf) compared the exact v0.9.1 wheel with the candidate 88606b56 on project-10 (tree-d44cf95e, 102,390 walker-visible files) and the 300k build_corpus (tree-b4ec96ce). It was a rough cut on a loaded host (1-minute load average 10-54 from unrelated jobs): 3 interleaved headed captures per side per corpus in the order C K K C C K, compare_builds --runs 3 per corpus, and one back-to-back rerun of each single-pair exceedance. The accept rule was a 1.3x ratio on back-to-back pairs; the README now records it as the rough-cut tolerance, with 1.1x (1.05x for fine claims) as the careful tolerance for quiet-machine measurements.
 
-Rerun procedure after the PR #115 review (mb-xwg6), all in explorations/performance-loop/README.md: build both wheels with a locked sync and `uv build --clear --no-build-isolation`; install from constraints exported from the candidate uv.lock; create the benchmark environments outside every git work tree (mktemp -d), because metab --version otherwise carries the checkout's annotation and serve refuses both conditions; and open every series with an unrecorded `serve` plus `run.py fingerprint`, because record now refuses a run launched without the carried corpus-traversal baseline.
+Result: rejected. Correctness passes on both corpora (zero ordered-row and tally differences, no refused records, complete catalogs, no errors). project-10 is much faster (browser first rows 144-269 ms vs 198-1,064 ms, walk about half, backend first row 11-14 ms vs about 1.1 s). On 300k the candidate regresses: walk pair ratios 1.20-1.91, backend index_done 1.13-1.49 (repeats at load 10), a candidate-only tally-overlap progress-latency miss (213-254 ms against the 200 ms compare_builds budget in 3 of 4 runs), and first_row_ms (1.52, rerun 1.94) and transient js_heap_mb (1.33-1.35) excesses. Root /api/tree srv time exceeds on both corpora; on project-10 it is the provider read moving into asyncio.to_thread (reader wait did not grow), on 300k about 20 ms reaches load_tree_ms.
+
+Evidence to settle from the original list, as of exp-033 (loaded, so indicative only): walk with a browser attached is faster than v0.9.1 on project-10 and slower on 300k; /api/tree srv time 1-9 ms -> 12-68 ms; transient JS heap +25-35% with equal post-GC heap; backend RSS +1% (project-10) and +4% (300k); spawn-to-serving within 1.3x after reruns.
+
+Remaining:
+1. Fix mb-kicj, then rerun the comparison on the fixed commit with the same v0.9.1 wheel, corpora, and environments (kept in place on the benchmark host; script and pair-ratio tool are machine-local), same pair rule. Prefer a quiet machine; if it is quiet, use at least five interleaved runs per side and the careful 1.1x tolerance, and recalibrate the first_row_ms gate (mb-i2im) from it.
+2. Harness items still open from the original list: 3 (strip PYTHON* env and verify find_spec origin), 5 (report.md annotations for labels compare would refuse), 6 (wheel attestation inside devtools/compare_builds.py; exp-033 attested both backend envs with attest_installed_wheel before running it), and 7 (A/A mode, mb-ot8o).
+
+Procedure notes for the rerun: pin the measurement envs to a standard (GIL) CPython with --python, because uv discovery picks the checkout's free-threaded interpreter; create them outside every git work tree; open every series with an unrecorded serve plus run.py fingerprint; compare_builds only runs control-then-candidate within each pair.
