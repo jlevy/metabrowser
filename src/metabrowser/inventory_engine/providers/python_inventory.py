@@ -141,9 +141,10 @@ _NANOSECONDS_PER_SECOND = 1_000_000_000
 # The first exact v0.7 release comparison found one 928.9 ms tally pass on a
 # 123,658-file corpus and a 291.7 ms unrelated-request delay. At that cold-tail
 # rate, 2,048 entries are about 15 ms of work. GitHub's shared Linux runner
-# later measured that batch at 52 ms under contention, just beyond the
-# deterministic 50 ms heartbeat guard. Yield every 1,024 entries so the same
-# guard remains meaningful across supported CI hosts. A one-microsecond
+# later measured that batch at 52 ms under contention, beyond a 50 ms budget for
+# an unrelated request's delay. Yield every 1,024 entries, which halves it;
+# `test_worker_tally_pass_cooperatively_yields_to_the_event_loop` pins that
+# cadence by counting yields rather than timing them. A one-microsecond
 # timer-backed pause releases the GIL and prevents the worker from immediately
 # reacquiring it, keeping the request loop independent of the interpreter's
 # ordinary thread-switch interval.

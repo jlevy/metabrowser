@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -15,6 +16,8 @@ from metabrowser.inventory_engine.contract import (
     RefreshObservation,
     RefreshRequest,
 )
+from metabrowser.inventory_engine.coordinator import HostVersion
+from metabrowser.inventory_engine.runtime import default_inventory_config
 from metabrowser.settings import ROLLUP_MAX_TOP
 from metabrowser.wire_models import validate_rollup_node
 from tests.inventory_harness import InventoryHarness, inventory_harness
@@ -240,12 +243,21 @@ def test_simultaneous_identical_rollups_compute_once(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
+    """Requests for one answer at one inventory version share one build.
+
+    Coalescing is keyed on the version, so the test holds the version still: with
+    the watcher off, a settled walk leaves nothing that can write to the
+    inventory. With it on, an observation landing mid-gather -- a late event on a
+    busy host -- splits the requests across two versions and two correct builds,
+    and fails the test with nothing wrong in coalescing.
+    """
     (tmp_path / "src").mkdir()
     for index in range(5):
         (tmp_path / "src" / f"f{index}.py").write_text("x" * 32)
     server._set_root_dir(tmp_path)
+    config = replace(default_inventory_config(), watch_mode="off")
 
-    async def run() -> tuple[int, list[bytes]]:
+    async def run() -> tuple[int, list[bytes], HostVersion, HostVersion]:
         import metabrowser.inventory_engine.providers.python_inventory as provider
 
         calls = 0
@@ -257,13 +269,16 @@ def test_simultaneous_identical_rollups_compute_once(
             return real_build(*args, **kwargs)
 
         monkeypatch.setattr(provider, "build_rollup", counting_build)
-        async with inventory_harness(tmp_path) as harness:
+        async with inventory_harness(tmp_path, config=config) as harness:
+            _cursor, before, _state = await harness.runtime.coordinator.checkpoint()
             responses = await asyncio.gather(
                 *(_response(harness, {"path": ""}) for _index in range(6))
             )
-            return calls, [bytes(response.body) for response in responses]
+            _cursor, after, _state = await harness.runtime.coordinator.checkpoint()
+            return calls, [bytes(response.body) for response in responses], before, after
 
-    calls, bodies = asyncio.run(run())
+    calls, bodies, before, after = asyncio.run(run())
+    assert after.engine == before.engine, "the inventory must hold one version for the gather"
     assert calls == 1
     assert len(set(bodies)) == 1
     assert json.loads(bodies[0])["node"]["total_files"] == 5
