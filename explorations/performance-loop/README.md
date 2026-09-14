@@ -308,8 +308,8 @@ From a cold start of each condition, report:
   `/api/tree`;
 - browser `first_row_ms` from the headed captures.
 
-A candidate whose first rows regress past the control’s range, or exceed the
-`first_row_ms` budget, is not accepted.
+A candidate whose first rows regress past the tolerance below, or cross the
+`first_row_ms` hard gate in `performance-budgets.toml`, is not accepted.
 exp-032 is why this is written down: it used the synthetic corpus, where first rows took
 about 0.1 s, while a real repository waited 9-34 s for a whole-repository `.gitignore`
 pre-walk, a delay present since v0.1.0. `tests/test_gitignore_hierarchical.py` pins the
@@ -472,6 +472,27 @@ interleaved runs per side, keeps the tab visible, and exercises the complete
 progressive-load window.
 When ranges overlap, report hard-budget compliance and the absence of a repeatable
 wrong-way result rather than claiming a precise percentage.
+
+**Judge a tolerance on back-to-back pairs.** For each key metric, divide the candidate
+run by the control run it was captured next to, and never compare one condition’s worst
+run with the other’s. A load spike moves both halves of a pair and separates runs taken
+minutes apart, so only the pair ratio shows how the builds differ under the same
+conditions. The ratio a comparison may accept depends on what it claims:
+
+- **Careful: 1.1x, or 1.05x for a fine claim.** Use it for a claim about a specific
+  change, measured on a quiet machine.
+- **Rough cut: 1.3x.** Use it for a sanity check that a release is about as fast as the
+  previous one, when the machine cannot be kept quiet.
+  It catches an order-of-magnitude regression, such as the pre-walk exp-032 missed, but
+  not a small one, so its record must say it was a rough cut.
+  [exp-033](experiments/exp-033-v0100-rough-cut-release-sanity-under-load.md) is the
+  worked example.
+
+When exactly one pair exceeds the tolerance on a metric, rerun that pair back to back
+once and judge the rerun.
+A metric that exceeds it in two pairs, or again on the rerun, stops the release until it
+is explained.
+
 Then run `compare`, write an `exp-NNN` document with the ranges and verdict, and
 regenerate `report.md`:
 
