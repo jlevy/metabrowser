@@ -6,6 +6,15 @@ const MAX_AUTHORED_TARGET_LENGTH = 16_384;
 // than this cannot be named by a supported authored target, so they are skipped
 // without imposing any ceiling on provider-admitted catalog identities.
 const MAX_NORMALIZED_TARGET_LENGTH = MAX_AUTHORED_TARGET_LENGTH * 3 + 3;
+// A memo key has to stay cheap to hash. V8 computes a content hash only up to
+// 16,383 code units and derives the hash from the length alone above that, so
+// longer keys of one length all land in a single bucket and every probe decays
+// into a full-length string comparison. The decay is a step, not a slope:
+// resolving 1,024 targets from one source directory took 55 ms at a
+// 16,369-code-unit exact path and 1,169 ms at 16,386, and the 4,096 targets of
+// the link-enhancer session took 28 s. Keys at or below this bound are content
+// hashed, which is what keeps a memo lookup constant per target.
+const MAX_MEMO_KEY_LENGTH = 16_383;
 const MAX_PARENT_SEGMENTS = Math.floor(MAX_AUTHORED_TARGET_LENGTH / 3) + 1;
 const MAX_LOOKUP_FILES = 500_000;
 const MAX_LOOKUP_CANDIDATES = 4096;
@@ -362,11 +371,21 @@ export function createWikiResolutionContext(snapshot) {
    * @param {string} authoredTarget
    */
   function beginMembership(target, sourceContext, authoredTarget) {
-    const directKey = target.length <= MAX_NORMALIZED_TARGET_LENGTH;
+    // One exact path per (source context, authored target), so the shorter of
+    // the two names the same memo entry. Prefer the target, which is shared
+    // across sources; fall back to the authored target under its own source
+    // scope when the exact path is too long to hash by content.
+    const directKey = target.length <= MAX_MEMO_KEY_LENGTH;
     const key = directKey ? target : authoredTarget;
     let terminalCache = membership;
     let applicationCache = membershipApplications;
-    if (!directKey) {
+    if (key.length > MAX_MEMO_KEY_LENGTH) {
+      // Both names exceed the bound. Resolving without a memo repeats a bounded
+      // lookup; memoizing under a key nothing can hash by content would charge
+      // every later target a comparison against this one.
+      terminalCache = null;
+      applicationCache = null;
+    } else if (!directKey) {
       terminalCache = sourceMembership?.get(sourceContext) || null;
       if (!terminalCache && sourceMembership) {
         terminalCache = new Map();
