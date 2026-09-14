@@ -590,6 +590,58 @@ navigator.dispose();
 check("dispose removes tree commands", shortcuts.present("tree.next") === null);
 shortcuts.dispose();
 
+// A reader can click a row before the keyboard layer attaches. That focus
+// happened before the focusin listener existed, so attaching must adopt it:
+// the focused row stays focused, becomes the roving anchor, and the tree
+// scope is active so movement keys work on the first press.
+for (const [label, focusedKey] of [
+  ["selected row", "selected"],
+  ["other row", "other"],
+]) {
+  const earlyDocument = new FakeDocument();
+  const earlyContainer = earlyDocument.createElement("nav");
+  const earlyRoot = earlyDocument.createElement("div");
+  earlyRoot.setAttribute("role", "tree");
+  earlyContainer.append(earlyRoot);
+  earlyDocument.body.append(earlyContainer);
+  const earlyFirst = treeItem(earlyDocument, "file", "file:a.md", "a.md");
+  const earlyOther = treeItem(earlyDocument, "file", "file:b.md", "b.md");
+  const earlySelected = treeItem(earlyDocument, "file", "file:c.md", "c.md");
+  const earlyLast = treeItem(earlyDocument, "file", "file:d.md", "d.md");
+  earlySelected.classList.add("selected");
+  earlyRoot.append(earlyFirst, earlyOther, earlySelected, earlyLast);
+  const clicked = focusedKey === "selected" ? earlySelected : earlyOther;
+  clicked.focus();
+
+  const earlyShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: earlyDocument });
+  const earlyNavigations = [];
+  const earlyNavigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
+    activate: (row) => row,
+    container: earlyContainer,
+    document: earlyDocument,
+    navigate(row) {
+      earlyNavigations.push(row.dataset.treeId);
+    },
+    setFolderExpanded() {},
+    shortcuts: earlyShortcuts,
+  });
+  check(
+    `early focus on the ${label} is kept when the keyboard layer attaches`,
+    earlyDocument.activeElement === clicked && clicked.tabIndex === 0,
+    earlyDocument.activeElement?.dataset?.treeId,
+  );
+  const earlyEvent = keyboardEvent("ArrowDown", clicked);
+  earlyDocument.dispatch(earlyEvent);
+  const expectedNext = focusedKey === "selected" ? earlyLast : earlySelected;
+  check(
+    `Down works on the first press after an early click on the ${label}`,
+    earlyEvent.defaultPrevented && earlyDocument.activeElement === expectedNext,
+    `${earlyEvent.defaultPrevented}/${earlyDocument.activeElement?.dataset?.treeId}`,
+  );
+  earlyNavigator.dispose();
+  earlyShortcuts.dispose();
+}
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exitCode = 1;
