@@ -29,7 +29,15 @@ GITHUB_LOCALIZER_JS = (
 TRANSCLUSION_JS = Path(__file__).resolve().parent / "dom" / "markdown-transclusion-behavior.js"
 MARKDOWN_WORKER_JS = Path(__file__).resolve().parent / "dom" / "markdown-worker-behavior.js"
 DOM_TRAVERSAL_JS = Path(__file__).resolve().parent / "dom" / "markdown-dom-traversal-behavior.js"
+MEMO_WORK_JS = Path(__file__).resolve().parent / "dom" / "wiki-resolver-memo-work-session.js"
 FIXTURE_ROOT = Path(__file__).resolve().parent / "fixtures"
+
+# Breaks a hung session; it is not a speed budget. These sessions need a
+# fraction of a second of CPU, but on a loaded host they wait for it: the link
+# enhancer took 11-23 s of wall time at load average ~170 against a 30 s bound,
+# and failed the suite there. A deadlock never finishes, so a generous bound
+# loses nothing.
+_SESSION_DEADLOCK_TIMEOUT_S = 300
 
 
 def test_markdown_mount_lifecycle() -> None:
@@ -39,7 +47,7 @@ def test_markdown_mount_lifecycle() -> None:
         ["node", str(TEST_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -55,7 +63,7 @@ def test_standard_markdown_link_resolver() -> None:
         ["node", str(RESOLVER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -71,13 +79,29 @@ def test_rendered_markdown_link_enhancer() -> None:
         ["node", str(ENHANCER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
         f"Markdown link enhancer failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
     assert "markdown link enhancer OK" in result.stdout
+
+
+def test_wiki_resolver_memo_work_stays_constant_per_target() -> None:
+    if shutil.which("node") is None:
+        pytest.skip("node not available")
+    result = subprocess.run(
+        ["node", str(MEMO_WORK_JS)],
+        capture_output=True,
+        text=True,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"wiki resolver memo work failed:\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "wiki resolver memo work OK" in result.stdout
 
 
 def test_source_aware_obsidian_wiki_parser() -> None:
@@ -87,7 +111,7 @@ def test_source_aware_obsidian_wiki_parser() -> None:
         ["node", str(WIKI_PARSER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -103,7 +127,7 @@ def test_deterministic_obsidian_wiki_resolver() -> None:
         ["node", str(WIKI_RESOLVER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -119,7 +143,7 @@ def test_obsidian_wiki_dom_enhancer() -> None:
         ["node", str(WIKI_ENHANCER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -135,7 +159,7 @@ def test_root_scoped_markdown_reconciliation_coordinator() -> None:
         ["node", str(RECONCILIATION_COORDINATOR_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -152,7 +176,7 @@ def test_configured_markdown_project_adapters() -> None:
         ["node", str(PROJECT_ADAPTER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -168,7 +192,7 @@ def test_verified_github_url_localization() -> None:
         ["node", str(GITHUB_LOCALIZER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -184,7 +208,7 @@ def test_bounded_markdown_transclusion() -> None:
         ["node", str(TRANSCLUSION_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -200,7 +224,7 @@ def test_generic_lazy_markdown_worker() -> None:
         ["node", str(MARKDOWN_WORKER_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
@@ -216,7 +240,7 @@ def test_bounded_markdown_dom_traversal() -> None:
         ["node", str(DOM_TRAVERSAL_JS), str(REPO_ROOT)],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=_SESSION_DEADLOCK_TIMEOUT_S,
         check=False,
     )
     assert result.returncode == 0, (
