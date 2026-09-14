@@ -3,15 +3,19 @@ type: is
 id: is-01m0k603yscgjqhrw7zhar5rae
 title: Nav row name, age, and size do not share a baseline
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 labels: []
 dependencies:
   - type: blocks
     target: is-01m2fafd1v8d5pakt6r7zxw5n8
 created_at: 2026-08-21T22:10:24.856Z
-updated_at: 2026-09-14T06:43:14.126Z
+updated_at: 2026-09-14T07:11:09.628Z
+closed_at: 2026-09-14T07:11:09.627Z
+close_reason: "Fixed in PR #118 (https://github.com/jlevy/metabrowser/pull/118): tree and Git history row text opts in to align-self: baseline while boxes stay centered; measured 0 px baseline delta at DPR 1/2, page and text zoom 90/110%, pinned by test_row_text_shares_one_baseline."
+resolution: null
+duplicate_of: null
 ---
 The name, age, and size on a navigation row do not share a baseline. They are centered against each other instead, which is not the same thing once the font sizes differ.
 

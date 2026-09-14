@@ -3,9 +3,9 @@ type: is
 id: is-01m1apk016z6h7ms919ekta9z0
 title: "Address review: PR #90 — CLI parity mechanism"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 20
+version: 21
 labels: []
 dependencies: []
 child_order_hints:
@@ -29,6 +29,10 @@ child_order_hints:
   - is-01m1apk83pwwfrc6pcgyda271k
   - is-01m1apk8f1vcbzayrj4kthw7bt
 created_at: 2026-08-31T01:22:52.581Z
-updated_at: 2026-08-31T01:23:01.216Z
+updated_at: 2026-09-14T07:02:37.703Z
+closed_at: 2026-09-14T07:02:37.703Z
+close_reason: "All child findings are closed; the last four were resolved in PR #116."
+resolution: null
+duplicate_of: null
 ---
 Nineteen findings from the senior review at https://github.com/jlevy/metabrowser/pull/90#issuecomment-5472543714. Every finding was reproduced by the reviewer before reporting.

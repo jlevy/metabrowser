@@ -3,9 +3,9 @@ type: is
 id: is-01m1cd5vdf1q8c3mj15at60znc
 title: "Address adversarial plan review: PR #90"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 17
+version: 18
 labels: []
 dependencies: []
 child_order_hints:
@@ -26,6 +26,10 @@ child_order_hints:
   - is-01m1cd6131dvck9a4mw5w1sr8x
   - is-01m1cd61ex85k8dbdxvx0w7mvy
 created_at: 2026-08-31T17:16:53.550Z
-updated_at: 2026-08-31T17:16:59.740Z
+updated_at: 2026-09-14T07:02:38.402Z
+closed_at: 2026-09-14T07:02:38.401Z
+close_reason: "All child findings are closed; the last four were resolved in PR #116."
+resolution: null
+duplicate_of: null
 ---
 Sixteen findings from the adversarial planning review at https://github.com/jlevy/metabrowser/pull/90#issuecomment-5481846785. The reviewer independently re-ran ten claims recorded as verified and found three false.
