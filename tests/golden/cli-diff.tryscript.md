@@ -30,7 +30,8 @@ Two commits whose delta covers modify, rename-with-edit, and add.
 The second commit re-pins the dates so both ids stay deterministic.
 
 ```console
-$ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
+$ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+>   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES \
 >   && git init -q -b main repo \
 >   && cd repo \
 >   && printf 'def f():\n    return 1\n' > a.py \
@@ -157,7 +158,8 @@ The side branch adds one file, so the merge-base comparison shows exactly that f
 none of main’s own changes.
 
 ```console
-$ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE \
+$ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY \
+>   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES \
 >   && git -C repo checkout -q -b side 'HEAD^' \
 >   && export GIT_AUTHOR_DATE='2026-01-03T00:00:00 +0000' \
 >   && export GIT_COMMITTER_DATE='2026-01-03T00:00:00 +0000' \

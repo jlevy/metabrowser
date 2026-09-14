@@ -118,15 +118,12 @@ The session schema the golden guidelines ask for, stated once.
 @dataclass(frozen=True, slots=True)
 class NormalizeContext:
     root: Path
-    home: Path | None          # METABROWSER_HOME, when set
-    normalize_mtimes: bool      # only where a fixture cannot pin them
 
 CURSOR_PATHS: tuple[tuple[str, ...], ...]   # addressed by position, not key name
 ELAPSED_PATHS: tuple[tuple[str, ...], ...]
 
 def normalize_payload(value: Any, ctx: NormalizeContext) -> Any: ...
 def normalize_text(text: str, ctx: NormalizeContext) -> str: ...
-def describe_schema() -> str:   # renders the table for docs and for the round-trip test
 ```
 
 The rules, and why each is needed:
@@ -134,10 +131,16 @@ The rules, and why each is needed:
 | Field or shape | Becomes | Why |
 | --- | --- | --- |
 | Absolute path under `root` | `<ROOT>/...` | sandbox path varies |
-| Absolute path under `home` | `<HOME>/...` | cache home varies |
-| `mtime`, `mtime_hash` | `<MTIME>`, **opt-in** | fixtures pin these with `touch -t`; a clone into the cache cannot |
-| Pack file names, `.git` internals | omitted | never stable; see below |
+| Envelope `page_cursor`, `cursor`, `previous_cursor` | `<CURSOR>` | a random session token; no fixture can pin it |
+| Envelope `inventory.elapsed_ms`, `inventory.duration_ms` | `<ELAPSED>` | wall clock; moves with load and hardware |
 | Git revisions | **kept** | fixture repos are built deterministically |
+| Absolute path under `home` | `<HOME>/...`, **Cache 1A** | cache home varies |
+| `mtime`, `mtime_hash` | `<MTIME>`, **opt-in, Cache 1B-a** | fixtures pin these with `touch -t`; a clone into the cache cannot |
+
+The last two rows are added to `normalize.py` with the cache goldens that first need
+them (`mb-dg00`): `<HOME>` with `cli-cache-layout` in Cache 1A, and the opt-in `<MTIME>`
+with `cli-cache-acquire` in Cache 1B-a. No `--api` or `--show` transcript has an
+application home or an unpinnable mtime.
 
 The table was measured, and then it grew, which is worth recording because the first
 version of this paragraph did not.
@@ -148,7 +151,7 @@ random session token, and `/api/diagnostics/pending-tallies` carries
 Both were found later, by routes the first sweep did not request, and both are
 normalized now. The lesson is about the method rather than the fields — “no envelope
 carries X” is a claim about every envelope, and a sweep of six proves nothing of the
-sort. Mtime normalization stays opt-in for a different and better reason: the existing
+sort. Mtime normalization will be opt-in for a different and better reason: the existing
 goldens pin mtimes with `touch -t` and assert the real values, so normalizing by default
 would delete coverage a fixture already controls.
 

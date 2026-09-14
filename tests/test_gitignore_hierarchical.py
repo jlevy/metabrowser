@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 from metabrowser import ignore_filter, tree
+from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.ignore_filter import HierarchicalGitIgnore
 from metabrowser.inventory_engine.contract import DirectoryProjection, DirectoryQuery, ReadRequest
 from metabrowser.tree import build_gitignore_check
@@ -114,8 +115,25 @@ def test_a_verdict_reads_only_its_ancestor_chain(tmp_path: Path) -> None:
     assert set(check._specs) == {"", "runs", "runs/a", "runs/a/b"}
 
 
+def _fixture_git_environment() -> dict[str, str]:
+    """The environment for git run against a fixture repository.
+
+    The repository-pinning variables are scrubbed because the pre-push gate runs
+    this file inside a githook, where a linked worktree exports ``GIT_DIR``. It
+    outranks ``-C``, and inherited here, ``git init`` wrote ``core.bare = true``
+    into the developer's shared repository configuration instead of creating the
+    fixture. ``tests/conftest.py`` scrubs the session too; this does not rely on
+    it. The developer's global and system configuration are excluded so their
+    ignore rules cannot change git's verdicts.
+    """
+
+    env = {key: value for key, value in os.environ.items() if key not in _REPO_PINNING_GIT_VARS}
+    env.update({"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"})
+    return env
+
+
 def _git_verdicts(root: Path, paths: list[tuple[str, bool]]) -> dict[tuple[str, bool], bool]:
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    env = _fixture_git_environment()
     queries = [f"{path}/" if is_dir else path for path, is_dir in paths]
     result = subprocess.run(
         ["git", "-C", str(root), "check-ignore", "--no-index", "--stdin", "-v", "-n"],
@@ -135,12 +153,21 @@ def _git_verdicts(root: Path, paths: list[tuple[str, bool]]) -> dict[tuple[str, 
     return verdicts
 
 
+def _init_fixture_repository(root: Path) -> None:
+    subprocess.run(
+        ["git", "init", "-q", str(root)],
+        check=True,
+        capture_output=True,
+        env=_fixture_git_environment(),
+    )
+
+
 @pytest.mark.skipif(shutil.which("git") is None, reason="git not available")
 def test_verdicts_match_git_check_ignore(tmp_path: Path) -> None:
     rng = random.Random(0x6A7)
     root = tmp_path / "repo"
     root.mkdir()
-    subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+    _init_fixture_repository(root)
     names = ["build", "logs", "src", "a", "b", "node_modules", "keep", "data"]
     patterns = [
         "*.log",
