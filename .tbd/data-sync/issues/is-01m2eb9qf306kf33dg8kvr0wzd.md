@@ -5,12 +5,14 @@ title: "Markdown: deferred review findings (transclusion deadline, task-box pair
 kind: bug
 status: open
 priority: 2
-version: 2
+version: 3
 labels:
   - markdown
 dependencies: []
+child_order_hints:
+  - is-01m2f0fb55v9h6480r6cfx514k
 created_at: 2026-09-13T21:38:14.114Z
-updated_at: 2026-09-14T03:19:58.272Z
+updated_at: 2026-09-14T03:48:18.212Z
 ---
 From the release senior review (Markdown lane). Verified issues deferred from the v0.9.2 release because they are present on main or need measurement rather than a local fix:
 

@@ -5,13 +5,15 @@ title: Report an unreachable server as a connection problem, not a file error
 kind: bug
 status: closed
 priority: 2
-version: 2
+version: 3
 labels:
   - ux
   - resilience
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2f0dryv9qmyp9y6g1sc4gwq
 created_at: 2026-09-14T02:05:21.514Z
-updated_at: 2026-09-14T03:19:57.200Z
+updated_at: 2026-09-14T03:47:26.810Z
 closed_at: 2026-09-14T03:19:57.199Z
 close_reason: "Fixed in PR #113: unreachable server reports a connection message and retries on event-stream reconnect."
 resolution: null
