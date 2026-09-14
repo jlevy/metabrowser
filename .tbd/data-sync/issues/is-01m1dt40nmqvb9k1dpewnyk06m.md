@@ -3,13 +3,17 @@ type: is
 id: is-01m1dt40nmqvb9k1dpewnyk06m
 title: "Residual: inventory walk still 28% slower than main after the perf fixes"
 kind: bug
-status: open
+status: in_progress
 priority: 1
-version: 4
+version: 7
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2fafd1v8d5pakt6r7zxw5n8
+child_order_hints:
+  - is-01m2gwtgp8rs2e4x0e77f64y8f
 created_at: 2026-09-01T06:22:19.315Z
-updated_at: 2026-09-14T16:07:38.806Z
+updated_at: 2026-09-14T21:22:58.885Z
 ---
 After the two fixes in mb-0y68, the 60,000-file A/B still shows a gap:
 
