@@ -37,7 +37,7 @@
    * @typedef {object} OpenOutcome
    * @property {HTMLElement | null} [focusTarget]
    * @property {string} [message]
-   * @property {"opened" | "not-found" | "error" | "cancelled"} status
+   * @property {"opened" | "not-found" | "error" | "unreachable" | "cancelled"} status
    */
 
   /** @param {unknown} value @returns {value is HTMLElement} */
@@ -86,6 +86,7 @@
   /**
    * @param {{
    *   controller: PaletteController,
+   *   describeOpenFailure: (error: unknown) => OpenOutcome,
    *   document?: Document,
    *   getCatalogSnapshot: () => {complete: boolean, observedCount: number},
    *   subscribeCatalog?: (listener: () => void) => () => void,
@@ -102,11 +103,12 @@
     if (
       !options?.controller ||
       typeof options.openFile !== "function" ||
+      typeof options.describeOpenFailure !== "function" ||
       !options.shortcuts ||
       !options.overlay
     ) {
       throw new TypeError(
-        "Search palette requires a controller, open-file action, shortcuts, and overlays",
+        "Search palette requires a controller, open-file action, failure description, shortcuts, and overlays",
       );
     }
     const hostDocument = options.document || window.document;
@@ -546,10 +548,7 @@
         outcome = await options.openFile(result.path);
       } catch (error) {
         console.warn("Quick File open failed", error);
-        outcome = {
-          message: "Could not open this file. Try again.",
-          status: "error",
-        };
+        outcome = options.describeOpenFailure(error);
       }
       if (disposed || actionId !== actionSerial || overlay.hidden) {
         return;
@@ -583,8 +582,11 @@
         renderStatus();
         return;
       }
-      if (outcome.status === "error") {
-        actionStatus = outcome.message || "Could not open this file. Try again.";
+      if (outcome.status === "error" || outcome.status === "unreachable") {
+        // Both keep the palette open with the query intact so the reader can
+        // retry. An unreachable server says so instead of blaming the file.
+        const failure = outcome.message ? outcome : options.describeOpenFailure(outcome);
+        actionStatus = failure.message ?? "";
         renderStatus();
         return;
       }

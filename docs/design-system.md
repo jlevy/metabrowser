@@ -1875,7 +1875,12 @@ active container, duplicate interaction surface, or intermediate blank frame.
 A newer preview claim immediately disposes and removes a stale stage without touching
 the current preview.
 
-An empty initial preview has no useful surface to retain.
+The shell ships the preview pane holding that neutral spinner rather than an empty
+state, because every route that serves the shell selects something; the first selection
+retains it until its view is ready.
+The prompt to select a file appears only when nothing is selected and nothing is
+loading, and switching navigation tabs changes neither.
+An empty or error preview has no useful surface to retain.
 It keeps the longer shell wait (`LOADING_INDICATOR_DELAY_MS`) before installing a
 neutral spinner, which still uses `.mb-delayed-loading`. Ready content always wins
 immediately: do not add a minimum spinner duration, progress bar, or transition that

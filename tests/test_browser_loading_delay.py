@@ -251,7 +251,7 @@ def test_shell_keeps_retained_preview_steady_and_animates_only_arrival() -> None
     assert "pointer-events: none;" in stage_css
     assert "transition:" not in stage_css
 
-    claim = app[app.index("function claimPreview(owner)") :][:700]
+    claim = app[app.index("function claimPreview(owner, selection)") :][:700]
     assert "cancelPendingFilePreviewStage();" in claim
     cancel = app[app.index("function cancelPendingFilePreviewStage()") :][:500]
     assert "pendingFilePreviewStageCleanup = null" in cancel

@@ -316,7 +316,12 @@ const sandbox = { clearTimeout, document, setTimeout };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-for (const filename of ["keyboard-shortcuts.js", "overlay-layer.js", "search-palette.js"]) {
+for (const filename of [
+  "navigation.js",
+  "keyboard-shortcuts.js",
+  "overlay-layer.js",
+  "search-palette.js",
+]) {
   vm.runInContext(
     fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", filename), "utf-8"),
     sandbox,
@@ -436,6 +441,9 @@ async function main() {
   document.body.append(destination);
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
   const palette = sandbox.MetabrowserSearchPalette.create({
+    // The production classifier app.js passes, so an unreachable server reads
+    // the same here as in the preview pane.
+    describeOpenFailure: sandbox.MetabrowserNavigationRoute.openFailureOutcome,
     controller,
     document,
     getCatalogSnapshot: () => ({ complete: false, observedCount: catalogObservedCount }),
@@ -462,6 +470,18 @@ async function main() {
       }
       if (pathname === "error.md") {
         return { message: "Preview failed. Try again.", status: "error" };
+      }
+      if (pathname === "offline.md") {
+        const refused = sandbox.MetabrowserNavigationRoute.requestFailure(
+          new TypeError("Failed to fetch"),
+        );
+        return sandbox.MetabrowserNavigationRoute.openFailureOutcome(refused);
+      }
+      if (pathname === "offline-throw.md") {
+        throw sandbox.MetabrowserNavigationRoute.requestFailure(new TypeError("Failed to fetch"));
+      }
+      if (pathname === "broken-throw.md") {
+        throw new TypeError("Cannot read properties of undefined");
       }
       return { focusTarget: destination, status: "opened" };
     },
@@ -699,6 +719,46 @@ async function main() {
   check(
     "retryable error is reported",
     status.textContent.includes("Try again"),
+    status.textContent,
+  );
+
+  // A stopped server is a connection problem, whether the open settles with
+  // that outcome or throws the marked fetch rejection, and never blames the file.
+  for (const [pathname, query] of [
+    ["offline.md", "offline"],
+    ["offline-throw.md", "offline-throw"],
+  ]) {
+    availableResults = [searchResult(pathname, 10)];
+    input.value = query;
+    input.dispatchEvent(fakeEvent("input", { target: input }));
+    await settle();
+    listbox.children[0].dispatchEvent(fakeEvent("click", { target: listbox.children[0] }));
+    await settle();
+    check(`${pathname}: unreachable server keeps the palette open`, overlay.hidden === false);
+    check(`${pathname}: unreachable server preserves the query`, input.value === query);
+    check(
+      `${pathname}: unreachable server is reported as a connection problem`,
+      status.textContent.includes("Metabrowser isn’t reachable.") &&
+        status.textContent.includes("metab <folder>"),
+      status.textContent,
+    );
+    check(
+      `${pathname}: unreachable server does not blame the file`,
+      !status.textContent.includes("Could not open") &&
+        !status.textContent.includes("Failed to fetch"),
+      status.textContent,
+    );
+  }
+
+  availableResults = [searchResult("broken-throw.md", 10)];
+  input.value = "broken-throw";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  listbox.children[0].dispatchEvent(fakeEvent("click", { target: listbox.children[0] }));
+  await settle();
+  check(
+    "an unexpected throw keeps the file wording",
+    status.textContent.includes("Could not open this file. Try again."),
     status.textContent,
   );
 
