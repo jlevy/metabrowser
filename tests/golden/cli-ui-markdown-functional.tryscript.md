@@ -10,8 +10,8 @@ This browserless session executes the production wiki parser and resolver, root-
 catalog reconciliation coordinator, published-route adapters, preprocessing Worker
 client, and the real rendered-link to wiki-enhancer to nested-transclusion chain.
 It pins exact, incomplete, truncated-catalog, ambiguous, overflow, revision, slice,
-disposal, percent-identity, shared root-budget, and task-list bracket-pairing behavior
-without requiring a browser.
+disposal, percent-identity, shared root-budget, task-list bracket-pairing, and page-wide
+Worker sharing and recovery behavior without requiring a browser.
 
 ```console
 $ node tests/dom/markdown-functional-session.js
@@ -123,6 +123,14 @@ $ node tests/dom/markdown-functional-session.js
       ],
       "targetCount": 2
     }
+  },
+  "workerSharing": {
+    "aliveAfterOneRelease": true,
+    "concurrentWorkers": 1,
+    "fatalError": "session worker failed",
+    "recovered": "after crash",
+    "terminatedAfterLastRelease": true,
+    "workersAfterRecovery": 2
   }
 }
 ```

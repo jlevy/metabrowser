@@ -1,4 +1,4 @@
-import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
+import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import { initTocWithIntersectionFallback } from "./toc-intersection-fallback.js";
 
 /** Bounds recursive embedding depth. */
@@ -299,7 +299,7 @@ function createCycleTaskYielder() {
  * @param {Element} sourceElement
  * @param {Readonly<{path: string, fragment?: string}>} resolved
  * @param {MetabrowserPublicSdk} mb
- * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal: AbortSignal}) => {dispose?: () => void}, workerClient?: ReturnType<typeof createMarkdownWorkerClient>}=} options
+ * @param {{budget?: ReturnType<typeof createTransclusionBudget>, chain?: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal?: AbortSignal, enhanceNested?: (container: HTMLElement, sourcePath: string, options: {budget: ReturnType<typeof createTransclusionBudget>, chain: ReadonlyArray<ReturnType<typeof transclusionKey>>, signal: AbortSignal}) => {dispose?: () => void}, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
  */
 export function mountWikiTransclusion(container, sourceElement, resolved, mb, options = {}) {
   const document = container.ownerDocument || globalThis.document;
@@ -322,7 +322,7 @@ export function mountWikiTransclusion(container, sourceElement, resolved, mb, op
 
   const budget = options.budget || createTransclusionBudget();
   const ownsWorkerClient = !options.workerClient;
-  const workerClient = options.workerClient || createMarkdownWorkerClient();
+  const workerClient = options.workerClient || acquireMarkdownWorkerClient();
   const chain = options.chain || Object.freeze([]);
   const controller = new AbortController();
   let disposed = false;

@@ -102,7 +102,7 @@ async function loadModule() {
   const tocFallbackUrl = `data:text/javascript;base64,${Buffer.from(tocFallbackStub).toString("base64")}`;
   const workerStub =
     `import {prepareTransclusionMarkdownSource} from ${JSON.stringify(parserUrl)};` +
-    "export function createMarkdownWorkerClient(){return {dispose(){}," +
+    "export function acquireMarkdownWorkerClient(){return {dispose(){}," +
     "run(_op,payload){return Promise.resolve(prepareTransclusionMarkdownSource(payload.source,payload.fragment))}}}";
   const workerUrl = `data:text/javascript;base64,${Buffer.from(workerStub).toString("base64")}`;
   const source = fs

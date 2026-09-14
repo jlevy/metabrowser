@@ -245,14 +245,16 @@ CLI and validation:
   a diagnostic instead of leaving the rest unexplained.
 
 - Obsidian wiki preprocessing and transclusion selection now run in one lazy Markdown
-  Worker shared by a rendered document and every nested transclusion.
-  The worker client owns FIFO dispatch, cancellation, fatal protocol errors, and
-  disposal; ordinary non-Markdown views never fetch the worker assets.
-  Preprocessing uses source-wide monotone scans with deterministic work counters, and a
-  transformed source that would exceed the KPress request limit is rejected atomically
-  with an explicit diagnostic instead of returning a partial rewrite.
-  If the worker cannot run, the document still renders from its authored source and
-  reports that wiki processing was skipped.
+  Worker shared by every rendered document on the page, its nested transclusions, and
+  folder README panels, instead of a Worker constructed and terminated per document.
+  The worker client owns FIFO dispatch, per-request cancellation, fatal protocol errors,
+  and disposal; the Worker ends with the last mounted document, a fatally failed Worker
+  is replaced on the next request, and ordinary non-Markdown views never fetch the
+  worker assets. Preprocessing uses source-wide monotone scans with deterministic work
+  counters, and a transformed source that would exceed the KPress request limit is
+  rejected atomically with an explicit diagnostic instead of returning a partial
+  rewrite. If the worker cannot run, the document still renders from its authored source
+  and reports that wiki processing was skipped.
 
 - Inline and block code in KPress-backed documents now share one quiet solid border and
   square-by-default radius, while inline code uses compact padding.

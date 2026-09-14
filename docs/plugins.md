@@ -554,10 +554,13 @@ The Markdown built-in exposes
 It uses the ordinary KPress Markdown presentation and returns an instance-specific
 handle that aborts its request and disposes its own table of contents, enhanced-link
 listeners, pending fragment work, and any nested Obsidian transclusions.
-One lazily constructed preprocessing Worker belongs to that handle and is shared by the
-primary document and every nested transclusion; disposal terminates it with the rest of
-the root mount. Note, heading, and named-block transclusions share depth, document,
-source-byte, cycle, abort, and disposal limits across the mounted document.
+Every mounted document on the page, including its nested transclusions, shares one
+lazily constructed preprocessing Worker.
+Each handle holds a reference to it: disposal cancels only that handle’s pending
+preprocessing, and the Worker terminates when the last mounted document is disposed.
+A Worker that fails fatally is replaced on the next request.
+Note, heading, and named-block transclusions share depth, document, source-byte, cycle,
+abort, and disposal limits across the mounted document.
 Each embed’s elapsed-time limit starts when that embed begins loading, so an embed whose
 catalog resolution arrives late still receives its full allowance.
 SDK 0.6 does not expose Markdown graph analysis.

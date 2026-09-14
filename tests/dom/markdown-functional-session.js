@@ -485,6 +485,55 @@ function parseFakeHtml(html, document) {
     throw new Error("real nested Markdown chain did not preserve its shared root budgets");
   }
 
+  // Every Markdown mount on a page shares one Worker. References release it only
+  // when the last one is disposed, and a fatal failure is replaced on the next
+  // request rather than disabling preprocessing for the rest of the page.
+  const workerClient = await import(moduleUrl("markdown-worker-client.js"));
+  const workers = [];
+  globalThis.Worker = class SessionWorker {
+    constructor() {
+      this.messages = [];
+      this.terminated = false;
+      workers.push(this);
+    }
+
+    postMessage(message) {
+      this.messages.push(message);
+      queueMicrotask(() => {
+        if (this.terminated) {
+          return;
+        }
+        if (message.payload.source === "crash") {
+          this.onerror?.({ message: "session worker failed" });
+        } else {
+          this.onmessage?.({ data: { id: message.id, result: message.payload.source } });
+        }
+      });
+    }
+
+    terminate() {
+      this.terminated = true;
+    }
+  };
+  const documentReference = workerClient.acquireMarkdownWorkerClient();
+  const panelReference = workerClient.acquireMarkdownWorkerClient();
+  await Promise.all([
+    documentReference.run("prepare-primary", { source: "document" }),
+    panelReference.run("prepare-primary", { source: "readme panel" }),
+  ]);
+  const concurrentWorkers = workers.length;
+  documentReference.dispose();
+  const aliveAfterOneRelease = !workers[0].terminated;
+  const fatalError = await panelReference.run("prepare-primary", { source: "crash" }).then(
+    () => null,
+    (error) => error.message,
+  );
+  const recovered = await panelReference.run("prepare-primary", { source: "after crash" });
+  const workersAfterRecovery = workers.length;
+  panelReference.dispose();
+  const terminatedAfterLastRelease = workers.every((worker) => worker.terminated);
+  delete globalThis.Worker;
+
   console.log(
     JSON.stringify(
       {
@@ -535,6 +584,14 @@ function parseFakeHtml(html, document) {
             source: taskListPreparation.source.split("\n"),
             targetCount: taskListPreparation.targetCount,
           },
+        },
+        workerSharing: {
+          aliveAfterOneRelease,
+          concurrentWorkers,
+          fatalError,
+          recovered,
+          terminatedAfterLastRelease,
+          workersAfterRecovery,
         },
       },
       null,

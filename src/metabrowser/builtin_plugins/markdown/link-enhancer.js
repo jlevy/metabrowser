@@ -1,7 +1,7 @@
 import { findElementById, matchingDescendants } from "./dom-traversal.js";
 import { localizeGithubUrl } from "./github-localizer.js";
 import { createTrustedStandardLinkResolutionContext } from "./links.js";
-import { createMarkdownWorkerClient } from "./markdown-worker-client.js";
+import { acquireMarkdownWorkerClient } from "./markdown-worker-client.js";
 import {
   createMarkdownEnhancementBudget,
   createMarkdownReconciliationCoordinator,
@@ -27,7 +27,7 @@ const RESOURCE_ATTRIBUTES = Object.freeze([
  * @param {HTMLElement} container
  * @param {string} sourcePath
  * @param {MetabrowserPublicSdk} mb
- * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, workerClient?: ReturnType<typeof createMarkdownWorkerClient>}=} options
+ * @param {{eventTarget?: Pick<Window, "addEventListener" | "removeEventListener">, schedule?: (callback: FrameRequestCallback) => number, cancel?: (handle: number) => void, signal?: AbortSignal, enhancementBudget?: ReturnType<typeof createMarkdownEnhancementBudget>, reconciliation?: ReturnType<typeof createMarkdownReconciliationCoordinator>, transclusionBudget?: ReturnType<typeof import("./transclusion.js").createTransclusionBudget>, transclusionChain?: ReadonlyArray<ReturnType<typeof import("./transclusion.js").transclusionKey>>, workerClient?: import("./markdown-worker-client.js").MarkdownWorkerRunner}=} options
  */
 export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const eventTarget = options.eventTarget ?? window;
@@ -35,7 +35,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
   const cancel = options.cancel ?? cancelAnimationFrame;
   const enhancementBudget = options.enhancementBudget || createMarkdownEnhancementBudget();
   const ownsWorkerClient = !options.workerClient;
-  const workerClient = options.workerClient || createMarkdownWorkerClient();
+  const workerClient = options.workerClient || acquireMarkdownWorkerClient();
   const standardLinks = createTrustedStandardLinkResolutionContext(sourcePath);
   const preserveFragmentOnlyHrefs = isCurrentDocument(sourcePath, mb.navigation.current());
   /** @type {WeakMap<Element, NavigationTarget>} */

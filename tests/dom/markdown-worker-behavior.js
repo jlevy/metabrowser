@@ -194,6 +194,85 @@ function rejected(promise) {
     );
   }
 
+  // The page-scoped owner shares one lazily constructed client across every
+  // reference, cancels only a released reference's requests, terminates the
+  // Worker with the last reference, and replaces a fatally failed client.
+  const { acquireMarkdownWorkerClient } = await import(moduleUrl);
+  const workersBeforeSharing = workers.length;
+  const firstReference = acquireMarkdownWorkerClient();
+  const secondReference = acquireMarkdownWorkerClient();
+  const preAbortedShared = new AbortController();
+  preAbortedShared.abort();
+  const preAbortedSharedError = await rejected(
+    firstReference.run("prepare-primary", { source: "" }, { signal: preAbortedShared.signal }),
+  );
+  check(
+    "shared references construct no Worker before a live request",
+    preAbortedSharedError?.name === "AbortError" && workers.length === workersBeforeSharing,
+  );
+  const firstShared = firstReference.run("prepare-primary", { source: "first-shared" });
+  const secondShared = secondReference.run("prepare-primary", { source: "second-shared" });
+  const sharedWorker = workers.at(-1);
+  check(
+    "references share one lazily constructed Worker",
+    workers.length === workersBeforeSharing + 1 && sharedWorker.messages.length === 1,
+  );
+  sharedWorker.reply("first-shared-result");
+  check(
+    "shared FIFO continues across references",
+    (await firstShared) === "first-shared-result" && sharedWorker.messages.length === 2,
+  );
+  const releasedQueued = rejected(
+    firstReference.run("prepare-primary", { source: "released-queued" }),
+  );
+  firstReference.dispose();
+  firstReference.dispose();
+  check(
+    "releasing a reference cancels only its own queued request",
+    (await releasedQueued)?.name === "AbortError" &&
+      !sharedWorker.terminated &&
+      sharedWorker.messages.at(-1).payload.source === "second-shared",
+  );
+  sharedWorker.reply("second-shared-result");
+  check(
+    "the remaining reference keeps the shared Worker",
+    (await secondShared) === "second-shared-result" && !sharedWorker.terminated,
+  );
+  check(
+    "a released reference refuses new work",
+    (await rejected(firstReference.run("prepare-primary", { source: "late" })))?.name ===
+      "AbortError",
+  );
+  const crashing = rejected(secondReference.run("prepare-primary", { source: "crash" }));
+  sharedWorker.onerror({ message: "shared worker failed" });
+  const crashError = await crashing;
+  const recovering = secondReference.run("prepare-primary", { source: "after-crash" });
+  const recoveredWorker = workers.at(-1);
+  check(
+    "a fatal failure rejects its request and the next request gets a new Worker",
+    crashError?.message === "shared worker failed" &&
+      sharedWorker.terminated &&
+      recoveredWorker !== sharedWorker &&
+      recoveredWorker.messages[0]?.payload.source === "after-crash",
+  );
+  recoveredWorker.reply("recovered-shared-result");
+  check("the replacement Worker serves requests", (await recovering) === "recovered-shared-result");
+  const lastReference = acquireMarkdownWorkerClient();
+  secondReference.dispose();
+  check("a remaining reference keeps the replacement Worker", !recoveredWorker.terminated);
+  lastReference.dispose();
+  check("the last reference terminates the shared Worker", recoveredWorker.terminated);
+  const reacquired = acquireMarkdownWorkerClient();
+  const reacquiredRun = reacquired.run("prepare-primary", { source: "reacquired" });
+  const reacquiredWorker = workers.at(-1);
+  check(
+    "a reference acquired after full release starts a new Worker lazily",
+    reacquiredWorker !== recoveredWorker && reacquiredWorker.messages.length === 1,
+  );
+  reacquiredWorker.reply("reacquired-result");
+  check("the new page Worker serves requests", (await reacquiredRun) === "reacquired-result");
+  reacquired.dispose();
+
   class ConstructorFailure {
     constructor() {
       throw new Error("constructor failed");

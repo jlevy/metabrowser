@@ -3,10 +3,88 @@ const WORKER_URL = new URL("./markdown-worker.js", import.meta.url);
 /** @typedef {"prepare-primary" | "prepare-transclusion"} MarkdownWorkerOperation */
 
 /**
+ * The request surface a Markdown mount uses. `dispose` releases the caller's
+ * claim on the Worker; it never cancels another caller's requests.
+ *
+ * @typedef {Readonly<{dispose: () => void, run: ReturnType<typeof createMarkdownWorkerClient>["run"]}>} MarkdownWorkerRunner
+ */
+
+/** @type {ReturnType<typeof createMarkdownWorkerClient> | null} */
+let sharedClient = null;
+let sharedReferences = 0;
+
+/**
+ * Acquire a reference to the page's one shared Markdown Worker client.
+ *
+ * Every rendered document, folder README panel, and nested transclusion on the
+ * page uses the same lazily constructed module Worker instead of constructing and
+ * terminating one per mount. Each reference cancels only its own requests when
+ * disposed, and the Worker terminates when the last reference is released. A
+ * client latched by a fatal Worker failure is replaced on the next request, so one
+ * crash does not disable preprocessing for documents mounted afterward.
+ *
+ * @returns {MarkdownWorkerRunner}
+ */
+export function acquireMarkdownWorkerClient() {
+  sharedReferences += 1;
+  let released = false;
+  /** @type {Set<AbortController>} */
+  const requests = new Set();
+
+  function release() {
+    if (released) {
+      return;
+    }
+    released = true;
+    const reason = disposedError();
+    for (const controller of requests) {
+      controller.abort(reason);
+    }
+    requests.clear();
+    sharedReferences -= 1;
+    if (sharedReferences === 0) {
+      const client = sharedClient;
+      sharedClient = null;
+      client?.dispose();
+    }
+  }
+
+  return Object.freeze({
+    dispose: release,
+    /** @param {MarkdownWorkerOperation} op @param {unknown} payload @param {{signal?: AbortSignal}=} requestOptions */
+    run(op, payload, requestOptions = {}) {
+      if (released) {
+        return Promise.reject(disposedError());
+      }
+      const signal = requestOptions.signal;
+      if (signal?.aborted) {
+        return Promise.reject(abortReason(signal));
+      }
+      if (!sharedClient || sharedClient.failed()) {
+        sharedClient?.dispose();
+        sharedClient = createMarkdownWorkerClient();
+      }
+      // One controller per request joins the caller's signal with this
+      // reference's lifetime, so releasing a reference cancels exactly the
+      // requests it started.
+      const controller = new AbortController();
+      const forwardAbort = () => controller.abort(abortReason(signal));
+      signal?.addEventListener("abort", forwardAbort, { once: true });
+      requests.add(controller);
+      return sharedClient.run(op, payload, { signal: controller.signal }).finally(() => {
+        requests.delete(controller);
+        signal?.removeEventListener("abort", forwardAbort);
+      });
+    },
+  });
+}
+
+/**
  * Create one lazy, FIFO Markdown CPU-work client.
  *
  * Browser requests never fall back to main-thread execution. Node-based contract tests
- * use the same operation modules directly when Worker is unavailable.
+ * use the same operation modules directly when Worker is unavailable. Mounts use
+ * `acquireMarkdownWorkerClient`, which shares one client across the page.
  *
  * @param {{signal?: AbortSignal}=} options
  */
@@ -213,7 +291,11 @@ export function createMarkdownWorkerClient(options = {}) {
 
   return Object.freeze({
     dispose() {
-      disposeWithReason(new DOMException("Markdown worker client disposed", "AbortError"));
+      disposeWithReason(disposedError());
+    },
+    /** Whether a fatal Worker failure has permanently latched this client. */
+    failed() {
+      return fatalError !== null;
     },
     /** @param {MarkdownWorkerOperation} op @param {unknown} payload @param {{signal?: AbortSignal}=} requestOptions */
     run(op, payload, requestOptions = {}) {
@@ -225,9 +307,7 @@ export function createMarkdownWorkerClient(options = {}) {
       }
       if (disposed) {
         return Promise.reject(
-          options.signal?.aborted
-            ? abortReason(options.signal)
-            : new DOMException("Markdown worker client disposed", "AbortError"),
+          options.signal?.aborted ? abortReason(options.signal) : disposedError(),
         );
       }
       if (fatalError) {
@@ -262,6 +342,10 @@ function isBrowserRuntime() {
 /** @param {unknown} value @returns {value is MarkdownWorkerOperation} */
 function isOperation(value) {
   return value === "prepare-primary" || value === "prepare-transclusion";
+}
+
+function disposedError() {
+  return new DOMException("Markdown worker client disposed", "AbortError");
 }
 
 /** @param {AbortSignal | undefined} signal */
