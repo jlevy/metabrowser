@@ -126,10 +126,9 @@ collide are few and named:
   It is what makes runs from different agents and different weeks comparable, and
   [re-running an old round](#re-running-an-old-round-against-todays-corpus) depends on
   it. If a round needs a different tree, serve it with `--tree` and leave the corpus
-  alone. Rebuilding it is not a disaster — every run records a filesystem-state
-  fingerprint and `record` recomputes it, so `compare` refuses to pool changed trees
-  rather than mixing them silently.
-  It does mean those rounds no longer compare against new ones.
+  alone. Rebuilding it is not a disaster — `record` stores a filesystem-state fingerprint
+  on every run, so `compare` refuses to pool changed trees rather than mixing them
+  silently. It does mean those rounds no longer compare against new ones.
 - Take the next free `exp-NNN` and the next free `H` number by reading the plan, and say
   in the pull request which you took.
 
@@ -174,14 +173,31 @@ $UV explorations/performance-loop/run.py report
 ```
 
 `serve` remembers the experiment, label, port, corpus, commit, selected build, requested
-inventory provider, provider contract, and unique measurement nonce.
-The nonce travels in the page URL and probe output, so `record` cannot relabel a stale
-profile from another port or build.
+inventory provider, provider contract, server spawn time, and unique measurement nonce.
+The nonce travels in the page URL and in the output of both `probe.js` and
+`probe-server`, so `record` cannot relabel a stale browser profile or route sample from
+another port or build.
 Each nonce is single-use: after `record` appends one row, take another capture only from
 a fresh `serve` run.
-`record` refuses a nonce already present in the ledger, and `compare` rejects duplicate
-nonces in existing evidence.
-The corpus state is fingerprinted before launch and rechecked at record time.
+`record` refuses a nonce already present in the ledger and checks again under an
+exclusive lock on the ledger as it appends, so two recorders of one run cannot both
+succeed. `compare` rejects duplicate nonces in existing evidence.
+
+`serve` does not traverse the corpus.
+On a corpus larger than the host’s vnode cache (`kern.maxvnodes` on macOS), a traversal
+just before launch decides which entries the measured walk finds cached.
+`serve` records only a marker of the corpus root, and `record` rejects the run if that
+marker changed. `record` then computes the full filesystem-state fingerprint, after the
+measurement, and stores it on the row; `compare` refuses a label or a pair of conditions
+whose fingerprints disagree, which is what catches a change below the root.
+In a back-to-back series that traversal still runs between one measurement and the next
+launch, identically for every condition, so keep the conditions interleaved.
+
+Each browser row records `spawn_to_profile_start_ms`, the offset from server spawn to
+the profile’s time origin, and `compare` prints it beside `walk_elapsed_ms`. A walk that
+is slower with a browser attached can then be read against when the browser arrived in
+it.
+
 Headed capture records directly; the manual fallback is accepted only from the pending
 URL. Provenance is filled in automatically: timestamp, commit, whether the tree was
 dirty, the selected build’s reported version, the provider identity read from the
@@ -212,6 +228,9 @@ installed bytes compare as the same build.
 When `metab --version` contains a commit token, the harness resolves that token to its
 full commit and rejects a different `--build-ref`; a correct short prefix cannot conceal
 an invented remainder.
+An external build records `dirty` as null: nothing the harness can observe says whether
+the tree the wheel was built from was clean, and null means unverified rather than
+clean.
 
 Phase 1 accepts `--provider python`. Phase 2 adds `fdu` to this same axis.
 The server is started with `METABROWSER_INVENTORY_PROVIDER` and local diagnostics
@@ -241,6 +260,10 @@ provider and contract null.
 as observed identity.
 If either server diagnostic reports an identity, recording fails because that conflicts
 with the declaration.
+Such a release logs walk completion as
+`inventory walker complete: status=… elapsed=…ms`, without a provider or contract.
+`record` reads `walk_elapsed_ms` from that line only under this declaration, and refuses
+it from a run that did not make one.
 Do not use the option for a current build: current builds must report their provider and
 contract directly.
 
@@ -281,32 +304,63 @@ cheap habit is a label carrying the experiment number — `exp-021-release`,
 `exp-021-candidate`. The refusal exists because the pooled comparison looks ordinary: an
 earlier round’s smaller tree reads as a first-row regression in the current one.
 
-The control is the previous release, built from its tag rather than assumed:
-
-```shell
-git worktree add --detach /tmp/mb-at-vX.Y.Z vX.Y.Z
-cd /tmp/mb-at-vX.Y.Z && uv --config-file uv.toml sync --all-extras --locked
-/tmp/mb-at-vX.Y.Z/.venv/bin/metab --version    # confirm it is the release, not a dev build
-```
-
-Build the candidate as the artifact users will install.
+The control is the previous release, built from its tag rather than assumed, and both
+conditions are the wheels users would install.
+Do not measure a `uv sync` checkout: it installs Metabrowser editable, and the wheel
+attestation refuses it.
 Keep machine-specific reports under `.bench/`; they contain absolute executable and
 corpus paths and therefore do not belong in the public repository.
 
 ```shell
-RESULTS=.bench/release-comparisons/vX.Y.Z-to-candidate
-uv build --wheel --out-dir "$RESULTS/dist"
-uv venv "$RESULTS/candidate"
-uv pip install --python "$RESULTS/candidate/bin/python" \
-  "$RESULTS"/dist/metabrowser-*.whl
+RESULTS="$PWD/.bench/release-comparisons/vX.Y.Z-to-candidate"
+git worktree add --detach /tmp/mb-at-vX.Y.Z vX.Y.Z
+(cd /tmp/mb-at-vX.Y.Z && uv --config-file uv.toml build --wheel --out-dir "$RESULTS/control")
+uv --config-file uv.toml build --wheel --out-dir "$RESULTS/candidate"
+CONTROL_WHEEL=$(ls "$RESULTS"/control/metabrowser-*.whl)
+CANDIDATE_WHEEL=$(ls "$RESULTS"/candidate/metabrowser-*.whl)
+```
+
+The browser half runs both conditions from **one fresh environment that alternates only
+the Metabrowser wheel**. `compare` refuses external conditions whose dependency
+environments differ, and two separately created environments differ even when they
+install the same packages.
+Install one wheel with its dependencies once; every later switch replaces only
+Metabrowser. exp-032’s admissible series was captured this way.
+
+```shell
+uv venv "$RESULTS/env"
+uv --config-file uv.toml pip install --python "$RESULTS/env/bin/python" "$CANDIDATE_WHEEL"
+use_wheel() {
+  uv --config-file uv.toml pip install --python "$RESULTS/env/bin/python" \
+    --no-deps --reinstall-package metabrowser "$1"
+  uv --config-file uv.toml pip check --python "$RESULTS/env/bin/python"
+  "$RESULTS/env/bin/metab" --version   # confirm the release, not a dev build
+}
+```
+
+If `uv pip check` fails, the two wheels need different dependencies and cannot share one
+environment. The comparison would then measure those dependencies too; say so in the
+experiment rather than forcing the install.
+
+The backend comparison runs both builds interleaved inside one invocation, so each needs
+its own environment:
+
+```shell
+uv venv "$RESULTS/backend-control"
+uv --config-file uv.toml pip install --python "$RESULTS/backend-control/bin/python" "$CONTROL_WHEEL"
+uv venv "$RESULTS/backend-candidate"
+uv --config-file uv.toml pip install --python "$RESULTS/backend-candidate/bin/python" "$CANDIDATE_WHEEL"
 
 uv --config-file uv.toml run --frozen python -m devtools.compare_builds \
   /path/to/unchanged/tree \
-  --baseline /absolute/path/to/released/metab \
-  --candidate "$RESULTS/candidate/bin/metab" \
+  --baseline "$RESULTS/backend-control/bin/metab" \
+  --candidate "$RESULTS/backend-candidate/bin/metab" \
   --runs 5 --corpus-name <opaque-corpus-label> \
   --output "$RESULTS/backend.json"
 ```
+
+`compare_builds` does not yet attest those installs against the wheel bytes, so read the
+`versions` and `resolved` fields before the timings.
 
 Read `valid` before reading the timings.
 It is true only when every run completed, the corpus fingerprint stayed fixed, required
@@ -329,16 +383,18 @@ visible Chrome profile, applies the evidence and budget policy, and appends the
 normalized record to the ledger.
 
 ```shell
+use_wheel "$CONTROL_WHEEL"
 $UV explorations/performance-loop/run.py serve \
-  --metab /absolute/path/to/released/metab --artifact /absolute/path/to/released.whl \
+  --metab "$RESULTS/env/bin/metab" --artifact "$CONTROL_WHEEL" \
   --build-ref <full-release-commit> \
   --tree /path/to/unchanged/tree --files <inventory-count> \
   --exp exp-0NN --label release-vX.Y.Z
 $UV explorations/performance-loop/run.py capture --headed \
   --output "$RESULTS/browser-release-1.json" --record
 
+use_wheel "$CANDIDATE_WHEEL"
 $UV explorations/performance-loop/run.py serve \
-  --metab "$RESULTS/candidate/bin/metab" --artifact "$RESULTS/candidate.whl" \
+  --metab "$RESULTS/env/bin/metab" --artifact "$CANDIDATE_WHEEL" \
   --build-ref <full-candidate-commit> \
   --tree /path/to/unchanged/tree --files <inventory-count> \
   --exp exp-0NN --label candidate-<commit>
@@ -346,7 +402,8 @@ $UV explorations/performance-loop/run.py capture --headed \
   --output "$RESULTS/browser-candidate-1.json" --record
 ```
 
-Wait for the `recorded` confirmation before starting the next server.
+Wait for the `recorded` confirmation before switching the wheel or starting the next
+server: `record` re-attests the installed bytes, so a switch before it refuses the run.
 Repeat each condition at least three times for a large-effect experiment.
 A release comparison or any claim about a change near five percent uses at least five
 interleaved runs per side, keeps the tab visible, and exercises the complete
@@ -716,7 +773,7 @@ this loop rather than argued:
 
 Not everything runs in the page.
 H13/H18 (walker) read `inventory walker complete: elapsed=` from the server log `serve`
-writes; H14/H17 (CLI and imports) use
+writes, recorded and compared as `walk_elapsed_ms`; H14/H17 (CLI and imports) use
 `python -X importtime -c "import metabrowser.server"` and `devtools/bench_serving.py`’s
 start-to-serving phase; H15 is a correctness claim.
 Each hypothesis names its instrument in the plan table, and a hypothesis whose
@@ -835,14 +892,22 @@ To re-measure an old commit on the current corpus — which is how you check whe
 past result still holds after the fixture changed:
 
 ```shell
-git worktree add /tmp/mb-at-<sha> <sha>            # the code as it was
-cd /tmp/mb-at-<sha> && uv sync --all-extras --locked
-# Run today's harness against that checkout's installed console script:
+git worktree add --detach /tmp/mb-at-<sha> <sha>   # the code as it was
+(cd /tmp/mb-at-<sha> && uv --config-file uv.toml build --wheel --out-dir "$RESULTS/old")
+OLD_WHEEL=$(ls "$RESULTS"/old/metabrowser-*.whl)
+# Install it into the environment the other condition uses, then run today's harness:
+use_wheel "$OLD_WHEEL"
 $UV explorations/performance-loop/run.py serve \
-  --metab /tmp/mb-at-<sha>/.venv/bin/metab --artifact /tmp/mb-at-<sha>/dist/metabrowser.whl \
+  --metab "$RESULTS/env/bin/metab" --artifact "$OLD_WHEEL" \
   --build-ref <full-sha> \
   --tree /path/to/corpus --files <count> --exp exp-0NN --label old
 ```
+
+`RESULTS`, the shared environment, and `use_wheel` are the ones set up in
+[Comparing a candidate with the previous release](#comparing-a-candidate-with-the-previous-release).
+Build the old commit as a wheel rather than syncing its checkout: an editable install is
+refused, and a second environment would not share the other condition’s dependency
+identity.
 
 The harness lives in the repository it measures, so checking out an old commit reverts
 the harness too.
