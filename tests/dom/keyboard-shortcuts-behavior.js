@@ -141,6 +141,25 @@ equal("chord labels", chord.visible, [{ keys: ["Ctrl", "F"], separators: ["+"] }
 equal("chord spoken", chord.spoken, "Control plus F");
 equal("chord aria", chord.ariaKeyshortcuts, "Control+F");
 
+// The tree's movement shape: an arrow with a letter alias. The arrow leads, so
+// a surface with room for one key names the arrow.
+const movement = shortcuts.describeBindings([{ key: "ArrowDown" }, { key: "j" }]);
+equal("arrow and letter labels", movement.visible, [
+  { keys: ["↓"], separators: [] },
+  { keys: ["J"], separators: [] },
+]);
+equal("arrow and letter spoken phrase", movement.spoken, "Down arrow or J");
+equal("arrow and letter aria", movement.ariaKeyshortcuts, "ArrowDown J");
+equal("arrow is the preferred key", movement.preferred.ariaKeyshortcuts, "ArrowDown");
+check(
+  "a letter binding matches its capital without Shift, as with Caps Lock",
+  shortcuts.eventMatchesBinding(keyboardEvent("J"), { key: "j" }),
+);
+check(
+  "a letter binding refuses Shift unless declared",
+  !shortcuts.eventMatchesBinding(keyboardEvent("J", { shiftKey: true }), { key: "j" }),
+);
+
 const bindingHost = new FakeElement("span");
 shortcuts.appendBinding(document, bindingHost, alternatives);
 check(

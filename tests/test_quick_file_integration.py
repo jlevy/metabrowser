@@ -17,6 +17,18 @@ def _read_app_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("app.js").read_text()
 
 
+def _function_source(js: str, name: str) -> str:
+    """One top-level function's source, up to the next column-zero definition.
+
+    A fixed character window fails when an unrelated option is added above the
+    asserted call, which measures position rather than behavior.
+    """
+
+    start = js.index(f"function {name}(")
+    end = js.find("\nfunction ", start + 1)
+    return js[start:] if end == -1 else js[start:end]
+
+
 def _render_index_html() -> str:
     class _FakeQuery:
         def get(self, key: str, default: str = "") -> str:
@@ -65,7 +77,7 @@ def test_file_preview_claims_and_checks_shell_ownership() -> None:
     js = _read_app_js()
     select_start = js.index("async function selectFile(path, preferredViewId)")
     select_block = js[select_start : select_start + 5200]
-    assert 'claimPreview("file")' in select_block
+    assert 'claimPreview("file", {' in select_block
     assert "isPreviewClaimCurrent(previewClaim)" in select_block
 
     render_start = js.index("function renderFile(data, preferredViewId, claim, options = {})")
@@ -75,8 +87,7 @@ def test_file_preview_claims_and_checks_shell_ownership() -> None:
 
 def test_application_initializes_one_injected_quick_file_finder() -> None:
     js = _read_app_js()
-    init_start = js.index("function initQuickFileFinder()")
-    init_block = js[init_start : init_start + 2600]
+    init_block = _function_source(js, "initQuickFileFinder")
     assert "MetabrowserKnownFileCatalog.create()" in init_block
     assert "MetabrowserSearch.createController" in init_block
     assert "MetabrowserSearch.createLocalFileProvider" in init_block
@@ -174,7 +185,7 @@ def test_every_browser_observation_seam_feeds_the_known_file_catalog() -> None:
     resync_block = js[resync_start : js.index("inventoryEventSource.onopen", resync_start)]
     assert "knownFileCatalog?.clear()" in resync_block
 
-    outcome_start = js.index("function openedFileOutcome(path, data, preview)")
+    outcome_start = js.index("function openedFileOutcome(path, data, preview, previewClaim)")
     outcome_block = js[outcome_start : outcome_start + 700]
     assert "knownFileCatalog?.observeNavigation" in outcome_block
     assert 'data.kind !== "folder"' in outcome_block
@@ -274,8 +285,7 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
     ]
     assert "await selectFile(path, context.viewId)" in apply_navigation
 
-    init_start = js.index("function initQuickFileFinder()")
-    init_block = js[init_start : init_start + 2600]
+    init_block = _function_source(js, "initQuickFileFinder")
     assert "fileNeedsRevalidate.add(path)" in init_block
     assert "return navigateToPath(path)" in init_block
     assert 'quickFileCatalogFeed?.onEventChange([{ op: "remove", path }])' in init_block

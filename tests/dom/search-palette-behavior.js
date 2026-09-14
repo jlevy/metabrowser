@@ -316,7 +316,12 @@ const sandbox = { clearTimeout, document, setTimeout };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-for (const filename of ["keyboard-shortcuts.js", "overlay-layer.js", "search-palette.js"]) {
+for (const filename of [
+  "navigation.js",
+  "keyboard-shortcuts.js",
+  "overlay-layer.js",
+  "search-palette.js",
+]) {
   vm.runInContext(
     fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", filename), "utf-8"),
     sandbox,
@@ -436,7 +441,16 @@ async function main() {
   const destination = document.createElement("button");
   document.body.append(destination);
   const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+  // Everything the palette asked the classifier to describe. Only a thrown
+  // open is unclassified; a settled outcome already carries its message.
+  const describedFailures = [];
   const palette = sandbox.MetabrowserSearchPalette.create({
+    // The production classifier app.js passes, so an unreachable server reads
+    // the same here as in the preview pane.
+    describeOpenFailure: (error) => {
+      describedFailures.push(error);
+      return sandbox.MetabrowserNavigationRoute.openFailureOutcome(error);
+    },
     controller,
     document,
     getCatalogSnapshot: () => ({
@@ -467,6 +481,18 @@ async function main() {
       }
       if (pathname === "error.md") {
         return { message: "Preview failed. Try again.", status: "error" };
+      }
+      if (pathname === "offline.md") {
+        const refused = sandbox.MetabrowserNavigationRoute.requestFailure(
+          new TypeError("Failed to fetch"),
+        );
+        return sandbox.MetabrowserNavigationRoute.openFailureOutcome(refused);
+      }
+      if (pathname === "offline-throw.md") {
+        throw sandbox.MetabrowserNavigationRoute.requestFailure(new TypeError("Failed to fetch"));
+      }
+      if (pathname === "broken-throw.md") {
+        throw new TypeError("Cannot read properties of undefined");
       }
       return { focusTarget: destination, status: "opened" };
     },
@@ -705,6 +731,70 @@ async function main() {
     "retryable error is reported",
     status.textContent.includes("Try again"),
     status.textContent,
+  );
+
+  // A stopped server is a connection problem, whether the open settles with
+  // that outcome or throws the marked fetch rejection, and never blames the file.
+  for (const [pathname, query] of [
+    ["offline.md", "offline"],
+    ["offline-throw.md", "offline-throw"],
+  ]) {
+    availableResults = [searchResult(pathname, 10)];
+    input.value = query;
+    input.dispatchEvent(fakeEvent("input", { target: input }));
+    await settle();
+    listbox.children[0].dispatchEvent(fakeEvent("click", { target: listbox.children[0] }));
+    await settle();
+    check(`${pathname}: unreachable server keeps the palette open`, overlay.hidden === false);
+    check(`${pathname}: unreachable server preserves the query`, input.value === query);
+    check(
+      `${pathname}: unreachable server is reported as a connection problem`,
+      status.textContent.includes("Metabrowser is not reachable.") &&
+        status.textContent.includes("metab <folder>"),
+      status.textContent,
+    );
+    check(
+      `${pathname}: unreachable server does not blame the file`,
+      !status.textContent.includes("Could not open") &&
+        !status.textContent.includes("Failed to fetch"),
+      status.textContent,
+    );
+    // When the server answers again, the connection message no longer
+    // describes the page and the query's own status returns.
+    palette.reconnected();
+    check(
+      `${pathname}: a reconnect retires the connection message`,
+      !status.textContent.includes("not reachable") && status.textContent.length > 0,
+      status.textContent,
+    );
+    check(`${pathname}: a reconnect keeps the palette open`, overlay.hidden === false);
+  }
+
+  availableResults = [searchResult("broken-throw.md", 10)];
+  input.value = "broken-throw";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  listbox.children[0].dispatchEvent(fakeEvent("click", { target: listbox.children[0] }));
+  await settle();
+  check(
+    "an unexpected throw keeps the file wording",
+    status.textContent.includes("Could not open this file. Try again."),
+    status.textContent,
+  );
+  palette.reconnected();
+  check(
+    "a reconnect leaves a status that is not about the connection",
+    status.textContent.includes("Could not open this file. Try again."),
+    status.textContent,
+  );
+  check(
+    "only thrown opens are classified; settled outcomes carry their message",
+    describedFailures.length === 2 &&
+      // Realm-independent: the marked rejection is built inside the sandbox.
+      describedFailures.every(
+        (failure) => Object.prototype.toString.call(failure) === "[object Error]",
+      ),
+    String(describedFailures.map((failure) => failure?.status ?? failure?.name)),
   );
 
   input.dispatchEvent(fakeEvent("keydown", { key: "Escape", target: input }));

@@ -799,8 +799,8 @@ The familiar mark beside the revision is a noninteractive copy glyph, not a cont
 tooltips remain supplementary and never own actions.
 Selecting the commit exposes the real copy button in the full summary.
 Keyboard focus does not open or retain the compact tooltip.
-Arrow, Enter, and Space selection dismisses any pending or visible pointer-owned tooltip
-before navigation.
+Arrow, K, J, Enter, and Space selection dismisses any pending or visible pointer-owned
+tooltip before navigation.
 
 The component owns commit identity and message only.
 The comparison, files outside the served root, and truncation notice are siblings under
@@ -943,7 +943,9 @@ All other rows remain programmatically focusable with `tabindex="-1"`, so Tab en
 leaves the collection once instead of stopping on every item.
 
 While a row has focus, unmodified Arrow Up and Arrow Down move to the adjacent mounted
-row and open it. Key repeat remains enabled for fast traversal.
+row and open it. K and J are aliases for Arrow Up and Arrow Down with the same guards;
+they never act from a text field and get no first-row or last-row meaning.
+Key repeat remains enabled for fast traversal.
 Movement clamps at the first and last row, prevents page scrolling, and does not reopen
 the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.
@@ -1875,11 +1877,16 @@ active container, duplicate interaction surface, or intermediate blank frame.
 A newer preview claim immediately disposes and removes a stale stage without touching
 the current preview.
 
-An empty initial preview has no useful surface to retain.
+An empty or error preview has no useful surface to retain.
 It keeps the longer shell wait (`LOADING_INDICATOR_DELAY_MS`) before installing a
 neutral spinner, which still uses `.mb-delayed-loading`. Ready content always wins
 immediately: do not add a minimum spinner duration, progress bar, or transition that
 delays usable content merely to complete an animation.
+The shell ships the preview pane holding that neutral spinner rather than an empty
+state, because every route that serves the shell selects something; the first selection
+retains it until its view is ready.
+The prompt to select a file appears only when nothing is selected and nothing is
+loading, and switching navigation tabs changes neither.
 
 After a successful atomic replacement, `animatePreviewContentArrival` applies one
 compositor opacity animation to the incoming foreground content root, from 0.98 to 1

@@ -298,10 +298,13 @@ def test_nav_panels_support_an_every_show_retry_hook() -> None:
 
 def test_preview_shell_uses_generation_claims_across_owners() -> None:
     js = _read_app_js()
-    assert "function claimPreview(owner)" in js
+    assert "function claimPreview(owner, selection)" in js
     assert "function isPreviewClaimCurrent(claim)" in js
+    # Preview producers claim the pane; a tab switch is not one. Claiming on
+    # a switch invalidated the selection still loading underneath it, which
+    # stranded its placeholder and silenced the shown file's Load more.
     activate_block = _function_source(js, "activateNavPanel")
-    assert "claimPreview(`nav:${panelId}`)" in activate_block
+    assert "claimPreview(" not in activate_block
     shell_block = js[js.index("window.MetabrowserShell = Object.freeze") :][:600]
     assert "claimPreview" in shell_block
     assert "isPreviewClaimCurrent" in shell_block

@@ -423,6 +423,79 @@ check("unmodified Down still steps by one", document.activeElement === empty);
 folder.focus();
 container.dispatch("focusin", { target: folder });
 
+// J and K are Down and Up on the home row: the same commands, so they repeat,
+// open the row they land on, and are listed beside the arrows in Help.
+// The Down step above already opened folder:empty, so only a new entry
+// proves that j opened it.
+const beforeJ = navigationCalls.length;
+event = keyboardEvent("j", folder, { repeat: true });
+document.dispatch(event);
+check(
+  "repeated j steps down like Down",
+  event.defaultPrevented && document.activeElement === empty,
+);
+check(
+  "j opens the row it lands on",
+  navigationCalls.length === beforeJ + 1 && navigationCalls.at(-1) === "folder:empty",
+);
+const beforeLetterGuards = navigationCalls.length;
+for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+  for (const letter of ["j", "k"]) {
+    const key = modifier === "shiftKey" ? letter.toUpperCase() : letter;
+    event = keyboardEvent(key, empty, { [modifier]: true });
+    document.dispatch(event);
+    check(`${modifier} with ${key} does not move`, !event.defaultPrevented);
+  }
+}
+// A letter from a text field is typing, even while the tree scope is active.
+const editableTargets = ["input", "textarea", "select", "div"].map((tagName) => {
+  const element = document.createElement(tagName);
+  element.isContentEditable = tagName === "div";
+  return element;
+});
+for (const target of editableTargets) {
+  for (const key of ["j", "k"]) {
+    event = keyboardEvent(key, target);
+    document.dispatch(event);
+    check(`${key} in an editable ${target.tagName} does not move`, !event.defaultPrevented);
+  }
+}
+check(
+  "guarded J and K leave focus and the open row alone",
+  document.activeElement === empty && navigationCalls.length === beforeLetterGuards,
+);
+event = keyboardEvent("k", empty, { repeat: true });
+document.dispatch(event);
+check("repeated k steps up like Up", event.defaultPrevented && document.activeElement === folder);
+check("k opens the row it lands on", navigationCalls.at(-1) === "folder:src");
+equal(
+  "Next item presents Down or J",
+  [
+    shortcuts.present("tree.next").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.next").bindings.spoken,
+    shortcuts.present("tree.next").bindings.ariaKeyshortcuts,
+  ],
+  [[["↓"], ["J"]], "Down arrow or J", "ArrowDown J"],
+);
+equal(
+  "Previous item presents Up or K",
+  [
+    shortcuts.present("tree.previous").bindings.visible.map((alternative) => alternative.keys),
+    shortcuts.present("tree.previous").bindings.spoken,
+    shortcuts.present("tree.previous").bindings.ariaKeyshortcuts,
+  ],
+  [[["↑"], ["K"]], "Up arrow or K", "ArrowUp K"],
+);
+// J and K step; they are not also first and last.
+equal(
+  "first and last keep only their jump bindings",
+  [
+    shortcuts.present("tree.first").bindings.ariaKeyshortcuts,
+    shortcuts.present("tree.last").bindings.ariaKeyshortcuts,
+  ],
+  ["Shift+ArrowUp Home", "Shift+ArrowDown End"],
+);
+
 const beforeExpand = navigationCalls.length;
 event = keyboardEvent("ArrowRight", folder);
 document.dispatch(event);
@@ -512,16 +585,106 @@ check("filtering repairs focus to the parent", document.activeElement === folder
 
 container.dispatch("click", { target: outside });
 check("pointer use updates the future tab stop", outside.tabIndex === 0);
+// Focus is still on the folder, so a repair sees a focused row that differs
+// from the durable anchor. The anchor must win; adopting focus is only for a
+// layer that has no anchor yet.
+check("the pointer anchor and the focused row differ", document.activeElement === folder);
+navigator.synchronize();
+check("a repair keeps the durable anchor over the focused row", outside.tabIndex === 0);
 
+// Tree commands are Help-only, so the compact strip cannot show whether the
+// tree scope is active. A movement key that goes unhandled can.
+document.body.focus();
 container.dispatch("focusout", { relatedTarget: document.body, target: outside });
-check("tree scope leaves with focus", shortcuts.snapshot("nav").length === 0);
+navigator.synchronize();
+event = keyboardEvent("ArrowDown", document.body);
+document.dispatch(event);
+check(
+  "a repair with focus outside the tree leaves tree commands inactive",
+  !event.defaultPrevented,
+);
 event = keyboardEvent("PageDown", document.body);
 document.dispatch(event);
 check("native main-pane scrolling keys remain untouched", !event.defaultPrevented);
 
 navigator.dispose();
 check("dispose removes tree commands", shortcuts.present("tree.next") === null);
+// The layer's own async continuations can still call synchronize after
+// disposal. With a row focused, that repair must not reactivate a tree scope
+// that nothing will ever deactivate.
+outside.focus();
+const postDisposeScopes = [];
+const unsubscribePostDispose = shortcuts.subscribe((change) => {
+  if (change.kind === "scope") {
+    postDisposeScopes.push(change.scope);
+  }
+});
+navigator.synchronize();
+check(
+  "synchronize after dispose leaves the tree scope inactive",
+  postDisposeScopes.length === 0,
+  postDisposeScopes.join(","),
+);
+unsubscribePostDispose();
 shortcuts.dispose();
+
+// A reader can click a row before the keyboard layer attaches. That focus
+// happened before the focusin listener existed, so attaching must adopt it:
+// the focused row stays focused, becomes the roving anchor, and the tree
+// scope is active so movement keys work on the first press.
+for (const [label, focusedKey] of [
+  ["selected row", "selected"],
+  ["other row", "other"],
+]) {
+  const earlyDocument = new FakeDocument();
+  const earlyContainer = earlyDocument.createElement("nav");
+  const earlyRoot = earlyDocument.createElement("div");
+  earlyRoot.setAttribute("role", "tree");
+  earlyContainer.append(earlyRoot);
+  earlyDocument.body.append(earlyContainer);
+  const earlyFirst = treeItem(earlyDocument, "file", "file:a.md", "a.md");
+  const earlyOther = treeItem(earlyDocument, "file", "file:b.md", "b.md");
+  const earlySelected = treeItem(earlyDocument, "file", "file:c.md", "c.md");
+  const earlyLast = treeItem(earlyDocument, "file", "file:d.md", "d.md");
+  earlySelected.classList.add("selected");
+  earlyRoot.append(earlyFirst, earlyOther, earlySelected, earlyLast);
+  const clicked = focusedKey === "selected" ? earlySelected : earlyOther;
+  clicked.focus();
+
+  const earlyShortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: earlyDocument });
+  const earlyNavigations = [];
+  const earlyNavigator = sandbox.MetabrowserTreeKeyboardNavigation.create({
+    activate: (row) => row,
+    container: earlyContainer,
+    document: earlyDocument,
+    navigate(row) {
+      earlyNavigations.push(row.dataset.treeId);
+    },
+    setFolderExpanded() {},
+    shortcuts: earlyShortcuts,
+  });
+  check(
+    `early focus on the ${label} is kept when the keyboard layer attaches`,
+    earlyDocument.activeElement === clicked && clicked.tabIndex === 0,
+    earlyDocument.activeElement?.dataset?.treeId,
+  );
+  equal(`attaching after an early click on the ${label} opens nothing`, earlyNavigations, []);
+  const earlyEvent = keyboardEvent("ArrowDown", clicked);
+  earlyDocument.dispatch(earlyEvent);
+  const expectedNext = focusedKey === "selected" ? earlyLast : earlySelected;
+  check(
+    `Down works on the first press after an early click on the ${label}`,
+    earlyEvent.defaultPrevented && earlyDocument.activeElement === expectedNext,
+    `${earlyEvent.defaultPrevented}/${earlyDocument.activeElement?.dataset?.treeId}`,
+  );
+  equal(
+    `the first Down after an early click on the ${label} opens only the next row`,
+    earlyNavigations,
+    [expectedNext.dataset.treeId],
+  );
+  earlyNavigator.dispose();
+  earlyShortcuts.dispose();
+}
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));

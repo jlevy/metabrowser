@@ -1235,6 +1235,26 @@
   }
 
   /**
+   * The key a commit row acts on. J and K alias Down and Up, as they do in the
+   * file tree, and match in either case as the shortcut registry does, so Caps
+   * Lock does not turn them off. The listener is on the row, and a row holds
+   * only its graph and text, so a key here never comes from a text field.
+   *
+   * @param {KeyboardEvent} event
+   * @returns {string}
+   */
+  function commitRowKey(event) {
+    switch (event.key.toLowerCase()) {
+      case "j":
+        return "ArrowDown";
+      case "k":
+        return "ArrowUp";
+      default:
+        return event.key;
+    }
+  }
+
+  /**
    * @param {KeyboardEvent} event
    * @param {HTMLElement} row
    * @param {string} revision
@@ -1248,7 +1268,7 @@
       !event.metaKey &&
       !event.shiftKey
     ) {
-      switch (event.key) {
+      switch (commitRowKey(event)) {
         case "ArrowUp":
           dismissHoverTooltip();
           if (moveCommitRowFocus(row, -1)) {

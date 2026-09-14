@@ -56,11 +56,16 @@ async function main() {
     () => true,
   );
   const newerSettled = samePathTracker.settle("same.md", newerMarker);
+  const samePathPane = navigation.createPreviewPaneLifecycle();
+  const olderClaim = samePathPane.claim("file", { folder: false, path: "same.md" });
+  samePathPane.claim("file", { folder: false, path: "same.md" });
   const olderAbort = navigation.settleFileSelectionFailure({
     cached: true,
+    claim: olderClaim,
     error: Object.assign(new Error("superseded"), { name: "AbortError" }),
     isCurrent: () => false,
     markForRevalidation: () => samePathTracker.add("same.md"),
+    pane: samePathPane,
     path: "same.md",
     showError: () => {
       throw new Error("a superseded selection must not paint an error");

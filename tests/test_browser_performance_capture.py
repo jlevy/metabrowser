@@ -515,6 +515,14 @@ for (const [field, value] of [
         assert f"{field}:" in result.stdout
 
 
+def test_probe_exports_the_profile_time_origin() -> None:
+    source = PROBE.read_text(encoding="utf-8")
+
+    # `run.py record` subtracts the server spawn time from this wall-clock origin.
+    assert "const origin = performance.timeOrigin;" in source
+    assert "time_origin_epoch_ms: origin," in source
+
+
 def test_probe_exports_fetch_concurrency_provenance() -> None:
     source = PROBE.read_text(encoding="utf-8")
 

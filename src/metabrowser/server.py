@@ -1331,8 +1331,13 @@ async def index(request: Request) -> HTMLResponse:
       </div>
     </div>
     <div class="resize-handle" id="tree-resize"></div>
+    <!-- Every route that serves this shell selects something: /view/ names a
+         file or folder (the bare origin redirects to the served root), and
+         /commit/ names a revision. So the pane ships loading, never a prompt to
+         select a file. It is navigation.js's starting placeholder. -->
     <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
-      <div class="preview-empty">Select a file to preview.</div>
+      <div class="loading mb-delayed-loading"><div class="spinner"></div><span
+        class="sr-only">Loading preview…</span></div>
     </div>
   </main>
   <!-- Core shell scripts are local and first-paint critical. Optional
