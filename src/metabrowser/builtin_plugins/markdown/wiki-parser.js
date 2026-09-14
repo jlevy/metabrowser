@@ -162,9 +162,8 @@ function processInline(source, budget, metrics, outputBudget, literalMask, sourc
   let changed = false;
   const output = [];
   let literalStart = 0;
-  const markdownDelimiter = createScanState();
+  const brackets = createBracketPairs(source, literalMask, sourceOffset, metrics);
   const destinationClose = createScanState();
-  const referenceClose = createScanState();
   const wikiClose = createScanState();
   for (let index = 0; index < source.length; ) {
     metrics.inlineCursorSteps += 1;
@@ -176,14 +175,7 @@ function processInline(source, budget, metrics, outputBudget, literalMask, sourc
       index += 2;
       continue;
     }
-    const markdownLinkEnd = findMarkdownLinkEnd(
-      source,
-      index,
-      markdownDelimiter,
-      destinationClose,
-      referenceClose,
-      metrics,
-    );
+    const markdownLinkEnd = findMarkdownLinkEnd(source, index, brackets, destinationClose, metrics);
     if (markdownLinkEnd !== -1) {
       index = markdownLinkEnd;
       continue;
@@ -661,19 +653,17 @@ function insideInlineCode(source, offset) {
 /**
  * @param {string} source
  * @param {number} index
- * @param {ReturnType<typeof createScanState>} delimiter
+ * @param {ReturnType<typeof createBracketPairs>} brackets
  * @param {ReturnType<typeof createScanState>} destinationClose
- * @param {ReturnType<typeof createScanState>} referenceClose
  * @param {ReturnType<typeof createWorkMetrics>} metrics
  */
-function findMarkdownLinkEnd(source, index, delimiter, destinationClose, referenceClose, metrics) {
+function findMarkdownLinkEnd(source, index, brackets, destinationClose, metrics) {
   const image = source[index] === "!" && source[index + 1] === "[" && source[index + 2] !== "[";
   const link = source[index] === "[" && source[index + 1] !== "[";
   if (!image && !link) {
     return -1;
   }
-  const labelStart = index + (image ? 2 : 1);
-  const labelEnd = findMarkdownDelimiter(source, labelStart, delimiter, metrics);
+  const labelEnd = brackets.closing(index + (image ? 1 : 0));
   if (labelEnd === -1) {
     return -1;
   }
@@ -681,8 +671,13 @@ function findMarkdownLinkEnd(source, index, delimiter, destinationClose, referen
     const destinationEnd = findCharacter(source, labelEnd + 2, ")", destinationClose, metrics);
     return destinationEnd === -1 ? -1 : destinationEnd + 1;
   }
-  const referenceEnd = findCharacter(source, labelEnd + 2, "]", referenceClose, metrics);
-  return referenceEnd === -1 ? -1 : referenceEnd + 1;
+  if (source[labelEnd + 1] === "[") {
+    const referenceEnd = brackets.closing(labelEnd + 1);
+    return referenceEnd === -1 ? -1 : referenceEnd + 1;
+  }
+  // A label closed by anything else is a task-list checkbox, a shortcut
+  // reference, or plain text; it does not hide the wiki syntax after it.
+  return -1;
 }
 
 /** @param {string} source @param {number} index @param {string} character @param {ReturnType<typeof createWorkMetrics>=} metrics */
@@ -701,27 +696,65 @@ function createScanState() {
   return { cursor: 0, match: -1 };
 }
 
-/** @param {string} source @param {number} start @param {ReturnType<typeof createScanState>} state @param {ReturnType<typeof createWorkMetrics>} metrics */
-function findMarkdownDelimiter(source, start, state, metrics) {
-  if (state.match >= start) {
-    return state.match;
-  }
-  if (state.match !== -1) {
-    state.cursor = state.match + 1;
-    state.match = -1;
-  }
-  state.cursor = Math.max(state.cursor, start);
-  while (state.cursor + 1 < source.length) {
-    const cursor = state.cursor;
-    state.cursor += 1;
-    metrics.delimiterSteps += 1;
-    if (source[cursor] === "]" && (source[cursor + 1] === "(" || source[cursor + 1] === "[")) {
-      state.match = cursor;
-      return cursor;
+/**
+ * Pair ordinary Markdown brackets on one line the way CommonMark does: each
+ * unescaped `]` outside literal text closes the nearest still-open `[`. A link
+ * label therefore ends at its own opener's closer, so a task-list checkbox, a
+ * shortcut reference, or an unmatched `[` cannot borrow a later link's `](` and
+ * hide the wiki syntax between them. The single stack pass runs on first use
+ * and is charged one delimiter step per code unit; every lookup is O(1).
+ *
+ * @param {string} source
+ * @param {Uint8Array} literalMask
+ * @param {number} sourceOffset
+ * @param {ReturnType<typeof createWorkMetrics>} metrics
+ */
+function createBracketPairs(source, literalMask, sourceOffset, metrics) {
+  /**
+   * One array serves as both result and stack. A closed opener stores its
+   * closer plus one. An opener still on the stack stores the negated position
+   * of the opener beneath it, offset by one, so a finished pass leaves every
+   * unmatched opener at zero or below.
+   * @type {Int32Array | null}
+   */
+  let pairs = null;
+
+  function build() {
+    const built = new Int32Array(source.length);
+    let top = -1;
+    let backslashes = 0;
+    for (let index = 0; index < source.length; index += 1) {
+      metrics.delimiterSteps += 1;
+      const character = source[index];
+      if (literalMask[sourceOffset + index]) {
+        backslashes = 0;
+        continue;
+      }
+      const escaped = backslashes % 2 === 1;
+      backslashes = character === "\\" ? backslashes + 1 : 0;
+      if (escaped) {
+        continue;
+      }
+      if (character === "[") {
+        built[index] = -(top + 1);
+        top = index;
+      } else if (character === "]" && top !== -1) {
+        const opener = top;
+        top = -built[opener] - 1;
+        built[opener] = index + 1;
+      }
     }
+    return built;
   }
-  state.cursor = source.length;
-  return -1;
+
+  return Object.freeze({
+    /** @param {number} opener @returns {number} */
+    closing(opener) {
+      pairs ||= build();
+      const value = pairs[opener];
+      return value > 0 ? value - 1 : -1;
+    },
+  });
 }
 
 /** @param {string} source @param {number} start @param {string} first @param {string} second @param {ReturnType<typeof createScanState>} state @param {ReturnType<typeof createWorkMetrics>} metrics */

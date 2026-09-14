@@ -6,11 +6,12 @@ env:
 ---
 # Golden Test: Markdown Functional Semantics
 
-This browserless session executes the production wiki resolver, root-scoped catalog
-reconciliation coordinator, published-route adapters, preprocessing Worker client, and
-the real rendered-link to wiki-enhancer to nested-transclusion chain.
+This browserless session executes the production wiki parser and resolver, root-scoped
+catalog reconciliation coordinator, published-route adapters, preprocessing Worker
+client, and the real rendered-link to wiki-enhancer to nested-transclusion chain.
 It pins exact, incomplete, ambiguous, overflow, revision, slice, disposal,
-percent-identity, and shared root-budget behavior without requiring a browser.
+percent-identity, shared root-budget, and task-list bracket-pairing behavior without
+requiring a browser.
 
 ```console
 $ node tests/dom/markdown-functional-session.js
@@ -95,6 +96,16 @@ $ node tests/dom/markdown-functional-session.js
     "pending": {
       "status": "pending",
       "reason": "catalog-incomplete"
+    }
+  },
+  "wikiPreprocessing": {
+    "taskList": {
+      "source": [
+        "- [ ] Review <span class=\"metabrowser-wiki-link\" data-mb-wiki-target=\"Meeting Notes\" data-mb-wiki-action=\"navigate\">Meeting Notes</span> per [spec](https://example.com/spec)",
+        "  - [x] Follow up in <span class=\"metabrowser-wiki-link\" data-mb-wiki-target=\"Notes#Actions\" data-mb-wiki-action=\"navigate\">actions</span> and [the [[Hidden]] log](log.md)",
+        ""
+      ],
+      "targetCount": 2
     }
   }
 }

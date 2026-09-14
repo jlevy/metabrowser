@@ -29,6 +29,12 @@ Markdown fixes:
   Each embed now has its own allowance from the moment it starts loading; the document,
   depth, source-size, and cycle limits remain shared.
 
+- Wiki links in a task-list item followed by an ordinary link now convert.
+  In `- [ ] Review [[Meeting Notes]] per [spec](https://example.com)`, the checkbox’s
+  `[` was paired with the later link’s `](`, so the wiki link was left as literal text.
+  Brackets now pair the way CommonMark pairs them, so checkboxes, shortcut references,
+  and unmatched brackets no longer hide the wiki links that follow them.
+
 Inventory engine:
 
 - The directory tree’s first rows no longer wait for a scan of the whole repository.

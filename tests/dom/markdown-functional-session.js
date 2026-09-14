@@ -206,6 +206,7 @@ function parseFakeHtml(html, document) {
   const coordinatorModule = await import(moduleUrl("reconciliation-coordinator.js"));
   const adapters = await import(moduleUrl("project-adapters.js"));
   const renderedMarkdown = await import(moduleUrl("rendered.js"));
+  const wikiParser = await import(moduleUrl("wiki-parser.js"));
 
   const ambiguousPaths = [
     ...Array.from({ length: 23 }, (_, index) => `${String(index).padStart(2, "0")}/Leaf.md`),
@@ -314,6 +315,13 @@ function parseFakeHtml(html, document) {
   const queuedAfterFirstSlice = sliceScheduler.callbacks.size;
   sliceScheduler.drain();
   sliced.dispose();
+
+  // A task-list checkbox is not a link opener: its `[` must not pair with a
+  // later link's `](` and hide the wiki links between them.
+  const taskListPreparation = wikiParser.preprocessObsidianWiki(
+    "- [ ] Review [[Meeting Notes]] per [spec](https://example.com/spec)\n" +
+      "  - [x] Follow up in [[Notes#Actions|actions]] and [the [[Hidden]] log](log.md)\n",
+  );
 
   const incompleteAdapter = adapters
     .createPublishedRouteResolutionContext(snapshot(["docs/guide.md", "mkdocs.yml"], false))
@@ -474,6 +482,12 @@ function parseFakeHtml(html, document) {
           exact: exact.result,
           overflow: overflow.result,
           pending: pending.result,
+        },
+        wikiPreprocessing: {
+          taskList: {
+            source: taskListPreparation.source.split("\n"),
+            targetCount: taskListPreparation.targetCount,
+          },
         },
       },
       null,
