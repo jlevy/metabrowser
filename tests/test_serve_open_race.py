@@ -50,9 +50,10 @@ class _PollClock:
     Time advances only when the helper sleeps between attempts, by the interval
     it asks for, so its timeout is a budget of attempts rather than of wall time.
     A descheduled test thread cannot run it out; an attempt that waits on a slow
-    server connection still spends one attempt. While held, each sleep also parks the helper until the
-    test grants another attempt, which lets the test change the server between
-    attempts and know the helper has acted on each state before asserting.
+    server connection still spends one attempt. While held, each sleep also
+    parks the helper until the test grants another attempt, which lets the test
+    change the server between attempts and know the helper has acted on each
+    state before asserting.
     """
 
     def __init__(self, *, held: bool) -> None:
