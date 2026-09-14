@@ -3,15 +3,19 @@ type: is
 id: is-01m2ff9v65wdpfdenh8f4gd2k5
 title: Wiki link resolution scales superlinearly with link count and source path length
 kind: bug
-status: open
+status: closed
 priority: 2
-version: 1
+version: 3
 labels:
   - performance
   - markdown
 dependencies: []
 created_at: 2026-09-14T08:07:26.660Z
-updated_at: 2026-09-14T08:07:26.660Z
+updated_at: 2026-09-14T23:33:18.159Z
+closed_at: 2026-09-14T23:33:18.159Z
+close_reason: "Fixed in PR #124 (merged): wiki memo keys now stay inside V8's 16,383-code-unit content-hash bound, so the link enhancer session went from 32.3 s of CPU to 0.40 s and resolution is linear in targets. Review R1 fixed in 7bdc583a; R2 deferred as mb-e22r. CI green on all seven checks."
+resolution: null
+duplicate_of: null
 ---
 Wiki link resolution in the Markdown link enhancer scales superlinearly with document size.
 
