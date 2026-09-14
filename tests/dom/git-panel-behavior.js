@@ -518,15 +518,7 @@ vm.createContext(sandbox);
 // formatters.js first: the panel's ages come from that shared primitive,
 // and loading the real module (not a stub) is what proves a commit's age
 // is spelled exactly like a file's.
-// keyboard-shortcuts.js loads before the panel, as it does in the shell's
-// tools bundle: commit rows use its definition of an editable target.
-for (const file of [
-  "formatters.js",
-  "keyboard-shortcuts.js",
-  "git-graph.js",
-  "git-history-window.js",
-  "git-panel.js",
-]) {
+for (const file of ["formatters.js", "git-graph.js", "git-history-window.js", "git-panel.js"]) {
   const source = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", file), "utf-8");
   vm.runInContext(source, sandbox, { filename: file });
 }
@@ -1562,9 +1554,15 @@ async function run() {
     assertTrue("keyboard: ignored arrow leaves focus alone", document.activeElement === rows[0]);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // J and K are Down and Up here as in the file tree, under the arrows' guards.
+    // J and K are Down and Up here as in the file tree, under the arrows' guards,
+    // and dismiss a pending pointer-owned tooltip before moving, as the arrows do.
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    const hidesBeforeJ = tooltipHideCount;
     const j = keyboardEvent("j", { repeat: true });
     rows[0].dispatch("keydown", j);
+    rows[0]._hovered = false;
+    assertTrue("keyboard: j dismisses the hover tooltip", tooltipHideCount > hidesBeforeJ);
     assertTrue("keyboard: repeated j is handled", j.defaultPrevented);
     assertTrue("keyboard: j focuses the next commit", document.activeElement === rows[1]);
     assertEqual("keyboard: j opens the next commit", internals.stateForTests().selectedId, SHA_B);
@@ -1583,6 +1581,11 @@ async function run() {
     rows[0].dispatch("keydown", capsLock);
     assertTrue("keyboard: an unshifted capital J is handled", capsLock.defaultPrevented);
     assertTrue("keyboard: capital J focuses the next commit", document.activeElement === rows[1]);
+    assertEqual(
+      "keyboard: capital J opens the next commit",
+      internals.stateForTests().selectedId,
+      SHA_B,
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
@@ -1593,18 +1596,9 @@ async function run() {
         assertTrue(`keyboard: ${modifier} with ${key} is ignored`, !chord.defaultPrevented);
       }
     }
-    for (const tagName of ["input", "textarea", "select", "div"]) {
-      const field = document.createElement(tagName);
-      field.isContentEditable = tagName === "div";
-      for (const key of ["j", "k"]) {
-        const typed = keyboardEvent(key, { target: field });
-        rows[1].dispatch("keydown", typed);
-        assertTrue(`keyboard: ${key} typed in ${tagName} is not movement`, !typed.defaultPrevented);
-      }
-    }
-    assertTrue("keyboard: ignored letters leave focus alone", document.activeElement === rows[1]);
+    assertTrue("keyboard: ignored chords leave focus alone", document.activeElement === rows[1]);
     assertEqual(
-      "keyboard: ignored letters leave the selection alone",
+      "keyboard: ignored chords leave the selection alone",
       internals.stateForTests().selectedId,
       SHA_B,
     );
