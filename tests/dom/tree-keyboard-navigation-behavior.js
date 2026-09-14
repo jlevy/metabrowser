@@ -425,13 +425,19 @@ container.dispatch("focusin", { target: folder });
 
 // J and K are Down and Up on the home row: the same commands, so they repeat,
 // open the row they land on, and are listed beside the arrows in Help.
+// The Down step above already opened folder:empty, so only a new entry
+// proves that j opened it.
+const beforeJ = navigationCalls.length;
 event = keyboardEvent("j", folder, { repeat: true });
 document.dispatch(event);
 check(
   "repeated j steps down like Down",
   event.defaultPrevented && document.activeElement === empty,
 );
-check("j opens the row it lands on", navigationCalls.at(-1) === "folder:empty");
+check(
+  "j opens the row it lands on",
+  navigationCalls.length === beforeJ + 1 && navigationCalls.at(-1) === "folder:empty",
+);
 const beforeLetterGuards = navigationCalls.length;
 for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
   for (const letter of ["j", "k"]) {
