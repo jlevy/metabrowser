@@ -3,9 +3,9 @@ type: is
 id: is-01m2fcq020gq0zzxgs62nrz5rp
 title: "Address review: PR #117 — installed-version annotation and hook-safe git fixtures"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 10
+version: 11
 labels: []
 dependencies: []
 child_order_hints:
@@ -19,6 +19,10 @@ child_order_hints:
   - is-01m2fcq5sx4d3p4xkwym18ccmv
   - is-01m2fcq6e21t04thzfffvcfpam
 created_at: 2026-09-14T07:22:11.902Z
-updated_at: 2026-09-14T07:22:18.433Z
+updated_at: 2026-09-14T07:47:57.163Z
+closed_at: 2026-09-14T07:47:57.160Z
+close_reason: "All findings R1-R6 and suggestions S1-S3 from review 5194912598 fixed in PR #117 (31f076d3, da00abc5); S4 done by the coordinator. Disposition map: https://github.com/jlevy/metabrowser/pull/117#issuecomment-5660713221"
+resolution: null
+duplicate_of: null
 ---
 Review https://github.com/jlevy/metabrowser/pull/117#pullrequestreview-5194912598 on PR #117 (mb-7nij). All findings R1-R6 and suggestions S1-S3 are fixed in this PR. S4 (stray local v1 tag) was already deleted by the coordinator.
