@@ -98,6 +98,11 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/builtin_plugins/folder/overview.js",
             "metabrowser/builtin_plugins/folder/file-type-summary.js",
             "metabrowser/builtin_plugins/folder/file_type_summary.css",
+            "metabrowser/builtin_plugins/hosted_review/__init__.py",
+            "metabrowser/builtin_plugins/hosted_review/artifacts.py",
+            "metabrowser/builtin_plugins/hosted_review/hosted-review-model.js",
+            "metabrowser/builtin_plugins/hosted_review/models.py",
+            "metabrowser/data/hosted-review-format/change-request-conformance.json",
             "metabrowser/data/file-rollup-format/empty-file-rollup.json",
             "metabrowser/data/file-rollup-format/file-rollup-conformance.json",
             "metabrowser/data/file-rollup-format/file-rollup-conformance.schema.json",
@@ -144,6 +149,10 @@ def _inspect_sdist(sdist: Path) -> None:
             "src/metabrowser/builtin_plugins/markdown/markdown-worker-client.js",
             "src/metabrowser/builtin_plugins/markdown/markdown-worker-operations.js",
             "src/metabrowser/builtin_plugins/markdown/reconciliation-coordinator.js",
+            "src/metabrowser/builtin_plugins/hosted_review/artifacts.py",
+            "src/metabrowser/builtin_plugins/hosted_review/hosted-review-model.js",
+            "src/metabrowser/builtin_plugins/hosted_review/models.py",
+            "src/metabrowser/data/hosted-review-format/change-request-conformance.json",
             *(f"src/metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
@@ -180,6 +189,8 @@ def _smoke_install(wheel: Path) -> None:
             "from importlib.resources import files; "
             "import metabrowser; "
             "from metabrowser.file_type_registry import load_file_type_registry; "
+            "from metabrowser.builtin_plugins.hosted_review.models import "
+            "validate_change_request; "
             "from metabrowser.kpress_adapter import render_kpress_view; "
             "from metabrowser.plugin_loader.discovery import discover_plugins; "
             "registry = load_file_type_registry(); "
@@ -212,6 +223,14 @@ def _smoke_install(wheel: Path) -> None:
             "'builtin_plugins/markdown/reconciliation-coordinator.js').is_file(); "
             "assert files('metabrowser').joinpath("
             "'data/file-diff-format/file-diff.schema.json').is_file(); "
+            "corpus = files('metabrowser').joinpath("
+            "'data/hosted-review-format/change-request-conformance.json'); "
+            "assert corpus.is_file(); "
+            "import json; "
+            "validate_change_request(json.loads(corpus.read_text(encoding='utf-8'))"
+            "['base_document']); "
+            "assert files('metabrowser').joinpath("
+            "'builtin_plugins/hosted_review/hosted-review-model.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
             "assert required == names; "
             "assert not plugins.errors; "

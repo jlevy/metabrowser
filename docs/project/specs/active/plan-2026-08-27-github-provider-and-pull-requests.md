@@ -4,7 +4,8 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Design review addressed; implementation is gated on the v0.10.0 release
+**Status:** Design review addressed; Phase 0A implementation in progress on a formal
+stack above the design pull request
 
 ## Vision
 
@@ -79,11 +80,12 @@ The long-lived layer boundaries, format profiles, plugin ownership, activity pro
 and virtual navigation containers are specified in
 [Hosted Review Model and Provider Boundary](../../architecture/arch-hosted-review-model.md).
 
-Implementation does not start from this design branch.
-`mb-xxhi` blocks every `release:v0.11.0` implementation bead and closes only after
-`mb-i57d` cuts v0.10.0 from the intended `main` commit, that commit is fetched locally,
-and the implementation branch starts from it.
-Design review, bead refinement, and release work may proceed before that gate closes.
+The v0.10.0 release gate is closed: the release tag points at the accepted release
+commit, and the fetched `main` branch contains it.
+The design branch has merged that released `main`, and the first implementation branch
+is a formal stack above the design pull request.
+Each stacked implementation pull request keeps one independently reviewable phase; it
+must be rebased or retargeted with its exact diff rechecked when its base lands.
 
 ## What this plan needs from the cache
 
@@ -235,17 +237,26 @@ code:
 | Labels, assignees, milestone | Common bounded references | Only values consumed by discovery or detail views enter v0.11.0 |
 | Provider timestamps and API observations | Object timestamps plus `Retrieval/v1` | Hosted state and retrieval freshness never share one timestamp |
 
-SoftSchema maturity follows the evidence:
+SoftSchema maturity follows the evidence without weakening checked-in contracts:
 
-1. Hand-authored and scrubbed GitHub examples begin as named `soft` or `permissive`
-   artifacts while field meaning and consumers are reviewed.
-2. Pydantic models compile deterministic schemas; Python and browser consumers validate
-   the same corpus and semantic invariants.
-3. Before Phase 3 publishes durable cache entries, every released contract is
-   `enforced`, the host registry binds its packaged schema, and undeclared fields fail.
+1. Exploratory notes may use soft or permissive schemas while field meaning and
+   consumers are still being reviewed; they are not conformance artifacts.
+2. Every checked-in conformance artifact is enforced from its first machine-checked
+   version. Pydantic models compile deterministic schemas, and Python and browser
+   consumers validate the same corpus and semantic invariants.
+3. Before provider acquisition publishes durable cache entries, the installed host
+   registry binds every released contract to its packaged schema, and undeclared fields
+   fail.
 
-The progression lets the schema develop without making cached data vague.
-Nothing written into a released provider cache remains permissive.
+No artifact in the conformance corpus or released provider cache is permissive.
+Persisted timestamps use canonical RFC 3339 UTC strings with required seconds and `Z`.
+Zero milliseconds are omitted and a nonzero fraction has exactly three digits.
+Adapters convert offsets to UTC and truncate finer precision toward the earlier
+millisecond at acquisition, which keeps Python and browser validation and ordering
+exact. Provider links use canonical ASCII HTTPS syntax with a lowercase DNS host, no
+credentials or default port, and uppercase hexadecimal percent escapes.
+Readers accept finite integral JSON numbers and canonical serialization writes integer
+YAML; all persisted integers stay within JavaScript’s exact range.
 
 Small values such as `ActorRef`, `RepositoryRef`, `Label`, `MilestoneRef`,
 `GitObjectRef`, `CollectionState`, and `AuthorizationContextRef` are nested `$defs`, not
@@ -271,9 +282,9 @@ It does not use an open union or an untyped `data` mapping on disk.
 
 ### Identity and Git references
 
-Every provider object stores a `ProviderObjectRef`: provider kind, provider instance,
-object kind, stable opaque provider ID, repository ID, human URL, and repository-local
-number where applicable.
+Every provider object stores a minimal `ProviderObjectRef`: provider kind, provider
+instance, object kind, and stable opaque provider ID. The owning domain record stores
+repository identity, human URL, and repository-local number where applicable.
 File paths use a safe digest or encoded resource key; the full provider ID inside the
 record is authoritative.
 Repository renames change display coordinates, not provider identity or generic cache
@@ -314,7 +325,7 @@ change_request:
   url: https://github.com/example/project/pull/123
   title: Add repository caching
   author:
-    provider_ref: U_kgDOExample
+    provider_opaque_id: U_kgDOExample
     handle: octocat
     url: https://github.com/octocat
   state: open
@@ -324,17 +335,19 @@ change_request:
   updated_at: "2026-08-26T15:30:00Z"
   closed_at: null
   merged_at: null
-  base:
-    repository_id: R_kgDOExample
-    ref: main
-    oid: 0123456789abcdef0123456789abcdef01234567
-    availability: present
-  head:
-    repository_id: R_kgDOFork
-    ref: cache-design
-    oid: 89abcdef0123456789abcdef0123456789abcdef
-    availability: present
-  merge_commit: null
+  comparison:
+    base:
+      repository_id: R_kgDOExample
+      ref: main
+      oid: 0123456789abcdef0123456789abcdef01234567
+      availability: present
+    head:
+      repository_id: R_kgDOFork
+      ref: cache-design
+      oid: 89abcdef0123456789abcdef0123456789abcdef
+      availability: present
+    merge_commit_oid: null
+    merge_commit_availability: not_requested
   labels: []
   assignees: []
   milestone: null
@@ -662,13 +675,14 @@ contract is kept.
 | File | Key types and functions | Responsibility |
 | --- | --- | --- |
 | `src/metabrowser/builtin_plugins/hosted_review/manifest.toml` | kinds, views, router, scripts, styles | Declare common hosted-review surfaces and loading tiers |
-| `models.py` | `HostedRepository`, `ChangeRequestIndex`, `ChangeRequest`, `ChangeRequestComment`, `Review`, `ReviewThread`, `ReviewComment`, `ReviewAnchor`, `Check`, `CommitStatus`, `AuthorizationContextRef`, `ProviderSyncManifest`, `RepositoryActivity` | Closed Pydantic domain and storage models; stable authorization-context identity is separate from volatile retrieval observations; no GitHub response types |
+| `models.py` | `ProviderObjectRef`, `RepositoryRef`, `ActorRef`, `RevisionRef`, `ComparisonRef`, `ChangeRequest`, then the remaining record inventory | Closed Pydantic domain and storage models; stable authorization-context identity is separate from volatile retrieval observations; no GitHub response types |
 | `contracts.py` | `HOSTED_REVIEW_CONTRACTS`, `validate_artifact`, `compile_contracts` | Installed SoftSchema registry, profile binding, semantic validation, and deterministic schema compilation |
-| `artifacts.py` | `read_frontmatter_artifact`, `write_frontmatter_artifact`, `snapshot_identity` | Read and write change-request, review, and comment `frontmatter-md` artifacts through frontmatter-format; hash normalized YAML plus the complete Markdown body, including an empty review body |
+| `artifacts.py` | `serialize_change_request_artifact`, `parse_frontmatter_artifact`, `validate_change_request_artifact`, `snapshot_identity` | Encode only a validated ChangeRequest and decode enforced `frontmatter-md` artifacts through frontmatter-format without owning filesystem publication; hash normalized YAML plus the complete Markdown body, including an empty body |
 | `store.py` | `ProviderStore`, `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Auth-scoped immutable snapshots, transaction state, atomic query-key pointers, reader leases, diagnostic retention, and bounded reachability reclamation (`mb-i3xc`) |
 | `service.py` | `HostedReviewProvider`, `get_repository`, `get_change_request`, `list_change_requests`, `refresh_resource` | Provider-neutral orchestration and typed completeness/freshness/failure states |
 | `routes.py` | `build_router`, `repository_resource`, `change_request_resource`, `change_request_index`, `change_request_shell` | Plugin-owned read routes and `/review/<provider>/<repository>/<change>` document shell |
-| `hosted-review-model.js` | `parseHostedRepository`, `parseChangeRequestIndex`, `parseChangeRequest`, `parseChangeRequestComment`, `parseReview`, `parseReviewThread`, `parseReviewComment`, `parseCheck`, `parseCommitStatus`, `parseProviderSyncManifest`, `parseActivityPage` | Browser validation for every browser-consumed record against the same contract corpus |
+| `hosted-review-model.js` | `parseChangeRequest`, then parsers for the remaining browser-consumed records | Browser validation against the same contract corpus; the Phase 0A module stays unregistered, DOM-free, and network-free |
+| `data/hosted-review-format/change-request-conformance.json` | `base_document`, named valid/invalid mutations | Portable Python/browser oracle for closed keys, lifecycle, identity relationships, canonical timestamps and URLs, exact integer bounds, and Git object IDs |
 | `hosted-review-view.js` | `prepareChangeRequestView`, `mountChangeRequestView`, `disposeChangeRequestView` | Compose metadata, Markdown description, reviews/checks, revision links, and File Diff Format |
 | `hosted-review-panel.js` | `createPullRequestPanel`, `loadIndexPage`, `openChangeRequest`, `dispose` | Virtual Pull Requests collection and item-like/folder-like rows |
 | `index.js`, `styles.css` | registrations and presentation | Register views/panels and use existing design tokens with measured loading tiers |
@@ -733,6 +747,28 @@ After that, implementation follows the user-visible dependency chain rather than
 treating “GitHub support” as one feature.
 
 ### Phase 0: Hosted Review Format and plugin boundary (`mb-63ym`)
+
+Phase 0 is decomposed into mergeable, file-level beads so the contract can mature
+without registering a partial product surface:
+
+Phase 0A adds no manifest, route, view, cache, network, credential, provider, SDK, or
+dependency behavior; it is a dormant semantic and artifact-codec kernel.
+
+| Slice | Bead | Files and functions | Exit evidence |
+| --- | --- | --- | --- |
+| 0A.1 contract freeze | `mb-u8n8` | This plan and `arch-hosted-review-model.md`; freeze `ProviderObjectRef`, `RepositoryRef`, `RevisionRef`, `ComparisonRef`, `ChangeRequest`, frontmatter authority, canonical scalars, and dormancy | Design and implementation names agree |
+| 0A.2 Python kernel | `mb-tf5b` | `hosted_review/models.py`: closed/frozen references and `ChangeRequest`, `validate_change_request`, `dump_change_request` | Focused lifecycle, identity, availability, count, and hostile-text tests |
+| 0A.3 artifact codec | `mb-ja7z` | `hosted_review/artifacts.py`: `serialize_change_request_artifact`, `parse_frontmatter_artifact`, `validate_change_request_artifact`, `snapshot_identity` | Only a validated model can receive the enforced contract marker; deterministic bytes preserve nulls, empty collections, and the complete opaque Markdown body |
+| 0A.4 portable corpus | `mb-sezk` | `data/hosted-review-format/change-request-conformance.json` and Python harness | Named open, draft, merged-fork, unknown-state, invalid-scalar, and cross-record cases |
+| 0A.5 browser kernel | `mb-wiuu` | `hosted-review-model.js`: `parseChangeRequest`; browserless Node harness | Python and exact production JavaScript accept and reject the same corpus; unexpected defects escape |
+| 0A.6 installed evidence | `mb-02bg` | `devtools/check_distribution.py` plus the architecture map | Wheel and sdist contain the kernel; isolated-wheel validation passes; discovery remains the existing nine plugins |
+| 0A.7 stacked review | `mb-c08x` | Git branch and draft pull request based on `codex/v011-hosted-review-design` | Review shortcuts, `make verify`, tbd sync, exact-stack diff, and final CI summary |
+| 0A.8 stack landing | `mb-n2ro` | Design and implementation pull requests, fetched `main`, and the exact `origin/main...HEAD` diff | Land the design pull request after approval; retarget Phase 0A to `main`; recheck scope, rerun `make verify`, obtain final green CI, merge Phase 0A, and confirm `main` contains it |
+| 0B.1 storage records | `mb-pnz5` | `models.py`: `ProviderBinding`, `AuthorizationContextRef`, `Retrieval`, `ResourceSet`, `ProviderSyncManifest`, `Tombstone`, `HostedRepository`, and `ChangeRequestIndex` | Closed auth-scoped publication, repository, index, and failure-state fixtures |
+| 0B.2 review records | `mb-915y` | `models.py` and `artifacts.py`: comments, reviews, threads, anchors, checks, statuses, and activity | Relationship, partiality, and body/no-body fixtures |
+| 0B.3 GitHub oracle | `mb-rla6` | `tests/fixtures/github/oracle/`, `test_github_coverage.py`, and mapping matrix | Every common field is observed, derived, or explicitly unavailable; inputs are scrubbed and public-safe |
+| 0C.1 SoftSchema contracts | `mb-lqae` | `contracts.py`, deterministic packaged schemas, and exact first-party dependency selection owned by `mb-4gnu` | Enforced registry and Python/browser/schema/corpus agreement |
+| 0C.2 format gate | `mb-dhz8` | Contract inventory, distribution smoke, architecture registration, and parity evidence | Every shipped contract has a producer, consumer, schema, fixture, and installed-artifact check |
 
 - [ ] Write the provider-neutral contract inventory as Pydantic models and deterministic
   compiled SoftSchema contracts, using simple closed objects and local `$defs`.
@@ -919,7 +955,9 @@ first implementation prerequisite here.
 | Slice | Depends on | Mergeable result |
 | --- | --- | --- |
 | v0.11 start (`mb-xxhi`) | v0.10.0 release `mb-i57d` | Implementation branch starts from the released `main` commit |
-| Hosted Review Format (`mb-63ym`) | Release gate and SoftSchema exact-release review | Enforced no-network records, schemas, fixtures, and browser validation |
+| Hosted Review 0A (`mb-u8n8` through `mb-n2ro`) | Released v0.10.0 baseline and design PR | Dormant pre-schema ChangeRequest models, typed frontmatter codec, portable Python/browser corpus, installed-artifact proof, and an owned stack-landing gate |
+| Hosted Review 0B (`mb-pnz5`, `mb-915y`, `mb-rla6`) | Phase 0A landed on `main` | Remaining no-network provider storage, repository, review, signal, and activity records plus the scrubbed GitHub coverage oracle |
+| Hosted Review 0C (`mb-lqae`, `mb-dhz8`) | Phase 0B and SoftSchema selection `mb-4gnu` | Compiled enforced schemas, installed host registry, complete inventory, distribution, and parity gate; closes `mb-63ym` |
 | Generic cache | Cache Phase 1A/1B beads | Any supported repository source is pinned and reusable offline |
 | GitHub URL reducer (`mb-12cz`, `mb-ew38`) | Generic cache | Any supported GitHub repository URL opens without the GitHub API |
 | Branch materialization (`mb-z335`, `mb-2xq7`) | Repository URL open | Any exposed and authorized branch opens without moving the pinned root |
