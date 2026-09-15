@@ -71,6 +71,7 @@ against one that did.
 | exp-031 | [The final candidate restores bounded stream continuity](experiments/exp-031-v091-final-candidate-restores-stream-continuity.md) | - | `browser_event_stream_overflows_per_run` | accepted |
 | exp-032 | [The final v0.9.2 candidate bounds 300k catalog delivery](experiments/exp-032-v092-final-candidate-bounds-300k-catalog-delivery.md) | - | `browser_inventory_delivery_batch_items_max` | accepted |
 | exp-033 | [The v0.10.0 rough-cut check rejects the candidate on a 300k walk regression](experiments/exp-033-v0100-rough-cut-release-sanity-under-load.md) | - | `synthetic300k_browser_walk_elapsed_ms` | rejected |
+| exp-034 | [The quiet-machine v0.10.0 comparison rejects the candidate on the 300k corpus](experiments/exp-034-v0100-quiet-machine-rejects-the-candidate-on-300k.md) | - | `synthetic300k_browser_first_row_ms` | rejected |
 
 ## Absolute numbers, per condition
 
@@ -3271,6 +3272,224 @@ Corpus `63e8caeb81677610`, shape `1`, harness `22`.
 Walk elapsed across these runs: 8,099-22,302 ms.
 A run loaded during a walk and a run loaded after one are different regimes.
 
+### 300,000 files — exp-034 / tree-138d8520
+
+Corpus `3c6f4e86c0fc6ff5`, shape `2`, harness `22`.
+
+**What a reader gets** — browser probe
+
+| metric | exp-034-300k-release-v091 (n=5) | exp-034-300k-candidate-03fd7997 (n=5) |
+| --- | ---: | ---: |
+| `ttfb_ms` | 29 (22-42) | 39 (37-103) |
+| `response_download_ms` | 2 (1-4) | 1 (1-5) |
+| `dom_interactive_ms` | 295 (284-315) | 360 (314-394) |
+| `first_row_ms` | 293 (282-312) | 359 (312-392) |
+| `first_row_render_ms` | 2 (2-2) | 2 (2-3) |
+| `load_tree_ms` | 27 (23-39) | 40 (33-44) |
+| `tree_fetch_srv_ms` | 6 (6-9) | 22 (12-32) |
+| `tree_fetch_wait_ms` | 14 (8-22) | 28 (18-36) |
+| `tree_fetch_total_ms` | 19 (14-28) | 31 (26-39) |
+| `tree_fetch_kb` | 5 (5-5) | 5 (5-5) |
+| `dcl_ms` | 309 (299-334) | 375 (332-408) |
+| `load_ms` | 311 (301-336) | 376 (334-409) |
+| `last_resource_ms` | 22,281 (21,160-22,476) | 35,139 (33,131-37,122) |
+| `subtree_requests` | 0 (0-13) | 16 (16-16) |
+| `tree_items` | 13 (13-13) | 13 (13-13) |
+| `lazy_stubs` | 13 (13-13) | 13 (13-13) |
+| `collapsed_diff_rows_materialized` | 0 (0-0) | 0 (0-0) |
+| `dom_nodes` | 1,262 (1,262-1,262) | 1,269 (1,269-1,269) |
+| `transferred_kb` | 522 (517-546) | 643 (643-646) |
+| `vendor_first_start_ms` | 341 (317-352) | 383 (357-418) |
+| `fcp_ms` | 180 (148-220) | 268 (200-276) |
+| `lcp_ms` | 180 (148-220) | 416 (360-464) |
+| `cls` | 0 (0-0) | 0 (0-0) |
+| `cls_shifts` | 0 (0-0) | 0 (0-0) |
+| `frame_missing_px` | 269 (269-269) | 269 (269-269) |
+| `filter_bar_shift_px` | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 0 (0-0) | 0 (0-0) |
+| `reserved_region_shift_px` | 0 (0-0) | 0 (0-0) |
+| `tree_region_repaints` | 1 (1-1) | 1 (1-1) |
+| `long_tasks` | 0 (0-0) | 0 (0-2) |
+| `long_task_ms_total` | 0 (0-0) | 0 (0-183) |
+| `total_blocking_time_ms` | 0 (0-0) | 0 (0-83) |
+| `long_task_max_ms` | 0 (0-0) | 0 (0-98) |
+| `long_task_max_ms_first_5s` | 0 (0-0) | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) | 0 (0-0.5) |
+| `inventory_delivery_attribution_missing` | 1 (1-1) | 0 (0-0) |
+| `inventory_delivery_batches` | 1,258 (1,248-1,263) | 1,305 (1,297-1,307) |
+| `inventory_delivery_items` | 301,057 (300,923-301,097) | 301,251 (300,996-301,305) |
+| `inventory_delivery_batch_items_max` | 11,124 (9,888-13,287) | 4,096 (4,096-4,096) |
+| `inventory_delivery_max_ms` | 18 (16-31) | 32 (21-48) |
+| `inventory_delivery_work_ms_total` | 384 (356-392) | 720 (609-780) |
+| `inventory_delivery_work_pct` | 2 (1.7-1.8) | 2 (1.8-2.1) |
+| `animation_frames` | 1 (1-2) | 2 (1-3) |
+| `animation_frame_max_ms` | 116 (91-135) | 141 (107-201) |
+| `animation_frames_over_200ms` | 0 (0-0) | 0 (0-1) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) | 0 (0-84) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) | 0 (0-48) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `forced_style_layout_ms_max` | 0 (0-0) | 0 (0-0) |
+| `interactions` | 63 (56-71) | 103 (92-108) |
+| `interaction_inputs` | 82 (78-83) | 130 (123-137) |
+| `interaction_input_first_ms` | 411 (395-423) | 436 (411-526) |
+| `interaction_input_last_ms` | 22,072 (20,953-22,267) | 34,941 (32,936-36,923) |
+| `interaction_input_span_ms` | 21,662 (20,541-21,860) | 34,476 (32,525-36,487) |
+| `interaction_input_coverage_pct` | 98 (97.5-97.7) | 98 (98.3-98.5) |
+| `interaction_samples_retained` | 63 (56-71) | 103 (92-108) |
+| `interaction_p50_ms` | 16 (16-16) | 16 (16-16) |
+| `interaction_p95_ms` | 16 (16-32) | 16 (16-32) |
+| `interaction_max_ms` | 48 (40-48) | 48 (40-48) |
+| `render_spans` | 2 (2-2) | 2 (2-2) |
+| `render_ms_total` | 5 (5-6) | 5 (5-7) |
+| `tree_reprobe_ms` | 18 (16-19) | 6 (6-7) |
+| `tree_reprobe_srv_ms` | 13 (12-14) | 2 (2-2) |
+| `walk_elapsed_ms` | 18,715 (17,777-18,845) | 31,295 (28,852-33,022) |
+| `spawn_to_profile_start_ms` | 1,792 (1,754-1,811) | 2,631 (2,584-2,669) |
+| `requests` | 107 (104-119) | 144 (139-145) |
+| `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
+| `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) | 0 (0-0) |
+| `rendered_preview_errors` | 0 (0-0) | 0 (0-0) |
+| `page_exceptions` | 0 (0-0) | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) | 0 (0-0) |
+| `script_transfer_kb` | 329 (329-329) | 351 (351-351) |
+| `startup_script_requests` | 22 (22-22) | 20 (20-20) |
+| `startup_script_transfer_kb` | 161 (161-161) | 171 (171-171) |
+| `startup_script_last_response_ms` | 285 (274-300) | 351 (298-381) |
+| `startup_script_duration_max_ms` | 238 (224-254) | 265 (220-329) |
+| `startup_style_server_ms_max` | 32 (23.2-46.2) | 45 (33.9-60.1) |
+| `startup_style_wait_ms_max` | 47 (41-64) | 73 (52-138) |
+| `startup_style_last_response_ms` | 129 (105-162) | 203 (161-234) |
+| `style_transfer_kb` | 78 (78-78) | 79 (79-79) |
+| `image_transfer_kb` | 0 (0-0) | 0 (0-0) |
+| `api_transfer_kb` | 86 (81-110) | 184 (184-186) |
+| `largest_resource_kb` | 83 (83-83) | 100 (100-107) |
+| `resource_duration_max_ms` | 3,610 (3,484-3,743) | 4,212 (3,894-4,449) |
+| `js_heap_mb` | 46 (45.2-45.8) | 59 (44.7-63.9) |
+| `js_heap_after_gc_mb` | 38 (38.3-38.5) | 39 (38.9-38.9) |
+| `plugin_view_containers` | 2 (2-2) | 2 (2-2) |
+| `plugin_view_nonempty` | 1 (1-1) | 1 (1-1) |
+| `shell_tools_missing` | 0 (0-0) | 0 (0-0) |
+| `file_catalog_incomplete` | 0 (0-0) | 0 (0-0) |
+| `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
+| `viewport_h` | 1,040 (1,040-1,040) | 1,040 (1,040-1,040) |
+
+Walk elapsed across these runs: 17,777-33,022 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
+
+### 118,860 files — exp-034 / tree-8cf3e743
+
+Corpus `558ae04964fb20f1`, shape `1`, harness `22`.
+
+**What a reader gets** — browser probe
+
+| metric | exp-034-p10-release-v091 (n=5) | exp-034-p10-candidate-03fd7997 (n=5) |
+| --- | ---: | ---: |
+| `ttfb_ms` | 988 (927-1,063) | 36 (28-53) |
+| `response_download_ms` | 1 (1-2) | 3 (2-5) |
+| `dom_interactive_ms` | 1,204 (1,152-1,354) | 239 (199-319) |
+| `first_row_ms` | 1,238 (1,189-1,392) | 230 (198-317) |
+| `first_row_render_ms` | 1 (1-2) | 2 (2-5) |
+| `load_tree_ms` | 25 (16-28) | 56 (22-69) |
+| `tree_fetch_srv_ms` | 1 (1-3) | 39 (9-44) |
+| `tree_fetch_wait_ms` | 6 (2-13) | 42 (10-49) |
+| `tree_fetch_total_ms` | 15 (10-18) | 49 (14-60) |
+| `tree_fetch_kb` | 1 (1-1) | 1 (1-1) |
+| `dcl_ms` | 1,218 (1,165-1,366) | 251 (212-345) |
+| `load_ms` | 1,220 (1,166-1,368) | 253 (214-346) |
+| `last_resource_ms` | 41,330 (40,773-42,346) | 17,160 (17,007-18,126) |
+| `subtree_requests` | 0 (0-0) | 13 (0-13) |
+| `tree_items` | 10 (10-10) | 10 (10-10) |
+| `lazy_stubs` | 10 (10-10) | 10 (10-10) |
+| `collapsed_diff_rows_materialized` | 0 (0-0) | 0 (0-0) |
+| `dom_nodes` | 1,036 (1,036-1,036) | 1,044 (1,044-1,044) |
+| `transferred_kb` | 475 (474-475) | 650 (538-678) |
+| `vendor_first_start_ms` | 1,245 (1,180-1,372) | 269 (243-370) |
+| `fcp_ms` | 1,140 (1,084-1,260) | 188 (144-316) |
+| `lcp_ms` | 1,516 (1,432-1,668) | 244 (184-380) |
+| `cls` | 0 (0-0) | 0 (0-0) |
+| `cls_shifts` | 0 (0-0) | 0 (0-0) |
+| `frame_missing_px` | 220 (220-220) | 220 (220-220) |
+| `filter_bar_shift_px` | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 23 (23-23) | 23 (23-23) |
+| `reserved_region_shift_px` | 23 (23-23) | 23 (23-23) |
+| `tree_region_repaints` | 1 (1-1) | 1 (1-1) |
+| `long_tasks` | 0 (0-0) | 0 (0-0) |
+| `long_task_ms_total` | 0 (0-0) | 0 (0-0) |
+| `total_blocking_time_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms_first_5s` | 0 (0-0) | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_attribution_missing` | 1 (1-1) | 0 (0-0) |
+| `inventory_delivery_batches` | 556 (556-556) | 502 (421-503) |
+| `inventory_delivery_items` | 119,142 (119,142-119,142) | 109,444 (94,132-109,444) |
+| `inventory_delivery_batch_items_max` | 256 (256-256) | 4,096 (4,096-4,096) |
+| `inventory_delivery_max_ms` | 8 (8-9) | 10 (5-13) |
+| `inventory_delivery_work_ms_total` | 105 (95-114) | 265 (250-276) |
+| `inventory_delivery_work_pct` | 0 (0.2-0.3) | 2 (1.4-1.6) |
+| `animation_frames` | 1 (1-1) | 1 (1-2) |
+| `animation_frame_max_ms` | 116 (112-150) | 98 (76-175) |
+| `animation_frames_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) | 0 (0-17) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) | 0 (0-17) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `forced_style_layout_ms_max` | 0 (0-0) | 0 (0-0) |
+| `interactions` | 116 (107-118) | 51 (46-57) |
+| `interaction_inputs` | 140 (138-144) | 63 (63-67) |
+| `interaction_input_first_ms` | 4,044 (3,996-4,306) | 320 (282-407) |
+| `interaction_input_last_ms` | 41,129 (40,574-42,143) | 16,962 (16,808-17,928) |
+| `interaction_input_span_ms` | 37,079 (36,530-38,129) | 16,555 (16,525-17,608) |
+| `interaction_input_coverage_pct` | 90 (89.3-90.2) | 98 (97-97.7) |
+| `interaction_samples_retained` | 116 (107-118) | 51 (46-57) |
+| `interaction_p50_ms` | 16 (16-16) | 16 (16-16) |
+| `interaction_p95_ms` | 16 (16-16) | 24 (16-32) |
+| `interaction_max_ms` | 40 (16-40) | 32 (32-48) |
+| `render_spans` | 1 (1-1) | 2 (2-2) |
+| `render_ms_total` | 1 (1-2) | 5 (5-12) |
+| `tree_reprobe_ms` | 11 (10-13) | 6 (6-7) |
+| `tree_reprobe_srv_ms` | 6 (6-7) | 2 (2-2) |
+| `walk_elapsed_ms` | 39,203 (38,741-40,442) | 15,507 (15,100-16,758) |
+| `spawn_to_profile_start_ms` | 1,820 (1,759-1,893) | 4,016 (3,901-11,137) |
+| `requests` | 121 (120-123) | 104 (91-106) |
+| `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
+| `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) | 0 (0-0) |
+| `rendered_preview_errors` | 0 (0-0) | 0 (0-0) |
+| `page_exceptions` | 0 (0-0) | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) | 0 (0-0) |
+| `script_transfer_kb` | 329 (329-329) | 351 (351-351) |
+| `startup_script_requests` | 22 (22-22) | 20 (20-20) |
+| `startup_script_transfer_kb` | 161 (161-161) | 171 (171-171) |
+| `startup_script_last_response_ms` | 1,199 (1,147-1,348) | 221 (189-284) |
+| `startup_script_duration_max_ms` | 211 (192-269) | 174 (145-206) |
+| `startup_style_server_ms_max` | 41 (33.6-58.4) | 26 (19.3-43.6) |
+| `startup_style_wait_ms_max` | 64 (57-87) | 44 (37-76) |
+| `startup_style_last_response_ms` | 1,097 (1,035-1,210) | 130 (100-169) |
+| `style_transfer_kb` | 78 (78-78) | 79 (79-79) |
+| `image_transfer_kb` | 0 (0-0) | 0 (0-0) |
+| `api_transfer_kb` | 39 (38-39) | 190 (79-218) |
+| `largest_resource_kb` | 83 (83-83) | 84 (84-84) |
+| `resource_duration_max_ms` | 2,077 (2,028-2,257) | 2,057 (1,976-2,084) |
+| `js_heap_mb` | 8 (8-9.6) | 24 (21.4-26.6) |
+| `js_heap_after_gc_mb` | 6 (6.1-6.2) | 6 (6.4-6.4) |
+| `plugin_view_containers` | 2 (2-2) | 2 (2-2) |
+| `plugin_view_nonempty` | 1 (1-1) | 1 (1-1) |
+| `shell_tools_missing` | 0 (0-0) | 0 (0-0) |
+| `file_catalog_incomplete` | 0 (0-0) | 0 (0-0) |
+| `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
+| `viewport_h` | 1,040 (1,040-1,040) | 1,040 (1,040-1,040) |
+
+Walk elapsed across these runs: 15,100-40,442 ms.
+A run loaded during a walk and a run loaded after one are different regimes.
+
 ## Provenance
 
 | experiment | label | provider | contract | recorded | build | identity | commit | corpus | shape | harness | walk |
@@ -3572,6 +3791,26 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-033 | exp-033-300kr-candidate-88606b56 | python | inventory-provider-v1 | 2026-09-14T14:27 | metab 0.9.2.dev187+88606b56 | `wheel:sha256:27195ede14921bada29d2b6ca90ddce149963326966c380f121d50461126b005` | 88606b56ebdc5e7b211dc508b4bde74b6f7a8606 | tree-b4ec96ce | 2 | 22 | 26,164 ms |
 | exp-033 | exp-033-300kr-release-v091 | - | - | 2026-09-14T14:28 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-b4ec96ce | 2 | 22 | 16,160 ms |
 | exp-033 | exp-033-300kr-candidate-88606b56 | python | inventory-provider-v1 | 2026-09-14T14:29 | metab 0.9.2.dev187+88606b56 | `wheel:sha256:27195ede14921bada29d2b6ca90ddce149963326966c380f121d50461126b005` | 88606b56ebdc5e7b211dc508b4bde74b6f7a8606 | tree-b4ec96ce | 2 | 22 | 19,333 ms |
+| exp-034 | exp-034-p10-release-v091 | - | - | 2026-09-15T00:11 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-8cf3e743 | 1 | 22 | 40,442 ms |
+| exp-034 | exp-034-p10-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:29 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-8cf3e743 | 1 | 22 | 16,758 ms |
+| exp-034 | exp-034-p10-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:30 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-8cf3e743 | 1 | 22 | 16,127 ms |
+| exp-034 | exp-034-p10-release-v091 | - | - | 2026-09-15T00:31 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-8cf3e743 | 1 | 22 | 39,446 ms |
+| exp-034 | exp-034-p10-release-v091 | - | - | 2026-09-15T00:32 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-8cf3e743 | 1 | 22 | 39,140 ms |
+| exp-034 | exp-034-p10-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:33 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-8cf3e743 | 1 | 22 | 15,100 ms |
+| exp-034 | exp-034-p10-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:34 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-8cf3e743 | 1 | 22 | 15,507 ms |
+| exp-034 | exp-034-p10-release-v091 | - | - | 2026-09-15T00:35 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-8cf3e743 | 1 | 22 | 39,203 ms |
+| exp-034 | exp-034-p10-release-v091 | - | - | 2026-09-15T00:36 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-8cf3e743 | 1 | 22 | 38,741 ms |
+| exp-034 | exp-034-p10-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:37 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-8cf3e743 | 1 | 22 | 15,223 ms |
+| exp-034 | exp-034-300k-release-v091 | - | - | 2026-09-15T00:39 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-138d8520 | 2 | 22 | 18,845 ms |
+| exp-034 | exp-034-300k-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:40 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-138d8520 | 2 | 22 | 33,022 ms |
+| exp-034 | exp-034-300k-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:41 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-138d8520 | 2 | 22 | 32,964 ms |
+| exp-034 | exp-034-300k-release-v091 | - | - | 2026-09-15T00:42 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-138d8520 | 2 | 22 | 18,519 ms |
+| exp-034 | exp-034-300k-release-v091 | - | - | 2026-09-15T00:42 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-138d8520 | 2 | 22 | 18,845 ms |
+| exp-034 | exp-034-300k-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:43 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-138d8520 | 2 | 22 | 31,295 ms |
+| exp-034 | exp-034-300k-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:44 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-138d8520 | 2 | 22 | 30,659 ms |
+| exp-034 | exp-034-300k-release-v091 | - | - | 2026-09-15T00:45 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-138d8520 | 2 | 22 | 18,715 ms |
+| exp-034 | exp-034-300k-release-v091 | - | - | 2026-09-15T00:46 | metab 0.9.1 | `wheel:sha256:6406b3970f8da533f49dfa7c0b561ded5446531e3b8ea02cc3704bd37b0cb6bc` | 16211ccb6459836c9a0813f0c3b096eef38e17b3 | tree-138d8520 | 2 | 22 | 17,777 ms |
+| exp-034 | exp-034-300k-candidate-03fd7997 | python | inventory-provider-v1 | 2026-09-15T00:47 | metab 0.9.2.dev201+03fd7997 | `wheel:sha256:af3d544e4436b50180f8b085177f6d11f104bb2eb07007a41fc7e697e25f62cf` | 03fd799787bb9dcda1cab465159271514b4afc5b | tree-138d8520 | 2 | 22 | 28,852 ms |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->
