@@ -114,25 +114,29 @@ never from currently mounted rows.
 The collection overview makes its query, bounds, freshness, completeness, offline state,
 and refresh diagnostics visible.
 
-## Materialization and the four cache lifetimes
+## Transient projections and the four cache lifetimes
 
 “Cache” does not name one interchangeable storage mechanism:
 
 1. The repository library durably owns Git objects and a pinned serving root.
 2. A provider store durably owns immutable hosted-review snapshots and current manifests
    beside that repository.
-3. Containers whose bytes are not directly available materialize detached worktrees,
-   patch anchors, or archive members into bounded transient directories and release them
-   with the owning job or view.
+3. The subsystem that needs filesystem bytes owns its bounded transient projection: the
+   repository service owns detached Git worktrees and an archive plugin owns extracted
+   members, each released with the owning job or view.
 4. Inventory pages, comparison manifests, patches, and browser projections are bounded,
    recomputable session caches.
 
-Only the third layer is container materialization.
-It has one eviction and bounds discipline shared across container kinds, but it does not
-own durable repository acquisition or provider snapshots.
-The [repository-library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
-owns layers 1 and 3; the [hosted-review architecture](arch-hosted-review-model.md) owns
-layer 2 and defines how the four compose.
+Only the third layer contains transient filesystem projections.
+Review anchors are provider-domain records in layer 2, while diff manifests and patches
+are recomputable records in layer 4; neither is a materialized directory.
+Projection types share low-level safe-path or lease helpers only after two implemented
+owners prove the same contract, and each owner keeps its own admission, bounds, and
+reclamation policy. The
+[repository-library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
+owns repository worktrees in layers 1 and 3; the
+[hosted-review architecture](arch-hosted-review-model.md) owns layer 2 and defines how
+the four compose.
 
 ## Zoom
 

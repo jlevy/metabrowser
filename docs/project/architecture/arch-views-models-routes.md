@@ -60,6 +60,17 @@ Two kinds are also **containers** — folder-like entries whose children are add
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
 folders) and `diff` (children are the files a patch changes).
 
+The proposed v0.11 hosted-review plugin adds one route-backed kind only when its model,
+view, address, and parity evidence land together:
+
+| Planned kind | Matches | Views (default first) | Model | Bead |
+| --- | --- | --- | --- | --- |
+| `change-request` | A selected `/review/...` resource | Review, Diff, Source | `ChangeRequest/v1` plus a selected bundle of validated companions and File Diff Format by reference | `mb-81p5` |
+
+It is item-like as a document and folder-like as a changed-file container.
+Repository summaries and PR index rows are route models and virtual-navigation data, not
+synthetic filesystem kinds.
+
 ### Shared Source rendering
 
 `text`, `structured`, and `markdown` all expose raw source from the file envelope.
@@ -137,6 +148,32 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`.
+
+The hosted-review slice registers these exact proposed resource routes with the browser
+address in the same implementation changes:
+
+| Planned route | Model | CLI evidence | Bead |
+| --- | --- | --- | --- |
+| `/api/hosted-review/<provider>/<repository-key>/repository` | `HostedRepository/v1` plus retrieval and manifest references | `metab --api`; `cli-github-repository.tryscript.md` | `mb-2oxp` |
+| `/api/hosted-review/<provider>/<repository-key>/change-requests?query_key=<key>` | One `ChangeRequestIndex/v1` observation | `metab --api`; `cli-github-pr-index.tryscript.md` | `mb-lnkl` |
+| `/api/hosted-review/<provider>/<repository-key>/change-requests/<change-key>` | Selected `ChangeRequest/v1` bundle, including distinct top-level and review comments | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-h64t` |
+| `/api/hosted-review/<provider>/<repository-key>/change-requests/<change-key>/comparison` | File Diff Format resolved from immutable base/head object IDs | `metab --api`; `cli-github-pr-open.tryscript.md` | `mb-81p5` |
+
+### Planned plugin registration surfaces
+
+These are additive installed-plugin capabilities only if existing SDK 0.6 manifests and
+JavaScript calls keep their signatures and behavior.
+They still require plugin-author documentation and a changelog entry.
+An existing-contract change instead bumps `PLUGIN_SDK_VERSION` and every built-in
+manifest in one commit, with no compatibility layer.
+
+| Declaration or SDK call | Owns | Arbitration and lifecycle | Bead |
+| --- | --- | --- | --- |
+| `RouterSpec` | Mounted HTTP prefix and trusted router factory | Reserved/duplicate prefixes fail; application lifespan awaits shutdown | `mb-xzj3` |
+| `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
+| `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through | `mb-12cz` |
+| `ProviderAdapterSpec` | Provider/instance capability and trusted adapter factory | Duplicate claims fail; lifespan injects neutral ports and awaits cancellation/close | `mb-ji83` |
+| `registerNavPanel` | Repository-scoped bounded virtual collection | Generation-checked loading, restoration, root replacement, and disposal | `mb-uh6p` |
 
 ## CLI and functional UI parity
 
@@ -290,6 +327,28 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `image.raw-preview` | interaction | `static/view-composition.js#createLifecycle`, `builtin_plugins/image/index.js#renderImage` | `/api/file` | `node tests/dom/image-preview-session.js` | `cli-ui-image-preview.tryscript.md` |
 | `document.reading-width` | interaction | `static/document-width.js#apply` | `local-only` | `node tests/dom/document-width-session.js` | `cli-ui-document-width.tryscript.md` |
 | `navigation.filter-layout` | paint-exempt | `static/styles.css` | `local-only` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
+
+### Planned v0.11 hosted-review functional rows
+
+These rows move into the enforced table in the same changes that add their production
+functions. All interaction rows enter through `node tests/dom/hosted-review-session.js`
+and are pinned together by `tests/golden/cli-ui-hosted-review.tryscript.md`; focused
+unit sessions may supplement but cannot replace that exact production path.
+
+| Aspect | Tier | Planned owner | Data inputs | Required production session |
+| --- | --- | --- | --- | --- |
+| `hosted-review.direct-lifecycle` | interaction | `static/plugin-address-spaces.js#parseAddress`, `static/plugin-address-spaces.js#applyAddress`, `builtin_plugins/hosted_review/hosted-review-view.js#prepareChangeRequestView`, `#mountChangeRequestView`, `#disposeChangeRequestView` | selected change-request and comparison routes above | direct `/review/...` startup, popstate, replacement, and failed-load recovery |
+| `hosted-review.panel-window` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#createPullRequestPanel`, `#loadIndexPage` | change-request index route | bounded page load, virtualization window shift, stale and partial indicators |
+| `hosted-review.panel-selection` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#openChangeRequest` | index and selected change-request routes | row selection opens the same direct address and changed-file container |
+| `hosted-review.panel-restoration` | interaction | `builtin_plugins/hosted_review/hosted-review-panel.js#restorePullRequestSelection` | index route | selection and expansion restore only for the same repository and query key |
+| `hosted-review.root-replacement` | interaction | `static/plugin-address-spaces.js#replaceRoot`, `builtin_plugins/hosted_review/hosted-review-panel.js#replaceRoot` | `local-only` | old requests, previews, index pages, and snapshot leases settle before the new root owns state |
+| `hosted-review.disposal` | interaction | `static/plugin-address-spaces.js#disposeAddress`, `builtin_plugins/hosted_review/hosted-review-view.js#disposeChangeRequestView`, `builtin_plugins/hosted_review/hosted-review-panel.js#dispose` | `local-only` | navigation away, failed replacement, root replacement, and shutdown dispose once |
+
+Every browser-consumed Hosted Review Format record has a named parser in
+`builtin_plugins/hosted_review/hosted-review-model.js` and runs the same valid/invalid
+corpus as Python: repository, index, change request, top-level comment, review, thread,
+review comment, check, status, manifest, and activity page.
+No server aggregate may bypass those record validators.
 
 ## Adding something
 

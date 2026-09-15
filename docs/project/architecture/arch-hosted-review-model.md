@@ -78,7 +78,8 @@ The v0.11.0 record set is deliberately PR-first:
 | `HostedRepository/v1` | Provider-neutral repository identity, coordinates, URLs, visibility, default branch, and timestamps | Git objects or an API response |
 | `ChangeRequestIndex/v1` | A bounded, paginated discovery list with query, freshness, completeness, and cursors | Full bodies, reviews, threads, checks, or fetched refs |
 | `ChangeRequest/v1` | A pull or merge request’s identity, lifecycle, participants, labels, base/head, merge readiness, and aggregate state | Patch bodies or transport pagination |
-| `Review/v1` | One review act and its normalized disposition | Provider-specific review payload |
+| `ChangeRequestComment/v1` | One top-level conversation comment, author, timestamps, visibility state, and human URL | A diff anchor or rendered HTML as authority |
+| `Review/v1` | One review act, its normalized disposition, and an optional reader-facing summary body | Provider-specific review payload |
 | `ReviewThread/v1` | A bounded discussion anchored to an immutable comparison identity | A guessed current line |
 | `ReviewComment/v1` | One comment, author, timestamps, state, and anchor | Rendered HTML as authority |
 | `Check/v1` and `CommitStatus/v1` | CI and status conclusions attached to an immutable revision | Git commit content |
@@ -91,12 +92,13 @@ records.
 
 ### Artifact profiles
 
-`ChangeRequest/v1` uses SoftSchema’s `frontmatter-md` profile.
-Its YAML envelope holds every value software consumes: identity, title, lifecycle,
-actors, labels, base/head refs, merge state, aggregate review/check state, freshness,
-and links to bounded companion records.
-The Markdown body is the provider’s PR description and remains reader-facing; no index,
-route, or view parses prose or tables from it to recover structured values.
+`ChangeRequest/v1`, `ChangeRequestComment/v1`, `Review/v1`, and `ReviewComment/v1` use
+SoftSchema’s `frontmatter-md` profile.
+Their YAML envelopes hold every value software consumes: identity, lifecycle, actors,
+timestamps, links, anchors where applicable, and bounded-collection membership.
+The Markdown body is the reader-facing provider prose: the PR description, a top-level
+conversation comment, an optional review summary, or an inline review comment.
+No index, route, or view parses prose or tables from it to recover structured values.
 
 This makes one cached PR both application data and an ordinary document.
 The Markdown plugin can render the description under the untrusted-content profile,
@@ -105,8 +107,9 @@ and the resolved File Diff Format around it.
 The serializer uses frontmatter-format’s fenced Markdown writer, preserves the provider
 body as content, and computes snapshot identity from the complete normalized artifact.
 
-Indexes, sync manifests, retrieval records, tombstones, and compact review/check records
-use `pure-yaml` because their entire content is structured.
+Indexes, sync manifests, retrieval records, tombstones, threads, checks, and status
+records use `pure-yaml` because their entire content is structured or they only refer to
+a separately stored comment artifact.
 A later issue artifact may use `frontmatter-md` for the same reason as a change request;
 that decision belongs to `mb-9rrc` and does not alter the v0.11.0 PR contract.
 
@@ -119,6 +122,25 @@ Every durable object carries a `ProviderObjectRef` with:
 - provider object kind and stable opaque ID;
 - repository identity and repository-local number where applicable; and
 - canonical human URL.
+
+Every provider observation also carries a stable `AuthorizationContextRef` in its
+retrieval record and sync manifest: provider instance, `anonymous` or `authenticated`
+mode, a stable opaque principal ID for authenticated publications, and an optional
+normalized capability-partition fingerprint only when those capabilities change which
+objects the principal may observe.
+Display login, observed scopes or capabilities, and observation time are retrieval
+observations, not authorization-context identity.
+Neither record carries a token, credential-store path, environment-variable value, or
+command output.
+An authenticated adapter that cannot resolve a stable opaque principal ID
+returns a typed authorization-unavailable state instead of publishing into a shared
+authenticated namespace.
+Current pointers are scoped by an opaque digest of only the stable context fields so
+repeat observations for one principal advance together, while validators and a
+permission denial from one principal cannot overwrite another principal’s view.
+A last-known observation from another context may be shown only as an explicit offline
+fallback labeled with the context that fetched it; it is never treated as fresh or used
+to infer deletion.
 
 Normalized lifecycle values use the hosted-review vocabulary.
 When GitHub returns a new enum value, the adapter maps it to `unknown` and may retain
@@ -175,10 +197,10 @@ The collection and its entries use the existing item-like/folder-like roles:
 - **Changed-file row:** an ordinary comparison child that opens the shared Diff view and
   the existing base/head revision-content views.
 
-Rows may show compact values the index contract guarantees, such as PR number, title,
-author, draft/open/merged/closed state, updated time, and bounded review/check summary.
-Description, full review details, threads, and file changes remain in the selected
-bundle and load only after selection.
+Rows may show only the compact values the index contract guarantees: PR number, title,
+author, draft/open/merged/closed state, base and head labels, and updated time.
+Description, review and check summaries, full review details, threads, and file changes
+remain in the selected bundle and load only after selection.
 Counts and folder visibility come from the complete bounded index model, never from the
 currently mounted page.
 
@@ -203,6 +225,14 @@ A GitHub-only badge or action belongs to a GitHub companion view registered by t
 provider plugin. The common hosted-review renderer neither branches on
 `provider == "github"` nor reads provider-specific fields.
 
+The host discovers provider adapters through a closed capability registry.
+An installed plugin declares a `ProviderAdapterSpec` with its provider and instance
+claims plus a trusted factory callable.
+Discovery rejects duplicate claims; application lifespan constructs adapters with only
+provider-neutral repository, job, clock, and storage ports and awaits cancellation and
+`close()` during root replacement and shutdown.
+No server, cache, route, or renderer imports the GitHub adapter.
+
 For v0.11.0, the provider port has one implementation: `gh api` behind the GitHub
 adapter (`mb-p4sw`). The port owns repository resolution, auth diagnosis, one bounded
 index page, selected PR acquisition, reviews/checks, and rate-limit observations.
@@ -212,17 +242,25 @@ changing the stored contracts or renderers.
 
 ## Ports and Addresses
 
-Three provider-neutral ports keep URL parsing, acquisition, and rendering independently
-replaceable:
+Four provider-neutral ports keep URL parsing, acquisition, addressing, and rendering
+independently replaceable:
 
-- `ProviderUrlReducer.reduce(raw_url)` returns a credential-free Git clone source plus a
-  `RepositorySelection`. A selection may name ref/path candidates, a line range, or a
-  provider object target.
+- `ProviderUrlReducer.reduce(raw_url)` returns `NotApplicable`, `Reduced`, or
+  `Rejected`. Each reducer declares the schemes and hosts it claims.
+  Exactly one reducer may claim an input; overlapping scheme/host claims fail plugin
+  discovery, and `Rejected` is terminal rather than falling through to another parser.
+  `Reduced` carries a credential-free Git clone source plus a `RepositorySelection`. A
+  selection may name ref/path candidates, a line range, or a provider object target.
   GitHub implements the first reducer; the cache only sees its output.
 - `HostedReviewProvider` returns common repository, change-request, review, check, and
   index records plus typed retrieval outcomes.
   `GitHubGhAdapter` implements it through `gh api`; no route or renderer imports the
   adapter.
+- `AddressSpaceSpec` declares a browser prefix plus its parser, formatter, selection
+  application, preview claim, startup, popstate, root-replacement, and disposal hooks.
+  The shell arbitrates address ownership before startup, refuses reserved or duplicate
+  claims, and uses the same spec for href generation, browser navigation, and
+  `metab --show`.
 - the core repository service accepts a source or entry identity and an explicit ref,
   then returns a leased `RepositoryOpenTarget` pinned to a full Git object ID. Provider
   plugins may request selected PR refs through this port but cannot run Git or receive a
@@ -235,9 +273,12 @@ resolves to it.
 The bounded index and a direct URL must produce the same record identity,
 so navigation never needs an index-specific route.
 
-Mounted routers are a plugin-host capability, not a hosted-review exception.
-Each installed plugin declares a validated mount and router callable; the host preserves
-methods, streaming, headers, and honest status codes.
+Mounted routers and browser address spaces are separate plugin-host capabilities, not
+hosted-review exceptions.
+Each installed plugin declares a validated mount and router callable for HTTP plus an
+`AddressSpaceSpec` for browser navigation; the host preserves methods, streaming,
+headers, and honest status codes while the address owner controls parse/format/apply and
+mounted-preview lifecycle.
 Exact data hooks remain the smaller surface for one-segment model endpoints.
 Operator-directory plugins remain JavaScript-only, and all mounted state has a shutdown
 and root-replacement path.
@@ -249,14 +290,59 @@ Four caches remain distinct:
 1. the repository library durably owns Git objects and the pinned serving root;
 2. the provider store durably owns immutable hosted-review snapshots and current
    manifests;
-3. repository selection or container materialization temporarily owns detached worktrees
-   or unpacked bytes keyed by immutable object identity; and
+3. transient projections are owned by the subsystem that materializes them: the
+   repository service owns detached Git worktrees and the archive plugin owns extracted
+   trees, each keyed by immutable object identity and protected by leases; and
 4. activity pages, diff manifests, file patches, and browser projections are bounded,
    recomputable session caches.
 
 Only the second layer is the cache of PR-domain state.
 It references the first by object ID, may use the third to serve filesystem content, and
 never promotes the fourth into a released on-disk contract.
+Review anchors are domain data in the second layer, not materialized bytes in the third.
+Low-level lease or safe-path helpers may be shared only after two concrete owners prove
+the same contract; ownership and reclamation remain explicit per projection type.
+
+Provider publication has two independent axes.
+A sync transaction is `staged`, `committed`, or `failed`; each collection inside a
+committed manifest is separately `not_requested`, `partial`, `complete`, or
+`unavailable`. An interrupted, invalid, or failed transaction cannot move a current
+pointer. A structurally valid partial observation may become the newest current
+observation so the UI can report what was observed, while a separate `last-complete`
+pointer preserves the newest complete fallback.
+
+Index observations also declare remote consistency: `provider_snapshot` when one
+provider snapshot token covers every page, `best_effort_window` when pages were fetched
+against moving state, or `unknown` when the provider cannot prove either.
+They record first and last observation times, stable sort and tie-break rules, per-page
+provenance, and deduplication by stable provider ID. `complete` means the provider
+reported the requested query exhausted before any item, page, byte, or time bound was
+hit. Hitting a bound yields `partial` plus its truncation reason and continuation.
+Index completeness never means that separately hydrated PR resources are complete.
+
+Provider storage uses a fixed lock order:
+
+1. the application-home lock only for layout migration and global sweeps;
+2. the repository-entry lock for entry purge, ref mutation, and object-database work;
+3. a provider/resource lock for binding, staged publication, current-pointer changes,
+   and provider reclamation.
+
+No network process runs while any of those locks is held.
+Publication reacquires the entry lock and then the provider/resource lock, revalidates
+the entry lease and authorization context, then moves the manifest and pointer
+atomically. Readers hold snapshot leases so reclamation cannot remove an object they are
+serving. The provider store retains current, `last-complete`, one bounded diagnostic
+predecessor, and any explicit archival pin regardless of source availability; it sweeps
+older unreachable objects but never automatically removes the last validated reachable
+observation.
+
+All application-home directories containing repository or provider content are
+owner-only: `0700` directories and `0600` files on POSIX, with the equivalent
+current-user-only ACL on Windows.
+Metabrowser refuses remote acquisition when a cache ancestor is a symlink, is owned by
+another principal, is group/world accessible, or cannot be verified and repaired.
+This refusal does not prevent read-only browsing of an ordinary local path outside the
+application home.
 
 ## Acceptance Rules
 
@@ -268,6 +354,9 @@ The first GitHub slice is complete only when:
   branches on GitHub;
 - a bounded PR index and a directly addressed PR both produce the same
   `ChangeRequest/v1` identity and selected bundle;
+- top-level conversation comments and diff-anchored review comments remain distinct
+  artifacts, and anchors cover file-level, single-line, and range forms without
+  inventing a line;
 - list acquisition fetches no PR Git refs, while selection fetches only the requested
   base, head, and optional merge refs;
 - any advertised and authorized branch opens at its resolved full object ID through a
@@ -277,8 +366,11 @@ The first GitHub slice is complete only when:
   hosted-review document and views;
 - offline reuse preserves the last validated complete or explicitly partial provider
   observation; and
-- every new format, route, persisted state, and functional interaction appears in the
-  architecture map and exact production-path goldens.
+- every browser-consumed hosted-review record passes the packaged browser validator;
+- hostile provider strings remain text or untrusted Markdown and provider links accept
+  only validated HTTPS URLs; and
+- every new format, route, persisted state, address lifecycle, and functional
+  interaction appears in the architecture map and exact production-path goldens.
 
 ## Decisions for This Design Review
 
@@ -287,8 +379,9 @@ implementation:
 
 1. `ChangeRequest`, not GitHub Pull Request, is the durable common domain object; the
    provider-native kind remains explicit provenance.
-2. `ChangeRequest/v1` is an enforced SoftSchema `frontmatter-md` artifact: YAML is the
-   machine authority and the Markdown body is the untrusted provider description.
+2. `ChangeRequest/v1`, `ChangeRequestComment/v1`, `Review/v1`, and `ReviewComment/v1`
+   are enforced SoftSchema `frontmatter-md` artifacts: YAML is the machine authority and
+   the Markdown body is the untrusted provider prose, optional for a review summary.
 3. Hosted Review Format, Repository Activity Format, Git, File Diff Format, and revision
    content stay separate and compose through references rather than a union document.
 4. A hosted-review plugin owns common models and views; a GitHub provider plugin owns
@@ -303,6 +396,15 @@ implementation:
    GitHub URL syntax and hosted-review routes remain plugin-owned.
 9. Direct PR acquisition and viewing ship before the bounded PR index and virtual nav
    collection; discovery is additive rather than a prerequisite for addressing.
+10. Provider observations and validators are scoped by a non-secret authorization
+    context; transaction state, collection coverage, and remote consistency are three
+    separate claims.
+11. Provider adapters and browser address spaces are general installed-plugin
+    capabilities with duplicate-claim arbitration and awaited lifecycle, not implicit
+    imports or router side effects.
+12. Provider reclamation is reachability- and lease-based: current, last-complete, one
+    diagnostic predecessor, and archival pins survive, while older unreachable objects
+    remain bounded even for offline or deleted sources.
 
 Implementation evidence still decides concrete page and collection bounds, exact REST
 versus GraphQL queries, whether the initial activity panel groups commits and PRs or can

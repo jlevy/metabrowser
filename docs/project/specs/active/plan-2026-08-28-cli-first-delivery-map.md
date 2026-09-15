@@ -4,12 +4,14 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Parity foundation delivered in v0.10.0; v0.11.0 sequence ready
+**Status:** Parity foundation landed for the v0.10.0 release candidate; v0.11.0 is
+release-gated
 
 ## Overview
 
 The CLI parity mechanism and its route, kind, model, persisted-state, and functional
-aspect checks ship in v0.10.0. The remaining workstreams are
+aspect checks have landed on `main` for the v0.10.0 release candidate.
+The remaining workstreams are
 [Git status](plan-2026-08-26-git-status-and-working-tree-diffs.md), the
 [repository library](plan-2026-08-11-open-repo-from-git-url.md), and the
 [hosted-review and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md).
@@ -55,24 +57,25 @@ they turn the entire state machine into something a transcript can assert.
 
 ## Ordering
 
-Rows 1 and 2 are the delivered v0.10.0 baseline.
+Rows 1 and 2 are the v0.10.0 release-candidate baseline.
 For v0.11.0, the table’s *Gated by* column is authoritative where this prose and it
 disagree; independent status, format, trust, and provider-model work can proceed in
 parallel.
 
 | # | Work | Beads | Gated by | State |
 | --- | --- | --- | --- | --- |
-| 1 | Parity mechanism: ASGI client, normalizer, `--api`, `--show` | `mb-8n8l`, `mb-ian3`, `mb-y5wm` | nothing | Delivered in v0.10.0 |
-| 2 | Parity enforcement, persisted state, functional aspects, and codification | `mb-esht`, `mb-zodq`, `mb-n9xg` | 1 | Delivered in v0.10.0 |
-| 3 | Git-status measurement gate | `mb-r5gn` | nothing | v0.11.0 |
-| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 1, 3 | v0.11.0 foundation |
-| 5 | Cache format foundation, then acquisition | `mb-ire2`, `mb-4gnu`, `mb-dxmb`, `mb-h51g`, `mb-k54c`, `mb-dg00` | 1 | v0.11.0 |
-| 6 | HTML trust chain | `mb-cun0`, `mb-vib1` | nothing | Gates serving fetched content |
-| 7 | Provider URL reducer, repository open, then selected-branch materialization | `mb-12cz`, `mb-ew38`, `mb-z335`, `mb-2xq7` | 4, 5, 6 | v0.11.0 |
-| 8 | Hosted-review models plus provider job/ref foundation | `mb-63ym`, `mb-jlon` | 5 for `mb-jlon`; model work can start immediately | v0.11.0 |
-| 9 | Bounded provider runner, `gh api` adapter, auth, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-duu7`, `mb-2oxp`, `mb-h64t` | 7, 8 | v0.11.0 |
-| 10 | Plugin router and direct PR document/diff | `mb-xzj3`, `mb-81p5` | 6, 9 | v0.11.0 |
-| 11 | Bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.11.0 |
+| 0 | v0.11 start gate: v0.10.0 tag and release from intended `main` | `mb-i57d`, `mb-xxhi` | nothing | Open; blocks every `release:v0.11.0` implementation bead |
+| 1 | Parity mechanism: ASGI client, normalizer, `--api`, `--show` | `mb-8n8l`, `mb-ian3`, `mb-y5wm` | nothing | Landed on `main` for v0.10.0 |
+| 2 | Parity enforcement, persisted state, functional aspects, and codification | `mb-esht`, `mb-zodq`, `mb-n9xg` | 1 | Landed on `main` for v0.10.0 |
+| 3 | Git-status measurement gate | `mb-r5gn` | 0 | v0.11.0 |
+| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 0, 1, 3 | v0.11.0 foundation |
+| 5 | Owner-only cache format foundation, then acquisition | `mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-dxmb`, `mb-h51g`, `mb-k54c`, `mb-dg00` | 0, 1 | v0.11.0 |
+| 6 | HTML trust chain | `mb-cun0`, `mb-vib1` | 0 | Gates serving fetched content |
+| 7 | Provider URL reducer, repository open, then selected-branch materialization | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-z335`, `mb-2xq7` | 4, 5, 6 | v0.11.0 |
+| 8 | Hosted-review models | `mb-63ym` | 0 | v0.11.0 |
+| 9 | Bounded provider runner, capability registry, `gh api` adapter, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-ji83`, `mb-p4sw`, `mb-i3xc`, `mb-duu7`, `mb-2oxp`, `mb-h64t` | 5, 7, 8 | v0.11.0 |
+| 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | v0.11.0 |
+| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.11.0 |
 | 12 | Anchored review threads | `mb-rldc` | 10 | v0.11.0 |
 
 Row 6 is the
@@ -335,17 +338,17 @@ def ensure_home(home: Path) -> None: # creates, writes CACHEDIR.TAG
 | Module | Responsibility | Key functions |
 | --- | --- | --- |
 | `layout.py` | `f01` format record, fail-closed on future formats, ordered migrations | `read_layout`, `migrate`, `LAYOUT_FORMAT` |
-| `atomic.py` | same-filesystem staging, atomic YAML, home locking | `write_atomic`, `read_yaml`, `home_lock` |
+| `atomic.py` | same-filesystem staging, owner-only atomic YAML, fixed lock hierarchy | `write_atomic`, `read_yaml`, `home_lock`, `entry_lock`, `provider_resource_lock` |
 | `records.py` | SoftSchema contracts | `ApplicationConfig/v1`, `CacheLayout/v1`, `RepositoryIdentity/v1`, `RepositoryState/v1` |
 | `state.py` | the state machine | `promote`, `quarantine`, `trash`, `entry_state` |
 | `reclaim.py` | startup sweep of `staging/` and `trash/` | `reclaim(home)` |
 | `identity.py` | Phase 1B-a: conservative identity and collision-safe slug | `source_identity`, `cache_slug` |
-| `urls.py` | Phase 1B-b: root classification and provider-reducer dispatch | `classify_root_argument`, `ProviderUrlReducer` |
+| `urls.py` | Phase 1B-b: root classification, reducer claim arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome` |
 | `acquire.py` | Phase 1B-a: clone into staging, publish atomically | `acquire` |
-| `selection.py` | Phase 1B-c: resolve ref/path candidates and explicit missing refs | `resolve_selection`, `fetch_selected_ref` |
+| `selection.py` | Phase 1B-c: pure ref/path resolution and typed missing-ref requests | `resolve_selection`, `resolve_ref_path_candidates` |
 | `materialize.py` | Phase 1B-c: detached worktree leases | `acquire_materialization`, `release_materialization` |
 | `service.py` | One CLI/chooser orchestration result | `resolve_open_target`, `close_open_target` |
-| `jobs.py` | Provider-neutral selected-ref jobs | `request_ref_fetch`, `close_all` |
+| `jobs.py` | Provider-neutral network owner for selected-ref jobs | `fetch_selected_ref`, `request_ref_fetch`, `close_all` |
 | `routes.py` | the state clause | `/api/cache/layout`, `/entries`, `/entry/{slug}` |
 
 ```python
@@ -445,6 +448,7 @@ network behavior.
 | `cli-github-pr-open.tryscript.md` | a direct PR selection publishes one bundle and fetches only selected refs without an index | GitHub P3B |
 | `cli-github-pr-index.tryscript.md` | bounded pages, freshness, completeness, and no ref fetch while listing | GitHub P3C |
 | `cli-github-pr-offline.tryscript.md` | repository and selected PR remain inspectable from immutable snapshots without a network | GitHub P4A |
+| `cli-ui-hosted-review.tryscript.md` | exact production address parse/apply, direct view, panel window/selection/restoration, root replacement, and disposal | GitHub P4 |
 
 `cli-cache-recover` is the one worth insisting on.
 Crash recovery is the behavior most likely to be wrong and least likely to be exercised
@@ -516,7 +520,7 @@ dependencies, artifacts, and runtime reach before adoption.
 | Stop | Bead | Why it is not an implementation decision |
 | --- | --- | --- |
 | Unbounded `--untracked-files=all` | `mb-r5gn` | The plan says that if a complete status cannot be bounded usefully, the phase returns to design review. Choosing a partial-status policy instead would be redesigning the feature. |
-| Any `PLUGIN_SDK_VERSION` bump | any | A hard gate by [AGENTS.md](../../../../AGENTS.md), not a compatibility layer to negotiate. |
+| Any `PLUGIN_SDK_VERSION` bump | any | A hard gate by [AGENTS.md](../../../../AGENTS.md), not a compatibility layer to negotiate. Optional additive declarations may retain SDK 0.6 only when existing manifest and JavaScript behavior is unchanged and plugin docs plus `CHANGELOG.md` are updated. |
 | A golden that changes for an unexplained reason | any | Either a regression or a misunderstanding of the spec. Both need a human before the transcript is rewritten. |
 
 Everything else is ordinary work: the budgets from `mb-r5gn` are chosen from recorded
@@ -527,7 +531,8 @@ escalated.
 
 ### What landed for the parity foundation
 
-The first six beads established the v0.10.0 foundation:
+The first six beads established the baseline now on `main` for the v0.10.0 release
+candidate:
 
 | Order | Bead | Done when |
 | --- | --- | --- |
@@ -540,22 +545,25 @@ The first six beads established the v0.10.0 foundation:
 
 ### What lands for the v0.11.0 PR-first slice
 
-After the release branch returns to `main`, the remaining sequence is:
+After `mb-i57d` cuts v0.10.0 and `mb-xxhi` verifies and fetches the released `main`
+commit, the remaining sequence starts from a new branch at that commit:
 
 1. Run the status measurements (`mb-r5gn`) while the cache format and trust tracks begin
    independently.
-2. Land the application-home, record, acquisition, inspection, and URL-open foundation
-   (`mb-ire2`, `mb-4gnu`, `mb-h51g`, `mb-k54c`, `mb-dg00`, `mb-dxmb`, `mb-12cz`,
-   `mb-ew38`), then add the reusable materialization primitive and selected-branch
-   integration (`mb-z335`, `mb-2xq7`).
+2. Land the owner-only application-home, record, acquisition, inspection, and URL-open
+   foundation (`mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-h51g`, `mb-k54c`, `mb-dg00`,
+   `mb-dxmb`, `mb-12cz`, `mb-ew38`), then the provider job/ref owner and reusable
+   repository worktree projection (`mb-jlon`, `mb-z335`) before selected-branch
+   integration (`mb-2xq7`).
 3. Land the provider-neutral hosted-review contracts (`mb-63ym`) and narrow provider
    jobs/ref fetching (`mb-jlon`) without waiting for full cache management.
-4. Publish the bounded provider runner, `gh api` adapter, auth workflow, repository
-   summary, and one directly addressed PR bundle (`mb-y1ax`, `mb-p4sw`, `mb-duu7`,
-   `mb-2oxp`, `mb-h64t`).
-5. Add the mounted plugin router and direct PR document/diff (`mb-xzj3`, `mb-81p5`)
-   after the content-trust serving gate is satisfied.
-   This is the first complete PR workflow and does not wait for a discovery index.
+4. Publish the bounded provider runner, capability registry, `gh api` adapter, auth
+   workflow, auth-scoped store kernel, repository summary, and one directly addressed PR
+   bundle (`mb-y1ax`, `mb-ji83`, `mb-p4sw`, `mb-i3xc`, `mb-duu7`, `mb-2oxp`, `mb-h64t`).
+5. Add the mounted plugin router, browser address-space lifecycle, and direct PR
+   document/diff (`mb-xzj3`, `mb-6mle`, `mb-81p5`) after the content-trust serving gate
+   is satisfied. This is the first complete PR workflow and does not wait for a discovery
+   index.
 6. Add the bounded PR index and virtual Pull Requests collection (`mb-lnkl`, `mb-uh6p`,
    `mb-iw1v`), then layer anchored review threads (`mb-rldc`).
 

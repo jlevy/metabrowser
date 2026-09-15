@@ -377,8 +377,12 @@ Route invariants:
 Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
 selection in the Git panel.
 `/compare/` is specified here and not yet built.
-`/review/` is proposed for v0.11.0; the hosted-review plugin owns it through the planned
-mounted-router SDK rather than a provider route in core.
+`/review/` is proposed for v0.11.0; the hosted-review plugin owns its HTTP surface
+through the planned mounted-router SDK and its browser parse, format, apply, preview,
+popstate, replacement, and disposal lifecycle through a separate installed-plugin
+address-space registration.
+The shell arbitrates exactly one owner for an address and `metab --show` uses the same
+registration; neither core nor a mounted router hard-codes GitHub syntax.
 
 The query slot is currently carried verbatim and never interpreted: it exists so a query
 an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.

@@ -4,7 +4,7 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Ready for v0.11.0; implementation not started
+**Status:** Design review addressed; v0.11.0 implementation is release-gated
 
 ## Vision
 
@@ -83,6 +83,13 @@ and very-large-repository acquisition remain in their existing later phases.
 The GitLab adapter remains `mb-51uj` after the GitHub-first contracts and views ship.
 This is a milestone boundary, not a scope deletion: `mb-0ybg`, `mb-vmzy`, `mb-9rrc`,
 `mb-glxc`, and `mb-dqvj` retain that work.
+
+`mb-xxhi` is the hard implementation gate.
+It depends on the v0.10.0 release bead `mb-i57d` and closes only after the tag and
+release are cut from the intended `main` commit, that commit is fetched locally, and the
+first v0.11 implementation branch starts from it.
+Every `release:v0.11.0` implementation bead depends on this gate; design and review work
+may land before it.
 
 ## Goals
 
@@ -197,10 +204,13 @@ Blobless clone followed by background backfill remains the leading acquisition s
 but Phase 0 must remeasure the complete current route before promising a timing or
 selecting a threshold between full and blobless acquisition.
 
-## The Gate That Decides When This Ships
+## The Gates That Decide When This Ships
 
-The single largest scheduling fact about this plan is not in this plan.
+The first gate controls when v0.11 implementation starts: `mb-i57d` cuts v0.10.0 from
+the intended `main`, then `mb-xxhi` verifies and fetches that commit before an
+implementation branch is created from it.
 
+The second gate controls when acquired content may be served.
 A fetched repository is third-party content, so serving one requires the untrusted
 capability profile. That profile is `mb-vib1`, which is blocked by `mb-cun0` — sandboxed
 `/raw` responses and same-origin proof on `/api`. Both are open `P1` tasks belonging to
@@ -208,11 +218,14 @@ capability profile. That profile is `mb-vib1`, which is blocked by `mb-cun0` —
 which is `Status: Draft` with nothing implemented.
 
 ```text
-mb-cun0  sandbox /raw, same-origin proof on /api
-   └──► mb-vib1  capability set and --untrusted profile
-           └──► mb-ew38  repository URL open and offline reuse
-                    └──► mb-z335  materialization primitive
-                              └──► mb-2xq7  selected-branch integration
+mb-i57d  release v0.10.0 from main
+   └──► mb-xxhi  verify released main and open v0.11 implementation
+           ├──► cache format and acquisition
+           └──► mb-cun0  sandbox /raw, same-origin proof on /api
+                    └──► mb-vib1  capability set and --untrusted profile
+                              └──► mb-ew38  repository URL open and offline reuse
+                                       └──► mb-z335  repository projection
+                                                └──► mb-2xq7  selected branch
 ```
 
 Two consequences, both worth stating plainly rather than discovering during
@@ -221,10 +234,10 @@ implementation:
 - **Every estimate for this feature must include that chain.** The cache work alone does
   not produce a user-visible result; the first thing anyone can actually open is gated
   on a security workstream in another document.
-- **The chain depends on nothing here.** `mb-cun0` and `mb-vib1` have no dependency on
-  the cache, on Git status, or on each other beyond their own order, so they can proceed
-  in parallel with everything in Phase 0 through 1A. Sequencing them alongside rather
-  than after is what keeps the gate off the critical path.
+- **After the release gate, the trust and cache lanes are independent.** `mb-cun0` and
+  `mb-vib1` have no dependency on the cache or Git status beyond their own order, so
+  they can proceed in parallel with Phase 0 through 1A. Sequencing them alongside rather
+  than after keeps the serving gate off the post-release critical path.
 
 This plan does not absorb that work or restate its design.
 It records the dependency, names the beads, and treats “serving is gated” as a
@@ -239,12 +252,41 @@ The application home has four distinct ownership classes:
 | `config.yml` | User and application migration code | Durable and editable | Migrate losslessly; never discard unknown user settings |
 | Cache layout and repository identity | Core cache service | Rare writes | Validate, migrate if released data requires it, otherwise quarantine |
 | Git object database and `gitroot` | Core Git cache service | Objects and refs may grow; checkout stays pinned | Reacquire or rebuild outside a live entry |
-| Provider snapshots and manifests | Provider plugin through core storage APIs | Refreshable | Keep complete snapshots; invalidate or refetch by contract |
+| Provider snapshots and manifests | Provider plugin through core storage APIs | Refreshable | Keep current, last-complete, one diagnostic predecessor, and explicit archival pins; reclaim only unreachable generations |
 
 Core owns application-home resolution, atomic file publication, locks, safe cache paths,
 repository acquisition, Git refresh, and provider namespace allocation.
 Provider plugins own their schemas, API adapters, normalized records, routes, renderers,
 and styles. Core does not import a GitHub schema or branch on a GitHub object kind.
+
+### Owner-only storage
+
+Repository and provider cache content may be private.
+Every Metabrowser-created application-home directory is `0700` and every file is `0600`
+on POSIX; Windows uses an equivalent current-user-only ACL. Remote acquisition fails
+closed when the application home or a cache ancestor is a symlink, belongs to another
+principal, is group/world accessible, or cannot be verified and repaired.
+An explicit permissive `METABROWSER_HOME` receives an actionable refusal rather than a
+warning followed by a private write.
+This rule does not prevent read-only browsing of an ordinary local path outside the
+application home.
+
+### Lock order
+
+Locks have disjoint scopes and one fixed order:
+
+1. the application-home lock is used only for layout migration and global enumeration or
+   sweeps;
+2. an entry lock protects purge, selected-ref mutation, object-database work, and
+   detached-worktree ownership for one repository; and
+3. a provider/resource lock protects one binding, staged publication, current-pointer
+   update, or provider reclamation operation.
+
+No network or provider process runs while any lock is held.
+A job stages outside the locks, then acquires entry → provider/resource, revalidates its
+entry lease and authorization context, and publishes atomically.
+The application-home lock is never acquired while holding either narrower lock.
+Tests freeze this order and the concurrent refresh/read/purge/reclaim cases.
 
 ## Application Home and Cache Layout `f01`
 
@@ -648,14 +690,17 @@ The browser still uses `/view/<path>` because the session root itself is the sel
 revision; repository context names both the requested ref and resolved object ID so a
 copied URL never implies that a moving branch name is immutable.
 
-The materialization is a disposable projection, not another repository entry and not a
-new active checkout.
+The materialization is a repository-owned transient projection, not another repository
+entry, a generic container cache, or a new active checkout.
 Creating, reusing, and releasing it runs under the entry lock; never changes
 `active_revision`; never creates or advances a local branch; disables submodule
 recursion and interactive Git behavior; and is reclaimed only after the last owning
 session or job releases it.
 Missing objects may trigger one bounded fetch of the explicit selected ref.
 A cache hit with the object already present stays offline.
+Archive extraction remains owned by the archive plugin, and review anchors remain
+provider-domain data rather than filesystem bytes.
+Only proven low-level lease and safe-path helpers may be shared across those owners.
 
 This makes “any branch” precise: any branch advertised by the selected remote and
 readable with the user’s Git credentials can be opened, including names with slashes.
@@ -734,6 +779,10 @@ record that the cache never reads.
 The mechanism is a small declarative table of host patterns and path shapes behind one
 narrow interface, with GitHub as the first entry and GitHub Enterprise hosts
 configurable against the same shapes.
+Each installed reducer declares its schemes and hosts and returns `NotApplicable`,
+`Reduced`, or `Rejected`. Exactly one reducer may claim an input; overlapping claims
+fail plugin discovery, and a claimed-but-invalid URL returns terminal `Rejected` rather
+than falling through to a different reducer or local-path parser.
 The cache still computes identity from the resulting clone URL, so
 [conservative normalization](#stable-identity-and-mutable-state-are-separate) is
 untouched: two spellings that reduce to the same clone URL share an entry because the
@@ -998,19 +1047,19 @@ walk a repository, or clear root-owned state.
 
 | File | Key types and functions | Responsibility |
 | --- | --- | --- |
-| `src/metabrowser/home.py` | `application_home`, `ensure_home` | Resolve `METABROWSER_HOME`, create the layout, and write `CACHEDIR.TAG` |
+| `src/metabrowser/home.py` | `application_home`, `ensure_home`, `validate_private_home` | Resolve `METABROWSER_HOME`, create owner-only layout paths, reject symlinked/foreign/permissive ancestors for remote content, and write `CACHEDIR.TAG` |
 | `src/metabrowser/cache/records.py` | `ApplicationConfig`, `CacheLayout`, `RepositoryIdentity`, `RepositoryState` | Strict Pydantic models and SoftSchema envelope bindings |
 | `src/metabrowser/cache/layout.py` | `read_layout`, `migrate_layout`, `LAYOUT_FORMAT` | Fail closed on future formats and run ordered migrations |
-| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `entry_lock` | Bounded reads, same-filesystem publication, and process-safe locking |
+| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `entry_lock`, `provider_resource_lock` | Bounded reads, owner-only files, same-filesystem publication, fixed home → entry → resource order, and process-safe locking |
 | `src/metabrowser/cache/identity.py` | `normalize_git_source`, `source_identity`, `cache_slug` | Credential-free canonical identity and collision verification |
-| `src/metabrowser/cache/urls.py` | `classify_root_argument`, `ProviderUrlReducer`, `RepositorySelection` | Distinguish local paths, Git sources, and registered provider web URLs before constructing a `Path`; provider-specific syntax stays behind reducers |
+| `src/metabrowser/cache/urls.py` | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` | Distinguish local paths, Git sources, and registered provider web URLs before constructing a `Path`; arbitrate declared reducer claims and terminal rejection; keep provider-specific syntax behind reducers |
 | `src/metabrowser/cache/acquire.py` | `acquire_repository`, `validate_staging_entry`, `publish_entry` | Clone into staging, pin the default revision, validate, and atomically publish one entry |
-| `src/metabrowser/cache/selection.py` | `resolve_selection`, `resolve_ref_path_candidates`, `fetch_selected_ref` | Resolve slash-containing branch/tag/path candidates against local and remote-tracking refs, fetch only an explicitly selected missing ref, and return a full object ID |
+| `src/metabrowser/cache/selection.py` | `resolve_selection`, `resolve_ref_path_candidates` | Resolve slash-containing branch/tag/path candidates against local and remote-tracking refs and return either a full object ID or a typed request for one explicit missing ref; performs no network work |
 | `src/metabrowser/cache/materialize.py` | `MaterializationLease`, `acquire_materialization`, `release_materialization`, `reclaim_materializations` | Create or reuse bounded detached worktrees keyed by entry and object ID without changing `gitroot` or a local branch |
 | `src/metabrowser/cache/service.py` | `RepositoryOpenTarget`, `resolve_open_target`, `close_open_target` | Orchestrate parse, acquire/reuse, selection, materialization, trust profile, and initial browser path for CLI and later chooser callers |
-| `src/metabrowser/cache/jobs.py` | `RepositoryJob`, `RepositoryJobRegistry`, `request_ref_fetch`, `close_all` | Provider-neutral progress, cancellation, stage outcomes, and selected-ref requests used later by provider plugins |
+| `src/metabrowser/cache/jobs.py` | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `close_all` | Own bounded network fetch/prune for explicit selected refs plus provider-neutral progress, cancellation, and stage outcomes used later by provider plugins |
 | `src/metabrowser/cache/routes.py` | `api_cache_layout`, `api_cache_entries`, `api_cache_entry`, `api_repository_jobs` | Read-only logical-state projections for CLI parity; acquisition remains a CLI action, not a write API |
-| `src/metabrowser/cache/reclaim.py` | `reclaim_staging`, `reclaim_trash`, `reclaim_materializations` | Recover interrupted staging and release unreachable transient projections under the application-home lock |
+| `src/metabrowser/cache/reclaim.py` | `reclaim_staging`, `reclaim_trash`, `reclaim_materializations` | Briefly enumerate under the home lock, then recover interrupted staging and release unreachable repository-owned worktrees under entry locks while honoring leases |
 
 `RepositoryOpenTarget` contains the published entry identity, resolved root, requested
 ref, full resolved object ID, initial logical path, optional line selection, optional
@@ -1028,7 +1077,7 @@ The provider plan names the manifest and loader changes that register this reduc
 
 | Surface | Files |
 | --- | --- |
-| Formats, migration, identity, publication | `tests/test_cache_records.py`, `tests/test_cache_layout.py`, `tests/test_cache_identity.py`, `tests/test_cache_acquire.py` |
+| Formats, permissions, migration, identity, publication | `tests/test_cache_records.py`, `tests/test_cache_layout.py`, `tests/test_cache_permissions.py`, `tests/test_cache_identity.py`, `tests/test_cache_acquire.py` |
 | URL and ref selection | `tests/test_cache_urls.py`, `tests/test_cache_selection.py`, GitHub reducer tests in the provider plugin |
 | Detached branch lifecycle | `tests/test_cache_materialize.py`, `tests/test_cache_service.py`, root-replacement cases in `tests/test_inventory_contract.py` |
 | CLI behavior | `tests/golden/cli-cache-layout.tryscript.md`, `cli-cache-acquire.tryscript.md`, `cli-github-repo-open.tryscript.md`, `cli-github-branch-open.tryscript.md` |
@@ -1097,6 +1146,11 @@ that already exist costs more than building it first.
   schema-inventory, and installed-wheel checks.
 - [ ] Add atomic YAML reads/writes, application-home locking, quarantine, and
   recoverable-trash primitives without cloning or serving a URL.
+- [ ] Enforce owner-only application-home paths (`mb-xa0p`) and refuse remote writes
+  through symlinked, foreign-owned, or permissive cache ancestors.
+- [ ] Freeze the lock hierarchy: home for layout/global enumeration, entry for
+  repository mutation and leases, then provider/resource for provider publication; never
+  hold one across network work.
 - [ ] Write `CACHEDIR.TAG` when the cache root is created, and add the startup
   `staging/`/`trash/` reclamation sweep, so no released phase accumulates unreclaimed or
   backed-up cache data.
@@ -1153,11 +1207,19 @@ next slice begins.
   interrupted clone, read-only application home, unsupported Git version, and repair
   guidance.
 
+Acquisition staging and publication do not depend on the Git-status `is_clean`
+predicate: Metabrowser creates that checkout itself and validates the staged tree before
+publication. Serving a cached entry and later replacement, repair, or purge do depend on
+`mb-u4mf`, because those paths must detect external modification without resetting user
+data.
+
 #### Phase 1B-b: Open repository and hosted web URLs (`mb-12cz`, `mb-ew38`)
 
 - [ ] Add the trusted installed-plugin `ProviderUrlReducer` registration point; keep
   operator-directory plugins JavaScript-only and keep provider syntax out of cache
   identity and records.
+- [ ] Require declared scheme/host claims plus `NotApplicable`, `Reduced`, and terminal
+  `Rejected` outcomes; refuse duplicate or overlapping claims before startup.
 - [ ] Change the CLI root boundary from `Path | None` to `str | None`; preserve URL
   bytes until classification and keep path-only modes receiving resolved paths.
 - [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
@@ -1173,8 +1235,9 @@ next slice begins.
 
 - [ ] Resolve the ambiguous ref/path split after acquisition against local heads,
   remote-tracking refs, tags, and full object IDs, longest matching prefix first.
-- [ ] Fetch only an explicitly requested missing remote ref within the selected-ref
-  bounds; distinguish missing, unauthorized, deleted, offline, and over-bound outcomes.
+- [ ] Have `selection.py` return a typed request for an explicitly missing remote ref;
+  `jobs.py` owns the bounded network fetch and distinguishes missing, unauthorized,
+  deleted, offline, and over-bound outcomes.
 - [ ] Create or reuse a detached materialization keyed by entry identity and full object
   ID; verify its HEAD and containment before root publication.
 - [ ] Lease and release the materialization through server and inventory lifecycle; root
@@ -1193,8 +1256,11 @@ next slice begins.
 ### Phase 2: Generic catalog, refresh, and cache management
 
 `mb-jlon` extracts the provider-facing job lifecycle and selected-ref fetching from this
-phase for v0.11.0. It may land before the catalog and management operations below, but
-it uses the same locks, state records, Git process boundary, and parity routes.
+phase for v0.11.0. It may land before the catalog and management operations below.
+`selection.py` stays pure and resolves candidates; `jobs.py` owns `fetch_selected_ref`,
+the bounded Git network request, cancellation, and outcome.
+The job uses the same entry locks, state records, Git process boundary, and parity
+routes, and holds no lock while the network process runs.
 
 - [ ] Scan validated identity/state pairs into one provider-neutral catalog.
 - [ ] Add list, inspect, Git-only refresh, repair diagnostics, and recoverable purge.
@@ -1231,33 +1297,38 @@ it uses the same locks, state records, Git process boundary, and parity routes.
 
 | Phase | Depends on | Does not depend on | User-visible result |
 | --- | --- | --- | --- |
-| 1A format foundation | Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
-| 1B-a generic Git cache | 1A, Git-status Phase 1 (`mb-u4mf`) for `is_clean` | GitHub, chooser, serving | Any supported clone URL publishes or reuses one pinned read-only entry |
-| 1B-b repository URL open | 1B-a, provider URL-reducer SDK (`mb-12cz`), untrusted-profile gate | Provider API or schemas | Any supported repository URL opens the pinned tree |
-| 1B-c selected branch (`mb-z335`, `mb-2xq7`) | 1B-b, selected-ref fetch bounds | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
-| 2A provider foundation (`mb-jlon`) | 1B-a acquisition; reuses 1B-c selected-ref mechanics where applicable | Full catalog, chooser, purge | Provider jobs and PR-specific ref fetching for GitHub |
+| v0.11 start (`mb-xxhi`) | v0.10.0 release (`mb-i57d`) | Design and review | Implementation starts from the released `main` commit |
+| 1A format foundation | Release gate, Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
+| 1B-a generic Git cache | 1A | Git-status clean predicate, GitHub, chooser, serving | Any supported clone URL publishes or reuses one pinned read-only entry |
+| 1B-b repository URL open | 1B-a, provider URL-reducer SDK (`mb-12cz`), Git-status Phase 1 (`mb-u4mf`), untrusted-profile gate | Provider API or schemas | Any supported repository URL opens the pinned tree |
+| 1B-c selected branch (`mb-z335`, `mb-2xq7`) | 1B-b, provider job/ref fetch owner (`mb-jlon`) | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
+| 2A provider foundation (`mb-jlon`) | 1B-a acquisition | Full catalog, chooser, purge | Provider jobs and the selected-ref fetch used by 1B-c and GitHub |
 | 2 cache operations | 1B | Provider support | Generic list, inspect, refresh, and purge |
 | 3 chooser | 2 catalog | GitHub | Instant switching among cached repositories |
 | 4 large repositories | Measurements from 1B and real use | Provider support | Explicit bounded behavior for exceptional repository scale |
 
 Two dependencies leave this plan, and they leave in opposite directions.
 
-**Inbound:** Git-status Phase 1 (`mb-u4mf`) owns the `is_clean` predicate and blocks
-publishing a trusted entry in 1B-a. The content-trust chain (`mb-cun0` → `mb-vib1`)
-blocks serving in 1B-b and 1B-c, but not format, acquisition, or materialization tests.
-Neither track depends on anything here, so both can run alongside Phase 0 and 1A.
+**Inbound:** the release gate (`mb-i57d` → `mb-xxhi`) blocks every v0.11 implementation
+bead so work begins from released `main`. Git-status Phase 1 (`mb-u4mf`) owns the
+`is_clean` predicate and blocks serving, replacement, repair, and purge, but not
+acquisition staging and publication in 1B-a. The content-trust chain (`mb-cun0` →
+`mb-vib1`) blocks serving in 1B-b and 1B-c, but not format, acquisition, or
+materialization tests.
+Those tracks can proceed independently after the release gate.
 
 **Outbound, depending on the extracted Phase 2 foundation:**
 [the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) needs a
-published entry with a stable identity, atomic publication, application-home locking,
-job progress and cancellation, and core-side ref fetching.
-It does **not** need the catalog, the chooser, purge, or size accounting.
+published entry with a stable identity, atomic publication, the documented lock
+hierarchy, owner-only storage, job progress and cancellation, and core-side ref
+fetching. It does **not** need the catalog, the chooser, purge, or size accounting.
 That extraction is now `mb-jlon`; the full generic catalog and management phase remains
 `mb-0ybg` and no longer blocks GitHub acquisition.
 
-The `is_clean` dependency is worth restating because it is a hard ordering constraint
-rather than a convenience: Phase 1B depends on Git-status Phase 1 (`mb-u4mf`), which
-owns the `is_clean` predicate cache integrity calls.
+The `is_clean` dependency is deliberately narrower than “Phase 1B.” Acquisition can
+publish a checkout it created and validated; no cached root may be served, replaced,
+repaired, or purged until Git-status Phase 1 (`mb-u4mf`) supplies the one lossless
+predicate used by cache integrity.
 Landing 1B first would leave integrity either unchecked or served by a second porcelain
 parser, which is the outcome both plans exist to prevent.
 The dependency is recorded in the bead graph as well as here, because a constraint that

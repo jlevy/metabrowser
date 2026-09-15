@@ -18,12 +18,12 @@ Checked items below are supported today; unchecked items are planned work.
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
 | Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
-| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | Ready for v0.11.0: generic acquisition, repository URL opening, and detached materialization for any exposed and authorized branch. Serving remains gated on Git status and the content-trust chain |
-| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | Ready for the v0.11.0 GitHub-first slice: provider-neutral SoftSchema/frontmatter records, direct-PR snapshots and views, then a bounded PR index and virtual nav, all acquired through `gh api`. Issues, GitLab, and stacked changes remain later work |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | v0.11.0 design reviewed; implementation is blocked by `mb-xxhi` until v0.10.0 is released from `main`. Then: owner-only generic acquisition, repository URL opening, and repository-owned detached materialization for any exposed and authorized branch. Serving also remains gated on Git status and content trust |
+| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | v0.11.0 design reviewed; after the release gate: provider-neutral SoftSchema/frontmatter records, `gh api` through a provider registry, auth-scoped snapshots, direct-PR views, then a query-keyed bounded PR index and virtual nav. Issues, GitLab, and stacked changes remain later work |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
-| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [CLI-first delivery](docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md) | The route, kind, model, persisted-state, and functional-aspect gates ship in v0.10.0. Git status, repository-cache state, and GitHub-provider behavior extend those same checked surfaces |
+| CLI parity and goldens | [CLI parity and golden coverage](docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md), [functional UI parity](docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md), [CLI-first delivery](docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md) | The route, kind, model, persisted-state, and functional-aspect gates have landed on `main` for the v0.10.0 release candidate. Git status, repository-cache state, and GitHub-provider behavior extend those same checked surfaces |
 
 Delivered plans keep their record in [done plans](docs/project/README.md#done-plans):
 the navigation baseline, folder Overview and file-type summaries, semantic file-type
@@ -37,27 +37,31 @@ repository, any exposed and authorized branch, and a cached pull-request view.
 The order follows the actual contracts rather than treating “GitHub support” as one
 component:
 
-1. `mb-ire2`, `mb-4gnu`, and `mb-h51g` freeze the v0.10.0 boundaries, establish the
-   versioned application home, and publish a pinned generic Git cache entry.
-   `mb-k54c`, `mb-dg00`, and `mb-dxmb` expose and golden-pin its state and URL grammar.
-2. `mb-cun0` and `mb-vib1` establish the untrusted-content profile, while `mb-r5gn` and
+1. `mb-i57d` cuts v0.10.0 from the intended `main`; `mb-xxhi` verifies that release and
+   fetched commit before any `release:v0.11.0` implementation branch starts from it.
+2. `mb-ire2`, `mb-xa0p`, `mb-4gnu`, and `mb-h51g` freeze the released boundaries,
+   establish the owner-only versioned application home, and publish a pinned generic Git
+   cache entry. `mb-k54c`, `mb-dg00`, and `mb-dxmb` expose and golden-pin its state and
+   URL grammar.
+3. `mb-cun0` and `mb-vib1` establish the untrusted-content profile, while `mb-r5gn` and
    `mb-u4mf` provide the shared Git clean predicate.
    Both tracks can proceed alongside the cache foundation; they gate serving, not
    acquisition.
-3. `mb-12cz` and `mb-ew38` open or reuse repository and GitHub web URLs through a
-   provider-neutral reducer and the canonical path-identity codec; `mb-z335` and
-   `mb-2xq7` resolve any selected branch to an immutable object ID and serve a detached
-   materialization without moving the pinned root.
-4. `mb-63ym` defines provider-neutral hosted-review contracts and the plugin boundary,
+4. `mb-12cz` and `mb-ew38` open or reuse repository and GitHub web URLs through a
+   provider-neutral reducer and the canonical path-identity codec; `mb-jlon`, `mb-z335`,
+   and `mb-2xq7` resolve any selected branch to an immutable object ID and serve a
+   detached materialization without moving the pinned root.
+5. `mb-63ym` defines provider-neutral hosted-review contracts and the plugin boundary,
    using a frontmatter artifact whose Markdown body is the PR description, while
    `mb-jlon` adds only the generic provider jobs and selected-ref fetching they need.
-5. `mb-y1ax`, `mb-p4sw`, `mb-duu7`, and `mb-2oxp` implement the shared bounded
-   subprocess runner, `gh api` adapter, auth states, provider binding, repository
-   summary, and snapshot kernel.
+6. `mb-y1ax`, `mb-ji83`, `mb-p4sw`, `mb-i3xc`, `mb-duu7`, and `mb-2oxp` implement the
+   shared bounded subprocess runner, provider registry, hardened `gh api` adapter, auth
+   contexts, provider binding, repository summary, and leased snapshot kernel.
    `mb-h64t` then caches one directly addressed PR bundle and only its selected Git
    refs.
-6. `mb-xzj3` and `mb-81p5` mount and render the plugin-owned direct PR document and diff
-   through the existing Markdown, Git, revision-content, and File Diff Format pipelines.
+7. `mb-xzj3`, `mb-6mle`, and `mb-81p5` mount, address, and render the plugin-owned
+   direct PR document and diff through the existing Markdown, Git, revision-content, and
+   File Diff Format pipelines.
    `mb-lnkl`, `mb-uh6p`, and `mb-iw1v` add the bounded PR index and Pull Requests
    virtual collection afterward; `mb-rldc` layers anchored review threads last.
 
