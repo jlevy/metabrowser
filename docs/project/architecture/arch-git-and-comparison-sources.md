@@ -2,7 +2,8 @@
 
 **Status:** Implemented for the subprocess boundary, repository discovery, the
 `/api/git/` collection API, and the immutable-revision diff source.
-The provider layer is designed only; its section says so and links the plan.
+The hosted-review format and GitHub provider layer are designed only; see
+[Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
 one renderer. [File Diff Format v1](file-diff-format/file-diff-format.md) defines what a
@@ -12,13 +13,15 @@ covers provenance and anchoring within the diff pipeline.
 This document covers the Git side: the process boundary, what crosses it, and the rule a
 new source has to satisfy.
 
-## The three layers
+## The four layers
 
-The stack has three tiers, and the dependency arrow only ever points down:
+The stack has four tiers, and the dependency arrow only ever points down:
 
 ```text
 ┌─────────────────────────────────────────────┐
-│ Providers (GitHub)          designed only   │  ← references Git object ids
+│ Provider adapters (GitHub)  designed only   │  ← normalize hosted APIs
+├─────────────────────────────────────────────┤
+│ Hosted Review Format        designed only   │  ← references Git object IDs
 ├─────────────────────────────────────────────┤
 │ Git                         implemented     │  ← produces File Diff Format
 ├─────────────────────────────────────────────┤
@@ -34,13 +37,19 @@ Each tier obeys one rule, and the rules are what keep the tiers separable:
 - **Git is a source, not a substrate.** It produces File Diff Format documents through
   the `DiffSource` port and otherwise exposes its own read-only collection API. It does
   not reach into the renderer.
-- **Providers layer on Git, never beside it.** Git stays authoritative for content,
-  history, and diffs. A provider record describes hosted state and *refers to* immutable
-  Git object ids; it never becomes a second copy of the object database.
+- **Hosted Review Format models collaboration, not patches.** A change request carries
+  lifecycle, participants, reviews, threads, checks, merge state, freshness, and
+  references to immutable Git object IDs.
+  It does not copy Git objects or add fields to File Diff Format.
+- **Provider adapters normalize into the common format.** GitHub is the first adapter;
+  future providers such as GitLab satisfy the same port.
+  Provider response shapes and renderer branches never cross that boundary.
 
-The practical payoff: a pull-request view resolves provider refs to object ids and
-reuses the entire existing pipeline.
-It is a new acquisition path, not a new renderer.
+The practical payoff: a pull-request document adds the information Git and patches do
+not have, while its comparison resolves provider refs to object IDs and reuses the
+entire existing diff and revision-content pipeline.
+Hosted review is a new format and plugin view, but not a second diff renderer or Git
+history authority.
 
 ## Why identity is the whole problem
 
@@ -234,14 +243,15 @@ Four rules hold across all of them:
 
 ## How the layers are modeled
 
-The three tiers currently use three different modeling idioms.
+The four layers currently use four different modeling idioms.
 That is worth stating plainly, because the differences are not all deliberate.
 
 | Layer | Module | Idiom | What enforces it |
 | --- | --- | --- | --- |
 | File Diff Format | `diff/format.py` | Pydantic `BaseModel`, `extra="forbid"`, `frozen=True`, a `StrEnum` per closed vocabulary | The model itself, plus a JSON Schema and a conformance corpus |
 | Git wire | `git/wire.py` | `TypedDict` with `NotRequired`, plus hand-written validators and `_*_REQUIRED` gate sets | Validators, exercised by the test suite |
-| Cache and provider records | designed only | Pydantic plus deterministic compiled SoftSchema contracts | Compile-drift, corpus validation, and installed-wheel checks |
+| Cache records | designed only | Pydantic plus deterministic compiled SoftSchema contracts | Compile-drift, corpus validation, and installed-wheel checks |
+| Hosted Review Format | designed only | Provider-neutral Pydantic and browser models plus compiled SoftSchema contracts; frontmatter Markdown for primary change-request documents | Cross-runtime corpus, provider mapping oracle, architecture inventory, and installed-wheel checks |
 
 **The format layer is the model to copy.** Every closed vocabulary is a `StrEnum`
 (`ChangeKind`, `SnapshotKind`, `Availability`, `EntryType`, `FileMode`, `LineOp`,
@@ -320,10 +330,9 @@ source-neutral, and the renderer starts having to know what produced its input.
 **Status: designed only.** No provider code exists.
 The design lives in the
 [repository library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md) and
-the
-[design review](../reviews/review-2026-08-26-repository-library-and-github-model.md);
-this section records only the boundary those documents must not cross, because that
-boundary is an architectural commitment rather than a plan detail.
+[Hosted Review Model and Provider Boundary](arch-hosted-review-model.md); this section
+records only the boundary those documents must not cross, because that boundary is an
+architectural commitment rather than a plan detail.
 
 A provider may:
 
@@ -339,9 +348,11 @@ A provider may not:
 - require core to import a provider schema or branch on a provider object kind; or
 - make generic acquisition, identity, refresh, or purge depend on it.
 
-When provider code lands, it gets its own architecture document rather than a section
-here — one subject per document, and a provider content model is a different subject
-with a different lifetime from the Git boundary.
+The hosted-review architecture owns the provider content model, snapshot lifetime,
+plugin routes, and view composition.
+This document owns the lower rule it relies on: repository selection and PR acquisition
+may request explicit refs, but core resolves them to immutable object IDs and provider
+code never runs Git.
 
 ## Invariants
 

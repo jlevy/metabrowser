@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Implemented
+**Status:** Complete
 
 ## Overview
 

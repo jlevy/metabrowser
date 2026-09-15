@@ -1,10 +1,10 @@
 # Feature: General Diff Rendering
 
-**Date:** 2026-08-17 (last updated 2026-08-25)
+**Date:** 2026-08-17 (last updated 2026-09-14)
 
 **Author:** Metabrowser maintainers
 
-**Status:** In progress
+**Status:** Core and Git pipeline delivered; remaining renderer work in progress
 
 ## Overview
 
@@ -239,14 +239,14 @@ emitted shape and `validate_manifest`, `validate_file_patch`,
 
 **`diff/routes.py`** — `DIFF_ROUTES`, registered the way `GIT_ROUTES` is.
 
-**`repo_cache.py`** — one acquisition workflow.
-`ensure_repo(source) -> CacheEntry` accepting a URL or a local path;
-`reference_clone(local_path)` borrows an on-disk repository without network;
-`fetch_refs(entry, refspecs)` covers pull refs and arbitrary revisions;
-`transient_worktree(entry, revision)` materializes a detached worktree inside the cache
-and is a context manager so it is purged on exit.
-Cloning and fetching live here rather than in `git/`, which keeps that package’s
-read-only contract intact.
+**Repository acquisition** is no longer owned here.
+The [repository-library plan](plan-2026-08-11-open-repo-from-git-url.md) owns durable
+Git objects, publication, and worktree materialization; its `mb-jlon` extraction owns
+provider jobs and selected-ref fetching.
+The [GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) owns PR
+metadata, the bounded PR index, and selected-PR bundles.
+The diff service consumes resolved object IDs and remains independent of how those
+objects arrived.
 
 **`static/diff-model.js`** — the browser model.
 `parseManifest`, `parseFilePatch`, `fileChangeLabel(change)` for the indicator set, and
@@ -331,18 +331,17 @@ GitHub exposes each pull request over plain git transport as `refs/pull/<n>/head
 The `merge` ref is the provider-computed synthetic merge result the research said a
 hosted comparison must record.
 
-Opening a PR URL therefore decomposes as: derive the repository URL and clone or reuse
-the cache (acquisition); fetch the two pull refs (one bounded `git fetch`, beside the
-existing clone path); resolve a merge-base comparison between the base branch and the PR
-head (the same three-dot semantics GitHub itself uses, already required for branch
-comparisons); render it (this plan’s renderer).
+Opening a PR URL therefore decomposes as: let the repository library clone or reuse the
+durable entry; let the GitHub provider bind the repository, hydrate the selected PR, and
+ask core to fetch its refs; resolve a merge-base comparison between the base branch and
+the PR head; render it through this plan’s comparison pipeline.
 The diff bodies never touch the GitHub API. Only two things do, and both are small and
 deferrable: PR metadata (title, state, checks) for the header, and review threads for
 the annotation layer.
 That is the true hosted-provider surface, and it is a conversation plane, not a diff
-plane — which sharpens the core/plugin split above: PR *refs* ride the git transport and
-belong to the core Git adapter; PR *conversation* is provider API territory and belongs
-to a plugin.
+plane — which sharpens the core/plugin split above: PR *refs* ride the Git transport
+through the repository service, while PR metadata and conversation remain provider
+plugin territory.
 
 A documentation-heavy PR also shows where Metabrowser can be better than the hosting
 site rather than merely equal: the manifest’s rich-view hint plus content-at-revision
@@ -357,31 +356,26 @@ GitHub review threads are the first intended consumer, read-only; a document’s
 edits and annotations are the second, and both arrive as data over the same anchors
 rather than as new renderer features.
 
-### One acquisition workflow
+### One comparison workflow, separate cache lifetimes
 
-Acquisition is one instance of the container materialization rule in
-[nav containers](../../architecture/arch-nav-containers.md): bounded transient cache
-directories that the ordinary serving path routes into, shared as one mechanism by PR
-fetches, patch anchoring, and future archive unpacking.
+The flows converge only after acquisition: a local repository, a cached Git URL, and a
+selected PR all yield immutable object IDs that the same comparison service resolves.
+Before that point their lifetimes differ and must not share one vague “cache” contract:
 
-Three flows must feel like slight variations of one workflow, because they are: browsing
-a transient checkout of a repository URL, viewing a transient pull request, and viewing
-a pull request against a repository already on disk.
-They differ only in where objects come from and which refs are fetched:
+1. **Durable repository entry.** The repository library owns Git objects and a pinned
+   serving root across sessions.
+2. **Durable provider observation.** The GitHub plugin owns immutable repository, PR
+   index, and selected-PR snapshots beside that entry.
+3. **Transient materialization.** A detached worktree, patch anchor, or unpacked archive
+   exists only while a container or bounded job needs filesystem bytes, then follows the
+   materialization policy in
+   [nav containers](../../architecture/arch-nav-containers.md).
+4. **Recomputable comparison cache.** Manifests, patches, enrichments, and browser
+   projections are bounded in-memory or request caches, never repository-library state.
 
-1. **Object store.** A remote URL clones into the purgeable cache; a repository already
-   on disk is borrowed into the cache with a reference clone, which is near-instant and
-   needs no network; a cache hit reuses either.
-2. **Refs.** The default branch for browsing; `refs/pull/<n>/head` and `/merge` for a
-   pull request; arbitrary revisions for a two-ref comparison.
-3. **Materialization.** When a filesystem tree is needed — the serve path expects one —
-   a transient detached worktree is created inside the cache and purged with it.
-
-The user’s own repository is never fetched into, checked out, or otherwise written —
-transient materialization always happens in the cache, which preserves the git package’s
-read-only contract while making the local-repository case simply the fastest variant of
-the same flow. After acquisition, every flow converges: the same serve path, the same
-tree, the same comparison context.
+The user’s repository is never fetched into, checked out, or otherwise written.
+Once an input is resolved, every flow uses the same comparison manifest, tree, and
+renderer; that shared tail does not merge the four storage lifetimes.
 
 ### The shell is the review surface
 
