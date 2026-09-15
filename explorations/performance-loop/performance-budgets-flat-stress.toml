@@ -17,7 +17,11 @@ schema = "web-performance-budgets/v1"
 #   first_row_ms  350 -> 450
 #     exp-034 measured five quiet-host candidate runs at 312, 329, 359, 364 and 392
 #     ms against v0.9.1's 282-312 ms. The careful 1.1x tolerance on the worst run is
-#     431.2 ms, rounded up to 450. The gap is the per-entry delivery cost the
+#     431.2 ms, rounded up to the next 50 to give 450 -- the same step the release
+#     gate's own 348.7 ms takes to reach 350. The proportional slack differs (4.4%
+#     here against 0.4% there) because a fixed step lands differently depending on
+#     where the tolerance falls; that is the cost of a round number, and it is stated
+#     here rather than left to be discovered. The gap is the per-entry delivery cost the
 #     candidate pays to stream rows during the walk, which is worth it on a
 #     repository shape and is not recovered on this one. Tracked as mb-kicj.
 

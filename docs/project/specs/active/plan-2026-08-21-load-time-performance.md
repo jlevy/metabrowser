@@ -705,7 +705,11 @@ Three things follow, and they are the standing answers to questions this debt in
   tolerance on the candidate’s own worst run, so it cannot fail the build that produced
   it. It exists to stop the shape getting worse, and it is lowered as the debt is paid.
 - **This is structural work, not constants.** The constants were measured in exp-035 and
-  are worth about four percent between them.
+  do not add up to a fix, and they do not share a denominator either: the walker emit
+  batch is about 4% of the flat-shape walk it shortens, and the catalog content hash is
+  about 0.8% of the catalog read it shortens.
+  Quoting one combined percentage would mean adding savings taken from different totals,
+  and an earlier draft of this section did exactly that.
   The catalog content hash was taken (1.51x on that step, byte-identical digest); the
   catalog sort key was measured and rejected, because removing the per-row encode is a
   corpus-dependent cliff rather than a saving (`mb-wpqq` carries the arithmetic); the

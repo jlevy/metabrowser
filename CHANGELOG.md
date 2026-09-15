@@ -365,15 +365,15 @@ Fixes:
 Known limitations:
 
 - Indexing a very large directory that holds hundreds of files per directory is slower
-  than in 0.9.1, while the first rows appear far sooner.
-  Metabrowser now delivers rows to the page while it walks, instead of finishing the
-  walk and then drawing.
-  On a repository-shaped tree that is a large win at every size measured.
+  than in 0.9.1. Metabrowser now delivers rows to the page while it walks, instead of
+  finishing the walk and then drawing.
+  On a repository-shaped tree that is a large win at every size measured: the first row
+  appears in about a fifth of the time and the whole tree indexes in under half.
   On a flat tree of a few hundred thousand files in a few thousand directories, where
   that per-file delivery has no reader to benefit, the full index takes roughly 1.6x as
-  long and the Quick File catalog request takes noticeably longer once the index has
-  settled. Time to the first usable row, interaction latency, and correctness are
-  unaffected or better on both shapes.
+  long, the Quick File catalog request goes from well under a second to around two and a
+  half, and the first row takes about a fifth longer to appear.
+  Interaction latency and correctness are unchanged on both shapes.
 
 ## 0.9.1
 

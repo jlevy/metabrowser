@@ -35,15 +35,20 @@ experiment:
       first-row distributions; the sort measurement is best-of-five over 300,000
       CatalogRecord rows at two corpus shapes
   results:
-    - metric: catalog_sort_ms_ascii_corpus
-      control_median: 151
-      candidate_median: 117
-      change_pct: -22.5
+    - metric: catalog_sort_ms_all_ascii_corpus
+      control_median: 157
+      candidate_median: 115
+      change_pct: -26.8
       overlapping: false
-    - metric: catalog_sort_ms_mixed_corpus
-      control_median: 173
-      candidate_median: 214
-      change_pct: 23.7
+    - metric: catalog_sort_ms_one_non_ascii_corpus
+      control_median: 147
+      candidate_median: 144
+      change_pct: -2.0
+      overlapping: true
+    - metric: catalog_sort_ms_mostly_non_ascii_corpus
+      control_median: 160
+      candidate_median: 199
+      change_pct: 24.4
       overlapping: false
   verdict:
     decision: accepted
@@ -133,22 +138,33 @@ The order half is true.
 UTF-8 preserves code-point order, canonical inventory paths reject surrogates outright,
 and the two keys produce identical output on every corpus measured.
 
-The saving half is wrong, and in the interesting direction.
-Best of five over 300,000 `CatalogRecord` rows:
+The saving half is wrong, and which way it is wrong depends on the tree.
+Best of seven over 300,000 `CatalogRecord` rows, with the key extracted from the record
+exactly as the projection does it:
 
-| Sort key | ASCII-only tree | One non-ASCII name present |
-| --- | --- | --- |
-| `record.path.encode("utf-8")` (today) | 151 ms | 173 ms |
-| `record.path` | **117 ms** | **214 ms** |
+| Sort key | All ASCII | Exactly 1 non-ASCII in 300,000 | ~42% non-ASCII |
+| --- | --- | --- | --- |
+| `record.path.encode("utf-8")` (today) | 157 ms | 147 ms | **160 ms** |
+| `record.path` | **115 ms** | **144 ms** | 199 ms |
+| difference | path by 42 ms | path by 3 ms | encode by 38 ms |
 
-CPython’s sort scans its keys and picks a specialized comparison; an all-latin1 `str`
-key gets a fast path that a single Japanese filename anywhere in 300,000 rows takes away
-for the whole sort. The `bytes` key is a plain memcmp and does not care.
+CPython’s sort scans its keys and picks a specialized comparison, and an all-latin1
+`str` key gets a fast path the `bytes` key does not.
+One non-ASCII name anywhere in the corpus takes that fast path away, which is most of
+why the 42 ms advantage collapses to 3 ms in the middle column — but collapsing an
+advantage is not the same as inverting it, and the inversion needs a large share of the
+tree to be non-ASCII, not one file.
 
-So the change is not a 72 ms saving, it is a 34 ms saving on trees made only of ASCII
-names bought with a 41 ms loss on any tree containing one name that is not — a cliff
-triggered by a single file, for well under one percent of the cost this is a part of.
-**The existing key stays.** `mb-wpqq` carries the corrected arithmetic.
+An earlier draft of this round said one file was enough to cost 41 ms.
+That was measured on a corpus that was 42% non-ASCII and labelled as though it were the
+single-file case, and it is corrected here: the single-file case is a tie.
+
+So the change is not a saving, and it is not a cliff either.
+It is a trade with no general winner — 42 ms on trees made only of ASCII names, against
+38 ms on a tree of mostly CJK or accented ones, either way about 1.5% of the read it is
+part of. **The existing key stays**, because a trade this size does not pay for touching
+a sort whose order every catalog response depends on, not because the alternative is
+worse. `mb-wpqq` carries the corrected arithmetic.
 
 Two other candidates from the same pass were measured and are recorded here so they are
 not proposed again. Chunking the catalog content hash one page at a time is a real 1.51x
@@ -224,8 +240,10 @@ instead of completing the walk and then serving, at roughly 14 µs per entry on 
 delivery path. On a repository shape that buys content immediately and costs a little
 throughput. At 300,000 flat entries the per-entry cost dominates and there is no reader
 benefit to weigh against it, because nobody reads 300,000 files.
-Paying it down is structural work on the delivery path, not a constant to tune; the easy
-constants were measured in this round and are worth about four percent between them.
+Paying it down is structural work on the delivery path, not a constant to tune.
+The easy constants were measured in this round and do not combine into a number worth
+quoting: the walker emit batch is about 4% of the flat-shape walk, and the catalog
+content hash about 0.8% of the catalog read, which are savings from different totals.
 
 ## Limits of this round
 
