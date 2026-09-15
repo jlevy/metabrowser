@@ -5,12 +5,12 @@ title: Catalog sort and Recent pass hold the GIL without cooperative yields duri
 kind: task
 status: open
 priority: 2
-version: 2
+version: 4
 labels:
   - performance
 dependencies: []
 created_at: 2026-09-14T20:51:44.740Z
-updated_at: 2026-09-14T23:50:58.345Z
+updated_at: 2026-09-15T05:28:21.277Z
 ---
 Two whole-index passes that overlap the inventory walk still hold the GIL without a cooperative yield.
 
@@ -20,22 +20,41 @@ Measure first (engine performance model: counts before times), then bound or yie
 
 ## Notes
 
-Measured on a quiet 4-CPU Linux host (load 0.7), CPython 3.13.12, against the 300,000-file build_corpus (shape 2), settled index, v0.9.1 wheel vs main 03fd7997, each pass repeated three times while /api/index/progress was polled continuously:
+CORRECTED by exp-035 (2026-09-15).
 
-| request | v0.9.1 first / repeat | main first / repeat | progress max v0.9.1 | progress max main |
-| --- | --- | --- | --- | --- |
-| /api/catalog | 663 / 477 / 193 ms | 2575 / 938 / 199 ms | 475 ms | 883 ms |
-| /api/recent?limit=5000 | 174 / 165 / 166 ms | 420 / 428 / 435 ms | 92 ms | 110 ms |
-| /api/tree?depth=0 (full tally) | 3794 / 21 / 20 ms | 4610 / 3 / 3 ms | 71 ms | 71 ms |
+PART 1 -- THE SORT KEY: REJECTED, DO NOT PROPOSE AGAIN.
+exp-034's prose called the sort key a free win, on the grounds that the per-row UTF-8
+encode produces the same order as sorting the path directly. The order claim holds --
+UTF-8 preserves code-point order, and canonical inventory paths reject surrogates
+outright -- but the saving does not. Best of five over 300,000 CatalogRecord rows:
 
-So the starvation this bead names is real and larger than the 81-169 ms the architecture doc records for the sort: an unrelated request waits up to 883 ms during a browser catalog read. The sort is not where it lives. Priced in isolation at 300k rows on the same host:
+  sort key                      ASCII-only tree   one non-ASCII name present
+  record.path.encode("utf-8")   151 ms            173 ms
+  record.path                   117 ms            214 ms
 
-- CatalogRecord construction, 300k: 548 ms, of which require_canonical_inventory_path is 170 ms. The provider re-validates paths its own store admitted at discovery.
-- the sort: 196 ms with key=record.path.encode('utf-8'), 124 ms with key=attrgetter('path'). UTF-8 byte order and code-point order agree, and the two orders were verified identical on 300k rows, so the encode is 72 ms and 300k bytes objects for nothing.
-- _catalog_content_identity: 113 ms (71 ms if the fields are joined and hashed in chunks).
-- _encode_catalog: 339 ms for a 15.9 MB body, one unbroken hold on a worker thread.
-- the filtering loop already yields every 1,024 entries; the sort, the identity hash and the encode do not yield at all.
+CPython scans a sort's keys and picks a specialized comparison; an all-latin1 str key
+gets a fast path that one non-ASCII filename anywhere in 300,000 rows removes for the
+whole sort. The bytes key is a plain memcmp and does not care. So it is a 34 ms saving
+on all-ASCII trees bought with a 41 ms loss on any tree carrying one name that is not --
+a cliff triggered by a single file, for well under 1% of the catalog read. The existing
+key stays. Re-measure BOTH shapes before reopening this.
 
-v0.9.1 answered the same request from a private list of (path, ext) tuples with no per-row contract object, no validation, no sort key encode and no content hash, which is the whole 663 -> 2,575 ms gap.
+PART 2 -- THE CONTENT HASH: READY, DEFERRED TO AFTER THE v0.10.0 TAG.
+Joining once per page instead of four digest updates per record measures 62 ms -> 41 ms
+at 300,000 rows (1.51x on that step) with a byte-identical digest. Hashing the whole
+catalog in one buffer was measured too and is both slower and unbounded in transient
+memory, so per-page is the form to take.
 
-Whether this moves a gated metric is what the exp-034 release comparison decides; these numbers are the input to that reading.
+Written and tested but deliberately NOT in v0.10.0: `_catalog_content_identity` is on
+the path exp-034's captures measured, and exp-035's argument for not re-running those
+captures is that nothing on a measured path moved. Landing it would have falsified that.
+
+The patch and three tests are reproducible from the exp-035 write-up: a reference test
+computing the digest the documented per-record way, a test that page boundaries do not
+move the identity, and a test that the framing keeps path and extension unambiguous. The
+page-boundary test is the one that matters -- folding the separator into the join drops
+each page's leading byte, which is the bug this actually hit when first written.
+
+PART 3 -- REMAINING, UNMEASURED: the Recent pass holding the GIL without cooperative
+yields during a walk. Nothing has measured this yet; it is the original scope of this
+bead and the only part still open as a question.

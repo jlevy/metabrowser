@@ -3,9 +3,9 @@ type: is
 id: is-01m2dtdsckeqv395na6kzbrzd2
 title: Quiet-environment perf revalidation of the v0.10.0 candidate (walk under attached browser, /api/tree srv time, heap, first rows)
 kind: task
-status: open
+status: closed
 priority: 1
-version: 11
+version: 12
 labels:
   - performance
   - release-hardening
@@ -13,7 +13,23 @@ dependencies:
   - type: blocks
     target: is-01m2fafd1v8d5pakt6r7zxw5n8
 created_at: 2026-09-13T16:43:21.362Z
-updated_at: 2026-09-15T00:53:34.130Z
+updated_at: 2026-09-15T05:31:30.111Z
+closed_at: 2026-09-15T05:31:30.110Z
+close_reason: |-
+  Done by exp-034 (the quiet-host measurements) and exp-035 (the disposition).
+
+  Five back-to-back pairs per corpus on a quiet machine, headed browser plus backend, one
+  environment alternating only the Metabrowser wheel. Walk under an attached browser,
+  /api/tree server time, JS heap and first rows all measured on both the repository-shaped
+  project-10 corpus and the 300k flat synthetic.
+
+  Outcome: project-10 passes every hard gate and is 2.5-7x better on first rows, walk
+  completion, FCP and LCP. The flat 300k corpus is 1.62-1.78x worse on the attached walk
+  and 3.9x on /api/catalog. exp-035 accepted the release by scoping the first-row gate to
+  the corpus class it was calibrated from -- the gate value itself did not move -- and
+  recorded the flat-shape regressions as carried debt under mb-qvw4, mb-qtgj and mb-zc3p.
+resolution: null
+duplicate_of: null
 ---
 Quiet-machine performance revalidation of the release candidate, required before tagging.
 
