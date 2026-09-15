@@ -411,9 +411,14 @@ passes on this corpus, taken separately with a settled index, is the shape of th
 
 Priced in isolation at 300,000 rows, the catalog read’s parts are 548 ms building the
 contract records (170 ms of it re-validating paths the store admitted at discovery), 196
-ms sorting with a per-row UTF-8 encode whose order is identical to sorting the path
-itself, 113 ms hashing a content identity, and 339 ms encoding a 15.9 MB body — of which
-only the filtering loop yields.
+ms sorting, 113 ms hashing a content identity, and 339 ms encoding a 15.9 MB body — of
+which only the filtering loop yields.
+
+The sort line first read here as a free win, on the grounds that the per-row UTF-8
+encode produces the same order as sorting the path itself.
+The order claim is true — UTF-8 preserves code-point order, and the two agree on every
+corpus measured — but removing the encode is not free, and exp-035 corrects the
+arithmetic: it is a corpus-dependent trade, not a saving.
 v0.9.1 answered the same request from its own retained `(path, ext)` tuples with no
 per-row contract object, no validation, no sort-key encode and no content hash.
 This is `mb-wpqq`, and the architecture document’s own note that a browser attached
@@ -462,6 +467,12 @@ v0.10.0 stays blocked on `mb-kicj`. The release-preparation step that renames th
 changelog’s `## Unreleased` section is not taken, and no tag is created.
 The comparison is rerun on the commit that fixes it, with the same wheels, corpora,
 environments and pair rule.
+
+**Superseded on the disposition, not on the measurements.** exp-035 revisits what this
+round’s numbers mean for the release and reaches a different answer, by scoping the gate
+to the corpus class it was calibrated from rather than by changing any value measured
+here. Every number above stands; the verdict above is what this round concluded under a
+single gate applied to both corpora, and is kept as that record.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

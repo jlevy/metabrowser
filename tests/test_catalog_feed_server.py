@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
 from pathlib import Path
@@ -504,3 +505,65 @@ def test_catalog_bulk_materialization_stays_in_the_worker() -> None:
     assert "pages.append(projection.records)" in read_source
     assert "page_size = runtime.config.budget.max_files" in read_source
     assert "if include_catalog:" in coordinator_source
+
+
+def test_catalog_content_identity_hashes_the_records_it_documents() -> None:
+    """The identity is SHA-256 over status then ``\\x00path\\x01ext`` per record.
+
+    Written against that definition rather than against the implementation, so
+    that the per-page join the identity uses to build those bytes cannot drift
+    from the bytes it is supposed to be joining. Non-ASCII paths and an empty
+    extension are present because both change the encoded width per record.
+    """
+
+    records = (
+        CatalogRecord(path="a.py", logical_extension=".py", size=1, mtime_ns=1),
+        CatalogRecord(path="dir/日本語.md", logical_extension=".md", size=2, mtime_ns=2),
+        CatalogRecord(path="LICENSE", logical_extension="", size=3, mtime_ns=3),
+    )
+    pages = (records[:2], records[2:])
+
+    expected = hashlib.sha256()
+    expected.update(b"complete")
+    for page in pages:
+        for record in page:
+            expected.update(b"\x00")
+            expected.update(record.path.encode())
+            expected.update(b"\x01")
+            expected.update(record.logical_extension.encode())
+
+    assert events_route._catalog_content_identity(pages, "complete") == expected.hexdigest()
+
+
+def test_catalog_content_identity_does_not_depend_on_page_boundaries() -> None:
+    """Paging is a transport detail, so it may not move the identity.
+
+    The per-page join makes this worth pinning: a separator folded into the
+    join instead of into each record would make the digest depend on where the
+    pages were cut, and every caller pages by a size the caller chose.
+    """
+
+    records = tuple(
+        CatalogRecord(
+            path=f"pkg/mod{index}.py", logical_extension=".py", size=index, mtime_ns=index
+        )
+        for index in range(7)
+    )
+    one_page = events_route._catalog_content_identity((records,), "complete")
+    split = events_route._catalog_content_identity((records[:3], records[3:]), "complete")
+    singletons = events_route._catalog_content_identity(
+        tuple((record,) for record in records), "complete"
+    )
+
+    assert one_page == split == singletons
+
+
+def test_catalog_content_identity_separates_path_from_extension() -> None:
+    """The framing bytes must keep a path/extension split unambiguous."""
+
+    first = (CatalogRecord(path="a", logical_extension="b", size=1, mtime_ns=1),)
+    second = (CatalogRecord(path="a\x01b", logical_extension="", size=1, mtime_ns=1),)
+
+    assert events_route._catalog_content_identity((first,), "complete") != (
+        events_route._catalog_content_identity((second,), "complete")
+    )
