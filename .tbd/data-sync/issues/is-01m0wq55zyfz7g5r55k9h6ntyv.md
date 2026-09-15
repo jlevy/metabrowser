@@ -5,15 +5,15 @@ title: Make Git commit rows follow the nav-list arrow-key contract
 kind: bug
 status: closed
 priority: 1
-version: 7
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T15:03:26.461Z
-updated_at: 2026-08-25T15:24:13.241Z
+updated_at: 2026-09-14T23:55:36.159Z
 closed_at: 2026-08-25T15:14:18.497Z
 close_reason: Fixed and validated across fake-DOM behavior, design-system enforcement, full repository verification, and a real-browser trading-repository smoke test.
 resolution: null

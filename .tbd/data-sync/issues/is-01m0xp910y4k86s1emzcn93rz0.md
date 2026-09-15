@@ -5,15 +5,15 @@ title: Delay Git hover preparation until stable intent while scrolling
 kind: bug
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 8
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-26T00:07:18.301Z
-updated_at: 2026-08-26T01:16:26.354Z
+updated_at: 2026-09-14T23:55:24.304Z
 closed_at: 2026-08-26T01:16:26.352Z
 close_reason: Implemented stable-hover request intent, direct-row O(1) selection feedback, deferred roving Tab anchoring, and permanent phase/health instrumentation. Three repeated fixed-corpus headed runs measured selection feedback at 0.3–4.6 ms, forced style/layout at zero, zero blank frames, bounded two-request hydration, no obsolete successes, exact convergence, and no page exceptions; make verify passes.
 resolution: null

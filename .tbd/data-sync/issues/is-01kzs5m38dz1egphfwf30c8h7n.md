@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01kzs5m38dz1egphfwf30c8h7n
-title: "Repository library: generic Git cache, chooser, and provider snapshots"
+title: Repository library and hosted-review roadmap
 kind: epic
 status: open
 priority: 1
-version: 26
+version: 37
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies:
@@ -32,11 +32,19 @@ child_order_hints:
   - is-01m1389aetecehg10qdf7zb9rz
   - is-01m1389bszmmkqj7d90sq8p3bj
   - is-01m1389rewn2mkj8emj3wxwpr7
+  - is-01m2h3qzqep911zn6jwx7dmb9t
+  - is-01m2h3vkgbkeq82ch4mzkrch1g
+  - is-01m2h3wteafc7mt3x0efnv4xex
+  - is-01m2h5ar8jct8wbp94xj39gkq4
+  - is-01m0dkj0gqvpzpxm7t1tpshf30
+  - is-01kxry31k2e62styhj8t59jj12
+  - is-01m2h7gjc36fqv8cv38qd9zynr
+  - is-01m2h7jjga1ge5dzvs913n5fgs
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-08-28T03:58:28.818Z
+updated_at: 2026-09-15T00:31:44.493Z
 extensions:
   linear:
     id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5
     linked_at: 2026-08-16T08:05:43.412Z
 ---
-Implement the phased repository-library plan: format foundation; generic URL-open and offline reuse; Git-only catalog, refresh, and purge; an in-app chooser; a separately modeled GitHub browsing domain; immutable provider snapshots and views; stacked-PR projections; and measured large-repository support. URL serving remains gated on mb-vib1 because fetched repositories are third-party content. GitHub is not a dependency of the first usable generic cache.
+Deliver the repository-library roadmap with a GitHub-first v0.11 vertical slice: freeze the v0.10 contracts; add the versioned application home and generic Git cache; open and reuse any authorized GitHub repository and any exposed branch through detached materializations under the untrusted profile; define provider-neutral Hosted Review Format contracts with a frontmatter change-request document; implement a bounded gh api adapter and auth states; cache directly addressed PR bundles before the bounded PR index; and render plugin-owned PR documents, diffs, revision content, and a virtual Pull Requests nav collection. Full cache management, the chooser, GitHub issues, future GitLab adapters, stacked changes, and measured very-large-repository support remain tracked later.

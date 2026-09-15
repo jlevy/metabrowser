@@ -5,8 +5,8 @@ title: Gate regular file-view navigation in the performance loop
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0x52zqfhdqp9jdg82p4299j
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T18:44:09.734Z
-updated_at: 2026-08-25T19:07:07.052Z
+updated_at: 2026-09-14T23:55:29.837Z
 closed_at: 2026-08-25T19:07:07.039Z
 close_reason: Added the trusted file-views scenario, pure health gates, exact path/route/view/mount convergence, pending and blank-frame monitoring, full server/client/paint attribution, and a successful headed trading-corpus run; its measured duplicate-request finding is tracked separately as mb-v4qu.
 resolution: null

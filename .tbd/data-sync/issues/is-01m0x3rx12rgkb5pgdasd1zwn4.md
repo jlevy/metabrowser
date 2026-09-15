@@ -5,8 +5,8 @@ title: Measure painted readiness for regular file views
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0x3skec67w78kafbez3xj2d
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T18:43:55.553Z
-updated_at: 2026-08-25T18:58:59.453Z
+updated_at: 2026-09-14T23:55:45.818Z
 closed_at: 2026-08-25T18:58:59.441Z
 close_reason: File selection now awaits connected active-view render, optional handle readiness, and double-frame paint; late handles dispose safely; Markdown and folder Overview expose concrete initial readiness; focused lifecycle, type, Biome, and integration tests pass; plugin docs record the additive contract.
 resolution: null

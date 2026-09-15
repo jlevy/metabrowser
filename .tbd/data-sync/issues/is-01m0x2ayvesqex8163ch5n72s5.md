@@ -5,8 +5,8 @@ title: Render bounded commit-summary tooltips
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 8
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0yh4s21r569a73k1kaz8p35
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T18:18:50.093Z
-updated_at: 2026-08-26T07:56:50.610Z
+updated_at: 2026-09-14T23:55:48.393Z
 closed_at: 2026-08-25T18:35:19.013Z
 close_reason: Delivered the bounded compact commit-summary tooltip, its lifecycle tests, design-system contract, documentation, changelog, full validation, and exact-head real-browser evidence in pushed commit 8d4c355.
 resolution: null

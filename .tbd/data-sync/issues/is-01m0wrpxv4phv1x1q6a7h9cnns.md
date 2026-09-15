@@ -5,15 +5,15 @@ title: Make Git revisions copyable with the shared identifier affordance
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T15:30:36.515Z
-updated_at: 2026-08-25T15:45:11.180Z
+updated_at: 2026-09-14T23:55:50.051Z
 closed_at: 2026-08-25T15:45:11.179Z
 close_reason: Git revisions now use the shared copyable-identifier affordance and copy the full ID; all registered exact-value copy surfaces share one tested delegate.
 resolution: null

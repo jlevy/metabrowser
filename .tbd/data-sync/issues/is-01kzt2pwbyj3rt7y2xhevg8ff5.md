@@ -3,9 +3,9 @@ type: is
 id: is-01kzt2pwbyj3rt7y2xhevg8ff5
 title: "Spec: bounded binary byte preview"
 kind: epic
-status: open
+status: closed
 priority: 2
-version: 11
+version: 13
 spec_path: docs/project/specs/done/plan-2026-08-11-binary-byte-preview.md
 labels: []
 dependencies: []
@@ -18,25 +18,14 @@ child_order_hints:
   - is-01m023cq7qajqd0y3x4r4378sv
   - is-01m024s03n1vxyhxqm7dz7p5tp
 created_at: 2026-08-12T04:11:55.645Z
-updated_at: 2026-08-16T08:05:43.452Z
+updated_at: 2026-09-14T23:56:25.248Z
+closed_at: 2026-09-14T23:56:25.245Z
+close_reason: All child work is closed and the completed spec is filed under specs/done.
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 10816d20-0b05-4e76-a7c3-7603b74e43b5
     linked_at: 2026-08-16T08:05:43.452Z
 ---
-Deliver the bounded binary byte preview described in
-docs/project/specs/active/plan-2026-08-11-binary-byte-preview.md.
-
-The built-in `binary` plugin declares no views today, so `_views_for_kind("binary")`
-returns an empty list and the preview pane paints its static "No preview is available
-for this binary file" branch in `static/app.js`. This epic gives that plugin one default
-`bytes` view backed by a bounded chunked data hook.
-
-Scope boundary: Metabrowser core is untouched apart from two test files. Everything
-new lands under `src/metabrowser/builtin_plugins/binary/`.
-
-Acceptance:
-- `/api/file` reports a default `bytes` view for a binary file.
-- Bytes render under the documented display contract with bounded reads, bounded DOM
-  growth, disposal, and theme-aware plugin-owned styling.
-- `make verify` passes.
+Delivered the bounded binary byte preview described in docs/project/specs/done/plan-2026-08-11-binary-byte-preview.md. The built-in binary plugin provides the default bytes view, bounded chunk hook, bounded DOM growth, disposal, theme-aware styling, parity coverage, and release validation.

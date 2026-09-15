@@ -5,8 +5,8 @@ title: Add a CDP Git revision navigation scenario and baseline
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0w53vkse6krjp4g03k5x7q6
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T09:47:40.399Z
-updated_at: 2026-08-25T10:34:41.146Z
+updated_at: 2026-09-14T23:54:35.192Z
 closed_at: 2026-08-25T09:54:51.072Z
 close_reason: Added the trusted CDP git-revisions scenario, documented its use, captured three visible-Chrome unchanged-product baselines, and passed make verify.
 resolution: null

@@ -5,8 +5,8 @@ title: Integrate continuous scroll paging with virtualized Git history
 kind: task
 status: closed
 priority: 1
-version: 11
-spec_path: docs/project/specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md
+version: 12
+spec_path: docs/project/specs/done/plan-2026-08-25-unbounded-virtualized-git-history.md
 labels:
   - release:v0.9.0
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0vsdfqzprgm8x1pmmgw701g
 parent_id: is-01m0ghvrnps0hh3m8d28xvfn2j
 created_at: 2026-08-25T06:23:33.811Z
-updated_at: 2026-08-27T06:54:24.000Z
+updated_at: 2026-09-14T23:55:56.068Z
 closed_at: 2026-08-27T06:54:23.998Z
 close_reason: Fixed in 1286ad1; full local gates, repeated exact-head headed 10,000-commit validation, push hooks, and all five GitHub checks pass.
 resolution: null

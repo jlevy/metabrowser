@@ -5,8 +5,8 @@ title: Validate unbounded Git history for the v0.9.0 release
 kind: task
 status: closed
 priority: 1
-version: 9
-spec_path: docs/project/specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md
+version: 11
+spec_path: docs/project/specs/done/plan-2026-08-25-unbounded-virtualized-git-history.md
 delegate: codex@spud10.local
 labels:
   - release:v0.9.0
@@ -15,7 +15,7 @@ parent_id: is-01m0ghvrnps0hh3m8d28xvfn2j
 hold: null
 hold_until: null
 created_at: 2026-08-25T06:23:41.310Z
-updated_at: 2026-08-27T07:24:36.150Z
+updated_at: 2026-09-14T23:56:08.663Z
 started_at: 2026-08-27T06:54:32.466Z
 closed_at: 2026-08-27T07:24:36.137Z
 close_reason: Completed the nine-corpus backend and headed browser matrices, forced 1.45-million-row segment rebasing, fixed the cached stylesheet settlement defect, passed exact installed-wheel v0.8.0 comparison, make verify, pre-push, and all five GitHub checks, and committed durable evidence in exp-020 and the completed spec.

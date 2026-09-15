@@ -5,8 +5,8 @@ title: "Spec: Git revision navigation performance"
 kind: epic
 status: closed
 priority: 1
-version: 60
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 61
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -45,7 +45,7 @@ child_order_hints:
   - is-01m0zrp4gpq3x8hq9vdr9vj8k7
   - is-01m0zsbh067m10y39fcbk88teg
 created_at: 2026-08-25T09:47:28.502Z
-updated_at: 2026-08-27T00:43:35.519Z
+updated_at: 2026-09-14T23:55:10.850Z
 closed_at: 2026-08-27T00:43:35.518Z
 close_reason: All 34 delivery children are complete; Git revision navigation landed, passed final exact-head validation and CI, and shipped in the public v0.8.0 release.
 resolution: null

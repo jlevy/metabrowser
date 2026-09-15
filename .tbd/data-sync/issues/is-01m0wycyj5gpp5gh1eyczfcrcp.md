@@ -5,15 +5,15 @@ title: Gate Git revision validation on deferred request storms
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 8
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T17:10:01.028Z
-updated_at: 2026-08-25T18:15:12.636Z
+updated_at: 2026-09-14T23:55:32.462Z
 closed_at: 2026-08-25T18:15:12.635Z
 close_reason: "Implemented the automatic deferred request-storm gate, validated it on the exact pushed head, documented it in the standard performance process, and updated PR #82."
 resolution: null

@@ -5,8 +5,8 @@ title: Validate and document Git revision navigation performance
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 8
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0wq55zyfz7g5r55k9h6ntyv
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T09:48:08.696Z
-updated_at: 2026-08-25T15:04:21.836Z
+updated_at: 2026-09-14T23:55:51.649Z
 closed_at: 2026-08-25T10:25:11.766Z
 close_reason: Validated three interleaved baseline/candidate browser scenarios on one fixed corpus, recorded exp-018, completed manual browser coverage including invalid-route recovery, and passed make verify.
 resolution: null

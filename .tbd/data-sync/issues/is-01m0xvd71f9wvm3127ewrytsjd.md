@@ -5,8 +5,8 @@ title: Standardize retained-navigation interaction attribution
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0xwh9tfjnqf5rfb3dpap7cb
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-26T01:36:58.412Z
-updated_at: 2026-08-26T01:56:40.900Z
+updated_at: 2026-09-14T23:54:46.722Z
 closed_at: 2026-08-26T01:44:22.510Z
 close_reason: Standard performance-loop attribution procedure and evidence are documented and reconciled with the existing fail-closed scenarios; all focused and full validation passed.
 resolution: null

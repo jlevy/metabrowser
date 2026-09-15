@@ -1,16 +1,17 @@
 ---
 type: is
 id: is-01m0b71xwkrf39qnq9ccgxmfp4
-title: "Annotation layer: anchored threads over a comparison, GitHub review threads first"
+title: "Hosted review Phase 4: anchored review threads over comparisons"
 kind: feature
 status: open
-priority: 3
-version: 1
-spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
-labels: []
+priority: 1
+version: 2
+spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
+labels:
+  - release:v0.11.0
 dependencies: []
-parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
+parent_id: is-01m10vgwqwn8gjdv8fm183vztr
 created_at: 2026-08-18T19:54:57.298Z
-updated_at: 2026-08-18T19:54:57.298Z
+updated_at: 2026-09-14T23:59:09.172Z
 ---
-Layer 6 anchors from the research: comparison + file-change IDs, side, immutable content identity, byte/line range, context fingerprint. Read-only GitHub review threads are the first consumer (provider plugin territory — conversation plane, not diff plane); a document's own saved edits/annotations are the second. Both arrive as data over the same anchors, not as renderer features. Blocked on the comparison model existing.
+Implement the provider-neutral ReviewThread and ReviewComment view layer over immutable comparison anchors: change-request and file-change IDs, side, content identity, byte/line range, original/current revision IDs, and context fingerprint. GitHub review threads are the first producer. Map only when Git identity and line context are sufficient; otherwise render the provider's original anchor as outdated or unresolved. Threads arrive as Hosted Review Format data and never extend File Diff Format or become renderer-specific provider objects.
