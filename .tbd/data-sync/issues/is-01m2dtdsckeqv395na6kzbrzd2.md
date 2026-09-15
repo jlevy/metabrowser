@@ -3,9 +3,9 @@ type: is
 id: is-01m2dtdsckeqv395na6kzbrzd2
 title: Quiet-environment perf revalidation of the v0.10.0 candidate (walk under attached browser, /api/tree srv time, heap, first rows)
 kind: task
-status: in_progress
+status: open
 priority: 1
-version: 10
+version: 11
 labels:
   - performance
   - release-hardening
@@ -13,7 +13,7 @@ dependencies:
   - type: blocks
     target: is-01m2fafd1v8d5pakt6r7zxw5n8
 created_at: 2026-09-13T16:43:21.362Z
-updated_at: 2026-09-15T00:49:22.415Z
+updated_at: 2026-09-15T00:53:34.130Z
 ---
 Quiet-machine performance revalidation of the release candidate, required before tagging.
 
