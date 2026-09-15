@@ -5,7 +5,7 @@ title: "Hosted review Phase 0: provider-neutral format and SoftSchema corpus"
 kind: feature
 status: open
 priority: 1
-version: 14
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -20,8 +20,10 @@ dependencies:
     target: is-01m0b71xwkrf39qnq9ccgxmfp4
   - type: blocks
     target: is-01m2h7gjbhrb9fdsbjjbcsf2n1
+  - type: blocks
+    target: is-01m2h9jm62mjccx6x3bx0nct2a
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-08-27T05:36:41.690Z
-updated_at: 2026-09-15T00:29:47.247Z
+updated_at: 2026-09-15T01:31:32.160Z
 ---
-Define the no-network format and plugin boundary for the v0.11 GitHub-first slice. Model ProviderBinding, retrieval and sync manifests, HostedRepository, ChangeRequestIndex, ChangeRequest, Review, ReviewThread, ReviewComment, Check, CommitStatus, RepositoryActivity, and Git object references as provider-neutral closed contracts. Use SoftSchema frontmatter-md for ChangeRequest, with consumed values in YAML and the PR description in the Markdown body; use pure-yaml for indexes, manifests, and compact companions. Add Pydantic and browser validators, compiled schemas, a terminology mapping matrix, normalized/invalid fixtures, and the scrubbed GitHub coverage oracle. GitHub is the first adapter; future GitLab is a named consumer, not a source of speculative fields. Issues remain mb-9rrc; stacked changes remain mb-glxc.
+Define the no-network provider-neutral Hosted Review Format and plugin boundary. Model ProviderBinding, stable AuthorizationContextRef separate from volatile retrieval observations, transaction/sync manifests, HostedRepository, query-keyed ChangeRequestIndex with remote consistency, ChangeRequest, distinct ChangeRequestComment, Review, ReviewThread, ReviewComment, tagged file/line/range ReviewAnchor, Check, CommitStatus, RepositoryActivity, tombstone proof, and Git refs as closed contracts. Use frontmatter-md for change requests, reviews, and prose comments; YAML is machine authority and Review/v1 has an optional Markdown summary body. Compile SoftSchema, implement Python and browser validators for every browser-consumed record, and add body/no-body review fixtures, normalized/invalid and hostile-metadata fixtures, plus the scrubbed GitHub coverage oracle. Future GitLab is a named consumer; issues mb-9rrc and stacks mb-glxc remain later.

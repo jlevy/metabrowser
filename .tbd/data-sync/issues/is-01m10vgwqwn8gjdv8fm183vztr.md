@@ -5,7 +5,7 @@ title: "Hosted review Phase 4: PR documents, diffs, and virtual nav collection"
 kind: feature
 status: open
 priority: 1
-version: 16
+version: 18
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -23,7 +23,8 @@ child_order_hints:
   - is-01kxry30twkcz9sg4ecahcg63j
   - is-01m2h7hrjt6yzb16neh8g2zvsd
   - is-01m2h7jjgpzyfbf10238j32z6q
+  - is-01m2h9jjh45d8db9rbd0qtscf7
 created_at: 2026-08-27T05:36:42.234Z
-updated_at: 2026-09-15T00:31:44.811Z
+updated_at: 2026-09-15T01:19:54.018Z
 ---
-Umbrella for incrementally shippable provider-neutral hosted-review views. The plugin router prerequisite mb-xzj3 enables mb-81p5 to render a directly addressed cached PR document and File Diff Format comparison without an index or nav panel. After mb-lnkl and mb-uh6p, mb-iw1v adds the Pull Requests virtual collection with Git-history-style paging and restoration. mb-rldc then layers honest anchored review threads. Common views consume only validated hosted-review records, reuse existing Markdown/revision/diff paths, dispose all mounted state, and keep counts and visibility model-driven.
+Umbrella for incrementally shippable provider-neutral hosted-review views. mb-xzj3 owns mounted HTTP and mb-6mle owns browser address parse/format/apply/preview/popstate/replacement/disposal; together they enable mb-81p5 to render a direct cached PR document and File Diff Format comparison without an index. After mb-lnkl and mb-uh6p, mb-iw1v adds the virtual Pull Requests collection, then mb-rldc adds honest file/line/range anchors. Every browser-consumed record is validated; hostile strings stay text or untrusted Markdown; exact production lifecycle functions run in hosted-review-session and its golden.
