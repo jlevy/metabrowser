@@ -3,9 +3,9 @@ type: is
 id: is-01m2dtdsckeqv395na6kzbrzd2
 title: Quiet-environment perf revalidation of the v0.10.0 candidate (walk under attached browser, /api/tree srv time, heap, first rows)
 kind: task
-status: in_progress
+status: open
 priority: 1
-version: 9
+version: 11
 labels:
   - performance
   - release-hardening
@@ -13,7 +13,7 @@ dependencies:
   - type: blocks
     target: is-01m2fafd1v8d5pakt6r7zxw5n8
 created_at: 2026-09-13T16:43:21.362Z
-updated_at: 2026-09-14T23:54:11.215Z
+updated_at: 2026-09-15T00:53:34.130Z
 ---
 Quiet-machine performance revalidation of the release candidate, required before tagging.
 
@@ -38,16 +38,16 @@ Method: >=5 interleaved runs per side, one environment alternating only the whee
 
 ## Notes
 
-Rough-cut run done, regression found; the quiet-machine rerun is still pending and must follow the mb-kicj fix.
+exp-034 is done and the candidate is REJECTED on the 300k corpus; project-10 passes.
 
-exp-033 (PR #120, branch claude/release-v0.10.0-perf) compared the exact v0.9.1 wheel with the candidate 88606b56 on project-10 (tree-d44cf95e, 102,390 walker-visible files) and the 300k build_corpus (tree-b4ec96ce). It was a rough cut on a loaded host (1-minute load average 10-54 from unrelated jobs): 3 interleaved headed captures per side per corpus in the order C K K C C K, compare_builds --runs 3 per corpus, and one back-to-back rerun of each single-pair exceedance. The accept rule was a 1.3x ratio on back-to-back pairs; the README now records it as the rough-cut tolerance, with 1.1x (1.05x for fine claims) as the careful tolerance for quiet-machine measurements.
+Quiet host (4 vCPU Intel Xeon 2.80GHz, Linux 6.18.44, load average below 1.1 throughout), five interleaved pairs per corpus for both halves, one environment alternating only the wheel, headed Chromium 141 under Xvfb at 1600x1040, CPython 3.13.12 standard build.
 
-Result: rejected. Correctness passes on both corpora (zero ordered-row and tally differences, no refused records, complete catalogs, no errors). project-10 is much faster (browser first rows 144-269 ms vs 198-1,064 ms, walk about half, backend first row 11-14 ms vs about 1.1 s). On 300k the candidate regresses: walk pair ratios 1.20-1.91, backend index_done 1.13-1.49 (repeats at load 10), a candidate-only tally-overlap progress-latency miss (213-254 ms against the 200 ms compare_builds budget in 3 of 4 runs), and first_row_ms (1.52, rerun 1.94) and transient js_heap_mb (1.33-1.35) excesses. Root /api/tree srv time exceeds on both corpora; on project-10 it is the provider read moving into asyncio.to_thread (reader wait did not grow), on 300k about 20 ms reaches load_tree_ms.
+run.py compare verdicts: project-10 PASS (every hard responsiveness budget passed), 300k FAIL (first_row_ms 392, 359 and 364 ms against the 350 ms gate).
 
-Evidence to settle from the original list, as of exp-033 (loaded, so indicative only): walk with a browser attached is faster than v0.9.1 on project-10 and slower on 300k; /api/tree srv time 1-9 ms -> 12-68 ms; transient JS heap +25-35% with equal post-GC heap; backend RSS +1% (project-10) and +4% (300k); spawn-to-serving within 1.3x after reruns.
+project-10 (118,860 walker-visible files): first rows 1,238 -> 230 ms, walk 39,203 -> 15,507 ms, backend index_done 39.2 -> 9.3 s, FCP 1,140 -> 188 ms, LCP 1,516 -> 244 ms, RSS 1.00x. Regressions there: tree_fetch_srv_ms 1 -> 39 ms (mb-3s45), transient js_heap_mb 8 -> 24 MB with equal post-GC heap (mb-kccm).
 
-Remaining:
-1. Fix mb-kicj, then rerun the comparison on the fixed commit with the same v0.9.1 wheel, corpora, and environments (kept in place on the benchmark host; script and pair-ratio tool are machine-local), same pair rule. Prefer a quiet machine; if it is quiet, use at least five interleaved runs per side and the careful 1.1x tolerance, and recalibrate the first_row_ms gate (mb-i2im) from it.
-2. Harness items still open from the original list: 3 (strip PYTHON* env and verify find_spec origin), 5 (report.md annotations for labels compare would refuse), 6 (wheel attestation inside devtools/compare_builds.py; exp-033 attested both backend envs with attest_installed_wheel before running it), and 7 (A/A mode, mb-ot8o).
+300k: walk 18,715 -> 31,295 ms (mb-kicj), first rows 293 -> 359 ms crossing the gate, tree_fetch_srv_ms 6 -> 22 ms, LCP 180 -> 416 ms, long tasks 0 -> 98 ms, backend index_done 15.35 -> 19.18 s.
 
-Procedure notes for the rerun: pin the measurement envs to a standard (GIL) CPython with --python, because uv discovery picks the checkout's free-threaded interpreter; create them outside every git work tree; open every series with an unrecorded serve plus run.py fingerprint; compare_builds only runs control-then-candidate within each pair.
+Correctness is clean on both corpora: compare_builds valid on both, zero ordered-row and zero tally differences, every catalog complete, no refused record, one tree-region repaint per run.
+
+Evidence: explorations/performance-loop/experiments/exp-034-*.md, results/runs.jsonl labels exp-034-p10-* and exp-034-300k-*, machine-local reports under .bench/release-comparisons/v0.9.1-to-v0.10.0/.
