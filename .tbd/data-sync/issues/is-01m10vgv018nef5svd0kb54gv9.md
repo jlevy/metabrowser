@@ -5,16 +5,14 @@ title: "Repository library Phase 2: generic Git catalog, refresh, and cache mana
 kind: feature
 status: open
 priority: 2
-version: 6
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m10vgvh4pvre1adnkgm2egp1
-  - type: blocks
-    target: is-01m10xd666fefs5z7ft5m58zj0
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-08-27T05:36:40.448Z
-updated_at: 2026-08-27T06:09:56.553Z
+updated_at: 2026-09-14T23:27:51.033Z
 ---
-Scan validated repository.yml and state.yml pairs into a provider-neutral catalog. Add list, inspect, Git-only refresh, repair diagnostics, and recoverable purge; fetch refs without mutating active gitroot; stage promotion outside live sessions; report progress, cancellation, and partial failure; measure size before eviction. Provider refresh does not enter this phase.
+Complete the generic repository catalog, refresh, and cache-management phase after the provider-facing v0.11 subset in mb-jlon. Scan validated repository.yml and state.yml pairs into a provider-neutral catalog; add list, inspect, Git-only refresh, repair diagnostics, recoverable purge, size accounting, and measured retention policy; fetch refs without mutating active gitroot; stage promotion outside live sessions; and report progress, cancellation, and partial failure. Provider refresh remains separate.

@@ -5,13 +5,13 @@ title: Keep preview pending token rationale value-independent
 kind: task
 status: closed
 priority: 3
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m0w542g2gzak7th85hx2bdz8
 created_at: 2026-08-25T19:28:27.563Z
-updated_at: 2026-08-25T19:31:06.841Z
+updated_at: 2026-09-14T23:55:21.653Z
 closed_at: 2026-08-25T19:31:06.840Z
 close_reason: Reworded the navigation-opacity token comment to describe intent without duplicating its numeric value; make format and make verify pass.
 resolution: null

@@ -5,8 +5,8 @@ title: Cancel retained diff background work during revision handoff
 kind: bug
 status: closed
 priority: 1
-version: 7
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0wycyj5gpp5gh1eyczfcrcp
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T16:29:22.269Z
-updated_at: 2026-08-25T17:10:01.028Z
+updated_at: 2026-09-14T23:55:54.458Z
 closed_at: 2026-08-25T16:54:47.888Z
 close_reason: "Fixed and validated in pushed commit 9ce7f2e: obsolete retained diff work is canceled immediately, deferred hydration is viewport-gated and capped at two active requests, visible DOM remains until atomic replacement, and focused/full/real-browser validation passes."
 resolution: null

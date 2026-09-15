@@ -5,15 +5,15 @@ title: Make navigation tooltips pointer-only and dismiss them on keyboard select
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-26T06:40:26.744Z
-updated_at: 2026-08-26T07:43:11.268Z
+updated_at: 2026-09-14T23:55:01.588Z
 closed_at: 2026-08-26T07:43:11.266Z
 close_reason: Implemented pointer-only delegated and Git commit tooltips with immediate focus/keyboard dismissal and stale-hover suppression. Focused DOM/design tests, make verify, and exact installed-build browser validation pass; pointer behavior was visibly validated on ad7c8b7 and the final 4d45e0d changes do not touch that path.
 resolution: null

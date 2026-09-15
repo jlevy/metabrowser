@@ -5,8 +5,8 @@ title: Complete Git revision navigation handoff
 kind: task
 status: closed
 priority: 1
-version: 20
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 22
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
@@ -15,7 +15,7 @@ child_order_hints:
   - is-01m0x6aedksxrggn0ba4tv66v0
   - is-01m0ztgq3910k6n9bbb6ejdpg5
 created_at: 2026-08-25T09:48:15.745Z
-updated_at: 2026-08-27T00:43:35.266Z
+updated_at: 2026-09-14T23:55:46.908Z
 closed_at: 2026-08-27T00:43:35.265Z
 close_reason: "PR #82 was reconciled after its stack landed, merged without unresolved feedback, and its complete feature set shipped in v0.8.0 after exact-head local, headed-browser, GitHub CI, public-artifact, and global-install verification."
 resolution: null

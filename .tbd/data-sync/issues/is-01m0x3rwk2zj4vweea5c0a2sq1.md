@@ -5,8 +5,8 @@ title: Share immediate dimmed preview feedback
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0x3skec67w78kafbez3xj2d
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T18:43:55.097Z
-updated_at: 2026-08-25T18:53:36.637Z
+updated_at: 2026-09-14T23:55:17.328Z
 closed_at: 2026-08-25T18:53:36.629Z
 close_reason: Implemented one shell-owned immediate preview pending lifecycle for file and Git navigation, preserved delayed initial spinners, added tokenized reduced-motion-safe dimming, and passed focused shell, Git DOM, design-vocabulary, Biome, and TypeScript checks.
 resolution: null

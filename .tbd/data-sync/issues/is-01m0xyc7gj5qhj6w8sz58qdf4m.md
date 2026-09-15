@@ -5,15 +5,15 @@ title: Fix folder expansion after Git-panel round trip during indexing
 kind: bug
 status: closed
 priority: 0
-version: 6
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 8
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-26T02:28:51.850Z
-updated_at: 2026-08-26T03:38:27.319Z
+updated_at: 2026-09-14T23:55:27.972Z
 closed_at: 2026-08-26T03:38:27.318Z
 close_reason: Fixed and independently validated on the exact globally installed pushed head.
 resolution: null

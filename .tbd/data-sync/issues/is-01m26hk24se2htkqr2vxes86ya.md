@@ -5,11 +5,12 @@ title: Golden-pin shared preview lifecycle, errors, and persisted decisions
 kind: task
 status: open
 priority: 1
-version: 1
+version: 3
+spec_path: docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md
 labels: []
 dependencies: []
 parent_id: is-01m26hjjvhpcf49p2x1c3390kk
 created_at: 2026-09-10T20:54:15.961Z
-updated_at: 2026-09-10T20:54:15.961Z
+updated_at: 2026-09-14T23:28:11.062Z
 ---
 Give shared file selection/view lifecycle exact production-session coverage: cache/revalidate/abort, staged atomic replacement, lazy plugin mount, preferred tab, renderer disposal, loading/error states, source pagination, active-view print eligibility, copy payload decisions, and cookie-backed theme/prose/max-width/interface-font preferences. Normalize preview error envelopes and CLI evidence. Exempt only OS clipboard permission, print pagination, and paint.

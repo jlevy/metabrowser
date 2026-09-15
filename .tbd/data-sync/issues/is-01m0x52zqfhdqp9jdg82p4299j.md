@@ -5,15 +5,15 @@ title: Deduplicate selected file and hover-prefetch requests
 kind: bug
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0x3skec67w78kafbez3xj2d
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T19:06:54.563Z
-updated_at: 2026-08-25T19:11:20.451Z
+updated_at: 2026-09-14T23:55:04.759Z
 closed_at: 2026-08-25T19:11:20.443Z
 close_reason: The performance loop now rejects duplicate matching file requests; selection cancels matching hover timers, joins matching in-flight prefetch, aborts unrelated speculation, and preserves stale-claim safety. Focused tests pass and a headed fixed-corpus rerun recorded one request per cold transition, zero cached requests, zero blank frames, exact convergence, and no page exceptions.
 resolution: null

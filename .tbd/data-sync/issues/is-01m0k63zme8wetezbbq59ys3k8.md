@@ -5,8 +5,8 @@ title: One file-type source of truth, in YAML, mirroring linguist
 kind: epic
 status: closed
 priority: 2
-version: 7
-spec_path: docs/project/specs/active/plan-2026-08-21-file-type-source-of-truth.md
+version: 8
+spec_path: docs/project/specs/done/plan-2026-08-21-file-type-source-of-truth.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -16,7 +16,7 @@ child_order_hints:
   - is-01m0k64p0t4x4vn9hb6bm99adv
   - is-01m0k65ab493q97zpw6hgcjjsc
 created_at: 2026-08-21T22:12:31.501Z
-updated_at: 2026-08-21T23:49:52.489Z
+updated_at: 2026-09-14T23:54:22.351Z
 closed_at: 2026-08-21T23:49:52.487Z
 close_reason: "Landed. The registry declares one number per family — its hue — with the linguist language and its upstream color recorded beside it for provenance. Source stayed TOML rather than moving to YAML: Rust tooling is planned and TOML is better supported there. Lightness and chroma belong to the theme, one pair for the whole palette, resolved server-side because a browser clips out-of-gamut oklch and moves hue by up to 9 degrees. Spec: docs/project/specs/active/plan-2026-08-21-file-type-source-of-truth.md"
 ---

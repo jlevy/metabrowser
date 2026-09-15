@@ -5,8 +5,8 @@ title: Provide unbounded logical Git history with bounded rendering
 kind: epic
 status: closed
 priority: 1
-version: 13
-spec_path: docs/project/specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md
+version: 14
+spec_path: docs/project/specs/done/plan-2026-08-25-unbounded-virtualized-git-history.md
 labels:
   - release:v0.9.0
 dependencies: []
@@ -17,7 +17,7 @@ child_order_hints:
   - is-01m0vsd8dnak6hw2b87x5awch6
   - is-01m0vsdfqzprgm8x1pmmgw701g
 created_at: 2026-08-20T21:40:01.845Z
-updated_at: 2026-08-27T07:24:36.406Z
+updated_at: 2026-09-14T23:56:03.140Z
 closed_at: 2026-08-27T07:24:36.405Z
 close_reason: "All five ordered children are complete: measurement, replayable server continuation, bounded virtual window, integrated continuous history, and exact release validation. PR #86 at c1aaf48 is green and ready for review."
 resolution: null

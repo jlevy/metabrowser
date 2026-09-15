@@ -5,15 +5,15 @@ title: Move the commit change summary into the Git metadata header
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T15:30:36.138Z
-updated_at: 2026-08-25T15:45:10.652Z
+updated_at: 2026-09-14T23:54:28.851Z
 closed_at: 2026-08-25T15:45:10.651Z
 close_reason: Aggregate change totals now live beside commit identity above the description; revision-hosted diffs omit only the duplicate summary. Focused, full, and visible-browser acceptance passed.
 resolution: null

@@ -5,8 +5,8 @@ title: Audit preview handoff and readiness parity
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0x3rx12rgkb5pgdasd1zwn4
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T18:43:38.325Z
-updated_at: 2026-08-25T18:48:58.958Z
+updated_at: 2026-09-14T23:55:14.457Z
 closed_at: 2026-08-25T18:48:58.957Z
 close_reason: Audited file and Git ownership, documented shared pending and painted-readiness vocabulary, and wired the five file/function-level follow-up beads without speculative detachment, caching, or compatibility.
 resolution: null

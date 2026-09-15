@@ -5,13 +5,13 @@ title: Increase diff intraline accent mix to 20%
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies: []
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-26T19:06:42.544Z
-updated_at: 2026-08-26T19:22:36.081Z
+updated_at: 2026-09-14T23:55:53.042Z
 closed_at: 2026-08-26T19:22:36.065Z
 close_reason: Set intraline success/error overlays to 20%, preserved 4.5:1 text contrast, documented the contract, and verified light/dark Split/Unified rendering from the exact installed wheel.
 resolution: null

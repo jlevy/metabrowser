@@ -5,8 +5,8 @@ title: Design and implement scalable Git history continuation
 kind: task
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-08-25-unbounded-virtualized-git-history.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-08-25-unbounded-virtualized-git-history.md
 labels:
   - release:v0.9.0
 dependencies:
@@ -14,7 +14,7 @@ dependencies:
     target: is-01m0vsd8dnak6hw2b87x5awch6
 parent_id: is-01m0ghvrnps0hh3m8d28xvfn2j
 created_at: 2026-08-25T06:23:14.801Z
-updated_at: 2026-08-27T04:37:26.236Z
+updated_at: 2026-09-14T23:55:57.962Z
 closed_at: 2026-08-27T04:37:26.235Z
 close_reason: "Implemented measured replayable Git history sessions with exact ordering, bounded lifecycle and storage, explicit recovery errors, and complete failure cleanup; commit 5b3173b passed make verify, pre-push, and all five PR #86 checks."
 resolution: null

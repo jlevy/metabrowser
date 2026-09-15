@@ -5,13 +5,14 @@ title: "Parity checker: require behavior-function owners and verify function ran
 kind: task
 status: open
 priority: 2
-version: 2
+version: 4
+spec_path: docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md
 labels:
   - parity
 dependencies: []
 parent_id: is-01m26hjjvhpcf49p2x1c3390kk
 created_at: 2026-09-13T21:38:13.642Z
-updated_at: 2026-09-14T03:01:58.167Z
+updated_at: 2026-09-14T23:28:11.873Z
 ---
 From the release senior review (shell/parity lane). Deferred from the v0.9.2 release because each needs a checker redesign, not a local fix.
 

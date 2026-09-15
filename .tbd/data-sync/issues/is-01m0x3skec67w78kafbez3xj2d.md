@@ -5,15 +5,15 @@ title: Validate preview transition parity and choose measured follow-ups
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-25-git-revision-navigation-performance.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-25-git-revision-navigation-performance.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m0w542g2gzak7th85hx2bdz8
 parent_id: is-01m0w52mbqvhdj9r2et2eh9p55
 created_at: 2026-08-25T18:44:18.507Z
-updated_at: 2026-08-25T19:26:27.492Z
+updated_at: 2026-09-14T23:54:31.975Z
 closed_at: 2026-08-25T19:26:27.491Z
 close_reason: Validated the shared file/Git transition lifecycle. Focused suites and make format/verify pass; exact working-tree headed file-views and git-revisions scenarios have zero blank frames and page exceptions, exact file route/render/view/mount convergence, immediate pending feedback that clears, one cold file request, zero cached file requests, and a request-free prepared Git transition.
 resolution: null

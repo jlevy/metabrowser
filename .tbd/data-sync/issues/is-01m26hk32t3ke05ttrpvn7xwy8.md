@@ -5,11 +5,12 @@ title: Maintain the narrow paint and platform exemption ledger
 kind: task
 status: open
 priority: 2
-version: 1
+version: 3
+spec_path: docs/project/specs/active/plan-2026-09-10-functional-ui-cli-parity.md
 labels: []
 dependencies: []
 parent_id: is-01m26hjjvhpcf49p2x1c3390kk
 created_at: 2026-09-10T20:54:16.921Z
-updated_at: 2026-09-10T20:54:16.921Z
+updated_at: 2026-09-14T23:28:10.015Z
 ---
 Enumerate genuine browser-only evidence separately from semantic decisions: typography/font metrics, colors as painted, responsive geometry, focus/scrollbar visuals, animation/FCP/long tasks, canvas pixels, image decode, print page breaking, OS clipboard permission, native new-tab/download, and real IntersectionObserver geometry. Add focused WebView/browser checks and prevent broad view-layer exemptions from returning.
