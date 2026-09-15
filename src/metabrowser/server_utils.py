@@ -82,10 +82,15 @@ def remote_port_probe_script(base_port: int, count: int = DEFAULT_PORT_SEARCH_CO
     Exits non-zero and prints nothing if no port in the range is free.
     """
     ports = port_search_range(base_port, count)
+    # The remote probe binds the way the remote server will, for the reason
+    # `local_port_is_free` records: without SO_REUSEADDR a port whose only
+    # occupant is a lingering connection reads as busy, and the tunnel is then
+    # built to a port the remote `metab` did not take.
     script = (
         "import socket, sys\n"
         f"for p in range({ports.start}, {ports.stop}):\n"
         "    s = socket.socket()\n"
+        "    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n"
         "    try:\n"
         "        s.bind(('127.0.0.1', p))\n"
         "        s.close()\n"
