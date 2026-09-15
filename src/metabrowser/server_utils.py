@@ -35,8 +35,19 @@ def port_search_range(
 
 
 def local_port_is_free(host: str, port: int) -> bool:
-    """Return True if *port* on *host* can be bound right now."""
+    """Return True if *port* on *host* can be bound right now.
+
+    The probe binds the way the server will. Uvicorn sets ``SO_REUSEADDR`` on
+    its listener, so without it here the probe answers a different question and
+    answers it wrongly in the one case that matters: a reader whose server
+    stopped is told to start it again, and the browser tab reading that message
+    still holds a connection whose socket is in ``TIME_WAIT``. A plain bind
+    fails on that port, the search moves to the next one, and the page polls a
+    port nothing will ever serve. Uvicorn would have bound it.
+    """
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((host, port))
             return True
