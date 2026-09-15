@@ -5,12 +5,13 @@ title: Catalog sort and Recent pass hold the GIL without cooperative yields duri
 kind: task
 status: open
 priority: 2
-version: 4
+version: 6
 labels:
   - performance
 dependencies: []
+parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-14T20:51:44.740Z
-updated_at: 2026-09-15T05:28:21.277Z
+updated_at: 2026-09-15T05:51:24.635Z
 ---
 Two whole-index passes that overlap the inventory walk still hold the GIL without a cooperative yield.
 
@@ -20,41 +21,39 @@ Measure first (engine performance model: counts before times), then bound or yie
 
 ## Notes
 
-CORRECTED by exp-035 (2026-09-15).
+CORRECTED TWICE. Final measurement, best of seven over 300,000 CatalogRecord rows with
+the key extracted from the record exactly as the projection does it:
 
-PART 1 -- THE SORT KEY: REJECTED, DO NOT PROPOSE AGAIN.
-exp-034's prose called the sort key a free win, on the grounds that the per-row UTF-8
-encode produces the same order as sorting the path directly. The order claim holds --
-UTF-8 preserves code-point order, and canonical inventory paths reject surrogates
-outright -- but the saving does not. Best of five over 300,000 CatalogRecord rows:
+  sort key                      all ASCII   exactly 1 non-ASCII   ~42% non-ASCII
+  record.path.encode("utf-8")   157 ms      147 ms                160 ms
+  record.path                   115 ms      144 ms                199 ms
+  difference                    path +42ms  path +3ms             encode +38ms
 
-  sort key                      ASCII-only tree   one non-ASCII name present
-  record.path.encode("utf-8")   151 ms            173 ms
-  record.path                   117 ms            214 ms
+PART 1 -- THE SORT KEY: LEAVE IT ALONE.
+exp-034 called this a free win. It is not a saving. An intermediate correction then
+called it "a cliff triggered by a single file" -- that was measured on a 42% non-ASCII
+corpus and mislabelled as the single-file case. The single-file case is a TIE (3 ms).
+One non-ASCII name does take away CPython's all-latin1 fast path, which is why the 42 ms
+advantage collapses, but collapsing is not inverting: inversion needs a large share of
+the tree to be non-ASCII.
 
-CPython scans a sort's keys and picks a specialized comparison; an all-latin1 str key
-gets a fast path that one non-ASCII filename anywhere in 300,000 rows removes for the
-whole sort. The bytes key is a plain memcmp and does not care. So it is a 34 ms saving
-on all-ASCII trees bought with a 41 ms loss on any tree carrying one name that is not --
-a cliff triggered by a single file, for well under 1% of the catalog read. The existing
-key stays. Re-measure BOTH shapes before reopening this.
+So it is a trade with no general winner -- 42 ms on ASCII-only trees against 38 ms on a
+mostly-CJK tree, about 1.5% of the read either way. The key stays because a trade that
+size does not pay for touching a sort whose order every catalog response depends on, NOT
+because the alternative is worse. Order is identical on all three shapes (UTF-8 preserves
+code-point order; canonical paths reject surrogates).
 
 PART 2 -- THE CONTENT HASH: READY, DEFERRED TO AFTER THE v0.10.0 TAG.
-Joining once per page instead of four digest updates per record measures 62 ms -> 41 ms
-at 300,000 rows (1.51x on that step) with a byte-identical digest. Hashing the whole
-catalog in one buffer was measured too and is both slower and unbounded in transient
-memory, so per-page is the form to take.
+Per-page join instead of four digest updates per record: 62 ms -> 41 ms at 300,000 rows
+(1.51x on that step), byte-identical digest. About 0.8% of the full /api/catalog time,
+so worth taking but not a fix. Hashing the whole catalog in one buffer is slower AND
+unbounded in transient memory.
 
-Written and tested but deliberately NOT in v0.10.0: `_catalog_content_identity` is on
-the path exp-034's captures measured, and exp-035's argument for not re-running those
-captures is that nothing on a measured path moved. Landing it would have falsified that.
-
-The patch and three tests are reproducible from the exp-035 write-up: a reference test
-computing the digest the documented per-record way, a test that page boundaries do not
-move the identity, and a test that the framing keeps path and extension unambiguous. The
-page-boundary test is the one that matters -- folding the separator into the join drops
-each page's leading byte, which is the bug this actually hit when first written.
+Held out of v0.10.0 only because _catalog_content_identity is on the path exp-034's
+captures measured, and exp-035's argument for not re-running them is that nothing on a
+measured path moved. Patch and three tests reproducible from the exp-035 write-up; the
+page-boundary test is the one that matters, because folding the separator into the join
+drops each page's leading byte -- the bug this actually hit when first written.
 
 PART 3 -- REMAINING, UNMEASURED: the Recent pass holding the GIL without cooperative
-yields during a walk. Nothing has measured this yet; it is the original scope of this
-bead and the only part still open as a question.
+yields during a walk. Still the only open question in this bead.

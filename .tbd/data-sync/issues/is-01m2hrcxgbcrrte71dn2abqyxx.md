@@ -5,12 +5,13 @@ title: Catalog read at 300k rows is 3.9x v0.9.1 (663 ms -> 2,575 ms)
 kind: bug
 status: open
 priority: 1
-version: 1
+version: 2
 labels:
   - performance
 dependencies: []
+parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-15T05:24:53.387Z
-updated_at: 2026-09-15T05:24:53.387Z
+updated_at: 2026-09-15T05:38:50.242Z
 ---
 exp-034 priced `/api/catalog` on the settled 300k index at 2,575 ms against v0.9.1's
 663 ms, with an unrelated request's worst wait going 475 ms -> 883 ms.

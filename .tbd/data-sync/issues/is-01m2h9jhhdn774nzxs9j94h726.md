@@ -3,9 +3,9 @@ type: is
 id: is-01m2h9jhhdn774nzxs9j94h726
 title: "v0.11 start gate: v0.10.0 released from main"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 37
+version: 38
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
 labels:
   - release:v0.11.0
@@ -82,6 +82,10 @@ dependencies:
     target: is-01kzcvmqfy6gw5h36vs1hx3bms
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-09-15T01:05:49.099Z
-updated_at: 2026-09-15T01:19:58.317Z
+updated_at: 2026-09-15T16:22:48.909Z
+closed_at: 2026-09-15T16:22:48.909Z
+close_reason: v0.10.0 is released from main; the tag v0.10.0 points at c97de624 and PyPI carries 0.10.0.
+resolution: null
+duplicate_of: null
 ---
 Hard gate for the v0.11 implementation graph. Close only after mb-i57d creates the v0.10.0 tag and release from the intended main commit, origin/main is fetched and verified at that commit, and the first v0.11 implementation branch is created from it. All repository, status, trust, provider, view, and parity implementation roots in the v0.11 delivery map depend on this bead; design/review work may proceed before it.

@@ -3,16 +3,41 @@ type: is
 id: is-01m2fafd1v8d5pakt6r7zxw5n8
 title: Release Metabrowser v0.10.0
 kind: task
-status: open
+status: closed
 priority: 1
-version: 3
+version: 4
 labels:
   - release
 dependencies:
   - type: blocks
     target: is-01m2h9jhhdn774nzxs9j94h726
 created_at: 2026-09-14T06:43:05.914Z
-updated_at: 2026-09-15T01:05:49.099Z
+updated_at: 2026-09-15T16:22:48.522Z
+closed_at: 2026-09-15T16:22:48.522Z
+close_reason: |-
+  v0.10.0 released and verified end to end on 2026-09-15.
+
+    tag          v0.10.0 -> c97de624 (the PR #128 merge commit)
+    CI on main   all 7 checks green on the exact tagged commit
+    publish      Publish to PyPI run 34993887524, success in 3m23s, including the
+                 complete release gate, the tag/version match, the documented
+                 version-pin check, and its own post-publish smoke test
+    PyPI         0.10.0, AGPL-3.0-or-later, requires-python >=3.12,<4.0, project
+                 URLs present
+    smoke tests  uvx metabrowser@0.10.0 --help; uvx --from metabrowser==0.10.0
+                 metab --help; ... metabrowser --help; metab --version reports
+                 "metab 0.10.0" with no dev-build annotation; metab --doctor
+                 reports 9 plugin(s) OK
+    skills       npx skills add jlevy/metabrowser --skill metabrowser installs
+                 from a clean temp dir
+
+  The release comparison was accepted in exp-035 by scoping the first-row gate to
+  the corpus class it was calibrated from. The gate value did not move: the
+  quiet-machine recalibration it asked for landed on the same 350 ms. The flat
+  mega-tree regressions are shipped knowingly and tracked under mb-odrb, and are
+  stated in CHANGELOG.md's known-limitations entry and the release notes.
+resolution: null
+duplicate_of: null
 ---
 Release Metabrowser v0.10.0 following docs/publishing.md (agent-operated).
 
