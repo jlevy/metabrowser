@@ -5,7 +5,7 @@ title: "Hosted review Phase 0: provider-neutral format and SoftSchema corpus"
 kind: feature
 status: open
 priority: 1
-version: 30
+version: 32
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -31,12 +31,13 @@ child_order_hints:
   - is-01m2k1jcp09qw704bx3hy87x9a
   - is-01m2k1jekxjs3avv8x3d1d60fv
   - is-01m2k1jg4afz39zgz5ktt49m2b
+  - is-01m2k713pxra1ns2fk3pcwrpb6
   - is-01m2k1jj8edebds7zv8abfc917
   - is-01m2k1jkq9cvxx9db7a0z14b0z
   - is-01m2k1jnf5t6bgg340skd537hn
   - is-01m2k1jq7ydswdag1x08n30hvn
   - is-01m2k1jrywxceb6n3r0pbadegx
 created_at: 2026-08-27T05:36:41.690Z
-updated_at: 2026-09-15T17:38:43.707Z
+updated_at: 2026-09-15T19:00:46.137Z
 ---
 Define the no-network provider-neutral Hosted Review Format and plugin boundary. Model ProviderBinding, stable AuthorizationContextRef separate from volatile retrieval observations, transaction/sync manifests, HostedRepository, query-keyed ChangeRequestIndex with remote consistency, ChangeRequest, distinct ChangeRequestComment, Review, ReviewThread, ReviewComment, tagged file/line/range ReviewAnchor, Check, CommitStatus, RepositoryActivity, tombstone proof, and Git refs as closed contracts. Use frontmatter-md for change requests, reviews, and prose comments; YAML is machine authority and Review/v1 has an optional Markdown summary body. Compile SoftSchema, implement Python and browser validators for every browser-consumed record, and add body/no-body review fixtures, normalized/invalid and hostile-metadata fixtures, plus the scrubbed GitHub coverage oracle. Future GitLab is a named consumer; issues mb-9rrc and stacks mb-glxc remain later.
