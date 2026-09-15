@@ -1,7 +1,8 @@
 # Hosted Review Model and Provider Boundary
 
-**Status:** Proposed for the v0.11.0 GitHub-first slice.
-No hosted-review format, provider adapter, route, or view is implemented yet.
+**Status:** Accepted design; the no-network, pre-schema ChangeRequest semantic kernel is
+implemented in the first v0.11.0 GitHub-first stack.
+No provider adapter, cache, route, kind, or view is implemented yet.
 
 Hosted review is a domain above Git history and File Diff Format.
 A pull request or merge request has Git endpoints and can produce a comparison, but it
@@ -67,9 +68,13 @@ The format uses SoftSchema conventions so the Python producer, browser consumer,
 inspection path, and future provider adapters share one compiled structural contract.
 Contract IDs name provider-neutral payloads, schemas ship with the hosted-review plugin,
 and the host registry outranks any schema path found in cached content.
-The first corpus may move from `permissive` to `enforced` while the producer and
-consumer are developed together; v0.11.0 does not publish a contract until undeclared
-fields fail consistently in both runtimes.
+Exploratory notes may use permissive schemas, but every checked-in conformance artifact
+is enforced from its first machine-checked version.
+v0.11.0 does not publish a contract until undeclared fields fail consistently in both
+runtimes. The Phase 0A serializer accepts only a closed, validated `ChangeRequest` and
+performs no filesystem write.
+Its enforced marker records that Pydantic boundary; durable cache publication remains
+blocked on the compiled SoftSchema registry in Phase 0C.
 
 The v0.11.0 record set is deliberately PR-first:
 
@@ -99,13 +104,22 @@ timestamps, links, anchors where applicable, and bounded-collection membership.
 The Markdown body is the reader-facing provider prose: the PR description, a top-level
 conversation comment, an optional review summary, or an inline review comment.
 No index, route, or view parses prose or tables from it to recover structured values.
+All persisted timestamps use a canonical RFC 3339 UTC representation with seconds and
+`Z`. Zero milliseconds are omitted; a nonzero fraction contains exactly three digits.
+Provider adapters convert offsets to UTC and truncate finer precision toward the earlier
+millisecond before validation so Python and browser ordering have identical precision.
+Provider links use an ASCII canonical HTTPS spelling: lowercase DNS host, no
+credentials, no default port, and uppercase hexadecimal percent escapes.
+Readers accept finite integral JSON numbers, while the serializer writes integer YAML;
+all persisted integers remain within JavaScript’s exact range.
 
 This makes one cached PR both application data and an ordinary document.
 The Markdown plugin can render the description under the untrusted-content profile,
 while the hosted-review plugin composes validated metadata, review state, navigation,
 and the resolved File Diff Format around it.
-The serializer uses frontmatter-format’s fenced Markdown writer, preserves the provider
-body as content, and computes snapshot identity from the complete normalized artifact.
+The serializer uses frontmatter-format’s YAML and fence-delimiter primitives, preserves
+the provider body as content, and computes snapshot identity from the complete
+normalized artifact.
 
 Indexes, sync manifests, retrieval records, tombstones, threads, checks, and status
 records use `pure-yaml` because their entire content is structured or they only refer to
@@ -115,13 +129,18 @@ that decision belongs to `mb-9rrc` and does not alter the v0.11.0 PR contract.
 
 ## Provider Identity Without Provider-Shaped Views
 
-Every durable object carries a `ProviderObjectRef` with:
+Every durable provider object carries a minimal `ProviderObjectRef` with:
 
 - provider kind, such as `github`;
 - provider instance, so public GitHub and an enterprise host do not collide;
-- provider object kind and stable opaque ID;
-- repository identity and repository-local number where applicable; and
-- canonical human URL.
+- provider object kind; and
+- stable opaque provider ID.
+
+Repository identity, repository-local number, and canonical human URL remain fields on
+the owning domain record.
+They are not repeated inside `ProviderObjectRef`, which keeps the same provider identity
+usable for repositories, change requests, reviews, checks, and future host types without
+turning the reference into a partial copy of each record.
 
 Every provider observation also carries a stable `AuthorizationContextRef` in its
 retrieval record and sync manifest: provider instance, `anonymous` or `authenticated`

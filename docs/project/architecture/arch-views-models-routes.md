@@ -97,14 +97,15 @@ The registry-to-vendored-grammar and registry-to-text-routing checks live in
 
 ## Documented data formats
 
-Formats with a schema, a conformance corpus, and implementations bound by it.
-These are tool-neutral: nothing in a document references Metabrowser.
+Complete formats have a schema, a conformance corpus, and implementations bound by it;
+in-progress rows name the narrower authority already present.
+These formats are tool-neutral: nothing in a document references Metabrowser.
 
 | Format | Describes | Authority | Implementations |
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
 | [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
-| [Hosted Review Format](arch-hosted-review-model.md) (proposed) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | v0.11.0 architecture and contract corpus planned by `mb-63ym` | Planned hosted-review plugin plus GitHub provider adapter |
+| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Pydantic-enforced `ChangeRequest/v1` corpus; SoftSchema schema and registry tracked by `mb-lqae` | Dormant Python/browser ChangeRequest validators; plugin registration and GitHub adapter remain planned |
 
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact — an internal contract, not a standard.
