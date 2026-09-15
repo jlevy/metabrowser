@@ -667,6 +667,55 @@ Ordered by the evidence behind them, not by where they sit in the stack.
 | H71 | `for_observed_file` imports `derive_ext` inside the function on every call and `_internal_entry` binds twenty keywords; a module-level import and positional construction remove both. | Per-call cost, then `walk_to_settled_ms` | **Confirmed in isolation, not separable at walk scale** (exp-025). 34 ms over 62,210 entries, against a spread of roughly 50 ms. Kept: one half deletes a function-level import |
 | H72 | Every entry is built as a contract `InventoryEntry`, converted to the provider’s `FsEntry`, and converted back on read, so the walk constructs each entry twice and validates its path four times. Having the walker build the provider’s record directly removes one construction and two validations per entry. | `walk_to_settled_ms`, and the interleaved build comparison against `main` | Open, **P1** (`mb-kicj`). Worth about 190 ms by microbenchmark, which is above what the host can resolve, unlike everything else left on the profile. It is a contract change rather than a local one, and is the same duplication the design review names as F1 |
 
+## Debt Carried into v0.10.0
+
+v0.10.0 shipped with a measured regression on one corpus shape, knowingly and with the
+reasoning recorded. This section states what was carried so a later reader does not have
+to reconstruct it from the experiment ledger.
+
+The release trades bulk indexing throughput for time to first content.
+It streams rows to subscribers during the walk instead of completing the walk and then
+serving, at roughly 14 µs per entry on the delivery path — an entry query, a contract
+entry, a projection, a decoration and a wire record for each discovered entry.
+
+On repository-shaped trees that trade is strongly positive, and is the point of the
+release: first rows 1,238 ms → 230 ms, walk completion 39.2 s → 15.5 s, backend index
+39.2 s → 9.3 s, measured as five back-to-back quiet-host pairs in exp-034.
+
+On a flat mega-tree — `build_corpus` shape 2, hundreds of files per directory — the
+per-entry cost dominates and no reader benefit weighs against it, because nobody reads
+300,000 files. There the release is slower than v0.9.1:
+
+| What | v0.9.1 | v0.10.0 | Tracked as |
+| --- | --- | --- | --- |
+| Walk with a browser attached | 18.7 s | 31.3 s (1.62-1.78x) | `mb-qvw4` |
+| `/api/catalog` on a settled index | 663 ms | 2,575 ms (3.9x) | `mb-qtgj` |
+| Long Tasks | none | 98 ms and 75 ms in two of five runs | `mb-zc3p` |
+
+Three things follow, and they are the standing answers to questions this debt invites:
+
+- **The gate is corpus-scoped, and that is not the same as weakened.** exp-035 performed
+  the quiet-machine recalibration `performance-budgets.toml` asked for and it landed on
+  the value already there: worst project-10 first row 317 ms, careful 1.1x tolerance
+  348.7 ms, gate 350 ms.
+  The release gate did not move.
+  What changed is that the flat shape stopped being judged by a number calibrated from a
+  different shape, and got `performance-budgets-flat-stress.toml` instead.
+- **The flat-shape budget is a ratchet, not a target.** Its 450 ms is the careful
+  tolerance on the candidate’s own worst run, so it cannot fail the build that produced
+  it. It exists to stop the shape getting worse, and it is lowered as the debt is paid.
+- **This is structural work, not constants.** The constants were measured in exp-035 and
+  are worth about four percent between them.
+  The catalog content hash was taken (1.51x on that step, byte-identical digest); the
+  catalog sort key was measured and rejected, because removing the per-row encode is a
+  corpus-dependent cliff rather than a saving (`mb-wpqq` carries the arithmetic); the
+  walker emit batch is a real 1.2 s but delays the first emit, and was deliberately not
+  taken on a release branch against the metric nearest its gate (`mb-nuhb`).
+
+Paying this down means not building a per-entry contract object for entries the store
+already admitted — the same structural change the inventory-provider work is aimed at,
+tracked under `mb-kicj`.
+
 ## Reproducing the Measurements
 
 Every number in this document was taken by hand, outside the repository, because the

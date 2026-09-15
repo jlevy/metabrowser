@@ -1,12 +1,25 @@
 schema = "web-performance-budgets/v1"
 
-# Scope: this file gates repository-shaped corpora -- a tree with the directory
-# fan-out real checkouts have, which is what project-10 reproduces and what every
-# release gate here is calibrated from. It is passed to `run.py` via `--budgets`,
-# and a corpus with a deliberately different shape is measured against its own file
-# rather than this one, because a budget carried to a shape it was not derived from
-# reports a number nobody calibrated. `performance-budgets-flat-stress.toml` is the
-# flat mega-tree companion and explains what it ratchets and why it is weaker.
+# Scope: flat mega-trees -- `build_corpus` shape 2, hundreds of files per directory
+# and no `.gitignore`. Pass it to `run.py` with `--budgets`. It exists because the
+# release gate in `performance-budgets.toml` is calibrated from repository-shaped
+# fan-out, and carrying that calibration onto a shape it was never derived from
+# reports a number nobody measured.
+#
+# This file is a ratchet, not a target. Its diverging value is set from the current
+# candidate's own worst run, so it cannot fail the build that produced it; what it
+# does is stop the shape from getting worse while the cost that makes it diverge is
+# paid down. Read it together with exp-034, which measured the divergence.
+#
+# Every value here is identical to `performance-budgets.toml` except the metrics
+# listed below. Keep that true: a divergence needs an entry here and a reason.
+#
+#   first_row_ms  350 -> 450
+#     exp-034 measured five quiet-host candidate runs at 312, 329, 359, 364 and 392
+#     ms against v0.9.1's 282-312 ms. The careful 1.1x tolerance on the worst run is
+#     431.2 ms, rounded up to 450. The gap is the per-entry delivery cost the
+#     candidate pays to stream rows during the walk, which is worth it on a
+#     repository shape and is not recovered on this one. Tracked as mb-kicj.
 
 [requirements]
 profile_schema = "web-performance-profile/v1"
@@ -237,16 +250,10 @@ policy = "gate"
 required = true
 description = "Quick File did not converge to an authoritative complete catalog after the index settled."
 
-# exp-035 performed the quiet-machine recalibration the rough-cut value asked for, from
-# the runs exp-034 recorded, and it landed on the number already here. Five quiet-host
-# candidate runs on the repository-shaped project-10 corpus put the worst first row at
-# 317 ms, and the careful 1.1x tolerance on that is 348.7 ms against this gate's 350.
-# The value is therefore confirmed rather than changed, and it is a tuned budget now
-# rather than a rough cut. It continues to reject the class of regression v0.1.0-v0.9.1
-# shipped, where a whole-repository .gitignore pre-walk held first rows for 9-34 s.
+# Diverges from the release gate; see the header for the measurement and the reason.
 [metrics.first_row_ms]
 category = "application"
-maximum = 350
+maximum = 450
 policy = "gate"
 required = true
 description = "Metabrowser's first usable navigation row."

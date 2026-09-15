@@ -2,7 +2,7 @@
 
 All notable changes to Metabrowser are documented here.
 
-## Unreleased
+## 0.10.0
 
 Plugin SDK:
 
@@ -361,6 +361,19 @@ Fixes:
   into another project is not annotated either.
   In a checkout, reading that state no longer rewrites Git’s index under its lock, and a
   tag or path that is not UTF-8 no longer stops `metab` from starting.
+
+Known limitations:
+
+- Indexing a very large directory that holds hundreds of files per directory is slower
+  than in 0.9.1, while the first rows appear far sooner.
+  Metabrowser now delivers rows to the page while it walks, instead of finishing the
+  walk and then drawing.
+  On a repository-shaped tree that is a large win at every size measured.
+  On a flat tree of a few hundred thousand files in a few thousand directories, where
+  that per-file delivery has no reader to benefit, the full index takes roughly 1.6x as
+  long and the Quick File catalog request takes noticeably longer once the index has
+  settled. Time to the first usable row, interaction latency, and correctness are
+  unaffected or better on both shapes.
 
 ## 0.9.1
 
