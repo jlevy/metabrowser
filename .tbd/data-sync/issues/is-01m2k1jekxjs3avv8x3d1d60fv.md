@@ -3,9 +3,9 @@ type: is
 id: is-01m2k1jekxjs3avv8x3d1d60fv
 title: "Hosted review Phase 0A.6: prove packaging, dormancy, and architecture status"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -15,7 +15,11 @@ dependencies:
     target: is-01m2k1jg4afz39zgz5ktt49m2b
 parent_id: is-01m10vgw6vhq82cd495kvhh9gf
 created_at: 2026-09-15T17:24:26.361Z
-updated_at: 2026-09-15T18:47:04.323Z
+updated_at: 2026-09-15T19:10:11.146Z
+closed_at: 2026-09-15T19:10:11.146Z
+close_reason: "Completed in draft PR #130: portable corpus, dormant browser parser, installed-distribution evidence, independent Fable review, full local verification, and final green GitHub CI. Post-stack landing is separately owned by mb-n2ro."
+resolution: null
+duplicate_of: null
 ---
 Update devtools/check_distribution.py and its focused tests so the wheel and sdist contain the hosted-review Python package, browser model, and portable corpus while installed plugin discovery remains exactly the existing set. Update arch-hosted-review-model.md and arch-views-models-routes.md to say the format kernel is implemented but has no registered kind, view, route, or functional UI surface. Run common documentation formatting and leave proposed UI/parity rows planned.
 
