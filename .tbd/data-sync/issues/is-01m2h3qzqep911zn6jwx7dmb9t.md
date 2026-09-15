@@ -3,9 +3,9 @@ type: is
 id: is-01m2h3qzqep911zn6jwx7dmb9t
 title: Refresh v0.11 hosted-review, GitHub, and repository-cache design
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies: []
@@ -23,6 +23,10 @@ child_order_hints:
   - is-01m2h6zvvcz065ycz8x1ykeafm
   - is-01m2h984s9t8fhm2efg67nwmve
 created_at: 2026-09-14T23:23:56.013Z
-updated_at: 2026-09-15T01:00:08.358Z
+updated_at: 2026-09-15T01:57:53.901Z
+closed_at: 2026-09-15T01:57:53.901Z
+close_reason: "Completed the v0.11 design refresh and PR workflow on PR #125: current origin/main merged at dc232a39, all 24 deduplicated review beads fixed and dispositioned, implementation graph release-gated and synchronized, make verify and both pre-push gates passed, final CI is green, and the final review-channel sweep found no new comments, formal reviews, inline threads, or linked issues."
+resolution: null
+duplicate_of: null
 ---
 Reconcile TODO.md, the repository-cache plan, hosted-review/GitHub plan, CLI-first delivery map, diff ownership, architecture docs, and tbd beads against the v0.10.0 baseline. Define the provider-neutral Hosted Review Format, SoftSchema/frontmatter artifact profile, gh-backed provider port, virtual PR navigation collection, cache lifetimes, v0.11 implementation phases, and deferred GitLab, issue, stacked-change, chooser, and large-repository work. Prepare the design PR and address its documented technical reviews.
