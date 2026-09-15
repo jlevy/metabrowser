@@ -5,12 +5,14 @@ title: Release Metabrowser v0.10.0
 kind: task
 status: open
 priority: 1
-version: 2
+version: 3
 labels:
   - release
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m2h9jhhdn774nzxs9j94h726
 created_at: 2026-09-14T06:43:05.914Z
-updated_at: 2026-09-14T06:43:14.829Z
+updated_at: 2026-09-15T01:05:49.099Z
 ---
 Release Metabrowser v0.10.0 following docs/publishing.md (agent-operated).
 

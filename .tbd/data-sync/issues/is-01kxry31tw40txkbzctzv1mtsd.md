@@ -5,7 +5,7 @@ title: "Plugin SDK: repository-scoped nav panels and virtual collections"
 kind: feature
 status: open
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/architecture/arch-hosted-review-model.md
 labels:
   - release:v0.11.0
@@ -16,10 +16,10 @@ dependencies:
     target: is-01m2h7jjgpzyfbf10238j32z6q
 parent_id: is-01m10vgwqwn8gjdv8fm183vztr
 created_at: 2026-07-17T21:00:33.500Z
-updated_at: 2026-09-15T00:30:52.949Z
+updated_at: 2026-09-15T01:19:54.756Z
 extensions:
   linear:
     id: 28ee38a5-1006-44dd-a6a0-814e434a8190
     linked_at: 2026-08-16T08:06:17.779Z
 ---
-Expose the repository-scoped plugin surface needed by the hosted-review Pull Requests panel. A plugin can register a nav panel backed by a bounded virtual collection and reuse shell focus, selection, paging, virtualization, restoration, loading/error/disposal, and item-like/folder-like container mechanics without reaching into app.js globals. The hosted-review plugin is the first named consumer; the surface stays provider-neutral and receives parity and lifecycle coverage.
+Expose additive SDK 0.6 repository-scoped nav panels and bounded virtual collections only if existing calls retain behavior; otherwise bump the SDK and all manifests in one commit. Provide focus, selection, paging, virtualization, restoration, loading/error, root-replacement, and disposal without private app.js access. Update plugin-author docs and CHANGELOG. The hosted-review panel is the first consumer, with exact panel-window, selection, restoration, root-replacement, and disposal functions executed by tests/dom/hosted-review-session.js and cli-ui-hosted-review.
