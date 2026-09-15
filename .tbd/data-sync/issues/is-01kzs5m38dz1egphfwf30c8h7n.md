@@ -5,7 +5,7 @@ title: Repository library and hosted-review roadmap
 kind: epic
 status: open
 priority: 1
-version: 34
+version: 37
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels: []
 dependencies:
@@ -38,11 +38,13 @@ child_order_hints:
   - is-01m2h5ar8jct8wbp94xj39gkq4
   - is-01m0dkj0gqvpzpxm7t1tpshf30
   - is-01kxry31k2e62styhj8t59jj12
+  - is-01m2h7gjc36fqv8cv38qd9zynr
+  - is-01m2h7jjga1ge5dzvs913n5fgs
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-09-14T23:59:15.932Z
+updated_at: 2026-09-15T00:31:44.493Z
 extensions:
   linear:
     id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5
     linked_at: 2026-08-16T08:05:43.412Z
 ---
-Deliver the repository-library roadmap with a GitHub-first v0.11 vertical slice: freeze the v0.10 contracts; add the versioned application home and generic Git cache; open and reuse repository and GitHub URLs under the untrusted profile; define provider-neutral Hosted Review Format contracts with a frontmatter change-request document; implement a bounded gh api adapter and auth states; cache a bounded PR index and selected bundles; and render plugin-owned PR documents, diffs, revision content, and a virtual Pull Requests nav collection. Full cache management, the chooser, GitHub issues, future GitLab adapters, stacked changes, and measured very-large-repository support remain tracked later.
+Deliver the repository-library roadmap with a GitHub-first v0.11 vertical slice: freeze the v0.10 contracts; add the versioned application home and generic Git cache; open and reuse any authorized GitHub repository and any exposed branch through detached materializations under the untrusted profile; define provider-neutral Hosted Review Format contracts with a frontmatter change-request document; implement a bounded gh api adapter and auth states; cache directly addressed PR bundles before the bounded PR index; and render plugin-owned PR documents, diffs, revision content, and a virtual Pull Requests nav collection. Full cache management, the chooser, GitHub issues, future GitLab adapters, stacked changes, and measured very-large-repository support remain tracked later.

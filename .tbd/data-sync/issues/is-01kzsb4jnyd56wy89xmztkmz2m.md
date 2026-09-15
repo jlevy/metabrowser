@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened generic Git acquisition (no serv
 kind: task
 status: open
 priority: 1
-version: 11
+version: 13
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
@@ -16,9 +16,13 @@ dependencies:
     target: is-01m1389rewn2mkj8emj3wxwpr7
   - type: blocks
     target: is-01m2h3vkgbkeq82ch4mzkrch1g
+  - type: blocks
+    target: is-01m2h7gjc36fqv8cv38qd9zynr
+  - type: blocks
+    target: is-01m0dkj0gqvpzpxm7t1tpshf30
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-14T23:27:25.614Z
+updated_at: 2026-09-15T00:39:21.343Z
 extensions:
   linear:
     id: 0ffb0ef8-e09f-4e96-8736-01e0592ab450
