@@ -1,10 +1,10 @@
 # Feature: Repository Library and Open from a Git URL
 
-**Date:** 2026-08-11 (rewritten 2026-08-26)
+**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Draft
+**Status:** Ready for v0.11.0; implementation not started
 
 ## Vision
 
@@ -28,11 +28,13 @@ That boundary lets basic cache support land and prove itself before provider met
 expands the system.
 
 Later phases add generic cache operations and a repository chooser.
-GitHub support then starts with a separate content-model phase: strict, versioned
-records for repositories, issues, pull requests, reviews, checks, comments, and derived
-pull-request stacks.
-Only after those contracts and a representative fixture corpus are accepted does an API
-adapter write them or a view consume them.
+Hosted review starts with a separate provider-neutral content-model phase: strict,
+versioned records for repositories, change requests, reviews, checks, comments, and
+activity projections, with GitHub as the first adapter and GitLab a named future
+consumer. The primary change-request artifact uses SoftSchema frontmatter: YAML holds
+consumed values and the Markdown body holds the PR description.
+Only after those contracts and a representative fixture corpus are accepted does the
+`gh api` adapter write them or a plugin view consume them.
 
 Git remains authoritative for repository content, history, and diffs.
 Provider records describe hosted state and refer to immutable Git object IDs; they do
@@ -42,7 +44,9 @@ The
 [repository-cache research](../../research/research-2026-08-11-repo-cache-and-git-url-open.md)
 contains the acquisition measurements and prior-art survey.
 Its 2026-08-26 addendum separates dated evidence from the current design after Git diff
-and revision navigation shipped through v0.8.0. The
+and revision navigation shipped; the 2026-09-14 refresh rebases the plan on the v0.10.0
+inventory, identity, lifecycle, and parity contracts.
+The
 [design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
 records the changes that produced this phased plan.
 
@@ -54,13 +58,29 @@ In particular:
 
 - The format foundation can land without cloning a repository.
 - The generic Git cache can land without catalog UI or GitHub code.
-- GitHub schemas can land with fixtures and validation before any network acquisition.
-- GitHub acquisition can land before provider-specific views.
+- Hosted-review schemas can land with fixtures and validation before any network
+  acquisition.
+- GitHub acquisition can land before plugin-owned hosted-review views.
 - Derived stack navigation can land after ordinary pull-request reading is stable.
 
 No phase reserves an opaque extension object for work that has not been modeled.
 A later record family receives its own contract, storage path, producer, consumer, and
 invalidating tests.
+
+### v0.11.0 Milestone
+
+The first v0.11.0 slice ends at an offline-reusable GitHub pull-request view, not at the
+entire repository-library roadmap.
+It includes Phase 0, Phase 1A, generic acquisition, URL opening, the narrow provider job
+and selected-ref foundation in `mb-jlon`, the bounded `gh api` transport and auth work
+in `mb-p4sw`, and the common hosted-review and GitHub work in the
+[provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
+
+Full generic cache management, the in-app chooser, GitHub issues, stacked pull requests,
+and very-large-repository acquisition remain in their existing later phases.
+The GitLab adapter remains `mb-51uj` after the GitHub-first contracts and views ship.
+This is a milestone boundary, not a scope deletion: `mb-0ybg`, `mb-vmzy`, `mb-9rrc`,
+`mb-glxc`, and `mb-dqvj` retain that work.
 
 ## Goals
 
@@ -122,7 +142,7 @@ invalidating tests.
 
 ## Current Foundation and Dependencies
 
-As of v0.8.0:
+The v0.10.0 release candidate establishes the implementation baseline for this plan:
 
 - `metabrowser.git.process` is the only Git subprocess path.
   It already provides fixed arguments, bounded output, timeouts, concurrent stream
@@ -132,32 +152,40 @@ As of v0.8.0:
 - The diff plugin renders File Diff Format rather than a provider response.
   A future PR view can therefore resolve provider refs to object IDs and reuse the same
   pipeline.
+- The inventory engine now crosses one sealed provider-neutral contract, with coherent
+  paged reads, joined shutdown, and explicit lifecycle state.
+  A cached `gitroot` must enter and leave serving through the existing coordinator and
+  handle lifecycle; the cache must not create a second walker, watcher, or projection
+  cache.
+- API paths and browser URLs now use escaped inventory identities consistently.
+  GitHub web-URL reduction must produce selections through that canonical codec rather
+  than inventing a provider-specific path spelling.
+- CLI parity now checks registered routes, kinds, models, persisted state, and declared
+  user-visible functional aspects.
+  Every cache and provider route, record projection, and interaction controller added
+  here needs its architecture-map row and exact production-path golden in the same
+  change.
 - URL-opened roots remain gated on the untrusted capability profile tracked by
   `mb-vib1`. Cache storage and clone components may land before that gate; serving
   fetched content may not.
   That gate is larger than one bead and is sequenced explicitly below — see
   [The gate that decides when this ships](#the-gate-that-decides-when-this-ships).
 - Metabrowser already depends on Pydantic, JSON Schema, ruamel.yaml, PyYAML, and
-  frontmatter-format. SoftSchema v0.7.0 is a first-party package over the same boundary,
-  but adopting it also raises the frontmatter-format minimum from 0.3 to 0.4 — a claim
-  Phase 1A verifies against the released package metadata rather than carrying forward
-  from this plan. Phase 1A must review that upgrade, update `uv.lock`, and run the full
-  supply-chain and distribution gates rather than treating the overlap as proof of
-  compatibility.
-- Being first-party does not by itself exempt SoftSchema from the release cool-off.
-  [`SUPPLY-CHAIN-SECURITY.md`](../../../../SUPPLY-CHAIN-SECURITY.md) is explicit that
-  first-party identifies the publisher and does not retire the threat the cool-off
-  exists for, which is a compromised publishing account.
-  What earns `get-tbd` its exemption is reach: nothing in the build, CI, test, or
-  publishing path runs it, so a bad release costs a developer’s session.
-  SoftSchema does not inherit that argument — it validates cache records on a runtime
-  path, inside the shipped wheel, so a bad release reaches every user.
-  Phase 1A therefore either adds a `softschema` row to *Audited First-Party Exceptions*
-  with its own reviewed-against release and blast-radius statement, or applies the
-  ordinary 14-day cool-off.
-  It does not proceed on the overlap with existing dependencies.
+  frontmatter-format. SoftSchema remains a proposed first-party package over the same
+  boundary, but Phase 1A selects an exact release from current metadata rather than
+  carrying the plan’s former v0.7.0 pin forward.
+  SoftSchema v0.8.1 was published on 2026-09-11 and fixes serialization of semantic
+  `model_validator` failures, which cache validation must report as data rather than
+  turn into a second exception.
+  The project owner has confirmed that packages published from the `jlevy` first-party
+  namespace are exempt from the 14-day delay.
+  Phase 1A may therefore adopt v0.8.1 without waiting until 2026-09-25, but it must
+  still review that exact release against v0.8.0, add the SoftSchema row to
+  [`SUPPLY-CHAIN-SECURITY.md`](../../../../SUPPLY-CHAIN-SECURITY.md), verify released
+  metadata and artifact hashes, update `uv.lock`, and run the full supply-chain and
+  distribution gates.
 
-The v0.8.0 revision click starts a comparison that needs blobs.
+The v0.10.0 revision and PR-facing comparison path needs blobs.
 Blobless clone followed by background backfill remains the leading acquisition strategy,
 but Phase 0 must remeasure the complete current route before promising a timing or
 selecting a threshold between full and blobless acquisition.
@@ -354,18 +382,23 @@ can produce one: whichever open or migration path quarantines an entry says so a
 the retained path, so the directory is never a silent accumulation waiting for Phase 2’s
 `--repo-inspect` to reveal it.
 
-SoftSchema v0.7.0 is the proposed record boundary.
-The reviewed source is `jlevy/softschema` release `v0.7.0`; later commits on its `main`
-branch are documentation only at the time of this design review.
+SoftSchema is the proposed record boundary.
+The design review established the required semantics against v0.7.0; Phase 1A now
+selects and reviews the exact first-party release it will ship.
+The current candidate is v0.8.1; the owner-confirmed `jlevy` exception removes the
+14-day wait, not the exact-release review.
 Runtime adoption uses a released package and a committed lock, not a Git checkout.
 
 ### Artifact profile and binding
 
-All cache records use SoftSchema’s `pure-yaml` profile.
-Each file carries `contract`, `envelope`, and `status`. It omits `softschema.schema`
-deliberately. The application registry binds the contract ID to the schema packaged in
-the installed Metabrowser wheel; an untrusted cache file cannot redirect validation to
-another path.
+Generic layout, identity, state, and cache-operation records use SoftSchema’s
+`pure-yaml` profile.
+Provider-owned document artifacts may choose another profile under their own format; the
+hosted-review plan uses `frontmatter-md` for a change request whose Markdown body is the
+PR description. Each file carries `contract`, `envelope`, and `status`. It omits
+`softschema.schema` deliberately.
+The application registry binds the contract ID to the schema packaged in the installed
+Metabrowser wheel; an untrusted cache file cannot redirect validation to another path.
 
 Machine-owned records begin at `status: enforced`, not `soft` or `permissive`, because
 Metabrowser is their only producer and the schema phase supplies fixtures before a
@@ -884,12 +917,14 @@ moves the entry to recoverable trash before deletion.
 List and inspect report identity, source, active revision, object state, size, last
 open, last fetch, integrity, and any quarantine state.
 
-## Provider Support Lives in Its Own Plan
+## Hosted Review and Provider Support Live in Their Own Plan
 
-GitHub modeling, acquisition, snapshot storage, views, and pull-request stacks moved to
-[the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
-That document owns the record families, the storage layout, and the acquisition
-boundary.
+Provider-neutral hosted-review modeling, GitHub acquisition, snapshot storage, plugin
+views, virtual PR navigation, and stacked-change projections moved to
+[the hosted-review and GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
+That document and the
+[hosted-review architecture](../../architecture/arch-hosted-review-model.md) own the
+record families, storage layout, provider port, activity projection, and view boundary.
 
 What stays here is the part the generic cache owes a provider, and it is deliberately
 small: a published entry with a stable identity, atomic publication, application-home
@@ -927,10 +962,11 @@ containment checks.
 
 ## Phased Implementation Plan
 
-### Phase 0: Design evidence and contract freeze — current PR
+### Phase 0: Design evidence and contract freeze — v0.11.0 entry point
 
 - [ ] Remeasure full, blobless, and blobless-plus-backfill acquisition against the
-  v0.8.0 history list, commit summary, comparison manifest, and deferred patches.
+  v0.10.0 history session, commit detail, comparison manifest, deferred patches,
+  revision content, and canonical path-identity routes.
 - [x] Review upstream through v0.8.0 and remove assumptions superseded by shipped Git
   history, revision, and diff infrastructure.
 - [x] Review SoftSchema v0.7.0 and its enforced-composition boundary; install its Codex
@@ -972,11 +1008,11 @@ that already exist costs more than building it first.
 
 - [ ] Add the application-home resolver, `config.yml`, `cache/layout.yml`, format
   history, future-format failure, and sequential migration harness.
-- [ ] Adopt the released SoftSchema package after dependency and lock review; verify the
-  `frontmatter-format` minimum against released package metadata; record the
-  supply-chain decision as an *Audited First-Party Exceptions* row with a blast-radius
-  statement or apply the ordinary cool-off; register the config, layout, repository
-  identity, and repository state contracts.
+- [ ] Adopt the exact released SoftSchema package after dependency and lock review;
+  verify the `frontmatter-format` minimum and artifact hashes against released package
+  metadata; record its `jlevy` first-party exemption and reviewed predecessor in
+  *Audited First-Party Exceptions*; register the config, layout, repository identity,
+  and repository state contracts.
 - [ ] Package deterministic compiled schemas and add compile-drift, corpus-validation,
   schema-inventory, and installed-wheel checks.
 - [ ] Add atomic YAML reads/writes, application-home locking, quarantine, and
@@ -1003,8 +1039,8 @@ revision. Never a directory listing: pack file names, object counts after `gc`, 
 `.git` internals are not stable across runs, and a golden that asserted them would fail
 for reasons that have nothing to do with this plan.
 
-This phase now depends on `metab --api` (`mb-ian3`) landing first, so that its proof is
-a golden transcript rather than a parallel test harness written and then thrown away.
+`metab --api` (`mb-ian3`) and the persisted-state parity clause have landed, so this
+phase uses them directly rather than building a parallel inspection harness.
 See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 
 ### Phase 1B: Generic Git cache and URL open — first usable feature PR
@@ -1046,6 +1082,10 @@ See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 
 ### Phase 2: Generic catalog, refresh, and cache management
 
+`mb-jlon` extracts the provider-facing job lifecycle and selected-ref fetching from this
+phase for v0.11.0. It may land before the catalog and management operations below, but
+it uses the same locks, state records, Git process boundary, and parity routes.
+
 - [ ] Scan validated identity/state pairs into one provider-neutral catalog.
 - [ ] Add list, inspect, Git-only refresh, repair diagnostics, and recoverable purge.
 - [ ] Fetch and prune refs without changing `gitroot`; stage promotion separately and
@@ -1061,6 +1101,9 @@ See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 - [ ] Add a chooser over the generic catalog with recent, favorite, offline, partial,
   dirty, and refresh states.
 - [ ] Make root selection session-scoped rather than mutating global settings.
+- [ ] Route every root replacement through one lifecycle boundary that closes the old
+  inventory handle, history sessions, activity tracking, subscriptions, and retained
+  response and client caches before the new root becomes visible.
 - [ ] Preserve each repository’s selected path, Git scope, and revision-navigation state
   as bounded client state.
 - [ ] Measure warm-cache first paint and choose eager, prefetched, or on-demand asset
@@ -1080,6 +1123,7 @@ See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 | --- | --- | --- | --- |
 | 1A format foundation | Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
 | 1B generic Git cache | 1A, untrusted-profile gate for serving, Git-status Phase 1 (`mb-u4mf`) for `is_clean` | GitHub API or schemas | Any supported clone URL opens or reuses one local read-only entry |
+| 2A provider foundation (`mb-jlon`) | 1B acquisition | Full catalog, chooser, purge | Provider jobs and selected-ref fetching for GitHub |
 | 2 cache operations | 1B | Provider support | Generic list, inspect, refresh, and purge |
 | 3 chooser | 2 catalog | GitHub | Instant switching among cached repositories |
 | 4 large repositories | Measurements from 1B and real use | Provider support | Explicit bounded behavior for exceptional repository scale |
@@ -1091,20 +1135,19 @@ and Git-status Phase 1 (`mb-u4mf`) owns the `is_clean` predicate.
 Neither depends on anything here, so both can run alongside Phase 0 and 1A rather than
 after them.
 
-**Outbound, depending on 2:**
+**Outbound, depending on the extracted Phase 2 foundation:**
 [the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) needs a
 published entry with a stable identity, atomic publication, application-home locking,
 job progress and cancellation, and core-side ref fetching.
 It does **not** need the catalog, the chooser, purge, or size accounting.
-If provider work is scheduled before the rest of Phase 2, the job lifecycle and ref
-fetching are a small extraction that can be delivered ahead of it.
+That extraction is now `mb-jlon`; the full generic catalog and management phase remains
+`mb-0ybg` and no longer blocks GitHub acquisition.
 
 The `is_clean` dependency is worth restating because it is a hard ordering constraint
-rather than a convenience: Phase 1B on Git-status Phase 1 (`mb-u4mf`), which owns the
-`is_clean` predicate cache integrity calls.
-It is a hard ordering constraint rather than a convenience: landing 1B first would leave
-integrity either unchecked or served by a second porcelain parser, which is the outcome
-both plans exist to prevent.
+rather than a convenience: Phase 1B depends on Git-status Phase 1 (`mb-u4mf`), which
+owns the `is_clean` predicate cache integrity calls.
+Landing 1B first would leave integrity either unchecked or served by a second porcelain
+parser, which is the outcome both plans exist to prevent.
 The dependency is recorded in the bead graph as well as here, because a constraint that
 lives only in prose is one nobody is reminded of.
 
@@ -1134,8 +1177,13 @@ suite exercises the same acquisition path a user gets.
   migration, repair, and purge cannot race across processes.
 - **Git integration:** cached roots satisfy repository-root discovery, history, direct
   revisions, commit summaries, and bounded diff rendering before and after backfill.
+- **Root lifecycle:** replacing a served repository joins the old inventory and Git
+  sessions, invalidates root-owned server and browser caches, and prevents work from the
+  old root from publishing after the new root is visible.
 - **Trust:** URL roots receive the untrusted capability set, never serve `.git`, and
   cannot promote repository-local metadata to host config.
+- **Parity:** every new route, model, persisted state, and user-visible functional
+  aspect is registered and driven through the exact production path by a golden.
 - **Provider contracts:** every valid fixture passes structural and semantic validation;
   every invalid fixture fails with a stable code and path; unknown provider enum values
   normalize without opening the record schema.
@@ -1214,19 +1262,20 @@ Phase 1B is complete when:
   — findings resolved by this rewrite
 - [Git graph view](plan-2026-08-06-git-graph-view.md) — shipped Git history and the
   repository-root boundary
-- [General diff rendering](plan-2026-08-17-general-diff-rendering.md) — comparison model
-  and one acquisition workflow
-- [Git revision navigation performance](plan-2026-08-25-git-revision-navigation-performance.md)
+- [General diff rendering](plan-2026-08-17-general-diff-rendering.md) — shared
+  comparison pipeline and its boundaries with durable acquisition and transient
+  materialization
+- [Git revision navigation performance](../done/plan-2026-08-25-git-revision-navigation-performance.md)
   — current revision loading and comparison behavior
-- [Unbounded virtualized Git history](plan-2026-08-25-unbounded-virtualized-git-history.md)
+- [Unbounded virtualized Git history](../done/plan-2026-08-25-unbounded-virtualized-git-history.md)
   — future history continuation and virtualization
 - [HTML rendering and trust model](plan-2026-08-06-html-rendering-and-trust-model.md) —
   untrusted-content dependency
 - [tbd on-disk format versioning](https://github.com/jlevy/tbd/blob/v0.8.1/docs/tbd-format-versioning.md)
   — fail-closed layout formats and ordered migration publication
-- [SoftSchema v0.7.0 guide](https://github.com/jlevy/softschema/blob/v0.7.0/docs/softschema-guide.md)
+- [SoftSchema v0.8.1 guide](https://github.com/jlevy/softschema/blob/v0.8.1/docs/softschema-guide.md)
   — profiles, contract maturity, host registries, and artifact validation
-- [SoftSchema v0.7.0 specification](https://github.com/jlevy/softschema/blob/v0.7.0/docs/softschema-spec.md)
+- [SoftSchema v0.8.1 specification](https://github.com/jlevy/softschema/blob/v0.8.1/docs/softschema-spec.md)
   — portable YAML, enforced validation, schema binding, and compatibility rules
 
 <!-- This document follows common-doc-guidelines.md.

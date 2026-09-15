@@ -92,6 +92,7 @@ These are tool-neutral: nothing in a document references Metabrowser.
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
 | [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
+| [Hosted Review Format](arch-hosted-review-model.md) (proposed) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | v0.11.0 architecture and contract corpus planned by `mb-63ym` | Planned hosted-review plugin plus GitHub provider adapter |
 
 Everything else travels as an envelope on `/api/*`, versioned with the shell and the
 built-in plugins as one artifact — an internal contract, not a standard.
