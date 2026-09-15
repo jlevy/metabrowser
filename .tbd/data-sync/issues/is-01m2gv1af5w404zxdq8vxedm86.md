@@ -3,15 +3,15 @@ type: is
 id: is-01m2gv1af5w404zxdq8vxedm86
 title: Catalog sort and Recent pass hold the GIL without cooperative yields during a walk
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 6
+version: 7
 labels:
   - performance
 dependencies: []
 parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 created_at: 2026-09-14T20:51:44.740Z
-updated_at: 2026-09-15T05:51:24.635Z
+updated_at: 2026-09-15T16:38:08.414Z
 ---
 Two whole-index passes that overlap the inventory walk still hold the GIL without a cooperative yield.
 
