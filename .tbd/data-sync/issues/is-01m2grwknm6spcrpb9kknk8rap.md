@@ -5,12 +5,12 @@ title: "Stabilize the test suite under load: serve open race and full-suite swee
 kind: bug
 status: open
 priority: 1
-version: 3
+version: 4
 labels:
   - testing
 dependencies: []
 created_at: 2026-09-14T20:14:13.171Z
-updated_at: 2026-09-14T22:03:49.982Z
+updated_at: 2026-09-14T23:19:07.762Z
 ---
 Stabilize the test suite against machine load before v0.10.0.
 
@@ -18,4 +18,4 @@ make verify for PR #120 failed once at load average ~40 in tests/test_serve_open
 
 ## Notes
 
-PR #121 merged at a013c4d8 (race-test rewrite). Its review follow-up (33aadade: docstrings, served-port assertion, readiness-thread join, socket cleanup) and the parity session deadlock-only timeout (408fe931: devtools/check_parity.py 30 s -> 300 s after a lint-check timeout at load ~170) missed the merge; they are pushed on branch claude/readiness-and-parity-followups off origin/main 5a1c475c, no PR yet. That push used --no-verify: the pre-push gate passed lint, hygiene, supply chain, parity, and 2,117 tests, failing only test_rendered_markdown_link_enhancer on its 30 s timeout at load ~30 (mb-gkde).
+PR #123 (the two commits that missed #121) merged at 8dcc9830 with CI green; its review found one Low finding (a 102-character docstring line), fixed in 0dceb72b. Remaining under this bead: the full-suite load sweep. mb-gkde turned out not to be a load flake at all - the link enhancer took 32.3 s of CPU on an idle 4-CPU host against its 30 s bound; the fix is in PR #124.
