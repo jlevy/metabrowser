@@ -18,8 +18,8 @@ Checked items below are supported today; unchecked items are planned work.
 | File editing | [Opt-in trusted-local file editing](docs/project/specs/active/plan-2026-07-16-trusted-local-file-editing.md) | Draft |
 | Scan state | [Scanning state and recent directories](docs/project/specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md) | Draft |
 | Git surfaces | [Git graph nav panel](docs/project/specs/active/plan-2026-08-06-git-graph-view.md), [general diff rendering](docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md), [Git status and working-tree diffs](docs/project/specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md) | Graph panel, read-only Git API, and diff rendering shipped; working-tree status and `/compare/` remain, after CLI parity |
-| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | Ready for the v0.11.0 PR-first slice; Phase 0, the format foundation, and generic acquisition come first. Serving remains gated on Git status and the content-trust chain |
-| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | Ready for the v0.11.0 GitHub-first slice: provider-neutral SoftSchema/frontmatter records, a bounded PR index, selected-PR snapshots, direct PR URLs, `gh api` acquisition, and plugin-owned PR documents and nav. Issues, GitLab, and stacked changes remain later work |
+| Repository library | [Repository library and open from a Git URL](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md) | Ready for v0.11.0: generic acquisition, repository URL opening, and detached materialization for any exposed and authorized branch. Serving remains gated on Git status and the content-trust chain |
+| Hosted review and GitHub | [Hosted review model and GitHub provider](docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md), [architecture](docs/project/architecture/arch-hosted-review-model.md) | Ready for the v0.11.0 GitHub-first slice: provider-neutral SoftSchema/frontmatter records, direct-PR snapshots and views, then a bounded PR index and virtual nav, all acquired through `gh api`. Issues, GitLab, and stacked changes remain later work |
 | Editor host | [VS Code extension host](docs/project/architecture/arch-vscode-extension-host.md) | Architecture only; no plan yet |
 | Load-time performance | [End-to-end load time](docs/project/specs/active/plan-2026-08-21-load-time-performance.md) | Draft |
 | Mermaid diagrams | [Mermaid diagram rendering](docs/project/specs/active/plan-2026-08-21-mermaid-diagram-rendering.md) | Draft; depends on load-time Phase 1 |
@@ -32,8 +32,8 @@ flat `metab` CLI, and the v0.1.0 package.
 
 ## v0.11.0 Repository and GitHub Slice
 
-The next release starts with one vertical path from a pasted GitHub URL to an offline,
-cached pull-request view.
+The next release starts with additive paths from a pasted GitHub URL to an offline
+repository, any exposed and authorized branch, and a cached pull-request view.
 The order follows the actual contracts rather than treating “GitHub support” as one
 component:
 
@@ -44,18 +44,22 @@ component:
    `mb-u4mf` provide the shared Git clean predicate.
    Both tracks can proceed alongside the cache foundation; they gate serving, not
    acquisition.
-3. `mb-ew38` opens or reuses repository and GitHub web URLs through the canonical URL
-   and path-identity codecs.
+3. `mb-12cz` and `mb-ew38` open or reuse repository and GitHub web URLs through a
+   provider-neutral reducer and the canonical path-identity codec; `mb-z335` and
+   `mb-2xq7` resolve any selected branch to an immutable object ID and serve a detached
+   materialization without moving the pinned root.
 4. `mb-63ym` defines provider-neutral hosted-review contracts and the plugin boundary,
    using a frontmatter artifact whose Markdown body is the PR description, while
    `mb-jlon` adds only the generic provider jobs and selected-ref fetching they need.
-5. `mb-y1ax`, `mb-p4sw`, `mb-duu7`, and `mb-wx32` implement the shared bounded
-   subprocess runner, `gh api` adapter, auth states, repository PR index, and selected
-   PR bundles. List rows do not fetch Git refs; selecting a PR does.
-6. `mb-r19i`, `mb-uh6p`, and `mb-rldc` render plugin-owned repository and PR documents
-   through the existing Markdown, Git, revision-content, and File Diff Format pipelines,
-   add the repository-scoped virtual-nav SDK, and support anchored review threads in a
-   Pull Requests collection with direct `/pull/<n>` URLs.
+5. `mb-y1ax`, `mb-p4sw`, `mb-duu7`, and `mb-2oxp` implement the shared bounded
+   subprocess runner, `gh api` adapter, auth states, provider binding, repository
+   summary, and snapshot kernel.
+   `mb-h64t` then caches one directly addressed PR bundle and only its selected Git
+   refs.
+6. `mb-xzj3` and `mb-81p5` mount and render the plugin-owned direct PR document and diff
+   through the existing Markdown, Git, revision-content, and File Diff Format pipelines.
+   `mb-lnkl`, `mb-uh6p`, and `mb-iw1v` add the bounded PR index and Pull Requests
+   virtual collection afterward; `mb-rldc` layers anchored review threads last.
 
 The complete roadmap remains larger than this release slice.
 Full generic cache management (`mb-0ybg`), the repository chooser (`mb-vmzy`), GitHub
@@ -138,9 +142,9 @@ Two known gaps sit outside that plan and are not regressions:
   [the URL grammar](docs/architecture.md) specifies and nothing serves yet
 - [ ] Add the
   [repository library](docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md):
-  a versioned local cache that opens or reuses Git URLs; add the v0.11.0 bounded GitHub
-  PR index and selected-PR snapshots; then follow with full cache management, a
-  repository chooser, issues, and stacked PRs
+  a versioned local cache that opens or reuses Git URLs and selected branches; add the
+  v0.11.0 direct GitHub PR snapshot/view and then the bounded PR index; follow with full
+  cache management, a repository chooser, issues, and stacked PRs
 
 Both entered core behind written plans, with the read-only boundary and bounded-cost
 model those plans required: the Git routes only read, every `git` subprocess is bounded

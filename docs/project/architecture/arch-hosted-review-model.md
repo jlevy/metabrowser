@@ -44,6 +44,12 @@ fetch selected refs.
 Hosted-review views may resolve a document’s comparison reference through File Diff
 Format. Git, diff, inventory, and the shell never import a GitHub model.
 
+Repository and branch opening sit below this diagram.
+A provider URL reducer may turn a GitHub web URL into a generic clone source plus a
+selection, but the repository library resolves the branch to a full object ID and owns
+any detached materialization.
+The provider adapter is not required to browse repository content or branches.
+
 ## The Clean Format Boundary
 
 Hosted Review Format is a closed, versioned, tool-neutral contract with the same
@@ -204,6 +210,38 @@ It does not expose command output or GitHub response dictionaries to the format 
 layers. A later direct-HTTP or GitLab implementation may satisfy the same port without
 changing the stored contracts or renderers.
 
+## Ports and Addresses
+
+Three provider-neutral ports keep URL parsing, acquisition, and rendering independently
+replaceable:
+
+- `ProviderUrlReducer.reduce(raw_url)` returns a credential-free Git clone source plus a
+  `RepositorySelection`. A selection may name ref/path candidates, a line range, or a
+  provider object target.
+  GitHub implements the first reducer; the cache only sees its output.
+- `HostedReviewProvider` returns common repository, change-request, review, check, and
+  index records plus typed retrieval outcomes.
+  `GitHubGhAdapter` implements it through `gh api`; no route or renderer imports the
+  adapter.
+- the core repository service accepts a source or entry identity and an explicit ref,
+  then returns a leased `RepositoryOpenTarget` pinned to a full Git object ID. Provider
+  plugins may request selected PR refs through this port but cannot run Git or receive a
+  cache filesystem path.
+
+The common hosted-review plugin owns `/review/<provider>/<repository-key>/<change-key>`
+and its resource routes through a mounted plugin sub-router.
+The address identifies a provider-neutral record; GitHub’s `/pull/<number>` reducer
+resolves to it.
+The bounded index and a direct URL must produce the same record identity,
+so navigation never needs an index-specific route.
+
+Mounted routers are a plugin-host capability, not a hosted-review exception.
+Each installed plugin declares a validated mount and router callable; the host preserves
+methods, streaming, headers, and honest status codes.
+Exact data hooks remain the smaller surface for one-segment model endpoints.
+Operator-directory plugins remain JavaScript-only, and all mounted state has a shutdown
+and root-replacement path.
+
 ## Cache Lifetimes
 
 Four caches remain distinct:
@@ -211,7 +249,8 @@ Four caches remain distinct:
 1. the repository library durably owns Git objects and the pinned serving root;
 2. the provider store durably owns immutable hosted-review snapshots and current
    manifests;
-3. container materialization temporarily owns worktrees or unpacked bytes; and
+3. repository selection or container materialization temporarily owns detached worktrees
+   or unpacked bytes keyed by immutable object identity; and
 4. activity pages, diff manifests, file patches, and browser projections are bounded,
    recomputable session caches.
 
@@ -231,6 +270,8 @@ The first GitHub slice is complete only when:
   `ChangeRequest/v1` identity and selected bundle;
 - list acquisition fetches no PR Git refs, while selection fetches only the requested
   base, head, and optional merge refs;
+- any advertised and authorized branch opens at its resolved full object ID through a
+  leased materialization without changing the entry’s pinned root;
 - a change request opens the same File Diff Format renderer as a commit comparison,
   while its review, check, thread, merge, and freshness details remain available in the
   hosted-review document and views;
@@ -258,6 +299,10 @@ implementation:
    recomputable session caches have different owners and retention rules.
 7. `gh api` is the only v0.11 transport, behind a provider port that can later support a
    direct GitHub or GitLab adapter without changing formats or views.
+8. Provider URL reducers and mounted plugin routers are general host capabilities;
+   GitHub URL syntax and hosted-review routes remain plugin-owned.
+9. Direct PR acquisition and viewing ship before the bounded PR index and virtual nav
+   collection; discovery is additive rather than a prerequisite for addressing.
 
 Implementation evidence still decides concrete page and collection bounds, exact REST
 versus GraphQL queries, whether the initial activity panel groups commits and PRs or can

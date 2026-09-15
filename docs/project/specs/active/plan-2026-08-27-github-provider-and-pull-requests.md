@@ -55,18 +55,22 @@ URL opening, catalog and refresh, the chooser, and large-repository support.
 The v0.11.0 milestone is one PR-first vertical slice:
 
 - bind a cached GitHub repository and publish its repository summary;
-- cache a bounded, paginated pull-request index with explicit completeness and
+- open any advertised and authorized branch through the generic repository
+  materialization layer;
+- hydrate an immutable bundle for a directly addressed pull request and fetch only that
+  PR’s Git refs through core;
+- then cache a bounded, paginated pull-request index with explicit completeness and
   freshness;
-- hydrate an immutable bundle for a selected pull request and fetch only that PR’s Git
-  refs through core;
 - open a repository or `/pull/<number>` GitHub URL directly, including a PR that is not
   present in the cached index; and
 - render repository and PR views offline through the existing Git, revision-content, and
   File Diff Format paths.
 
-The index is a discovery cache, not a prerequisite for direct addressing.
-Opening a direct PR URL fetches that one PR and updates or supplements the index without
-requiring an unbounded repository crawl.
+The index is a later discovery cache, not a prerequisite for direct addressing.
+Opening a direct PR URL fetches that one PR into its independently addressed current
+bundle without rewriting an index as though the item matched that index’s query.
+The navigation view may surface the selected item beside an existing index, but the
+stored index remains an honest observation of its own filter, sort, and bounds.
 Issue and timeline records and views move to `mb-9rrc`; stacked-PR projections remain in
 `mb-glxc`. Both stay in this plan as later phases so the release boundary does not erase
 the larger content-model design.
@@ -502,6 +506,92 @@ Credentials stay in `gh`, the OS credential store, or an explicit provider adapt
 plugin reports which source it used and never reads a secret into a record, a log, or a
 browser response.
 
+## Implementation Coordinates
+
+The implementation is two built-in plugins over narrow provider-neutral host seams.
+`hosted_review` owns the common records, store, routes, and views.
+`github` owns URL syntax, `gh`, GitHub response mapping, and any declared GitHub
+companion record. Core owns only plugin mounting, safe repository services, subprocess
+policy, and lifecycle.
+
+### Core and plugin-SDK changes
+
+| File | Existing seam | Planned change |
+| --- | --- | --- |
+| `src/metabrowser/plugin_loader/manifest.py` | `PluginManifest`, `DataHookSpec` | Add optional closed `RouterSpec` and `ProviderUrlReducerSpec` declarations; validate unique, reserved mount prefixes and trusted Python callables |
+| `src/metabrowser/plugin_loader/static_assets.py` | `_resolve_sidekick`, `build_plugin_routes` | Build one Starlette `Mount` per installed router and preserve its methods, streaming, headers, and status codes; keep exact data hooks for simple GET/POST models |
+| `src/metabrowser/plugin_loader/provider_urls.py` (new) | — | Load trusted installed reducers and dispatch `reduce_provider_url` without importing a provider in cache or CLI code |
+| `src/metabrowser/plugin_api.py` | `served_root`, path resolvers, `register_root_callback` | Expose typed entry identity, selected-ref job, and materialization-lease ports; expose no cache path and no provider schema |
+| `src/metabrowser/provider_process.py` (new, `mb-y1ax`) | mirrors `git/process.py` policy | `run_provider_command`, `terminate_provider_command`, and typed missing/timeout/output/cancelled failures for no-shell bounded provider CLIs |
+| `src/metabrowser/static/plugin-sdk.js` | `registerView`, `fetchPluginData` | Add disposal-returning `registerNavPanel` and a provider-neutral bounded virtual-collection controller |
+| `src/metabrowser/static/app.js` | internal `registerNavPanel`, `removeNavPanel`, preview claims | Publish the narrow SDK adapter, dispose plugin panels on replacement/root change, and keep preview ownership generation-checked |
+| `src/metabrowser/static/git-history-window.js` | `createPageCache`, `createVirtualWindow` | Extract or publish the provider-neutral paging/virtualization primitives once; update `git-panel.js` and hosted review together, with no compatibility wrapper |
+| `src/metabrowser/server.py` | `build_plugin_routes`, `_lifespan` | Mount plugin routers before catch-all shells, close provider jobs/stores on shutdown, and keep all provider routes in plugins |
+
+`RouterSpec` is the implementation of `mb-xzj3`. It is required because an exact
+single-segment data hook cannot honestly own `/review/<provider>/<repository>/<change>`
+or resource routes with path parameters and conditional responses.
+Operator-directory plugins remain JavaScript-only.
+If implementing the router changes an existing SDK contract, `PLUGIN_SDK_VERSION` and
+every built-in manifest change in the same commit; no dual contract is kept.
+
+### Hosted-review plugin
+
+| File | Key types and functions | Responsibility |
+| --- | --- | --- |
+| `src/metabrowser/builtin_plugins/hosted_review/manifest.toml` | kinds, views, router, scripts, styles | Declare common hosted-review surfaces and loading tiers |
+| `models.py` | `HostedRepository`, `ChangeRequestIndex`, `ChangeRequest`, `Review`, `ReviewThread`, `ReviewComment`, `Check`, `CommitStatus`, `ProviderSyncManifest`, `RepositoryActivity` | Closed Pydantic domain and storage models; no GitHub response types |
+| `contracts.py` | `HOSTED_REVIEW_CONTRACTS`, `validate_artifact`, `compile_contracts` | Installed SoftSchema registry, profile binding, semantic validation, and deterministic schema compilation |
+| `artifacts.py` | `read_change_request`, `write_change_request`, `snapshot_identity` | Read and write the `frontmatter-md` artifact through frontmatter-format; hash normalized YAML plus the complete Markdown body |
+| `store.py` | `ProviderStore`, `stage_snapshot`, `publish_manifest`, `read_current`, `reclaim_snapshots` | Immutable snapshots, complete manifests, atomic pointers, prior-generation retention, and bounded reclamation |
+| `service.py` | `HostedReviewProvider`, `get_repository`, `get_change_request`, `list_change_requests`, `refresh_resource` | Provider-neutral orchestration and typed completeness/freshness/failure states |
+| `routes.py` | `build_router`, `repository_resource`, `change_request_resource`, `change_request_index`, `change_request_shell` | Plugin-owned read routes and `/review/<provider>/<repository>/<change>` document shell |
+| `hosted-review-model.js` | `parseHostedRepository`, `parseChangeRequest`, `parseActivityPage` | Browser validation against the same contract corpus |
+| `hosted-review-view.js` | `prepareChangeRequestView`, `mountChangeRequestView`, `disposeChangeRequestView` | Compose metadata, Markdown description, reviews/checks, revision links, and File Diff Format |
+| `hosted-review-panel.js` | `createPullRequestPanel`, `loadIndexPage`, `openChangeRequest`, `dispose` | Virtual Pull Requests collection and item-like/folder-like rows |
+| `index.js`, `styles.css` | registrations and presentation | Register views/panels and use existing design tokens with measured loading tiers |
+
+The plugin router returns provider-neutral documents and projections.
+It calls the Git comparison adapter by full object IDs and the existing revision-content
+routes for base or head files; it neither copies provider fields into File Diff Format
+nor reads a GitHub snapshot directly.
+
+### GitHub provider plugin
+
+| File | Key types and functions | Responsibility |
+| --- | --- | --- |
+| `src/metabrowser/builtin_plugins/github/manifest.toml` | URL reducer, provider adapter, optional companion views | Register GitHub without adding a GitHub branch to core |
+| `urls.py` | `reduce_github_url`, `github_clone_source`, `parse_github_selection` | Recognize public and configured Enterprise repository/tree/blob/commit/pull forms and return an ordinary source plus selection candidates |
+| `auth.py` | `preflight_gh_auth`, `auth_recovery` | Parse non-secret `gh auth status --active --hostname ... --json hosts` output and produce typed recovery states |
+| `queries.py` | `repository_request`, `change_request_request`, `change_request_index_request`, `reviews_request`, `checks_request` | Fixed REST paths and GraphQL documents with explicit variables and one-page bounds |
+| `adapter.py` | `GitHubGhAdapter`, `request_page`, `get_repository`, `get_change_request`, `list_change_requests` | Implement the common provider port with `gh api --hostname`; never use `gh pr view`, `--paginate`, or `--cache` |
+| `mapping.py` | `map_repository`, `map_change_request`, `map_review`, `map_thread`, `map_check`, `map_status` | Normalize each response immediately into common records or a declared GitHub companion |
+| `sidekick.py` | `build_provider`, `refresh_repository`, `refresh_change_request`, `refresh_index` | Bind the adapter to the hosted-review service and repository job/ref ports |
+
+The URL reducer can ship before `gh` acquisition.
+Repository and branch URLs therefore use generic Git credentials and the repository
+cache; only hosted-review metadata and direct PR hydration require the provider adapter
+and `gh` authentication.
+
+### Fixtures, tests, goldens, and parity
+
+| Surface | Files |
+| --- | --- |
+| Common contracts | `tests/fixtures/hosted_review/valid/`, `invalid/`, `tests/test_hosted_review_models.py`, `tests/test_hosted_review_contracts.py` |
+| Coverage oracle and GitHub mapping | `tests/fixtures/github/oracle/`, `tests/test_github_coverage.py`, `tests/test_github_mapping.py` |
+| Auth and transport | `tests/test_provider_process.py`, `tests/test_github_auth.py`, `tests/test_github_adapter.py` |
+| Atomic provider cache | `tests/test_hosted_review_store.py`, `tests/test_hosted_review_service.py` |
+| Plugin routing | `tests/test_plugin_manifest.py`, `tests/test_plugin_routes.py`, `tests/test_hosted_review_routes.py` |
+| View and nav lifecycle | `tests/dom/hosted-review-view.js`, `tests/dom/hosted-review-panel.js`, existing Git-panel lifecycle coverage after the shared virtual-window extraction |
+| CLI goldens | `tests/golden/cli-github-repository.tryscript.md`, `cli-github-pr-open.tryscript.md`, `cli-github-pr-index.tryscript.md`, `cli-github-pr-offline.tryscript.md` |
+| Registered surfaces | `devtools/check_parity.py`, `docs/project/architecture/arch-views-models-routes.md`, `tests/test_views_models_routes.py`, `tests/test_distribution_policy.py` |
+
+No test contacts GitHub or a real credential store.
+Recorded responses are scrubbed inputs to mapping and coverage tests; fake executable
+fixtures exercise the exact provider-process path.
+A separate opt-in live smoke test may validate public GitHub and Enterprise behavior,
+but it is not part of `make verify` and cannot substitute for the hermetic suite.
+
 ## Phased Implementation Plan
 
 The design boundary lands before network or view work.
@@ -544,19 +634,24 @@ first implementation prerequisite here.
 - [ ] Route the cached `gitroot` through the inventory coordinator lifecycle and prove
   offline reuse, interruption recovery, and future-format refusal in goldens.
 
-### Phase 2: GitHub URL opening (`mb-ew38`)
+### Phase 2: GitHub repository and branch URL opening (`mb-12cz`, `mb-ew38`, `mb-z335`, `mb-2xq7`)
 
-- [ ] Recognize canonical GitHub repository and `/pull/<number>` URLs through a
-  provider-neutral URL reducer; reject credentials, ambiguous hosts, queries, and
-  fragments the grammar does not own.
+- [ ] Register the GitHub reducer through the provider-neutral URL plugin seam and
+  recognize canonical repository, tree, blob, commit, raw, and `/pull/<number>` forms;
+  reject credentials, ambiguous hosts, and syntax the grammar does not own.
 - [ ] Resolve or acquire the generic repository entry before invoking a provider
   adapter, and reuse the canonical escaped path-identity codec for every selection.
+- [ ] Resolve any advertised and authorized branch, including names with slashes, to a
+  full object ID and serve it from a detached materialization without moving the pinned
+  cache entry.
 - [ ] Preserve a directly addressed PR target even when the provider index is absent,
   stale, partial, or does not contain that number.
 - [ ] Apply the untrusted-content profile before serving fetched repository or provider
   content.
 
 ### Phase 3: GitHub `gh` adapter, binding, and provider cache (`mb-y1ax`, `mb-jlon`, `mb-p4sw`, `mb-duu7`, `mb-wx32`)
+
+#### Phase 3A: Transport, auth, binding, and snapshot kernel (`mb-y1ax`, `mb-jlon`, `mb-p4sw`, `mb-2oxp`)
 
 - [ ] Define the provider transport port, then implement only `GitHubGhAdapter` with
   bounded `gh api` REST/GraphQL calls and explicit host selection.
@@ -569,40 +664,66 @@ first implementation prerequisite here.
 - [ ] Add GitHub repository binding without changing generic cache identity.
 - [ ] Publish immutable hosted-review snapshots, sync manifests, and atomic current
   pointers; keep the last completed observation readable when refresh fails.
-- [ ] Publish a bounded `ChangeRequestIndex/v1` with explicit query, pages, cursors,
-  completeness, freshness, and truncation; do not use `gh --paginate`, `gh --cache`, or
-  durable raw API responses.
+- [ ] Publish and inspect `HostedRepository/v1` before any PR acquisition; keep raw API
+  responses, credentials, and transport cache entries out of durable state.
+- [ ] Add stage-level progress, cancellation, rate-limit observations, and diagnostics
+  without turning provider refresh into a generic cache hit.
+
+#### Phase 3B: Directly addressed PR bundle (`mb-h64t`)
+
 - [ ] Fetch a selected `ChangeRequest/v1` frontmatter artifact and its bounded review,
   thread, check, and status companions, including a direct-addressed PR absent from the
   index.
 - [ ] Ask core to fetch only the selected base, head, and optional merge refs into a
   Metabrowser namespace; listing PRs fetches no refs.
-- [ ] Add stage-level progress, cancellation, rate-limit observations, and diagnostics
-  without turning provider refresh into a generic cache hit.
+- [ ] Prove the selected bundle, comparison object IDs, partiality, and typed
+  unavailable states are inspectable and reusable offline before an index or nav panel
+  exists.
 
-### Phase 4: Hosted-review views and virtual PR collection (`mb-r19i`, `mb-uh6p`, `mb-rldc`)
+#### Phase 3C: Bounded PR discovery index (`mb-lnkl`)
 
-- [ ] Register a Pull Requests nav panel backed by the cached index, reusing Git
-  history’s bounded paging, virtualization, focus, selection, and restoration patterns.
+- [ ] Publish a bounded `ChangeRequestIndex/v1` with explicit query, pages, cursors,
+  completeness, freshness, and truncation; do not use `gh --paginate`, `gh --cache`, or
+  durable raw API responses.
+- [ ] Keep index summaries separate from selected bundles; listing never fetches PR Git
+  refs or hydrates descriptions, reviews, threads, checks, or patches.
+- [ ] Let direct hydration supplement an index without requiring the item to match its
+  filter, sort, or current bounded window.
+
+### Phase 4: Hosted-review views and virtual PR collection (`mb-r19i`)
+
+#### Phase 4A: Direct PR document and comparison (`mb-xzj3`, `mb-81p5`)
+
+- [ ] Mount plugin-owned browser and resource routes with path parameters and honest
+  responses; retain exact data hooks for simple models.
+- [ ] Render the frontmatter artifact as a directly addressed PR document without an
+  index or nav panel: validated title, identity, actors, state, merge/review/check
+  summaries, freshness, and the Markdown description.
+- [ ] Render the selected PR comparison through the existing Git adapter, File Diff
+  Format, and diff plugin; render base/head Markdown through revision content.
+- [ ] Show reviews, checks, merge state, partiality, offline state, refresh status, and
+  unavailable refs without adding provider fields to File Diff Format.
+
+#### Phase 4B: Pull Requests virtual collection (`mb-uh6p`, `mb-iw1v`)
+
 - [ ] Add the repository-scoped plugin SDK surface (`mb-uh6p`) for virtual nav
   collections, including loading, error, replacement, restoration, and disposal.
+- [ ] Register a Pull Requests nav panel backed by the cached index, reusing Git
+  history’s bounded paging, virtualization, focus, selection, and restoration patterns.
 - [ ] Model the panel root as a virtual folder-like collection and each PR as an
   item-like document plus a folder-like container whose children are changed files.
-- [ ] Render the frontmatter artifact as a PR document: validated title, identity,
-  actors, state, merge/review/check summaries, and freshness around the Markdown
-  description.
 - [ ] Project commit summaries and PR rows through `RepositoryActivity/v1` when sharing
   history UI mechanics; retain separate Git and provider authorities and do not invent a
   mixed global order when pagination cannot support one.
-- [ ] Render the selected PR comparison through the existing Git adapter, File Diff
-  Format, and diff plugin; render base/head Markdown through revision content.
-- [ ] Show reviews, threads, checks, merge state, partiality, offline state, refresh
-  status, and unresolved/outdated anchors without adding provider fields to File Diff
-  Format.
-- [ ] Deliver provider-neutral review threads and diff anchors (`mb-rldc`) with explicit
-  outdated, unresolved, and unmappable states.
 - [ ] Drive counts and folder visibility from the complete bounded index model, not the
   currently mounted rows.
+
+#### Phase 4C: Anchored review threads (`mb-rldc`)
+
+- [ ] Deliver provider-neutral review threads and diff anchors after direct comparison
+  rendering is stable, with explicit outdated, unresolved, and unmappable states.
+- [ ] Map only when immutable Git identity and line context are sufficient; otherwise
+  show the provider’s original anchor without inventing a current line.
 
 ### Phase 5: Issues and timelines (`mb-9rrc`)
 
@@ -632,6 +753,26 @@ first implementation prerequisite here.
   have shipped.
 - [ ] Add only fields observed from that adapter and only provider-specific companion
   records with named consumers; do not widen v0.11.0 contracts speculatively.
+
+## Incremental Shipping Map
+
+| Slice | Depends on | Mergeable result |
+| --- | --- | --- |
+| Hosted Review Format (`mb-63ym`) | SoftSchema release review | Enforced no-network records, schemas, fixtures, and browser validation |
+| Generic cache | Cache Phase 1A/1B beads | Any supported repository source is pinned and reusable offline |
+| GitHub URL reducer (`mb-12cz`, `mb-ew38`) | Generic cache | Any supported GitHub repository URL opens without the GitHub API |
+| Branch materialization (`mb-z335`, `mb-2xq7`) | Repository URL open | Any exposed and authorized branch opens without moving the pinned root |
+| GitHub transport and repository summary (`mb-y1ax`, `mb-p4sw`, `mb-2oxp`) | Format, generic jobs, cache | Auth and snapshot kernel plus one offline repository summary |
+| Direct PR cache (`mb-h64t`) | Transport, summary, selected refs | Any directly addressed and authorized PR has one reusable bundle |
+| Direct PR view (`mb-xzj3`, `mb-81p5`) | Direct PR cache, trust profile | One GitHub PR URL opens its common document and full comparison offline |
+| PR index (`mb-lnkl`) | Direct PR cache | A bounded discovery cache lists PR summaries without fetching refs |
+| PR nav (`mb-uh6p`, `mb-iw1v`) | Direct PR view, index | Pull Requests appears as a virtual repository collection |
+| Review anchors (`mb-rldc`) | Direct PR comparison | Threads render at honest current, outdated, or unresolved locations |
+
+The direct-PR path intentionally crosses Phase 4A before Phase 3C is needed by a user
+surface. This is not a dependency inversion: the index and direct bundle are sibling
+cache products. It lets the smallest complete workflow ship and be tested before
+discovery UI increases acquisition and browser scope.
 
 ## Testing Strategy
 

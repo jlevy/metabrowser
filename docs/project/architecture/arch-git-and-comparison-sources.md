@@ -330,10 +330,9 @@ source-neutral, and the renderer starts having to know what produced its input.
 **Status: designed only.** No provider code exists.
 The design lives in the
 [repository library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md) and
-the
-[design review](../reviews/review-2026-08-26-repository-library-and-github-model.md);
-this section records only the boundary those documents must not cross, because that
-boundary is an architectural commitment rather than a plan detail.
+[Hosted Review Model and Provider Boundary](arch-hosted-review-model.md); this section
+records only the boundary those documents must not cross, because that boundary is an
+architectural commitment rather than a plan detail.
 
 A provider may:
 
@@ -349,9 +348,11 @@ A provider may not:
 - require core to import a provider schema or branch on a provider object kind; or
 - make generic acquisition, identity, refresh, or purge depend on it.
 
-When provider code lands, it gets its own architecture document rather than a section
-here — one subject per document, and a provider content model is a different subject
-with a different lifetime from the Git boundary.
+The hosted-review architecture owns the provider content model, snapshot lifetime,
+plugin routes, and view composition.
+This document owns the lower rule it relies on: repository selection and PR acquisition
+may request explicit refs, but core resolves them to immutable object IDs and provider
+code never runs Git.
 
 ## Invariants
 

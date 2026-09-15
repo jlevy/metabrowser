@@ -68,10 +68,12 @@ parallel.
 | 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 1, 3 | v0.11.0 foundation |
 | 5 | Cache format foundation, then acquisition | `mb-ire2`, `mb-4gnu`, `mb-dxmb`, `mb-h51g`, `mb-k54c`, `mb-dg00` | 1 | v0.11.0 |
 | 6 | HTML trust chain | `mb-cun0`, `mb-vib1` | nothing | Gates serving fetched content |
-| 7 | URL open and serving | `mb-ew38` | 4, 5, 6 | v0.11.0 |
+| 7 | Provider URL reducer, repository open, then selected-branch materialization | `mb-12cz`, `mb-ew38`, `mb-z335`, `mb-2xq7` | 4, 5, 6 | v0.11.0 |
 | 8 | Hosted-review models plus provider job/ref foundation | `mb-63ym`, `mb-jlon` | 5 for `mb-jlon`; model work can start immediately | v0.11.0 |
-| 9 | Bounded provider runner, `gh api` adapter, auth, PR index, and selected bundles | `mb-y1ax`, `mb-p4sw`, `mb-duu7`, `mb-wx32` | 8 | v0.11.0 |
-| 10 | Repository and PR views, virtual nav, anchors, and direct PR URLs | `mb-r19i`, `mb-uh6p`, `mb-rldc` | 6, 7, 9 | v0.11.0 |
+| 9 | Bounded provider runner, `gh api` adapter, auth, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-duu7`, `mb-2oxp`, `mb-h64t` | 7, 8 | v0.11.0 |
+| 10 | Plugin router and direct PR document/diff | `mb-xzj3`, `mb-81p5` | 6, 9 | v0.11.0 |
+| 11 | Bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.11.0 |
+| 12 | Anchored review threads | `mb-rldc` | 10 | v0.11.0 |
 
 Row 6 is the
 [R1 finding](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md):
@@ -338,8 +340,12 @@ def ensure_home(home: Path) -> None: # creates, writes CACHEDIR.TAG
 | `state.py` | the state machine | `promote`, `quarantine`, `trash`, `entry_state` |
 | `reclaim.py` | startup sweep of `staging/` and `trash/` | `reclaim(home)` |
 | `identity.py` | Phase 1B-a: conservative identity and collision-safe slug | `source_identity`, `cache_slug` |
-| `urls.py` | Phase 1B-a: the safe URL grammar | `parse_git_source` |
+| `urls.py` | Phase 1B-b: root classification and provider-reducer dispatch | `classify_root_argument`, `ProviderUrlReducer` |
 | `acquire.py` | Phase 1B-a: clone into staging, publish atomically | `acquire` |
+| `selection.py` | Phase 1B-c: resolve ref/path candidates and explicit missing refs | `resolve_selection`, `fetch_selected_ref` |
+| `materialize.py` | Phase 1B-c: detached worktree leases | `acquire_materialization`, `release_materialization` |
+| `service.py` | One CLI/chooser orchestration result | `resolve_open_target`, `close_open_target` |
+| `jobs.py` | Provider-neutral selected-ref jobs | `request_ref_fetch`, `close_all` |
 | `routes.py` | the state clause | `/api/cache/layout`, `/entries`, `/entry/{slug}` |
 
 ```python
@@ -434,9 +440,11 @@ network behavior.
 | `cli-cache-acquire.tryscript.md` | clone, publish, second open reuses with no network | Cache 1B-a |
 | `cli-cache-recover.tryscript.md` | interrupted publish quarantines; reclaim sweeps staging | Cache 1B-a |
 | `cli-url-open.tryscript.md` | URL grammar accepts and rejects, with reasons | Cache 1B-b |
-| `cli-github-pr-index.tryscript.md` | bounded pages, freshness, completeness, and no ref fetch while listing | GitHub P2 |
-| `cli-github-pr-open.tryscript.md` | direct and indexed PR selection publish one bundle and fetch only selected refs | GitHub P2 |
-| `cli-github-pr-offline.tryscript.md` | repository and selected PR remain inspectable from immutable snapshots without a network | GitHub P3 |
+| `cli-github-repo-open.tryscript.md` | GitHub repository URL reduces to and reuses the generic entry without provider auth | Cache 1B-b |
+| `cli-github-branch-open.tryscript.md` | default, non-default, slash-containing, offline, and unavailable branches keep the pinned root unchanged | Cache 1B-c |
+| `cli-github-pr-open.tryscript.md` | a direct PR selection publishes one bundle and fetches only selected refs without an index | GitHub P3B |
+| `cli-github-pr-index.tryscript.md` | bounded pages, freshness, completeness, and no ref fetch while listing | GitHub P3C |
+| `cli-github-pr-offline.tryscript.md` | repository and selected PR remain inspectable from immutable snapshots without a network | GitHub P4A |
 
 `cli-cache-recover` is the one worth insisting on.
 Crash recovery is the behavior most likely to be wrong and least likely to be exercised
@@ -537,14 +545,19 @@ After the release branch returns to `main`, the remaining sequence is:
 1. Run the status measurements (`mb-r5gn`) while the cache format and trust tracks begin
    independently.
 2. Land the application-home, record, acquisition, inspection, and URL-open foundation
-   (`mb-ire2`, `mb-4gnu`, `mb-h51g`, `mb-k54c`, `mb-dg00`, `mb-dxmb`, `mb-ew38`).
+   (`mb-ire2`, `mb-4gnu`, `mb-h51g`, `mb-k54c`, `mb-dg00`, `mb-dxmb`, `mb-12cz`,
+   `mb-ew38`), then add the reusable materialization primitive and selected-branch
+   integration (`mb-z335`, `mb-2xq7`).
 3. Land the provider-neutral hosted-review contracts (`mb-63ym`) and narrow provider
    jobs/ref fetching (`mb-jlon`) without waiting for full cache management.
-4. Publish the bounded provider runner, `gh api` adapter, auth workflow, PR index, and
-   selected-PR bundles (`mb-y1ax`, `mb-p4sw`, `mb-duu7`, `mb-wx32`).
-5. Add repository and PR views, the virtual-nav SDK, anchored review threads, and direct
-   GitHub PR URL opening (`mb-r19i`, `mb-uh6p`, `mb-rldc`) after the content-trust
-   serving gate is satisfied.
+4. Publish the bounded provider runner, `gh api` adapter, auth workflow, repository
+   summary, and one directly addressed PR bundle (`mb-y1ax`, `mb-p4sw`, `mb-duu7`,
+   `mb-2oxp`, `mb-h64t`).
+5. Add the mounted plugin router and direct PR document/diff (`mb-xzj3`, `mb-81p5`)
+   after the content-trust serving gate is satisfied.
+   This is the first complete PR workflow and does not wait for a discovery index.
+6. Add the bounded PR index and virtual Pull Requests collection (`mb-lnkl`, `mb-uh6p`,
+   `mb-iw1v`), then layer anchored review threads (`mb-rldc`).
 
 Full cache management, the chooser, GitHub issues and timelines, stacked PRs, and
 very-large-repository work remain later beads rather than hidden prerequisites.

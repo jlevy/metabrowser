@@ -69,11 +69,13 @@ invalidating tests.
 
 ### v0.11.0 Milestone
 
-The first v0.11.0 slice ends at an offline-reusable GitHub pull-request view, not at the
-entire repository-library roadmap.
-It includes Phase 0, Phase 1A, generic acquisition, URL opening, the narrow provider job
-and selected-ref foundation in `mb-jlon`, the bounded `gh api` transport and auth work
-in `mb-p4sw`, and the common hosted-review and GitHub work in the
+The first v0.11.0 slice ends at offline-reusable views of any authorized GitHub
+repository, any branch that repository exposes, and any directly addressed pull request,
+not at the entire repository-library roadmap.
+It includes Phase 0, Phase 1A, generic acquisition, repository URL opening, detached
+branch materialization, the narrow provider job and selected-ref foundation in
+`mb-jlon`, the bounded `gh api` transport and auth work in `mb-p4sw`, and the common
+hosted-review and GitHub work in the
 [provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
 
 Full generic cache management, the in-app chooser, GitHub issues, stacked pull requests,
@@ -88,6 +90,9 @@ This is a milestone boundary, not a scope deletion: `mb-0ybg`, `mb-vmzy`, `mb-9r
   URLs, and provider web URLs reduced to the repository they name.
 - Open what the URL pointed at, not merely the repository containing it — a `/blob/` URL
   opens that file, a line anchor selects those lines.
+- Resolve every branch the acquired remote exposes to a full object ID and serve a
+  bounded detached materialization without moving or dirtying the entry’s pinned
+  `gitroot`.
 - Preserve the root argument as a string at the Click/Typer boundary, then classify it
   before any `Path` construction can rewrite URL syntax.
 - Derive one stable cache identity from the credential-free clone source, and reuse the
@@ -122,7 +127,9 @@ This is a milestone boundary, not a scope deletion: `mb-0ybg`, `mb-vmzy`, `mb-9r
 - Automatically advancing a live checkout when a remote ref moves.
   Fetch, select, and promote are distinct operations.
 - Requiring provider support for the first usable cache.
-  GitHub is not on the Phase 1B critical path.
+  GitHub API access, credentials, and hosted-review schemas are not on the Phase 1B
+  critical path; the provider plugin’s no-network URL reducer is part of opening common
+  GitHub web URLs.
 - Mirroring every GitHub API. The first provider model covers repository browsing and
   review. Organization administration, Projects, Actions logs, packages, billing,
   security alerts, and other account surfaces are outside its v1 scope.
@@ -203,7 +210,9 @@ which is `Status: Draft` with nothing implemented.
 ```text
 mb-cun0  sandbox /raw, same-origin proof on /api
    └──► mb-vib1  capability set and --untrusted profile
-           └──► mb-ew38  generic URL open and offline reuse
+           └──► mb-ew38  repository URL open and offline reuse
+                    └──► mb-z335  materialization primitive
+                              └──► mb-2xq7  selected-branch integration
 ```
 
 Two consequences, both worth stating plainly rather than discovering during
@@ -623,33 +632,39 @@ Dropping a parameter is not silent when it changes what the user would see: a UR
 for a display mode Metabrowser does not have opens the file and says which part of the
 request it could not honor.
 
-### What a selection can actually address
+### What a selection addresses
 
-The selection is bounded by the URL grammar, and that boundary is narrower than the
-table above suggests.
+`/view/<path>` addresses the tree currently owned by the inventory lifecycle;
+`/commit/<rev>[/<inner>]` addresses a change set.
+The v0.11 branch slice keeps that grammar and changes which immutable tree the session
+serves.
 
-`/view/<path>` addresses the served tree; `/commit/<rev>[/<inner>]` addresses a change
-set. **Neither addresses file content at an arbitrary revision**, and
-[the grammar says why](../../../architecture.md#browser-url-grammar): a revision is not
-a path in the served tree, so it gets its own route rather than a sigil inside `/view/`.
+After acquisition, selection resolution turns the requested ref into a full object ID.
+When that object is the pinned `active_revision`, the session serves `gitroot` directly.
+Otherwise the repository library creates or reuses a bounded detached worktree keyed by
+entry identity and object ID, verifies its HEAD and containment, and passes that root
+through the same inventory coordinator lifecycle as any other served root.
+The browser still uses `/view/<path>` because the session root itself is the selected
+revision; repository context names both the requested ref and resolved object ID so a
+copied URL never implies that a moving branch name is immutable.
 
-A selection therefore resolves to a real surface when `<ref>` resolves to the entry’s
-pinned `active_revision` — the ordinary case, because acquisition pins the default
-branch and that is the ref most pasted URLs carry.
-When `<ref>` names some other branch, tag, or commit, Phase 1B opens the repository at
-its pinned revision and reports which revision was requested and which is served.
-It does not show another revision’s content under the requested path, which is the one
-genuinely wrong outcome available here.
+The materialization is a disposable projection, not another repository entry and not a
+new active checkout.
+Creating, reusing, and releasing it runs under the entry lock; never changes
+`active_revision`; never creates or advances a local branch; disables submodule
+recursion and interactive Git behavior; and is reclaimed only after the last owning
+session or job releases it.
+Missing objects may trigger one bounded fetch of the explicit selected ref.
+A cache hit with the object already present stays offline.
 
-Line and column anchors have the same shape of limit: carried through the parse, applied
-where the target view supports a line selection, and reported rather than silently
-dropped where it does not.
+This makes “any branch” precise: any branch advertised by the selected remote and
+readable with the user’s Git credentials can be opened, including names with slashes.
+A deleted branch, an object outside the configured fetch bounds, or a branch the user
+cannot read yields a typed unavailable result rather than falling back to a different
+revision.
 
-Addressing content at an arbitrary revision is a real gap, and closing it is what a
-content-at-revision route would do.
-It is not in this phase and this plan does not promise it.
-Opening the right repository at its pinned revision while saying so is bounded and
-honest; promising a file at a ref nothing can render is not.
+Line and column anchors are carried through the parse, applied where the target view
+supports a line selection, and reported rather than silently dropped where it does not.
 
 ### The ref and path boundary is ambiguous, and the clone resolves it
 
@@ -960,6 +975,71 @@ cache-supplied path.
 Provider object IDs and URLs never become filesystem paths without safe encoding and
 containment checks.
 
+## Implementation Coordinates
+
+The v0.10.0 code has one filesystem root, one Git process boundary, and one inventory
+lifecycle. The cache work extends those seams; it does not add parallel ways to run Git,
+walk a repository, or clear root-owned state.
+
+### Existing files to change
+
+| File | Existing seam | Planned change |
+| --- | --- | --- |
+| `src/metabrowser/cli/main.py` | `_metab`, `_require_root` | Keep the root argument as `str |
+| `src/metabrowser/cli/serve.py` | `run_serve` | Resolve or acquire before importing the configured server, install the selected `RepositoryContext`, force the untrusted profile, and release an owned materialization on shutdown |
+| `src/metabrowser/cli/show_cli.py` | `run_show` | Use the same resolver so `--show` and `--api` inspect the exact repository or branch production serving would open |
+| `src/metabrowser/git/process.py` | `run_git`, `spawn_git_process`, `terminate_git_process` | Add named read, acquisition, fetch, and materialization policies with `stdin=DEVNULL`, non-interactive environment controls, distinct time/output bounds, and typed cancellation; no second Git runner |
+| `src/metabrowser/paths_safe.py` | `_set_root_dir`, `register_root_callback` | Continue to be the single root publication signal; a materialized branch is set here only after its HEAD and containment checks pass |
+| `src/metabrowser/inventory_engine/coordinator.py` | `InventoryCoordinator.replace_root`, `close` | Keep replacement ordered: stop and join the old handle and relay, clear root-owned state, publish the new root, then permit reads |
+| `src/metabrowser/repository_context.py` | `RepositoryContext`, `discover_repository_context` | Separate provider-neutral source/ref/revision context from the current GitHub-only remote parser; accept validated cache context for detached worktrees without rediscovering identity from untrusted files |
+| `src/metabrowser/server.py` | `_lifespan`, route assembly | Register cache inspection routes, close repository jobs and materialization leases after history/inventory work joins, and expose only public-safe repository context |
+
+### New core files and callable boundaries
+
+| File | Key types and functions | Responsibility |
+| --- | --- | --- |
+| `src/metabrowser/home.py` | `application_home`, `ensure_home` | Resolve `METABROWSER_HOME`, create the layout, and write `CACHEDIR.TAG` |
+| `src/metabrowser/cache/records.py` | `ApplicationConfig`, `CacheLayout`, `RepositoryIdentity`, `RepositoryState` | Strict Pydantic models and SoftSchema envelope bindings |
+| `src/metabrowser/cache/layout.py` | `read_layout`, `migrate_layout`, `LAYOUT_FORMAT` | Fail closed on future formats and run ordered migrations |
+| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `entry_lock` | Bounded reads, same-filesystem publication, and process-safe locking |
+| `src/metabrowser/cache/identity.py` | `normalize_git_source`, `source_identity`, `cache_slug` | Credential-free canonical identity and collision verification |
+| `src/metabrowser/cache/urls.py` | `classify_root_argument`, `ProviderUrlReducer`, `RepositorySelection` | Distinguish local paths, Git sources, and registered provider web URLs before constructing a `Path`; provider-specific syntax stays behind reducers |
+| `src/metabrowser/cache/acquire.py` | `acquire_repository`, `validate_staging_entry`, `publish_entry` | Clone into staging, pin the default revision, validate, and atomically publish one entry |
+| `src/metabrowser/cache/selection.py` | `resolve_selection`, `resolve_ref_path_candidates`, `fetch_selected_ref` | Resolve slash-containing branch/tag/path candidates against local and remote-tracking refs, fetch only an explicitly selected missing ref, and return a full object ID |
+| `src/metabrowser/cache/materialize.py` | `MaterializationLease`, `acquire_materialization`, `release_materialization`, `reclaim_materializations` | Create or reuse bounded detached worktrees keyed by entry and object ID without changing `gitroot` or a local branch |
+| `src/metabrowser/cache/service.py` | `RepositoryOpenTarget`, `resolve_open_target`, `close_open_target` | Orchestrate parse, acquire/reuse, selection, materialization, trust profile, and initial browser path for CLI and later chooser callers |
+| `src/metabrowser/cache/jobs.py` | `RepositoryJob`, `RepositoryJobRegistry`, `request_ref_fetch`, `close_all` | Provider-neutral progress, cancellation, stage outcomes, and selected-ref requests used later by provider plugins |
+| `src/metabrowser/cache/routes.py` | `api_cache_layout`, `api_cache_entries`, `api_cache_entry`, `api_repository_jobs` | Read-only logical-state projections for CLI parity; acquisition remains a CLI action, not a write API |
+| `src/metabrowser/cache/reclaim.py` | `reclaim_staging`, `reclaim_trash`, `reclaim_materializations` | Recover interrupted staging and release unreachable transient projections under the application-home lock |
+
+`RepositoryOpenTarget` contains the published entry identity, resolved root, requested
+ref, full resolved object ID, initial logical path, optional line selection, optional
+provider target, trust profile, and an optional materialization lease.
+It never contains a provider response or credential.
+The server receives this value before startup; a future chooser may produce the same
+value and pass its root to `InventoryCoordinator.replace_root`.
+
+GitHub URL syntax is implemented in the GitHub provider plugin, not in `cache/urls.py`.
+The core dispatcher asks installed, trusted provider reducers for an ordinary clone
+source plus `RepositorySelection`; the cache never branches on a GitHub object kind.
+The provider plan names the manifest and loader changes that register this reducer.
+
+### Tests and parity files
+
+| Surface | Files |
+| --- | --- |
+| Formats, migration, identity, publication | `tests/test_cache_records.py`, `tests/test_cache_layout.py`, `tests/test_cache_identity.py`, `tests/test_cache_acquire.py` |
+| URL and ref selection | `tests/test_cache_urls.py`, `tests/test_cache_selection.py`, GitHub reducer tests in the provider plugin |
+| Detached branch lifecycle | `tests/test_cache_materialize.py`, `tests/test_cache_service.py`, root-replacement cases in `tests/test_inventory_contract.py` |
+| CLI behavior | `tests/golden/cli-cache-layout.tryscript.md`, `cli-cache-acquire.tryscript.md`, `cli-github-repo-open.tryscript.md`, `cli-github-branch-open.tryscript.md` |
+| Registered surfaces | `devtools/check_parity.py`, `docs/project/architecture/arch-views-models-routes.md`, `tests/test_views_models_routes.py` |
+| Installed artifact | `tests/test_distribution_policy.py` plus the existing isolated-wheel smoke test in `make verify` |
+
+Every filename above is a delivery coordinate, not permission to create an abstraction
+before its consumer.
+A phase adds only the modules and callables it exercises through a test, route, or
+user-visible open path.
+
 ## Phased Implementation Plan
 
 ### Phase 0: Design evidence and contract freeze — v0.11.0 entry point
@@ -1043,18 +1123,16 @@ for reasons that have nothing to do with this plan.
 phase uses them directly rather than building a parallel inspection harness.
 See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 
-### Phase 1B: Generic Git cache and URL open — first usable feature PR
+### Phase 1B: Generic Git cache and repository URL open
 
-- [ ] Change the CLI root boundary from `Path | None` to `str | None`; preserve URL
-  bytes until classification and keep path-only modes receiving resolved paths.
+This phase lands in three additive slices.
+Each can merge with its own records, routes, goldens, and recovery behavior before the
+next slice begins.
+
+#### Phase 1B-a: Acquire and reuse a pinned repository (`mb-h51g`, `mb-dg00`)
+
 - [ ] Add conservative source normalization, full identity digest, readable uniquified
   slug, collision verification, and per-source locking.
-- [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
-  variants table, line and column anchors, `?plain=1`, dropped tracking and display
-  parameters, reserved-namespace refusal, and configurable Enterprise hosts.
-- [ ] Resolve the ambiguous ref/path split after acquisition against the cloned ref
-  list, longest matching prefix first, falling back to the repository root with an
-  explicit unresolved-selection report.
 - [ ] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
   environment controls, and explicit acquisition/background policies.
 - [ ] Enforce the acquisition, blobless, and `git backfill` floors from
@@ -1074,11 +1152,43 @@ See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 - [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
   interrupted clone, read-only application home, unsupported Git version, and repair
   guidance.
+
+#### Phase 1B-b: Open repository and hosted web URLs (`mb-12cz`, `mb-ew38`)
+
+- [ ] Add the trusted installed-plugin `ProviderUrlReducer` registration point; keep
+  operator-directory plugins JavaScript-only and keep provider syntax out of cache
+  identity and records.
+- [ ] Change the CLI root boundary from `Path | None` to `str | None`; preserve URL
+  bytes until classification and keep path-only modes receiving resolved paths.
+- [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
+  variants table, line and column anchors, `?plain=1`, dropped tracking and display
+  parameters, reserved-namespace refusal, and configurable Enterprise hosts.
+- [ ] Open a repository-root URL through `resolve_open_target`, reuse `gitroot` without
+  a network or provider credential lookup, and pass only the resolved local root to the
+  existing server and inspection paths.
+- [ ] Preserve a pull-request number as an optional provider target even before a
+  provider adapter can hydrate it.
+
+#### Phase 1B-c: Materialize and open any selected branch (`mb-z335`, `mb-2xq7`)
+
+- [ ] Resolve the ambiguous ref/path split after acquisition against local heads,
+  remote-tracking refs, tags, and full object IDs, longest matching prefix first.
+- [ ] Fetch only an explicitly requested missing remote ref within the selected-ref
+  bounds; distinguish missing, unauthorized, deleted, offline, and over-bound outcomes.
+- [ ] Create or reuse a detached materialization keyed by entry identity and full object
+  ID; verify its HEAD and containment before root publication.
+- [ ] Lease and release the materialization through server and inventory lifecycle; root
+  replacement joins old inventory and history work before reclamation.
+- [ ] Prove repository and non-default branch opens never alter `gitroot`,
+  `active_revision`, local branches, or the shared clean predicate.
 - [ ] Add URL-reduction goldens for every row of the variants table, both fragment and
   query tables, a slash-containing branch name, a tag rather than a branch, the
   `raw.githubusercontent.com/.../refs/heads/<branch>/...` spelling, a ref that is not
-  the pinned revision, a reserved namespace, and a pull-request URL that opens the
-  repository while naming the object it cannot yet render.
+  the pinned revision, a reserved namespace, and a pull-request URL whose provider
+  target is retained.
+- [ ] Add `cli-github-repo-open` and `cli-github-branch-open` goldens covering default,
+  non-default, slash-containing, cached-offline, unavailable, and concurrently leased
+  branches.
 
 ### Phase 2: Generic catalog, refresh, and cache management
 
@@ -1122,18 +1232,20 @@ it uses the same locks, state records, Git process boundary, and parity routes.
 | Phase | Depends on | Does not depend on | User-visible result |
 | --- | --- | --- | --- |
 | 1A format foundation | Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
-| 1B generic Git cache | 1A, untrusted-profile gate for serving, Git-status Phase 1 (`mb-u4mf`) for `is_clean` | GitHub API or schemas | Any supported clone URL opens or reuses one local read-only entry |
-| 2A provider foundation (`mb-jlon`) | 1B acquisition | Full catalog, chooser, purge | Provider jobs and selected-ref fetching for GitHub |
+| 1B-a generic Git cache | 1A, Git-status Phase 1 (`mb-u4mf`) for `is_clean` | GitHub, chooser, serving | Any supported clone URL publishes or reuses one pinned read-only entry |
+| 1B-b repository URL open | 1B-a, provider URL-reducer SDK (`mb-12cz`), untrusted-profile gate | Provider API or schemas | Any supported repository URL opens the pinned tree |
+| 1B-c selected branch (`mb-z335`, `mb-2xq7`) | 1B-b, selected-ref fetch bounds | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
+| 2A provider foundation (`mb-jlon`) | 1B-a acquisition; reuses 1B-c selected-ref mechanics where applicable | Full catalog, chooser, purge | Provider jobs and PR-specific ref fetching for GitHub |
 | 2 cache operations | 1B | Provider support | Generic list, inspect, refresh, and purge |
 | 3 chooser | 2 catalog | GitHub | Instant switching among cached repositories |
 | 4 large repositories | Measurements from 1B and real use | Provider support | Explicit bounded behavior for exceptional repository scale |
 
 Two dependencies leave this plan, and they leave in opposite directions.
 
-**Inbound, blocking 1B:** the content-trust chain (`mb-cun0` → `mb-vib1`) gates serving,
-and Git-status Phase 1 (`mb-u4mf`) owns the `is_clean` predicate.
-Neither depends on anything here, so both can run alongside Phase 0 and 1A rather than
-after them.
+**Inbound:** Git-status Phase 1 (`mb-u4mf`) owns the `is_clean` predicate and blocks
+publishing a trusted entry in 1B-a. The content-trust chain (`mb-cun0` → `mb-vib1`)
+blocks serving in 1B-b and 1B-c, but not format, acquisition, or materialization tests.
+Neither track depends on anything here, so both can run alongside Phase 0 and 1A.
 
 **Outbound, depending on the extracted Phase 2 foundation:**
 [the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) needs a
@@ -1177,6 +1289,10 @@ suite exercises the same acquisition path a user gets.
   migration, repair, and purge cannot race across processes.
 - **Git integration:** cached roots satisfy repository-root discovery, history, direct
   revisions, commit summaries, and bounded diff rendering before and after backfill.
+- **Branch materialization:** default and non-default branches, slash-containing names,
+  tags, and full object IDs resolve to immutable OIDs; leases reuse and release detached
+  worktrees; missing/offline refs fail honestly; no case moves `gitroot` or a local
+  branch.
 - **Root lifecycle:** replacing a served repository joins the old inventory and Git
   sessions, invalidates root-owned server and browser caches, and prevents work from the
   old root from publishing after the new root is visible.
@@ -1234,11 +1350,11 @@ Phase 1B is complete when:
 - `metab <any-common-repository-url>` publishes one validated entry under
   `~/.metabrowser/cache/repos/<uniquified-slug>/gitroot` and serves it with the
   untrusted profile;
-- a `/blob/<ref>/<path>` URL whose `<ref>` resolves to the pinned revision opens that
-  file, and `/tree/<ref>/<path>` opens that directory — a URL naming a file does not
-  land at the repository root;
-- a `<ref>` resolving to any other revision opens the repository at its pinned revision
-  and names both, rather than showing another revision’s content at that path;
+- a `/blob/<ref>/<path>` URL opens that file at the full object ID resolved from
+  `<ref>`, and `/tree/<ref>/<path>` opens that directory — a URL naming a file does not
+  land at the repository root or a different revision;
+- a non-default branch is served from a detached, leased materialization while the
+  published `gitroot`, `active_revision`, and local branches remain unchanged;
 - a branch name containing slashes resolves against the cloned ref list rather than
   being guessed at parse time;
 - repeating the command opens the cached root without clone, fetch, provider detection,
@@ -1251,8 +1367,8 @@ Phase 1B is complete when:
   truthful outcomes;
 - Files, Git history, direct revision, commit summary, and diff views work against the
   cached root under the same contracts as a local repository; and
-- no GitHub API, provider credential, provider schema, or GitHub-specific branch is
-  required to satisfy any criterion above.
+- no GitHub API, provider credential, or provider schema is required, and core contains
+  no GitHub-specific branch to satisfy any criterion above.
 
 ## References
 

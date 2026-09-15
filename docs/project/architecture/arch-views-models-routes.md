@@ -19,8 +19,9 @@ is selected            data
 ```
 
 - **Route** names the address space and the thing within it.
-  Owned by the shell; see
-  [Browser URL Grammar](../../architecture.md#browser-url-grammar).
+  Core routes are owned by the shell; installed domain plugins may own validated mounted
+  sub-routes through the same route map.
+  See [Browser URL Grammar](../../architecture.md#browser-url-grammar).
 - **Kind** is the classification a plugin claims, declared in its `manifest.toml`
   `[[kind]]` block. One kind, many views.
 - **Model** is the validated data a view receives.
@@ -110,6 +111,7 @@ the sources that produce them.
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
+| `/review/<provider>/<repository-key>/<change-key>[/<inner>]` | A hosted-review document and optional changed-file child | Proposed for v0.11.0 in `mb-xzj3` and `mb-81p5` |
 
 The shape after the route is always `<container address>/<inner path>`, which is the
 container contract written as a URL. The full grammar, including the `_mb_` query
@@ -128,6 +130,7 @@ reservation and its invariants, is in
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
+| A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
 | `/raw` | Bounded raw bytes for embedded media |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
