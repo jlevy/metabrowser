@@ -18,6 +18,12 @@ A placeholder that the server knows is provisional becomes a confident zero thre
 later; a structure the server rebuilds per request becomes a browser that never stops
 polling. Neither is visible from one side alone.
 
+This document describes the implemented mutable filesystem inventory.
+The planned immutable Git-tree source has no watcher, filesystem mtime, ignore state, or
+converging crawl; its entries are valid for a pinned tree object ID. The shared
+content-source and session boundary that keeps those semantics distinct is specified in
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
+
 The rule the whole design encodes is one sentence: **state proportional to the tree is
 built once and maintained incrementally, never rebuilt per request** — and its corollary
 on the client, **what is provisional stays visibly provisional.**
@@ -39,6 +45,9 @@ on the client, **what is provisional stays visibly provisional.**
   aim is to do less work, not to do it on more cores.
 - A general cache framework.
   Each derived structure states its own invalidation rule next to itself.
+- Treating immutable Git trees as watched filesystems.
+  They use object identity and bounded tree/blob reads, not invented filesystem facts or
+  delta events.
 - Persisting the index across restarts.
   It is rebuilt by crawling.
 - A client-side framework.

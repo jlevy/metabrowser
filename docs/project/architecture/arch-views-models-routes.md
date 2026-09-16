@@ -45,6 +45,10 @@ Filesystem-backed models reach these layers through the
 [Inventory Provider Contract](arch-inventory-provider.md).
 That boundary keeps routes, wire serializers, and views independent of the Python or fdu
 engine selected for the served-root session.
+The planned source boundary for attached filesystems and immutable Git revisions is in
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
+It keeps a session’s selected root independent of the shared Git object and provider
+stores.
 
 ## Kinds and their views
 
@@ -133,7 +137,7 @@ the sources that produce them.
 
 | Route | Selects | Status |
 | --- | --- | --- |
-| `/view/<path>` | Content in the served tree; `/view/` is the root | Implemented |
+| `/view/<path>` | Content in the active source session; `/view/` is the root | Filesystem-backed serving is implemented; immutable Git-tree subjects and `GitPath` identities are planned |
 | `/view/<container>/<inner>` | One entry inside a container file | Implemented |
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
@@ -149,16 +153,16 @@ reservation and its invariants, is in
 
 | Route | Serves |
 | --- | --- |
-| `/api/file` | The file or folder envelope: kind, views, content window |
-| `/api/tree` | Navigation subtrees. Resolves `types`, `recency`, `min_size`, and `include_ignored` over the inventory, returning only subtrees that contain a match and folder aggregates rolled up from those matches |
-| `/api/rollup` | Bounded directory rollups for Overview and the treemap |
-| `/api/recent` | Flat newest-first matching leaves. Resolves `window`, `types`, `min_size`, and `include_ignored` before ranking and the response cap; the browser clusters the complete returned leaf model |
-| `/api/activity`, `/api/stream` | Live inventory and activity events |
+| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window |
+| `/api/tree` | Navigation subtrees. `types` and `min_size` work for every source that supplies them; `recency` and `include_ignored` require those declared source capabilities and otherwise return `unsupported_for_subject` |
+| `/api/rollup` | Bounded directory rollups over the facts the active source truthfully supplies; a requested unavailable dimension returns `unsupported_for_subject` |
+| `/api/recent` | Flat newest-first matching leaves for sources with recency; unavailable for immutable Git trees rather than populated with fake mtimes |
+| `/api/activity`, `/api/stream` | Live inventory and activity events for sources with watcher/activity capabilities; unavailable for immutable Git trees |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
 | A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
-| `/raw` | Bounded raw bytes for embedded media |
+| `/raw` | Bounded raw bytes through the active source’s content reader; oversized content is refused before an unbounded object read |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
@@ -188,6 +192,7 @@ plugin discovery or static asset loading.
 
 | Declaration or SDK call | Owns | Arbitration and lifecycle | Bead |
 | --- | --- | --- | --- |
+| `SourceSession` / `SourceCapabilities`; `resolve_content`, `stat_content`, `read_content_window` | One active subject generation and opaque bounded content access | Session replacement joins the old generation; legacy `Path` helpers and hooks run only with `filesystem_path`; absent semantics return typed unsupported states | `mb-3bna`, `mb-tsdc` |
 | `RouterSpec` | Mounted HTTP prefix and trusted router factory | Reserved/duplicate prefixes fail; application lifespan awaits shutdown | `mb-xzj3` |
 | `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
 | `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through | `mb-12cz` |

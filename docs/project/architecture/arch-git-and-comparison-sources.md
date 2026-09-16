@@ -4,6 +4,9 @@
 `/api/git/` collection API, and the immutable-revision diff source.
 The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
+Worktree-free repository stores and immutable revision subjects are also designed only;
+see
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
 one renderer. [File Diff Format v1](file-diff-format/file-diff-format.md) defines what a
@@ -203,6 +206,44 @@ Linked worktrees work because discovery uses Git’s own resolution rather than 
 literal `.git` directory; anything reading per-worktree control files must resolve them
 through `git rev-parse --git-path` for the same reason.
 
+This exact-root gate remains correct for an attached filesystem subject.
+It is not the interface for a planned immutable revision subject.
+That source carries a trusted repository-store identity and full object ID, enumerates a
+Git tree directly, and never claims to be a filesystem working tree.
+
+### Planned Git command targets and revision sources
+
+`run_git` and `spawn_git_process` currently identify a repository only through `cwd`.
+The repository-store phase adds a closed trusted `GitCommandTarget` constructed by core:
+`AttachedWorktreeTarget` names an exact worktree plus Git directory, and
+`RepositoryStoreTarget` names one Metabrowser-owned worktree-free Git directory.
+The process boundary converts that handle into fixed arguments while continuing to scrub
+ambient repository environment variables.
+Caller-supplied paths do not become `GIT_DIR`, `GIT_WORK_TREE`, or environment
+overrides. Repository discovery, routes, history, refs, commit detail, comparisons, and
+Git diff adapters all accept the target explicitly.
+For a repository-store target, history and detail start from the subject’s pinned full
+object ID rather than ambient `HEAD`; refs are optional observations.
+
+The immutable content source resolves a full object ID to one tree, enumerates paths
+with NUL-framed `ls-tree` output, and reads bounded blobs through owned batch `cat-file`
+processes. One actor serializes each batch process, issues `info` before `contents`,
+enforces the declared size bound, drains the complete frame, and restarts the process
+after cancellation or framing failure.
+Implicit promisor fetch is disabled.
+Tree entries have Git mode, kind, size, and object ID; they do not invent filesystem
+mtimes, ignore state, ownership, or watcher events.
+Their `GitPath` identity is raw byte segments with a lossless route codec and separate
+display text; it never becomes a host filesystem path.
+Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
+remain ordinary blobs.
+
+Views pin the full object ID before reading.
+Ref refresh may make another object current for a later selection, but cannot change an
+active revision subject.
+Concurrent subjects over one repository store can therefore serve different branches
+without a checkout, index, or detached worktree.
+
 ## The collection API
 
 The read-only routes, registered as `GIT_ROUTES` in `metabrowser/git/routes.py`:
@@ -365,7 +406,9 @@ The short list a change should be checked against:
    read as options or revision expressions.
 3. Paths are bytes for identity and comparison; UTF-8 only for display, with `path_b64`
    when they differ.
-4. A Git-capable root is the repository’s exact working-tree root.
+4. A Git-capable filesystem subject is the repository’s exact working-tree root; an
+   immutable revision subject is a trusted repository-store handle plus full object ID,
+   never a materialized path.
 5. Absent repository states are HTTP 200 negative envelopes; only genuine failures are
    5xx, and Git’s stderr never reaches a body.
 6. Anything without an object id carries a `generation`, never an `id`, and is never
@@ -387,6 +430,8 @@ The short list a change should be checked against:
   addressed
 - [Repository library and open from a Git URL](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
   — the designed cache and provider work
+- [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md)
+  — the designed worktree-free store, immutable subjects, and attachment boundary
 - [Git status and working-tree diffs](../specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
   — the designed working-tree comparison source
 

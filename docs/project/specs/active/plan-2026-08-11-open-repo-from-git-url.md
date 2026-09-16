@@ -1,10 +1,11 @@
 # Feature: Repository Library and Open from a Git URL
 
-**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-14)
+**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-16)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Design review addressed; v0.11.0 implementation is release-gated
+**Status:** Shared-store design correction under review; v0.11.0 implementation is
+release-gated
 
 ## Vision
 
@@ -15,10 +16,11 @@ metab https://github.com/pallets/flask
 ```
 
 The first open acquires the repository into a versioned application cache.
-Later opens reuse a pinned, read-only working tree immediately, without consulting the
-network. The cache becomes a local repository library: durable enough to make commonly
-opened repositories feel local, but recoverable from its source when an entry is
-damaged.
+Later opens reuse immutable Git objects immediately, without consulting the network.
+The cache becomes a local repository library: durable enough to make commonly opened
+repositories feel local, but recoverable from its source when a store is damaged.
+It owns no shared checkout or index; each view pins a full object ID and reads its tree
+and blobs directly.
 
 The initial product slice is deliberately provider-neutral.
 A GitHub clone URL is an ordinary Git source in this phase.
@@ -46,6 +48,9 @@ contains the acquisition measurements and prior-art survey.
 Its 2026-08-26 addendum separates dated evidence from the current design after Git diff
 and revision navigation shipped; the 2026-09-14 refresh rebases the plan on the v0.10.0
 inventory, identity, lifecycle, and parity contracts.
+The 2026-09-16 correction replaces the pinned-checkout and detached-worktree proposal
+with the shared repository-subject and provider-mirror architecture in
+[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md).
 The
 [design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
 records the changes that produced this phased plan.
@@ -72,10 +77,10 @@ invalidating tests.
 The first v0.11.0 slice ends at offline-reusable views of any authorized GitHub
 repository, any branch that repository exposes, and any directly addressed pull request,
 not at the entire repository-library roadmap.
-It includes Phase 0, Phase 1A, generic acquisition, repository URL opening, detached
-branch materialization, the narrow provider job and selected-ref foundation in
-`mb-jlon`, the bounded `gh api` transport and auth work in `mb-p4sw`, and the common
-hosted-review and GitHub work in the
+It includes Phase 0, Phase 1A, generic acquisition, repository URL opening, immutable
+revision subjects, the narrow provider job and selected-ref foundation in `mb-jlon`, the
+bounded `gh api` transport and auth work in `mb-p4sw`, the broker-pinned Git credential
+bridge in `mb-s123`, and the common hosted-review and GitHub work in the
 [provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
 
 Full generic cache management, the in-app chooser, GitHub issues, stacked pull requests,
@@ -97,17 +102,15 @@ may land before it.
   URLs, and provider web URLs reduced to the repository they name.
 - Open what the URL pointed at, not merely the repository containing it — a `/blob/` URL
   opens that file, a line anchor selects those lines.
-- Resolve every branch the acquired remote exposes to a full object ID and serve a
-  bounded detached materialization without moving or dirtying the entry’s pinned
-  `gitroot`.
+- Resolve every branch the acquired remote exposes to a full object ID and serve its
+  immutable tree without a checkout, index, branch switch, or detached worktree.
 - Preserve the root argument as a string at the Click/Typer boundary, then classify it
   before any `Path` construction can rewrite URL syntax.
-- Derive one stable cache identity from the credential-free clone source, and reuse the
-  same entry on every later open.
-- Publish repositories under `~/.metabrowser/cache/repos/<uniquified-slug>/gitroot` only
-  after checkout and metadata validation complete.
-- Keep the browsed working tree pinned and read-only from Metabrowser’s perspective.
-  Fetching refs must not dirty or silently advance it.
+- Derive one stable source identity from the credential-free clone source, attach it to
+  one shared repository-store identity, and reuse that store on every later open.
+- Publish a worktree-free Git store only after its objects, refs, and metadata validate.
+- Keep user-owned working trees outside cache authority.
+  Fetching or provider refresh must never dirty them or silently advance their branches.
 - Make a cache hit an offline operation for everything the entry actually contains.
   Network work begins only for a missing entry or an explicit refresh — and for a
   blobless entry, file content is subject to the lazy-fetch policy Phase 0 chooses
@@ -129,8 +132,9 @@ may land before it.
 
 ## Non-Goals
 
-- Editing a cached working tree.
-  URL-opened cache roots never receive file-mutation capabilities.
+- Materializing a cached working tree.
+  URL-opened revision subjects receive no file-mutation capabilities and need no working
+  tree.
 - Automatically advancing a live checkout when a remote ref moves.
   Fetch, select, and promote are distinct operations.
 - Requiring provider support for the first usable cache.
@@ -145,7 +149,7 @@ may land before it.
 - Storing provider credentials in `config.yml`, repository records, or provider
   snapshots.
 - Treating a repository’s own `.metabrowser/` directory as trusted configuration.
-  Everything under `gitroot` is untrusted repository content.
+  Everything read from a repository subject is untrusted repository content.
 - Automatic LRU eviction before measurements establish a size and age policy.
   Explicit inspection and recoverable purge come first.
 - Supporting arbitrary Git transports.
@@ -162,15 +166,15 @@ The v0.10.0 release candidate establishes the implementation baseline for this p
   It already provides fixed arguments, bounded output, timeouts, concurrent stream
   draining, cancellation cleanup, repository-environment scrubbing, and typed failures.
 - `/api/git/log`, direct revision routes, commit detail, and Git-backed comparisons use
-  full object IDs and can operate against a cached checkout without new content models.
+  full object IDs; their Git command target must be generalized from `cwd` to a trusted
+  worktree or worktree-free repository handle.
 - The diff plugin renders File Diff Format rather than a provider response.
   A future PR view can therefore resolve provider refs to object IDs and reuse the same
   pipeline.
 - The inventory engine now crosses one sealed provider-neutral contract, with coherent
   paged reads, joined shutdown, and explicit lifecycle state.
-  A cached `gitroot` must enter and leave serving through the existing coordinator and
-  handle lifecycle; the cache must not create a second walker, watcher, or projection
-  cache.
+  The revision-content phase adds a sibling immutable content source rather than
+  pretending Git-tree entries have filesystem mtimes, ignore state, or watcher events.
 - API paths and browser URLs now use escaped inventory identities consistently.
   GitHub web-URL reduction must produce selections through that canonical codec rather
   than inventing a provider-specific path spelling.
@@ -223,9 +227,13 @@ mb-i57d  release v0.10.0 from main
            ├──► cache format and acquisition
            └──► mb-cun0  sandbox /raw, same-origin proof on /api
                     └──► mb-vib1  capability set and --untrusted profile
-                              └──► mb-ew38  repository URL open and offline reuse
-                                       └──► mb-z335  repository projection
-                                                └──► mb-2xq7  selected branch
+                              └──► mb-3bna  attached-filesystem source boundary
+                                       └──► mb-z335  immutable repository projection
+                                                └──► mb-ew38  repository URL open
+                                                         └──► mb-innz  reviewed URL-open PR
+                                                                  └──► mb-jlon  selected-ref jobs
+                                                                           └──► mb-bf94  reviewed job PR
+                                                                                    └──► mb-2xq7  selected branch
 ```
 
 Two consequences, both worth stating plainly rather than discovering during
@@ -250,9 +258,10 @@ The application home has four distinct ownership classes:
 | Surface | Owner | Mutability | Recovery rule |
 | --- | --- | --- | --- |
 | `config.yml` | User and application migration code | Durable and editable | Migrate losslessly; never discard unknown user settings |
-| Cache layout and repository identity | Core cache service | Rare writes | Validate, migrate if released data requires it, otherwise quarantine |
-| Git object database and `gitroot` | Core Git cache service | Objects and refs may grow; checkout stays pinned | Reacquire or rebuild outside a live entry |
-| Provider snapshots and manifests | Provider plugin through core storage APIs | Refreshable | Keep current, last-complete, one diagnostic predecessor, and explicit archival pins; reclaim only unreachable generations |
+| Cache layout, source identity, and repository-store identity | Core cache service | Rare writes | Validate, migrate if released data requires it, otherwise quarantine |
+| Shared repository store | Core Git cache service | Objects and Metabrowser-owned refs may grow; revision subjects are immutable | Reacquire missing objects or rebuild outside a live lease |
+| Source aliases and attachments | Core repository and provider services | Rare writes | Re-resolve from credential-free source or provider identity; never persist a local path in provider state |
+| Provider snapshots and manifests | Provider plugin through core storage APIs | Refreshable and repository-scoped | Keep current, last-complete, one diagnostic predecessor, and explicit archival pins; reclaim only unreachable generations |
 
 Core owns application-home resolution, atomic file publication, locks, safe cache paths,
 repository acquisition, Git refresh, and provider namespace allocation.
@@ -269,7 +278,7 @@ principal, is group/world accessible, or cannot be verified and repaired.
 An explicit permissive `METABROWSER_HOME` receives an actionable refusal rather than a
 warning followed by a private write.
 This rule does not prevent read-only browsing of an ordinary local path outside the
-application home.
+application home or attaching it to a provider mirror without modifying it.
 
 ### Lock order
 
@@ -277,20 +286,22 @@ Locks have disjoint scopes and one fixed order:
 
 1. the application-home lock is used only for layout migration and global enumeration or
    sweeps;
-2. an entry lock protects purge, selected-ref mutation, object-database work, and
-   detached-worktree ownership for one repository; and
-3. a provider/resource lock protects one binding, staged publication, current-pointer
+2. a source-alias lock protects alias creation and compare-and-swap repointing;
+3. repository-store locks, acquired in ascending `RepositoryStoreId` order, protect ref
+   publication, object import, maintenance, and reclamation; and
+4. a provider/resource lock protects one binding, staged publication, current-pointer
    update, or provider reclamation operation.
 
 No network or provider process runs while any lock is held.
-A job stages outside the locks, then acquires entry → provider/resource, revalidates its
-entry lease and authorization context, and publishes atomically.
+A job stages outside the locks, then acquires source-alias → ordered repository stores →
+provider/resource as required, revalidates its generations, expected object IDs, and
+authorization context, and publishes atomically.
 The application-home lock is never acquired while holding either narrower lock.
 Tests freeze this order and the concurrent refresh/read/purge/reclaim cases.
 
 ## Application Home and Cache Layout `f01`
 
-The first released layout is:
+The first released logical layout is:
 
 ```text
 ~/.metabrowser/
@@ -300,16 +311,28 @@ The first released layout is:
     ├── locks/
     ├── staging/
     ├── trash/
-    └── repos/
-        └── <uniquified-slug>/
-            ├── repository.yml
-            ├── state.yml
-            └── gitroot/
+    ├── sources/
+    │   └── <uniquified-slug>/
+    │       ├── source.yml
+    │       ├── state.yml
+    │       └── store-alias.yml
+    ├── repository-stores/
+    │   └── <store-key>/
+    │       ├── store.yml
+    │       ├── state.yml
+    │       └── repository.git/
+    ├── provider-bindings/
+    │   └── <source-key>/
+    └── provider-repositories/
+        └── <provider>/<instance-key>/<repository-key>/
 ```
 
-Provider directories do not appear in the initial cache implementation.
-A later phase may add `<entry>/providers/<provider-name>/` without changing the meaning
-of `repository.yml`, `state.yml`, or `gitroot`.
+The exact sharding and directory names remain a Phase 0 measurement decision, but the
+ownership is fixed: source aliases, shared Git stores, and stable provider repositories
+are siblings. Provider observations never live under a source entry, and the Git store
+contains no checkout.
+Later schemas may change a physical spelling before release; they may not collapse those
+owners.
 
 `METABROWSER_HOME` overrides the application home for tests and advanced operation.
 It is the only application-home override; Metabrowser has no cache-root setting today,
@@ -354,8 +377,8 @@ phase.
 The `f01` marker and SoftSchema contract versions solve different problems:
 
 - `f01` names application-home directory semantics and migration order.
-- A contract such as `com.github.jlevy.metabrowser.cache:RepositoryIdentity/v1` names
-  one YAML payload shape.
+- A contract such as `com.github.jlevy.metabrowser.cache:RepositorySource/v1` names one
+  YAML payload shape.
 - A provider-record change does not force an application-home migration when the old
   provider cache can be retained, converted under a released-data obligation, or
   refreshed.
@@ -412,7 +435,7 @@ that names the retained path.
 Retaining data is the right default here, but retention without a reclamation rule is
 how a cache silently becomes the largest directory in a home folder.
 Each of the three gets its rule in Phase 1A, when the directories are created, rather
-than in Phase 2 when someone notices the disk:
+than waiting for later catalog work after someone notices the disk:
 
 | Directory | Retained because | Reclaimed by |
 | --- | --- | --- |
@@ -430,15 +453,15 @@ an entry is quarantined is that Metabrowser could not establish what it is.
 Deleting it on a timer would discard exactly the cases that most need a human to look.
 What quarantine does owe the user is visibility, and Phase 1B is the first release that
 can produce one: whichever open or migration path quarantines an entry says so and names
-the retained path, so the directory is never a silent accumulation waiting for Phase 2’s
-`--repo-inspect` to reveal it.
+the retained path, so the directory is never a silent accumulation waiting for a later
+`--repo-inspect` command to reveal it.
 
-SoftSchema is the proposed record boundary.
-The design review established the required semantics against v0.7.0; Phase 1A now
-selects and reviews the exact first-party release it will ship.
-The current candidate is v0.8.1; the owner-confirmed `jlevy` exception removes the
-14-day wait, not the exact-release review.
-Runtime adoption uses a released package and a committed lock, not a Git checkout.
+SoftSchema is the record boundary.
+Hosted Review Phase 0C.1 selected, reviewed, and shipped the exact first-party release;
+Phase 1A reuses that locked dependency rather than choosing another version.
+The owner-confirmed `jlevy` exception removed the 14-day wait, not the exact-release
+review. Runtime adoption continues to use the released package and committed lock, not a
+Git checkout.
 
 ### Artifact profile and binding
 
@@ -498,7 +521,7 @@ Before `f01` ships, no speculative legacy reader is added.
 
 Provider snapshots are reacquirable, so a new writer normally leaves old immutable
 snapshots untouched and publishes a new manifest under the new contracts.
-Core repository identity and user config need a migration or a precise repair path
+Core source/store identity and user config need a migration or a precise repair path
 because they may be the only durable link to an unavailable source.
 
 ## Generic Repository Identity and Records
@@ -512,7 +535,7 @@ The directory combines a readable slug with a short digest:
 github-com--pallets--flask--7d5c1a2e4b90
 ```
 
-The full digest in `repository.yml` is authoritative.
+The full digest in `source.yml` is authoritative.
 If a path already contains a different digest, derivation extends the suffix
 deterministically. Claim and publication use no-replace semantics, so concurrent sources
 cannot alias or overwrite one another.
@@ -527,28 +550,48 @@ ambiguous option-like inputs rather than guessing whether they are presentation 
 or secrets.
 
 GitHub repository-root HTTPS URLs already work as clone URLs and receive no special
-canonicalization. A later GitHub binding may record proven aliases without changing or
-merging the generic cache identity.
-Automatic entry merging is out of scope because it could discard one separately acquired
-source.
+canonicalization. A later GitHub binding may prove that several conservative source IDs
+name one stable repository and attach them to one `RepositoryStoreId` without changing
+the source identities.
+Existing stores are never merged from owner/name text or by discarding independently
+acquired objects; stable opaque provider identity and complete object-format validation
+are required before an alias can change.
 
 ### Stable identity and mutable state are separate
 
-`repository.yml` is written during publication and does not change during ordinary open
-or refresh:
+`source.yml` is written during source publication and does not change during ordinary
+open or refresh:
 
 ```yaml
 softschema:
-  contract: com.github.jlevy.metabrowser.cache:RepositoryIdentity/v1
-  envelope: repository
+  contract: com.github.jlevy.metabrowser.cache:RepositorySource/v1
+  envelope: source
   status: enforced
-repository:
+source:
   id: sha256:<full-source-identity-digest>
   slug: github-com--pallets--flask--7d5c1a2e4b90
-  source:
-    display_url: https://github.com/pallets/flask
-    clone_url: https://github.com/pallets/flask
-    transport: https
+  display_url: https://github.com/pallets/flask
+  clone_url: https://github.com/pallets/flask
+  transport: https
+  created_at: "<RFC-3339 timestamp>"
+```
+
+`store-alias.yml` is a separately mutable, generation-checked attachment from that
+source to one internal repository store.
+A later verified provider binding may repoint the alias without rewriting `source.yml`;
+publication retains the old store until no other alias, provider revision, or lease
+reaches it.
+
+`store.yml` is immutable identity and acquisition metadata for the worktree-free Git
+database:
+
+```yaml
+softschema:
+  contract: com.github.jlevy.metabrowser.cache:RepositoryStore/v1
+  envelope: store
+  status: enforced
+store:
+  id: sha256:<internal-store-identity-digest>
   created_at: "<RFC-3339 timestamp>"
   acquisition:
     strategy: blobless
@@ -556,64 +599,59 @@ repository:
     object_format: sha1
 ```
 
-`state.yml` contains mutable cache state and is atomically replaced:
+The store’s `state.yml` contains mutable Git state and is atomically replaced:
 
 ```yaml
 softschema:
-  contract: com.github.jlevy.metabrowser.cache:RepositoryState/v1
+  contract: com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1
   envelope: state
   status: enforced
 state:
-  active_revision: <full-object-id>
   default_remote_ref: refs/remotes/origin/main
+  default_revision: <full-object-id>
   object_state: backfilling
-  last_opened_at: "<RFC-3339 timestamp>"
   last_fetch_at: null
-  pending_revision: null
   last_operation:
     kind: acquire
     outcome: succeeded
     at: "<RFC-3339 timestamp>"
 ```
 
-Separating the files keeps source identity immutable and prevents frequent
-`last_opened_at` writes from rewriting the record that decides which directory this is.
-Catalog scanning validates both files and reports a missing or mismatched pair as an
-incomplete entry.
+Separating source, alias, store identity, and store state prevents a moving ref, an
+open, or later provider resolution from rewriting the record that decides what a source
+is. Catalog scanning validates every referenced record and reports a missing or
+mismatched pair as an incomplete attachment or store.
 
-`last_opened_at` does mean that an otherwise offline, read-only cache hit still writes
-to disk, so that write must not be able to fail the open.
-A `state.yml` update that fails — read-only home, full disk, a lock held by another
-process — is logged and the open proceeds against the validated `gitroot`. The
-consequence of dropping it is a stale bookkeeping timestamp; the consequence of treating
-it as fatal is refusing to serve a repository that is present, valid, and pinned.
-Nothing in serving depends on `last_opened_at`, and the recency ordering it feeds is a
-Phase 3 chooser affordance, not a correctness input.
+Source recency is optional bookkeeping in the source’s `state.yml`. An otherwise
+offline, read-only cache hit may try to update `last_opened_at`, but that write must not
+be able to fail the open.
+A read-only home, full disk, or contended lock logs the dropped timestamp and proceeds
+against the validated store.
+Nothing in serving depends on recency; it is a Phase 3 chooser affordance, not a
+correctness input.
 
 This is a listed Phase 1B acceptance case, beside interrupted clone and unavailable
 network: a cache hit against an application home the process cannot write must still
 serve.
 
-### Pinned checkout
+### Worktree-free repository store
 
-`gitroot` is an ordinary checkout pinned to `active_revision`. Metabrowser never edits,
-stages, pulls, merges, resets, or switches it in place.
-The read-only guarantee is an ownership rule rather than blanket filesystem permissions,
-which would interfere with cleanup on some platforms.
+The repository store is a Git object database with Metabrowser-owned refs and no shared
+working tree or index.
+Metabrowser never needs `checkout`, `switch`, `reset`, or `worktree add` to serve
+repository content. A session selects a full object ID and reads its tree and blobs
+directly through an immutable content-source handle.
 
-A Git refresh may add objects and atomically move remote-tracking refs, but it does not
-change `gitroot` or `active_revision`. Selecting a newer revision constructs and
-validates a replacement in staging, then promotes it only when no live session serves
-the entry. A live session remains pinned to the root it opened.
+A Git refresh may add objects and atomically move private remote-observation refs, but
+it does not change an existing session descriptor.
+A live session remains pinned to the object ID it opened while another client refreshes
+or opens another branch.
 
-If an integrity check finds a dirty cached worktree, Metabrowser reports it as
-externally modified.
-It does not reset or absorb the changes.
-Rebuild and purge remain explicit.
+User-owned working trees remain ordinary filesystem subjects.
 The separate [Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md)
-defines the lossless status service and its `is_clean` predicate.
-Cache integrity should call that predicate rather than keep a second porcelain parser or
-a second definition of clean.
+owns their local change semantics.
+Provider activation and selected-ref fetching use the shared store and never reset,
+absorb, or borrow objects through persistent alternates from a user’s checkout.
 
 ## URL Resolution and Acquisition
 
@@ -676,26 +714,23 @@ request it could not honor.
 
 ### What a selection addresses
 
-`/view/<path>` addresses the tree currently owned by the inventory lifecycle;
+`/view/<path>` addresses the content source selected by the session;
 `/commit/<rev>[/<inner>]` addresses a change set.
-The v0.11 branch slice keeps that grammar and changes which immutable tree the session
-serves.
+The current source is a filesystem root.
+The v0.11 slice adds an immutable Git-tree source rather than changing `/view` into a
+checkout operation.
 
-After acquisition, selection resolution turns the requested ref into a full object ID.
-When that object is the pinned `active_revision`, the session serves `gitroot` directly.
-Otherwise the repository library creates or reuses a bounded detached worktree keyed by
-entry identity and object ID, verifies its HEAD and containment, and passes that root
-through the same inventory coordinator lifecycle as any other served root.
-The browser still uses `/view/<path>` because the session root itself is the selected
-revision; repository context names both the requested ref and resolved object ID so a
-copied URL never implies that a moving branch name is immutable.
+After acquisition, selection resolution turns the requested ref into a full object ID
+and creates a leased `{repository_store_id, full_object_id}` subject.
+Repository context names both the requested ref and resolved object ID so a copied URL
+never implies that a moving branch name is immutable.
+Directory listing uses `git ls-tree` semantics, bounded file reads use batched
+`git cat-file`, and history and diff operations receive the same trusted worktree-free
+Git command target.
 
-The materialization is a repository-owned transient projection, not another repository
-entry, a generic container cache, or a new active checkout.
-Creating, reusing, and releasing it runs under the entry lock; never changes
-`active_revision`; never creates or advances a local branch; disables submodule
-recursion and interactive Git behavior; and is reclaimed only after the last owning
-session or job releases it.
+The subject is a descriptor and lease, not a materialized tree.
+It never creates or advances a local branch, never owns an index, and can coexist with
+any number of other subjects over the same store.
 Missing objects may trigger one bounded fetch of the explicit selected ref.
 A cache hit with the object already present stays offline.
 Archive extraction remains owned by the archive plugin, and review anchors remain
@@ -843,16 +878,17 @@ origins, which would fork production and test logic — the thing
 `tbd guidelines golden-testing-guidelines` warns against most directly, and which would
 mean the acquisition path proved by CI was not the acquisition path users run.
 
-Acquisition publishes one complete entry:
+Acquisition publishes one complete store and source alias:
 
 ```text
 classify source
   -> derive identity and lock it
-  -> clone into same-filesystem staging
+  -> acquire a worktree-free Git database in same-filesystem staging
   -> resolve and pin HEAD
-  -> validate gitroot and both records
-  -> rename entry with no replacement
-  -> serve immediately
+  -> validate objects, refs, and records
+  -> publish the store with no replacement
+  -> create the source alias as the final visibility commit
+  -> serve an immutable revision subject immediately
   -> continue optional object backfill in background
 ```
 
@@ -870,13 +906,14 @@ reaping. See
 Every policy retains fixed arguments, no shell, bounded output, cancellation cleanup,
 and scrubbed repository-pinning environment variables.
 Acquisition also sets `stdin=DEVNULL`, disables terminal and credential-manager prompts,
-uses SSH batch mode, and disables submodule recursion, hooks, automatic maintenance,
-unsafe transports, and symlink materialization.
+uses SSH batch mode, creates stores with an empty Git template, and disables submodule
+recursion, hooks, automatic maintenance, unsafe transports, and unsafe symbolic-link
+traversal.
 
-A cache hit validates the entry and serves its existing `gitroot` without fetch,
+A cache hit validates the source and store and serves a full-OID subject without fetch,
 credential lookup, or background refresh.
 This rule is observable and tested.
-A failed backfill leaves the published entry usable and honestly marked partial; it does
+A failed backfill leaves the published store usable and honestly marked partial; it does
 not turn a successful open into a fatal error.
 
 ### Blobless acquisition and the offline guarantee
@@ -908,7 +945,7 @@ The options, in preference order:
    This needs its own floor row, since the option is recent — Phase 0 verifies the
    version.
 2. **Gate blobless acquisition on that floor** and fall back to full clone below it, so
-   there is never a published entry whose reads can reach the network unexpectedly.
+   there is never a published store whose reads can reach the network unexpectedly.
 3. **Accept lazy fetch, bound it, and rewrite the guarantee** to what is true: history
    and tree structure offline, file content per `object_state`.
 
@@ -945,8 +982,8 @@ The same fallback applies when a remote refuses a partial clone.
 
 Version detection degrades rather than refuses: an unparseable `git version` string is
 treated as below every floor, which selects the conservative full-clone path, and the
-detected string is recorded in `repository.yml` under `acquisition.git_version` so a
-later entry can be explained.
+detected string is recorded in `store.yml` under `acquisition.git_version` so a later
+entry can be explained.
 
 Separately from these capability floors, acquisition requires a Git release carrying the
 fixes for the known clone-time vulnerabilities in submodule handling and symlinked
@@ -957,7 +994,7 @@ table; it is not satisfied by 2.26 alone.
 
 ## Generic Cache Operations
 
-Phase 2 builds a catalog by scanning validated repository entries.
+Later catalog work scans validated source aliases and repository stores.
 Correctness does not depend on a central mutable database.
 An optional derived index may later improve a measured startup cost, but it must be
 disposable and reproducible from entry records.
@@ -972,14 +1009,15 @@ metab --repo-purge <identity-or-slug>
 ```
 
 Refresh fetches Git refs, retries object backfill, and reports its stage results.
-It has no provider stage in Phase 2. Provider plugins register refresh work only after
-the provider framework lands; a plugin failure can then be reported without changing a
-successful Git result.
+The initial generic operation has no provider stage.
+Provider plugins register refresh work only after the provider framework lands; a plugin
+failure can then be reported without changing a successful Git result.
 
-Purge begins as a dry run, resolves exactly one identity, refuses live entries, and
-moves the entry to recoverable trash before deletion.
-List and inspect report identity, source, active revision, object state, size, last
-open, last fetch, integrity, and any quarantine state.
+Purge begins as a dry run, resolves exactly one alias or store identity, refuses live
+leases, and moves only state no other alias or provider revision reaches to recoverable
+trash before deletion.
+List and inspect report source and store identities, selected revision, object state,
+size, last open, last fetch, integrity, attachments, and any quarantine state.
 
 ## Hosted Review and Provider Support Live in Their Own Plan
 
@@ -991,11 +1029,12 @@ That document and the
 record families, storage layout, provider port, activity projection, and view boundary.
 
 What stays here is the part the generic cache owes a provider, and it is deliberately
-small: a published entry with a stable identity, atomic publication, application-home
-locking, job progress and cancellation, and core-side Git ref fetching on request.
-Core allocates a provider namespace under an entry and does nothing else
+small: a stable source attachment, an optional shared repository store, atomic
+publication, application-home locking, job progress and cancellation, and core-side Git
+ref fetching on request.
+Core provides repository-store and provider-resource ports and does nothing else
 provider-specific — it does not import a provider schema, branch on a provider object
-kind, or let provider state affect generic identity, refresh, or purge.
+kind, or let provider state redefine generic source identity.
 
 The one thing that is not deferred is the boundary itself, which is recorded in
 [Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md): Git
@@ -1027,46 +1066,54 @@ containment checks.
 ## Implementation Coordinates
 
 The v0.10.0 code has one filesystem root, one Git process boundary, and one inventory
-lifecycle. The cache work extends those seams; it does not add parallel ways to run Git,
-walk a repository, or clear root-owned state.
+lifecycle. The cache work generalizes those seams to a typed content source and trusted
+Git command target; it does not add parallel ways to run Git or clear session-owned
+state.
 
 ### Existing files to change
 
 | File | Existing seam | Planned change |
 | --- | --- | --- |
-| `src/metabrowser/cli/main.py` | `_metab`, `_require_root` | Keep the root argument as `str |
-| `src/metabrowser/cli/serve.py` | `run_serve` | Resolve or acquire before importing the configured server, install the selected `RepositoryContext`, force the untrusted profile, and release an owned materialization on shutdown |
+| `src/metabrowser/cli/main.py` | `_metab`, `_require_root` | Keep the root argument as a string-or-null value until root classification; do not construct a `Path` first |
+| `src/metabrowser/cli/serve.py` | `run_serve` | Resolve or acquire before importing the configured server, install the selected repository subject, force the untrusted profile, and release its lease on shutdown |
 | `src/metabrowser/cli/show_cli.py` | `run_show` | Use the same resolver so `--show` and `--api` inspect the exact repository or branch production serving would open |
-| `src/metabrowser/git/process.py` | `run_git`, `spawn_git_process`, `terminate_git_process` | Add named read, acquisition, fetch, and materialization policies with `stdin=DEVNULL`, non-interactive environment controls, distinct time/output bounds, and typed cancellation; no second Git runner |
-| `src/metabrowser/paths_safe.py` | `_set_root_dir`, `register_root_callback` | Continue to be the single root publication signal; a materialized branch is set here only after its HEAD and containment checks pass |
-| `src/metabrowser/inventory_engine/coordinator.py` | `InventoryCoordinator.replace_root`, `close` | Keep replacement ordered: stop and join the old handle and relay, clear root-owned state, publish the new root, then permit reads |
-| `src/metabrowser/repository_context.py` | `RepositoryContext`, `discover_repository_context` | Separate provider-neutral source/ref/revision context from the current GitHub-only remote parser; accept validated cache context for detached worktrees without rediscovering identity from untrusted files |
-| `src/metabrowser/server.py` | `_lifespan`, route assembly | Register cache inspection routes, close repository jobs and materialization leases after history/inventory work joins, and expose only public-safe repository context |
+| `src/metabrowser/git/process.py` | `run_git`, `spawn_git_process`, `terminate_git_process` | Add `GitCommandTarget` plus named read, acquisition, fetch, and batch-object policies with `stdin=DEVNULL`, non-interactive environment controls, distinct time/output bounds, and typed cancellation; no second Git runner |
+| `src/metabrowser/paths_safe.py` | `_set_root_dir`, `register_root_callback` | Retain filesystem containment for attached roots; revision subjects resolve paths through the content source and never masquerade as local paths |
+| `src/metabrowser/inventory_engine/coordinator.py`, `contract.py` | `InventoryCoordinator.replace_root`, `InventoryBackend.open`, `InventoryEntry`, `close` | Generalize lifecycle to `SourceSession`; preserve the filesystem inventory and define a distinct immutable-tree navigation index rather than fabricating mtimes |
+| `src/metabrowser/repository_context.py` | `RepositoryContext`, `discover_repository_context` | Add `RepositorySubject`, attached-filesystem and Git-revision variants, and credential-free remote candidates; separate local path, source, store, and provider identities |
+| `src/metabrowser/server.py`, `view_routes.py`, `sse.py`, `tree.py` | lifecycle, file/raw/tree/rollup/container/KPress/event routes | Resolve the active source session and capability envelope instead of assuming one global `Path`; close jobs, readers, and leases after history/inventory work joins |
+| `src/metabrowser/plugin_api.py`, `plugin_loader/classify.py`, built-in sidekicks | path helpers, classification, data hooks | Add opaque bounded content-reader calls, retain filesystem-only path helpers, and capability-gate hooks that cannot operate on immutable content |
+| `src/metabrowser/git/repo.py`, `routes.py`, `history.py`, `detail.py`, `log.py`; `src/metabrowser/diff/adapters/git.py` | repository discovery, history, refs, detail, and diffs | Accept a validated command target and explicit immutable subject OID; never infer a store subject from ambient `HEAD` |
 
 ### New core files and callable boundaries
 
 | File | Key types and functions | Responsibility |
 | --- | --- | --- |
 | `src/metabrowser/home.py` | `application_home`, `ensure_home`, `validate_private_home` | Resolve `METABROWSER_HOME`, create owner-only layout paths, reject symlinked/foreign/permissive ancestors for remote content, and write `CACHEDIR.TAG` |
-| `src/metabrowser/cache/records.py` | `ApplicationConfig`, `CacheLayout`, `RepositoryIdentity`, `RepositoryState` | Strict Pydantic models and SoftSchema envelope bindings |
+| `src/metabrowser/cache/records.py` | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` | Strict Pydantic models and SoftSchema envelope bindings |
 | `src/metabrowser/cache/layout.py` | `read_layout`, `migrate_layout`, `LAYOUT_FORMAT` | Fail closed on future formats and run ordered migrations |
-| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `entry_lock`, `provider_resource_lock` | Bounded reads, owner-only files, same-filesystem publication, fixed home → entry → resource order, and process-safe locking |
-| `src/metabrowser/cache/identity.py` | `normalize_git_source`, `source_identity`, `cache_slug` | Credential-free canonical identity and collision verification |
+| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock` | Bounded reads, owner-only files, same-filesystem publication, fixed home → alias → ordered stores → resource order, and process-safe locking |
+| `src/metabrowser/cache/identity.py` | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` | Credential-free source identity, stable internal store identity, deterministic provider-identity store derivation, aliasing, and collision verification |
 | `src/metabrowser/cache/urls.py` | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` | Distinguish local paths, Git sources, and registered provider web URLs before constructing a `Path`; arbitrate declared reducer claims and terminal rejection; keep provider-specific syntax behind reducers |
-| `src/metabrowser/cache/acquire.py` | `acquire_repository`, `validate_staging_entry`, `publish_entry` | Clone into staging, pin the default revision, validate, and atomically publish one entry |
+| `src/metabrowser/cache/acquire.py` | `acquire_repository`, `validate_staging_store`, `publish_store`, `publish_source_alias` | Acquire and publish a validated worktree-free store, then create the source alias as the final atomic visibility commit |
 | `src/metabrowser/cache/selection.py` | `resolve_selection`, `resolve_ref_path_candidates` | Resolve slash-containing branch/tag/path candidates against local and remote-tracking refs and return either a full object ID or a typed request for one explicit missing ref; performs no network work |
-| `src/metabrowser/cache/materialize.py` | `MaterializationLease`, `acquire_materialization`, `release_materialization`, `reclaim_materializations` | Create or reuse bounded detached worktrees keyed by entry and object ID without changing `gitroot` or a local branch |
-| `src/metabrowser/cache/service.py` | `RepositoryOpenTarget`, `resolve_open_target`, `close_open_target` | Orchestrate parse, acquire/reuse, selection, materialization, trust profile, and initial browser path for CLI and later chooser callers |
-| `src/metabrowser/cache/jobs.py` | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `close_all` | Own bounded network fetch/prune for explicit selected refs plus provider-neutral progress, cancellation, and stage outcomes used later by provider plugins |
-| `src/metabrowser/cache/routes.py` | `api_cache_layout`, `api_cache_entries`, `api_cache_entry`, `api_repository_jobs` | Read-only logical-state projections for CLI parity; acquisition remains a CLI action, not a write API |
-| `src/metabrowser/cache/reclaim.py` | `reclaim_staging`, `reclaim_trash`, `reclaim_materializations` | Briefly enumerate under the home lock, then recover interrupted staging and release unreachable repository-owned worktrees under entry locks while honoring leases |
+| `src/metabrowser/content_source.py` | `SourceSession`, `SourceCapabilities`, `ContentSource`, `ContentHandle`, `ContentEntry`, `list_directory`, `read_window`, `close` | Define one generation-owned source session for attached filesystems and immutable revisions without fabricating filesystem facts |
+| `src/metabrowser/git/tree_source.py` | `GitPath`, `GitTreeSource`, `resolve_tree`, `list_tree`, `read_blob`, batch-reader actor lifecycle | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs directly from the shared store |
+| `src/metabrowser/provider_resources/models.py` | `AuthorizationContextRef`, `authorization_context_key` | Move the non-secret context record and its one canonical key function out of the hosted-review plugin before core consumes them; `mb-s0gv` later moves the remaining neutral provider records |
+| `src/metabrowser/plugin_api.py` | opaque `GitFetchCredentialLease`; `RepositoryObjectJobPort.request_selected_refs`, `provider_fetch_authorization_context` | Define the public opaque registry handle; validate an `AuthorizationContextRef`, derive its canonical key, and map the record once to an internal `ProviderPrincipal`; and let trusted provider plugins pass the handle without importing Git internals |
+| `src/metabrowser/git/process.py` | `GitCommandTarget`, `run_git`, `spawn_git_process`, askpass bridge | Keep one Git subprocess boundary; in Phase 3A, project a validated broker credential under the environment, configuration, and prompt-binding isolation of the repository-source architecture without exposing its secret |
+| `src/metabrowser/cache/repository_store.py` | `FetchAuthorizationContext`, `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` | Derive deterministic provider store IDs, isolate fetches by source and closed non-secret auth context, import staged objects, compare-and-swap refs and aliases, and protect leased and durable revisions |
+| `src/metabrowser/cache/service.py` | `RepositoryOpenTarget`, `resolve_open_target`, `close_open_target` | Orchestrate parse, acquire/reuse, selection, immutable subject creation, trust profile, and initial browser path for CLI and later chooser callers |
+| `src/metabrowser/cache/jobs.py` | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`, `close_all` | Own bounded network fetch/prune for explicit selected refs plus provider-neutral progress, cancellation, the lease registry, per-request context/lease/source validation before job lookup, and stage outcomes used later by provider plugins |
+| `src/metabrowser/cache/routes.py` | `api_cache_layout`, `api_cache_sources`, `api_cache_source`, `api_cache_stores`, `api_repository_jobs` | Read-only logical-state projections for CLI parity; acquisition remains a CLI action, not a write API |
+| `src/metabrowser/cache/reclaim.py` | `reclaim_staging`, `reclaim_trash`, `reclaim_repository_objects` | Briefly enumerate under the home lock, then recover interrupted staging and reclaim unreachable objects under store locks while honoring revision and provider leases |
 
-`RepositoryOpenTarget` contains the published entry identity, resolved root, requested
-ref, full resolved object ID, initial logical path, optional line selection, optional
-provider target, trust profile, and an optional materialization lease.
-It never contains a provider response or credential.
+`RepositoryOpenTarget` contains the source and repository-store identities, immutable or
+filesystem subject, requested ref, full resolved object ID when applicable, initial
+logical path, optional line selection, optional provider target, trust profile, and a
+subject lease. It never contains a provider response or credential.
 The server receives this value before startup; a future chooser may produce the same
-value and pass its root to `InventoryCoordinator.replace_root`.
+value and pass its subject to the source-session lifecycle.
 
 GitHub URL syntax is implemented in the GitHub provider plugin, not in `cache/urls.py`.
 The core dispatcher asks installed, trusted provider reducers for an ordinary clone
@@ -1079,7 +1126,7 @@ The provider plan names the manifest and loader changes that register this reduc
 | --- | --- |
 | Formats, permissions, migration, identity, publication | `tests/test_cache_records.py`, `tests/test_cache_layout.py`, `tests/test_cache_permissions.py`, `tests/test_cache_identity.py`, `tests/test_cache_acquire.py` |
 | URL and ref selection | `tests/test_cache_urls.py`, `tests/test_cache_selection.py`, GitHub reducer tests in the provider plugin |
-| Detached branch lifecycle | `tests/test_cache_materialize.py`, `tests/test_cache_service.py`, root-replacement cases in `tests/test_inventory_contract.py` |
+| Immutable revision lifecycle | `tests/test_git_tree_source.py`, `tests/test_cache_repository_store.py`, `tests/test_cache_service.py`, subject-replacement cases in `tests/test_inventory_contract.py` |
 | CLI behavior | `tests/golden/cli-cache-layout.tryscript.md`, `cli-cache-acquire.tryscript.md`, `cli-github-repo-open.tryscript.md`, `cli-github-branch-open.tryscript.md` |
 | Registered surfaces | `devtools/check_parity.py`, `docs/project/architecture/arch-views-models-routes.md`, `tests/test_views_models_routes.py` |
 | Installed artifact | `tests/test_distribution_policy.py` plus the existing isolated-wheel smoke test in `make verify` |
@@ -1140,25 +1187,26 @@ that already exist costs more than building it first.
 - [ ] Adopt the exact released SoftSchema package after dependency and lock review;
   verify the `frontmatter-format` minimum and artifact hashes against released package
   metadata; record its `jlevy` first-party exemption and reviewed predecessor in
-  *Audited First-Party Exceptions*; register the config, layout, repository identity,
-  and repository state contracts.
+  *Audited First-Party Exceptions*; register the config, layout, repository-source,
+  repository-store, and store-state contracts.
 - [ ] Package deterministic compiled schemas and add compile-drift, corpus-validation,
   schema-inventory, and installed-wheel checks.
 - [ ] Add atomic YAML reads/writes, application-home locking, quarantine, and
   recoverable-trash primitives without cloning or serving a URL.
 - [ ] Enforce owner-only application-home paths (`mb-xa0p`) and refuse remote writes
   through symlinked, foreign-owned, or permissive cache ancestors.
-- [ ] Freeze the lock hierarchy: home for layout/global enumeration, entry for
-  repository mutation and leases, then provider/resource for provider publication; never
-  hold one across network work.
+- [ ] Freeze the lock hierarchy: home for layout/global enumeration, source alias for
+  alias publication, repository stores in ascending ID order for ref/object publication
+  and leases, then provider/resource for provider publication; never hold one across
+  network work.
 - [ ] Write `CACHEDIR.TAG` when the cache root is created, and add the startup
   `staging/`/`trash/` reclamation sweep, so no released phase accumulates unreclaimed or
   backed-up cache data.
 - [ ] Prove config preserves unknown settings while machine records reject unknown
   fields and cache-controlled schema paths cannot redirect validation.
-- [ ] Add the three read routes — `/api/cache/layout`, `/api/cache/entries`, and
-  `/api/cache/entry/{slug}` — projecting the records above, and pin them with a golden
-  through `metab --api`.
+- [ ] Add the read routes `/api/cache/layout`, `/api/cache/sources`,
+  `/api/cache/source/{slug}`, and `/api/cache/stores`, projecting the records above, and
+  pin them with a golden through `metab --api`.
 
 That last item is the one most likely to look like it belongs in a later phase, and it
 does not.
@@ -1179,22 +1227,25 @@ See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 
 ### Phase 1B: Generic Git cache and repository URL open
 
-This phase lands in three additive slices.
+This phase lands in five additive slices.
 Each can merge with its own records, routes, goldens, and recovery behavior before the
 next slice begins.
 
-#### Phase 1B-a: Acquire and reuse a pinned repository (`mb-h51g`, `mb-dg00`)
+#### Phase 1B-a: Acquire and reuse a shared repository store (`mb-h51g`, `mb-dg00`)
 
 - [ ] Add conservative source normalization, full identity digest, readable uniquified
-  slug, collision verification, and per-source locking.
+  slug, collision verification, and source-alias locking.
 - [ ] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
   environment controls, and explicit acquisition/background policies.
 - [ ] Enforce the acquisition, blobless, and `git backfill` floors from
   [Git version gates](#git-version-gates); select full clone before publication when any
   is unmet, and return a typed `unsupported_git_version` state below the acquisition
   floor.
-- [ ] Clone to same-filesystem staging, resolve and pin HEAD, validate records and
-  checkout, and publish with no replacement.
+- [ ] Acquire a worktree-free Git database in same-filesystem staging, resolve and pin
+  the default full object ID, and validate records, objects, and refs.
+  Publish the immutable store first; atomically create the source alias last as the
+  visibility commit. Reclaim or quarantine a completed orphan store after interruption
+  between the commits.
 - [ ] Reuse a valid cache hit without network access, provider detection, or credential
   lookup, including against an application home the process cannot write.
 - [ ] Start measured object backfill only after serving; persist honest partial,
@@ -1207,13 +1258,53 @@ next slice begins.
   interrupted clone, read-only application home, unsupported Git version, and repair
   guidance.
 
-Acquisition staging and publication do not depend on the Git-status `is_clean`
-predicate: Metabrowser creates that checkout itself and validates the staged tree before
-publication. Serving a cached entry and later replacement, repair, or purge do depend on
-`mb-u4mf`, because those paths must detect external modification without resetting user
-data.
+Acquisition staging and publication do not depend on the Git-status `is_clean` predicate
+because the store has no working tree.
+Git-status remains relevant only to an attached user filesystem subject; store
+replacement, repair, and purge use object, ref, record, and lease validation instead.
 
-#### Phase 1B-b: Open repository and hosted web URLs (`mb-12cz`, `mb-ew38`)
+#### Phase 1B-b: Introduce the content-source boundary (`mb-3bna`, `mb-tsdc`)
+
+- [ ] Add `RepositorySubject`, `SourceSession`, `SourceCapabilities`, `ContentHandle`,
+  and `ContentSource`, with one active attached-filesystem subject per server/browser
+  session and generation-keyed replacement.
+- [ ] Generalize inventory coordination, file/raw/tree/container delivery,
+  classification, KPress, events, route caches, and plugin dispatch without changing
+  filesystem behavior.
+- [ ] Add bounded content-reader plugin calls.
+  Keep `resolve_path` and `served_root` filesystem-only and capability-gate legacy hooks
+  on a non-filesystem subject.
+- [ ] Return typed unsupported capability results for recency, ignore state, watchers,
+  activity, and mutation rather than fabricating values.
+- [ ] Update built-in binary, structured, agent-log, diff, image, and Markdown hooks,
+  route parity, and goldens; independently review and publish through `mb-tsdc`.
+
+#### Phase 1B-c: Serve immutable Git revisions (`mb-z335`, `mb-hoae`)
+
+- [ ] Add `AttachedWorktreeTarget` and `RepositoryStoreTarget` to the one Git process
+  boundary, preserving fixed arguments and ambient-environment scrubbing.
+- [ ] Pass the target and exact subject OID through repository discovery, history, refs,
+  commit detail, comparisons, and Git diff adapters; do not infer immutable content from
+  ambient `HEAD`.
+- [ ] Define byte-segment `GitPath` identity and its lossless URL/display codec; use it
+  across tree/file routes, diffs, anchors, and provider selections without constructing
+  a host `Path`.
+- [ ] Enumerate byte-safe full-OID trees and read bounded blobs through owned batch Git
+  reader actors. Preflight size, serialize requests, drain frames, and restart after
+  cancellation or protocol failure; implicit promisor fetch is disabled.
+- [ ] Create or reuse a `GitRevisionSubject` keyed by repository-store identity and full
+  object ID; validate tree availability before subject publication.
+- [ ] Hold a cross-process shared maintenance lock for each live subject and durable
+  private refs for offline-promised OIDs; GC, repack, and reclamation require the
+  exclusive lock.
+- [ ] Define symlink, gitlink, LFS-pointer, oversized-blob, promisor-miss,
+  invalid-UTF-8, and newline-name behavior and pin each with focused tests.
+- [ ] Prove two processes share one object store while browsing different OIDs without a
+  checkout, index, local branch, or working-tree mutation.
+- [ ] Independently review and publish through `mb-hoae` before any URL route claims it
+  can serve a repository.
+
+#### Phase 2A: Open repository and hosted web URLs (`mb-12cz`, `mb-ew38`, `mb-innz`)
 
 - [ ] Add the trusted installed-plugin `ProviderUrlReducer` registration point; keep
   operator-directory plugins JavaScript-only and keep provider syntax out of cache
@@ -1225,25 +1316,79 @@ data.
 - [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
   variants table, line and column anchors, `?plain=1`, dropped tracking and display
   parameters, reserved-namespace refusal, and configurable Enterprise hosts.
-- [ ] Open a repository-root URL through `resolve_open_target`, reuse `gitroot` without
-  a network or provider credential lookup, and pass only the resolved local root to the
-  existing server and inspection paths.
+- [ ] Open a repository-root URL through `resolve_open_target`, reuse the repository
+  store without a network or provider credential lookup, and pass one immutable subject
+  to server and inspection paths.
 - [ ] Preserve a pull-request number as an optional provider target even before a
   provider adapter can hydrate it.
+- [ ] Independently review and publish the URL-open slice through `mb-innz` on the exact
+  green immutable-source head.
 
-#### Phase 1B-c: Materialize and open any selected branch (`mb-z335`, `mb-2xq7`)
+#### Phase 2B: Provider jobs and selected refs (`mb-jlon`, `mb-bf94`)
+
+- [ ] Keep `selection.py` pure.
+  Put `fetch_selected_ref`, `request_ref_fetch`, progress, cancellation, and typed stage
+  outcomes in `jobs.py` behind the provider-neutral object job port.
+- [ ] Key jobs by store, source, closed `FetchAuthorizationContext`, fetch-policy
+  version, and exact refspec.
+  Anonymous and proven provider-principal contexts may coalesce only on exact key
+  equality; unknown SSH or credential-helper principals use a fresh unshareable context.
+- [ ] First move `AuthorizationContextRef` and `authorization_context_key` from
+  `builtin_plugins/hosted_review/models.py` into `provider_resources/models.py`, keeping
+  one key implementation, so core never imports a domain plugin.
+- [ ] Make `ProviderPrincipal` carry provider kind, instance, stable opaque principal,
+  optional visibility-partition digest, and the derived authorization-context key.
+  At the single `RepositoryObjectJobPort` boundary, validate an
+  `AuthorizationContextRef` mode and field combination, derive its key, map it once to
+  the internal variant, and reject an invalid record before job lookup; never accept a
+  caller-supplied key.
+  Provider or visibility-partition differences never coalesce merely because host,
+  principal, source, and refspec match.
+- [ ] Keep job identity separate from credential execution.
+  Define `GitFetchCredentialLease` as an unforgeable, process-local, non-serializable
+  handle into a core `GitFetchCredentialLeaseRegistry`, and let
+  `RepositoryObjectJobPort.request_selected_refs` accept it only alongside the matching
+  non-secret context. `validate_git_fetch_credential_lease` reads provider, instance,
+  stable principal, authorization-context key, visibility partition, expiry, revocation,
+  cancellation generation, and exact credential-free HTTPS sources from the registry
+  entry, never from the handle, for every request before job lookup, including one that
+  joins in-flight work.
+  A provider-principal Git run uses the starting request’s lease; when that request
+  cancels or its lease is revoked, core restarts the run once under another attached
+  live lease for an equal authorization-context key or fails the remaining requests with
+  a typed error. Leases authorize a context key, not a broker session.
+  Prove the protocol with a test issuer.
+  Until the Phase 3A askpass projection exists, a provider-principal request with a
+  valid lease fails with `git_credentials_unavailable` before Git starts, so no ambient
+  credential can be used.
+  The broker and projection arrive in Phase 3A under the isolation rules in
+  [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-jobs-authorization-and-credentials).
+- [ ] Fetch into an isolated temporary repository or, for jobs without provider
+  credentials, a quarantine with no lock held; persist a non-secret `StagedFetch`, then
+  validate object format, expected full OID, source, auth-context kind, refspec, and
+  base generation before compare-and-swap publication under the repository-store lock.
+- [ ] Keep provider schemas, `gh`, auth, catalog, chooser, purge, and automatic eviction
+  out of this phase. Never mutate an attached checkout or treat its remote as shared
+  authority.
+- [ ] Prove cancellation, same-key coalescing, unknown-principal non-coalescing,
+  force-push/no-regression races, fork-source isolation, attached-checkout non-mutation,
+  forged or unregistered handles, context/lease mismatch, expiry, revocation, and
+  cancellation for starting and joining requests, and the pre-Git refusal of
+  provider-principal work with focused tests and goldens.
+  Assert that the opaque capability, ref names, staged records, and diagnostics contain
+  no secret.
+- [ ] Independently review and publish through `mb-bf94` on the exact green Phase 2A
+  head before selected-branch or PR work consumes the service.
+
+#### Phase 2C: Open any selected branch as an immutable revision (`mb-2xq7`, `mb-9aku`)
 
 - [ ] Resolve the ambiguous ref/path split after acquisition against local heads,
   remote-tracking refs, tags, and full object IDs, longest matching prefix first.
 - [ ] Have `selection.py` return a typed request for an explicitly missing remote ref;
   `jobs.py` owns the bounded network fetch and distinguishes missing, unauthorized,
   deleted, offline, and over-bound outcomes.
-- [ ] Create or reuse a detached materialization keyed by entry identity and full object
-  ID; verify its HEAD and containment before root publication.
-- [ ] Lease and release the materialization through server and inventory lifecycle; root
-  replacement joins old inventory and history work before reclamation.
-- [ ] Prove repository and non-default branch opens never alter `gitroot`,
-  `active_revision`, local branches, or the shared clean predicate.
+- [ ] Reuse the already published `GitRevisionSubject`; this slice adds moving-ref
+  selection and bounded missing-ref acquisition, not another content representation.
 - [ ] Add URL-reduction goldens for every row of the variants table, both fragment and
   query tables, a slash-containing branch name, a tag rather than a branch, the
   `raw.githubusercontent.com/.../refs/heads/<branch>/...` spelling, a ref that is not
@@ -1252,27 +1397,26 @@ data.
 - [ ] Add `cli-github-repo-open` and `cli-github-branch-open` goldens covering default,
   non-default, slash-containing, cached-offline, unavailable, and concurrently leased
   branches.
+- [ ] Independently review and publish selected-branch integration through `mb-9aku` on
+  the exact green provider-job head.
 
-### Phase 2: Generic catalog, refresh, and cache management
+### Later: Generic catalog, refresh, and cache management
 
-`mb-jlon` extracts the provider-facing job lifecycle and selected-ref fetching from this
-phase for v0.11.0. It may land before the catalog and management operations below.
-`selection.py` stays pure and resolves candidates; `jobs.py` owns `fetch_selected_ref`,
-the bounded Git network request, cancellation, and outcome.
-The job uses the same entry locks, state records, Git process boundary, and parity
-routes, and holds no lock while the network process runs.
+Phase 2B ships the provider-facing job lifecycle and selected-ref fetching needed for
+v0.11.0. The operations below build on that service but remain outside the initial
+vertical slice.
 
 - [ ] Scan validated identity/state pairs into one provider-neutral catalog.
 - [ ] Add list, inspect, Git-only refresh, repair diagnostics, and recoverable purge.
-- [ ] Fetch and prune refs without changing `gitroot`; stage promotion separately and
-  refuse to replace a live root.
+- [ ] Fetch and prune Metabrowser-owned refs without changing an existing subject;
+  publish only verified ref/object pairs and retain objects leased by live subjects.
 - [ ] Add coordinated job progress, cancellation, stage outcomes, and process-safe races
   among open, refresh, promote, repair, and purge.
 - [ ] Add size accounting, including quarantined and staged bytes; select no automatic
   eviction policy until measured usage justifies one.
   `CACHEDIR.TAG` and the reclamation sweep already landed in Phase 1A.
 
-### Phase 3: Repository chooser and session switching
+### Later: Repository chooser and session switching
 
 - [ ] Add a chooser over the generic catalog with recent, favorite, offline, partial,
   dirty, and refresh states.
@@ -1285,7 +1429,7 @@ routes, and holds no lock while the network process runs.
 - [ ] Measure warm-cache first paint and choose eager, prefetched, or on-demand asset
   tiers from observed cost.
 
-### Phase 4: Measured very-large-repository support
+### Later: Measured very-large-repository support
 
 - [ ] Revisit shallow plus progressive deepening only for repositories whose measured
   acquisition cost justifies the added state model.
@@ -1299,43 +1443,42 @@ routes, and holds no lock while the network process runs.
 | --- | --- | --- | --- |
 | v0.11 start (`mb-xxhi`) | v0.10.0 release (`mb-i57d`) | Design and review | Implementation starts from the released `main` commit |
 | 1A format foundation | Release gate, Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
-| 1B-a generic Git cache | 1A | Git-status clean predicate, GitHub, chooser, serving | Any supported clone URL publishes or reuses one pinned read-only entry |
-| 1B-b repository URL open | 1B-a, provider URL-reducer SDK (`mb-12cz`), Git-status Phase 1 (`mb-u4mf`), untrusted-profile gate | Provider API or schemas | Any supported repository URL opens the pinned tree |
-| 1B-c selected branch (`mb-z335`, `mb-2xq7`) | 1B-b, provider job/ref fetch owner (`mb-jlon`) | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
-| 2A provider foundation (`mb-jlon`) | 1B-a acquisition | Full catalog, chooser, purge | Provider jobs and the selected-ref fetch used by 1B-c and GitHub |
-| 2 cache operations | 1B | Provider support | Generic list, inspect, refresh, and purge |
-| 3 chooser | 2 catalog | GitHub | Instant switching among cached repositories |
-| 4 large repositories | Measurements from 1B and real use | Provider support | Explicit bounded behavior for exceptional repository scale |
+| 1B-a generic Git cache | 1A | Git-status clean predicate, GitHub, chooser, serving | Any supported clone URL publishes or reuses one shared worktree-free store |
+| 1B-b source boundary (`mb-3bna`, `mb-tsdc`) | 1B-a | GitHub, provider API, immutable Git content | Filesystem serving runs through one capability-aware source session |
+| 1B-c immutable source (`mb-z335`, `mb-hoae`) | 1B-b | GitHub, provider API, chooser | Concurrent full-OID trees and blobs open without a checkout or shared index |
+| 2A repository URL open (`mb-12cz`, `mb-ew38`, `mb-innz`) | 1B-c, provider URL-reducer SDK, untrusted-profile gate | Provider API or schemas | Any supported repository URL opens an immutable revision subject |
+| 2B provider-job foundation (`mb-jlon`, `mb-bf94`) | Green 1B-a acquisition and 2A URL-open PRs | Full catalog, chooser, purge | Independently reviewed provider jobs and selected-ref fetching for branches and GitHub |
+| 2C selected branch (`mb-2xq7`, `mb-9aku`) | Green 2B provider-job PR | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
+| Later cache operations | Phase 2B jobs | Provider support | Generic list, inspect, refresh, and purge |
+| Later chooser | Generic catalog | GitHub | Instant switching among cached repositories |
+| Later large repositories | Measurements from 1B and real use | Provider support | Explicit bounded behavior for exceptional repository scale |
 
 Two dependencies leave this plan, and they leave in opposite directions.
 
 **Inbound:** the release gate (`mb-i57d` → `mb-xxhi`) blocks every v0.11 implementation
-bead so work begins from released `main`. Git-status Phase 1 (`mb-u4mf`) owns the
-`is_clean` predicate and blocks serving, replacement, repair, and purge, but not
-acquisition staging and publication in 1B-a. The content-trust chain (`mb-cun0` →
-`mb-vib1`) blocks serving in 1B-b and 1B-c, but not format, acquisition, or
-materialization tests.
+bead so work begins from released `main`. Git-status Phase 1 (`mb-u4mf`) owns local
+working-tree semantics but does not gate integrity or serving of the worktree-free
+repository store. The content-trust chain (`mb-cun0` → `mb-vib1`) blocks URL serving in
+2A and 2C, but not format, acquisition, or immutable-source tests.
 Those tracks can proceed independently after the release gate.
 
-**Outbound, depending on the extracted Phase 2 foundation:**
+**Outbound, depending on the extracted Phase 2B selected-ref foundation:**
 [the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) needs a
-published entry with a stable identity, atomic publication, the documented lock
-hierarchy, owner-only storage, job progress and cancellation, and core-side ref
-fetching. It does **not** need the catalog, the chooser, purge, or size accounting.
-That extraction is now `mb-jlon`; the full generic catalog and management phase remains
-`mb-0ybg` and no longer blocks GitHub acquisition.
+stable source attachment, shared repository-store service when content is requested,
+atomic publication, the documented lock hierarchy, owner-only storage, job progress and
+cancellation, and core-side ref fetching.
+Provider metadata for a user-owned checkout does **not** require a published Git store,
+catalog, chooser, purge, or size accounting.
+That extracted Phase 2B service is `mb-jlon`; the full generic catalog and management
+phase remains `mb-0ybg` and no longer blocks GitHub acquisition.
 
-The `is_clean` dependency is deliberately narrower than “Phase 1B.” Acquisition can
-publish a checkout it created and validated; no cached root may be served, replaced,
-repaired, or purged until Git-status Phase 1 (`mb-u4mf`) supplies the one lossless
-predicate used by cache integrity.
-Landing 1B first would leave integrity either unchecked or served by a second porcelain
-parser, which is the outcome both plans exist to prevent.
-The dependency is recorded in the bead graph as well as here, because a constraint that
-lives only in prose is one nobody is reminded of.
-
-Below Git 2.36 the status service reports `unsupported_git_version`, so the predicate is
-absent and cache integrity reports its check as unavailable rather than inferring clean.
+The Git-status `is_clean` predicate applies only to an attached user filesystem subject.
+It does not gate acquisition, serving, replacement, repair, or purge of a worktree-free
+repository store because that store has no checkout or index to classify.
+Store integrity instead verifies record generations, private refs, required object
+reachability, leases, and publication markers.
+Below Git 2.36 an attached subject reports `unsupported_git_version` rather than
+inferring a clean working tree; immutable repository subjects remain available.
 
 ## Testing Strategy
 
@@ -1351,22 +1494,48 @@ suite exercises the same acquisition path a user gets.
   distinctions do not; forced short-digest collisions extend the slug; query, fragment,
   credentials, controls, and unsafe transports fail before Git.
 - **Publication:** interruption at every staging boundary leaves no visible incomplete
-  entry; `repository.yml`, `state.yml`, and HEAD agree before rename; a cache hit needs
-  no network.
-- **Read-only behavior:** browse and ref refresh leave the shared Git-status service’s
-  clean predicate true and `active_revision` unchanged; an externally dirtied entry is
-  reported rather than reset.
-- **Concurrency:** two opens share one completed entry; open, refresh, promotion,
-  migration, repair, and purge cannot race across processes.
-- **Git integration:** cached roots satisfy repository-root discovery, history, direct
-  revisions, commit summaries, and bounded diff rendering before and after backfill.
-- **Branch materialization:** default and non-default branches, slash-containing names,
-  tags, and full object IDs resolve to immutable OIDs; leases reuse and release detached
-  worktrees; missing/offline refs fail honestly; no case moves `gitroot` or a local
-  branch.
-- **Root lifecycle:** replacing a served repository joins the old inventory and Git
-  sessions, invalidates root-owned server and browser caches, and prevents work from the
-  old root from publishing after the new root is visible.
+  source; the store publishes before the alias visibility commit; a crash between them
+  leaves only a reclaimable orphan; source, state, refs, and resolved object IDs agree
+  before publication; a cache hit needs no network.
+- **Read-only behavior:** browse and ref refresh create no checkout or index and never
+  modify an attached user working tree or `.git` state.
+- **Concurrency:** two processes share one completed store while browsing different
+  object IDs; source/auth-incompatible fetches do not coalesce; a slower staged fetch
+  cannot regress a newer ref generation; open, refresh, migration, repair, and purge
+  cannot race across processes.
+- **Credential capabilities:** a provider-principal fetch starts only with a registered,
+  matching, live, source-bounded lease handle, validated from the registry for starting
+  and joining requests alike; forged, unregistered, missing, expired, revoked,
+  source-mismatched, host-mismatched, provider-mismatched,
+  authorization-context-mismatched, visibility-partition-mismatched, and
+  principal-mismatched leases produce typed failures without consulting ambient Git
+  authentication. Before Phase 3A such a request fails before Git starts.
+  In Phase 3A, a `.netrc` login, SSH agent, trace variable, credential helper,
+  `insteadOf` rewrite, extra header, or template or repository-local configuration
+  cannot supply, print, store, or reroute the credential, and a cross-host redirect
+  fails typed. Provider-kind and visibility-partition changes produce distinct job keys.
+  Secrets cannot enter argv, ordinary child environment, diagnostics, files, staged
+  records, refs, or job identities.
+- **Git integration:** immutable subjects satisfy history, direct revisions, commit
+  summaries, bounded tree/blob reads, and diff rendering before and after backfill.
+- **Revision subjects:** default and non-default branches, slash-containing names, tags,
+  and full object IDs resolve to immutable OIDs; leases reuse the store and batch
+  readers; missing/offline refs fail honestly; no case creates a worktree or moves a
+  local branch.
+- **Content capabilities:** immutable subjects expose no filesystem path, fake mtime,
+  ignore state, watcher, activity, or mutation state; routes and legacy plugin hooks
+  return the typed unsupported state or remain absent, while byte-oriented built-ins use
+  the bounded content-reader port.
+- **Git paths and blobs:** bytewise ordering and the `GitPath` wire codec round-trip
+  invalid UTF-8 and newline names; symlinks are not followed, gitlinks are not folders,
+  LFS pointers remain blobs, and oversized or missing objects fail before an unbounded
+  body read. Cancellation or framing failure restarts the batch reader.
+- **Leases and maintenance:** two processes hold shared maintenance locks while serving;
+  GC, repack, and reclamation require the exclusive lock; crash release, durable refs,
+  read-only cache hits, and Windows trash movement preserve every promised OID.
+- **Subject lifecycle:** replacing a selected subject joins the old inventory and Git
+  sessions, invalidates subject-owned server and browser caches, and prevents work from
+  the old subject from publishing after the new subject is visible.
 - **Trust:** URL roots receive the untrusted capability set, never serve `.git`, and
   cannot promote repository-local metadata to host config.
 - **Parity:** every new route, model, persisted state, and user-visible functional
@@ -1374,9 +1543,10 @@ suite exercises the same acquisition path a user gets.
 - **Provider contracts:** every valid fixture passes structural and semantic validation;
   every invalid fixture fails with a stable code and path; unknown provider enum values
   normalize without opening the record schema.
-- **Provider snapshots:** multi-page and partial refreshes publish only complete
-  manifests; a failed refresh leaves the old current set; deletion, permission loss,
-  not-requested, and rate-limit outcomes remain distinct.
+- **Provider snapshots:** every published manifest is structurally and semantically
+  valid; a valid partial refresh may advance `current` with explicit partiality while
+  preserving `last-complete`; a failed refresh advances neither pointer; deletion,
+  permission loss, not-requested, and rate-limit outcomes remain distinct.
 - **Relationships:** all references resolve within a manifest or carry an explicit
   unavailable state; stack cycles and missing members are reported, not repaired by
   guessing.
@@ -1409,35 +1579,38 @@ above.
 - Snapshot sharding and transport selection moved with
   [the provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) and are
   deferred there rather than here.
-- Automatic eviction waits for Phase 2 size data and remains absent unless a defensible
-  default follows.
-- A live session either retains its pinned root until reopen or explicitly accepts a
-  staged replacement; background refresh never switches it silently.
+- Automatic eviction waits for measured size data from later cache operations and
+  remains absent unless a defensible default follows.
+- A live session retains its immutable subject until explicit navigation; background
+  refresh never switches its object ID silently.
 
 ## Acceptance Criteria for the First Usable Phase
 
-Phase 1B is complete when:
+The first usable repository URL and branch phases are complete when:
 
-- `metab <any-common-repository-url>` publishes one validated entry under
-  `~/.metabrowser/cache/repos/<uniquified-slug>/gitroot` and serves it with the
-  untrusted profile;
+- `metab <any-common-repository-url>` publishes one validated source alias and shared
+  worktree-free repository store, then serves an immutable subject with the untrusted
+  profile;
 - a `/blob/<ref>/<path>` URL opens that file at the full object ID resolved from
   `<ref>`, and `/tree/<ref>/<path>` opens that directory — a URL naming a file does not
   land at the repository root or a different revision;
-- a non-default branch is served from a detached, leased materialization while the
-  published `gitroot`, `active_revision`, and local branches remain unchanged;
+- a non-default branch is served from a leased full-OID Git-tree subject while the
+  shared store refs, other subjects, and local branches remain independent;
 - a branch name containing slashes resolves against the cloned ref list rather than
   being guessed at parse time;
-- repeating the command opens the cached root without clone, fetch, provider detection,
-  credential lookup, or network access;
-- `repository.yml` names one credential-free source identity, while `state.yml` names a
-  full active revision and honest object state;
-- browsing and Git ref refresh do not modify the working tree or active revision;
+- repeating the command opens the cached subject without clone, fetch, provider
+  detection, credential lookup, or network access;
+- `source.yml` names one credential-free source identity, `store-alias.yml` attaches it
+  to one shared store, and the store records name an observed default full revision and
+  honest object state without a global active revision;
+- browsing and Git ref refresh do not create or modify a working tree, shared index, or
+  active session revision;
 - interrupted and concurrent clones, an unsafe URL, future format, corrupt record,
   missing credential, unavailable network, and failed backfill each produce bounded and
   truthful outcomes;
 - Files, Git history, direct revision, commit summary, and diff views work against the
-  cached root under the same contracts as a local repository; and
+  immutable content source under the same contracts as a local repository where the
+  underlying facts are meaningful; and
 - no GitHub API, provider credential, or provider schema is required, and core contains
   no GitHub-specific branch to satisfy any criterion above.
 
@@ -1450,8 +1623,10 @@ Phase 1B is complete when:
 - [Git graph view](plan-2026-08-06-git-graph-view.md) — shipped Git history and the
   repository-root boundary
 - [General diff rendering](plan-2026-08-17-general-diff-rendering.md) — shared
-  comparison pipeline and its boundaries with durable acquisition and transient
-  materialization
+  comparison pipeline and its boundaries with durable acquisition and immutable revision
+  subjects
+- [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+  — shared Git store, attached checkout, provider mirror, and multi-client contract
 - [Git revision navigation performance](../done/plan-2026-08-25-git-revision-navigation-performance.md)
   — current revision loading and comparison behavior
 - [Unbounded virtualized Git history](../done/plan-2026-08-25-unbounded-virtualized-git-history.md)

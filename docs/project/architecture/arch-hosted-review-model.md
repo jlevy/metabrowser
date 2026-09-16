@@ -3,6 +3,8 @@
 **Status:** Accepted design; the no-network record families, scrubbed GitHub coverage
 oracle, installed enforced contracts and resource profiles, and generic format inventory
 gate are implemented.
+The implemented `ProviderBinding/v1` still uses the superseded cache-entry identity and
+must be corrected to the source-attachment contract below before provider storage ships.
 No provider adapter, cache, route, kind, or view is implemented yet.
 
 Hosted review is a domain above Git history and File Diff Format.
@@ -47,15 +49,18 @@ GitHub provider adapter                 GitLab provider adapter
 
 The dependency direction only points down.
 Provider adapters may produce hosted-review documents and ask the repository service to
-fetch selected refs.
+fetch selected refs through a non-secret authorization identity and a short-lived opaque
+Git credential lease for the same authorization context that observed those refs.
 Hosted-review views may resolve a document’s comparison reference through File Diff
 Format. Git, diff, inventory, and the shell never import a GitHub model.
 
 Repository and branch opening sit below this diagram.
 A provider URL reducer may turn a GitHub web URL into a generic clone source plus a
-selection, but the repository library resolves the branch to a full object ID and owns
-any detached materialization.
+selection, but the repository library resolves the branch to a full object ID and serves
+it from a shared worktree-free Git store.
 The provider adapter is not required to browse repository content or branches.
+The complete source, store, and attachment contract is in
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 ## The Clean Format Boundary
 
@@ -86,7 +91,7 @@ is content-neutral:
 
 | Record | Describes | Does not contain |
 | --- | --- | --- |
-| `ProviderBinding/v1` | An auth-independent link from one generic repository entry to a stable hosted-repository identity | Mutable owner/name coordinates or credentials |
+| `ProviderBinding/v1` | An auth-independent link from one conservative repository source identity to a stable hosted-repository identity | A cache-entry requirement, local path, mutable owner/name coordinates, or credentials |
 | `AuthorizationContextRef` | The stable, non-secret namespace that determines which hosted objects a publication may expose | Login, scopes, validators, rate limits, or observation time |
 | `Retrieval/v1` | One immutable provider observation, including transport, outcome, validators, rate limits, and display auth facts | Tokens, raw headers, raw arguments, response bodies, or environment values |
 | `HostedRepository/v1` | Provider-neutral repository identity, coordinates, URLs, visibility, default branch, and timestamps | Git objects or an API response |
@@ -101,6 +106,11 @@ is content-neutral:
 | `ProviderSyncManifest/v1` | Transaction state, retrieval evidence, failures, and the resource sets acquired together | Secret material or mutable object bodies |
 | `ProviderViewPointer/v1` | A small `current` or `last-complete` reference to one resource set and its committed manifest | Embedded snapshots or mutable acquisition state |
 | `Tombstone/v1` | A provider-object deletion backed by a typed event or deleted marker for the exact target | A conclusion inferred from one not-found response or authorization failure |
+
+`GitFetchCredentialLease` is deliberately absent from this record set.
+It is an unforgeable process-local handle into a core registry entry that binds one
+authorization context and principal to bounded HTTPS Git sources, not a format, durable
+identity, provider record, or cache value.
 
 `ChangeRequest/v1` and its index row preserve a null author when the provider no longer
 exposes an account. `RevisionRef.repository_id` is also nullable because GitHub can
@@ -394,8 +404,8 @@ therefore cannot create another publication namespace.
 
 `Retrieval/v1` owns the exact authorization context and a closed logical request target:
 a provider object within a repository, a provider collection identified by normalized
-result contract and query key, or a provider binding with generic entry and repository
-identity.
+result contract and query key, or a provider binding with conservative source and stable
+repository identity.
 It also owns adapter ID, `provider_cli`, `direct_http`, or `unknown` transport,
 sanitized operation ID, a digest of the exact credential-free provider request, start
 and finish times, optional API version, normalization version, named HTTP validators,
@@ -411,11 +421,16 @@ with a reason of `permission_denied`, `rate_limited`, `transport_unavailable`,
 Authorization unavailable before a stable authenticated principal is known is an
 adapter/service result, not a durable retrieval under a fabricated context.
 
-`ProviderBinding/v1` contains the generic repository `entry_id`, one `RepositoryRef`,
-and optional typed provenance that names the retrieval snapshot establishing the
-binding. Provenance resolution requires a successful provider-binding retrieval whose
-entry and repository exactly match the binding.
-The record is independent of authorization and mutable repository coordinates.
+`ProviderBinding/v1` contains one credential-free `source_id`, one `RepositoryRef`, and
+optional typed provenance that names the retrieval snapshot establishing the binding.
+The source ID uses the repository library’s conservative normalized-source identity; it
+does not prove that two different sources are one repository.
+Provenance resolution requires a successful provider-binding retrieval whose source and
+repository exactly match the binding.
+The record is independent of authorization, cache-entry existence, local paths, and
+mutable repository coordinates.
+Several source IDs may bind to the same repository, while a conflicting attempt to bind
+one source ID to a different opaque repository identity fails closed.
 Changing a repository owner or name updates `HostedRepository/v1`; changing the opaque
 repository ID is an explicit rebind conflict.
 `HostedRepository/v1` contains `provider_ref`, an actor-valued owner, name, canonical
@@ -634,10 +649,20 @@ independently replaceable:
   The shell arbitrates address ownership before startup, refuses reserved or duplicate
   claims, and uses the same spec for href generation, browser navigation, and
   `metab --show`.
-- the core repository service accepts a source or entry identity and an explicit ref,
-  then returns a leased `RepositoryOpenTarget` pinned to a full Git object ID. Provider
-  plugins may request selected PR refs through this port but cannot run Git or receive a
-  cache filesystem path.
+- the core repository service accepts a source or stable repository identity and an
+  explicit ref, then returns a leased immutable repository subject pinned to a full Git
+  object ID. Provider plugins may request selected PR refs through this port with a
+  non-secret `AuthorizationContextRef` and opaque `GitFetchCredentialLease`, but cannot
+  inspect credentials, run Git, select an ambient credential helper, or receive a cache
+  filesystem path. The port derives the canonical authorization-context key and maps the
+  record exactly once to the core `ProviderPrincipal` job identity, including provider
+  kind, instance, principal, and optional visibility partition.
+  The lease is an unforgeable handle into a core-owned registry; core reads its bound
+  identity, expiry, revocation, cancellation generation, and exact credential-free HTTPS
+  sources from that registry before job lookup.
+  A provider-principal request fails closed rather than falling back to ambient Git
+  auth; the isolation rules are in
+  [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md#fetch-jobs-authorization-and-credentials).
 
 The common hosted-resource address is
 `/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>]`
@@ -664,21 +689,21 @@ and root-replacement path.
 
 Four caches remain distinct:
 
-1. the repository library durably owns Git objects and the pinned serving root;
-2. the provider store durably owns immutable hosted-review snapshots and current
-   manifests;
-3. transient projections are owned by the subsystem that materializes them: the
-   repository service owns detached Git worktrees and the archive plugin owns extracted
-   trees, each keyed by immutable object identity and protected by leases; and
-4. activity pages, diff manifests, file patches, and browser projections are bounded,
-   recomputable session caches.
+1. the repository library durably owns shared worktree-free Git objects, private refs,
+   and immutable revision leases;
+2. the provider store durably owns repository-scoped, authorization-scoped hosted-review
+   snapshots and current manifests;
+3. archive and other non-Git projections remain owned by the subsystem that creates
+   them, keyed by immutable identity and protected by leases; and
+4. activity pages, tree indexes, diff manifests, file patches, and browser projections
+   are bounded, recomputable session caches.
 
 Only the second layer is the cache of PR-domain state.
-It references the first by object ID, may use the third to serve filesystem content, and
-never promotes the fourth into a released on-disk contract.
-Review anchors are domain data in the second layer, not materialized bytes in the third.
-Low-level lease or safe-path helpers may be shared only after two concrete owners prove
-the same contract; ownership and reclamation remain explicit per projection type.
+It references the first by repository-store identity and object ID, never uses a mutable
+working tree as authority, and never promotes the fourth into a released on-disk
+contract. Review anchors are domain data in the second layer, not materialized bytes in
+the third. The full ownership contract, including attached local checkouts, is in
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 Provider publication has two independent axes.
 A sync transaction is `staged`, `committed`, or `failed`; each collection inside a
@@ -700,17 +725,22 @@ Index completeness never means that separately hydrated PR resources are complet
 Provider storage uses a fixed lock order:
 
 1. the application-home lock only for layout migration and global sweeps;
-2. the repository-entry lock for entry purge, ref mutation, and object-database work;
-3. a provider/resource lock for binding, staged publication, current-pointer changes,
+2. the source-alias lock for alias creation and compare-and-swap repointing;
+3. repository-store locks in ascending store-ID order for ref publication, Git
+   maintenance, object transfer, and object-database work;
+4. a provider/resource lock for binding, staged publication, current-pointer changes,
    and provider reclamation.
 
 No network process runs while any of those locks is held.
-Publication reacquires the entry lock and then the provider/resource lock, revalidates
-the entry lease and authorization context, then moves the manifest and pointer
-atomically. Readers hold snapshot leases so reclamation cannot remove an object they are
-serving. The provider store retains current, `last-complete`, one bounded diagnostic
-predecessor, and any explicit archival pin regardless of source availability; it sweeps
-older unreachable objects but never automatically removes the last validated reachable
+Publication reacquires the required alias and repository-store locks when Git state is
+part of the transaction and then the provider/resource lock, revalidates the object,
+profile, generation, and authorization context, then moves the manifest and pointer by
+compare-and-swap. Readers hold shared OS-lock-backed snapshot leases; reclamation takes
+the exclusive generation lock before moving state to trash, so process exit releases a
+crashed reader without a stale durable lease.
+The provider store retains current, `last-complete`, one bounded diagnostic predecessor,
+and any explicit archival pin regardless of source availability; it sweeps older
+unreachable objects but never automatically removes the last validated reachable
 observation.
 
 All application-home directories containing repository or provider content are
@@ -719,7 +749,7 @@ current-user-only ACL on Windows.
 Metabrowser refuses remote acquisition when a cache ancestor is a symlink, is owned by
 another principal, is group/world accessible, or cannot be verified and repaired.
 This refusal does not prevent read-only browsing of an ordinary local path outside the
-application home.
+application home or attaching it to a shared provider mirror without mutating it.
 
 ## Acceptance Rules
 
@@ -736,8 +766,13 @@ The first GitHub slice is complete only when:
   inventing a line;
 - list acquisition fetches no PR Git refs, while selection fetches only the requested
   base, head, and optional merge refs;
-- any advertised and authorized branch opens at its resolved full object ID through a
-  leased materialization without changing the entry’s pinned root;
+- any advertised and authorized branch opens at its resolved full object ID through an
+  immutable Git-tree subject without changing a checkout or creating a worktree;
+- a user-owned checkout can enable and reuse provider resources without first becoming a
+  managed repository-cache entry, and refresh never writes its files or `.git` state;
+- two sessions can browse different object IDs from one repository store concurrently,
+  while source aliases and local clones bound to one `RepositoryRef` reuse one provider
+  mirror;
 - a change request opens the same File Diff Format renderer as a commit comparison,
   while its review, check, thread, merge, and freshness details remain available in the
   hosted-review document and views;
@@ -767,8 +802,9 @@ implementation:
    companion records.
 5. The Pull Requests nav panel is a virtual folder-like collection backed by a bounded
    cached index; a selected PR is also a folder-like change container.
-6. Durable Git objects, durable provider snapshots, transient materialization, and
-   recomputable session caches have different owners and retention rules.
+6. Durable Git objects, durable provider snapshots, local working-tree attachments, and
+   recomputable session caches have different owners and retention rules; revision views
+   read objects directly and never require a detached worktree.
 7. `gh api` is the only v0.11 transport, behind a provider port that can later support a
    direct GitHub or GitLab adapter without changing formats or views.
 8. Provider URL reducers and mounted plugin routers are general host capabilities;
@@ -789,9 +825,9 @@ implementation:
 
 Implementation evidence still decides concrete page and collection bounds, exact REST
 versus GraphQL queries, whether the initial activity panel groups commits and PRs or can
-support an honest mixed cursor, and the measured physical snapshot layout.
-Those decisions may tune cost and presentation; they may not collapse the accepted
-format, plugin, identity, or cache boundaries.
+support an honest mixed cursor, and the measured worktree-free Git and physical snapshot
+layouts. Those decisions may tune cost and presentation; they may not collapse the
+accepted format, plugin, identity, or cache boundaries.
 
 The implementation plan and release scope live in
 [Hosted Review Model and GitHub Provider](../specs/active/plan-2026-08-27-github-provider-and-pull-requests.md).
