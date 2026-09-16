@@ -4,8 +4,8 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Design review addressed; Phase 0A implemented and Phase 0B.1 in progress as
-the next formal pull request in the stack
+**Status:** Design review addressed; Phase 0B.1 is the final-testing stacked base, and
+Phase 0B.2 is the current implementation layer
 
 ## Vision
 
@@ -400,10 +400,31 @@ Content and diffs are read from Git by object ID. Provider commits and files are
 only when they carry provider-only annotations or prove collection completeness.
 `ReviewAnchor` is a closed tagged union.
 A file anchor stores the path but no line; a line anchor stores path, side, and one
-line; a range anchor stores path, side, start, end, and orientation.
+line; a range anchor stores path plus independently sided `start` and `end` endpoints.
 All forms store original commit ID, current commit ID when available, comparison
 identity, and explicit current, outdated, unresolved, or unmappable state.
 The UI never invents a current line when an anchor cannot be mapped.
+
+Phase 0B.2 freezes the exact fields, enums, path-byte convention, bundle relationships,
+and repository-activity semantics in
+[Hosted Review Model and Provider Boundary](../../architecture/arch-hosted-review-model.md#review-signal-and-activity-contracts).
+Its implementation surface is fixed before provider mapping begins:
+
+| File | Phase 0B.2 responsibility |
+| --- | --- |
+| `hosted_review/models.py` | Add the closed comment, review, thread, anchor, check, status, and activity models; `validate_*`/`dump_*` entry points; `validate_hosted_review_bundle`; and semantic invariants |
+| `hosted_review/artifacts.py` | Add deterministic `serialize_*_artifact` and `validate_*_artifact` functions only for prose-bearing change-request comments, reviews, and review comments |
+| `data/hosted-review-format/review-records-conformance.json` | Portable normalized and invalid review, anchor, relationship, check, and status cases |
+| `data/hosted-review-format/repository-activity-conformance.json` | Portable commit/change-request projection, ordering, coverage, continuation, and truncation cases |
+| `tests/test_hosted_review_record_models.py` | Model, anchor, lifecycle, relationship, and bundle invariants |
+| `tests/test_hosted_review_activity_models.py` | Activity kind, freshness, revision, ordering, bound, and partiality invariants |
+| `tests/test_hosted_review_artifacts.py` | Opaque Markdown preservation, empty review summary, contract/envelope rejection, and snapshot identity |
+| `devtools/check_distribution.py` | Wheel, sdist, and isolated installed-wheel inventory and corpus smoke evidence |
+
+These formats are unreleased and have no independent consumer or persisted released
+data.
+Phase 0B.2 therefore updates producers, tests, docs, and fixtures together and does
+not add compatibility aliases, dual readers, or migration paths.
 
 ### Completeness, freshness, and absence
 
@@ -846,18 +867,18 @@ or publication bead merges another phase.
   the provider description as the reader-facing Markdown body; use the same profile for
   reviews, top-level comments, and review comments with Markdown prose, and `pure-yaml`
   for indexes, manifests, and compact structured companion records.
-- [ ] Define stable provider and local IDs, repository refs, Git object refs, provider
+- [x] Define stable provider and local IDs, repository refs, Git object refs, provider
   timestamps, non-secret stable authorization-context identity separate from retrieval
   observations, transaction state, completeness, pagination consistency, tombstone
   proof, unknown enums, and explicit provider companion records.
-- [ ] Keep provider storage content-neutral: persist generic provider-object or
+- [x] Keep provider storage content-neutral: persist generic provider-object or
   provider-collection targets and namespaced profile IDs, then resolve ordered
   collection contracts, cardinality, pagination, and last-complete requirements only
   through the trusted installed resource-profile registry.
-- [ ] Define repository, change request, top-level comment, review, thread, review
+- [x] Define repository, change request, top-level comment, review, thread, review
   comment, file/line/range anchor, check, status, and activity relationships without an
   opaque payload or provider-shaped view model.
-- [ ] Build normalized and invalid fixtures for open, closed, merged, draft, forked,
+- [x] Build normalized and invalid fixtures for open, closed, merged, draft, forked,
   deleted, inaccessible, partial, paginated, direct-addressed, outdated-anchor, and
   unknown-enum cases.
 - [ ] Add one GitHub terminology-to-common-model mapping matrix and prove every common

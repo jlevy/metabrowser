@@ -111,7 +111,7 @@ These formats are tool-neutral: nothing in a document references Metabrowser.
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
 | [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
-| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Pydantic-enforced ChangeRequest, provider-storage, hosted-repository, and change-request-index corpora; SoftSchema schema and registry tracked by `mb-lqae` | Dormant Python record validators and the existing browser ChangeRequest validator; complete browser/schema parity, plugin registration, and the GitHub adapter remain planned |
+| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Pydantic-enforced change-request, provider-storage, hosted-repository, change-request-index, review-record, and repository-activity corpora; SoftSchema schema and registry tracked by `mb-lqae` | Dormant Python record validators and frontmatter codecs plus the existing browser ChangeRequest validator; complete browser/schema parity, plugin registration, and the GitHub adapter remain planned |
 
 The registry and composition rules that let later release, issue, or other external
 contracts reuse these layers are specified in

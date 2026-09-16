@@ -107,6 +107,8 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/data/hosted-review-format/change-request-conformance.json",
             "metabrowser/data/hosted-review-format/hosted-repository-conformance.json",
             "metabrowser/data/hosted-review-format/provider-storage-conformance.json",
+            "metabrowser/data/hosted-review-format/repository-activity-conformance.json",
+            "metabrowser/data/hosted-review-format/review-records-conformance.json",
             "metabrowser/data/file-rollup-format/empty-file-rollup.json",
             "metabrowser/data/file-rollup-format/file-rollup-conformance.json",
             "metabrowser/data/file-rollup-format/file-rollup-conformance.schema.json",
@@ -161,6 +163,8 @@ def _inspect_sdist(sdist: Path) -> None:
             "src/metabrowser/data/hosted-review-format/change-request-conformance.json",
             "src/metabrowser/data/hosted-review-format/hosted-repository-conformance.json",
             "src/metabrowser/data/hosted-review-format/provider-storage-conformance.json",
+            "src/metabrowser/data/hosted-review-format/repository-activity-conformance.json",
+            "src/metabrowser/data/hosted-review-format/review-records-conformance.json",
             *(f"src/metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
@@ -198,11 +202,13 @@ def _smoke_install(wheel: Path) -> None:
             "import metabrowser; "
             "from metabrowser.file_type_registry import load_file_type_registry; "
             "from metabrowser.builtin_plugins.hosted_review.models import "
-            "validate_authorization_context, validate_change_request, "
-            "validate_change_request_index, validate_hosted_repository, "
+            "validate_authorization_context, validate_change_request, validate_change_request_comment, "
+            "validate_change_request_index, validate_check, validate_commit_status, "
+            "validate_hosted_repository, validate_hosted_review_bundle, "
             "validate_provider_binding, validate_provider_sync_manifest, "
             "validate_provider_view_pointer, validate_resource_set, "
-            "validate_retrieval, validate_tombstone; "
+            "validate_repository_activity, validate_retrieval, validate_review, "
+            "validate_review_comment, validate_review_thread, validate_tombstone; "
             "from metabrowser.kpress_adapter import render_kpress_view; "
             "from metabrowser.plugin_loader.discovery import discover_plugins; "
             "registry = load_file_type_registry(); "
@@ -248,7 +254,13 @@ def _smoke_install(wheel: Path) -> None:
             "index = json.loads(format_data.joinpath("
             "'change-request-index-conformance.json').read_text(encoding='utf-8'))"
             "['base_records']; "
-            "validate_change_request(change_request['base_document']); "
+            "review_records = json.loads(format_data.joinpath("
+            "'review-records-conformance.json').read_text(encoding='utf-8'))"
+            "['base_records']; "
+            "activity = json.loads(format_data.joinpath("
+            "'repository-activity-conformance.json').read_text(encoding='utf-8'))"
+            "['base_document']; "
+            "parsed_change_request = validate_change_request(change_request['base_document']); "
             "validate_authorization_context(storage['authorization_context']); "
             "validate_retrieval(storage['retrieval']); "
             "validate_resource_set(storage['resource_set']); "
@@ -260,6 +272,21 @@ def _smoke_install(wheel: Path) -> None:
             "validate_change_request_index(index['change_request_index']); "
             "validate_change_request_index(index['empty_change_request_index']); "
             "validate_resource_set(index['index_resource_set']); "
+            "change_request_comments = (validate_change_request_comment("
+            "review_records['change_request_comment']),); "
+            "reviews = (validate_review(review_records['review']),); "
+            "review_threads = tuple(validate_review_thread(review_records[name]) for name in "
+            "('review_thread', 'review_thread_empty')); "
+            "review_comments = tuple(validate_review_comment(review_records[name]) for name in "
+            "('review_comment', 'review_comment_reply')); "
+            "checks = tuple(validate_check(review_records[name]) for name in "
+            "('check_suite', 'check_run')); "
+            "commit_statuses = (validate_commit_status(review_records['commit_status']),); "
+            "validate_hosted_review_bundle(change_request=parsed_change_request, "
+            "change_request_comments=change_request_comments, reviews=reviews, "
+            "review_threads=review_threads, review_comments=review_comments, checks=checks, "
+            "commit_statuses=commit_statuses, review_comments_complete=True); "
+            "validate_repository_activity(activity); "
             "assert files('metabrowser').joinpath("
             "'builtin_plugins/hosted_review/hosted-review-model.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "

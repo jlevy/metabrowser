@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from base64 import b64decode, b64encode
+from binascii import Error as BinasciiError
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -100,6 +102,95 @@ class ReviewDecision(StrEnum):
     changes_requested = "changes_requested"
     not_requested = "not_requested"
     unknown = "unknown"
+
+
+class CommentState(StrEnum):
+    visible = "visible"
+    minimized = "minimized"
+    deleted = "deleted"
+    unknown = "unknown"
+
+
+class ReviewDisposition(StrEnum):
+    pending = "pending"
+    commented = "commented"
+    approved = "approved"
+    changes_requested = "changes_requested"
+    dismissed = "dismissed"
+    unknown = "unknown"
+
+
+class ReviewThreadState(StrEnum):
+    unresolved = "unresolved"
+    resolved = "resolved"
+    unknown = "unknown"
+
+
+class ReviewAnchorState(StrEnum):
+    current = "current"
+    outdated = "outdated"
+    unresolved = "unresolved"
+    unmappable = "unmappable"
+
+
+class ReviewSide(StrEnum):
+    base = "base"
+    head = "head"
+
+
+class CheckKind(StrEnum):
+    suite = "suite"
+    run = "run"
+    unknown = "unknown"
+
+
+class CheckStatus(StrEnum):
+    queued = "queued"
+    in_progress = "in_progress"
+    completed = "completed"
+    waiting = "waiting"
+    requested = "requested"
+    pending = "pending"
+    unknown = "unknown"
+
+
+class CheckConclusion(StrEnum):
+    action_required = "action_required"
+    cancelled = "cancelled"
+    failure = "failure"
+    neutral = "neutral"
+    skipped = "skipped"
+    stale = "stale"
+    startup_failure = "startup_failure"
+    success = "success"
+    timed_out = "timed_out"
+    unknown = "unknown"
+
+
+class CommitStatusState(StrEnum):
+    error = "error"
+    failure = "failure"
+    pending = "pending"
+    success = "success"
+    unknown = "unknown"
+
+
+class ActivityKind(StrEnum):
+    commit = "commit"
+    change_request = "change_request"
+
+
+class ActivityState(StrEnum):
+    open = "open"
+    draft = "draft"
+    closed = "closed"
+    merged = "merged"
+    unknown = "unknown"
+
+
+class ActivityCoverage(StrEnum):
+    complete = "complete"
+    partial = "partial"
 
 
 class _HostedReviewModel(BaseModel):
@@ -213,6 +304,14 @@ RETRIEVAL_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:Retrieval/v1"
 RESOURCE_SET_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:ResourceSet/v1"
 HOSTED_REPOSITORY_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:HostedRepository/v1"
 CHANGE_REQUEST_INDEX_CONTRACT_ID = "com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1"
+CHANGE_REQUEST_CONTRACT_ID = "com.github.jlevy.metabrowser.review:ChangeRequest/v1"
+CHANGE_REQUEST_COMMENT_CONTRACT_ID = "com.github.jlevy.metabrowser.review:ChangeRequestComment/v1"
+REVIEW_CONTRACT_ID = "com.github.jlevy.metabrowser.review:Review/v1"
+REVIEW_THREAD_CONTRACT_ID = "com.github.jlevy.metabrowser.review:ReviewThread/v1"
+REVIEW_COMMENT_CONTRACT_ID = "com.github.jlevy.metabrowser.review:ReviewComment/v1"
+CHECK_CONTRACT_ID = "com.github.jlevy.metabrowser.review:Check/v1"
+COMMIT_STATUS_CONTRACT_ID = "com.github.jlevy.metabrowser.review:CommitStatus/v1"
+REPOSITORY_ACTIVITY_CONTRACT_ID = "com.github.jlevy.metabrowser.activity:RepositoryActivity/v1"
 REPOSITORY_SUMMARY_PROFILE_ID = "com.github.jlevy.metabrowser.provider:repository-summary/v1"
 CHANGE_REQUEST_INDEX_PROFILE_ID = "com.github.jlevy.metabrowser.review:change-request-index/v1"
 
@@ -366,6 +465,485 @@ def validate_change_request(value: dict[str, Any]) -> ChangeRequest:
 def dump_change_request(value: ChangeRequest) -> dict[str, Any]:
     """Return the deterministic JSON-compatible projection, including explicit nulls."""
     return value.model_dump(mode="json")
+
+
+class GitObjectRef(_HostedReviewModel):
+    repository_id: NonEmptyString
+    oid: GitObjectId | None
+    availability: RevisionAvailability
+
+    @model_validator(mode="after")
+    def _oid_matches_availability(self) -> GitObjectRef:
+        if (self.oid is not None) != (self.availability is RevisionAvailability.present):
+            raise ValueError("oid is present exactly when Git object availability is present")
+        return self
+
+
+def _validate_comment_lifecycle(
+    *,
+    state: CommentState,
+    url: str | None,
+    created_at: str,
+    updated_at: str,
+) -> None:
+    if state is not CommentState.deleted and url is None:
+        raise ValueError("visible, minimized, and unknown comments require a URL")
+    if _parse_rfc3339(updated_at) < _parse_rfc3339(created_at):
+        raise ValueError("comment updated_at must not precede created_at")
+
+
+class ChangeRequestComment(_HostedReviewModel):
+    id: NonEmptyString
+    provider_ref: ProviderObjectRef
+    repository: RepositoryRef
+    change_request_id: NonEmptyString
+    url: CanonicalHttpsUrl | None
+    author: ActorRef | None
+    state: CommentState
+    created_at: CanonicalTimestamp
+    updated_at: CanonicalTimestamp
+
+    @model_validator(mode="after")
+    def _relationships_and_lifecycle(self) -> ChangeRequestComment:
+        if (self.provider_ref.provider, self.provider_ref.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("comment and repository must use the same provider instance")
+        _validate_comment_lifecycle(
+            state=self.state,
+            url=self.url,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+        )
+        return self
+
+
+class Review(_HostedReviewModel):
+    id: NonEmptyString
+    provider_ref: ProviderObjectRef
+    repository: RepositoryRef
+    change_request_id: NonEmptyString
+    url: CanonicalHttpsUrl
+    author: ActorRef | None
+    disposition: ReviewDisposition
+    revision: GitObjectRef
+    created_at: CanonicalTimestamp
+    submitted_at: CanonicalTimestamp | None
+    updated_at: CanonicalTimestamp
+
+    @model_validator(mode="after")
+    def _relationships_and_lifecycle(self) -> Review:
+        if (self.provider_ref.provider, self.provider_ref.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("review and repository must use the same provider instance")
+        if self.revision.availability is RevisionAvailability.not_requested:
+            raise ValueError("review revision availability must be observed")
+        created_at = _parse_rfc3339(self.created_at)
+        updated_at = _parse_rfc3339(self.updated_at)
+        if updated_at < created_at:
+            raise ValueError("review updated_at must not precede created_at")
+        if self.disposition is ReviewDisposition.pending:
+            if self.submitted_at is not None:
+                raise ValueError("pending reviews forbid submitted_at")
+        elif self.disposition is not ReviewDisposition.unknown and self.submitted_at is None:
+            raise ValueError("submitted review dispositions require submitted_at")
+        if self.submitted_at is not None:
+            submitted_at = _parse_rfc3339(self.submitted_at)
+            if submitted_at < created_at or submitted_at > updated_at:
+                raise ValueError("review submitted_at must fall within its lifecycle")
+        return self
+
+
+def _validate_review_path(path: str, path_b64: str | None) -> None:
+    if "\x00" in path:
+        raise ValueError("review anchor paths cannot contain NUL")
+    if path_b64 is None:
+        try:
+            path.encode("utf-8", errors="strict")
+        except UnicodeEncodeError as exc:
+            raise ValueError("review anchor path must be valid UTF-8 or carry path_b64") from exc
+        return
+    try:
+        raw = b64decode(path_b64, validate=True)
+    except (BinasciiError, ValueError) as exc:
+        raise ValueError("review anchor path_b64 must be canonical base64") from exc
+    if not raw or b"\x00" in raw or b64encode(raw).decode("ascii") != path_b64:
+        raise ValueError("review anchor path_b64 must be canonical nonempty Git path bytes")
+    if raw.decode("utf-8", errors="replace") != path:
+        raise ValueError("review anchor path must display the exact path_b64 bytes")
+
+
+class _ReviewAnchorBase(_HostedReviewModel):
+    path: NonEmptyString
+    path_b64: NonEmptyString | None
+    comparison: ComparisonRef
+    original_revision: GitObjectRef
+    current_revision: GitObjectRef
+    state: ReviewAnchorState
+
+    @model_validator(mode="after")
+    def _path_and_revision_identity(self) -> _ReviewAnchorBase:
+        _validate_review_path(self.path, self.path_b64)
+        if self.original_revision.availability is not RevisionAvailability.present:
+            raise ValueError("review anchor original revision must be present")
+        if self.original_revision.repository_id != self.comparison.head.repository_id:
+            raise ValueError("review anchor original revision must belong to the comparison head")
+        if self.current_revision.repository_id != self.comparison.head.repository_id:
+            raise ValueError("review anchor current revision must belong to the comparison head")
+        current_is_present = self.current_revision.availability is RevisionAvailability.present
+        if self.state is not ReviewAnchorState.unresolved and not current_is_present:
+            raise ValueError("resolved review anchor states require a present current revision")
+        head = self.comparison.head
+        if current_is_present and (
+            head.availability is not RevisionAvailability.present
+            or (
+                self.current_revision.repository_id,
+                self.current_revision.oid,
+            )
+            != (head.repository_id, head.oid)
+        ):
+            raise ValueError("review anchor current revision must match comparison head")
+        return self
+
+
+class FileReviewAnchor(_ReviewAnchorBase):
+    kind: Literal["file"]
+
+
+class LineReviewAnchor(_ReviewAnchorBase):
+    kind: Literal["line"]
+    side: ReviewSide
+    line: SafePositiveInteger
+
+
+class ReviewRangeEndpoint(_HostedReviewModel):
+    side: ReviewSide
+    line: SafePositiveInteger
+
+
+class RangeReviewAnchor(_ReviewAnchorBase):
+    kind: Literal["range"]
+    start: ReviewRangeEndpoint
+    end: ReviewRangeEndpoint
+
+    @model_validator(mode="after")
+    def _same_side_endpoints_are_ordered(self) -> RangeReviewAnchor:
+        if self.start.side is self.end.side and self.start.line >= self.end.line:
+            raise ValueError("same-side review ranges require start before end")
+        return self
+
+
+type ReviewAnchor = Annotated[
+    FileReviewAnchor | LineReviewAnchor | RangeReviewAnchor,
+    Field(discriminator="kind"),
+]
+
+
+class ReviewThread(_HostedReviewModel):
+    id: NonEmptyString
+    provider_ref: ProviderObjectRef
+    repository: RepositoryRef
+    change_request_id: NonEmptyString
+    anchor: ReviewAnchor
+    state: ReviewThreadState
+    resolved_by: ActorRef | None
+    comment_count: SafeNonNegativeInteger
+
+    @model_validator(mode="after")
+    def _relationships_and_resolution(self) -> ReviewThread:
+        if (self.provider_ref.provider, self.provider_ref.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("review thread and repository must use the same provider instance")
+        if self.resolved_by is not None and self.state is not ReviewThreadState.resolved:
+            raise ValueError("resolved_by is allowed only when a review thread is resolved")
+        return self
+
+
+class ReviewComment(_HostedReviewModel):
+    id: NonEmptyString
+    provider_ref: ProviderObjectRef
+    repository: RepositoryRef
+    change_request_id: NonEmptyString
+    review_id: NonEmptyString | None
+    thread_id: NonEmptyString
+    in_reply_to_id: NonEmptyString | None
+    url: CanonicalHttpsUrl | None
+    author: ActorRef | None
+    state: CommentState
+    anchor: ReviewAnchor
+    created_at: CanonicalTimestamp
+    updated_at: CanonicalTimestamp
+
+    @model_validator(mode="after")
+    def _relationships_and_lifecycle(self) -> ReviewComment:
+        if (self.provider_ref.provider, self.provider_ref.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("review comment and repository must use the same provider instance")
+        if self.in_reply_to_id == self.id:
+            raise ValueError("review comments cannot reply to themselves")
+        _validate_comment_lifecycle(
+            state=self.state,
+            url=self.url,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+        )
+        return self
+
+
+class Check(_HostedReviewModel):
+    id: NonEmptyString
+    provider_ref: ProviderObjectRef
+    repository: RepositoryRef
+    parent_check_id: NonEmptyString | None
+    kind: CheckKind
+    revision: GitObjectRef
+    name: NonEmptyString
+    status: CheckStatus
+    conclusion: CheckConclusion | None
+    url: CanonicalHttpsUrl | None
+    started_at: CanonicalTimestamp | None
+    completed_at: CanonicalTimestamp | None
+
+    @model_validator(mode="after")
+    def _relationships_and_lifecycle(self) -> Check:
+        if (self.provider_ref.provider, self.provider_ref.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("check and repository must use the same provider instance")
+        if self.revision.availability is not RevisionAvailability.present:
+            raise ValueError("checks require a present immutable revision")
+        if self.parent_check_id == self.id:
+            raise ValueError("checks cannot parent themselves")
+        if self.kind is CheckKind.run and self.parent_check_id is None:
+            raise ValueError("check runs require a parent suite")
+        if self.kind is CheckKind.suite and self.parent_check_id is not None:
+            raise ValueError("check suites forbid a parent check")
+        if self.status is CheckStatus.completed:
+            if self.conclusion is None or self.completed_at is None:
+                raise ValueError("completed checks require conclusion and completed_at")
+        elif self.conclusion is not None or self.completed_at is not None:
+            raise ValueError("noncompleted checks forbid conclusion and completed_at")
+        if (
+            self.started_at is not None
+            and self.completed_at is not None
+            and (_parse_rfc3339(self.completed_at) < _parse_rfc3339(self.started_at))
+        ):
+            raise ValueError("check completed_at must not precede started_at")
+        return self
+
+
+class CommitStatus(_HostedReviewModel):
+    id: NonEmptyString
+    provider_ref: ProviderObjectRef
+    repository: RepositoryRef
+    revision: GitObjectRef
+    context: NonEmptyString
+    state: CommitStatusState
+    description: NonEmptyString | None
+    target_url: CanonicalHttpsUrl | None
+    created_at: CanonicalTimestamp
+    updated_at: CanonicalTimestamp
+
+    @model_validator(mode="after")
+    def _relationships_and_lifecycle(self) -> CommitStatus:
+        if (self.provider_ref.provider, self.provider_ref.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("commit status and repository must use the same provider instance")
+        if self.revision.availability is not RevisionAvailability.present:
+            raise ValueError("commit statuses require a present immutable revision")
+        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
+            raise ValueError("commit status updated_at must not precede created_at")
+        return self
+
+
+def validate_change_request_comment(value: dict[str, Any]) -> ChangeRequestComment:
+    return ChangeRequestComment.model_validate(value)
+
+
+def dump_change_request_comment(value: ChangeRequestComment) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_review(value: dict[str, Any]) -> Review:
+    return Review.model_validate(value)
+
+
+def dump_review(value: Review) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_review_thread(value: dict[str, Any]) -> ReviewThread:
+    return ReviewThread.model_validate(value)
+
+
+def dump_review_thread(value: ReviewThread) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_review_comment(value: dict[str, Any]) -> ReviewComment:
+    return ReviewComment.model_validate(value)
+
+
+def dump_review_comment(value: ReviewComment) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_check(value: dict[str, Any]) -> Check:
+    return Check.model_validate(value)
+
+
+def dump_check(value: Check) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_commit_status(value: dict[str, Any]) -> CommitStatus:
+    return CommitStatus.model_validate(value)
+
+
+def dump_commit_status(value: CommitStatus) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+type HostedReviewBundleRecord = (
+    ChangeRequestComment | Review | ReviewThread | ReviewComment | Check | CommitStatus
+)
+
+
+def validate_hosted_review_bundle(
+    *,
+    change_request: ChangeRequest,
+    change_request_comments: tuple[ChangeRequestComment, ...],
+    reviews: tuple[Review, ...],
+    review_threads: tuple[ReviewThread, ...],
+    review_comments: tuple[ReviewComment, ...],
+    checks: tuple[Check, ...],
+    commit_statuses: tuple[CommitStatus, ...],
+    review_comments_complete: bool,
+) -> None:
+    """Validate relationships whose targets live in sibling artifact collections."""
+
+    def require_scope(
+        *,
+        provider_ref: ProviderObjectRef,
+        repository: RepositoryRef,
+        change_request_id: str | None,
+    ) -> None:
+        if repository != change_request.repository or (
+            provider_ref.provider,
+            provider_ref.instance,
+        ) != (
+            change_request.provider_ref.provider,
+            change_request.provider_ref.instance,
+        ):
+            raise ValueError("hosted-review bundle records must share provider and repository")
+        if change_request_id is not None and change_request_id != change_request.id:
+            raise ValueError("hosted-review child has a dangling change_request_id")
+
+    families: tuple[tuple[str, tuple[HostedReviewBundleRecord, ...]], ...] = (
+        ("change-request comments", change_request_comments),
+        ("reviews", reviews),
+        ("review threads", review_threads),
+        ("review comments", review_comments),
+        ("checks", checks),
+        ("commit statuses", commit_statuses),
+    )
+    for family_name, records in families:
+        identifiers = tuple(record.id for record in records)
+        if len(set(identifiers)) != len(identifiers):
+            raise ValueError(f"{family_name} require unique IDs")
+
+    for record in (*change_request_comments, *reviews, *review_threads, *review_comments):
+        require_scope(
+            provider_ref=record.provider_ref,
+            repository=record.repository,
+            change_request_id=record.change_request_id,
+        )
+    if any(
+        review.revision.repository_id != change_request.comparison.head.repository_id
+        for review in reviews
+    ):
+        raise ValueError("review revisions must belong to the change request head repository")
+    for record in (*checks, *commit_statuses):
+        require_scope(
+            provider_ref=record.provider_ref,
+            repository=record.repository,
+            change_request_id=None,
+        )
+
+    review_by_id = {review.id: review for review in reviews}
+    thread_by_id = {thread.id: thread for thread in review_threads}
+    comment_by_id = {comment.id: comment for comment in review_comments}
+    comments_by_thread: dict[str, list[ReviewComment]] = {
+        thread.id: [] for thread in review_threads
+    }
+    for comment in review_comments:
+        if comment.review_id is not None and comment.review_id not in review_by_id:
+            raise ValueError("review comment has a dangling review_id")
+        thread = thread_by_id.get(comment.thread_id)
+        if thread is None:
+            raise ValueError("review comment has a dangling thread_id")
+        if comment.anchor.comparison != change_request.comparison or (
+            comment.anchor.path,
+            comment.anchor.path_b64,
+        ) != (thread.anchor.path, thread.anchor.path_b64):
+            raise ValueError("review comment anchor does not match its thread")
+        if comment.in_reply_to_id is not None:
+            parent = comment_by_id.get(comment.in_reply_to_id)
+            if parent is None:
+                raise ValueError("review comment has a dangling in_reply_to_id")
+            if parent.thread_id != comment.thread_id:
+                raise ValueError("review comments may reply only within their thread")
+        comments_by_thread[thread.id].append(comment)
+
+    reply_parent_by_id = {
+        comment.id: comment.in_reply_to_id
+        for comment in review_comments
+        if comment.in_reply_to_id is not None
+    }
+    resolved_reply_ids: set[str] = set()
+    for start_id in reply_parent_by_id:
+        path_ids: set[str] = set()
+        path: list[str] = []
+        current_id = start_id
+        while current_id not in resolved_reply_ids:
+            if current_id in path_ids:
+                raise ValueError("review comment reply graph cannot contain cycles")
+            path_ids.add(current_id)
+            path.append(current_id)
+            parent_id = reply_parent_by_id.get(current_id)
+            if parent_id is None:
+                break
+            current_id = parent_id
+        resolved_reply_ids.update(path)
+
+    for thread in review_threads:
+        if thread.anchor.comparison != change_request.comparison:
+            raise ValueError("review thread anchor does not match the change request comparison")
+        observed_count = len(comments_by_thread[thread.id])
+        if observed_count > thread.comment_count:
+            raise ValueError("observed review comments exceed the thread comment count")
+        if review_comments_complete and observed_count != thread.comment_count:
+            raise ValueError("complete review comments must equal the thread comment count")
+
+    check_by_id = {check.id: check for check in checks}
+    for check in checks:
+        if check.parent_check_id is None:
+            continue
+        parent = check_by_id.get(check.parent_check_id)
+        if parent is None or parent.kind is not CheckKind.suite:
+            raise ValueError("check run parent must resolve to a suite in the bundle")
+        if check.revision != parent.revision:
+            raise ValueError("check run and parent suite must share the same revision")
 
 
 class AuthorizationMode(StrEnum):
@@ -1025,6 +1603,191 @@ class Truncation(_HostedReviewModel):
         if (self.reason in bounded) != (self.limit is not None):
             raise ValueError("bounded truncation reasons require exactly one positive limit")
         return self
+
+
+class ImmutableActivityFreshness(_HostedReviewModel):
+    kind: Literal["immutable"]
+
+
+class ObservedActivityFreshness(_HostedReviewModel):
+    kind: Literal["observed"]
+    snapshot_id: Sha256Digest
+    observed_at: CanonicalTimestamp
+
+
+type ActivityFreshness = Annotated[
+    ImmutableActivityFreshness | ObservedActivityFreshness,
+    Field(discriminator="kind"),
+]
+
+
+class CommitActivityDetail(_HostedReviewModel):
+    kind: Literal["commit"]
+    revision: GitObjectRef
+
+
+class ChangeRequestActivityDetail(_HostedReviewModel):
+    kind: Literal["change_request"]
+    change_request_id: NonEmptyString
+    provider_ref: ProviderObjectRef
+    repository: RepositoryRef
+    number: SafePositiveInteger
+
+    @model_validator(mode="after")
+    def _namespace_is_consistent(self) -> ChangeRequestActivityDetail:
+        if (self.provider_ref.provider, self.provider_ref.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("activity detail crosses provider instances")
+        return self
+
+
+type ActivityDetailTarget = Annotated[
+    CommitActivityDetail | ChangeRequestActivityDetail,
+    Field(discriminator="kind"),
+]
+
+
+class GitActivityActor(_HostedReviewModel):
+    kind: Literal["git"]
+    name: NonEmptyString
+    email: NonEmptyString | None
+
+
+class ProviderActivityActor(_HostedReviewModel):
+    kind: Literal["provider"]
+    actor: ActorRef
+
+
+type ActivityActor = Annotated[
+    GitActivityActor | ProviderActivityActor,
+    Field(discriminator="kind"),
+]
+
+
+class ActivityItem(_HostedReviewModel):
+    id: NonEmptyString
+    kind: ActivityKind
+    title: NonEmptyString
+    actors: tuple[ActivityActor, ...]
+    event_at: CanonicalTimestamp
+    updated_at: CanonicalTimestamp
+    state: ActivityState | None
+    primary_revision: RevisionRef
+    base_revision: RevisionRef | None
+    head_revision: RevisionRef | None
+    comparison_available: StrictBool
+    detail: ActivityDetailTarget
+    freshness: ActivityFreshness
+
+    @model_validator(mode="after")
+    def _kind_and_relationships_are_consistent(self) -> ActivityItem:
+        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.event_at):
+            raise ValueError("activity updated_at must not precede event_at")
+        if self.kind is ActivityKind.commit:
+            if self.state is not None:
+                raise ValueError("commit activity forbids change-request state")
+            if not isinstance(self.detail, CommitActivityDetail) or not isinstance(
+                self.freshness, ImmutableActivityFreshness
+            ):
+                raise ValueError("commit activity requires commit detail and immutable freshness")
+            if self.base_revision is not None or self.head_revision is not None:
+                raise ValueError("commit activity forbids comparison revisions")
+            if self.comparison_available:
+                raise ValueError("commit activity cannot claim comparison availability")
+            if any(not isinstance(actor, GitActivityActor) for actor in self.actors):
+                raise ValueError("commit activity requires Git actors")
+            if self.primary_revision.availability is not RevisionAvailability.present or (
+                self.detail.revision.repository_id,
+                self.detail.revision.oid,
+            ) != (self.primary_revision.repository_id, self.primary_revision.oid):
+                raise ValueError("commit detail must identify the present primary revision")
+            return self
+
+        if self.state is None:
+            raise ValueError("change-request activity requires state")
+        if any(not isinstance(actor, ProviderActivityActor) for actor in self.actors):
+            raise ValueError("change-request activity requires provider actors")
+        if not isinstance(self.detail, ChangeRequestActivityDetail) or not isinstance(
+            self.freshness, ObservedActivityFreshness
+        ):
+            raise ValueError(
+                "change-request activity requires change-request detail and observed freshness"
+            )
+        if self.base_revision is None or self.head_revision is None:
+            raise ValueError("change-request activity requires base and head revisions")
+        if self.base_revision.repository_id != self.detail.repository.opaque_id:
+            raise ValueError(
+                "change-request activity base revision must belong to its hosted repository"
+            )
+        if self.primary_revision != self.head_revision:
+            raise ValueError("change-request activity primary revision must be its head")
+        revisions_are_present = (
+            self.base_revision.availability is RevisionAvailability.present
+            and self.head_revision.availability is RevisionAvailability.present
+        )
+        if self.comparison_available != revisions_are_present:
+            raise ValueError(
+                "comparison_available is true exactly when base and head revisions are present"
+            )
+        return self
+
+
+class RepositoryActivity(_HostedReviewModel):
+    repository_id: NonEmptyString
+    included_kinds: tuple[ActivityKind, ...] = Field(min_length=1)
+    max_items: SafePositiveInteger
+    order: Literal["event_at_desc_id_asc"]
+    coverage: ActivityCoverage
+    items: tuple[ActivityItem, ...]
+    continuation: OpaqueCursorContinuation | None
+    truncation: Truncation | None
+
+    @model_validator(mode="after")
+    def _page_contract_is_consistent(self) -> RepositoryActivity:
+        kind_values = tuple(kind.value for kind in self.included_kinds)
+        if len(set(kind_values)) != len(kind_values) or tuple(sorted(kind_values)) != kind_values:
+            raise ValueError("activity included kinds must be ASCII-sorted and unique")
+        if len(self.items) > self.max_items:
+            raise ValueError("activity item count exceeds max_items")
+        item_ids = tuple(item.id for item in self.items)
+        if len(set(item_ids)) != len(item_ids):
+            raise ValueError("activity item IDs must be unique")
+        included = set(self.included_kinds)
+        if any(item.kind not in included for item in self.items):
+            raise ValueError("activity items must use an included kind")
+        for item in self.items:
+            if (
+                item.kind is ActivityKind.commit
+                and item.primary_revision.repository_id != self.repository_id
+            ):
+                raise ValueError("commit activity must belong to the enclosing repository")
+        expected = tuple(sorted(self.items, key=lambda item: _utf8_sort_key(item.id)))
+        expected = tuple(
+            sorted(expected, key=lambda item: _parse_rfc3339(item.event_at), reverse=True)
+        )
+        if self.items != expected:
+            raise ValueError("activity items must use event_at descending, ID ascending order")
+        if self.coverage is ActivityCoverage.complete:
+            if self.continuation is not None or self.truncation is not None:
+                raise ValueError("complete activity forbids continuation and truncation")
+        else:
+            if self.truncation is None:
+                raise ValueError("partial activity requires explicit truncation")
+            if self.truncation.reason is TruncationReason.item_bound and (
+                self.truncation.limit != self.max_items or len(self.items) != self.max_items
+            ):
+                raise ValueError("item-bound activity must reach its declared max_items limit")
+        return self
+
+
+def validate_repository_activity(value: dict[str, Any]) -> RepositoryActivity:
+    return RepositoryActivity.model_validate(value)
+
+
+def dump_repository_activity(value: RepositoryActivity) -> dict[str, Any]:
+    return value.model_dump(mode="json")
 
 
 class ResourceCollection(_HostedReviewModel):

@@ -1,8 +1,9 @@
 # Hosted Review Model and Provider Boundary
 
-**Status:** Accepted design; the no-network, pre-schema ChangeRequest semantic kernel is
-implemented, and the provider-storage record family is in progress in the next formal
-stack layer. No provider adapter, cache, route, kind, or view is implemented yet.
+**Status:** Accepted design; the no-network ChangeRequest, provider-publication, review,
+signal, and activity record families are implemented.
+Schema and registry work is next; no provider adapter, cache, route, kind, or view is
+implemented yet.
 
 Hosted review is a domain above Git history and File Diff Format.
 A pull request or merge request has Git endpoints and can produce a comparison, but it
@@ -141,6 +142,121 @@ records use `pure-yaml` because their entire content is structured or they only 
 a separately stored comment artifact.
 A later issue artifact may use `frontmatter-md` for the same reason as a change request;
 that decision belongs to `mb-9rrc` and does not alter the v0.11.0 PR contract.
+
+### Review, Signal, and Activity Contracts
+
+The review family uses closed v1 records rather than a generic event or provider
+payload. Every provider-owned entity carries `id`, `provider_ref`, and `repository`;
+children also carry the domain IDs needed to resolve their parent records.
+A bundle validator resolves those IDs and rejects provider, repository, comparison,
+thread, and reply relationships that cross scopes.
+
+| Record | Required fields beyond shared identity |
+| --- | --- |
+| `ChangeRequestComment/v1` | `change_request_id`, nullable `url` and `author`, `state`, `created_at`, `updated_at` |
+| `Review/v1` | `change_request_id`, `url`, nullable `author`, `disposition`, observed immutable `revision`, `created_at`, nullable `submitted_at`, `updated_at` |
+| `ReviewThread/v1` | `change_request_id`, typed `anchor`, `state`, nullable `resolved_by`, provider-observed `comment_count` |
+| `ReviewComment/v1` | `change_request_id`, nullable `review_id`, `thread_id`, nullable `in_reply_to_id`, nullable `url` and `author`, `state`, typed `anchor`, `created_at`, `updated_at` |
+| `Check/v1` | nullable `parent_check_id`, `kind`, present immutable `revision`, `name`, `status`, nullable `conclusion`, `url`, `started_at`, and `completed_at` |
+| `CommitStatus/v1` | present immutable `revision`, `context`, `state`, nullable `description` and `target_url`, `created_at`, `updated_at` |
+
+`CommentState` is `visible`, `minimized`, `deleted`, or `unknown`. An author may be null
+when provider identity is unavailable, independently of content state; only a deleted
+comment may omit its human URL. The record has no synthetic `deleted_at`: provider
+deletion timing and proof belong to retrieval and tombstone evidence.
+The Markdown body may be empty, but an immutable artifact is not required to erase prose
+observed before deletion.
+
+`ReviewDisposition` is `pending`, `commented`, `approved`, `changes_requested`,
+`dismissed`, or `unknown`. Pending reviews have no `submitted_at`; every other known
+disposition requires it.
+The author may be null when provider identity is unavailable.
+The reviewed `GitObjectRef` is an observed revision: normally present, but explicitly
+`unavailable` when a force push or garbage collection removed the object; it is never
+`not_requested`.
+
+Checks distinguish `suite`, `run`, and `unknown` kinds.
+A run resolves its parent to a suite for the same immutable revision in the same bundle.
+Only a completed check carries a conclusion and completion time.
+Check and commit-status revisions are present immutable Git object references; they are
+not restricted to the base repository or current head because providers also report
+fork, merge, and synthetic revisions.
+
+#### Review Anchors
+
+`ReviewAnchor` is a discriminated `file`, `line`, or `range` union.
+Every variant owns:
+
+- display `path` plus nullable `path_b64`, matching File Diff Format’s lossless Git path
+  convention;
+- the complete `ComparisonRef` observed with the discussion;
+- present `original_revision` and explicitly available or unavailable
+  `current_revision`; and
+- `current`, `outdated`, `unresolved`, or `unmappable` state.
+
+A file anchor adds no side or line.
+A line anchor adds `base` or `head` side and one positive line.
+A range adds ordered `start` and `end` endpoints, each with its own side and positive
+line. Independently sided endpoints preserve provider ranges without comparing base and
+head line numbers as if they occupied one numeric axis.
+When both endpoints use one side, the start line precedes the end line; one-line
+locations use the line variant.
+When `path_b64` is present, it is canonical standard base64 of the exact non-NUL Git
+path bytes, and `path` is their UTF-8 replacement-decoded display.
+This preserves non-UTF-8 repository paths without making display text authoritative.
+
+Original revisions are always present.
+Current, outdated, and unmappable anchors also have a present current revision that
+matches the comparison head.
+The original and current revisions may differ when a provider remaps a still-current
+comment after the change-request head advances.
+An unresolved anchor may declare its current revision unavailable or not requested.
+The UI may render the original location or an unresolved state; it never invents a
+current line.
+
+Review comments resolve their review, thread, and optional parent comment inside the
+bundle when those identifiers are present.
+A provider comment may have no owning review.
+Reply graphs are acyclic, replies stay within one thread, and comment/thread anchors
+share the selected change request’s comparison and path.
+The observed review-comment count never exceeds the thread’s provider count; equality is
+required only when the collection is complete.
+Collection cardinality belongs to the trusted resource profile rather than an arbitrary
+limit repeated in each record.
+
+#### Repository Activity Projection
+
+`RepositoryActivity/v1` is a recomputable selection/session projection, not a provider
+store artifact. Its `repository_id` is the generic repository selection identity, so a
+local Git history does not need a fictional `RepositoryRef`. Hosted change-request items
+retain their provider and repository references in their detail target and join to the
+generic repository through `ProviderBinding/v1`.
+
+The record declares:
+
+- a nonempty, sorted set of included `commit` and `change_request` kinds;
+- an explicit `max_items` bound and fixed `event_at_desc_id_asc` order;
+- `complete` or `partial` coverage;
+- unique activity items; and
+- an optional opaque continuation plus required truncation evidence for partial pages.
+
+An `item_bound` truncation names `max_items` and is valid only when the projection
+actually reaches that bound.
+
+Each activity item carries stable identity, title, source-neutral actors, event and
+update times, primary revision, optional base and head revisions, comparison
+availability, a typed detail target, and freshness.
+Actors are a closed union: local commit items use Git name plus nullable email, while
+hosted change requests use a provider `ActorRef`. A commit item belongs to the enclosing
+generic repository.
+
+Commit freshness is `immutable`. Provider-derived change-request freshness is `observed`
+with a snapshot ID and observation time.
+A change-request item may use `not_requested` revision availability when projected from
+a bounded index; comparison availability becomes true only after both base and head
+object IDs are present.
+This keeps activity navigation useful without claiming that unfetched Git objects exist
+locally.
 
 ## Provider Identity Without Provider-Shaped Views
 
@@ -359,9 +475,11 @@ It lets the existing history navigation pattern present commits, change requests
 grouped combination without making a PR look like a commit.
 
 Each activity item contains only what a paginated history surface needs: stable item
-identity, kind, title, actors, event and update times, concise state, primary revision,
-optional base/head revisions, comparison capability, detail target, and source
-freshness. The full change-request document remains the authority for review state and
+identity, kind, title, source-neutral actors, event and update times, concise state,
+primary revision, optional base/head revisions, comparison capability, detail target,
+and source freshness.
+Git commit actors use name and optional email; hosted actors keep their provider
+identity. The full change-request document remains the authority for review state and
 discussion; the Git history session remains the authority for commit ordering and graph
 lanes.
 

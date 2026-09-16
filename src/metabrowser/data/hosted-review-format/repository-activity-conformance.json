@@ -1,0 +1,297 @@
+{
+  "base_document": {
+    "repository_id": "repo-1",
+    "included_kinds": ["change_request", "commit"],
+    "max_items": 50,
+    "order": "event_at_desc_id_asc",
+    "coverage": "complete",
+    "items": [
+      {
+        "id": "commit:89abcdef0123456789abcdef0123456789abcdef",
+        "kind": "commit",
+        "title": "Refine provider model",
+        "actors": [{ "kind": "git", "name": "Commit Author", "email": "author@example.com" }],
+        "event_at": "2026-09-11T10:00:00Z",
+        "updated_at": "2026-09-11T10:00:00Z",
+        "state": null,
+        "primary_revision": {
+          "repository_id": "repo-1",
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "oid": "89abcdef0123456789abcdef0123456789abcdef",
+          "availability": "present"
+        },
+        "base_revision": null,
+        "head_revision": null,
+        "comparison_available": false,
+        "detail": {
+          "kind": "commit",
+          "revision": {
+            "repository_id": "repo-1",
+            "oid": "89abcdef0123456789abcdef0123456789abcdef",
+            "availability": "present"
+          }
+        },
+        "freshness": { "kind": "immutable" }
+      },
+      {
+        "id": "change-request:17",
+        "kind": "change_request",
+        "title": "Keep hosted changes provider neutral",
+        "actors": [
+          {
+            "kind": "provider",
+            "actor": {
+              "provider_opaque_id": "person-4",
+              "handle": "author",
+              "url": "https://code.example/author"
+            }
+          }
+        ],
+        "event_at": "2026-09-11T09:30:00Z",
+        "updated_at": "2026-09-11T09:45:00Z",
+        "state": "open",
+        "primary_revision": {
+          "repository_id": "repo-2",
+          "ref": "topic/provider-neutral",
+          "oid": "fedcba9876543210fedcba9876543210fedcba98",
+          "availability": "present"
+        },
+        "base_revision": {
+          "repository_id": "repo-1",
+          "ref": "main",
+          "oid": "0123456789abcdef0123456789abcdef01234567",
+          "availability": "present"
+        },
+        "head_revision": {
+          "repository_id": "repo-2",
+          "ref": "topic/provider-neutral",
+          "oid": "fedcba9876543210fedcba9876543210fedcba98",
+          "availability": "present"
+        },
+        "comparison_available": true,
+        "detail": {
+          "kind": "change_request",
+          "change_request_id": "forge:code.example:repo-1:merge-request:17",
+          "provider_ref": {
+            "provider": "forge",
+            "instance": "code.example",
+            "object_kind": "merge_request",
+            "opaque_id": "change-17"
+          },
+          "repository": { "provider": "forge", "instance": "code.example", "opaque_id": "repo-1" },
+          "number": 17
+        },
+        "freshness": {
+          "kind": "observed",
+          "snapshot_id": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observed_at": "2026-09-11T09:45:00Z"
+        }
+      }
+    ],
+    "continuation": null,
+    "truncation": null
+  },
+  "cases": [
+    { "name": "commit-and-change-request-history", "changes": [], "expect": "valid" },
+    {
+      "name": "index-style-unresolved-change-request-revisions",
+      "changes": [
+        { "path": ["items", 1, "primary_revision", "availability"], "value": "not_requested" },
+        { "path": ["items", 1, "primary_revision", "oid"], "value": null },
+        { "path": ["items", 1, "base_revision", "availability"], "value": "not_requested" },
+        { "path": ["items", 1, "base_revision", "oid"], "value": null },
+        { "path": ["items", 1, "head_revision", "availability"], "value": "not_requested" },
+        { "path": ["items", 1, "head_revision", "oid"], "value": null },
+        { "path": ["items", 1, "comparison_available"], "value": false }
+      ],
+      "expect": "valid"
+    },
+    {
+      "name": "partial-page-with-continuation",
+      "changes": [
+        { "path": ["max_items"], "value": 2 },
+        { "path": ["coverage"], "value": "partial" },
+        { "path": ["continuation"], "value": { "kind": "opaque_cursor", "value": "next_page_2" } },
+        { "path": ["truncation"], "value": { "reason": "item_bound", "limit": 2 } }
+      ],
+      "expect": "valid"
+    },
+    {
+      "name": "included-kinds-are-sorted",
+      "changes": [{ "path": ["included_kinds"], "value": ["commit", "change_request"] }],
+      "expect": "invalid"
+    },
+    {
+      "name": "items-use-declared-kind",
+      "changes": [{ "path": ["included_kinds"], "value": ["commit"] }],
+      "expect": "invalid"
+    },
+    {
+      "name": "items-use-deterministic-order",
+      "changes": [{ "path": ["items", 0, "event_at"], "value": "2026-09-11T09:00:00Z" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "equal-event-at-orders-id-ascending",
+      "changes": [
+        { "path": ["items", 0, "id"], "value": "a-commit" },
+        { "path": ["items", 0, "event_at"], "value": "2026-09-11T09:30:00Z" },
+        { "path": ["items", 1, "id"], "value": "z-change-request" }
+      ],
+      "expect": "valid"
+    },
+    {
+      "name": "equal-event-at-rejects-id-descending",
+      "changes": [
+        { "path": ["items", 0, "id"], "value": "z-commit" },
+        { "path": ["items", 0, "event_at"], "value": "2026-09-11T09:30:00Z" },
+        { "path": ["items", 1, "id"], "value": "a-change-request" }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-item-ids-are-unique",
+      "changes": [
+        { "path": ["items", 1, "id"], "value": "commit:89abcdef0123456789abcdef0123456789abcdef" }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "item-bound-is-enforced",
+      "changes": [{ "path": ["max_items"], "value": 1 }],
+      "expect": "invalid"
+    },
+    {
+      "name": "complete-coverage-forbids-continuation",
+      "changes": [
+        { "path": ["continuation"], "value": { "kind": "opaque_cursor", "value": "next_page_2" } }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "complete-coverage-forbids-truncation",
+      "changes": [
+        { "path": ["truncation"], "value": { "reason": "provider_limit", "limit": 100 } }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "partial-coverage-requires-truncation",
+      "changes": [{ "path": ["coverage"], "value": "partial" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "item-bound-limit-matches-max-items",
+      "changes": [
+        { "path": ["max_items"], "value": 2 },
+        { "path": ["coverage"], "value": "partial" },
+        { "path": ["truncation"], "value": { "reason": "item_bound", "limit": 1 } }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "item-bound-must-be-reached",
+      "changes": [
+        { "path": ["max_items"], "value": 3 },
+        { "path": ["coverage"], "value": "partial" },
+        { "path": ["truncation"], "value": { "reason": "item_bound", "limit": 3 } }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "continuation-rejects-url",
+      "changes": [
+        { "path": ["coverage"], "value": "partial" },
+        {
+          "path": ["continuation"],
+          "value": { "kind": "opaque_cursor", "value": "https://code.example/next" }
+        },
+        { "path": ["truncation"], "value": { "reason": "provider_limit", "limit": 100 } }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "commit-requires-present-primary-revision",
+      "changes": [
+        { "path": ["items", 0, "primary_revision", "availability"], "value": "not_requested" },
+        { "path": ["items", 0, "primary_revision", "oid"], "value": null }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "commit-belongs-to-enclosing-repository",
+      "changes": [
+        { "path": ["items", 0, "primary_revision", "repository_id"], "value": "repo-other" },
+        { "path": ["items", 0, "detail", "revision", "repository_id"], "value": "repo-other" }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "git-actor-email-is-optional",
+      "changes": [{ "path": ["items", 0, "actors", 0, "email"], "value": null }],
+      "expect": "valid"
+    },
+    {
+      "name": "commit-rejects-valid-provider-actor",
+      "changes": [
+        {
+          "path": ["items", 0, "actors", 0],
+          "value": {
+            "kind": "provider",
+            "actor": {
+              "provider_opaque_id": "person-4",
+              "handle": "author",
+              "url": "https://code.example/author"
+            }
+          }
+        }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-actor-rejects-extra-fields",
+      "changes": [{ "path": ["items", 0, "actors", 0, "provider_opaque_id"], "value": "person-4" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "change-request-primary-is-head",
+      "changes": [{ "path": ["items", 1, "primary_revision", "ref"], "value": "different" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "change-request-base-belongs-to-hosted-repository",
+      "changes": [
+        { "path": ["items", 1, "base_revision", "repository_id"], "value": "repo-other" }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "change-request-rejects-valid-git-actor",
+      "changes": [
+        {
+          "path": ["items", 1, "actors", 0],
+          "value": { "kind": "git", "name": "Commit Author", "email": "author@example.com" }
+        }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "unknown-change-request-state",
+      "changes": [{ "path": ["items", 1, "state"], "value": "unknown" }],
+      "expect": "valid"
+    },
+    {
+      "name": "change-request-provider-is-consistent",
+      "changes": [
+        { "path": ["items", 1, "detail", "repository", "instance"], "value": "other.example" }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-rejects-extra-fields",
+      "changes": [{ "path": ["provider_payload"], "value": {} }],
+      "expect": "invalid"
+    }
+  ],
+  "format": "hosted-review-repository-activity-conformance-v1"
+}

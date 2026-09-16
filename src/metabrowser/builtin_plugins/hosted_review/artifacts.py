@@ -15,12 +15,24 @@ from frontmatter_format import FmFormatError, FmStyle, from_yaml_string, new_yam
 from ruamel.yaml.error import YAMLError
 
 from metabrowser.builtin_plugins.hosted_review.models import (
+    CHANGE_REQUEST_COMMENT_CONTRACT_ID,
+    CHANGE_REQUEST_CONTRACT_ID,
+    REVIEW_COMMENT_CONTRACT_ID,
+    REVIEW_CONTRACT_ID,
     ChangeRequest,
+    ChangeRequestComment,
+    Review,
+    ReviewComment,
     dump_change_request,
+    dump_change_request_comment,
+    dump_review,
+    dump_review_comment,
     validate_change_request,
+    validate_change_request_comment,
+    validate_review,
+    validate_review_comment,
 )
 
-CHANGE_REQUEST_CONTRACT_ID = "com.github.jlevy.metabrowser.review:ChangeRequest/v1"
 ENFORCED_STATUS = "enforced"
 
 
@@ -36,6 +48,24 @@ class FrontmatterArtifact:
 @dataclass(frozen=True)
 class ChangeRequestArtifact:
     record: ChangeRequest
+    body: str
+
+
+@dataclass(frozen=True)
+class ChangeRequestCommentArtifact:
+    record: ChangeRequestComment
+    body: str
+
+
+@dataclass(frozen=True)
+class ReviewArtifact:
+    record: Review
+    body: str
+
+
+@dataclass(frozen=True)
+class ReviewCommentArtifact:
+    record: ReviewComment
     body: str
 
 
@@ -75,6 +105,36 @@ def serialize_change_request_artifact(*, record: ChangeRequest, body: str) -> by
         contract_id=CHANGE_REQUEST_CONTRACT_ID,
         envelope="change_request",
         record=dump_change_request(record),
+        body=body,
+    )
+
+
+def serialize_change_request_comment_artifact(*, record: ChangeRequestComment, body: str) -> bytes:
+    """Serialize one validated top-level comment and its opaque Markdown body."""
+    return _serialize_frontmatter_artifact(
+        contract_id=CHANGE_REQUEST_COMMENT_CONTRACT_ID,
+        envelope="change_request_comment",
+        record=dump_change_request_comment(record),
+        body=body,
+    )
+
+
+def serialize_review_artifact(*, record: Review, body: str) -> bytes:
+    """Serialize one validated review and its optional opaque Markdown summary."""
+    return _serialize_frontmatter_artifact(
+        contract_id=REVIEW_CONTRACT_ID,
+        envelope="review",
+        record=dump_review(record),
+        body=body,
+    )
+
+
+def serialize_review_comment_artifact(*, record: ReviewComment, body: str) -> bytes:
+    """Serialize one validated review comment and its opaque Markdown body."""
+    return _serialize_frontmatter_artifact(
+        contract_id=REVIEW_COMMENT_CONTRACT_ID,
+        envelope="review_comment",
+        record=dump_review_comment(record),
         body=body,
     )
 
@@ -137,14 +197,71 @@ def snapshot_identity(payload: bytes) -> str:
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
+def _validate_frontmatter_artifact_identity(
+    payload: bytes,
+    *,
+    contract_id: str,
+    envelope: str,
+    artifact_name: str,
+) -> FrontmatterArtifact:
+    artifact = parse_frontmatter_artifact(payload)
+    if artifact.contract_id != contract_id:
+        raise FmFormatError(f"unsupported hosted-review contract: {artifact.contract_id}")
+    if artifact.envelope != envelope:
+        raise FmFormatError(f"{artifact_name} artifacts require the {envelope} envelope")
+    return artifact
+
+
 def validate_change_request_artifact(payload: bytes) -> ChangeRequestArtifact:
     """Validate the installed ChangeRequest artifact identity and its YAML record."""
-    artifact = parse_frontmatter_artifact(payload)
-    if artifact.contract_id != CHANGE_REQUEST_CONTRACT_ID:
-        raise FmFormatError(f"unsupported hosted-review contract: {artifact.contract_id}")
-    if artifact.envelope != "change_request":
-        raise FmFormatError("ChangeRequest artifacts require the change_request envelope")
+    artifact = _validate_frontmatter_artifact_identity(
+        payload,
+        contract_id=CHANGE_REQUEST_CONTRACT_ID,
+        envelope="change_request",
+        artifact_name="ChangeRequest",
+    )
     return ChangeRequestArtifact(
         record=validate_change_request(artifact.record),
+        body=artifact.body,
+    )
+
+
+def validate_change_request_comment_artifact(
+    payload: bytes,
+) -> ChangeRequestCommentArtifact:
+    """Validate one ChangeRequestComment artifact and preserve its Markdown body."""
+    artifact = _validate_frontmatter_artifact_identity(
+        payload,
+        contract_id=CHANGE_REQUEST_COMMENT_CONTRACT_ID,
+        envelope="change_request_comment",
+        artifact_name="ChangeRequestComment",
+    )
+    return ChangeRequestCommentArtifact(
+        record=validate_change_request_comment(artifact.record),
+        body=artifact.body,
+    )
+
+
+def validate_review_artifact(payload: bytes) -> ReviewArtifact:
+    """Validate one Review artifact and preserve its optional Markdown summary."""
+    artifact = _validate_frontmatter_artifact_identity(
+        payload,
+        contract_id=REVIEW_CONTRACT_ID,
+        envelope="review",
+        artifact_name="Review",
+    )
+    return ReviewArtifact(record=validate_review(artifact.record), body=artifact.body)
+
+
+def validate_review_comment_artifact(payload: bytes) -> ReviewCommentArtifact:
+    """Validate one ReviewComment artifact and preserve its Markdown body."""
+    artifact = _validate_frontmatter_artifact_identity(
+        payload,
+        contract_id=REVIEW_COMMENT_CONTRACT_ID,
+        envelope="review_comment",
+        artifact_name="ReviewComment",
+    )
+    return ReviewCommentArtifact(
+        record=validate_review_comment(artifact.record),
         body=artifact.body,
     )
