@@ -3,9 +3,9 @@ type: is
 id: is-01m2mh3pyq4m362014a5eqw3zw
 title: "Phase 0C.2 inventory: generic contract and profile completeness checker"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - phase:hosted-review-0c2
@@ -13,7 +13,11 @@ labels:
 dependencies: []
 parent_id: is-01m2krxqqcrn84sje77js6e1vx
 created_at: 2026-09-16T07:15:15.030Z
-updated_at: 2026-09-16T07:40:22.796Z
+updated_at: 2026-09-16T08:43:20.244Z
+closed_at: 2026-09-16T08:43:20.234Z
+close_reason: "Implemented, verified, and published in green draft PR #136 at b907bb2734929cd0858207ba5d73639aee168636."
+resolution: null
+duplicate_of: null
 ---
 Implement a provider-neutral inventory checker over InstalledRegistries and installed CapabilitySet declarations. Require every contract to expose exact schema bytes/digests, enforced structure, semantic validation, producer/consumer IDs, resolvable corpus evidence, and browser evidence when browser-consumed; require every profile to name same-provider installed contracts plus target/cardinality/pagination/completeness semantics. Reject duplicates, orphans, unresolved selectors, and declarations absent from the architecture inventory. Determine exact files/functions from the Phase 0C.1 registry seams before editing.
 

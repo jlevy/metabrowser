@@ -3,9 +3,9 @@ type: is
 id: is-01m2mk1krjjyh70r8gjcjjkg0n
 title: "Phase 0C.2 review R7: require positive and negative corpus evidence"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - phase:hosted-review-0c2
@@ -13,7 +13,11 @@ labels:
 dependencies: []
 parent_id: is-01m2kry0g3g8hbnhr896wvqeve
 created_at: 2026-09-16T07:49:03.377Z
-updated_at: 2026-09-16T07:58:54.280Z
+updated_at: 2026-09-16T08:39:43.439Z
+closed_at: 2026-09-16T08:39:43.439Z
+close_reason: "Fixed in b907bb2734929cd0858207ba5d73639aee168636 and formally disposed on PR #136: https://github.com/jlevy/metabrowser/pull/136#issuecomment-5694591401"
+resolution: null
+duplicate_of: null
 ---
 A selected conformance corpus with only valid cases or only invalid cases passes, allowing accept-all or reject-all validators to be vacuously certified. Require at least one selected valid and one selected invalid expectation per contract, contract-wide rather than per selector, and add valid-only and invalid-only regressions while preserving all shipped contracts.
 

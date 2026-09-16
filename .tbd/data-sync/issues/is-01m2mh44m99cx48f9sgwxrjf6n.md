@@ -3,9 +3,9 @@ type: is
 id: is-01m2mh44m99cx48f9sgwxrjf6n
 title: "Phase 0C.2 architecture: register format inventory and parity evidence"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - phase:hosted-review-0c2
@@ -13,7 +13,11 @@ labels:
 dependencies: []
 parent_id: is-01m2krxqqcrn84sje77js6e1vx
 created_at: 2026-09-16T07:15:29.031Z
-updated_at: 2026-09-16T07:42:44.599Z
+updated_at: 2026-09-16T08:43:20.280Z
+closed_at: 2026-09-16T08:43:20.280Z
+close_reason: "Implemented, verified, and published in green draft PR #136 at b907bb2734929cd0858207ba5d73639aee168636."
+resolution: null
+duplicate_of: null
 ---
 Update the hosted-resource architecture map, plugin documentation, active plan, changelog, and parity evidence so every installed contract/profile has one maintained registered row and named checker, while leaving all unimplemented routes, kinds, views, cache paths, and provider adapters planned. Add focused docs/parity tests that fail when installed declarations and the maintained inventory diverge; follow the architecture-document status/check conventions and common-doc footer.
 

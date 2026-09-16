@@ -3,9 +3,9 @@ type: is
 id: is-01m2mk1m3195p46j7y4jmmw3wx
 title: "Phase 0C.2 review R8: verify serialization and artifact-profile round trips"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - phase:hosted-review-0c2
@@ -13,7 +13,11 @@ labels:
 dependencies: []
 parent_id: is-01m2kry0g3g8hbnhr896wvqeve
 created_at: 2026-09-16T07:49:03.712Z
-updated_at: 2026-09-16T07:58:54.484Z
+updated_at: 2026-09-16T08:39:43.452Z
+closed_at: 2026-09-16T08:39:43.452Z
+close_reason: "Fixed in b907bb2734929cd0858207ba5d73639aee168636 and formally disposed on PR #136: https://github.com/jlevy/metabrowser/pull/136#issuecomment-5694591401"
+resolution: null
+duplicate_of: null
 ---
 The installed evidence gate validates records but never exercises dump_record or the frontmatter-md and pure-yaml artifact profiles. A lossy or raising dumper can pass. For valid cases, validate, dump, serialize through the declared artifact profile, parse and validate again, and check semantic preservation and deterministic output. Add lossy/raising dumper regressions and coverage for both profiles.
 

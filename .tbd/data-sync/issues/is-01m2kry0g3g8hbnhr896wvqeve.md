@@ -3,9 +3,9 @@ type: is
 id: is-01m2kry0g3g8hbnhr896wvqeve
 title: "Hosted review Phase 0C.2b: review and publish the format-boundary phase"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 20
+version: 23
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -34,10 +34,14 @@ child_order_hints:
   - is-01m2mmgq4qcwk5xb6pxsmea8g0
   - is-01m2mmgqnq6m6jmta0ekt0rxk7
 created_at: 2026-09-16T00:12:42.370Z
-updated_at: 2026-09-16T08:14:47.478Z
+updated_at: 2026-09-16T08:43:21.480Z
+closed_at: 2026-09-16T08:43:21.476Z
+close_reason: "Review and publication are complete for PR #136. All 14 findings were fixed and disposed, all review beads are closed, every GitHub check is green, and the PR is registered with mb-n2ro."
+resolution: null
+duplicate_of: null
 ---
 Run independent inventory, installed-wheel, parity, architecture, and delivery reviews; address every finding; run make verify; sync beads; and publish exactly one formal draft Phase 0C.2 PR with gh, based on the exact green Phase 0C.1 head. Record base/head OIDs and stack path, watch GitHub CI to a final green summary, and register the PR with mb-n2ro. Do not merge here; mb-n2ro alone owns explicit-approval landing and retargeting, and mb-63ym closes only after every Phase 0 PR is landed and revalidated.
 
 ## Notes
 
-Independent Fable-style reviews completed with seven unique actionable findings, all tracked before fixes: mb-va6q ambient Python isolation; mb-ey4z independent provider completeness; mb-0wdq explicit browser-consumption modeling; mb-4ng5 positive and negative corpus evidence; mb-5qo7 serialization and artifact-profile round trips; mb-rjz2 browser-portable self-contained parser execution; mb-9obp installed sdist capability evidence. The pre-fix baseline make verify passed with 2325 tests plus 124 goldens, audits, artifact inventory, parity, and distribution. Three subagents now own disjoint fix groups; all review beads remain in progress until PR disposition.
+PR #136 is published as a formal draft at https://github.com/jlevy/metabrowser/pull/136, exact base 614fef15793ff7cffd0c4e85a577342472fd9686 and exact head b907bb2734929cd0858207ba5d73639aee168636. The address-pr-review shortcut was invoked; GitHub formal reviews, inline comments, PR comments, and linked issues were swept. All 14 independent findings are fixed and disposed at https://github.com/jlevy/metabrowser/pull/136#issuecomment-5694591401; their beads are closed. Local make verify and pre-push passed, and all seven GitHub checks are green. PR #136 is registered with mb-n2ro; no merge was performed.
