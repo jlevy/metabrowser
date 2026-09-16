@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import configparser
 import os
 import subprocess
 import tarfile
@@ -28,12 +29,38 @@ EXPECTED_LICENSE_METADATA = {
     "License-File: LICENSE",
     "License-File: NOTICE.md",
 }
+EXPECTED_CAPABILITY_ENTRY_POINTS = {
+    "hosted-review": (
+        "metabrowser.builtin_plugins.hosted_review.contracts:hosted_review_capabilities"
+    ),
+    "provider-resources": (
+        "metabrowser.builtin_plugins.hosted_review.contracts:provider_resource_capabilities"
+    ),
+}
 VSCODE_LICENSE_PATH = "metabrowser/static/vendor/licenses/vscode.txt"
 KEYBOARD_STATIC_ASSETS = {
     "keyboard-help.js",
     "keyboard-shortcuts.js",
     "overlay-layer.js",
     "tree-keyboard-navigation.js",
+}
+HOSTED_REVIEW_SCHEMA_ASSETS = {
+    "change-request-comment-v1.schema.yaml",
+    "change-request-index-v1.schema.yaml",
+    "change-request-v1.schema.yaml",
+    "check-v1.schema.yaml",
+    "commit-status-v1.schema.yaml",
+    "hosted-repository-v1.schema.yaml",
+    "provider-binding-v1.schema.yaml",
+    "provider-sync-manifest-v1.schema.yaml",
+    "provider-view-pointer-v1.schema.yaml",
+    "repository-activity-v1.schema.yaml",
+    "resource-set-v1.schema.yaml",
+    "retrieval-v1.schema.yaml",
+    "review-comment-v1.schema.yaml",
+    "review-thread-v1.schema.yaml",
+    "review-v1.schema.yaml",
+    "tombstone-v1.schema.yaml",
 }
 
 
@@ -70,6 +97,20 @@ def _check_project_metadata(payload: bytes) -> None:
         raise RuntimeError(f"wheel metadata is missing license declarations: {missing}")
 
 
+def _check_capability_entry_points(payload: bytes) -> None:
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read_string(payload.decode("utf-8"))
+    group = "metabrowser.capabilities.v1"
+    if not parser.has_section(group):
+        raise RuntimeError(f"wheel entry points are missing [{group}]")
+    actual = dict(parser.items(group))
+    if actual != EXPECTED_CAPABILITY_ENTRY_POINTS:
+        raise RuntimeError(
+            f"wheel capability entry points differ: {actual}; "
+            f"expected {EXPECTED_CAPABILITY_ENTRY_POINTS}"
+        )
+
+
 def _inspect_wheel(wheel: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
@@ -100,9 +141,14 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/builtin_plugins/folder/file_type_summary.css",
             "metabrowser/builtin_plugins/hosted_review/__init__.py",
             "metabrowser/builtin_plugins/hosted_review/artifacts.py",
+            "metabrowser/builtin_plugins/hosted_review/contracts.py",
             "metabrowser/builtin_plugins/hosted_review/hosted-review-model.js",
             "metabrowser/builtin_plugins/hosted_review/models.py",
             "metabrowser/builtin_plugins/hosted_review/resource_profiles.py",
+            "metabrowser/plugin_loader/artifact_contracts.py",
+            "metabrowser/plugin_loader/capability_discovery.py",
+            "metabrowser/plugin_loader/capability_types.py",
+            "metabrowser/provider_resources/profiles.py",
             "metabrowser/data/hosted-review-format/change-request-index-conformance.json",
             "metabrowser/data/hosted-review-format/change-request-conformance.json",
             "metabrowser/data/hosted-review-format/hosted-repository-conformance.json",
@@ -118,6 +164,10 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/data/file-rollup-format/recommended-file-types.toml",
             "dist-info/licenses/LICENSE",
             "dist-info/licenses/NOTICE.md",
+            *(
+                f"metabrowser/data/hosted-review-format/schemas/{asset}"
+                for asset in HOSTED_REVIEW_SCHEMA_ASSETS
+            ),
             *(f"metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
@@ -131,6 +181,12 @@ def _inspect_wheel(wheel: Path) -> None:
         if len(metadata_names) != 1:
             raise RuntimeError(f"wheel must contain one METADATA file, found {metadata_names}")
         _check_project_metadata(archive.read(metadata_names[0]))
+        entry_point_names = [name for name in names if name.endswith(".dist-info/entry_points.txt")]
+        if len(entry_point_names) != 1:
+            raise RuntimeError(
+                f"wheel must contain one entry_points.txt file, found {entry_point_names}"
+            )
+        _check_capability_entry_points(archive.read(entry_point_names[0]))
         for name in names:
             _check_text_member(name, archive.read(name))
 
@@ -156,15 +212,24 @@ def _inspect_sdist(sdist: Path) -> None:
             "src/metabrowser/builtin_plugins/markdown/markdown-worker-operations.js",
             "src/metabrowser/builtin_plugins/markdown/reconciliation-coordinator.js",
             "src/metabrowser/builtin_plugins/hosted_review/artifacts.py",
+            "src/metabrowser/builtin_plugins/hosted_review/contracts.py",
             "src/metabrowser/builtin_plugins/hosted_review/hosted-review-model.js",
             "src/metabrowser/builtin_plugins/hosted_review/models.py",
             "src/metabrowser/builtin_plugins/hosted_review/resource_profiles.py",
+            "src/metabrowser/plugin_loader/artifact_contracts.py",
+            "src/metabrowser/plugin_loader/capability_discovery.py",
+            "src/metabrowser/plugin_loader/capability_types.py",
+            "src/metabrowser/provider_resources/profiles.py",
             "src/metabrowser/data/hosted-review-format/change-request-index-conformance.json",
             "src/metabrowser/data/hosted-review-format/change-request-conformance.json",
             "src/metabrowser/data/hosted-review-format/hosted-repository-conformance.json",
             "src/metabrowser/data/hosted-review-format/provider-storage-conformance.json",
             "src/metabrowser/data/hosted-review-format/repository-activity-conformance.json",
             "src/metabrowser/data/hosted-review-format/review-records-conformance.json",
+            *(
+                f"src/metabrowser/data/hosted-review-format/schemas/{asset}"
+                for asset in HOSTED_REVIEW_SCHEMA_ASSETS
+            ),
             *(f"src/metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
@@ -210,9 +275,12 @@ def _smoke_install(wheel: Path) -> None:
             "validate_repository_activity, validate_retrieval, validate_review, "
             "validate_review_comment, validate_review_thread, validate_tombstone; "
             "from metabrowser.kpress_adapter import render_kpress_view; "
+            "from metabrowser.plugin_loader.artifact_contracts import "
+            "build_installed_registries, serialize_artifact, validate_artifact; "
             "from metabrowser.plugin_loader.discovery import discover_plugins; "
             "registry = load_file_type_registry(); "
             "plugins = discover_plugins(); "
+            "capabilities = build_installed_registries(); "
             "names = {plugin.name for plugin in plugins.plugins}; "
             "required = {'agent-log', 'binary', 'diff', 'folder', 'image', 'markdown', "
             "'structured', 'text', 'unknown-jsonl'}; "
@@ -268,7 +336,7 @@ def _smoke_install(wheel: Path) -> None:
             "validate_provider_view_pointer(storage['provider_view_pointer']); "
             "validate_tombstone(storage['tombstone']); "
             "validate_provider_binding(repository['provider_binding']); "
-            "validate_hosted_repository(repository['hosted_repository']); "
+            "parsed_repository = validate_hosted_repository(repository['hosted_repository']); "
             "validate_change_request_index(index['change_request_index']); "
             "validate_change_request_index(index['empty_change_request_index']); "
             "validate_resource_set(index['index_resource_set']); "
@@ -292,6 +360,23 @@ def _smoke_install(wheel: Path) -> None:
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
             "assert required == names; "
             "assert not plugins.errors; "
+            "assert len(capabilities.contracts) == 16; "
+            "assert len(capabilities.resource_profiles) == 2; "
+            "change_request_contract = next(contract_id for contract_id, installed in "
+            "capabilities.contracts.items() if installed.spec.envelope == 'change_request'); "
+            "change_request_payload = serialize_artifact(parsed_change_request, "
+            "contract_id=change_request_contract, contracts=capabilities.contracts, "
+            "body='# Wheel artifact smoke\\n'); "
+            "assert validate_artifact(change_request_payload, "
+            "expected_contract_id=change_request_contract, "
+            "contracts=capabilities.contracts).body == '# Wheel artifact smoke\\n'; "
+            "repository_contract = next(contract_id for contract_id, installed in "
+            "capabilities.contracts.items() if installed.spec.envelope == 'hosted_repository'); "
+            "repository_payload = serialize_artifact(parsed_repository, "
+            "contract_id=repository_contract, contracts=capabilities.contracts); "
+            "assert validate_artifact(repository_payload, "
+            "expected_contract_id=repository_contract, "
+            "contracts=capabilities.contracts).record == parsed_repository; "
             "assert 'Wheel smoke' in rendered['html']; "
             "print(metabrowser.__version__)"
         ),

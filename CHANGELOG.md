@@ -2,6 +2,21 @@
 
 All notable changes to Metabrowser are documented here.
 
+## 0.11.0
+
+Plugin contracts:
+
+- Installed Python distributions can register versioned artifact contracts and resource
+  publication profiles through the new `metabrowser.capabilities.v1` entry-point group.
+  Contract discovery is separate from browser plugin manifests and operator plugin
+  directories, so it does not create a static asset root or change browser SDK 0.6.
+
+- Hosted Review Format installs enforced SoftSchema contracts for its provider,
+  change-request, review, check, and activity records.
+  Packaged schemas and Pydantic semantics validate artifacts presented to the installed
+  registry; artifact metadata cannot select a schema, profile, parser, renderer, or
+  Python import path.
+
 ## 0.10.0
 
 Plugin SDK:

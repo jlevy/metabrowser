@@ -1,0 +1,122 @@
+$defs:
+  ActorRef:
+    additionalProperties: false
+    properties:
+      handle:
+        minLength: 1
+        title: Handle
+        type: string
+      provider_opaque_id:
+        minLength: 1
+        title: Provider Opaque Id
+        type: string
+      url:
+        minLength: 1
+        title: Url
+        type: string
+    required:
+    - handle
+    - provider_opaque_id
+    - url
+    title: ActorRef
+    type: object
+  CanonicalHttpsUrl:
+    type: string
+  CanonicalTimestamp:
+    type: string
+  DefaultBranch:
+    additionalProperties: false
+    properties:
+      availability:
+        $ref: '#/$defs/DefaultBranchAvailability'
+      name:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Name
+    required:
+    - availability
+    - name
+    title: DefaultBranch
+    type: object
+  DefaultBranchAvailability:
+    enum:
+    - present
+    - absent
+    - unavailable
+    - unknown
+    title: DefaultBranchAvailability
+    type: string
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  RepositoryVisibility:
+    enum:
+    - public
+    - internal
+    - private
+    - unknown
+    title: RepositoryVisibility
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  clone_url:
+    $ref: '#/$defs/CanonicalHttpsUrl'
+  created_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  default_branch:
+    $ref: '#/$defs/DefaultBranch'
+  name:
+    minLength: 1
+    title: Name
+    type: string
+  owner:
+    $ref: '#/$defs/ActorRef'
+  provider_ref:
+    $ref: '#/$defs/ProviderObjectRef'
+  updated_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  url:
+    $ref: '#/$defs/CanonicalHttpsUrl'
+  visibility:
+    $ref: '#/$defs/RepositoryVisibility'
+required:
+- clone_url
+- created_at
+- default_branch
+- name
+- owner
+- provider_ref
+- updated_at
+- url
+- visibility
+title: HostedRepository
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.provider:HostedRepository/v1
+  schema_sha256: ac63eac11358165c45edc2a7bdb6fcaa03fb8b89bf6c226ea67397bb1ea9e014

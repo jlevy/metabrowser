@@ -111,7 +111,7 @@ These formats are tool-neutral: nothing in a document references Metabrowser.
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
 | [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
-| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Pydantic-enforced change-request, provider-storage, hosted-repository, change-request-index, review-record, and repository-activity corpora; mechanically closed scrubbed GitHub coverage oracle with exact reduced-response shapes, field/value evidence, and executable identity recipes; SoftSchema schema and registry tracked by `mb-lqae` | Dormant Python record validators and frontmatter codecs plus the existing browser ChangeRequest validator; the oracle is test-only and absent from wheel/runtime inputs; complete browser/schema parity, plugin registration, and the GitHub adapter remain planned |
+| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Installed enforced SoftSchema contracts and resource profiles; Pydantic record validators; packaged conformance corpora; mechanically closed scrubbed GitHub coverage oracle with exact reduced-response shapes, field/value evidence, and executable identity recipes | Python registry, validators, and codecs plus registry-driven browser parsers for every browser-consumed contract; the generic installed inventory/evidence gate is Phase 0C.2, while plugin registration and the GitHub adapter remain planned |
 
 The registry and composition rules that let later release, issue, or other external
 contracts reuse these layers are specified in
@@ -174,11 +174,14 @@ address in the same implementation changes:
 
 ### Planned plugin registration surfaces
 
-These are additive installed-plugin capabilities only if existing SDK 0.6 manifests and
-JavaScript calls keep their signatures and behavior.
+Browser and route declarations are additive installed-plugin capabilities only if
+existing SDK 0.6 manifests and JavaScript calls keep their signatures and behavior.
 They still require plugin-author documentation and a changelog entry.
-An existing-contract change instead bumps `PLUGIN_SDK_VERSION` and every built-in
-manifest in one commit, with no compatibility layer.
+An existing browser-contract change instead bumps `PLUGIN_SDK_VERSION` and every
+built-in manifest in one commit, with no compatibility layer.
+Artifact contracts and resource profiles use the separately versioned
+`metabrowser.capabilities.v1` installed-Python entry-point group and never enter browser
+plugin discovery or static asset loading.
 
 | Declaration or SDK call | Owns | Arbitration and lifecycle | Bead |
 | --- | --- | --- | --- |
@@ -186,7 +189,7 @@ manifest in one commit, with no compatibility layer.
 | `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
 | `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through | `mb-12cz` |
 | `ProviderAdapterSpec` | Provider/instance capability and trusted adapter factory | Duplicate claims fail; lifespan injects neutral ports and awaits cancellation/close | `mb-ji83` |
-| `ArtifactContractSpec` / `ResourceProfileSpec` | Packaged schema, parser, corpus, producer/consumer inventory, and publication bundle shape | Duplicate or incomplete contracts/profiles fail; cached content cannot register either | `mb-52iz`, `mb-vors` |
+| `ArtifactContractSpec` / `ResourceProfileSpec` via `metabrowser.capabilities.v1` | Packaged schema, parser, corpus, producer/consumer inventory, and publication bundle shape | Only installed Python distributions contribute; duplicate IDs, malformed declaration structure, invalid schemas, and broken profile references fail as one registry; artifact content cannot register either. Built-in evidence resolves in Phase 0C.1 tests, and the generic installed inventory/evidence gate follows in Phase 0C.2 | `mb-52iz`, `mb-vors` |
 | `ResourceKindSpec` | Route-backed semantic kind, item/container capabilities, primary contract, and views | Duplicate kind or view claims fail; route, browser, and CLI resolve the same selection | `mb-83w0` before `mb-81p5` |
 | `registerNavPanel` | Repository-scoped bounded virtual collection | Generation-checked loading, restoration, root replacement, and disposal | `mb-uh6p` |
 
@@ -362,7 +365,9 @@ unit sessions may supplement but cannot replace that exact production path.
 Every browser-consumed Hosted Review Format record has a named parser in
 `builtin_plugins/hosted_review/hosted-review-model.js` and runs the same valid/invalid
 corpus as Python: repository, index, change request, top-level comment, review, thread,
-review comment, check, status, manifest, and activity page.
+review comment, check, status, and activity page.
+Provider binding, retrieval, resource-set, sync-manifest, pointer, and tombstone records
+remain server-only publication evidence and have no browser parser.
 No server aggregate may bypass those record validators.
 
 ## Adding something

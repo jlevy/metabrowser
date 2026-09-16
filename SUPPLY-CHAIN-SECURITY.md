@@ -43,15 +43,17 @@ The table records the exact first-party selections used by this repository.
 The delay is waived, but the release review is not: each row still states what changed
 or what bounds its blast radius.
 
-Where an exemption names an exact release, it is reviewed against its predecessor, and
-each review confirms the same three things — the lock delta touches only that package,
-no runtime dependency was added, and the published artifact’s SHA-256 matches the digest
-recorded in `uv.lock`.
+Where an exemption upgrades an existing exact release, it is reviewed against its
+predecessor, and each review confirms the lock delta, runtime-dependency delta, and the
+published artifact’s SHA-256 against `uv.lock`. The review for a new first-party package
+records the same evidence for the package and every transitive lock change it
+introduces.
 
 | Package | Reviewed against | Notes |
 | --- | --- | --- |
 | `kpress==0.3.5` | `0.3.4` | Wide-band column inset applies without a TOC, so an embedded README matches the standalone document |
 | `flowmark-rs==0.3.2` | `0.3.1` | Formatting output unchanged |
+| `softschema==0.8.1` | `0.8.0` | Runtime contract validation; adds SoftSchema and upgrades `frontmatter-format` from 0.3.0 to 0.4.0 |
 | `get-tbd` | n/a | Issue tracker, first-party; not a build or runtime input |
 
 `get-tbd` carries no version review because it is not pinned to one, and the reason is
@@ -84,6 +86,26 @@ rather than baked into a generated file that the next upgrade would rewrite.
 
 The exceptions are package-scoped in configuration and do not weaken the global gate.
 Changing any of these versions requires a new review against the checks above.
+
+### SoftSchema Review (September 15, 2026)
+
+`softschema==0.8.1` provides the installed contract registry, deterministic JSON Schema
+compilation, and structural plus Pydantic semantic validation used at provider-artifact
+boundaries. It is reviewed against 0.8.0. The Python change makes cross-field Pydantic
+errors JSON-serializable; its runtime dependencies are otherwise unchanged.
+The locked wheel SHA-256 is
+`7a68e52483c7a8ab63e541bb3d0329dd728096a2c256ef501e9658175540d6ad`; the source archive
+SHA-256 is `e368eed680bf970b22790f4d90770dbdee290bedd6c0975ac51a6f1461b394e7`.
+
+SoftSchema requires `frontmatter-format>=0.4.0`, so the existing runtime selection moves
+from 0.3.0 to 0.4.0. That release adds deterministic alias-free YAML serialization and
+in-memory frontmatter splitting without adding a runtime dependency.
+Its locked wheel SHA-256 is
+`71d6b416c6b05242d934b6228d2386311f2f9216d4d1d47549e6cadf7963fe76`; the source archive
+SHA-256 is `dd7bc579b50e12a236c03427826a9af14fd2029e20dcae927e68f7440538e75a`. The lock
+update must add SoftSchema, upgrade Frontmatter Format, and change nothing else.
+The full verification gate reruns the hosted-review codecs, schema compilation checks,
+installed-wheel smoke tests, and dependency audits.
 
 ## Verification
 

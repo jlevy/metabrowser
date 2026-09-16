@@ -24,6 +24,10 @@ the Metabrowser page.
 Operator-supplied directory plugins are JavaScript-only.
 Python data hooks are accepted from installed entry-point packages, whose modules
 already belong to the active Python environment.
+Artifact contracts and resource publication profiles use a separate trust surface:
+installed Python entry points in the versioned `metabrowser.capabilities.v1` group.
+Capability discovery is all-or-nothing and is never sourced from a plugin directory, the
+served root, or cached artifact metadata.
 When Metabrowser runs through uvx or as a uv tool, install the plugin distribution into
 that same isolated environment with uv’s `--with` option.
 
@@ -40,7 +44,8 @@ metab --doctor --plugins-dir ./examples
 ```
 
 `--doctor` validates manifests, `index.js` files, installed-plugin data-hook imports,
-operator-directory JavaScript-only boundaries, and high-priority kind conflicts.
+operator-directory JavaScript-only boundaries, high-priority kind conflicts, and
+installed artifact-contract and resource-profile declarations.
 It exits nonzero when any problem is found.
 All three modes support `--json` for machine-readable output.
 Discovery errors preserve any plugins that loaded successfully but make the command exit
@@ -618,6 +623,86 @@ Register it in `pyproject.toml`:
 example = "example_plugin:plugin_dir"
 ```
 
+### Installed Artifact Capabilities
+
+An installed distribution may also publish artifact contracts and resource profiles
+without creating a browser plugin or static asset root.
+Import the declaration types from the public Python API and return one immutable
+capability set:
+
+```python
+from metabrowser import (
+    ArtifactContractSpec,
+    BrowserParserSpec,
+    CapabilitySet,
+    ConformanceCorpusSpec,
+)
+
+
+def capabilities() -> CapabilitySet:
+    return CapabilitySet(
+        artifact_contracts=(
+            ArtifactContractSpec(
+                contract_id="com.example.notes:Note/v1",
+                artifact_profile="frontmatter-md",
+                envelope="note",
+                schema_bytes=load_packaged_schema(),
+                schema_bytes_sha256="<SHA-256 of the exact packaged schema bytes>",
+                schema_digest="<compiler-produced lowercase SHA-256>",
+                validate_record=validate_note,
+                dump_record=dump_note,
+                producer_ids=("example-notes",),
+                consumer_ids=("example-note-view",),
+                corpus=ConformanceCorpusSpec(
+                    corpus_id="example-note-conformance",
+                    media_type="application/json",
+                    payload=load_packaged_corpus(),
+                    payload_sha256="<SHA-256 of the exact corpus bytes>",
+                ),
+                corpus_record_selectors=(),
+                browser_parser=BrowserParserSpec(
+                    module_id="example-note-model",
+                    module_bytes=load_packaged_browser_module(),
+                    module_bytes_sha256="<SHA-256 of the exact module bytes>",
+                    export_name="parseNote",
+                ),
+            ),
+        ),
+    )
+```
+
+Register the factory under the versioned group:
+
+```toml
+[project.entry-points."metabrowser.capabilities.v1"]
+example-notes = "example_plugin.contracts:capabilities"
+```
+
+The schema is packaged trusted code.
+`schema_bytes_sha256` protects the exact installed artifact; `schema_digest` is the
+compiler-produced logical identity repeated in `x-softschema.schema_sha256`. Metabrowser
+verifies the exact byte digest and independently recomputes the documented SoftSchema
+logical digest for every installed provider.
+It also recompiles built-in schemas from their models in the test and distribution gates
+to detect model/schema drift.
+The semantic validator receives an `ArtifactValidationContext` bound to the same atomic
+resource-profile snapshot as the contract registry; it must not rediscover profiles or
+trust profile declarations from an artifact.
+Metabrowser rejects duplicate contract or profile IDs, structurally incomplete
+declarations, nonlocal schema references, and profiles that refer to unregistered
+contracts. Corpus and browser-parser declarations carry exact packaged bytes and digests
+rather than paths, so an installed-distribution evidence gate can resolve them without a
+Metabrowser-specific source-tree layout.
+A parser module is self-contained ESM conformance evidence; it does not register a
+browser plugin, static asset, kind, or view.
+When a view later ships, its installed browser plugin binds the same module digest to a
+served asset and renderer.
+The generic evidence gate that checks every installed declaration follows in Phase 0C.2.
+Artifacts may repeat their contract, envelope, and enforced status, but the trusted
+caller selects the expected installed contract; artifact metadata cannot supply or
+select schemas, profiles, parsers, renderers, or Python imports.
+The versioned capability surface is independent of browser SDK 0.6.
+
 ### Plugin-Owned JSONL Adapters
 
 Plugins that recognize an additional JSONL event format can register a detector and
@@ -695,6 +780,10 @@ from metabrowser import (
   `ArtifactPath` and chart extraction can raise them.
 - `JsonlParseLimitError` is raised when chart extraction exceeds the JSONL parser’s
   decompressed-input limit.
+- `ArtifactContractSpec`, `ArtifactValidationContext`, `CapabilitySet`,
+  `ResourceProfileSpec`, `ResourceCollectionSpec`, `ResourceTargetClass`, and
+  `CollectionPaginationPolicy` define the installed artifact-capability surface
+  described above.
 
 These helpers share the server’s active root and lifecycle.
 Do not cache the resolved root or import underscored helpers from

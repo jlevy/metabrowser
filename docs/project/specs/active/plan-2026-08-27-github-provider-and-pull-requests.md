@@ -4,9 +4,9 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Phase 0B.2 is the green exact stacked base at
-`74dad3588d6de658ab2c56cf76711b39f0d3a496`; Phase 0B.3 is the current implementation
-layer
+**Status:** Phase 0B.3 is the green exact stacked base at
+`18ef513adc9782554d456b3ef0fbc7d02e0d975f`; Phase 0C.1 is the current implementation
+layer for installed SoftSchema contracts and resource profiles
 
 ## Vision
 
@@ -699,8 +699,10 @@ or another domain plugin consumes them.
 
 | File | Existing seam | Planned change |
 | --- | --- | --- |
-| `src/metabrowser/plugin_loader/manifest.py` | `PluginManifest`, `DataHookSpec`, file `KindRule` and `ViewSpec` | Add optional closed `ArtifactContractSpec`, `ResourceProfileSpec`, `ResourceKindSpec`, `RouterSpec`, `AddressSpaceSpec`, `ProviderUrlReducerSpec`, and `ProviderAdapterSpec` declarations; keep filesystem matchers distinct from route-backed resource kinds and validate duplicate contracts, profiles, kinds, views, addresses, hosts, mounts, providers, and instances |
-| `src/metabrowser/plugin_loader/artifact_contracts.py` (new) | `build_contract_registry`, `build_resource_profile_registry`, `validate_artifact`, `contract_inventory` | Install trusted contract and publication-profile declarations; cached artifacts may name but never supply a schema, profile, parser, or renderer |
+| `src/metabrowser/plugin_loader/manifest.py` | `PluginManifest`, `DataHookSpec`, file `KindRule` and `ViewSpec` | Keep the browser and file-kind manifest unchanged in Phase 0C.1; later add `ResourceKindSpec`, `RouterSpec`, `AddressSpaceSpec`, `ProviderUrlReducerSpec`, and `ProviderAdapterSpec` only when their browser, route, or lifecycle surfaces ship |
+| `src/metabrowser/plugin_loader/capability_types.py` (new) | `ArtifactContractSpec`, `ConformanceCorpusSpec`, `BrowserParserSpec`, `ArtifactValidationContext`, `CapabilitySet` | Define the dependency-light public declaration surface, including immutable packaged corpus and self-contained browser-parser evidence, without loading schema parsers, validators, or discovery during an ordinary `import metabrowser` |
+| `src/metabrowser/plugin_loader/capability_discovery.py` (new) | `discover_capability_sets` | Load versioned `metabrowser.capabilities.v1` entry points only from installed distributions; reject duplicate providers and any partial discovery result; never load backend capabilities from operator directories or viewed data |
+| `src/metabrowser/plugin_loader/artifact_contracts.py` (new) | `build_contract_registry`, `build_resource_profile_registry`, `validate_record`, `validate_artifact`, `serialize_artifact`, `contract_inventory` | Install trusted contract and publication-profile objects returned by capability factories; verify exact schema, corpus, and browser-module bytes separately from the independently recomputed logical schema identity; artifacts may name but never supply a schema, profile, parser, renderer, or Python import path |
 | `src/metabrowser/plugin_loader/static_assets.py` | `_resolve_sidekick`, `build_plugin_routes` | Build one Starlette `Mount` per installed router and preserve its methods, streaming, headers, and status codes; keep exact data hooks for simple GET/POST models |
 | `src/metabrowser/plugin_loader/provider_urls.py` (new) | — | Load trusted installed reducers; arbitrate `NotApplicable`, `Reduced`, and terminal `Rejected` outcomes; refuse duplicate scheme/host claims; and dispatch without importing a provider in cache or CLI code |
 | `src/metabrowser/plugin_loader/provider_capabilities.py` (new) | `build_provider_registry`, `create_provider`, `close_provider`, `close_all` | Build the provider/instance capability registry, inject provider-neutral ports, reject duplicate claims, and await adapter cancellation and close |
@@ -726,10 +728,12 @@ or resource routes with path parameters and conditional responses.
 The address-space spec is required because mounting HTTP does not teach navigation to
 parse, format, restore, or dispose that address.
 Operator-directory plugins remain JavaScript-only.
-These capabilities are additive only while existing manifests and `window.metabrowser`
-calls keep their signatures and behavior, so optional declarations may retain SDK 0.6
-with plugin-author documentation and a `CHANGELOG.md` note.
-If implementation changes an existing signature or semantic contract,
+Artifact contracts and resource profiles use the separately versioned installed-Python
+capability group and do not enter browser plugin discovery, `/plugin-static`, or
+`window.metabrowser`. The later browser and route capabilities are additive only while
+existing manifests and JavaScript calls keep their signatures and behavior, so optional
+declarations may retain SDK 0.6 with plugin-author documentation and a `CHANGELOG.md`
+note. If implementation changes an existing signature or semantic contract,
 `PLUGIN_SDK_VERSION` and every built-in manifest change in the same commit; no dual
 contract is kept.
 
@@ -737,10 +741,10 @@ contract is kept.
 
 | File | Key types and functions | Responsibility |
 | --- | --- | --- |
-| `src/metabrowser/builtin_plugins/hosted_review/manifest.toml` | kinds, views, router, scripts, styles | Declare common hosted-review surfaces and loading tiers |
+| `src/metabrowser/builtin_plugins/hosted_review/manifest.toml` | kinds, views, router, scripts, styles | Deferred until the first route-backed kind or view; Phase 0C.1 registers only installed Python capabilities and exposes no browser asset root |
 | `models.py` | `ChangeRequest`, comments, reviews, threads, anchors, checks, statuses, and activity | Closed hosted-review domain models; Phase 0B.1 neutral identity/storage records and `HostedRepository` move to `provider_resources/models.py` under `mb-s0gv` before store implementation |
 | `resource_profiles.py` | change-request profile declarations and `resolve_resource_profile` | Trusted hosted-review publication declarations for ordered collection contracts, cardinality, pagination, and last-complete requirements; the repository-summary profile moves with `HostedRepository` to `provider_resources` |
-| `contracts.py` | `HOSTED_REVIEW_CONTRACTS`, `validate_artifact`, `compile_contracts` | Plugin-local SoftSchema declarations consumed by the installed host registry, semantic validation, and deterministic schema compilation |
+| `contracts.py` | `HOSTED_REVIEW_CONTRACTS`, `compile_contracts`, `validate_contract_values`, `provider_resource_capabilities`, `hosted_review_capabilities` | Plugin-local SoftSchema declarations consumed by the installed host registry, semantic validation, deterministic schema compilation, and installed capability factories |
 | `artifacts.py` | `serialize_change_request_artifact`, `parse_frontmatter_artifact`, `validate_change_request_artifact`, `snapshot_identity` | Encode only a validated ChangeRequest and decode enforced `frontmatter-md` artifacts through frontmatter-format without owning filesystem publication; hash normalized YAML plus the complete Markdown body, including an empty body |
 | `service.py` | `HostedReviewProvider`, `get_repository`, `get_change_request`, `list_change_requests`, `refresh_resource` | Change-request orchestration over `ProviderResourceStorePort` with typed completeness, freshness, and failure states |
 | `routes.py` | `build_router`, `repository_resource`, `change_request_resource`, `change_request_index`, `hosted_resource_shell` | Plugin-owned read routes and canonical hosted-resource document shell |
@@ -832,8 +836,8 @@ dependency behavior; it is a dormant semantic and artifact-codec kernel.
 | 0B.1 storage records | `mb-pnz5` | One formal pull request: architecture/spec freeze; `models.py` provider namespace, auth, retrieval, generic object/collection publication, repository, tombstone, and index records; trusted `resource_profiles.py`; existing JavaScript namespace validators; three portable corpora; focused tests; distribution proof | Closed auth-scoped publication, repository, index, extensible resource-profile, and failure-state fixtures with independent review and green CI |
 | 0B.2 review records | `mb-915y` coordinates `mb-n9fo` and `mb-qpbu` | `models.py` and `artifacts.py`: comments, reviews, threads, anchors, checks, statuses, activity, review, and formal PR publication | Relationship, partiality, body/no-body fixtures, independent review, `make verify`, and green CI |
 | 0B.3 GitHub oracle | `mb-rla6` coordinates `mb-oc1h` and `mb-e95m` | `tests/fixtures/github/oracle/`, `test_github_coverage.py`, mapping matrix, review, and formal PR publication | Every common field is observed, derived, or explicitly unavailable; inputs are scrubbed and public-safe; CI is green |
-| 0C.1 SoftSchema contracts | `mb-lqae` coordinates `mb-52iz` and `mb-vepa` | Plugin-local `contracts.py`, installed artifact-contract and resource-profile registries, deterministic packaged schemas, exact first-party dependency selection owned by `mb-4gnu`, review, and formal PR publication | Enforced contract/profile registry and Python/browser/schema/corpus agreement with green CI |
-| 0C.2 format gate | `mb-dhz8` coordinates `mb-vors` and `mb-ci0t` | Contract/profile inventory, distribution smoke, architecture registration, parity evidence, review, and formal PR publication | Every shipped contract/profile has its schema, semantics, producer, consumer, fixture, installed-artifact check, and green CI |
+| 0C.1 SoftSchema contracts | `mb-lqae` coordinates `mb-52iz` and `mb-vepa` | Plugin-local `contracts.py`, versioned installed-Python capability discovery, artifact-contract and resource-profile registries, deterministic packaged schemas, explicit built-in schema inclusion and isolated-wheel smoke in `check_distribution.py`, exact first-party dependency selection owned by `mb-4gnu`, review, and formal PR publication | Enforced contract/profile registry and Python/browser/schema/corpus agreement with green CI; named built-in schemas survive wheel installation; no manifest, route, kind, view, or static asset is registered |
+| 0C.2 format gate | `mb-dhz8` coordinates `mb-vors` and `mb-ci0t` | Generic contract/profile inventory, inventory-driven distribution and installed-evidence gates, architecture registration, parity evidence, review, and formal PR publication | Every shipped contract/profile has its schema, semantics, producer, consumer, fixture, installed-artifact check, and green CI without a hard-coded built-in list |
 
 Phase 0B.3 is a no-network evidence and reconciliation slice.
 The oracle may require the smallest correction to an existing common model when exact
@@ -879,9 +883,9 @@ complete. `mb-n2ro` depends on every publication bead and alone owns explicit-ap
 landing, retargeting, exact-diff revalidation, and post-land CI; no phase implementation
 or publication bead merges another phase.
 
-- [ ] Write the provider-neutral contract inventory as Pydantic models and deterministic
+- [x] Write the provider-neutral contract inventory as Pydantic models and deterministic
   compiled SoftSchema contracts, using simple closed objects and local `$defs`.
-- [ ] Use `frontmatter-md` for `ChangeRequest/v1`, with all consumed fields in YAML and
+- [x] Use `frontmatter-md` for `ChangeRequest/v1`, with all consumed fields in YAML and
   the provider description as the reader-facing Markdown body; use the same profile for
   reviews, top-level comments, and review comments with Markdown prose, and `pure-yaml`
   for indexes, manifests, and compact structured companion records.
@@ -1217,6 +1221,9 @@ discovery UI increases acquisition and browser scope.
 
 Hosted Review Format and provider-store contracts in this plan are unreleased.
 Plugin SDK 0.6, by contrast, is the v0.10.0 public baseline.
+Artifact contracts and resource profiles use the new, separately versioned
+`metabrowser.capabilities.v1` installed-Python extension surface; changing its contract
+requires a new entry-point group version, not a browser SDK compatibility shim.
 The planned router, address-space, reducer, provider-adapter, and nav-panel declarations
 may remain optional additive SDK 0.6 capabilities only while every existing manifest and
 `window.metabrowser` call keeps its signature and behavior; their implementation must

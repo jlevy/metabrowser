@@ -1,8 +1,8 @@
 # External Resources, Artifact Contracts, and Views
 
-**Status:** Accepted design; the provider-storage kernel is in progress, while the
-installed contract, resource-profile, resource-kind, address, and view registries are
-planned and remain unregistered until their implementation evidence lands.
+**Status:** Accepted design; the provider-storage model and installed contract and
+resource-profile registries are implemented through Phase 0C.1. The resource store,
+resource-kind registry, addressing, and views remain planned and unregistered.
 
 Metabrowser should be able to browse a useful object from an API or external system
 without turning that provider’s response shape into a core model or building a new UI
@@ -92,12 +92,19 @@ The system uses three linked registries rather than one mega-registry.
 An installed plugin declares one entry per contract ID:
 
 - envelope and `frontmatter-md` or `pure-yaml` profile;
-- packaged compiled schema and digest;
+- packaged compiled schema, registry-verified exact byte digest, and an independently
+  recomputed compiler-compatible logical schema digest;
 - semantic model and validator;
 - parser and deterministic serializer;
 - producer and named consumers;
-- browser parser when the browser consumes the record; and
-- conformance corpus and installed-artifact evidence.
+- immutable self-contained browser-parser module bytes and digest when the browser
+  consumes the record; and
+- immutable conformance-corpus bytes, digest, record selectors, and installed-artifact
+  evidence.
+
+The evidence bytes make an installed declaration self-resolving without trusting a
+source-tree path. They do not register a runtime browser asset or view; that later
+binding must name the same module digest through the installed browser plugin.
 
 Duplicate contract IDs or conflicting declarations fail plugin discovery.
 Unregistered contracts fail before publication or rendering.
@@ -123,7 +130,11 @@ weaken cardinality, change a contract, or declare an optional collection complet
 
 Phase 0B.1 includes provider-neutral object and collection targets, generic collection
 pages, and trusted in-plugin profile declarations.
-Phase 0C moves their installation and inventory checks into the plugin loader.
+Phase 0C moves their installation and inventory checks into the plugin loader through
+the versioned `metabrowser.capabilities.v1` entry-point group.
+Only installed Python distributions may contribute these capability sets.
+Browser manifests and operator-supplied JavaScript plugin directories cannot register
+contracts or profiles, and the capability factories never become cache data.
 
 ### Resource-kind registry
 
@@ -316,8 +327,10 @@ mutable branch name.
 | Area | Primary files and functions | Responsibility |
 | --- | --- | --- |
 | Neutral provider resources | `provider_resources/models.py`: provider/instance scalars, identity refs, generic targets, bindings, storage records, profile types, and publication validators; `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots`; `plugin_api.py`: `ProviderResourceStorePort` | Give unrelated domain and provider plugins one content-neutral, auth-scoped publication service without exposing paths or hosted-review internals; domain objects and artifact contracts stay in their owning plugins |
-| Contract installation | `plugin_loader/artifact_contracts.py`: `build_contract_registry`, `validate_artifact`, `contract_inventory` | Install trusted SoftSchema declarations and reject missing, conflicting, or incomplete contracts |
-| Resource profiles | Domain plugin `resource_profiles.py` declarations plus `plugin_loader/artifact_contracts.py`: `build_resource_profile_registry`, `resolve_resource_profile`, `validate_resource_set_against_profile` | Close collection contracts, cardinality, pagination, and completeness outside cached records; profiles belong to the domain plugin that owns their artifact contracts |
+| Capability declarations | `plugin_loader/capability_types.py`: `ArtifactContractSpec`, `ArtifactValidationContext`, `CapabilitySet` | Expose dependency-light installed declaration types without importing schema parsing, validation, or discovery on ordinary startup paths |
+| Installed capability discovery | `plugin_loader/capability_discovery.py`: `discover_capability_sets` | Load all-or-nothing `metabrowser.capabilities.v1` factories from installed distributions; reject duplicate providers and exclude operator plugin directories |
+| Contract installation | `plugin_loader/artifact_contracts.py`: `build_contract_registry`, `validate_record`, `validate_artifact`, `serialize_artifact`, `contract_inventory` | Install trusted SoftSchema declarations returned as Python objects and reject missing, conflicting, or incomplete contracts |
+| Resource profiles | Domain capability factories; `plugin_loader/artifact_contracts.py`: `build_resource_profile_registry`, `resolve_resource_profile`; staged `hosted_review/models.py`: `validate_resource_set_against_profile`, moving to `provider_resources/models.py` under `mb-s0gv` | Close collection contracts, cardinality, pagination, and completeness outside cached records; profiles belong to the domain capability that owns their artifact contracts |
 | Resource kinds | `plugin_loader/manifest.py`: `ResourceKindSpec`; installed resource registry | Bind addressed models to item/container capabilities and views without file matchers |
 | Selection host | `static/resource-context.js`, `static/view-composition.js`, and the file-specific shell extraction from `static/app.js` | Present one validated selection envelope to registered views |
 | Addressing | `plugin_loader/provider_addresses.py`: `encode_provider_address_atom`, `decode_provider_address_atom`, `parse_hosted_address`, `format_hosted_address`; provider URL reducers, `AddressSpaceSpec`, mounted routers, and `show_cli.py::run_show` | Include provider instance, use one canonical typed atom codec, and share parse/format/apply rules in browser and CLI |

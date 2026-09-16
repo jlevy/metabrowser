@@ -38,7 +38,8 @@ looks accepted while being ignored.
 | `--diff SPEC` | Show a change set between two snapshots |
 | `--check-api` | Run the navigation scenario as a pass/fail check |
 | `--remote HOST` | Serve a remote directory over an SSH tunnel |
-| `--plugins`, `--plugin NAME`, `--doctor` | Inspect installed plugins |
+| `--plugins`, `--plugin NAME` | Inspect installed browser plugins |
+| `--doctor` | Validate browser plugins and installed artifact capabilities |
 
 Every mode is read-only except `--api` when the route it names writes, which today means
 only `/api/kpress/export`.

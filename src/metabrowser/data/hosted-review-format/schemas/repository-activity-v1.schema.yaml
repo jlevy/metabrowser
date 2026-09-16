@@ -1,0 +1,434 @@
+$defs:
+  ActivityActor:
+    discriminator:
+      mapping:
+        git: '#/$defs/GitActivityActor'
+        provider: '#/$defs/ProviderActivityActor'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/GitActivityActor'
+    - $ref: '#/$defs/ProviderActivityActor'
+  ActivityCoverage:
+    enum:
+    - complete
+    - partial
+    title: ActivityCoverage
+    type: string
+  ActivityDetailTarget:
+    discriminator:
+      mapping:
+        change_request: '#/$defs/ChangeRequestActivityDetail'
+        commit: '#/$defs/CommitActivityDetail'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/CommitActivityDetail'
+    - $ref: '#/$defs/ChangeRequestActivityDetail'
+  ActivityFreshness:
+    discriminator:
+      mapping:
+        immutable: '#/$defs/ImmutableActivityFreshness'
+        observed: '#/$defs/ObservedActivityFreshness'
+      propertyName: kind
+    oneOf:
+    - $ref: '#/$defs/ImmutableActivityFreshness'
+    - $ref: '#/$defs/ObservedActivityFreshness'
+  ActivityItem:
+    additionalProperties: false
+    properties:
+      actors:
+        items:
+          $ref: '#/$defs/ActivityActor'
+        title: Actors
+        type: array
+      base_revision:
+        anyOf:
+        - $ref: '#/$defs/RevisionRef'
+        - type: 'null'
+      comparison_available:
+        title: Comparison Available
+        type: boolean
+      detail:
+        $ref: '#/$defs/ActivityDetailTarget'
+      event_at:
+        $ref: '#/$defs/CanonicalTimestamp'
+      freshness:
+        $ref: '#/$defs/ActivityFreshness'
+      head_revision:
+        anyOf:
+        - $ref: '#/$defs/RevisionRef'
+        - type: 'null'
+      id:
+        minLength: 1
+        title: Id
+        type: string
+      kind:
+        $ref: '#/$defs/ActivityKind'
+      primary_revision:
+        $ref: '#/$defs/RevisionRef'
+      state:
+        anyOf:
+        - $ref: '#/$defs/ActivityState'
+        - type: 'null'
+      title:
+        minLength: 1
+        title: Title
+        type: string
+      updated_at:
+        $ref: '#/$defs/CanonicalTimestamp'
+    required:
+    - actors
+    - base_revision
+    - comparison_available
+    - detail
+    - event_at
+    - freshness
+    - head_revision
+    - id
+    - kind
+    - primary_revision
+    - state
+    - title
+    - updated_at
+    title: ActivityItem
+    type: object
+  ActivityKind:
+    enum:
+    - commit
+    - change_request
+    title: ActivityKind
+    type: string
+  ActivityState:
+    enum:
+    - open
+    - draft
+    - closed
+    - merged
+    - unknown
+    title: ActivityState
+    type: string
+  ActorRef:
+    additionalProperties: false
+    properties:
+      handle:
+        minLength: 1
+        title: Handle
+        type: string
+      provider_opaque_id:
+        minLength: 1
+        title: Provider Opaque Id
+        type: string
+      url:
+        minLength: 1
+        title: Url
+        type: string
+    required:
+    - handle
+    - provider_opaque_id
+    - url
+    title: ActorRef
+    type: object
+  CanonicalTimestamp:
+    type: string
+  ChangeRequestActivityDetail:
+    additionalProperties: false
+    properties:
+      change_request_id:
+        minLength: 1
+        title: Change Request Id
+        type: string
+      kind:
+        const: change_request
+        title: Kind
+        type: string
+      number:
+        minimum: 1
+        title: Number
+        type: integer
+      provider_ref:
+        $ref: '#/$defs/ProviderObjectRef'
+      repository:
+        $ref: '#/$defs/RepositoryRef'
+    required:
+    - change_request_id
+    - kind
+    - number
+    - provider_ref
+    - repository
+    title: ChangeRequestActivityDetail
+    type: object
+  CommitActivityDetail:
+    additionalProperties: false
+    properties:
+      kind:
+        const: commit
+        title: Kind
+        type: string
+      revision:
+        $ref: '#/$defs/GitObjectRef'
+    required:
+    - kind
+    - revision
+    title: CommitActivityDetail
+    type: object
+  GitActivityActor:
+    additionalProperties: false
+    properties:
+      email:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Email
+      kind:
+        const: git
+        title: Kind
+        type: string
+      name:
+        minLength: 1
+        title: Name
+        type: string
+    required:
+    - email
+    - kind
+    - name
+    title: GitActivityActor
+    type: object
+  GitObjectRef:
+    additionalProperties: false
+    properties:
+      availability:
+        $ref: '#/$defs/RevisionAvailability'
+      oid:
+        anyOf:
+        - pattern: ^[0-9a-f]{40,64}$
+          type: string
+        - type: 'null'
+        title: Oid
+      repository_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Repository Id
+    required:
+    - availability
+    - oid
+    - repository_id
+    title: GitObjectRef
+    type: object
+  ImmutableActivityFreshness:
+    additionalProperties: false
+    properties:
+      kind:
+        const: immutable
+        title: Kind
+        type: string
+    required:
+    - kind
+    title: ImmutableActivityFreshness
+    type: object
+  ObservedActivityFreshness:
+    additionalProperties: false
+    properties:
+      kind:
+        const: observed
+        title: Kind
+        type: string
+      observed_at:
+        $ref: '#/$defs/CanonicalTimestamp'
+      snapshot_id:
+        $ref: '#/$defs/Sha256Digest'
+    required:
+    - kind
+    - observed_at
+    - snapshot_id
+    title: ObservedActivityFreshness
+    type: object
+  OpaqueCursorContinuation:
+    additionalProperties: false
+    properties:
+      kind:
+        const: opaque_cursor
+        title: Kind
+        type: string
+      value:
+        minLength: 1
+        title: Value
+        type: string
+    required:
+    - kind
+    - value
+    title: OpaqueCursorContinuation
+    type: object
+  ProviderActivityActor:
+    additionalProperties: false
+    properties:
+      actor:
+        $ref: '#/$defs/ActorRef'
+      kind:
+        const: provider
+        title: Kind
+        type: string
+    required:
+    - actor
+    - kind
+    title: ProviderActivityActor
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  RevisionAvailability:
+    enum:
+    - present
+    - unavailable
+    - not_requested
+    title: RevisionAvailability
+    type: string
+  RevisionRef:
+    additionalProperties: false
+    properties:
+      availability:
+        $ref: '#/$defs/RevisionAvailability'
+      oid:
+        anyOf:
+        - pattern: ^[0-9a-f]{40,64}$
+          type: string
+        - type: 'null'
+        title: Oid
+      ref:
+        minLength: 1
+        title: Ref
+        type: string
+      repository_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Repository Id
+    required:
+    - availability
+    - oid
+    - ref
+    - repository_id
+    title: RevisionRef
+    type: object
+  Sha256Digest:
+    type: string
+  Truncation:
+    additionalProperties: false
+    properties:
+      limit:
+        anyOf:
+        - minimum: 1
+          type: integer
+        - type: 'null'
+        title: Limit
+      reason:
+        $ref: '#/$defs/TruncationReason'
+    required:
+    - limit
+    - reason
+    title: Truncation
+    type: object
+  TruncationReason:
+    enum:
+    - item_bound
+    - page_bound
+    - byte_bound
+    - time_bound
+    - provider_limit
+    - provider_failure
+    - malformed_response
+    - cancelled
+    title: TruncationReason
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  continuation:
+    anyOf:
+    - $ref: '#/$defs/OpaqueCursorContinuation'
+    - type: 'null'
+  coverage:
+    $ref: '#/$defs/ActivityCoverage'
+  included_kinds:
+    items:
+      $ref: '#/$defs/ActivityKind'
+    minItems: 1
+    title: Included Kinds
+    type: array
+  items:
+    items:
+      $ref: '#/$defs/ActivityItem'
+    title: Items
+    type: array
+  max_items:
+    minimum: 1
+    title: Max Items
+    type: integer
+  order:
+    const: event_at_desc_id_asc
+    title: Order
+    type: string
+  repository_id:
+    minLength: 1
+    title: Repository Id
+    type: string
+  truncation:
+    anyOf:
+    - $ref: '#/$defs/Truncation'
+    - type: 'null'
+required:
+- continuation
+- coverage
+- included_kinds
+- items
+- max_items
+- order
+- repository_id
+- truncation
+title: RepositoryActivity
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.activity:RepositoryActivity/v1
+  schema_sha256: 4d9042e3c4a18c3fc7b1aed6afb425d8c0189ec5d95c232ba3d211c0d1427845

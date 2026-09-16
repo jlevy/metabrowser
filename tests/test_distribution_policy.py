@@ -10,6 +10,7 @@ import pytest
 
 from devtools.check_distribution import (
     ROOT,
+    _check_capability_entry_points,
     _check_project_metadata,
     _smoke_install,
 )
@@ -28,6 +29,22 @@ def test_wheel_metadata_rejects_incomplete_license_declarations() -> None:
     with pytest.raises(RuntimeError, match="License-File: NOTICE.md"):
         _check_project_metadata(
             b"Metadata-Version: 2.4\nLicense-Expression: AGPL-3.0-or-later\nLicense-File: LICENSE\n"
+        )
+
+
+def test_wheel_metadata_declares_installed_capability_factories() -> None:
+    _check_capability_entry_points(
+        b"[metabrowser.capabilities.v1]\n"
+        b"hosted-review = metabrowser.builtin_plugins.hosted_review.contracts:hosted_review_capabilities\n"
+        b"provider-resources = metabrowser.builtin_plugins.hosted_review.contracts:provider_resource_capabilities\n"
+    )
+
+
+def test_wheel_metadata_rejects_missing_installed_capability_factory() -> None:
+    with pytest.raises(RuntimeError, match="capability entry points differ"):
+        _check_capability_entry_points(
+            b"[metabrowser.capabilities.v1]\n"
+            b"hosted-review = metabrowser.builtin_plugins.hosted_review.contracts:hosted_review_capabilities\n"
         )
 
 

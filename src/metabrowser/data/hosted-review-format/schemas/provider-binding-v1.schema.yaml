@@ -1,0 +1,53 @@
+$defs:
+  ProviderBindingProvenance:
+    additionalProperties: false
+    properties:
+      retrieval_snapshot_id:
+        $ref: '#/$defs/Sha256Digest'
+    required:
+    - retrieval_snapshot_id
+    title: ProviderBindingProvenance
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  Sha256Digest:
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  entry_id:
+    $ref: '#/$defs/Sha256Digest'
+  provenance:
+    anyOf:
+    - $ref: '#/$defs/ProviderBindingProvenance'
+    - type: 'null'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+required:
+- entry_id
+- provenance
+- repository
+title: ProviderBinding
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.provider:ProviderBinding/v1
+  schema_sha256: dc1a6e00dfdcabfd374d5055e9f64227701b4a46cc00bac3123736ab482d2759

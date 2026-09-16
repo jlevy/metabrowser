@@ -8,6 +8,7 @@ exclude-newer-span = "P14D"
 
 [options.exclude-newer-package]
 flowmark-rs = "2026-07-16T00:00:00Z"
+softschema = "2026-09-11T06:03:53Z"
 kpress = "2026-08-31T00:55:00Z"
 
 [[package]]
@@ -115,14 +116,14 @@ wheels = [
 
 [[package]]
 name = "frontmatter-format"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ruamel-yaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/bf/eb850cd4d32cafc342dbb3a8b64058511da188c7270a61219788ac141ca6/frontmatter_format-0.3.0.tar.gz", hash = "sha256:4ebd3d3068315945d418dfd320ce6ed727b90e1605473c6244039d34cbcb0253", size = 439709, upload-time = "2026-02-28T22:37:37.068Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/ea/e71223bb3eb80354cd15d4c4895f6ff28941d46750945d81ac11c48c6391/frontmatter_format-0.4.0.tar.gz", hash = "sha256:dd7bc579b50e12a236c03427826a9af14fd2029e20dcae927e68f7440538e75a", size = 17068, upload-time = "2026-08-01T01:26:20.316Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/06/67/b003f8d851679714e00cc5353dd772027529d893b346f91279d0b9f17f17/frontmatter_format-0.3.0-py3-none-any.whl", hash = "sha256:55c1dafbcb0ca5dee5ff3e1dcb6c3fbde6d18860a2250c9d67779fd91c86c81e", size = 13824, upload-time = "2026-02-28T22:37:35.821Z" },
+    { url = "https://files.pythonhosted.org/packages/10/a1/0f9fdbe478d31b3b804e58b9436c4e53d89166c472fefff6990df4da39da/frontmatter_format-0.4.0-py3-none-any.whl", hash = "sha256:71d6b416c6b05242d934b6228d2386311f2f9216d4d1d47549e6cadf7963fe76", size = 15676, upload-time = "2026-08-01T01:26:19.434Z" },
 ]
 
 [[package]]
@@ -413,6 +414,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "ruamel-yaml" },
+    { name = "softschema" },
     { name = "starlette" },
     { name = "strif" },
     { name = "typer" },
@@ -439,7 +441,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cachetools", specifier = ">=7.1.4" },
-    { name = "frontmatter-format", specifier = ">=0.3.0" },
+    { name = "frontmatter-format", specifier = ">=0.4.0" },
     { name = "funlog", specifier = ">=0.2.1" },
     { name = "json5", specifier = ">=0.15.0" },
     { name = "jsonschema", specifier = ">=4.26.0" },
@@ -451,6 +453,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruamel-yaml", specifier = ">=0.19.1" },
+    { name = "softschema", specifier = "==0.8.1" },
     { name = "starlette", specifier = ">=1.3.1" },
     { name = "strif", specifier = ">=3.1.0" },
     { name = "typer", specifier = ">=0.26.8" },
@@ -976,6 +979,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/58/15/8b3609fd3830ef7b27b655beb4b4e9c62313a4e8da8c676e142cc210d58e/shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de", size = 10310, upload-time = "2023-10-24T04:13:40.426Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686", size = 9755, upload-time = "2023-10-24T04:13:38.866Z" },
+]
+
+[[package]]
+name = "softschema"
+version = "0.8.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "frontmatter-format" },
+    { name = "jsonschema" },
+    { name = "pydantic" },
+    { name = "ruamel-yaml" },
+    { name = "strif" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/45/95/0e3d920009b250b65a37ad7f4c1388704486a4d3d628627e7f11ed44fdad/softschema-0.8.1.tar.gz", hash = "sha256:e368eed680bf970b22790f4d90770dbdee290bedd6c0975ac51a6f1461b394e7", size = 185800, upload-time = "2026-09-11T06:03:51.697Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/74/717f51eb4d5ba14baeaf77d78e13f14d7a8f5f81a79fbc77999373b30142/softschema-0.8.1-py3-none-any.whl", hash = "sha256:7a68e52483c7a8ab63e541bb3d0329dd728096a2c256ef501e9658175540d6ad", size = 157096, upload-time = "2026-09-11T06:03:52.732Z" },
 ]
 
 [[package]]

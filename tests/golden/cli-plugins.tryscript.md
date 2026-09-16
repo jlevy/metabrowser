@@ -316,7 +316,7 @@ $ metab --plugin markdown --json
 
 ```console
 $ metab --doctor
-metab --doctor: 9 plugin(s) OK
+metab --doctor: 9 plugin(s), 2 capability provider(s), 16 contract(s), 2 profile(s) OK
 ? 0
 ```
 
@@ -327,6 +327,9 @@ $ metab --doctor --json
 {
   "ok": true,
   "plugin_count": 9,
+  "capability_provider_count": 2,
+  "artifact_contract_count": 16,
+  "resource_profile_count": 2,
   "problems": []
 }
 ? 0

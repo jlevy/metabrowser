@@ -1,0 +1,122 @@
+$defs:
+  AuthorizationContextRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      mode:
+        $ref: '#/$defs/AuthorizationMode'
+      principal_opaque_id:
+        anyOf:
+        - minLength: 1
+          type: string
+        - type: 'null'
+        title: Principal Opaque Id
+      provider:
+        $ref: '#/$defs/ProviderKind'
+      visibility_partition_digest:
+        anyOf:
+        - $ref: '#/$defs/Sha256Digest'
+        - type: 'null'
+    required:
+    - instance
+    - mode
+    - principal_opaque_id
+    - provider
+    - visibility_partition_digest
+    title: AuthorizationContextRef
+    type: object
+  AuthorizationMode:
+    enum:
+    - anonymous
+    - authenticated
+    title: AuthorizationMode
+    type: string
+  CanonicalTimestamp:
+    type: string
+  ExplicitProviderDeletionProof:
+    additionalProperties: false
+    properties:
+      kind:
+        const: explicit_provider_deletion
+        title: Kind
+        type: string
+      retrieval_snapshot_id:
+        $ref: '#/$defs/Sha256Digest'
+    required:
+    - kind
+    - retrieval_snapshot_id
+    title: ExplicitProviderDeletionProof
+    type: object
+  ProviderInstance:
+    type: string
+  ProviderKind:
+    type: string
+  ProviderObjectRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      object_kind:
+        minLength: 1
+        title: Object Kind
+        type: string
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - object_kind
+    - opaque_id
+    - provider
+    title: ProviderObjectRef
+    type: object
+  RepositoryRef:
+    additionalProperties: false
+    properties:
+      instance:
+        $ref: '#/$defs/ProviderInstance'
+      opaque_id:
+        minLength: 1
+        title: Opaque Id
+        type: string
+      provider:
+        $ref: '#/$defs/ProviderKind'
+    required:
+    - instance
+    - opaque_id
+    - provider
+    title: RepositoryRef
+    type: object
+  Sha256Digest:
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+properties:
+  authorization_context:
+    $ref: '#/$defs/AuthorizationContextRef'
+  observed_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  previous_live_snapshot_id:
+    $ref: '#/$defs/Sha256Digest'
+  proof:
+    $ref: '#/$defs/ExplicitProviderDeletionProof'
+  repository:
+    $ref: '#/$defs/RepositoryRef'
+  target:
+    $ref: '#/$defs/ProviderObjectRef'
+required:
+- authorization_context
+- observed_at
+- previous_live_snapshot_id
+- proof
+- repository
+- target
+title: Tombstone
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.provider:Tombstone/v1
+  schema_sha256: 95786d5a29132b310eb2f2f9ff758167717c9c9c24fcc4713fe29b5d43bf8296
