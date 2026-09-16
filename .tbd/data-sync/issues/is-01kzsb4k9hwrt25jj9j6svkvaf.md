@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-b: URL open, web-URL reduction, and serving 
 kind: task
 status: open
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 labels:
   - release:v0.11.0
@@ -18,9 +18,11 @@ dependencies:
     target: is-01m10vgwqwn8gjdv8fm183vztr
   - type: blocks
     target: is-01m2h7gjc36fqv8cv38qd9zynr
+  - type: blocks
+    target: is-01m2kw2b66x74xxjjtdp3wrsr4
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 created_at: 2026-08-11T21:19:59.280Z
-updated_at: 2026-09-15T00:31:44.048Z
+updated_at: 2026-09-16T01:07:30.107Z
 extensions:
   linear:
     id: 04c1dc4d-0602-449f-95a5-09481c36a843

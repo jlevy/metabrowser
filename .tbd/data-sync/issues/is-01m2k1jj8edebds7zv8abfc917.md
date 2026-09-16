@@ -3,13 +3,14 @@ type: is
 id: is-01m2k1jj8edebds7zv8abfc917
 title: "Hosted review Phase 0B.1: complete provider storage and repository records"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 11
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
   - stack:pr125
+  - stack:pr130
 dependencies:
   - type: blocks
     target: is-01m2k1jkq9cvxx9db7a0z14b0z
@@ -21,13 +22,14 @@ child_order_hints:
   - is-01m2kb410hgwb52hxrvxfnwc65
   - is-01m2kb4fa0swgkhrvw3qq21gtq
   - is-01m2kb505pj16mgj8secgn4dex
+  - is-01m2ktj7tvearg7zwk2nkz6cry
   - is-01m2kb5g8pf551djgfmf9kcm87
   - is-01m2kb6031dk9t2pzt5d35fvyd
 created_at: 2026-09-15T17:24:30.089Z
-updated_at: 2026-09-15T20:12:53.217Z
+updated_at: 2026-09-16T00:41:51.693Z
 ---
-Complete the provider-neutral, no-network storage/repository/index record family through eight reviewable child beads: freeze namespace and publication semantics; keep Python/JavaScript provider namespace scalars aligned; add AuthorizationContextRef and Retrieval; add ResourceSet, ProviderSyncManifest, and Tombstone; add auth-independent ProviderBinding and HostedRepository identity; add query-keyed ChangeRequestIndex; package portable corpora; then run independent reviews, full verification, and publish the formal stack. No provider acquisition, filesystem store, route, view, manifest registration, or new dependency. Phase 0C owns compiled SoftSchema and full browser parsers for the new records.
+Complete the provider-neutral, no-network storage/repository/index record family through nine reviewable child beads: freeze namespace and publication semantics; keep Python/JavaScript provider namespace scalars aligned; add AuthorizationContextRef and Retrieval; add ResourceSet, ProviderSyncManifest, and Tombstone; add auth-independent ProviderBinding and HostedRepository identity; add query-keyed ChangeRequestIndex; generalize provider-object/provider-collection targets, collection pages, and trusted resource profiles; package portable corpora; then run independent reviews, full verification, and publish the formal stack. No provider acquisition, filesystem store, route, view, manifest registration, or new dependency. Phase 0C owns compiled SoftSchema, installed contract/profile registries, and full browser parsers for the new records.
 
 ## Notes
 
-Refined after independent architecture and contract reviews. Key decisions still owned by mb-tznv: index volatility belongs in manifest retrieval evidence, ResourceSet/current/last-complete roles need one authority, provider namespace inputs require canonical ASCII spelling, tombstone corroboration must be measurable, and query/auth digests require canonical JSON projections. The child sequence is blocked on mb-n2ro landing Phase 0A.
+Phase 0B.1 is one formal stacked pull request based on PR #130. Its child beads are implementation subtasks, not separate pull requests. Contract freeze, Python and JavaScript provider namespace parity, authorization/retrieval, publication and tombstone records, repository identity/binding, query-keyed indexes, portable corpus, independent review, make verify, gh publication, and final CI all land together. Phase 0A landing remains separately tracked by mb-n2ro and does not block construction of this stack layer.

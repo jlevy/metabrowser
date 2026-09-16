@@ -5,7 +5,7 @@ title: "Hosted review Phase 0B.2: complete review, signal, and activity records"
 kind: task
 status: open
 priority: 1
-version: 3
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -16,7 +16,10 @@ dependencies:
   - type: blocks
     target: is-01m2k1jq7ydswdag1x08n30hvn
 parent_id: is-01m10vgw6vhq82cd495kvhh9gf
+child_order_hints:
+  - is-01m2krvmvxvt6vhgq260mw7v8x
+  - is-01m2krvwqaynstjykh0m9k90vr
 created_at: 2026-09-15T17:24:31.585Z
-updated_at: 2026-09-15T17:24:35.192Z
+updated_at: 2026-09-16T00:12:56.358Z
 ---
-Extend models.py, artifacts.py, and the shared corpus with ChangeRequestComment, Review with optional Markdown summary, ReviewThread, ReviewComment, tagged file/line/range ReviewAnchor, Check, CommitStatus, and RepositoryActivity. Validate bounded relationships to ChangeRequest, comparison and revision identities, explicit unavailable or unresolved anchors, body and no-body reviews, unknown enums, and closed objects with no raw payload or extension bag.
+Coordinate one formal Phase 0B.2 pull request stacked on the exact green Phase 0B.1 head. mb-n9fo owns the complete review, signal, and activity record implementation and portable evidence; mb-qpbu owns independent review, make verify, bead sync, gh publication, and final green CI. Close this phase only after both children are complete and its PR is registered with the stack landing coordinator mb-n2ro.

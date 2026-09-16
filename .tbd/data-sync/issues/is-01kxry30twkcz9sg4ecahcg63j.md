@@ -5,7 +5,7 @@ title: "Plugin SDK: mounted sub-routers with path parameters and honest response
 kind: feature
 status: open
 priority: 1
-version: 7
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -14,9 +14,13 @@ dependencies:
     target: is-01kxse0vfwwkcq1a6mfdx6v9ad
   - type: blocks
     target: is-01m2h7hrjt6yzb16neh8g2zvsd
+  - type: blocks
+    target: is-01m2ktkve5n2fztx8smd6n9vja
+  - type: blocks
+    target: is-01m2kw2cra83fyszkrptvhfead
 parent_id: is-01m10vgwqwn8gjdv8fm183vztr
 created_at: 2026-07-17T21:00:32.476Z
-updated_at: 2026-09-15T01:19:53.693Z
+updated_at: 2026-09-16T01:07:31.721Z
 extensions:
   linear:
     id: 8abea237-409f-4114-b118-4efa20f438b3
