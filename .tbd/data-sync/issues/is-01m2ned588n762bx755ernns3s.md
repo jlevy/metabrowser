@@ -5,15 +5,15 @@ title: Upgrade tbd 0.9.0 surfaces and restore stacked-PR discoverability
 kind: task
 status: in_progress
 priority: 1
-version: 2
+version: 3
 labels:
   - tooling
 dependencies: []
 created_at: 2026-09-16T15:47:13.286Z
-updated_at: 2026-09-16T15:47:22.199Z
+updated_at: 2026-09-16T17:14:12.767Z
 ---
 Upgrade the first-party get-tbd CLI to 0.9.0, run tbd setup --auto, commit the generated Metabrowser surfaces exactly as emitted, and verify that ordinary PR requests discover the stacked-prs shortcut and official gh-stack skill. The installed 0.9.0 package contains dist/docs/shortcuts/standard/stacked-prs.md and updated PR shortcuts, but tbd shortcut --list and tbd shortcut stacked-prs omit it. Audit the tbd source and open an upstream tbd PR with regression coverage and any required catalog/generator fix. Keep this tooling work separate from the hosted-review feature stack.
 
 ## Notes
 
-Confirmed with get-tbd 0.9.0: the package includes dist/docs/shortcuts/standard/stacked-prs.md and updated PR/review/setup instructions, and gh stack v0.1.0 is installed, but tbd shortcut stacked-prs reports no match and shortcut --list omits it. Repository managed surfaces are stale. Work will refresh generated surfaces on a separate Metabrowser tooling branch and fix the upstream tbd registry/generator with tests.
+Upgraded the global first-party CLI to get-tbd 0.9.0 and regenerated MetaBrowser's managed tbd surfaces with tbd setup --auto. Confirmed tbd shortcut stacked-prs is now present and readable. Opened upstream tbd PR #301 (https://github.com/jlevy/tbd/pull/301) to make stacked/dependent PR intent route explicitly from generated top-level AGENTS.md and every skill tier, distinguish chained branches from formal gh stack membership, handle remote-only formal stacks, harden diff-base selection, emit owning-agent installers, and validate the exact pinned official skill identity. Independent subagent review found three issues; all were fixed and documented on the PR. Upstream CI is fully green. MetaBrowser make verify passed: 2124 tests passed, 1 skipped; 124 golden cases passed; lint/type/parity/supply-chain/audits/distribution checks passed. The MetaBrowser upgrade PR should remain draft until the upstream fix is released and tbd setup --auto can regenerate the corrected Codex installer without hand-patching generated output.
