@@ -5,7 +5,7 @@ title: "Repository library Phase 2B: provider jobs and selected refs"
 kind: task
 status: open
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: null
 labels:
@@ -23,7 +23,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-14T23:25:54.570Z
-updated_at: 2026-09-16T21:52:55.141Z
+updated_at: 2026-09-16T21:54:54.016Z
 started_at: 2026-09-16T21:10:44.862Z
 ---
 Extract provider-facing generic jobs over shared repository stores: per-store progress, coalescing, cancellation and stage outcomes; jobs.py-owned fetch_selected_ref and request_ref_fetch for bounded fetch of explicit refs into a Metabrowser namespace; and full-OID verification before ref publication. selection.py performs no network work. Hold no lock during network; publish under repository-store locking; never mutate an attached checkout, create a worktree, or expose store paths. Keep provider schemas, gh, auth, catalog, chooser, and eviction out of core.
