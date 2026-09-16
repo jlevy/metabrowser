@@ -1,23 +1,25 @@
 ---
 type: is
 id: is-01m1389aetecehg10qdf7zb9rz
-title: "Cache state routes: /api/cache/layout, entries, and entry"
+title: "Cache state routes: layout, sources, and repository stores"
 kind: feature
-status: in_progress
+status: open
 priority: 1
-version: 4
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
-delegate: codex@spud10
+delegate: null
 labels:
   - release:v0.11.0
 dependencies:
   - type: blocks
     target: is-01m1389rewn2mkj8emj3wxwpr7
+  - type: blocks
+    target: is-01m2p1ps48qjh1qt3wmk8s63ra
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-28T03:58:14.488Z
-updated_at: 2026-09-16T21:24:52.525Z
+updated_at: 2026-09-16T21:27:30.283Z
 started_at: 2026-09-16T21:24:52.524Z
 ---
-Add three read-only routes projecting the Phase 1A records: /api/cache/layout (format version, home, directories), /api/cache/entries (identity, publication state, head revision per entry), and /api/cache/entry/{slug}. These satisfy the state clause: cache layout, entry identity, entry state, and reclamation outcomes are read as normalized models through --api like any other surface, not through a bespoke inspection command. Project logical state only; never a directory listing, because pack file names and .git internals are not stable across runs.
+Add read-only routes that project Phase 1A logical records: /api/cache/layout, /api/cache/sources, /api/cache/source/{slug}, and /api/cache/stores. These satisfy the persisted-state clause through metab --api, not a bespoke inspection command. Report source/store identity, alias generation, publication state, and reclamation outcomes; never expose cache filesystem paths, pack filenames, Git internals, or unstable object counts.

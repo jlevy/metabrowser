@@ -5,7 +5,7 @@ title: "Hosted review Phase 0C.2b: review and publish the format-boundary phase"
 kind: task
 status: closed
 priority: 1
-version: 23
+version: 25
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -17,6 +17,10 @@ dependencies:
     target: is-01m2k713pxra1ns2fk3pcwrpb6
   - type: blocks
     target: is-01m2kwk6h6pzxanejy6c339r08
+  - type: blocks
+    target: is-01m2p1prnv5sdvx5atj08ckqn2
+  - type: blocks
+    target: is-01m2nz79vrjb2vpp5ydxra84e5
 parent_id: is-01m2k1jrywxceb6n3r0pbadegx
 child_order_hints:
   - is-01m2mj2zrph9kmh788v80mv0d1
@@ -34,7 +38,7 @@ child_order_hints:
   - is-01m2mmgq4qcwk5xb6pxsmea8g0
   - is-01m2mmgqnq6m6jmta0ekt0rxk7
 created_at: 2026-09-16T00:12:42.370Z
-updated_at: 2026-09-16T08:43:21.480Z
+updated_at: 2026-09-16T21:41:05.227Z
 closed_at: 2026-09-16T08:43:21.476Z
 close_reason: "Review and publication are complete for PR #136. All 14 findings were fixed and disposed, all review beads are closed, every GitHub check is green, and the PR is registered with mb-n2ro."
 resolution: null
