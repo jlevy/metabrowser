@@ -3,11 +3,11 @@ type: is
 id: is-01m2h9jm62mjccx6x3bx0nct2a
 title: "Provider store kernel: auth-scoped snapshots, leases, and bounded reclamation"
 kind: feature
-status: in_progress
+status: open
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
-delegate: codex@spud10
+delegate: null
 labels:
   - release:v0.11.0
 dependencies:
@@ -19,7 +19,7 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-15T01:05:51.809Z
-updated_at: 2026-09-16T21:11:50.564Z
+updated_at: 2026-09-16T21:15:05.778Z
 started_at: 2026-09-16T21:10:44.880Z
 ---
 Implement the provider-neutral store kernel behind ProviderResourceStorePort, keyed by stable RepositoryRef and then AuthorizationContextRef and logical target or query rather than a cache entry. Publish immutable objects and manifests, atomic current and last-complete pointers, explicit transaction, collection, and remote-consistency states, reader leases, diagnostic retention, and bounded reachability reclamation. Use repository-store then provider-resource lock order only when both are needed, with no network under lock. Test multiple sources sharing one repository, auth isolation, interruption, partial commit, concurrent refresh/read/reclaim, offline/deleted sources, and tombstone retention.

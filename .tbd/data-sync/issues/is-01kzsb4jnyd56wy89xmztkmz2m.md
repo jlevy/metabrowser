@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: in_progress
 priority: 1
-version: 17
+version: 19
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: codex@spud10
 labels:
@@ -27,7 +27,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-16T21:11:13.577Z
+updated_at: 2026-09-16T21:24:52.774Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:

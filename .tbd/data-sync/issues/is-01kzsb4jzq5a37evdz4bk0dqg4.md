@@ -5,7 +5,7 @@ title: "Repository library Phase 1A: f01 and SoftSchema format foundation"
 kind: task
 status: in_progress
 priority: 1
-version: 18
+version: 20
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: codex@spud10
 labels:
@@ -25,7 +25,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.966Z
-updated_at: 2026-09-16T21:11:13.303Z
+updated_at: 2026-09-16T21:24:52.268Z
 started_at: 2026-09-16T21:10:44.798Z
 extensions:
   linear:

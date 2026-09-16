@@ -3,11 +3,11 @@ type: is
 id: is-01kzsb4k9hwrt25jj9j6svkvaf
 title: "Repository library Phase 1B-b: URL open, web-URL reduction, and serving (trust-gated)"
 kind: task
-status: in_progress
+status: open
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
-delegate: codex@spud10
+delegate: null
 labels:
   - release:v0.11.0
 dependencies:
@@ -25,7 +25,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:59.280Z
-updated_at: 2026-09-16T21:11:31.965Z
+updated_at: 2026-09-16T21:14:59.616Z
 started_at: 2026-09-16T21:10:44.828Z
 extensions:
   linear:
