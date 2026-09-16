@@ -5,7 +5,7 @@ title: "Platform: bounded subprocess runner for provider adapters"
 kind: feature
 status: open
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/architecture/arch-hosted-review-model.md
 delegate: null
 labels:
@@ -17,11 +17,13 @@ dependencies:
     target: is-01m2h5an32kbkp6zfkhkjzq55f
   - type: blocks
     target: is-01m2kw2bvjj5kcsczkz40cmhqx
+  - type: blocks
+    target: is-01m2p5vzgcbwexb62ep1mb2gjc
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-07-17T21:00:33.250Z
-updated_at: 2026-09-16T22:04:18.033Z
+updated_at: 2026-09-16T22:37:16.170Z
 started_at: 2026-09-16T22:03:41.555Z
 extensions:
   linear:
