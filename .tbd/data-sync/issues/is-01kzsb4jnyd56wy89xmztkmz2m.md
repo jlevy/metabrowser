@@ -3,11 +3,11 @@ type: is
 id: is-01kzsb4jnyd56wy89xmztkmz2m
 title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (no serving)"
 kind: task
-status: in_progress
+status: open
 priority: 1
-version: 24
+version: 25
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
-delegate: codex@spud10
+delegate: null
 labels:
   - release:v0.11.0
 dependencies:
@@ -27,11 +27,11 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-16T22:03:38.805Z
+updated_at: 2026-09-16T22:04:16.364Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
     id: 0ffb0ef8-e09f-4e96-8736-01e0592ab450
     linked_at: 2026-08-16T08:05:43.419Z
 ---
-Extend the one Git runner with core-constructed trusted command targets, version detection, stdin isolation, non-interactive environment, and bounded acquisition/background policies. Acquire into an isolated worktree-free staging repository; record source and authorization policy, exact refspec, expected OID, object format, and base generation; validate before importing objects and CAS-publishing only Metabrowser-owned refs. Publish the validated immutable store first and the source alias as the sole visibility commit, with source-alias locking and crash reclamation for orphaned stores. Keep GitHub, provider metadata, immutable tree serving, shared origins, checkouts, and indexes out of this bead.
+Extend the one Git runner with core-constructed trusted command targets, version detection, stdin isolation, non-interactive environment, and bounded acquisition/background policies. Acquire into an isolated worktree-free staging repository; record source, closed non-secret FetchAuthorizationContext kind, fetch-policy version, exact refspec, expected OID, object format, and base generation; validate before importing objects and CAS-publishing only Metabrowser-owned refs. Unknown SSH or credential-helper principals receive fresh unshareable contexts. Publish the validated immutable store first and the source alias as the sole visibility commit, with source-alias locking and crash reclamation for orphaned stores. Define deterministic provider-identity store derivation without a mutable provider-to-store pointer, but keep GitHub metadata, immutable tree serving, shared origins, checkouts, and indexes out of this bead.

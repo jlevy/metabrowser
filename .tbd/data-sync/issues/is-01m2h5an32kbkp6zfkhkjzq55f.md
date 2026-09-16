@@ -3,11 +3,11 @@ type: is
 id: is-01m2h5an32kbkp6zfkhkjzq55f
 title: "GitHub Phase 3: bounded gh API transport and auth workflow"
 kind: task
-status: in_progress
+status: open
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
-delegate: codex@spud10
+delegate: null
 labels:
   - release:v0.11.0
 dependencies:
@@ -23,7 +23,7 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-14T23:51:36.278Z
-updated_at: 2026-09-16T22:03:44.739Z
+updated_at: 2026-09-16T22:04:18.711Z
 started_at: 2026-09-16T22:03:44.738Z
 ---
-Implement the only v0.11 provider transport with fixed gh api REST endpoint templates and checked-in GraphQL documents, explicit host/API-version/Accept profiles, and bounded JSON variables through --input -. After non-secret gh auth status preflight, issue a fixed bounded /user request to resolve the stable opaque principal ID; keep login/scopes as retrieval observations and refuse authenticated publication if identity cannot be resolved. Typed builders allowlist and percent-encode required REST path components before one argv element. Parse --include status and allowlisted headers separately from the bounded body; type GraphQL data-plus-errors, null nodes, malformed content, truncation, unsupported GHES, auth, permission, rate-limit, network, timeout, and cancellation outcomes. Never use raw untrusted arguments, -f/-F, gh pr output, --paginate, --cache, verbose output, interactive login, durable raw responses, or secret-bearing diagnostics.
+Implement the only v0.11 provider transport with fixed gh api REST endpoint templates and checked-in GraphQL documents, explicit host/API-version/Accept profiles, and bounded JSON variables through --input -. After non-secret gh auth status preflight selects a login, open one broker-pinned GhCredentialSession, resolve its stable opaque principal ID through fixed /user, and run every endpoint and page for the acquisition through that same session; a concurrent external gh auth switch cannot change the namespace, and broker or token failure aborts publication. Keep login/scopes as retrieval observations. Typed builders allowlist and percent-encode REST path components. Parse --include status and allowlisted headers separately; type GraphQL partial errors, nulls, malformed content, truncation, unsupported GHES, auth, permission, rate-limit, network, timeout, and cancellation. Never use raw untrusted arguments, -f/-F, gh pr output, --paginate, --cache, verbose output, interactive login, durable raw responses, or secret-bearing diagnostics.
