@@ -5,7 +5,7 @@ title: "Hosted review Phase 0B.2: complete review, signal, and activity records"
 kind: task
 status: closed
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -15,12 +15,14 @@ dependencies:
     target: is-01m2k1jnf5t6bgg340skd537hn
   - type: blocks
     target: is-01m2k1jq7ydswdag1x08n30hvn
+  - type: blocks
+    target: is-01m2krwcrtg8vx2cwqh4v8ddxj
 parent_id: is-01m10vgw6vhq82cd495kvhh9gf
 child_order_hints:
   - is-01m2krvmvxvt6vhgq260mw7v8x
   - is-01m2krvwqaynstjykh0m9k90vr
 created_at: 2026-09-15T17:24:31.585Z
-updated_at: 2026-09-16T03:27:30.309Z
+updated_at: 2026-09-16T03:28:44.275Z
 closed_at: 2026-09-16T03:27:30.293Z
 close_reason: "Phase 0B.2 implementation and publication are complete on green formal draft PR #133; stack landing remains separately approval-gated."
 resolution: null
