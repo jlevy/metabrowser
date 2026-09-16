@@ -5,7 +5,7 @@ title: "Hosted review Phase 0C.2b: review and publish the format-boundary phase"
 kind: task
 status: in_progress
 priority: 1
-version: 16
+version: 20
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
@@ -29,8 +29,12 @@ child_order_hints:
   - is-01m2mk1m3195p46j7y4jmmw3wx
   - is-01m2mk1mdfdj5eq8znnr2gk0bp
   - is-01m2mk1mr2m79ccpe21yyzd49c
+  - is-01m2mmctkaezwfx0rq66tqafyp
+  - is-01m2mmdf9mpymtnhrehbe4y5e9
+  - is-01m2mmgq4qcwk5xb6pxsmea8g0
+  - is-01m2mmgqnq6m6jmta0ekt0rxk7
 created_at: 2026-09-16T00:12:42.370Z
-updated_at: 2026-09-16T07:52:34.067Z
+updated_at: 2026-09-16T08:14:47.478Z
 ---
 Run independent inventory, installed-wheel, parity, architecture, and delivery reviews; address every finding; run make verify; sync beads; and publish exactly one formal draft Phase 0C.2 PR with gh, based on the exact green Phase 0C.1 head. Record base/head OIDs and stack path, watch GitHub CI to a final green summary, and register the PR with mb-n2ro. Do not merge here; mb-n2ro alone owns explicit-approval landing and retargeting, and mb-63ym closes only after every Phase 0 PR is landed and revalidated.
 
