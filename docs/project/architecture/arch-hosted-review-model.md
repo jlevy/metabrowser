@@ -1,13 +1,18 @@
 # Hosted Review Model and Provider Boundary
 
 **Status:** Accepted design; the no-network, pre-schema ChangeRequest semantic kernel is
-implemented in the first v0.11.0 GitHub-first stack.
-No provider adapter, cache, route, kind, or view is implemented yet.
+implemented, and the provider-storage record family is in progress in the next formal
+stack layer. No provider adapter, cache, route, kind, or view is implemented yet.
 
 Hosted review is a domain above Git history and File Diff Format.
 A pull request or merge request has Git endpoints and can produce a comparison, but it
 also has a lifecycle, participants, reviews, threads, checks, merge state, and provider
 freshness that neither Git nor a patch can express.
+
+The general artifact, resource, registry, cache, and view composition rules live in
+[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md).
+Hosted review is their first demanding consumer, not the definition of the general
+framework.
 
 The first adapter targets GitHub.
 The durable model remains provider-neutral so a future GitLab adapter can produce the
@@ -76,21 +81,31 @@ performs no filesystem write.
 Its enforced marker records that Pydantic boundary; durable cache publication remains
 blocked on the compiled SoftSchema registry in Phase 0C.
 
-The v0.11.0 record set is deliberately PR-first:
+The v0.11.0 record set is deliberately PR-first, while the provider-storage vocabulary
+is content-neutral:
 
 | Record | Describes | Does not contain |
 | --- | --- | --- |
+| `ProviderBinding/v1` | An auth-independent link from one generic repository entry to a stable hosted-repository identity | Mutable owner/name coordinates or credentials |
+| `AuthorizationContextRef` | The stable, non-secret namespace that determines which hosted objects a publication may expose | Login, scopes, validators, rate limits, or observation time |
+| `Retrieval/v1` | One immutable provider observation, including transport, outcome, validators, rate limits, and display auth facts | Tokens, raw headers, raw arguments, response bodies, or environment values |
 | `HostedRepository/v1` | Provider-neutral repository identity, coordinates, URLs, visibility, default branch, and timestamps | Git objects or an API response |
-| `ChangeRequestIndex/v1` | A bounded, paginated discovery list with query, freshness, completeness, and cursors | Full bodies, reviews, threads, checks, or fetched refs |
+| `ChangeRequestIndex/v1` | A normalized query and its bounded, deterministically ordered discovery rows | Retrieval times, pagination transport, full bodies, reviews, threads, checks, or fetched refs |
 | `ChangeRequest/v1` | A pull or merge request’s identity, lifecycle, participants, labels, base/head, merge readiness, and aggregate state | Patch bodies or transport pagination |
 | `ChangeRequestComment/v1` | One top-level conversation comment, author, timestamps, visibility state, and human URL | A diff anchor or rendered HTML as authority |
 | `Review/v1` | One review act, its normalized disposition, and an optional reader-facing summary body | Provider-specific review payload |
 | `ReviewThread/v1` | A bounded discussion anchored to an immutable comparison identity | A guessed current line |
 | `ReviewComment/v1` | One comment, author, timestamps, state, and anchor | Rendered HTML as authority |
 | `Check/v1` and `CommitStatus/v1` | CI and status conclusions attached to an immutable revision | Git commit content |
-| `ProviderSyncManifest/v1` | Exact snapshots, retrieval metadata, bounds, failures, and collection states in one published observation | Secret material or mutable object bodies |
+| `ResourceSet/v1` | The exact immutable snapshots and coverage for one logical repository, change-request, or query resource | Retrieval observations or publication state |
+| `ProviderSyncManifest/v1` | Transaction state, retrieval evidence, failures, and the resource sets acquired together | Secret material or mutable object bodies |
+| `ProviderViewPointer/v1` | A small `current` or `last-complete` reference to one resource set and its committed manifest | Embedded snapshots or mutable acquisition state |
+| `Tombstone/v1` | A provider-object deletion backed by a typed event or deleted marker for the exact target | A conclusion inferred from one not-found response or authorization failure |
 
-Issue and timeline records are the next domain extension, tracked by `mb-9rrc`.
+Issue and timeline records are the next domain extension, tracked by `mb-9rrc`. Release
+records are a sibling extension with `Release/v1` frontmatter, a structured asset
+record, and a bounded index; their separate phased epic follows the general resource
+architecture and does not widen the initial PR contracts.
 Stacked-change projections are later derived records, tracked by `mb-glxc`. They extend
 the registry with closed contracts; they do not add an `extra` object to the v0.11.0
 records.
@@ -136,6 +151,13 @@ Every durable provider object carries a minimal `ProviderObjectRef` with:
 - provider object kind; and
 - stable opaque provider ID.
 
+Provider kinds are lowercase ASCII tokens.
+Provider instances use lowercase DNS `host[:port]` spelling, without a scheme,
+credentials, path, or the default HTTPS port, and with a DNS host no longer than 253
+ASCII bytes. Canonical provider HTTPS URLs apply the same host bound.
+The same scalar validators apply to `ProviderObjectRef`, `RepositoryRef`, and every
+storage record, so namespace spelling cannot fork auth, query, or pointer identities.
+
 Repository identity, repository-local number, and canonical human URL remain fields on
 the owning domain record.
 They are not repeated inside `ProviderObjectRef`, which keeps the same provider identity
@@ -143,10 +165,10 @@ usable for repositories, change requests, reviews, checks, and future host types
 turning the reference into a partial copy of each record.
 
 Every provider observation also carries a stable `AuthorizationContextRef` in its
-retrieval record and sync manifest: provider instance, `anonymous` or `authenticated`
-mode, a stable opaque principal ID for authenticated publications, and an optional
-normalized capability-partition fingerprint only when those capabilities change which
-objects the principal may observe.
+retrieval record and sync manifest: provider kind, provider instance, `anonymous` or
+`authenticated` mode, a stable opaque principal ID for authenticated publications, and
+an optional `sha256:<lowercase-hex>` capability-partition fingerprint only when those
+capabilities change which objects the principal may observe.
 Display login, observed scopes or capabilities, and observation time are retrieval
 observations, not authorization-context identity.
 Neither record carries a token, credential-store path, environment-variable value, or
@@ -173,6 +195,162 @@ The future GitLab adapter (`mb-51uj`) is a named consumer that justifies neutral
 identity and lifecycle terms.
 It does not justify fields for GitLab behavior that the implementation has not yet
 measured.
+
+### Phase 0B.1 storage record contracts
+
+Phase 0B.1 freezes a no-network record kernel.
+These records are closed, frozen Pydantic models and portable JSON fixtures, but remain
+dormant until Phase 0C packages their compiled SoftSchema contracts and browser parsers.
+
+`AuthorizationContextRef` contains exactly `provider`, `instance`, `mode`,
+`principal_opaque_id`, and `visibility_partition_digest`. Authenticated contexts require
+a principal opaque ID. Anonymous contexts require both the principal and visibility
+partition to be null.
+The authorization-context key is `sha256:` plus the lowercase SHA-256 digest of the
+UTF-8 bytes of this compact, domain-separated JSON array:
+
+```text
+["AuthorizationContextRef/v1",provider,instance,mode,principal_opaque_id,visibility_partition_digest]
+```
+
+The hash input rejects lone Unicode surrogates rather than relying on runtime-specific
+replacement behavior.
+Changing display login, capabilities, validators, rate-limit state, or observation time
+therefore cannot create another publication namespace.
+
+`Retrieval/v1` owns the exact authorization context and a closed logical request target:
+a provider object within a repository, a provider collection identified by normalized
+result contract and query key, or a provider binding with generic entry and repository
+identity.
+It also owns adapter ID, `provider_cli`, `direct_http`, or `unknown` transport,
+sanitized operation ID, a digest of the exact credential-free provider request, start
+and finish times, optional API version, normalization version, named HTTP validators,
+optional rate-limit observation, optional display login, and a capability observation
+whose state is `observed`, `unavailable`, or `not_requested`. The manifest requires
+every retrieval target to match its repository, and every collection retrieval to match
+the resource set’s exact logical target.
+Its closed tagged outcome is `succeeded`, `not_modified` with a reused collection
+artifact, `not_found_under_context`, `explicitly_deleted` with the exact provider
+object, repository, evidence kind, and provider event identity and time, or `failed`
+with a reason of `permission_denied`, `rate_limited`, `transport_unavailable`,
+`provider_error`, `malformed_response`, `output_bound`, `cancelled`, or `unknown`.
+Authorization unavailable before a stable authenticated principal is known is an
+adapter/service result, not a durable retrieval under a fabricated context.
+
+`ProviderBinding/v1` contains the generic repository `entry_id`, one `RepositoryRef`,
+and optional typed provenance that names the retrieval snapshot establishing the
+binding. Provenance resolution requires a successful provider-binding retrieval whose
+entry and repository exactly match the binding.
+The record is independent of authorization and mutable repository coordinates.
+Changing a repository owner or name updates `HostedRepository/v1`; changing the opaque
+repository ID is an explicit rebind conflict.
+`HostedRepository/v1` contains `provider_ref`, an actor-valued owner, name, canonical
+web and clone URLs, visibility, an explicit default-branch availability and name, and
+provider creation and update times.
+It has no second domain ID, and its provider-native `object_kind` is not forced to the
+English word `repository`. Its `RepositoryRef` is the exact projection of the provider
+kind, instance, and opaque ID from `provider_ref`.
+
+`ResourceSet/v1` is one immutable logical publication target.
+It identifies the repository, authorization context, a provider-object or
+provider-collection target, a namespaced versioned profile ID, and uniquely named
+collections.
+Its persisted shape is structural; a trusted installed `ResourceProfileSpec`
+supplies the exact target class, normalized result contract, ordered collection slots,
+artifact contracts, minimum and maximum cardinality, pagination policy, and
+required-for-`last-complete` status.
+Cached content cannot provide that declaration, and an unknown profile fails.
+Each collection owns its exact artifact and retrieval snapshot references,
+`not_requested`, `partial`, `complete`, or `unavailable` coverage, pagination evidence,
+optional truncation, and optional failure retrieval.
+An empty exhausted collection is complete when the profile permits zero artifacts or
+when its typed index artifact contains no rows.
+The repository and change-request-index profiles each require exactly one artifact;
+future detail profiles may declare a bounded `0..N` companion collection without
+changing the storage kernel.
+Partial coverage requires a reason but need not have a continuation; unavailable
+coverage requires a typed failure; not-requested coverage proves no attempt.
+A complete collection accepts only successful or matching not-modified retrievals.
+An unavailable collection cites exactly one typed failure or same-context not-found
+attempt, has no pagination, and publishes no artifact.
+`provider_failure`, `malformed_response`, and `cancelled` partial truncations cite
+exactly one failed retrieval whose closed failure reason agrees with the truncation;
+item, page, byte, time, and provider-limit truncations do not cite a failed retrieval.
+A resource set is eligible for `last-complete` only when every mandatory collection in
+its closed profile is complete and no collection is partial or unavailable.
+
+Pagination evidence contains generic collection pages: contiguous one-based pages,
+tagged cursor or page-number continuations, a distinct retrieval snapshot for each page,
+observed provider IDs, explicit provider exhaustion, first and last observation times
+equal to the first and last page retrieval finish times, and a closed remote-consistency
+claim. Page retrieval times are nondecreasing in continuation order.
+`provider_snapshot` requires one non-secret token shared by every page;
+`best_effort_window` claims only the recorded observation window; `unknown` makes no
+snapshot claim. Opaque cursors are bounded URL-free ASCII tokens and cannot be absolute,
+protocol-relative, path-relative, rootless-relative, or query-only URLs.
+Raw next URLs are never persisted.
+Page snapshot tokens are null unless the consistency claim is `provider_snapshot`.
+
+`ProviderSyncManifest/v1` owns an immutable transaction observation: manifest and
+transaction identity, repository and authorization context, `staged`, `committed`, or
+`failed` state, start and optional finish time, exact retrieval and resource-set
+snapshot references, and an optional typed transaction failure.
+Resource-set pagination references provide per-page provenance without putting retrieval
+times, validators, rate limits, or display auth facts into reusable index or repository
+snapshots. Only a committed manifest can back a pointer; committed transactions may
+honestly contain partial or unavailable collections.
+Staged and failed records remain diagnostics and never advance a pointer.
+Each immutable staged, committed, or failed record has its own snapshot ID while sharing
+the transaction ID.
+
+`ProviderViewPointer/v1` contains its `current` or `last_complete` role, repository,
+authorization-context key, logical target, resource-set snapshot ID, and committed
+manifest snapshot ID. Pointer validation resolves maps by those exact snapshot IDs, then
+checks every identity field.
+A current pointer may select a valid committed resource set only when every collection
+required for complete fallback has an attempted outcome: complete, partial, or
+unavailable. A `not_requested` optional collection remains valid, but a no-attempt
+required collection cannot displace the useful current observation.
+A last-complete pointer may select only one complete under its declared
+required-collection profile.
+
+Index query keys use a domain-separated compact JSON array and the same UTF-8 SHA-256
+rule. The state-filter element is `["all"]` or `["selected",state_1,...,state_n]`, with
+selected state values sorted by their ASCII spelling.
+The complete hash preimage is:
+
+```text
+["ChangeRequestIndexQuery/v1",provider,instance,repository_opaque_id,state_filter,sort_field,sort_direction,"provider_opaque_id",max_items,max_pages,max_bytes,max_duration_ms]
+```
+
+The query projection therefore contains provider and repository identity, the closed
+state filter, `created_at` or `updated_at` sort and direction, the fixed ascending
+provider-opaque-ID tie-breaker, and declared positive safe-integer item, page, byte, and
+duration bounds.
+It excludes authorization, cursors, results, retrievals, validators, and
+observation times. `ChangeRequestIndex/v1` owns only the normalized query, key, and
+ordered summary rows.
+The enclosing resource-set collection owns coverage and acquisition evidence; the
+manifest closes over the referenced retrievals and resource set.
+Persisted rows are unique by stable provider ID and sort by the declared primary field,
+then provider opaque ID by unsigned UTF-8 byte order ascending; duplicate resolution
+belongs to provider normalization before validation.
+Invalid UTF-8, including lone surrogates, is rejected even when an index has only one
+row.
+
+`Tombstone/v1` names a previous live snapshot and an explicit-deletion retrieval.
+Resolution proves the prior snapshot represented the same provider object, repository,
+and authorization context.
+A deletion event carries its provider event time and must follow that prior live
+observation; a deleted marker uses its retrieval finish time as the evidence
+observation. The deletion retrieval must have the `explicitly_deleted` outcome for the
+exact request target and repository, and both the retrieval and tombstone observation
+must fall within the committed manifest transaction.
+The evidence validator rejects a lone not-found observation, authentication or
+permission failure, rate limiting, cross-context evidence, and a resource never fetched.
+Corroborated absence is deferred until a later contract introduces a profile-defined
+exhaustive collection; a pull-request discovery index is filtered and cannot provide
+that proof.
 
 ## Activity Is a Projection, Not a Second History Authority
 
@@ -285,12 +463,16 @@ independently replaceable:
   plugins may request selected PR refs through this port but cannot run Git or receive a
   cache filesystem path.
 
-The common hosted-review plugin owns `/review/<provider>/<repository-key>/<change-key>`
-and its resource routes through a mounted plugin sub-router.
-The address identifies a provider-neutral record; GitHub’s `/pull/<number>` reducer
-resolves to it.
-The bounded index and a direct URL must produce the same record identity,
-so navigation never needs an index-specific route.
+The common hosted-resource address is
+`/hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>]`
+and its resource routes live behind a mounted plugin sub-router.
+Instance, repository, and resource keys use the canonical typed base64url atom codec in
+[External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md);
+raw opaque IDs, PR numbers, and slash-containing tags never become path segments.
+The kind registry identifies the validated model and views; GitHub’s `/pull/<number>`
+reducer resolves to a `change-request` resource without making the address PR-only.
+The bounded index and a direct URL must produce the same record identity, so navigation
+never needs an index-specific route.
 
 Mounted routers and browser address spaces are separate plugin-host capabilities, not
 hosted-review exceptions.
@@ -403,8 +585,10 @@ implementation:
    the Markdown body is the untrusted provider prose, optional for a review summary.
 3. Hosted Review Format, Repository Activity Format, Git, File Diff Format, and revision
    content stay separate and compose through references rather than a union document.
-4. A hosted-review plugin owns common models and views; a GitHub provider plugin owns
-   URL recognition, `gh api`, auth, normalization, and GitHub-only companion records.
+4. The neutral `provider_resources` service owns publication records and store
+   mechanics; a hosted-review plugin owns change-request models and views; a GitHub
+   provider plugin owns URL recognition, `gh api`, auth, normalization, and GitHub-only
+   companion records.
 5. The Pull Requests nav panel is a virtual folder-like collection backed by a bounded
    cached index; a selected PR is also a folder-like change container.
 6. Durable Git objects, durable provider snapshots, transient materialization, and
@@ -424,6 +608,8 @@ implementation:
 12. Provider reclamation is reachability- and lease-based: current, last-complete, one
     diagnostic predecessor, and archival pins survive, while older unreachable objects
     remain bounded even for offline or deleted sources.
+13. Artifact contracts, resource profiles, and resource kinds are separate trusted
+    registries; no universal entity payload or cached registry declaration is added.
 
 Implementation evidence still decides concrete page and collection bounds, exact REST
 versus GraphQL queries, whether the initial activity panel groups commits and PRs or can

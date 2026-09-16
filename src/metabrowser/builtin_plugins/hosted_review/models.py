@@ -1,14 +1,19 @@
-"""Closed provider-neutral models for hosted change requests."""
+"""Closed provider-neutral models for hosted resources."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from math import isfinite
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -20,10 +25,24 @@ from pydantic import (
 
 NonEmptyString = Annotated[str, Field(min_length=1)]
 GitObjectId = Annotated[str, Field(pattern=r"^[0-9a-f]{40,64}$")]
+StableToken = Annotated[str, Field(pattern=r"^[a-z][a-z0-9._:-]*$")]
 MAX_SAFE_INTEGER = 9_007_199_254_740_991
 MAX_PORT = 65_535
 DEFAULT_HTTPS_PORT = 443
+MAX_PROVIDER_KIND_LENGTH = 63
+MAX_DNS_HOST_LENGTH = 253
+MAX_OPAQUE_CURSOR_LENGTH = 4096
 _HOST_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_PROVIDER_KIND_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+_STABLE_TOKEN_RE = re.compile(r"^[a-z][a-z0-9._:-]*$")
+_CONTRACT_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[A-Za-z][A-Za-z0-9._-]*/v[1-9][0-9]*$")
+_RESOURCE_PROFILE_ID_RE = re.compile(r"^[a-z][a-z0-9.-]*:[a-z][a-z0-9-]*/v[1-9][0-9]*$")
+_OPAQUE_CURSOR_RE = re.compile(r"^[A-Za-z0-9._~+=:-]+$")
+_URI_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+_PROVIDER_INSTANCE_RE = re.compile(
+    rf"^(?P<host>{_HOST_LABEL}(?:\.{_HOST_LABEL})*)"
+    r"(?::(?P<port>[1-9][0-9]{0,4}))?$"
+)
 _CANONICAL_HTTPS_RE = re.compile(
     rf"^https://(?P<host>{_HOST_LABEL}(?:\.{_HOST_LABEL})*)"
     r"(?::(?P<port>[1-9][0-9]{0,4}))?"
@@ -33,6 +52,11 @@ _NONCANONICAL_PERCENT_RE = re.compile(r"%(?![0-9A-F]{2})")
 _RFC3339_UTC_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(?P<milliseconds>\d{3}))?Z$"
 )
+
+
+def _runtime_descriptor_value(value: object) -> object:
+    """Erase static descriptor types so trusted registry declarations are checked at runtime."""
+    return value
 
 
 def _parse_json_integer(value: Any) -> int:
@@ -84,7 +108,7 @@ class _HostedReviewModel(BaseModel):
 
 def _require_https_url(value: str) -> str:
     match = _CANONICAL_HTTPS_RE.fullmatch(value)
-    if match is None:
+    if match is None or len(match.group("host")) > MAX_DNS_HOST_LENGTH:
         raise ValueError("provider URLs must be credential-free HTTPS URLs")
     port_text = match.group("port")
     if port_text is not None:
@@ -106,16 +130,103 @@ def _parse_rfc3339(value: str) -> datetime:
         raise ValueError("timestamps must use canonical RFC 3339 UTC syntax") from exc
 
 
+def _require_provider_kind(value: str) -> str:
+    if len(value) > MAX_PROVIDER_KIND_LENGTH or _PROVIDER_KIND_RE.fullmatch(value) is None:
+        raise ValueError("provider kind must be a bounded lowercase ASCII token")
+    return value
+
+
+def _require_provider_instance(value: str) -> str:
+    match = _PROVIDER_INSTANCE_RE.fullmatch(value)
+    if match is None or len(match.group("host")) > MAX_DNS_HOST_LENGTH:
+        raise ValueError("provider instance must be a canonical lowercase DNS host[:port]")
+    port_text = match.group("port")
+    if port_text is not None:
+        port = int(port_text)
+        if port == DEFAULT_HTTPS_PORT or port > MAX_PORT:
+            raise ValueError("provider instance must use a valid nondefault port")
+    return value
+
+
+def _require_sha256_digest(value: str) -> str:
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", value) is None:
+        raise ValueError("value must be a lowercase sha256 digest")
+    return value
+
+
+def _require_timestamp(value: str) -> str:
+    _parse_rfc3339(value)
+    return value
+
+
+def _require_https(value: str) -> str:
+    return _require_https_url(value)
+
+
+def _require_resource_profile_id(value: str) -> str:
+    if _RESOURCE_PROFILE_ID_RE.fullmatch(value) is None:
+        raise ValueError("resource profile ID must be namespaced and versioned")
+    return value
+
+
+def _require_contract_id(value: str) -> str:
+    if _CONTRACT_ID_RE.fullmatch(value) is None:
+        raise ValueError("contract ID must be namespaced and versioned")
+    return value
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    try:
+        serialized = json.dumps(
+            value,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        )
+        return serialized.encode("utf-8", errors="strict")
+    except (UnicodeEncodeError, ValueError) as exc:
+        raise ValueError(
+            "hash inputs must be canonical UTF-8 JSON without lone surrogates"
+        ) from exc
+
+
+def _sha256_json_key(value: object) -> str:
+    return f"sha256:{hashlib.sha256(_canonical_json_bytes(value)).hexdigest()}"
+
+
+def _utf8_sort_key(value: str) -> bytes:
+    try:
+        return value.encode("utf-8", errors="strict")
+    except UnicodeEncodeError as exc:
+        raise ValueError("ordered identifiers must be valid UTF-8") from exc
+
+
+type ProviderKind = Annotated[str, AfterValidator(_require_provider_kind)]
+type ProviderInstance = Annotated[str, AfterValidator(_require_provider_instance)]
+type Sha256Digest = Annotated[str, AfterValidator(_require_sha256_digest)]
+type CanonicalTimestamp = Annotated[str, AfterValidator(_require_timestamp)]
+type CanonicalHttpsUrl = Annotated[str, AfterValidator(_require_https)]
+type ResourceProfileId = Annotated[str, AfterValidator(_require_resource_profile_id)]
+type ContractId = Annotated[str, AfterValidator(_require_contract_id)]
+
+RETRIEVAL_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:Retrieval/v1"
+RESOURCE_SET_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:ResourceSet/v1"
+HOSTED_REPOSITORY_CONTRACT_ID = "com.github.jlevy.metabrowser.provider:HostedRepository/v1"
+CHANGE_REQUEST_INDEX_CONTRACT_ID = "com.github.jlevy.metabrowser.review:ChangeRequestIndex/v1"
+REPOSITORY_SUMMARY_PROFILE_ID = "com.github.jlevy.metabrowser.provider:repository-summary/v1"
+CHANGE_REQUEST_INDEX_PROFILE_ID = "com.github.jlevy.metabrowser.review:change-request-index/v1"
+
+
 class ProviderObjectRef(_HostedReviewModel):
-    provider: NonEmptyString
-    instance: NonEmptyString
+    provider: ProviderKind
+    instance: ProviderInstance
     object_kind: NonEmptyString
     opaque_id: NonEmptyString
 
 
 class RepositoryRef(_HostedReviewModel):
-    provider: NonEmptyString
-    instance: NonEmptyString
+    provider: ProviderKind
+    instance: ProviderInstance
     opaque_id: NonEmptyString
 
 
@@ -254,4 +365,1493 @@ def validate_change_request(value: dict[str, Any]) -> ChangeRequest:
 
 def dump_change_request(value: ChangeRequest) -> dict[str, Any]:
     """Return the deterministic JSON-compatible projection, including explicit nulls."""
+    return value.model_dump(mode="json")
+
+
+class AuthorizationMode(StrEnum):
+    anonymous = "anonymous"
+    authenticated = "authenticated"
+
+
+class RetrievalTransport(StrEnum):
+    provider_cli = "provider_cli"
+    direct_http = "direct_http"
+    unknown = "unknown"
+
+
+class RetrievalFailureReason(StrEnum):
+    permission_denied = "permission_denied"
+    rate_limited = "rate_limited"
+    transport_unavailable = "transport_unavailable"
+    provider_error = "provider_error"
+    malformed_response = "malformed_response"
+    output_bound = "output_bound"
+    cancelled = "cancelled"
+    unknown = "unknown"
+
+
+class ExplicitDeletionEvidenceKind(StrEnum):
+    deletion_event = "deletion_event"
+    deleted_marker = "deleted_marker"
+
+
+class CapabilityObservationState(StrEnum):
+    observed = "observed"
+    unavailable = "unavailable"
+    not_requested = "not_requested"
+
+
+class RepositoryVisibility(StrEnum):
+    public = "public"
+    internal = "internal"
+    private = "private"
+    unknown = "unknown"
+
+
+class DefaultBranchAvailability(StrEnum):
+    present = "present"
+    absent = "absent"
+    unavailable = "unavailable"
+    unknown = "unknown"
+
+
+class TransactionState(StrEnum):
+    staged = "staged"
+    committed = "committed"
+    failed = "failed"
+
+
+class ManifestFailureReason(StrEnum):
+    invalid = "invalid"
+    interrupted = "interrupted"
+    publication_failed = "publication_failed"
+    unknown = "unknown"
+
+
+class CollectionCoverage(StrEnum):
+    not_requested = "not_requested"
+    partial = "partial"
+    complete = "complete"
+    unavailable = "unavailable"
+
+
+class TruncationReason(StrEnum):
+    item_bound = "item_bound"
+    page_bound = "page_bound"
+    byte_bound = "byte_bound"
+    time_bound = "time_bound"
+    provider_limit = "provider_limit"
+    provider_failure = "provider_failure"
+    malformed_response = "malformed_response"
+    cancelled = "cancelled"
+
+
+class ProviderViewPointerRole(StrEnum):
+    current = "current"
+    last_complete = "last_complete"
+
+
+class ResourceTargetClass(StrEnum):
+    provider_object = "provider_object"
+    provider_collection = "provider_collection"
+
+
+class CollectionPaginationPolicy(StrEnum):
+    forbidden = "forbidden"
+    optional = "optional"
+    required = "required"
+
+
+class IndexSortField(StrEnum):
+    created_at = "created_at"
+    updated_at = "updated_at"
+
+
+class SortDirection(StrEnum):
+    ascending = "ascending"
+    descending = "descending"
+
+
+class AuthorizationContextRef(_HostedReviewModel):
+    provider: ProviderKind
+    instance: ProviderInstance
+    mode: AuthorizationMode
+    principal_opaque_id: NonEmptyString | None
+    visibility_partition_digest: Sha256Digest | None
+
+    @model_validator(mode="after")
+    def _identity_matches_mode(self) -> AuthorizationContextRef:
+        if self.mode is AuthorizationMode.authenticated:
+            if self.principal_opaque_id is None:
+                raise ValueError("authenticated authorization requires a principal opaque ID")
+        elif self.principal_opaque_id is not None or self.visibility_partition_digest is not None:
+            raise ValueError("anonymous authorization forbids principal and visibility partition")
+        return self
+
+
+def authorization_context_key(value: AuthorizationContextRef) -> str:
+    """Return the domain-separated digest for one stable authorization namespace."""
+    return _sha256_json_key(
+        [
+            "AuthorizationContextRef/v1",
+            value.provider,
+            value.instance,
+            value.mode.value,
+            value.principal_opaque_id,
+            value.visibility_partition_digest,
+        ]
+    )
+
+
+class ArtifactSnapshotRef(_HostedReviewModel):
+    contract_id: ContractId
+    snapshot_id: Sha256Digest
+
+
+class ProviderCollectionRetrievalTarget(_HostedReviewModel):
+    kind: Literal["provider_collection"]
+    repository: RepositoryRef
+    result_contract_id: ContractId
+    query_key: Sha256Digest
+
+
+class ProviderObjectRetrievalTarget(_HostedReviewModel):
+    kind: Literal["provider_object"]
+    repository: RepositoryRef
+    target: ProviderObjectRef
+
+    @model_validator(mode="after")
+    def _namespace_is_consistent(self) -> ProviderObjectRetrievalTarget:
+        if (self.target.provider, self.target.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("provider-object retrieval target crosses provider instances")
+        return self
+
+
+class ProviderBindingRetrievalTarget(_HostedReviewModel):
+    kind: Literal["provider_binding"]
+    entry_id: Sha256Digest
+    repository: RepositoryRef
+
+
+type RetrievalTarget = Annotated[
+    ProviderCollectionRetrievalTarget
+    | ProviderObjectRetrievalTarget
+    | ProviderBindingRetrievalTarget,
+    Field(discriminator="kind"),
+]
+
+
+class RetrievalSucceeded(_HostedReviewModel):
+    kind: Literal["succeeded"]
+
+
+class RetrievalNotModified(_HostedReviewModel):
+    kind: Literal["not_modified"]
+    reused_snapshot_id: Sha256Digest
+
+
+class RetrievalNotFound(_HostedReviewModel):
+    kind: Literal["not_found_under_context"]
+
+
+class RetrievalExplicitlyDeleted(_HostedReviewModel):
+    kind: Literal["explicitly_deleted"]
+    target: ProviderObjectRef
+    repository: RepositoryRef
+    evidence_kind: ExplicitDeletionEvidenceKind
+    provider_event_opaque_id: NonEmptyString | None
+    provider_event_at: CanonicalTimestamp | None
+
+    @model_validator(mode="after")
+    def _event_identity_matches_evidence_kind(self) -> RetrievalExplicitlyDeleted:
+        is_event = self.evidence_kind is ExplicitDeletionEvidenceKind.deletion_event
+        if (self.provider_event_opaque_id is not None) != is_event or (
+            self.provider_event_at is not None
+        ) != is_event:
+            raise ValueError(
+                "deletion events require opaque event identity and time; markers forbid both"
+            )
+        return self
+
+
+class RetrievalFailed(_HostedReviewModel):
+    kind: Literal["failed"]
+    reason: RetrievalFailureReason
+
+
+type RetrievalOutcome = Annotated[
+    RetrievalSucceeded
+    | RetrievalNotModified
+    | RetrievalNotFound
+    | RetrievalExplicitlyDeleted
+    | RetrievalFailed,
+    Field(discriminator="kind"),
+]
+
+
+class HttpValidators(_HostedReviewModel):
+    etag: NonEmptyString | None
+    last_modified_at: CanonicalTimestamp | None
+
+
+class RateLimitObservation(_HostedReviewModel):
+    limit: SafeNonNegativeInteger
+    remaining: SafeNonNegativeInteger
+    reset_at: CanonicalTimestamp
+    observed_at: CanonicalTimestamp
+
+    @model_validator(mode="after")
+    def _remaining_does_not_exceed_limit(self) -> RateLimitObservation:
+        if self.remaining > self.limit:
+            raise ValueError("remaining rate limit must not exceed the limit")
+        return self
+
+
+class CapabilityObservation(_HostedReviewModel):
+    state: CapabilityObservationState
+    values: tuple[StableToken, ...]
+
+    @model_validator(mode="after")
+    def _values_match_state(self) -> CapabilityObservation:
+        if len(set(self.values)) != len(self.values) or tuple(sorted(self.values)) != self.values:
+            raise ValueError("capabilities must be sorted and unique")
+        if self.state is not CapabilityObservationState.observed and self.values:
+            raise ValueError("only observed capabilities may contain values")
+        return self
+
+
+class Retrieval(_HostedReviewModel):
+    authorization_context: AuthorizationContextRef
+    target: RetrievalTarget
+    adapter_id: StableToken
+    transport: RetrievalTransport
+    operation_id: StableToken
+    request_key: Sha256Digest
+    started_at: CanonicalTimestamp
+    finished_at: CanonicalTimestamp
+    api_version: NonEmptyString | None
+    normalization_version: NonEmptyString
+    outcome: RetrievalOutcome
+    validators: HttpValidators
+    rate_limit: RateLimitObservation | None
+    display_login: NonEmptyString | None
+    capabilities: CapabilityObservation
+
+    @model_validator(mode="after")
+    def _observation_times_are_ordered(self) -> Retrieval:
+        started_at = _parse_rfc3339(self.started_at)
+        finished_at = _parse_rfc3339(self.finished_at)
+        if finished_at < started_at:
+            raise ValueError("retrieval finished_at must not precede started_at")
+        if self.rate_limit is not None:
+            rate_observed_at = _parse_rfc3339(self.rate_limit.observed_at)
+            if not started_at <= rate_observed_at <= finished_at:
+                raise ValueError("rate-limit observation must fall within the retrieval")
+        target_repository = self.target.repository
+        if (target_repository.provider, target_repository.instance) != (
+            self.authorization_context.provider,
+            self.authorization_context.instance,
+        ):
+            raise ValueError("retrieval target must share the authorization provider instance")
+        if isinstance(self.outcome, RetrievalExplicitlyDeleted):
+            namespace = (self.authorization_context.provider, self.authorization_context.instance)
+            if (
+                self.outcome.target.provider,
+                self.outcome.target.instance,
+            ) != namespace or (
+                self.outcome.repository.provider,
+                self.outcome.repository.instance,
+            ) != namespace:
+                raise ValueError("deletion observation must share the retrieval provider instance")
+            if not isinstance(self.target, ProviderObjectRetrievalTarget) or (
+                self.target.target != self.outcome.target
+                or self.target.repository != self.outcome.repository
+            ):
+                raise ValueError("deletion outcome must match its provider-object request target")
+            if self.outcome.provider_event_at is not None and _parse_rfc3339(
+                self.outcome.provider_event_at
+            ) > _parse_rfc3339(self.finished_at):
+                raise ValueError("provider deletion event cannot follow its retrieval")
+        return self
+
+
+class ProviderBindingProvenance(_HostedReviewModel):
+    retrieval_snapshot_id: Sha256Digest
+
+
+class ProviderBinding(_HostedReviewModel):
+    entry_id: Sha256Digest
+    repository: RepositoryRef
+    provenance: ProviderBindingProvenance | None
+
+
+def validate_provider_binding_provenance(
+    binding: ProviderBinding,
+    retrieval_snapshot_id: str,
+    retrieval: Retrieval,
+) -> ProviderBinding:
+    """Resolve the successful retrieval that established one provider binding."""
+    if binding.provenance is None:
+        raise ValueError("provider binding has no retrieval provenance")
+    if binding.provenance.retrieval_snapshot_id != retrieval_snapshot_id:
+        raise ValueError("resolved retrieval does not match provider binding provenance")
+    if not isinstance(retrieval.outcome, RetrievalSucceeded):
+        raise ValueError("provider binding provenance requires a successful retrieval")
+    if not isinstance(retrieval.target, ProviderBindingRetrievalTarget) or (
+        retrieval.target.entry_id != binding.entry_id
+        or retrieval.target.repository != binding.repository
+    ):
+        raise ValueError("provider binding provenance identifies another binding")
+    return binding
+
+
+class DefaultBranch(_HostedReviewModel):
+    availability: DefaultBranchAvailability
+    name: NonEmptyString | None
+
+    @model_validator(mode="after")
+    def _name_matches_availability(self) -> DefaultBranch:
+        if (self.name is not None) != (self.availability is DefaultBranchAvailability.present):
+            raise ValueError("default branch name is present exactly when availability is present")
+        return self
+
+
+class HostedRepository(_HostedReviewModel):
+    provider_ref: ProviderObjectRef
+    owner: ActorRef
+    name: NonEmptyString
+    url: CanonicalHttpsUrl
+    clone_url: CanonicalHttpsUrl
+    visibility: RepositoryVisibility
+    default_branch: DefaultBranch
+    created_at: CanonicalTimestamp
+    updated_at: CanonicalTimestamp
+
+    @model_validator(mode="after")
+    def _repository_times_are_ordered(self) -> HostedRepository:
+        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
+            raise ValueError("repository updated_at must not precede created_at")
+        return self
+
+
+def hosted_repository_ref(value: HostedRepository) -> RepositoryRef:
+    """Project a hosted repository's sole provider-neutral repository identity."""
+    return RepositoryRef(
+        provider=value.provider_ref.provider,
+        instance=value.provider_ref.instance,
+        opaque_id=value.provider_ref.opaque_id,
+    )
+
+
+def validate_repository_successor(
+    previous: HostedRepository, successor: HostedRepository
+) -> HostedRepository:
+    """Reject a repository update that silently changes stable provider identity."""
+    if previous.provider_ref != successor.provider_ref:
+        raise ValueError("repository successor changes stable provider identity")
+    if successor.created_at != previous.created_at:
+        raise ValueError("repository successor changes provider creation time")
+    if _parse_rfc3339(successor.updated_at) < _parse_rfc3339(previous.updated_at):
+        raise ValueError("repository successor moves updated_at backwards")
+    return successor
+
+
+def validate_provider_binding_successor(
+    previous: ProviderBinding, successor: ProviderBinding
+) -> ProviderBinding:
+    """Require an explicit rebind instead of silently changing an entry's repository."""
+    if previous != successor:
+        raise ValueError("provider binding is immutable; changes require an explicit rebind")
+    return successor
+
+
+class AllChangeRequestStates(_HostedReviewModel):
+    kind: Literal["all"]
+
+
+class SelectedChangeRequestStates(_HostedReviewModel):
+    kind: Literal["selected"]
+    states: tuple[ChangeRequestState, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _states_are_sorted_and_unique(self) -> SelectedChangeRequestStates:
+        values = tuple(state.value for state in self.states)
+        if len(set(values)) != len(values) or tuple(sorted(values)) != values:
+            raise ValueError("selected states must be sorted and unique")
+        return self
+
+
+type ChangeRequestStateFilter = Annotated[
+    AllChangeRequestStates | SelectedChangeRequestStates,
+    Field(discriminator="kind"),
+]
+
+
+class IndexSort(_HostedReviewModel):
+    field: IndexSortField
+    direction: SortDirection
+    tie_breaker: Literal["provider_opaque_id"]
+
+
+class IndexBounds(_HostedReviewModel):
+    max_items: SafePositiveInteger
+    max_pages: SafePositiveInteger
+    max_bytes: SafePositiveInteger
+    max_duration_ms: SafePositiveInteger
+
+
+class ChangeRequestIndexQuery(_HostedReviewModel):
+    repository: RepositoryRef
+    state_filter: ChangeRequestStateFilter
+    sort: IndexSort
+    bounds: IndexBounds
+
+
+def change_request_index_query_key(value: ChangeRequestIndexQuery) -> str:
+    """Return the domain-separated digest for a normalized index query."""
+    if isinstance(value.state_filter, AllChangeRequestStates):
+        state_filter: list[object] = ["all"]
+    else:
+        state_filter = ["selected", *[state.value for state in value.state_filter.states]]
+    return _sha256_json_key(
+        [
+            "ChangeRequestIndexQuery/v1",
+            value.repository.provider,
+            value.repository.instance,
+            value.repository.opaque_id,
+            state_filter,
+            value.sort.field.value,
+            value.sort.direction.value,
+            value.sort.tie_breaker,
+            value.bounds.max_items,
+            value.bounds.max_pages,
+            value.bounds.max_bytes,
+            value.bounds.max_duration_ms,
+        ]
+    )
+
+
+class ChangeRequestIndexRow(_HostedReviewModel):
+    provider_ref: ProviderObjectRef
+    repository: RepositoryRef
+    number: SafePositiveInteger
+    url: CanonicalHttpsUrl
+    title: NonEmptyString
+    state: ChangeRequestState
+    draft: StrictBool
+    author: ActorRef
+    base_label: NonEmptyString
+    head_label: NonEmptyString
+    created_at: CanonicalTimestamp
+    updated_at: CanonicalTimestamp
+
+    @model_validator(mode="after")
+    def _identity_and_times_are_consistent(self) -> ChangeRequestIndexRow:
+        if (self.provider_ref.provider, self.provider_ref.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("index row provider and repository instances must match")
+        if _parse_rfc3339(self.updated_at) < _parse_rfc3339(self.created_at):
+            raise ValueError("index row updated_at must not precede created_at")
+        return self
+
+
+class ChangeRequestIndex(_HostedReviewModel):
+    query_key: Sha256Digest
+    query: ChangeRequestIndexQuery
+    rows: tuple[ChangeRequestIndexRow, ...]
+
+    @model_validator(mode="after")
+    def _query_rows_and_order_are_consistent(self) -> ChangeRequestIndex:
+        if self.query_key != change_request_index_query_key(self.query):
+            raise ValueError("change-request index query key does not match the query")
+
+        seen: set[str] = set()
+        selected_states = (
+            None
+            if isinstance(self.query.state_filter, AllChangeRequestStates)
+            else set(self.query.state_filter.states)
+        )
+        previous: ChangeRequestIndexRow | None = None
+        for row in self.rows:
+            if row.repository != self.query.repository:
+                raise ValueError("index row belongs to another repository")
+            opaque_id = row.provider_ref.opaque_id
+            _utf8_sort_key(opaque_id)
+            if opaque_id in seen:
+                raise ValueError("index rows contain a duplicate stable provider ID")
+            seen.add(opaque_id)
+            if selected_states is not None and row.state not in selected_states:
+                raise ValueError("index row does not match the selected state filter")
+            if previous is not None:
+                previous_primary = _parse_rfc3339(getattr(previous, self.query.sort.field.value))
+                current_primary = _parse_rfc3339(getattr(row, self.query.sort.field.value))
+                if self.query.sort.direction is SortDirection.ascending:
+                    out_of_order = current_primary < previous_primary
+                else:
+                    out_of_order = current_primary > previous_primary
+                if out_of_order or (
+                    current_primary == previous_primary
+                    and _utf8_sort_key(opaque_id) <= _utf8_sort_key(previous.provider_ref.opaque_id)
+                ):
+                    raise ValueError("index rows do not follow the declared deterministic order")
+            previous = row
+        if len(self.rows) > self.query.bounds.max_items:
+            raise ValueError("index rows exceed the declared item bound")
+        return self
+
+
+def validate_change_request_index_row_identity(
+    change_request: ChangeRequest, row: ChangeRequestIndexRow
+) -> ChangeRequestIndexRow:
+    """Require direct and index projections to identify the same hosted change."""
+    if (
+        change_request.provider_ref != row.provider_ref
+        or change_request.repository != row.repository
+        or change_request.number != row.number
+        or change_request.url != row.url
+    ):
+        raise ValueError("direct change request and index row identity disagree")
+    return row
+
+
+class OpaqueCursorContinuation(_HostedReviewModel):
+    kind: Literal["opaque_cursor"]
+    value: NonEmptyString
+
+    @field_validator("value")
+    @classmethod
+    def _forbid_raw_next_url(cls, value: str) -> str:
+        if (
+            len(value) > MAX_OPAQUE_CURSOR_LENGTH
+            or _OPAQUE_CURSOR_RE.fullmatch(value) is None
+            or _URI_SCHEME_RE.match(value) is not None
+        ):
+            raise ValueError("opaque pagination cursors must be bounded URL-free ASCII tokens")
+        return value
+
+
+class PageNumberContinuation(_HostedReviewModel):
+    kind: Literal["page_number"]
+    value: SafePositiveInteger
+
+
+type Continuation = Annotated[
+    OpaqueCursorContinuation | PageNumberContinuation,
+    Field(discriminator="kind"),
+]
+
+
+class ProviderSnapshotConsistency(_HostedReviewModel):
+    kind: Literal["provider_snapshot"]
+    token: NonEmptyString
+
+
+class BestEffortWindowConsistency(_HostedReviewModel):
+    kind: Literal["best_effort_window"]
+
+
+class UnknownRemoteConsistency(_HostedReviewModel):
+    kind: Literal["unknown"]
+
+
+type RemoteConsistency = Annotated[
+    ProviderSnapshotConsistency | BestEffortWindowConsistency | UnknownRemoteConsistency,
+    Field(discriminator="kind"),
+]
+
+
+class CollectionPage(_HostedReviewModel):
+    ordinal: SafePositiveInteger
+    requested_with: Continuation | None
+    next: Continuation | None
+    retrieval_snapshot_id: Sha256Digest
+    observed_provider_ids: tuple[NonEmptyString, ...]
+    provider_exhausted: StrictBool
+    provider_snapshot_token: NonEmptyString | None
+
+
+class PaginationEvidence(_HostedReviewModel):
+    pages: tuple[CollectionPage, ...] = Field(min_length=1)
+    first_observed_at: CanonicalTimestamp
+    last_observed_at: CanonicalTimestamp
+    remote_consistency: RemoteConsistency
+
+    @model_validator(mode="after")
+    def _page_chain_and_consistency_are_valid(self) -> PaginationEvidence:
+        if _parse_rfc3339(self.last_observed_at) < _parse_rfc3339(self.first_observed_at):
+            raise ValueError("pagination observation window is inverted")
+        retrieval_ids = tuple(page.retrieval_snapshot_id for page in self.pages)
+        if len(set(retrieval_ids)) != len(retrieval_ids):
+            raise ValueError("pagination pages require distinct retrieval snapshots")
+        for index, page in enumerate(self.pages):
+            if page.ordinal != index + 1:
+                raise ValueError("pagination page ordinals must be contiguous from one")
+            expected = None if index == 0 else self.pages[index - 1].next
+            if page.requested_with != expected:
+                raise ValueError("pagination continuation chain is discontinuous")
+            if page.provider_exhausted and page.next is not None:
+                raise ValueError("an exhausted page cannot publish a continuation")
+            if index < len(self.pages) - 1 and (page.provider_exhausted or page.next is None):
+                raise ValueError("only the final page may end pagination")
+        if isinstance(self.remote_consistency, ProviderSnapshotConsistency) and any(
+            page.provider_snapshot_token != self.remote_consistency.token for page in self.pages
+        ):
+            raise ValueError("provider snapshot consistency requires one token for every page")
+        if not isinstance(self.remote_consistency, ProviderSnapshotConsistency) and any(
+            page.provider_snapshot_token is not None for page in self.pages
+        ):
+            raise ValueError("only provider-snapshot consistency may retain snapshot tokens")
+        return self
+
+
+class Truncation(_HostedReviewModel):
+    reason: TruncationReason
+    limit: SafePositiveInteger | None
+
+    @model_validator(mode="after")
+    def _limit_matches_reason(self) -> Truncation:
+        bounded = {
+            TruncationReason.item_bound,
+            TruncationReason.page_bound,
+            TruncationReason.byte_bound,
+            TruncationReason.time_bound,
+            TruncationReason.provider_limit,
+        }
+        if (self.reason in bounded) != (self.limit is not None):
+            raise ValueError("bounded truncation reasons require exactly one positive limit")
+        return self
+
+
+class ResourceCollection(_HostedReviewModel):
+    name: StableToken
+    coverage: CollectionCoverage
+    artifacts: tuple[ArtifactSnapshotRef, ...]
+    retrieval_snapshot_ids: tuple[Sha256Digest, ...]
+    pagination: PaginationEvidence | None
+    truncation: Truncation | None
+    failure_retrieval_snapshot_id: Sha256Digest | None
+
+    @model_validator(mode="after")
+    def _coverage_is_honest(self) -> ResourceCollection:
+        if len(set(self.artifacts)) != len(self.artifacts):
+            raise ValueError("collection artifact references must be unique")
+        if len(set(self.retrieval_snapshot_ids)) != len(self.retrieval_snapshot_ids):
+            raise ValueError("collection retrieval references must be unique")
+        if (
+            self.failure_retrieval_snapshot_id is not None
+            and self.failure_retrieval_snapshot_id not in self.retrieval_snapshot_ids
+        ):
+            raise ValueError("collection failure must name one of its retrievals")
+        if self.pagination is not None:
+            page_retrievals = {page.retrieval_snapshot_id for page in self.pagination.pages}
+            expected_page_retrievals = set(self.retrieval_snapshot_ids)
+            if self.failure_retrieval_snapshot_id is not None:
+                expected_page_retrievals.remove(self.failure_retrieval_snapshot_id)
+            if page_retrievals != expected_page_retrievals:
+                raise ValueError(
+                    "pagination pages must exactly cover successful collection retrievals"
+                )
+        if self.coverage is CollectionCoverage.complete:
+            if not self.retrieval_snapshot_ids:
+                raise ValueError("complete collection requires retrieval evidence")
+            if self.truncation is not None or self.failure_retrieval_snapshot_id is not None:
+                raise ValueError("complete collection forbids truncation and failure")
+            if self.pagination is not None:
+                last_page = self.pagination.pages[-1]
+                if not last_page.provider_exhausted or last_page.next is not None:
+                    raise ValueError("complete paginated collection must be exhausted")
+        elif self.coverage is CollectionCoverage.partial:
+            if not self.retrieval_snapshot_ids:
+                raise ValueError("partial collection requires retrieval evidence")
+            if self.truncation is None:
+                raise ValueError("partial collection requires truncation evidence")
+            failure_truncations = {
+                TruncationReason.provider_failure,
+                TruncationReason.malformed_response,
+                TruncationReason.cancelled,
+            }
+            if (self.truncation.reason in failure_truncations) != (
+                self.failure_retrieval_snapshot_id is not None
+            ):
+                raise ValueError("partial failure truncation requires exactly one failed retrieval")
+            if self.pagination is not None and self.pagination.pages[-1].provider_exhausted:
+                raise ValueError("partial paginated collection cannot claim exhaustion")
+        elif self.coverage is CollectionCoverage.unavailable:
+            if self.artifacts:
+                raise ValueError("unavailable collection cannot contain authoritative artifacts")
+            if self.failure_retrieval_snapshot_id is None:
+                raise ValueError("unavailable collection requires a failed retrieval")
+            if self.pagination is not None or self.retrieval_snapshot_ids != (
+                self.failure_retrieval_snapshot_id,
+            ):
+                raise ValueError(
+                    "unavailable collection contains only its failed retrieval attempt"
+                )
+            if self.truncation is not None:
+                raise ValueError("unavailable collection is not a truncated result")
+        else:
+            if (
+                self.artifacts
+                or self.retrieval_snapshot_ids
+                or self.pagination is not None
+                or self.truncation is not None
+                or self.failure_retrieval_snapshot_id is not None
+            ):
+                raise ValueError("not-requested collection cannot contain acquisition evidence")
+        return self
+
+
+class ProviderObjectResourceTarget(_HostedReviewModel):
+    kind: Literal["provider_object"]
+    target: ProviderObjectRef
+
+
+class ProviderCollectionResourceTarget(_HostedReviewModel):
+    kind: Literal["provider_collection"]
+    result_contract_id: ContractId
+    query_key: Sha256Digest
+
+
+type ResourceSetTarget = Annotated[
+    ProviderObjectResourceTarget | ProviderCollectionResourceTarget,
+    Field(discriminator="kind"),
+]
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceCollectionSpec:
+    """Trusted declaration for one ordered collection in a resource profile."""
+
+    name: str
+    artifact_contract_id: str
+    minimum_artifacts: int
+    maximum_artifacts: int
+    pagination: CollectionPaginationPolicy
+    required_for_last_complete: bool
+
+    def __post_init__(self) -> None:
+        name = _runtime_descriptor_value(self.name)
+        artifact_contract_id = _runtime_descriptor_value(self.artifact_contract_id)
+        minimum_artifacts = _runtime_descriptor_value(self.minimum_artifacts)
+        maximum_artifacts = _runtime_descriptor_value(self.maximum_artifacts)
+        pagination = _runtime_descriptor_value(self.pagination)
+        required_for_last_complete = _runtime_descriptor_value(self.required_for_last_complete)
+        if not isinstance(name, str) or _STABLE_TOKEN_RE.fullmatch(name) is None:
+            raise ValueError("resource collection profile name must be a stable token")
+        if (
+            not isinstance(artifact_contract_id, str)
+            or _CONTRACT_ID_RE.fullmatch(artifact_contract_id) is None
+        ):
+            raise ValueError("resource collection profile requires a versioned contract ID")
+        if (
+            isinstance(minimum_artifacts, bool)
+            or not isinstance(minimum_artifacts, int)
+            or minimum_artifacts < 0
+            or minimum_artifacts > MAX_SAFE_INTEGER
+        ):
+            raise ValueError("resource collection minimum cardinality must be nonnegative")
+        if (
+            isinstance(maximum_artifacts, bool)
+            or not isinstance(maximum_artifacts, int)
+            or maximum_artifacts < minimum_artifacts
+            or maximum_artifacts > MAX_SAFE_INTEGER
+        ):
+            raise ValueError("resource collection maximum must not precede its minimum")
+        if not isinstance(pagination, CollectionPaginationPolicy):
+            raise ValueError("resource collection pagination policy must be closed")
+        if not isinstance(required_for_last_complete, bool):
+            raise ValueError("resource collection completeness requirement must be boolean")
+
+
+@dataclass(frozen=True, slots=True)
+class ResourceProfileSpec:
+    """Trusted declaration that gives one stored resource profile its meaning."""
+
+    profile_id: str
+    target_class: ResourceTargetClass
+    target_result_contract_id: str | None
+    collections: tuple[ResourceCollectionSpec, ...]
+
+    def __post_init__(self) -> None:
+        profile_id = _runtime_descriptor_value(self.profile_id)
+        target_class = _runtime_descriptor_value(self.target_class)
+        target_result_contract_id = _runtime_descriptor_value(self.target_result_contract_id)
+        collections = _runtime_descriptor_value(self.collections)
+        if not isinstance(profile_id, str):
+            raise ValueError("resource profile ID must be a string")
+        _require_resource_profile_id(profile_id)
+        if not isinstance(target_class, ResourceTargetClass):
+            raise ValueError("resource profile target class must be closed")
+        if target_class is ResourceTargetClass.provider_object:
+            if target_result_contract_id is not None:
+                raise ValueError("provider-object profiles forbid a result contract")
+        elif (
+            not isinstance(target_result_contract_id, str)
+            or _CONTRACT_ID_RE.fullmatch(target_result_contract_id) is None
+        ):
+            raise ValueError("provider-collection profiles require a versioned result contract")
+        if (
+            not isinstance(collections, tuple)
+            or not collections
+            or any(not isinstance(collection, ResourceCollectionSpec) for collection in collections)
+        ):
+            raise ValueError("resource profiles require at least one collection")
+        collection_specs = tuple(
+            collection
+            for collection in collections
+            if isinstance(collection, ResourceCollectionSpec)
+        )
+        names = tuple(collection.name for collection in collection_specs)
+        if len(set(names)) != len(names):
+            raise ValueError("resource profile collection names must be unique")
+        if not any(collection.required_for_last_complete for collection in collection_specs):
+            raise ValueError("resource profiles require a last-complete collection")
+        if target_result_contract_id is not None and target_result_contract_id not in {
+            collection.artifact_contract_id for collection in collection_specs
+        }:
+            raise ValueError("collection result contract must belong to its resource profile")
+
+
+class ResourceSet(_HostedReviewModel):
+    repository: RepositoryRef
+    authorization_context: AuthorizationContextRef
+    target: ResourceSetTarget
+    profile: ResourceProfileId
+    collections: tuple[ResourceCollection, ...]
+
+    @model_validator(mode="after")
+    def _namespace_and_collection_names_are_consistent(self) -> ResourceSet:
+        if (self.authorization_context.provider, self.authorization_context.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("resource set authorization and repository instances must match")
+        if isinstance(self.target, ProviderObjectResourceTarget) and (
+            self.target.target.provider,
+            self.target.target.instance,
+        ) != (self.repository.provider, self.repository.instance):
+            raise ValueError("resource target crosses provider instances")
+        names = tuple(collection.name for collection in self.collections)
+        if len(set(names)) != len(names):
+            raise ValueError("resource set collection names must be unique")
+        return self
+
+
+def _resolve_resource_profile(
+    profile_id: str,
+    profiles: Mapping[str, ResourceProfileSpec] | None,
+) -> ResourceProfileSpec:
+    from .resource_profiles import (  # Avoid a model/declaration import cycle.
+        HOSTED_REVIEW_RESOURCE_PROFILES,
+        resolve_resource_profile,
+    )
+
+    return resolve_resource_profile(
+        profile_id,
+        HOSTED_REVIEW_RESOURCE_PROFILES if profiles is None else profiles,
+    )
+
+
+def validate_resource_set_against_profile(
+    resource_set: ResourceSet,
+    profile: ResourceProfileSpec,
+) -> ResourceSet:
+    """Apply one trusted profile declaration to an untrusted resource-set record."""
+    if resource_set.profile != profile.profile_id:
+        raise ValueError("resource set and resolved profile IDs disagree")
+    if profile.target_class is ResourceTargetClass.provider_object:
+        if not isinstance(resource_set.target, ProviderObjectResourceTarget):
+            raise ValueError("resource set target does not match its profile")
+    elif not isinstance(resource_set.target, ProviderCollectionResourceTarget):
+        raise ValueError("resource set target does not match its profile")
+    elif resource_set.target.result_contract_id != profile.target_result_contract_id:
+        raise ValueError("collection target result contract does not match its profile")
+
+    if tuple(collection.name for collection in resource_set.collections) != tuple(
+        collection.name for collection in profile.collections
+    ):
+        raise ValueError("resource set collections must exactly match their profile")
+    for collection, collection_spec in zip(
+        resource_set.collections,
+        profile.collections,
+        strict=True,
+    ):
+        if collection.pagination is not None and (
+            collection_spec.pagination is CollectionPaginationPolicy.forbidden
+        ):
+            raise ValueError("resource collection profile forbids pagination")
+        if (
+            collection.coverage in {CollectionCoverage.complete, CollectionCoverage.partial}
+            and collection_spec.pagination is CollectionPaginationPolicy.required
+            and collection.pagination is None
+        ):
+            raise ValueError("available resource collection requires pagination")
+        if collection.coverage not in {
+            CollectionCoverage.complete,
+            CollectionCoverage.partial,
+        }:
+            continue
+        artifact_count = len(collection.artifacts)
+        if (
+            artifact_count < collection_spec.minimum_artifacts
+            or artifact_count > collection_spec.maximum_artifacts
+        ):
+            raise ValueError("resource collection artifact cardinality violates its profile")
+        if any(
+            artifact.contract_id != collection_spec.artifact_contract_id
+            for artifact in collection.artifacts
+        ):
+            raise ValueError("resource collection artifact contract violates its profile")
+    return resource_set
+
+
+def resource_set_is_last_complete_eligible(
+    value: ResourceSet,
+    profiles: Mapping[str, ResourceProfileSpec] | None = None,
+) -> bool:
+    """Return whether the closed profile is a complete fallback publication."""
+    profile = _resolve_resource_profile(value.profile, profiles)
+    validate_resource_set_against_profile(value, profile)
+    by_name = {collection.name: collection for collection in value.collections}
+    has_no_incomplete_attempt = all(
+        collection.coverage in {CollectionCoverage.complete, CollectionCoverage.not_requested}
+        for collection in value.collections
+    )
+    required_are_complete = all(
+        by_name[collection.name].coverage is CollectionCoverage.complete
+        for collection in profile.collections
+        if collection.required_for_last_complete
+    )
+    return has_no_incomplete_attempt and required_are_complete
+
+
+def resource_set_is_current_eligible(
+    value: ResourceSet,
+    profiles: Mapping[str, ResourceProfileSpec] | None = None,
+) -> bool:
+    """Return whether every required collection has an acquisition outcome."""
+    profile = _resolve_resource_profile(value.profile, profiles)
+    validate_resource_set_against_profile(value, profile)
+    by_name = {collection.name: collection for collection in value.collections}
+    return all(
+        by_name[collection.name].coverage is not CollectionCoverage.not_requested
+        for collection in profile.collections
+        if collection.required_for_last_complete
+    )
+
+
+def validate_hosted_repository_resource_set(
+    resource_set: ResourceSet,
+    repository: HostedRepository,
+    repository_snapshot_id: str,
+) -> ResourceSet:
+    """Require a repository resource set to name the resolved repository snapshot."""
+    from .resource_profiles import REPOSITORY_SUMMARY_PROFILE
+
+    validate_resource_set_against_profile(resource_set, REPOSITORY_SUMMARY_PROFILE)
+    expected_snapshot = ArtifactSnapshotRef(
+        contract_id=HOSTED_REPOSITORY_CONTRACT_ID,
+        snapshot_id=repository_snapshot_id,
+    )
+    if not isinstance(resource_set.target, ProviderObjectResourceTarget):
+        raise ValueError("hosted repository requires a provider-object resource target")
+    if resource_set.repository != hosted_repository_ref(repository):
+        raise ValueError("hosted repository and resource set identities disagree")
+    if resource_set.target.target != repository.provider_ref:
+        raise ValueError("hosted repository and resource target identities disagree")
+    if resource_set.collections[0].artifacts != (expected_snapshot,):
+        raise ValueError("repository resource set must name the resolved repository snapshot")
+    return resource_set
+
+
+def validate_change_request_index_resource_set(
+    resource_set: ResourceSet,
+    index: ChangeRequestIndex,
+    index_snapshot_id: str,
+) -> ResourceSet:
+    """Bind stable index rows to their acquisition and pagination evidence."""
+    from .resource_profiles import CHANGE_REQUEST_INDEX_PROFILE
+
+    validate_resource_set_against_profile(resource_set, CHANGE_REQUEST_INDEX_PROFILE)
+    expected_snapshot = ArtifactSnapshotRef(
+        contract_id=CHANGE_REQUEST_INDEX_CONTRACT_ID,
+        snapshot_id=index_snapshot_id,
+    )
+    if not isinstance(resource_set.target, ProviderCollectionResourceTarget):
+        raise ValueError("change-request index requires a provider-collection resource target")
+    if resource_set.repository != index.query.repository:
+        raise ValueError("change-request index and resource set repositories disagree")
+    if resource_set.target.query_key != index.query_key:
+        raise ValueError("change-request index and resource set query keys disagree")
+    collection = resource_set.collections[0]
+    if collection.artifacts != (expected_snapshot,):
+        raise ValueError("index resource set must name the resolved index snapshot")
+    if collection.coverage in {CollectionCoverage.complete, CollectionCoverage.partial}:
+        if collection.pagination is None:
+            raise ValueError("requested change-request index requires pagination evidence")
+        pages = collection.pagination.pages
+        if len(pages) > index.query.bounds.max_pages:
+            raise ValueError("index pagination exceeds the declared page bound")
+        observed_ids: set[str] = set()
+        observed_item_count = 0
+        for page in pages:
+            for opaque_id in page.observed_provider_ids:
+                observed_item_count += 1
+                observed_ids.add(opaque_id)
+        row_ids = {row.provider_ref.opaque_id for row in index.rows}
+        if observed_ids != row_ids:
+            raise ValueError("index pagination and normalized rows identify different results")
+        if observed_item_count > index.query.bounds.max_items:
+            raise ValueError("index pagination exceeds the declared item bound")
+        if collection.truncation is not None:
+            if collection.truncation.reason is TruncationReason.item_bound and (
+                collection.truncation.limit != index.query.bounds.max_items
+                or observed_item_count != index.query.bounds.max_items
+            ):
+                raise ValueError("item-bound truncation does not match the index query")
+            if collection.truncation.reason is TruncationReason.page_bound and (
+                collection.truncation.limit != index.query.bounds.max_pages
+                or len(pages) != index.query.bounds.max_pages
+            ):
+                raise ValueError("page-bound truncation does not match the index query")
+            if (
+                collection.truncation.reason is TruncationReason.byte_bound
+                and collection.truncation.limit != index.query.bounds.max_bytes
+            ):
+                raise ValueError("byte-bound truncation does not match the index query")
+            if (
+                collection.truncation.reason is TruncationReason.time_bound
+                and collection.truncation.limit != index.query.bounds.max_duration_ms
+            ):
+                raise ValueError("time-bound truncation does not match the index query")
+    return resource_set
+
+
+class ManifestFailure(_HostedReviewModel):
+    reason: ManifestFailureReason
+
+
+class ProviderSyncManifest(_HostedReviewModel):
+    transaction_id: NonEmptyString
+    repository: RepositoryRef
+    authorization_context: AuthorizationContextRef
+    state: TransactionState
+    started_at: CanonicalTimestamp
+    finished_at: CanonicalTimestamp | None
+    retrievals: tuple[ArtifactSnapshotRef, ...]
+    resource_sets: tuple[ArtifactSnapshotRef, ...]
+    failure: ManifestFailure | None
+
+    @model_validator(mode="after")
+    def _transaction_is_consistent(self) -> ProviderSyncManifest:
+        if (self.authorization_context.provider, self.authorization_context.instance) != (
+            self.repository.provider,
+            self.repository.instance,
+        ):
+            raise ValueError("manifest authorization and repository instances must match")
+        if len(set(self.retrievals)) != len(self.retrievals):
+            raise ValueError("manifest retrieval references must be unique")
+        if len(set(self.resource_sets)) != len(self.resource_sets):
+            raise ValueError("manifest resource-set references must be unique")
+        if any(reference.contract_id != RETRIEVAL_CONTRACT_ID for reference in self.retrievals):
+            raise ValueError("manifest retrieval references must use Retrieval/v1")
+        if any(
+            reference.contract_id != RESOURCE_SET_CONTRACT_ID for reference in self.resource_sets
+        ):
+            raise ValueError("manifest resource-set references must use ResourceSet/v1")
+        if self.finished_at is not None and _parse_rfc3339(self.finished_at) < _parse_rfc3339(
+            self.started_at
+        ):
+            raise ValueError("manifest finished_at must not precede started_at")
+        if self.state is TransactionState.staged:
+            if self.finished_at is not None or self.failure is not None:
+                raise ValueError("staged manifest forbids finish time and failure")
+        elif self.state is TransactionState.committed:
+            if self.finished_at is None or self.failure is not None or not self.resource_sets:
+                raise ValueError("committed manifest requires finish and resource sets, no failure")
+        elif self.finished_at is None or self.failure is None:
+            raise ValueError("failed manifest requires finish time and failure")
+        return self
+
+
+class ProviderViewPointer(_HostedReviewModel):
+    role: ProviderViewPointerRole
+    repository: RepositoryRef
+    authorization_context_key: Sha256Digest
+    target: ResourceSetTarget
+    manifest_snapshot_id: Sha256Digest
+    resource_set_snapshot_id: Sha256Digest
+
+
+def validate_manifest_closure(
+    manifest: ProviderSyncManifest,
+    resource_sets: Mapping[str, ResourceSet],
+    retrievals: Mapping[str, Retrieval],
+    profiles: Mapping[str, ResourceProfileSpec] | None = None,
+) -> ProviderSyncManifest:
+    """Resolve a manifest's immutable references and validate its namespace closure."""
+    retrieval_ids = {reference.snapshot_id for reference in manifest.retrievals}
+    resource_set_ids = {reference.snapshot_id for reference in manifest.resource_sets}
+    if retrieval_ids != set(retrievals):
+        raise ValueError("resolved retrievals do not match the manifest closure")
+    if resource_set_ids != set(resource_sets):
+        raise ValueError("resolved resource sets do not match the manifest closure")
+    for resource_set in resource_sets.values():
+        validate_resource_set_against_profile(
+            resource_set,
+            _resolve_resource_profile(resource_set.profile, profiles),
+        )
+        if resource_set.repository != manifest.repository:
+            raise ValueError("manifest resource set belongs to another repository")
+        if resource_set.authorization_context != manifest.authorization_context:
+            raise ValueError("manifest resource set uses another authorization context")
+        used_retrievals = {
+            retrieval_id
+            for collection in resource_set.collections
+            for retrieval_id in collection.retrieval_snapshot_ids
+        }
+        if not used_retrievals.issubset(retrieval_ids):
+            raise ValueError("resource set references retrieval outside the manifest")
+        for collection in resource_set.collections:
+            for retrieval_id in collection.retrieval_snapshot_ids:
+                retrieval_target = retrievals[retrieval_id].target
+                if isinstance(resource_set.target, ProviderObjectResourceTarget):
+                    target_matches = (
+                        isinstance(retrieval_target, ProviderObjectRetrievalTarget)
+                        and retrieval_target.repository == resource_set.repository
+                        and retrieval_target.target == resource_set.target.target
+                    )
+                else:
+                    target_matches = (
+                        isinstance(retrieval_target, ProviderCollectionRetrievalTarget)
+                        and retrieval_target.repository == resource_set.repository
+                        and retrieval_target.result_contract_id
+                        == resource_set.target.result_contract_id
+                        and retrieval_target.query_key == resource_set.target.query_key
+                    )
+                if not target_matches:
+                    raise ValueError("collection retrieval identifies another logical target")
+            if collection.failure_retrieval_snapshot_id is not None:
+                failure_outcome = retrievals[collection.failure_retrieval_snapshot_id].outcome
+                allowed_failure = (
+                    isinstance(failure_outcome, RetrievalFailed | RetrievalNotFound)
+                    if collection.coverage is CollectionCoverage.unavailable
+                    else isinstance(failure_outcome, RetrievalFailed)
+                )
+                if not allowed_failure:
+                    raise ValueError(
+                        "collection failure reference requires an unavailable retrieval outcome"
+                    )
+                if collection.coverage is CollectionCoverage.partial:
+                    if not isinstance(failure_outcome, RetrievalFailed):
+                        raise ValueError("partial collection failure must be a failed retrieval")
+                    expected_failure_reasons = {
+                        TruncationReason.provider_failure: {
+                            RetrievalFailureReason.permission_denied,
+                            RetrievalFailureReason.rate_limited,
+                            RetrievalFailureReason.transport_unavailable,
+                            RetrievalFailureReason.provider_error,
+                            RetrievalFailureReason.unknown,
+                        },
+                        TruncationReason.malformed_response: {
+                            RetrievalFailureReason.malformed_response
+                        },
+                        TruncationReason.cancelled: {RetrievalFailureReason.cancelled},
+                    }
+                    if (
+                        collection.truncation is None
+                        or failure_outcome.reason
+                        not in expected_failure_reasons[collection.truncation.reason]
+                    ):
+                        raise ValueError(
+                            "partial collection failure does not match its truncation reason"
+                        )
+            successful_retrieval_ids = set(collection.retrieval_snapshot_ids)
+            if collection.failure_retrieval_snapshot_id is not None:
+                successful_retrieval_ids.remove(collection.failure_retrieval_snapshot_id)
+            if any(
+                not isinstance(
+                    retrievals[retrieval_id].outcome,
+                    RetrievalSucceeded | RetrievalNotModified,
+                )
+                for retrieval_id in successful_retrieval_ids
+            ):
+                raise ValueError(
+                    "authoritative collection evidence requires successful retrieval outcomes"
+                )
+            artifact_snapshot_ids = {artifact.snapshot_id for artifact in collection.artifacts}
+            for retrieval_id in successful_retrieval_ids:
+                outcome = retrievals[retrieval_id].outcome
+                if (
+                    isinstance(outcome, RetrievalNotModified)
+                    and outcome.reused_snapshot_id not in artifact_snapshot_ids
+                ):
+                    raise ValueError(
+                        "not-modified retrieval must reuse an artifact in its collection"
+                    )
+            if collection.pagination is not None:
+                page_retrieval_ids = {
+                    page.retrieval_snapshot_id for page in collection.pagination.pages
+                }
+                if page_retrieval_ids != successful_retrieval_ids:
+                    raise ValueError(
+                        "pagination does not close over successful collection retrievals"
+                    )
+                first_observed_at = _parse_rfc3339(collection.pagination.first_observed_at)
+                last_observed_at = _parse_rfc3339(collection.pagination.last_observed_at)
+                page_observation_times: list[datetime] = []
+                for page in collection.pagination.pages:
+                    page_retrieval = retrievals[page.retrieval_snapshot_id]
+                    if not isinstance(
+                        page_retrieval.outcome,
+                        RetrievalSucceeded | RetrievalNotModified,
+                    ):
+                        raise ValueError("pagination pages require successful retrieval outcomes")
+                    page_observed_at = _parse_rfc3339(page_retrieval.finished_at)
+                    page_observation_times.append(page_observed_at)
+                if page_observation_times != sorted(page_observation_times):
+                    raise ValueError("pagination retrieval times contradict page order")
+                if (
+                    page_observation_times[0] != first_observed_at
+                    or page_observation_times[-1] != last_observed_at
+                ):
+                    raise ValueError(
+                        "pagination bounds must equal the first and last page observations"
+                    )
+    for retrieval in retrievals.values():
+        if retrieval.authorization_context != manifest.authorization_context:
+            raise ValueError("manifest retrieval uses another authorization context")
+        if retrieval.target.repository != manifest.repository:
+            raise ValueError("manifest retrieval targets another repository")
+        retrieval_started_at = _parse_rfc3339(retrieval.started_at)
+        if retrieval_started_at < _parse_rfc3339(manifest.started_at):
+            raise ValueError("manifest retrieval starts before its transaction")
+        if manifest.finished_at is not None and _parse_rfc3339(
+            retrieval.finished_at
+        ) > _parse_rfc3339(manifest.finished_at):
+            raise ValueError("manifest retrieval finishes after its transaction")
+    return manifest
+
+
+def validate_provider_view_pointer_target(
+    pointer: ProviderViewPointer,
+    manifests: Mapping[str, ProviderSyncManifest],
+    resource_sets: Mapping[str, ResourceSet],
+    retrievals: Mapping[str, Retrieval],
+    profiles: Mapping[str, ResourceProfileSpec] | None = None,
+) -> ProviderViewPointer:
+    """Resolve one provider-view pointer against immutable publication records."""
+    manifest = manifests.get(pointer.manifest_snapshot_id)
+    if manifest is None:
+        raise ValueError("provider view pointer manifest snapshot is unresolved")
+    resource_set = resource_sets.get(pointer.resource_set_snapshot_id)
+    if resource_set is None:
+        raise ValueError("provider view pointer resource-set snapshot is unresolved")
+    if manifest.state is not TransactionState.committed:
+        raise ValueError("provider view pointer requires a committed manifest")
+    try:
+        manifest_resource_sets = {
+            reference.snapshot_id: resource_sets[reference.snapshot_id]
+            for reference in manifest.resource_sets
+        }
+        manifest_retrievals = {
+            reference.snapshot_id: retrievals[reference.snapshot_id]
+            for reference in manifest.retrievals
+        }
+    except KeyError as exc:
+        raise ValueError("provider view pointer manifest closure is unresolved") from exc
+    validate_manifest_closure(
+        manifest,
+        manifest_resource_sets,
+        manifest_retrievals,
+        profiles,
+    )
+    validate_resource_set_against_profile(
+        resource_set,
+        _resolve_resource_profile(resource_set.profile, profiles),
+    )
+    if pointer.repository != resource_set.repository or pointer.repository != manifest.repository:
+        raise ValueError("provider view pointer repository does not match its target")
+    if pointer.target != resource_set.target:
+        raise ValueError("provider view pointer logical target does not match its resource set")
+    if pointer.authorization_context_key != authorization_context_key(
+        resource_set.authorization_context
+    ):
+        raise ValueError("provider view pointer authorization key does not match its resource set")
+    if resource_set.authorization_context != manifest.authorization_context:
+        raise ValueError("provider view pointer records use different authorization contexts")
+    manifest_targets = {reference.snapshot_id for reference in manifest.resource_sets}
+    if pointer.resource_set_snapshot_id not in manifest_targets:
+        raise ValueError("provider view pointer resource set is outside its manifest")
+    if pointer.role is ProviderViewPointerRole.current and not resource_set_is_current_eligible(
+        resource_set, profiles
+    ):
+        raise ValueError("current pointer requires an attempted required collection")
+    if (
+        pointer.role is ProviderViewPointerRole.last_complete
+        and not resource_set_is_last_complete_eligible(resource_set, profiles)
+    ):
+        raise ValueError("last-complete pointer requires a complete resource set")
+    return pointer
+
+
+class ExplicitProviderDeletionProof(_HostedReviewModel):
+    kind: Literal["explicit_provider_deletion"]
+    retrieval_snapshot_id: Sha256Digest
+
+
+class Tombstone(_HostedReviewModel):
+    target: ProviderObjectRef
+    repository: RepositoryRef
+    authorization_context: AuthorizationContextRef
+    previous_live_snapshot_id: Sha256Digest
+    observed_at: CanonicalTimestamp
+    proof: ExplicitProviderDeletionProof
+
+    @model_validator(mode="after")
+    def _namespace_is_consistent(self) -> Tombstone:
+        namespace = (self.repository.provider, self.repository.instance)
+        if (self.target.provider, self.target.instance) != namespace or (
+            self.authorization_context.provider,
+            self.authorization_context.instance,
+        ) != namespace:
+            raise ValueError(
+                "tombstone target, repository, and authorization must share a provider"
+            )
+        return self
+
+
+class LiveSnapshotContext(_HostedReviewModel):
+    target: ProviderObjectRef
+    repository: RepositoryRef
+    authorization_context: AuthorizationContextRef
+    observed_at: CanonicalTimestamp
+
+
+def validate_tombstone_evidence(
+    tombstone: Tombstone,
+    manifest: ProviderSyncManifest,
+    resource_sets: Mapping[str, ResourceSet],
+    retrievals: Mapping[str, Retrieval],
+    live_snapshots: Mapping[str, LiveSnapshotContext],
+    profiles: Mapping[str, ResourceProfileSpec] | None = None,
+) -> Tombstone:
+    """Resolve tombstone proof without treating filtered or unauthorized absence as deletion."""
+    validate_manifest_closure(manifest, resource_sets, retrievals, profiles)
+    if manifest.state is not TransactionState.committed or manifest.finished_at is None:
+        raise ValueError("tombstone evidence requires a committed manifest")
+    previous_live = live_snapshots.get(tombstone.previous_live_snapshot_id)
+    if previous_live is None:
+        raise ValueError("tombstone requires a previously observed live snapshot")
+    if (
+        previous_live.target != tombstone.target
+        or previous_live.repository != tombstone.repository
+        or previous_live.authorization_context != tombstone.authorization_context
+    ):
+        raise ValueError("previous live snapshot identifies another object or context")
+    if tombstone.repository != manifest.repository or (
+        tombstone.authorization_context != manifest.authorization_context
+    ):
+        raise ValueError("tombstone evidence uses another repository or authorization context")
+
+    manifest_retrievals = {reference.snapshot_id for reference in manifest.retrievals}
+    proof = tombstone.proof
+    if proof.retrieval_snapshot_id not in manifest_retrievals:
+        raise ValueError("explicit deletion retrieval is outside the manifest")
+    retrieval = retrievals[proof.retrieval_snapshot_id]
+    if not isinstance(retrieval.outcome, RetrievalExplicitlyDeleted):
+        raise ValueError("tombstone requires a typed provider deletion observation")
+    if retrieval.outcome.target != tombstone.target:
+        raise ValueError("deletion observation identifies another provider object")
+    if retrieval.outcome.repository != tombstone.repository:
+        raise ValueError("deletion observation identifies another repository")
+    evidence_at = _parse_rfc3339(retrieval.outcome.provider_event_at or retrieval.finished_at)
+    if _parse_rfc3339(previous_live.observed_at) > evidence_at:
+        raise ValueError("deletion evidence predates the previous live snapshot")
+
+    observed_at = _parse_rfc3339(tombstone.observed_at)
+    if observed_at < _parse_rfc3339(retrieval.finished_at):
+        raise ValueError("tombstone predates its deletion evidence")
+    if observed_at > _parse_rfc3339(manifest.finished_at):
+        raise ValueError("tombstone falls outside its committed transaction")
+    return tombstone
+
+
+def validate_authorization_context(value: dict[str, Any]) -> AuthorizationContextRef:
+    return AuthorizationContextRef.model_validate(value)
+
+
+def validate_retrieval(value: dict[str, Any]) -> Retrieval:
+    return Retrieval.model_validate(value)
+
+
+def dump_retrieval(value: Retrieval) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_provider_binding(value: dict[str, Any]) -> ProviderBinding:
+    return ProviderBinding.model_validate(value)
+
+
+def dump_provider_binding(value: ProviderBinding) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_hosted_repository(value: dict[str, Any]) -> HostedRepository:
+    return HostedRepository.model_validate(value)
+
+
+def dump_hosted_repository(value: HostedRepository) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_change_request_index(value: dict[str, Any]) -> ChangeRequestIndex:
+    return ChangeRequestIndex.model_validate(value)
+
+
+def dump_change_request_index(value: ChangeRequestIndex) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_resource_set(
+    value: dict[str, Any],
+    profiles: Mapping[str, ResourceProfileSpec] | None = None,
+) -> ResourceSet:
+    resource_set = ResourceSet.model_validate(value)
+    return validate_resource_set_against_profile(
+        resource_set,
+        _resolve_resource_profile(resource_set.profile, profiles),
+    )
+
+
+def dump_resource_set(value: ResourceSet) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_provider_sync_manifest(value: dict[str, Any]) -> ProviderSyncManifest:
+    return ProviderSyncManifest.model_validate(value)
+
+
+def dump_provider_sync_manifest(value: ProviderSyncManifest) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_provider_view_pointer(value: dict[str, Any]) -> ProviderViewPointer:
+    return ProviderViewPointer.model_validate(value)
+
+
+def dump_provider_view_pointer(value: ProviderViewPointer) -> dict[str, Any]:
+    return value.model_dump(mode="json")
+
+
+def validate_tombstone(value: dict[str, Any]) -> Tombstone:
+    return Tombstone.model_validate(value)
+
+
+def dump_tombstone(value: Tombstone) -> dict[str, Any]:
     return value.model_dump(mode="json")

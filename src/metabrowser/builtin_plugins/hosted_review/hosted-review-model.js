@@ -23,6 +23,11 @@ const LEAP_YEAR_FEBRUARY_DAYS = 29;
 const COMMON_YEAR_MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const MAX_PORT = 65_535;
 const DEFAULT_HTTPS_PORT = 443;
+const MAX_PROVIDER_KIND_LENGTH = 63;
+const MAX_DNS_HOST_LENGTH = 253;
+const PROVIDER_KIND_RE = /^[a-z][a-z0-9-]*$/;
+const PROVIDER_INSTANCE_RE =
+  /^([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::([1-9][0-9]{0,4}))?$/;
 const OID_RE = /^[0-9a-f]{40,64}$/;
 const CANONICAL_HTTPS_RE =
   /^https:\/\/([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::([1-9]\d{0,4}))?((?:[/?#][A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*)?)$/;
@@ -65,6 +70,28 @@ function nonemptyString(value, where) {
   return value;
 }
 
+/** @param {unknown} value @param {string} where @returns {string} */
+function providerKind(value, where) {
+  const text = nonemptyString(value, where);
+  require(text.length <= MAX_PROVIDER_KIND_LENGTH &&
+    PROVIDER_KIND_RE.test(text), `${where}: canonical provider kind required`);
+  return text;
+}
+
+/** @param {unknown} value @param {string} where @returns {string} */
+function providerInstance(value, where) {
+  const text = nonemptyString(value, where);
+  const match = PROVIDER_INSTANCE_RE.exec(text);
+  require(match !== null, `${where}: canonical provider instance required`);
+  require(match[1].length <= MAX_DNS_HOST_LENGTH, `${where}: DNS host is too long`);
+  const portText = match[2];
+  if (portText !== undefined) {
+    const port = Number(portText);
+    require(port !== DEFAULT_HTTPS_PORT && port <= MAX_PORT, `${where}: noncanonical port`);
+  }
+  return text;
+}
+
 /** @param {unknown} value @param {string} where */
 function nullableString(value, where) {
   require(value === null ||
@@ -76,6 +103,7 @@ function httpsUrl(value, where) {
   const text = nonemptyString(value, where);
   const match = CANONICAL_HTTPS_RE.exec(text);
   require(match !== null, `${where}: credential-free canonical HTTPS URL required`);
+  require(match[1].length <= MAX_DNS_HOST_LENGTH, `${where}: DNS host is too long`);
   const portText = match[2];
   if (portText !== undefined) {
     const port = Number(portText);
@@ -125,8 +153,8 @@ function nonnegativeInteger(value, where) {
 function validateProviderObjectRef(raw, where) {
   const value = asObject(raw, where);
   forbidExtras(value, ["provider", "instance", "object_kind", "opaque_id"], where);
-  nonemptyString(value.provider, `${where}.provider`);
-  nonemptyString(value.instance, `${where}.instance`);
+  providerKind(value.provider, `${where}.provider`);
+  providerInstance(value.instance, `${where}.instance`);
   nonemptyString(value.object_kind, `${where}.object_kind`);
   nonemptyString(value.opaque_id, `${where}.opaque_id`);
 }
@@ -135,8 +163,8 @@ function validateProviderObjectRef(raw, where) {
 function validateRepositoryRef(raw, where) {
   const value = asObject(raw, where);
   forbidExtras(value, ["provider", "instance", "opaque_id"], where);
-  nonemptyString(value.provider, `${where}.provider`);
-  nonemptyString(value.instance, `${where}.instance`);
+  providerKind(value.provider, `${where}.provider`);
+  providerInstance(value.instance, `${where}.instance`);
   nonemptyString(value.opaque_id, `${where}.opaque_id`);
 }
 

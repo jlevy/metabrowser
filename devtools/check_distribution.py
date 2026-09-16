@@ -102,7 +102,11 @@ def _inspect_wheel(wheel: Path) -> None:
             "metabrowser/builtin_plugins/hosted_review/artifacts.py",
             "metabrowser/builtin_plugins/hosted_review/hosted-review-model.js",
             "metabrowser/builtin_plugins/hosted_review/models.py",
+            "metabrowser/builtin_plugins/hosted_review/resource_profiles.py",
+            "metabrowser/data/hosted-review-format/change-request-index-conformance.json",
             "metabrowser/data/hosted-review-format/change-request-conformance.json",
+            "metabrowser/data/hosted-review-format/hosted-repository-conformance.json",
+            "metabrowser/data/hosted-review-format/provider-storage-conformance.json",
             "metabrowser/data/file-rollup-format/empty-file-rollup.json",
             "metabrowser/data/file-rollup-format/file-rollup-conformance.json",
             "metabrowser/data/file-rollup-format/file-rollup-conformance.schema.json",
@@ -152,7 +156,11 @@ def _inspect_sdist(sdist: Path) -> None:
             "src/metabrowser/builtin_plugins/hosted_review/artifacts.py",
             "src/metabrowser/builtin_plugins/hosted_review/hosted-review-model.js",
             "src/metabrowser/builtin_plugins/hosted_review/models.py",
+            "src/metabrowser/builtin_plugins/hosted_review/resource_profiles.py",
+            "src/metabrowser/data/hosted-review-format/change-request-index-conformance.json",
             "src/metabrowser/data/hosted-review-format/change-request-conformance.json",
+            "src/metabrowser/data/hosted-review-format/hosted-repository-conformance.json",
+            "src/metabrowser/data/hosted-review-format/provider-storage-conformance.json",
             *(f"src/metabrowser/static/{asset}" for asset in KEYBOARD_STATIC_ASSETS),
         }
         for suffix in required_suffixes:
@@ -190,7 +198,11 @@ def _smoke_install(wheel: Path) -> None:
             "import metabrowser; "
             "from metabrowser.file_type_registry import load_file_type_registry; "
             "from metabrowser.builtin_plugins.hosted_review.models import "
-            "validate_change_request; "
+            "validate_authorization_context, validate_change_request, "
+            "validate_change_request_index, validate_hosted_repository, "
+            "validate_provider_binding, validate_provider_sync_manifest, "
+            "validate_provider_view_pointer, validate_resource_set, "
+            "validate_retrieval, validate_tombstone; "
             "from metabrowser.kpress_adapter import render_kpress_view; "
             "from metabrowser.plugin_loader.discovery import discover_plugins; "
             "registry = load_file_type_registry(); "
@@ -223,12 +235,31 @@ def _smoke_install(wheel: Path) -> None:
             "'builtin_plugins/markdown/reconciliation-coordinator.js').is_file(); "
             "assert files('metabrowser').joinpath("
             "'data/file-diff-format/file-diff.schema.json').is_file(); "
-            "corpus = files('metabrowser').joinpath("
-            "'data/hosted-review-format/change-request-conformance.json'); "
-            "assert corpus.is_file(); "
             "import json; "
-            "validate_change_request(json.loads(corpus.read_text(encoding='utf-8'))"
-            "['base_document']); "
+            "format_data = files('metabrowser').joinpath('data/hosted-review-format'); "
+            "change_request = json.loads(format_data.joinpath("
+            "'change-request-conformance.json').read_text(encoding='utf-8')); "
+            "storage = json.loads(format_data.joinpath("
+            "'provider-storage-conformance.json').read_text(encoding='utf-8'))"
+            "['base_records']; "
+            "repository = json.loads(format_data.joinpath("
+            "'hosted-repository-conformance.json').read_text(encoding='utf-8'))"
+            "['base_records']; "
+            "index = json.loads(format_data.joinpath("
+            "'change-request-index-conformance.json').read_text(encoding='utf-8'))"
+            "['base_records']; "
+            "validate_change_request(change_request['base_document']); "
+            "validate_authorization_context(storage['authorization_context']); "
+            "validate_retrieval(storage['retrieval']); "
+            "validate_resource_set(storage['resource_set']); "
+            "validate_provider_sync_manifest(storage['provider_sync_manifest']); "
+            "validate_provider_view_pointer(storage['provider_view_pointer']); "
+            "validate_tombstone(storage['tombstone']); "
+            "validate_provider_binding(repository['provider_binding']); "
+            "validate_hosted_repository(repository['hosted_repository']); "
+            "validate_change_request_index(index['change_request_index']); "
+            "validate_change_request_index(index['empty_change_request_index']); "
+            "validate_resource_set(index['index_resource_set']); "
             "assert files('metabrowser').joinpath("
             "'builtin_plugins/hosted_review/hosted-review-model.js').is_file(); "
             "assert files('metabrowser').joinpath('builtin_plugins/folder/file_type_summary.css').is_file(); "
