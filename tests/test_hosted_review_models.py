@@ -107,3 +107,15 @@ def test_change_request_preserves_hostile_display_text_as_data() -> None:
     parsed = validate_change_request(document)
 
     assert parsed.title == document["title"]
+
+
+def test_change_request_preserves_unavailable_provider_identity() -> None:
+    document = change_request_case()
+    document["author"] = None
+    document["comparison"]["head"]["repository_id"] = None
+
+    parsed = validate_change_request(document)
+
+    assert parsed.author is None
+    assert parsed.comparison.head.repository_id is None
+    assert parsed.comparison.head.oid == document["comparison"]["head"]["oid"]

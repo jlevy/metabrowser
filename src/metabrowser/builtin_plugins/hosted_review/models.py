@@ -338,7 +338,7 @@ class ActorRef(_HostedReviewModel):
 
 
 class RevisionRef(_HostedReviewModel):
-    repository_id: NonEmptyString
+    repository_id: NonEmptyString | None
     ref: NonEmptyString
     oid: GitObjectId | None
     availability: RevisionAvailability
@@ -399,7 +399,7 @@ class ChangeRequest(_HostedReviewModel):
     number: SafePositiveInteger
     url: NonEmptyString
     title: NonEmptyString
-    author: ActorRef
+    author: ActorRef | None
     state: ChangeRequestState
     draft: StrictBool
     locked: StrictBool
@@ -468,7 +468,7 @@ def dump_change_request(value: ChangeRequest) -> dict[str, Any]:
 
 
 class GitObjectRef(_HostedReviewModel):
-    repository_id: NonEmptyString
+    repository_id: NonEmptyString | None
     oid: GitObjectId | None
     availability: RevisionAvailability
 
@@ -587,8 +587,8 @@ class _ReviewAnchorBase(_HostedReviewModel):
     @model_validator(mode="after")
     def _path_and_revision_identity(self) -> _ReviewAnchorBase:
         _validate_review_path(self.path, self.path_b64)
-        if self.original_revision.availability is not RevisionAvailability.present:
-            raise ValueError("review anchor original revision must be present")
+        if self.original_revision.availability is RevisionAvailability.not_requested:
+            raise ValueError("review anchor original revision must be observed")
         if self.original_revision.repository_id != self.comparison.head.repository_id:
             raise ValueError("review anchor original revision must belong to the comparison head")
         if self.current_revision.repository_id != self.comparison.head.repository_id:
@@ -704,7 +704,7 @@ class Check(_HostedReviewModel):
     parent_check_id: NonEmptyString | None
     kind: CheckKind
     revision: GitObjectRef
-    name: NonEmptyString
+    name: NonEmptyString | None
     status: CheckStatus
     conclusion: CheckConclusion | None
     url: CanonicalHttpsUrl | None
@@ -724,11 +724,15 @@ class Check(_HostedReviewModel):
             raise ValueError("checks cannot parent themselves")
         if self.kind is CheckKind.run and self.parent_check_id is None:
             raise ValueError("check runs require a parent suite")
+        if self.kind is CheckKind.run and self.name is None:
+            raise ValueError("check runs require a name")
         if self.kind is CheckKind.suite and self.parent_check_id is not None:
             raise ValueError("check suites forbid a parent check")
         if self.status is CheckStatus.completed:
-            if self.conclusion is None or self.completed_at is None:
-                raise ValueError("completed checks require conclusion and completed_at")
+            if self.conclusion is None:
+                raise ValueError("completed checks require a conclusion")
+            if self.kind is CheckKind.run and self.completed_at is None:
+                raise ValueError("completed check runs require completed_at")
         elif self.conclusion is not None or self.completed_at is not None:
             raise ValueError("noncompleted checks forbid conclusion and completed_at")
         if (
@@ -1420,7 +1424,7 @@ class ChangeRequestIndexRow(_HostedReviewModel):
     title: NonEmptyString
     state: ChangeRequestState
     draft: StrictBool
-    author: ActorRef
+    author: ActorRef | None
     base_label: NonEmptyString
     head_label: NonEmptyString
     created_at: CanonicalTimestamp

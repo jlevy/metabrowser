@@ -152,6 +152,42 @@ def test_current_anchor_can_preserve_an_older_original_revision() -> None:
     assert thread.anchor.original_revision.oid != thread.anchor.current_revision.oid
 
 
+def test_anchor_records_an_observed_but_unavailable_original_revision() -> None:
+    corpus = _corpus()
+    case = next(
+        case
+        for case in corpus["cases"]
+        if case["name"] == "original-anchor-revision-may-be-unavailable"
+    )
+
+    thread = hosted_review.validate_review_thread(
+        apply_case_changes(corpus["base_records"]["review_thread"], case["changes"])
+    )
+
+    assert thread.anchor.original_revision.oid is None
+    assert (
+        thread.anchor.original_revision.availability
+        is hosted_review.RevisionAvailability.unavailable
+    )
+
+
+def test_completed_suite_may_lack_run_only_provider_fields() -> None:
+    corpus = _corpus()
+    case = next(
+        case
+        for case in corpus["cases"]
+        if case["name"] == "check-suite-provider-fields-may-be-unavailable"
+    )
+
+    check = hosted_review.validate_check(
+        apply_case_changes(corpus["base_records"]["check_suite"], case["changes"])
+    )
+
+    assert check.status is hosted_review.CheckStatus.completed
+    assert check.conclusion is hosted_review.CheckConclusion.success
+    assert check.name is check.started_at is check.completed_at is None
+
+
 def test_bundle_rejects_a_reply_that_crosses_threads() -> None:
     document = _materialize_bundle()
     document["review_comments"][1]["thread_id"] = "thread-2"

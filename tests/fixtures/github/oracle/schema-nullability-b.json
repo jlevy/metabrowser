@@ -1,0 +1,39 @@
+{
+  "recorded_from_public_api": true,
+  "data": {
+    "checkSuite": {
+      "name": "CheckSuite",
+      "fields": [
+        { "name": "app", "type": { "kind": "OBJECT", "name": "App", "ofType": null } },
+        { "name": "branch", "type": { "kind": "OBJECT", "name": "Ref", "ofType": null } },
+        { "name": "checkRuns", "type": { "kind": "OBJECT", "name": "CheckRunConnection", "ofType": null } },
+        { "name": "commit", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "OBJECT", "name": "Commit", "ofType": null } } },
+        { "name": "conclusion", "type": { "kind": "ENUM", "name": "CheckConclusionState", "ofType": null } },
+        { "name": "createdAt", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "DateTime", "ofType": null } } },
+        { "name": "creator", "type": { "kind": "OBJECT", "name": "User", "ofType": null } },
+        { "name": "databaseId", "type": { "kind": "SCALAR", "name": "Int", "ofType": null } },
+        { "name": "id", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "ID", "ofType": null } } },
+        { "name": "matchingPullRequests", "type": { "kind": "OBJECT", "name": "PullRequestConnection", "ofType": null } },
+        { "name": "push", "type": { "kind": "OBJECT", "name": "Push", "ofType": null } },
+        { "name": "repository", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "OBJECT", "name": "Repository", "ofType": null } } },
+        { "name": "resourcePath", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "URI", "ofType": null } } },
+        { "name": "status", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "ENUM", "name": "CheckStatusState", "ofType": null } } },
+        { "name": "updatedAt", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "DateTime", "ofType": null } } },
+        { "name": "url", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "URI", "ofType": null } } },
+        { "name": "workflowRun", "type": { "kind": "OBJECT", "name": "WorkflowRun", "ofType": null } }
+      ]
+    },
+    "issueComment": {
+      "name": "IssueComment",
+      "fields": [
+        { "name": "author", "type": { "kind": "INTERFACE", "name": "Actor", "ofType": null } },
+        { "name": "body", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "String", "ofType": null } } },
+        { "name": "createdAt", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "DateTime", "ofType": null } } },
+        { "name": "isMinimized", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "Boolean", "ofType": null } } },
+        { "name": "minimizedReason", "type": { "kind": "SCALAR", "name": "String", "ofType": null } },
+        { "name": "updatedAt", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "DateTime", "ofType": null } } },
+        { "name": "url", "type": { "kind": "NON_NULL", "name": null, "ofType": { "kind": "SCALAR", "name": "URI", "ofType": null } } }
+      ]
+    }
+  }
+}

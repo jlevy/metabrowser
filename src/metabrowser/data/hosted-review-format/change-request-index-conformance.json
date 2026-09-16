@@ -173,6 +173,7 @@
   },
   "cases": [
     {"record": "change_request_index", "changes": [], "expect": "valid", "name": "ordered-query-keyed-index"},
+    {"record": "change_request_index", "changes": [{"path": ["rows", 0, "author"], "value": null}], "expect": "valid", "name": "index-row-author-may-be-unavailable"},
     {"record": "empty_change_request_index", "changes": [], "expect": "valid", "name": "empty-index-is-valid-domain-content"},
     {"record": "change_request_index", "changes": [{"path": ["query", "bounds", "max_items"], "value": 51}], "expect": "invalid", "name": "query-change-requires-new-key"},
     {"record": "change_request_index", "changes": [{"path": ["query", "state_filter"], "value": {"kind": "all"}}, {"path": ["query_key"], "value": "sha256:3a6660ca15e579823a95457cd9dd401b214647e3732113f0a3eb24f1a3ea0279"}], "expect": "valid", "name": "all-state-query-has-a-portable-key-vector"},

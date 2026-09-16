@@ -1,0 +1,41 @@
+query SupplementaryNullabilityEvidence(
+  $checkSuiteType: String!
+  $issueCommentType: String!
+) {
+  checkSuite: __type(name: $checkSuiteType) {
+    name
+    fields {
+      name
+      type {
+        kind
+        name
+        ofType {
+          kind
+          name
+          ofType {
+            kind
+            name
+          }
+        }
+      }
+    }
+  }
+  issueComment: __type(name: $issueCommentType) {
+    name
+    fields {
+      name
+      type {
+        kind
+        name
+        ofType {
+          kind
+          name
+          ofType {
+            kind
+            name
+          }
+        }
+      }
+    }
+  }
+}

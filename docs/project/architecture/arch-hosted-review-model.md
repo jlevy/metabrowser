@@ -1,9 +1,9 @@
 # Hosted Review Model and Provider Boundary
 
 **Status:** Accepted design; the no-network ChangeRequest, provider-publication, review,
-signal, and activity record families are implemented.
-Schema and registry work is next; no provider adapter, cache, route, kind, or view is
-implemented yet.
+signal, and activity record families and the scrubbed GitHub coverage oracle are
+implemented. Schema and registry work is next; no provider adapter, cache, route, kind,
+or view is implemented yet.
 
 Hosted review is a domain above Git history and File Diff Format.
 A pull request or merge request has Git endpoints and can produce a comparison, but it
@@ -103,6 +103,12 @@ is content-neutral:
 | `ProviderViewPointer/v1` | A small `current` or `last-complete` reference to one resource set and its committed manifest | Embedded snapshots or mutable acquisition state |
 | `Tombstone/v1` | A provider-object deletion backed by a typed event or deleted marker for the exact target | A conclusion inferred from one not-found response or authorization failure |
 
+`ChangeRequest/v1` and its index row preserve a null author when the provider no longer
+exposes an account. `RevisionRef.repository_id` is also nullable because GitHub can
+retain a head ref and object ID after its fork repository becomes unavailable.
+The base revision of a selected change request still belongs to its non-null owning
+repository; normalization never copies that identity onto an unknown head.
+
 Issue and timeline records are the next domain extension, tracked by `mb-9rrc`. Release
 records are a sibling extension with `Release/v1` frontmatter, a structured asset
 record, and a bounded index; their separate phased epic follows the general resource
@@ -157,7 +163,7 @@ thread, and reply relationships that cross scopes.
 | `Review/v1` | `change_request_id`, `url`, nullable `author`, `disposition`, observed immutable `revision`, `created_at`, nullable `submitted_at`, `updated_at` |
 | `ReviewThread/v1` | `change_request_id`, typed `anchor`, `state`, nullable `resolved_by`, provider-observed `comment_count` |
 | `ReviewComment/v1` | `change_request_id`, nullable `review_id`, `thread_id`, nullable `in_reply_to_id`, nullable `url` and `author`, `state`, typed `anchor`, `created_at`, `updated_at` |
-| `Check/v1` | nullable `parent_check_id`, `kind`, present immutable `revision`, `name`, `status`, nullable `conclusion`, `url`, `started_at`, and `completed_at` |
+| `Check/v1` | nullable `parent_check_id`, `kind`, present immutable `revision`, nullable `name`, `status`, nullable `conclusion`, `url`, `started_at`, and `completed_at`; runs require `name` |
 | `CommitStatus/v1` | present immutable `revision`, `context`, `state`, nullable `description` and `target_url`, `created_at`, `updated_at` |
 
 `CommentState` is `visible`, `minimized`, `deleted`, or `unknown`. An author may be null
@@ -177,7 +183,11 @@ The reviewed `GitObjectRef` is an observed revision: normally present, but expli
 
 Checks distinguish `suite`, `run`, and `unknown` kinds.
 A run resolves its parent to a suite for the same immutable revision in the same bundle.
-Only a completed check carries a conclusion and completion time.
+Only a completed check carries a conclusion.
+Completed runs require their provider completion time.
+GitHub check suites expose neither a name nor start/completion timestamps, so those
+fields stay null rather than copying the application slug or substituting
+`created_at`/`updated_at` with different semantics.
 Check and commit-status revisions are present immutable Git object references; they are
 not restricted to the base repository or current head because providers also report
 fork, merge, and synthetic revisions.
@@ -190,8 +200,8 @@ Every variant owns:
 - display `path` plus nullable `path_b64`, matching File Diff Format’s lossless Git path
   convention;
 - the complete `ComparisonRef` observed with the discussion;
-- present `original_revision` and explicitly available or unavailable
-  `current_revision`; and
+- observed `original_revision`, either present or explicitly unavailable, and an
+  explicitly available or unavailable `current_revision`; and
 - `current`, `outdated`, `unresolved`, or `unmappable` state.
 
 A file anchor adds no side or line.
@@ -205,9 +215,10 @@ When `path_b64` is present, it is canonical standard base64 of the exact non-NUL
 path bytes, and `path` is their UTF-8 replacement-decoded display.
 This preserves non-UTF-8 repository paths without making display text authoritative.
 
-Original revisions are always present.
-Current, outdated, and unmappable anchors also have a present current revision that
-matches the comparison head.
+Original revisions are always observed, but the provider may report that the original
+commit is unavailable.
+They are never `not_requested`. Current, outdated, and unmappable anchors also have a
+present current revision that matches the comparison head.
 The original and current revisions may differ when a provider remaps a still-current
 comment after the change-request head advances.
 An unresolved anchor may declare its current revision unavailable or not requested.
@@ -253,10 +264,56 @@ generic repository.
 Commit freshness is `immutable`. Provider-derived change-request freshness is `observed`
 with a snapshot ID and observation time.
 A change-request item may use `not_requested` revision availability when projected from
-a bounded index; comparison availability becomes true only after both base and head
-object IDs are present.
-This keeps activity navigation useful without claiming that unfetched Git objects exist
-locally.
+a bounded index. Its base repository remains the selected hosted repository, while the
+head and primary revision repository IDs remain null when a deleted or inaccessible fork
+cannot be identified.
+Comparison availability becomes true only after both base and head object IDs are
+present. This keeps activity navigation useful without claiming that unfetched Git
+objects exist locally.
+
+## GitHub Coverage Oracle
+
+The no-network oracle under `tests/fixtures/github/oracle/` is evidence about the first
+adapter, not another provider model.
+Its manifest records exact bounded REST and GraphQL requests, variables, public
+resources, reductions, and prose scrubbing.
+Each GraphQL document has a request-specific captured root set, and the test requires
+the selected root aliases to match that response exactly.
+The recorded set covers repository visibility, direct and indexed pull requests, list
+continuation and exhaustion, review counts and full review metadata, a same-side range
+thread and reply, top-level comment minimization fields, checks, classic statuses, and
+the schema nullability that cannot be proven by one successful object response.
+
+`field-inventory.json` starts from the ten normalized records the GitHub mapping will
+produce and closes mechanically over every nested Pydantic model and value state.
+Every field names its consumers and is classified as observed, deterministically
+derived, Metabrowser-owned, or explicitly optional/unavailable.
+Consumers are separately marked as current validated code or planned adapter/view work;
+an inventory entry is not evidence that a planned consumer already exists.
+Observed and derived fields carry mechanically resolved response/request JSON pointers
+or validated normalized inputs rather than a capture-level assertion alone.
+Closed enum and literal values carry the same disposition-specific evidence.
+Structured identity recipes pin the complete provider, instance, repository, canonical
+ID kind, number, and provider-object inputs used by each relationship.
+Canonical ID kinds remain distinct from provider-object kinds where the formats differ.
+For a check run, the recorded numeric `check_suite.id` must join exactly one captured
+suite database ID before the suite `node_id` becomes the normalized parent ID. The
+inventory does not claim the single recorded thread proves file or line anchors,
+outdated or resolved threads, nullable actors, nullable review/commit relationships, or
+minimized comments. Those states remain explicitly unavailable until evidence supports
+them.
+
+`tests/test_github_coverage.py` is the only executable consumer.
+It verifies exact model and enum closure, capture provenance, public-safe scrubbing,
+closed reduced-response shapes, strict RFC 6901 evidence pointers, GraphQL variable and
+root identity, list exhaustion, executable identity derivations, the evidence-driven
+nullable boundaries, and separation of hostile synthetic values from recorded evidence.
+Secret and private-data checks cover the manifest, inventory, request documents,
+recorded responses, and README; every URL-shaped recorded field is HTTPS and belongs to
+the explicit public-host and public-resource allowlist.
+Runtime code does not import or read the oracle.
+The wheel packages only `src/metabrowser`; the source distribution may retain the
+directory as repository test evidence.
 
 ## Provider Identity Without Provider-Shaped Views
 
@@ -513,7 +570,7 @@ The collection and its entries use the existing item-like/folder-like roles:
   the existing base/head revision-content views.
 
 Rows may show only the compact values the index contract guarantees: PR number, title,
-author, draft/open/merged/closed state, base and head labels, and updated time.
+nullable author, draft/open/merged/closed state, base and head labels, and updated time.
 Description, review and check summaries, full review details, threads, and file changes
 remain in the selected bundle and load only after selection.
 Counts and folder visibility come from the complete bounded index model, never from the

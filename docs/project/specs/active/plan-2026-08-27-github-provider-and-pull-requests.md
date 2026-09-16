@@ -4,8 +4,9 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Design review addressed; Phase 0B.1 is the final-testing stacked base, and
-Phase 0B.2 is the current implementation layer
+**Status:** Phase 0B.2 is the green exact stacked base at
+`74dad3588d6de658ab2c56cf76711b39f0d3a496`; Phase 0B.3 is the current implementation
+layer
 
 ## Vision
 
@@ -239,12 +240,12 @@ code:
 | --- | --- | --- |
 | Repository node and `nameWithOwner` | `HostedRepository/v1` and `ProviderObjectRef` | Provider coordinates remain provenance; stable opaque identity is authoritative |
 | Pull request | `ChangeRequest/v1` | `provider_ref.object_kind: pull_request`; a future GitLab merge request uses the same common record with another provider kind |
-| Base, head, and merge commit | `RevisionRef` and `ComparisonRef` | Full Git object IDs; availability is explicit and content stays in Git |
+| Base, head, and merge commit | `RevisionRef` and `ComparisonRef` | Full Git object IDs; availability is explicit and content stays in Git; a deleted fork may leave head repository identity null while the ref and OID remain |
 | Draft, open, closed, merged, locked | Common lifecycle and capability fields | Unknown provider values normalize to `unknown`, never to a guessed state |
 | Review decision and requested reviewers | Change-request review summary | Aggregate state is distinct from the bounded review collection |
 | Top-level conversation comment | `ChangeRequestComment/v1` | Distinct from a diff discussion; keeps Markdown body and lifecycle but has no review anchor |
-| Review, review thread, review comment | `Review/v1`, `ReviewThread/v1`, `ReviewComment/v1` | Review YAML owns identity, author, disposition, lifecycle, timestamps, and relationships while an optional Markdown body owns summary prose; anchors preserve provider and immutable comparison identity; file-level, line, and range forms remain distinct; mapping failure stays unresolved |
-| Check suite, check run, commit status | `Check/v1`, `CommitStatus/v1` | Attached to immutable revision IDs; provider-only details use a declared companion record |
+| Review, review thread, review comment | `Review/v1`, `ReviewThread/v1`, `ReviewComment/v1` | Review YAML owns identity, nullable author, disposition, lifecycle, timestamps, and relationships while an optional Markdown body owns summary prose; anchors preserve provider and immutable comparison identity; an unavailable original commit stays observed rather than becoming `not_requested`; file-level, line, and range forms remain distinct; mapping failure stays unresolved |
+| Check suite, check run, commit status | `Check/v1`, `CommitStatus/v1` | Attached to immutable revision IDs; suite names and run-style timestamps remain null when the suite API does not expose them; provider-only details use a declared companion record |
 | Labels, assignees, milestone | Common bounded references | Only values consumed by discovery or detail views enter v0.11.0 |
 | Provider timestamps and API observations | Object timestamps plus `Retrieval/v1` | Hosted state and retrieval freshness never share one timestamp |
 
@@ -304,9 +305,10 @@ identity.
 Change requests record:
 
 - stable change-request and repository IDs, provider-native kind, number, URL, title,
-  author, normalized state, draft/locked flags, provider timestamps, labels, assignees,
-  milestone, and review decision;
-- base and head repository IDs, ref names, and full Git object IDs;
+  nullable author, normalized state, draft/locked flags, provider timestamps, labels,
+  assignees, milestone, and review decision;
+- the base repository ID, nullable head repository ID, ref names, and full Git object
+  IDs;
 - an optional merge object ID and its observation state;
 - requested reviewers and teams as bounded references; and
 - provider-reported aggregate counts where GitHub exposes them without fetching a
@@ -448,8 +450,8 @@ identity.
 
 `ChangeRequestIndex/v1` is a bounded discovery projection, not a bag of complete PR
 records. Each row contains only stable identity, number, URL, title, state, draft state,
-author, base/head labels, and provider timestamps needed to choose a PR. It contains no
-review or check summary.
+nullable author, base/head labels, and provider timestamps needed to choose a PR. It
+contains no review or check summary.
 The index records its requested state filter and stable sort with a deterministic
 unsigned UTF-8 provider-ID tie-breaker, tagged page continuations, declared item, page,
 byte, and time bounds, collection state, and remote consistency: `provider_snapshot`,
@@ -833,6 +835,22 @@ dependency behavior; it is a dormant semantic and artifact-codec kernel.
 | 0C.1 SoftSchema contracts | `mb-lqae` coordinates `mb-52iz` and `mb-vepa` | Plugin-local `contracts.py`, installed artifact-contract and resource-profile registries, deterministic packaged schemas, exact first-party dependency selection owned by `mb-4gnu`, review, and formal PR publication | Enforced contract/profile registry and Python/browser/schema/corpus agreement with green CI |
 | 0C.2 format gate | `mb-dhz8` coordinates `mb-vors` and `mb-ci0t` | Contract/profile inventory, distribution smoke, architecture registration, parity evidence, review, and formal PR publication | Every shipped contract/profile has its schema, semantics, producer, consumer, fixture, installed-artifact check, and green CI |
 
+Phase 0B.3 is a no-network evidence and reconciliation slice.
+The oracle may require the smallest correction to an existing common model when exact
+provider evidence disproves the current contract.
+Such a correction updates every affected producer, consumer, corpus, test, and document
+in this slice; it does not justify speculative fields, provider behavior, or a new
+runtime surface.
+
+| Phase 0B.3 surface | File- and function-level responsibility | Exit evidence |
+| --- | --- | --- |
+| Python common model | `builtin_plugins/hosted_review/models.py`: reconcile `RevisionRef`, `GitObjectRef`, `ChangeRequest`, `ChangeRequestIndexRow`, and `Check` validators only where the oracle proves nullability, identity, or lifecycle facts | Existing public validators accept every corrected corpus record and continue to reject invented or internally inconsistent states |
+| Browser common model | `builtin_plugins/hosted_review/hosted-review-model.js`: keep `parseChangeRequest` and its nested reference/actor checks aligned with the evidence-driven Python corrections | Exact production JavaScript accepts and rejects the same ChangeRequest corpus as Python |
+| Portable corpora | `change-request-conformance.json`, `change-request-index-conformance.json`, `review-records-conformance.json`, and `repository-activity-conformance.json`: encode nullable authors, deleted-fork repository identity, unavailable original revisions, suite/run timestamp distinctions, and activity projection limits | All four corpora pass Python and applicable browser conformance harnesses with named valid and invalid cases |
+| Focused common-model tests | `test_hosted_review_models.py`, `test_hosted_review_record_models.py`, and `test_hosted_review_activity_models.py`: pin each corrected invariant and its counterexample | Focused hosted-review model, record, and activity suites pass |
+| Public evidence oracle | `tests/fixtures/github/oracle/manifest.json`, request documents, reduced response files, `field-inventory.json`, and `hostile-synthetic.json`; `tests/test_github_coverage.py`: validate exact request provenance, closed response shapes, RFC 6901 pointers, field/value dispositions, executable identity recipes, public safety, and runtime/package isolation | Every modeled field and closed value has mechanically resolved evidence or an explicit owned/unavailable disposition; no test contacts a network |
+| Durable documentation | This plan, `arch-hosted-review-model.md`, and `arch-views-models-routes.md`: record the proven provider boundary, test-only oracle authority, and absence of adapter/route/registry behavior | Documentation agrees with the checked contract and names Phase 0C or later for unimplemented runtime surfaces |
+
 Phase 0B.1 is one pull request with the following bead sequence:
 
 | Bead | Internal result |
@@ -881,10 +899,11 @@ or publication bead merges another phase.
 - [x] Build normalized and invalid fixtures for open, closed, merged, draft, forked,
   deleted, inaccessible, partial, paginated, direct-addressed, outdated-anchor, and
   unknown-enum cases.
-- [ ] Add one GitHub terminology-to-common-model mapping matrix and prove every common
+- [x] Add one GitHub terminology-to-common-model mapping matrix and prove every common
   field has a consumer; do not add speculative GitLab-only fields.
-- [ ] Capture the scrubbed response oracle and require every modeled field to be
-  observed, derived, or explicitly optional with `not_requested` state.
+- [x] Capture the scrubbed response oracle and require every modeled field to be
+  observed, deterministically derived, Metabrowser-owned, or explicitly
+  optional/unavailable.
 - [ ] Register the proposed format and plugin surfaces in the architecture map and add
   an inventory check that fails when a contract lacks a producer, consumer, schema, or
   fixture.
@@ -1158,7 +1177,8 @@ discovery UI increases acquisition and browser scope.
   fences and Markdown remain bounded and untrusted; and snapshot identity changes when
   either authoritative metadata or the body changes.
 - **Coverage oracle:** every modeled field is present in at least one recorded, scrubbed
-  response, or is explicitly marked derived or optional with a `not_requested` state.
+  response, or is explicitly marked deterministically derived, Metabrowser-owned, or
+  optional/unavailable.
 - **Provider snapshots:** only structurally valid committed manifests move `current`;
   valid partial collections remain visibly partial while `last-complete` stays readable;
   failed transactions leave pointers unchanged; authorization contexts, tombstone proof,

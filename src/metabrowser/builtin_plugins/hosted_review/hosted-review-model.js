@@ -181,7 +181,8 @@ function validateActorRef(raw, where) {
 function validateRevisionRef(raw, where) {
   const value = asObject(raw, where);
   forbidExtras(value, ["repository_id", "ref", "oid", "availability"], where);
-  nonemptyString(value.repository_id, `${where}.repository_id`);
+  require("repository_id" in value, `${where}.repository_id: required`);
+  nullableString(value.repository_id, `${where}.repository_id`);
   nonemptyString(value.ref, `${where}.ref`);
   require("oid" in value, `${where}.oid: required`);
   nullableString(value.oid, `${where}.oid`);
@@ -338,7 +339,10 @@ export function parseChangeRequest(raw) {
     require(Number(document.number) >= 1, "change_request.number: integer >= 1 required");
     httpsUrl(document.url, "change_request.url");
     nonemptyString(document.title, "change_request.title");
-    validateActorRef(document.author, "change_request.author");
+    require("author" in document, "change_request.author: required");
+    if (document.author !== null) {
+      validateActorRef(document.author, "change_request.author");
+    }
     require(typeof document.draft === "boolean", "change_request.draft: boolean required");
     require(typeof document.locked === "boolean", "change_request.locked: boolean required");
     validateLifecycle(document);

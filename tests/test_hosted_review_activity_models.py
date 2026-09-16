@@ -50,6 +50,7 @@ def test_index_style_change_request_can_defer_revision_resolution() -> None:
     change_request = activity.items[1]
 
     assert change_request.comparison_available is False
+    assert change_request.primary_revision.repository_id is None
     assert (
         change_request.primary_revision.availability
         is hosted_review.RevisionAvailability.not_requested
@@ -59,6 +60,8 @@ def test_index_style_change_request_can_defer_revision_resolution() -> None:
         change_request.base_revision.availability
         is hosted_review.RevisionAvailability.not_requested
     )
+    assert change_request.head_revision is not None
+    assert change_request.head_revision.repository_id is None
 
 
 def test_partial_activity_names_its_bound_and_opaque_continuation() -> None:

@@ -1,0 +1,252 @@
+{
+  "oracle_version": 1,
+  "captured_on": "2026-09-16",
+  "purpose": "Structural coverage evidence for provider-neutral hosted-review mapping",
+  "authority": "test_evidence_only",
+  "recorded_files": [
+    "rest-core.json",
+    "graphql-review-thread.json",
+    "schema-nullability-a.json",
+    "schema-nullability-b.json"
+  ],
+  "synthetic_files": [
+    "hostile-synthetic.json"
+  ],
+  "global_scrubbing": [
+    "Removed authentication and transport headers.",
+    "Removed rate-limit observations and request identifiers.",
+    "Removed email addresses, permission maps, and raw error payloads.",
+    "Reduced each response to fields used by the mapping inventory.",
+    "Replaced long-form public user-authored body fields with a fixed scrub marker.",
+    "Kept public provider IDs, coordinates, URLs, timestamps, refs, and object IDs needed for structural evidence."
+  ],
+  "captures": [
+    {
+      "id": "rest.repository",
+      "file": "rest-core.json",
+      "json_pointer": "/responses/repository",
+      "public_resource": "https://github.com/cli/cli",
+      "request": {
+        "transport": "github_rest",
+        "method": "GET",
+        "host": "api.github.com",
+        "path": "/repos/cli/cli",
+        "accept": "application/vnd.github+json",
+        "api_version": "2022-11-28"
+      },
+      "selection": "Repository identity, coordinates, visibility, owner, URLs, default branch, and provider timestamps."
+    },
+    {
+      "id": "rest.pull_request",
+      "file": "rest-core.json",
+      "json_pointer": "/responses/pull_request",
+      "public_resource": "https://github.com/cli/cli/pull/14430",
+      "request": {
+        "transport": "github_rest",
+        "method": "GET",
+        "host": "api.github.com",
+        "path": "/repos/cli/cli/pulls/14430",
+        "accept": "application/vnd.github+json",
+        "api_version": "2022-11-28"
+      },
+      "selection": "Pull-request identity, lifecycle, comparison, participants, counts, and prose-body presence.",
+      "scrubbed_fields": [
+        "body"
+      ]
+    },
+    {
+      "id": "rest.pull_request_index.first_page",
+      "file": "rest-core.json",
+      "json_pointer": "/responses/pull_request_index_first_page",
+      "public_resource": "https://github.com/cli/cli/pulls",
+      "request": {
+        "transport": "github_rest",
+        "method": "GET",
+        "host": "api.github.com",
+        "path": "/repos/cli/cli/pulls?state=all&sort=created&direction=desc&per_page=2&page=1",
+        "accept": "application/vnd.github+json",
+        "api_version": "2022-11-28"
+      },
+      "selection": "The first two rows and only the next/last page numbers parsed from the response Link header; authentication, rate-limit, request, cache, and validator headers were removed."
+    },
+    {
+      "id": "rest.pull_request_index.terminal_page",
+      "file": "rest-core.json",
+      "json_pointer": "/responses/pull_request_index_terminal_page",
+      "public_resource": "https://github.com/cli/cli/pulls",
+      "request": {
+        "transport": "github_rest",
+        "method": "GET",
+        "host": "api.github.com",
+        "path": "/repos/cli/cli/pulls?state=all&sort=created&direction=desc&per_page=2&page=2322",
+        "accept": "application/vnd.github+json",
+        "api_version": "2022-11-28"
+      },
+      "selection": "The final row and only the previous/first page numbers parsed from the response Link header. The absence of a next relation is the exhaustion evidence."
+    },
+    {
+      "id": "graphql.review_thread",
+      "file": "graphql-review-thread.json",
+      "json_pointer": "/data/repository/pullRequest",
+      "public_resource": "https://github.com/cli/cli/pull/14430",
+      "request": {
+        "transport": "github_graphql",
+        "method": "POST",
+        "host": "api.github.com",
+        "path": "/graphql",
+        "document": "review-threads.graphql",
+        "variables": {
+          "owner": "cli",
+          "name": "cli",
+          "number": 14430,
+          "threadLimit": 3,
+          "threadCommentLimit": 5,
+          "commentOwner": "jlevy",
+          "commentName": "metabrowser",
+          "commentNumber": 130,
+          "issueCommentLimit": 1
+        }
+      },
+      "selection": "The selected pull request's review count, the first of three returned review threads and its first two comments, plus one top-level comment from the separate public comment fixture; later returned threads and comments were removed only to bound fixture size.",
+      "scrubbed_fields": [
+        "repository.pullRequest.reviewThreads.nodes[0].comments.nodes[*].body",
+        "repository.pullRequest.reviewThreads.nodes[0].comments.nodes[*].pullRequestReview.body",
+        "commentEvidence.pullRequest.comments.nodes[*].body"
+      ]
+    },
+    {
+      "id": "graphql.issue_comment",
+      "file": "graphql-review-thread.json",
+      "json_pointer": "/data/commentEvidence/pullRequest/comments/nodes/0",
+      "public_resource": "https://github.com/jlevy/metabrowser/pull/130#issuecomment-5686510613",
+      "request": {
+        "transport": "github_graphql",
+        "method": "POST",
+        "host": "api.github.com",
+        "path": "/graphql",
+        "document": "review-threads.graphql",
+        "variables": {
+          "owner": "cli",
+          "name": "cli",
+          "number": 14430,
+          "threadLimit": 3,
+          "threadCommentLimit": 5,
+          "commentOwner": "jlevy",
+          "commentName": "metabrowser",
+          "commentNumber": 130,
+          "issueCommentLimit": 1
+        }
+      },
+      "selection": "One top-level issue comment proving the minimized-state fields that the REST comment response does not expose.",
+      "scrubbed_fields": [
+        "body"
+      ]
+    },
+    {
+      "id": "graphql.comment_repository_identity",
+      "file": "graphql-review-thread.json",
+      "json_pointer": "/data/commentEvidence/id",
+      "public_resource": "https://github.com/jlevy/metabrowser",
+      "request": {
+        "transport": "github_graphql",
+        "method": "POST",
+        "host": "api.github.com",
+        "path": "/graphql",
+        "document": "review-threads.graphql",
+        "variables": {
+          "owner": "cli",
+          "name": "cli",
+          "number": 14430,
+          "threadLimit": 3,
+          "threadCommentLimit": 5,
+          "commentOwner": "jlevy",
+          "commentName": "metabrowser",
+          "commentNumber": 130,
+          "issueCommentLimit": 1
+        }
+      },
+      "selection": "The stable repository node ID for the separately captured top-level comment."
+    },
+    {
+      "id": "rest.check_suites",
+      "file": "rest-core.json",
+      "json_pointer": "/responses/check_suites",
+      "public_resource": "https://github.com/cli/cli/commit/63db15cae4f7a344e203afa30b2df5ab2d98956d",
+      "request": {
+        "transport": "github_rest",
+        "method": "GET",
+        "host": "api.github.com",
+        "path": "/repos/cli/cli/commits/63db15cae4f7a344e203afa30b2df5ab2d98956d/check-suites?per_page=5",
+        "accept": "application/vnd.github+json",
+        "api_version": "2022-11-28"
+      },
+      "selection": "One completed suite whose stable ID is the selected run's parent."
+    },
+    {
+      "id": "rest.check_runs",
+      "file": "rest-core.json",
+      "json_pointer": "/responses/check_runs",
+      "public_resource": "https://github.com/cli/cli/commit/63db15cae4f7a344e203afa30b2df5ab2d98956d",
+      "request": {
+        "transport": "github_rest",
+        "method": "GET",
+        "host": "api.github.com",
+        "path": "/repos/cli/cli/commits/63db15cae4f7a344e203afa30b2df5ab2d98956d/check-runs?per_page=5",
+        "accept": "application/vnd.github+json",
+        "api_version": "2022-11-28"
+      },
+      "selection": "One completed check run with its parent suite, revision, lifecycle, and human URL."
+    },
+    {
+      "id": "rest.commit_status",
+      "file": "rest-core.json",
+      "json_pointer": "/responses/commit_status",
+      "public_resource": "https://github.com/pypa/pip/commit/2b28a816d043826f2ba10ff1d22ec3d94d2ed7c5",
+      "request": {
+        "transport": "github_rest",
+        "method": "GET",
+        "host": "api.github.com",
+        "path": "/repos/pypa/pip/commits/main/status",
+        "accept": "application/vnd.github+json",
+        "api_version": "2022-11-28"
+      },
+      "selection": "The combined status envelope and its first classic commit-status record."
+    },
+    {
+      "id": "graphql.schema.core_nullability",
+      "file": "schema-nullability-a.json",
+      "json_pointer": "/data",
+      "public_resource": "https://docs.github.com/graphql",
+      "request": {
+        "transport": "github_graphql",
+        "method": "POST",
+        "host": "api.github.com",
+        "path": "/graphql",
+        "document": "schema-nullability-a.graphql",
+        "variables": {
+          "pullRequestType": "PullRequest",
+          "reviewCommentType": "PullRequestReviewComment"
+        }
+      },
+      "selection": "Only PullRequest fields needed to prove nullable author/head repository and non-null head ref/OID, plus review-comment author, commit, originalCommit, review, and subject type."
+    },
+    {
+      "id": "graphql.schema.supplementary_nullability",
+      "file": "schema-nullability-b.json",
+      "json_pointer": "/data",
+      "public_resource": "https://docs.github.com/graphql",
+      "request": {
+        "transport": "github_graphql",
+        "method": "POST",
+        "host": "api.github.com",
+        "path": "/graphql",
+        "document": "schema-nullability-b.graphql",
+        "variables": {
+          "checkSuiteType": "CheckSuite",
+          "issueCommentType": "IssueComment"
+        }
+      },
+      "selection": "The complete CheckSuite field list proving no name, startedAt, or completedAt fields exist, plus issue-comment identity, prose, time, URL, author, and minimized-state fields."
+    }
+  ]
+}
