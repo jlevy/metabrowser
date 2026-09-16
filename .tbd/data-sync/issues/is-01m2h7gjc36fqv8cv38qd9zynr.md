@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m2h7gjc36fqv8cv38qd9zynr
-title: "Repository library Phase 1B-c: open any selected branch in a detached materialization"
+title: "Repository library Phase 1B-c: open any selected branch as a revision subject"
 kind: feature
 status: in_progress
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: codex@spud10
 labels:
@@ -19,7 +19,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:29:47.265Z
-updated_at: 2026-09-16T21:10:44.845Z
+updated_at: 2026-09-16T21:11:32.563Z
 started_at: 2026-09-16T21:10:44.845Z
 ---
-Integrate mb-z335 into repository URL opening. selection.py resolves slash-containing ref/path candidates locally and returns a typed missing-ref request; mb-jlon jobs.py alone performs the bounded network fetch. Pin the result to a full OID and serve the leased detached root through the existing inventory lifecycle without moving gitroot or a local branch. Cover default/non-default/slash branches, offline and unavailable refs, concurrent leases, reclamation, and cli-github-branch-open.
+Integrate the immutable Git-tree source into repository URL opening. selection.py resolves slash-containing ref/path candidates locally and returns a typed missing-ref request; mb-jlon alone performs bounded network fetch. Pin the result to a full OID and serve a leased GitRevisionSubject through the content-source lifecycle without switching or materializing a checkout. Cover default, non-default, slash branches, tags, offline/unavailable refs, two concurrent subjects, object leases, reclamation, and cli-github-branch-open.

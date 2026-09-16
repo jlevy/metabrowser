@@ -5,7 +5,7 @@ title: "Hosted review Phase 4A: direct PR document and diff route"
 kind: feature
 status: in_progress
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: codex@spud10
 labels:
@@ -23,7 +23,7 @@ parent_id: is-01m10vgwqwn8gjdv8fm183vztr
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:30:26.393Z
-updated_at: 2026-09-16T21:10:44.913Z
+updated_at: 2026-09-16T21:12:08.903Z
 started_at: 2026-09-16T21:10:44.912Z
 ---
-Add plugin-owned direct hosted-resource API routes and the canonical /hosted/<provider-kind>/<instance-key>/<repository-key>/<resource-kind>/<resource-key>[/<inner>] browser address, depending on RouterSpec mb-xzj3, AddressSpaceSpec and codec mb-6mle, and ResourceKindSpec mb-83w0. Register change-request as the first kind and render one cached ChangeRequest without an index: validate all common records, compose text-safe metadata, HTTPS-only links, untrusted Markdown, reviews/checks/freshness, and base/head comparison through Git, revision content, File Diff Format, and diff plugin. Prove direct and index acquisition converge on the same stable provider object address and cover offline, partial, unavailable refs, hostile metadata, startup/popstate/replacement/disposal, hosted-review-session, and cli-ui-hosted-review.
+Add plugin-owned direct hosted-resource routes and canonical /hosted address after router, address-space, and resource-kind foundations. Render one cached ChangeRequest without an index and compose metadata, untrusted Markdown, reviews, checks, freshness, File Diff Format, and base/head revision content. Pin one provider manifest plus repository store and exact OIDs; use GitRevisionSubjects even when the Files view is an attached dirty checkout. Prove stable address convergence, offline, partial, and unavailable states, startup, popstate, replacement, disposal, parity, and no checkout mutation.

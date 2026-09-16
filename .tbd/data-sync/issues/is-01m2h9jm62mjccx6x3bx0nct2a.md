@@ -5,7 +5,7 @@ title: "Provider store kernel: auth-scoped snapshots, leases, and bounded reclam
 kind: feature
 status: in_progress
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: codex@spud10
 labels:
@@ -19,7 +19,7 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-15T01:05:51.809Z
-updated_at: 2026-09-16T21:10:44.880Z
+updated_at: 2026-09-16T21:11:50.564Z
 started_at: 2026-09-16T21:10:44.880Z
 ---
-Implement the provider-neutral store kernel behind ProviderResourceStorePort from mb-s0gv, under src/metabrowser/provider_resources rather than a domain plugin: stable AuthorizationContextRef-scoped current pointers and validators, volatile auth observations only in Retrieval/v1, generic object/collection profile pointers, staged/committed/failed transaction state separate from collection coverage, immutable objects/manifests, current plus last-complete, reader leases, and entry-to-provider lock ordering with no network under lock. Refuse authenticated publication without a stable opaque principal ID. Retain current, last-complete, one diagnostic predecessor, and archival pins regardless of availability; sweep older unreachable objects but never the last validated reachable observation. Test two unrelated plugin contract/profile families, repeated observations, capability changes, reauthentication, fallback isolation, interruption, partial commit, concurrent refresh/read/reclaim, offline/deleted sources, and tombstone retention.
+Implement the provider-neutral store kernel behind ProviderResourceStorePort, keyed by stable RepositoryRef and then AuthorizationContextRef and logical target or query rather than a cache entry. Publish immutable objects and manifests, atomic current and last-complete pointers, explicit transaction, collection, and remote-consistency states, reader leases, diagnostic retention, and bounded reachability reclamation. Use repository-store then provider-resource lock order only when both are needed, with no network under lock. Test multiple sources sharing one repository, auth isolation, interruption, partial commit, concurrent refresh/read/reclaim, offline/deleted sources, and tombstone retention.

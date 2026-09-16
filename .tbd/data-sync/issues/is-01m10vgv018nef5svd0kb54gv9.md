@@ -5,7 +5,7 @@ title: "Repository library Phase 2: generic Git catalog, refresh, and cache mana
 kind: feature
 status: in_progress
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: codex@spud10
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-27T05:36:40.448Z
-updated_at: 2026-09-16T21:10:44.853Z
+updated_at: 2026-09-16T21:11:32.849Z
 started_at: 2026-09-16T21:10:44.853Z
 ---
-Complete the generic repository catalog, refresh, and cache-management phase after the provider-facing v0.11 subset in mb-jlon. Scan validated repository.yml and state.yml pairs into a provider-neutral catalog; add list, inspect, Git-only refresh, repair diagnostics, recoverable purge, size accounting, and measured retention policy; fetch refs without mutating active gitroot; stage promotion outside live sessions; and report progress, cancellation, and partial failure. Provider refresh remains separate.
+Complete the generic source/store catalog, refresh, and cache-management phase after the provider-facing v0.11 subset. Scan validated source aliases and repository-store state; add list, inspect, Git-only refresh, repair diagnostics, recoverable alias/store purge, size accounting, attachment visibility, and measured retention. Publish verified Metabrowser-owned refs without changing live subjects, preserve objects reachable from any alias, provider, or lease, and report progress, cancellation, coalescing, and partial failure. Provider refresh remains separate.

@@ -5,7 +5,7 @@ title: "Repository cache Phase 3 foundation: provider jobs and selected refs"
 kind: task
 status: in_progress
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: codex@spud10
 labels:
@@ -23,7 +23,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-14T23:25:54.570Z
-updated_at: 2026-09-16T21:10:44.862Z
+updated_at: 2026-09-16T21:11:33.136Z
 started_at: 2026-09-16T21:10:44.862Z
 ---
-Extract the provider-facing generic job foundation: per-entry progress, cancellation and stage outcomes; provider namespace allocation; and jobs.py-owned fetch_selected_ref/request_ref_fetch for bounded fetch/prune of one explicit ref into a Metabrowser namespace. selection.py performs no network work. Preserve pinned gitroot, stage network results with no lock held, then revalidate under the documented entry lock order; expose logical state through registered routes. Keep provider schemas, gh, auth, refresh policy, catalog, chooser, purge, and eviction out of core.
+Extract provider-facing generic jobs over shared repository stores: per-store progress, coalescing, cancellation and stage outcomes; jobs.py-owned fetch_selected_ref and request_ref_fetch for bounded fetch of explicit refs into a Metabrowser namespace; and full-OID verification before ref publication. selection.py performs no network work. Hold no lock during network; publish under repository-store locking; never mutate an attached checkout, create a worktree, or expose store paths. Keep provider schemas, gh, auth, catalog, chooser, and eviction out of core.

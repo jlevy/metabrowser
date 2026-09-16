@@ -5,7 +5,7 @@ title: "GitHub Phase 3A: provider binding and repository summary snapshot"
 kind: task
 status: in_progress
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: codex@spud10
 labels:
@@ -21,7 +21,7 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:29:47.247Z
-updated_at: 2026-09-16T21:10:44.888Z
+updated_at: 2026-09-16T21:11:50.868Z
 started_at: 2026-09-16T21:10:44.888Z
 ---
-Bind one generic cache entry to a stable GitHub repository ID under a stable AuthorizationContextRef without changing generic source identity. Discover GitHub through mb-ji83 and publish HostedRepository/v1, Retrieval/v1, and a committed sync manifest through the mb-i3xc store kernel: digest only stable auth identity, keep display login/scopes/observation time in Retrieval/v1, refuse authenticated publication without a stable opaque principal ID, and use auth-scoped current/last-complete pointers, reader leases, fixed lock order, and revalidated entry/auth context after lock-free acquisition. Keep raw responses and credentials out of durable state; expose the logical summary through plugin routes and CLI parity.
+Bind a conservative credential-free source identity to a stable GitHub RepositoryRef without requiring a managed cache entry or persisting a local path. Discover GitHub through mb-ji83 and publish HostedRepository, Retrieval, and committed repository-summary manifests through the shared provider store. Permit many source IDs to map to one repository; reject conflicting rebinds; isolate auth-scoped pointers and validators; and revalidate source, repository, and auth identity after lock-free acquisition. Expose summary routes and CLI parity without raw responses or credentials.

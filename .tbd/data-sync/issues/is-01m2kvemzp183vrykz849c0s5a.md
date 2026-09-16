@@ -5,7 +5,7 @@ title: "Provider resources: neutral artifact publication and cache port"
 kind: feature
 status: in_progress
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: codex@spud10
 labels:
@@ -22,7 +22,7 @@ parent_id: is-01m10xd666fefs5z7ft5m58zj0
 hold: null
 hold_until: null
 created_at: 2026-09-16T00:56:44.789Z
-updated_at: 2026-09-16T21:10:44.871Z
+updated_at: 2026-09-16T21:11:50.286Z
 started_at: 2026-09-16T21:10:44.871Z
 ---
-Before provider schemas and storage implementation become durable, extract provider-content-neutral identity and publication ownership from builtin_plugins/hosted_review into src/metabrowser/provider_resources/. Move provider kind/instance scalars, ProviderObjectRef, RepositoryRef, AuthorizationContextRef, generic object/collection targets, ProviderBinding, Retrieval, ResourceSet, manifests, pointers, tombstones, profile types, the shared minimal HostedRepository/v1 contract, and its repository-summary profile without compatibility aliases because they are unreleased. Define ProviderResourceStorePort in plugin_api with stage_snapshot, publish_manifest, read_current, read_last_complete, lease_snapshot, and reclaim methods; inject it through trusted lifecycle registration. Keep ChangeRequest, Release, their companions, routes, and views in their domain plugins. Prove an unrelated external-system plugin can register a contract/profile and publish/read a resource without importing hosted_review. mb-i3xc implements the filesystem store kernel behind the port.
+Before provider storage becomes durable, move content-neutral provider identity and publication ownership from hosted_review into provider_resources. Incorporate the reviewed Phase 0D source-based ProviderBinding and separate local Git object availability. Define ProviderResourceStorePort with repository-scoped stage, publish, current/last-complete, lease, and reclaim methods; inject it through trusted lifecycle registration without exposing paths. Keep domain records and views in domain plugins. Prove unrelated plugin families and multiple source attachments reuse one stable provider repository.
