@@ -3,10 +3,11 @@ type: is
 id: is-01kzsb4jnyd56wy89xmztkmz2m
 title: "Repository library Phase 1B-a: hardened generic Git acquisition (no serving)"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
+delegate: codex@spud10
 labels:
   - release:v0.11.0
 dependencies:
@@ -23,8 +24,11 @@ dependencies:
   - type: blocks
     target: is-01m2kwk6h6pzxanejy6c339r08
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
+hold: null
+hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-16T01:16:42.405Z
+updated_at: 2026-09-16T21:10:44.811Z
+started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
     id: 0ffb0ef8-e09f-4e96-8736-01e0592ab450

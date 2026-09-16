@@ -3,10 +3,11 @@ type: is
 id: is-01kzs5m38dz1egphfwf30c8h7n
 title: Repository library and hosted-review roadmap
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 45
+version: 51
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
+delegate: codex@spud10
 labels: []
 dependencies:
   - type: blocks
@@ -47,11 +48,18 @@ child_order_hints:
   - is-01m2kw2bht6rte4gtjdq39n1yt
   - is-01m2k713pxra1ns2fk3pcwrpb6
   - is-01m2kwk6h6pzxanejy6c339r08
+  - is-01m2nz79vrjb2vpp5ydxra84e5
+  - is-01m2nz8q666pwqcbxbn7d5jr6x
+  - is-01m2nz9gwd4wyxmrpx49cp9yck
+  - is-01m2nzb0geg0hkaapyvj0hdb49
+hold: null
+hold_until: null
 created_at: 2026-08-11T19:43:35.692Z
-updated_at: 2026-09-16T01:16:42.405Z
+updated_at: 2026-09-16T21:10:44.766Z
+started_at: 2026-09-16T21:10:44.764Z
 extensions:
   linear:
     id: 06ad4ed9-e57c-43ff-a0bd-72bc542de8f5
     linked_at: 2026-08-16T08:05:43.412Z
 ---
-Deliver the repository-library and hosted-resource roadmap with a GitHub-first v0.11 vertical slice: freeze the v0.10 contracts; add the versioned application home and generic Git cache; open and reuse any authorized GitHub repository and exposed branch through detached materializations under the untrusted profile; define transparent SoftSchema artifact contracts plus trusted resource-profile/resource-kind registries; implement a bounded gh api adapter and auth states; cache directly addressed PR bundles before the bounded PR index; and render plugin-owned PR documents, diffs, revision content, and a virtual Pull Requests collection. Hosted releases are the next separately phased proof of the generic architecture under mb-7srn. Full cache management, the chooser, GitHub issues, GitLab adapters, stacked changes, and measured very-large-repository support remain tracked later.
+Deliver the GitHub-first v0.11 vertical slice on three independent layers: session RepositorySubjects, one shared worktree-free Git object store, and one stable-repository/auth-scoped provider mirror. Open managed URLs and attached user checkouts; serve branches and PR content by full OID without checkouts, indexes, or detached worktrees; define transparent SoftSchema records and trusted plugin registries; use bounded gh api acquisition; cache direct PR bundles before the bounded index; and render shared PR, diff, revision, release, and virtual-navigation views. Local checkouts are never cache authority or mutation targets. Later work retains chooser, issues, GitLab, stacks, and measured large-repository support.
