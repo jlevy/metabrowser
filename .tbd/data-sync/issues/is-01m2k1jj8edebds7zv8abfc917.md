@@ -3,14 +3,15 @@ type: is
 id: is-01m2k1jj8edebds7zv8abfc917
 title: "Hosted review Phase 0B.1: complete provider storage and repository records"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 14
+version: 16
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 labels:
   - release:v0.11.0
   - stack:pr125
   - stack:pr130
+  - stack:pr132
 dependencies:
   - type: blocks
     target: is-01m2k1jkq9cvxx9db7a0z14b0z
@@ -26,10 +27,14 @@ child_order_hints:
   - is-01m2kb5g8pf551djgfmf9kcm87
   - is-01m2kb6031dk9t2pzt5d35fvyd
 created_at: 2026-09-15T17:24:30.089Z
-updated_at: 2026-09-16T00:41:51.693Z
+updated_at: 2026-09-16T01:39:27.874Z
+closed_at: 2026-09-16T01:39:27.873Z
+close_reason: "Provider-neutral Phase 0B.1 contracts, corpora, architecture, and phased implementation map are complete and published in clean, green draft PR #132."
+resolution: null
+duplicate_of: null
 ---
 Complete the provider-neutral, no-network storage/repository/index record family through nine reviewable child beads: freeze namespace and publication semantics; keep Python/JavaScript provider namespace scalars aligned; add AuthorizationContextRef and Retrieval; add ResourceSet, ProviderSyncManifest, and Tombstone; add auth-independent ProviderBinding and HostedRepository identity; add query-keyed ChangeRequestIndex; generalize provider-object/provider-collection targets, collection pages, and trusted resource profiles; package portable corpora; then run independent reviews, full verification, and publish the formal stack. No provider acquisition, filesystem store, route, view, manifest registration, or new dependency. Phase 0C owns compiled SoftSchema, installed contract/profile registries, and full browser parsers for the new records.
 
 ## Notes
 
-Phase 0B.1 is one formal stacked pull request based on PR #130. Its child beads are implementation subtasks, not separate pull requests. Contract freeze, Python and JavaScript provider namespace parity, authorization/retrieval, publication and tombstone records, repository identity/binding, query-keyed indexes, portable corpus, independent review, make verify, gh publication, and final CI all land together. Phase 0A landing remains separately tracked by mb-n2ro and does not block construction of this stack layer.
+Phase 0B.1 is complete in draft PR #132 (https://github.com/jlevy/metabrowser/pull/132), exact base 0e8819c6ebc56739f1d3609064b8aaa86ea2d9ea and head e9dc37fcc7d19017fcb7094cc9aba5f760db2390. All implementation children and publication review are closed; three delegated Fable review tracks report no remaining findings; make verify and all seven GitHub checks passed. Landing remains under mb-n2ro and requires explicit approval.
