@@ -111,11 +111,14 @@ These formats are tool-neutral: nothing in a document references Metabrowser.
 | --- | --- | --- | --- |
 | [File Diff Format v1](file-diff-format/file-diff-format.md) | A change set between two snapshots | `data/file-diff-format/file-diff.schema.json` | `metabrowser.diff.format` (Pydantic), `builtin_plugins/diff/diff-model.js` |
 | [File Rollup Format](file-rollup-format/file-rollup-format.md) | File classification and directory totals | `data/file-rollup-format/` | Python inventory, browser rollup projection |
-| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Installed enforced SoftSchema contracts and resource profiles; Pydantic record validators; packaged conformance corpora; mechanically closed scrubbed GitHub coverage oracle with exact reduced-response shapes, field/value evidence, and executable identity recipes | Python registry, validators, and codecs plus registry-driven browser parsers for every browser-consumed contract; the generic installed inventory/evidence gate is Phase 0C.2, while plugin registration and the GitHub adapter remain planned |
+| [Hosted Review Format](arch-hosted-review-model.md) (in progress) | Provider-neutral repositories, change requests, reviews, threads, checks, status, freshness, and activity projections | Installed enforced SoftSchema contracts and resource profiles; Pydantic record validators; packaged conformance corpora; mechanically closed scrubbed GitHub coverage oracle with exact reduced-response shapes, field/value evidence, and executable identity recipes | Python registry, validators, and codecs plus registry-driven browser parsers for every browser-consumed contract; the generic installed inventory/evidence and isolated-wheel gates are implemented, while browser plugin registration and the GitHub adapter remain planned |
 
 The registry and composition rules that let later release, issue, or other external
 contracts reuse these layers are specified in
 [External Resources, Artifact Contracts, and Views](arch-external-resources-and-views.md).
+Its installed contract and profile tables are maintained by
+`devtools/check_artifact_contracts.py`; this map does not register a route, resource
+kind, or view for format-only capability declarations.
 A planned resource kind is added to the table above only when its model, route, views,
 CLI parity, and functional evidence land together.
 
@@ -189,7 +192,7 @@ plugin discovery or static asset loading.
 | `AddressSpaceSpec` / `registerAddressSpace` | Browser prefix, parse, format, apply, preview claim, startup, popstate, root replacement, disposal | Exactly one owner per address; browser and `metab --show` share the registration | `mb-6mle` |
 | `ProviderUrlReducerSpec` | Declared schemes/hosts and `NotApplicable`/`Reduced`/terminal `Rejected` reducer | Overlapping claims fail discovery; claimed rejection never falls through | `mb-12cz` |
 | `ProviderAdapterSpec` | Provider/instance capability and trusted adapter factory | Duplicate claims fail; lifespan injects neutral ports and awaits cancellation/close | `mb-ji83` |
-| `ArtifactContractSpec` / `ResourceProfileSpec` via `metabrowser.capabilities.v1` | Packaged schema, parser, corpus, producer/consumer inventory, and publication bundle shape | Only installed Python distributions contribute; duplicate IDs, malformed declaration structure, invalid schemas, and broken profile references fail as one registry; artifact content cannot register either. Built-in evidence resolves in Phase 0C.1 tests, and the generic installed inventory/evidence gate follows in Phase 0C.2 | `mb-52iz`, `mb-vors` |
+| `ArtifactContractSpec` / `ResourceProfileSpec` via `metabrowser.capabilities.v1` | Packaged schema, parser, corpus, producer/consumer inventory, and publication bundle shape | Only installed Python distributions contribute; duplicate IDs, malformed declaration structure, invalid schemas, broken profile references, missing evidence, and architecture-table drift fail the build. Artifact content cannot register declarations. The installed capability, generic inventory, and isolated-wheel gates are implemented without registering a browser plugin or static asset | `mb-52iz`, `mb-vors` |
 | `ResourceKindSpec` | Route-backed semantic kind, item/container capabilities, primary contract, and views | Duplicate kind or view claims fail; route, browser, and CLI resolve the same selection | `mb-83w0` before `mb-81p5` |
 | `registerNavPanel` | Repository-scoped bounded virtual collection | Generation-checked loading, restoration, root replacement, and disposal | `mb-uh6p` |
 

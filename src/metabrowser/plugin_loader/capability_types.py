@@ -64,6 +64,7 @@ class ArtifactContractSpec:
     consumer_ids: tuple[str, ...]
     corpus: ConformanceCorpusSpec
     corpus_record_selectors: tuple[str, ...]
+    browser_consumed: bool
     browser_parser: BrowserParserSpec | None
 
 

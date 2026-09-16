@@ -301,6 +301,7 @@ def _validate_contract_spec(spec: ArtifactContractSpec) -> dict[str, Any]:
     validate_record = _runtime_descriptor_value(spec.validate_record)
     dump_record = _runtime_descriptor_value(spec.dump_record)
     corpus = _runtime_descriptor_value(spec.corpus)
+    browser_consumed = _runtime_descriptor_value(spec.browser_consumed)
     browser_parser = _runtime_descriptor_value(spec.browser_parser)
     if not isinstance(contract_id, str) or _CONTRACT_ID_RE.fullmatch(contract_id) is None:
         raise CapabilityRegistryError("artifact contract ID must be namespaced and versioned")
@@ -342,6 +343,18 @@ def _validate_contract_spec(spec: ArtifactContractSpec) -> dict[str, Any]:
         field_name="corpus_record_selectors",
         allow_empty=True,
     )
+    if type(browser_consumed) is not bool:
+        raise CapabilityRegistryError(
+            f"artifact contract {spec.contract_id!r} browser_consumed must be a boolean"
+        )
+    if browser_consumed and browser_parser is None:
+        raise CapabilityRegistryError(
+            f"browser-consumed artifact contract {spec.contract_id!r} requires browser parser evidence"
+        )
+    if not browser_consumed and browser_parser is not None:
+        raise CapabilityRegistryError(
+            f"server-only artifact contract {spec.contract_id!r} cannot declare browser parser evidence"
+        )
     if browser_parser is not None:
         if not isinstance(browser_parser, BrowserParserSpec):
             raise CapabilityRegistryError(
@@ -586,7 +599,8 @@ def validate_record(
     return installed.spec.validate_record(values, installed.validation_context)
 
 
-def _same_portable_value(original: object, decoded: object) -> bool:
+def portable_serialization_values_equal(original: object, decoded: object) -> bool:
+    """Compare serialized portable values without cross-type numeric coercion."""
     if type(original) is not type(decoded):
         return False
     if type(original) is dict:
@@ -596,7 +610,8 @@ def _same_portable_value(original: object, decoded: object) -> bool:
             len(original_mapping) == len(decoded_mapping)
             and all(type(key) is str for key in original_mapping)
             and all(
-                key in decoded_mapping and _same_portable_value(value, decoded_mapping[key])
+                key in decoded_mapping
+                and portable_serialization_values_equal(value, decoded_mapping[key])
                 for key, value in original_mapping.items()
             )
         )
@@ -604,7 +619,7 @@ def _same_portable_value(original: object, decoded: object) -> bool:
         original_list = cast(list[object], original)
         decoded_list = cast(list[object], decoded)
         return len(original_list) == len(decoded_list) and all(
-            _same_portable_value(left, right)
+            portable_serialization_values_equal(left, right)
             for left, right in zip(original_list, decoded_list, strict=True)
         )
     return type(original) in {str, int, float, bool, type(None)} and original == decoded
@@ -645,7 +660,7 @@ def serialize_artifact(
         decoded_metadata = parse_yaml_text(yaml_text)
     except ValueError as exc:
         raise ValueError("artifact contract dumper produced non-portable YAML values") from exc
-    if not _same_portable_value(metadata, decoded_metadata):
+    if not portable_serialization_values_equal(metadata, decoded_metadata):
         raise ValueError("artifact contract dumper produced non-portable YAML values")
     if spec.artifact_profile == "frontmatter-md":
         return f"{FmStyle.yaml.start}\n{yaml_text}{FmStyle.yaml.end}\n{body_object}".encode()
@@ -672,6 +687,7 @@ def contract_inventory(contracts: ContractRegistry) -> tuple[dict[str, object], 
                 "corpus_media_type": spec.corpus.media_type,
                 "corpus_payload_sha256": spec.corpus.payload_sha256,
                 "corpus_record_selectors": spec.corpus_record_selectors,
+                "browser_consumed": spec.browser_consumed,
                 "browser_parser_id": (
                     spec.browser_parser.parser_id if spec.browser_parser is not None else None
                 ),
@@ -702,6 +718,7 @@ __all__ = [
     "build_resource_profile_registry",
     "contract_inventory",
     "get_installed_registries",
+    "portable_serialization_values_equal",
     "resolve_resource_profile",
     "serialize_artifact",
     "validate_artifact",

@@ -108,6 +108,7 @@ def test_installed_capability_declaration_types_are_public() -> None:
     assert ResourceCollectionSpec.__module__ == "metabrowser.provider_resources.profiles"
     assert ResourceProfileSpec.__module__ == "metabrowser.provider_resources.profiles"
     assert ResourceTargetClass.__module__ == "metabrowser.provider_resources.profiles"
+    assert "browser_consumed" in ArtifactContractSpec.__dataclass_fields__
 
 
 def test_public_import_does_not_load_capability_registry_dependencies() -> None:

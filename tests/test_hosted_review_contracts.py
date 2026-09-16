@@ -235,6 +235,7 @@ def test_contracts_bind_models_enforced_profiles_envelopes_and_packaged_schemas(
         browser_parser_id = (
             contract.browser_parser.parser_id if contract.browser_parser is not None else None
         )
+        assert contract.browser_consumed is (browser_parser_id is not None)
         assert browser_parser_id == EXPECTED_BROWSER_PARSER_IDS.get(contract.contract_id)
         if contract.browser_parser is not None:
             assert contract.browser_parser.module_bytes

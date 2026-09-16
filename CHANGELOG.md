@@ -17,6 +17,18 @@ Plugin contracts:
   registry; artifact metadata cannot select a schema, profile, parser, renderer, or
   Python import path.
 
+- The generic artifact-format gate now derives every contract and resource profile from
+  the installed capability registry.
+  It checks schema and semantic validation, producer/consumer ownership, packaged
+  corpora, browser-parser evidence where declared, profile closure, and the maintained
+  architecture inventory.
+  Browser consumption is explicit rather than inferred from consumer names;
+  browser-consumed contracts require an import-free parser that runs over VM-realm
+  inputs with context-native browser primitives and no Node-only globals, host-realm
+  values, or dynamic code generation; server-only contracts cannot attach browser-parser
+  evidence. Distribution verification repeats the same inventory from isolated wheel and
+  source distribution installs instead of maintaining a separate built-in schema list.
+
 ## 0.10.0
 
 Plugin SDK:

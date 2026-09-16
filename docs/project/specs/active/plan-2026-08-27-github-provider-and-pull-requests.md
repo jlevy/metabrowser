@@ -4,9 +4,9 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Phase 0B.3 is the green exact stacked base at
-`18ef513adc9782554d456b3ef0fbc7d02e0d975f`; Phase 0C.1 is the current implementation
-layer for installed SoftSchema contracts and resource profiles
+**Status:** Phase 0C.1 is the green exact stacked base at
+`614fef15793ff7cffd0c4e85a577342472fd9686`; Phase 0C.2 is the current implementation
+layer for the generic installed format inventory, distribution, and architecture gates
 
 ## Vision
 
@@ -700,9 +700,10 @@ or another domain plugin consumes them.
 | File | Existing seam | Planned change |
 | --- | --- | --- |
 | `src/metabrowser/plugin_loader/manifest.py` | `PluginManifest`, `DataHookSpec`, file `KindRule` and `ViewSpec` | Keep the browser and file-kind manifest unchanged in Phase 0C.1; later add `ResourceKindSpec`, `RouterSpec`, `AddressSpaceSpec`, `ProviderUrlReducerSpec`, and `ProviderAdapterSpec` only when their browser, route, or lifecycle surfaces ship |
-| `src/metabrowser/plugin_loader/capability_types.py` (new) | `ArtifactContractSpec`, `ConformanceCorpusSpec`, `BrowserParserSpec`, `ArtifactValidationContext`, `CapabilitySet` | Define the dependency-light public declaration surface, including immutable packaged corpus and self-contained browser-parser evidence, without loading schema parsers, validators, or discovery during an ordinary `import metabrowser` |
-| `src/metabrowser/plugin_loader/capability_discovery.py` (new) | `discover_capability_sets` | Load versioned `metabrowser.capabilities.v1` entry points only from installed distributions; reject duplicate providers and any partial discovery result; never load backend capabilities from operator directories or viewed data |
-| `src/metabrowser/plugin_loader/artifact_contracts.py` (new) | `build_contract_registry`, `build_resource_profile_registry`, `validate_record`, `validate_artifact`, `serialize_artifact`, `contract_inventory` | Install trusted contract and publication-profile objects returned by capability factories; verify exact schema, corpus, and browser-module bytes separately from the independently recomputed logical schema identity; artifacts may name but never supply a schema, profile, parser, renderer, or Python import path |
+| `src/metabrowser/plugin_loader/capability_types.py` | `ArtifactContractSpec`, `ConformanceCorpusSpec`, `BrowserParserSpec`, `ArtifactValidationContext`, `CapabilitySet` | Define the dependency-light public declaration surface, including explicit browser consumption, immutable packaged corpus, and self-contained browser-parser evidence, without loading schema parsers, validators, or discovery during an ordinary `import metabrowser` |
+| `src/metabrowser/plugin_loader/capability_discovery.py` | `discover_capability_sets` | Load versioned `metabrowser.capabilities.v1` entry points only from installed distributions; reject duplicate providers and any partial discovery result; never load backend capabilities from operator directories or viewed data |
+| `src/metabrowser/plugin_loader/artifact_contracts.py` | `build_contract_registry`, `build_resource_profile_registry`, `validate_record`, `validate_artifact`, `serialize_artifact`, `contract_inventory` | Install trusted contract and publication-profile objects returned by capability factories; verify exact schema, corpus, and browser-module bytes separately from the independently recomputed logical schema identity; artifacts may name but never supply a schema, profile, parser, renderer, or Python import path |
+| `src/metabrowser/plugin_loader/artifact_inventory.py` | `installed_artifact_inventory`, `check_installed_evidence`, `validate_installed_evidence` | Derive one generic inventory from installed contract/profile declarations; require positive and negative selected cases; and verify structural, semantic, deterministic serialization, and declared artifact-profile round-trip evidence without a built-in contract-name list |
 | `src/metabrowser/plugin_loader/static_assets.py` | `_resolve_sidekick`, `build_plugin_routes` | Build one Starlette `Mount` per installed router and preserve its methods, streaming, headers, and status codes; keep exact data hooks for simple GET/POST models |
 | `src/metabrowser/plugin_loader/provider_urls.py` (new) | — | Load trusted installed reducers; arbitrate `NotApplicable`, `Reduced`, and terminal `Rejected` outcomes; refuse duplicate scheme/host claims; and dispatch without importing a provider in cache or CLI code |
 | `src/metabrowser/plugin_loader/provider_capabilities.py` (new) | `build_provider_registry`, `create_provider`, `close_provider`, `close_all` | Build the provider/instance capability registry, inject provider-neutral ports, reject duplicate claims, and await adapter cancellation and close |
@@ -795,7 +796,7 @@ and `gh` authentication.
 | Plugin routing and registries | `tests/test_plugin_manifest.py`, `tests/test_plugin_routes.py`, `tests/test_plugin_address_spaces.py`, `tests/test_provider_capabilities.py`, `tests/test_hosted_review_routes.py` |
 | View and nav lifecycle | `tests/dom/hosted-review-session.js` runs exact production address, document, panel-window, selection, restoration, root-replacement, and disposal owners; focused component cases stay in `hosted-review-view.js` and `hosted-review-panel.js` |
 | CLI goldens | `tests/golden/cli-github-repository.tryscript.md`, `cli-github-pr-open.tryscript.md`, `cli-github-pr-index.tryscript.md`, `cli-github-pr-offline.tryscript.md`, `cli-ui-hosted-review.tryscript.md` |
-| Registered surfaces | `devtools/check_parity.py`, `docs/project/architecture/arch-views-models-routes.md`, `tests/test_views_models_routes.py`, `tests/test_distribution_policy.py` |
+| Registered formats and surfaces | `devtools/check_artifact_contracts.py`, `devtools/check_parity.py`, `docs/project/architecture/arch-external-resources-and-views.md`, `docs/project/architecture/arch-views-models-routes.md`, `tests/test_artifact_inventory.py`, `tests/test_check_artifact_contracts.py`, `tests/test_views_models_routes.py`, `tests/test_distribution_policy.py` |
 
 No test contacts GitHub or a real credential store.
 Recorded responses are scrubbed inputs to mapping and coverage tests; fake executable
@@ -838,6 +839,18 @@ dependency behavior; it is a dormant semantic and artifact-codec kernel.
 | 0B.3 GitHub oracle | `mb-rla6` coordinates `mb-oc1h` and `mb-e95m` | `tests/fixtures/github/oracle/`, `test_github_coverage.py`, mapping matrix, review, and formal PR publication | Every common field is observed, derived, or explicitly unavailable; inputs are scrubbed and public-safe; CI is green |
 | 0C.1 SoftSchema contracts | `mb-lqae` coordinates `mb-52iz` and `mb-vepa` | Plugin-local `contracts.py`, versioned installed-Python capability discovery, artifact-contract and resource-profile registries, deterministic packaged schemas, explicit built-in schema inclusion and isolated-wheel smoke in `check_distribution.py`, exact first-party dependency selection owned by `mb-4gnu`, review, and formal PR publication | Enforced contract/profile registry and Python/browser/schema/corpus agreement with green CI; named built-in schemas survive wheel installation; no manifest, route, kind, view, or static asset is registered |
 | 0C.2 format gate | `mb-dhz8` coordinates `mb-vors` and `mb-ci0t` | Generic contract/profile inventory, inventory-driven distribution and installed-evidence gates, architecture registration, parity evidence, review, and formal PR publication | Every shipped contract/profile has its schema, semantics, producer, consumer, fixture, installed-artifact check, and green CI without a hard-coded built-in list |
+
+Phase 0C.2 adds no cache, provider, network, route, kind, view, manifest, or
+static-asset surface.
+Its maintained implementation coordinates are:
+
+| File | Functions or evidence | Phase 0C.2 responsibility |
+| --- | --- | --- |
+| `plugin_loader/artifact_inventory.py` | `installed_artifact_inventory`, `check_installed_evidence`, `validate_installed_evidence` | Project deterministic contract/profile metadata; require positive and negative selected cases; and run each valid case through structural, semantic, deterministic serialization, and artifact-profile round-trip checks |
+| `devtools/check_artifact_contracts.py` | `check`, `main` | Compare every installed declaration and exact profile semantics with the architecture inventory; reject missing, orphaned, duplicated, or inexact rows; and execute browser-consumed parser bytes against VM-realm inputs with only context-native `TextEncoder`, one-shot UTF-8 `TextDecoder`, `atob`, and `btoa`, imports and dynamic code disabled, and type-sensitive JSON-domain preservation checks |
+| `devtools/check_distribution.py` | isolated source-distribution and wheel inventory checks | Reconcile provider entry points with project metadata, then derive packaged schemas, corpora, parser modules, and contract/profile counts from each installed artifact rather than a built-in filename list |
+| `arch-external-resources-and-views.md` | installed contract and profile tables | Register the exact current format surface while labeling browser parser modules as evidence rather than runtime plugin bindings |
+| `tests/test_artifact_inventory.py`, `tests/test_check_artifact_contracts.py`, `tests/test_distribution_policy.py` | focused corpus, architecture-drift, and distribution regressions | Pin the generic gate and prevent a source-tree-only declaration from passing installed-artifact verification |
 
 Phase 0B.3 is a no-network evidence and reconciliation slice.
 The oracle may require the smallest correction to an existing common model when exact
@@ -908,9 +921,13 @@ or publication bead merges another phase.
 - [x] Capture the scrubbed response oracle and require every modeled field to be
   observed, deterministically derived, Metabrowser-owned, or explicitly
   optional/unavailable.
-- [ ] Register the proposed format and plugin surfaces in the architecture map and add
-  an inventory check that fails when a contract lacks a producer, consumer, schema, or
-  fixture.
+- [x] Register the installed contract and resource-profile formats in the architecture
+  map and add a generic inventory check that fails when a declaration lacks its schema,
+  semantics, producer, consumer, positive/negative corpus evidence, deterministic
+  artifact-profile round trip, browser-parser evidence when browser-consumed, profile
+  closure, installed-artifact proof, or exact architecture row.
+  Keep proposed routes, resource kinds, views, cache paths, and provider adapters
+  unregistered until their implementation phases.
 
 ### Phase 1: Robust generic repository cache (`mb-ire2` through `mb-dg00`)
 
@@ -1176,6 +1193,8 @@ discovery UI increases acquisition and browser scope.
   resource-profile, resource-kind, and view declarations fail; cached data cannot
   provide a declaration; a synthetic release-index profile validates and closes over
   generic retrieval evidence without adding a storage target variant.
+  The generic format inventory checks every installed contract and profile against its
+  packaged evidence and maintained architecture row without a built-in ID allowlist.
 - **Frontmatter artifacts:** complete PR descriptions, top-level comments, and review
   comments round-trip as Markdown bodies; structured consumers read only YAML; hostile
   fences and Markdown remain bounded and untrusted; and snapshot identity changes when
@@ -1213,8 +1232,10 @@ discovery UI increases acquisition and browser scope.
   reduction, address lifecycle, direct-view lifecycle, panel window/selection/
   restoration, root replacement, and disposal each receive an architecture-map row and
   the exact `tests/dom/hosted-review-session.js` production-path golden.
-- **Distribution:** the installed wheel contains every registered model, compiled
-  schema, plugin asset, and format inventory.
+- **Distribution:** the installed wheel and source distribution contain every registered
+  model, compiled schema, plugin asset, and format inventory.
+  Both isolated-install smokes derive this set from installed capabilities rather than a
+  second hard-coded contract list.
   `make verify` remains the handoff gate.
 
 ## Rollout and Compatibility

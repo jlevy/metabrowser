@@ -112,6 +112,7 @@ def _contract(contract_id: str = _CONTRACT_ID) -> ArtifactContractSpec:
             payload_sha256=_schema_bytes_digest(corpus_payload),
         ),
         corpus_record_selectors=("fixture-record",),
+        browser_consumed=False,
         browser_parser=None,
     )
 
@@ -307,6 +308,47 @@ def test_registry_verifies_resolvable_corpus_and_browser_parser_evidence() -> No
         module_bytes_sha256=_schema_bytes_digest(module_bytes),
         export_name="parseItem",
     )
+    with pytest.raises(CapabilityRegistryError, match="browser-consumed"):
+        build_contract_registry(
+            (
+                _provider(
+                    "fixture",
+                    contracts=(replace(contract, browser_consumed=True),),
+                ),
+            )
+        )
+    with pytest.raises(CapabilityRegistryError, match="browser_consumed must be a boolean"):
+        build_contract_registry(
+            (
+                _provider(
+                    "fixture",
+                    contracts=(replace(contract, browser_consumed=cast(Any, None)),),
+                ),
+            )
+        )
+    with pytest.raises(CapabilityRegistryError, match="server-only"):
+        build_contract_registry(
+            (
+                _provider(
+                    "fixture",
+                    contracts=(replace(contract, browser_parser=parser),),
+                ),
+            )
+        )
+    build_contract_registry(
+        (
+            _provider(
+                "fixture",
+                contracts=(
+                    replace(
+                        contract,
+                        browser_consumed=True,
+                        browser_parser=parser,
+                    ),
+                ),
+            ),
+        )
+    )
     for malformed_parser in (
         replace(parser, module_id=cast(Any, None)),
         replace(parser, export_name=cast(Any, None)),
@@ -317,7 +359,13 @@ def test_registry_verifies_resolvable_corpus_and_browser_parser_evidence() -> No
                 (
                     _provider(
                         "fixture",
-                        contracts=(replace(contract, browser_parser=malformed_parser),),
+                        contracts=(
+                            replace(
+                                contract,
+                                browser_consumed=True,
+                                browser_parser=malformed_parser,
+                            ),
+                        ),
                     ),
                 )
             )
@@ -329,6 +377,7 @@ def test_registry_verifies_resolvable_corpus_and_browser_parser_evidence() -> No
                     contracts=(
                         replace(
                             contract,
+                            browser_consumed=True,
                             browser_parser=replace(parser, module_bytes=b"changed"),
                         ),
                     ),
@@ -700,6 +749,7 @@ def test_contract_inventory_identity_does_not_depend_on_declaring_provider() -> 
         contract.corpus.payload_sha256
     )
     assert contract_inventory(before)[0]["corpus_record_selectors"] == ("fixture-record",)
+    assert contract_inventory(before)[0]["browser_consumed"] is False
 
 
 def test_contract_registry_rejects_invalid_corpus_record_selectors() -> None:

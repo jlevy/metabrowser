@@ -118,6 +118,7 @@ class _ContractDefinition:
     corpus_id: str
     corpus_record_selectors: tuple[str, ...]
     browser_parser_id: str | None
+    browser_consumed: bool
 
     @property
     def schema_path(self) -> Path:
@@ -143,6 +144,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "repository-activity-conformance",
                 (),
                 "hosted-review-model:parseRepositoryActivity",
+                True,
             ),
             _ContractDefinition(
                 PROVIDER_BINDING_CONTRACT_ID,
@@ -155,6 +157,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "hosted-repository-conformance",
                 ("provider_binding",),
                 None,
+                False,
             ),
             _ContractDefinition(
                 HOSTED_REPOSITORY_CONTRACT_ID,
@@ -167,6 +170,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "hosted-repository-conformance",
                 ("hosted_repository",),
                 "hosted-review-model:parseHostedRepository",
+                True,
             ),
             _ContractDefinition(
                 PROVIDER_SYNC_MANIFEST_CONTRACT_ID,
@@ -179,6 +183,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "provider-storage-conformance",
                 ("provider_sync_manifest",),
                 None,
+                False,
             ),
             _ContractDefinition(
                 PROVIDER_VIEW_POINTER_CONTRACT_ID,
@@ -191,6 +196,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "provider-storage-conformance",
                 ("provider_view_pointer",),
                 None,
+                False,
             ),
             _ContractDefinition(
                 RESOURCE_SET_CONTRACT_ID,
@@ -203,6 +209,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "provider-storage-conformance",
                 ("resource_set",),
                 None,
+                False,
             ),
             _ContractDefinition(
                 RETRIEVAL_CONTRACT_ID,
@@ -215,6 +222,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "provider-storage-conformance",
                 ("retrieval", "deletion_retrieval"),
                 None,
+                False,
             ),
             _ContractDefinition(
                 TOMBSTONE_CONTRACT_ID,
@@ -227,6 +235,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "provider-storage-conformance",
                 ("tombstone",),
                 None,
+                False,
             ),
             _ContractDefinition(
                 CHANGE_REQUEST_CONTRACT_ID,
@@ -239,6 +248,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "change-request-conformance",
                 (),
                 "hosted-review-model:parseChangeRequest",
+                True,
             ),
             _ContractDefinition(
                 CHANGE_REQUEST_COMMENT_CONTRACT_ID,
@@ -251,6 +261,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "review-records-conformance",
                 ("change_request_comment",),
                 "hosted-review-model:parseChangeRequestComment",
+                True,
             ),
             _ContractDefinition(
                 CHANGE_REQUEST_INDEX_CONTRACT_ID,
@@ -263,6 +274,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "change-request-index-conformance",
                 ("change_request_index", "empty_change_request_index"),
                 "hosted-review-model:parseChangeRequestIndex",
+                True,
             ),
             _ContractDefinition(
                 CHECK_CONTRACT_ID,
@@ -275,6 +287,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "review-records-conformance",
                 ("check_suite", "check_run"),
                 "hosted-review-model:parseCheck",
+                True,
             ),
             _ContractDefinition(
                 COMMIT_STATUS_CONTRACT_ID,
@@ -287,6 +300,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "review-records-conformance",
                 ("commit_status",),
                 "hosted-review-model:parseCommitStatus",
+                True,
             ),
             _ContractDefinition(
                 REVIEW_CONTRACT_ID,
@@ -299,6 +313,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "review-records-conformance",
                 ("review",),
                 "hosted-review-model:parseReview",
+                True,
             ),
             _ContractDefinition(
                 REVIEW_COMMENT_CONTRACT_ID,
@@ -311,6 +326,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "review-records-conformance",
                 ("review_comment", "review_comment_reply"),
                 "hosted-review-model:parseReviewComment",
+                True,
             ),
             _ContractDefinition(
                 REVIEW_THREAD_CONTRACT_ID,
@@ -323,6 +339,7 @@ _CONTRACT_DEFINITIONS = tuple(
                 "review-records-conformance",
                 ("review_thread", "review_thread_empty"),
                 "hosted-review-model:parseReviewThread",
+                True,
             ),
         ),
         key=lambda definition: definition.contract_id,
@@ -450,6 +467,7 @@ def _artifact_contract(definition: _ContractDefinition) -> ArtifactContractSpec:
         consumer_ids=definition.consumer_ids,
         corpus=_corpus_spec(definition.corpus_id),
         corpus_record_selectors=definition.corpus_record_selectors,
+        browser_consumed=definition.browser_consumed,
         browser_parser=_browser_parser_spec(definition.browser_parser_id),
     )
 
@@ -458,14 +476,12 @@ HOSTED_REVIEW_CONTRACTS = tuple(
     _artifact_contract(definition) for definition in _CONTRACT_DEFINITIONS
 )
 HOSTED_REVIEW_BROWSER_CONTRACT_IDS = frozenset(
-    definition.contract_id
-    for definition in _CONTRACT_DEFINITIONS
-    if definition.browser_parser_id is not None
+    definition.contract_id for definition in _CONTRACT_DEFINITIONS if definition.browser_consumed
 )
 HOSTED_REVIEW_SERVER_ONLY_CONTRACT_IDS = frozenset(
     definition.contract_id
     for definition in _CONTRACT_DEFINITIONS
-    if definition.browser_parser_id is None
+    if not definition.browser_consumed
 )
 
 

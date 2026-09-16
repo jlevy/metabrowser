@@ -190,6 +190,14 @@ metab --plugin markdown
 metab --doctor
 ```
 
+`--doctor` validates both browser plugins and installed `metabrowser.capabilities.v1`
+providers. A successful human-readable result reports the browser-plugin,
+capability-provider, artifact-contract, and resource-profile counts.
+`--doctor --json` exposes the same result as `plugin_count`,
+`capability_provider_count`, `artifact_contract_count`, `resource_profile_count`, and
+`problems`. Any discovery or registry error makes the command nonzero; a partial
+capability registry is never reported as usable.
+
 `--check-api` answers “is navigation healthy” in one line.
 For the underlying data, `--api` is the more direct tool.
 

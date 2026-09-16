@@ -46,12 +46,14 @@ def test_every_architecture_doc_carries_the_shared_footer() -> None:
 
 
 def test_documents_that_tabulate_registered_surfaces_name_their_check() -> None:
-    """A table of what the code registers must say what keeps it honest,
-    so the next reader knows the table is enforced rather than hopeful."""
+    """A table of what the code registers must name its executable maintainer."""
     for doc in _architecture_docs():
         text = doc.read_text(encoding="utf-8")
-        if "| Route |" not in text and "| Kind |" not in text:
-            continue
-        assert "tests/test_" in text, (
-            f"{doc.name} tabulates registered surfaces but names no test that checks it"
-        )
+        if "| Route |" in text or "| Kind |" in text:
+            assert "tests/test_" in text, (
+                f"{doc.name} tabulates registered surfaces but names no test that checks it"
+            )
+        if "| Contract ID |" in text or "| Profile ID |" in text:
+            assert "devtools/check_artifact_contracts.py" in text, (
+                f"{doc.name} tabulates installed formats but names no inventory checker"
+            )
