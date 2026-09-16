@@ -5,7 +5,7 @@ title: "Shared repository/provider mirror design review: publish formal stacked 
 kind: task
 status: in_progress
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/architecture/arch-repository-sources-and-provider-mirrors.md
 delegate: codex@spud10
 labels:
@@ -21,7 +21,11 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T21:24:31.034Z
-updated_at: 2026-09-16T21:26:54.322Z
+updated_at: 2026-09-16T22:20:43.520Z
 started_at: 2026-09-16T21:24:54.275Z
 ---
 Independently review the corrected repository-subject, shared worktree-free store, provider-mirror, capability, locking, lease, and phased-delivery architecture. Resolve every finding through the review shortcut, run make verify, and publish one formal GitHub PR with gh stacked on exact green Phase 0C.2 PR #136 head. Record PR URL, base/head branches and immutable OIDs, formal stack view, review evidence, and final green CI. Do not merge; mb-n2ro alone owns explicit-approval landing and retargeting.
+
+## Notes
+
+Design implementation mb-js6t is complete. Two independent architecture reviews and two bead-graph audits were resolved to zero actionable findings. Definitive make verify passed on the final formatted diff: 2349 tests passed, 1 skipped; 124 golden scenarios passed; lint, type checks, public hygiene, parity, supply-chain audits, builds, and installed-distribution checks passed. Publication remains stacked on exact PR #136 head b907bb2734929cd0858207ba5d73639aee168636; record the formal PR URL, head OID, stack view, and final CI before closing.
