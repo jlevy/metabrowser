@@ -3,11 +3,11 @@ type: is
 id: is-01m2h7h50h2y8hhhq7x7f1zcmd
 title: "GitHub Phase 3B: directly addressed PR bundle and selected refs"
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
-delegate: null
+delegate: codex@spud10
 labels:
   - release:v0.11.0
 dependencies:
@@ -21,7 +21,7 @@ parent_id: is-01m2h3vtmk6apasv27t6ygrrxf
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:30:06.351Z
-updated_at: 2026-09-16T21:15:07.536Z
+updated_at: 2026-09-16T22:38:05.582Z
 started_at: 2026-09-16T21:10:44.896Z
 ---
 Hydrate one directly addressed PR without requiring an index or managed checkout. Publish the enforced ChangeRequest bundle and bounded comments, reviews, threads, checks, statuses, retrievals, and manifests into the shared repository/auth-scoped provider mirror. Ask mb-jlon to fetch only selected base, head, and optional merge OIDs into the shared store when content is requested, verify them against the provider observation, and keep local availability separate. Prove reuse across URL sources and attached clones, partial and not-found states, last-complete fallback, and offline inspection.
