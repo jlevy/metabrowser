@@ -10,6 +10,7 @@ against real temporary homes, with other holders and crashes in real child proce
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import signal
@@ -678,3 +679,58 @@ def test_store_only_quarantine_moves_nothing_it_need_not(
     assert outcome.state == replay.state
     assert list((home / "cache/quarantine").iterdir()) == []
     assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir() is make_store
+
+
+@pytest.mark.parametrize("operation", ["reclaim", "purge"], ids=["reclamation", "quarantine-purge"])
+def test_a_failed_trash_deletion_still_releases_its_entry_lock(
+    home: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """A leaked descriptor would make the sweep read the entry as live for this process."""
+
+    _make_store(home)
+    entry: str | None = None
+    if operation == "purge":
+        outcome = quarantine_entries(
+            home, source_slugs=[], store_keys=[STORE_KEY], revalidate=lambda: False
+        )
+        entry = outcome.entry
+        assert entry is not None
+
+    def unreadable(_path: Path) -> bool:
+        raise OSError(errno.EIO, "input/output error")
+
+    monkeypatch.setattr(reclaim_module, "_remove_tree", unreadable)
+    with pytest.raises(OSError, match="input/output error"):
+        if entry is None:
+            reclaim_store(home, STORE_KEY)
+        else:
+            purge_quarantined(home, entry)
+
+    monkeypatch.undo()
+    (left,) = list((home / "cache/trash").iterdir())
+
+    report = reclaim_trash(home)
+
+    assert report.removed == (f"cache/trash/{left.name}",)
+    assert report.live == ()
+    assert list((home / "cache/trash").iterdir()) == []
+    assert list((home / "cache/locks/trash").iterdir()) == []
+
+
+def test_an_entry_that_cannot_be_inspected_is_reported_rather_than_raised(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home, "cache/staging/dead-1")
+    real_lstat = os.lstat
+
+    def refusing_lstat(path: Any, **kwargs: Any) -> os.stat_result:
+        if str(path).endswith("cache/staging/dead-1"):
+            raise OSError(errno.EIO, "input/output error")
+        return real_lstat(path, **kwargs)
+
+    monkeypatch.setattr(reclaim_module.os, "lstat", refusing_lstat)
+
+    report = reclaim_staging(home)
+
+    assert report.failed == ("cache/staging/dead-1",)
+    assert report.removed == ()

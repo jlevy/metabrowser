@@ -110,6 +110,9 @@ def _remove_tree(path: Path) -> bool:
         status = os.lstat(path)
     except FileNotFoundError:
         return True
+    except OSError:
+        log.warning("Could not inspect a cache entry; the next sweep retries it", exc_info=True)
+        return False
     try:
         if stat.S_ISDIR(status.st_mode):
             shutil.rmtree(path, onexc=make_writable_and_retry)
@@ -373,9 +376,13 @@ def reclaim_store(
             _emit(observer, machine, "move_to_trash")
     finally:
         maintenance.release()
-    deleted = _remove_tree(home / trash.relative_path)
-    _emit(observer, machine, "delete_completed")
-    trash.lock.remove_lock_file()
+    try:
+        deleted = _remove_tree(home / trash.relative_path)
+        _emit(observer, machine, "delete_completed")
+    finally:
+        # Whatever deletion did, the trash entry's liveness lock is released, or the
+        # sweep would read the leaked descriptor as a live owner for this process's life.
+        trash.lock.remove_lock_file()
     return StoreReclamation.RECLAIMED if deleted else StoreReclamation.DELETE_FAILED
 
 
@@ -564,9 +571,11 @@ def purge_quarantined(home: Path, entry: str, *, observer: MachineObserver | Non
         os.lstat(home / relative_path)
         trash = _move_into_new_trash(home, "purge", relative_path, home_lock)
         _emit(observer, machine, "explicit_purge")
-    deleted = _remove_tree(home / trash.relative_path)
-    _emit(observer, machine, "delete_completed")
-    trash.lock.remove_lock_file()
+    try:
+        deleted = _remove_tree(home / trash.relative_path)
+        _emit(observer, machine, "delete_completed")
+    finally:
+        trash.lock.remove_lock_file()
     return deleted
 
 

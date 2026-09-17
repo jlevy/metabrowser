@@ -331,3 +331,54 @@ def test_malformed_records_are_refused(home: Path, payload: bytes) -> None:
 
     with pytest.raises(RecordError):
         read_record(home, "cache/layout.yml", CACHE_LAYOUT_CONTRACT_ID)
+
+
+def _fsync_targets(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int]]:
+    """Record the device and inode of everything ``os.fsync`` is called on."""
+
+    synced: list[tuple[int, int]] = []
+    real_fsync = os.fsync
+
+    def counting_fsync(fd: int) -> None:
+        status = os.fstat(fd)
+        synced.append((status.st_dev, status.st_ino))
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", counting_fsync)
+    return synced
+
+
+def _identity(path: Path) -> tuple[int, int]:
+    status = os.lstat(path)
+    return (status.st_dev, status.st_ino)
+
+
+def test_an_atomic_write_syncs_the_new_file_and_its_directory(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rename is durable only once the bytes and the directory entry are on disk."""
+
+    synced = _fsync_targets(monkeypatch)
+
+    write_private_file_atomic(home, "cache/example.yml", b"content\n")
+
+    assert _identity(home / "cache/example.yml") in synced
+    assert _identity(home / "cache") in synced
+
+
+def test_publication_syncs_both_directories_it_changed(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home, "cache/staging/acquire-1/store")
+    synced = _fsync_targets(monkeypatch)
+
+    with repository_store_lock(home, STORE_KEY) as owner:
+        publish_entry(
+            home,
+            "cache/staging/acquire-1/store",
+            f"cache/repository-stores/{STORE_KEY}",
+            owner=owner,
+        )
+
+    assert _identity(home / "cache/repository-stores") in synced
+    assert _identity(home / "cache/staging/acquire-1") in synced
