@@ -765,6 +765,56 @@ def test_a_route_named_in_a_command_is_evidence(
     assert check_parity.check() == []
 
 
+def test_a_route_command_may_set_its_environment_before_metab(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    """A transcript points one command at its own home without leaving metab behind."""
+
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir,
+        "environment.tryscript.md",
+        "```console\n$ METABROWSER_HOME=$PWD/home metab root --api /api/tree\n{}\n```\n",
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `environment.tryscript.md` |"),
+    )
+
+    assert check_parity.check() == []
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "METABROWSER_HOME=$PWD/home printf /api/tree",
+        "METABROWSER_HOME=$PWD/home",
+        "--api=/api/tree metab root --api /api/rollup",
+    ],
+)
+def test_an_environment_prefix_cannot_launder_another_command(
+    command: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir,
+        "environment.tryscript.md",
+        f"```console\n$ {command}\n/api/tree\n```\n",
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `environment.tryscript.md` |"),
+    )
+
+    problems = check_parity.check()
+
+    assert any("/api/tree" in problem and "never exercises it" in problem for problem in problems)
+
+
 def test_a_mode_that_resolves_a_route_internally_is_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

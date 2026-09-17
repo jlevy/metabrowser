@@ -154,6 +154,23 @@ def _command_parts(command: str) -> list[str]:
         return []
 
 
+_ENVIRONMENT_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+
+
+def _metab_parts(command: str) -> list[str]:
+    """The words of a ``metab`` command, after any leading environment assignments.
+
+    A transcript sets per-command state such as ``METABROWSER_HOME=$PWD/home`` this way,
+    because tryscript's frontmatter cannot name the sandbox path. Only assignments are
+    skipped, so another program behind them is still not ``metab``.
+    """
+
+    parts = _command_parts(command)
+    while parts and _ENVIRONMENT_ASSIGNMENT.fullmatch(parts[0]):
+        parts = parts[1:]
+    return parts if parts and parts[0] == "metab" else []
+
+
 def _route_token_matches(token: str, surface: str) -> bool:
     if token == surface:
         return True
@@ -173,8 +190,8 @@ def _option_value(parts: list[str], option: str) -> str | None:
 def _command_exercises(command: str, surface: str, cli: str) -> bool:
     """Whether one metab command reaches exactly the declared route shape."""
 
-    parts = _command_parts(command)
-    if not parts or parts[0] != "metab":
+    parts = _metab_parts(command)
+    if not parts:
         return False
     api_value = _option_value(parts, "--api")
     if "--api" in cli and api_value is not None and _route_token_matches(api_value, surface):
@@ -248,8 +265,8 @@ def golden_kinds() -> set[str]:
     kinds: set[str] = set()
     for path in sorted(GOLDEN_DIR.glob("*.tryscript.md")):
         for command in _console_commands(path.read_text(encoding="utf-8")):
-            parts = _command_parts(command.command)
-            if command.status != 0 or not parts or parts[0] != "metab" or "--show" not in parts:
+            parts = _metab_parts(command.command)
+            if command.status != 0 or not parts or "--show" not in parts:
                 continue
             for line in command.output:
                 match = re.fullmatch(r"kind: ([a-z0-9][a-z0-9-]*)", line)
