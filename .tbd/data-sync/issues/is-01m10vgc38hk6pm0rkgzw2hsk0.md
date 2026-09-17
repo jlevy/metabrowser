@@ -5,7 +5,7 @@ title: "Repository library Phase 0: measure and freeze cache contracts"
 kind: task
 status: open
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: null
 labels:
@@ -15,11 +15,13 @@ dependencies:
     target: is-01kzsb4jnyd56wy89xmztkmz2m
   - type: blocks
     target: is-01kzsb4jzq5a37evdz4bk0dqg4
+  - type: blocks
+    target: is-01m2p1ps48qjh1qt3wmk8s63ra
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-27T05:36:25.191Z
-updated_at: 2026-09-16T21:14:56.870Z
+updated_at: 2026-09-17T03:03:54.565Z
 started_at: 2026-09-16T21:10:44.778Z
 ---
 Remeasure full, blobless, and blobless-plus-backfill acquisition into a worktree-free Git database. Measure full-OID ls-tree inventory, batched cat-file blob reads, concurrent subjects, fetch coalescing, cancellation, multi-process contention, maintenance, and object retention against v0.10 history, commit detail, diff, and canonical path routes. Freeze safe URL grammar, source/store identity and aliasing, patched-Git floors, lazy-fetch behavior, and lock, publication, quarantine, trash, lease, and reclamation state machines before constants or bare-versus-no-checkout layout are chosen.
