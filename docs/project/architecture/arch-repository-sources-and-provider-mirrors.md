@@ -521,8 +521,8 @@ architecture and beads are updated before code publication.
    filesystem content adapter with no visible behavior change.
 3. Add `GitCommandTarget`, the immutable Git-tree content source, and full-OID tree/blob
    routes.
-4. Open repository URLs as immutable subjects, then add selected-branch resolution in a
-   separate phase.
+4. Publish the untrusted-content profile, then open repository URLs as immutable
+   subjects and add selected-branch resolution in a separate phase.
 5. Attach user-owned repositories to shared provider mirrors and lazily fetch selected
    refs into the shared repository store.
 6. Add direct PR cache and views, then bounded PR discovery and navigation.

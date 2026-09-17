@@ -224,11 +224,11 @@ which is `Status: Draft` with nothing implemented.
 ```text
 mb-i57d  release v0.10.0 from main
    └──► mb-xxhi  verify released main and open v0.11 implementation
-           ├──► cache format and acquisition
+           ├──► cache format, acquisition, source boundary, immutable projection (mb-z335)
            └──► mb-cun0  sandbox /raw, same-origin proof on /api
                     └──► mb-vib1  capability set and --untrusted profile
-                              └──► mb-3bna  attached-filesystem source boundary
-                                       └──► mb-z335  immutable repository projection
+                              └──► mb-d658  reviewed trust-chain PR, stacked after mb-z335
+                                       └──► mb-j439  integration base for repository URL open
                                                 └──► mb-ew38  repository URL open
                                                          └──► mb-innz  reviewed URL-open PR
                                                                   └──► mb-jlon  selected-ref jobs
@@ -244,8 +244,10 @@ implementation:
   on a security workstream in another document.
 - **After the release gate, the trust and cache lanes are independent.** `mb-cun0` and
   `mb-vib1` have no dependency on the cache or Git status beyond their own order, so
-  they can proceed in parallel with Phase 0 through 1A. Sequencing them alongside rather
-  than after keeps the serving gate off the post-release critical path.
+  they can proceed in parallel with Phase 0 through 1B-c. Sequencing them alongside
+  rather than after keeps the serving gate off the post-release critical path.
+  Because the formal stack is linear, their reviewed PR (`mb-d658`) publishes directly
+  after the immutable Git-tree source and becomes the base for repository URL opening.
 
 This plan does not absorb that work or restate its design.
 It records the dependency, names the beads, and treats “serving is gated” as a
@@ -1446,7 +1448,8 @@ vertical slice.
 | 1B-a generic Git cache | 1A | Git-status clean predicate, GitHub, chooser, serving | Any supported clone URL publishes or reuses one shared worktree-free store |
 | 1B-b source boundary (`mb-3bna`, `mb-tsdc`) | 1B-a | GitHub, provider API, immutable Git content | Filesystem serving runs through one capability-aware source session |
 | 1B-c immutable source (`mb-z335`, `mb-hoae`) | 1B-b | GitHub, provider API, chooser | Concurrent full-OID trees and blobs open without a checkout or shared index |
-| 2A repository URL open (`mb-12cz`, `mb-ew38`, `mb-innz`) | 1B-c, provider URL-reducer SDK, untrusted-profile gate | Provider API or schemas | Any supported repository URL opens an immutable revision subject |
+| Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | 1B-c for publication; implementation is independent | Cache, GitHub, provider API | Fetched content is served only under the sandboxed untrusted profile |
+| 2A repository URL open (`mb-12cz`, `mb-ew38`, `mb-innz`) | Untrusted-content profile layer, provider URL-reducer SDK | Provider API or schemas | Any supported repository URL opens an immutable revision subject |
 | 2B provider-job foundation (`mb-jlon`, `mb-bf94`) | Green 1B-a acquisition and 2A URL-open PRs | Full catalog, chooser, purge | Independently reviewed provider jobs and selected-ref fetching for branches and GitHub |
 | 2C selected branch (`mb-2xq7`, `mb-9aku`) | Green 2B provider-job PR | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
 | Later cache operations | Phase 2B jobs | Provider support | Generic list, inspect, refresh, and purge |
@@ -1458,8 +1461,9 @@ Two dependencies leave this plan, and they leave in opposite directions.
 **Inbound:** the release gate (`mb-i57d` → `mb-xxhi`) blocks every v0.11 implementation
 bead so work begins from released `main`. Git-status Phase 1 (`mb-u4mf`) owns local
 working-tree semantics but does not gate integrity or serving of the worktree-free
-repository store. The content-trust chain (`mb-cun0` → `mb-vib1`) blocks URL serving in
-2A and 2C, but not format, acquisition, or immutable-source tests.
+repository store.
+The content-trust chain (`mb-cun0` → `mb-vib1`, published by `mb-d658`)
+blocks URL serving in 2A and 2C, but not format, acquisition, or immutable-source tests.
 Those tracks can proceed independently after the release gate.
 
 **Outbound, depending on the extracted Phase 2B selected-ref foundation:**

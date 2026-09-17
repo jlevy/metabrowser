@@ -1010,10 +1010,14 @@ phase. Every publication bead requires independent review, the review shortcut,
 `make verify`, a formal draft PR created with `gh`, exact base/head branch names and
 OIDs, final green CI, and registration with `mb-n2ro`; it never merges the PR. The next
 implementation depends on the preceding green publication bead.
-Before Phase 2A begins, `mb-j439` records one named integration head and immutable OID
-that contains the exact green shared-mirror design, Phase 0D source-binding correction,
-generic repository store, cache goldens, immutable Git-tree source, and
-untrusted-profile prerequisite commits.
+The stack is linear.
+The content-trust chain (`mb-cun0` → `mb-vib1`) may be implemented in parallel with the
+cache layers, but it publishes as its own layer directly after the immutable Git-tree
+source, because serving fetched content requires it.
+Before Phase 2A begins, `mb-j439` records that layer’s green head and immutable OID as
+the one integration head containing the exact shared-mirror design, Phase 0D
+source-binding correction, generic repository store, cache goldens, immutable Git-tree
+source, and untrusted-profile commits.
 It verifies every recorded OID as an ancestor and runs `make verify`; Phase 2A cannot
 choose one prerequisite lineage while omitting another.
 
@@ -1021,11 +1025,12 @@ choose one prerequisite lineage while omitting another.
 | --- | --- | --- | --- |
 | Design correction | `mb-js6t` | `mb-c0m0` | Green Phase 0C.2 head |
 | 0D source-binding correction | `mb-z2mc` | `mb-9u45` | Green shared-mirror design head |
-| 1A cache format foundation | `mb-4gnu`, `mb-k54c` | `mb-lm5m` | Green Phase 0D head |
-| 1B-a worktree-free acquisition | `mb-h51g`, `mb-dg00` | `mb-k900` | Green Phase 1A head |
+| 1A cache format foundation | `mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-k54c` | `mb-lm5m` | Green Phase 0D head |
+| 1B-a worktree-free acquisition | `mb-dxmb`, `mb-h51g`, `mb-dg00` | `mb-k900` | Green Phase 1A head |
 | 1B-b content-source boundary | `mb-3bna` | `mb-tsdc` | Green worktree-free acquisition head |
 | 1B-c immutable Git-tree source | `mb-z335` | `mb-hoae` | Green content-source boundary head |
-| 2A repository URL open | `mb-12cz`, `mb-ew38` | `mb-innz` | Exact named convergence head and OID recorded by `mb-j439`, containing every format, store, source, and trust prerequisite |
+| Untrusted-content profile | `mb-cun0`, `mb-vib1` | `mb-d658` | Green Phase 1B-c head |
+| 2A repository URL open | `mb-12cz`, `mb-ew38` | `mb-innz` | Exact green untrusted-content profile head and OID recorded by `mb-j439`, containing every format, store, source, and trust prerequisite |
 | 2B provider-job and selected-ref foundation | `mb-jlon` | `mb-bf94` | Green Phase 2A head |
 | 2C selected-branch integration | `mb-2xq7` | `mb-9aku` | Green Phase 2B head |
 | 3A provider foundation | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak` | `mb-k7lc` | Green Phase 2C head |
@@ -1275,11 +1280,12 @@ The release phases are implementation-ready at these file and function seams:
 | Hosted Review 0C (`mb-lqae`, `mb-dhz8`) | Phase 0B | Compiled enforced schemas, installed host registry, complete inventory, distribution, and parity gate |
 | Shared-mirror design (`mb-js6t`, `mb-c0m0`) | Green Phase 0C.2 | Long-lived source, Git-store, provider-mirror, multi-client, and phase contracts are independently reviewed before code changes |
 | Hosted Review 0D (`mb-z2mc`, `mb-9u45`) | Shared-mirror design | Unreleased entry-bound records become source bindings, and provider OIDs are independent of local availability |
-| Cache format (`mb-4gnu`, `mb-k54c`, `mb-lm5m`) | Green Hosted Review 0D | Versioned source/store records and logical inspection routes are independently reviewed |
-| Generic store (`mb-h51g`, `mb-dg00`, `mb-k900`) | Green cache-format PR | Any supported Git source resolves to one worktree-free store reusable offline |
+| Cache format (`mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-lm5m`) | Green Hosted Review 0D | Versioned source/store records and logical inspection routes are independently reviewed |
+| Generic store (`mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-k900`) | Green cache-format PR | Any supported Git source resolves to one worktree-free store reusable offline |
 | Content-source boundary (`mb-3bna`, `mb-tsdc`) | Green generic-store PR | Existing filesystem serving runs through one generation- and capability-aware source session |
 | Immutable revision source (`mb-z335`, `mb-hoae`) | Green content-source PR | Concurrent full-OID trees and blobs are browseable without a checkout or shared index |
-| GitHub URL reducer (`mb-12cz`, `mb-ew38`) | Immutable revision source | Any supported GitHub repository URL opens without the GitHub API |
+| Untrusted-content profile (`mb-cun0`, `mb-vib1`, `mb-d658`) | Green immutable-revision-source PR | Fetched content is served only through sandboxed raw responses, same-origin API proof, and the capability-gated untrusted profile |
+| GitHub URL reducer (`mb-12cz`, `mb-ew38`) | Green untrusted-content profile PR | Any supported GitHub repository URL opens without the GitHub API |
 | Provider jobs and selected refs (`mb-jlon`, `mb-bf94`) | Green worktree-free acquisition and repository URL-open PRs | Bounded, cancellable, full-OID-verified selected-ref acquisition is independently reviewed before any branch or PR view uses it |
 | Selected branch (`mb-2xq7`, `mb-9aku`) | Green provider-job and selected-ref PR | Any exposed and authorized branch opens as another immutable subject |
 | GitHub transport and repository summary (`mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`) | Format, generic jobs, owner-only cache | Auth, adapter lifecycle, broker-pinned Git credential projection, shared snapshot kernel, and one offline repository summary for managed or attached sources |

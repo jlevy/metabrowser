@@ -71,8 +71,8 @@ parallel.
 | 3 | Git-status measurement gate | `mb-r5gn` | 0 | v0.11.0 |
 | 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 0, 1, 3 | v0.11.0 foundation |
 | 5 | Measurement and source-binding correction, owner-only cache format, local-origin contract, worktree-free acquisition, content-source boundary, then immutable Git-tree source | `mb-ire2`, `mb-z2mc`, `mb-xa0p`, `mb-4gnu`, `mb-k54c`, `mb-dxmb`, `mb-h51g`, `mb-dg00`, `mb-3bna`, `mb-z335` | 0, 1 | v0.11.0 |
-| 6 | HTML trust chain | `mb-cun0`, `mb-vib1` | 0 | Gates serving fetched content |
-| 7 | Provider URL reducer, repository open, provider-selected refs, then immutable selected branch | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-2xq7` | 4, 5, 6 | v0.11.0 |
+| 6 | HTML trust chain | `mb-cun0`, `mb-vib1`, `mb-d658` | 0 | Gates serving fetched content; publishes as its own stack layer after row 5 |
+| 7 | Provider URL reducer, repository open, provider-selected refs, then immutable selected branch | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-2xq7` | 5, 6 | v0.11.0 |
 | 8 | Hosted-review models | `mb-63ym` | 0 | v0.11.0 |
 | 9 | Bounded provider runner, `gh api` adapter, broker-pinned Git credential bridge, capability registry, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t` | 5, 7, 8 | v0.11.0 |
 | 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | v0.11.0 |
