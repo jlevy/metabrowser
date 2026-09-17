@@ -549,19 +549,23 @@ softschema:
   status: permissive
 config:
   format: f01
-  written_by: 0.9.0
+  written_by: 0.11.0
   upgrades:
-    - version: 0.9.0
-      at: "2026-08-26T00:00:00Z"
-  cache:
-    root: ~/.metabrowser/cache
-    refresh: manual
+    - version: 0.12.0
+      at: "2026-12-01T00:00:00Z"
 ```
 
-The version is illustrative; the implementation writes its actual release.
+The versions are illustrative; the implementation writes its actual release.
 Config is `permissive` because a compatible older client must preserve unknown user
-settings. Known fields still validate.
-Credentials are forbidden.
+settings, at every level.
+Known fields still validate.
+Credentials are forbidden: a key naming a token, password, secret, credential, or API or
+private key is refused anywhere in the file.
+The config models no cache root, because `METABROWSER_HOME` is the only override, and no
+refresh policy, because v0.11 refresh is explicit; a `cache` mapping a user writes is
+kept as an unknown setting and not honored.
+Metabrowser writes `config.yml` only when it creates or migrates the home, keeping every
+setting but not comments, and refuses a config it cannot read rather than replacing it.
 
 `cache/layout.yml` is machine-owned and `enforced`:
 
@@ -1432,11 +1436,15 @@ state.
 
 | File | Key types and functions | Responsibility |
 | --- | --- | --- |
-| `src/metabrowser/home.py` | `application_home`, `ensure_home`, `validate_private_home`, `ensure_private_directory`, `open_private_file`, `PrivateStorageError` | Resolve `METABROWSER_HOME`, create owner-only layout paths and files, reject symlinked/foreign/permissive ancestors for remote content, and write `CACHEDIR.TAG` |
-| `src/metabrowser/cache/records.py` | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` | Strict Pydantic models and SoftSchema envelope bindings |
-| `src/metabrowser/cache/layout.py` | `read_layout`, `migrate_layout`, `LAYOUT_FORMAT` | Fail closed on future formats and run ordered migrations |
-| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock` | Bounded reads, owner-only files through `open_private_file` written as exclusive (`O_EXCL`) temporary files renamed into place, same-filesystem publication, fixed home → alias → ordered stores → resource order, and process-safe locking |
-| `src/metabrowser/cache/identity.py` | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` | Credential-free source identity, stable internal store identity, deterministic provider-identity store derivation, aliasing, and collision verification |
+| `src/metabrowser/home.py` (Phase 1A) | `application_home`, `ensure_home`, `F01_DIRECTORIES`, `write_private_file_atomic`, `rename_without_replacing`, `validate_private_home`, `ensure_private_directory`, `open_private_file`, `PrivateStorageError`, `ApplicationHomeError` | Resolve `METABROWSER_HOME` without touching the file system, create the owner-only `f01` skeleton and `CACHEDIR.TAG`, publish files by exclusive temporary file and rename, rename without replacing, and reject symlinked, foreign, or permissive ancestors |
+| `src/metabrowser/cache/records.py` (Phase 1A) | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` | Strict Pydantic models; config alone keeps unknown settings |
+| `src/metabrowser/cache/contracts.py` (Phase 1A) | `CACHE_CONTRACTS`, `compile_contracts`, `check_packaged_schemas`, `cache_contract_registry`, `repository_cache_capabilities`, `parse_application_config` | SoftSchema bindings to packaged schemas; the enforced contracts install through the `repository-cache` capability provider, and cache reads validate against a registry built without discovery |
+| `src/metabrowser/cache/layout.py` (Phase 1A) | `LAYOUT_FORMAT`, `FORMAT_HISTORY`, `MIGRATIONS`, `read_layout`, `read_config`, `migrate_layout`, `open_cache`, `FutureLayoutFormatError`, `LayoutError` | Fail closed on future formats before writing, run ordered migrations under the home lock, publish `config.yml` last, and prepare a home for cache use |
+| `src/metabrowser/cache/atomic.py` (Phase 1A) | `read_record`, `write_record_atomic`, `publish_entry`, `RecordError` | Bounded record reads, record writes by atomic rename, and publication that verifies the target absent under its owning lock |
+| `src/metabrowser/cache/locks.py` (Phase 1A) | `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `store_lease`, `store_maintenance_lock`, `staging_entry_lock`, `trash_entry_lock`, `job_entry_lock`, `LockOrder`, `require_no_hierarchy_locks` | The fixed home → alias → ordered stores → resource order per thread, side locks, one descriptor per acquisition, identity recheck, and replacement of a shared lock file only under its old lock |
+| `src/metabrowser/cache/probe.py` (Phase 1A) | `probe_application_home`, `ProbeReport` | Verify cross-process exclusion, lease semantics, survival of an unrelated close, and no-replace publication once per process per home |
+| `src/metabrowser/cache/paths.py` (Phase 1A) | `LAYOUT_RECORD`, `CONFIG_RECORD`, `source_record`, `store_record`, `quarantine_entry` | Logical `f01` locations for cache modules and the read routes |
+| `src/metabrowser/cache/identity.py` | Phase 1A: `source_identity`, `repository_store_id`, `provider_repository_store_id`, `store_key`, `cache_slug`, `slug_matches_identity`; Phase 1B-a: `normalize_git_source` | Credential-free source identity from a normalized address, stable internal store identity, deterministic provider-identity store derivation, and collision-extending slugs; Phase 1B-a adds the normalization that produces the address |
 | `src/metabrowser/cache/urls.py` | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` | Distinguish local paths, Git sources, and registered provider web URLs before constructing a `Path`; arbitrate declared reducer claims and terminal rejection; keep provider-specific syntax behind reducers |
 | `src/metabrowser/cache/acquire.py` | `acquire_repository`, `validate_staging_store`, `publish_store`, `publish_source_alias` | Acquire and publish a validated worktree-free store, then create the source alias as the final atomic visibility commit |
 | `src/metabrowser/cache/selection.py` | `resolve_selection`, `resolve_ref_path_candidates` | Resolve slash-containing branch/tag/path candidates against local and remote-tracking refs and return either a full object ID or a typed request for one explicit missing ref; performs no network work |
@@ -1449,7 +1457,7 @@ state.
 | `src/metabrowser/cache/service.py` | `RepositoryOpenTarget`, `resolve_open_target`, `close_open_target` | Orchestrate parse, acquire/reuse, selection, immutable subject creation, trust profile, and initial browser path for CLI and later chooser callers |
 | `src/metabrowser/cache/jobs.py` | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`, `close_all` | Own bounded network fetch/prune for explicit selected refs plus provider-neutral progress, cancellation, the lease registry, per-request context/lease/source validation before job lookup, and stage outcomes used later by provider plugins |
 | `src/metabrowser/cache/routes.py` | `api_cache_layout`, `api_cache_sources`, `api_cache_source`, `api_cache_stores`, `api_repository_jobs` | Read-only logical-state projections for CLI parity; acquisition remains a CLI action, not a write API |
-| `src/metabrowser/cache/reclaim.py` | `reclaim_staging`, `reclaim_trash`, `reclaim_repository_objects` | Briefly enumerate under the home lock, then recover interrupted staging and reclaim unreachable objects under store locks while honoring revision and provider leases |
+| `src/metabrowser/cache/reclaim.py` | Phase 1A: `reclaim_staging`, `reclaim_trash`, `sweep_staging_and_trash`, `begin_trash_entry`, `move_to_trash`, `quarantine_entries`, `purge_quarantined`, `reclaim_store`; later: `reclaim_repository_objects` | Briefly enumerate under the home lock, then recover interrupted staging and trash, quarantine and purge entries, and reclaim unreferenced stores; later reclaim unreachable objects under store locks while honoring revision and provider leases |
 
 `RepositoryOpenTarget` contains the source and repository-store identities, immutable or
 filesystem subject, requested ref, full resolved object ID when applicable, initial
@@ -1467,7 +1475,7 @@ The provider plan names the manifest and loader changes that register this reduc
 
 | Surface | Files |
 | --- | --- |
-| Formats, permissions, migration, identity, publication | `tests/test_cache_records.py`, `tests/test_cache_layout.py`, `tests/test_cache_permissions.py`, `tests/test_cache_identity.py`, `tests/test_cache_acquire.py` |
+| Formats, permissions, migration, identity, publication | `tests/test_cache_records.py`, `tests/test_cache_layout.py`, `tests/test_cache_permissions.py`, `tests/test_cache_atomic.py`, `tests/test_cache_locks.py`, `tests/test_cache_reclaim.py`, `tests/test_repository_cache_contract_fixtures.py`, `tests/test_cache_acquire.py` |
 | URL and ref selection | `tests/test_cache_urls.py`, `tests/test_cache_selection.py`, GitHub reducer tests in the provider plugin |
 | Immutable revision lifecycle | `tests/test_git_tree_source.py`, `tests/test_cache_repository_store.py`, `tests/test_cache_service.py`, subject-replacement cases in `tests/test_inventory_contract.py` |
 | CLI behavior | `tests/golden/cli-cache-layout.tryscript.md`, `cli-cache-acquire.tryscript.md`, `cli-github-repo-open.tryscript.md`, `cli-github-branch-open.tryscript.md` |
@@ -1593,36 +1601,41 @@ silent trim. The argument against deferring is real and should be weighed each t
 cache is released data from its first write, and retrofitting migration under entries
 that already exist costs more than building it first.
 
-- [ ] Add the application-home resolver, `config.yml`, `cache/layout.yml`, format
+- [x] Add the application-home resolver, `config.yml`, `cache/layout.yml`, format
   history, future-format failure, and sequential migration harness.
-- [ ] Adopt the exact released SoftSchema package after dependency and lock review;
+  Nothing in this phase was deferred: `FORMAT_HISTORY` and `MIGRATIONS` exist with `f01`
+  as their only format, and the harness is tested with injected histories.
+- [x] Adopt the exact released SoftSchema package after dependency and lock review;
   verify the `frontmatter-format` minimum and artifact hashes against released package
   metadata; record its `jlevy` first-party exemption and reviewed predecessor in
   *Audited First-Party Exceptions*; register the config, layout, repository-source,
   repository-store, and store-state contracts.
-- [ ] Package deterministic compiled schemas and add compile-drift, corpus-validation,
+  Phase 0C.1 adopted and reviewed `softschema==0.8.1`; this phase changed no dependency
+  and registered the config, layout, source, source-state, alias, store, and store-state
+  contracts.
+- [x] Package deterministic compiled schemas and add compile-drift, corpus-validation,
   schema-inventory, and installed-wheel checks.
-- [ ] Add atomic YAML reads/writes, application-home locking, quarantine, and
+- [x] Add atomic YAML reads/writes, application-home locking, quarantine, and
   recoverable-trash primitives without cloning or serving a URL.
-- [ ] Enforce owner-only application-home paths (`mb-xa0p`) and refuse remote writes
+- [x] Enforce owner-only application-home paths (`mb-xa0p`) and refuse remote writes
   through symlinked, foreign-owned, or permissive cache ancestors.
-- [ ] Freeze the lock hierarchy: home for layout/global enumeration, source alias for
+- [x] Freeze the lock hierarchy: home for layout/global enumeration, source alias for
   alias publication, repository stores in ascending ID order for ref/object publication
   and leases, then provider/resource for provider publication; never hold one across
   network work.
-- [ ] Write `CACHEDIR.TAG` when the cache root is created, and add the startup
+- [x] Write `CACHEDIR.TAG` when the cache root is created, and add the startup
   `staging/`/`trash/` reclamation sweep, so no released phase accumulates unreclaimed or
   backed-up cache data.
-- [ ] Prove config preserves unknown settings while machine records reject unknown
+- [x] Prove config preserves unknown settings while machine records reject unknown
   fields and cache-controlled schema paths cannot redirect validation.
-- [ ] Probe the application home at setup (`mb-4gnu`): a second process cannot take a
+- [x] Probe the application home at setup (`mb-4gnu`): a second process cannot take a
   held lock, closing an unrelated descriptor for a lock file does not release the lock,
   a lock attempt through a separate `open()` in the same process contends with a held
   lease instead of converting it, and verify-absent-under-lock publication with the
   platform no-replace rename refuses an existing target.
   A home that fails any probe is refused as unverifiable, because CI covers only Linux
   and a network filesystem can emulate `flock` with record locks.
-- [ ] Replace the test oracle for the contracts this phase implements — store and source
+- [x] Replace the test oracle for the contracts this phase implements — store and source
   identity, slugs, the lock order, and the sweep, quarantine, and reclamation machines —
   with the production functions, and replay the same `tests/fixtures/repository-cache/`
   fixtures against them.
@@ -1647,6 +1660,51 @@ for reasons that have nothing to do with this plan.
 phase uses them directly rather than building a parallel inspection harness.
 See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 
+#### Phase 1A implementation decisions
+
+Where this plan left latitude, the format foundation decided the following; the module
+docstrings under `src/metabrowser/cache/` and `src/metabrowser/home.py` carry the
+detail.
+
+- **Entry point.** `metabrowser.cache.layout.open_cache` resolves the home, runs
+  `ensure_home`, probes, migrates, and sweeps.
+  Nothing calls it yet, and ordinary local browsing never resolves, validates, creates,
+  or imports the application home, which `tests/test_cache_layout.py` proves with a
+  missing, permissive, and symlinked `METABROWSER_HOME`.
+- **Resolution.** An empty, relative, or `..`-containing `METABROWSER_HOME` is refused
+  rather than ignored, so a harness that meant to isolate the home cannot fall back to
+  the real one.
+- **Probe cost and caching.** One `python -I -S` child plus a staging entry; about 37 ms
+  on a loaded macOS machine.
+  The result is kept for the life of the process, keyed by the device and inode of
+  `cache/locks`; a refused home is probed again next time.
+- **Registration.** The enforced contracts install through a `repository-cache`
+  capability provider, so the generic inventory gate, the architecture table check, and
+  the isolated-wheel smoke test cover them; cache reads validate against a registry the
+  cache builds itself, so a broken third-party plugin cannot make the cache unreadable.
+  The installed registry admits only enforced contracts, so the permissive config
+  contract is drift-checked, corpus-tested, and verified in the installed wheel by
+  `check_packaged_schemas` instead.
+- **Record writes and temporaries.** A temporary is `.<target>.<16 hex>.tmp` beside its
+  target and holds an exclusive `flock` while it lives, so the next write of the same
+  target removes a crashed writer’s leftover without guessing from its age.
+- **Lock files.** Each is created with `O_CREAT | O_EXCL` at its final path, so it is
+  private from creation, and every acquisition opens its own descriptor.
+  A lock file found shared is replaced by atomic rename only while holding its old lock
+  taken without blocking, and refused if that lock is busy.
+  The provider/resource lock lives at `cache/locks/providers/<key>.lock` until the
+  provider storage plan names its spelling.
+- **Layout adoption.** A cache with sources, stores, quarantine, or provider data but no
+  `layout.yml` is refused rather than adopted or quarantined; leftover staging and trash
+  do not block creating the first layout.
+- **Store reclamation.** `reclaim_store` treats any entry under `provider-bindings/` or
+  `provider-repositories/` as a reference until provider references are modeled, and
+  treats an unreadable alias as a reference.
+- **Records.** `RepositoryStore` carries `configuration_digest`, the fingerprint of the
+  store’s normalized Git configuration; `RepositoryStoreState.object_state` is
+  `complete` or `converging`, and `last_operation.kind` is `acquire`, `refresh`, or
+  `converge`. Acquisition may extend these before `f01` ships.
+
 ### Phase 1B: Generic Git cache and repository URL open
 
 This phase lands in five additive slices.
@@ -1655,8 +1713,9 @@ next slice begins.
 
 #### Phase 1B-a: Acquire and reuse a shared repository store (`mb-h51g`, `mb-dg00`)
 
-- [ ] Add conservative source normalization, full identity digest, readable uniquified
-  slug, collision verification, and source-alias locking.
+- [ ] Add conservative source normalization, and claim uniquified slugs under the
+  source-alias lock with the identity digest, slug derivation, and collision extension
+  Phase 1A added in `metabrowser.cache.identity` and `metabrowser.cache.locks`.
 - [ ] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
   environment controls, and explicit acquisition/background policies.
 - [ ] Enforce the acquisition floor from [Git version gates](#git-version-gates), which

@@ -329,7 +329,7 @@ Everything beneath it is already proved by then.
 
 ```python
 def application_home() -> Path:      # METABROWSER_HOME, else ~/.metabrowser
-def ensure_home(home: Path) -> None: # creates, writes CACHEDIR.TAG
+def ensure_home(home: Path) -> Path: # creates the f01 skeleton, writes CACHEDIR.TAG
 ```
 
 `METABROWSER_HOME` is the hermeticity seam for every cache golden.
@@ -338,10 +338,13 @@ def ensure_home(home: Path) -> None: # creates, writes CACHEDIR.TAG
 
 | Module | Responsibility | Key functions |
 | --- | --- | --- |
-| `layout.py` | Format record, fail-closed future formats, ordered migrations | `read_layout`, `migrate_layout`, `LAYOUT_FORMAT` |
-| `atomic.py` | Same-filesystem owner-only record publication and fixed lock hierarchy | `read_record`, `write_record_atomic`, `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock` |
+| `layout.py` | Format record, fail-closed future formats, ordered migrations, home preparation | `read_layout`, `read_config`, `migrate_layout`, `open_cache`, `LAYOUT_FORMAT` |
+| `atomic.py` | Same-filesystem owner-only record publication | `read_record`, `write_record_atomic`, `publish_entry` |
+| `locks.py` | Fixed lock hierarchy, leases, and liveness locks | `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock`, `store_lease`, `store_maintenance_lock` |
+| `probe.py` | Application-home lock and publication probe | `probe_application_home` |
+| `contracts.py` | Packaged SoftSchema bindings and drift checks | `compile_contracts`, `cache_contract_registry`, `repository_cache_capabilities` |
 | `records.py` | Closed source/store and staged-fetch contracts | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState`, `StagedFetch` |
-| `reclaim.py` | Startup staging/trash sweep and lease-aware object reclamation | `reclaim_staging`, `reclaim_trash`, `reclaim_repository_objects` |
+| `reclaim.py` | Startup staging/trash sweep, trash, quarantine, store reclamation, and lease-aware object reclamation | `reclaim_staging`, `reclaim_trash`, `quarantine_entries`, `reclaim_store`, `reclaim_repository_objects` |
 | `identity.py` | Conservative source identity, provider-derived store identity, aliasing, and collision-safe slugs | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` |
 | `urls.py` | Root classification, provider reducer arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` |
 | `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_repository`, `validate_staging_store`, `publish_store`, `publish_source_alias` |

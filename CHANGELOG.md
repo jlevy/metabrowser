@@ -29,6 +29,12 @@ Plugin contracts:
   evidence. Distribution verification repeats the same inventory from isolated wheel and
   source distribution installs instead of maintaining a separate built-in schema list.
 
+- The repository cache’s `f01` records install as enforced contracts through a
+  `repository-cache` capability provider, so `metab --doctor` now reports three
+  capability providers and 22 contracts.
+  No command reads or writes the cache yet; the application home, `METABROWSER_HOME`,
+  and `CACHEDIR.TAG` take effect when opening a repository URL lands.
+
 ## 0.10.0
 
 Plugin SDK:
