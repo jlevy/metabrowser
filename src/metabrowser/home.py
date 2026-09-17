@@ -3,10 +3,14 @@
 Repository stores, source bindings, and provider mirrors may hold private content, so
 everything Metabrowser keeps under the application home must be reachable only by the
 user running it. This module is the enforcement point cache and provider code call
-before they create or open anything there. It does not decide where the home is or what
-goes in it; resolving ``METABROWSER_HOME`` and the ``f01`` layout belong to their own
-modules. Whichever directory that resolution chooses is Metabrowser-owned by definition,
-so every entry below it that the current user owns is Metabrowser's to repair.
+before they create or open anything there. It also resolves where the home is
+(``METABROWSER_HOME``, else ``~/.metabrowser``), creates the owner-only ``f01`` directory
+skeleton with its ``CACHEDIR.TAG``, and publishes files atomically; what the records in
+that skeleton mean belongs to :mod:`metabrowser.cache`. Whichever directory resolution
+chooses is Metabrowser-owned by definition, so every entry below it that the current
+user owns is Metabrowser's to repair. Nothing here runs unless a caller asks for the
+application home: browsing an ordinary local path never resolves, validates, or creates
+it.
 
 Each rule answers a specific threat:
 
@@ -81,10 +85,12 @@ import errno
 import functools
 import logging
 import os
+import re
+import secrets
 import stat
 import struct
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -92,10 +98,45 @@ from typing import Final
 
 from metabrowser.inventory_engine.contract import require_canonical_inventory_path
 
+try:
+    import fcntl
+except ImportError:  # Windows: every public call below refuses as unverifiable first.
+    fcntl = None
+
 log = logging.getLogger(__name__)
 
 PRIVATE_DIRECTORY_MODE: Final = 0o700
 PRIVATE_FILE_MODE: Final = 0o600
+
+METABROWSER_HOME_ENV: Final = "METABROWSER_HOME"
+DEFAULT_HOME_NAME: Final = ".metabrowser"
+CACHE_DIRECTORY: Final = "cache"
+CACHEDIR_TAG_PATH: Final = "cache/CACHEDIR.TAG"
+# https://bford.info/cachedir/: backup and cleanup tools skip a directory holding a file
+# with this name that begins with this signature.
+CACHEDIR_TAG_SIGNATURE: Final = b"Signature: 8a477f597d28d172789f06886806bc55"
+CACHEDIR_TAG_CONTENT: Final = (
+    CACHEDIR_TAG_SIGNATURE + b"\n"
+    b"# This file is a cache directory tag created by Metabrowser.\n"
+    b"# For information about cache directory tags, see https://bford.info/cachedir/\n"
+)
+# The owner-only directories of the f01 layout, parents first. Lock files live under
+# cache/locks/ so no publication, purge, quarantine, or reclamation ever renames one.
+F01_DIRECTORIES: Final = (
+    "cache",
+    "cache/locks",
+    "cache/locks/sources",
+    "cache/locks/stores",
+    "cache/locks/staging",
+    "cache/locks/trash",
+    "cache/locks/jobs",
+    "cache/locks/providers",
+    "cache/staging",
+    "cache/trash",
+    "cache/quarantine",
+    "cache/sources",
+    "cache/repository-stores",
+)
 
 # Any permission granted to group or other.
 _SHARED_ACCESS_BITS: Final = 0o077
@@ -136,6 +177,21 @@ _OWNER_ONLY_CHECKS_SUPPORTED: Final = (
 _LINK_SAFE_CHMOD: Final = os.chmod in os.supports_follow_symlinks
 _O_PATH: Final[int | None] = getattr(os, "O_PATH", None)
 _PROC_SELF_FD: Final = Path("/proc/self/fd")
+
+# Atomic publication. A temporary file is `.<target>.<16 hex>.tmp` beside its target and
+# holds an exclusive flock for its whole life, so a later writer of the same target can
+# tell a crashed writer's leftover from a live one without guessing from its age.
+_TEMPORARY_SUFFIX_RE: Final = r"\.[0-9a-f]{16}\.tmp"
+_TEMPORARY_ATTEMPTS: Final = 4
+# No-replace renames: renameat2(RENAME_NOREPLACE) on Linux, renamex_np(RENAME_EXCL) on
+# macOS. A file system that does not implement the flag answers with one of these, and
+# publication then relies on its verify-absent check under the owning lock alone.
+_AT_FDCWD: Final = -100
+_RENAME_NOREPLACE: Final = 0x1
+_RENAME_EXCL: Final = 0x4
+_NO_REPLACE_UNSUPPORTED_ERRNOS: Final = frozenset(
+    {errno.EINVAL, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP}
+)
 
 # macOS extended ACLs, read through libSystem. ``acl_copy_ext_native`` exports an ACL
 # as a ``struct kauth_filesec`` from <sys/kauth.h>: a header of magic, owner and group
@@ -346,6 +402,10 @@ class PrivateStorageError(Exception):
         self.mode: int | None = mode
 
 
+class ApplicationHomeError(ValueError):
+    """``METABROWSER_HOME`` does not name a usable application home."""
+
+
 def _without_file_names[**P, R](function: Callable[P, R]) -> Callable[P, R]:
     """Re-raise an ``OSError`` leaving *function* without its file names.
 
@@ -412,7 +472,9 @@ def ensure_private_directory(home: Path, relative_path: str = "") -> Path:
 
 
 @_without_file_names
-def open_private_file(home: Path, relative_path: str, flags: int) -> int:
+def open_private_file(
+    home: Path, relative_path: str, flags: int, *, repair_shared: bool = True
+) -> int:
     """Open the owner-only file *relative_path* below *home* with ``os.open`` *flags*.
 
     Returns a blocking descriptor the caller must close, unless *flags* ask for
@@ -429,6 +491,11 @@ def open_private_file(home: Path, relative_path: str, flags: int) -> int:
     verification. Parent directories are verified and repaired as in
     :func:`ensure_private_directory` but never created, so a missing one raises
     :class:`FileNotFoundError`.
+
+    With *repair_shared* false, a read-only open of a shared file returns a descriptor
+    without tightening it. That is for a caller about to replace the file: it locks the
+    old file first, and a tightened file would look private to every later open while
+    whoever opened it when it was shared might still hold its lock.
     """
 
     _require_home_argument(home)
@@ -447,9 +514,253 @@ def open_private_file(home: Path, relative_path: str, flags: int) -> int:
             child = _open_directory_entry(fd, parent, path, create=False)
             os.close(fd)
             fd = child
-        return _open_file_entry(fd, name, flags, path / name)
+        return _open_file_entry(fd, name, flags, path / name, repair_shared=repair_shared)
     finally:
         os.close(fd)
+
+
+def application_home(environ: Mapping[str, str] | None = None) -> Path:
+    """Return the application home without touching the file system.
+
+    ``METABROWSER_HOME`` names it when set; otherwise it is ``~/.metabrowser``. An empty,
+    relative, or ``..``-containing ``METABROWSER_HOME`` raises
+    :class:`ApplicationHomeError` rather than falling back, so a harness that meant to
+    isolate the home can never write to the real one.
+    """
+
+    variables = os.environ if environ is None else environ
+    value = variables.get(METABROWSER_HOME_ENV)
+    if value is None:
+        return Path.home() / DEFAULT_HOME_NAME
+    if not value:
+        raise ApplicationHomeError(
+            "METABROWSER_HOME is set but empty. Unset it to use ~/.metabrowser, or set it "
+            "to the absolute path of a private directory."
+        )
+    home = Path(value)
+    if not home.is_absolute() or ".." in home.parts:
+        raise ApplicationHomeError(
+            "METABROWSER_HOME must be an absolute path without '..' components."
+        )
+    return home
+
+
+@_without_file_names
+def ensure_home(home: Path) -> Path:
+    """Create or verify the home and its owner-only ``f01`` skeleton; return the cache root.
+
+    Every directory in :data:`F01_DIRECTORIES` is created ``0700`` or verified, and
+    ``cache/CACHEDIR.TAG`` is written atomically unless a file beginning with the cache
+    directory signature is already there. Records inside the skeleton are the cache
+    layout's business, not this function's.
+    """
+
+    for directory in F01_DIRECTORIES:
+        ensure_private_directory(home, directory)
+    try:
+        fd = open_private_file(home, CACHEDIR_TAG_PATH, os.O_RDONLY)
+    except FileNotFoundError:
+        existing = b""
+    else:
+        try:
+            existing = os.read(fd, len(CACHEDIR_TAG_SIGNATURE))
+        finally:
+            os.close(fd)
+    if existing != CACHEDIR_TAG_SIGNATURE:
+        write_private_file_atomic(home, CACHEDIR_TAG_PATH, CACHEDIR_TAG_CONTENT)
+    return home / CACHE_DIRECTORY
+
+
+@_without_file_names
+def write_private_file_atomic(
+    home: Path, relative_path: str, data: bytes, *, replace: bool = True
+) -> None:
+    """Publish *data* at *relative_path* below *home* by atomic rename.
+
+    The bytes go to an exclusive ``0600`` temporary file beside the target, which holds
+    an exclusive ``flock`` while it lives, and are flushed with ``fsync``; the file is
+    renamed into place and the directory is synced. A reader sees the old content or
+    the new, never a partial write. With *replace* false an existing target raises
+    :class:`FileExistsError`, through the platform's no-replace rename where it has one.
+    Before writing, leftovers of this target from a writer that crashed are removed:
+    their locks are free, while a live writer's is held. The parent directory must
+    already exist.
+    """
+
+    require_canonical_inventory_path(relative_path, "application-home path", allow_root=False)
+    directory, _, name = relative_path.rpartition("/")
+    for _ in range(_TEMPORARY_ATTEMPTS):
+        temporary = f"{directory}/" if directory else ""
+        temporary += f".{name}.{secrets.token_hex(8)}.tmp"
+        try:
+            # Verifies every parent directory, so the listing below reads a private one.
+            fd = open_private_file(home, temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+        except FileExistsError:
+            continue
+        try:
+            if not _hold_temporary(fd, home / temporary):
+                continue
+            _remove_stale_temporaries(home, directory, name)
+            _write_all(fd, data)
+            os.fsync(fd)
+            try:
+                if replace:
+                    os.replace(home / temporary, home / relative_path)
+                else:
+                    rename_without_replacing(home / temporary, home / relative_path)
+            except BaseException:
+                with contextlib.suppress(OSError):
+                    os.unlink(home / temporary)
+                raise
+            _sync_directory(home / directory if directory else home)
+            return
+        finally:
+            os.close(fd)
+    raise PrivateStorageError(
+        PrivateStorageViolation.UNVERIFIABLE,
+        PrivateStorageLocation.ENTRY,
+        home / relative_path,
+        detail=_CHANGED_DURING_CHECK,
+    )
+
+
+def rename_without_replacing(source: Path, target: Path) -> bool:
+    """Rename *source* to *target*, raising :class:`FileExistsError` if *target* exists.
+
+    Uses ``renameat2(RENAME_NOREPLACE)`` on Linux or ``renamex_np(RENAME_EXCL)`` on
+    macOS, which refuse even an empty target directory that ``os.rename`` would replace.
+    Returns whether that atomic check was used. Where the platform or file system lacks
+    it, the target is checked with ``lstat`` first, which is safe only because every
+    Metabrowser writer of a published path holds the lock that owns it; callers must
+    hold that lock either way.
+    """
+
+    function, flag, dirfd_arguments = _no_replace_rename()
+    if function is not None:
+        ctypes.set_errno(0)
+        arguments: tuple[object, ...]
+        if dirfd_arguments:
+            arguments = (_AT_FDCWD, os.fsencode(source), _AT_FDCWD, os.fsencode(target), flag)
+        else:
+            arguments = (os.fsencode(source), os.fsencode(target), flag)
+        if function(*arguments) == 0:
+            return True
+        failure = ctypes.get_errno()
+        if failure == errno.EEXIST:
+            raise FileExistsError(failure, os.strerror(failure))
+        if failure not in _NO_REPLACE_UNSUPPORTED_ERRNOS:
+            raise OSError(failure, os.strerror(failure))
+    try:
+        os.lstat(target)
+    except FileNotFoundError:
+        os.rename(source, target)
+        return False
+    raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST))
+
+
+def no_replace_rename_available() -> bool:
+    """Whether this platform exposes an atomic no-replace rename."""
+
+    return _no_replace_rename()[0] is not None
+
+
+# ── Atomic publication ─────────────────────────────────────────────
+
+
+def _write_all(fd: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        written = os.write(fd, view)
+        view = view[written:]
+
+
+def _sync_directory(directory: Path) -> None:
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _same_inode(fd: int, path: Path) -> bool:
+    """Whether *path* still names the file open as *fd*."""
+
+    opened = os.fstat(fd)
+    try:
+        current = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    return (opened.st_dev, opened.st_ino) == (current.st_dev, current.st_ino)
+
+
+def _hold_temporary(fd: int, path: Path) -> bool:
+    """Take a new temporary file's liveness lock; ``False`` if a cleaner took it first."""
+
+    if fcntl is None:
+        raise PrivateStorageError(
+            PrivateStorageViolation.UNVERIFIABLE,
+            PrivateStorageLocation.ENTRY,
+            path,
+            detail=_UNSUPPORTED_PLATFORM,
+        )
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    return _same_inode(fd, path)
+
+
+def _remove_stale_temporaries(home: Path, directory: str, name: str) -> None:
+    """Remove temporaries of *name* in *directory* whose writers are gone."""
+
+    pattern = re.compile(rf"\.{re.escape(name)}{_TEMPORARY_SUFFIX_RE}")
+    for entry in os.listdir(home / directory if directory else home):
+        if pattern.fullmatch(entry) is None:
+            continue
+        relative = f"{directory}/{entry}" if directory else entry
+        try:
+            fd = open_private_file(home, relative, os.O_RDONLY | os.O_NONBLOCK)
+        except (FileNotFoundError, PrivateStorageError):
+            continue
+        try:
+            if fcntl is None:
+                return
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                continue
+            if _same_inode(fd, home / relative):
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(home / relative)
+                log.info("Removed a temporary file left by an interrupted write")
+        finally:
+            os.close(fd)
+
+
+@functools.cache
+def _no_replace_rename() -> tuple[Callable[..., int] | None, int, bool]:
+    """Return the platform no-replace rename, its flag, and whether it takes dirfds."""
+
+    try:
+        if sys.platform == "darwin":
+            function = ctypes.CDLL(_LIBSYSTEM, use_errno=True).renamex_np
+            function.restype = ctypes.c_int
+            function.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint)
+            return function, _RENAME_EXCL, False
+        if sys.platform.startswith("linux"):
+            function = ctypes.CDLL(None, use_errno=True).renameat2
+            function.restype = ctypes.c_int
+            function.argtypes = (
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_int,
+                ctypes.c_char_p,
+                ctypes.c_uint,
+            )
+            return function, _RENAME_NOREPLACE, True
+    except (OSError, AttributeError):
+        pass
+    return None, 0, False
 
 
 # ── The home and what lies above it ────────────────────────────────
@@ -656,7 +967,9 @@ def _open_directory_entry(parent_fd: int, name: str, path: Path, *, create: bool
     return fd
 
 
-def _open_file_entry(parent_fd: int, name: str, flags: int, path: Path) -> int:
+def _open_file_entry(
+    parent_fd: int, name: str, flags: int, path: Path, *, repair_shared: bool = True
+) -> int:
     """Open a verified owner-only descriptor on the file *name* inside *parent_fd*."""
 
     location = PrivateStorageLocation.ENTRY
@@ -683,7 +996,9 @@ def _open_file_entry(parent_fd: int, name: str, flags: int, path: Path) -> int:
                     raise
                 continue
             return _finish_created_file(parent_fd, name, fd, flags, path)
-        return _open_existing_file(parent_fd, name, flags, before, path)
+        return _open_existing_file(
+            parent_fd, name, flags, before, path, repair_shared=repair_shared
+        )
     raise PrivateStorageError(
         PrivateStorageViolation.UNVERIFIABLE, location, path, detail=_CHANGED_DURING_CHECK
     )
@@ -706,7 +1021,13 @@ def _finish_created_file(parent_fd: int, name: str, fd: int, flags: int, path: P
 
 
 def _open_existing_file(
-    parent_fd: int, name: str, flags: int, before: os.stat_result, path: Path
+    parent_fd: int,
+    name: str,
+    flags: int,
+    before: os.stat_result,
+    path: Path,
+    *,
+    repair_shared: bool = True,
 ) -> int:
     location = PrivateStorageLocation.ENTRY
     writes = bool(flags & _WRITE_ACCESS_FLAGS)
@@ -726,13 +1047,15 @@ def _open_existing_file(
         mode = stat.S_IMODE(opened.st_mode)
         if writes and mode & _SHARED_ACCESS_BITS:
             raise PrivateStorageError(PrivateStorageViolation.PERMISSIVE, location, path, mode=mode)
-        if _foreign_grants(fd, location, path):
-            if writes:
-                raise PrivateStorageError(
-                    PrivateStorageViolation.PERMISSIVE, location, path, through_acl=True
-                )
-            repair.cleared_acl = _clear_acl(fd, location, path)
-        repair.previous_mode = _remove_shared_access(fd, opened, location, path)
+        foreign_grants = _foreign_grants(fd, location, path)
+        if foreign_grants and writes:
+            raise PrivateStorageError(
+                PrivateStorageViolation.PERMISSIVE, location, path, through_acl=True
+            )
+        if repair_shared:
+            if foreign_grants:
+                repair.cleared_acl = _clear_acl(fd, location, path)
+            repair.previous_mode = _remove_shared_access(fd, opened, location, path)
         if flags & os.O_TRUNC:
             os.ftruncate(fd, 0)
         _restore_blocking(fd, flags)
