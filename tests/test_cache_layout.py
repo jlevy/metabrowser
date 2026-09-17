@@ -253,14 +253,7 @@ def test_metab_browsing_a_local_directory_never_creates_or_imports_the_home(
         def report():
             loaded = sorted(
                 name for name in sys.modules
-                if name == "metabrowser.home"
-                or name in {
-                    "metabrowser.cache.atomic",
-                    "metabrowser.cache.layout",
-                    "metabrowser.cache.locks",
-                    "metabrowser.cache.probe",
-                    "metabrowser.cache.reclaim",
-                }
+                if name == "metabrowser.home" or name.startswith("metabrowser.cache")
             )
             sys.stderr.write("\\nloaded-modules:" + json.dumps(loaded) + "\\n")
         atexit.register(report)
@@ -283,7 +276,9 @@ def test_metab_browsing_a_local_directory_never_creates_or_imports_the_home(
     assert result.returncode == 0, result.stderr
     assert '"tree"' in result.stdout
     loaded = json.loads(result.stderr.rpartition("loaded-modules:")[2])
-    assert loaded == []
+    # The server registers the /api/cache/ route table, which imports the rest of the
+    # cache and the application home only inside a cache request.
+    assert loaded == ["metabrowser.cache", "metabrowser.cache.routes"]
     assert _snapshot(tmp_path) == before
 
 
