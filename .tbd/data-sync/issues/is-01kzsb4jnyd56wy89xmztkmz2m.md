@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: open
 priority: 1
-version: 27
+version: 28
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: null
 labels:
@@ -27,7 +27,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-17T06:24:53.115Z
+updated_at: 2026-09-17T15:00:16.288Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -38,4 +38,6 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
+From mb-xa0p: acquisition creates and writes the application home only through src/metabrowser/home.py (ensure_private_directory, open_private_file) before any network work, so symlinked, foreign-owned, or permissive ancestors are refused. Every Git child process runs with umask 077 (measured: core.sharedRepository=0600 alone still left group/world-accessible directories); test that no store entry has group or other permission bits.
 From mb-ire2 review (decision recorded, not made): distributions backport Git CVE fixes without changing the upstream version string (Ubuntu 24.04 patched Git reports 2.43.0; Debian 12 reports 2.39.x), so an upstream-version acquisition gate refuses those builds. Decide before shipping acquisition among: refuse with an actionable message naming the upstream floor; a user-set acknowledgement setting; or a distro-package check. Also: run the no-lazy-fetch read tests against the lowest admitted Git in CI, and measure a low-speed stall bound on a large or bitmap-less initial acquisition before bounding it.
+From mb-ire2 re-audit: record the store configuration snapshot digest after the first successful fetch and before publication; write only Metabrowser-recorded promisor remotes; never fetch by fork URL into a store.
