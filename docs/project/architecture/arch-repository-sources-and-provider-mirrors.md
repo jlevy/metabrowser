@@ -135,8 +135,10 @@ or cache paths.
 
 One logical repository store owns one worktree-free Git database plus
 Metabrowser-controlled refs.
-The exact bare versus no-checkout layout and full versus partial-clone policy remain
-measurement decisions, but these invariants do not:
+It is a bare repository created with an empty template and configuration written only by
+Metabrowser, acquired blobless where the Git version allows and converged by explicit
+object-ID fetches; the measured basis is in [Measured Decisions](#measured-decisions).
+These invariants hold for every store:
 
 - there is no shared index or checked-out branch;
 - no view operation runs `checkout`, `switch`, `reset`, or `worktree add`;
@@ -189,7 +191,13 @@ fetch policy.
 
 The revision source resolves a root tree once and caches its immutable directory index
 by tree object ID. Blob access uses a bounded pool of long-lived batch Git readers
-rather than spawning one process per file.
+rather than spawning one process per file: at most four per store per process, created
+on demand. Every read runs with `GIT_NO_LAZY_FETCH=1`, and nothing on a read path lists
+blob sizes from a store that may be missing blobs, because a size-bearing `ls-tree -l`
+otherwise issues one network request per missing blob.
+Diff, commit-detail, and comparison reads first list their change set with
+`git diff --raw -z --no-abbrev --no-renames`, check it with `cat-file --batch-check`,
+and report `deferred` while the object-job port fetches exactly the missing blobs.
 Diff, history, commit detail, and tree reads receive a trusted Git command target that
 may name either a worktree plus Git directory or the shared worktree-free store.
 
@@ -310,7 +318,8 @@ configuration as authority.
 Private ref namespaces include the source and request identities, so an SSH failure or
 cancellation cannot poison an HTTPS request for the same store.
 Clients in one process join compatible in-flight work instead of starting duplicate
-fetches.
+fetches. Git does not do this for them: four concurrent same-ref fetches into one store
+all succeeded, and each transferred and stored its own pack.
 Across processes, staged jobs may overlap; each records the store generation and
 expected remote object IDs it observed.
 Network acquisition uses an isolated temporary repository or, for jobs without provider
@@ -478,8 +487,11 @@ A local checkout is never a lock target.
 
 Each store is published with a maintenance lock file.
 A live subject holds a shared OS lock on that file; Git maintenance, pruning, and store
-reclamation require its exclusive lock.
-Process exit releases the shared lock, including after a crash.
+reclamation require its exclusive lock, taken without blocking while holding the
+repository-store lock, so a long-lived subject defers maintenance instead of stalling
+publication. Process exit releases the shared lock, including after a crash.
+Automatic Git maintenance is disabled in every store’s configuration, so maintenance
+runs only under that lock.
 Durable private refs separately keep every object promised for offline reuse reachable
 to Git when no process is running.
 Provider snapshot readers similarly hold a shared lock on the published generation while
@@ -591,16 +603,65 @@ The architecture is satisfied only when tests prove:
 - every new route, model, persisted state, and browser interaction has `metab` parity,
   exact goldens, and an architecture-map entry when it becomes registered.
 
-## Open Measurement Decisions
+## Measured Decisions
 
-Phase 0 measurements choose, and record beside the resulting constants:
+Phase 0 measured these choices on 2026-09-16; the method, environment, and raw results
+are in
+[Repository cache measurements](../../../explorations/repository-cache/README.md), and
+the complete decision table is
+[Phase 0 decisions](../specs/active/plan-2026-08-11-open-repo-from-git-url.md#phase-0-decisions).
+The numbers come from one macOS machine with Git 2.50.1 and explain each choice; they
+are not budgets.
 
-- bare repository versus another worktree-free Git layout;
-- full clone versus partial-clone filters and explicit bulk prefetch thresholds;
-- batch reader pool size, tree-index bounds, and cancellation latency;
-- refresh age, process-local request coalescing, and cross-process retry and contention
-  bounds; and
-- retention and maintenance thresholds for repository objects and provider artifacts.
+- **Bare layout.** Bare and no-checkout stores cost the same to acquire and store,
+  within run-to-run variation, but a no-checkout store keeps `core.bare=false`, an empty
+  work tree, reflogs, and a local branch.
+  The store is created with `git init --bare`, and refs arrive through explicit refspecs
+  into Metabrowser-owned names.
+- **Blobless acquisition with default-revision prefetch.** Serving the default
+  revision’s complete tree took 5.8–5.9 s blobless against 8.8–17.8 s full for
+  `python/mypy` over HTTPS, and 3.0 s against 3.3–4.0 s for `pallets/flask`. Every
+  object took longer blobless, so convergence runs after serving.
+  There is no size threshold: generic Git offers no size before transfer.
+- **Explicit convergence, not `git backfill`.** Backfill left every blob outside
+  `HEAD`’s history missing (1,318 objects for mypy) and did nothing when `HEAD` was
+  unborn; one object-ID request of 53,607 IDs converged in 16–25 s. Requests carry at
+  most 50,000 IDs, and HTTPS network jobs bound stalls with `http.lowSpeedLimit` and
+  `http.lowSpeedTime`.
+- **No implicit lazy fetch.** With Git defaults a blob read waited past 20 s on a remote
+  that never answered, and `remote.<name>.promisor=false` did not prevent it; with
+  `GIT_NO_LAZY_FETCH=1` it failed in 8 ms and the batch protocol stayed framed.
+  Checking a diff’s `--no-renames` change set first was sufficient in 40 of 40
+  comparisons.
+- **Automatic maintenance disabled.** Each fetch, including each lazy fetch, spawned
+  `git maintenance run --auto`; over HTTPS the 51st consecutive lazy fetch then failed
+  with a commit-graph error.
+- **Four readers per store.** Whole-tree reads peaked at four batch readers and fell
+  with eight. Cancellation terminates a reader (exit within 0.77 ms) and a replacement
+  answers in about 9 ms, so there is no in-band cancel.
+- **Shared store for concurrent subjects.** Readers of different object IDs ran
+  concurrently with byte-identical output, and readers saw no failure across
+  `repack -a -d` and `gc --prune=now`.
+- **Coalesce in process; stage across processes.** Concurrent same-ref fetches into one
+  store stored four packs; staged fetches with the store as an alternate stored one.
+- **Durable refs for offline promises.** Only a ref kept an object through
+  `gc --prune=now`; bare stores write no reflogs.
+- **`flock`, lock-based liveness, and locked no-replace publication.** A killed `flock`
+  holder released in 2.8 ms, a `lockf` lock vanished when an unrelated descriptor
+  closed, and `os.rename` replaced an empty directory.
+  The lock order and state machines are
+  `tests/fixtures/repository-cache/state-machines.json`.
+
+Still open, with owners:
+
+- tree-index and immutable directory-index bounds, which need browser measurements
+  (Phase 1B-c);
+- refresh age and cross-process retry and contention bounds (Phase 2B and later cache
+  operations);
+- prune expiry, size accounting, and retention thresholds for repository objects (later
+  cache operations) and for provider artifacts (the provider plan); and
+- lock, rename, and case semantics on Linux, Windows, and network filesystems (Phase 1A,
+  on CI).
 
 These choices may tune cost.
 They may not introduce shared working-tree state, make a local checkout cache authority,

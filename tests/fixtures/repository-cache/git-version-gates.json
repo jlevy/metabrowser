@@ -1,0 +1,123 @@
+{
+  "schema": "metabrowser-repository-cache-git-version-gates-v1",
+  "decided": "2026-09-16",
+  "parsing": "Match '^git version (\\d+)\\.(\\d+)(?:\\.(\\d+))?' against the first line of `git version`; a missing patch component is 0, anything after the matched numbers (Apple, Windows, or untagged build suffixes) is ignored, and an unparseable string is below every floor.",
+  "advisories_reviewed_through": "2026-09-16: upstream tags end at v2.55.0, and the newest security batch is the 2025-07-08 release (v2.50.1 and its maintenance backports).",
+  "gates": [
+    {
+      "name": "acquisition",
+      "minimum": [2, 43, 7],
+      "patched_tracks": {
+        "2.43": [2, 43, 7],
+        "2.44": [2, 44, 4],
+        "2.45": [2, 45, 4],
+        "2.46": [2, 46, 4],
+        "2.47": [2, 47, 3],
+        "2.48": [2, 48, 2],
+        "2.49": [2, 49, 1],
+        "2.50": [2, 50, 1]
+      },
+      "newest_patched": [2, 50, 1],
+      "below": "URL opening returns unsupported_git_version naming the detected and required versions; local-path browsing is unaffected.",
+      "basis": "Clone-time security floor. CVE-2025-48384 (submodule path CR handling with a symlinked hooks directory) and CVE-2025-48385 (bundle-URI protocol injection during clone) were fixed in v2.43.7, v2.44.4, v2.45.4, v2.46.4, v2.47.3, v2.48.2, v2.49.1, and v2.50.1; v2.43.7 is the oldest maintained track that received them. The same releases carry the 2024 clone fixes (CVE-2024-32002, -32004, -32020, -32021, -32465). A version on an unlisted older track is refused; one on a newer track than v2.50 must be at least v2.50.1. Protocol v2 is the default above this floor (re-enabled in v2.29), and cat-file --batch-command (v2.36) is available."
+    },
+    {
+      "name": "blobless_acquisition",
+      "minimum": [2, 45, 0],
+      "below": "Acquire with a full fetch before publication; a published store is never blobless without a way to keep reads offline.",
+      "basis": "Blobless stores are served only with lazy fetch disabled on every read path. `--no-lazy-fetch` and GIT_NO_LAZY_FETCH first appear in the v2.45.0 documentation and release notes; v2.44.1 has neither. Measured on 2.50.1: with lazy fetch disabled a missing blob fails in 8 ms against a stalled remote, while the default waited past the 20 s harness timeout (results/lazy.json). Convergence uses explicit object-ID fetches, which predate this floor, so git backfill is not a gate."
+    }
+  ],
+  "cases": [
+    {
+      "version_output": "git version 2.50.1",
+      "parsed": [2, 50, 1],
+      "expected": { "acquisition": true, "blobless_acquisition": true, "initial_strategy_for_https": "blobless" }
+    },
+    {
+      "version_output": "git version 2.50.1 (Apple Git-155)",
+      "parsed": [2, 50, 1],
+      "expected": { "acquisition": true, "blobless_acquisition": true, "initial_strategy_for_https": "blobless" }
+    },
+    {
+      "version_output": "git version 2.50.0",
+      "parsed": [2, 50, 0],
+      "expected": { "acquisition": false, "blobless_acquisition": true, "initial_strategy_for_https": "refused" }
+    },
+    {
+      "version_output": "git version 2.55.0",
+      "parsed": [2, 55, 0],
+      "expected": { "acquisition": true, "blobless_acquisition": true, "initial_strategy_for_https": "blobless" }
+    },
+    {
+      "version_output": "git version 2.55.GIT",
+      "parsed": [2, 55, 0],
+      "expected": { "acquisition": true, "blobless_acquisition": true, "initial_strategy_for_https": "blobless" }
+    },
+    {
+      "version_output": "git version 2.49.0",
+      "parsed": [2, 49, 0],
+      "expected": { "acquisition": false, "blobless_acquisition": true, "initial_strategy_for_https": "refused" }
+    },
+    {
+      "version_output": "git version 2.49.1",
+      "parsed": [2, 49, 1],
+      "expected": { "acquisition": true, "blobless_acquisition": true, "initial_strategy_for_https": "blobless" }
+    },
+    {
+      "version_output": "git version 2.45.4",
+      "parsed": [2, 45, 4],
+      "expected": { "acquisition": true, "blobless_acquisition": true, "initial_strategy_for_https": "blobless" }
+    },
+    {
+      "version_output": "git version 2.44.4",
+      "parsed": [2, 44, 4],
+      "expected": { "acquisition": true, "blobless_acquisition": false, "initial_strategy_for_https": "full" }
+    },
+    {
+      "version_output": "git version 2.44.0.windows.1",
+      "parsed": [2, 44, 0],
+      "expected": { "acquisition": false, "blobless_acquisition": false, "initial_strategy_for_https": "refused" }
+    },
+    {
+      "version_output": "git version 2.43.7",
+      "parsed": [2, 43, 7],
+      "expected": { "acquisition": true, "blobless_acquisition": false, "initial_strategy_for_https": "full" }
+    },
+    {
+      "version_output": "git version 2.43.6",
+      "parsed": [2, 43, 6],
+      "expected": { "acquisition": false, "blobless_acquisition": false, "initial_strategy_for_https": "refused" }
+    },
+    {
+      "version_output": "git version 2.39.5 (Apple Git-154)",
+      "parsed": [2, 39, 5],
+      "expected": { "acquisition": false, "blobless_acquisition": false, "initial_strategy_for_https": "refused" }
+    },
+    {
+      "version_output": "git version 2.26.0",
+      "parsed": [2, 26, 0],
+      "expected": { "acquisition": false, "blobless_acquisition": false, "initial_strategy_for_https": "refused" }
+    },
+    {
+      "version_output": "git version 3.0.0",
+      "parsed": [3, 0, 0],
+      "expected": { "acquisition": true, "blobless_acquisition": true, "initial_strategy_for_https": "blobless" }
+    },
+    {
+      "version_output": "git version 2.50",
+      "parsed": [2, 50, 0],
+      "expected": { "acquisition": false, "blobless_acquisition": true, "initial_strategy_for_https": "refused" }
+    },
+    {
+      "version_output": "Git version 2.50.1",
+      "parsed": null,
+      "expected": { "acquisition": false, "blobless_acquisition": false, "initial_strategy_for_https": "refused" }
+    },
+    {
+      "version_output": "",
+      "parsed": null,
+      "expected": { "acquisition": false, "blobless_acquisition": false, "initial_strategy_for_https": "refused" }
+    }
+  ]
+}

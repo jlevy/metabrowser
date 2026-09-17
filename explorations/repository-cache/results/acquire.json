@@ -1,0 +1,2915 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T04:44:28+00:00",
+  "parameters": {
+    "layouts": ["bare", "no-checkout", "init-fetch"],
+    "origins": [
+      "https://github.com/pallets/flask",
+      "https://github.com/python/mypy",
+      "file://<SCRATCH>/origins/mypy.git"
+    ],
+    "reps": 3,
+    "store_config": [
+      "maintenance.auto=false",
+      "gc.auto=0",
+      "fetch.recurseSubmodules=false",
+      "transfer.bundleURI=false",
+      "core.hooksPath=/dev/null"
+    ],
+    "strategies": ["full", "blobless", "blobless+backfill"]
+  },
+  "rows": [
+    {
+      "acquire_s": 2.83,
+      "disk": {
+        "allocated_bytes": 13897728,
+        "apparent_bytes": 13397886,
+        "files": 6
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 4,
+        "maintenance_auto": "false",
+        "partial_clone_filter": null,
+        "promisor": null,
+        "remote_tracking": 0,
+        "tags": 69,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12974
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 12551455,
+        "objects": 26353
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 1.573,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 2.854,
+      "backfill_trace": {
+        "children": 4,
+        "lazy_fetches": 1,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      },
+      "disk": {
+        "allocated_bytes": 4214784,
+        "apparent_bytes": 4196646,
+        "files": 7
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 14548992,
+        "apparent_bytes": 14149757,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 4,
+        "maintenance_auto": "false",
+        "partial_clone_filter": "blob:none",
+        "promisor": "true",
+        "remote_tracking": 0,
+        "tags": 69,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26322,
+        "packs": 2,
+        "promisor_packs": 2,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12962
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 3638559,
+        "objects": 17051
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 2.424,
+      "disk": {
+        "allocated_bytes": 13434880,
+        "apparent_bytes": 13398591,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "layout_facts": {
+        "core_bare": "false",
+        "fetch_refspec": "+refs/heads/*:refs/remotes/origin/*",
+        "has_index": false,
+        "has_reflogs": true,
+        "local_heads": 1,
+        "maintenance_auto": "false",
+        "partial_clone_filter": null,
+        "promisor": null,
+        "remote_tracking": 5,
+        "tags": 69,
+        "worktree_entries": 0
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12974
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 12551455,
+        "objects": 26353
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 1.691,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 2.756,
+      "backfill_trace": {
+        "children": 4,
+        "lazy_fetches": 1,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      },
+      "disk": {
+        "allocated_bytes": 4235264,
+        "apparent_bytes": 4197349,
+        "files": 12
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 14196736,
+        "apparent_bytes": 14150460,
+        "files": 16
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "layout_facts": {
+        "core_bare": "false",
+        "fetch_refspec": "+refs/heads/*:refs/remotes/origin/*",
+        "has_index": false,
+        "has_reflogs": true,
+        "local_heads": 1,
+        "maintenance_auto": "false",
+        "partial_clone_filter": "blob:none",
+        "promisor": "true",
+        "remote_tracking": 5,
+        "tags": 69,
+        "worktree_entries": 0
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26322,
+        "packs": 2,
+        "promisor_packs": 2,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12962
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 3638559,
+        "objects": 17051
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 4.207,
+      "disk": {
+        "allocated_bytes": 14741504,
+        "apparent_bytes": 13395066,
+        "files": 78
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 0,
+        "maintenance_auto": "false",
+        "partial_clone_filter": null,
+        "promisor": null,
+        "remote_tracking": 4,
+        "tags": 69,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12974
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 2.668,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 0.04,
+      "backfill_trace": {
+        "children": 0,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 4505600,
+        "apparent_bytes": 4193866,
+        "files": 79
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 4505600,
+        "apparent_bytes": 4193866,
+        "files": 79
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 0,
+        "maintenance_auto": "false",
+        "partial_clone_filter": "blob:none",
+        "promisor": "true",
+        "remote_tracking": 4,
+        "tags": 69,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 12.582,
+      "disk": {
+        "allocated_bytes": 105328640,
+        "apparent_bytes": 92921032,
+        "files": 6
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 89,
+        "maintenance_auto": "false",
+        "partial_clone_filter": null,
+        "promisor": null,
+        "remote_tracking": 0,
+        "tags": 116,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90267
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 2.827,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 22.477,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 2
+      },
+      "disk": {
+        "allocated_bytes": 16957440,
+        "apparent_bytes": 16390110,
+        "files": 7
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 108134400,
+        "apparent_bytes": 95452637,
+        "files": 15
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 89,
+        "maintenance_auto": "false",
+        "partial_clone_filter": "blob:none",
+        "promisor": "true",
+        "remote_tracking": 0,
+        "tags": 116,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15727
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 88545
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 14281605,
+        "objects": 64894
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 11.595,
+      "disk": {
+        "allocated_bytes": 104988672,
+        "apparent_bytes": 92922588,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "layout_facts": {
+        "core_bare": "false",
+        "fetch_refspec": "+refs/heads/*:refs/remotes/origin/*",
+        "has_index": false,
+        "has_reflogs": true,
+        "local_heads": 1,
+        "maintenance_auto": "false",
+        "partial_clone_filter": null,
+        "promisor": null,
+        "remote_tracking": 90,
+        "tags": 116,
+        "worktree_entries": 0
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90267
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 89118474,
+        "objects": 118501
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 2.939,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 20.45,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 2
+      },
+      "disk": {
+        "allocated_bytes": 17018880,
+        "apparent_bytes": 16348308,
+        "files": 12
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 108535808,
+        "apparent_bytes": 95410835,
+        "files": 20
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "layout_facts": {
+        "core_bare": "false",
+        "fetch_refspec": "+refs/heads/*:refs/remotes/origin/*",
+        "has_index": false,
+        "has_reflogs": true,
+        "local_heads": 1,
+        "maintenance_auto": "false",
+        "partial_clone_filter": "blob:none",
+        "promisor": "true",
+        "remote_tracking": 90,
+        "tags": 116,
+        "worktree_entries": 0
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15684
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 88502
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 14239662,
+        "objects": 64894
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 14.816,
+      "disk": {
+        "allocated_bytes": 105594880,
+        "apparent_bytes": 92916759,
+        "files": 210
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 0,
+        "maintenance_auto": "false",
+        "partial_clone_filter": null,
+        "promisor": null,
+        "remote_tracking": 89,
+        "tags": 116,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90267
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 3.308,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 0.021,
+      "backfill_trace": {
+        "children": 0,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 18100224,
+        "apparent_bytes": 16342433,
+        "files": 211
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 18100224,
+        "apparent_bytes": 16342433,
+        "files": 211
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 0,
+        "maintenance_auto": "false",
+        "partial_clone_filter": "blob:none",
+        "promisor": "true",
+        "remote_tracking": 89,
+        "tags": 116,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15684
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15684
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 10.253,
+      "disk": {
+        "allocated_bytes": 104488960,
+        "apparent_bytes": 93448374,
+        "files": 6
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 89,
+        "maintenance_auto": "false",
+        "partial_clone_filter": null,
+        "promisor": null,
+        "remote_tracking": 0,
+        "tags": 116,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 1.468,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 12.141,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 16408576,
+        "apparent_bytes": 16389641,
+        "files": 7
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 108257280,
+        "apparent_bytes": 96248058,
+        "files": 15
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 89,
+        "maintenance_auto": "false",
+        "partial_clone_filter": "blob:none",
+        "promisor": "true",
+        "remote_tracking": 0,
+        "tags": 116,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 89321
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 14281605,
+        "objects": 64894
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 9.916,
+      "disk": {
+        "allocated_bytes": 104570880,
+        "apparent_bytes": 93450137,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "layout_facts": {
+        "core_bare": "false",
+        "fetch_refspec": "+refs/heads/*:refs/remotes/origin/*",
+        "has_index": false,
+        "has_reflogs": true,
+        "local_heads": 1,
+        "maintenance_auto": "false",
+        "partial_clone_filter": null,
+        "promisor": null,
+        "remote_tracking": 90,
+        "tags": 116,
+        "worktree_entries": 0
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 1.876,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 15.523,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 16932864,
+        "apparent_bytes": 16391404,
+        "files": 12
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 108777472,
+        "apparent_bytes": 96244668,
+        "files": 20
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "layout_facts": {
+        "core_bare": "false",
+        "fetch_refspec": "+refs/heads/*:refs/remotes/origin/*",
+        "has_index": false,
+        "has_reflogs": true,
+        "local_heads": 1,
+        "maintenance_auto": "false",
+        "partial_clone_filter": "blob:none",
+        "promisor": "true",
+        "remote_tracking": 90,
+        "tags": 116,
+        "worktree_entries": 0
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 89316
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 14281605,
+        "objects": 64894
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 11.817,
+      "disk": {
+        "allocated_bytes": 106020864,
+        "apparent_bytes": 93444101,
+        "files": 210
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 0,
+        "maintenance_auto": "false",
+        "partial_clone_filter": null,
+        "promisor": null,
+        "remote_tracking": 89,
+        "tags": 116,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 2.025,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 0.025,
+      "backfill_trace": {
+        "children": 0,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 17231872,
+        "apparent_bytes": 16385322,
+        "files": 211
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 17231872,
+        "apparent_bytes": 16385322,
+        "files": 211
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "layout_facts": {
+        "core_bare": "true",
+        "fetch_refspec": null,
+        "has_index": false,
+        "has_reflogs": false,
+        "local_heads": 0,
+        "maintenance_auto": "false",
+        "partial_clone_filter": "blob:none",
+        "promisor": "true",
+        "remote_tracking": 89,
+        "tags": 116,
+        "worktree_entries": null
+      },
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 1.955,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 0.017,
+      "backfill_trace": {
+        "children": 0,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 4505600,
+        "apparent_bytes": 4193866,
+        "files": 79
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 4505600,
+        "apparent_bytes": 4193866,
+        "files": 79
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 4.636,
+      "disk": {
+        "allocated_bytes": 14016512,
+        "apparent_bytes": 13395152,
+        "files": 78
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12974
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 1.379,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 2.259,
+      "backfill_trace": {
+        "children": 4,
+        "lazy_fetches": 1,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      },
+      "disk": {
+        "allocated_bytes": 4235264,
+        "apparent_bytes": 4196974,
+        "files": 12
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 14196736,
+        "apparent_bytes": 14150211,
+        "files": 16
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26322,
+        "packs": 2,
+        "promisor_packs": 2,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12962
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 3638559,
+        "objects": 17051
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 3.25,
+      "disk": {
+        "allocated_bytes": 13471744,
+        "apparent_bytes": 13398677,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12974
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 12551455,
+        "objects": 26353
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 1.747,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 2.977,
+      "backfill_trace": {
+        "children": 4,
+        "lazy_fetches": 1,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      },
+      "disk": {
+        "allocated_bytes": 4214784,
+        "apparent_bytes": 4196646,
+        "files": 7
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 15069184,
+        "apparent_bytes": 14149758,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26322,
+        "packs": 2,
+        "promisor_packs": 2,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12962
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 3638559,
+        "objects": 17051
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 4.278,
+      "disk": {
+        "allocated_bytes": 14045184,
+        "apparent_bytes": 13397886,
+        "files": 6
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12974
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 12551455,
+        "objects": 26353
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 4.571,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 0.034,
+      "backfill_trace": {
+        "children": 0,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 18120704,
+        "apparent_bytes": 16342433,
+        "files": 211
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 18120704,
+        "apparent_bytes": 16342433,
+        "files": 211
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15684
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15684
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 12.52,
+      "disk": {
+        "allocated_bytes": 106217472,
+        "apparent_bytes": 93492264,
+        "files": 210
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90829
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 3.116,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 27.965,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 2
+      },
+      "disk": {
+        "allocated_bytes": 16691200,
+        "apparent_bytes": 16391666,
+        "files": 12
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 107581440,
+        "apparent_bytes": 95519358,
+        "files": 20
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15727
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 88608
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 14281605,
+        "objects": 64894
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 15.544,
+      "disk": {
+        "allocated_bytes": 104538112,
+        "apparent_bytes": 92857675,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90204
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 3.463,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 34.975,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 2
+      },
+      "disk": {
+        "allocated_bytes": 16564224,
+        "apparent_bytes": 16390110,
+        "files": 7
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 107438080,
+        "apparent_bytes": 95452637,
+        "files": 15
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15727
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 88545
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 14281605,
+        "objects": 64894
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 11.111,
+      "disk": {
+        "allocated_bytes": 105500672,
+        "apparent_bytes": 92858249,
+        "files": 6
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90206
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 89055560,
+        "objects": 118501
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 2.169,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 0.014,
+      "backfill_trace": {
+        "children": 0,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 17231872,
+        "apparent_bytes": 16385322,
+        "files": 211
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 17231872,
+        "apparent_bytes": 16385322,
+        "files": 211
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 8.553,
+      "disk": {
+        "allocated_bytes": 105312256,
+        "apparent_bytes": 93444101,
+        "files": 210
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 1.376,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 9.779,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 16429056,
+        "apparent_bytes": 16391404,
+        "files": 12
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 107589632,
+        "apparent_bytes": 96243028,
+        "files": 20
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 89315
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 14281605,
+        "objects": 64894
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 6.272,
+      "disk": {
+        "allocated_bytes": 105193472,
+        "apparent_bytes": 93450137,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 89642762,
+        "objects": 118501
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 1.431,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 9.468,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 16408576,
+        "apparent_bytes": 16389641,
+        "files": 7
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 108318720,
+        "apparent_bytes": 96251115,
+        "files": 15
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 89324
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 14281605,
+        "objects": 64894
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 5.238,
+      "disk": {
+        "allocated_bytes": 105025536,
+        "apparent_bytes": 93448374,
+        "files": 6
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 89642762,
+        "objects": 118501
+      },
+      "rep": 1,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 2.301,
+      "disk": {
+        "allocated_bytes": 13463552,
+        "apparent_bytes": 13397886,
+        "files": 6
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12974
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 12551455,
+        "objects": 26353
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 1.904,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 2.605,
+      "backfill_trace": {
+        "children": 4,
+        "lazy_fetches": 1,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      },
+      "disk": {
+        "allocated_bytes": 5013504,
+        "apparent_bytes": 4196646,
+        "files": 7
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 15908864,
+        "apparent_bytes": 14149757,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26322,
+        "packs": 2,
+        "promisor_packs": 2,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12962
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 3638559,
+        "objects": 17051
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 5.474,
+      "disk": {
+        "allocated_bytes": 14139392,
+        "apparent_bytes": 13398591,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12974
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 12551455,
+        "objects": 26353
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 2.413,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 4.049,
+      "backfill_trace": {
+        "children": 4,
+        "lazy_fetches": 1,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      },
+      "disk": {
+        "allocated_bytes": 4796416,
+        "apparent_bytes": 4197349,
+        "files": 12
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 15749120,
+        "apparent_bytes": 14150460,
+        "files": 16
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26322,
+        "packs": 2,
+        "promisor_packs": 2,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12962
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": 3638559,
+        "objects": 17051
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 4.163,
+      "disk": {
+        "allocated_bytes": 13852672,
+        "apparent_bytes": 13395152,
+        "files": 78
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 26353,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 12974
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 2.924,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 0.02,
+      "backfill_trace": {
+        "children": 0,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 4505600,
+        "apparent_bytes": 4193866,
+        "files": 79
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 4505600,
+        "apparent_bytes": 4193866,
+        "files": 79
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 17051,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 4021
+      },
+      "origin": "flask-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 11.642,
+      "disk": {
+        "allocated_bytes": 104493056,
+        "apparent_bytes": 92921032,
+        "files": 6
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90267
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 89118474,
+        "objects": 118501
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 5.926,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 18.962,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 2
+      },
+      "disk": {
+        "allocated_bytes": 16650240,
+        "apparent_bytes": 16346752,
+        "files": 7
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 108015616,
+        "apparent_bytes": 95474444,
+        "files": 15
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15684
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 88566
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 14239662,
+        "objects": 64894
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 15.637,
+      "disk": {
+        "allocated_bytes": 104509440,
+        "apparent_bytes": 92860907,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90207
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 89055560,
+        "objects": 118501
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 3.044,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 17.212,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 2
+      },
+      "disk": {
+        "allocated_bytes": 16949248,
+        "apparent_bytes": 16354256,
+        "files": 12
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 108380160,
+        "apparent_bytes": 95416783,
+        "files": 20
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15690
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 88508
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": 14250148,
+        "objects": 64894
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 13.942,
+      "disk": {
+        "allocated_bytes": 105930752,
+        "apparent_bytes": 92853976,
+        "files": 210
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90206
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 4.136,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 0.011,
+      "backfill_trace": {
+        "children": 0,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 18124800,
+        "apparent_bytes": 16342433,
+        "files": 211
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 18124800,
+        "apparent_bytes": 16342433,
+        "files": 211
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15684
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15684
+      },
+      "origin": "mypy-https",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 1
+      }
+    },
+    {
+      "acquire_s": 4.867,
+      "disk": {
+        "allocated_bytes": 105025536,
+        "apparent_bytes": 93448374,
+        "files": 6
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 89642762,
+        "objects": 118501
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 0.958,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 6.246,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 16408576,
+        "apparent_bytes": 16389641,
+        "files": 7
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 111243264,
+        "apparent_bytes": 96246874,
+        "files": 15
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 89320
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 14281605,
+        "objects": 64894
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 4.945,
+      "disk": {
+        "allocated_bytes": 105127936,
+        "apparent_bytes": 93450137,
+        "files": 11
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 89642762,
+        "objects": 118501
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 1.587,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 7.935,
+      "backfill_trace": {
+        "children": 8,
+        "lazy_fetches": 2,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 16429056,
+        "apparent_bytes": 16391404,
+        "files": 12
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 107835392,
+        "apparent_bytes": 96249340,
+        "files": 20
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "no-checkout",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 117183,
+        "packs": 3,
+        "promisor_packs": 3,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 89321
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": 14281605,
+        "objects": 64894
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 4.045,
+      "disk": {
+        "allocated_bytes": 97640448,
+        "apparent_bytes": 93444101,
+        "files": 210
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 0,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "full",
+      "trace": {
+        "children": 4,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 1.071,
+      "backfill_error_class": "",
+      "backfill_returncode": 0,
+      "backfill_s": 0.01,
+      "backfill_trace": {
+        "children": 0,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      },
+      "disk": {
+        "allocated_bytes": 17231872,
+        "apparent_bytes": 16385322,
+        "files": 211
+      },
+      "disk_after_backfill": {
+        "allocated_bytes": 17231872,
+        "apparent_bytes": 16385322,
+        "files": 211
+      },
+      "error_class": "",
+      "filter_ignored": false,
+      "layout": "init-fetch",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "objects_after_backfill": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 64894,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 15726
+      },
+      "origin": "mypy-file",
+      "received": {
+        "bytes": null,
+        "objects": null
+      },
+      "rep": 2,
+      "returncode": 0,
+      "strategy": "blobless",
+      "trace": {
+        "children": 3,
+        "lazy_fetches": 0,
+        "maintenance_spawns": 0,
+        "remote_helpers": 0
+      }
+    },
+    {
+      "acquire_s": 6.301,
+      "filter_ignored": false,
+      "layout": "bare",
+      "objects": {
+        "count": 0,
+        "garbage": 0,
+        "in_pack": 118501,
+        "packs": 1,
+        "promisor_packs": 1,
+        "prune_packable": 0,
+        "size": 0,
+        "size_garbage": 0,
+        "size_pack": 90782
+      },
+      "origin": "mypy-file-no-allow-filter",
+      "promisor": "true",
+      "rep": 0,
+      "returncode": 0,
+      "strategy": "blobless"
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T04:35:52+00:00",
+  "suite": "acquire"
+}

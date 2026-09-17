@@ -1,0 +1,602 @@
+{
+  "schema": "metabrowser-repository-cache-url-grammar-v1",
+  "decided": "2026-09-16",
+  "scope": "Provider-neutral classification of the CLI root argument before any Path is constructed. An installed provider reducer that claims a scheme and host is consulted first; this grammar applies to every input no reducer reduced.",
+  "transports": ["https", "ssh", "file"],
+  "default_ports": { "https": "443", "ssh": "22" },
+  "check_order": [
+    "empty",
+    "option_like",
+    "remote_helper_syntax",
+    "unsupported_transport",
+    "malformed_url",
+    "local_path",
+    "control_or_whitespace",
+    "non_ascii",
+    "backslash",
+    "query_not_allowed",
+    "fragment_not_allowed",
+    "authority",
+    "path"
+  ],
+  "reasons": {
+    "empty": "An empty argument names nothing.",
+    "option_like": "A leading '-' in the argument, host, user, or SCP path can become a Git or SSH option (CVE-2017-1000117).",
+    "remote_helper_syntax": "'<transport>::<address>' selects a Git remote helper such as ext:: or fd::, which can run commands.",
+    "unsupported_transport": "Only https, ssh, and file are allowed; http and git:// are unauthenticated, and aliases such as git+ssh are not accepted.",
+    "malformed_url": "A known scheme followed by ':' without '//' is a typo, not a local path.",
+    "control_or_whitespace": "Control characters and whitespace, raw or percent-encoded, are never part of a repository address and can split log lines or arguments.",
+    "non_ascii": "Hosts must be punycode and paths percent-encoded; no IDNA or Unicode normalization is applied, so a lookalike cannot alias another source.",
+    "backslash": "URL parsers disagree about '\\' (WHATWG treats it as '/'), so it is ambiguous.",
+    "query_not_allowed": "A query may be presentation syntax or a secret; the generic grammar does not guess.",
+    "fragment_not_allowed": "A fragment has no meaning to Git; reducers carry line anchors, the generic grammar does not.",
+    "credentials_in_url": "Userinfo on https, or a password on ssh, can carry a token that would be persisted in source.yml.",
+    "invalid_user": "SSH user names are limited to [A-Za-z0-9._~-]+.",
+    "missing_host": "https and ssh need a host.",
+    "invalid_host": "Hosts are lowercase-folded LDH DNS names, dotted IPv4, or bracketed IPv6 without a zone; trailing dots, underscores, and percent-encoding are ambiguous.",
+    "invalid_port": "Ports are 1-65535 written without leading zeros.",
+    "file_authority_not_local": "file:// URLs must name this machine: an empty authority or localhost, with no user or port.",
+    "missing_repository_path": "A host alone does not name a repository.",
+    "empty_path_segment": "'//' inside a path is interpreted differently by different Git hosts.",
+    "dot_segment": "'.' and '..' segments, raw or percent-encoded, change which repository is named.",
+    "encoded_delimiter": "%2F and %5C would hide a segment boundary.",
+    "invalid_percent_encoding": "'%' must be followed by two hexadecimal digits.",
+    "invalid_path_character": "Paths use only RFC 3986 pchar characters; SCP-like paths are not URIs, so '%' is not allowed there."
+  },
+  "normalization": [
+    "Lowercase the scheme and host (RFC 3986 6.2.2.1).",
+    "Uppercase percent-encoding hex digits and decode percent-encoded unreserved characters (RFC 3986 6.2.2.1-2).",
+    "Remove an empty or default port (RFC 3986 6.2.3).",
+    "Rewrite file://localhost/ to file:/// (RFC 8089).",
+    "Remove one trailing '/' from https and file paths: Git's smart-HTTP client requests the same /info/refs URL with and without it (explorations/repository-cache/results/url.json), and POSIX resolves a directory path identically.",
+    "Preserve path case, a terminal .git, the ssh user, SSH versus HTTPS spelling, SCP-like versus ssh:// spelling, and an ssh or SCP trailing '/', because a generic Git host may interpret each."
+  ],
+  "cases": [
+    {
+      "id": "https-basic",
+      "input": "https://example.com/owner/repo",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://example.com/owner/repo" },
+      "why": "The canonical generic clone URL."
+    },
+    {
+      "id": "https-dot-git-preserved",
+      "input": "https://example.com/owner/repo.git",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://example.com/owner/repo.git" },
+      "why": "A terminal .git is a distinction a generic host may make, so it is a different source."
+    },
+    {
+      "id": "https-case-folding",
+      "input": "HTTPS://Example.COM/Owner/Repo.git",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://example.com/Owner/Repo.git" },
+      "why": "Scheme and host are case-insensitive by URI rules; the path is not."
+    },
+    {
+      "id": "https-default-port",
+      "input": "https://example.com:443/owner/repo.git",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://example.com/owner/repo.git" },
+      "why": "443 is the https default."
+    },
+    {
+      "id": "https-empty-port",
+      "input": "https://example.com:/owner/repo.git",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://example.com/owner/repo.git" },
+      "why": "An empty port is the default port."
+    },
+    {
+      "id": "https-custom-port",
+      "input": "https://git.example.org:8443/group/sub/repo.git",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://git.example.org:8443/group/sub/repo.git" },
+      "why": "Non-default ports and nested group paths are preserved."
+    },
+    {
+      "id": "https-trailing-slash",
+      "input": "https://example.com/owner/repo.git/",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://example.com/owner/repo.git" },
+      "why": "Git's HTTP client issues the identical request with or without it."
+    },
+    {
+      "id": "https-percent-unreserved",
+      "input": "https://example.com/owner/%72epo.git",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://example.com/owner/repo.git" },
+      "why": "Percent-encoded unreserved characters are equivalent to their decoded form."
+    },
+    {
+      "id": "https-percent-uppercased",
+      "input": "https://example.com/owner/r%c3%a9po.git",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://example.com/owner/r%C3%A9po.git" },
+      "why": "Other encoded bytes stay encoded with uppercase hex."
+    },
+    {
+      "id": "https-ipv4",
+      "input": "https://192.0.2.10/repo.git",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://192.0.2.10/repo.git" },
+      "why": "IPv4 literals are hosts."
+    },
+    {
+      "id": "https-ipv6",
+      "input": "https://[2001:DB8::1]:8443/repo.git",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://[2001:db8::1]:8443/repo.git" },
+      "why": "Bracketed IPv6 literals are lowercased."
+    },
+    {
+      "id": "https-reducer-shaped-path",
+      "input": "https://git.example.org/group/repo/-/tree/main",
+      "expected": { "outcome": "git_source", "transport": "https", "form": "url", "normalized": "https://git.example.org/group/repo/-/tree/main" },
+      "why": "Web-URL shapes are a reducer's claim; without one, the generic grammar does not guess and Git decides."
+    },
+    {
+      "id": "ssh-url",
+      "input": "ssh://git@example.com/owner/repo.git",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "url", "normalized": "ssh://git@example.com/owner/repo.git" },
+      "why": "The ssh user is preserved; different users can see different repositories."
+    },
+    {
+      "id": "ssh-url-default-port",
+      "input": "ssh://git@Example.com:22/owner/repo.git",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "url", "normalized": "ssh://git@example.com/owner/repo.git" },
+      "why": "22 is the ssh default."
+    },
+    {
+      "id": "ssh-url-custom-port-ipv6",
+      "input": "ssh://git@[2001:DB8::1]:2222/owner/repo.git",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "url", "normalized": "ssh://git@[2001:db8::1]:2222/owner/repo.git" },
+      "why": "Ports and IPv6 hosts follow the https rules."
+    },
+    {
+      "id": "ssh-url-no-user",
+      "input": "ssh://example.com/owner/repo.git",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "url", "normalized": "ssh://example.com/owner/repo.git" },
+      "why": "The user is optional in ssh:// URLs."
+    },
+    {
+      "id": "ssh-url-home-relative",
+      "input": "ssh://git@example.com/~alice/repo.git",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "url", "normalized": "ssh://git@example.com/~alice/repo.git" },
+      "why": "Git expands ~user on the server; the spelling is preserved."
+    },
+    {
+      "id": "ssh-url-trailing-slash-preserved",
+      "input": "ssh://git@example.com/owner/repo.git/",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "url", "normalized": "ssh://git@example.com/owner/repo.git/" },
+      "why": "The path is passed verbatim to the remote upload-pack, which may interpret it."
+    },
+    {
+      "id": "scp-basic",
+      "input": "git@example.com:owner/repo.git",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "scp", "normalized": "git@example.com:owner/repo.git" },
+      "why": "SCP-like syntax is ssh with a home-relative path, so it is not rewritten to ssh://."
+    },
+    {
+      "id": "scp-host-case",
+      "input": "git@EXAMPLE.com:Owner/Repo.git",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "scp", "normalized": "git@example.com:Owner/Repo.git" },
+      "why": "Only the host folds."
+    },
+    {
+      "id": "scp-absolute-path",
+      "input": "git@example.com:/srv/git/repo.git",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "scp", "normalized": "git@example.com:/srv/git/repo.git" },
+      "why": "An absolute SCP path is a different repository from a home-relative one."
+    },
+    {
+      "id": "scp-ipv6",
+      "input": "git@[2001:db8::1]:owner/repo.git",
+      "expected": { "outcome": "git_source", "transport": "ssh", "form": "scp", "normalized": "git@[2001:db8::1]:owner/repo.git" },
+      "why": "Bracketed hosts are allowed in SCP-like syntax."
+    },
+    {
+      "id": "file-empty-authority",
+      "input": "file:///srv/git/repo.git",
+      "expected": { "outcome": "git_source", "transport": "file", "form": "url", "normalized": "file:///srv/git/repo.git" },
+      "why": "file:// uses Git's pack transport instead of the hardlinking --local clone."
+    },
+    {
+      "id": "file-localhost",
+      "input": "FILE://LocalHost/srv/git/repo.git/",
+      "expected": { "outcome": "git_source", "transport": "file", "form": "url", "normalized": "file:///srv/git/repo.git" },
+      "why": "localhost is the local authority; a trailing directory slash resolves identically."
+    },
+    {
+      "id": "local-relative",
+      "input": "repo",
+      "expected": { "outcome": "local_path" },
+      "why": "A bare path keeps its existing meaning."
+    },
+    {
+      "id": "local-dot",
+      "input": ".",
+      "expected": { "outcome": "local_path" },
+      "why": "The default root."
+    },
+    {
+      "id": "local-absolute",
+      "input": "/srv/git/repo.git",
+      "expected": { "outcome": "local_path" },
+      "why": "A local repository path is served, not acquired; file:// is the only way to ask for acquisition."
+    },
+    {
+      "id": "local-owner-repo-shorthand",
+      "input": "owner/repo",
+      "expected": { "outcome": "local_path" },
+      "why": "Shorthand is ambiguous with a relative directory, so it stays a path."
+    },
+    {
+      "id": "local-host-colon-without-user",
+      "input": "example.com:owner/repo.git",
+      "expected": { "outcome": "local_path" },
+      "why": "SCP-like syntax requires user@, so a relative name containing ':' stays a path."
+    },
+    {
+      "id": "local-dot-slash-forces-path",
+      "input": "./git@example.com:owner/repo.git",
+      "expected": { "outcome": "local_path" },
+      "why": "A '/' before the ':' makes it a path, which is how a user escapes SCP-like classification."
+    },
+    {
+      "id": "local-windows-drive-backslash",
+      "input": "C:\\src\\repo",
+      "expected": { "outcome": "local_path" },
+      "why": "Drive letters never match SCP-like syntax because it needs user@."
+    },
+    {
+      "id": "local-windows-drive-slash",
+      "input": "C:/src/repo",
+      "expected": { "outcome": "local_path" },
+      "why": "Same, with forward slashes."
+    },
+    {
+      "id": "local-with-space",
+      "input": "My Repositories/repo",
+      "expected": { "outcome": "local_path" },
+      "why": "Whitespace rules apply to URLs, not to local paths."
+    },
+    {
+      "id": "local-user-at-host-without-colon",
+      "input": "git@example.com",
+      "expected": { "outcome": "local_path" },
+      "why": "Without ':' it is not SCP-like."
+    },
+    {
+      "id": "reject-empty",
+      "input": "",
+      "expected": { "outcome": "rejected", "reason": "empty" },
+      "why": "Nothing to classify."
+    },
+    {
+      "id": "reject-option-upload-pack",
+      "input": "--upload-pack=touch /tmp/owned",
+      "expected": { "outcome": "rejected", "reason": "option_like" },
+      "why": "Would be read as a Git option."
+    },
+    {
+      "id": "reject-option-ssh-host",
+      "input": "ssh://-oProxyCommand=touch/repo.git",
+      "expected": { "outcome": "rejected", "reason": "option_like" },
+      "why": "A host beginning with '-' becomes an ssh option (CVE-2017-1000117)."
+    },
+    {
+      "id": "reject-option-https-host",
+      "input": "https://-evil.example/repo.git",
+      "expected": { "outcome": "rejected", "reason": "option_like" },
+      "why": "Hosts beginning with '-' are refused for every transport."
+    },
+    {
+      "id": "reject-option-scp-path",
+      "input": "git@example.com:-oProxyCommand=touch",
+      "expected": { "outcome": "rejected", "reason": "option_like" },
+      "why": "An SCP path beginning with '-' reaches the remote command line."
+    },
+    {
+      "id": "reject-option-scp-host",
+      "input": "git@-oProxyCommand=touch:repo.git",
+      "expected": { "outcome": "rejected", "reason": "option_like" },
+      "why": "An SCP host beginning with '-' reaches ssh."
+    },
+    {
+      "id": "reject-option-ssh-user",
+      "input": "ssh://-oProxyCommand@example.com/repo.git",
+      "expected": { "outcome": "rejected", "reason": "option_like" },
+      "why": "A user beginning with '-' reaches ssh."
+    },
+    {
+      "id": "reject-ext-helper",
+      "input": "ext::sh -c touch% /tmp/owned",
+      "expected": { "outcome": "rejected", "reason": "remote_helper_syntax" },
+      "why": "ext:: runs an arbitrary command."
+    },
+    {
+      "id": "reject-fd-helper",
+      "input": "fd::17",
+      "expected": { "outcome": "rejected", "reason": "remote_helper_syntax" },
+      "why": "fd:: speaks the protocol over an inherited descriptor."
+    },
+    {
+      "id": "reject-http",
+      "input": "http://example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "unsupported_transport" },
+      "why": "Plain HTTP is unauthenticated and unencrypted."
+    },
+    {
+      "id": "reject-git-protocol",
+      "input": "git://example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "unsupported_transport" },
+      "why": "git:// is unauthenticated."
+    },
+    {
+      "id": "reject-git-plus-ssh",
+      "input": "git+ssh://example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "unsupported_transport" },
+      "why": "Transport aliases are not in the allowlist."
+    },
+    {
+      "id": "reject-unknown-scheme",
+      "input": "rsync://example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "unsupported_transport" },
+      "why": "Unknown schemes are refused."
+    },
+    {
+      "id": "reject-single-slash-scheme",
+      "input": "https:/example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "malformed_url" },
+      "why": "A mistyped URL must not become a local path."
+    },
+    {
+      "id": "reject-file-without-slashes",
+      "input": "file:srv/git/repo.git",
+      "expected": { "outcome": "rejected", "reason": "malformed_url" },
+      "why": "Same, for file."
+    },
+    {
+      "id": "reject-newline",
+      "input": "https://example.com/owner/repo.git\n",
+      "expected": { "outcome": "rejected", "reason": "control_or_whitespace" },
+      "why": "A trailing newline from a paste is not part of the address."
+    },
+    {
+      "id": "reject-nul",
+      "input": "https://example.com/owner/re\u0000po.git",
+      "expected": { "outcome": "rejected", "reason": "control_or_whitespace" },
+      "why": "NUL terminates C strings inside Git."
+    },
+    {
+      "id": "reject-space",
+      "input": "https://example.com/owner/my repo.git",
+      "expected": { "outcome": "rejected", "reason": "control_or_whitespace" },
+      "why": "Whitespace is not a URI character."
+    },
+    {
+      "id": "reject-scp-space",
+      "input": "git@example.com:owner/my repo.git",
+      "expected": { "outcome": "rejected", "reason": "control_or_whitespace" },
+      "why": "The same rule applies to SCP-like addresses."
+    },
+    {
+      "id": "reject-encoded-control",
+      "input": "https://example.com/owner/repo%0A.git",
+      "expected": { "outcome": "rejected", "reason": "control_or_whitespace" },
+      "why": "Encoding a control character does not make it safe."
+    },
+    {
+      "id": "reject-encoded-space",
+      "input": "https://example.com/owner/my%20repo.git",
+      "expected": { "outcome": "rejected", "reason": "control_or_whitespace" },
+      "why": "An encoded space is still whitespace in a persisted identity."
+    },
+    {
+      "id": "reject-unicode-whitespace",
+      "input": "https://example.com/owner/repo\u00a0.git",
+      "expected": { "outcome": "rejected", "reason": "control_or_whitespace" },
+      "why": "No-break space is whitespace."
+    },
+    {
+      "id": "reject-non-ascii-host",
+      "input": "https://ex\u00e4mple.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "non_ascii" },
+      "why": "IDN hosts must be given as punycode."
+    },
+    {
+      "id": "reject-non-ascii-path",
+      "input": "https://example.com/owner/r\u00e9po.git",
+      "expected": { "outcome": "rejected", "reason": "non_ascii" },
+      "why": "Paths must be percent-encoded; NFC and NFD spellings would otherwise be two identities for one name."
+    },
+    {
+      "id": "reject-backslash",
+      "input": "https://example.com\\owner\\repo.git",
+      "expected": { "outcome": "rejected", "reason": "backslash" },
+      "why": "Parsers disagree on backslash."
+    },
+    {
+      "id": "reject-query",
+      "input": "https://example.com/owner/repo.git?ref=main",
+      "expected": { "outcome": "rejected", "reason": "query_not_allowed" },
+      "why": "Queries are reducer syntax or secrets."
+    },
+    {
+      "id": "reject-query-token",
+      "input": "https://example.com/owner/repo.git?access_token=secret",
+      "expected": { "outcome": "rejected", "reason": "query_not_allowed" },
+      "why": "Query tokens must never be persisted."
+    },
+    {
+      "id": "reject-fragment",
+      "input": "https://example.com/owner/repo.git#readme",
+      "expected": { "outcome": "rejected", "reason": "fragment_not_allowed" },
+      "why": "Fragments are reducer syntax."
+    },
+    {
+      "id": "reject-https-token-user",
+      "input": "https://token123@example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "credentials_in_url" },
+      "why": "A user name alone can be a token."
+    },
+    {
+      "id": "reject-https-user-password",
+      "input": "https://alice:secret@example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "credentials_in_url" },
+      "why": "Embedded password."
+    },
+    {
+      "id": "reject-https-empty-userinfo",
+      "input": "https://@example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "credentials_in_url" },
+      "why": "Any userinfo on https is refused."
+    },
+    {
+      "id": "reject-ssh-password",
+      "input": "ssh://git:secret@example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "credentials_in_url" },
+      "why": "ssh passwords are credentials."
+    },
+    {
+      "id": "reject-ssh-empty-user",
+      "input": "ssh://@example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_user" },
+      "why": "An empty user is not a user."
+    },
+    {
+      "id": "reject-ssh-user-characters",
+      "input": "ssh://al;ce@example.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_user" },
+      "why": "Shell metacharacters in the user reach ssh."
+    },
+    {
+      "id": "reject-missing-host",
+      "input": "https:///owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "missing_host" },
+      "why": "https needs a host."
+    },
+    {
+      "id": "reject-trailing-dot-host",
+      "input": "https://example.com./owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_host" },
+      "why": "A fully qualified trailing dot is DNS-equivalent but not TLS-equivalent."
+    },
+    {
+      "id": "reject-underscore-host",
+      "input": "https://exa_mple.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_host" },
+      "why": "Not an LDH host name."
+    },
+    {
+      "id": "reject-percent-host",
+      "input": "https://ex%61mple.com/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_host" },
+      "why": "Encoded host characters are ambiguous."
+    },
+    {
+      "id": "reject-ipv6-zone",
+      "input": "https://[fe80::1%25en0]/repo.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_host" },
+      "why": "Zone identifiers name a local interface, not a repository host."
+    },
+    {
+      "id": "reject-port-zero",
+      "input": "https://example.com:0/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_port" },
+      "why": "Port 0 is not connectable."
+    },
+    {
+      "id": "reject-port-overflow",
+      "input": "https://example.com:65536/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_port" },
+      "why": "Out of range."
+    },
+    {
+      "id": "reject-port-leading-zero",
+      "input": "https://example.com:0443/owner/repo.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_port" },
+      "why": "Non-canonical spelling of a port."
+    },
+    {
+      "id": "reject-file-remote-authority",
+      "input": "file://fileserver/share/repo.git",
+      "expected": { "outcome": "rejected", "reason": "file_authority_not_local" },
+      "why": "Remote file authorities are UNC paths on Windows and meaningless elsewhere."
+    },
+    {
+      "id": "reject-file-user",
+      "input": "file://alice@localhost/srv/git/repo.git",
+      "expected": { "outcome": "rejected", "reason": "file_authority_not_local" },
+      "why": "file URLs carry no user."
+    },
+    {
+      "id": "reject-https-no-path",
+      "input": "https://example.com",
+      "expected": { "outcome": "rejected", "reason": "missing_repository_path" },
+      "why": "A host is not a repository."
+    },
+    {
+      "id": "reject-https-root-path",
+      "input": "https://example.com/",
+      "expected": { "outcome": "rejected", "reason": "missing_repository_path" },
+      "why": "Same, with a slash."
+    },
+    {
+      "id": "reject-file-no-path",
+      "input": "file://",
+      "expected": { "outcome": "rejected", "reason": "missing_repository_path" },
+      "why": "No path."
+    },
+    {
+      "id": "reject-scp-empty-path",
+      "input": "git@example.com:",
+      "expected": { "outcome": "rejected", "reason": "missing_repository_path" },
+      "why": "No path."
+    },
+    {
+      "id": "reject-double-slash",
+      "input": "https://example.com/owner//repo.git",
+      "expected": { "outcome": "rejected", "reason": "empty_path_segment" },
+      "why": "Git sends '//' verbatim and hosts disagree about it."
+    },
+    {
+      "id": "reject-dot-dot",
+      "input": "https://example.com/owner/../repo.git",
+      "expected": { "outcome": "rejected", "reason": "dot_segment" },
+      "why": "Dot segments change the named repository."
+    },
+    {
+      "id": "reject-encoded-dot-dot",
+      "input": "https://example.com/owner/%2e%2e/repo.git",
+      "expected": { "outcome": "rejected", "reason": "dot_segment" },
+      "why": "Decoding unreserved characters happens before the dot-segment check."
+    },
+    {
+      "id": "reject-file-dot",
+      "input": "file:///srv/git/./repo.git",
+      "expected": { "outcome": "rejected", "reason": "dot_segment" },
+      "why": "Applies to file paths too."
+    },
+    {
+      "id": "reject-scp-dot-dot",
+      "input": "git@example.com:owner/../repo.git",
+      "expected": { "outcome": "rejected", "reason": "dot_segment" },
+      "why": "Applies to SCP-like paths too."
+    },
+    {
+      "id": "reject-encoded-slash",
+      "input": "https://example.com/owner%2Frepo.git",
+      "expected": { "outcome": "rejected", "reason": "encoded_delimiter" },
+      "why": "Would hide a segment boundary."
+    },
+    {
+      "id": "reject-bad-percent",
+      "input": "https://example.com/owner/repo%zz.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_percent_encoding" },
+      "why": "Not hexadecimal."
+    },
+    {
+      "id": "reject-path-angle-bracket",
+      "input": "https://example.com/owner/repo<.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_path_character" },
+      "why": "Not a pchar."
+    },
+    {
+      "id": "reject-scp-percent",
+      "input": "git@example.com:owner/repo%41.git",
+      "expected": { "outcome": "rejected", "reason": "invalid_path_character" },
+      "why": "SCP-like paths are literal, so '%' would mean two different things."
+    }
+  ]
+}

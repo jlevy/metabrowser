@@ -1,0 +1,396 @@
+{
+  "schema": "metabrowser-repository-cache-state-machines-v1",
+  "decided": "2026-09-16",
+  "visibility": "A state is visible when an ordinary open, catalog scan, or served subject can observe the entry or result it describes.",
+  "locks": {
+    "primitive": {
+      "kind": "flock",
+      "basis": "BSD flock on a lock file opened O_CLOEXEC: an exclusive holder blocked a second exclusive request, two shared holders coexisted and blocked an exclusive request, and the lock was released 2.8 ms after its holder was SIGKILLed (results/platform.json). POSIX record locks (lockf/fcntl) are rejected: the lock silently vanished when the same process closed an unrelated descriptor for the file.",
+      "unmeasured": "Linux and Windows lock semantics and network filesystems were not measured; the format foundation proves the same four properties on each CI platform before relying on them, and an application home on a filesystem that fails them is refused."
+    },
+    "hierarchy": [
+      {
+        "name": "home",
+        "rank": 1,
+        "multiple": false,
+        "path": "cache/locks/home.lock",
+        "protects": "layout migration and brief global enumeration for catalog scans and startup sweeps"
+      },
+      {
+        "name": "source_alias",
+        "rank": 2,
+        "multiple": true,
+        "path": "cache/locks/sources/<slug>.lock",
+        "protects": "slug claim, alias creation, and compare-and-swap repointing; several aliases lock in ascending slug order"
+      },
+      {
+        "name": "repository_store",
+        "rank": 3,
+        "multiple": true,
+        "path": "cache/locks/stores/<store-key>.lock",
+        "protects": "store publication, object import, ref compare-and-swap, maintenance, and object reclamation; several stores lock in ascending store key order"
+      },
+      {
+        "name": "provider_resource",
+        "rank": 4,
+        "multiple": true,
+        "path": "owned by the provider storage plan",
+        "protects": "binding, snapshot publication, pointer movement, and provider reclamation"
+      }
+    ],
+    "side_locks": [
+      {
+        "name": "staging_entry",
+        "mode": "exclusive",
+        "path": "cache/staging/<entry>.lock",
+        "acquisition": "held by the one process that owns the staging entry for its whole life, including network work; every other process only tries it without blocking",
+        "why_outside_the_hierarchy": "It is a liveness marker nobody waits on, so holding it across network work cannot block another operation."
+      },
+      {
+        "name": "trash_entry",
+        "mode": "exclusive",
+        "path": "cache/trash/<entry>.lock",
+        "acquisition": "held by the purge that moved the entry until deletion finishes; others try without blocking",
+        "why_outside_the_hierarchy": "Same liveness role as staging_entry."
+      },
+      {
+        "name": "maintenance_shared",
+        "mode": "shared",
+        "path": "cache/repository-stores/<store-key>/maintenance.lock",
+        "acquisition": "blocking, taken by a live subject before it reads and held until the subject closes; may be taken while holding no hierarchy lock, and a hierarchy lock may be taken while holding it",
+        "why_outside_the_hierarchy": "Readers never take it while waiting on an ordered lock, and its exclusive counterpart never blocks."
+      },
+      {
+        "name": "maintenance_exclusive",
+        "mode": "exclusive",
+        "path": "cache/repository-stores/<store-key>/maintenance.lock",
+        "acquisition": "non-blocking only, taken while holding the repository_store lock; failure defers maintenance or refuses purge",
+        "why_outside_the_hierarchy": "Because it never waits, a long-lived shared holder cannot hold a store lock hostage."
+      }
+    ],
+    "rules": [
+      "No network work, provider process, or long-running Git process runs while a hierarchy lock is held.",
+      "Hierarchy locks are acquired in ascending rank, and within one rank in ascending key order; a lock is never re-acquired while held.",
+      "The home lock is never acquired while any narrower hierarchy lock is held.",
+      "Liveness is decided by trying the entry's lock, not by age: a crashed holder releases within milliseconds, while no age can distinguish a slow clone from a dead one."
+    ],
+    "sequences": [
+      {
+        "id": "sweep-then-publish",
+        "steps": ["home", "release:home", "network", "repository_store:s1", "release:repository_store", "source_alias:k1", "release:source_alias"],
+        "valid": true,
+        "why": "Enumerate briefly, stage without locks, publish the store, then the alias."
+      },
+      {
+        "id": "converge-several",
+        "steps": ["source_alias:a", "source_alias:b", "repository_store:s1", "repository_store:s2", "provider_resource:p1"],
+        "valid": true,
+        "why": "Ascending rank, and ascending keys within a rank."
+      },
+      {
+        "id": "refetch-after-release",
+        "steps": ["repository_store:s1", "release:repository_store", "network", "repository_store:s1"],
+        "valid": true,
+        "why": "A lock may be taken again after release."
+      },
+      {
+        "id": "network-under-store-lock",
+        "steps": ["repository_store:s1", "network"],
+        "valid": false,
+        "why": "Network work under a hierarchy lock."
+      },
+      {
+        "id": "network-under-alias-lock",
+        "steps": ["source_alias:k1", "network"],
+        "valid": false,
+        "why": "Network work under a hierarchy lock."
+      },
+      {
+        "id": "store-before-alias",
+        "steps": ["repository_store:s1", "source_alias:k1"],
+        "valid": false,
+        "why": "Descending rank."
+      },
+      {
+        "id": "provider-before-store",
+        "steps": ["provider_resource:p1", "repository_store:s1"],
+        "valid": false,
+        "why": "Descending rank."
+      },
+      {
+        "id": "stores-descending",
+        "steps": ["repository_store:s2", "repository_store:s1"],
+        "valid": false,
+        "why": "Keys within a rank must ascend."
+      },
+      {
+        "id": "store-reentry",
+        "steps": ["repository_store:s1", "repository_store:s1"],
+        "valid": false,
+        "why": "Re-acquiring a held lock."
+      },
+      {
+        "id": "home-under-alias",
+        "steps": ["source_alias:k1", "home"],
+        "valid": false,
+        "why": "The home lock is never taken while holding a narrower lock."
+      },
+      {
+        "id": "home-twice",
+        "steps": ["home", "home"],
+        "valid": false,
+        "why": "The home lock is single."
+      },
+      {
+        "id": "unknown-lock",
+        "steps": ["checkout:x"],
+        "valid": false,
+        "why": "There is no checkout lock; a local checkout is never a lock target."
+      }
+    ]
+  },
+  "crash_recovery": {
+    "nothing_to_recover": {
+      "visible_after": "unchanged",
+      "action": "No durable state changed before the crash."
+    },
+    "staging_swept": {
+      "visible_after": false,
+      "action": "The startup sweep finds the staging entry's lock free and deletes the entry. Measured basis: a SIGKILLed clone leaves its destination and a temporary pack behind (results/concurrency.json), so staging must never be inside a published path."
+    },
+    "unreferenced_store_reclaimable": {
+      "visible_after": false,
+      "action": "A published store that no alias, durable provider ref, or live lease reaches is not visible; startup reclamation moves it to trash under the store lock after that check, or quarantines it when its records do not validate."
+    },
+    "trash_swept": {
+      "visible_after": false,
+      "action": "The startup sweep deletes a trash entry whose lock is free."
+    },
+    "atomic_ref_update": {
+      "visible_after": "unchanged",
+      "action": "Ref publication is one Git ref transaction; objects imported without a ref are unreachable and reclaimed later."
+    },
+    "shared_lock_released_by_os": {
+      "visible_after": false,
+      "action": "The process is gone, so its subject is gone; the operating system released the shared maintenance lock. Durable private refs keep promised objects reachable."
+    },
+    "sweep_restarts": {
+      "visible_after": "unchanged",
+      "action": "The sweep is idempotent and runs again at the next startup."
+    },
+    "maintenance_rerun": {
+      "visible_after": "unchanged",
+      "action": "Git writes new packs before removing old ones; the next maintenance run removes temporary files. Crash during gc was not measured."
+    },
+    "quarantine_retained": {
+      "visible_after": false,
+      "action": "Quarantine is never reclaimed automatically; inspect and purge report the retained path."
+    },
+    "alias_cas_atomic": {
+      "visible_after": "unchanged",
+      "action": "The alias record is replaced by one atomic rename after its generation check, so it names either the old or the new store."
+    }
+  },
+  "machines": [
+    {
+      "name": "store_acquisition",
+      "owner_phase": "1B-a",
+      "initial": "absent",
+      "states": [
+        { "name": "absent", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "staging_claimed", "visible": false, "terminal": false, "on_crash": "staging_swept" },
+        { "name": "fetching", "visible": false, "terminal": false, "on_crash": "staging_swept" },
+        { "name": "validating", "visible": false, "terminal": false, "on_crash": "staging_swept" },
+        { "name": "store_published", "visible": false, "terminal": false, "on_crash": "unreferenced_store_reclaimable" },
+        { "name": "store_reused", "visible": false, "terminal": false, "on_crash": "unreferenced_store_reclaimable" },
+        { "name": "alias_published", "visible": true, "terminal": true },
+        { "name": "alias_conflict_reported", "visible": true, "terminal": true },
+        { "name": "abandoned", "visible": false, "terminal": true }
+      ],
+      "transitions": [
+        { "from": "absent", "event": "claim_staging", "to": "staging_claimed", "holds": ["staging_entry"], "network": false, "effect": "Exclusive mkdir of cache/staging/<random> on the cache filesystem and its liveness lock." },
+        { "from": "staging_claimed", "event": "fetch_started", "to": "fetching", "holds": ["staging_entry"], "network": true, "effect": "init --bare --template= and Metabrowser-written config, then one fetch with explicit refspecs." },
+        { "from": "fetching", "event": "fetch_succeeded", "to": "validating", "holds": ["staging_entry"], "network": false, "effect": "Objects and private refs are present in staging." },
+        { "from": "fetching", "event": "fetch_failed", "to": "abandoned", "holds": ["staging_entry"], "network": false, "effect": "Typed failure; staging deleted." },
+        { "from": "fetching", "event": "cancelled", "to": "abandoned", "holds": ["staging_entry"], "network": false, "effect": "Git terminated (4.4 ms to exit after SIGTERM, results/concurrency.json); staging deleted." },
+        { "from": "validating", "event": "validation_failed", "to": "abandoned", "holds": ["staging_entry"], "network": false, "effect": "Connectivity, expected HEAD object, or object format did not validate; staging deleted." },
+        { "from": "validating", "event": "publish_store", "to": "store_published", "holds": ["repository_store", "staging_entry"], "network": false, "effect": "Under the store lock, the store directory must not exist; the staging repository is renamed into repository-stores/<store-key> (os.rename replaces an empty directory, so the absence check under lock is required)." },
+        { "from": "validating", "event": "store_exists_same_identity", "to": "store_reused", "holds": ["repository_store", "staging_entry"], "network": false, "effect": "A concurrent acquisition published the same deterministic store id first; its records validate, and staging is discarded." },
+        { "from": "store_published", "event": "publish_alias", "to": "alias_published", "holds": ["source_alias"], "network": false, "effect": "Atomic creation of sources/<slug>/ with source.yml and store-alias.yml: the sole visibility commit." },
+        { "from": "store_reused", "event": "publish_alias", "to": "alias_published", "holds": ["source_alias"], "network": false, "effect": "Same visibility commit." },
+        { "from": "store_published", "event": "alias_exists_same_store", "to": "alias_published", "holds": ["source_alias"], "network": false, "effect": "Another process committed the identical alias first." },
+        { "from": "store_reused", "event": "alias_exists_same_store", "to": "alias_published", "holds": ["source_alias"], "network": false, "effect": "Another process committed the identical alias first." },
+        { "from": "store_published", "event": "alias_points_elsewhere", "to": "alias_conflict_reported", "holds": ["source_alias"], "network": false, "effect": "The existing alias stays; the new store is unreferenced and reclaimable." },
+        { "from": "store_reused", "event": "alias_points_elsewhere", "to": "alias_conflict_reported", "holds": ["source_alias"], "network": false, "effect": "The existing alias stays." }
+      ]
+    },
+    {
+      "name": "startup_sweep",
+      "owner_phase": "1A",
+      "initial": "idle",
+      "states": [
+        { "name": "idle", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "enumerating", "visible": false, "terminal": false, "on_crash": "sweep_restarts" },
+        { "name": "inspecting", "visible": false, "terminal": false, "on_crash": "sweep_restarts" },
+        { "name": "removing", "visible": false, "terminal": false, "on_crash": "sweep_restarts" },
+        { "name": "done", "visible": false, "terminal": true }
+      ],
+      "transitions": [
+        { "from": "idle", "event": "begin", "to": "enumerating", "holds": ["home"], "network": false, "effect": "List entry names under staging/ and trash/ only." },
+        { "from": "enumerating", "event": "listed", "to": "inspecting", "holds": [], "network": false, "effect": "Release the home lock before any per-entry work." },
+        { "from": "inspecting", "event": "entry_lock_busy", "to": "inspecting", "holds": [], "network": false, "effect": "A live owner holds the entry; skip it." },
+        { "from": "inspecting", "event": "entry_lock_acquired", "to": "removing", "holds": ["staging_entry"], "network": false, "effect": "Nobody owns the entry." },
+        { "from": "removing", "event": "removed", "to": "inspecting", "holds": ["staging_entry"], "network": false, "effect": "Delete, tolerating read-only Git object files, then release." },
+        { "from": "inspecting", "event": "exhausted", "to": "done", "holds": [], "network": false, "effect": "Every listed entry was skipped or removed." }
+      ]
+    },
+    {
+      "name": "selected_ref_fetch",
+      "owner_phase": "2B",
+      "initial": "requested",
+      "states": [
+        { "name": "requested", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "staging", "visible": false, "terminal": false, "on_crash": "staging_swept" },
+        { "name": "staged", "visible": false, "terminal": false, "on_crash": "staging_swept" },
+        { "name": "publishing", "visible": false, "terminal": false, "on_crash": "atomic_ref_update" },
+        { "name": "joined_in_flight", "visible": false, "terminal": true },
+        { "name": "published", "visible": true, "terminal": true },
+        { "name": "discarded", "visible": false, "terminal": true },
+        { "name": "cancelled", "visible": false, "terminal": true },
+        { "name": "failed", "visible": false, "terminal": true }
+      ],
+      "transitions": [
+        { "from": "requested", "event": "equal_key_in_flight", "to": "joined_in_flight", "holds": [], "network": false, "effect": "In-process coalescing on the exact job key; the joiner validates its own context and lease first." },
+        { "from": "requested", "event": "start", "to": "staging", "holds": ["staging_entry"], "network": true, "effect": "Fetch into an isolated bare repository whose alternates name the store's objects." },
+        { "from": "staging", "event": "fetch_failed", "to": "failed", "holds": ["staging_entry"], "network": false, "effect": "Typed failure; staging deleted." },
+        { "from": "staging", "event": "cancelled", "to": "cancelled", "holds": ["staging_entry"], "network": false, "effect": "Git terminated; staging deleted." },
+        { "from": "staging", "event": "fetched", "to": "staged", "holds": ["staging_entry"], "network": false, "effect": "Write the non-secret StagedFetch with expected OIDs and base generation." },
+        { "from": "staged", "event": "lock_store", "to": "publishing", "holds": ["repository_store", "staging_entry"], "network": false, "effect": "Take the store lock." },
+        { "from": "publishing", "event": "verified_current_generation", "to": "published", "holds": ["repository_store", "staging_entry"], "network": false, "effect": "Import staged objects with a local fetch, verify expected OIDs, and update Metabrowser-owned refs in one transaction." },
+        { "from": "publishing", "event": "generation_conflict", "to": "discarded", "holds": ["repository_store", "staging_entry"], "network": false, "effect": "A newer generation published; this observation would regress it." },
+        { "from": "publishing", "event": "expected_oid_mismatch", "to": "discarded", "holds": ["repository_store", "staging_entry"], "network": false, "effect": "The fetched ref no longer names the provider-observed object." }
+      ]
+    },
+    {
+      "name": "revision_subject_lease",
+      "owner_phase": "1B-c",
+      "initial": "resolving",
+      "states": [
+        { "name": "resolving", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "shared_held", "visible": false, "terminal": false, "on_crash": "shared_lock_released_by_os" },
+        { "name": "leased", "visible": true, "terminal": false, "on_crash": "shared_lock_released_by_os" },
+        { "name": "unavailable", "visible": false, "terminal": true },
+        { "name": "released", "visible": false, "terminal": true }
+      ],
+      "transitions": [
+        { "from": "resolving", "event": "acquire_shared", "to": "shared_held", "holds": ["maintenance_shared"], "network": false, "effect": "Block only on a running maintenance exclusive holder." },
+        { "from": "shared_held", "event": "object_missing", "to": "unavailable", "holds": ["maintenance_shared"], "network": false, "effect": "Typed object_unavailable with lazy fetch disabled; any fetch belongs to the object-job port." },
+        { "from": "shared_held", "event": "object_present", "to": "leased", "holds": ["maintenance_shared"], "network": false, "effect": "Serve the full object ID." },
+        { "from": "shared_held", "event": "object_present_offline_promise", "to": "leased", "holds": ["repository_store", "maintenance_shared"], "network": false, "effect": "Also write a durable private ref so gc --prune=now cannot remove the promised objects." },
+        { "from": "leased", "event": "session_closed", "to": "released", "holds": [], "network": false, "effect": "Close readers, then release the shared lock." }
+      ]
+    },
+    {
+      "name": "store_maintenance",
+      "owner_phase": "1B-c",
+      "initial": "requested",
+      "states": [
+        { "name": "requested", "visible": true, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "store_locked", "visible": true, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "running", "visible": true, "terminal": false, "on_crash": "maintenance_rerun" },
+        { "name": "deferred", "visible": true, "terminal": true },
+        { "name": "done", "visible": true, "terminal": true }
+      ],
+      "transitions": [
+        { "from": "requested", "event": "lock_store", "to": "store_locked", "holds": ["repository_store"], "network": false, "effect": "Exclude fetch publication and object import." },
+        { "from": "store_locked", "event": "exclusive_busy", "to": "deferred", "holds": ["repository_store"], "network": false, "effect": "A live subject holds the shared lock; release and retry later." },
+        { "from": "store_locked", "event": "exclusive_acquired", "to": "running", "holds": ["repository_store", "maintenance_exclusive"], "network": false, "effect": "Explicit repack or gc; automatic maintenance stays disabled in store config." },
+        { "from": "running", "event": "completed", "to": "done", "holds": ["repository_store", "maintenance_exclusive"], "network": false, "effect": "Release both locks." }
+      ]
+    },
+    {
+      "name": "purge",
+      "owner_phase": "Later cache operations; trash reclamation in 1A",
+      "initial": "requested",
+      "states": [
+        { "name": "requested", "visible": true, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "resolved", "visible": true, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "locked", "visible": true, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "in_trash", "visible": false, "terminal": false, "on_crash": "trash_swept" },
+        { "name": "refused_unresolved", "visible": true, "terminal": true },
+        { "name": "dry_run_reported", "visible": true, "terminal": true },
+        { "name": "refused_live_lease", "visible": true, "terminal": true },
+        { "name": "refused_still_referenced", "visible": true, "terminal": true },
+        { "name": "deleted", "visible": false, "terminal": true }
+      ],
+      "transitions": [
+        { "from": "requested", "event": "resolve_exactly_one", "to": "resolved", "holds": [], "network": false, "effect": "Exactly one alias or store identity." },
+        { "from": "requested", "event": "ambiguous_or_missing", "to": "refused_unresolved", "holds": [], "network": false, "effect": "Typed refusal." },
+        { "from": "resolved", "event": "dry_run", "to": "dry_run_reported", "holds": [], "network": false, "effect": "The default: report what would move." },
+        { "from": "resolved", "event": "confirm", "to": "locked", "holds": ["source_alias", "repository_store"], "network": false, "effect": "Lock every alias that may reach the store, then the store." },
+        { "from": "locked", "event": "lease_held", "to": "refused_live_lease", "holds": ["source_alias", "repository_store"], "network": false, "effect": "The non-blocking exclusive maintenance lock failed." },
+        { "from": "locked", "event": "still_referenced", "to": "refused_still_referenced", "holds": ["source_alias", "repository_store"], "network": false, "effect": "Another alias, durable provider ref, or provider revision reaches the store." },
+        { "from": "locked", "event": "move_to_trash", "to": "in_trash", "holds": ["source_alias", "repository_store", "maintenance_exclusive", "trash_entry"], "network": false, "effect": "Rename the alias and unreferenced store into trash/<entry> on the cache filesystem." },
+        { "from": "in_trash", "event": "delete_completed", "to": "deleted", "holds": ["trash_entry"], "network": false, "effect": "Delete at the end of the run, tolerating read-only Git object files." }
+      ]
+    },
+    {
+      "name": "quarantine",
+      "owner_phase": "1A",
+      "initial": "detected",
+      "states": [
+        { "name": "detected", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "locked", "visible": false, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "quarantined", "visible": false, "terminal": false, "on_crash": "quarantine_retained" },
+        { "name": "healthy", "visible": true, "terminal": true },
+        { "name": "purged", "visible": false, "terminal": true }
+      ],
+      "transitions": [
+        { "from": "detected", "event": "lock", "to": "locked", "holds": ["source_alias", "repository_store"], "network": false, "effect": "An invalid record, future format, key mismatch, or failed connectivity check is never served." },
+        { "from": "locked", "event": "revalidated_ok", "to": "healthy", "holds": ["source_alias", "repository_store"], "network": false, "effect": "Another process replaced or repaired the entry meanwhile." },
+        { "from": "locked", "event": "move_to_quarantine", "to": "quarantined", "holds": ["source_alias", "repository_store"], "network": false, "effect": "Rename into cache/quarantine/<entry> and report the retained path." },
+        { "from": "quarantined", "event": "explicit_purge", "to": "purged", "holds": ["home"], "network": false, "effect": "Only an explicit purge removes quarantine; nothing reclaims it on a timer." }
+      ]
+    },
+    {
+      "name": "alias_repoint",
+      "owner_phase": "3A provider convergence",
+      "initial": "current",
+      "states": [
+        { "name": "current", "visible": true, "terminal": false, "on_crash": "nothing_to_recover" },
+        { "name": "transfer_staged", "visible": true, "terminal": false, "on_crash": "unreferenced_store_reclaimable" },
+        { "name": "locked", "visible": true, "terminal": false, "on_crash": "alias_cas_atomic" },
+        { "name": "repointed", "visible": true, "terminal": true },
+        { "name": "generation_conflict", "visible": true, "terminal": true },
+        { "name": "validation_failed", "visible": true, "terminal": true }
+      ],
+      "transitions": [
+        { "from": "current", "event": "stage_transfer", "to": "transfer_staged", "holds": [], "network": false, "effect": "Copy required objects and Metabrowser refs into the deterministic provider store with no lock held." },
+        { "from": "transfer_staged", "event": "validation_failed", "to": "validation_failed", "holds": [], "network": false, "effect": "Object format or reachability failed; every alias is unchanged." },
+        { "from": "transfer_staged", "event": "lock", "to": "locked", "holds": ["source_alias", "repository_store"], "network": false, "effect": "Aliases, then old and new stores in ascending key order." },
+        { "from": "locked", "event": "generation_matches", "to": "repointed", "holds": ["source_alias", "repository_store"], "network": false, "effect": "Compare-and-swap each alias; the old store stays until nothing reaches it." },
+        { "from": "locked", "event": "generation_changed", "to": "generation_conflict", "holds": ["source_alias", "repository_store"], "network": false, "effect": "Unchanged; retry from the new generation." }
+      ]
+    }
+  ],
+  "scenarios": [
+    { "id": "acquire-first-open", "machine": "store_acquisition", "events": ["claim_staging", "fetch_started", "fetch_succeeded", "publish_store", "publish_alias"], "expected_final": "alias_published", "expected_visible": true },
+    { "id": "acquire-crash-during-fetch", "machine": "store_acquisition", "events": ["claim_staging", "fetch_started", "crash"], "expected_final": "staging_swept", "expected_visible": false },
+    { "id": "acquire-crash-between-commits", "machine": "store_acquisition", "events": ["claim_staging", "fetch_started", "fetch_succeeded", "publish_store", "crash"], "expected_final": "unreferenced_store_reclaimable", "expected_visible": false },
+    { "id": "acquire-race-loser-reuses-store", "machine": "store_acquisition", "events": ["claim_staging", "fetch_started", "fetch_succeeded", "store_exists_same_identity", "alias_exists_same_store"], "expected_final": "alias_published", "expected_visible": true },
+    { "id": "acquire-cancelled", "machine": "store_acquisition", "events": ["claim_staging", "fetch_started", "cancelled"], "expected_final": "abandoned", "expected_visible": false },
+    { "id": "sweep-skips-live-staging", "machine": "startup_sweep", "events": ["begin", "listed", "entry_lock_busy", "entry_lock_acquired", "removed", "exhausted"], "expected_final": "done", "expected_visible": false },
+    { "id": "fetch-stale-generation", "machine": "selected_ref_fetch", "events": ["start", "fetched", "lock_store", "generation_conflict"], "expected_final": "discarded", "expected_visible": false },
+    { "id": "fetch-joins-in-flight", "machine": "selected_ref_fetch", "events": ["equal_key_in_flight"], "expected_final": "joined_in_flight", "expected_visible": false },
+    { "id": "fetch-crash-while-publishing", "machine": "selected_ref_fetch", "events": ["start", "fetched", "lock_store", "crash"], "expected_final": "atomic_ref_update", "expected_visible": false },
+    { "id": "lease-offline-promise", "machine": "revision_subject_lease", "events": ["acquire_shared", "object_present_offline_promise"], "expected_final": "leased", "expected_visible": true },
+    { "id": "lease-crash", "machine": "revision_subject_lease", "events": ["acquire_shared", "object_present", "crash"], "expected_final": "shared_lock_released_by_os", "expected_visible": false },
+    { "id": "lease-missing-object", "machine": "revision_subject_lease", "events": ["acquire_shared", "object_missing"], "expected_final": "unavailable", "expected_visible": false },
+    { "id": "maintenance-deferred-by-lease", "machine": "store_maintenance", "events": ["lock_store", "exclusive_busy"], "expected_final": "deferred", "expected_visible": true },
+    { "id": "purge-refused-live-lease", "machine": "purge", "events": ["resolve_exactly_one", "confirm", "lease_held"], "expected_final": "refused_live_lease", "expected_visible": true },
+    { "id": "purge-crash-in-trash", "machine": "purge", "events": ["resolve_exactly_one", "confirm", "move_to_trash", "crash"], "expected_final": "trash_swept", "expected_visible": false },
+    { "id": "quarantine-survives-crash", "machine": "quarantine", "events": ["lock", "move_to_quarantine", "crash"], "expected_final": "quarantine_retained", "expected_visible": false },
+    { "id": "repoint-generation-conflict", "machine": "alias_repoint", "events": ["stage_transfer", "lock", "generation_changed"], "expected_final": "generation_conflict", "expected_visible": true },
+    { "id": "repoint-crash-before-lock", "machine": "alias_repoint", "events": ["stage_transfer", "crash"], "expected_final": "unreferenced_store_reclaimable", "expected_visible": false }
+  ]
+}

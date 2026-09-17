@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metabrowser.test/schemas/repository-cache-state-machines-v1.json",
+  "title": "Repository cache lock, publication, lease, trash, and quarantine state machines",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "decided", "visibility", "locks", "crash_recovery", "machines", "scenarios"],
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[a-z][a-z_]*$" }
+  },
+  "properties": {
+    "schema": { "const": "metabrowser-repository-cache-state-machines-v1" },
+    "decided": { "type": "string", "format": "date" },
+    "visibility": { "type": "string" },
+    "locks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primitive", "hierarchy", "side_locks", "rules", "sequences"],
+      "properties": {
+        "primitive": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "basis", "unmeasured"],
+          "properties": { "kind": { "const": "flock" }, "basis": { "type": "string" }, "unmeasured": { "type": "string" } }
+        },
+        "hierarchy": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "rank", "multiple", "path", "protects"],
+            "properties": {
+              "name": { "$ref": "#/$defs/name" },
+              "rank": { "type": "integer", "minimum": 1 },
+              "multiple": { "type": "boolean" },
+              "path": { "type": "string" },
+              "protects": { "type": "string" }
+            }
+          }
+        },
+        "side_locks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "mode", "path", "acquisition", "why_outside_the_hierarchy"],
+            "properties": {
+              "name": { "$ref": "#/$defs/name" },
+              "mode": { "enum": ["shared", "exclusive"] },
+              "path": { "type": "string" },
+              "acquisition": { "type": "string" },
+              "why_outside_the_hierarchy": { "type": "string" }
+            }
+          }
+        },
+        "rules": { "type": "array", "items": { "type": "string" } },
+        "sequences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "steps", "valid", "why"],
+            "properties": {
+              "id": { "type": "string" },
+              "steps": { "type": "array", "items": { "type": "string" } },
+              "valid": { "type": "boolean" },
+              "why": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "crash_recovery": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/name" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["visible_after", "action"],
+        "properties": {
+          "visible_after": { "enum": [true, false, "unchanged"] },
+          "action": { "type": "string" }
+        }
+      }
+    },
+    "machines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "owner_phase", "initial", "states", "transitions"],
+        "properties": {
+          "name": { "$ref": "#/$defs/name" },
+          "owner_phase": { "type": "string" },
+          "initial": { "$ref": "#/$defs/name" },
+          "states": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["name", "visible", "terminal"],
+              "properties": {
+                "name": { "$ref": "#/$defs/name" },
+                "visible": { "type": "boolean" },
+                "terminal": { "type": "boolean" },
+                "on_crash": { "$ref": "#/$defs/name" }
+              }
+            }
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["from", "event", "to", "holds", "network", "effect"],
+              "properties": {
+                "from": { "$ref": "#/$defs/name" },
+                "event": { "$ref": "#/$defs/name" },
+                "to": { "$ref": "#/$defs/name" },
+                "holds": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true },
+                "network": { "type": "boolean" },
+                "effect": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "machine", "events", "expected_final", "expected_visible"],
+        "properties": {
+          "id": { "type": "string" },
+          "machine": { "$ref": "#/$defs/name" },
+          "events": { "type": "array", "items": { "$ref": "#/$defs/name" } },
+          "expected_final": { "$ref": "#/$defs/name" },
+          "expected_visible": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

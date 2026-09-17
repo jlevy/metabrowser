@@ -85,6 +85,20 @@ A later provider binding may record proven aliases, but it does not merge existi
 entries. Anywhere below that assumes case-folded or otherwise canonicalized cache keys —
 including the slug and eviction discussions — describes the superseded design.
 
+## 2026-09-16 Addendum: Phase 0 Measurements
+
+[Repository cache measurements](../../../explorations/repository-cache/README.md)
+remeasured acquisition and every v0.10 route on Git 2.50.1, and the
+[plan’s Phase 0 decisions](../specs/active/plan-2026-08-11-open-repo-from-git-url.md#phase-0-decisions)
+supersede this brief’s acquisition recommendation in three places.
+`git backfill` is not used: it fetches only blobs reachable from `HEAD`, and one
+explicit object-ID fetch converged a blobless store as fast as backfill plus the objects
+it left behind. Lazy fetch is disabled on every read rather than tolerated, because a
+blob read against a stalled remote was still waiting when killed at 20 s, and
+size-bearing tree listings issued one request per blob.
+The 2.26 acquisition floor became a patched-release security floor, and blobless
+acquisition gates on 2.45.0, where lazy fetch can be disabled.
+
 ## Questions to Answer
 
 1. Which clone strategy gives a fast first render without breaking the history browsing

@@ -1,0 +1,79 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T04:35:27+00:00",
+  "parameters": {},
+  "rows": [
+    {
+      "outcome": "replaced_or_moved",
+      "primitive": "os.rename(dir, existing_empty_dir)",
+      "target_marker": "staged-a"
+    },
+    {
+      "outcome": "ENOTEMPTY",
+      "primitive": "os.rename(dir, existing_nonempty_dir)"
+    },
+    {
+      "outcome": "replaced_or_moved",
+      "primitive": "os.replace(file, existing_file)",
+      "target": "new"
+    },
+    {
+      "outcome": "EEXIST",
+      "primitive": "os.link(file, existing_file)"
+    },
+    {
+      "outcome": "EEXIST",
+      "primitive": "os.mkdir(existing_dir)"
+    },
+    {
+      "outcome": "EEXIST",
+      "primitive": "renamex_np(dir, existing_empty_dir, RENAME_EXCL)"
+    },
+    {
+      "outcome": "replaced_or_moved",
+      "primitive": "renamex_np(dir, absent_path, RENAME_EXCL)"
+    },
+    {
+      "blocked_while_held": true,
+      "primitive": "flock exclusive, holder SIGKILL",
+      "released_after_ms": 2.804
+    },
+    {
+      "exclusive_granted": false,
+      "primitive": "flock two shared holders",
+      "third_shared_granted": true
+    },
+    {
+      "other_process_acquired_after_close": true,
+      "other_process_acquired_before_close": false,
+      "primitive": "lockf held, unrelated descriptor closed"
+    },
+    {
+      "case_insensitive": true,
+      "component_255_bytes_ok": true,
+      "component_256_bytes_ok": false,
+      "name_max": 255,
+      "path_max": 1024,
+      "primitive": "cache filesystem names",
+      "unicode_normalization_insensitive": true
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T04:35:27+00:00",
+  "suite": "platform"
+}

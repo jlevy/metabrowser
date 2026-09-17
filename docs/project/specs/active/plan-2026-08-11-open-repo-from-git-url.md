@@ -4,8 +4,8 @@
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Shared-store design correction under review; v0.11.0 implementation is
-release-gated
+**Status:** Shared-store design correction under review; Phase 0 contracts frozen
+2026-09-16; v0.11.0 implementation is release-gated
 
 ## Vision
 
@@ -112,9 +112,9 @@ may land before it.
 - Keep user-owned working trees outside cache authority.
   Fetching or provider refresh must never dirty them or silently advance their branches.
 - Make a cache hit an offline operation for everything the entry actually contains.
-  Network work begins only for a missing entry or an explicit refresh — and for a
-  blobless entry, file content is subject to the lazy-fetch policy Phase 0 chooses
-  rather than being silently exempt from this goal.
+  Network work begins only for a missing entry, an explicit refresh, or an explicit
+  object fetch; Git reads never fetch implicitly (see
+  [the offline guarantee](#blobless-acquisition-and-the-offline-guarantee)).
 - Establish `~/.metabrowser/` as a versioned application home beginning at layout format
   `f01`.
 - Give each machine-owned YAML family a strict, independently versioned contract, with
@@ -204,9 +204,10 @@ The v0.10.0 release candidate establishes the implementation baseline for this p
   distribution gates.
 
 The v0.10.0 revision and PR-facing comparison path needs blobs.
-Blobless clone followed by background backfill remains the leading acquisition strategy,
-but Phase 0 must remeasure the complete current route before promising a timing or
-selecting a threshold between full and blobless acquisition.
+Phase 0 remeasured every route against full, blobless, and converged stores and chose
+blobless acquisition with an explicit prefetch of the default revision and background
+convergence through explicit object-ID fetches, not `git backfill`; see
+[Phase 0 decisions](#phase-0-decisions).
 
 ## The Gates That Decide When This Ships
 
@@ -365,7 +366,21 @@ A job stages outside the locks, then acquires source-alias → ordered repositor
 provider/resource as required, revalidates its generations, expected object IDs, and
 authorization context, and publishes atomically.
 The application-home lock is never acquired while holding either narrower lock.
-Tests freeze this order and the concurrent refresh/read/purge/reclaim cases.
+`tests/fixtures/repository-cache/state-machines.json` freezes this order, the side locks
+that sit outside it, and the acquisition, sweep, fetch, lease, maintenance, purge,
+quarantine, and repointing state machines;
+`tests/test_repository_cache_contract_fixtures.py` checks that every sequence and
+transition obeys it.
+The implementation’s concurrent refresh/read/purge/reclaim tests replay those machines.
+
+Locks are BSD `flock` on lock files, never POSIX record locks: on the measured APFS home
+a `flock` holder that was SIGKILLed released within 2.8 ms, while a `lockf` lock
+vanished when its own process closed an unrelated descriptor for the same file
+([measurements](../../../../explorations/repository-cache/README.md#platform-primitives)).
+Two side locks never participate in the order because nobody waits on them while holding
+an ordered lock: a per-entry liveness lock held by the one process that owns a staging
+or trash entry, and each store’s `maintenance.lock`, which live subjects hold shared and
+maintenance takes exclusive without blocking.
 
 ## Application Home and Cache Layout `f01`
 
@@ -375,10 +390,20 @@ The first released logical layout is:
 ~/.metabrowser/
 ├── config.yml
 └── cache/
+    ├── CACHEDIR.TAG
     ├── layout.yml
     ├── locks/
+    │   ├── home.lock
+    │   ├── sources/<slug>.lock
+    │   └── stores/<store-key>.lock
     ├── staging/
+    │   ├── <entry>/
+    │   └── <entry>.lock
     ├── trash/
+    │   ├── <entry>/
+    │   └── <entry>.lock
+    ├── quarantine/
+    │   └── <entry>/
     ├── sources/
     │   └── <uniquified-slug>/
     │       ├── source.yml
@@ -388,6 +413,7 @@ The first released logical layout is:
     │   └── <store-key>/
     │       ├── store.yml
     │       ├── state.yml
+    │       ├── maintenance.lock
     │       └── repository.git/
     ├── provider-bindings/
     │   └── <source-key>.yml
@@ -395,13 +421,18 @@ The first released logical layout is:
         └── <provider>/<instance-key>/<repository-key>/
 ```
 
-The exact sharding and directory names remain a Phase 0 measurement decision, but the
-ownership is fixed: source aliases, shared Git stores, and stable provider repositories
-are siblings. Provider observations never live under a source entry, and the Git store
-contains no checkout.
-A source holds exactly one provider binding, so each source key names one binding file.
-Later schemas may change a physical spelling before release; they may not collapse those
-owners.
+Phase 0 fixed the generic spellings: directories are flat, with no sharding, because a
+scan of 10,000 flat source entries that also reads each `source.yml` took 262 ms and
+1,000 took 21 ms on the measured home; `<store-key>` is all 64 hexadecimal digits of the
+store identity; and `<uniquified-slug>` follows
+`tests/fixtures/repository-cache/source-identity.json`. Lock files exist before the
+directories they guard are published, so a read-only cache hit opens them without
+creating state. The ownership is fixed as well: source aliases, shared Git stores, and
+stable provider repositories are siblings.
+Provider observations never live under a source entry, and the Git store contains no
+checkout. A source holds exactly one provider binding, so each source key names one
+binding file. Later schemas may change a physical spelling before release; they may not
+collapse those owners.
 
 `METABROWSER_HOME` overrides the application home for tests and advanced operation.
 It is the only application-home override; Metabrowser has no cache-root setting today,
@@ -508,13 +539,21 @@ than waiting for later catalog work after someone notices the disk:
 
 | Directory | Retained because | Reclaimed by |
 | --- | --- | --- |
-| `staging/` | An in-progress clone must be invisible until it is complete | Age-based sweep at startup under the application-home lock, skipping any staging path whose lock is currently held |
-| `trash/` | Purge should be recoverable for a moment, not forever | Purge deletes it at the end of its own run; the startup sweep removes anything a crashed purge left |
-| Quarantine | The entry may be the only local copy of an unavailable source | Never automatically. Explicit inspect and purge only |
+| `staging/` | An in-progress clone must be invisible until it is complete | Startup sweep: list entry names under the application-home lock, release it, then delete each entry whose liveness lock is free |
+| `trash/` | Purge should be recoverable for a moment, not forever | Purge deletes it at the end of its own run; the same sweep removes anything a crashed purge left |
+| `quarantine/` | The entry may be the only local copy of an unavailable source | Never automatically. Explicit inspect and purge only |
+
+The sweep decides liveness by trying the entry’s lock, not by age.
+No age threshold can tell a slow clone from a dead one, while a crashed holder’s `flock`
+released within 2.8 ms in the measurements.
+Deletion runs outside the home lock because removing a large store can take long enough
+to stall a migration or catalog scan.
 
 `staging/` is the one that actually leaks: an interrupted clone leaves a tree behind,
 and the publication guarantee is only that no *visible incomplete entry* results, which
 is a weaker property than “nothing is left on disk”.
+Git removes its own destination after SIGTERM, but a SIGKILLed clone left the
+destination and a temporary pack in every measured run.
 A user who cancels two clones of a large repository has paid for both.
 
 Quarantine is deliberately exempt from automatic reclamation, because the whole reason
@@ -601,7 +640,7 @@ The cache key is a SHA-256 digest of a credential-free source identity.
 The directory combines a readable slug with a short digest:
 
 ```text
-github-com--pallets--flask--7d5c1a2e4b90
+github-com--pallets--flask--e7b7fe0ffe8a
 ```
 
 The full digest in `source.yml` is authoritative.
@@ -617,6 +656,18 @@ distinctions a generic Git host may interpret.
 Phase 1B rejects fragments, query strings, embedded credentials, control characters, and
 ambiguous option-like inputs rather than guessing whether they are presentation syntax
 or secrets.
+
+Phase 0 froze the exact rules as data.
+`tests/fixtures/repository-cache/url-grammar.json` classifies every root argument as a
+Git source, a local path, or a typed rejection reason, in a fixed check order, with the
+normalized address for every accepted source.
+`tests/fixtures/repository-cache/source-identity.json` derives the source identity from
+that normalized address and its transport, derives the generic and provider store
+identities, and derives slugs, with collision extension and equivalence classes.
+The slug is lowercase ASCII because the measured application-home filesystem folds both
+case and Unicode normalization, so any other spelling could alias a different directory.
+A slug is recorded at creation and never recomputed, so its readable length can change
+later without orphaning entries.
 
 GitHub repository-root HTTPS URLs already work as clone URLs and receive no special
 canonicalization. A later GitHub binding may prove that several conservative source IDs
@@ -678,7 +729,7 @@ softschema:
 state:
   default_remote_ref: refs/remotes/origin/main
   default_revision: <full-object-id>
-  object_state: backfilling
+  object_state: converging
   last_fetch_at: null
   last_operation:
     kind: acquire
@@ -907,9 +958,9 @@ path-only modes construct and resolve `Path` only after remote-source resolution
 declines it.
 
 Inputs beginning with `-`, containing credentials, using unknown schemes, or resolving
-to Git helpers such as `ext::` are rejected before Git sees them.
-Production clone policy sets `protocol.allow=never` and explicitly enables HTTPS, SSH,
-and `file`.
+to Git helpers such as `ext::` are rejected before Git sees them; the complete grammar
+and its reasons are `tests/fixtures/repository-cache/url-grammar.json`. Production clone
+policy sets `protocol.allow=never` and explicitly enables HTTPS, SSH, and `file`.
 
 **Local origins, decided 2026-08-28, revised 2026-08-30.** `cache/urls.py` classifies
 transport as `https`, `ssh`, or `file`, and accepts `file://` URLs as Git sources.
@@ -954,12 +1005,20 @@ classify source
   -> derive identity and lock it
   -> acquire a worktree-free Git database in same-filesystem staging
   -> resolve and pin HEAD
+  -> fetch the pinned revision's tree blobs by object ID (blobless strategy)
   -> validate objects, refs, and records
   -> publish the store with no replacement
   -> create the source alias as the final visibility commit
   -> serve an immutable revision subject immediately
-  -> continue optional object backfill in background
+  -> converge the remaining objects in background by explicit object-ID fetches
 ```
+
+The `store_acquisition` machine in `tests/fixtures/repository-cache/state-machines.json`
+names each step’s locks, network work, visibility, and crash recovery.
+Publication checks under the repository-store lock that the store directory is absent
+before renaming staging into place: on the measured filesystem `os.rename` silently
+replaced an existing empty directory, while `renamex_np(RENAME_EXCL)` refused it, so a
+platform no-replace rename is defense in depth and the locked absence check is the rule.
 
 All Git work continues through `metabrowser.git.process`, which now exposes two seams:
 `run_git` for bounded buffered commands, and `spawn_git_process` plus
@@ -967,23 +1026,28 @@ All Git work continues through `metabrowser.git.process`, which now exposes two 
 Acquisition is a buffered command, so it uses `run_git`, which gains request,
 acquisition, and background policies rather than a parallel subprocess wrapper.
 
-Background backfill is the one piece that may want the streaming seam, and if it takes
-it, the lifecycle rules that continuous history established apply in full: bound the
-count, bound the storage, expire on idle, release on shutdown, and drain output before
-reaping. See
+Background convergence is the one piece that may want the streaming seam, and if it
+takes it, the lifecycle rules that continuous history established apply in full: bound
+the count, bound the storage, expire on idle, release on shutdown, and drain output
+before reaping. See
 [Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md#long-lived-walks).
 Every policy retains fixed arguments, no shell, bounded output, cancellation cleanup,
 and scrubbed repository-pinning environment variables.
 Acquisition also sets `stdin=DEVNULL`, disables terminal and credential-manager prompts,
 uses SSH batch mode, creates stores with an empty Git template, and disables submodule
-recursion, hooks, automatic maintenance, unsafe transports, and unsafe symbolic-link
-traversal.
+recursion, hooks, bundle URIs, automatic maintenance, unsafe transports, and unsafe
+symbolic-link traversal.
+Automatic maintenance is disabled in the store configuration itself
+(`maintenance.auto=false`, `gc.auto=0`), not only on the command line, because every
+fetch — including each implicit lazy fetch — otherwise spawns a detached
+`git maintenance run --auto`, and over HTTPS that maintenance made the 51st consecutive
+lazy fetch fail with `… in the commit graph file but not in the object database`.
 
 A cache hit validates the source and store and serves a full-OID subject without fetch,
 credential lookup, or background refresh.
 This rule is observable and tested.
-A failed backfill leaves the published store usable and honestly marked partial; it does
-not turn a successful open into a fatal error.
+A failed convergence leaves the published store usable and honestly marked partial; it
+does not turn a successful open into a fatal error.
 
 ### Blobless acquisition and the offline guarantee
 
@@ -991,26 +1055,24 @@ These two commitments are in tension, and the plan previously held both without
 reconciling them:
 
 - a cache hit is an offline operation, served without fetch; and
-- initial acquisition is blobless, with backfill running afterwards.
+- initial acquisition is blobless, with the missing objects arriving afterwards.
 
 A blobless clone does not contain file content.
 Git fills that in lazily from the promisor remote at the moment something reads a
-missing blob — so between publication and backfill completion, a read on a *server
-request path* can attempt network I/O. The project’s own research observed exactly this
-failure rather than reasoning about it: a blame in a blobless clone failed outright with
+missing blob — so between publication and convergence, a read on a *server request path*
+can attempt network I/O. The project’s own research observed exactly this failure rather
+than reasoning about it: a blame in a blobless clone failed outright with
 `could not fetch … from promisor remote` while the network was intercepted.
 
 That makes “offline cache hit” true for history and tree structure and false for file
 content, which is not a distinction a user should discover by having a request hang.
 
-Phase 0 decides the policy and records it beside the
-[version gates](#git-version-gates).
-The options, in preference order:
+Phase 0 considered three options, in preference order:
 
 1. **Disable lazy fetch on read paths** (`--no-lazy-fetch` / `GIT_NO_LAZY_FETCH`) and
    map a missing object to the existing `deferred` or `unavailable` availability, which
-   backfill completion flips to `ready`. Reads stay bounded and offline by construction,
-   and the honest partial state the plan already models carries the meaning.
+   convergence flips to `ready`. Reads stay bounded and offline by construction, and the
+   honest partial state the plan already models carries the meaning.
    This needs its own floor row, since the option is recent — Phase 0 verifies the
    version.
 2. **Gate blobless acquisition on that floor** and fall back to full clone below it, so
@@ -1023,43 +1085,80 @@ is the only one that keeps a blobless entry fully readable when the network *is*
 available. What is not acceptable is keeping the current wording, which promises offline
 reads that a blobless entry cannot deliver.
 
-Whichever is chosen, “read of a not-yet-backfilled blob, online and offline” joins the
-Phase 1B acceptance list beside interrupted clone and unavailable network.
-It is currently the only adverse path there with no stated outcome.
+**Decided 2026-09-16: option 1, with option 2 as its gate.** Every Git read on a request
+path runs with `GIT_NO_LAZY_FETCH=1`, and blobless acquisition is gated on the Git
+release that honors it.
+Measured on Git 2.50.1 against a blobless flask store with GitHub as its promisor
+([lazy fetch](../../../../explorations/repository-cache/README.md#lazy-fetch-against-real-and-failing-remotes)):
+
+- with lazy fetch allowed, a remote that accepted the connection and never answered held
+  a single blob read past the 20 s harness timeout, and `ls-tree -r -l` issued one
+  request per blob, 230 requests in 135 s;
+- `remote.origin.promisor=false` did not stop the fetch, because
+  `extensions.partialClone` still names the promisor, so only the environment variable
+  or `--no-lazy-fetch` is a control;
+- with lazy fetch disabled the same read failed in 8 ms, and `cat-file --batch-command`
+  answered `<oid> missing` and stayed framed for the next request.
+
+Option 3 is rejected rather than merely deferred: the one thing it buys — a blobless
+entry that stays readable online — is delivered instead by explicit object fetches from
+the object-job port, which can be bounded, cancelled, coalesced, and reported.
+A missing object becomes `object_unavailable` or `deferred`, and convergence flips it to
+`ready`. The diff routes check before they run: they list the change set with
+`git diff --raw -z --no-abbrev --no-renames`, check it with `cat-file --batch-check`,
+and report `deferred` while requesting exactly the missing blobs.
+In 40 of 40 measured comparisons, including 50-commit ranges, that set was sufficient
+for commit detail, the comparison manifest, and patches to succeed with lazy fetch
+disabled. `--no-renames` is required, because porcelain `git diff` enables rename
+detection by default and inexact rename detection reads blobs.
+Checking first also avoids the failure path itself, which took 93–488 ms per invocation
+against 10–15 ms for success.
+
+“Read of a not-yet-converged blob, online and offline” joins the Phase 1B acceptance
+list beside interrupted clone and unavailable network, and its outcome is the same in
+both: a typed `object_unavailable` or `deferred` result in bounded time, never a request
+that waits on the network.
 
 ### Git version gates
 
-Phase 1B detects the Git version once and gates three separate things on it.
+Phase 1B detects the Git version once and gates separate things on it.
 They are listed separately because they have different floors and different
-consequences, and a single unnumbered “supported Git” would hide that:
+consequences, and a single unnumbered “supported Git” would hide that.
+`tests/fixtures/repository-cache/git-version-gates.json` is the machine-checked form,
+with the parsing rule and version-string cases.
 
 | Gate | Floor | Below the floor |
 | --- | --- | --- |
-| Acquisition | **2.26** | URL opening is refused with a typed `unsupported_git_version` state naming the detected and required versions. Local-path browsing is unaffected |
-| Blobless acquisition (`--filter=blob:none`) | **2.26** | Falls back to full clone |
-| `git backfill` | **2.49** | Falls back to full clone at acquisition time; a published blobless entry is never left waiting for a command that does not exist |
+| Acquisition | **Patched release:** 2.43.7, 2.44.4, 2.45.4, 2.46.4, 2.47.3, 2.48.2, 2.49.1, 2.50.1, or any newer release | URL opening is refused with a typed `unsupported_git_version` state naming the detected and required versions. Local-path browsing is unaffected |
+| Blobless acquisition | **2.45.0**, in addition to the acquisition floor | Acquires with a full fetch before publication |
 | Cache integrity (`is_clean`) | **2.36** | Reported unavailable, never inferred clean — see the [Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md) |
 
-The 2.26 floor makes protocol v2 the default and is the version the
-[acquisition research](../../research/research-2026-08-11-repo-cache-and-git-url-open.md)
-proposes; Phase 0 confirms it against the platforms this project supports.
-`git backfill` gates separately at 2.49, is stamped experimental upstream, and is
-treated as a pure optimization: the blobless-plus-backfill strategy is chosen only when
-both the clone filter and the backfill command are available, so the fallback decision
-happens before publication rather than stranding an entry in `backfilling` forever.
-The same fallback applies when a remote refuses a partial clone.
+The acquisition floor is a security floor, decided 2026-09-16 from upstream release
+notes.
+CVE-2025-48384, submodule path handling that can execute a hook through a symlink,
+and CVE-2025-48385, bundle-URI protocol injection during clone, were fixed together in
+the maintenance releases listed above; 2.43 is the oldest track that received them, and
+the same releases carry the 2024 clone fixes (CVE-2024-32002, -32004, -32020, -32021,
+-32465). No later security release existed when upstream tags were reviewed, which then
+ended at v2.55.0; this row is revisited at every upstream security release.
+Above this floor protocol v2 is the default (it was re-enabled in 2.29 after 2.27
+demoted it) and `cat-file --batch-command` (2.36) is available, so the former 2.26
+capability floor no longer needs its own row.
 
-Version detection degrades rather than refuses: an unparseable `git version` string is
-treated as below every floor, which selects the conservative full-clone path, and the
+Blobless acquisition gates on 2.45.0, the first release that documents `--no-lazy-fetch`
+and `GIT_NO_LAZY_FETCH`, because the offline guarantee above depends on it.
+`git backfill` is not a gate and is not used: it is experimental, covers only history
+reachable from `HEAD` through 2.54 (2.55 adds a revision argument), and exited 0 without
+fetching anything when `HEAD` was unborn.
+The same fallback to a full fetch applies when a remote does not honor the filter, which
+is detected from the objects actually received rather than from stderr: a `file://`
+origin without `uploadpack.allowFilter` delivered all 118,501 objects while the store
+still recorded itself as a promisor.
+
+Version detection degrades rather than guesses: an unparseable `git version` string is
+treated as below every floor, so URL opening is refused with the typed state, and the
 detected string is recorded in `store.yml` under `acquisition.git_version` so a later
 entry can be explained.
-
-Separately from these capability floors, acquisition requires a Git release carrying the
-fixes for the known clone-time vulnerabilities in submodule handling and symlinked
-`.git` directories.
-That floor tracks upstream advisories rather than a feature, so Phase
-0 pins the exact version alongside the transport allowlist and records it beside this
-table; it is not satisfied by 2.26 alone.
 
 ## Generic Cache Operations
 
@@ -1077,7 +1176,7 @@ metab --repo-refresh <identity-or-slug>
 metab --repo-purge <identity-or-slug>
 ```
 
-Refresh fetches Git refs, retries object backfill, and reports its stage results.
+Refresh fetches Git refs, retries object convergence, and reports its stage results.
 The initial generic operation has no provider stage.
 Provider plugins register refresh work only after the provider framework lands; a plugin
 failure can then be reported without changing a successful Git result.
@@ -1209,7 +1308,7 @@ user-visible open path.
 
 ### Phase 0: Design evidence and contract freeze — v0.11.0 entry point
 
-- [ ] Remeasure full, blobless, and blobless-plus-backfill acquisition against the
+- [x] Remeasure full, blobless, and blobless-plus-backfill acquisition against the
   v0.10.0 history session, commit detail, comparison manifest, deferred patches,
   revision content, and canonical path-identity routes.
 - [x] Review upstream through v0.8.0 and remove assumptions superseded by shipped Git
@@ -1218,8 +1317,62 @@ user-visible open path.
   skill for future implementation turns.
 - [x] Separate generic cache delivery, cache operations, chooser, GitHub modeling,
   GitHub acquisition, provider views, stack projections, and large-repository work.
-- [ ] Freeze the safe URL grammar, source identity, slug, lock, staging, publication,
+- [x] Freeze the safe URL grammar, source identity, slug, lock, staging, publication,
   quarantine, and trash state machines as fixtures.
+- [x] Measure concurrent subjects, fetch coalescing, cancellation, multi-process
+  contention, maintenance, and object retention, and record the decisions below.
+
+#### Phase 0 decisions
+
+Decided 2026-09-16. The measurements, method, environment, and raw results are in
+[Repository cache measurements](../../../../explorations/repository-cache/README.md).
+They were taken on one macOS machine with Git 2.50.1 against `pallets/flask` and
+`python/mypy` over HTTPS and from `file://` origins, so the numbers below explain a
+decision; they are not cross-machine budgets.
+The machine-checkable contracts are in `tests/fixtures/repository-cache/` and pinned by
+`tests/test_repository_cache_contract_fixtures.py`, which the implementation’s own tests
+replay against production functions when they land.
+
+| Decision | Frozen as | Measured basis |
+| --- | --- | --- |
+| Store layout | A bare repository created with `git init --bare --template=`, configuration written only by Metabrowser, and one fetch with explicit refspecs into Metabrowser-owned refs; `HEAD` is set from the observed remote `HEAD` | Cost did not distinguish layouts: bare and `--no-checkout` full clones overlapped (flask 2.83 s against 3.25 s, mypy 11.64 s against 15.54 s, disk within 1%). State did: `--no-checkout` leaves `core.bare=false`, an empty work tree, reflogs, and a local branch; `clone --bare` writes remote branches into `refs/heads/`. The explicit form costs one `ls-remote --symref` round trip (4.21 s and 13.94 s full) |
+| Acquisition strategy | Blobless when the version gate passes; before publication, fetch the pinned default revision’s tree blobs in one object-ID request; after publication, converge the rest in the background. Full fetch below the gate or when the remote ignores the filter. No size threshold | Default-revision Files view complete in 3.0 s blobless against 3.3–4.0 s full (flask) and 5.8–5.9 s against 8.8–17.8 s (mypy), back to back over HTTPS. Every object took longer blobless (4.8–5.8 s against 3.3–4.0 s; 21.3–29.7 s against 8.8–17.8 s), which is why convergence runs after serving. Generic Git advertises no repository size before transfer, so a threshold would need a provider API the generic cache may not use |
+| Convergence | Explicit `git fetch --stdin` of the missing object IDs listed by `rev-list --objects --missing=print`, at most 50,000 IDs per request; `git backfill` is not used | One request of 53,607 IDs succeeded twice in 16.2 s and 24.9 s, against 25.5–26.0 s for backfill plus the 1,318 objects it left missing from non-`HEAD` refs; no larger request was measured |
+| Network stall bound | Every HTTPS network job sets `http.lowSpeedLimit=1000` and `http.lowSpeedTime=30` | Git defaults waited past 20 s on a remote that never answered; a 1 B/s over 3 s bound failed in 3.13 s; the 30 s bound interrupted none of the eight measured prefetch and convergence fetches, the longest 24.9 s |
+| Lazy fetch | `GIT_NO_LAZY_FETCH=1` on every request-path read; diff routes check the `--no-renames` change set first; network only through the object-job port | See [the offline guarantee](#blobless-acquisition-and-the-offline-guarantee) |
+| Store configuration | `maintenance.auto=false`, `gc.auto=0`, `fetch.recurseSubmodules=false`, `transfer.bundleURI=false`, an empty hooks path, empty template, and no user configuration | Every fetch with Git defaults spawned `git maintenance run --auto`; over HTTPS the resulting auto-gc made the 51st lazy fetch fail with a commit-graph error, while the same run with maintenance disabled completed 230 fetches |
+| Batch readers | Per repository store per process, at most 4 `cat-file --batch-command --buffer` actors, created on demand; each serves one request at a time; cancellation terminates the process and a later request starts a new one | Whole-tree throughput peaked at 4 actors (54.8–57.2 k blobs/s against 31.3–31.7 k for one) and fell with 8 (45.0–46.4 k); `info` plus `contents` p99 stayed at or below 0.25 ms with two actors; a reader exited within 0.77 ms of a signal, and a restart answered its first request in 9.3 ms (p50) |
+| Concurrent subjects | No per-subject isolation beyond pinned object IDs | Two readers on different object IDs ran concurrently in 0.063 s against 0.12 s sequentially with byte-identical output in 3 of 3; readers saw no failure or missing object across `repack -a -d` and `gc --prune=now`, and an actor started before maintenance found 200 of 200 objects afterward |
+| Fetch coalescing | In-process coalescing on the exact job key is required; cross-process duplicates are tolerated by staging each fetch in its own repository with the store as an alternate and importing under the store lock | Four concurrent same-ref fetches into one store never failed (6 runs) yet received and stored 36.1 MiB against 9.0 MiB coalesced; staged fetches still received 36.1 MiB but stored 9.0 MiB, and duplicate publications were 0.05 s no-ops |
+| Retention | Every object promised for offline reuse is reachable from a durable Metabrowser-owned ref; maintenance requires the exclusive maintenance lock | A commit behind a private ref survived `gc --prune=now`; without a ref it survived only the default two-week prune window. Bare stores write no reflogs, so nothing else retains it |
+| Version floors | [Git version gates](#git-version-gates) and `git-version-gates.json` | Upstream release notes and documentation at each tag; only 2.50.1 was available to measure |
+| URL grammar | `url-grammar.json` | Git’s HTTP client sent the same request with and without a trailing slash, and sent `//`, `%72`, and path case verbatim |
+| Source and store identity, aliases, slugs | `source-identity.json` | The home filesystem folded case and Unicode normalization, and `NAME_MAX` was 255 bytes |
+| Locks and state machines | `state-machines.json`, with the lock order above | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory |
+| Catalog layout | Flat `sources/` and `repository-stores/` directories | Scanning 10,000 flat entries and reading each record took 262 ms |
+
+Store and alias rules follow from those identities.
+A store acquired from a source before provider resolution takes a deterministic identity
+from the source identity and its object format, so two concurrent acquisitions of one
+source converge on one store and the loser discards its staging copy.
+A provider-proven store takes the domain-separated provider identity instead.
+An alias moves only by compare-and-swap under the source-alias and store locks, and
+stores are never merged from owner/name text.
+
+Evidence was insufficient to freeze the following; each names the phase that decides it:
+
+- Tree-index and immutable directory-index bounds, and any revision-specific preview or
+  raw limits, need browser measurements: Phase 1B-c.
+- Cross-process retry and contention bounds for fetch publication: Phase 2B. No
+  contention failure occurred to bound.
+- Lock, rename, and case semantics on Linux, Windows, and network filesystems: Phase 1A
+  proves the frozen properties on each CI platform and refuses a home that fails them.
+- SSH acquisition, prompt suppression, and stall bounds, and Git for Windows version
+  strings: Phase 1B-a. Neither was measured.
+- Prune expiry, size accounting, and eviction: later cache operations.
+- Convergence batches above 53,607 object IDs and repositories larger than mypy: later
+  very-large-repository work.
+- Git ref refresh age: later cache operations; v0.11 refresh is explicit.
 
 ### Phase 1A: Format foundation — infrastructure PR
 
@@ -1306,10 +1459,10 @@ next slice begins.
   slug, collision verification, and source-alias locking.
 - [ ] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
   environment controls, and explicit acquisition/background policies.
-- [ ] Enforce the acquisition, blobless, and `git backfill` floors from
-  [Git version gates](#git-version-gates); select full clone before publication when any
-  is unmet, and return a typed `unsupported_git_version` state below the acquisition
-  floor.
+- [ ] Enforce the acquisition and blobless floors from
+  [Git version gates](#git-version-gates); select a full fetch before publication when
+  the blobless floor is unmet or the remote ignores the filter, and return a typed
+  `unsupported_git_version` state below the acquisition floor.
 - [ ] Acquire a worktree-free Git database in same-filesystem staging, resolve and pin
   the default full object ID, and validate records, objects, and refs.
   Publish the immutable store first; atomically create the source alias last as the
@@ -1317,10 +1470,11 @@ next slice begins.
   between the commits.
 - [ ] Reuse a valid cache hit without network access, provider detection, or credential
   lookup, including against an application home the process cannot write.
-- [ ] Start measured object backfill only after serving; persist honest partial,
-  backfilling, complete, and failed states.
+- [ ] Prefetch the default revision’s tree blobs before publication, start object
+  convergence only after serving, and persist honest partial, converging, complete, and
+  failed states.
 - [ ] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
-  not-yet-backfilled blob read behaves as decided both online and offline.
+  not-yet-converged blob read behaves as decided both online and offline.
 - [ ] Force the untrusted profile for URL-opened roots once `mb-vib1` lands; until then
   acquisition, identity, publication, and CLI inspection may ship, and serving may not.
 - [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
@@ -1592,7 +1746,7 @@ suite exercises the same acquisition path a user gets.
   Secrets cannot enter argv, ordinary child environment, diagnostics, files, staged
   records, refs, or job identities.
 - **Git integration:** immutable subjects satisfy history, direct revisions, commit
-  summaries, bounded tree/blob reads, and diff rendering before and after backfill.
+  summaries, bounded tree/blob reads, and diff rendering before and after convergence.
 - **Revision subjects:** default and non-default branches, slash-containing names, tags,
   and full object IDs resolve to immutable OIDs; leases reuse the store and batch
   readers; missing/offline refs fail honestly; no case creates a worktree or moves a
@@ -1649,8 +1803,9 @@ above.
 
 ## Decisions Deferred to Their Evidence Phase
 
-- Phase 0 selects full versus blobless initial acquisition from current route
-  measurements.
+- Phase 0 selected blobless acquisition with default-revision prefetch and explicit
+  convergence, and recorded the evidence it could not supply and who owns it, in
+  [Phase 0 decisions](#phase-0-decisions).
 - Snapshot sharding and transport selection moved with
   [the provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) and are
   deferred there rather than here.
@@ -1681,8 +1836,8 @@ The first usable repository URL and branch phases are complete when:
 - browsing and Git ref refresh do not create or modify a working tree, shared index, or
   active session revision;
 - interrupted and concurrent clones, an unsafe URL, future format, corrupt record,
-  missing credential, unavailable network, and failed backfill each produce bounded and
-  truthful outcomes;
+  missing credential, unavailable network, and failed convergence each produce bounded
+  and truthful outcomes;
 - Files, Git history, direct revision, commit summary, and diff views work against the
   immutable content source under the same contracts as a local repository where the
   underlying facts are meaningful; and

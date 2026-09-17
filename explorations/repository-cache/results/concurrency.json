@@ -1,0 +1,293 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T05:48:35+00:00",
+  "parameters": {
+    "reps": 3
+  },
+  "rows": [
+    {
+      "blobs": [1927, 1335],
+      "case": "two_readers_different_oids",
+      "concurrent_s": 0.064,
+      "identical_bytes": true,
+      "rep": 0,
+      "sequential_s": 0.122
+    },
+    {
+      "blobs": [1927, 1335],
+      "case": "two_readers_different_oids",
+      "concurrent_s": 0.063,
+      "identical_bytes": true,
+      "rep": 1,
+      "sequential_s": 0.116
+    },
+    {
+      "blobs": [1927, 1335],
+      "case": "two_readers_different_oids",
+      "concurrent_s": 0.063,
+      "identical_bytes": true,
+      "rep": 2,
+      "sequential_s": 0.116
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 31730,
+      "case": "reader_pool_scaling",
+      "pool": 1,
+      "rep": 0,
+      "wall_s": 0.061
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 48721,
+      "case": "reader_pool_scaling",
+      "pool": 2,
+      "rep": 0,
+      "wall_s": 0.04
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 56065,
+      "case": "reader_pool_scaling",
+      "pool": 4,
+      "rep": 0,
+      "wall_s": 0.034
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 45015,
+      "case": "reader_pool_scaling",
+      "pool": 8,
+      "rep": 0,
+      "wall_s": 0.043
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 45213,
+      "case": "reader_pool_scaling",
+      "pool": 8,
+      "rep": 1,
+      "wall_s": 0.043
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 54776,
+      "case": "reader_pool_scaling",
+      "pool": 4,
+      "rep": 1,
+      "wall_s": 0.035
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 48357,
+      "case": "reader_pool_scaling",
+      "pool": 2,
+      "rep": 1,
+      "wall_s": 0.04
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 31346,
+      "case": "reader_pool_scaling",
+      "pool": 1,
+      "rep": 1,
+      "wall_s": 0.061
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 31683,
+      "case": "reader_pool_scaling",
+      "pool": 1,
+      "rep": 2,
+      "wall_s": 0.061
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 46651,
+      "case": "reader_pool_scaling",
+      "pool": 2,
+      "rep": 2,
+      "wall_s": 0.041
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 57181,
+      "case": "reader_pool_scaling",
+      "pool": 4,
+      "rep": 2,
+      "wall_s": 0.034
+    },
+    {
+      "blobs": 1927,
+      "blobs_per_s": 46401,
+      "case": "reader_pool_scaling",
+      "pool": 8,
+      "rep": 2,
+      "wall_s": 0.042
+    },
+    {
+      "case": "actor_latency",
+      "concurrent_a": {
+        "body_bytes": 4043777,
+        "first_response_ms": 9.963,
+        "latency": {
+          "max_ms": 5.534,
+          "n": 400,
+          "p50_ms": 0.039,
+          "p95_ms": 0.11,
+          "p99_ms": 0.208
+        },
+        "missing": 0,
+        "requests": 400
+      },
+      "concurrent_b": {
+        "body_bytes": 3583393,
+        "first_response_ms": 9.804,
+        "latency": {
+          "max_ms": 5.554,
+          "n": 400,
+          "p50_ms": 0.041,
+          "p95_ms": 0.132,
+          "p99_ms": 0.248
+        },
+        "missing": 0,
+        "requests": 400
+      },
+      "single": {
+        "body_bytes": 4043777,
+        "first_response_ms": 10.348,
+        "latency": {
+          "max_ms": 6.688,
+          "n": 400,
+          "p50_ms": 0.033,
+          "p95_ms": 0.1,
+          "p99_ms": 0.187
+        },
+        "missing": 0,
+        "requests": 400
+      }
+    },
+    {
+      "case": "actor_restart_first_response",
+      "latency": {
+        "max_ms": 10.024,
+        "n": 10,
+        "p50_ms": 9.291,
+        "p95_ms": 10.024,
+        "p99_ms": 10.024
+      }
+    },
+    {
+      "case": "batch_reader_cancellation",
+      "latency": {
+        "max_ms": 0.729,
+        "n": 5,
+        "p50_ms": 0.688,
+        "p95_ms": 0.729,
+        "p99_ms": 0.729
+      },
+      "signal": "SIGTERM"
+    },
+    {
+      "case": "batch_reader_cancellation",
+      "latency": {
+        "max_ms": 0.771,
+        "n": 5,
+        "p50_ms": 0.638,
+        "p95_ms": 0.771,
+        "p99_ms": 0.771
+      },
+      "signal": "SIGKILL"
+    },
+    {
+      "case": "acquisition_cancellation",
+      "destination_exists": false,
+      "exit_ms": 4.4,
+      "lock_files": [],
+      "residue": null,
+      "signal": "SIGTERM",
+      "strategy": "full",
+      "temp_packs": 0
+    },
+    {
+      "case": "acquisition_cancellation",
+      "destination_exists": true,
+      "exit_ms": 1.9,
+      "lock_files": [],
+      "residue": {
+        "allocated_bytes": 8192,
+        "apparent_bytes": 323,
+        "files": 3
+      },
+      "signal": "SIGKILL",
+      "strategy": "full",
+      "temp_packs": 1
+    },
+    {
+      "case": "acquisition_cancellation",
+      "destination_exists": false,
+      "exit_ms": 5.6,
+      "lock_files": [],
+      "residue": null,
+      "signal": "SIGTERM",
+      "strategy": "blobless",
+      "temp_packs": 0
+    },
+    {
+      "case": "acquisition_cancellation",
+      "destination_exists": true,
+      "exit_ms": 0.9,
+      "lock_files": [],
+      "residue": {
+        "allocated_bytes": 73728,
+        "apparent_bytes": 65907,
+        "files": 3
+      },
+      "signal": "SIGKILL",
+      "strategy": "blobless",
+      "temp_packs": 1
+    },
+    {
+      "case": "readers_during_maintenance",
+      "failure_classes": [],
+      "long_lived_actor_found": 200,
+      "long_lived_actor_queried": 200,
+      "maintenance": "repack -a -d",
+      "maintenance_returncode": 0,
+      "maintenance_s": 1.229,
+      "reader_failures": 0,
+      "reader_iterations": 237,
+      "reader_missing_objects": 0
+    },
+    {
+      "case": "readers_during_maintenance",
+      "failure_classes": [],
+      "long_lived_actor_found": 200,
+      "long_lived_actor_queried": 200,
+      "maintenance": "gc --prune=now",
+      "maintenance_returncode": 0,
+      "maintenance_s": 1.348,
+      "reader_failures": 0,
+      "reader_iterations": 220,
+      "reader_missing_objects": 0
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T05:48:17+00:00",
+  "suite": "concurrency"
+}
