@@ -18,17 +18,17 @@
           "repository_id": "repo-1",
           "ref": "89abcdef0123456789abcdef0123456789abcdef",
           "oid": "89abcdef0123456789abcdef0123456789abcdef",
-          "availability": "present"
+          "observation": "observed"
         },
         "base_revision": null,
         "head_revision": null,
-        "comparison_available": false,
+        "comparison_observed": false,
         "detail": {
           "kind": "commit",
           "revision": {
             "repository_id": "repo-1",
             "oid": "89abcdef0123456789abcdef0123456789abcdef",
-            "availability": "present"
+            "observation": "observed"
           }
         },
         "freshness": { "kind": "immutable" }
@@ -54,21 +54,21 @@
           "repository_id": "repo-2",
           "ref": "topic/provider-neutral",
           "oid": "fedcba9876543210fedcba9876543210fedcba98",
-          "availability": "present"
+          "observation": "observed"
         },
         "base_revision": {
           "repository_id": "repo-1",
           "ref": "main",
           "oid": "0123456789abcdef0123456789abcdef01234567",
-          "availability": "present"
+          "observation": "observed"
         },
         "head_revision": {
           "repository_id": "repo-2",
           "ref": "topic/provider-neutral",
           "oid": "fedcba9876543210fedcba9876543210fedcba98",
-          "availability": "present"
+          "observation": "observed"
         },
-        "comparison_available": true,
+        "comparison_observed": true,
         "detail": {
           "kind": "change_request",
           "change_request_id": "forge:code.example:repo-1:merge-request:17",
@@ -97,14 +97,14 @@
       "name": "index-style-unresolved-change-request-revisions",
       "changes": [
         { "path": ["items", 1, "primary_revision", "repository_id"], "value": null },
-        { "path": ["items", 1, "primary_revision", "availability"], "value": "not_requested" },
+        { "path": ["items", 1, "primary_revision", "observation"], "value": "not_requested" },
         { "path": ["items", 1, "primary_revision", "oid"], "value": null },
-        { "path": ["items", 1, "base_revision", "availability"], "value": "not_requested" },
+        { "path": ["items", 1, "base_revision", "observation"], "value": "not_requested" },
         { "path": ["items", 1, "base_revision", "oid"], "value": null },
         { "path": ["items", 1, "head_revision", "repository_id"], "value": null },
-        { "path": ["items", 1, "head_revision", "availability"], "value": "not_requested" },
+        { "path": ["items", 1, "head_revision", "observation"], "value": "not_requested" },
         { "path": ["items", 1, "head_revision", "oid"], "value": null },
-        { "path": ["items", 1, "comparison_available"], "value": false }
+        { "path": ["items", 1, "comparison_observed"], "value": false }
       ],
       "expect": "valid"
     },
@@ -213,10 +213,75 @@
       "expect": "invalid"
     },
     {
-      "name": "commit-requires-present-primary-revision",
+      "name": "commit-requires-observed-primary-revision",
       "changes": [
-        { "path": ["items", 0, "primary_revision", "availability"], "value": "not_requested" },
+        { "path": ["items", 0, "primary_revision", "observation"], "value": "not_requested" },
         { "path": ["items", 0, "primary_revision", "oid"], "value": null }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "commit-cannot-claim-an-observed-comparison",
+      "changes": [{ "path": ["items", 0, "comparison_observed"], "value": true }],
+      "expect": "invalid"
+    },
+    {
+      "name": "unavailable-head-is-not-an-observed-comparison",
+      "changes": [
+        { "path": ["items", 1, "primary_revision", "observation"], "value": "unavailable" },
+        { "path": ["items", 1, "primary_revision", "oid"], "value": null },
+        { "path": ["items", 1, "head_revision", "observation"], "value": "unavailable" },
+        { "path": ["items", 1, "head_revision", "oid"], "value": null },
+        { "path": ["items", 1, "comparison_observed"], "value": false }
+      ],
+      "expect": "valid"
+    },
+    {
+      "name": "comparison-observed-requires-observed-base-and-head",
+      "changes": [
+        { "path": ["items", 1, "base_revision", "observation"], "value": "unavailable" },
+        { "path": ["items", 1, "base_revision", "oid"], "value": null }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-revision-observation-rejects-local-availability-state",
+      "changes": [{ "path": ["items", 0, "primary_revision", "observation"], "value": "present" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "activity-rejects-superseded-comparison-available-field",
+      "changes": [
+        {
+          "path": ["items", 0],
+          "value": {
+            "id": "commit:89abcdef0123456789abcdef0123456789abcdef",
+            "kind": "commit",
+            "title": "Refine provider model",
+            "actors": [{ "kind": "git", "name": "Commit Author", "email": "author@example.com" }],
+            "event_at": "2026-09-11T10:00:00Z",
+            "updated_at": "2026-09-11T10:00:00Z",
+            "state": null,
+            "primary_revision": {
+              "repository_id": "repo-1",
+              "ref": "89abcdef0123456789abcdef0123456789abcdef",
+              "oid": "89abcdef0123456789abcdef0123456789abcdef",
+              "observation": "observed"
+            },
+            "base_revision": null,
+            "head_revision": null,
+            "comparison_available": false,
+            "detail": {
+              "kind": "commit",
+              "revision": {
+                "repository_id": "repo-1",
+                "oid": "89abcdef0123456789abcdef0123456789abcdef",
+                "observation": "observed"
+              }
+            },
+            "freshness": { "kind": "immutable" }
+          }
+        }
       ],
       "expect": "invalid"
     },

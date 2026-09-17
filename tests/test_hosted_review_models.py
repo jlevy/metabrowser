@@ -6,7 +6,14 @@ from pydantic import ValidationError
 
 from metabrowser.builtin_plugins.hosted_review.models import (
     ChangeRequestState,
+    ComparisonRef,
+    GitObjectRef,
+    LocalGitObjectAvailability,
+    LocalObjectAvailability,
+    RevisionObservation,
+    RevisionRef,
     dump_change_request,
+    local_git_object_availability,
     validate_change_request,
 )
 
@@ -72,16 +79,103 @@ def test_change_request_rejects_base_from_another_repository() -> None:
         validate_change_request(document)
 
 
-def test_revision_availability_requires_an_object_id_exactly_when_present() -> None:
+def test_revision_observation_requires_an_object_id_exactly_when_observed() -> None:
     missing_oid = change_request_case()
     missing_oid["comparison"]["head"]["oid"] = None
-    with pytest.raises(ValidationError, match="oid is present exactly"):
+    with pytest.raises(ValidationError, match="oid is present exactly when the provider observed"):
         validate_change_request(missing_oid)
 
-    unfetched_oid = change_request_case()
-    unfetched_oid["comparison"]["head"]["availability"] = "not_requested"
-    with pytest.raises(ValidationError, match="oid is present exactly"):
-        validate_change_request(unfetched_oid)
+    unrequested_oid = change_request_case()
+    unrequested_oid["comparison"]["head"]["observation"] = "not_requested"
+    with pytest.raises(ValidationError, match="oid is present exactly when the provider observed"):
+        validate_change_request(unrequested_oid)
+
+
+def test_revision_observation_names_provider_evidence_not_local_git_state() -> None:
+    assert {member.value for member in RevisionObservation} == {
+        "observed",
+        "unavailable",
+        "not_requested",
+    }
+    assert set(RevisionRef.model_fields) == {"repository_id", "ref", "oid", "observation"}
+    assert set(GitObjectRef.model_fields) == {"repository_id", "oid", "observation"}
+    assert "merge_commit_observation" in ComparisonRef.model_fields
+
+    local_state = change_request_case()
+    local_state["comparison"]["head"]["observation"] = "present"
+    with pytest.raises(ValidationError, match="observation"):
+        validate_change_request(local_state)
+
+    superseded = change_request_case()
+    superseded["comparison"]["head"]["availability"] = superseded["comparison"]["head"].pop(
+        "observation"
+    )
+    with pytest.raises(ValidationError, match="observation"):
+        validate_change_request(superseded)
+
+    superseded_merge = change_request_case()
+    superseded_merge["comparison"]["merge_commit_availability"] = superseded_merge[
+        "comparison"
+    ].pop("merge_commit_observation")
+    with pytest.raises(ValidationError, match="merge_commit_observation"):
+        validate_change_request(superseded_merge)
+
+
+def test_local_object_availability_is_a_separate_closed_vocabulary() -> None:
+    assert tuple(member.value for member in LocalObjectAvailability) == (
+        "not_requested",
+        "present",
+        "missing_fetchable",
+        "fetch_failed",
+        "unavailable",
+        "outside_bound",
+    )
+    assert set(LocalGitObjectAvailability.model_fields) == {"oid", "availability"}
+
+    comparison = validate_change_request(change_request_case()).comparison
+    head_oid = comparison.head.oid
+    assert head_oid is not None
+    for state in LocalObjectAvailability:
+        report = local_git_object_availability(comparison.head, state)
+        assert report.oid == head_oid
+        assert report.availability is state
+    # Reporting local state never rewrites the provider observation it describes.
+    assert comparison.head.observation is RevisionObservation.observed
+
+    object_ref = GitObjectRef(
+        repository_id="repo-2",
+        oid=head_oid,
+        observation=RevisionObservation.observed,
+    )
+    assert local_git_object_availability(
+        object_ref, LocalObjectAvailability.missing_fetchable
+    ) == LocalGitObjectAvailability(
+        oid=head_oid,
+        availability=LocalObjectAvailability.missing_fetchable,
+    )
+
+    with pytest.raises(ValidationError):
+        LocalGitObjectAvailability.model_validate({"oid": None, "availability": "present"})
+    with pytest.raises(ValidationError):
+        LocalGitObjectAvailability.model_validate({"oid": head_oid, "availability": "observed"})
+    with pytest.raises(ValidationError):
+        LocalGitObjectAvailability.model_validate(
+            {"oid": head_oid, "availability": "present", "observation": "observed"}
+        )
+
+
+@pytest.mark.parametrize("observation", ["unavailable", "not_requested"])
+def test_local_object_availability_requires_a_provider_observed_object_id(
+    observation: str,
+) -> None:
+    document = change_request_case()
+    document["comparison"]["head"]["observation"] = observation
+    document["comparison"]["head"]["oid"] = None
+    head = validate_change_request(document).comparison.head
+
+    for state in LocalObjectAvailability:
+        with pytest.raises(ValueError, match="provider-observed object ID"):
+            local_git_object_availability(head, state)
 
 
 def test_change_request_rejects_negative_aggregate_counts() -> None:
@@ -92,9 +186,9 @@ def test_change_request_rejects_negative_aggregate_counts() -> None:
         validate_change_request(document)
 
 
-def test_merge_commit_availability_matches_its_object_id() -> None:
+def test_merge_commit_observation_matches_its_object_id() -> None:
     document = change_request_case()
-    document["comparison"]["merge_commit_availability"] = "present"
+    document["comparison"]["merge_commit_observation"] = "observed"
 
     with pytest.raises(ValidationError, match="merge_commit_oid is present exactly"):
         validate_change_request(document)

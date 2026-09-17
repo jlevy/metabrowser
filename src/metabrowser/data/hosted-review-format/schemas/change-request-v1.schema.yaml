@@ -56,8 +56,8 @@ $defs:
         $ref: '#/$defs/RevisionRef'
       head:
         $ref: '#/$defs/RevisionRef'
-      merge_commit_availability:
-        $ref: '#/$defs/RevisionAvailability'
+      merge_commit_observation:
+        $ref: '#/$defs/RevisionObservation'
       merge_commit_oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -67,7 +67,7 @@ $defs:
     required:
     - base
     - head
-    - merge_commit_availability
+    - merge_commit_observation
     - merge_commit_oid
     title: ComparisonRef
     type: object
@@ -184,18 +184,18 @@ $defs:
     - requested_teams
     title: ReviewSummary
     type: object
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
   RevisionRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -213,7 +213,7 @@ $defs:
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - ref
     - repository_id
@@ -319,4 +319,4 @@ title: ChangeRequest
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ChangeRequest/v1
-  schema_sha256: f3919c1a31985bc0df4c878590e6a9221f533624b1d40caeb72961dcc921a395
+  schema_sha256: 60d7f817d5493b433e07d1ba62a7a2e9c4db0cfa28ec1c5477df98f940ca86a2

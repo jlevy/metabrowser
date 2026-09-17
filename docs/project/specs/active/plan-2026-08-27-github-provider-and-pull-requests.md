@@ -6,7 +6,9 @@
 
 **Status:** Phase 0C.2 is the green exact stacked base at
 `b907bb2734929cd0858207ba5d73639aee168636`; the shared repository-source and provider-
-mirror correction is the current design layer before provider storage implementation
+mirror correction is the current design layer before provider storage implementation,
+and the Phase 0D source-binding and object-availability correction is implemented on
+that layer pending its publication review (`mb-9u45`)
 
 ## Vision
 
@@ -266,7 +268,7 @@ code:
 | --- | --- | --- |
 | Repository node and `nameWithOwner` | `HostedRepository/v1` and `ProviderObjectRef` | Provider coordinates remain provenance; stable opaque identity is authoritative |
 | Pull request | `ChangeRequest/v1` | `provider_ref.object_kind: pull_request`; a future GitLab merge request uses the same common record with another provider kind |
-| Base, head, and merge commit | `RevisionRef` and `ComparisonRef` | Full Git object IDs; availability is explicit and content stays in Git; a deleted fork may leave head repository identity null while the ref and OID remain |
+| Base, head, and merge commit | `RevisionRef` and `ComparisonRef` | Full Git object IDs; provider observation is explicit, local object availability is reported separately, and content stays in Git; a deleted fork may leave head repository identity null while the ref and OID remain |
 | Draft, open, closed, merged, locked | Common lifecycle and capability fields | Unknown provider values normalize to `unknown`, never to a guessed state |
 | Review decision and requested reviewers | Change-request review summary | Aggregate state is distinct from the bounded review collection |
 | Top-level conversation comment | `ChangeRequestComment/v1` | Distinct from a diff discussion; keeps Markdown body and lifecycle but has no review anchor |
@@ -379,14 +381,14 @@ change_request:
       repository_id: R_kgDOExample
       ref: main
       oid: 0123456789abcdef0123456789abcdef01234567
-      availability: present
+      observation: observed
     head:
       repository_id: R_kgDOFork
       ref: cache-design
       oid: 89abcdef0123456789abcdef0123456789abcdef
-      availability: present
+      observation: observed
     merge_commit_oid: null
-    merge_commit_availability: not_requested
+    merge_commit_observation: not_requested
   labels: []
   assignees: []
   milestone: null
@@ -985,6 +987,23 @@ or publication bead merges another phase.
   closure, installed-artifact proof, or exact architecture row.
   Keep proposed routes, resource kinds, views, cache paths, and provider adapters
   unregistered until their implementation phases.
+
+Phase 0D (`mb-z2mc`, published by `mb-9u45`) corrects the unreleased kernel on the
+shared-mirror design head, with no compatibility layer:
+
+- [x] Replace `ProviderBinding.entry_id` and the provider-binding retrieval target’s
+  `entry_id` with a credential-free `source_id`; resolve provenance only from a
+  successful retrieval with the exact source and repository; accept many sources bound
+  to one repository; and reject one source bound to another `RepositoryRef` as a rebind
+  conflict in both successor and binding-set validation.
+- [x] Name the provider revision vocabulary `RevisionObservation` (`observed`,
+  `unavailable`, `not_requested`) with `observation`, `merge_commit_observation`, and
+  `comparison_observed` fields across Python, compiled schemas, corpora, the browser
+  parser, and the GitHub coverage oracle.
+- [x] Add the non-persisted `LocalObjectAvailability` vocabulary and
+  `LocalGitObjectAvailability` report, constructible only for a provider-observed object
+  ID and absent from every provider record schema; register no route, kind, view,
+  contract, or cache path for it.
 
 ### Phase 1: Robust generic repository cache (`mb-ire2` through `mb-dg00`)
 

@@ -38,8 +38,8 @@ $defs:
   GitObjectRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -53,7 +53,7 @@ $defs:
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - repository_id
     title: GitObjectRef
@@ -101,12 +101,12 @@ $defs:
     - provider
     title: RepositoryRef
     type: object
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
@@ -170,4 +170,4 @@ title: Check
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:Check/v1
-  schema_sha256: 98708c527ad0e3a8bc10717e217b18d6ed6def2442f266bd9c2a238d5443fc34
+  schema_sha256: 99ea3a24aada3e073a258d8966a0612563ae4fe843765cbb714107fd0447d42c

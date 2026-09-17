@@ -49,19 +49,53 @@ def test_index_style_change_request_can_defer_revision_resolution() -> None:
     )
     change_request = activity.items[1]
 
-    assert change_request.comparison_available is False
+    assert change_request.comparison_observed is False
     assert change_request.primary_revision.repository_id is None
     assert (
-        change_request.primary_revision.availability
-        is hosted_review.RevisionAvailability.not_requested
+        change_request.primary_revision.observation
+        is hosted_review.RevisionObservation.not_requested
     )
     assert change_request.base_revision is not None
     assert (
-        change_request.base_revision.availability
-        is hosted_review.RevisionAvailability.not_requested
+        change_request.base_revision.observation is hosted_review.RevisionObservation.not_requested
     )
     assert change_request.head_revision is not None
     assert change_request.head_revision.repository_id is None
+
+
+def test_comparison_flag_reports_provider_observation_of_both_endpoints() -> None:
+    corpus = _corpus()
+    document = corpus["base_document"]
+    change_request = hosted_review.validate_repository_activity(document).items[1]
+
+    assert set(hosted_review.ActivityItem.model_fields) >= {"comparison_observed"}
+    assert "comparison_available" not in hosted_review.ActivityItem.model_fields
+    assert change_request.comparison_observed is True
+    assert change_request.base_revision is not None
+    assert change_request.head_revision is not None
+    assert {
+        change_request.base_revision.observation,
+        change_request.head_revision.observation,
+    } == {hosted_review.RevisionObservation.observed}
+
+    unavailable_head = apply_case_changes(
+        document,
+        [
+            {"path": ["items", 1, "primary_revision", "observation"], "value": "unavailable"},
+            {"path": ["items", 1, "primary_revision", "oid"], "value": None},
+            {"path": ["items", 1, "head_revision", "observation"], "value": "unavailable"},
+            {"path": ["items", 1, "head_revision", "oid"], "value": None},
+        ],
+    )
+    with pytest.raises(ValueError, match="comparison_observed is true exactly when"):
+        hosted_review.validate_repository_activity(unavailable_head)
+
+    superseded = apply_case_changes(document, [])
+    superseded["items"][1]["comparison_available"] = superseded["items"][1].pop(
+        "comparison_observed"
+    )
+    with pytest.raises(ValueError, match="comparison_observed"):
+        hosted_review.validate_repository_activity(superseded)
 
 
 def test_partial_activity_names_its_bound_and_opaque_continuation() -> None:

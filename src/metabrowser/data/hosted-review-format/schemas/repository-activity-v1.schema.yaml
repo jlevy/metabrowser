@@ -44,8 +44,8 @@ $defs:
         anyOf:
         - $ref: '#/$defs/RevisionRef'
         - type: 'null'
-      comparison_available:
-        title: Comparison Available
+      comparison_observed:
+        title: Comparison Observed
         type: boolean
       detail:
         $ref: '#/$defs/ActivityDetailTarget'
@@ -78,7 +78,7 @@ $defs:
     required:
     - actors
     - base_revision
-    - comparison_available
+    - comparison_observed
     - detail
     - event_at
     - freshness
@@ -196,8 +196,8 @@ $defs:
   GitObjectRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -211,7 +211,7 @@ $defs:
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - repository_id
     title: GitObjectRef
@@ -317,18 +317,18 @@ $defs:
     - provider
     title: RepositoryRef
     type: object
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
   RevisionRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -346,7 +346,7 @@ $defs:
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - ref
     - repository_id
@@ -431,4 +431,4 @@ title: RepositoryActivity
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.activity:RepositoryActivity/v1
-  schema_sha256: 4d9042e3c4a18c3fc7b1aed6afb425d8c0189ec5d95c232ba3d211c0d1427845
+  schema_sha256: 28f65ded7f1dc863d188be7c7ee8ae6ce2fabc6a24ecd61acb737ecd41827ece

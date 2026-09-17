@@ -86,18 +86,18 @@ $defs:
   ProviderBindingRetrievalTarget:
     additionalProperties: false
     properties:
-      entry_id:
-        $ref: '#/$defs/Sha256Digest'
       kind:
         const: provider_binding
         title: Kind
         type: string
       repository:
         $ref: '#/$defs/RepositoryRef'
+      source_id:
+        $ref: '#/$defs/Sha256Digest'
     required:
-    - entry_id
     - kind
     - repository
+    - source_id
     title: ProviderBindingRetrievalTarget
     type: object
   ProviderCollectionRetrievalTarget:
@@ -400,4 +400,4 @@ title: Retrieval
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.provider:Retrieval/v1
-  schema_sha256: 84cb2891c4c0c586913d0f0a710ad46f258b6e627b9cb1eb1ce0392349f32389
+  schema_sha256: 714a28b58344489dfcab9d53d71f63f7c259e04736890198763c694bee628ceb

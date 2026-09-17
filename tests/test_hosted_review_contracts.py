@@ -8,7 +8,7 @@ import json
 import re
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from softschema import SchemaProfile, SchemaView
@@ -41,7 +41,11 @@ from metabrowser.builtin_plugins.hosted_review.models import (
     REVIEW_THREAD_CONTRACT_ID,
     TOMBSTONE_CONTRACT_ID,
     ChangeRequest,
+    DefaultBranchAvailability,
+    LocalGitObjectAvailability,
+    LocalObjectAvailability,
     ResourceSet,
+    RevisionObservation,
 )
 from metabrowser.builtin_plugins.hosted_review.resource_profiles import (
     CHANGE_REQUEST_INDEX_PROFILE_ID,
@@ -465,6 +469,97 @@ def test_enforced_contracts_reject_undeclared_root_fields(contract_id: str) -> N
     assert not result.structural.ok
     assert any(error.get("code") == "undeclared_property" for error in result.structural.errors)
     assert not result.semantic.ok
+
+
+def _object_schema_nodes(node: object) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    if isinstance(node, dict):
+        mapping = cast(dict[str, Any], node)
+        if mapping.get("type") == "object" or "properties" in mapping:
+            found.append(mapping)
+        for value in mapping.values():
+            found.extend(_object_schema_nodes(value))
+    elif isinstance(node, list):
+        for value in cast(list[object], node):
+            found.extend(_object_schema_nodes(value))
+    return found
+
+
+def test_provider_record_schemas_are_closed_and_cannot_carry_local_object_availability() -> None:
+    local_names = {LocalGitObjectAvailability.__name__, LocalObjectAvailability.__name__}
+    # `present` also spells DefaultBranchAvailability, and the shared unavailable and
+    # not_requested states spell RevisionObservation; the remaining values are local-only.
+    local_only_states = (
+        {state.value for state in LocalObjectAvailability}
+        - {state.value for state in RevisionObservation}
+        - {state.value for state in DefaultBranchAvailability}
+    )
+    assert local_only_states == {"missing_fetchable", "fetch_failed", "outside_bound"}
+
+    for contract in HOSTED_REVIEW_CONTRACTS:
+        schema_text = contract.schema_bytes.decode("utf-8")
+        assert not any(name in schema_text for name in local_names), contract.contract_id
+        assert not any(state in schema_text for state in local_only_states), contract.contract_id
+        assert "RevisionAvailability" not in schema_text
+        view = SchemaView.load(
+            FORMAT_ROOT / "schemas" / EXPECTED_SCHEMA_NAME_BY_CONTRACT[contract.contract_id]
+        )
+        object_nodes = _object_schema_nodes(view.raw)
+        assert object_nodes
+        for node in object_nodes:
+            assert (
+                node.get("additionalProperties") is False
+                or node.get("unevaluatedProperties") is False
+            ), (contract.contract_id, node.get("title"))
+
+
+@pytest.mark.parametrize(
+    ("contract_id", "revision_path"),
+    [
+        (CHANGE_REQUEST_CONTRACT_ID, ("comparison", "head")),
+        (REVIEW_CONTRACT_ID, ("revision",)),
+        (CHECK_CONTRACT_ID, ("revision",)),
+        (REPOSITORY_ACTIVITY_CONTRACT_ID, ("items", 1, "head_revision")),
+    ],
+)
+def test_provider_revisions_reject_an_embedded_local_availability_report(
+    contract_id: str, revision_path: tuple[str | int, ...]
+) -> None:
+    document = copy.deepcopy(_valid_records()[contract_id])
+    revision: Any = document
+    for part in revision_path:
+        revision = revision[part]
+    report = LocalGitObjectAvailability(
+        oid=revision["oid"],
+        availability=LocalObjectAvailability.present,
+    )
+    revision["local_availability"] = report.model_dump(mode="json")
+
+    result = validate_contract_values(contract_id, document)
+
+    assert not result.structural.ok
+    assert any(error.get("code") == "undeclared_property" for error in result.structural.errors)
+    assert not result.semantic.ok
+
+    local_state = copy.deepcopy(_valid_records()[contract_id])
+    revision = local_state
+    for part in revision_path:
+        revision = revision[part]
+    revision["observation"] = LocalObjectAvailability.present.value
+
+    assert not validate_contract_values(contract_id, local_state).semantic.ok
+
+
+def test_local_object_availability_is_not_an_installed_contract() -> None:
+    registry = build_hosted_review_contract_registry()
+
+    assert all(
+        contract.model is not LocalGitObjectAvailability for contract in registry.all.values()
+    )
+    assert all(
+        LocalGitObjectAvailability.__name__ not in contract.contract_id
+        for contract in HOSTED_REVIEW_CONTRACTS
+    )
 
 
 def test_unknown_contract_id_is_rejected() -> None:

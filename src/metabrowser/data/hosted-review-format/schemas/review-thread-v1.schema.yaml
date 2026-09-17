@@ -27,8 +27,8 @@ $defs:
         $ref: '#/$defs/RevisionRef'
       head:
         $ref: '#/$defs/RevisionRef'
-      merge_commit_availability:
-        $ref: '#/$defs/RevisionAvailability'
+      merge_commit_observation:
+        $ref: '#/$defs/RevisionObservation'
       merge_commit_oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -38,7 +38,7 @@ $defs:
     required:
     - base
     - head
-    - merge_commit_availability
+    - merge_commit_observation
     - merge_commit_oid
     title: ComparisonRef
     type: object
@@ -80,8 +80,8 @@ $defs:
   GitObjectRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -95,7 +95,7 @@ $defs:
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - repository_id
     title: GitObjectRef
@@ -273,18 +273,18 @@ $defs:
     - unknown
     title: ReviewThreadState
     type: string
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
   RevisionRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -302,7 +302,7 @@ $defs:
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - ref
     - repository_id
@@ -348,4 +348,4 @@ title: ReviewThread
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ReviewThread/v1
-  schema_sha256: 5ce2235eb34d03db4c5738197b312e3afaf4da847c30a42b023693d655afe510
+  schema_sha256: 17d03e737ae1252ac32e8a6dbada2ab1fbe6d6fecd5521686a15a82f526446a4

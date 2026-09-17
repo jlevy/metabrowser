@@ -1,10 +1,9 @@
 # Hosted Review Model and Provider Boundary
 
-**Status:** Accepted design; the no-network record families, scrubbed GitHub coverage
-oracle, installed enforced contracts and resource profiles, and generic format inventory
-gate are implemented.
-The implemented `ProviderBinding/v1` still uses the superseded cache-entry identity and
-must be corrected to the source-attachment contract below before provider storage ships.
+**Status:** Accepted design; the no-network record families, source-based provider
+bindings, provider revision observations, the non-persisted local object-availability
+report, scrubbed GitHub coverage oracle, installed enforced contracts and resource
+profiles, and generic format inventory gate are implemented.
 No provider adapter, cache, route, kind, or view is implemented yet.
 
 Hosted review is a domain above Git history and File Diff Format.
@@ -118,6 +117,32 @@ retain a head ref and object ID after its fork repository becomes unavailable.
 The base revision of a selected change request still belongs to its non-null owning
 repository; normalization never copies that identity onto an unknown head.
 
+### Provider Revision Observation and Local Object Availability
+
+`RevisionRef`, `GitObjectRef`, and the change-request merge commit record what the
+provider reported, not what a local Git store holds.
+`RevisionObservation` is `observed`, `unavailable`, or `not_requested`: `observed`
+carries the provider-supplied full object ID, `unavailable` records that acquisition
+requested the object but the provider did not supply it, and `not_requested` records
+that acquisition deliberately omitted it.
+The object ID is present exactly when the observation is `observed`; the merge commit
+uses `merge_commit_observation` with the same rule.
+
+Local availability is a separate fact with a separate vocabulary.
+`LocalObjectAvailability` is `not_requested`, `present`, `missing_fetchable`,
+`fetch_failed`, `unavailable`, or `outside_bound`, and `LocalGitObjectAvailability`
+reports one full object ID with one of those states.
+`local_git_object_availability` constructs a report only from a revision whose
+observation is `observed`, so a report can never describe an object ID the provider did
+not supply. The report is a service projection for the selected-ref service (`mb-jlon`),
+not an artifact contract: it has no schema, corpus, route, kind, view, or cache path,
+and every provider record schema is closed, so no provider artifact can embed it.
+Fetching an object changes the report, never the immutable provider snapshot that
+observed its ID; the store-level contract is in
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md#coordinated-hosted-views).
+`tests/test_hosted_review_contracts.py` checks that no installed contract schema names
+the local vocabulary and that every schema object is closed.
+
 Issue and timeline records are the next domain extension, tracked by `mb-9rrc`. Release
 records are a sibling extension with `Release/v1` frontmatter, a structured asset
 record, and a bounded index; their separate phased epic follows the general resource
@@ -169,11 +194,11 @@ thread, and reply relationships that cross scopes.
 | Record | Required fields beyond shared identity |
 | --- | --- |
 | `ChangeRequestComment/v1` | `change_request_id`, nullable `url` and `author`, `state`, `created_at`, `updated_at` |
-| `Review/v1` | `change_request_id`, `url`, nullable `author`, `disposition`, observed immutable `revision`, `created_at`, nullable `submitted_at`, `updated_at` |
+| `Review/v1` | `change_request_id`, `url`, nullable `author`, `disposition`, requested immutable `revision`, `created_at`, nullable `submitted_at`, `updated_at` |
 | `ReviewThread/v1` | `change_request_id`, typed `anchor`, `state`, nullable `resolved_by`, provider-observed `comment_count` |
 | `ReviewComment/v1` | `change_request_id`, nullable `review_id`, `thread_id`, nullable `in_reply_to_id`, nullable `url` and `author`, `state`, typed `anchor`, `created_at`, `updated_at` |
-| `Check/v1` | nullable `parent_check_id`, `kind`, present immutable `revision`, nullable `name`, `status`, nullable `conclusion`, `url`, `started_at`, and `completed_at`; runs require `name` |
-| `CommitStatus/v1` | present immutable `revision`, `context`, `state`, nullable `description` and `target_url`, `created_at`, `updated_at` |
+| `Check/v1` | nullable `parent_check_id`, `kind`, observed immutable `revision`, nullable `name`, `status`, nullable `conclusion`, `url`, `started_at`, and `completed_at`; runs require `name` |
+| `CommitStatus/v1` | observed immutable `revision`, `context`, `state`, nullable `description` and `target_url`, `created_at`, `updated_at` |
 
 `CommentState` is `visible`, `minimized`, `deleted`, or `unknown`. An author may be null
 when provider identity is unavailable, independently of content state; only a deleted
@@ -186,7 +211,7 @@ observed before deletion.
 `dismissed`, or `unknown`. Pending reviews have no `submitted_at`; every other known
 disposition requires it.
 The author may be null when provider identity is unavailable.
-The reviewed `GitObjectRef` is an observed revision: normally present, but explicitly
+The reviewed `GitObjectRef` is a requested revision: normally `observed`, but explicitly
 `unavailable` when a force push or garbage collection removed the object; it is never
 `not_requested`.
 
@@ -197,7 +222,7 @@ Completed runs require their provider completion time.
 GitHub check suites expose neither a name nor start/completion timestamps, so those
 fields stay null rather than copying the application slug or substituting
 `created_at`/`updated_at` with different semantics.
-Check and commit-status revisions are present immutable Git object references; they are
+Check and commit-status revisions are observed immutable Git object references; they are
 not restricted to the base repository or current head because providers also report
 fork, merge, and synthetic revisions.
 
@@ -209,8 +234,8 @@ Every variant owns:
 - display `path` plus nullable `path_b64`, matching File Diff Format’s lossless Git path
   convention;
 - the complete `ComparisonRef` observed with the discussion;
-- observed `original_revision`, either present or explicitly unavailable, and an
-  explicitly available or unavailable `current_revision`; and
+- a requested `original_revision`, either `observed` or explicitly `unavailable`, and a
+  `current_revision` with its own explicit observation; and
 - `current`, `outdated`, `unresolved`, or `unmappable` state.
 
 A file anchor adds no side or line.
@@ -224,10 +249,10 @@ When `path_b64` is present, it is canonical standard base64 of the exact non-NUL
 path bytes, and `path` is their UTF-8 replacement-decoded display.
 This preserves non-UTF-8 repository paths without making display text authoritative.
 
-Original revisions are always observed, but the provider may report that the original
+Original revisions are always requested, but the provider may report that the original
 commit is unavailable.
-They are never `not_requested`. Current, outdated, and unmappable anchors also have a
-present current revision that matches the comparison head.
+They are never `not_requested`. Current, outdated, and unmappable anchors also have an
+observed current revision that matches the observed comparison head.
 The original and current revisions may differ when a provider remaps a still-current
 comment after the change-request head advances.
 An unresolved anchor may declare its current revision unavailable or not requested.
@@ -264,21 +289,24 @@ An `item_bound` truncation names `max_items` and is valid only when the projecti
 actually reaches that bound.
 
 Each activity item carries stable identity, title, source-neutral actors, event and
-update times, primary revision, optional base and head revisions, comparison
-availability, a typed detail target, and freshness.
+update times, primary revision, optional base and head revisions, a
+`comparison_observed` flag, a typed detail target, and freshness.
 Actors are a closed union: local commit items use Git name plus nullable email, while
 hosted change requests use a provider `ActorRef`. A commit item belongs to the enclosing
 generic repository.
 
 Commit freshness is `immutable`. Provider-derived change-request freshness is `observed`
 with a snapshot ID and observation time.
-A change-request item may use `not_requested` revision availability when projected from
+A change-request item may use `not_requested` revision observations when projected from
 a bounded index. Its base repository remains the selected hosted repository, while the
 head and primary revision repository IDs remain null when a deleted or inaccessible fork
 cannot be identified.
-Comparison availability becomes true only after both base and head object IDs are
-present. This keeps activity navigation useful without claiming that unfetched Git
-objects exist locally.
+`comparison_observed` is true exactly when the provider observed both base and head
+object IDs, and a commit item never claims it.
+The flag reports provider evidence only; it keeps activity navigation useful without
+claiming that the objects exist in a local store, which
+[local object availability](#provider-revision-observation-and-local-object-availability)
+reports separately.
 
 ## GitHub Coverage Oracle
 
@@ -425,14 +453,27 @@ adapter/service result, not a durable retrieval under a fabricated context.
 optional typed provenance that names the retrieval snapshot establishing the binding.
 The source ID uses the repository library’s conservative normalized-source identity; it
 does not prove that two different sources are one repository.
-Provenance resolution requires a successful provider-binding retrieval whose source and
-repository exactly match the binding.
-The record is independent of authorization, cache-entry existence, local paths, and
-mutable repository coordinates.
+Provenance resolution requires a successful provider-binding retrieval whose `source_id`
+and `repository` exactly match the binding; the retrieval target carries the same
+`source_id` scalar. The record is independent of authorization, cache-entry existence,
+local paths, and mutable repository coordinates.
 Several source IDs may bind to the same repository, while a conflicting attempt to bind
-one source ID to a different opaque repository identity fails closed.
+one source ID to a different `RepositoryRef` — provider kind, instance, or opaque ID —
+fails closed as an explicit rebind conflict.
 Changing a repository owner or name updates `HostedRepository/v1`; changing the opaque
 repository ID is an explicit rebind conflict.
+
+`validate_provider_binding_successor` accepts a republished binding only when its
+`source_id` and `repository` are unchanged.
+A binding for another source is a separate binding, not a successor.
+Provenance is evidence rather than identity, so a successor may cite a newer
+establishing retrieval or omit provenance; this lets a re-resolution record fresh
+evidence without pinning the first retrieval forever, and a consumer that requires
+evidence resolves the successor’s own provenance, which fails closed when it is absent.
+`validate_provider_bindings` validates one binding set: it accepts many sources bound to
+one repository, rejects a source bound to different repositories as a rebind conflict,
+and rejects any second record for the same source, because a set holds exactly one
+current binding per source.
 `HostedRepository/v1` contains `provider_ref`, an actor-valued owner, name, canonical
 web and clone URLs, visibility, an explicit default-branch availability and name, and
 provider creation and update times.

@@ -39,8 +39,8 @@ $defs:
         $ref: '#/$defs/RevisionRef'
       head:
         $ref: '#/$defs/RevisionRef'
-      merge_commit_availability:
-        $ref: '#/$defs/RevisionAvailability'
+      merge_commit_observation:
+        $ref: '#/$defs/RevisionObservation'
       merge_commit_oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -50,7 +50,7 @@ $defs:
     required:
     - base
     - head
-    - merge_commit_availability
+    - merge_commit_observation
     - merge_commit_oid
     title: ComparisonRef
     type: object
@@ -92,8 +92,8 @@ $defs:
   GitObjectRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -107,7 +107,7 @@ $defs:
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - repository_id
     title: GitObjectRef
@@ -278,18 +278,18 @@ $defs:
     - head
     title: ReviewSide
     type: string
-  RevisionAvailability:
+  RevisionObservation:
     enum:
-    - present
+    - observed
     - unavailable
     - not_requested
-    title: RevisionAvailability
+    title: RevisionObservation
     type: string
   RevisionRef:
     additionalProperties: false
     properties:
-      availability:
-        $ref: '#/$defs/RevisionAvailability'
+      observation:
+        $ref: '#/$defs/RevisionObservation'
       oid:
         anyOf:
         - pattern: ^[0-9a-f]{40,64}$
@@ -307,7 +307,7 @@ $defs:
         - type: 'null'
         title: Repository Id
     required:
-    - availability
+    - observation
     - oid
     - ref
     - repository_id
@@ -378,4 +378,4 @@ title: ReviewComment
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.review:ReviewComment/v1
-  schema_sha256: cbd2b4589b84f4276c009b515a804a4505d32d76cc8b8d8421c13ec44a9f7f71
+  schema_sha256: fd51c687d58d75e56b85376df6a451790042170468a11351cb73e3ac85bbbc51
