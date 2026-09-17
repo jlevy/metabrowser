@@ -243,14 +243,24 @@ class PrivateStorageLocation(StrEnum):
     ENTRY = "entry"
 
 
-type SharedEntryPolicy = Literal["repair", "keep", "refuse"]
-"""What an open does with an existing entry other users can reach.
+type EntryKind = Literal["file", "directory"]
+type EntryPurpose = Literal["read", "write"]
 
-``repair`` tightens it, which is what a caller that is about to use the entry wants.
-``keep`` leaves it exactly as it is, for a caller replacing the entry under its old
-lock. ``refuse`` raises :class:`PrivateStorageError` instead, for a read that must not
-change anything the user owns — a request that reports state has no business chmod-ing
-a cache entry, and a repair would also hide from the next reader that it was shared.
+type SharedEntryPolicy = Literal["repair", "keep", "refuse"]
+"""What an open does with an existing entry other users can reach, target and parents.
+
+- ``repair`` tightens the target and every parent directory on the way to it, which is
+  what a caller about to use the entry wants.
+- ``keep`` changes neither and refuses neither, for a caller that must observe the entry
+  exactly as it is: the lock replacement, which locks the old file before replacing it
+  and would otherwise make a shared lock file look private to every later open while its
+  holder still has it, and the pre-read that decides whether this release may touch the
+  home at all. Such a caller repairs through its later write, which uses ``repair``.
+- ``refuse`` raises :class:`PrivateStorageError` for a shared target or a shared parent
+  and changes neither, for a read that must not touch what the user owns and must not
+  report what it could not verify. A request that reports state has no business
+  chmod-ing a cache entry, and a repair would also hide from the next reader that the
+  entry was shared.
 """
 
 
@@ -322,6 +332,8 @@ def _describe(
     mode: int | None,
     detail: str | None,
     through_acl: bool,
+    kind: EntryKind | None = None,
+    purpose: EntryPurpose = "write",
 ) -> str:
     """Return a path-free, actionable sentence for one refusal."""
 
@@ -365,6 +377,19 @@ def _describe(
         case PrivateStorageViolation.PERMISSIVE if location is PrivateStorageLocation.HOME:
             remedy = "Remove those entries with chmod -N" if through_acl else "Run chmod 700 on it"
             return f"{subject} is accessible to other users{access}. {remedy}, {_MOVE_HOME}."
+        case PrivateStorageViolation.PERMISSIVE if purpose == "read":
+            # A read refuses because Metabrowser will not change the user's entries to
+            # answer a request, so the remedy is the one that makes this entry private
+            # again, and it differs for a directory and a file.
+            remedy = (
+                "Remove those entries with chmod -N"
+                if through_acl
+                else f"Run chmod {'700' if kind == 'directory' else '600'} on it"
+            )
+            return (
+                f"{subject} is accessible to other users{access}, and Metabrowser does not "
+                f"change your entries to answer a request. {remedy}, {_MOVE_HOME}."
+            )
         case PrivateStorageViolation.PERMISSIVE:
             return (
                 f"{subject} is accessible to other users{access}, and tightening it would not "
@@ -394,8 +419,11 @@ class PrivateStorageError(Exception):
     """Owner-only storage was refused.
 
     ``str()`` is path-free and actionable, so it is safe for a job status or response
-    body. ``path`` names the offending location for local logs and CLI rendering only.
-    ``mode`` is set when a permission mode caused a permissive refusal.
+    body. ``path`` names the offending location for local logs and CLI rendering only;
+    a caller that may report a location derives a logical one from it rather than
+    repeating this path. ``mode`` is set when a permission mode caused a permissive
+    refusal, and ``kind`` and ``purpose`` say whether a directory or a file was refused
+    and whether the caller was reading or writing, which decides the remedy offered.
     """
 
     def __init__(
@@ -407,12 +435,16 @@ class PrivateStorageError(Exception):
         mode: int | None = None,
         detail: str | None = None,
         through_acl: bool = False,
+        kind: EntryKind | None = None,
+        purpose: EntryPurpose = "write",
     ) -> None:
-        super().__init__(_describe(violation, location, mode, detail, through_acl))
+        super().__init__(_describe(violation, location, mode, detail, through_acl, kind, purpose))
         self.violation: PrivateStorageViolation = violation
         self.location: PrivateStorageLocation = location
         self.path: Path = path
         self.mode: int | None = mode
+        self.kind: EntryKind | None = kind
+        self.purpose: EntryPurpose = purpose
 
 
 class ApplicationHomeError(ValueError):
@@ -505,14 +537,10 @@ def open_private_file(
     :func:`ensure_private_directory` but never created, so a missing one raises
     :class:`FileNotFoundError`.
 
-    *shared* decides what an existing shared entry gets. ``repair`` tightens it, as
-    described above. ``keep`` leaves a read-only open of a shared file exactly as it is,
-    for a caller about to replace it: it locks the old file first, and a tightened file
-    would look private to every later open while whoever opened it when it was shared
-    might still hold its lock; that caller writes through the parent directories, so
-    those are still repaired. ``refuse`` raises :class:`PrivateStorageError` for a shared
-    file or a shared parent instead of touching anything, for a read that must not change
-    the user's entries.
+    *shared* decides what an existing shared file and its shared parent directories get;
+    :data:`SharedEntryPolicy` states each value exactly. ``keep`` and ``refuse`` both
+    leave every mode and ACL on the path alone; only ``refuse`` turns a shared one into a
+    :class:`PrivateStorageError`.
     """
 
     _require_home_argument(home)
@@ -526,12 +554,9 @@ def open_private_file(
     path = home
     fd = _open_home(home)
     try:
-        # "keep" is about the file the caller replaces, not the directories it writes
-        # through; only a read that must change nothing refuses a shared parent.
-        parents_shared: SharedEntryPolicy = "refuse" if shared == "refuse" else "repair"
         for parent in parents:
             path = path / parent
-            child = _open_directory_entry(fd, parent, path, create=False, shared=parents_shared)
+            child = _open_directory_entry(fd, parent, path, create=False, shared=shared)
             os.close(fd)
             fd = child
         return _open_file_entry(fd, name, flags, path / name, shared=shared)
@@ -938,8 +963,8 @@ def _open_directory_entry(
 
     A directory this call creates is finished at exactly ``0700`` and removed again if it
     is refused. What an existing shared one gets follows *shared*: ``repair`` takes its
-    group and other access and its sharing ACL away, ``keep`` leaves it, and ``refuse``
-    raises :class:`PrivateStorageError`.
+    group and other access and its sharing ACL away, ``keep`` leaves it exactly as it is,
+    and ``refuse`` raises :class:`PrivateStorageError` instead of either.
     """
 
     location = PrivateStorageLocation.ENTRY
@@ -979,11 +1004,21 @@ def _open_directory_entry(
                 mode = stat.S_IMODE(opened.st_mode)
                 if mode & _SHARED_ACCESS_BITS:
                     raise PrivateStorageError(
-                        PrivateStorageViolation.PERMISSIVE, location, path, mode=mode
+                        PrivateStorageViolation.PERMISSIVE,
+                        location,
+                        path,
+                        mode=mode,
+                        kind="directory",
+                        purpose="read",
                     )
                 if _foreign_grants(fd, location, path):
                     raise PrivateStorageError(
-                        PrivateStorageViolation.PERMISSIVE, location, path, through_acl=True
+                        PrivateStorageViolation.PERMISSIVE,
+                        location,
+                        path,
+                        through_acl=True,
+                        kind="directory",
+                        purpose="read",
                     )
             elif shared == "repair":
                 if _foreign_grants(fd, location, path):
@@ -1076,12 +1111,26 @@ def _open_existing_file(
         opened = os.fstat(fd)
         _require_regular_file(opened, location, path, same_as=before)
         mode = stat.S_IMODE(opened.st_mode)
-        if (writes or shared == "refuse") and mode & _SHARED_ACCESS_BITS:
-            raise PrivateStorageError(PrivateStorageViolation.PERMISSIVE, location, path, mode=mode)
-        foreign_grants = _foreign_grants(fd, location, path)
-        if foreign_grants and (writes or shared == "refuse"):
+        refusing_read = shared == "refuse"
+        purpose: EntryPurpose = "write" if writes else "read"
+        if (writes or refusing_read) and mode & _SHARED_ACCESS_BITS:
             raise PrivateStorageError(
-                PrivateStorageViolation.PERMISSIVE, location, path, through_acl=True
+                PrivateStorageViolation.PERMISSIVE,
+                location,
+                path,
+                mode=mode,
+                kind="file",
+                purpose=purpose,
+            )
+        foreign_grants = _foreign_grants(fd, location, path)
+        if foreign_grants and (writes or refusing_read):
+            raise PrivateStorageError(
+                PrivateStorageViolation.PERMISSIVE,
+                location,
+                path,
+                through_acl=True,
+                kind="file",
+                purpose=purpose,
             )
         if shared == "repair":
             if foreign_grants:

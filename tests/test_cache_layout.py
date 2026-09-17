@@ -426,6 +426,36 @@ def test_an_older_client_refuses_a_future_home_before_writing(
 
 
 @posix_only
+def test_a_shared_future_home_is_refused_before_its_modes_are_tightened(
+    cache_home: Path,
+) -> None:
+    """The future-format answer must precede every change, repairs included."""
+
+    _write_layout(cache_home, "f02")
+    (cache_home / "cache").chmod(0o755)
+    (cache_home / "cache/layout.yml").chmod(0o644)
+    before = _snapshot(cache_home)
+
+    with pytest.raises(FutureLayoutFormatError, match="Upgrade Metabrowser"):
+        open_cache(cache_home, version="0.11.0")
+
+    assert _snapshot(cache_home) == before
+
+
+@posix_only
+def test_a_shared_but_readable_home_is_still_repaired_and_then_prepared(
+    cache_home: Path,
+) -> None:
+    """Only a future format precedes repair; an ordinary shared home is repaired."""
+
+    (cache_home / "cache").chmod(0o755)
+
+    open_cache(cache_home, version="0.11.0")
+
+    assert stat.S_IMODE((cache_home / "cache").stat().st_mode) == 0o700
+
+
+@posix_only
 def test_a_future_home_that_was_never_prepared_stays_uncreated(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir(mode=0o700)

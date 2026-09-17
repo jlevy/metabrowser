@@ -55,6 +55,7 @@ from metabrowser.cache.records import (
     CacheLayout,
 )
 from metabrowser.home import (
+    PrivateStorageError,
     SharedEntryPolicy,
     application_home,
     ensure_home,
@@ -361,11 +362,19 @@ def open_cache(home: Path | None = None, *, version: str | None = None) -> Cache
     """
 
     home = application_home() if home is None else home
-    # Read the layout and config before anything is created, so a home a newer
+    # Read the layout and config before anything is created or changed, so a home a newer
     # Metabrowser wrote is refused without a directory, a probe entry, or a lock file
-    # appearing in it. Both return None when the home does not exist yet.
-    read_layout(home)
-    read_config(home)
+    # appearing in it, and without its modes or ACLs being tightened first. "keep" is what
+    # makes that true of a shared home as well: it reads the format without touching the
+    # entries, where "refuse" would report the sharing and never reach the format. Both
+    # return None when the home does not exist yet, and anything else this pre-read
+    # refuses falls through to the ordinary path below, which repairs what it owns and
+    # then refuses whatever the repair cannot fix.
+    try:
+        read_layout(home, shared="keep")
+        read_config(home, shared="keep")
+    except PrivateStorageError:
+        pass
     ensure_home(home)
     probe = probe_application_home(home)
     outcome = migrate_layout(home, version=version)
