@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: open
 priority: 1
-version: 25
+version: 26
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: null
 labels:
@@ -27,7 +27,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-16T22:04:16.364Z
+updated_at: 2026-09-17T04:43:26.875Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -35,3 +35,7 @@ extensions:
     linked_at: 2026-08-16T08:05:43.419Z
 ---
 Extend the one Git runner with core-constructed trusted command targets, version detection, stdin isolation, non-interactive environment, and bounded acquisition/background policies. Acquire into an isolated worktree-free staging repository; record source, closed non-secret FetchAuthorizationContext kind, fetch-policy version, exact refspec, expected OID, object format, and base generation; validate before importing objects and CAS-publishing only Metabrowser-owned refs. Unknown SSH or credential-helper principals receive fresh unshareable contexts. Publish the validated immutable store first and the source alias as the sole visibility commit, with source-alias locking and crash reclamation for orphaned stores. Define deterministic provider-identity store derivation without a mutable provider-to-store pointer, but keep GitHub metadata, immutable tree serving, shared origins, checkouts, and indexes out of this bead.
+
+## Notes
+
+From mb-xa0p: acquisition must create and write the application home only through src/metabrowser/home.py (ensure_private_directory, open_private_file) before any network work, so symlinked, foreign-owned, or permissive ancestors are refused. home.py does not check Git's own files inside repository.git/ individually: set core.sharedRepository=0600 on created stores or rely on the enclosing 0700 directory, and test that no store file is created group- or world-readable.
