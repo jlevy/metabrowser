@@ -12,9 +12,10 @@ sequences through ``metabrowser.cache.locks``. The sweep, trash, quarantine, and
 reclamation machines replay against ``metabrowser.cache.reclaim`` in
 ``tests/test_cache_reclaim.py``.
 
-Rules whose implementation belongs to a later phase keep a small reference oracle
-written from the fixture's own prose: the root-argument URL grammar (Phase 1B-a), the
-Git version gates (Phase 1B-a), and object requests (the object-job port). Each oracle
+Rules whose implementation lands later keep a small reference oracle written from the
+fixture's own prose: the root-argument URL grammar and the Git version gates, which
+arrive with repository acquisition, and object requests, which arrive with the object-job
+port. Each oracle
 proves its frozen rules are complete and consistent, and is replaced by the production
 function when that lands; it is a specification aid, not a second implementation to
 keep. The state-machine well-formedness checks and the exhaustive interleaving

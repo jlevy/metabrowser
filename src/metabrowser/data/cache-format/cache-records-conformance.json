@@ -40,7 +40,7 @@
       "configuration_digest": "sha256:0f0e0d0c0b0a09080706050403020100f0e0d0c0b0a09080706050403020100f"
     },
     "store_state": {
-      "default_remote_ref": "refs/remotes/origin/main",
+      "default_remote_ref": "refs/remotes/origin/trunk",
       "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
       "object_state": "converging",
       "last_fetch_at": "2026-09-17T12:00:00Z",
@@ -229,7 +229,7 @@
     {
       "name": "alias-rejects-undeclared-field",
       "record": "store_alias",
-      "changes": [{ "path": ["path"], "value": "/Users/someone/checkout" }],
+      "changes": [{ "path": ["path"], "value": "/srv/checkouts/project" }],
       "expect": "invalid"
     },
 
