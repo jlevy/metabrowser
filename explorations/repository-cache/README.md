@@ -387,8 +387,8 @@ A blobless store behaves differently; see
 | Blobless | commit and blob present | commit and blob present | commit and blob present |
 | Full | removed | removed | removed |
 
-  Git never prunes promisor objects, so unreachable objects a blobless store fetched
-  stay until an explicit compaction.
+Git never prunes promisor objects, so unreachable objects a blobless store fetched stay
+until an explicit compaction.
 
 ### Platform primitives
 
