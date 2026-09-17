@@ -1475,7 +1475,8 @@ state.
 | `src/metabrowser/cache/repository_store.py` | `FetchAuthorizationContext`, `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` | Derive deterministic provider store IDs, isolate fetches by source and closed non-secret auth context in job-private refs, compare-and-swap public refs and aliases, and protect leased and durable revisions |
 | `src/metabrowser/cache/service.py` | `RepositoryOpenTarget`, `resolve_open_target`, `close_open_target` | Orchestrate parse, acquire/reuse, selection, immutable subject creation, trust profile, and initial browser path for CLI and later chooser callers |
 | `src/metabrowser/cache/jobs.py` | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`, `close_all` | Own bounded network fetch/prune for explicit selected refs plus provider-neutral progress, cancellation, the lease registry, per-request context/lease/source validation before job lookup, and stage outcomes used later by provider plugins |
-| `src/metabrowser/cache/routes.py` | `api_cache_layout`, `api_cache_sources`, `api_cache_source`, `api_cache_stores`, `api_repository_jobs` | Read-only logical-state projections for CLI parity; acquisition remains a CLI action, not a write API |
+| `src/metabrowser/cache/routes.py` | Phase 1A: `CACHE_ROUTES`, `api_cache_layout`, `api_cache_sources`, `api_cache_source`, `api_cache_stores`; later: `api_repository_jobs` | Read-only logical-state projections for CLI parity; acquisition remains a CLI action, not a write API |
+| `src/metabrowser/cache/projection.py`, `wire.py`, `listing.py` (Phase 1A) | `layout_response`, `sources_response`, `source_response`, `stores_response`, `page_limit`; the `Cache*Response` shapes; `list_private_directory` | Resolve the home per request without creating it, read records and verified listings without locks, bound pages and reference scans, and project records into path-free wire shapes |
 | `src/metabrowser/cache/reclaim.py` | Phase 1A: `reclaim_staging`, `reclaim_trash`, `sweep_staging_and_trash`, `begin_trash_entry`, `move_to_trash`, `quarantine_entries`, `purge_quarantined`, `reclaim_store`; later: `reclaim_repository_objects` | Briefly enumerate under the home lock, then recover interrupted staging and trash, quarantine and purge entries, and reclaim unreferenced stores; later reclaim unreachable objects under store locks while honoring revision and provider leases |
 
 `RepositoryOpenTarget` contains the source and repository-store identities, immutable or
@@ -1658,9 +1659,11 @@ that already exist costs more than building it first.
   identity, slugs, the lock order, and the sweep, quarantine, and reclamation machines —
   with the production functions, and replay the same `tests/fixtures/repository-cache/`
   fixtures against them.
-- [ ] Add the read routes `/api/cache/layout`, `/api/cache/sources`,
+- [x] Add the read routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/{slug}`, and `/api/cache/stores`, projecting the records above, and
   pin them with a golden through `metab --api`.
+  `tests/golden/cli-api-cache.tryscript.md` pins them against homes the production
+  writers build in the sandbox.
 
 That last item is the one most likely to look like it belongs in a later phase, and it
 does not.
@@ -1723,6 +1726,18 @@ detail.
   configuration snapshot, because the snapshot changes and `store.yml` is immutable;
   `object_state` is `complete` or `converging`, and `last_operation.kind` is `acquire`,
   `refresh`, or `converge`. Acquisition may extend these before `f01` ships.
+- **Read routes.** `metabrowser.cache.routes` is the only cache module the server
+  imports at startup; each handler loads `metabrowser.cache.projection`, and through it
+  the application home, inside a cache request.
+  Reads take no lock, because a lock file is a write and a cache hit must be readable
+  from a home the process cannot write, so a concurrent move can show an entry mid-move.
+  Directories are listed through `metabrowser.cache.listing`, which verifies the path
+  the way a record read does and never creates it.
+  A missing home is `absent`; entries under a future, unknown, or unmigrated layout, or
+  under no layout, are refused exactly as `migrate_layout` refuses them.
+  Pages hold at most 100 rows and store references read at most 500 aliases, from
+  measured record-read costs recorded beside the constants.
+  The store’s `configuration_digest` is not reported.
 
 ### Phase 1B: Generic Git cache and repository URL open
 

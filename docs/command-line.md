@@ -80,6 +80,11 @@ metab ./notes --api '/api/file?path=README.md'
 metab ./notes --api '/api/tree?depth=2&types=.md'
 metab ./notes --api '/api/git/log?limit=5'
 
+# Repository cache state in METABROWSER_HOME (default ~/.metabrowser), which is
+# reported as absent rather than created when it does not exist.
+metab ./notes --api /api/cache/layout
+metab ./notes --api '/api/cache/sources?limit=20'
+
 # YAML instead of JSON.
 metab ./notes --api /api/git/refs --format yaml
 

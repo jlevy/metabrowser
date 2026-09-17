@@ -284,14 +284,15 @@ Four rules hold across all of them:
 
 ## How the layers are modeled
 
-The four layers currently use four different modeling idioms.
+The layers currently use different modeling idioms.
 That is worth stating plainly, because the differences are not all deliberate.
 
 | Layer | Module | Idiom | What enforces it |
 | --- | --- | --- | --- |
 | File Diff Format | `diff/format.py` | Pydantic `BaseModel`, `extra="forbid"`, `frozen=True`, a `StrEnum` per closed vocabulary | The model itself, plus a JSON Schema and a conformance corpus |
 | Git wire | `git/wire.py` | `TypedDict` with `NotRequired`, plus hand-written validators and `_*_REQUIRED` gate sets | Validators, exercised by the test suite |
-| Cache records | designed only | Pydantic plus deterministic compiled SoftSchema contracts | Compile-drift, corpus validation, and installed-wheel checks |
+| Cache records | `cache/records.py`, `cache/contracts.py` | Pydantic plus deterministic compiled SoftSchema contracts | Compile-drift, corpus validation, and installed-wheel checks |
+| Cache wire | `cache/wire.py` | `TypedDict` with `NotRequired`, built only from validated cache records | The type checker on every producer, plus route tests and the `--api` golden |
 | Hosted Review Format | designed only | Provider-neutral Pydantic and browser models plus compiled SoftSchema contracts; frontmatter Markdown for primary change-request documents | Cross-runtime corpus, provider mapping oracle, architecture inventory, and installed-wheel checks |
 
 **The format layer is the model to copy.** Every closed vocabulary is a `StrEnum`

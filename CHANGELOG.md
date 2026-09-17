@@ -32,8 +32,21 @@ Plugin contracts:
 - The repository cache’s `f01` records install as enforced contracts through a
   `repository-cache` capability provider, so `metab --doctor` now reports three
   capability providers and 22 contracts.
-  No command reads or writes the cache yet; the application home, `METABROWSER_HOME`,
-  and `CACHEDIR.TAG` take effect when opening a repository URL lands.
+  No command writes the cache yet: the application home and `CACHEDIR.TAG` are created
+  when opening a repository URL lands.
+
+Repository cache:
+
+- New read-only routes `/api/cache/layout`, `/api/cache/sources`,
+  `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
+  config formats, what reclamation left in staging, trash, and quarantine, sources with
+  their alias generation and publication state, and stores with the aliases that name
+  them. Reach them with `metab <root> --api /api/cache/layout` like any other route.
+  They resolve `METABROWSER_HOME`, or `~/.metabrowser`, on each request and never create
+  it: a missing home reports `absent`, while a home other users can access, or one a
+  newer release wrote, is refused with a typed error that names no path.
+  Sources and stores are paged with `limit` and `after`; no response reports a cache
+  path, pack file, or Git internal.
 
 ## 0.10.0
 
