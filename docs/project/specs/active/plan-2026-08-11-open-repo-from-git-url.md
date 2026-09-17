@@ -1,10 +1,10 @@
 # Feature: Repository Library and Open from a Git URL
 
-**Date:** 2026-08-11 (rewritten 2026-08-26)
+**Date:** 2026-08-11 (rewritten 2026-08-26; refreshed 2026-09-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Draft
+**Status:** Design review addressed; v0.11.0 implementation is release-gated
 
 ## Vision
 
@@ -28,11 +28,13 @@ That boundary lets basic cache support land and prove itself before provider met
 expands the system.
 
 Later phases add generic cache operations and a repository chooser.
-GitHub support then starts with a separate content-model phase: strict, versioned
-records for repositories, issues, pull requests, reviews, checks, comments, and derived
-pull-request stacks.
-Only after those contracts and a representative fixture corpus are accepted does an API
-adapter write them or a view consume them.
+Hosted review starts with a separate provider-neutral content-model phase: strict,
+versioned records for repositories, change requests, reviews, checks, comments, and
+activity projections, with GitHub as the first adapter and GitLab a named future
+consumer. The primary change-request artifact uses SoftSchema frontmatter: YAML holds
+consumed values and the Markdown body holds the PR description.
+Only after those contracts and a representative fixture corpus are accepted does the
+`gh api` adapter write them or a plugin view consume them.
 
 Git remains authoritative for repository content, history, and diffs.
 Provider records describe hosted state and refer to immutable Git object IDs; they do
@@ -42,7 +44,9 @@ The
 [repository-cache research](../../research/research-2026-08-11-repo-cache-and-git-url-open.md)
 contains the acquisition measurements and prior-art survey.
 Its 2026-08-26 addendum separates dated evidence from the current design after Git diff
-and revision navigation shipped through v0.8.0. The
+and revision navigation shipped; the 2026-09-14 refresh rebases the plan on the v0.10.0
+inventory, identity, lifecycle, and parity contracts.
+The
 [design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
 records the changes that produced this phased plan.
 
@@ -54,13 +58,38 @@ In particular:
 
 - The format foundation can land without cloning a repository.
 - The generic Git cache can land without catalog UI or GitHub code.
-- GitHub schemas can land with fixtures and validation before any network acquisition.
-- GitHub acquisition can land before provider-specific views.
+- Hosted-review schemas can land with fixtures and validation before any network
+  acquisition.
+- GitHub acquisition can land before plugin-owned hosted-review views.
 - Derived stack navigation can land after ordinary pull-request reading is stable.
 
 No phase reserves an opaque extension object for work that has not been modeled.
 A later record family receives its own contract, storage path, producer, consumer, and
 invalidating tests.
+
+### v0.11.0 Milestone
+
+The first v0.11.0 slice ends at offline-reusable views of any authorized GitHub
+repository, any branch that repository exposes, and any directly addressed pull request,
+not at the entire repository-library roadmap.
+It includes Phase 0, Phase 1A, generic acquisition, repository URL opening, detached
+branch materialization, the narrow provider job and selected-ref foundation in
+`mb-jlon`, the bounded `gh api` transport and auth work in `mb-p4sw`, and the common
+hosted-review and GitHub work in the
+[provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
+
+Full generic cache management, the in-app chooser, GitHub issues, stacked pull requests,
+and very-large-repository acquisition remain in their existing later phases.
+The GitLab adapter remains `mb-51uj` after the GitHub-first contracts and views ship.
+This is a milestone boundary, not a scope deletion: `mb-0ybg`, `mb-vmzy`, `mb-9rrc`,
+`mb-glxc`, and `mb-dqvj` retain that work.
+
+`mb-xxhi` is the hard implementation gate.
+It depends on the v0.10.0 release bead `mb-i57d` and closes only after the tag and
+release are cut from the intended `main` commit, that commit is fetched locally, and the
+first v0.11 implementation branch starts from it.
+Every `release:v0.11.0` implementation bead depends on this gate; design and review work
+may land before it.
 
 ## Goals
 
@@ -68,6 +97,9 @@ invalidating tests.
   URLs, and provider web URLs reduced to the repository they name.
 - Open what the URL pointed at, not merely the repository containing it — a `/blob/` URL
   opens that file, a line anchor selects those lines.
+- Resolve every branch the acquired remote exposes to a full object ID and serve a
+  bounded detached materialization without moving or dirtying the entry’s pinned
+  `gitroot`.
 - Preserve the root argument as a string at the Click/Typer boundary, then classify it
   before any `Path` construction can rewrite URL syntax.
 - Derive one stable cache identity from the credential-free clone source, and reuse the
@@ -102,7 +134,9 @@ invalidating tests.
 - Automatically advancing a live checkout when a remote ref moves.
   Fetch, select, and promote are distinct operations.
 - Requiring provider support for the first usable cache.
-  GitHub is not on the Phase 1B critical path.
+  GitHub API access, credentials, and hosted-review schemas are not on the Phase 1B
+  critical path; the provider plugin’s no-network URL reducer is part of opening common
+  GitHub web URLs.
 - Mirroring every GitHub API. The first provider model covers repository browsing and
   review. Organization administration, Projects, Actions logs, packages, billing,
   security alerts, and other account surfaces are outside its v1 scope.
@@ -122,7 +156,7 @@ invalidating tests.
 
 ## Current Foundation and Dependencies
 
-As of v0.8.0:
+The v0.10.0 release candidate establishes the implementation baseline for this plan:
 
 - `metabrowser.git.process` is the only Git subprocess path.
   It already provides fixed arguments, bounded output, timeouts, concurrent stream
@@ -132,40 +166,51 @@ As of v0.8.0:
 - The diff plugin renders File Diff Format rather than a provider response.
   A future PR view can therefore resolve provider refs to object IDs and reuse the same
   pipeline.
+- The inventory engine now crosses one sealed provider-neutral contract, with coherent
+  paged reads, joined shutdown, and explicit lifecycle state.
+  A cached `gitroot` must enter and leave serving through the existing coordinator and
+  handle lifecycle; the cache must not create a second walker, watcher, or projection
+  cache.
+- API paths and browser URLs now use escaped inventory identities consistently.
+  GitHub web-URL reduction must produce selections through that canonical codec rather
+  than inventing a provider-specific path spelling.
+- CLI parity now checks registered routes, kinds, models, persisted state, and declared
+  user-visible functional aspects.
+  Every cache and provider route, record projection, and interaction controller added
+  here needs its architecture-map row and exact production-path golden in the same
+  change.
 - URL-opened roots remain gated on the untrusted capability profile tracked by
   `mb-vib1`. Cache storage and clone components may land before that gate; serving
   fetched content may not.
   That gate is larger than one bead and is sequenced explicitly below — see
   [The gate that decides when this ships](#the-gate-that-decides-when-this-ships).
 - Metabrowser already depends on Pydantic, JSON Schema, ruamel.yaml, PyYAML, and
-  frontmatter-format. SoftSchema v0.7.0 is a first-party package over the same boundary,
-  but adopting it also raises the frontmatter-format minimum from 0.3 to 0.4 — a claim
-  Phase 1A verifies against the released package metadata rather than carrying forward
-  from this plan. Phase 1A must review that upgrade, update `uv.lock`, and run the full
-  supply-chain and distribution gates rather than treating the overlap as proof of
-  compatibility.
-- Being first-party does not by itself exempt SoftSchema from the release cool-off.
-  [`SUPPLY-CHAIN-SECURITY.md`](../../../../SUPPLY-CHAIN-SECURITY.md) is explicit that
-  first-party identifies the publisher and does not retire the threat the cool-off
-  exists for, which is a compromised publishing account.
-  What earns `get-tbd` its exemption is reach: nothing in the build, CI, test, or
-  publishing path runs it, so a bad release costs a developer’s session.
-  SoftSchema does not inherit that argument — it validates cache records on a runtime
-  path, inside the shipped wheel, so a bad release reaches every user.
-  Phase 1A therefore either adds a `softschema` row to *Audited First-Party Exceptions*
-  with its own reviewed-against release and blast-radius statement, or applies the
-  ordinary 14-day cool-off.
-  It does not proceed on the overlap with existing dependencies.
+  frontmatter-format. SoftSchema remains a proposed first-party package over the same
+  boundary, but Phase 1A selects an exact release from current metadata rather than
+  carrying the plan’s former v0.7.0 pin forward.
+  SoftSchema v0.8.1 was published on 2026-09-11 and fixes serialization of semantic
+  `model_validator` failures, which cache validation must report as data rather than
+  turn into a second exception.
+  The project owner has confirmed that packages published from the `jlevy` first-party
+  namespace are exempt from the 14-day delay.
+  Phase 1A may therefore adopt v0.8.1 without waiting until 2026-09-25, but it must
+  still review that exact release against v0.8.0, add the SoftSchema row to
+  [`SUPPLY-CHAIN-SECURITY.md`](../../../../SUPPLY-CHAIN-SECURITY.md), verify released
+  metadata and artifact hashes, update `uv.lock`, and run the full supply-chain and
+  distribution gates.
 
-The v0.8.0 revision click starts a comparison that needs blobs.
+The v0.10.0 revision and PR-facing comparison path needs blobs.
 Blobless clone followed by background backfill remains the leading acquisition strategy,
 but Phase 0 must remeasure the complete current route before promising a timing or
 selecting a threshold between full and blobless acquisition.
 
-## The Gate That Decides When This Ships
+## The Gates That Decide When This Ships
 
-The single largest scheduling fact about this plan is not in this plan.
+The first gate controls when v0.11 implementation starts: `mb-i57d` cuts v0.10.0 from
+the intended `main`, then `mb-xxhi` verifies and fetches that commit before an
+implementation branch is created from it.
 
+The second gate controls when acquired content may be served.
 A fetched repository is third-party content, so serving one requires the untrusted
 capability profile. That profile is `mb-vib1`, which is blocked by `mb-cun0` — sandboxed
 `/raw` responses and same-origin proof on `/api`. Both are open `P1` tasks belonging to
@@ -173,9 +218,14 @@ capability profile. That profile is `mb-vib1`, which is blocked by `mb-cun0` —
 which is `Status: Draft` with nothing implemented.
 
 ```text
-mb-cun0  sandbox /raw, same-origin proof on /api
-   └──► mb-vib1  capability set and --untrusted profile
-           └──► mb-ew38  generic URL open and offline reuse
+mb-i57d  release v0.10.0 from main
+   └──► mb-xxhi  verify released main and open v0.11 implementation
+           ├──► cache format and acquisition
+           └──► mb-cun0  sandbox /raw, same-origin proof on /api
+                    └──► mb-vib1  capability set and --untrusted profile
+                              └──► mb-ew38  repository URL open and offline reuse
+                                       └──► mb-z335  repository projection
+                                                └──► mb-2xq7  selected branch
 ```
 
 Two consequences, both worth stating plainly rather than discovering during
@@ -184,10 +234,10 @@ implementation:
 - **Every estimate for this feature must include that chain.** The cache work alone does
   not produce a user-visible result; the first thing anyone can actually open is gated
   on a security workstream in another document.
-- **The chain depends on nothing here.** `mb-cun0` and `mb-vib1` have no dependency on
-  the cache, on Git status, or on each other beyond their own order, so they can proceed
-  in parallel with everything in Phase 0 through 1A. Sequencing them alongside rather
-  than after is what keeps the gate off the critical path.
+- **After the release gate, the trust and cache lanes are independent.** `mb-cun0` and
+  `mb-vib1` have no dependency on the cache or Git status beyond their own order, so
+  they can proceed in parallel with Phase 0 through 1A. Sequencing them alongside rather
+  than after keeps the serving gate off the post-release critical path.
 
 This plan does not absorb that work or restate its design.
 It records the dependency, names the beads, and treats “serving is gated” as a
@@ -202,12 +252,41 @@ The application home has four distinct ownership classes:
 | `config.yml` | User and application migration code | Durable and editable | Migrate losslessly; never discard unknown user settings |
 | Cache layout and repository identity | Core cache service | Rare writes | Validate, migrate if released data requires it, otherwise quarantine |
 | Git object database and `gitroot` | Core Git cache service | Objects and refs may grow; checkout stays pinned | Reacquire or rebuild outside a live entry |
-| Provider snapshots and manifests | Provider plugin through core storage APIs | Refreshable | Keep complete snapshots; invalidate or refetch by contract |
+| Provider snapshots and manifests | Provider plugin through core storage APIs | Refreshable | Keep current, last-complete, one diagnostic predecessor, and explicit archival pins; reclaim only unreachable generations |
 
 Core owns application-home resolution, atomic file publication, locks, safe cache paths,
 repository acquisition, Git refresh, and provider namespace allocation.
 Provider plugins own their schemas, API adapters, normalized records, routes, renderers,
 and styles. Core does not import a GitHub schema or branch on a GitHub object kind.
+
+### Owner-only storage
+
+Repository and provider cache content may be private.
+Every Metabrowser-created application-home directory is `0700` and every file is `0600`
+on POSIX; Windows uses an equivalent current-user-only ACL. Remote acquisition fails
+closed when the application home or a cache ancestor is a symlink, belongs to another
+principal, is group/world accessible, or cannot be verified and repaired.
+An explicit permissive `METABROWSER_HOME` receives an actionable refusal rather than a
+warning followed by a private write.
+This rule does not prevent read-only browsing of an ordinary local path outside the
+application home.
+
+### Lock order
+
+Locks have disjoint scopes and one fixed order:
+
+1. the application-home lock is used only for layout migration and global enumeration or
+   sweeps;
+2. an entry lock protects purge, selected-ref mutation, object-database work, and
+   detached-worktree ownership for one repository; and
+3. a provider/resource lock protects one binding, staged publication, current-pointer
+   update, or provider reclamation operation.
+
+No network or provider process runs while any lock is held.
+A job stages outside the locks, then acquires entry → provider/resource, revalidates its
+entry lease and authorization context, and publishes atomically.
+The application-home lock is never acquired while holding either narrower lock.
+Tests freeze this order and the concurrent refresh/read/purge/reclaim cases.
 
 ## Application Home and Cache Layout `f01`
 
@@ -354,18 +433,23 @@ can produce one: whichever open or migration path quarantines an entry says so a
 the retained path, so the directory is never a silent accumulation waiting for Phase 2’s
 `--repo-inspect` to reveal it.
 
-SoftSchema v0.7.0 is the proposed record boundary.
-The reviewed source is `jlevy/softschema` release `v0.7.0`; later commits on its `main`
-branch are documentation only at the time of this design review.
+SoftSchema is the proposed record boundary.
+The design review established the required semantics against v0.7.0; Phase 1A now
+selects and reviews the exact first-party release it will ship.
+The current candidate is v0.8.1; the owner-confirmed `jlevy` exception removes the
+14-day wait, not the exact-release review.
 Runtime adoption uses a released package and a committed lock, not a Git checkout.
 
 ### Artifact profile and binding
 
-All cache records use SoftSchema’s `pure-yaml` profile.
-Each file carries `contract`, `envelope`, and `status`. It omits `softschema.schema`
-deliberately. The application registry binds the contract ID to the schema packaged in
-the installed Metabrowser wheel; an untrusted cache file cannot redirect validation to
-another path.
+Generic layout, identity, state, and cache-operation records use SoftSchema’s
+`pure-yaml` profile.
+Provider-owned document artifacts may choose another profile under their own format; the
+hosted-review plan uses `frontmatter-md` for a change request whose Markdown body is the
+PR description. Each file carries `contract`, `envelope`, and `status`. It omits
+`softschema.schema` deliberately.
+The application registry binds the contract ID to the schema packaged in the installed
+Metabrowser wheel; an untrusted cache file cannot redirect validation to another path.
 
 Machine-owned records begin at `status: enforced`, not `soft` or `permissive`, because
 Metabrowser is their only producer and the schema phase supplies fixtures before a
@@ -590,33 +674,42 @@ Dropping a parameter is not silent when it changes what the user would see: a UR
 for a display mode Metabrowser does not have opens the file and says which part of the
 request it could not honor.
 
-### What a selection can actually address
+### What a selection addresses
 
-The selection is bounded by the URL grammar, and that boundary is narrower than the
-table above suggests.
+`/view/<path>` addresses the tree currently owned by the inventory lifecycle;
+`/commit/<rev>[/<inner>]` addresses a change set.
+The v0.11 branch slice keeps that grammar and changes which immutable tree the session
+serves.
 
-`/view/<path>` addresses the served tree; `/commit/<rev>[/<inner>]` addresses a change
-set. **Neither addresses file content at an arbitrary revision**, and
-[the grammar says why](../../../architecture.md#browser-url-grammar): a revision is not
-a path in the served tree, so it gets its own route rather than a sigil inside `/view/`.
+After acquisition, selection resolution turns the requested ref into a full object ID.
+When that object is the pinned `active_revision`, the session serves `gitroot` directly.
+Otherwise the repository library creates or reuses a bounded detached worktree keyed by
+entry identity and object ID, verifies its HEAD and containment, and passes that root
+through the same inventory coordinator lifecycle as any other served root.
+The browser still uses `/view/<path>` because the session root itself is the selected
+revision; repository context names both the requested ref and resolved object ID so a
+copied URL never implies that a moving branch name is immutable.
 
-A selection therefore resolves to a real surface when `<ref>` resolves to the entry’s
-pinned `active_revision` — the ordinary case, because acquisition pins the default
-branch and that is the ref most pasted URLs carry.
-When `<ref>` names some other branch, tag, or commit, Phase 1B opens the repository at
-its pinned revision and reports which revision was requested and which is served.
-It does not show another revision’s content under the requested path, which is the one
-genuinely wrong outcome available here.
+The materialization is a repository-owned transient projection, not another repository
+entry, a generic container cache, or a new active checkout.
+Creating, reusing, and releasing it runs under the entry lock; never changes
+`active_revision`; never creates or advances a local branch; disables submodule
+recursion and interactive Git behavior; and is reclaimed only after the last owning
+session or job releases it.
+Missing objects may trigger one bounded fetch of the explicit selected ref.
+A cache hit with the object already present stays offline.
+Archive extraction remains owned by the archive plugin, and review anchors remain
+provider-domain data rather than filesystem bytes.
+Only proven low-level lease and safe-path helpers may be shared across those owners.
 
-Line and column anchors have the same shape of limit: carried through the parse, applied
-where the target view supports a line selection, and reported rather than silently
-dropped where it does not.
+This makes “any branch” precise: any branch advertised by the selected remote and
+readable with the user’s Git credentials can be opened, including names with slashes.
+A deleted branch, an object outside the configured fetch bounds, or a branch the user
+cannot read yields a typed unavailable result rather than falling back to a different
+revision.
 
-Addressing content at an arbitrary revision is a real gap, and closing it is what a
-content-at-revision route would do.
-It is not in this phase and this plan does not promise it.
-Opening the right repository at its pinned revision while saying so is bounded and
-honest; promising a file at a ref nothing can render is not.
+Line and column anchors are carried through the parse, applied where the target view
+supports a line selection, and reported rather than silently dropped where it does not.
 
 ### The ref and path boundary is ambiguous, and the clone resolves it
 
@@ -686,6 +779,10 @@ record that the cache never reads.
 The mechanism is a small declarative table of host patterns and path shapes behind one
 narrow interface, with GitHub as the first entry and GitHub Enterprise hosts
 configurable against the same shapes.
+Each installed reducer declares its schemes and hosts and returns `NotApplicable`,
+`Reduced`, or `Rejected`. Exactly one reducer may claim an input; overlapping claims
+fail plugin discovery, and a claimed-but-invalid URL returns terminal `Rejected` rather
+than falling through to a different reducer or local-path parser.
 The cache still computes identity from the resulting clone URL, so
 [conservative normalization](#stable-identity-and-mutable-state-are-separate) is
 untouched: two spellings that reduce to the same clone URL share an entry because the
@@ -884,12 +981,14 @@ moves the entry to recoverable trash before deletion.
 List and inspect report identity, source, active revision, object state, size, last
 open, last fetch, integrity, and any quarantine state.
 
-## Provider Support Lives in Its Own Plan
+## Hosted Review and Provider Support Live in Their Own Plan
 
-GitHub modeling, acquisition, snapshot storage, views, and pull-request stacks moved to
-[the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
-That document owns the record families, the storage layout, and the acquisition
-boundary.
+Provider-neutral hosted-review modeling, GitHub acquisition, snapshot storage, plugin
+views, virtual PR navigation, and stacked-change projections moved to
+[the hosted-review and GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md).
+That document and the
+[hosted-review architecture](../../architecture/arch-hosted-review-model.md) own the
+record families, storage layout, provider port, activity projection, and view boundary.
 
 What stays here is the part the generic cache owes a provider, and it is deliberately
 small: a published entry with a stable identity, atomic publication, application-home
@@ -925,12 +1024,78 @@ cache-supplied path.
 Provider object IDs and URLs never become filesystem paths without safe encoding and
 containment checks.
 
+## Implementation Coordinates
+
+The v0.10.0 code has one filesystem root, one Git process boundary, and one inventory
+lifecycle. The cache work extends those seams; it does not add parallel ways to run Git,
+walk a repository, or clear root-owned state.
+
+### Existing files to change
+
+| File | Existing seam | Planned change |
+| --- | --- | --- |
+| `src/metabrowser/cli/main.py` | `_metab`, `_require_root` | Keep the root argument as `str |
+| `src/metabrowser/cli/serve.py` | `run_serve` | Resolve or acquire before importing the configured server, install the selected `RepositoryContext`, force the untrusted profile, and release an owned materialization on shutdown |
+| `src/metabrowser/cli/show_cli.py` | `run_show` | Use the same resolver so `--show` and `--api` inspect the exact repository or branch production serving would open |
+| `src/metabrowser/git/process.py` | `run_git`, `spawn_git_process`, `terminate_git_process` | Add named read, acquisition, fetch, and materialization policies with `stdin=DEVNULL`, non-interactive environment controls, distinct time/output bounds, and typed cancellation; no second Git runner |
+| `src/metabrowser/paths_safe.py` | `_set_root_dir`, `register_root_callback` | Continue to be the single root publication signal; a materialized branch is set here only after its HEAD and containment checks pass |
+| `src/metabrowser/inventory_engine/coordinator.py` | `InventoryCoordinator.replace_root`, `close` | Keep replacement ordered: stop and join the old handle and relay, clear root-owned state, publish the new root, then permit reads |
+| `src/metabrowser/repository_context.py` | `RepositoryContext`, `discover_repository_context` | Separate provider-neutral source/ref/revision context from the current GitHub-only remote parser; accept validated cache context for detached worktrees without rediscovering identity from untrusted files |
+| `src/metabrowser/server.py` | `_lifespan`, route assembly | Register cache inspection routes, close repository jobs and materialization leases after history/inventory work joins, and expose only public-safe repository context |
+
+### New core files and callable boundaries
+
+| File | Key types and functions | Responsibility |
+| --- | --- | --- |
+| `src/metabrowser/home.py` | `application_home`, `ensure_home`, `validate_private_home` | Resolve `METABROWSER_HOME`, create owner-only layout paths, reject symlinked/foreign/permissive ancestors for remote content, and write `CACHEDIR.TAG` |
+| `src/metabrowser/cache/records.py` | `ApplicationConfig`, `CacheLayout`, `RepositoryIdentity`, `RepositoryState` | Strict Pydantic models and SoftSchema envelope bindings |
+| `src/metabrowser/cache/layout.py` | `read_layout`, `migrate_layout`, `LAYOUT_FORMAT` | Fail closed on future formats and run ordered migrations |
+| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `entry_lock`, `provider_resource_lock` | Bounded reads, owner-only files, same-filesystem publication, fixed home → entry → resource order, and process-safe locking |
+| `src/metabrowser/cache/identity.py` | `normalize_git_source`, `source_identity`, `cache_slug` | Credential-free canonical identity and collision verification |
+| `src/metabrowser/cache/urls.py` | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` | Distinguish local paths, Git sources, and registered provider web URLs before constructing a `Path`; arbitrate declared reducer claims and terminal rejection; keep provider-specific syntax behind reducers |
+| `src/metabrowser/cache/acquire.py` | `acquire_repository`, `validate_staging_entry`, `publish_entry` | Clone into staging, pin the default revision, validate, and atomically publish one entry |
+| `src/metabrowser/cache/selection.py` | `resolve_selection`, `resolve_ref_path_candidates` | Resolve slash-containing branch/tag/path candidates against local and remote-tracking refs and return either a full object ID or a typed request for one explicit missing ref; performs no network work |
+| `src/metabrowser/cache/materialize.py` | `MaterializationLease`, `acquire_materialization`, `release_materialization`, `reclaim_materializations` | Create or reuse bounded detached worktrees keyed by entry and object ID without changing `gitroot` or a local branch |
+| `src/metabrowser/cache/service.py` | `RepositoryOpenTarget`, `resolve_open_target`, `close_open_target` | Orchestrate parse, acquire/reuse, selection, materialization, trust profile, and initial browser path for CLI and later chooser callers |
+| `src/metabrowser/cache/jobs.py` | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `close_all` | Own bounded network fetch/prune for explicit selected refs plus provider-neutral progress, cancellation, and stage outcomes used later by provider plugins |
+| `src/metabrowser/cache/routes.py` | `api_cache_layout`, `api_cache_entries`, `api_cache_entry`, `api_repository_jobs` | Read-only logical-state projections for CLI parity; acquisition remains a CLI action, not a write API |
+| `src/metabrowser/cache/reclaim.py` | `reclaim_staging`, `reclaim_trash`, `reclaim_materializations` | Briefly enumerate under the home lock, then recover interrupted staging and release unreachable repository-owned worktrees under entry locks while honoring leases |
+
+`RepositoryOpenTarget` contains the published entry identity, resolved root, requested
+ref, full resolved object ID, initial logical path, optional line selection, optional
+provider target, trust profile, and an optional materialization lease.
+It never contains a provider response or credential.
+The server receives this value before startup; a future chooser may produce the same
+value and pass its root to `InventoryCoordinator.replace_root`.
+
+GitHub URL syntax is implemented in the GitHub provider plugin, not in `cache/urls.py`.
+The core dispatcher asks installed, trusted provider reducers for an ordinary clone
+source plus `RepositorySelection`; the cache never branches on a GitHub object kind.
+The provider plan names the manifest and loader changes that register this reducer.
+
+### Tests and parity files
+
+| Surface | Files |
+| --- | --- |
+| Formats, permissions, migration, identity, publication | `tests/test_cache_records.py`, `tests/test_cache_layout.py`, `tests/test_cache_permissions.py`, `tests/test_cache_identity.py`, `tests/test_cache_acquire.py` |
+| URL and ref selection | `tests/test_cache_urls.py`, `tests/test_cache_selection.py`, GitHub reducer tests in the provider plugin |
+| Detached branch lifecycle | `tests/test_cache_materialize.py`, `tests/test_cache_service.py`, root-replacement cases in `tests/test_inventory_contract.py` |
+| CLI behavior | `tests/golden/cli-cache-layout.tryscript.md`, `cli-cache-acquire.tryscript.md`, `cli-github-repo-open.tryscript.md`, `cli-github-branch-open.tryscript.md` |
+| Registered surfaces | `devtools/check_parity.py`, `docs/project/architecture/arch-views-models-routes.md`, `tests/test_views_models_routes.py` |
+| Installed artifact | `tests/test_distribution_policy.py` plus the existing isolated-wheel smoke test in `make verify` |
+
+Every filename above is a delivery coordinate, not permission to create an abstraction
+before its consumer.
+A phase adds only the modules and callables it exercises through a test, route, or
+user-visible open path.
+
 ## Phased Implementation Plan
 
-### Phase 0: Design evidence and contract freeze — current PR
+### Phase 0: Design evidence and contract freeze — v0.11.0 entry point
 
 - [ ] Remeasure full, blobless, and blobless-plus-backfill acquisition against the
-  v0.8.0 history list, commit summary, comparison manifest, and deferred patches.
+  v0.10.0 history session, commit detail, comparison manifest, deferred patches,
+  revision content, and canonical path-identity routes.
 - [x] Review upstream through v0.8.0 and remove assumptions superseded by shipped Git
   history, revision, and diff infrastructure.
 - [x] Review SoftSchema v0.7.0 and its enforced-composition boundary; install its Codex
@@ -972,15 +1137,20 @@ that already exist costs more than building it first.
 
 - [ ] Add the application-home resolver, `config.yml`, `cache/layout.yml`, format
   history, future-format failure, and sequential migration harness.
-- [ ] Adopt the released SoftSchema package after dependency and lock review; verify the
-  `frontmatter-format` minimum against released package metadata; record the
-  supply-chain decision as an *Audited First-Party Exceptions* row with a blast-radius
-  statement or apply the ordinary cool-off; register the config, layout, repository
-  identity, and repository state contracts.
+- [ ] Adopt the exact released SoftSchema package after dependency and lock review;
+  verify the `frontmatter-format` minimum and artifact hashes against released package
+  metadata; record its `jlevy` first-party exemption and reviewed predecessor in
+  *Audited First-Party Exceptions*; register the config, layout, repository identity,
+  and repository state contracts.
 - [ ] Package deterministic compiled schemas and add compile-drift, corpus-validation,
   schema-inventory, and installed-wheel checks.
 - [ ] Add atomic YAML reads/writes, application-home locking, quarantine, and
   recoverable-trash primitives without cloning or serving a URL.
+- [ ] Enforce owner-only application-home paths (`mb-xa0p`) and refuse remote writes
+  through symlinked, foreign-owned, or permissive cache ancestors.
+- [ ] Freeze the lock hierarchy: home for layout/global enumeration, entry for
+  repository mutation and leases, then provider/resource for provider publication; never
+  hold one across network work.
 - [ ] Write `CACHEDIR.TAG` when the cache root is created, and add the startup
   `staging/`/`trash/` reclamation sweep, so no released phase accumulates unreclaimed or
   backed-up cache data.
@@ -1003,22 +1173,20 @@ revision. Never a directory listing: pack file names, object counts after `gc`, 
 `.git` internals are not stable across runs, and a golden that asserted them would fail
 for reasons that have nothing to do with this plan.
 
-This phase now depends on `metab --api` (`mb-ian3`) landing first, so that its proof is
-a golden transcript rather than a parallel test harness written and then thrown away.
+`metab --api` (`mb-ian3`) and the persisted-state parity clause have landed, so this
+phase uses them directly rather than building a parallel inspection harness.
 See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 
-### Phase 1B: Generic Git cache and URL open — first usable feature PR
+### Phase 1B: Generic Git cache and repository URL open
 
-- [ ] Change the CLI root boundary from `Path | None` to `str | None`; preserve URL
-  bytes until classification and keep path-only modes receiving resolved paths.
+This phase lands in three additive slices.
+Each can merge with its own records, routes, goldens, and recovery behavior before the
+next slice begins.
+
+#### Phase 1B-a: Acquire and reuse a pinned repository (`mb-h51g`, `mb-dg00`)
+
 - [ ] Add conservative source normalization, full identity digest, readable uniquified
   slug, collision verification, and per-source locking.
-- [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
-  variants table, line and column anchors, `?plain=1`, dropped tracking and display
-  parameters, reserved-namespace refusal, and configurable Enterprise hosts.
-- [ ] Resolve the ambiguous ref/path split after acquisition against the cloned ref
-  list, longest matching prefix first, falling back to the repository root with an
-  explicit unresolved-selection report.
 - [ ] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
   environment controls, and explicit acquisition/background policies.
 - [ ] Enforce the acquisition, blobless, and `git backfill` floors from
@@ -1038,13 +1206,61 @@ See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 - [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
   interrupted clone, read-only application home, unsupported Git version, and repair
   guidance.
+
+Acquisition staging and publication do not depend on the Git-status `is_clean`
+predicate: Metabrowser creates that checkout itself and validates the staged tree before
+publication. Serving a cached entry and later replacement, repair, or purge do depend on
+`mb-u4mf`, because those paths must detect external modification without resetting user
+data.
+
+#### Phase 1B-b: Open repository and hosted web URLs (`mb-12cz`, `mb-ew38`)
+
+- [ ] Add the trusted installed-plugin `ProviderUrlReducer` registration point; keep
+  operator-directory plugins JavaScript-only and keep provider syntax out of cache
+  identity and records.
+- [ ] Require declared scheme/host claims plus `NotApplicable`, `Reduced`, and terminal
+  `Rejected` outcomes; refuse duplicate or overlapping claims before startup.
+- [ ] Change the CLI root boundary from `Path | None` to `str | None`; preserve URL
+  bytes until classification and keep path-only modes receiving resolved paths.
+- [ ] Reduce provider web URLs to a clone URL plus a selection record: the shapes in the
+  variants table, line and column anchors, `?plain=1`, dropped tracking and display
+  parameters, reserved-namespace refusal, and configurable Enterprise hosts.
+- [ ] Open a repository-root URL through `resolve_open_target`, reuse `gitroot` without
+  a network or provider credential lookup, and pass only the resolved local root to the
+  existing server and inspection paths.
+- [ ] Preserve a pull-request number as an optional provider target even before a
+  provider adapter can hydrate it.
+
+#### Phase 1B-c: Materialize and open any selected branch (`mb-z335`, `mb-2xq7`)
+
+- [ ] Resolve the ambiguous ref/path split after acquisition against local heads,
+  remote-tracking refs, tags, and full object IDs, longest matching prefix first.
+- [ ] Have `selection.py` return a typed request for an explicitly missing remote ref;
+  `jobs.py` owns the bounded network fetch and distinguishes missing, unauthorized,
+  deleted, offline, and over-bound outcomes.
+- [ ] Create or reuse a detached materialization keyed by entry identity and full object
+  ID; verify its HEAD and containment before root publication.
+- [ ] Lease and release the materialization through server and inventory lifecycle; root
+  replacement joins old inventory and history work before reclamation.
+- [ ] Prove repository and non-default branch opens never alter `gitroot`,
+  `active_revision`, local branches, or the shared clean predicate.
 - [ ] Add URL-reduction goldens for every row of the variants table, both fragment and
   query tables, a slash-containing branch name, a tag rather than a branch, the
   `raw.githubusercontent.com/.../refs/heads/<branch>/...` spelling, a ref that is not
-  the pinned revision, a reserved namespace, and a pull-request URL that opens the
-  repository while naming the object it cannot yet render.
+  the pinned revision, a reserved namespace, and a pull-request URL whose provider
+  target is retained.
+- [ ] Add `cli-github-repo-open` and `cli-github-branch-open` goldens covering default,
+  non-default, slash-containing, cached-offline, unavailable, and concurrently leased
+  branches.
 
 ### Phase 2: Generic catalog, refresh, and cache management
+
+`mb-jlon` extracts the provider-facing job lifecycle and selected-ref fetching from this
+phase for v0.11.0. It may land before the catalog and management operations below.
+`selection.py` stays pure and resolves candidates; `jobs.py` owns `fetch_selected_ref`,
+the bounded Git network request, cancellation, and outcome.
+The job uses the same entry locks, state records, Git process boundary, and parity
+routes, and holds no lock while the network process runs.
 
 - [ ] Scan validated identity/state pairs into one provider-neutral catalog.
 - [ ] Add list, inspect, Git-only refresh, repair diagnostics, and recoverable purge.
@@ -1061,6 +1277,9 @@ See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 - [ ] Add a chooser over the generic catalog with recent, favorite, offline, partial,
   dirty, and refresh states.
 - [ ] Make root selection session-scoped rather than mutating global settings.
+- [ ] Route every root replacement through one lifecycle boundary that closes the old
+  inventory handle, history sessions, activity tracking, subscriptions, and retained
+  response and client caches before the new root becomes visible.
 - [ ] Preserve each repository’s selected path, Git scope, and revision-navigation state
   as bounded client state.
 - [ ] Measure warm-cache first paint and choose eager, prefetched, or on-demand asset
@@ -1078,33 +1297,40 @@ See [CLI-first delivery](plan-2026-08-28-cli-first-delivery-map.md).
 
 | Phase | Depends on | Does not depend on | User-visible result |
 | --- | --- | --- | --- |
-| 1A format foundation | Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
-| 1B generic Git cache | 1A, untrusted-profile gate for serving, Git-status Phase 1 (`mb-u4mf`) for `is_clean` | GitHub API or schemas | Any supported clone URL opens or reuses one local read-only entry |
+| v0.11 start (`mb-xxhi`) | v0.10.0 release (`mb-i57d`) | Design and review | Implementation starts from the released `main` commit |
+| 1A format foundation | Release gate, Phase 0 contract decisions | GitHub, chooser | Versioned app home and strict cache records |
+| 1B-a generic Git cache | 1A | Git-status clean predicate, GitHub, chooser, serving | Any supported clone URL publishes or reuses one pinned read-only entry |
+| 1B-b repository URL open | 1B-a, provider URL-reducer SDK (`mb-12cz`), Git-status Phase 1 (`mb-u4mf`), untrusted-profile gate | Provider API or schemas | Any supported repository URL opens the pinned tree |
+| 1B-c selected branch (`mb-z335`, `mb-2xq7`) | 1B-b, provider job/ref fetch owner (`mb-jlon`) | Provider API or schemas | Any exposed and authorized branch opens at its resolved immutable revision |
+| 2A provider foundation (`mb-jlon`) | 1B-a acquisition | Full catalog, chooser, purge | Provider jobs and the selected-ref fetch used by 1B-c and GitHub |
 | 2 cache operations | 1B | Provider support | Generic list, inspect, refresh, and purge |
 | 3 chooser | 2 catalog | GitHub | Instant switching among cached repositories |
 | 4 large repositories | Measurements from 1B and real use | Provider support | Explicit bounded behavior for exceptional repository scale |
 
 Two dependencies leave this plan, and they leave in opposite directions.
 
-**Inbound, blocking 1B:** the content-trust chain (`mb-cun0` → `mb-vib1`) gates serving,
-and Git-status Phase 1 (`mb-u4mf`) owns the `is_clean` predicate.
-Neither depends on anything here, so both can run alongside Phase 0 and 1A rather than
-after them.
+**Inbound:** the release gate (`mb-i57d` → `mb-xxhi`) blocks every v0.11 implementation
+bead so work begins from released `main`. Git-status Phase 1 (`mb-u4mf`) owns the
+`is_clean` predicate and blocks serving, replacement, repair, and purge, but not
+acquisition staging and publication in 1B-a. The content-trust chain (`mb-cun0` →
+`mb-vib1`) blocks serving in 1B-b and 1B-c, but not format, acquisition, or
+materialization tests.
+Those tracks can proceed independently after the release gate.
 
-**Outbound, depending on 2:**
+**Outbound, depending on the extracted Phase 2 foundation:**
 [the GitHub provider plan](plan-2026-08-27-github-provider-and-pull-requests.md) needs a
-published entry with a stable identity, atomic publication, application-home locking,
-job progress and cancellation, and core-side ref fetching.
-It does **not** need the catalog, the chooser, purge, or size accounting.
-If provider work is scheduled before the rest of Phase 2, the job lifecycle and ref
-fetching are a small extraction that can be delivered ahead of it.
+published entry with a stable identity, atomic publication, the documented lock
+hierarchy, owner-only storage, job progress and cancellation, and core-side ref
+fetching. It does **not** need the catalog, the chooser, purge, or size accounting.
+That extraction is now `mb-jlon`; the full generic catalog and management phase remains
+`mb-0ybg` and no longer blocks GitHub acquisition.
 
-The `is_clean` dependency is worth restating because it is a hard ordering constraint
-rather than a convenience: Phase 1B on Git-status Phase 1 (`mb-u4mf`), which owns the
-`is_clean` predicate cache integrity calls.
-It is a hard ordering constraint rather than a convenience: landing 1B first would leave
-integrity either unchecked or served by a second porcelain parser, which is the outcome
-both plans exist to prevent.
+The `is_clean` dependency is deliberately narrower than “Phase 1B.” Acquisition can
+publish a checkout it created and validated; no cached root may be served, replaced,
+repaired, or purged until Git-status Phase 1 (`mb-u4mf`) supplies the one lossless
+predicate used by cache integrity.
+Landing 1B first would leave integrity either unchecked or served by a second porcelain
+parser, which is the outcome both plans exist to prevent.
 The dependency is recorded in the bead graph as well as here, because a constraint that
 lives only in prose is one nobody is reminded of.
 
@@ -1134,8 +1360,17 @@ suite exercises the same acquisition path a user gets.
   migration, repair, and purge cannot race across processes.
 - **Git integration:** cached roots satisfy repository-root discovery, history, direct
   revisions, commit summaries, and bounded diff rendering before and after backfill.
+- **Branch materialization:** default and non-default branches, slash-containing names,
+  tags, and full object IDs resolve to immutable OIDs; leases reuse and release detached
+  worktrees; missing/offline refs fail honestly; no case moves `gitroot` or a local
+  branch.
+- **Root lifecycle:** replacing a served repository joins the old inventory and Git
+  sessions, invalidates root-owned server and browser caches, and prevents work from the
+  old root from publishing after the new root is visible.
 - **Trust:** URL roots receive the untrusted capability set, never serve `.git`, and
   cannot promote repository-local metadata to host config.
+- **Parity:** every new route, model, persisted state, and user-visible functional
+  aspect is registered and driven through the exact production path by a golden.
 - **Provider contracts:** every valid fixture passes structural and semantic validation;
   every invalid fixture fails with a stable code and path; unknown provider enum values
   normalize without opening the record schema.
@@ -1186,11 +1421,11 @@ Phase 1B is complete when:
 - `metab <any-common-repository-url>` publishes one validated entry under
   `~/.metabrowser/cache/repos/<uniquified-slug>/gitroot` and serves it with the
   untrusted profile;
-- a `/blob/<ref>/<path>` URL whose `<ref>` resolves to the pinned revision opens that
-  file, and `/tree/<ref>/<path>` opens that directory — a URL naming a file does not
-  land at the repository root;
-- a `<ref>` resolving to any other revision opens the repository at its pinned revision
-  and names both, rather than showing another revision’s content at that path;
+- a `/blob/<ref>/<path>` URL opens that file at the full object ID resolved from
+  `<ref>`, and `/tree/<ref>/<path>` opens that directory — a URL naming a file does not
+  land at the repository root or a different revision;
+- a non-default branch is served from a detached, leased materialization while the
+  published `gitroot`, `active_revision`, and local branches remain unchanged;
 - a branch name containing slashes resolves against the cloned ref list rather than
   being guessed at parse time;
 - repeating the command opens the cached root without clone, fetch, provider detection,
@@ -1203,8 +1438,8 @@ Phase 1B is complete when:
   truthful outcomes;
 - Files, Git history, direct revision, commit summary, and diff views work against the
   cached root under the same contracts as a local repository; and
-- no GitHub API, provider credential, provider schema, or GitHub-specific branch is
-  required to satisfy any criterion above.
+- no GitHub API, provider credential, or provider schema is required, and core contains
+  no GitHub-specific branch to satisfy any criterion above.
 
 ## References
 
@@ -1214,19 +1449,20 @@ Phase 1B is complete when:
   — findings resolved by this rewrite
 - [Git graph view](plan-2026-08-06-git-graph-view.md) — shipped Git history and the
   repository-root boundary
-- [General diff rendering](plan-2026-08-17-general-diff-rendering.md) — comparison model
-  and one acquisition workflow
-- [Git revision navigation performance](plan-2026-08-25-git-revision-navigation-performance.md)
+- [General diff rendering](plan-2026-08-17-general-diff-rendering.md) — shared
+  comparison pipeline and its boundaries with durable acquisition and transient
+  materialization
+- [Git revision navigation performance](../done/plan-2026-08-25-git-revision-navigation-performance.md)
   — current revision loading and comparison behavior
-- [Unbounded virtualized Git history](plan-2026-08-25-unbounded-virtualized-git-history.md)
+- [Unbounded virtualized Git history](../done/plan-2026-08-25-unbounded-virtualized-git-history.md)
   — future history continuation and virtualization
 - [HTML rendering and trust model](plan-2026-08-06-html-rendering-and-trust-model.md) —
   untrusted-content dependency
 - [tbd on-disk format versioning](https://github.com/jlevy/tbd/blob/v0.8.1/docs/tbd-format-versioning.md)
   — fail-closed layout formats and ordered migration publication
-- [SoftSchema v0.7.0 guide](https://github.com/jlevy/softschema/blob/v0.7.0/docs/softschema-guide.md)
+- [SoftSchema v0.8.1 guide](https://github.com/jlevy/softschema/blob/v0.8.1/docs/softschema-guide.md)
   — profiles, contract maturity, host registries, and artifact validation
-- [SoftSchema v0.7.0 specification](https://github.com/jlevy/softschema/blob/v0.7.0/docs/softschema-spec.md)
+- [SoftSchema v0.8.1 specification](https://github.com/jlevy/softschema/blob/v0.8.1/docs/softschema-spec.md)
   — portable YAML, enforced validation, schema binding, and compatibility rules
 
 <!-- This document follows common-doc-guidelines.md.

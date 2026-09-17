@@ -335,6 +335,8 @@ which space it belongs to:
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
 | `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
+| `/review/<provider>/<repository-key>/<change-key>` | One hosted-review document | Provider, repository, and change-request record keys |
+| `/review/<provider>/<repository-key>/<change-key>/<inner>` | One changed file inside that review | A hosted-review address, then a path within its comparison |
 
 Revisions are not paths in the served tree, so they get their own route rather than a
 sigil inside `/view/`: a commit named as a `/view/` path would either collide with a
@@ -346,7 +348,15 @@ The shape after the route is deliberately uniform —
 patch file and a commit are both containers whose children are file changes; only the
 container’s own address differs, so `/view/changes.patch/src/app.py` and
 `/commit/abc123/src/app.py` are the same grammar over two address spaces.
-A future archive or pull-request container needs no new rule.
+An archive or pull-request container uses the same inner-path rule in its own address
+space.
+
+A repository branch is not another browser address space.
+Repository opening resolves a branch name to a full object ID and makes a leased
+detached materialization the served tree for that session; `/view/<path>` then addresses
+content within that immutable selection.
+Public-safe repository context retains both the requested ref and resolved object ID so
+the moving name is never presented as immutable identity.
 
 Route invariants:
 
@@ -367,6 +377,12 @@ Route invariants:
 Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
 selection in the Git panel.
 `/compare/` is specified here and not yet built.
+`/review/` is proposed for v0.11.0; the hosted-review plugin owns its HTTP surface
+through the planned mounted-router SDK and its browser parse, format, apply, preview,
+popstate, replacement, and disposal lifecycle through a separate installed-plugin
+address-space registration.
+The shell arbitrates exactly one owner for an address and `metab --show` uses the same
+registration; neither core nor a mounted router hard-codes GitHub syntax.
 
 The query slot is currently carried verbatim and never interpreted: it exists so a query
 an author wrote, such as GitHub’s `?plain=1`, survives resolution unchanged.

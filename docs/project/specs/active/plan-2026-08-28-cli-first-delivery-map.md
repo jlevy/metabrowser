@@ -1,19 +1,22 @@
-# Plan: CLI-First Delivery — Parity Foundation, Git Status, and the Repository Cache
+# Plan: CLI-First Delivery — v0.10 Parity and the v0.11 Repository/Hosted-Review Slice
 
-**Date:** 2026-08-28
+**Date:** 2026-08-28 (refreshed 2026-09-14)
 
 **Author:** Joshua Levy (with LLM assistance)
 
-**Status:** Draft
+**Status:** Parity foundation landed for the v0.10.0 release candidate; v0.11.0 is
+release-gated
 
 ## Overview
 
-Three workstreams are queued behind each other:
-[CLI parity](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md),
-[Git status](plan-2026-08-26-git-status-and-working-tree-diffs.md), and the
-[repository library](plan-2026-08-11-open-repo-from-git-url.md).
-This document sequences them, maps each to files and functions, and states how all of
-the backend work is proved end to end without a browser.
+The CLI parity mechanism and its route, kind, model, persisted-state, and functional
+aspect checks have landed on `main` for the v0.10.0 release candidate.
+The remaining workstreams are
+[Git status](plan-2026-08-26-git-status-and-working-tree-diffs.md), the
+[repository library](plan-2026-08-11-open-repo-from-git-url.md), and the
+[hosted-review and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md).
+This document records the delivered foundation, sequences the v0.11.0 PR-first slice,
+and states how backend work is proved end to end without a browser.
 
 The thesis is that the parity plan is not a testing chore that follows the features.
 It is the delivery mechanism for them.
@@ -54,27 +57,33 @@ they turn the entire state machine into something a transcript can assert.
 
 ## Ordering
 
-Land in this order. Only rows 1 → 2 and 3 → 4 are serial; the table’s *Gated by* column
-is authoritative where this prose and it disagree.
-Rows 3, 5, and 6 depend on nothing and can start immediately alongside row 1, which is
-what keeps the trust chain and the format foundation off the end of the schedule.
+Rows 1 and 2 are the v0.10.0 release-candidate baseline.
+For v0.11.0, the table’s *Gated by* column is authoritative where this prose and it
+disagree; independent status, format, trust, and provider-model work can proceed in
+parallel.
 
-| # | Work | Beads | Gated by |
-| --- | --- | --- | --- |
-| 1 | Parity mechanism: ASGI client, normalizer, `--api`, `--show` | `mb-8n8l`, `mb-ian3`, `mb-y5wm` | nothing |
-| 2 | Parity enforcement and codification | `mb-esht`, `mb-zodq` | 1 |
-| 3 | Git-status measurement gate | `mb-r5gn` | nothing (can overlap 1) |
-| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 1, 3 |
-| 5 | Cache format foundation, then acquisition | `mb-ire2`, `mb-4gnu`, `mb-dxmb`, `mb-h51g`, `mb-k54c`, `mb-dg00` | nothing (`mb-ire2` and `mb-dxmb` are ready today) |
-| 6 | HTML trust chain | `mb-cun0`, `mb-vib1` | nothing |
-| 7 | URL open and serving | `mb-ew38` | 4, 5, 6 |
+| # | Work | Beads | Gated by | State |
+| --- | --- | --- | --- | --- |
+| 0 | v0.11 start gate: v0.10.0 tag and release from intended `main` | `mb-i57d`, `mb-xxhi` | nothing | Open; blocks every `release:v0.11.0` implementation bead |
+| 1 | Parity mechanism: ASGI client, normalizer, `--api`, `--show` | `mb-8n8l`, `mb-ian3`, `mb-y5wm` | nothing | Landed on `main` for v0.10.0 |
+| 2 | Parity enforcement, persisted state, functional aspects, and codification | `mb-esht`, `mb-zodq`, `mb-n9xg` | 1 | Landed on `main` for v0.10.0 |
+| 3 | Git-status measurement gate | `mb-r5gn` | 0 | v0.11.0 |
+| 4 | Git-status backend, then panel | `mb-u4mf`, `mb-vibn`, `mb-y06t` | 0, 1, 3 | v0.11.0 foundation |
+| 5 | Owner-only cache format foundation, then acquisition | `mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-dxmb`, `mb-h51g`, `mb-k54c`, `mb-dg00` | 0, 1 | v0.11.0 |
+| 6 | HTML trust chain | `mb-cun0`, `mb-vib1` | 0 | Gates serving fetched content |
+| 7 | Provider URL reducer, repository open, then selected-branch materialization | `mb-12cz`, `mb-ew38`, `mb-jlon`, `mb-z335`, `mb-2xq7` | 4, 5, 6 | v0.11.0 |
+| 8 | Hosted-review models | `mb-63ym` | 0 | v0.11.0 |
+| 9 | Bounded provider runner, capability registry, `gh api` adapter, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-ji83`, `mb-p4sw`, `mb-i3xc`, `mb-duu7`, `mb-2oxp`, `mb-h64t` | 5, 7, 8 | v0.11.0 |
+| 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | v0.11.0 |
+| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | v0.11.0 |
+| 12 | Anchored review threads | `mb-rldc` | 10 | v0.11.0 |
 
 Row 6 is the
 [R1 finding](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md):
 serving fetched content is gated on the trust chain, which no plan prioritized.
 It depends on nothing here, so it runs alongside rather than extending the schedule.
 
-The *lift* in row 1 is behavior-preserving, and that is checkable: every existing
+The *lift* in row 1 was behavior-preserving, and that remains checkable: every existing
 golden, `cli-check-api.tryscript.md` among them, must be byte-identical after it.
 If a transcript moves, the lift changed behavior and the change is wrong.
 
@@ -82,7 +91,7 @@ The rows as a whole are not behavior-preserving, and an earlier draft said they 
 They add two modes, so `cli-surface.tryscript.md` changes and `CHANGELOG.md` gains an
 entry. The invariant is about the refactor, not the phase.
 
-## Part 0: Parity Mechanism — Module and Function Map
+## Part 0: Delivered Parity Mechanism — Module and Function Map
 
 ### `src/metabrowser/cli/asgi_client.py` (new)
 
@@ -329,13 +338,17 @@ def ensure_home(home: Path) -> None: # creates, writes CACHEDIR.TAG
 | Module | Responsibility | Key functions |
 | --- | --- | --- |
 | `layout.py` | `f01` format record, fail-closed on future formats, ordered migrations | `read_layout`, `migrate`, `LAYOUT_FORMAT` |
-| `atomic.py` | same-filesystem staging, atomic YAML, home locking | `write_atomic`, `read_yaml`, `home_lock` |
+| `atomic.py` | same-filesystem staging, owner-only atomic YAML, fixed lock hierarchy | `write_atomic`, `read_yaml`, `home_lock`, `entry_lock`, `provider_resource_lock` |
 | `records.py` | SoftSchema contracts | `ApplicationConfig/v1`, `CacheLayout/v1`, `RepositoryIdentity/v1`, `RepositoryState/v1` |
 | `state.py` | the state machine | `promote`, `quarantine`, `trash`, `entry_state` |
 | `reclaim.py` | startup sweep of `staging/` and `trash/` | `reclaim(home)` |
 | `identity.py` | Phase 1B-a: conservative identity and collision-safe slug | `source_identity`, `cache_slug` |
-| `urls.py` | Phase 1B-a: the safe URL grammar | `parse_git_source` |
+| `urls.py` | Phase 1B-b: root classification, reducer claim arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome` |
 | `acquire.py` | Phase 1B-a: clone into staging, publish atomically | `acquire` |
+| `selection.py` | Phase 1B-c: pure ref/path resolution and typed missing-ref requests | `resolve_selection`, `resolve_ref_path_candidates` |
+| `materialize.py` | Phase 1B-c: detached worktree leases | `acquire_materialization`, `release_materialization` |
+| `service.py` | One CLI/chooser orchestration result | `resolve_open_target`, `close_open_target` |
+| `jobs.py` | Provider-neutral network owner for selected-ref jobs | `fetch_selected_ref`, `request_ref_fetch`, `close_all` |
 | `routes.py` | the state clause | `/api/cache/layout`, `/entries`, `/entry/{slug}` |
 
 ```python
@@ -430,6 +443,12 @@ network behavior.
 | `cli-cache-acquire.tryscript.md` | clone, publish, second open reuses with no network | Cache 1B-a |
 | `cli-cache-recover.tryscript.md` | interrupted publish quarantines; reclaim sweeps staging | Cache 1B-a |
 | `cli-url-open.tryscript.md` | URL grammar accepts and rejects, with reasons | Cache 1B-b |
+| `cli-github-repo-open.tryscript.md` | GitHub repository URL reduces to and reuses the generic entry without provider auth | Cache 1B-b |
+| `cli-github-branch-open.tryscript.md` | default, non-default, slash-containing, offline, and unavailable branches keep the pinned root unchanged | Cache 1B-c |
+| `cli-github-pr-open.tryscript.md` | a direct PR selection publishes one bundle and fetches only selected refs without an index | GitHub P3B |
+| `cli-github-pr-index.tryscript.md` | bounded pages, freshness, completeness, and no ref fetch while listing | GitHub P3C |
+| `cli-github-pr-offline.tryscript.md` | repository and selected PR remain inspectable from immutable snapshots without a network | GitHub P4A |
+| `cli-ui-hosted-review.tryscript.md` | exact production address parse/apply, direct view, panel window/selection/restoration, root replacement, and disposal | GitHub P4 |
 
 `cli-cache-recover` is the one worth insisting on.
 Crash recovery is the behavior most likely to be wrong and least likely to be exercised
@@ -493,11 +512,15 @@ changed behavior and the change is wrong, whatever the diff looks like.
 These are not risks to manage; they are decisions that are not the implementer’s to
 make. Work up to them, then stop and report with the evidence gathered.
 
+SoftSchema adoption is no longer a stop.
+The owner has confirmed the `jlevy` first-party exemption from the 14-day delay;
+`mb-4gnu` still reviews and records the exact release, predecessor, lock delta,
+dependencies, artifacts, and runtime reach before adoption.
+
 | Stop | Bead | Why it is not an implementation decision |
 | --- | --- | --- |
-| Adopting SoftSchema | `mb-4gnu` | Needs either the 14-day cool-off or an *Audited First-Party Exceptions* row with a blast-radius statement, reviewed against its predecessor. That is a security judgment, and [SUPPLY-CHAIN-SECURITY.md](../../../../SUPPLY-CHAIN-SECURITY.md) requires it be argued, not assumed. |
 | Unbounded `--untracked-files=all` | `mb-r5gn` | The plan says that if a complete status cannot be bounded usefully, the phase returns to design review. Choosing a partial-status policy instead would be redesigning the feature. |
-| Any `PLUGIN_SDK_VERSION` bump | any | A hard gate by [AGENTS.md](../../../../AGENTS.md), not a compatibility layer to negotiate. |
+| Any `PLUGIN_SDK_VERSION` bump | any | A hard gate by [AGENTS.md](../../../../AGENTS.md), not a compatibility layer to negotiate. Optional additive declarations may retain SDK 0.6 only when existing manifest and JavaScript behavior is unchanged and plugin docs plus `CHANGELOG.md` are updated. |
 | A golden that changes for an unexplained reason | any | Either a regression or a misunderstanding of the spec. Both need a human before the transcript is rewritten. |
 
 Everything else is ordinary work: the budgets from `mb-r5gn` are chosen from recorded
@@ -506,9 +529,10 @@ measures cheaply enough on the corpus.
 Those are decisions with evidence attached, so they get made and recorded rather than
 escalated.
 
-### What lands, in order
+### What landed for the parity foundation
 
-The first six beads are unattended work with a clear finish line:
+The first six beads established the baseline now on `main` for the v0.10.0 release
+candidate:
 
 | Order | Bead | Done when |
 | --- | --- | --- |
@@ -519,8 +543,32 @@ The first six beads are unattended work with a clear finish line:
 | 5 | `mb-zodq` | The three clauses in `AGENTS.md`, the reasoning in `docs/development.md` |
 | 6 | `mb-r5gn` | Measurements recorded; the three decisions written down or the stop above triggered |
 
-After 6, the status and cache tracks run in parallel and neither needs a browser until
-`mb-vibn`.
+### What lands for the v0.11.0 PR-first slice
+
+After `mb-i57d` cuts v0.10.0 and `mb-xxhi` verifies and fetches the released `main`
+commit, the remaining sequence starts from a new branch at that commit:
+
+1. Run the status measurements (`mb-r5gn`) while the cache format and trust tracks begin
+   independently.
+2. Land the owner-only application-home, record, acquisition, inspection, and URL-open
+   foundation (`mb-ire2`, `mb-xa0p`, `mb-4gnu`, `mb-h51g`, `mb-k54c`, `mb-dg00`,
+   `mb-dxmb`, `mb-12cz`, `mb-ew38`), then the provider job/ref owner and reusable
+   repository worktree projection (`mb-jlon`, `mb-z335`) before selected-branch
+   integration (`mb-2xq7`).
+3. Land the provider-neutral hosted-review contracts (`mb-63ym`) and narrow provider
+   jobs/ref fetching (`mb-jlon`) without waiting for full cache management.
+4. Publish the bounded provider runner, capability registry, `gh api` adapter, auth
+   workflow, auth-scoped store kernel, repository summary, and one directly addressed PR
+   bundle (`mb-y1ax`, `mb-ji83`, `mb-p4sw`, `mb-i3xc`, `mb-duu7`, `mb-2oxp`, `mb-h64t`).
+5. Add the mounted plugin router, browser address-space lifecycle, and direct PR
+   document/diff (`mb-xzj3`, `mb-6mle`, `mb-81p5`) after the content-trust serving gate
+   is satisfied. This is the first complete PR workflow and does not wait for a discovery
+   index.
+6. Add the bounded PR index and virtual Pull Requests collection (`mb-lnkl`, `mb-uh6p`,
+   `mb-iw1v`), then layer anchored review threads (`mb-rldc`).
+
+Full cache management, the chooser, GitHub issues and timelines, stacked PRs, and
+very-large-repository work remain later beads rather than hidden prerequisites.
 
 ## Open Decisions
 
@@ -556,9 +604,8 @@ Still open:
 - [CLI parity and golden coverage](../done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
 - [Git status and working-tree diffs](plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Repository library and open from a Git URL](plan-2026-08-11-open-repo-from-git-url.md)
+- [Hosted review model and GitHub provider](plan-2026-08-27-github-provider-and-pull-requests.md)
 - [Delivery order review](../../reviews/review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
-  — lands with branch `design/git-status-and-cache-phasing`, which must merge before
-  this document’s links resolve
 - [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - `tbd guidelines golden-testing-guidelines`
 

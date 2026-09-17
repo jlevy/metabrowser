@@ -4,7 +4,7 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Completed and accepted for v0.9.0 on 2026-08-27
+**Status:** Complete; accepted for v0.9.0 on 2026-08-27
 
 ## Overview
 
