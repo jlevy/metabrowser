@@ -1737,11 +1737,16 @@ detail.
   under no layout, are refused exactly as `migrate_layout` refuses them.
   A read changes nothing it reads: every record read and every listing asks
   `metabrowser.home` for `shared="refuse"`, so an entry other users can reach is
-  reported as a `not_private` problem, or refused for a directory, instead of being
-  tightened while a request is answered.
-  Pages hold at most 100 rows, store references read at most 500 aliases, and a
-  quarantine entry reports at most 50 names of each kind, from measured record-read
-  costs recorded beside the constants.
+  reported with publication `not_private`, kept apart from `damaged` because a record
+  Metabrowser declined to read is not a corrupt one, or refused for a directory, naming
+  the fixed layout location that failed and never a slug.
+  A page holds at most 100 rows and defaults to 25; one request reads at most 400
+  records, which the page rows and then the alias scan draw from, and a scan cut short
+  reports its stores’ references as unknown rather than absent; a quarantine entry
+  reports at most 50 names of each kind.
+  Those follow the measured record-read costs recorded beside the constants and the fact
+  that these projections run on the process-wide executor that also carries tree
+  walking, rendering, raw sizing, and log tailing.
   One entry has one publication state on both source routes, because both build the row
   from all three of its records.
   The store’s `configuration_digest` is not reported.
