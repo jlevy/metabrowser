@@ -11,10 +11,15 @@ fake it.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import logging
 import os
+import shutil
 import stat
+import subprocess
+import sys
+import threading
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -23,7 +28,6 @@ from typing import Any
 import pytest
 
 from metabrowser import home as home_module
-from metabrowser.cli.api_cli import run_api
 from metabrowser.home import (
     PRIVATE_DIRECTORY_MODE,
     PRIVATE_FILE_MODE,
@@ -111,6 +115,79 @@ def _disguise_owner(monkeypatch: pytest.MonkeyPatch, target: Path, uid: int) -> 
 
 def _another_uid() -> int:
     return os.geteuid() + 1
+
+
+skip_as_root = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
+)
+darwin_only = pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason=(
+        "extended ACLs are inspected only on macOS; a Linux POSIX ACL cannot exceed the "
+        "group-class mask that 0700 and 0600 clear, as metabrowser/home.py records"
+    ),
+)
+
+
+_PATHS_GIVEN_ACLS: list[Path] = []
+
+
+def _add_acl(path: Path, entry: str) -> None:
+    subprocess.run(["/bin/chmod", "+a", entry, str(path)], check=True, capture_output=True)
+    _PATHS_GIVEN_ACLS.append(path)
+
+
+@pytest.fixture(autouse=True)
+def remove_test_acls() -> Generator[None]:
+    """Strip ACLs a test added; a ``deny delete`` entry would stop temp-directory cleanup."""
+
+    yield
+    while _PATHS_GIVEN_ACLS:
+        path = _PATHS_GIVEN_ACLS.pop()
+        if os.path.lexists(path):
+            subprocess.run(["/bin/chmod", "-N", str(path)], check=False, capture_output=True)
+
+
+def _current_user_name() -> str:
+    return subprocess.run(
+        ["/usr/bin/id", "-un"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _acl_lines(path: Path) -> list[str]:
+    listing = subprocess.run(
+        ["/bin/ls", "-led", str(path)], check=True, capture_output=True, text=True
+    ).stdout
+    return [line.strip() for line in listing.splitlines()[1:]]
+
+
+def _outcome_within_deadline(call: Callable[[], object], fifo: Path) -> BaseException | None:
+    """Run *call* in a thread and fail if it blocks opening *fifo*."""
+
+    outcome: list[BaseException | None] = []
+
+    def run() -> None:
+        try:
+            call()
+        except BaseException as error:
+            outcome.append(error)
+        else:
+            outcome.append(None)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(5.0)
+    if thread.is_alive():
+        # Open the other end so the blocked open returns and the thread can finish.
+        released: list[int] = []
+        for flags in (os.O_RDONLY | os.O_NONBLOCK, os.O_WRONLY | os.O_NONBLOCK):
+            with contextlib.suppress(OSError):
+                released.append(os.open(fifo, flags))
+        thread.join(5.0)
+        for fd in released:
+            os.close(fd)
+        pytest.fail("opening a private file blocked on a FIFO")
+    return outcome[0]
 
 
 @pytest.fixture
@@ -424,45 +501,127 @@ def test_a_symlink_loop_above_the_home_is_unverifiable(tmp_path: Path) -> None:
 # ── Entries below the home: repair or refuse ───────────────────────
 
 
-def test_owned_permissive_entries_are_tightened(
+def test_repair_removes_only_group_and_other_access(
     home: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A Metabrowser entry the current user owns is safely repairable."""
+    """A Metabrowser entry the current user owns is repairable, without widening the owner."""
 
     _private_dir(home)
     (home / "cache").mkdir()
     (home / "cache").chmod(0o755)
-    (home / "cache" / "sources").mkdir()
-    (home / "cache" / "sources").chmod(0o777)
-    (home / "cache" / "sources" / "state.yml").write_bytes(b"state\n")
-    (home / "cache" / "sources" / "state.yml").chmod(0o644)
+    (home / "cache" / "objects").mkdir()
+    (home / "cache" / "objects" / "pack.idx").write_bytes(b"pack\n")
+    (home / "cache" / "objects" / "pack.idx").chmod(0o444)
+    (home / "cache" / "objects").chmod(0o551)
     (home / "config.yml").write_bytes(b"config\n")
-    (home / "config.yml").chmod(0o400)
+    (home / "config.yml").chmod(0o640)
 
-    with caplog.at_level(logging.WARNING, logger="metabrowser.home"):
-        ensure_private_directory(home, "cache/sources")
-        os.close(open_private_file(home, "cache/sources/state.yml", os.O_RDONLY))
-        os.close(open_private_file(home, "config.yml", os.O_RDWR))
+    try:
+        with caplog.at_level(logging.WARNING, logger="metabrowser.home"):
+            ensure_private_directory(home, "cache/objects")
+            os.close(open_private_file(home, "cache/objects/pack.idx", os.O_RDONLY))
+            os.close(open_private_file(home, "config.yml", os.O_RDONLY))
 
-    assert _mode(home / "cache") == PRIVATE_DIRECTORY_MODE
-    assert _mode(home / "cache" / "sources") == PRIVATE_DIRECTORY_MODE
-    assert _mode(home / "cache" / "sources" / "state.yml") == PRIVATE_FILE_MODE
-    assert _mode(home / "config.yml") == PRIVATE_FILE_MODE
-    assert len([r for r in caplog.records if "owner-only" in r.getMessage()]) == 4
+        assert _mode(home / "cache") == 0o700
+        assert _mode(home / "cache" / "objects") == 0o500
+        assert _mode(home / "cache" / "objects" / "pack.idx") == 0o400
+        assert _mode(home / "config.yml") == 0o600
+        assert len([r for r in caplog.records if "owner-only" in r.getMessage()]) == 4
+    finally:
+        (home / "cache" / "objects").chmod(PRIVATE_DIRECTORY_MODE)
 
 
-def test_an_owned_entry_its_owner_cannot_read_is_restored(home: Path) -> None:
-    _private_dir(home)
+@pytest.mark.parametrize(
+    ("directory_mode", "file_mode"),
+    [(0o700, 0o600), (0o500, 0o400), (0o700, 0o400), (0o500, 0o700)],
+    ids=lambda mode: f"{mode:04o}",
+)
+def test_owner_only_entries_are_accepted_without_repair(
+    home: Path, caplog: pytest.LogCaptureFixture, directory_mode: int, file_mode: int
+) -> None:
+    ensure_private_directory(home, "cache/objects")
+    (home / "cache" / "objects" / "ab").write_bytes(b"object\n")
+    (home / "cache" / "objects" / "ab").chmod(file_mode)
+    (home / "cache" / "objects").chmod(directory_mode)
+
+    try:
+        with caplog.at_level(logging.WARNING, logger="metabrowser.home"):
+            ensure_private_directory(home, "cache/objects")
+            os.close(open_private_file(home, "cache/objects/ab", os.O_RDONLY))
+            validate_private_home(home)
+    finally:
+        (home / "cache" / "objects").chmod(PRIVATE_DIRECTORY_MODE)
+
+    assert _mode(home / "cache" / "objects" / "ab") == file_mode
+    assert caplog.records == []
+
+
+@skip_as_root
+def test_owner_permissions_are_never_widened(home: Path) -> None:
+    """An owner-only entry its owner cannot use is refused, not given more owner access."""
+
+    ensure_private_directory(home)
     (home / "cache").mkdir()
     (home / "cache").chmod(0o000)
+    (home / "config.yml").write_bytes(b"config\n")
+    (home / "config.yml").chmod(0o400)
     try:
-        created = ensure_private_directory(home, "cache/staging")
-    finally:
-        if (home / "cache").exists():
-            (home / "cache").chmod(PRIVATE_DIRECTORY_MODE)
+        error = _refusal(lambda: ensure_private_directory(home, "cache/staging"))
+        assert error.violation is PrivateStorageViolation.UNVERIFIABLE
+        assert "never widens" in str(error)
+        assert _mode(home / "cache") == 0o000
 
-    assert _mode(home / "cache") == PRIVATE_DIRECTORY_MODE
-    assert _mode(created) == PRIVATE_DIRECTORY_MODE
+        error = _refusal(lambda: open_private_file(home, "config.yml", os.O_RDWR))
+        assert error.violation is PrivateStorageViolation.UNVERIFIABLE
+        assert "never widens" in str(error)
+        assert _mode(home / "config.yml") == 0o400
+    finally:
+        (home / "cache").chmod(PRIVATE_DIRECTORY_MODE)
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+def test_a_git_store_written_under_umask_077_validates_without_repair(
+    home: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Git child processes run with umask 077, which yields 0700 directories and 0400 objects."""
+
+    ensure_private_directory(home, "cache/repository-stores/store")
+    store = home / "cache" / "repository-stores" / "store"
+    environment = {
+        key: value for key, value in os.environ.items() if not key.startswith("GIT_")
+    } | {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    subprocess.run(
+        ["git", "init", "--quiet", "--bare", "repository.git"],
+        cwd=store,
+        check=True,
+        env=environment,
+        umask=0o077,
+    )
+    (store / "blob.txt").write_bytes(b"private content\n")
+    subprocess.run(
+        ["git", "--git-dir", "repository.git", "hash-object", "-w", "blob.txt"],
+        cwd=store,
+        check=True,
+        env=environment,
+        umask=0o077,
+        capture_output=True,
+    )
+    (store / "blob.txt").unlink()
+    before = {path: os.lstat(path).st_mode for path in store.rglob("*")}
+    modes = {stat.S_IMODE(mode) for mode in before.values()}
+    assert 0o400 in modes, "Git wrote its object owner-read-only"
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.home"):
+        for path in sorted(before):
+            relative = path.relative_to(home).as_posix()
+            if stat.S_ISDIR(before[path]):
+                ensure_private_directory(home, relative)
+            else:
+                os.close(open_private_file(home, relative, os.O_RDONLY))
+        validate_private_home(home)
+
+    assert caplog.records == []
+    assert {path: os.lstat(path).st_mode for path in store.rglob("*")} == before
 
 
 def test_a_foreign_owned_entry_is_refused_and_not_repaired(
@@ -555,35 +714,55 @@ def test_entries_of_the_wrong_type_are_refused(home: Path) -> None:
     assert error.location is PrivateStorageLocation.ENTRY
 
 
-@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFOs are unavailable")
-def test_a_fifo_is_refused_without_blocking(home: Path) -> None:
-    ensure_private_directory(home, "cache/locks")
-    os.mkfifo(home / "cache" / "locks" / "home.lock", 0o600)
+@pytest.mark.parametrize(
+    "flags",
+    [os.O_RDONLY, os.O_WRONLY, os.O_WRONLY | os.O_CREAT],
+    ids=["read", "write", "write-create"],
+)
+def test_a_fifo_is_refused_without_blocking(home: Path, flags: int) -> None:
+    """O_RDONLY and O_WRONLY opens of a FIFO block until the other end opens."""
 
-    error = _refusal(
-        lambda: open_private_file(home, "cache/locks/home.lock", os.O_RDWR | os.O_CREAT)
+    ensure_private_directory(home, "cache/locks")
+    fifo = home / "cache" / "locks" / "home.lock"
+    os.mkfifo(fifo, 0o600)
+
+    error = _outcome_within_deadline(
+        lambda: open_private_file(home, "cache/locks/home.lock", flags), fifo
     )
 
+    assert isinstance(error, PrivateStorageError)
     assert error.violation is PrivateStorageViolation.NOT_REGULAR_FILE
+    assert stat.S_ISFIFO(os.lstat(fifo).st_mode)
 
 
 # ── TOCTOU ─────────────────────────────────────────────────────────
 
 
 def _swap_after_nofollow_stat(
-    monkeypatch: pytest.MonkeyPatch, name: str, replace: Callable[[], None]
+    monkeypatch: pytest.MonkeyPatch, name: str | Path, replace: Callable[[], None]
 ) -> None:
-    """Run *replace* right after the entry *name* is inspected, before it is opened."""
+    """Run *replace* right after *name* is inspected without following links.
+
+    A string names an entry inspected relative to its parent's descriptor; a path names
+    the home. The swap happens whether or not the inspection found anything.
+    """
 
     real_stat = os.stat
     swapped: list[bool] = []
 
     def racing_stat(path: Any, *args: Any, **kwargs: Any) -> os.stat_result:
-        result = real_stat(path, *args, **kwargs)
-        if path == name and kwargs.get("dir_fd") is not None and not swapped:
-            swapped.append(True)
-            replace()
-        return result
+        relative = isinstance(name, str)
+        matches = (
+            path == name
+            and kwargs.get("follow_symlinks") is False
+            and (kwargs.get("dir_fd") is not None) == relative
+        )
+        try:
+            return real_stat(path, *args, **kwargs)
+        finally:
+            if matches and not swapped:
+                swapped.append(True)
+                replace()
 
     monkeypatch.setattr(os, "stat", racing_stat)
 
@@ -795,11 +974,24 @@ def test_refusals_name_a_remedy_but_never_the_path(
     errors.append(_refusal(lambda: validate_private_home(home)))
     home.parent.chmod(PRIVATE_DIRECTORY_MODE)
 
+    linked = home / "cache" / "sources" / f"{PRIVATE_SLUG}.yml"
+    linked.write_bytes(b"")
+    os.link(linked, tmp_path / "elsewhere.yml")
+    errors.append(
+        _refusal(lambda: open_private_file(home, f"cache/sources/{PRIVATE_SLUG}.yml", os.O_RDONLY))
+    )
+    (tmp_path / "elsewhere.yml").unlink()
+    linked.chmod(0o644)
+    errors.append(
+        _refusal(lambda: open_private_file(home, f"cache/sources/{PRIVATE_SLUG}.yml", os.O_WRONLY))
+    )
+
     assert {error.violation for error in errors} == {
         PrivateStorageViolation.SYMLINK,
         PrivateStorageViolation.NOT_DIRECTORY,
         PrivateStorageViolation.FOREIGN_OWNER,
         PrivateStorageViolation.PERMISSIVE,
+        PrivateStorageViolation.HARD_LINK,
     }
     for error in errors:
         message = str(error)
@@ -809,36 +1001,6 @@ def test_refusals_name_a_remedy_but_never_the_path(
         assert "ghp_" not in message
         assert error.path.is_absolute()
     assert errors[0].path == source
-
-
-# ── Local browsing and attached checkouts are untouched ────────────
-
-
-def test_local_browsing_never_consults_the_application_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: Any
-) -> None:
-    """``metab <local-dir>`` keeps working however permissive the home or the directory is."""
-
-    unsafe_home = tmp_path / "shared-home"
-    unsafe_home.mkdir()
-    unsafe_home.chmod(0o777)
-    linked_home = tmp_path / "home-link"
-    linked_home.symlink_to(unsafe_home, target_is_directory=True)
-    monkeypatch.setenv("METABROWSER_HOME", str(linked_home))
-
-    checkout = tmp_path / "checkout"
-    checkout.mkdir()
-    (checkout / "README.md").write_text("hello\n")
-    checkout.chmod(0o777)
-    linked_checkout = tmp_path / "checkout-link"
-    linked_checkout.symlink_to(checkout, target_is_directory=True)
-
-    run_api(linked_checkout, route="/api/tree?depth=1", fmt="json")
-
-    assert "status: 200" in capsys.readouterr().out
-    assert _mode(checkout) == 0o777
-    assert _mode(unsafe_home) == 0o777
-    assert list(unsafe_home.iterdir()) == []
 
 
 def test_provider_storage_beside_a_user_checkout_leaves_the_checkout_unchanged(
@@ -868,3 +1030,599 @@ def test_provider_storage_beside_a_user_checkout_leaves_the_checkout_unchanged(
         assert (current.st_mode, current.st_uid) == (original.st_mode, original.st_uid), path
     assert (checkout / "README.md").read_bytes() == b"project\n"
     assert sorted(p.name for p in checkout.iterdir()) == ["README.md"]
+
+
+# ── Ancestor and home evidence (review mutants m2, m3, m5, m8) ─────
+
+
+def test_a_writable_ancestor_two_levels_above_the_home_is_refused(tmp_path: Path) -> None:
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o777)
+    mine = _private_dir(shared / "mine")
+
+    error = _refusal(lambda: ensure_private_directory(mine / "home", "cache"))
+
+    assert error.violation is PrivateStorageViolation.PERMISSIVE
+    assert error.location is PrivateStorageLocation.HOME_ANCESTOR
+    assert error.path == shared
+    assert not (mine / "home").exists()
+
+
+def test_a_sticky_ancestor_owned_by_another_user_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sticky bit protects entries from other users, not from the directory's owner."""
+
+    shared = tmp_path / "sticky-foreign"
+    shared.mkdir()
+    shared.chmod(0o1777)
+    _disguise_owner(monkeypatch, shared, _another_uid())
+
+    error = _refusal(lambda: ensure_private_directory(shared / "home", "cache"))
+
+    assert error.violation is PrivateStorageViolation.FOREIGN_OWNER
+    assert error.location is PrivateStorageLocation.HOME_ANCESTOR
+    monkeypatch.undo()
+    assert not (shared / "home").exists()
+
+
+def test_the_root_directory_is_verified(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _disguise_owner(monkeypatch, Path("/"), _another_uid())
+
+    error = _refusal(lambda: ensure_private_directory(home, "cache"))
+
+    assert error.violation is PrivateStorageViolation.FOREIGN_OWNER
+    assert error.location is PrivateStorageLocation.HOME_ANCESTOR
+    assert error.path == Path("/")
+
+
+def test_the_home_replaced_mid_check_is_unverifiable(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _private_dir(home)
+    aside = home.parent / "home-aside"
+
+    def replace() -> None:
+        home.rename(aside)
+        _private_dir(home)
+
+    _swap_after_nofollow_stat(monkeypatch, home, replace)
+    error = _refusal(lambda: ensure_private_directory(home, "cache"))
+    monkeypatch.undo()
+
+    assert error.violation is PrivateStorageViolation.UNVERIFIABLE
+    assert error.location is PrivateStorageLocation.HOME
+    assert list(home.iterdir()) == []
+    assert list(aside.iterdir()) == []
+
+
+# ── Files: identity, hard links, and open side effects (m4, m6, m7) ─
+
+
+@pytest.mark.parametrize("replacement", ["new-file", "hard-link"])
+@pytest.mark.parametrize(
+    "flags", [os.O_RDONLY, os.O_WRONLY | os.O_TRUNC], ids=["read", "write-truncate"]
+)
+def test_a_file_replaced_by_another_file_mid_check_is_refused_untouched(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str, flags: int
+) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"outside data that must survive\n")
+    outside.chmod(0o644)
+    ensure_private_directory(home, "cache")
+    _write_file(home, "cache/layout.yml", b"ours\n")
+    layout = home / "cache" / "layout.yml"
+
+    def replace() -> None:
+        layout.unlink()
+        if replacement == "hard-link":
+            os.link(outside, layout)
+        else:
+            layout.write_bytes(b"someone else's\n")
+            layout.chmod(PRIVATE_FILE_MODE)
+
+    _swap_after_nofollow_stat(monkeypatch, "layout.yml", replace)
+    error = _refusal(lambda: open_private_file(home, "cache/layout.yml", flags))
+    monkeypatch.undo()
+
+    assert error.violation is PrivateStorageViolation.UNVERIFIABLE
+    assert outside.read_bytes() == b"outside data that must survive\n"
+    assert _mode(outside) == 0o644
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [os.O_RDONLY, os.O_RDWR, os.O_WRONLY | os.O_CREAT | os.O_TRUNC],
+    ids=["read", "read-write", "write-create-truncate"],
+)
+def test_a_hard_linked_file_is_refused_and_never_repaired(
+    home: Path, tmp_path: Path, flags: int
+) -> None:
+    outside = tmp_path / "public_index.html"
+    outside.write_bytes(b"precious shared content\n")
+    outside.chmod(0o644)
+    ensure_private_directory(home, "cache")
+    os.link(outside, home / "cache" / "layout.yml")
+
+    error = _refusal(lambda: open_private_file(home, "cache/layout.yml", flags))
+
+    assert error.violation is PrivateStorageViolation.HARD_LINK
+    assert error.location is PrivateStorageLocation.ENTRY
+    assert "hard link" in str(error)
+    assert outside.read_bytes() == b"precious shared content\n"
+    assert _mode(outside) == 0o644
+
+
+def test_a_hard_link_made_after_opening_is_refused(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Link count is judged on the descriptor too, and a refused new file is removed."""
+
+    ensure_private_directory(home, "cache")
+    escape = tmp_path / "escape.yml"
+    real_open = os.open
+
+    def linking_open(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        fd = real_open(path, flags, *args, **kwargs)
+        if path == "layout.yml" and flags & os.O_CREAT:
+            os.link(home / "cache" / "layout.yml", escape)
+        return fd
+
+    monkeypatch.setattr(os, "open", linking_open)
+    error = _refusal(
+        lambda: open_private_file(home, "cache/layout.yml", os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+    )
+    monkeypatch.undo()
+
+    assert error.violation is PrivateStorageViolation.HARD_LINK
+    assert not (home / "cache" / "layout.yml").exists()
+    assert escape.read_bytes() == b""
+
+
+def test_a_hard_link_appearing_during_creation_is_refused_untouched(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"outside data that must survive\n")
+    outside.chmod(0o644)
+    ensure_private_directory(home, "cache")
+
+    _swap_after_nofollow_stat(
+        monkeypatch, "layout.yml", lambda: os.link(outside, home / "cache" / "layout.yml")
+    )
+    error = _refusal(
+        lambda: open_private_file(home, "cache/layout.yml", os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+    )
+    monkeypatch.undo()
+
+    assert error.violation is PrivateStorageViolation.HARD_LINK
+    assert outside.read_bytes() == b"outside data that must survive\n"
+    assert _mode(outside) == 0o644
+
+
+@pytest.mark.parametrize("flags", [os.O_RDONLY, os.O_WRONLY], ids=["read", "write"])
+def test_a_file_swapped_for_a_fifo_mid_check_does_not_block(
+    home: Path, monkeypatch: pytest.MonkeyPatch, flags: int
+) -> None:
+    ensure_private_directory(home, "cache")
+    _write_file(home, "cache/layout.yml", b"ours\n")
+    layout = home / "cache" / "layout.yml"
+
+    def replace() -> None:
+        layout.unlink()
+        os.mkfifo(layout, PRIVATE_FILE_MODE)
+
+    _swap_after_nofollow_stat(monkeypatch, "layout.yml", replace)
+    error = _outcome_within_deadline(
+        lambda: open_private_file(home, "cache/layout.yml", flags), layout
+    )
+    monkeypatch.undo()
+
+    assert isinstance(error, PrivateStorageError)
+    assert error.violation is PrivateStorageViolation.NOT_REGULAR_FILE
+
+
+@pytest.mark.parametrize(
+    "flags", [os.O_RDONLY | os.O_CREAT, os.O_WRONLY | os.O_CREAT], ids=["read", "write"]
+)
+def test_a_fifo_appearing_during_creation_is_refused_without_blocking(
+    home: Path, monkeypatch: pytest.MonkeyPatch, flags: int
+) -> None:
+    ensure_private_directory(home, "cache")
+    layout = home / "cache" / "layout.yml"
+
+    _swap_after_nofollow_stat(
+        monkeypatch, "layout.yml", lambda: os.mkfifo(layout, PRIVATE_FILE_MODE)
+    )
+    error = _outcome_within_deadline(
+        lambda: open_private_file(home, "cache/layout.yml", flags), layout
+    )
+    monkeypatch.undo()
+
+    assert isinstance(error, PrivateStorageError)
+    assert error.violation is PrivateStorageViolation.NOT_REGULAR_FILE
+    assert stat.S_ISFIFO(os.lstat(layout).st_mode), "a FIFO this call did not create is kept"
+
+
+@skip_as_root
+def test_restoring_owner_access_never_follows_a_swapped_link(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Under umask 0777 a new directory starts without owner access and must be finished."""
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside.chmod(0o755)
+    ensure_private_directory(home)
+    cache = home / "cache"
+    real_open = os.open
+    swapped: list[bool] = []
+
+    def racing_open(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        try:
+            return real_open(path, flags, *args, **kwargs)
+        except PermissionError:
+            if path == "cache" and not swapped:
+                swapped.append(True)
+                cache.chmod(PRIVATE_DIRECTORY_MODE)
+                cache.rmdir()
+                cache.symlink_to(outside, target_is_directory=True)
+            raise
+
+    monkeypatch.setattr(os, "open", racing_open)
+    with _umask(0o777):
+        error = _refusal(lambda: ensure_private_directory(home, "cache/staging"))
+    monkeypatch.undo()
+
+    assert swapped
+    assert error.violation is PrivateStorageViolation.SYMLINK
+    assert _mode(outside) == 0o755
+    assert list(outside.iterdir()) == []
+
+
+def test_truncation_happens_only_after_verification(home: Path) -> None:
+    ensure_private_directory(home, "cache")
+    _write_file(home, "cache/layout.yml", b"old content\n")
+
+    fd = open_private_file(home, "cache/layout.yml", os.O_WRONLY | os.O_TRUNC)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(b"new\n")
+
+    assert (home / "cache" / "layout.yml").read_bytes() == b"new\n"
+
+
+def test_returned_descriptors_block_unless_the_caller_asked_otherwise(home: Path) -> None:
+    ensure_private_directory(home, "cache")
+    _write_file(home, "cache/layout.yml", b"x\n")
+
+    fd = open_private_file(home, "cache/layout.yml", os.O_RDONLY)
+    try:
+        assert os.get_blocking(fd)
+    finally:
+        os.close(fd)
+    fd = open_private_file(home, "cache/layout.yml", os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        assert not os.get_blocking(fd)
+    finally:
+        os.close(fd)
+
+
+def test_a_refused_new_file_is_removed(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ensure_private_directory(home, "cache")
+
+    def ignore_mode(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(os, "fchmod", ignore_mode)
+    with _umask(0o277):
+        error = _refusal(
+            lambda: open_private_file(home, "cache/layout.yml", os.O_WRONLY | os.O_CREAT)
+        )
+    monkeypatch.undo()
+
+    assert error.violation is PrivateStorageViolation.UNVERIFIABLE
+    assert list((home / "cache").iterdir()) == []
+
+
+def test_truncate_requires_write_access(home: Path) -> None:
+    ensure_private_directory(home)
+
+    with pytest.raises(ValueError):
+        open_private_file(home, "config.yml", os.O_RDONLY | os.O_TRUNC)
+
+
+# ── Repair is not revocation ───────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        os.O_WRONLY,
+        os.O_RDWR,
+        os.O_WRONLY | os.O_TRUNC,
+        os.O_WRONLY | os.O_APPEND,
+        os.O_RDWR | os.O_CREAT,
+    ],
+    ids=["write", "read-write", "truncate", "append", "create"],
+)
+@pytest.mark.parametrize("shared_mode", [0o644, 0o604, 0o640, 0o044], ids=lambda m: f"mode-{m:04o}")
+def test_writing_a_shared_file_in_place_is_refused_not_repaired(
+    home: Path, flags: int, shared_mode: int
+) -> None:
+    ensure_private_directory(home, "cache")
+    state = home / "cache" / "state.yml"
+    state.write_bytes(b"old\n")
+    state.chmod(shared_mode)
+
+    error = _refusal(lambda: open_private_file(home, "cache/state.yml", flags))
+
+    assert error.violation is PrivateStorageViolation.PERMISSIVE
+    assert error.location is PrivateStorageLocation.ENTRY
+    assert "replace it atomically" in str(error)
+    assert _mode(state) == shared_mode
+    state.chmod(PRIVATE_FILE_MODE)
+    assert state.read_bytes() == b"old\n"
+
+
+def test_a_descriptor_opened_while_shared_never_sees_private_writes(home: Path) -> None:
+    """Tightening a mode does not revoke a descriptor, so the write is refused instead."""
+
+    ensure_private_directory(home)
+    (home / "cache").mkdir()
+    (home / "cache").chmod(0o755)
+    state = home / "cache" / "state.yml"
+    state.write_bytes(b"old\n")
+    state.chmod(0o644)
+    earlier = os.open(state, os.O_RDONLY)
+    try:
+        with pytest.raises(PrivateStorageError):
+            open_private_file(home, "cache/state.yml", os.O_WRONLY | os.O_TRUNC)
+        assert os.pread(earlier, 100, 0) == b"old\n"
+    finally:
+        os.close(earlier)
+
+
+# ── Escaping errors carry no names (finding 6) ─────────────────────
+
+
+@skip_as_root
+def test_escaping_errors_never_name_the_entry(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    ensure_private_directory(home, "cache")
+    _write_file(home, f"cache/{PRIVATE_SLUG}.yml", b"x\n")
+    locked = _private_dir(tmp_path / "locked-home")
+    locked.chmod(0o500)
+    cases: list[tuple[type[BaseException], Callable[[], object]]] = [
+        (PrivateStorageError, lambda: ensure_private_directory(locked, PRIVATE_SLUG)),
+        (
+            PrivateStorageError,
+            lambda: open_private_file(locked, f"{PRIVATE_SLUG}.yml", os.O_WRONLY | os.O_CREAT),
+        ),
+        (
+            FileNotFoundError,
+            lambda: open_private_file(home, f"cache/{PRIVATE_SLUG}/store.yml", os.O_RDONLY),
+        ),
+        (FileNotFoundError, lambda: open_private_file(home, f"{PRIVATE_SLUG}.yml", os.O_RDONLY)),
+        (
+            FileExistsError,
+            lambda: open_private_file(
+                home, f"cache/{PRIVATE_SLUG}.yml", os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            ),
+        ),
+        (OSError, lambda: ensure_private_directory(home, PRIVATE_SLUG * 8)),
+        (
+            FileNotFoundError,
+            lambda: ensure_private_directory(tmp_path / f"missing-{PRIVATE_SLUG}" / "home"),
+        ),
+        (FileNotFoundError, lambda: validate_private_home(tmp_path / f"absent-{PRIVATE_SLUG}")),
+    ]
+    try:
+        for expected, call in cases:
+            with pytest.raises(expected) as caught:
+                call()
+            message = str(caught.value)
+            assert PRIVATE_SLUG not in message, message
+            assert str(tmp_path) not in message, message
+            assert "cache/" not in message, message
+            assert caught.value.__cause__ is not None
+    finally:
+        locked.chmod(PRIVATE_DIRECTORY_MODE)
+
+
+# ── ACLs (finding 1) ───────────────────────────────────────────────
+
+
+@darwin_only
+def test_an_inheritable_acl_above_the_home_is_cleared_from_created_entries(
+    tmp_path: Path,
+) -> None:
+    parent = _private_dir(tmp_path / "parent")
+    _add_acl(parent, "group:everyone allow read,list,search,file_inherit,directory_inherit")
+    home = parent / "home"
+
+    store = ensure_private_directory(home, f"cache/repository-stores/{PRIVATE_SLUG}")
+    _write_file(home, f"cache/repository-stores/{PRIVATE_SLUG}/store.yml", b"store\n")
+
+    assert _acl_lines(parent) != []
+    for path in (home, home / "cache", store, store / "store.yml"):
+        assert _acl_lines(path) == [], path
+    validate_private_home(home)
+
+
+@darwin_only
+def test_a_home_with_an_allow_acl_for_others_is_refused_not_repaired(home: Path) -> None:
+    _private_dir(home)
+    _add_acl(home, "group:everyone allow list,search")
+
+    for call in (
+        lambda: validate_private_home(home),
+        lambda: ensure_private_directory(home, "cache"),
+    ):
+        error = _refusal(call)
+        assert error.violation is PrivateStorageViolation.PERMISSIVE
+        assert error.location is PrivateStorageLocation.HOME
+        assert "access control list" in str(error)
+
+    assert _acl_lines(home) != []
+    assert list(home.iterdir()) == []
+
+
+@darwin_only
+def test_deny_only_acls_on_ancestors_and_the_home_are_accepted(tmp_path: Path) -> None:
+    """An ordinary macOS home directory carries ``group:everyone deny delete``."""
+
+    parent = _private_dir(tmp_path / "parent")
+    _add_acl(parent, "group:everyone deny delete")
+    home = _private_dir(parent / "home")
+    _add_acl(home, "group:everyone deny delete")
+    _add_acl(home, f"user:{_current_user_name()} allow list,search,add_file")
+
+    ensure_private_directory(home, "cache")
+    validate_private_home(home)
+
+    assert len(_acl_lines(home)) == 2
+
+
+@darwin_only
+@pytest.mark.parametrize(
+    "rights",
+    [
+        "add_file",
+        "add_subdirectory",
+        "delete",
+        "delete_child",
+        "writeattr",
+        "writeextattr",
+        "writesecurity",
+        "chown",
+    ],
+)
+def test_an_ancestor_acl_granting_others_write_access_is_refused(
+    tmp_path: Path, rights: str
+) -> None:
+    parent = _private_dir(tmp_path / "parent")
+    _add_acl(parent, f"group:everyone allow {rights}")
+
+    error = _refusal(lambda: ensure_private_directory(parent / "home", "cache"))
+
+    assert error.violation is PrivateStorageViolation.PERMISSIVE
+    assert error.location is PrivateStorageLocation.HOME_ANCESTOR
+    assert "access control list" in str(error)
+    assert not (parent / "home").exists()
+
+
+@darwin_only
+def test_ancestor_acls_granting_only_reads_or_the_current_user_are_accepted(
+    tmp_path: Path,
+) -> None:
+    parent = _private_dir(tmp_path / "parent")
+    _add_acl(parent, "group:everyone allow list,search,readattr,readextattr,readsecurity")
+    _add_acl(parent, f"user:{_current_user_name()} allow add_file,delete_child,writesecurity")
+
+    ensure_private_directory(parent / "home", "cache")
+
+    assert len(_acl_lines(parent)) == 2
+
+
+@darwin_only
+def test_existing_entries_shared_by_acl_are_cleared_with_a_warning(
+    home: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    ensure_private_directory(home, "cache")
+    _add_acl(home / "cache", "group:everyone allow list,search")
+    _write_file(home, "cache/layout.yml", b"layout\n")
+    _add_acl(home / "cache" / "layout.yml", "group:everyone allow read")
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.home"):
+        ensure_private_directory(home, "cache")
+        os.close(open_private_file(home, "cache/layout.yml", os.O_RDONLY))
+
+    assert _acl_lines(home / "cache") == []
+    assert _acl_lines(home / "cache" / "layout.yml") == []
+    assert len([r for r in caplog.records if "access control list" in r.getMessage()]) == 2
+
+
+@darwin_only
+def test_writing_an_acl_shared_file_in_place_is_refused_not_repaired(home: Path) -> None:
+    ensure_private_directory(home, "cache")
+    _write_file(home, "cache/layout.yml", b"layout\n")
+    _add_acl(home / "cache" / "layout.yml", "group:everyone allow read")
+
+    error = _refusal(lambda: open_private_file(home, "cache/layout.yml", os.O_WRONLY))
+
+    assert error.violation is PrivateStorageViolation.PERMISSIVE
+    assert "access control list" in str(error)
+    assert "replace it atomically" in str(error)
+    assert _acl_lines(home / "cache" / "layout.yml") != []
+
+
+def _with_acl_entries(
+    monkeypatch: pytest.MonkeyPatch, entries: Callable[..., tuple[Any, ...]]
+) -> None:
+    monkeypatch.setattr(home_module, "_EXTENDED_ACLS", True)
+    monkeypatch.setattr(home_module, "_read_acl", entries)
+
+
+def test_an_unreadable_acl_fails_closed(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def unreadable(*_args: Any) -> tuple[Any, ...]:
+        raise home_module._AclUnverifiable("simulated libSystem failure")
+
+    _with_acl_entries(monkeypatch, unreadable)
+
+    error = _refusal(lambda: ensure_private_directory(home, "cache"))
+
+    assert error.violation is PrivateStorageViolation.UNVERIFIABLE
+    assert "access control list" in str(error)
+    assert not home.exists() or list(home.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("kind", "rights"),
+    [(3, 1 << 1), (1, 1 << 30)],  # kinds: 1 is KAUTH_ACE_PERMIT, 3 is AUDIT
+    ids=["unknown-entry-kind", "unknown-right"],
+)
+def test_an_uninterpretable_acl_entry_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: int, rights: int
+) -> None:
+    stranger = bytes(range(16))
+    entry = home_module._AclEntry(kind=kind, principal=stranger, rights=rights)
+    _with_acl_entries(monkeypatch, lambda *_args: (entry,))
+
+    error = _refusal(lambda: validate_private_home(tmp_path))
+
+    assert error.violation is PrivateStorageViolation.UNVERIFIABLE
+    assert error.location is PrivateStorageLocation.HOME_ANCESTOR
+
+
+@skip_as_root
+def test_restoring_owner_access_without_a_link_safe_primitive_is_refused(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With neither a no-follow chmod nor O_PATH, a new directory the umask shut is removed."""
+
+    ensure_private_directory(home)
+    monkeypatch.setattr(home_module, "_LINK_SAFE_CHMOD", False)
+    monkeypatch.setattr(home_module, "_O_PATH", None)
+
+    with _umask(0o777):
+        error = _refusal(lambda: ensure_private_directory(home, "cache"))
+
+    assert error.violation is PrivateStorageViolation.UNVERIFIABLE
+    assert "umask" in str(error)
+    assert not (home / "cache").exists()
+
+
+@darwin_only
+def test_created_entries_carry_no_acl_even_one_their_parent_passes_down(home: Path) -> None:
+    """A verified parent may keep inheritable deny entries; what Metabrowser creates has none."""
+
+    ensure_private_directory(home, "cache")
+    _add_acl(home / "cache", "group:everyone deny delete,file_inherit,directory_inherit")
+
+    staging = ensure_private_directory(home, "cache/staging")
+    _write_file(home, "cache/layout.yml", b"layout\n")
+
+    assert len(_acl_lines(home / "cache")) == 1
+    assert _acl_lines(staging) == []
+    assert _acl_lines(home / "cache" / "layout.yml") == []

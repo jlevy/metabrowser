@@ -272,43 +272,81 @@ and styles. Core does not import a GitHub schema or branch on a GitHub object ki
 
 ### Owner-only storage
 
-Repository and provider cache content may be private.
-Every Metabrowser-created application-home directory is `0700` and every file is `0600`
-on POSIX; Windows uses an equivalent current-user-only ACL. Remote acquisition fails
-closed when the application home or a cache ancestor is a symlink, belongs to another
-principal, is group/world accessible, or cannot be verified and repaired.
-An explicit permissive `METABROWSER_HOME` receives an actionable refusal rather than a
-warning followed by a private write.
-This rule does not prevent read-only browsing of an ordinary local path outside the
-application home or attaching it to a provider mirror without modifying it.
+Repository and provider cache content may be private, so everything Metabrowser keeps
+under the application home is reachable only by the user running it.
+`metabrowser.home` enforces this, and cache and provider code create or open
+application-home paths only through it; its module docstring gives the threat each rule
+answers.
 
-`metabrowser.home` enforces the rule, and cache and provider code create or open
-application-home paths only through it.
-`ensure_private_directory` creates the home and each missing directory below it `0700`
-from the start, walking by directory descriptor without following links.
-`open_private_file` opens or creates a `0600` file the same way and keeps `O_EXCL`
-no-replace semantics.
-`validate_private_home` checks without changing anything.
-A refusal is a `PrivateStorageError` with a violation, a logical location, and a
-path-free message naming a remedy; the path stays on the exception for local logs.
-The module docstring states the full rule set; three interpretations are recorded here
-because callers depend on them:
+- `ensure_private_directory(home, relative_path)` creates or verifies a directory.
+- `open_private_file(home, relative_path, flags)` opens or creates a file and returns a
+  descriptor.
+- `validate_private_home(home)` checks the home and its ancestors without changing
+  anything.
 
-- **Above the home, only write access matters.** Each directory the kernel traverses to
-  reach the home must belong to root or the current user and must not be writable by
-  others unless it is sticky.
-  A link there is followed only when root or the current user owns it, so `/home`
-  pointing into `/var/home` works and a planted link does not.
-- **The home is refused, never repaired.** Only entries below it that the current user
-  owns are tightened. Nothing above it is modified, so a workspace or checkout keeps its
-  modes.
-- **Mode bits are the verified surface.** On Linux a POSIX ACL cannot exceed the mask
-  that `0700` and `0600` clear; macOS extended ACLs and NFSv4 ACLs are not inspected.
+Every refusal is a `PrivateStorageError` with a violation, a logical location, and a
+path-free message naming a remedy.
+The path stays on the exception for local logs, and any other `OSError` leaves these
+functions without file names.
 
-Windows fails closed: it lacks the descriptor-relative, no-follow operations the checks
-use, so every call refuses as `unverifiable` and no private content is written there.
-Current-user-only ACL verification is follow-up work that needs a Windows CI runner
-before it can be trusted, because CI runs only on Linux today.
+**Above the home.** Each directory the kernel traverses to reach the home must belong to
+root or the current user.
+It may be readable by anyone, but it must not give another principal write access: no
+group or other write bit unless it is sticky, and on macOS no ACL allow entry granting
+another principal a write-class right.
+A symbolic link there is followed only when root or the current user owns it, and each
+directory it leads through is checked the same way, so `/home` pointing into `/var/home`
+works and a planted link does not.
+Nothing above the home is ever modified.
+
+**The home.** The home must be a real directory the current user owns, with no group or
+other mode bits and, on macOS, no ACL allow entry for another principal.
+Deny entries, such as the `group:everyone deny delete` on an ordinary macOS home, are
+accepted. An existing home that fails is refused, never repaired, so an explicit
+permissive `METABROWSER_HOME` receives an actionable refusal rather than a private
+write. A missing home is created by path under its verified parent, then set to `0700`
+and stripped of inherited ACL entries while it is still empty.
+
+**Below the home.** An entry is private when it has no group or other permission bits
+and no ACL allow entry for another principal.
+Any owner-only mode passes: Git child processes run with umask `077`, so a store holds
+`0700` directories and `0400` or `0600` files, and none of them needs repair.
+Entries Metabrowser creates itself are exactly `0700` directories and `0600` files from
+creation, whatever the umask, with any inherited ACL entries removed before content is
+written, and they are removed again if they are then refused.
+Entries are reached by directory descriptor without following links and re-identified by
+device and inode after opening.
+A file must be a regular file with exactly one link.
+It is opened non-blocking and without `O_TRUNC`, and truncated only after the descriptor
+is verified. The chosen home is Metabrowser-owned by definition, so any entry below it
+that the current user owns is repairable.
+Repair removes only the group and other bits and a sharing ACL, with a logged warning;
+it never adds owner permissions, so an entry whose own mode denies its owner the access
+requested is refused.
+A symbolic link, a foreign-owned entry, or a hard-linked file is refused and left
+unchanged.
+
+**Repair is not revocation.** Tightening an entry affects later opens only; a descriptor
+or directory handle opened while the entry was shared stays usable.
+Directories and read-only file opens are therefore repaired, but opening a file for an
+in-place write is refused when its mode or ACL shared it.
+Record writes create a temporary file with `O_CREAT | O_EXCL` in the target directory
+and rename it into place.
+A lock file that was ever shared, which another holder may still have open and locked,
+is replaced the same way.
+
+**Unverifiable is refused.** A file system that does not keep modes, an ACL that cannot
+be read or interpreted, and a platform without descriptor-relative, no-follow operations
+all fail closed. Windows is such a platform today: every call refuses as `unverifiable`
+until current-user-only ACL enforcement lands in `mb-pyqf`.
+
+On Linux only mode bits are inspected, which is enough for POSIX ACLs: an object’s
+group-class bits are its ACL mask, which bounds every named user and group entry, and a
+mode without group or other bits clears both the mask and the `other` entry.
+NFSv4 ACLs are not inspected.
+Read-only browsing of an ordinary local path outside the application home performs none
+of these checks, and attaching such a path to a provider mirror writes only below the
+home.
 
 ### Lock order
 
@@ -1123,7 +1161,7 @@ state.
 | `src/metabrowser/home.py` | `application_home`, `ensure_home`, `validate_private_home`, `ensure_private_directory`, `open_private_file`, `PrivateStorageError` | Resolve `METABROWSER_HOME`, create owner-only layout paths and files, reject symlinked/foreign/permissive ancestors for remote content, and write `CACHEDIR.TAG` |
 | `src/metabrowser/cache/records.py` | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` | Strict Pydantic models and SoftSchema envelope bindings |
 | `src/metabrowser/cache/layout.py` | `read_layout`, `migrate_layout`, `LAYOUT_FORMAT` | Fail closed on future formats and run ordered migrations |
-| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock` | Bounded reads, owner-only files through `open_private_file`, same-filesystem publication, fixed home → alias → ordered stores → resource order, and process-safe locking |
+| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock` | Bounded reads, owner-only files through `open_private_file` written as exclusive (`O_EXCL`) temporary files renamed into place, same-filesystem publication, fixed home → alias → ordered stores → resource order, and process-safe locking |
 | `src/metabrowser/cache/identity.py` | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` | Credential-free source identity, stable internal store identity, deterministic provider-identity store derivation, aliasing, and collision verification |
 | `src/metabrowser/cache/urls.py` | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` | Distinguish local paths, Git sources, and registered provider web URLs before constructing a `Path`; arbitrate declared reducer claims and terminal rejection; keep provider-specific syntax behind reducers |
 | `src/metabrowser/cache/acquire.py` | `acquire_repository`, `validate_staging_store`, `publish_store`, `publish_source_alias` | Acquire and publish a validated worktree-free store, then create the source alias as the final atomic visibility commit |
