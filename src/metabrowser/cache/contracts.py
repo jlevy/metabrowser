@@ -68,6 +68,12 @@ SCHEMA_ROOT: Final = FORMAT_ROOT / "schemas"
 CAPABILITY_PROVIDER_ID: Final = "repository-cache"
 CACHE_RECORDS_CORPUS_ID: Final = "cache-records-conformance"
 APPLICATION_CONFIG_CORPUS_ID: Final = "application-config-conformance"
+# One invalid configuration can fail once per entry, and its reasons reach an API
+# response, so the count and each reason's length are bounded.
+MAX_CONFIG_REASONS: Final = 10
+_MAX_CONFIG_REASON_LENGTH: Final = 200
+_MAX_CONFIG_NAME_LENGTH: Final = 64
+_MAX_PATH_PARTS: Final = 8
 _PRODUCERS: Final = ("repository-cache",)
 _CONSUMERS: Final = ("repository-cache",)
 
@@ -285,15 +291,57 @@ def validate_config_values(values: Any) -> ValidationResult:
     )
 
 
+def _config_reason_location(path: object) -> str:
+    """Name where a reason applies, without quoting what is there."""
+
+    if not isinstance(path, list) or not path:
+        return "config"
+    parts = cast(list[object], path)
+    named = ".".join(str(part)[:_MAX_CONFIG_NAME_LENGTH] for part in parts[:_MAX_PATH_PARTS])
+    return "config." + named + ("..." if len(parts) > _MAX_PATH_PARTS else "")
+
+
+def config_reasons(result: ValidationResult) -> list[str]:
+    """Return one short reason per validation error, naming no value in the config.
+
+    A structural error record carries the offending value in ``value`` and renders it
+    into ``message``, and a semantic one carries it in ``input``; a configuration value
+    can be anything the user put there, and these reasons reach an API response. So a
+    reason is the location, the rule that failed, and — for a semantic error — Pydantic's
+    bounded message, which describes the expectation rather than the input.
+    """
+
+    reasons: list[str] = []
+    for error in result.structural.errors:
+        rule = error.get("code") or error.get("validator") or "invalid"
+        offending = error.get("property")
+        where = _config_reason_location(error.get("path"))
+        named = f" ({str(offending)[:_MAX_CONFIG_NAME_LENGTH]})" if offending is not None else ""
+        reasons.append(f"{where}: {rule}{named}")
+    for error in result.semantic.errors:
+        where = _config_reason_location(error.get("loc"))
+        message = str(error.get("msg") or error.get("type") or "invalid")
+        reasons.append(f"{where}: {message[:_MAX_CONFIG_REASON_LENGTH]}")
+    return reasons
+
+
 def parse_application_config(values: Any) -> ApplicationConfig:
-    """Return validated configuration, raising ``ValueError`` with every reason."""
+    """Return validated configuration, raising ``ValueError`` with bounded reasons.
+
+    A broken configuration can fail in as many places as it has entries, so at most
+    :data:`MAX_CONFIG_REASONS` are reported and the rest are counted. The message is
+    bounded and quotes no configuration value.
+    """
 
     result = validate_config_values(values)
     if not result.structural.ok or not result.semantic.ok:
-        reasons = [*result.structural.errors, *result.semantic.errors]
+        reasons = config_reasons(result)
+        hidden = len(reasons) - MAX_CONFIG_REASONS
+        suffix = f", and {hidden} more" if hidden > 0 else ""
         raise ValueError(
             "config.yml does not satisfy its contract: "
-            + json.dumps(reasons, sort_keys=True, default=str)
+            + "; ".join(reasons[:MAX_CONFIG_REASONS])
+            + suffix
         )
     try:
         return ApplicationConfig.model_validate(values)
@@ -314,12 +362,14 @@ __all__ = [
     "CAPABILITY_PROVIDER_ID",
     "ENFORCED_CACHE_CONTRACTS",
     "FORMAT_ROOT",
+    "MAX_CONFIG_REASONS",
     "SCHEMA_ROOT",
     "CacheContract",
     "cache_contract_registry",
     "check_packaged_schemas",
     "compile_contracts",
     "config_corpus",
+    "config_reasons",
     "parse_application_config",
     "repository_cache_capabilities",
     "validate_config_values",

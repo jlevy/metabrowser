@@ -17,10 +17,12 @@ from metabrowser.cache.contracts import (
     CAPABILITY_PROVIDER_ID,
     ENFORCED_CACHE_CONTRACTS,
     FORMAT_ROOT,
+    MAX_CONFIG_REASONS,
     cache_contract_registry,
     check_packaged_schemas,
     compile_contracts,
     config_corpus,
+    config_reasons,
     parse_application_config,
     repository_cache_capabilities,
     validate_config_values,
@@ -289,3 +291,37 @@ def test_a_source_record_is_bound_to_its_identity_material() -> None:
     assert source.slug.endswith(source.id.removeprefix("sha256:")[:12])
     with pytest.raises(ValueError, match="does not match its transport"):
         RepositorySource.model_validate({**record, "clone_url": "https://github.com/pallets/Flask"})
+
+
+def test_a_large_invalid_config_reports_bounded_value_free_reasons() -> None:
+    """A broken config can fail once per entry, and its reasons reach an API response."""
+
+    secret = "ghp-examplesecrettokenvalue"
+    values = {
+        "format": secret,
+        "written_by": secret,
+        "upgrades": [{"version": secret, "at": secret} for _ in range(2000)],
+    }
+
+    with pytest.raises(ValueError) as refused:
+        parse_application_config(values)
+
+    message = str(refused.value)
+    assert len(message) <= 4096
+    assert secret not in message
+    assert "errors.pydantic.dev" not in message
+    assert message.count(";") < MAX_CONFIG_REASONS
+    assert message.endswith(" more")
+    assert "config.upgrades" in message
+
+
+def test_config_reasons_name_the_rule_and_location_of_every_error() -> None:
+    result = validate_config_values(
+        {"format": "f01", "written_by": "0.11.0", "upgrades": [{"version": "0.11.0"}]}
+    )
+
+    reasons = config_reasons(result)
+
+    assert reasons
+    assert all(reason.startswith("config") for reason in reasons)
+    assert any("upgrades.0" in reason for reason in reasons)
