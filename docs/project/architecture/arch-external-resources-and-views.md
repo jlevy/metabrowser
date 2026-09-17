@@ -366,7 +366,7 @@ initial v0.11 PR slice.
 
 `Release/v1` is a provider-neutral `frontmatter-md` artifact.
 Its YAML contains provider and repository identity, canonical URL, tag name, exact tag
-revision availability, normalized title, optional author, publication state, release
+revision observation, normalized title, optional author, publication state, release
 stage, creation time, and optional release time.
 Its body is the complete release notes.
 GitHub’s `target_commitish`, generated-notes controls, mutable “latest” status, and

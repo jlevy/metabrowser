@@ -525,6 +525,21 @@ def local_git_object_availability(
     return LocalGitObjectAvailability(oid=revision.oid, availability=availability)
 
 
+def local_merge_commit_availability(
+    comparison: ComparisonRef,
+    availability: LocalObjectAvailability,
+) -> LocalGitObjectAvailability:
+    """Report local state for a comparison's merge commit only when the provider observed it."""
+    if (
+        comparison.merge_commit_observation is not RevisionObservation.observed
+        or comparison.merge_commit_oid is None
+    ):
+        raise ValueError(
+            "local object availability requires a provider-observed merge commit object ID"
+        )
+    return LocalGitObjectAvailability(oid=comparison.merge_commit_oid, availability=availability)
+
+
 def _validate_comment_lifecycle(
     *,
     state: CommentState,

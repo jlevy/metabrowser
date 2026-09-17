@@ -324,7 +324,7 @@ The first released logical layout is:
     │       ├── state.yml
     │       └── repository.git/
     ├── provider-bindings/
-    │   └── <source-key>/
+    │   └── <source-key>.yml
     └── provider-repositories/
         └── <provider>/<instance-key>/<repository-key>/
 ```
@@ -333,6 +333,7 @@ The exact sharding and directory names remain a Phase 0 measurement decision, bu
 ownership is fixed: source aliases, shared Git stores, and stable provider repositories
 are siblings. Provider observations never live under a source entry, and the Git store
 contains no checkout.
+A source holds exactly one provider binding, so each source key names one binding file.
 Later schemas may change a physical spelling before release; they may not collapse those
 owners.
 
@@ -1101,7 +1102,7 @@ state.
 | `src/metabrowser/cache/selection.py` | `resolve_selection`, `resolve_ref_path_candidates` | Resolve slash-containing branch/tag/path candidates against local and remote-tracking refs and return either a full object ID or a typed request for one explicit missing ref; performs no network work |
 | `src/metabrowser/content_source.py` | `SourceSession`, `SourceCapabilities`, `ContentSource`, `ContentHandle`, `ContentEntry`, `list_directory`, `read_window`, `close` | Define one generation-owned source session for attached filesystems and immutable revisions without fabricating filesystem facts |
 | `src/metabrowser/git/tree_source.py` | `GitPath`, `GitTreeSource`, `resolve_tree`, `list_tree`, `read_blob`, batch-reader actor lifecycle | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs directly from the shared store |
-| `src/metabrowser/provider_resources/models.py` | `AuthorizationContextRef`, `authorization_context_key` | Move the non-secret context record and its one canonical key function out of the hosted-review plugin before core consumes them; `mb-s0gv` later moves the remaining neutral provider records |
+| `src/metabrowser/provider_resources/models.py` | `AuthorizationContextRef`, `authorization_context_key`, `LocalObjectAvailability`, `LocalGitObjectAvailability` | Move the non-secret context record, its one canonical key function, and the local object-availability vocabulary and report out of the hosted-review plugin before core consumes them; the observation-guarded constructors stay in `hosted_review/models.py`, and `mb-s0gv` later moves the remaining neutral provider records |
 | `src/metabrowser/plugin_api.py` | opaque `GitFetchCredentialLease`; `RepositoryObjectJobPort.request_selected_refs`, `provider_fetch_authorization_context` | Define the public opaque registry handle; validate an `AuthorizationContextRef`, derive its canonical key, and map the record once to an internal `ProviderPrincipal`; and let trusted provider plugins pass the handle without importing Git internals |
 | `src/metabrowser/git/process.py` | `GitCommandTarget`, `run_git`, `spawn_git_process`, askpass bridge | Keep one Git subprocess boundary; in Phase 3A, project a validated broker credential under the environment, configuration, and prompt-binding isolation of the repository-source architecture without exposing its secret |
 | `src/metabrowser/cache/repository_store.py` | `FetchAuthorizationContext`, `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` | Derive deterministic provider store IDs, isolate fetches by source and closed non-secret auth context, import staged objects, compare-and-swap refs and aliases, and protect leased and durable revisions |
@@ -1335,9 +1336,13 @@ replacement, repair, and purge use object, ref, record, and lease validation ins
   version, and exact refspec.
   Anonymous and proven provider-principal contexts may coalesce only on exact key
   equality; unknown SSH or credential-helper principals use a fresh unshareable context.
-- [ ] First move `AuthorizationContextRef` and `authorization_context_key` from
+- [ ] First move `AuthorizationContextRef`, `authorization_context_key`,
+  `LocalObjectAvailability`, and `LocalGitObjectAvailability` from
   `builtin_plugins/hosted_review/models.py` into `provider_resources/models.py`, keeping
   one key implementation, so core never imports a domain plugin.
+  The selected-ref service reports local object state with those two types; the
+  observation-guarded `local_git_object_availability` and
+  `local_merge_commit_availability` constructors stay in the hosted-review plugin.
 - [ ] Make `ProviderPrincipal` carry provider kind, instance, stable opaque principal,
   optional visibility-partition digest, and the derived authorization-context key.
   At the single `RepositoryObjectJobPort` boundary, validate an

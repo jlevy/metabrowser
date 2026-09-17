@@ -1354,7 +1354,7 @@ function validateActivityItem(raw, where) {
     require(primary.observation === "observed" &&
       detailRevision.repository_id === primary.repository_id &&
       detailRevision.oid ===
-        primary.oid, `${where}: commit detail must match the primary revision`);
+        primary.oid, `${where}: commit detail must identify the observed primary revision`);
     return item;
   }
 

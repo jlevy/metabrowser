@@ -120,10 +120,12 @@ repository; normalization never copies that identity onto an unknown head.
 ### Provider Revision Observation and Local Object Availability
 
 `RevisionRef`, `GitObjectRef`, and the change-request merge commit record what the
-provider reported, not what a local Git store holds.
+record’s producer observed, not what a local Git store holds.
+For hosted records the producer is the provider; for a `RepositoryActivity/v1` commit
+item it is the validated local Git history that supplied the commit.
 `RevisionObservation` is `observed`, `unavailable`, or `not_requested`: `observed`
-carries the provider-supplied full object ID, `unavailable` records that acquisition
-requested the object but the provider did not supply it, and `not_requested` records
+carries the producer-supplied full object ID, `unavailable` records that acquisition
+requested the object but the producer did not supply it, and `not_requested` records
 that acquisition deliberately omitted it.
 The object ID is present exactly when the observation is `observed`; the merge commit
 uses `merge_commit_observation` with the same rule.
@@ -132,11 +134,22 @@ Local availability is a separate fact with a separate vocabulary.
 `LocalObjectAvailability` is `not_requested`, `present`, `missing_fetchable`,
 `fetch_failed`, `unavailable`, or `outside_bound`, and `LocalGitObjectAvailability`
 reports one full object ID with one of those states.
-`local_git_object_availability` constructs a report only from a revision whose
-observation is `observed`, so a report can never describe an object ID the provider did
-not supply. The report is a service projection for the selected-ref service (`mb-jlon`),
-not an artifact contract: it has no schema, corpus, route, kind, view, or cache path,
-and every provider record schema is closed, so no provider artifact can embed it.
+The plain report model requires a full object ID but cannot know where that ID came
+from. The observation-guarded constructors enforce the provider-observed rule:
+`local_git_object_availability` accepts only a `RevisionRef` or `GitObjectRef` whose
+observation is `observed`, and `local_merge_commit_availability` accepts only a
+`ComparisonRef` whose `merge_commit_observation` is `observed`. Code that reports local
+state for a provider record uses those constructors rather than building the model from
+an arbitrary object ID.
+
+The report is a service projection, not an artifact contract: it has no schema, corpus,
+route, kind, view, or cache path, and every provider record schema is closed, so no
+provider artifact can embed it.
+Its consumer is core’s selected-ref service (`mb-jlon`), and core never imports a domain
+plugin, so `mb-jlon` moves `LocalObjectAvailability` and `LocalGitObjectAvailability`
+into `provider_resources/models.py` together with `AuthorizationContextRef` and
+`authorization_context_key`; the observation-guarded constructors stay here beside the
+revision records they read.
 Fetching an object changes the report, never the immutable provider snapshot that
 observed its ID; the store-level contract is in
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md#coordinated-hosted-views).

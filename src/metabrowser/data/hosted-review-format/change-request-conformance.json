@@ -276,6 +276,13 @@
     },
     {
       "changes": [
+        { "path": ["comparison", "merge_commit_observation"], "value": "observed" }
+      ],
+      "expect": "invalid",
+      "name": "observed-merge-commit-requires-object-id"
+    },
+    {
+      "changes": [
         {
           "path": ["comparison"],
           "value": {

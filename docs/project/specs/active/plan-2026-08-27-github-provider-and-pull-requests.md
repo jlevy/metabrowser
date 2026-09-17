@@ -541,7 +541,7 @@ or checkout. Its logical layout begins in Phase 3:
 ```text
 cache/
 ├── provider-bindings/
-│   └── <source-key>/<provider>.yml
+│   └── <source-key>.yml
 └── provider-repositories/
     └── <provider>/<instance-key>/<repository-key>/
         ├── objects/
@@ -555,6 +555,9 @@ cache/
                 └── pull-requests/<resource-key>/<profile-key>/{current,last-complete}.yml
 ```
 
+A source holds exactly one `ProviderBinding/v1`, so `<source-key>.yml` is one file
+rather than a per-provider directory; binding one source to a different provider,
+instance, or opaque repository ID is a rebind conflict, not a second file.
 An object snapshot is immutable after publication.
 Its snapshot ID is derived from its contract ID and canonical normalized payload.
 Retrieval time, validators, query identity, and rate-limit state live in the sync
@@ -766,7 +769,7 @@ or another domain plugin consumes them.
 | `src/metabrowser/plugin_loader/provider_capabilities.py` (new) | `build_provider_registry`, `create_provider`, `close_provider`, `close_all` | Build the provider/instance capability registry, inject provider-neutral ports, reject duplicate claims, and await adapter cancellation and close |
 | `src/metabrowser/plugin_loader/provider_addresses.py` (new) | `encode_provider_address_atom`, `decode_provider_address_atom`, `parse_hosted_address`, `format_hosted_address` | Encode provider instance, repository opaque ID, and provider-object opaque ID as typed canonical unpadded-base64url atoms; reject wrong roles, padding, noncanonical encodings, invalid UTF-8, dot segments, and bounds violations |
 | `src/metabrowser/plugin_api.py` | opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease` | Define the public opaque registry handle; validate an `AuthorizationContextRef`, derive its canonical key, and map it once to an internal `ProviderPrincipal`; and inject narrow cancellable ports with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests never accept a token, unrestricted `ContentSource`, cache path, checkout path, or provider schema |
-| `src/metabrowser/provider_resources/models.py` (new; `mb-jlon` moves `AuthorizationContextRef` and `authorization_context_key` first, `mb-s0gv` the rest) | provider kind/instance scalars, `ProviderObjectRef`, `RepositoryRef`, `AuthorizationContextRef`, generic object/collection targets, source-based `ProviderBinding`, retrieval and local-object-availability records, `ResourceSet`, `ProviderSyncManifest`, pointers, tombstones, profile declarations, closure validators, and the shared minimal `HostedRepository` | Own provider-content-neutral identity, source attachment, publication, and repository-summary records plus trusted-profile application independently of any domain plugin; `ChangeRequest`, `Release`, and their companions remain domain-plugin records |
+| `src/metabrowser/provider_resources/models.py` (new; `mb-jlon` moves `AuthorizationContextRef`, `authorization_context_key`, `LocalObjectAvailability`, and `LocalGitObjectAvailability` first, `mb-s0gv` the rest) | provider kind/instance scalars, `ProviderObjectRef`, `RepositoryRef`, `AuthorizationContextRef`, `LocalObjectAvailability` and `LocalGitObjectAvailability`, generic object/collection targets, source-based `ProviderBinding`, retrieval records, `ResourceSet`, `ProviderSyncManifest`, pointers, tombstones, profile declarations, closure validators, and the shared minimal `HostedRepository` | Own provider-content-neutral identity, source attachment, publication, and repository-summary records plus trusted-profile application independently of any domain plugin; `ChangeRequest`, `Release`, and their companions remain domain-plugin records; the observation-guarded `local_git_object_availability` and `local_merge_commit_availability` helpers stay in `hosted_review/models.py` beside the revision records they read |
 | `src/metabrowser/provider_resources/store.py` (new, `mb-i3xc`) | `ProviderStore`, `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Implement stable-repository-scoped and auth-scoped immutable snapshots, atomic query-key pointers, reader leases, diagnostic retention, and bounded reachability reclamation behind the port |
 | `src/metabrowser/cache/repository_store.py`, `src/metabrowser/cache/jobs.py`, `src/metabrowser/git/process.py`, `src/metabrowser/git/tree_source.py` (new) | `resolve_store`, `fetch_selected_refs`, `request_selected_refs`, `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`, `lease_revision`, `run_git`, `spawn_git_process`, askpass bridge, `GitTreeSource`, `list_tree`, `read_blob` | Share a worktree-free Git database across sessions and attachments; own the lease registry and validate every request’s context, source, expiry, revocation, and cancellation from it before job lookup; serve concurrent full-OID revisions without switching a checkout; keep one Git runner and project credentials through an isolated askpass bridge without ambient fallback |
 | `src/metabrowser/provider_process.py` (new, `mb-y1ax`) | mirrors `git/process.py` policy | `open_gh_credential_session`, `issue_git_fetch_credential_lease` and revocation through the core lease registry, broker-owned `run_provider_command(stdin=...)`, askpass replies for exact registered source URLs, `terminate_provider_command`, bounded response parsing, credential-state disposal on broker exit, child cleanup, and typed missing/timeout/output/cancelled failures for no-shell provider CLIs |
@@ -1001,9 +1004,11 @@ shared-mirror design head, with no compatibility layer:
   `comparison_observed` fields across Python, compiled schemas, corpora, the browser
   parser, and the GitHub coverage oracle.
 - [x] Add the non-persisted `LocalObjectAvailability` vocabulary and
-  `LocalGitObjectAvailability` report, constructible only for a provider-observed object
-  ID and absent from every provider record schema; register no route, kind, view,
-  contract, or cache path for it.
+  `LocalGitObjectAvailability` report, absent from every provider record schema, plus
+  the observation-guarded `local_git_object_availability` and
+  `local_merge_commit_availability` constructors that enforce the provider-observed
+  object-ID rule the plain model cannot; register no route, kind, view, contract, or
+  cache path for it.
 
 ### Phase 1: Robust generic repository cache (`mb-ire2` through `mb-dg00`)
 
@@ -1250,12 +1255,12 @@ verification.
 | --- | --- | --- | --- |
 | R0 contracts (`mb-g6ed`) | `mb-42j7` | `mb-5m4h` | `Release/v1` frontmatter, `ReleaseAsset/v1` and `ReleaseIndex/v1` pure YAML, profile declarations, corpora, parsers, schemas, and architecture evidence |
 | R1 GitHub mapping (`mb-esj2`) | `mb-xj80` | `mb-npdt` | Scrubbed public coverage oracle and fixed bounded `gh api` normalization; every field observed, derived, optional, or unavailable |
-| R2 direct cache (`mb-aw0x`) | `mb-nz6a` | `mb-2u4m` | `/releases/tag/<tag>` reduction, one immutable Release plus bounded asset metadata, exact tag revision availability, partial/offline publication, and no implicit asset-byte download |
+| R2 direct cache (`mb-aw0x`) | `mb-nz6a` | `mb-2u4m` | `/releases/tag/<tag>` reduction, one immutable Release plus bounded asset metadata, exact tag revision observation, partial/offline publication, and no implicit asset-byte download |
 | R3 direct views (`mb-bbw8`) | `mb-oo4w` | `mb-g74x` | Registered `release` resource kind, generic hosted address, Release and Source views, exact tag revision, asset children, CLI parity, and browserless lifecycle evidence |
 | R4 discovery/nav (`mb-fkcs`) | `mb-1742` | `mb-gp0k` | Bounded release index, explicit pagination/completeness, Releases virtual collection, restoration/disposal, and optional activity projection |
 
 `Release/v1` uses `frontmatter-md`: YAML contains provider/repository identity,
-canonical URL, tag, exact tag-revision availability, normalized title, optional author,
+canonical URL, tag, exact tag-revision observation, normalized title, optional author,
 publication state, release stage, creation time, and optional `released_at`; the
 complete release notes are the Markdown body and participate in snapshot identity.
 GitHub `published_at` maps to `released_at`. `target_commitish`, generated-note

@@ -221,6 +221,21 @@
       "expect": "invalid"
     },
     {
+      "name": "commit-with-matching-unavailable-revisions-still-requires-observed-primary",
+      "changes": [
+        { "path": ["items", 0, "primary_revision", "observation"], "value": "unavailable" },
+        { "path": ["items", 0, "primary_revision", "oid"], "value": null },
+        { "path": ["items", 0, "detail", "revision", "observation"], "value": "unavailable" },
+        { "path": ["items", 0, "detail", "revision", "oid"], "value": null }
+      ],
+      "expect": "invalid"
+    },
+    {
+      "name": "observed-base-and-head-require-comparison-observed",
+      "changes": [{ "path": ["items", 1, "comparison_observed"], "value": false }],
+      "expect": "invalid"
+    },
+    {
       "name": "commit-cannot-claim-an-observed-comparison",
       "changes": [{ "path": ["items", 0, "comparison_observed"], "value": true }],
       "expect": "invalid"

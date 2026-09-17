@@ -14,6 +14,7 @@ from metabrowser.builtin_plugins.hosted_review.models import (
     RevisionRef,
     dump_change_request,
     local_git_object_availability,
+    local_merge_commit_availability,
     validate_change_request,
 )
 
@@ -176,6 +177,36 @@ def test_local_object_availability_requires_a_provider_observed_object_id(
     for state in LocalObjectAvailability:
         with pytest.raises(ValueError, match="provider-observed object ID"):
             local_git_object_availability(head, state)
+
+
+def test_local_merge_commit_availability_uses_the_observed_merge_commit() -> None:
+    document = change_request_case()
+    merge_oid = "abcdef0123456789abcdef0123456789abcdef01"
+    document["comparison"]["merge_commit_observation"] = "observed"
+    document["comparison"]["merge_commit_oid"] = merge_oid
+    comparison = validate_change_request(document).comparison
+
+    for state in LocalObjectAvailability:
+        report = local_merge_commit_availability(comparison, state)
+        assert report == LocalGitObjectAvailability(oid=merge_oid, availability=state)
+    # The merge report never substitutes the head revision's object ID.
+    assert comparison.head.oid != merge_oid
+    assert comparison.merge_commit_observation is RevisionObservation.observed
+
+
+@pytest.mark.parametrize("observation", ["unavailable", "not_requested"])
+def test_local_merge_commit_availability_requires_a_provider_observed_merge_commit(
+    observation: str,
+) -> None:
+    document = change_request_case()
+    document["comparison"]["merge_commit_observation"] = observation
+    document["comparison"]["merge_commit_oid"] = None
+    comparison = validate_change_request(document).comparison
+    assert comparison.head.observation is RevisionObservation.observed
+
+    for state in LocalObjectAvailability:
+        with pytest.raises(ValueError, match="provider-observed merge commit object ID"):
+            local_merge_commit_availability(comparison, state)
 
 
 def test_change_request_rejects_negative_aggregate_counts() -> None:
