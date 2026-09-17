@@ -417,6 +417,53 @@ def test_an_older_client_refuses_a_future_home_before_writing(
     assert _snapshot(cache_home) == before
     assert all((cache_home / path).read_bytes() == data for path, data in contents.items())
 
+    # Preparing the home for use reads the format before it creates or probes anything.
+    with pytest.raises(FutureLayoutFormatError, match="Upgrade Metabrowser"):
+        open_cache(cache_home, version="0.11.0")
+
+    assert _snapshot(cache_home) == before
+    assert all((cache_home / path).read_bytes() == data for path, data in contents.items())
+
+
+@posix_only
+def test_a_future_home_that_was_never_prepared_stays_uncreated(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir(mode=0o700)
+    write_private_file_atomic(
+        home,
+        "config.yml",
+        (
+            _CONFIG_HEADER + "config:\n  format: f09\n  written_by: 0.99.0\n  upgrades: []\n"
+        ).encode(),
+    )
+    before = _snapshot(home)
+
+    with pytest.raises(FutureLayoutFormatError):
+        open_cache(home, version="0.11.0")
+
+    assert _snapshot(home) == before
+    assert not (home / "cache").exists()
+
+
+@posix_only
+def test_an_unreadable_config_is_refused_with_a_bounded_value_free_message(
+    cache_home: Path,
+) -> None:
+    secret = "ghp-examplesecrettokenvalue"
+    upgrades = "".join(f'    - {{version: "{secret}", at: "{secret}"}}\n' for _ in range(500))
+    _write_config(
+        cache_home,
+        f'config:\n  format: f01\n  written_by: "{secret}"\n  upgrades:\n{upgrades}',
+    )
+
+    with pytest.raises(LayoutError) as refused:
+        migrate_layout(cache_home, version="0.11.0")
+
+    message = str(refused.value)
+    assert len(message) <= 4096
+    assert secret not in message
+    assert str(cache_home) not in message
+
 
 @posix_only
 def test_migrations_run_in_order_and_publish_config_last(

@@ -343,6 +343,11 @@ def open_cache(home: Path | None = None, *, version: str | None = None) -> Cache
     """
 
     home = application_home() if home is None else home
+    # Read the layout and config before anything is created, so a home a newer
+    # Metabrowser wrote is refused without a directory, a probe entry, or a lock file
+    # appearing in it. Both return None when the home does not exist yet.
+    read_layout(home)
+    read_config(home)
     ensure_home(home)
     probe = probe_application_home(home)
     outcome = migrate_layout(home, version=version)
