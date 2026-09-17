@@ -1,0 +1,25 @@
+$defs:
+  LayoutFormat:
+    pattern: ^f[0-9]{2,}$
+    type: string
+  MetabrowserVersion:
+    maxLength: 128
+    minLength: 1
+    pattern: ^[0-9A-Za-z.+!_-]+$
+    type: string
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+description: '``cache/layout.yml``: the directory-semantics format of the cache.'
+properties:
+  created_by:
+    $ref: '#/$defs/MetabrowserVersion'
+  format:
+    $ref: '#/$defs/LayoutFormat'
+required:
+- created_by
+- format
+title: CacheLayout
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.cache:CacheLayout/v1
+  schema_sha256: 9953eb18ba799f3242e319d884c80d9876debdd4537ec2abd026ac26651a9e12

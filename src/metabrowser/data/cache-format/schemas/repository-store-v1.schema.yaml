@@ -1,0 +1,65 @@
+$defs:
+  CanonicalTimestamp:
+    pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$
+    type: string
+  GitVersion:
+    maxLength: 128
+    minLength: 1
+    pattern: ^[0-9]+\.[0-9]+[!-~]*$
+    type: string
+  ObjectFormat:
+    enum:
+    - sha1
+    - sha256
+    type: string
+  Sha256Identity:
+    pattern: ^sha256:[0-9a-f]{64}$
+    type: string
+  StoreAcquisition:
+    additionalProperties: false
+    description: How a store's Git database was first populated.
+    properties:
+      git_version:
+        $ref: '#/$defs/GitVersion'
+      object_format:
+        $ref: '#/$defs/ObjectFormat'
+      strategy:
+        enum:
+        - blobless
+        - full
+        title: Strategy
+        type: string
+    required:
+    - git_version
+    - object_format
+    - strategy
+    title: StoreAcquisition
+    type: object
+$schema: https://json-schema.org/draft/2020-12/schema
+additionalProperties: false
+description: |-
+  ``store.yml``: identity and acquisition metadata of a worktree-free Git database.
+
+  ``configuration_digest`` fingerprints the store's normalized Git configuration. It
+  is recorded after the first successful fetch and before publication, and replaced
+  only under the store lock by an operation that intentionally changes that
+  configuration.
+properties:
+  acquisition:
+    $ref: '#/$defs/StoreAcquisition'
+  configuration_digest:
+    $ref: '#/$defs/Sha256Identity'
+  created_at:
+    $ref: '#/$defs/CanonicalTimestamp'
+  id:
+    $ref: '#/$defs/Sha256Identity'
+required:
+- acquisition
+- configuration_digest
+- created_at
+- id
+title: RepositoryStore
+type: object
+x-softschema:
+  contract: com.github.jlevy.metabrowser.cache:RepositoryStore/v1
+  schema_sha256: 9da3a5a72bb2206e945d8b832d165c02d9cd7a97094fa8e6a55e063968384d9c

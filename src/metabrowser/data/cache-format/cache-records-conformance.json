@@ -1,0 +1,121 @@
+{
+  "base_records": {
+    "layout": {
+      "format": "f01",
+      "created_by": "0.11.0"
+    },
+    "source": {
+      "id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
+      "slug": "github-com--pallets--flask--e7b7fe0ffe8a",
+      "display_url": "https://github.com/pallets/flask",
+      "clone_url": "https://github.com/pallets/flask",
+      "transport": "https",
+      "created_at": "2026-09-17T12:00:00Z"
+    },
+    "scp_source": {
+      "id": "sha256:74fe6e07e4b9e366cbfea79bdb0f6051ae58c0742e1a6748ba6c9dea86b1e231",
+      "slug": "github-com--pallets--flask--74fe6e07e4b9",
+      "display_url": "git@github.com:pallets/flask.git",
+      "clone_url": "git@github.com:pallets/flask.git",
+      "transport": "ssh",
+      "created_at": "2026-09-17T12:00:00.250Z"
+    },
+    "source_state": {
+      "last_opened_at": "2026-09-17T12:30:00Z"
+    },
+    "store_alias": {
+      "source_id": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9",
+      "store_id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
+      "generation": 1,
+      "updated_at": "2026-09-17T12:00:01Z"
+    },
+    "store": {
+      "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
+      "created_at": "2026-09-17T12:00:00Z",
+      "acquisition": {
+        "strategy": "blobless",
+        "git_version": "2.50.1",
+        "object_format": "sha1"
+      },
+      "configuration_digest": "sha256:0f0e0d0c0b0a09080706050403020100f0e0d0c0b0a09080706050403020100f"
+    },
+    "store_state": {
+      "default_remote_ref": "refs/remotes/origin/main",
+      "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
+      "object_state": "converging",
+      "last_fetch_at": "2026-09-17T12:00:00Z",
+      "last_operation": {
+        "kind": "acquire",
+        "outcome": "succeeded",
+        "at": "2026-09-17T12:00:00Z"
+      }
+    },
+    "empty_store_state": {
+      "default_remote_ref": null,
+      "default_revision": null,
+      "object_state": "complete",
+      "last_fetch_at": null,
+      "last_operation": {
+        "kind": "acquire",
+        "outcome": "succeeded",
+        "at": "2026-09-17T12:00:00Z"
+      }
+    }
+  },
+  "cases": [
+    {"name": "layout-f01", "record": "layout", "changes": [], "expect": "valid"},
+    {"name": "layout-future-format-is-structurally-valid", "record": "layout", "changes": [{"path": ["format"], "value": "f02"}], "expect": "valid"},
+    {"name": "layout-format-needs-two-digits", "record": "layout", "changes": [{"path": ["format"], "value": "f1"}], "expect": "invalid"},
+    {"name": "layout-rejects-undeclared-field", "record": "layout", "changes": [{"path": ["schema"], "value": "/tmp/other.schema.yaml"}], "expect": "invalid"},
+    {"name": "layout-requires-its-producer", "record": "layout", "changes": [{"path": ["created_by"], "value": ""}], "expect": "invalid"},
+
+    {"name": "source-https", "record": "source", "changes": [], "expect": "valid"},
+    {"name": "source-display-url-may-differ", "record": "source", "changes": [{"path": ["display_url"], "value": "https://github.com/pallets/flask/"}], "expect": "valid"},
+    {"name": "source-extended-slug-suffix", "record": "source", "changes": [{"path": ["slug"], "value": "github-com--pallets--flask--e7b7fe0ffe8a4467"}], "expect": "valid"},
+    {"name": "source-id-must-match-its-material", "record": "source", "changes": [{"path": ["clone_url"], "value": "https://github.com/pallets/flask.git"}], "expect": "invalid"},
+    {"name": "source-transport-is-identity-material", "record": "source", "changes": [{"path": ["transport"], "value": "ssh"}], "expect": "invalid"},
+    {"name": "source-slug-suffix-must-be-its-digest", "record": "source", "changes": [{"path": ["slug"], "value": "github-com--pallets--flask--000000000000"}], "expect": "invalid"},
+    {"name": "source-slug-suffix-width-is-frozen", "record": "source", "changes": [{"path": ["slug"], "value": "github-com--pallets--flask--e7b7fe0ffe8a4"}], "expect": "invalid"},
+    {"name": "source-slug-is-lowercase", "record": "source", "changes": [{"path": ["slug"], "value": "GitHub-com--pallets--flask--e7b7fe0ffe8a"}], "expect": "invalid"},
+    {"name": "source-url-has-no-whitespace", "record": "source", "changes": [{"path": ["display_url"], "value": "https://github.com/pallets/flask two"}], "expect": "invalid"},
+    {"name": "source-rejects-unknown-transport", "record": "source", "changes": [{"path": ["transport"], "value": "git"}], "expect": "invalid"},
+    {"name": "source-timestamp-is-canonical-utc", "record": "source", "changes": [{"path": ["created_at"], "value": "2026-09-17T12:00:00+00:00"}], "expect": "invalid"},
+    {"name": "source-timestamp-omits-zero-milliseconds", "record": "source", "changes": [{"path": ["created_at"], "value": "2026-09-17T12:00:00.000Z"}], "expect": "invalid"},
+    {"name": "source-timestamp-is-a-real-instant", "record": "source", "changes": [{"path": ["created_at"], "value": "2026-02-30T12:00:00Z"}], "expect": "invalid"},
+    {"name": "source-rejects-undeclared-field", "record": "source", "changes": [{"path": ["token"], "value": "secret"}], "expect": "invalid"},
+    {"name": "source-scp", "record": "scp_source", "changes": [], "expect": "valid"},
+    {"name": "source-scp-id-is-not-the-https-id", "record": "scp_source", "changes": [{"path": ["id"], "value": "sha256:e7b7fe0ffe8a446772b8a863f51222c90d256e511e1a4da3daec599735962fa9"}], "expect": "invalid"},
+
+    {"name": "source-state-opened", "record": "source_state", "changes": [], "expect": "valid"},
+    {"name": "source-state-never-opened", "record": "source_state", "changes": [{"path": ["last_opened_at"], "value": null}], "expect": "valid"},
+    {"name": "source-state-rejects-undeclared-field", "record": "source_state", "changes": [{"path": ["opens"], "value": 3}], "expect": "invalid"},
+
+    {"name": "alias-first-generation", "record": "store_alias", "changes": [], "expect": "valid"},
+    {"name": "alias-later-generation", "record": "store_alias", "changes": [{"path": ["generation"], "value": 9007199254740991}], "expect": "valid"},
+    {"name": "alias-generation-starts-at-one", "record": "store_alias", "changes": [{"path": ["generation"], "value": 0}], "expect": "invalid"},
+    {"name": "alias-generation-is-a-safe-integer", "record": "store_alias", "changes": [{"path": ["generation"], "value": 9007199254740992}], "expect": "invalid"},
+    {"name": "alias-generation-is-not-a-string", "record": "store_alias", "changes": [{"path": ["generation"], "value": "1"}], "expect": "invalid"},
+    {"name": "alias-store-id-is-a-full-digest", "record": "store_alias", "changes": [{"path": ["store_id"], "value": "sha256:4c2d8559cb01"}], "expect": "invalid"},
+    {"name": "alias-rejects-undeclared-field", "record": "store_alias", "changes": [{"path": ["path"], "value": "/Users/someone/checkout"}], "expect": "invalid"},
+
+    {"name": "store-blobless-sha1", "record": "store", "changes": [], "expect": "valid"},
+    {"name": "store-full-sha256", "record": "store", "changes": [{"path": ["acquisition", "strategy"], "value": "full"}, {"path": ["acquisition", "object_format"], "value": "sha256"}], "expect": "valid"},
+    {"name": "store-rejects-unknown-strategy", "record": "store", "changes": [{"path": ["acquisition", "strategy"], "value": "shallow"}], "expect": "invalid"},
+    {"name": "store-rejects-unknown-object-format", "record": "store", "changes": [{"path": ["acquisition", "object_format"], "value": "sha512"}], "expect": "invalid"},
+    {"name": "store-git-version-is-numeric", "record": "store", "changes": [{"path": ["acquisition", "git_version"], "value": "latest"}], "expect": "invalid"},
+    {"name": "store-requires-configuration-digest", "record": "store", "changes": [{"path": ["configuration_digest"], "value": null}], "expect": "invalid"},
+    {"name": "store-rejects-undeclared-acquisition-field", "record": "store", "changes": [{"path": ["acquisition", "remote"], "value": "https://github.com/pallets/flask"}], "expect": "invalid"},
+
+    {"name": "store-state-converging", "record": "store_state", "changes": [], "expect": "valid"},
+    {"name": "store-state-sha256-revision", "record": "store_state", "changes": [{"path": ["default_revision"], "value": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e5f4c1a2e8b0d9c7e6a5f4b3c"}], "expect": "valid"},
+    {"name": "store-state-revision-is-full", "record": "store_state", "changes": [{"path": ["default_revision"], "value": "5f4c1a2"}], "expect": "invalid"},
+    {"name": "store-state-revision-is-lowercase", "record": "store_state", "changes": [{"path": ["default_revision"], "value": "5F4C1A2E8B0D9C7E6A5F4B3C2D1E0F9A8B7C6D5E"}], "expect": "invalid"},
+    {"name": "store-state-revision-needs-its-ref", "record": "store_state", "changes": [{"path": ["default_remote_ref"], "value": null}], "expect": "invalid"},
+    {"name": "store-state-ref-is-a-full-ref", "record": "store_state", "changes": [{"path": ["default_remote_ref"], "value": "main"}], "expect": "invalid"},
+    {"name": "store-state-rejects-unknown-object-state", "record": "store_state", "changes": [{"path": ["object_state"], "value": "ready"}], "expect": "invalid"},
+    {"name": "store-state-rejects-unknown-operation", "record": "store_state", "changes": [{"path": ["last_operation", "kind"], "value": "gc"}], "expect": "invalid"},
+    {"name": "store-state-records-a-failed-refresh", "record": "store_state", "changes": [{"path": ["last_operation", "kind"], "value": "refresh"}, {"path": ["last_operation", "outcome"], "value": "failed"}], "expect": "valid"},
+    {"name": "store-state-empty-remote", "record": "empty_store_state", "changes": [], "expect": "valid"},
+    {"name": "store-state-empty-remote-has-no-revision", "record": "empty_store_state", "changes": [{"path": ["default_revision"], "value": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e"}], "expect": "invalid"}
+  ]
+}
