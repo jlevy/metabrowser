@@ -31,10 +31,12 @@ Each rule answers a specific threat:
   and ``0600`` files without ACL entries, whatever the umask and whatever a parent would
   have them inherit; they start with the restrictive mode, which a umask can only
   narrow, and are removed again if they are refused. Entries are reached by directory
-  descriptor with ``O_NOFOLLOW`` and re-identified by device and inode after opening. A
-  file is opened with ``O_NONBLOCK`` and without ``O_TRUNC``; its type, identity, owner,
-  link count, mode, and ACL are judged on the descriptor before it is truncated or
-  handed back.
+  descriptor with ``O_NOFOLLOW`` and re-identified by device and inode after opening.
+  That identity is only a hint, because an unlinked entry's inode number can be reused
+  at once, as Linux file systems do; safety never rests on it alone, since owner, type,
+  mode, link count, and ACL are all judged again on the opened descriptor. A file is
+  opened with ``O_NONBLOCK`` and without ``O_TRUNC``, and all of that is judged before
+  it is truncated or handed back.
 - **Repair only what is ours, and never mistake repair for revocation.** Repairing an
   entry the current user owns removes its group and other permission bits and clears a
   sharing ACL, with a logged warning; it never adds owner permissions, so an existing
@@ -749,7 +751,13 @@ def _remove_created_file(parent_fd: int, name: str, fd: int) -> None:
 
 
 def _remove_created_directory(parent_fd: int, name: str, created: os.stat_result) -> None:
-    """Remove *name* only while it is still the empty directory this call created."""
+    """Remove *name* only while it is still the empty directory this call created.
+
+    No descriptor is held here, so a reused inode number could make another directory
+    match; only the owner or root can place one inside the verified private parent, and
+    ``rmdir`` removes nothing but an empty directory. The file cleanup holds its
+    descriptor, so its inode cannot be reused while it compares.
+    """
 
     with contextlib.suppress(OSError):
         current = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
@@ -937,6 +945,14 @@ def _unopenable(
 def _require_same_object(
     fd: int, expected: os.stat_result, location: PrivateStorageLocation, path: Path
 ) -> os.stat_result:
+    """Refuse a descriptor whose (device, inode) differs from the entry inspected earlier.
+
+    A match does not prove identity: once the inspected entry is unlinked, its inode
+    number may be reused immediately (Linux does), so a replacement can match. Callers
+    therefore judge owner, type, mode, link count, and ACL again on the returned status
+    and descriptor, and this check only turns an observable swap into a clear refusal.
+    """
+
     opened = os.fstat(fd)
     if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
         raise PrivateStorageError(

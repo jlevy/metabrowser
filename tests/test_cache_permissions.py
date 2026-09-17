@@ -796,6 +796,8 @@ def test_a_directory_replaced_mid_check_is_unverifiable(
     staging = home / "cache" / "staging"
 
     def replace() -> None:
+        # Renamed, not removed: the original stays allocated, so the new directory cannot
+        # reuse its inode number, which Linux would otherwise do at once.
         staging.rename(home / "cache" / "moved-aside")
         _private_dir(staging)
 
@@ -1084,6 +1086,7 @@ def test_the_home_replaced_mid_check_is_unverifiable(
     aside = home.parent / "home-aside"
 
     def replace() -> None:
+        # Renamed, not removed, so the new home cannot reuse the original's inode number.
         home.rename(aside)
         _private_dir(home)
 
@@ -1122,13 +1125,77 @@ def test_a_file_replaced_by_another_file_mid_check_is_refused_untouched(
             layout.write_bytes(b"someone else's\n")
             layout.chmod(PRIVATE_FILE_MODE)
 
-    _swap_after_nofollow_stat(monkeypatch, "layout.yml", replace)
-    error = _refusal(lambda: open_private_file(home, "cache/layout.yml", flags))
-    monkeypatch.undo()
+    # Linux file systems reuse a freed inode number at once, so a replacement created right
+    # after the unlink could carry the original's number and pass the identity check. An
+    # open descriptor keeps the original inode allocated until the call returns.
+    original = os.open(layout, os.O_RDONLY)
+    try:
+        _swap_after_nofollow_stat(monkeypatch, "layout.yml", replace)
+        error = _refusal(lambda: open_private_file(home, "cache/layout.yml", flags))
+        monkeypatch.undo()
+    finally:
+        os.close(original)
 
     assert error.violation is PrivateStorageViolation.UNVERIFIABLE
     assert outside.read_bytes() == b"outside data that must survive\n"
     assert _mode(outside) == 0o644
+
+
+@pytest.mark.parametrize("replacement", ["shared-mode", "hard-link", "foreign-owner"])
+def test_a_replacement_that_reuses_the_inode_number_is_still_judged_on_its_descriptor(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """(device, inode) cannot prove identity alone, so every privacy fact is judged on the fd.
+
+    The replacement is made to report the original's device and inode, as an immediately
+    reused inode number would, and must still be refused for what it actually is.
+    """
+
+    outside = tmp_path / "outside.txt"
+    outside.write_bytes(b"outside data that must survive\n")
+    outside.chmod(0o644)
+    ensure_private_directory(home, "cache")
+    _write_file(home, "cache/layout.yml", b"ours\n")
+    layout = home / "cache" / "layout.yml"
+    original = os.lstat(layout)
+    real_fstat = os.fstat
+
+    def replace() -> None:
+        layout.unlink()
+        if replacement == "hard-link":
+            os.link(outside, layout)
+        else:
+            layout.write_bytes(b"replacement\n")
+            layout.chmod(0o644 if replacement == "shared-mode" else PRIVATE_FILE_MODE)
+        swapped = os.lstat(layout)
+        owner = _another_uid() if replacement == "foreign-owner" else swapped.st_uid
+
+        def reused_identity(fd: int) -> os.stat_result:
+            result = real_fstat(fd)
+            if (result.st_dev, result.st_ino) != (swapped.st_dev, swapped.st_ino):
+                return result
+            fields = list(result[:10])
+            fields[1], fields[2], fields[4] = original.st_ino, original.st_dev, owner
+            return os.stat_result(fields)
+
+        monkeypatch.setattr(os, "fstat", reused_identity)
+
+    _swap_after_nofollow_stat(monkeypatch, "layout.yml", replace)
+    error = _refusal(lambda: open_private_file(home, "cache/layout.yml", os.O_WRONLY | os.O_TRUNC))
+    monkeypatch.undo()
+
+    assert (
+        error.violation
+        is {
+            "shared-mode": PrivateStorageViolation.PERMISSIVE,
+            "hard-link": PrivateStorageViolation.HARD_LINK,
+            "foreign-owner": PrivateStorageViolation.FOREIGN_OWNER,
+        }[replacement]
+    )
+    assert outside.read_bytes() == b"outside data that must survive\n"
+    assert _mode(outside) == 0o644
+    if replacement != "hard-link":
+        assert layout.read_bytes() == b"replacement\n"
 
 
 @pytest.mark.parametrize(
