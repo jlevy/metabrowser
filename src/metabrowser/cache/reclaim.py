@@ -16,8 +16,9 @@ observer; the fixture replay checks those reports against the frozen machines.
   maintenance locks and the ordered source-alias and store locks, a store that still
   fails revalidation moves to ``quarantine/<entry>/`` after the aliases naming it, so a
   crash between the two leaves the aliases retained and an ordinary unreferenced store.
-  Only an explicit purge moves a quarantined entry to trash, under the application-home
-  lock.
+  A store no alias was seen to name is quarantined under its store lock alone, after
+  verifying there that no alias names it. Only an explicit purge moves a quarantined
+  entry to trash, under the application-home lock.
 - **Store reclamation** (``store_reclamation``). A store no alias names is moved to
   trash under its exclusive maintenance lock, which a live lease makes busy, and its
   store lock. Provider references are not modeled yet, so any provider binding or
@@ -32,6 +33,7 @@ import secrets
 import shutil
 import stat
 from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -389,6 +391,35 @@ class QuarantineOutcome:
     retained: tuple[str, ...] = ()
 
 
+def aliases_naming_stores(home: Path, store_keys: Sequence[str]) -> tuple[str, ...]:
+    """Return the slugs of sources whose alias names any of *store_keys*, in slug order.
+
+    An alias record that cannot be read may name one of them, so its slug is included:
+    the caller then locks and retains it rather than trusting that it does not. An entry
+    whose name is not a slug cannot be an alias Metabrowser wrote and is ignored.
+    """
+
+    store_ids = {f"{IDENTITY_PREFIX}{key}" for key in store_keys}
+    naming: list[str] = []
+    for entry in os.scandir(home / SOURCES):
+        if not is_slug(entry.name):
+            continue
+        try:
+            alias = read_record(
+                home,
+                source_record(entry.name, "store-alias.yml"),
+                REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+            )
+        except FileNotFoundError:
+            continue
+        except (RecordError, PrivateStorageError, OSError):
+            naming.append(entry.name)
+            continue
+        if not isinstance(alias, RepositoryStoreAlias) or alias.store_id in store_ids:
+            naming.append(entry.name)
+    return tuple(sorted(naming))
+
+
 def quarantine_entries(
     home: Path,
     *,
@@ -400,22 +431,33 @@ def quarantine_entries(
     """Quarantine stores, and the aliases naming them, that still fail *revalidate*.
 
     Takes each store's exclusive maintenance lock without blocking and defers if any is
-    busy, then the source-alias and store locks in order. *source_slugs* are the sources
-    the stores were resolved through; their alias locks are held even when an alias
-    entry is already gone, as the frozen machine requires. When no store is present
-    there is nothing to quarantine. *revalidate* runs under those locks and must not do network
-    or long-running work. Every alias moves before any store, so a crash between the two
-    leaves the aliases retained in quarantine and the stores ordinary unreferenced stores.
+    busy. *revalidate* runs under the locks that follow and must not do network or
+    long-running work.
+
+    With *source_slugs*, the sources the stores were resolved through, it takes their
+    alias locks and the store locks in order; their alias locks are held even when an
+    alias entry is already gone, as the frozen machine requires. Every alias moves
+    before any store, so a crash between the two leaves the aliases retained in
+    quarantine and the stores ordinary unreferenced stores.
+
+    Without *source_slugs*, for stores no alias was seen to name, it takes the store
+    locks alone. That is safe because the exclusive maintenance lock excludes every
+    lease and an alias naming a store is written only under that store's lease, so no
+    alias can come to name a store while it is held; and an acquisition that begins
+    after the move re-verifies the store under the store lock before publishing its
+    alias. An alias published before the exclusive lock was taken is still possible, so
+    the absence of one is verified under the store locks, and if one names a store the
+    store locks are released and the alias-first path runs with those sources.
+
+    When no store is present there is nothing to quarantine.
     """
 
     if not store_keys:
         raise ValueError("quarantine needs at least one repository store")
     machine = "quarantine"
-    slugs = sorted(set(source_slugs))
     keys = sorted(set(store_keys))
+    slugs = sorted(set(source_slugs))
     maintenance: list[CacheLock] = []
-    alias_locks: list[CacheLock] = []
-    store_locks: list[CacheLock] = []
     try:
         try:
             for key in keys:
@@ -424,10 +466,47 @@ def quarantine_entries(
             _emit(observer, machine, "exclusive_busy")
             return QuarantineOutcome("deferred")
         _emit(observer, machine, "try_exclusive")
-        for slug in slugs:
-            alias_locks.append(source_alias_lock(home, slug))
-        for key in keys:
-            store_locks.append(repository_store_lock(home, key))
+        if not slugs:
+            with ExitStack() as store_locks:
+                locked = [
+                    store_locks.enter_context(repository_store_lock(home, key)) for key in keys
+                ]
+                if not any(os.path.lexists(home / store_directory(key)) for key in keys):
+                    _emit(observer, machine, "unreferenced_store_absent")
+                    return QuarantineOutcome("nothing_to_quarantine")
+                slugs = list(aliases_naming_stores(home, keys))
+                if slugs:
+                    _emit(observer, machine, "alias_now_names_store")
+                elif revalidate():
+                    _emit(observer, machine, "unreferenced_store_revalidated_ok")
+                    return QuarantineOutcome("healthy")
+                else:
+                    entry, retained = _move_into_quarantine(
+                        home,
+                        [
+                            (store_directory(key), lock)
+                            for key, lock in zip(keys, locked, strict=True)
+                        ],
+                    )
+                    _emit(observer, machine, "move_unreferenced_store_to_quarantine")
+                    return QuarantineOutcome("quarantined", entry, retained)
+        return _quarantine_with_aliases(home, slugs, keys, revalidate, observer)
+    finally:
+        for lock in reversed(maintenance):
+            lock.release()
+
+
+def _quarantine_with_aliases(
+    home: Path,
+    slugs: Sequence[str],
+    keys: Sequence[str],
+    revalidate: Callable[[], bool],
+    observer: MachineObserver | None,
+) -> QuarantineOutcome:
+    machine = "quarantine"
+    with ExitStack() as held:
+        alias_locks = [held.enter_context(source_alias_lock(home, slug)) for slug in slugs]
+        store_locks = [held.enter_context(repository_store_lock(home, key)) for key in keys]
         if not any(os.path.lexists(home / store_directory(key)) for key in keys):
             _emit(observer, machine, "store_absent")
             return QuarantineOutcome("nothing_to_quarantine")
@@ -435,39 +514,45 @@ def quarantine_entries(
             _emit(observer, machine, "revalidated_ok")
             return QuarantineOutcome("healthy")
         entry = f"quarantine-{secrets.token_hex(8)}"
-        ensure_private_directory(home, quarantine_entry(entry))
         retained: list[str] = []
-        aliases = [
-            (source_directory(slug), lock) for slug, lock in zip(slugs, alias_locks, strict=True)
-        ]
-        stores = [(store_directory(key), lock) for key, lock in zip(keys, store_locks, strict=True)]
         for moves, event in (
-            (aliases, "move_alias_to_quarantine"),
-            (stores, "move_store_to_quarantine"),
+            (
+                [(source_directory(s), lock) for s, lock in zip(slugs, alias_locks, strict=True)],
+                "move_alias_to_quarantine",
+            ),
+            (
+                [(store_directory(k), lock) for k, lock in zip(keys, store_locks, strict=True)],
+                "move_store_to_quarantine",
+            ),
         ):
-            moved = False
-            for relative_path, lock in moves:
-                if not os.path.lexists(home / relative_path):
-                    continue
-                target = f"{quarantine_entry(entry)}/{relative_path.removeprefix('cache/')}"
-                publish_entry(home, relative_path, target, owner=lock)
-                retained.append(target)
-                moved = True
+            moved = _move_into_quarantine(home, moves, entry=entry)[1]
             if moved:
+                retained.extend(moved)
                 _emit(observer, machine, event)
+        return QuarantineOutcome("quarantined", entry, tuple(retained))
+
+
+def _move_into_quarantine(
+    home: Path, moves: Sequence[tuple[str, CacheLock]], *, entry: str | None = None
+) -> tuple[str, tuple[str, ...]]:
+    """Move each present path into one quarantine entry under its owning lock."""
+
+    entry = f"quarantine-{secrets.token_hex(8)}" if entry is None else entry
+    ensure_private_directory(home, quarantine_entry(entry))
+    retained: list[str] = []
+    for relative_path, lock in moves:
+        if not os.path.lexists(home / relative_path):
+            continue
+        target = f"{quarantine_entry(entry)}/{relative_path.removeprefix('cache/')}"
+        publish_entry(home, relative_path, target, owner=lock)
+        retained.append(target)
+    if retained:
         log.warning(
             "Quarantined %d cache entries that failed validation; retained at %s",
             len(retained),
             home / quarantine_entry(entry),
         )
-        return QuarantineOutcome("quarantined", entry, tuple(retained))
-    finally:
-        for lock in reversed(store_locks):
-            lock.release()
-        for lock in reversed(alias_locks):
-            lock.release()
-        for lock in reversed(maintenance):
-            lock.release()
+    return entry, tuple(retained)
 
 
 def purge_quarantined(home: Path, entry: str, *, observer: MachineObserver | None = None) -> bool:

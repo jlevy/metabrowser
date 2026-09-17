@@ -504,14 +504,15 @@ def test_quarantine_of_an_absent_store_moves_nothing(home: Path) -> None:
         quarantine_entries(home, source_slugs=[SLUG], store_keys=[], revalidate=lambda: False)
 
 
-def test_quarantine_defers_while_a_lease_is_held(home: Path) -> None:
+@pytest.mark.parametrize("source_slugs", [[SLUG], []], ids=["alias-first", "store-only"])
+def test_quarantine_defers_while_a_lease_is_held(home: Path, source_slugs: list[str]) -> None:
     _make_store(home)
     subject = _Child(home, f"lease = locks.store_lease(home, {STORE_KEY!r})")
     replay = MachineReplay("quarantine")
     try:
         outcome = quarantine_entries(
             home,
-            source_slugs=[SLUG],
+            source_slugs=source_slugs,
             store_keys=[STORE_KEY],
             revalidate=lambda: pytest.fail("revalidated without the maintenance lock"),
             observer=replay,
@@ -587,3 +588,93 @@ def test_a_crash_between_alias_and_store_leaves_an_ordinary_unreferenced_store(
     assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
     assert not store_is_referenced(home, STORE_KEY)
     assert reclaim_store(home, STORE_KEY) is StoreReclamation.RECLAIMED
+
+
+# ── Store-only quarantine ──────────────────────────────────────────
+
+
+def test_a_store_no_alias_names_is_quarantined_under_its_store_lock_alone(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("quarantine-unreferenced-store")
+    _make_store(home)
+    moves = _recording_publish(monkeypatch)
+    replay = MachineReplay("quarantine")
+
+    outcome = quarantine_entries(
+        home, source_slugs=[], store_keys=[STORE_KEY], revalidate=lambda: False, observer=replay
+    )
+
+    assert replay.events == scenario["events"]
+    assert replay.state == scenario["expected_final"]
+    assert replay.visible is scenario["expected_visible"]
+    assert outcome.state == "quarantined" and outcome.entry is not None
+    assert moves == [f"cache/repository-stores/{STORE_KEY}"]
+    assert outcome.retained == (f"cache/quarantine/{outcome.entry}/repository-stores/{STORE_KEY}",)
+    assert list((home / "cache/locks/sources").iterdir()) == []
+
+
+def test_store_only_quarantine_falls_back_when_an_alias_now_names_the_store(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenario = _scenario("quarantine-unreferenced-store-now-aliased")
+    _make_store(home)
+    _make_source_with_alias(home)
+    moves = _recording_publish(monkeypatch)
+    replay = MachineReplay("quarantine")
+
+    outcome = quarantine_entries(
+        home, source_slugs=[], store_keys=[STORE_KEY], revalidate=lambda: False, observer=replay
+    )
+
+    assert replay.events == scenario["events"]
+    assert replay.state == scenario["expected_final"]
+    assert outcome.state == "quarantined" and outcome.entry is not None
+    assert moves == [f"cache/sources/{SLUG}", f"cache/repository-stores/{STORE_KEY}"]
+    assert not (home / f"cache/sources/{SLUG}").exists()
+
+
+def test_store_only_quarantine_treats_an_unreadable_alias_as_naming_the_store(
+    home: Path,
+) -> None:
+    _make_store(home)
+    ensure_private_directory(home, f"cache/sources/{SLUG}")
+    write_private_file_atomic(home, source_record(SLUG, "store-alias.yml"), b"alias: [")
+    replay = MachineReplay("quarantine")
+
+    outcome = quarantine_entries(
+        home, source_slugs=[], store_keys=[STORE_KEY], revalidate=lambda: False, observer=replay
+    )
+
+    assert replay.events[:2] == ["try_exclusive", "alias_now_names_store"]
+    assert outcome.entry is not None
+    assert (home / f"cache/quarantine/{outcome.entry}/sources/{SLUG}/store-alias.yml").is_file()
+
+
+@pytest.mark.parametrize(
+    ("make_store", "revalidates", "expected"),
+    [
+        (False, False, ["try_exclusive", "unreferenced_store_absent"]),
+        (True, True, ["try_exclusive", "unreferenced_store_revalidated_ok"]),
+    ],
+    ids=["absent", "repaired"],
+)
+def test_store_only_quarantine_moves_nothing_it_need_not(
+    home: Path, make_store: bool, revalidates: bool, expected: list[str]
+) -> None:
+    if make_store:
+        _make_store(home)
+    replay = MachineReplay("quarantine")
+
+    outcome = quarantine_entries(
+        home,
+        source_slugs=[],
+        store_keys=[STORE_KEY],
+        revalidate=lambda: revalidates,
+        observer=replay,
+    )
+
+    assert replay.events == expected
+    assert outcome.state == replay.state
+    assert list((home / "cache/quarantine").iterdir()) == []
+    assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir() is make_store

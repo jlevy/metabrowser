@@ -427,6 +427,19 @@ and the defensive `store_missing` transition is unreachable.
 The same exploration finds the race in each design it replaced: an acquisition that
 released its store lock before publishing the alias without holding a lease, from both
 starting states, and purge or quarantine moving the store first.
+
+A store no alias was seen to name is quarantined under its exclusive maintenance lock
+and store lock alone, with no source-alias lock.
+An alias names a store only when written under that store’s lease, which the exclusive
+lock excludes, so none can appear during the quarantine; one published before the lock
+was taken is caught by verifying under the store lock that no alias names the store,
+which falls back to the alias-first moves.
+The exploration covers that variant from an unreferenced store with a concurrent
+acquisition and reclamation and a crash before each of its lock steps, and finds no
+stranded alias. It shows both defenses matter: a variant that skips the check under the
+store lock strands an alias, while an acquisition without the lease that still
+re-verifies the store under the store lock reaches `store_missing` instead of publishing
+an alias to the quarantined store.
 The checker gives each process its own locks, which is sound only because of the
 per-`open()` rule above.
 The implementation’s concurrent refresh/read/purge/reclaim tests replay those machines.
