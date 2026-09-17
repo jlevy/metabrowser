@@ -5,20 +5,24 @@ format-foundation and acquisition implementations consume: the root-argument URL
 source and repository-store identity, slug derivation, Git version gates,
 and the lock, publication, lease, trash, and quarantine state machines.
 
-No production module implements them yet, so each test carries a small
-reference oracle written from the fixture's own prose rules. The oracle
-proves the frozen rules are complete and consistent: every case has exactly
-one outcome, every declared reason is exercised, identities are reproducible
-from their declared material, and every state machine is well formed. When
-``metabrowser.cache.urls``, ``metabrowser.cache.identity``, and the Git
-version gate land, their tests must replay these same fixtures against the
-production functions; the oracle here is a specification aid, not a second
-implementation to keep.
+Rules with a production implementation replay the fixtures through it:
+source and store identity, store keys, and slugs through
+``metabrowser.cache.identity``, and the lock hierarchy, lock-file placement, and lock
+sequences through ``metabrowser.cache.locks``. The sweep, trash, quarantine, and store
+reclamation machines replay against ``metabrowser.cache.reclaim`` in
+``tests/test_cache_reclaim.py``.
+
+Rules whose implementation belongs to a later phase keep a small reference oracle
+written from the fixture's own prose: the root-argument URL grammar (Phase 1B-a), the
+Git version gates (Phase 1B-a), and object requests (the object-job port). Each oracle
+proves its frozen rules are complete and consistent, and is replaced by the production
+function when that lands; it is a specification aid, not a second implementation to
+keep. The state-machine well-formedness checks and the exhaustive interleaving
+exploration verify the design itself and stay.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import re
@@ -26,10 +30,13 @@ import string
 from collections import deque
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import unquote_to_bytes
 
 import pytest
 from jsonschema import Draft202012Validator
+
+from metabrowser.cache import identity, locks
+from metabrowser.cache.locks import HIERARCHY_RANKS, LockKind, LockOrder, LockOrderError
+from metabrowser.home import ensure_home
 
 FIXTURES = Path(__file__).parent / "fixtures" / "repository-cache"
 
@@ -295,121 +302,53 @@ def test_url_grammar_normalization_is_idempotent_and_credential_free() -> None:
 
 
 # ----------------------------------------------------------------------------
-# Source identity, store identity, and slugs
+# Source identity, store identity, and slugs: replayed through metabrowser.cache.identity
 
 
-def _digest(material: str) -> str:
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
-
-
-def source_id(spec: dict[str, Any], transport: str, normalized: str) -> str:
-    return "sha256:" + _digest(f"{spec['domain']}\0{transport}\0{normalized}")
-
-
-def generic_store_id(spec: dict[str, Any], source: str, object_format: str) -> str:
-    return "sha256:" + _digest(f"{spec['domain']}\0source\0{source}\0{object_format}")
-
-
-def provider_store_id(spec: dict[str, Any], record: dict[str, str]) -> str:
-    material = "\0".join(
-        [
-            spec["domain"],
-            "provider",
-            record["provider_kind"],
-            record["provider_instance"],
-            record["repository_opaque_id"],
-            record["object_format"],
-        ]
-    )
-    return "sha256:" + _digest(material)
-
-
-def _fold(token: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", token.lower()).strip("-")
-
-
-def slug_tokens(transport: str, form: str, normalized: str) -> list[str]:
-    if form == "scp":
-        user_host, _, path = normalized.partition(":")
-        host = user_host.rpartition("@")[2]
-        raw = [host, *path.split("/")]
-    elif transport == "file":
-        segments = [segment for segment in normalized[len("file://") :].split("/") if segment]
-        raw = ["local", segments[-1]]
-    else:
-        rest = normalized.split("://", 1)[1]
-        authority, _, path = rest.partition("/")
-        hostport = authority.rpartition("@")[2]
-        raw = [
-            hostport.replace(":", "-") if not hostport.startswith("[") else hostport,
-            *path.split("/"),
-        ]
-    segments = [segment for segment in raw if segment]
-    if len(segments) > 1 and segments[-1].endswith(".git") and segments[-1] != ".git":
-        segments[-1] = segments[-1][: -len(".git")]
-    decoded = [unquote_to_bytes(segment).decode("utf-8", errors="replace") for segment in segments]
-    return [folded for folded in (_fold(token) for token in decoded) if folded]
-
-
-def cache_slug(
-    spec: dict[str, Any],
-    transport: str,
-    form: str,
-    normalized: str,
-    digest: str,
-    existing: dict[str, str],
-) -> str:
-    readable = spec["token_separator"].join(slug_tokens(transport, form, normalized))
-    readable = readable or spec["empty_readable"]
-    if len(readable) > spec["readable_max_bytes"]:
-        readable = readable[: spec["readable_max_bytes"]].rstrip("-")
-    identity = "sha256:" + digest
-    for width in spec["suffix_hex_digits"]:
-        candidate = f"{readable}{spec['token_separator']}{digest[:width]}"
-        owner = existing.get(candidate)
-        if owner is None or owner == identity:
-            return candidate
-    raise AssertionError("every suffix width collided")
+def test_the_identity_specification_matches_the_production_constants() -> None:
+    document = _load("source-identity.json")
+    assert document["source_identity"]["domain"] == identity.SOURCE_IDENTITY_DOMAIN
+    assert document["store_identity"]["domain"] == identity.STORE_IDENTITY_DOMAIN
+    assert document["store_identity"]["key_hex_digits"] == identity.STORE_KEY_HEX_DIGITS
+    slug_spec = document["slug"]
+    assert slug_spec["token_separator"] == identity.SLUG_TOKEN_SEPARATOR
+    assert slug_spec["readable_max_bytes"] == identity.SLUG_READABLE_MAX_BYTES
+    assert slug_spec["empty_readable"] == identity.SLUG_EMPTY_READABLE
+    assert tuple(slug_spec["suffix_hex_digits"]) == identity.SLUG_SUFFIX_HEX_DIGITS
+    assert slug_spec["max_bytes"] == identity.SLUG_MAX_BYTES
 
 
 def test_source_identity_and_slugs_are_reproducible() -> None:
-    identity = _load("source-identity.json")
+    document = _load("source-identity.json")
     grammar = _load("url-grammar.json")
     defaults = cast(dict[str, str], grammar["default_ports"])
-    source_spec = identity["source_identity"]
-    store_spec = identity["store_identity"]
-    slug_spec = identity["slug"]
-    for record in identity["sources"]:
+    for record in document["sources"]:
         classified = classify(record["input"], defaults)
         assert classified["normalized"] == record["normalized"], record["input"]
         assert classified["transport"] == record["transport"]
         assert classified["form"] == record["form"]
-        expected_source = source_id(source_spec, record["transport"], record["normalized"])
-        assert record["source_id"] == expected_source
-        digest = expected_source.removeprefix("sha256:")
-        slug = cache_slug(
-            slug_spec, record["transport"], record["form"], record["normalized"], digest, {}
+        source = identity.source_identity(record["transport"], record["normalized"])
+        assert record["source_id"] == source
+        slug = identity.cache_slug(
+            record["transport"], record["normalized"], source, slug_owner=lambda _slug: None
         )
         assert record["slug"] == slug
-        assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*(?:--[a-z0-9]+(?:-[a-z0-9]+)*)*", slug)
-        assert len(slug.encode()) <= slug_spec["max_bytes"]
+        assert identity.is_slug(slug)
+        assert identity.slug_matches_identity(slug, source)
+        assert len(slug.encode()) <= document["slug"]["max_bytes"]
         for object_format, store in record["generic_stores"].items():
-            expected_store = generic_store_id(store_spec, expected_source, object_format)
-            assert store["store_id"] == expected_store
-            assert (
-                store["store_key"]
-                == expected_store.removeprefix("sha256:")[: store_spec["key_hex_digits"]]
-            )
+            store_id = identity.repository_store_id(source, object_format)
+            assert store["store_id"] == store_id
+            assert store["store_key"] == identity.store_key(store_id)
 
 
 def test_identity_equivalence_classes_follow_the_grammar() -> None:
-    identity = _load("source-identity.json")
+    document = _load("source-identity.json")
     defaults = cast(dict[str, str], _load("url-grammar.json")["default_ports"])
-    for group in identity["equivalence"]:
+    for group in document["equivalence"]:
         ids = {
-            source_id(
-                identity["source_identity"],
-                classify(value, defaults)["transport"],
+            identity.source_identity(
+                cast(identity.GitTransport, classify(value, defaults)["transport"]),
                 classify(value, defaults)["normalized"],
             )
             for value in group["inputs"]
@@ -418,42 +357,56 @@ def test_identity_equivalence_classes_follow_the_grammar() -> None:
 
 
 def test_slug_collisions_extend_the_suffix_deterministically() -> None:
-    identity = _load("source-identity.json")
-    by_normalized = {record["normalized"]: record for record in identity["sources"]}
-    for collision in identity["slug_collisions"]:
+    document = _load("source-identity.json")
+    by_normalized = {record["normalized"]: record for record in document["sources"]}
+    for collision in document["slug_collisions"]:
         record = by_normalized[collision["normalized"]]
-        digest = record["source_id"].removeprefix("sha256:")
-        slug = cache_slug(
-            identity["slug"],
+        existing = cast(dict[str, str], collision["existing"])
+        slug = identity.cache_slug(
             record["transport"],
-            record["form"],
             record["normalized"],
-            digest,
-            collision["existing"],
+            record["source_id"],
+            slug_owner=existing.get,
         )
         assert slug == collision["expected_slug"], collision["why"]
 
 
+def test_every_claimed_suffix_width_is_a_typed_collision() -> None:
+    record = _load("source-identity.json")["sources"][0]
+    digest = record["source_id"].removeprefix("sha256:")
+    readable = identity.slug_readable_part(record["transport"], record["normalized"])
+    claimed = {
+        f"{readable}--{digest[:width]}": "sha256:" + "0" * 64
+        for width in identity.SLUG_SUFFIX_HEX_DIGITS
+    }
+    with pytest.raises(identity.SlugCollisionError):
+        identity.cache_slug(
+            record["transport"], record["normalized"], record["source_id"], slug_owner=claimed.get
+        )
+
+
 def test_provider_store_identity_is_domain_separated() -> None:
-    identity = _load("source-identity.json")
-    store_spec = identity["store_identity"]
+    document = _load("source-identity.json")
     generic_ids = {
         store["store_id"]
-        for record in identity["sources"]
+        for record in document["sources"]
         for store in record["generic_stores"].values()
     }
-    for record in identity["provider_stores"]:
-        expected = provider_store_id(store_spec, record)
-        assert record["store_id"] == expected
-        assert (
-            record["store_key"] == expected.removeprefix("sha256:")[: store_spec["key_hex_digits"]]
+    for record in document["provider_stores"]:
+        expected = identity.provider_repository_store_id(
+            record["provider_kind"],
+            record["provider_instance"],
+            record["repository_opaque_id"],
+            record["object_format"],
         )
+        assert record["store_id"] == expected
+        assert record["store_key"] == identity.store_key(expected)
         assert expected not in generic_ids
     keys = [
         store["store_key"]
-        for record in identity["sources"]
+        for record in document["sources"]
         for store in record["generic_stores"].values()
-    ] + [record["store_key"] for record in identity["provider_stores"]]
+    ] + [record["store_key"] for record in document["provider_stores"]]
     assert len(keys) == len(set(keys))
 
 
@@ -659,51 +612,141 @@ def test_fetch_jobs_use_only_recorded_promisor_remotes() -> None:
 
 
 # ----------------------------------------------------------------------------
-# Lock hierarchy and state machines
+# Lock hierarchy: replayed through metabrowser.cache.locks
 
 
-def _lock_sequence_valid(hierarchy: list[dict[str, Any]], steps: list[str]) -> bool:
-    ranks = {lock["name"]: lock["rank"] for lock in hierarchy}
-    multiple = {lock["name"] for lock in hierarchy if lock["multiple"]}
-    held: list[tuple[int, str]] = []
-    for step in steps:
-        if step == "network":
-            if held:
+def _lock_sequence_valid(steps: list[str]) -> bool:
+    """Replay one fixture sequence through the production lock-order state machine."""
+
+    order = LockOrder()
+    held: list[tuple[LockKind, str | None]] = []
+    kinds = {kind.value: kind for kind in HIERARCHY_RANKS}
+    try:
+        for step in steps:
+            if step == "network":
+                order.check_network("network work")
+                continue
+            if step.startswith("release:"):
+                name = step.removeprefix("release:")
+                matches = [item for item in held if item[0].value == name]
+                if not matches:
+                    return False
+                held.remove(matches[-1])
+                order.released(*matches[-1])
+                continue
+            name, _, key = step.partition(":")
+            kind = kinds.get(name)
+            if kind is None:
                 return False
-            continue
-        if step.startswith("release:"):
-            name = step.removeprefix("release:")
-            matches = [
-                item for item in held if f"{item[1]}" == name or item[1].split(":")[0] == name
-            ]
-            if not matches:
-                return False
-            held.remove(matches[-1])
-            continue
-        name, _, key = step.partition(":")
-        if name not in ranks:
-            return False
-        rank = ranks[name]
-        if held:
-            top_rank, top = held[-1]
-            if rank < top_rank:
-                return False
-            if rank == top_rank and (
-                name not in multiple or not key or key <= top.partition(":")[2]
-            ):
-                return False
-        held.append((rank, step))
+            order.check(kind, key or None, blocking=True)
+            order.acquired(kind, key or None)
+            held.append((kind, key or None))
+    except LockOrderError:
+        return False
     return True
 
 
-def test_lock_sequences_follow_the_frozen_order() -> None:
-    machines = _load("state-machines.json")
-    hierarchy = machines["locks"]["hierarchy"]
+def _store_key(key: str) -> str:
+    """A 64-digit store key that sorts like the fixture's placeholder key."""
+
+    return key.encode().hex().rjust(64, "0")[-64:]
+
+
+def _real_lock(home: Path, kind: LockKind, key: str | None) -> locks.CacheLock:
+    if kind is LockKind.HOME:
+        return locks.application_home_lock(home)
+    if kind is LockKind.SOURCE_ALIAS:
+        assert key is not None
+        return locks.source_alias_lock(home, key)
+    if kind is LockKind.REPOSITORY_STORE:
+        assert key is not None
+        return locks.repository_store_lock(home, _store_key(key))
+    assert key is not None
+    return locks.provider_resource_lock(home, key)
+
+
+def test_the_hierarchy_matches_the_production_ranks() -> None:
+    hierarchy = _load("state-machines.json")["locks"]["hierarchy"]
     assert [lock["rank"] for lock in hierarchy] == sorted({lock["rank"] for lock in hierarchy})
-    for sequence in machines["locks"]["sequences"]:
-        assert _lock_sequence_valid(hierarchy, sequence["steps"]) is sequence["valid"], sequence[
-            "id"
-        ]
+    assert {LockKind(lock["name"]): lock["rank"] for lock in hierarchy} == HIERARCHY_RANKS
+    side = {lock["name"] for lock in _load("state-machines.json")["locks"]["side_locks"]}
+    assert side | {lock["name"] for lock in hierarchy} == {kind.value for kind in LockKind}
+
+
+def test_lock_sequences_follow_the_frozen_order() -> None:
+    for sequence in _load("state-machines.json")["locks"]["sequences"]:
+        assert _lock_sequence_valid(sequence["steps"]) is sequence["valid"], sequence["id"]
+
+
+def test_lock_sequences_replay_with_real_locks(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    ensure_home(home)
+    kinds = {kind.value: kind for kind in HIERARCHY_RANKS}
+    for sequence in _load("state-machines.json")["locks"]["sequences"]:
+        held: list[locks.CacheLock] = []
+        refused = False
+        try:
+            for step in sequence["steps"]:
+                if step == "network":
+                    locks.require_no_hierarchy_locks("network work")
+                elif step.startswith("release:"):
+                    name = step.removeprefix("release:")
+                    lock = next(lock for lock in reversed(held) if lock.kind.value == name)
+                    held.remove(lock)
+                    lock.release()
+                else:
+                    name, _, key = step.partition(":")
+                    if name not in kinds:
+                        refused = True
+                        break
+                    held.append(_real_lock(home, kinds[name], key or None))
+        except LockOrderError:
+            refused = True
+        finally:
+            for lock in reversed(held):
+                lock.release()
+        assert refused is not sequence["valid"], sequence["id"]
+        assert locks.held_locks() == (), sequence["id"]
+
+
+def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    ensure_home(home)
+    document = _load("state-machines.json")["locks"]
+    templates = {
+        lock["name"]: lock["path"] for lock in [*document["hierarchy"], *document["side_locks"]]
+    }
+    slug = "github-com--pallets--flask--e7b7fe0ffe8a"
+    store = "4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff"
+    acquisitions = {
+        "home": (lambda: locks.application_home_lock(home), {}),
+        "source_alias": (lambda: locks.source_alias_lock(home, slug), {"<slug>": slug}),
+        "repository_store": (
+            lambda: locks.repository_store_lock(home, store),
+            {"<store-key>": store},
+        ),
+        "staging_entry": (lambda: locks.staging_entry_lock(home, "e1"), {"<entry>": "e1"}),
+        "trash_entry": (lambda: locks.trash_entry_lock(home, "e1"), {"<entry>": "e1"}),
+        "job_entry": (lambda: locks.job_entry_lock(home, "j1"), {"<job-id>": "j1"}),
+        "maintenance_shared": (lambda: locks.store_lease(home, store), {"<store-key>": store}),
+        "maintenance_exclusive": (
+            lambda: locks.store_maintenance_lock(home, store),
+            {"<store-key>": store},
+        ),
+    }
+    for name, (acquire, placeholders) in acquisitions.items():
+        expected = templates[name]
+        for placeholder, value in placeholders.items():
+            expected = expected.replace(placeholder, value)
+        with acquire() as lock:
+            assert lock.relative_path == expected, name
+            assert lock.path.is_file(), name
+    # The provider plan owns the provider/resource spelling; only its rank is frozen here.
+    assert templates["provider_resource"] == "owned by the provider storage plan"
+
+
+# ----------------------------------------------------------------------------
+# State machines
 
 
 def test_state_machines_are_well_formed() -> None:
