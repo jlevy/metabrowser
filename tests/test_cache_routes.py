@@ -25,6 +25,7 @@ from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.listing import ListingLimitError, list_private_directory
 from metabrowser.cache.paths import (
     SOURCES,
+    STAGING,
     quarantine_entry,
     source_directory,
     source_record,
@@ -512,7 +513,8 @@ def test_a_shared_record_is_reported_rather_than_repaired(
     detail = _json(client, f"/api/cache/source/{CLICK.slug}")["source"]
 
     for row in (rows[CLICK.slug], detail):
-        assert row["publication"] == "damaged"
+        # A record Metabrowser refused to read is not a corrupt one; the user chmods it.
+        assert row["publication"] == "not_private"
         assert row["identity"] is None
         assert [(p["record"], p["code"]) for p in row["problems"]] == [
             ("source.yml", "not_private")
@@ -531,7 +533,7 @@ def test_a_shared_entry_directory_is_reported_rather_than_repaired(
 
     row = _json(client, f"/api/cache/source/{CLICK.slug}")["source"]
 
-    assert row["publication"] == "damaged"
+    assert row["publication"] == "not_private"
     assert {(p["record"], p["code"]) for p in row["problems"]} == {
         ("source.yml", "not_private"),
         ("store-alias.yml", "not_private"),
@@ -540,19 +542,44 @@ def test_a_shared_entry_directory_is_reported_rather_than_repaired(
     assert stat.S_IMODE(directory.stat().st_mode) == 0o750
 
 
-def test_a_shared_cache_directory_is_a_typed_refusal_and_is_not_repaired(
-    client: TestClient, populated: tuple[Path, str]
+@pytest.mark.parametrize(
+    ("layout_path", "route"),
+    [(SOURCES, "/api/cache/sources"), (STAGING, "/api/cache/layout")],
+)
+def test_a_shared_cache_directory_is_refused_by_the_name_the_user_must_fix(
+    client: TestClient, populated: tuple[Path, str], layout_path: str, route: str
 ) -> None:
+    """A fixed layout name is not a secret, and without it the remedy is a guess."""
+
     home, _entry = populated
-    directory = home / SOURCES
+    directory = home / layout_path
     directory.chmod(0o755)
 
-    body = _json(client, "/api/cache/sources", 409)
+    body = _json(client, route, 409)
 
     assert body["code"] == "home_not_private"
     assert body["violation"] == "permissive"
     assert body["location"] == "entry"
+    assert body["path"] == layout_path
+    # The remedy fits a directory read, not a file a writer would replace.
+    assert "chmod 700" in body["error"]
+    assert "replace it atomically" not in body["error"]
+    assert str(home) not in body["error"]
     assert stat.S_IMODE(directory.stat().st_mode) == 0o755
+
+
+def test_a_shared_record_refusal_offers_the_file_remedy_without_naming_the_slug(
+    client: TestClient, populated: tuple[Path, str]
+) -> None:
+    home, _entry = populated
+    (home / source_record(CLICK.slug, "source.yml")).chmod(0o640)
+
+    row = _json(client, f"/api/cache/source/{CLICK.slug}")["source"]
+
+    (problem,) = row["problems"]
+    assert "chmod 600" in problem["message"]
+    assert "does not change your entries" in problem["message"]
+    assert str(home) not in problem["message"]
 
 
 def test_no_response_names_a_path_a_pack_or_a_git_internal(
@@ -714,15 +741,33 @@ def test_a_quarantine_entry_reports_bounded_names(
     assert quarantined[0]["stores"] == [f"sha256:{QUARANTINED_STORE_KEY}"]
 
 
-def test_more_sources_than_one_reference_scan_reads_leave_references_unknown(
+def test_a_reference_scan_cut_by_the_record_budget_reports_unknown(
     client: TestClient, populated: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(projection, "MAX_REFERENCE_SCAN", 2)
+    """The page is served first; what the budget has left decides how far aliases go."""
 
-    rows = {row["id"]: row for row in _json(client, "/api/cache/stores")["stores"]}
+    # Two store rows at two records each, and nothing left for the three aliases.
+    monkeypatch.setattr(projection, "MAX_RECORDS_PER_REQUEST", 4)
 
+    body = _json(client, "/api/cache/stores")
+    rows = {row["id"]: row for row in body["stores"]}
+
+    assert len(rows) == 2 and body["next_after"] is None
     assert {row["reference_state"] for row in rows.values()} == {"unknown"}
     assert all(row["referenced_by"] == [] for row in rows.values())
+
+
+def test_a_page_cut_by_the_record_budget_stays_resumable(
+    client: TestClient, populated: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(projection, "MAX_RECORDS_PER_REQUEST", 3)
+    slugs = sorted([CLICK.slug, FLASK_HTTPS.slug, FLASK_SSH.slug])
+
+    first = _json(client, "/api/cache/sources")
+
+    assert [row["slug"] for row in first["sources"]] == slugs[:1]
+    assert first["limit"] == projection.DEFAULT_PAGE_LIMIT
+    assert first["next_after"] == slugs[0]
 
 
 # ── The verified listing helper ────────────────────────────────────

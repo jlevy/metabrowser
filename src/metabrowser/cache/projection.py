@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -47,6 +48,8 @@ from metabrowser.cache.listing import ListingLimitError, list_private_directory
 from metabrowser.cache.locks import is_entry_name
 from metabrowser.cache.paths import (
     CACHE_ROOT,
+    CONFIG_RECORD,
+    LAYOUT_RECORD,
     PROVIDER_BINDINGS,
     PROVIDER_REPOSITORIES,
     QUARANTINE,
@@ -93,6 +96,7 @@ from metabrowser.cache.wire import (
     SourcePublication,
     SourceRow,
     StoreIdentity,
+    StorePublication,
     StoreRecords,
     StoreReference,
     StoreRow,
@@ -102,26 +106,45 @@ from metabrowser.home import ApplicationHomeError, PrivateStorageError, SharedEn
 
 log = logging.getLogger(__name__)
 
-# Bounds, measured on 2026-09-17 against homes of real f01 records on macOS APFS, three
-# rounds each, with load averages of 25-38 from unrelated work, so an idle machine is
-# faster; the ratios are what the bounds rest on:
+# Bounds, measured against homes of real f01 records on macOS APFS with load averages of
+# 15-38 from unrelated work, so an idle machine is faster; the ratios are what the bounds
+# rest on:
 #
 # - One verified record read: 1.3-1.7 ms median and 1.7-4.8 ms mean over 500 records.
 #   Portable YAML parsing is most of it; path verification is about 0.5 ms.
 # - A verified listing: 0.6-1.1 ms for 500 names and 6-11 ms for 10,000.
-# - A sources page of 100 rows, three reads per row: 0.44-1.43 s.
-# - A stores page whose references read 500 aliases: 0.73-2.10 s.
 # - The layout of an empty cache: 3-7 ms.
 #
-# The two page rows reached 5.0 s and 7.3 s in one run that overlapped another build on
-# the same machine, and returned to the ranges above when it finished; the ratios, not
-# the absolute numbers, are what the bounds rest on. Record reads dominate listings by
-# three orders of magnitude, so a page bounds reads and a listing bounds only names.
-DEFAULT_PAGE_LIMIT: Final = 50
+# Against a home of 120 sources and 120 stores, five rounds each, at load average 7-18:
+#
+# - /api/cache/sources, default page: 102 ms median (98-127 ms). With limit=100: 472 ms
+#   median (419-729 ms).
+# - /api/cache/stores, default page: 292 ms median (263-313 ms); most of it is the alias
+#   scan, which a store's references need whatever the page size is. With limit=100:
+#   587 ms median (538-669 ms), where the review measured 3.16 s median (1.48-3.80 s) for
+#   the same request on a loaded machine before the default and the budget changed.
+#
+# At 500 sources both stores requests hit the budget, spend exactly MAX_RECORDS_PER_REQUEST
+# reads, and take 825 ms and 834 ms at the median; without it they would have spent 550
+# and 700. Page rows reached 5.0 s and 7.3 s in an earlier run that overlapped another
+# build on this machine, so the absolute numbers move several fold with load and only the
+# ratios are dependable. Record reads dominate listings by three orders of magnitude,
+# which is why a page bounds reads and a listing bounds only names.
+#
+# The cost is not private to these routes. Each projection runs on the process-wide
+# default executor through asyncio.to_thread, which also carries tree walking, KPress
+# rendering, raw file sizing, and log tailing, so a few concurrent slow cache pages would
+# take threads away from browsing itself. That is the reason for a low default page and
+# for one budget over the whole request rather than a generous bound per phase.
+DEFAULT_PAGE_LIMIT: Final = 25
 MAX_PAGE_LIMIT: Final = 100
-# Store references read one alias per source. Past this many sources they are reported
-# unknown rather than read.
-MAX_REFERENCE_SCAN: Final = 500
+# Every verified record read in one request, whether it builds a row or resolves a store
+# reference, draws from this. An explicit limit=100 spends at most 300 of it on source
+# rows or 200 on store rows; what is left bounds the alias scan, and a scan cut short
+# reports its stores' references as unknown instead of guessing they have none.
+MAX_RECORDS_PER_REQUEST: Final = 400
+_SOURCE_ROW_RECORDS: Final = 3
+_STORE_ROW_RECORDS: Final = 2
 # Past this a listing is refused rather than truncated, because a partial listing cannot
 # produce a correctly ordered page.
 MAX_DIRECTORY_ENTRIES: Final = 10_000
@@ -140,6 +163,23 @@ type CacheAnswer[T] = tuple[int, T | CacheError]
 # per-row `not_private` problem for a record and a typed 409 for a directory.
 _READ_ONLY: Final[SharedEntryPolicy] = "refuse"
 
+# The locations a refusal may name: fixed f01 spellings, none of which carries a slug, a
+# store key, or a quarantine entry name.
+_FIXED_LAYOUT_PATHS: Final[frozenset[str]] = frozenset(
+    {
+        CACHE_ROOT,
+        LAYOUT_RECORD,
+        CONFIG_RECORD,
+        SOURCES,
+        REPOSITORY_STORES,
+        STAGING,
+        TRASH,
+        QUARANTINE,
+        PROVIDER_BINDINGS,
+        PROVIDER_REPOSITORIES,
+    }
+)
+
 _MISSING_MESSAGE: Final = "The record is missing."
 _UNREADABLE_MESSAGE: Final = "The record could not be read."
 _DURABLE_DIRECTORIES: Final = (
@@ -149,6 +189,21 @@ _DURABLE_DIRECTORIES: Final = (
     PROVIDER_BINDINGS,
     PROVIDER_REPOSITORIES,
 )
+
+
+@dataclass(slots=True)
+class _Budget:
+    """What is left of one request's record reads."""
+
+    remaining: int
+
+    def reserve(self, records: int) -> bool:
+        """Take *records* from the budget, or report that they do not fit."""
+
+        if self.remaining < records:
+            return False
+        self.remaining -= records
+        return True
 
 
 class _Refusal(Exception):
@@ -262,6 +317,8 @@ def _read_layout(home: Path) -> CacheLayout | None:
         raise _future(error) from error
     except LayoutError as error:
         raise _Refusal(409, {"error": str(error), "code": "layout_unreadable"}) from error
+    except PrivateStorageError as error:
+        raise _not_private(error, home) from error
     if layout is not None and layout.format not in FORMAT_HISTORY:
         raise _Refusal(
             409,
@@ -283,6 +340,32 @@ def _read_config(home: Path) -> ApplicationConfig | None:
         raise _future(error) from error
     except LayoutError as error:
         raise _Refusal(409, {"error": str(error), "code": "config_unreadable"}) from error
+    except PrivateStorageError as error:
+        raise _not_private(error, home) from error
+
+
+def _not_private(error: PrivateStorageError, home: Path) -> _Refusal:
+    """Refuse a read of the home, naming the fixed layout location that failed.
+
+    A fixed ``f01`` location is not a secret — ``layout_unreadable`` already names
+    ``cache/layout.yml`` — and without it a refusal leaves the user to guess which
+    directory to fix. Anything else, a slug, a store key, or a path outside the home, is
+    left out.
+    """
+
+    body: CacheError = {
+        "error": str(error),
+        "code": "home_not_private",
+        "location": error.location.value,
+        "violation": error.violation.value,
+    }
+    try:
+        logical = error.path.relative_to(home).as_posix()
+    except ValueError:
+        logical = ""
+    if logical in _FIXED_LAYOUT_PATHS:
+        body["path"] = logical
+    return _Refusal(409, body)
 
 
 def _names(home: Path, relative_path: str) -> tuple[str, ...]:
@@ -290,6 +373,8 @@ def _names(home: Path, relative_path: str) -> tuple[str, ...]:
         return list_private_directory(home, relative_path, max_entries=MAX_DIRECTORY_ENTRIES)
     except FileNotFoundError:
         return ()
+    except PrivateStorageError as error:
+        raise _not_private(error, home) from error
 
 
 def _has_entries(home: Path, relative_path: str) -> bool:
@@ -299,6 +384,8 @@ def _has_entries(home: Path, relative_path: str) -> bool:
         return False
     except ListingLimitError:
         return True
+    except PrivateStorageError as error:
+        raise _not_private(error, home) from error
 
 
 def _refuse_entries_without_layout(home: Path) -> None:
@@ -554,7 +641,9 @@ def _source_row(
             }
         )
     publication: SourcePublication
-    if problems:
+    if any(problem["code"] == "not_private" for problem in problems):
+        publication = "not_private"
+    elif problems:
         publication = "damaged"
     elif alias is None:
         publication = "unattached"
@@ -599,18 +688,24 @@ def _sources(limit: int, after: str | None) -> CacheSourcesResponse:
     slugs = [name for name in names if is_slug(name)]
     store_keys = _store_keys(home)
     candidates = [slug for slug in slugs if after is None or slug > after]
+    budget = _Budget(MAX_RECORDS_PER_REQUEST)
     rows: list[SourceRow] = []
+    read_through: str | None = None
     for slug in candidates[:limit]:
+        if not budget.reserve(_SOURCE_ROW_RECORDS):
+            break
+        read_through = slug
         read = _source_row(home, slug, store_keys)
         if read is not None:
             rows.append(read[0])
+    delivered = 0 if read_through is None else candidates.index(read_through) + 1
     return {
         "home": "present",
         "layout_format": layout.format,
         "sources": rows,
         "unrecognized_entries": len(names) - len(slugs),
         "limit": limit,
-        "next_after": candidates[limit - 1] if len(candidates) > limit else None,
+        "next_after": read_through if len(candidates) > delivered else None,
     }
 
 
@@ -628,7 +723,7 @@ def _source(slug: str) -> CacheSourceResponse:
         raise not_found
     row, alias = read
     store = None
-    if alias is not None and row["publication"] != "damaged":
+    if alias is not None and row["publication"] == "published":
         key = alias.store_id.removeprefix(IDENTITY_PREFIX)
         if key in store_keys:
             store = _store_records(home, key)
@@ -705,21 +800,28 @@ def _store_records(home: Path, key: str) -> StoreRecords | None:
                 "message": "store.yml records a different identity than the entry it is in.",
             }
         )
+    publication: StorePublication = "published"
+    if any(problem["code"] == "not_private" for problem in problems):
+        publication = "not_private"
+    elif problems:
+        publication = "damaged"
     return {
         "id": store_id,
-        "publication": "damaged" if problems else "published",
+        "publication": publication,
         "identity": None if store is None else _store_identity(store),
         "state": None if state is None else _store_state(state),
         "problems": problems,
     }
 
 
-def _references(home: Path) -> tuple[dict[str, list[StoreReference]], bool]:
+def _references(home: Path, budget: _Budget) -> tuple[dict[str, list[StoreReference]], bool]:
     """Every readable alias by the store it names, and whether nothing else could refer.
 
     This mirrors :func:`~metabrowser.cache.reclaim.store_is_referenced`: provider data, an
     unrecognized source entry, and an unreadable alias all keep reclamation from treating
-    a store as unreferenced, so they make the answer incomplete.
+    a store as unreferenced, so they make the answer incomplete. So does running out of
+    the request's record budget, which is why the aliases read before that still count as
+    references while the stores none of them names are reported unknown.
     """
 
     complete = not any(
@@ -729,10 +831,11 @@ def _references(home: Path) -> tuple[dict[str, list[StoreReference]], bool]:
     slugs = [name for name in names if is_slug(name)]
     if len(slugs) != len(names):
         complete = False
-    if len(slugs) > MAX_REFERENCE_SCAN:
-        return {}, False
     references: dict[str, list[StoreReference]] = {}
     for slug in slugs:
+        if not budget.reserve(1):
+            complete = False
+            break
         try:
             alias = read_record(
                 home,
@@ -772,9 +875,17 @@ def _stores(limit: int, after: str | None) -> CacheStoresResponse:
     keys = [name for name in names if is_store_key(name)]
     after_key = None if after is None else after.removeprefix(IDENTITY_PREFIX)
     candidates = [key for key in keys if after_key is None or key > after_key]
-    references, complete = _references(home)
-    rows: list[StoreRow] = []
+    # The page is what the caller asked for, so it draws from the budget before the
+    # references do; what is left decides how much of the alias scan runs.
+    budget = _Budget(MAX_RECORDS_PER_REQUEST)
+    page: list[str] = []
     for key in candidates[:limit]:
+        if not budget.reserve(_STORE_ROW_RECORDS):
+            break
+        page.append(key)
+    references, complete = _references(home, budget)
+    rows: list[StoreRow] = []
+    for key in page:
         records = _store_records(home, key)
         if records is None:
             continue
@@ -804,7 +915,7 @@ def _stores(limit: int, after: str | None) -> CacheStoresResponse:
         "unrecognized_entries": len(names) - len(keys),
         "limit": limit,
         "next_after": (
-            f"{IDENTITY_PREFIX}{candidates[limit - 1]}" if len(candidates) > limit else None
+            f"{IDENTITY_PREFIX}{page[-1]}" if page and len(candidates) > len(page) else None
         ),
     }
 
@@ -814,7 +925,7 @@ __all__ = [
     "MAX_DIRECTORY_ENTRIES",
     "MAX_PAGE_LIMIT",
     "MAX_QUARANTINE_ENTRIES",
-    "MAX_REFERENCE_SCAN",
+    "MAX_RECORDS_PER_REQUEST",
     "CacheAnswer",
     "layout_response",
     "page_limit",

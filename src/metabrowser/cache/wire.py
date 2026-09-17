@@ -44,11 +44,17 @@ type SourcePublication = Literal[
     "unattached",
     # The alias names a store that is not published.
     "dangling",
-    # A record is missing, invalid, not private, or inconsistent with its entry.
+    # A record, or the directory holding it, is readable by other users, so Metabrowser
+    # refused to read it rather than change permissions to answer a request. Reported
+    # ahead of damage, because a record that was never read cannot be called corrupt, and
+    # kept apart from it because the two need different things from the user: one a
+    # chmod, the other an investigation.
+    "not_private",
+    # A record is missing, invalid, or inconsistent with its entry.
     "damaged",
 ]
 
-type StorePublication = Literal["published", "damaged"]
+type StorePublication = Literal["published", "not_private", "damaged"]
 
 type ReferenceState = Literal[
     # At least one readable alias names the store.
@@ -56,14 +62,16 @@ type ReferenceState = Literal[
     # Every alias was read and none names the store, and there is no provider data.
     "unreferenced",
     # Something reclamation treats as a reference could not be ruled out: an unreadable
-    # alias, an unrecognized source entry, provider data, or more sources than one
-    # request reads.
+    # alias, an unrecognized source entry, provider data, or a request whose record
+    # budget ran out before the alias scan finished.
     "unknown",
 ]
 
 type RecordName = Literal["source.yml", "state.yml", "store-alias.yml", "store.yml"]
 
 type RecordProblemCode = Literal["missing", "invalid", "not_private", "unreadable", "mismatch"]
+"""Why one record could not be reported. ``not_private`` is the one the user fixes with
+``chmod``; the rest mean the record itself, or its absence, is the problem."""
 
 type CacheErrorCode = Literal[
     "invalid_home_setting",
@@ -81,13 +89,17 @@ type CacheErrorCode = Literal[
 
 
 class CacheError(TypedDict):
-    """A refusal. ``error`` is a path-free, actionable sentence."""
+    """A refusal. ``error`` is a sentence with no absolute path in it."""
 
     error: str
     code: CacheErrorCode
-    # home_not_private: the logical location and the violation, never the path.
+    # home_not_private: the logical location and the violation, never an absolute path.
     location: NotRequired[str]
     violation: NotRequired[str]
+    # home_not_private: the fixed f01 location that failed, such as `cache/sources`, so
+    # the user knows what to fix. Absent for anything else, and never a slug, a store
+    # key, or a quarantine entry name.
+    path: NotRequired[str]
     # future_format: the format found and the newest one this release reads.
     found: NotRequired[str]
     supported: NotRequired[str]

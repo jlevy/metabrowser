@@ -55,7 +55,7 @@ status: 200
   "layout_format": null,
   "sources": [],
   "unrecognized_entries": 0,
-  "limit": 50,
+  "limit": 25,
   "next_after": null
 }
 ? 0
@@ -100,7 +100,7 @@ status: 200
   "layout_format": "f01",
   "stores": [],
   "unrecognized_entries": 0,
-  "limit": 50,
+  "limit": 25,
   "next_after": null
 }
 ? 0
@@ -218,7 +218,7 @@ status: 200
     }
   ],
   "unrecognized_entries": 0,
-  "limit": 50,
+  "limit": 25,
   "next_after": null
 }
 ? 0
@@ -300,7 +300,7 @@ status: 200
     }
   ],
   "unrecognized_entries": 0,
-  "limit": 50,
+  "limit": 25,
   "next_after": null
 }
 ? 0
