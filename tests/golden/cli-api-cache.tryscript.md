@@ -144,7 +144,8 @@ status: 200
         ],
         "stores": [
           "sha256:f68db9d30e59b33c3db7869b2f860dda22207fddaf4ce29f8782c44710f1c142"
-        ]
+        ],
+        "truncated": false
       }
     ],
     "quarantine_truncated": false
@@ -174,6 +175,7 @@ status: 200
         "created_at": "2026-09-17T12:00:00Z"
       },
       "alias": null,
+      "state": null,
       "problems": []
     },
     {
@@ -191,6 +193,7 @@ status: 200
         "generation": 2,
         "updated_at": "2026-09-17T12:10:00Z"
       },
+      "state": null,
       "problems": []
     },
     {
@@ -207,6 +210,9 @@ status: 200
         "store_id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
         "generation": 1,
         "updated_at": "2026-09-17T12:00:06Z"
+      },
+      "state": {
+        "last_opened_at": "2026-09-17T12:30:00Z"
       },
       "problems": []
     }
@@ -324,10 +330,10 @@ status: 200
       "generation": 1,
       "updated_at": "2026-09-17T12:00:06Z"
     },
-    "problems": [],
     "state": {
       "last_opened_at": "2026-09-17T12:30:00Z"
     },
+    "problems": [],
     "store": {
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
@@ -378,6 +384,7 @@ status: 200
         "created_at": "2026-09-17T12:00:00Z"
       },
       "alias": null,
+      "state": null,
       "problems": []
     },
     {
@@ -395,6 +402,7 @@ status: 200
         "generation": 2,
         "updated_at": "2026-09-17T12:10:00Z"
       },
+      "state": null,
       "problems": []
     }
   ],

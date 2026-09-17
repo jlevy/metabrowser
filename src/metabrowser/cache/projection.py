@@ -1,8 +1,10 @@
 """Logical projections of the ``f01`` cache for the read-only ``/api/cache/`` routes.
 
 Each projection resolves the application home per request and never creates it: a
-missing home is the ``absent`` state, not an error. Reads take no lock, because a lock is
-a file write and a cache hit must be readable from a home the process cannot write; a
+missing home is the ``absent`` state, not an error. Nothing here changes the home either:
+reads take no lock, because a lock is a file write and a cache hit must be readable from a
+home the process cannot write, and they ask for ``shared="refuse"`` so an entry other
+users can reach is reported rather than tightened while a request is answered. A
 concurrent publication, quarantine, or reclamation can therefore show an entry mid-move,
 and an entry that disappears between listing and reading is left out rather than
 reported damaged. Records are read only through :func:`~metabrowser.cache.atomic.read_record`,
@@ -96,7 +98,7 @@ from metabrowser.cache.wire import (
     StoreRow,
     StoreState,
 )
-from metabrowser.home import ApplicationHomeError, PrivateStorageError
+from metabrowser.home import ApplicationHomeError, PrivateStorageError, SharedEntryPolicy
 
 log = logging.getLogger(__name__)
 
@@ -106,13 +108,15 @@ log = logging.getLogger(__name__)
 #
 # - One verified record read: 1.3-1.7 ms median and 1.7-4.8 ms mean over 500 records.
 #   Portable YAML parsing is most of it; path verification is about 0.5 ms.
-# - A verified listing: 0.5-1.1 ms for 500 names and 6-11 ms for 10,000.
-# - A sources page of 100 rows (two reads per row): 0.93-1.19 s.
-# - A stores page whose references read 500 aliases: 1.4-2.2 s.
+# - A verified listing: 0.6-1.1 ms for 500 names and 6-11 ms for 10,000.
+# - A sources page of 100 rows, three reads per row: 0.44-1.43 s.
+# - A stores page whose references read 500 aliases: 0.73-2.10 s.
 # - The layout of an empty cache: 3-7 ms.
 #
-# Record reads dominate by three orders of magnitude, so pages bound reads and listings
-# bound only names.
+# The two page rows reached 5.0 s and 7.3 s in one run that overlapped another build on
+# the same machine, and returned to the ranges above when it finished; the ratios, not
+# the absolute numbers, are what the bounds rest on. Record reads dominate listings by
+# three orders of magnitude, so a page bounds reads and a listing bounds only names.
 DEFAULT_PAGE_LIMIT: Final = 50
 MAX_PAGE_LIMIT: Final = 100
 # Store references read one alias per source. Past this many sources they are reported
@@ -123,8 +127,18 @@ MAX_REFERENCE_SCAN: Final = 500
 MAX_DIRECTORY_ENTRIES: Final = 10_000
 # Each reported quarantine entry costs up to three verified listings.
 MAX_QUARANTINE_ENTRIES: Final = 100
+# Names reported per quarantine entry, per kind. Quarantine moves one store and the
+# sources resolved through it, so this is far above what it creates, and it bounds the
+# response: the two lists of a full page of entries are at most
+# MAX_QUARANTINE_ENTRIES * 2 * MAX_QUARANTINE_NAMES names.
+MAX_QUARANTINE_NAMES: Final = 50
 
 type CacheAnswer[T] = tuple[int, T | CacheError]
+
+# Answering a request is no reason to change the user's entries, so every read here
+# refuses an entry other users can reach instead of tightening it. The refusal becomes a
+# per-row `not_private` problem for a record and a typed 409 for a directory.
+_READ_ONLY: Final[SharedEntryPolicy] = "refuse"
 
 _MISSING_MESSAGE: Final = "The record is missing."
 _UNREADABLE_MESSAGE: Final = "The record could not be read."
@@ -243,7 +257,7 @@ def _future(error: FutureLayoutFormatError) -> _Refusal:
 
 def _read_layout(home: Path) -> CacheLayout | None:
     try:
-        layout = read_layout(home)
+        layout = read_layout(home, shared=_READ_ONLY)
     except FutureLayoutFormatError as error:
         raise _future(error) from error
     except LayoutError as error:
@@ -264,7 +278,7 @@ def _read_layout(home: Path) -> CacheLayout | None:
 
 def _read_config(home: Path) -> ApplicationConfig | None:
     try:
-        return read_config(home)
+        return read_config(home, shared=_READ_ONLY)
     except FutureLayoutFormatError as error:
         raise _future(error) from error
     except LayoutError as error:
@@ -404,10 +418,13 @@ def _quarantine_entry(home: Path, name: str) -> QuarantineEntry | None:
     stores_name = _retained_name(REPOSITORY_STORES)
     sources = _names(home, f"{base}/{sources_name}") if sources_name in contents else ()
     stores = _names(home, f"{base}/{stores_name}") if stores_name in contents else ()
+    slugs = [slug for slug in sources if is_slug(slug)]
+    keys = [key for key in stores if is_store_key(key)]
     return {
         "entry": name,
-        "sources": [slug for slug in sources if is_slug(slug)],
-        "stores": [f"{IDENTITY_PREFIX}{key}" for key in stores if is_store_key(key)],
+        "sources": slugs[:MAX_QUARANTINE_NAMES],
+        "stores": [f"{IDENTITY_PREFIX}{key}" for key in keys[:MAX_QUARANTINE_NAMES]],
+        "truncated": max(len(slugs), len(keys)) > MAX_QUARANTINE_NAMES,
     }
 
 
@@ -433,7 +450,7 @@ def _read[M: BaseModel](
     """Read one record, noting why it cannot be reported instead of failing the page."""
 
     try:
-        value = read_record(home, relative_path, contract_id)
+        value = read_record(home, relative_path, contract_id, shared=_READ_ONLY)
     except FileNotFoundError:
         if required:
             problems.append({"record": record, "code": "missing", "message": _MISSING_MESSAGE})
@@ -484,6 +501,12 @@ def _source_alias(alias: RepositoryStoreAlias) -> SourceAlias:
 def _source_row(
     home: Path, slug: str, store_keys: frozenset[str]
 ) -> tuple[SourceRow, RepositoryStoreAlias | None] | None:
+    """One source's three records, with ``publication`` decided after all of them.
+
+    Both routes build their row here, so one entry cannot be ``published`` on the list
+    and ``damaged`` on its own route, or carry problems its publication ignores.
+    """
+
     problems: list[RecordProblem] = []
     source = _read(
         home,
@@ -502,6 +525,15 @@ def _source_row(
         REPOSITORY_STORE_ALIAS_CONTRACT_ID,
         RepositoryStoreAlias,
         "store-alias.yml",
+        problems,
+        required=False,
+    )
+    state = _read(
+        home,
+        source_record(slug, "state.yml"),
+        REPOSITORY_SOURCE_STATE_CONTRACT_ID,
+        RepositorySourceState,
+        "state.yml",
         problems,
         required=False,
     )
@@ -535,6 +567,7 @@ def _source_row(
         "publication": publication,
         "identity": None if source is None else _source_identity(source),
         "alias": None if alias is None else _source_alias(alias),
+        "state": None if state is None else {"last_opened_at": state.last_opened_at},
         "problems": problems,
     }
     return row, alias
@@ -594,16 +627,6 @@ def _source(slug: str) -> CacheSourceResponse:
     if read is None:
         raise not_found
     row, alias = read
-    problems = row["problems"]
-    state = _read(
-        home,
-        source_record(slug, "state.yml"),
-        REPOSITORY_SOURCE_STATE_CONTRACT_ID,
-        RepositorySourceState,
-        "state.yml",
-        problems,
-        required=False,
-    )
     store = None
     if alias is not None and row["publication"] != "damaged":
         key = alias.store_id.removeprefix(IDENTITY_PREFIX)
@@ -614,8 +637,8 @@ def _source(slug: str) -> CacheSourceResponse:
         "publication": row["publication"],
         "identity": row["identity"],
         "alias": row["alias"],
-        "problems": problems,
-        "state": None if state is None else {"last_opened_at": state.last_opened_at},
+        "state": row["state"],
+        "problems": row["problems"],
         "store": store,
     }
     return {"home": "present", "layout_format": layout.format, "source": detail}
@@ -712,7 +735,10 @@ def _references(home: Path) -> tuple[dict[str, list[StoreReference]], bool]:
     for slug in slugs:
         try:
             alias = read_record(
-                home, source_record(slug, "store-alias.yml"), REPOSITORY_STORE_ALIAS_CONTRACT_ID
+                home,
+                source_record(slug, "store-alias.yml"),
+                REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+                shared=_READ_ONLY,
             )
         except FileNotFoundError:
             continue

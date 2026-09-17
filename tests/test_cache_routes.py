@@ -19,10 +19,17 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+from metabrowser.cache import listing as listing_module
 from metabrowser.cache import projection
 from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.listing import ListingLimitError, list_private_directory
-from metabrowser.cache.paths import SOURCES, source_record, store_record
+from metabrowser.cache.paths import (
+    SOURCES,
+    quarantine_entry,
+    source_directory,
+    source_record,
+    store_record,
+)
 from metabrowser.cache.records import (
     REPOSITORY_STORE_ALIAS_CONTRACT_ID,
     RepositoryStoreAlias,
@@ -30,6 +37,7 @@ from metabrowser.cache.records import (
 from metabrowser.home import (
     METABROWSER_HOME_ENV,
     PrivateStorageError,
+    SharedEntryPolicy,
     ensure_home,
     ensure_private_directory,
     write_private_file_atomic,
@@ -315,6 +323,7 @@ def test_reclamation_outcomes_are_reported_on_the_layout(
                 "entry": entry,
                 "sources": [JINJA.slug],
                 "stores": [f"sha256:{QUARANTINED_STORE_KEY}"],
+                "truncated": False,
             }
         ],
         "quarantine_truncated": False,
@@ -348,6 +357,7 @@ def test_sources_report_identity_alias_generation_and_publication(
             "generation": 1,
             "updated_at": "2026-09-17T12:00:06Z",
         },
+        "state": {"last_opened_at": OPENED_AT},
         "problems": [],
     }
     ssh = rows[FLASK_SSH.slug]
@@ -358,6 +368,7 @@ def test_sources_report_identity_alias_generation_and_publication(
         "generation": 2,
         "updated_at": "2026-09-17T12:10:00Z",
     }
+    assert ssh["state"] is None
     click = rows[CLICK.slug]
     assert click["publication"] == "unattached"
     assert click["alias"] is None and click["problems"] == []
@@ -478,12 +489,70 @@ def test_a_malformed_page_key_is_a_bad_request(
 def test_reads_take_no_lock_and_write_nothing(
     client: TestClient, populated: tuple[Path, str], tmp_path: Path
 ) -> None:
+    home, _entry = populated
+    # Entries the old read path would have repaired, so the snapshot constrains that too.
+    (home / source_record(CLICK.slug, "source.yml")).chmod(0o640)
+    (home / source_directory(FLASK_SSH.slug)).chmod(0o750)
     before = _snapshot(tmp_path)
 
     for route in (*LIST_ROUTES, f"/api/cache/source/{FLASK_HTTPS.slug}"):
         _json(client, route)
 
     assert _snapshot(tmp_path) == before
+
+
+def test_a_shared_record_is_reported_rather_than_repaired(
+    client: TestClient, populated: tuple[Path, str]
+) -> None:
+    home, _entry = populated
+    record = home / source_record(CLICK.slug, "source.yml")
+    record.chmod(0o640)
+
+    rows = {row["slug"]: row for row in _json(client, "/api/cache/sources")["sources"]}
+    detail = _json(client, f"/api/cache/source/{CLICK.slug}")["source"]
+
+    for row in (rows[CLICK.slug], detail):
+        assert row["publication"] == "damaged"
+        assert row["identity"] is None
+        assert [(p["record"], p["code"]) for p in row["problems"]] == [
+            ("source.yml", "not_private")
+        ]
+        assert str(home) not in str(row)
+    assert stat.S_IMODE(record.stat().st_mode) == 0o640
+    assert rows[FLASK_HTTPS.slug]["publication"] == "published"
+
+
+def test_a_shared_entry_directory_is_reported_rather_than_repaired(
+    client: TestClient, populated: tuple[Path, str]
+) -> None:
+    home, _entry = populated
+    directory = home / source_directory(CLICK.slug)
+    directory.chmod(0o750)
+
+    row = _json(client, f"/api/cache/source/{CLICK.slug}")["source"]
+
+    assert row["publication"] == "damaged"
+    assert {(p["record"], p["code"]) for p in row["problems"]} == {
+        ("source.yml", "not_private"),
+        ("store-alias.yml", "not_private"),
+        ("state.yml", "not_private"),
+    }
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o750
+
+
+def test_a_shared_cache_directory_is_a_typed_refusal_and_is_not_repaired(
+    client: TestClient, populated: tuple[Path, str]
+) -> None:
+    home, _entry = populated
+    directory = home / SOURCES
+    directory.chmod(0o755)
+
+    body = _json(client, "/api/cache/sources", 409)
+
+    assert body["code"] == "home_not_private"
+    assert body["violation"] == "permissive"
+    assert body["location"] == "entry"
+    assert stat.S_IMODE(directory.stat().st_mode) == 0o755
 
 
 def test_no_response_names_a_path_a_pack_or_a_git_internal(
@@ -579,6 +648,26 @@ def test_a_store_without_its_state_record_is_damaged(
     assert [(p["record"], p["code"]) for p in orphan["problems"]] == [("state.yml", "missing")]
 
 
+def test_a_damaged_source_state_damages_the_entry_on_both_routes(
+    client: TestClient, populated: tuple[Path, str]
+) -> None:
+    """state.yml is read by both routes, so one entry cannot look healthy on one of them."""
+
+    home, _entry = populated
+    write_private_file_atomic(
+        home, source_record(FLASK_HTTPS.slug, "state.yml"), b"state: nonsense\n"
+    )
+
+    listed = {row["slug"]: row for row in _json(client, "/api/cache/sources")["sources"]}
+    detail = _json(client, f"/api/cache/source/{FLASK_HTTPS.slug}")["source"]
+
+    for row in (listed[FLASK_HTTPS.slug], detail):
+        assert row["publication"] == "damaged"
+        assert row["state"] is None
+        assert [(p["record"], p["code"]) for p in row["problems"]] == [("state.yml", "invalid")]
+    assert listed[FLASK_HTTPS.slug]["alias"] == detail["alias"]
+
+
 def test_unrecognized_source_entries_are_counted_not_named(
     client: TestClient, populated: tuple[Path, str]
 ) -> None:
@@ -604,6 +693,25 @@ def test_a_directory_past_the_enumeration_bound_is_refused(
     body = _json(client, "/api/cache/sources", 503)
 
     assert body["code"] == "cache_enumeration_limit"
+
+
+def test_a_quarantine_entry_reports_bounded_names(
+    client: TestClient, populated: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A quarantine entry cannot put an unbounded number of names in one response."""
+
+    home, entry = populated
+    monkeypatch.setattr(projection, "MAX_QUARANTINE_NAMES", 2)
+    retained = f"{quarantine_entry(entry)}/sources"
+    for index in range(3):
+        ensure_private_directory(home, f"{retained}/example-com--org--repo-{index}--{index:012x}")
+
+    quarantined = _json(client, "/api/cache/layout")["reclamation"]["quarantine"]
+
+    assert len(quarantined) == 1
+    assert len(quarantined[0]["sources"]) == 2
+    assert quarantined[0]["truncated"] is True
+    assert quarantined[0]["stores"] == [f"sha256:{QUARANTINED_STORE_KEY}"]
 
 
 def test_more_sources_than_one_reference_scan_reads_leave_references_unknown(
@@ -633,6 +741,38 @@ def test_listing_is_sorted_verified_and_never_creates(tmp_path: Path) -> None:
     with pytest.raises(ListingLimitError):
         list_private_directory(home, SOURCES, max_entries=2)
     assert _snapshot(tmp_path) == before
+
+
+def test_the_listing_comes_from_the_verified_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A directory swapped for a link right after verification cannot change the answer."""
+
+    home = tmp_path / "home"
+    build_empty_home(home)
+    for name in ("a", "b"):
+        ensure_private_directory(home, f"{SOURCES}/{name}")
+    decoy = tmp_path / "decoy"
+    (decoy / "impostor").mkdir(parents=True)
+    open_directory = listing_module._open_directory_entry
+
+    def swap_after_verifying(
+        parent_fd: int,
+        name: str,
+        path: Path,
+        *,
+        create: bool,
+        shared: SharedEntryPolicy = "repair",
+    ) -> int:
+        fd = open_directory(parent_fd, name, path, create=create, shared=shared)
+        if name == SOURCES.rpartition("/")[2]:
+            (home / SOURCES).rename(tmp_path / "moved-aside")
+            (home / SOURCES).symlink_to(decoy, target_is_directory=True)
+        return fd
+
+    monkeypatch.setattr(listing_module, "_open_directory_entry", swap_after_verifying)
+
+    assert list_private_directory(home, SOURCES, max_entries=10) == ("a", "b")
 
 
 def test_listing_refuses_a_symlinked_directory(tmp_path: Path) -> None:

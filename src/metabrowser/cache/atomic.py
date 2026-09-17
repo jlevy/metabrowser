@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from metabrowser.cache.contracts import cache_contract_registry
 from metabrowser.cache.locks import CacheLock, LockOrderError
 from metabrowser.home import (
+    SharedEntryPolicy,
     ensure_private_directory,
     open_private_file,
     rename_without_replacing,
@@ -48,11 +49,20 @@ class RecordError(Exception):
 
 
 def read_bytes_bounded(
-    home: Path, relative_path: str, *, max_bytes: int = MAX_RECORD_BYTES
+    home: Path,
+    relative_path: str,
+    *,
+    max_bytes: int = MAX_RECORD_BYTES,
+    shared: SharedEntryPolicy = "repair",
 ) -> bytes:
-    """Read a private file of at most *max_bytes*; a missing file raises ``FileNotFoundError``."""
+    """Read a private file of at most *max_bytes*; a missing file raises ``FileNotFoundError``.
 
-    fd = open_private_file(home, relative_path, os.O_RDONLY | os.O_NONBLOCK)
+    *shared* is passed to :func:`~metabrowser.home.open_private_file`: a caller that must
+    change nothing, such as a read route, passes ``"refuse"`` so a shared record is
+    reported rather than tightened.
+    """
+
+    fd = open_private_file(home, relative_path, os.O_RDONLY | os.O_NONBLOCK, shared=shared)
     try:
         if os.fstat(fd).st_size > max_bytes:
             raise RecordError("the record is larger than any valid record", home / relative_path)
@@ -87,10 +97,18 @@ def parse_record(payload: bytes, contract_id: str, path: Path) -> BaseModel:
     return record
 
 
-def read_record(home: Path, relative_path: str, contract_id: str) -> BaseModel:
-    """Read and validate one enforced record."""
+def read_record(
+    home: Path, relative_path: str, contract_id: str, *, shared: SharedEntryPolicy = "repair"
+) -> BaseModel:
+    """Read and validate one enforced record.
 
-    return parse_record(read_bytes_bounded(home, relative_path), contract_id, home / relative_path)
+    *shared* follows :func:`read_bytes_bounded`, so a read route can refuse a shared
+    record instead of repairing the user's entry while answering a request.
+    """
+
+    return parse_record(
+        read_bytes_bounded(home, relative_path, shared=shared), contract_id, home / relative_path
+    )
 
 
 def serialize_record(record: BaseModel, contract_id: str) -> bytes:

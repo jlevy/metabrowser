@@ -123,11 +123,15 @@ class ConfigRecord(TypedDict):
 
 
 class QuarantineEntry(TypedDict):
-    """One quarantine outcome and the logical entries it retains."""
+    """One quarantine outcome and the logical entries it retains.
+
+    ``truncated`` is true when either list was cut at the per-entry name bound.
+    """
 
     entry: str
     sources: list[str]
     stores: list[str]
+    truncated: bool
 
 
 class Reclamation(TypedDict):
@@ -166,11 +170,19 @@ class SourceAlias(TypedDict):
     updated_at: str
 
 
+class SourceState(TypedDict):
+    last_opened_at: str | None
+
+
 class SourceRow(TypedDict):
+    """One source's three records. ``publication`` is decided after all of them, so it
+    never disagrees with ``problems`` or with the same entry on the other route."""
+
     slug: str
     publication: SourcePublication
     identity: SourceIdentity | None
     alias: SourceAlias | None
+    state: SourceState | None
     problems: list[RecordProblem]
 
 
@@ -181,10 +193,6 @@ class CacheSourcesResponse(TypedDict):
     unrecognized_entries: int
     limit: int
     next_after: str | None
-
-
-class SourceState(TypedDict):
-    last_opened_at: str | None
 
 
 # ── /api/cache/stores ──────────────────────────────────────────────
@@ -243,7 +251,6 @@ class CacheStoresResponse(TypedDict):
 
 
 class SourceDetail(SourceRow):
-    state: SourceState | None
     store: StoreRecords | None
 
 

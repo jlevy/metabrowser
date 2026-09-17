@@ -327,7 +327,7 @@ def _replace_shared_lock_file(home: Path, relative_path: str) -> None:
 
     assert fcntl is not None
     path = home / relative_path
-    fd = open_private_file(home, relative_path, os.O_RDONLY | os.O_NONBLOCK, repair_shared=False)
+    fd = open_private_file(home, relative_path, os.O_RDONLY | os.O_NONBLOCK, shared="keep")
     try:
         if not _flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB, path):
             raise _unverifiable(path, _SHARED_LOCK_HELD)

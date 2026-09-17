@@ -1,13 +1,14 @@
 """Bounded, verified, lock-free listing of one directory in the application home.
 
 The read routes enumerate sources, stores, and reclamation areas without a lock and
-without creating anything, so they cannot use :func:`metabrowser.home.ensure_private_directory`,
-which creates a missing directory. This walks the same descriptor-relative, no-follow path
-that a record read does: the home's ancestors and the home are verified, each directory
-below it is opened without following a link and held to the owner-only rules, and the
-names are read from the verified descriptor itself, so a directory swapped for a link
-after verification is never listed. As with a record read, an existing shared directory
-loses its group and other access, and a missing one raises :class:`FileNotFoundError`.
+without changing anything, so they cannot use :func:`metabrowser.home.ensure_private_directory`,
+which creates a missing directory and repairs a shared one. This walks the same
+descriptor-relative, no-follow path that a record read does: the home's ancestors and the
+home are verified, each directory below it is opened without following a link and held to
+the owner-only rules, and the names are read from the verified descriptor itself, so a
+directory swapped for a link after verification is never listed. A shared directory is
+refused rather than tightened, because answering a request is no reason to change the
+user's entries, and a missing one raises :class:`FileNotFoundError`.
 """
 
 from __future__ import annotations
@@ -40,7 +41,8 @@ def list_private_directory(home: Path, relative_path: str, *, max_entries: int) 
     *relative_path* is a POSIX-relative path such as ``"cache/sources"``. Raises
     :class:`FileNotFoundError` when the home or the directory is missing,
     :class:`~metabrowser.home.PrivateStorageError` when any part of the path is not
-    private, and :class:`ListingLimitError` rather than reading past *max_entries*.
+    private, including one other users can reach, and :class:`ListingLimitError` rather
+    than reading past *max_entries*. It changes nothing on any of those paths.
     """
 
     _require_home_argument(home)
@@ -51,7 +53,7 @@ def list_private_directory(home: Path, relative_path: str, *, max_entries: int) 
     try:
         for name in relative_path.split("/"):
             path = path / name
-            child = _open_directory_entry(fd, name, path, create=False)
+            child = _open_directory_entry(fd, name, path, create=False, shared="refuse")
             os.close(fd)
             fd = child
         names: list[str] = []

@@ -54,7 +54,12 @@ from metabrowser.cache.records import (
     ApplicationConfig,
     CacheLayout,
 )
-from metabrowser.home import application_home, ensure_home, write_private_file_atomic
+from metabrowser.home import (
+    SharedEntryPolicy,
+    application_home,
+    ensure_home,
+    write_private_file_atomic,
+)
 
 LAYOUT_FORMAT: Final = "f01"
 # Every format a released Metabrowser has written, oldest first, ending with the current
@@ -151,17 +156,23 @@ def _parse_yaml(payload: bytes, path: Path, what: str) -> dict[str, Any]:
     return cast(dict[str, Any], document)
 
 
-def read_layout(home: Path, *, history: Sequence[str] = FORMAT_HISTORY) -> CacheLayout | None:
+def read_layout(
+    home: Path,
+    *,
+    history: Sequence[str] = FORMAT_HISTORY,
+    shared: SharedEntryPolicy = "repair",
+) -> CacheLayout | None:
     """Read ``cache/layout.yml``; ``None`` when the home has none yet.
 
     A format newer than *history* raises :class:`FutureLayoutFormatError` before the
     record is held to this release's contract, so a newer layout is never reported as
-    damage.
+    damage. *shared* follows :func:`~metabrowser.cache.atomic.read_bytes_bounded`, so a
+    read route can refuse a shared record instead of repairing it.
     """
 
     path = home / LAYOUT_RECORD
     try:
-        payload = read_bytes_bounded(home, LAYOUT_RECORD)
+        payload = read_bytes_bounded(home, LAYOUT_RECORD, shared=shared)
     except FileNotFoundError:
         return None
     except RecordError as error:
@@ -178,16 +189,23 @@ def read_layout(home: Path, *, history: Sequence[str] = FORMAT_HISTORY) -> Cache
     return layout
 
 
-def read_config(home: Path, *, history: Sequence[str] = FORMAT_HISTORY) -> ApplicationConfig | None:
+def read_config(
+    home: Path,
+    *,
+    history: Sequence[str] = FORMAT_HISTORY,
+    shared: SharedEntryPolicy = "repair",
+) -> ApplicationConfig | None:
     """Read ``config.yml``; ``None`` when there is none.
 
     Known fields validate, unknown settings are kept, and a future format raises
-    :class:`FutureLayoutFormatError`.
+    :class:`FutureLayoutFormatError`. *shared* follows :func:`read_layout`.
     """
 
     path = home / CONFIG_RECORD
     try:
-        payload = read_bytes_bounded(home, CONFIG_RECORD, max_bytes=_MAX_CONFIG_BYTES)
+        payload = read_bytes_bounded(
+            home, CONFIG_RECORD, max_bytes=_MAX_CONFIG_BYTES, shared=shared
+        )
     except FileNotFoundError:
         return None
     except RecordError as error:
