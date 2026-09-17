@@ -23,7 +23,7 @@ from typing import Any, cast
 import pytest
 
 from metabrowser.cache import reclaim as reclaim_module
-from metabrowser.cache.atomic import write_record_atomic
+from metabrowser.cache.atomic import publish_entry, write_record_atomic
 from metabrowser.cache.locks import (
     held_locks,
     staging_entry_lock,
@@ -380,7 +380,7 @@ def test_quarantine_moves_the_alias_then_the_store_and_explicit_purge_deletes_it
     _make_store(home)
     _make_source_with_alias(home)
     moves: list[str] = []
-    real_publish = reclaim_module.publish_entry
+    real_publish = publish_entry
 
     def recording_publish(home: Path, staged: str, target: str, **kwargs: Any) -> bool:
         moves.append(staged)

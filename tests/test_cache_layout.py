@@ -24,6 +24,7 @@ from typer.testing import CliRunner
 
 from metabrowser import home as home_module
 from metabrowser.cache import layout as layout_module
+from metabrowser.cache.atomic import write_record_atomic
 from metabrowser.cache.layout import (
     FORMAT_HISTORY,
     LAYOUT_FORMAT,
@@ -329,8 +330,8 @@ def _write_config(home: Path, body: str) -> None:
 
 def _record_writes(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     writes: list[str] = []
-    real_record = layout_module.write_record_atomic
-    real_file = layout_module.write_private_file_atomic
+    real_record = write_record_atomic
+    real_file = write_private_file_atomic
 
     def record_write(home: Path, relative_path: str, *args: Any, **kwargs: Any) -> None:
         writes.append(relative_path)

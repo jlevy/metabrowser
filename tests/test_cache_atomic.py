@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import ctypes
 import errno
-import fcntl
 import os
 import stat
 import subprocess
@@ -43,6 +42,7 @@ from metabrowser.home import (
 )
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="owner-only storage is POSIX-only")
+fcntl = pytest.importorskip("fcntl")
 
 STORE_KEY = "c" * 64
 CHILD_TIMEOUT = 60

@@ -7,7 +7,6 @@ second process does not.
 
 from __future__ import annotations
 
-import fcntl
 import os
 import signal
 import stat
@@ -47,9 +46,11 @@ from metabrowser.home import (
     PrivateStorageError,
     PrivateStorageViolation,
     ensure_home,
+    open_private_file,
 )
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
+fcntl = pytest.importorskip("fcntl")
 
 STORE_A = "a" * 64
 STORE_B = "b" * 64
@@ -458,7 +459,10 @@ def test_a_local_home_passes_the_probe_once_per_process(
 ) -> None:
     report = probe.probe_application_home(home, force=True)
 
-    assert report.no_replace_rename is (sys.platform in {"darwin", "linux"})
+    # APFS was measured to honor renamex_np(RENAME_EXCL); a Linux file system may answer
+    # renameat2(RENAME_NOREPLACE) with EINVAL, and publication then relies on its check.
+    if sys.platform == "darwin":
+        assert report.no_replace_rename is True
     assert list((home / "cache/staging").iterdir()) == []
     assert list((home / "cache/locks/staging").iterdir()) == []
 
@@ -508,7 +512,7 @@ def test_record_locks_pass_the_exclusion_check_when_no_descriptor_closes(
 
     monkeypatch.setattr(probe, "fcntl", _record_lock_shim())
     monkeypatch.setattr(probe, "_CHILD_SCRIPT", _RECORD_LOCK_CHILD)
-    real_open = probe.open_private_file
+    real_open = open_private_file
 
     def open_without_an_unrelated_descriptor(
         home: Path, relative: str, flags: int, **kwargs: Any
