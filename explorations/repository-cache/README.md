@@ -64,6 +64,8 @@ uv --config-file uv.toml run --frozen python explorations/repository-cache/measu
 | `gitlinks` | Gitlinks in a change set, want-list permission and rejection, and splitting a rejected request | 1, tiny repository |
 | `mailmap` | Which store reads load a mailmap and which configuration stops them | 1, tiny repository |
 | `umask` | File modes Git writes into a store under different umasks | 1, tiny repository |
+| `storeconfig` | Which operations change a store’s configuration, fork sources, hook paths, and retention of a discarded job’s objects | 1, tiny repository |
+| `lockdescriptors` | `flock` requests on a separate `open()` versus a `dup()` of a lease descriptor | 1 |
 
 Timings are medians with the observed range.
 Network runs moved by up to 2× between repetitions (mypy full clone: 8.8 s and 17.8 s in
@@ -345,6 +347,49 @@ blobs, and running `gc`:
   window) and was removed by `gc --prune=now`.
 - Bare stores wrote no reflogs, so reflogs never retain an object in this layout.
 
+Those retention results are for a full store.
+A blobless store behaves differently; see
+[store configuration, fork sources, and retention](#store-configuration-fork-sources-and-retention).
+
+### Store configuration, fork sources, and retention
+
+`results/storeconfig.json`, tiny repositories from a local origin, one run:
+
+- **Configuration keys.** `init --bare` and the Metabrowser store configuration wrote
+  `core.repositoryformatversion`, `core.filemode`, `core.bare`, `core.ignorecase`,
+  `core.precomposeunicode`, `core.hookspath`, the maintenance, submodule, and bundle-URI
+  keys, and `remote.origin.url`. The first filtered fetch added `remote.origin.promisor`
+  and `remote.origin.partialclonefilter`.
+
+- **Snapshot stability.** After that fetch, the SHA-256 of
+  `git config --file <config> --list -z` was unchanged by a job fetch into private refs,
+  an object-ID prefetch, an `update-ref --stdin` transaction, `gc --prune=now`,
+  `repack -a -d`, and a store read.
+
+- **Fork sources.**
+
+| Fetch into a blobless store | Result |
+| --- | --- |
+| Fork by URL, with `--filter=blob:none` | Succeeded, and wrote `remote.<url>.promisor` and `remote.<url>.partialclonefilter` into the store’s configuration |
+| Fork by URL, without the filter | Succeeded without changing configuration; the next `gc --prune=now` failed: `Packfile doesn't have full closure` |
+| The same commit through the base repository’s `refs/pull/1/head` and `origin` | Succeeded; configuration unchanged; `gc --prune=now` and `repack -a -d` succeeded |
+
+- **Hook paths.** A `reference-transaction` hook ran on `update-ref` only when
+  `core.hooksPath` was unset and the hook was planted in the store’s `hooks/` directory.
+  With `core.hooksPath` empty or `/dev/null` no hook ran, and a hook in the process’s
+  working directory never ran.
+
+- **Retention of a discarded job’s objects.** A job fetched a branch and, in the
+  blobless store, prefetched its new blob; then its job ref was deleted.
+
+| Store | After `gc --prune=now` | After `repack -a -d` | After `prune --expire=now` |
+| --- | --- | --- | --- |
+| Blobless | commit and blob present | commit and blob present | commit and blob present |
+| Full | removed | removed | removed |
+
+  Git never prunes promisor objects, so unreachable objects a blobless store fetched
+  stay until an explicit compaction.
+
 ### Platform primitives
 
 `results/platform.json` and `results/catalog.json`, APFS:
@@ -360,6 +405,7 @@ blobs, and running `gc`:
 | `flock` exclusive, holder SIGKILLed | Second process blocked while held; acquired 2.8 ms after the kill |
 | `flock` shared | Two holders coexisted; a third shared request succeeded; exclusive refused |
 | `lockf`, then the same process closes an unrelated descriptor for the file | **The lock vanished**; another process acquired it |
+| `flock` shared lease held; exclusive non-blocking request in the same process (`results/lockdescriptors.json`) | Through a separate `open()`: refused. Through a `dup()` of the lease descriptor: **granted, converting the lease**, after which another process could not take a shared lock |
 | Names | `NAME_MAX` 255, `PATH_MAX` 1024; case-insensitive and Unicode-normalization-insensitive |
 | Flat directory scan plus one record read per entry | 100: 1.9 ms; 1,000: 20.9 ms; 10,000: 262 ms |
 

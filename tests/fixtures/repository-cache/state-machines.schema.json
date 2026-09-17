@@ -4,7 +4,7 @@
   "title": "Repository cache lock, publication, lease, trash, and quarantine state machines",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "decided", "visibility", "locks", "publication", "crash_recovery", "machines", "scenarios", "interleaving"],
+  "required": ["schema", "decided", "visibility", "locks", "publication", "crash_recovery", "machines", "scenarios", "interleaving", "configuration_snapshot"],
   "$defs": {"name": {"type": "string", "pattern": "^[a-z][a-z_]*$"}},
   "properties": {
     "schema": {"const": "metabrowser-repository-cache-state-machines-v1"},
@@ -220,11 +220,38 @@
               "id": {"type": "string"},
               "processes": {"type": "array", "minItems": 2, "items": {"type": "string"}},
               "expect": {"enum": ["safe", "alias_names_absent_store"]},
-              "reachable_events": {"type": "array", "items": {"$ref": "#/$defs/name"}},
-              "unreachable_events": {"type": "array", "items": {"$ref": "#/$defs/name"}}
+              "reachable_events": {"type": "array", "items": {"type": "string", "pattern": "^([a-z][a-z_]*|crash:[a-z][a-z_]*:[a-z][a-z_]*)$"}},
+              "unreachable_events": {"type": "array", "items": {"type": "string", "pattern": "^([a-z][a-z_]*|crash:[a-z][a-z_]*:[a-z][a-z_]*)$"}},
+              "initial": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["store", "alias"],
+                "properties": {"store": {"enum": ["absent", "present"]}, "alias": {"enum": ["K", null]}}
+              },
+              "crashes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["program", "before", "recovery"],
+                  "properties": {"program": {"type": "string"}, "before": {"type": "string"}, "recovery": {"oneOf": [{"$ref": "#/$defs/name"}, {"type": "null"}]}}
+                }
+              }
             }
           }
         }
+      }
+    },
+    "configuration_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "recorded", "verified_by", "on_mismatch", "basis"],
+      "properties": {
+        "digest": {"type": "string"},
+        "recorded": {"type": "string"},
+        "verified_by": {"type": "string"},
+        "on_mismatch": {"type": "string"},
+        "basis": {"type": "string"}
       }
     }
   }

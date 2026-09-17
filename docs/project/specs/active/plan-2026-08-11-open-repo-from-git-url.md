@@ -337,8 +337,12 @@ Directories and read-only file opens are therefore repaired, but opening a file 
 in-place write is refused when its mode or ACL shared it.
 Record writes create a temporary file with `O_CREAT | O_EXCL` in the target directory
 and rename it into place.
-A lock file that was ever shared, which another holder may still have open and locked,
-is replaced the same way.
+A lock file that was ever shared is replaced only after its old file’s lock is acquired
+without blocking: the replacement is created and renamed into place, and then the old
+lock is released.
+If the old lock cannot be acquired the file is refused, because another
+holder may still have it locked, and renaming a new file over it would let a second
+holder acquire the same lock.
 
 **Unverifiable is refused.** A file system that does not keep modes, an ACL that cannot
 be read or interpreted, and a platform without descriptor-relative, no-follow operations
@@ -379,6 +383,14 @@ Every lock file lives under `cache/locks/`, never inside a directory that public
 purge, quarantine, or reclamation renames, and a holder compares the locked descriptor’s
 `fstat` with the path’s `lstat` after acquiring and retries on a mismatch, because a
 sweep may have removed and recreated the file.
+Every lease and every lock attempt uses its own `open()` of the lock file; descriptors
+are never shared or duplicated between lock holders, including two holders in one
+process. `flock` state belongs to the open file description, so a request through a
+duplicate converts the existing lock instead of contending with it: in one measured
+process, an exclusive non-blocking request on a separate `open()` was refused while a
+shared lease was held, the same request on a `dup()` of the lease descriptor was
+granted, and another process could no longer take a shared lock
+([lock descriptors](../../../../explorations/repository-cache/README.md#platform-primitives)).
 
 Two kinds of side lock sit outside the order:
 
@@ -400,13 +412,23 @@ and referring aliases.
 `tests/fixtures/repository-cache/state-machines.json` freezes this order, the side
 locks, and the acquisition, reclamation, sweep, fetch, lease, maintenance, purge,
 quarantine, and repointing state machines.
+Purge and quarantine move the alias before the store, under the alias and store locks.
+A crash between the two moves leaves a store with no alias, which is an ordinary
+unreferenced store that reclamation handles; the reverse order could leave a visible
+alias naming a store that is gone.
 `tests/test_repository_cache_contract_fixtures.py` checks every sequence and transition
 against the order and explores every interleaving of two acquisitions, a reclamation,
-and a purge over one source and store: no alias ever names an absent store, no process
-violates the order or deadlocks, and the defensive `store_missing` transition is
-unreachable. The same exploration finds the race in the design it replaced, where an
-acquisition released its store lock before publishing the alias without holding a lease,
-so reclamation could trash the store in between.
+and a purge from an empty cache, and of an acquisition, a reclamation, a purge, and a
+quarantine from an existing alias and store with a crash allowed between each purge and
+quarantine move.
+No alias ever names an absent store, including after a crash; no process
+violates the order or deadlocks; each crash leaves the recovery its machine declares;
+and the defensive `store_missing` transition is unreachable.
+The same exploration finds the race in each design it replaced: an acquisition that
+released its store lock before publishing the alias without holding a lease, from both
+starting states, and purge or quarantine moving the store first.
+The checker gives each process its own locks, which is sound only because of the
+per-`open()` rule above.
 The implementation’s concurrent refresh/read/purge/reclaim tests replay those machines.
 
 ## Application Home and Cache Layout `f01`
@@ -1087,6 +1109,51 @@ detached `git maintenance run --auto`, and over HTTPS that maintenance made the 
 consecutive lazy fetch fail with
 `… in the commit graph file but not in the object database`.
 
+Objects enter a store only from the promisor remotes recorded in its configuration
+snapshot, which Metabrowser writes when it creates the store.
+A fetch job names one of those remotes, never a URL. Fetching a fork by URL into a
+blobless store with the filter wrote `remote.<url>.promisor` and
+`remote.<url>.partialclonefilter` into the store’s configuration, and without the filter
+it wrote objects that made `gc --prune=now` fail.
+Provider change-request heads are therefore fetched from the base repository’s
+provider-published refs — `refs/pull/<n>/head` on GitHub, `refs/merge-requests/<n>/head`
+on GitLab — through the store’s own remote; fetching the same commit that way left the
+configuration unchanged and `gc` and `repack` succeeded.
+An object reachable only from a fork is acquired through the fork’s own source and
+store, never fetched by URL into another store.
+
+**Configuration snapshot.** After the store’s first successful fetch in staging and
+before publication, acquisition records a digest of the store’s configuration in the
+repository-store state record: SHA-256 of the exact output bytes of
+`git config --file <store>/repository.git/config --list -z`, run with no system or
+global configuration.
+`--file` reads only that file and does not follow `include.path`, so an include is
+itself a recorded key, and entries stay in file order.
+Any Metabrowser operation that intentionally changes the configuration updates the
+digest under the repository-store lock in the same step.
+Every Git process spawned on a store verifies the digest first, credentialed or not:
+each batch-reader spawn (a running reader is not re-checked per request), each other
+read, each fetch job and its publication, and each maintenance run.
+A planted `core.sshCommand`, `remote.<name>.uploadpack`, `diff.external`,
+`include.path`, `url.<base>.insteadOf`, or credential helper therefore changes the
+digest before Git can use it.
+On a mismatch Git is not run: the process marks the store suspect and refuses reads and
+fetches on it, releases any lease, and requests quarantine, which takes the exclusive
+maintenance lock without blocking and is deferred while a lease is held; the store stays
+refused meanwhile.
+An exact expected configuration cannot be written in advance: Git adds
+`remote.origin.promisor` and `remote.origin.partialclonefilter` on the first filtered
+fetch, and on macOS `init` writes `core.ignorecase` and `core.precomposeunicode`. After
+the first fetch, a job fetch into private refs, an object-ID prefetch, an `update-ref`
+transaction, `gc --prune=now`, `repack -a -d`, and a store read left the digest
+unchanged
+([store configuration](../../../../explorations/repository-cache/README.md#store-configuration-fork-sources-and-retention)).
+
+The hooks path is `core.hooksPath=/dev/null`. With the key unset, a
+`reference-transaction` hook planted in the store’s `hooks/` directory ran on
+`update-ref`; with `/dev/null` it did not, and neither setting ran a hook placed in the
+process’s working directory.
+
 Initial acquisition has no low-speed bound yet: the one measured stall bound was
 measured on object-ID fetches, and a large or bitmap-less acquisition may legitimately
 send nothing for longer while the server counts and compresses objects.
@@ -1176,8 +1243,15 @@ When the server rejects a request object by object (`not our ref`), the job spli
 want list in halves down to single object IDs, fetches the accepted ones, and marks each
 rejected ID unavailable; the measured list of 13 with a gitlink and an absent object
 took 13 requests and fetched all 11 blobs.
-A policy refusal, transport failure, stall, or cancellation fails the whole job without
-splitting. `tests/fixtures/repository-cache/object-requests.json` pins both rules.
+A job stops splitting after 8 rejected IDs and marks every ID it has not resolved
+`deferred`, not unavailable, so convergence retries them.
+That cap is a provisional cost policy, not a performance bound: nothing measured how
+often hosting providers reject objects, blob-mode filtering removes the one routine
+cause that was measured, and 8 keeps a job at 50,000 IDs to at most 1 + 2 × 8 × 16 = 257
+requests. A policy refusal, transport failure, stall, cancellation, or any failure text
+that matches no known class fails the whole job without splitting.
+`tests/fixtures/repository-cache/object-requests.json` pins these rules and the
+fetch-job source rule.
 
 Store reads also disable the mailmap with `-c mailmap.blob= -c mailmap.file=`. A bare
 store’s default mailmap is `HEAD:.mailmap`, so with Git defaults the history page and
@@ -1441,13 +1515,13 @@ replay against production functions when they land.
 | Convergence | Explicit `git fetch --stdin` of the missing object IDs listed by `rev-list --objects --missing=print`, at most 50,000 IDs per request; `git backfill` is not used | Coverage decides it: backfill left 1,318 mypy objects outside `HEAD`’s history missing, and did nothing when `HEAD` was unborn. Speed does not: one request of 53,607 IDs took 16.2 s and 24.9 s against 25.5–26.0 s for backfill plus its remainder, but only two runs were taken, always after backfill, so order effects are not excluded. No larger request was measured |
 | Object-fetch stall bound | Object-ID prefetch and convergence fetches set `http.lowSpeedLimit=1000` and `http.lowSpeedTime=30`. Initial acquisition has no low-speed bound until Phase 1B-a measures one; user cancellation is the interim guard | Git defaults waited past 20 s on a remote that never answered; a 1 B/s over 3 s bound failed in 3.13 s; the 30 s bound interrupted none of the eight measured object-ID fetches, the longest 24.9 s. No stall bound was measured on an acquisition, where a server may send nothing while it counts and compresses objects |
 | Lazy fetch | `GIT_NO_LAZY_FETCH=1` on every request-path read; diff routes check the `--no-renames` change set first; network only through the object-job port | See [the offline guarantee](#blobless-acquisition-and-the-offline-guarantee) |
-| Object requests | Only blob modes `100644`, `100755`, and `120000` are requested; gitlinks are submodule entries; a per-object rejection splits the request in halves down to single IDs, and other failures fail the job; `object-requests.json` | A want list with a gitlink failed with `not our ref` under protocol v0 and v2 and fetched nothing; splitting a 13-ID list with a gitlink and an absent object took 13 requests and fetched all 11 blobs |
+| Object requests | Only blob modes `100644`, `100755`, and `120000` are requested; gitlinks are submodule entries; a per-object rejection splits the request in halves down to single IDs, at most 8 rejected IDs per job, after which unresolved IDs are deferred; unclassified and other failures fail the job; `object-requests.json` | A want list with a gitlink failed with `not our ref` under protocol v0 and v2 and fetched nothing; splitting a 13-ID list with a gitlink and an absent object took 13 requests and fetched all 11 blobs. The cap of 8 is a provisional cost policy, bounding a job to 257 requests, not a measurement |
 | Store reads | Every store read runs with `GIT_NO_LAZY_FETCH=1`, `-c mailmap.blob=`, and `-c mailmap.file=`; stderr from a read is logged and degrades the result instead of passing as success | With Git defaults the history page and `show --raw` read `HEAD:.mailmap` and, with lazy fetch disabled, printed an error and exited 0. `log.mailmap=false` alone did not stop a `%aN` read, and `mailmap.blob=` alone still applied an inherited `mailmap.file`; the two keys stopped every read |
-| Store configuration | `maintenance.auto=false`, `gc.auto=0`, `fetch.recurseSubmodules=false`, `transfer.bundleURI=false`, an empty hooks path, empty template, no user configuration, and umask `077` for every Git child; Git-written content must have no group or other bits and no allow ACL for another principal, and `0400` object files are accepted | Every fetch with Git defaults spawned `git maintenance run --auto`; over HTTPS the resulting auto-gc made the 51st lazy fetch fail with a commit-graph error, while the same run with maintenance disabled completed 230 fetches. Under umask `022` Git wrote `0755` directories and `0444` or `0644` files, and `core.sharedRepository=0600` left six of seven directories `0755`; under umask `077` no entry had a group or other bit |
+| Store configuration | `maintenance.auto=false`, `gc.auto=0`, `fetch.recurseSubmodules=false`, `transfer.bundleURI=false`, `core.hooksPath=/dev/null`, empty template, no user configuration, umask `077` for every Git child, and a configuration snapshot digest that every Git process verifies first; Git-written content must have no group or other bits and no allow ACL for another principal, and `0400` object files are accepted | Every fetch with Git defaults spawned `git maintenance run --auto`; over HTTPS the resulting auto-gc made the 51st lazy fetch fail with a commit-graph error, while the same run with maintenance disabled completed 230 fetches. Under umask `022` Git wrote `0755` directories and `0444` or `0644` files, and `core.sharedRepository=0600` left six of seven directories `0755`; under umask `077` no entry had a group or other bit. Git adds promisor keys on the first filtered fetch and macOS `init` writes `core.ignorecase` and `core.precomposeunicode`, so the snapshot is taken after that fetch; six later store operations left it unchanged. With `core.hooksPath` unset, a hook planted in the store’s `hooks/` directory ran on `update-ref`; with `/dev/null` none ran |
 | Batch readers | Per repository store per process, at most 4 `cat-file --batch-command --buffer` actors, created on demand; each serves one request at a time; cancellation terminates the process and a later request starts a new one | Whole-tree throughput peaked at 4 actors (54.8–57.2 k blobs/s against 31.3–31.7 k for one) and fell with 8 (45.0–46.4 k); `info` plus `contents` p99 stayed at or below 0.25 ms with two actors; a reader exited within 0.77 ms of a signal, and a restart answered its first request in 9.3 ms (p50) |
 | Concurrent subjects | No per-subject isolation beyond pinned object IDs | Two readers on different object IDs ran concurrently in 0.063 s against 0.12 s sequentially with byte-identical output in 3 of 3; readers saw no failure or missing object across `repack -a -d` and `gc --prune=now`, and an actor started before maintenance found 200 of 200 objects afterward |
-| Fetch jobs and coalescing | A network job holds the store lease and no ordered lock, fetches from the promisor remote directly into the store, and writes only `refs/metabrowser/jobs/<job-id>/`; it then takes the store lock briefly and runs one `update-ref --stdin` transaction that compare-and-swaps the public refs from their observed old values and deletes its job refs. In-process coalescing on the exact job key is required; cross-process duplicates cost space until maintenance compacts them. Objects never enter a blobless store except from its promisor remote, and `repack.writeBitmaps` is left at Git’s default | On a blobless flask store, four concurrent direct jobs never failed (2 of 2 repetitions); one published and three found the same object IDs already published, leaving no job refs. They received 4.0× the bytes of one coalesced job (34,356 against 8,520 and 70,002 against 17,480) and added three extra packs, all promisor packs; `gc --prune=now` and `repack -a -d` then succeeded in 4 of 4 runs, compacted to one promisor pack, wrote no bitmap, and lost no object. The replaced alternate-staging design failed on the same blobless store: a filtered staging import failed with `possible repository corruption on the remote side` (2 of 2), and an unfiltered import succeeded but made `gc --prune=now` and `repack -a -d` fail with `Packfile doesn't have full closure` while writing bitmaps (2 of 2), because the imported pack was not a promisor pack |
-| Retention | Every object promised for offline reuse is reachable from a durable Metabrowser-owned ref; maintenance requires the exclusive maintenance lock | A commit behind a private ref survived `gc --prune=now`; without a ref it survived only the default two-week prune window. Bare stores write no reflogs, so nothing else retains it |
+| Fetch jobs and coalescing | A network job holds the store lease and no ordered lock, verifies the configuration snapshot, fetches from a promisor remote recorded in that snapshot directly into the store, never from a URL, and writes only `refs/metabrowser/jobs/<job-id>/`; it then takes the store lock briefly and runs one `update-ref --stdin` transaction that compare-and-swaps the public refs from their observed old values and deletes its job refs. In-process coalescing on the exact job key is required; cross-process duplicates cost space until maintenance compacts them. Provider change-request heads come from the base repository’s published refs through the store’s own remote, and an object reachable only from a fork is acquired through the fork’s own source and store; `repack.writeBitmaps` is left at Git’s default | On a blobless flask store, four concurrent direct jobs never failed (2 of 2 repetitions); one published and three found the same object IDs already published, leaving no job refs. They received 4.0× the bytes of one coalesced job (34,356 against 8,520 and 70,002 against 17,480) and added three extra packs, all promisor packs; `gc --prune=now` and `repack -a -d` then succeeded in 4 of 4 runs, compacted to one promisor pack, wrote no bitmap, and lost no object. The replaced alternate-staging design failed on the same blobless store: a filtered staging import failed with `possible repository corruption on the remote side` (2 of 2), and an unfiltered import succeeded but made `gc --prune=now` and `repack -a -d` fail with `Packfile doesn't have full closure` while writing bitmaps (2 of 2), because the imported pack was not a promisor pack. Fetching a fork by URL into a blobless store wrote `remote.<url>.promisor` into its configuration with the filter and made `gc --prune=now` fail without it, while the base repository’s `refs/pull/1/head` through `origin` did neither |
+| Retention | Every object promised for offline reuse is reachable from a durable Metabrowser-owned ref; maintenance requires the exclusive maintenance lock. In a blobless store, objects fetched by a discarded or crashed job stay after their job refs are deleted, until an explicit compaction that later cache operations own | In a full store a commit behind a private ref survived `gc --prune=now`, and without a ref it survived only the default two-week prune window; bare stores write no reflogs. In a tiny blobless store a discarded job’s commit and blob both survived `gc --prune=now`, `repack -a -d`, and `prune --expire=now`, because Git never prunes promisor objects; the same objects in a full store were removed by the first of those |
 | Version floors | One acquisition floor, which is both the security floor and the lazy-fetch floor; [Git version gates](#git-version-gates) and `git-version-gates.json` | Upstream release notes, and `promisor-remote.c` and `diffcore-rename.c` read at each relevant tag; only 2.50.1 was available to run |
 | URL grammar | `url-grammar.json` | Git’s HTTP client sent the same request with and without a trailing slash, and sent `//`, `%72`, and path case verbatim |
 | Source and store identity, aliases, slugs | `source-identity.json` | The home filesystem folded case and Unicode normalization, and `NAME_MAX` was 255 bytes |
@@ -1478,6 +1552,11 @@ Evidence was insufficient to freeze the following; each names the phase that dec
   are admitted: Phase 1B-a (`mb-h51g`); see [Git version gates](#git-version-gates).
 - SSH acquisition and prompt suppression, and Git for Windows version strings: Phase
   1B-a. Neither was measured.
+- How GitHub and GitLab word a per-object want rejection, which decides what the request
+  split may classify instead of failing: GitHub in the broker-pinned Git credential
+  bridge (`mb-s123`), GitLab in the GitLab adapter (`mb-51uj`).
+- Compaction of unreachable promisor objects left by discarded or crashed fetch jobs:
+  later cache operations.
 - Prune expiry, size accounting, and eviction: later cache operations.
 - Convergence batches above 53,607 object IDs and repositories larger than mypy: later
   very-large-repository work.
@@ -1538,9 +1617,11 @@ that already exist costs more than building it first.
   fields and cache-controlled schema paths cannot redirect validation.
 - [ ] Probe the application home at setup (`mb-4gnu`): a second process cannot take a
   held lock, closing an unrelated descriptor for a lock file does not release the lock,
-  and verify-absent-under-lock publication with the platform no-replace rename refuses
-  an existing target. A home that fails any probe is refused as unverifiable, because CI
-  covers only Linux and a network filesystem can emulate `flock` with record locks.
+  a lock attempt through a separate `open()` in the same process contends with a held
+  lease instead of converting it, and verify-absent-under-lock publication with the
+  platform no-replace rename refuses an existing target.
+  A home that fails any probe is refused as unverifiable, because CI covers only Linux
+  and a network filesystem can emulate `flock` with record locks.
 - [ ] Replace the test oracle for the contracts this phase implements — store and source
   identity, slugs, the lock order, and the sweep, quarantine, and reclamation machines —
   with the production functions, and replay the same `tests/fixtures/repository-cache/`
@@ -1719,7 +1800,8 @@ replacement, repair, and purge use object, ref, record, and lease validation ins
   The broker and projection arrive in Phase 3A under the isolation rules in
   [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-jobs-authorization-and-credentials).
 - [ ] Persist a non-secret `StagedFetch` job record, take the store lease with no
-  ordered lock held, and fetch from the promisor remote directly into the store under
+  ordered lock held, verify the configuration snapshot, and fetch from a promisor remote
+  recorded in it — never a URL — directly into the store under
   `refs/metabrowser/jobs/<job-id>/`; then validate object format, expected full OID,
   source, auth-context kind, refspec, and base generation, and publish with one
   `update-ref --stdin` compare-and-swap that deletes the job refs, under the short
@@ -1772,6 +1854,8 @@ vertical slice.
 - [ ] Add size accounting, including quarantined and staged bytes; select no automatic
   eviction policy until measured usage justifies one.
   `CACHEDIR.TAG` and the reclamation sweep already landed in Phase 1A.
+- [ ] Compact unreachable promisor objects that discarded or crashed fetch jobs left in
+  blobless stores; `gc --prune=now`, `repack -a -d`, and `prune --expire=now` keep them.
 
 ### Later: Repository chooser and session switching
 

@@ -555,11 +555,16 @@ class JobFailed(Exception):
 def split_request(
     spec: dict[str, Any], wants: list[str], rejected_by_server: set[str], failure_class: str
 ) -> dict[str, Any]:
+    cap = cast(int, spec["request"]["rejected_leaf_cap"])
     sizes: list[int] = []
     accepted: list[str] = []
     rejected: list[str] = []
+    deferred: list[str] = []
 
     def attempt(oids: list[str]) -> None:
+        if len(rejected) >= cap:
+            deferred.extend(oids)
+            return
         sizes.append(len(oids))
         if not rejected_by_server.intersection(oids):
             accepted.extend(oids)
@@ -576,9 +581,35 @@ def split_request(
     try:
         attempt(wants)
     except JobFailed:
-        return {"outcome": "job_failed", "accepted": [], "rejected": [], "request_sizes": sizes}
-    outcome = "partial" if rejected else "complete"
-    return {"outcome": outcome, "accepted": accepted, "rejected": rejected, "request_sizes": sizes}
+        return {
+            "outcome": "job_failed",
+            "accepted": [],
+            "rejected": [],
+            "deferred": [],
+            "request_sizes": sizes,
+        }
+    outcome = "partial" if rejected or deferred else "complete"
+    return {
+        "outcome": outcome,
+        "accepted": accepted,
+        "rejected": rejected,
+        "deferred": deferred,
+        "request_sizes": sizes,
+    }
+
+
+def job_source_outcome(case: dict[str, Any]) -> str:
+    """The frozen fetch-job source rule."""
+    remotes = cast(dict[str, dict[str, bool]], case["store"]["remotes"])
+    remote = remotes.get(case["job"]["remote"])
+    if remote is None:
+        return "not_a_recorded_remote"
+    if case["store"]["partial"] and not remote["promisor"]:
+        return "not_a_promisor_remote"
+    _source, _, destination = cast(str, case["job"]["refspec"]).lstrip("+").partition(":")
+    if not destination.startswith("refs/metabrowser/jobs/<job-id>/"):
+        return "destination_not_job_private"
+    return "accepted"
 
 
 def test_change_sets_request_only_blob_modes() -> None:
@@ -597,15 +628,34 @@ def test_rejected_requests_split_to_single_object_ids() -> None:
     classes = set(spec["request"]["per_object_rejections"]) | set(
         spec["request"]["terminal_failures"]
     )
+    cap = spec["request"]["rejected_leaf_cap"]
     for case in spec["request_cases"]:
         assert case["failure_class"] in classes, case["id"]
         result = split_request(
             spec, case["wants"], set(case["rejected_by_server"]), case["failure_class"]
         )
         assert result == case["expected"], case["id"]
+        assert sorted(result["accepted"] + result["rejected"] + result["deferred"]) == (
+            sorted(case["wants"]) if result["outcome"] != "job_failed" else []
+        ), case["id"]
+        assert len(result["rejected"]) <= cap, case["id"]
         rejected = len(case["rejected_by_server"]) if result["outcome"] != "job_failed" else 0
-        bound = 1 + 2 * rejected * max(1, math.ceil(math.log2(max(len(case["wants"]), 1))))
-        assert len(result["request_sizes"]) <= bound, case["id"]
+        depth = max(1, math.ceil(math.log2(max(len(case["wants"]), 1))))
+        assert len(result["request_sizes"]) <= 1 + 2 * min(rejected, cap) * depth, case["id"]
+    assert 1 + 2 * cap * math.ceil(math.log2(50_000)) == 257
+
+
+def test_fetch_jobs_use_only_recorded_promisor_remotes() -> None:
+    spec = _load("object-requests.json")["job_sources"]
+    outcomes = {job_source_outcome(case) for case in spec["cases"]}
+    assert outcomes == {
+        "accepted",
+        "not_a_recorded_remote",
+        "not_a_promisor_remote",
+        "destination_not_job_private",
+    }
+    for case in spec["cases"]:
+        assert job_source_outcome(case) == case["expected"], case["id"]
 
 
 # ----------------------------------------------------------------------------
@@ -781,7 +831,8 @@ def _explore(document: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
             tuple(procs),
         )
 
-    initial_shared = dict(interleaving["initial"])
+    initial_shared = dict(model.get("initial", interleaving["initial"]))
+    crashes = {(crash["program"], crash["before"]): crash for crash in model.get("crashes", [])}
     initial_procs = [
         (program["steps"][0]["label"], program["start"], frozenset()) for program in programs
     ]
@@ -807,10 +858,43 @@ def _explore(document: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
         enabled = False
         live = False
         for index, (label, state, held) in enumerate(procs):
-            if label == "end":
+            if label in ("end", "crashed"):
                 continue
             live = True
             program = programs[index]
+            crash = crashes.get((model["processes"][index], label))
+            if crash is not None:
+                events.add(f"crash:{model['processes'][index]}:{label}")
+                if program["machine"] is not None:
+                    machine_states = {
+                        entry["name"]: entry for entry in machines[program["machine"]]["states"]
+                    }
+                    if machine_states[state].get("on_crash") != crash["recovery"]:
+                        violations.add(f"crash_recovery_mismatch:{state}")
+                crashed_locks = {"exclusive": locks["exclusive"], "shared": locks["shared"]}
+                crashed_locks.update({k: v for k, v in locks.items() if ":" in k})
+                for name in held:
+                    if name == "maintenance_shared":
+                        crashed_locks["shared"] = crashed_locks["shared"] - {index}
+                    elif name == "maintenance_exclusive":
+                        crashed_locks["exclusive"] = None
+                    else:
+                        crashed_locks[name] = None
+                crashed_procs = list(procs)
+                crashed_procs[index] = ("crashed", state, frozenset())
+                crashed = (
+                    dict(shared),
+                    {
+                        k: v
+                        for k, v in crashed_locks.items()
+                        if v is not None or k in ("exclusive", "shared")
+                    },
+                    crashed_procs,
+                )
+                crashed_key = freeze(*crashed)
+                if crashed_key not in seen:
+                    seen.add(crashed_key)
+                    queue.append(crashed)
             step = labels[index][label]
             new_locks = {"exclusive": locks["exclusive"], "shared": locks["shared"]}
             new_held = set(held)

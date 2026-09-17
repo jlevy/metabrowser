@@ -199,6 +199,10 @@ nothing on a read path lists blob sizes from a store that may be missing blobs, 
 a size-bearing `ls-tree -l` otherwise issues one network request per missing blob.
 Git can report a failed read on stderr and still exit 0, so stderr from a store read
 degrades the result rather than passing as success.
+Before spawning any Git process on a store, including each batch reader when it starts
+(not on each request), core verifies the store’s configuration snapshot and refuses the
+store on a mismatch; see
+[Locks, Leases, and Reclamation](#locks-leases-and-reclamation).
 Diff, commit-detail, and comparison reads first list their change set with
 `git diff --raw -z --no-abbrev --no-renames`, check its blob-mode entries (`100644`,
 `100755`, `120000`) with `cat-file --batch-check`, and report `deferred` while the
@@ -293,13 +297,17 @@ provider-principal run is isolated from each of them:
   only from its promisor remote: importing from a separate staging repository either
   failed outright or left a non-promisor pack that made later `gc` and `repack` fail.
   Stores are created with an empty template and carry only configuration Metabrowser
-  writes, and every credentialed run first compares that configuration with the exact
-  expected set, refusing the run and quarantining the store on any difference, so a
-  credential helper, `url.*.insteadOf` rewrite, or `http.*.extraHeader` planted in
-  repository-local configuration never reaches it.
-  The run also passes an empty credential-helper list, disables hooks, and allows only
-  the HTTPS protocol, so no helper supplies, stores, or erases the credential and no
-  rewrite or extra header changes the transport or principal.
+  writes. After the store’s first fetch its configuration snapshot is recorded — SHA-256
+  of `git config --file <store>/repository.git/config --list -z` output — and every Git
+  process on the store, credentialed or not, verifies it first.
+  An exact expected configuration cannot be fixed in advance, because Git itself adds
+  promisor keys on the first filtered fetch and macOS `init` adds case and Unicode keys.
+  On a mismatch Git is not run, the store is refused and its quarantine requested, so a
+  credential helper, `url.*.insteadOf` rewrite, `http.*.extraHeader`, `core.sshCommand`,
+  or `remote.<name>.uploadpack` planted in repository-local configuration never reaches
+  a run. The run also passes an empty credential-helper list, disables hooks, and allows
+  only the HTTPS protocol, so no helper supplies, stores, or erases the credential and
+  no rewrite or extra header changes the transport or principal.
 - **Prompt binding.** The run disables HTTP redirects and sets `credential.useHttpPath`
   and a fixed credential username, so Git asks exactly one password question that names
   the full source URL. Immediately before spawning Git, core arms exactly one answer at
@@ -330,12 +338,18 @@ Across processes, jobs may overlap and the duplicates cost space until maintenan
 compacts them; each job records the store generation and expected remote object IDs it
 observed. A job writes a non-secret `StagedFetch` record containing the source and
 authorization policy, exact refspec, expected OID, object format, and base store
-generation, takes the store lease, and fetches from the promisor remote directly into
-the store with no ordered lock held, writing only `refs/metabrowser/jobs/<job-id>/`. For
-a pull request, base, head, and optional merge objects each name a provider-declared
-credential-free HTTPS acquisition source: the repository that holds the object, or the
-base repository’s `refs/pull/<n>/head` and `refs/pull/<n>/merge` refs, which remain
-fetchable after a fork is deleted.
+generation, takes the store lease, verifies the configuration snapshot, and fetches with
+no ordered lock held, writing only `refs/metabrowser/jobs/<job-id>/`. Objects enter a
+store only from promisor remotes recorded in its configuration snapshot, which
+Metabrowser writes when it creates the store; a job names such a remote, never a URL.
+Fetching a fork by URL into a blobless store wrote `remote.<url>.promisor` into the
+store’s configuration, or without the filter wrote objects that made `gc --prune=now`
+fail. For a pull request, base, head, and optional merge objects are therefore fetched
+through the base repository store’s own remote from the provider-published refs —
+GitHub’s `refs/pull/<n>/head` and `refs/pull/<n>/merge`, GitLab’s
+`refs/merge-requests/<n>/head` — which remain fetchable after a fork is deleted.
+An object reachable only from a fork is acquired through the fork’s own source and
+store, never fetched by URL into another store.
 Every declared source belongs to the allowlist of a lease whose authorization-context
 key equals that of the observation that recorded the object IDs.
 Acquisition never inherits an attached checkout’s remote or credential helper.
@@ -497,6 +511,10 @@ A local checkout is never a lock target.
 Each store has a lease: the maintenance lock file
 `cache/locks/stores/<store-key>.maintenance.lock`, which lives outside the store
 directory so purge and reclamation never rename it.
+Every lease and every lock attempt uses its own `open()` of the lock file, and
+descriptors are never shared or duplicated between holders, even in one process: `flock`
+belongs to the open file description, and a measured exclusive request through a `dup()`
+of a shared lease descriptor was granted and converted the lease.
 A live subject, an acquisition from before its store is published until its alias is
 published, and a fetch job from before its network work until publication hold it
 shared, blocking only while holding no ordered lock.
@@ -507,11 +525,18 @@ Process exit releases the shared lock, including after a crash.
 Automatic Git maintenance is disabled in every store’s configuration, so maintenance
 runs only under that lock.
 Because an acquisition holds the lease until its alias exists, reclamation cannot trash
-a store between its publication and its alias; an exhaustive interleaving check in
-`tests/test_repository_cache_contract_fixtures.py` proves that and finds the race in the
-design without the lease.
-Durable private refs separately keep every object promised for offline reuse reachable
-to Git when no process is running.
+a store between its publication and its alias.
+Purge and quarantine move the alias before the store, so a crash between the two moves
+leaves an ordinary unreferenced store.
+An exhaustive interleaving check in `tests/test_repository_cache_contract_fixtures.py`
+proves both from an empty cache and from an existing alias and store with those crashes
+allowed, and finds the race in the design without the lease and in either move made in
+the other order. It gives each process its own locks, which is sound only because of the
+per-`open()` rule. Configuration mismatches follow the same path: a process that finds a
+store’s configuration snapshot changed runs no Git on it, releases its lease, and
+requests quarantine, which waits for the exclusive lock and leaves the store refused
+meanwhile. Durable private refs separately keep every object promised for offline reuse
+reachable to Git when no process is running.
 Provider snapshot readers similarly hold a shared lock on the published generation while
 reclamation takes the exclusive lock before moving it to trash.
 Lock files exist before publication so a read-only cache hit opens them without creating
@@ -604,10 +629,10 @@ The architecture is satisfied only when tests prove:
 - an HTTP redirect to another host fails with a typed error and never receives the
   credential, and the broker answers only an armed run’s normalized source URL, never a
   request from a cancelled, restarted, or revoked run;
-- fork PR base, head, and merge objects use their provider-declared HTTPS sources,
-  including base-repository pull refs after a fork is deleted, under leases for the
-  observation’s authorization-context key, with broker crash, revocation, and
-  cancellation reaping Git and its askpass bridge;
+- fork PR base, head, and merge objects are fetched through the base repository store’s
+  own remote from provider-published pull refs, including after a fork is deleted, and
+  never by fork URL, under leases for the observation’s authorization-context key, with
+  broker crash, revocation, and cancellation reaping Git and its askpass bridge;
 - a valid cached view opens while another client refreshes, and failed refresh leaves
   the prior validated observation available;
 - purging or detaching one consumer does not remove objects or snapshots leased or
@@ -655,7 +680,12 @@ are not budgets.
   comparisons.
 - **Blob modes only, and split rejected requests.** A want list containing a gitlink
   failed with `not our ref` and fetched nothing, so only blob-mode entries are
-  requested, and a per-object rejection splits the list down to single object IDs.
+  requested, and a per-object rejection splits the list down to single object IDs,
+  stopping after 8 rejected IDs, a provisional cost policy, and deferring the rest.
+- **Only recorded promisor remotes, and a verified configuration.** A fork fetched by
+  URL changed a blobless store’s configuration or broke its next `gc`, so jobs name only
+  remotes in the store’s configuration snapshot, and every Git process verifies that
+  snapshot first; six ordinary store operations after the first fetch left it unchanged.
 - **No mailmap on store reads.** With Git defaults, history and commit reads loaded
   `HEAD:.mailmap`, and with lazy fetch disabled they printed an error and exited 0.
 - **Automatic maintenance disabled, umask `077`.** Each fetch, including each lazy
@@ -675,7 +705,10 @@ are not budgets.
   Staging through a separate repository with the store as an alternate failed on the
   same store, at import or at the next repack.
 - **Durable refs for offline promises.** Only a ref kept an object through
-  `gc --prune=now`; bare stores write no reflogs.
+  `gc --prune=now` in a full store, and bare stores write no reflogs.
+  In a blobless store a discarded job’s objects survived `gc --prune=now`,
+  `repack -a -d`, and `prune --expire=now`, so they accumulate until a later explicit
+  compaction.
 - **`flock`, lock-based liveness, and locked no-replace publication.** A killed `flock`
   holder released in 2.8 ms, a `lockf` lock vanished when an unrelated descriptor
   closed, and `os.rename` replaced an empty directory.

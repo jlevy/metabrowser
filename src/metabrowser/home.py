@@ -44,9 +44,12 @@ Each rule answers a specific threat:
   Tightening affects later opens only: a descriptor or directory handle opened while the
   entry was shared stays usable. Directories and read-only opens are therefore repaired,
   but an in-place write to a file that was shared is refused. Record writes create a
-  temporary file with ``O_CREAT | O_EXCL`` and rename it into place, and a lock file that
-  was ever shared, which another holder may still have open and locked, is replaced the
-  same way. The home is never repaired, and nothing above it is modified.
+  temporary file with ``O_CREAT | O_EXCL`` and rename it into place. A lock file that was
+  ever shared is replaced the same way only after its old file's lock is acquired without
+  blocking, and that lock is released after the rename; if it cannot be acquired the file
+  is refused, because another holder may still have it locked and a replacement would let
+  a second holder take the same lock. The home is never repaired, and nothing above it is
+  modified.
 - **Fail closed.** A platform without descriptor-relative, no-follow operations —
   Windows today — a file system that does not keep modes, and an ACL that cannot be read
   or interpreted are all refused as ``unverifiable``.

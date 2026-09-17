@@ -3069,7 +3069,345 @@ def suite_precheck(scratch: Path, args: argparse.Namespace) -> None:
     print(recorder.write())
 
 
+def config_digest(git_dir: Path) -> tuple[str, list[str]]:
+    """The configuration snapshot: SHA-256 of `git config --file <config> --list -z` output."""
+    raw = must(git(["config", "--file", str(git_dir / "config"), "--list", "-z"])).stdout
+    keys = [entry.split(b"\n", 1)[0].decode() for entry in raw.split(b"\0") if entry]
+    return "sha256:" + hashlib.sha256(raw).hexdigest(), keys
+
+
+def init_store(path: Path, url: str) -> Path:
+    """The frozen layout: init --bare, Metabrowser-written config, one origin remote."""
+    remove(path)
+    must(git(["init", "--bare", "--template=", "-q", str(path)]))
+    for item in STORE_CONFIG:
+        key, _, value = item.partition("=")
+        must(git(["config", key, value], git_dir=path))
+    must(git(["config", "remote.origin.url", url], git_dir=path))
+    return path
+
+
+def suite_storeconfig(scratch: Path, args: argparse.Namespace) -> None:
+    """Configuration snapshots, fork sources, hook paths, and blobless retention."""
+    timeout = cast(float, args.timeout)
+    traces = scratch / "traces"
+    work = scratch / "storeconfig"
+    remove(work)
+    recorder = Recorder("storeconfig", scratch, {})
+    rng = random.Random("storeconfig")
+    base = tiny_origin(work / "base.git")
+    files = {
+        f"f{index}.txt": ("100644", write_blob(base, rng.randbytes(1024))) for index in range(6)
+    }
+    root = write_commit(base, write_tree(base, files), [], "base")
+    set_head(base, root)
+
+    # 1. Which operations change the store's configuration after its first fetch.
+    store = init_store(work / "store.git", file_url(base))
+    _, init_keys = config_digest(store)
+    must(
+        git(
+            [
+                *PROTOCOL_ARGS,
+                "fetch",
+                "--no-write-fetch-head",
+                "--filter=blob:none",
+                "origin",
+                "+refs/heads/*:refs/remotes/origin/*",
+            ],
+            git_dir=store,
+        )
+    )
+    must(git(["symbolic-ref", "HEAD", "refs/remotes/origin/main"], git_dir=store))
+    snapshot, fetch_keys = config_digest(store)
+    recorder.add(
+        case="config_keys",
+        written_by_init_and_metabrowser=init_keys,
+        added_by_first_filtered_fetch=[key for key in fetch_keys if key not in init_keys],
+    )
+    files["f0.txt"] = ("100644", write_blob(base, rng.randbytes(1024)))
+    second = write_commit(base, write_tree(base, files), [root], "second")
+    must(git(["update-ref", "refs/heads/next", second], git_dir=base))
+    operations: list[tuple[str, Callable[[], Outcome]]] = [
+        (
+            "job_fetch_into_private_refs",
+            lambda: git(
+                [
+                    *PROTOCOL_ARGS,
+                    "fetch",
+                    "--no-tags",
+                    "--no-write-fetch-head",
+                    "origin",
+                    "+refs/heads/*:refs/metabrowser/jobs/j1/*",
+                ],
+                git_dir=store,
+            ),
+        ),
+        (
+            "object_id_prefetch",
+            lambda: prefetch_oids(store, tree_oids(store, second), traces, timeout),
+        ),
+        (
+            "update_ref_transaction",
+            lambda: git(
+                ["update-ref", "--stdin"],
+                git_dir=store,
+                stdin=f"start\nupdate refs/remotes/origin/next {second} {ZERO_OID}\ndelete refs/metabrowser/jobs/j1/next {second}\ndelete refs/metabrowser/jobs/j1/main {root}\nprepare\ncommit\n".encode(),
+            ),
+        ),
+        ("gc_prune_now", lambda: git(["gc", "--prune=now"], git_dir=store)),
+        ("repack_all", lambda: git(["repack", "-a", "-d"], git_dir=store)),
+        (
+            "store_read_log",
+            lambda: git(
+                [*STORE_READ_CONFIG, "log", "-1", "--format=%H", second],
+                git_dir=store,
+                env=git_env({"GIT_NO_LAZY_FETCH": "1"}),
+            ),
+        ),
+    ]
+    for name, operation in operations:
+        outcome = operation()
+        digest, keys = config_digest(store)
+        recorder.add(
+            case="config_after_operation",
+            operation=name,
+            returncode=outcome.returncode,
+            digest_unchanged=digest == snapshot,
+            keys_changed=sorted(set(keys) ^ set(fetch_keys)),
+        )
+
+    # 2. A fork's objects fetched by URL into a blobless store.
+    fork = work / "fork.git"
+    remove(fork)
+    must(git(["clone", "--bare", "--template=", "--no-local", "-q", str(base), str(fork)]))
+    must(git(["config", "uploadpack.allowFilter", "true"], git_dir=fork))
+    fork_files = dict(files)
+    fork_files["fork.txt"] = ("100644", write_blob(fork, rng.randbytes(1024)))
+    fork_commit = write_commit(fork, write_tree(fork, fork_files), [second], "fork")
+    must(git(["update-ref", "refs/heads/feature", fork_commit], git_dir=fork))
+    for variant, extra in (("by_url_filtered", ["--filter=blob:none"]), ("by_url_unfiltered", [])):
+        target = copy_store(store, work / "fork-target.git")
+        before, before_keys = config_digest(target)
+        outcome = git(
+            [
+                *PROTOCOL_ARGS,
+                "fetch",
+                "--no-tags",
+                "--no-write-fetch-head",
+                *extra,
+                file_url(fork),
+                "+refs/heads/feature:refs/metabrowser/jobs/fork/feature",
+            ],
+            git_dir=target,
+        )
+        after, after_keys = config_digest(target)
+        packs = pack_counts(target)
+        gc = git(["gc", "--prune=now"], git_dir=target)
+        recorder.add(
+            case="fork_fetch",
+            variant=variant,
+            returncode=outcome.returncode,
+            digest_unchanged=after == before,
+            keys_added=[key for key in after_keys if key not in before_keys],
+            non_promisor_packs=packs["non_promisor_packs"],
+            gc_returncode=gc.returncode,
+            gc_stderr=stderr_lines(gc.stderr),
+        )
+        remove(target)
+    # The provider path: the base repository publishes the change-request head.
+    must(
+        git(
+            [
+                *PROTOCOL_ARGS,
+                "fetch",
+                "--no-tags",
+                "--no-write-fetch-head",
+                file_url(fork),
+                "+refs/heads/feature:refs/pull/1/head",
+            ],
+            git_dir=base,
+        )
+    )
+    target = copy_store(store, work / "fork-target.git")
+    before, _ = config_digest(target)
+    outcome = git(
+        [
+            *PROTOCOL_ARGS,
+            "fetch",
+            "--no-tags",
+            "--no-write-fetch-head",
+            "origin",
+            "+refs/pull/1/head:refs/metabrowser/jobs/change1/head",
+        ],
+        git_dir=target,
+    )
+    after, _ = config_digest(target)
+    packs = pack_counts(target)
+    gc = git(["gc", "--prune=now"], git_dir=target)
+    repack = git(["repack", "-a", "-d"], git_dir=target)
+    recorder.add(
+        case="fork_fetch",
+        variant="base_repository_pull_ref_through_origin",
+        returncode=outcome.returncode,
+        digest_unchanged=after == before,
+        non_promisor_packs=packs["non_promisor_packs"],
+        gc_returncode=gc.returncode,
+        repack_returncode=repack.returncode,
+    )
+    remove(target)
+
+    # 3. Hook paths: an empty core.hooksPath resolves against the working directory.
+    cwd = work / "cwd-with-hooks"
+    cwd.mkdir(parents=True, exist_ok=True)
+    marker = work / "hook-ran"
+    hook_body = f"#!/bin/sh\ntouch '{marker}'\nexit 0\n"
+    for directory in (cwd, cwd / "hooks"):
+        directory.mkdir(parents=True, exist_ok=True)
+        hook = directory / "reference-transaction"
+        hook.write_text(hook_body)
+        hook.chmod(0o700)
+    for variant, value in (
+        ("hooks_path_empty", ""),
+        ("hooks_path_dev_null", os.devnull),
+        ("hooks_path_unset", None),
+    ):
+        target = copy_store(store, work / "hooks.git")
+        must(git(["config", "--unset-all", "core.hooksPath"], git_dir=target))
+        if value is not None:
+            must(git(["config", "core.hooksPath", value], git_dir=target))
+        for place in ("cwd", "store_hooks_dir"):
+            remove(marker)
+            if place == "store_hooks_dir":
+                (target / "hooks").mkdir(exist_ok=True)
+                (target / "hooks" / "reference-transaction").write_text(hook_body)
+                (target / "hooks" / "reference-transaction").chmod(0o700)
+            outcome = git(
+                ["update-ref", f"refs/metabrowser/hooks/{place}", root], git_dir=target, cwd=cwd
+            )
+            recorder.add(
+                case="hooks",
+                variant=variant,
+                planted_in=place,
+                returncode=outcome.returncode,
+                hook_ran=marker.exists(),
+            )
+        remove(target)
+
+    # 4. Retention in a blobless store after a job's refs are discarded.
+    for strategy in ("blobless", "full"):
+        target = init_store(work / f"retention-{strategy}.git", file_url(base))
+        filtered = ["--filter=blob:none"] if strategy == "blobless" else []
+        must(
+            git(
+                [
+                    *PROTOCOL_ARGS,
+                    "fetch",
+                    "--no-write-fetch-head",
+                    *filtered,
+                    "origin",
+                    "+refs/heads/main:refs/remotes/origin/main",
+                ],
+                git_dir=target,
+            )
+        )
+        discarded = dict(files)
+        discarded["discarded.txt"] = ("100644", write_blob(base, rng.randbytes(2048)))
+        discarded_commit = write_commit(base, write_tree(base, discarded), [root], "discarded")
+        must(git(["update-ref", "refs/heads/discarded", discarded_commit], git_dir=base))
+        must(
+            git(
+                [
+                    *PROTOCOL_ARGS,
+                    "fetch",
+                    "--no-tags",
+                    "--no-write-fetch-head",
+                    *filtered,
+                    "origin",
+                    "+refs/heads/discarded:refs/metabrowser/jobs/j2/discarded",
+                ],
+                git_dir=target,
+            )
+        )
+        blob = discarded["discarded.txt"][1]
+        if strategy == "blobless":
+            must(prefetch_oids(target, [blob], traces, timeout))
+        must(git(["update-ref", "-d", "refs/metabrowser/jobs/j2/discarded"], git_dir=target))
+        no_lazy = git_env({"GIT_NO_LAZY_FETCH": "1"})
+        before = {
+            name: git(["cat-file", "-e", oid], git_dir=target, env=no_lazy).returncode == 0
+            for name, oid in (("commit", discarded_commit), ("blob", blob))
+        }
+        for command in (["gc", "--prune=now"], ["repack", "-a", "-d"], ["prune", "--expire=now"]):
+            outcome = git(command, git_dir=target)
+            after = {
+                name: git(["cat-file", "-e", oid], git_dir=target, env=no_lazy).returncode == 0
+                for name, oid in (("commit", discarded_commit), ("blob", blob))
+            }
+            recorder.add(
+                case="discarded_job_retention",
+                strategy=strategy,
+                command=" ".join(command),
+                returncode=outcome.returncode,
+                present_before=before,
+                present_after=after,
+            )
+        remove(target)
+    if not args.keep:
+        remove(work)
+    print(recorder.write())
+
+
+def suite_lockdescriptors(scratch: Path, args: argparse.Namespace) -> None:
+    """flock on a separate open() versus a dup() of a descriptor holding a shared lease."""
+    work = scratch / "lockdescriptors"
+    remove(work)
+    work.mkdir(parents=True)
+    recorder = Recorder("lockdescriptors", scratch, {})
+    path = work / "store.maintenance.lock"
+    path.write_bytes(b"")
+    lease = os.open(path, os.O_RDWR | os.O_CLOEXEC)
+    fcntl.flock(lease, fcntl.LOCK_SH)
+
+    def exclusive(fd: int) -> bool:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+        return True
+
+    probe = (
+        "import fcntl, os, sys\n"
+        "fd = os.open(sys.argv[1], os.O_RDWR)\n"
+        "try:\n"
+        "    fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)\n"
+        "except BlockingIOError:\n"
+        "    sys.exit(1)\n"
+        "sys.exit(0)\n"
+    )
+    separate = os.open(path, os.O_RDWR | os.O_CLOEXEC)
+    separate_granted = exclusive(separate)
+    duplicate = os.dup(lease)
+    duplicate_granted = exclusive(duplicate)
+    other_shared = (
+        subprocess.run([sys.executable, "-c", probe, str(path)], check=False).returncode == 0
+    )
+    recorder.add(
+        primitive="flock exclusive attempts while one descriptor holds a shared lease",
+        separate_open_exclusive_granted=separate_granted,
+        dup_of_lease_exclusive_granted=duplicate_granted,
+        other_process_shared_granted_afterwards=other_shared,
+    )
+    for fd in (duplicate, separate, lease):
+        os.close(fd)
+    if not args.keep:
+        remove(work)
+    print(recorder.write())
+
+
 SUITES: dict[str, Callable[[Path, argparse.Namespace], None]] = {
+    "storeconfig": suite_storeconfig,
+    "lockdescriptors": suite_lockdescriptors,
     "gitlinks": suite_gitlinks,
     "mailmap": suite_mailmap,
     "umask": suite_umask,
