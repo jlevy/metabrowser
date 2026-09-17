@@ -1,0 +1,819 @@
+{
+  "environment": {
+    "cpu": "Apple M1 Pro",
+    "git_build_options": [
+      "cpu: arm64",
+      "no commit associated with this build",
+      "sizeof-long: 8",
+      "sizeof-size_t: 8",
+      "shell-path: /bin/sh"
+    ],
+    "git_version": "git version 2.50.1",
+    "logical_cpus": 10,
+    "machine": "arm64",
+    "memory_bytes": 34359738368,
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7"
+  },
+  "finished_at": "2026-09-17T06:33:44+00:00",
+  "parameters": {},
+  "rows": [
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": ["error: unable to read mailmap object at HEAD:.mailmap"],
+      "user_mailmap_file": false,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 2,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "error: unable to read mailmap object at HEAD:.mailmap",
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": false,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": ["error: unable to read mailmap object at HEAD:.mailmap"],
+      "user_mailmap_file": false,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "canonical",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": ["error: unable to read mailmap object at HEAD:.mailmap"],
+      "user_mailmap_file": false,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": false,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "canonical",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": ["error: unable to read mailmap object at HEAD:.mailmap"],
+      "user_mailmap_file": false,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": false,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": false,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": false,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "all_three"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": false,
+      "variant": "all_three"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "all_three"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "all_three"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "all_three"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "all_three"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": false,
+      "variant": "all_three"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": ["error: unable to read mailmap object at HEAD:.mailmap"],
+      "user_mailmap_file": true,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 2,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "error: unable to read mailmap object at HEAD:.mailmap",
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": true,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": ["error: unable to read mailmap object at HEAD:.mailmap"],
+      "user_mailmap_file": true,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "user_file",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": ["error: unable to read mailmap object at HEAD:.mailmap"],
+      "user_mailmap_file": true,
+      "variant": "git_defaults"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": true,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "user_file",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": ["error: unable to read mailmap object at HEAD:.mailmap"],
+      "user_mailmap_file": true,
+      "variant": "log_mailmap_false"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": true,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "user_file",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "mailmap_blob_empty"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": true,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "user_file",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "log_false_and_blob_empty"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": true,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "blob_and_file_empty"
+    },
+    {
+      "command": "history_page",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "all_three"
+    },
+    {
+      "command": "commit_detail",
+      "full_store_identity": "raw",
+      "lazy_fetches": 1,
+      "no_lazy_returncode": 128,
+      "no_lazy_stderr": [
+        "warning: lazy fetching disabled; some objects may not be available",
+        "fatal: could not fetch <oid> from promisor remote"
+      ],
+      "user_mailmap_file": true,
+      "variant": "all_three"
+    },
+    {
+      "command": "commit_detail_raw_only",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "all_three"
+    },
+    {
+      "command": "history_count",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "all_three"
+    },
+    {
+      "command": "manifest_raw",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "all_three"
+    },
+    {
+      "command": "refs",
+      "full_store_identity": "none",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "all_three"
+    },
+    {
+      "command": "mailmap_placeholder",
+      "full_store_identity": "raw",
+      "lazy_fetches": 0,
+      "no_lazy_returncode": 0,
+      "no_lazy_stderr": [],
+      "user_mailmap_file": true,
+      "variant": "all_three"
+    }
+  ],
+  "schema": "metabrowser-repository-cache-measurement-v1",
+  "started_at": "2026-09-17T06:33:31+00:00",
+  "suite": "mailmap"
+}

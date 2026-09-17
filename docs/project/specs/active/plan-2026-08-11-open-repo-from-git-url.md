@@ -312,6 +312,10 @@ and stripped of inherited ACL entries while it is still empty.
 and no ACL allow entry for another principal.
 Any owner-only mode passes: Git child processes run with umask `077`, so a store holds
 `0700` directories and `0400` or `0600` files, and none of them needs repair.
+Measured on Git 2.50.1: under umask `022` Git wrote `0755` directories and `0444` and
+`0644` files, and `core.sharedRepository=0600` still left six of seven directories
+`0755`; under umask `077` every directory was `0700` and every file `0400` or `0600`
+([store modes](../../../../explorations/repository-cache/README.md#store-reads-and-file-modes)).
 Entries Metabrowser creates itself are exactly `0700` directories and `0600` files from
 creation, whatever the umask, with any inherited ACL entries removed before content is
 written, and they are removed again if they are then refused.
@@ -353,34 +357,57 @@ home.
 
 Locks have disjoint scopes and one fixed order:
 
-1. the application-home lock is used only for layout migration and global enumeration or
-   sweeps;
+1. the application-home lock is used only for layout migration, global enumeration or
+   sweeps, and moving quarantined entries to trash;
 2. a source-alias lock protects alias creation and compare-and-swap repointing;
-3. repository-store locks, acquired in ascending `RepositoryStoreId` order, protect ref
-   publication, object import, maintenance, and reclamation; and
+3. repository-store locks, acquired in ascending `RepositoryStoreId` order, protect
+   store directory publication and removal, store records, and ref compare-and-swap; and
 4. a provider/resource lock protects one binding, staged publication, current-pointer
    update, or provider reclamation operation.
 
-No network or provider process runs while any lock is held.
-A job stages outside the locks, then acquires source-alias → ordered repository stores →
-provider/resource as required, revalidates its generations, expected object IDs, and
-authorization context, and publishes atomically.
+No network work, provider process, or long-running Git process runs while any of these
+locks is held. A job does its network work outside them, then acquires source-alias →
+ordered repository stores → provider/resource as required, revalidates its generations,
+expected object IDs, and authorization context, and publishes atomically.
 The application-home lock is never acquired while holding either narrower lock.
-`tests/fixtures/repository-cache/state-machines.json` freezes this order, the side locks
-that sit outside it, and the acquisition, sweep, fetch, lease, maintenance, purge,
-quarantine, and repointing state machines;
-`tests/test_repository_cache_contract_fixtures.py` checks that every sequence and
-transition obeys it.
-The implementation’s concurrent refresh/read/purge/reclaim tests replay those machines.
 
 Locks are BSD `flock` on lock files, never POSIX record locks: on the measured APFS home
 a `flock` holder that was SIGKILLed released within 2.8 ms, while a `lockf` lock
 vanished when its own process closed an unrelated descriptor for the same file
 ([measurements](../../../../explorations/repository-cache/README.md#platform-primitives)).
-Two side locks never participate in the order because nobody waits on them while holding
-an ordered lock: a per-entry liveness lock held by the one process that owns a staging
-or trash entry, and each store’s `maintenance.lock`, which live subjects hold shared and
-maintenance takes exclusive without blocking.
+Every lock file lives under `cache/locks/`, never inside a directory that publication,
+purge, quarantine, or reclamation renames, and a holder compares the locked descriptor’s
+`fstat` with the path’s `lstat` after acquiring and retries on a mismatch, because a
+sweep may have removed and recreated the file.
+
+Two kinds of side lock sit outside the order:
+
+- **Liveness locks** for one staging entry, trash entry, or fetch job are held by their
+  one owner, including across network work, and every other process only tries them
+  without blocking. The sweep removes an entry only after acquiring its lock.
+- **The store lease** is `cache/locks/stores/<store-key>.maintenance.lock`. A live
+  subject, an acquisition from before its store is published until its alias is
+  published, and a fetch job from before its network work until publication hold it
+  shared; it may block only while its holder holds no ordered lock.
+  `gc` and `repack` run under its exclusive form alone, never under the store lock, and
+  reclamation, purge, and quarantine take the exclusive form before their ordered locks.
+  The exclusive form never blocks, so a lease defers maintenance and refuses purge
+  instead of waiting.
+
+Every object enters a store under its lease, and every alias that names a store is
+written under that store’s lease, so an exclusive holder sees a stable set of objects
+and referring aliases.
+`tests/fixtures/repository-cache/state-machines.json` freezes this order, the side
+locks, and the acquisition, reclamation, sweep, fetch, lease, maintenance, purge,
+quarantine, and repointing state machines.
+`tests/test_repository_cache_contract_fixtures.py` checks every sequence and transition
+against the order and explores every interleaving of two acquisitions, a reclamation,
+and a purge over one source and store: no alias ever names an absent store, no process
+violates the order or deadlocks, and the defensive `store_missing` transition is
+unreachable. The same exploration finds the race in the design it replaced, where an
+acquisition released its store lock before publishing the alias without holding a lease,
+so reclamation could trash the store in between.
+The implementation’s concurrent refresh/read/purge/reclaim tests replay those machines.
 
 ## Application Home and Cache Layout `f01`
 
@@ -395,13 +422,15 @@ The first released logical layout is:
     ├── locks/
     │   ├── home.lock
     │   ├── sources/<slug>.lock
-    │   └── stores/<store-key>.lock
+    │   ├── stores/<store-key>.lock
+    │   ├── stores/<store-key>.maintenance.lock
+    │   ├── staging/<entry>.lock
+    │   ├── trash/<entry>.lock
+    │   └── jobs/<job-id>.lock
     ├── staging/
-    │   ├── <entry>/
-    │   └── <entry>.lock
+    │   └── <entry>/
     ├── trash/
-    │   ├── <entry>/
-    │   └── <entry>.lock
+    │   └── <entry>/
     ├── quarantine/
     │   └── <entry>/
     ├── sources/
@@ -413,7 +442,6 @@ The first released logical layout is:
     │   └── <store-key>/
     │       ├── store.yml
     │       ├── state.yml
-    │       ├── maintenance.lock
     │       └── repository.git/
     ├── provider-bindings/
     │   └── <source-key>.yml
@@ -1002,23 +1030,38 @@ Acquisition publishes one complete store and source alias:
 
 ```text
 classify source
-  -> derive identity and lock it
-  -> acquire a worktree-free Git database in same-filesystem staging
-  -> resolve and pin HEAD
-  -> fetch the pinned revision's tree blobs by object ID (blobless strategy)
+  -> derive identity
+  -> take a staging liveness lock, then create same-filesystem staging
+  -> observe the remote HEAD with ls-remote --symref
+  -> fetch a worktree-free Git database with the blob filter
+  -> record whether the remote honored the filter
+  -> if it did, fetch the pinned revision's blob-mode entries by object ID
   -> validate objects, refs, and records
+  -> take the store lease
   -> publish the store with no replacement
-  -> create the source alias as the final visibility commit
+  -> create the source alias as the final visibility commit, then release the lease
   -> serve an immutable revision subject immediately
   -> converge the remaining objects in background by explicit object-ID fetches
 ```
 
 The `store_acquisition` machine in `tests/fixtures/repository-cache/state-machines.json`
 names each step’s locks, network work, visibility, and crash recovery.
-Publication checks under the repository-store lock that the store directory is absent
-before renaming staging into place: on the measured filesystem `os.rename` silently
-replaced an existing empty directory, while `renamex_np(RENAME_EXCL)` refused it, so a
-platform no-replace rename is defense in depth and the locked absence check is the rule.
+A remote that ignores the filter produces a store with every reachable object, recorded
+as strategy full and object state complete, never as partial.
+A prefetch that fails in transport or hits its stall bound still publishes, with object
+state partial and the default revision’s missing content deferred; cancellation abandons
+the staging entry instead.
+
+Publication’s guarantee is verify-absent-under-lock plus rename: under the owning
+ordered lock the target path is checked absent with `lstat`, and the staged directory or
+record is renamed into place.
+That is sufficient because every Metabrowser writer of the path takes the same lock.
+Where the platform offers an atomic no-replace rename it is used for the same rename as
+defense in depth — `renameat2` with `RENAME_NOREPLACE` on Linux and `renamex_np` with
+`RENAME_EXCL` on macOS, through `ctypes` with no new dependency — so a violated lock
+discipline fails instead of silently replacing an entry.
+On the measured filesystem `os.rename` replaced an existing empty directory, while
+`renamex_np(RENAME_EXCL)` refused it; `renameat2` was not measured.
 
 All Git work continues through `metabrowser.git.process`, which now exposes two seams:
 `run_git` for bounded buffered commands, and `spawn_git_process` plus
@@ -1037,11 +1080,18 @@ Acquisition also sets `stdin=DEVNULL`, disables terminal and credential-manager 
 uses SSH batch mode, creates stores with an empty Git template, and disables submodule
 recursion, hooks, bundle URIs, automatic maintenance, unsafe transports, and unsafe
 symbolic-link traversal.
-Automatic maintenance is disabled in the store configuration itself
-(`maintenance.auto=false`, `gc.auto=0`), not only on the command line, because every
-fetch — including each implicit lazy fetch — otherwise spawns a detached
-`git maintenance run --auto`, and over HTTPS that maintenance made the 51st consecutive
-lazy fetch fail with `… in the commit graph file but not in the object database`.
+Every Git child runs with umask `077`. Automatic maintenance is disabled in the store
+configuration itself (`maintenance.auto=false`, `gc.auto=0`), not only on the command
+line, because every fetch — including each implicit lazy fetch — otherwise spawns a
+detached `git maintenance run --auto`, and over HTTPS that maintenance made the 51st
+consecutive lazy fetch fail with
+`… in the commit graph file but not in the object database`.
+
+Initial acquisition has no low-speed bound yet: the one measured stall bound was
+measured on object-ID fetches, and a large or bitmap-less acquisition may legitimately
+send nothing for longer while the server counts and compresses objects.
+Until Phase 1B-a measures that case, user-driven job cancellation is the guard against a
+stalled clone.
 
 A cache hit validates the source and store and serves a full-OID subject without fetch,
 credential lookup, or background refresh.
@@ -1086,9 +1136,10 @@ available. What is not acceptable is keeping the current wording, which promises
 reads that a blobless entry cannot deliver.
 
 **Decided 2026-09-16: option 1, with option 2 as its gate.** Every Git read on a request
-path runs with `GIT_NO_LAZY_FETCH=1`, and blobless acquisition is gated on the Git
-release that honors it.
-Measured on Git 2.50.1 against a blobless flask store with GitHub as its promisor
+path runs with `GIT_NO_LAZY_FETCH=1`, and acquisition is gated on Git releases that
+honor it; the security floor below already guarantees that, so there is no separate
+blobless gate. Measured on Git 2.50.1 against a blobless flask store with GitHub as its
+promisor
 ([lazy fetch](../../../../explorations/repository-cache/README.md#lazy-fetch-against-real-and-failing-remotes)):
 
 - with lazy fetch allowed, a remote that accepted the connection and never answered held
@@ -1096,7 +1147,8 @@ Measured on Git 2.50.1 against a blobless flask store with GitHub as its promiso
   request per blob, 230 requests in 135 s;
 - `remote.origin.promisor=false` did not stop the fetch, because
   `extensions.partialClone` still names the promisor, so only the environment variable
-  or `--no-lazy-fetch` is a control;
+  or `--no-lazy-fetch` is a control, and only the environment variable exists across the
+  admitted releases;
 - with lazy fetch disabled the same read failed in 8 ms, and `cat-file --batch-command`
   answered `<oid> missing` and stayed framed for the next request.
 
@@ -1114,6 +1166,32 @@ detection by default and inexact rename detection reads blobs.
 Checking first also avoids the failure path itself, which took 93–488 ms per invocation
 against 10–15 ms for success.
 
+Only blob-mode entries (`100644`, `100755`, `120000`) are requested.
+A `160000` gitlink names a commit in another repository: `cat-file --batch-check`
+reports it missing, and a want list containing one failed with `not our ref` under
+protocol v0 and v2 and fetched nothing
+([gitlinks](../../../../explorations/repository-cache/README.md#gitlinks-and-rejected-object-requests)).
+Gitlinks are reported as submodule entries, never requested, and never missing.
+When the server rejects a request object by object (`not our ref`), the job splits the
+want list in halves down to single object IDs, fetches the accepted ones, and marks each
+rejected ID unavailable; the measured list of 13 with a gitlink and an absent object
+took 13 requests and fetched all 11 blobs.
+A policy refusal, transport failure, stall, or cancellation fails the whole job without
+splitting. `tests/fixtures/repository-cache/object-requests.json` pins both rules.
+
+Store reads also disable the mailmap with `-c mailmap.blob= -c mailmap.file=`. A bare
+store’s default mailmap is `HEAD:.mailmap`, so with Git defaults the history page and
+`show --raw` each read that blob, and with lazy fetch disabled they printed
+`error: unable to read mailmap object at HEAD:.mailmap` and still exited 0.
+`log.mailmap=false` alone did not stop a `%aN` placeholder from reading it, and
+`mailmap.blob=` alone still applied an inherited `mailmap.file`; the two keys together
+stopped every read and kept raw identities in every measured command
+([mailmap](../../../../explorations/repository-cache/README.md#store-reads-and-file-modes)).
+The current route formats use `%an` and `%ae`, so their output does not change.
+Because Git can report a failed read on stderr and exit 0, a store read that writes to
+stderr is not silently treated as success: the process boundary logs it and the route
+reports the result as degraded or unavailable.
+
 “Read of a not-yet-converged blob, online and offline” joins the Phase 1B acceptance
 list beside interrupted clone and unavailable network, and its outcome is the same in
 both: a typed `object_unavailable` or `deferred` result in bounded time, never a request
@@ -1129,8 +1207,7 @@ with the parsing rule and version-string cases.
 
 | Gate | Floor | Below the floor |
 | --- | --- | --- |
-| Acquisition | **Patched release:** 2.43.7, 2.44.4, 2.45.4, 2.46.4, 2.47.3, 2.48.2, 2.49.1, 2.50.1, or any newer release | URL opening is refused with a typed `unsupported_git_version` state naming the detected and required versions. Local-path browsing is unaffected |
-| Blobless acquisition | **2.45.0**, in addition to the acquisition floor | Acquires with a full fetch before publication |
+| Acquisition, including blobless acquisition | **Patched release:** 2.43.7, 2.44.4, 2.45.4, 2.46.4, 2.47.3, 2.48.2, 2.49.1, 2.50.1, or any newer release | URL opening is refused with a typed `unsupported_git_version` state naming the detected and required upstream versions. Local-path browsing is unaffected |
 | Cache integrity (`is_clean`) | **2.36** | Reported unavailable, never inferred clean — see the [Git-status plan](plan-2026-08-26-git-status-and-working-tree-diffs.md) |
 
 The acquisition floor is a security floor, decided 2026-09-16 from upstream release
@@ -1145,8 +1222,15 @@ Above this floor protocol v2 is the default (it was re-enabled in 2.29 after 2.2
 demoted it) and `cat-file --batch-command` (2.36) is available, so the former 2.26
 capability floor no longer needs its own row.
 
-Blobless acquisition gates on 2.45.0, the first release that documents `--no-lazy-fetch`
-and `GIT_NO_LAZY_FETCH`, because the offline guarantee above depends on it.
+The security floor is also the lazy-fetch floor.
+In the Git source, `promisor-remote.c` `fetch_objects` returns before fetching when
+`GIT_NO_LAZY_FETCH` is set, and both object reads and `diffcore-rename`’s blob prefetch
+reach promisor remotes through it.
+That check is present at v2.39.4, v2.43.7, v2.44.1, v2.45.1, and v2.50.1 and absent at
+v2.44.0 and v2.45.0, so every admitted release has it.
+The `--no-lazy-fetch` option only exists from 2.45.0 and is not used.
+Phase 1B-a runs the no-lazy-fetch acceptance tests against the lowest admitted Git in CI
+rather than trusting this reading.
 `git backfill` is not a gate and is not used: it is experimental, covers only history
 reachable from `HEAD` through 2.54 (2.55 adds a revision argument), and exited 0 without
 fetching anything when `HEAD` was unborn.
@@ -1159,6 +1243,23 @@ Version detection degrades rather than guesses: an unparseable `git version` str
 treated as below every floor, so URL opening is refused with the typed state, and the
 detected string is recorded in `store.yml` under `acquisition.git_version` so a later
 entry can be explained.
+
+**Open decision, owned by `mb-h51g`: distribution backports.** Distributions backport
+these CVE fixes without changing the upstream version string — for example, Ubuntu
+24.04’s patched Git reports 2.43.0 and Debian 12’s reports 2.39.x — so a gate on
+upstream versions refuses builds that are in fact patched.
+The options:
+
+1. **Refuse with an actionable message** naming the detected version and the upstream
+   floor. Simple and never wrong about safety, but it blocks URL opening on common
+   supported distributions until the user installs a newer Git.
+2. **A user-set acknowledgement setting** that accepts a named detected version as
+   patched. It unblocks those users with no platform code, but moves a security judgment
+   to the user and can outlive the Git it described.
+3. **A distribution-package check** that reads the package manager’s version and
+   changelog for the fixed CVEs.
+   It is accurate where it works, but it is per-platform code that is hard to test,
+   fails for Git not installed from a package, and runs package tools at startup.
 
 ## Generic Cache Operations
 
@@ -1270,7 +1371,7 @@ state.
 | `src/metabrowser/provider_resources/models.py` | `AuthorizationContextRef`, `authorization_context_key`, `LocalObjectAvailability`, `LocalGitObjectAvailability` | Move the non-secret context record, its one canonical key function, and the local object-availability vocabulary and report out of the hosted-review plugin before core consumes them; the observation-guarded constructors stay in `hosted_review/models.py`, and `mb-s0gv` later moves the remaining neutral provider records |
 | `src/metabrowser/plugin_api.py` | opaque `GitFetchCredentialLease`; `RepositoryObjectJobPort.request_selected_refs`, `provider_fetch_authorization_context` | Define the public opaque registry handle; validate an `AuthorizationContextRef`, derive its canonical key, and map the record once to an internal `ProviderPrincipal`; and let trusted provider plugins pass the handle without importing Git internals |
 | `src/metabrowser/git/process.py` | `GitCommandTarget`, `run_git`, `spawn_git_process`, askpass bridge | Keep one Git subprocess boundary; in Phase 3A, project a validated broker credential under the environment, configuration, and prompt-binding isolation of the repository-source architecture without exposing its secret |
-| `src/metabrowser/cache/repository_store.py` | `FetchAuthorizationContext`, `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` | Derive deterministic provider store IDs, isolate fetches by source and closed non-secret auth context, import staged objects, compare-and-swap refs and aliases, and protect leased and durable revisions |
+| `src/metabrowser/cache/repository_store.py` | `FetchAuthorizationContext`, `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` | Derive deterministic provider store IDs, isolate fetches by source and closed non-secret auth context in job-private refs, compare-and-swap public refs and aliases, and protect leased and durable revisions |
 | `src/metabrowser/cache/service.py` | `RepositoryOpenTarget`, `resolve_open_target`, `close_open_target` | Orchestrate parse, acquire/reuse, selection, immutable subject creation, trust profile, and initial browser path for CLI and later chooser callers |
 | `src/metabrowser/cache/jobs.py` | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`, `close_all` | Own bounded network fetch/prune for explicit selected refs plus provider-neutral progress, cancellation, the lease registry, per-request context/lease/source validation before job lookup, and stage outcomes used later by provider plugins |
 | `src/metabrowser/cache/routes.py` | `api_cache_layout`, `api_cache_sources`, `api_cache_source`, `api_cache_stores`, `api_repository_jobs` | Read-only logical-state projections for CLI parity; acquisition remains a CLI action, not a write API |
@@ -1336,19 +1437,21 @@ replay against production functions when they land.
 | Decision | Frozen as | Measured basis |
 | --- | --- | --- |
 | Store layout | A bare repository created with `git init --bare --template=`, configuration written only by Metabrowser, and one fetch with explicit refspecs into Metabrowser-owned refs; `HEAD` is set from the observed remote `HEAD` | Cost did not distinguish layouts: bare and `--no-checkout` full clones overlapped (flask 2.83 s against 3.25 s, mypy 11.64 s against 15.54 s, disk within 1%). State did: `--no-checkout` leaves `core.bare=false`, an empty work tree, reflogs, and a local branch; `clone --bare` writes remote branches into `refs/heads/`. The explicit form costs one `ls-remote --symref` round trip (4.21 s and 13.94 s full) |
-| Acquisition strategy | Blobless when the version gate passes; before publication, fetch the pinned default revision’s tree blobs in one object-ID request; after publication, converge the rest in the background. Full fetch below the gate or when the remote ignores the filter. No size threshold | Default-revision Files view complete in 3.0 s blobless against 3.3–4.0 s full (flask) and 5.8–5.9 s against 8.8–17.8 s (mypy), back to back over HTTPS. Every object took longer blobless (4.8–5.8 s against 3.3–4.0 s; 21.3–29.7 s against 8.8–17.8 s), which is why convergence runs after serving. Generic Git advertises no repository size before transfer, so a threshold would need a provider API the generic cache may not use |
-| Convergence | Explicit `git fetch --stdin` of the missing object IDs listed by `rev-list --objects --missing=print`, at most 50,000 IDs per request; `git backfill` is not used | One request of 53,607 IDs succeeded twice in 16.2 s and 24.9 s, against 25.5–26.0 s for backfill plus the 1,318 objects it left missing from non-`HEAD` refs; no larger request was measured |
-| Network stall bound | Every HTTPS network job sets `http.lowSpeedLimit=1000` and `http.lowSpeedTime=30` | Git defaults waited past 20 s on a remote that never answered; a 1 B/s over 3 s bound failed in 3.13 s; the 30 s bound interrupted none of the eight measured prefetch and convergence fetches, the longest 24.9 s |
+| Acquisition strategy | Blobless when the version gate passes; before publication, fetch the pinned default revision’s blob-mode entries in one object-ID request; after publication, converge the rest in the background. Full fetch below the gate or when the remote ignores the filter, recorded as complete. No size threshold | The decision rests on mypy and on coverage, not on flask. Over HTTPS, back to back, the default revision’s content was complete in 5.8–5.9 s blobless against 8.8–17.8 s full for mypy; flask’s advantage was small and variable (1.1× and 1.4× across two pairs). Every object took longer blobless (21.3–29.7 s against 8.8–17.8 s for mypy), which is why convergence runs after serving. Generic Git advertises no repository size before transfer, so a threshold would need a provider API the generic cache may not use |
+| Convergence | Explicit `git fetch --stdin` of the missing object IDs listed by `rev-list --objects --missing=print`, at most 50,000 IDs per request; `git backfill` is not used | Coverage decides it: backfill left 1,318 mypy objects outside `HEAD`’s history missing, and did nothing when `HEAD` was unborn. Speed does not: one request of 53,607 IDs took 16.2 s and 24.9 s against 25.5–26.0 s for backfill plus its remainder, but only two runs were taken, always after backfill, so order effects are not excluded. No larger request was measured |
+| Object-fetch stall bound | Object-ID prefetch and convergence fetches set `http.lowSpeedLimit=1000` and `http.lowSpeedTime=30`. Initial acquisition has no low-speed bound until Phase 1B-a measures one; user cancellation is the interim guard | Git defaults waited past 20 s on a remote that never answered; a 1 B/s over 3 s bound failed in 3.13 s; the 30 s bound interrupted none of the eight measured object-ID fetches, the longest 24.9 s. No stall bound was measured on an acquisition, where a server may send nothing while it counts and compresses objects |
 | Lazy fetch | `GIT_NO_LAZY_FETCH=1` on every request-path read; diff routes check the `--no-renames` change set first; network only through the object-job port | See [the offline guarantee](#blobless-acquisition-and-the-offline-guarantee) |
-| Store configuration | `maintenance.auto=false`, `gc.auto=0`, `fetch.recurseSubmodules=false`, `transfer.bundleURI=false`, an empty hooks path, empty template, and no user configuration | Every fetch with Git defaults spawned `git maintenance run --auto`; over HTTPS the resulting auto-gc made the 51st lazy fetch fail with a commit-graph error, while the same run with maintenance disabled completed 230 fetches |
+| Object requests | Only blob modes `100644`, `100755`, and `120000` are requested; gitlinks are submodule entries; a per-object rejection splits the request in halves down to single IDs, and other failures fail the job; `object-requests.json` | A want list with a gitlink failed with `not our ref` under protocol v0 and v2 and fetched nothing; splitting a 13-ID list with a gitlink and an absent object took 13 requests and fetched all 11 blobs |
+| Store reads | Every store read runs with `GIT_NO_LAZY_FETCH=1`, `-c mailmap.blob=`, and `-c mailmap.file=`; stderr from a read is logged and degrades the result instead of passing as success | With Git defaults the history page and `show --raw` read `HEAD:.mailmap` and, with lazy fetch disabled, printed an error and exited 0. `log.mailmap=false` alone did not stop a `%aN` read, and `mailmap.blob=` alone still applied an inherited `mailmap.file`; the two keys stopped every read |
+| Store configuration | `maintenance.auto=false`, `gc.auto=0`, `fetch.recurseSubmodules=false`, `transfer.bundleURI=false`, an empty hooks path, empty template, no user configuration, and umask `077` for every Git child; Git-written content must have no group or other bits and no allow ACL for another principal, and `0400` object files are accepted | Every fetch with Git defaults spawned `git maintenance run --auto`; over HTTPS the resulting auto-gc made the 51st lazy fetch fail with a commit-graph error, while the same run with maintenance disabled completed 230 fetches. Under umask `022` Git wrote `0755` directories and `0444` or `0644` files, and `core.sharedRepository=0600` left six of seven directories `0755`; under umask `077` no entry had a group or other bit |
 | Batch readers | Per repository store per process, at most 4 `cat-file --batch-command --buffer` actors, created on demand; each serves one request at a time; cancellation terminates the process and a later request starts a new one | Whole-tree throughput peaked at 4 actors (54.8–57.2 k blobs/s against 31.3–31.7 k for one) and fell with 8 (45.0–46.4 k); `info` plus `contents` p99 stayed at or below 0.25 ms with two actors; a reader exited within 0.77 ms of a signal, and a restart answered its first request in 9.3 ms (p50) |
 | Concurrent subjects | No per-subject isolation beyond pinned object IDs | Two readers on different object IDs ran concurrently in 0.063 s against 0.12 s sequentially with byte-identical output in 3 of 3; readers saw no failure or missing object across `repack -a -d` and `gc --prune=now`, and an actor started before maintenance found 200 of 200 objects afterward |
-| Fetch coalescing | In-process coalescing on the exact job key is required; cross-process duplicates are tolerated by staging each fetch in its own repository with the store as an alternate and importing under the store lock | Four concurrent same-ref fetches into one store never failed (6 runs) yet received and stored 36.1 MiB against 9.0 MiB coalesced; staged fetches still received 36.1 MiB but stored 9.0 MiB, and duplicate publications were 0.05 s no-ops |
+| Fetch jobs and coalescing | A network job holds the store lease and no ordered lock, fetches from the promisor remote directly into the store, and writes only `refs/metabrowser/jobs/<job-id>/`; it then takes the store lock briefly and runs one `update-ref --stdin` transaction that compare-and-swaps the public refs from their observed old values and deletes its job refs. In-process coalescing on the exact job key is required; cross-process duplicates cost space until maintenance compacts them. Objects never enter a blobless store except from its promisor remote, and `repack.writeBitmaps` is left at Git’s default | On a blobless flask store, four concurrent direct jobs never failed (2 of 2 repetitions); one published and three found the same object IDs already published, leaving no job refs. They received 4.0× the bytes of one coalesced job (34,356 against 8,520 and 70,002 against 17,480) and added three extra packs, all promisor packs; `gc --prune=now` and `repack -a -d` then succeeded in 4 of 4 runs, compacted to one promisor pack, wrote no bitmap, and lost no object. The replaced alternate-staging design failed on the same blobless store: a filtered staging import failed with `possible repository corruption on the remote side` (2 of 2), and an unfiltered import succeeded but made `gc --prune=now` and `repack -a -d` fail with `Packfile doesn't have full closure` while writing bitmaps (2 of 2), because the imported pack was not a promisor pack |
 | Retention | Every object promised for offline reuse is reachable from a durable Metabrowser-owned ref; maintenance requires the exclusive maintenance lock | A commit behind a private ref survived `gc --prune=now`; without a ref it survived only the default two-week prune window. Bare stores write no reflogs, so nothing else retains it |
-| Version floors | [Git version gates](#git-version-gates) and `git-version-gates.json` | Upstream release notes and documentation at each tag; only 2.50.1 was available to measure |
+| Version floors | One acquisition floor, which is both the security floor and the lazy-fetch floor; [Git version gates](#git-version-gates) and `git-version-gates.json` | Upstream release notes, and `promisor-remote.c` and `diffcore-rename.c` read at each relevant tag; only 2.50.1 was available to run |
 | URL grammar | `url-grammar.json` | Git’s HTTP client sent the same request with and without a trailing slash, and sent `//`, `%72`, and path case verbatim |
 | Source and store identity, aliases, slugs | `source-identity.json` | The home filesystem folded case and Unicode normalization, and `NAME_MAX` was 255 bytes |
-| Locks and state machines | `state-machines.json`, with the lock order above | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory |
+| Locks and state machines | `state-machines.json`, with the lock order and store lease above; publication verifies absence under the owning lock, with a platform no-replace rename as defense in depth | `flock` released 2.8 ms after its holder was killed; `lockf` vanished when an unrelated descriptor closed; `os.rename` replaced an empty directory and `renamex_np(RENAME_EXCL)` refused it. The interleaving check found the store-to-alias reclamation race in the previous design and none in this one |
 | Catalog layout | Flat `sources/` and `repository-stores/` directories | Scanning 10,000 flat entries and reading each record took 262 ms |
 
 Store and alias rules follow from those identities.
@@ -1365,10 +1468,16 @@ Evidence was insufficient to freeze the following; each names the phase that dec
   raw limits, need browser measurements: Phase 1B-c.
 - Cross-process retry and contention bounds for fetch publication: Phase 2B. No
   contention failure occurred to bound.
-- Lock, rename, and case semantics on Linux, Windows, and network filesystems: Phase 1A
-  proves the frozen properties on each CI platform and refuses a home that fails them.
-- SSH acquisition, prompt suppression, and stall bounds, and Git for Windows version
-  strings: Phase 1B-a. Neither was measured.
+- Lock, rename, and case semantics beyond macOS APFS: CI runs only on `ubuntu-latest`,
+  so Linux is covered by the test suite, and Windows and network filesystems — where
+  `flock` may be emulated with record locks that behave like the rejected `lockf` — are
+  covered only by the runtime probe Phase 1A (`mb-4gnu`) adds at application-home setup.
+- The initial-acquisition stall bound, on a large or bitmap-less repository: Phase 1B-a
+  (`mb-h51g`).
+- Whether distribution builds that backport the CVE fixes under an older version string
+  are admitted: Phase 1B-a (`mb-h51g`); see [Git version gates](#git-version-gates).
+- SSH acquisition and prompt suppression, and Git for Windows version strings: Phase
+  1B-a. Neither was measured.
 - Prune expiry, size accounting, and eviction: later cache operations.
 - Convergence batches above 53,607 object IDs and repositories larger than mypy: later
   very-large-repository work.
@@ -1380,9 +1489,10 @@ This phase produces no user-visible result and stands between the goal and the f
 repository that opens, so its scope is stated rather than assumed.
 
 **Not negotiable**, because each one is what makes an interrupted or concurrent
-operation safe rather than corrupting: source identity, atomic publication with a
-no-replace rename, application-home locking, honest recorded state, `CACHEDIR.TAG`, the
-`staging`/`trash` reclamation sweep, and compiled-schema drift checking.
+operation safe rather than corrupting: source identity, publication that verifies
+absence under the owning lock before it renames, application-home locking, honest
+recorded state, `CACHEDIR.TAG`, the `staging`/`trash` reclamation sweep, and
+compiled-schema drift checking.
 A cache without these is not a smaller cache; it is one that loses entries.
 
 **Deferrable if the phase proves too large to land in one step**, because each only pays
@@ -1426,6 +1536,15 @@ that already exist costs more than building it first.
   backed-up cache data.
 - [ ] Prove config preserves unknown settings while machine records reject unknown
   fields and cache-controlled schema paths cannot redirect validation.
+- [ ] Probe the application home at setup (`mb-4gnu`): a second process cannot take a
+  held lock, closing an unrelated descriptor for a lock file does not release the lock,
+  and verify-absent-under-lock publication with the platform no-replace rename refuses
+  an existing target. A home that fails any probe is refused as unverifiable, because CI
+  covers only Linux and a network filesystem can emulate `flock` with record locks.
+- [ ] Replace the test oracle for the contracts this phase implements — store and source
+  identity, slugs, the lock order, and the sweep, quarantine, and reclamation machines —
+  with the production functions, and replay the same `tests/fixtures/repository-cache/`
+  fixtures against them.
 - [ ] Add the read routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/{slug}`, and `/api/cache/stores`, projecting the records above, and
   pin them with a golden through `metab --api`.
@@ -1459,10 +1578,10 @@ next slice begins.
   slug, collision verification, and source-alias locking.
 - [ ] Extend `git/process.py` with version detection, `stdin=DEVNULL`, non-interactive
   environment controls, and explicit acquisition/background policies.
-- [ ] Enforce the acquisition and blobless floors from
-  [Git version gates](#git-version-gates); select a full fetch before publication when
-  the blobless floor is unmet or the remote ignores the filter, and return a typed
-  `unsupported_git_version` state below the acquisition floor.
+- [ ] Enforce the acquisition floor from [Git version gates](#git-version-gates), which
+  is also the lazy-fetch floor; select a full fetch before publication when the remote
+  ignores the filter, and return a typed `unsupported_git_version` state below the
+  floor.
 - [ ] Acquire a worktree-free Git database in same-filesystem staging, resolve and pin
   the default full object ID, and validate records, objects, and refs.
   Publish the immutable store first; atomically create the source alias last as the
@@ -1475,6 +1594,15 @@ next slice begins.
   failed states.
 - [ ] Apply the Phase 0 lazy-fetch decision on every read path, and prove a
   not-yet-converged blob read behaves as decided both online and offline.
+- [ ] Run those no-lazy-fetch acceptance tests against the lowest admitted Git release
+  in CI, so the source reading behind the version floor is proven at runtime.
+- [ ] Measure initial acquisition of a large or bitmap-less repository with a stalled or
+  slow server, and choose its low-speed bound; until then user-driven job cancellation
+  is the guard.
+- [ ] Decide the distribution-backport policy recorded under
+  [Git version gates](#git-version-gates).
+- [ ] Replace the test oracle for the URL grammar, version gates, object requests, and
+  the acquisition machine with the production functions, and replay the same fixtures.
 - [ ] Force the untrusted profile for URL-opened roots once `mb-vib1` lands; until then
   acquisition, identity, publication, and CLI inspection may ship, and serving may not.
 - [ ] Add CLI goldens and docs for first open, cache hit, offline reuse, unsafe input,
@@ -1590,10 +1718,12 @@ replacement, repair, and purge use object, ref, record, and lease validation ins
   credential can be used.
   The broker and projection arrive in Phase 3A under the isolation rules in
   [Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md#fetch-jobs-authorization-and-credentials).
-- [ ] Fetch into an isolated temporary repository or, for jobs without provider
-  credentials, a quarantine with no lock held; persist a non-secret `StagedFetch`, then
-  validate object format, expected full OID, source, auth-context kind, refspec, and
-  base generation before compare-and-swap publication under the repository-store lock.
+- [ ] Persist a non-secret `StagedFetch` job record, take the store lease with no
+  ordered lock held, and fetch from the promisor remote directly into the store under
+  `refs/metabrowser/jobs/<job-id>/`; then validate object format, expected full OID,
+  source, auth-context kind, refspec, and base generation, and publish with one
+  `update-ref --stdin` compare-and-swap that deletes the job refs, under the short
+  repository-store lock.
 - [ ] Keep provider schemas, `gh`, auth, catalog, chooser, purge, and automatic eviction
   out of this phase. Never mutate an attached checkout or treat its remote as shared
   authority.
@@ -1729,7 +1859,7 @@ suite exercises the same acquisition path a user gets.
 - **Read-only behavior:** browse and ref refresh create no checkout or index and never
   modify an attached user working tree or `.git` state.
 - **Concurrency:** two processes share one completed store while browsing different
-  object IDs; source/auth-incompatible fetches do not coalesce; a slower staged fetch
+  object IDs; source/auth-incompatible fetches do not coalesce; a slower fetch job
   cannot regress a newer ref generation; open, refresh, migration, repair, and purge
   cannot race across processes.
 - **Credential capabilities:** a provider-principal fetch starts only with a registered,

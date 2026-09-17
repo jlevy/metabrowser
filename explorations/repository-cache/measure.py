@@ -86,6 +86,10 @@ STORE_CONFIG = (
 )
 
 ERROR_CLASSES = (
+    ("remote_corruption", "possible repository corruption on the remote side"),
+    ("bitmap_closure", "have full closure"),
+    ("not_our_ref", "not our ref"),
+    ("mailmap_blob_unavailable", "mailmap"),
     ("commit_graph_race", "in the commit graph file but not in the object database"),
     ("promisor_fetch_failed", "from promisor remote"),
     ("lazy_fetch_disabled", "lazy fetching disabled"),
@@ -200,6 +204,7 @@ def git(
     stdin: bytes | None = None,
     timeout: float = 900.0,
     trace_dir: Path | None = None,
+    umask: int = -1,
 ) -> Outcome:
     argv = ["git"]
     if git_dir is not None:
@@ -220,6 +225,7 @@ def git(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
+        umask=umask,
     )
     timed_out = False
     try:
@@ -1557,7 +1563,41 @@ def suite_concurrency(scratch: Path, args: argparse.Namespace) -> None:
     print(recorder.write())
 
 
-def fetch_job(git_dir: Path, url: str, refspec: str) -> subprocess.Popen[bytes]:
+ZERO_OID = "0" * 40
+JOB_REFSPEC = "+refs/heads/measure/*:refs/metabrowser/jobs/{job}/measure/*"
+
+
+def stderr_lines(text_value: str, limit: int = 3) -> list[str]:
+    """First distinct diagnostic lines, with object IDs elided."""
+    lines: list[str] = []
+    for line in text_value.replace("\r", "\n").splitlines():
+        cleaned = re.sub(r"\b[0-9a-f]{40}\b", "<oid>", line.strip())
+        if (
+            cleaned
+            and not cleaned.startswith(
+                (
+                    "Receiving",
+                    "remote:",
+                    "Resolving",
+                    "Counting",
+                    "Compressing",
+                    "Enumerating",
+                    "Total",
+                    "Writing",
+                    "Delta",
+                    "Expanding",
+                )
+            )
+            and cleaned not in lines
+        ):
+            lines.append(cleaned)
+        if len(lines) >= limit:
+            break
+    return lines
+
+
+def direct_fetch_job(git_dir: Path, job: str) -> subprocess.Popen[bytes]:
+    """A network job: fetch from the promisor remote into job-private refs, no store lock."""
     return subprocess.Popen(
         [
             "git",
@@ -1568,8 +1608,8 @@ def fetch_job(git_dir: Path, url: str, refspec: str) -> subprocess.Popen[bytes]:
             "--progress",
             "--no-tags",
             "--no-write-fetch-head",
-            url,
-            refspec,
+            "origin",
+            JOB_REFSPEC.format(job=job),
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
@@ -1591,14 +1631,85 @@ def finish_jobs(processes: Sequence[subprocess.Popen[bytes]]) -> tuple[list[int]
     return codes, errors, received_bytes
 
 
-def object_bytes(git_dir: Path) -> int:
-    values = count_objects(git_dir)
-    return (cast(int, values["size"]) + cast(int, values["size_pack"])) * 1024
+def ref_values(git_dir: Path, prefix: str) -> dict[str, str]:
+    raw = text(git(["for-each-ref", "--format=%(refname) %(objectname)", prefix], git_dir=git_dir))
+    return dict(line.split(" ", 1) for line in raw.splitlines() if line)
+
+
+def publish_job(git_dir: Path, job: str, base: dict[str, str]) -> tuple[str, float]:
+    """Compare-and-swap the public refs from one job's refs, then delete the job refs.
+
+    The expected old value is what the job observed before its network work; a
+    mismatch means a newer publication won, which is success when it published
+    the same object IDs and a conflict otherwise.
+    """
+    job_prefix = f"refs/metabrowser/jobs/{job}/"
+    started = time.perf_counter()
+    jobs = ref_values(git_dir, job_prefix)
+    lines = ["start"]
+    for name, oid in sorted(jobs.items()):
+        public = "refs/remotes/origin/" + name.removeprefix(job_prefix)
+        lines.append(f"update {public} {oid} {base.get(public, ZERO_OID)}")
+        lines.append(f"delete {name} {oid}")
+    lines += ["prepare", "commit"]
+    outcome = git(
+        ["update-ref", "--stdin"], git_dir=git_dir, stdin=("\n".join(lines) + "\n").encode()
+    )
+    if outcome.returncode == 0:
+        return "published", time.perf_counter() - started
+    current = ref_values(git_dir, "refs/remotes/origin/")
+    same = all(
+        current.get("refs/remotes/origin/" + name.removeprefix(job_prefix)) == oid
+        for name, oid in jobs.items()
+    )
+    cleanup = [
+        "start",
+        *[f"delete {name} {oid}" for name, oid in sorted(jobs.items())],
+        "prepare",
+        "commit",
+    ]
+    must(
+        git(["update-ref", "--stdin"], git_dir=git_dir, stdin=("\n".join(cleanup) + "\n").encode())
+    )
+    return ("already_published" if same else "conflict"), time.perf_counter() - started
+
+
+def pack_counts(git_dir: Path) -> dict[str, Json]:
+    packs = git_dir / "objects" / "pack"
+    names = {path.stem for path in packs.glob("*.pack")}
+    promisor = {path.stem for path in packs.glob("*.promisor")}
+    return {
+        "packs": len(names),
+        "promisor_packs": len(names & promisor),
+        "non_promisor_packs": len(names - promisor),
+        "bitmaps": len(list(packs.glob("*.bitmap"))),
+        "pack_bytes": sum(path.stat().st_size for path in packs.glob("*.pack")),
+    }
+
+
+def maintenance_outcome(git_dir: Path) -> dict[str, Json]:
+    """Run the two maintenance commands whose failures the staged design exposed."""
+    missing_before = missing_reachable(git_dir, ["--all"])
+    gc = git(["gc", "--prune=now"], git_dir=git_dir)
+    repack = git(["repack", "-a", "-d"], git_dir=git_dir)
+    return {
+        "gc_returncode": gc.returncode,
+        "gc_stderr": stderr_lines(gc.stderr),
+        "repack_returncode": repack.returncode,
+        "repack_stderr": stderr_lines(repack.stderr),
+        "after": pack_counts(git_dir),
+        "fsck_ok": git(["fsck", "--connectivity-only", "--no-dangling"], git_dir=git_dir).returncode
+        == 0,
+        "missing_reachable_before": missing_before,
+        "missing_reachable_after": missing_reachable(git_dir, ["--all"]),
+    }
 
 
 def suite_fetches(scratch: Path, args: argparse.Namespace) -> None:
-    """Same-ref fetches: one coalesced job, four jobs into one store, four staged jobs."""
+    """Same-ref fetches into a blobless store: direct jobs, CAS publication, then maintenance."""
     reps = cast(int, args.reps)
+    timeout = cast(float, args.timeout)
+    traces = scratch / "traces"
     work = scratch / "fetches"
     recorder = Recorder("fetches", scratch, {"reps": reps})
     origin = work / "origin.git"
@@ -1619,93 +1730,557 @@ def suite_fetches(scratch: Path, args: argparse.Namespace) -> None:
             ]
         )
     )
-    must(git(clone_args(layout="bare", strategy="full", url=file_url(origin), destination=base)))
-    url = file_url(origin)
-    refspec = "+refs/heads/measure/*:refs/remotes/origin/measure/*"
-    shapes = (("loose_8_commits", 8), ("packed_120_commits", 120))
-    for shape, commits in shapes:
-        for rep in range(reps):
-            add_origin_commits(origin, f"{shape}{rep}", count=commits, blob_bytes=64 * 1024)
-            modes = ["coalesced", "same_store", "staged_alternates"]
-            for mode in modes if rep % 2 == 0 else list(reversed(modes)):
-                target = copy_store(base, work / "target.git")
-                before = object_bytes(target)
-                started = time.perf_counter()
-                row: dict[str, Json] = {
-                    "case": "same_ref_fetches",
-                    "shape": shape,
-                    "rep": rep,
-                    "mode": mode,
-                }
-                if mode in {"coalesced", "same_store"}:
-                    jobs = 1 if mode == "coalesced" else 4
-                    codes, errors, received_bytes = finish_jobs(
-                        [fetch_job(target, url, refspec) for _job in range(jobs)]
-                    )
-                    row["network_s"] = round(time.perf_counter() - started, 3)
-                else:
-                    jobs = 4
-                    stages = [work / f"stage-{index}.git" for index in range(jobs)]
-                    for stage in stages:
-                        remove(stage)
-                        must(git(["init", "--bare", "--template=", "-q", str(stage)]))
-                        (stage / "objects" / "info").mkdir(parents=True, exist_ok=True)
-                        (stage / "objects" / "info" / "alternates").write_text(
-                            f"{target / 'objects'}\n"
-                        )
-                    codes, errors, received_bytes = finish_jobs(
-                        [
-                            fetch_job(stage, url, "+refs/heads/measure/*:refs/staged/*")
-                            for stage in stages
-                        ]
-                    )
-                    row["network_s"] = round(time.perf_counter() - started, 3)
-                    publish_walls: list[float] = []
-                    for stage in stages:
-                        publish = git(
-                            [
-                                "fetch",
-                                "--no-tags",
-                                "--no-write-fetch-head",
-                                str(stage),
-                                "+refs/staged/*:refs/remotes/origin/measure/*",
-                            ],
-                            git_dir=target,
-                        )
-                        publish_walls.append(publish.wall_s)
-                        if publish.returncode != 0:
-                            errors.append("publish_" + publish.error_class())
-                    row["publish_s"] = [round(value, 3) for value in publish_walls]
-                    for stage in stages:
-                        remove(stage)
-                row.update(
-                    jobs=jobs,
-                    failures=sum(1 for code in codes if code != 0),
-                    error_classes=sorted(set(errors)),
-                    received_bytes=received_bytes,
-                    store_bytes_added=object_bytes(target) - before,
-                    refs_published=len(
-                        text(
-                            git(
-                                [
-                                    "for-each-ref",
-                                    "--format=%(refname)",
-                                    "refs/remotes/origin/measure",
-                                ],
-                                git_dir=target,
-                            )
-                        ).splitlines()
-                    ),
-                    fsck_ok=git(
-                        ["fsck", "--connectivity-only", "--no-dangling"], git_dir=target
-                    ).returncode
-                    == 0,
+    for item in ("uploadpack.allowFilter", "uploadpack.allowAnySHA1InWant"):
+        must(git(["config", item, "true"], git_dir=origin))
+    must(
+        git(clone_args(layout="bare", strategy="blobless", url=file_url(origin), destination=base))
+    )
+    head = text(git(["rev-parse", "HEAD"], git_dir=base))
+    must(prefetch_oids(base, tree_oids(base, head), traces, timeout))
+    recorder.add(case="base", head=head, **pack_counts(base))
+    for rep in range(reps):
+        add_origin_commits(origin, f"direct{rep}", count=60, blob_bytes=16 * 1024)
+        modes = [("coalesced", 1), ("concurrent_direct", 4)]
+        for mode, jobs in modes if rep % 2 == 0 else list(reversed(modes)):
+            target = copy_store(base, work / "target.git")
+            before = pack_counts(target)
+            base_refs = ref_values(target, "refs/remotes/origin/")
+            started = time.perf_counter()
+            codes, errors, received_bytes = finish_jobs(
+                [direct_fetch_job(target, f"job{index}") for index in range(jobs)]
+            )
+            network_s = time.perf_counter() - started
+            outcomes: list[str] = []
+            publish_ms: list[float] = []
+            for index in range(jobs):
+                outcome, wall = publish_job(target, f"job{index}", base_refs)
+                outcomes.append(outcome)
+                publish_ms.append(round(wall * 1000, 2))
+            after_fetch = pack_counts(target)
+            tips = list(ref_values(target, "refs/remotes/origin/measure/").values())
+            wanted = sorted({oid for tip in tips for oid in tree_oids(target, tip)})
+            check = git(
+                ["cat-file", "--batch-check"],
+                git_dir=target,
+                env=git_env({"GIT_NO_LAZY_FETCH": "1"}),
+                stdin=("\n".join(wanted) + "\n").encode(),
+            )
+            missing = [
+                line.split()[0]
+                for line in check.stdout.decode().splitlines()
+                if line.endswith(" missing")
+            ]
+            prefetches = [
+                subprocess.Popen(
+                    [
+                        "git",
+                        "--git-dir",
+                        str(target),
+                        *PROTOCOL_ARGS,
+                        "-c",
+                        "fetch.negotiationAlgorithm=noop",
+                        "fetch",
+                        "origin",
+                        "--no-tags",
+                        "--no-write-fetch-head",
+                        "--recurse-submodules=no",
+                        "--filter=blob:none",
+                        "--stdin",
+                    ],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    env=git_env(),
                 )
-                recorder.add(**row)
-                remove(target)
+                for _job in range(jobs)
+            ]
+            for process in prefetches:
+                cast(IO[bytes], process.stdin).write(("\n".join(missing) + "\n").encode())
+                cast(IO[bytes], process.stdin).close()
+            prefetch_codes = [process.wait() for process in prefetches]
+            after_prefetch = pack_counts(target)
+            recorder.add(
+                case="direct_job_fetches",
+                rep=rep,
+                mode=mode,
+                jobs=jobs,
+                network_s=round(network_s, 3),
+                failures=sum(1 for code in codes if code != 0),
+                error_classes=sorted(set(errors)),
+                received_bytes=received_bytes,
+                publication=outcomes,
+                publish_ms=publish_ms,
+                job_refs_left=len(ref_values(target, "refs/metabrowser/jobs/")),
+                refs_published=len(tips),
+                before=before,
+                after_fetch=after_fetch,
+                blob_prefetch_wanted=len(missing),
+                blob_prefetch_failures=sum(1 for code in prefetch_codes if code != 0),
+                after_prefetch=after_prefetch,
+                maintenance=maintenance_outcome(target),
+            )
+            remove(target)
+        # The rejected design: stage in a separate repository with the store as an alternate.
+        for variant in ("staged_filtered_import", "staged_unfiltered_import"):
+            target = copy_store(base, work / "target.git")
+            stage = work / "stage.git"
+            remove(stage)
+            must(git(["init", "--bare", "--template=", "-q", str(stage)]))
+            (stage / "objects" / "info").mkdir(parents=True, exist_ok=True)
+            (stage / "objects" / "info" / "alternates").write_text(f"{target / 'objects'}\n")
+            stage_fetch = [*PROTOCOL_ARGS, "fetch", "--no-tags", "--no-write-fetch-head"]
+            if variant == "staged_filtered_import":
+                stage_fetch.append("--filter=blob:none")
+            staged = git(
+                [*stage_fetch, file_url(origin), "+refs/heads/measure/*:refs/staged/*"],
+                git_dir=stage,
+            )
+            imported = git(
+                [
+                    "fetch",
+                    "--no-tags",
+                    "--no-write-fetch-head",
+                    str(stage),
+                    "+refs/staged/*:refs/remotes/origin/measure/*",
+                ],
+                git_dir=target,
+            )
+            recorder.add(
+                case="staged_alternates_import",
+                rep=rep,
+                variant=variant,
+                stage_returncode=staged.returncode,
+                import_returncode=imported.returncode,
+                import_error_class=imported.error_class(),
+                import_stderr=stderr_lines(imported.stderr),
+                after_import=pack_counts(target),
+                maintenance=maintenance_outcome(target) if imported.returncode == 0 else None,
+            )
+            remove(stage)
+            remove(target)
     if not args.keep:
         remove(origin)
         remove(base)
+    print(recorder.write())
+
+
+IDENTITY_ENV = {
+    "GIT_AUTHOR_NAME": "Measure",
+    "GIT_AUTHOR_EMAIL": "measure@example.invalid",
+    "GIT_AUTHOR_DATE": "1700000000 +0000",
+    "GIT_COMMITTER_NAME": "Measure",
+    "GIT_COMMITTER_EMAIL": "measure@example.invalid",
+    "GIT_COMMITTER_DATE": "1700000000 +0000",
+}
+BLOB_MODES = frozenset({"100644", "100755", "120000"})
+STORE_READ_CONFIG = ("-c", "mailmap.blob=", "-c", "mailmap.file=")
+
+
+def tiny_origin(path: Path) -> Path:
+    remove(path)
+    must(git(["init", "--bare", "--template=", "-q", str(path)]))
+    must(git(["config", "uploadpack.allowFilter", "true"], git_dir=path))
+    return path
+
+
+def write_blob(origin: Path, data: bytes) -> str:
+    return text(git(["hash-object", "-w", "--stdin"], git_dir=origin, stdin=data))
+
+
+def write_tree(origin: Path, files: dict[str, tuple[str, str]]) -> str:
+    """Build nested trees from `path -> (mode, oid)`; mode 160000 is a gitlink."""
+    children: dict[str, dict[str, tuple[str, str]]] = {}
+    entries: list[bytes] = []
+    for path, (mode, oid) in files.items():
+        head_name, _, rest = path.partition("/")
+        if rest:
+            children.setdefault(head_name, {})[rest] = (mode, oid)
+        else:
+            kind = "commit" if mode == "160000" else "blob"
+            entries.append(f"{mode} {kind} {oid}\t{head_name}".encode())
+    for name, nested in children.items():
+        entries.append(f"040000 tree {write_tree(origin, nested)}\t{name}".encode())
+    return text(git(["mktree", "-z"], git_dir=origin, stdin=b"\0".join(entries) + b"\0"))
+
+
+def write_commit(
+    origin: Path,
+    tree: str,
+    parents: Sequence[str],
+    message: str,
+    author: tuple[str, str] | None = None,
+) -> str:
+    identity = dict(IDENTITY_ENV)
+    if author is not None:
+        identity["GIT_AUTHOR_NAME"], identity["GIT_AUTHOR_EMAIL"] = author
+    argv = ["commit-tree", tree, "-m", message]
+    for parent in parents:
+        argv += ["-p", parent]
+    return text(git(argv, git_dir=origin, env=git_env(identity)))
+
+
+def set_head(origin: Path, commit: str) -> None:
+    must(git(["update-ref", "refs/heads/main", commit], git_dir=origin))
+    must(git(["symbolic-ref", "HEAD", "refs/heads/main"], git_dir=origin))
+
+
+def raw_entries(git_dir: Path, left: str, right: str) -> list[tuple[str, str]]:
+    """`(mode, oid)` for both sides of every change, zero object IDs removed."""
+    raw = must(
+        git(
+            [*STORE_READ_CONFIG, "diff", "--raw", "-z", "--no-abbrev", "--no-renames", left, right],
+            git_dir=git_dir,
+            env=git_env({"GIT_NO_LAZY_FETCH": "1"}),
+        )
+    ).stdout
+    sides: list[tuple[str, str]] = []
+    for token in raw.split(b"\0"):
+        if token.startswith(b":"):
+            old_mode, new_mode, old_oid, new_oid, _status = token[1:].decode().split(" ")
+            sides += [(old_mode, old_oid), (new_mode, new_oid)]
+    return [(mode, oid) for mode, oid in sides if set(oid) != {"0"}]
+
+
+def suite_gitlinks(scratch: Path, args: argparse.Namespace) -> None:
+    """Gitlinks in a change set, want-list rejection, and the bisecting request flow."""
+    timeout = cast(float, args.timeout)
+    traces = scratch / "traces"
+    work = scratch / "gitlinks"
+    recorder = Recorder("gitlinks", scratch, {})
+    rng = random.Random("gitlinks")
+    origin = tiny_origin(work / "origin.git")
+    files: dict[str, tuple[str, str]] = {
+        f"src/file{index}.txt": ("100644", write_blob(origin, rng.randbytes(2048)))
+        for index in range(8)
+    }
+    files["tools/run.sh"] = ("100755", write_blob(origin, b"#!/bin/sh\necho one\n"))
+    files["vendor/lib"] = ("160000", f"{rng.getrandbits(160):040x}")
+    first = write_commit(origin, write_tree(origin, files), [], "one")
+    for index in range(4):
+        files[f"src/file{index}.txt"] = ("100644", write_blob(origin, rng.randbytes(2048)))
+    files["tools/run.sh"] = ("100755", write_blob(origin, b"#!/bin/sh\necho two\n"))
+    files["docs/link"] = ("120000", write_blob(origin, b"../src/file0.txt"))
+    files["vendor/lib"] = ("160000", f"{rng.getrandbits(160):040x}")
+    second = write_commit(origin, write_tree(origin, files), [first], "two")
+    set_head(origin, second)
+
+    def fresh_store(name: str) -> Path:
+        store = work / name
+        remove(store)
+        must(
+            git(
+                clone_args(
+                    layout="bare", strategy="blobless", url=file_url(origin), destination=store
+                )
+            )
+        )
+        return store
+
+    store = fresh_store("store.git")
+    sides = raw_entries(store, first, second)
+    modes: dict[str, int] = {}
+    for mode, _oid in sides:
+        modes[mode] = modes.get(mode, 0) + 1
+    naive = sorted({oid for _mode, oid in sides})
+    blobs = sorted({oid for mode, oid in sides if mode in BLOB_MODES})
+    gitlinks = sorted({oid for mode, oid in sides if mode == "160000"})
+    check = git(
+        ["cat-file", "--batch-check"],
+        git_dir=store,
+        env=git_env({"GIT_NO_LAZY_FETCH": "1"}),
+        stdin=("\n".join(naive) + "\n").encode(),
+    )
+    reported_missing = {
+        line.split()[0] for line in check.stdout.decode().splitlines() if line.endswith(" missing")
+    }
+    recorder.add(
+        case="change_set",
+        modes=modes,
+        naive_oids=len(naive),
+        blob_oids=len(blobs),
+        gitlink_oids=len(gitlinks),
+        gitlinks_reported_missing=len(reported_missing & set(gitlinks)),
+    )
+
+    # Want-list permission and rejection, protocol v0 and v2.
+    for allow_any in (False, True):
+        must(
+            git(
+                ["config", "uploadpack.allowAnySHA1InWant", "true" if allow_any else "false"],
+                git_dir=origin,
+            )
+        )
+        for protocol in ("0", "2"):
+            for label, wants in (("blobs_only", blobs), ("with_gitlink", naive)):
+                target = fresh_store("try.git")
+                before = cast(int, count_objects(target)["in_pack"])
+                outcome = prefetch_oids(
+                    target, wants, traces, timeout, extra=["-c", f"protocol.version={protocol}"]
+                )
+                recorder.add(
+                    case="want_list",
+                    allow_any_sha1_in_want=allow_any,
+                    protocol=protocol,
+                    wants=label,
+                    oids=len(wants),
+                    returncode=outcome.returncode,
+                    error_class=outcome.error_class(),
+                    stderr=stderr_lines(outcome.stderr),
+                    objects_fetched=cast(int, count_objects(target)["in_pack"]) - before,
+                )
+                remove(target)
+
+    # Routes after fetching only the blob-mode change set, lazy fetch disabled.
+    target = fresh_store("routes.git")
+    must(prefetch_oids(target, blobs, traces, timeout))
+    no_lazy = git_env({"GIT_NO_LAZY_FETCH": "1"})
+    flags = ["-M50", "-C", "--diff-merges=first-parent"]
+    routes = {
+        "commit_detail": [
+            "show",
+            "-z",
+            "--raw",
+            "--numstat",
+            "-M",
+            "-C",
+            "--diff-merges=first-parent",
+            f"--format={SHOW_FORMAT}",
+            second,
+        ],
+        "manifest_raw": ["diff", "--raw", "-z", "--no-abbrev", *flags, first, second],
+        "manifest_numstat": ["diff", "--numstat", "-z", *flags, first, second],
+        "patches": ["diff", *flags, first, second],
+    }
+    for route, argv in routes.items():
+        outcome = git([*STORE_READ_CONFIG, *argv], git_dir=target, env=no_lazy)
+        recorder.add(
+            case="routes_after_blob_prefetch",
+            route=route,
+            returncode=outcome.returncode,
+            stderr=stderr_lines(outcome.stderr),
+            mentions_submodule=b"Subproject commit" in outcome.stdout
+            or b"160000" in outcome.stdout,
+        )
+    remove(target)
+
+    # Bisect a rejected want list down to single object IDs.
+    target = fresh_store("bisect.git")
+    absent = f"{rng.getrandbits(160):040x}"
+    wants = [*blobs[:3], gitlinks[0], *blobs[3:], absent]
+    requests: list[int] = []
+    accepted: list[str] = []
+    rejected: list[str] = []
+
+    def attempt(oids: list[str]) -> None:
+        outcome = prefetch_oids(target, oids, traces, timeout)
+        requests.append(len(oids))
+        if outcome.returncode == 0:
+            accepted.extend(oids)
+        elif len(oids) == 1:
+            rejected.extend(oids)
+        else:
+            middle = (len(oids) + 1) // 2
+            attempt(oids[:middle])
+            attempt(oids[middle:])
+
+    started = time.perf_counter()
+    attempt(wants)
+    wall = time.perf_counter() - started
+    present = git(
+        ["cat-file", "--batch-check"],
+        git_dir=target,
+        env=no_lazy,
+        stdin=("\n".join(accepted) + "\n").encode(),
+    ).stdout.decode()
+    recorder.add(
+        case="bisected_request",
+        wants=len(wants),
+        request_sizes=requests,
+        requests=len(requests),
+        accepted=len(accepted),
+        rejected_are_gitlink_and_absent=sorted(rejected) == sorted([gitlinks[0], absent]),
+        accepted_present=present.count(" blob "),
+        wall_s=round(wall, 3),
+    )
+    if not args.keep:
+        remove(work)
+    print(recorder.write())
+
+
+def suite_mailmap(scratch: Path, args: argparse.Namespace) -> None:
+    """Which store reads load a mailmap, and which configuration stops them."""
+    traces = scratch / "traces"
+    work = scratch / "mailmap"
+    recorder = Recorder("mailmap", scratch, {})
+    origin = tiny_origin(work / "origin.git")
+    must(git(["config", "uploadpack.allowAnySHA1InWant", "true"], git_dir=origin))
+    mailmap = b"Canonical Name <canonical@example.invalid> <alias@example.invalid>\n"
+    files = {
+        ".mailmap": ("100644", write_blob(origin, mailmap)),
+        "a.txt": ("100644", write_blob(origin, b"one\n")),
+    }
+    first = write_commit(
+        origin, write_tree(origin, files), [], "one", author=("Alias Name", "alias@example.invalid")
+    )
+    files["a.txt"] = ("100644", write_blob(origin, b"two\n"))
+    second = write_commit(
+        origin,
+        write_tree(origin, files),
+        [first],
+        "two",
+        author=("Alias Name", "alias@example.invalid"),
+    )
+    set_head(origin, second)
+    user_file = work / "user.mailmap"
+    user_file.write_bytes(b"User File Name <user@example.invalid> <alias@example.invalid>\n")
+    full = work / "full.git"
+    blobless = work / "blobless.git"
+    for destination, strategy in ((full, "full"), (blobless, "blobless")):
+        remove(destination)
+        must(
+            git(
+                clone_args(
+                    layout="bare", strategy=strategy, url=file_url(origin), destination=destination
+                )
+            )
+        )
+    commands: dict[str, tuple[list[str], bytes | None]] = {
+        "history_page": (
+            [
+                "log",
+                "-z",
+                f"--format={LOG_FORMAT}",
+                "--decorate=full",
+                "--date-order",
+                "--max-count=250",
+                "--stdin",
+            ],
+            f"{second}\n".encode(),
+        ),
+        "commit_detail": (
+            [
+                "show",
+                "-z",
+                "--raw",
+                "--numstat",
+                "-M",
+                "-C",
+                "--diff-merges=first-parent",
+                f"--format={SHOW_FORMAT}",
+                second,
+            ],
+            None,
+        ),
+        "commit_detail_raw_only": (
+            ["show", "-z", "--raw", "--no-abbrev", f"--format={SHOW_FORMAT}", second],
+            None,
+        ),
+        "history_count": (["rev-list", "--count", second], None),
+        "manifest_raw": (
+            ["diff", "--raw", "-z", "--no-abbrev", "--no-renames", first, second],
+            None,
+        ),
+        "refs": (["for-each-ref", "--format=%(refname)", "refs"], None),
+        "mailmap_placeholder": (["log", "-1", "--format=%aN <%aE>", second], None),
+    }
+    variants: dict[str, list[str]] = {
+        "git_defaults": [],
+        "log_mailmap_false": ["-c", "log.mailmap=false"],
+        "mailmap_blob_empty": ["-c", "mailmap.blob="],
+        "log_false_and_blob_empty": ["-c", "log.mailmap=false", "-c", "mailmap.blob="],
+        "blob_and_file_empty": ["-c", "mailmap.blob=", "-c", "mailmap.file="],
+        "all_three": ["-c", "log.mailmap=false", "-c", "mailmap.blob=", "-c", "mailmap.file="],
+    }
+    for user_mailmap in (False, True):
+        inherited = ["-c", f"mailmap.file={user_file}"] if user_mailmap else []
+        for variant, config in variants.items():
+            for name, (argv, stdin) in commands.items():
+                no_lazy = git(
+                    [*inherited, *config, *argv],
+                    git_dir=blobless,
+                    env=git_env({"GIT_NO_LAZY_FETCH": "1"}),
+                    stdin=stdin,
+                )
+                target = copy_store(blobless, work / "lazy.git")
+                lazy = git(
+                    [*inherited, *config, *argv], git_dir=target, stdin=stdin, trace_dir=traces
+                )
+                remove(target)
+                complete = git([*inherited, *config, *argv], git_dir=full, stdin=stdin)
+                recorder.add(
+                    user_mailmap_file=user_mailmap,
+                    variant=variant,
+                    command=name,
+                    no_lazy_returncode=no_lazy.returncode,
+                    no_lazy_stderr=stderr_lines(no_lazy.stderr),
+                    lazy_fetches=lazy.trace.lazy_fetches if lazy.trace else None,
+                    full_store_identity=(
+                        "canonical"
+                        if b"Canonical Name" in complete.stdout
+                        else "user_file"
+                        if b"User File Name" in complete.stdout
+                        else "raw"
+                        if b"Alias Name" in complete.stdout
+                        else "none"
+                    ),
+                )
+    if not args.keep:
+        remove(work)
+    print(recorder.write())
+
+
+def mode_census(path: Path) -> dict[str, Json]:
+    directories: dict[str, int] = {}
+    files: dict[str, int] = {}
+    group_or_other = 0
+    for root, dir_names, file_names in os.walk(path):
+        for name in dir_names:
+            mode = os.lstat(os.path.join(root, name)).st_mode & 0o777
+            directories[f"{mode:04o}"] = directories.get(f"{mode:04o}", 0) + 1
+            group_or_other += 1 if mode & 0o077 else 0
+        for name in file_names:
+            mode = os.lstat(os.path.join(root, name)).st_mode & 0o777
+            files[f"{mode:04o}"] = files.get(f"{mode:04o}", 0) + 1
+            group_or_other += 1 if mode & 0o077 else 0
+    return {
+        "directories": directories,
+        "files": files,
+        "entries_with_group_or_other_bits": group_or_other,
+    }
+
+
+def suite_umask(scratch: Path, args: argparse.Namespace) -> None:
+    """File modes Git writes into a store under different umasks and sharedRepository."""
+    timeout = cast(float, args.timeout)
+    traces = scratch / "traces"
+    work = scratch / "umask"
+    recorder = Recorder("umask", scratch, {})
+    rng = random.Random("umask")
+    origin = tiny_origin(work / "origin.git")
+    must(git(["config", "uploadpack.allowAnySHA1InWant", "true"], git_dir=origin))
+    files = {
+        f"f{index}.txt": ("100644", write_blob(origin, rng.randbytes(1024))) for index in range(40)
+    }
+    set_head(origin, write_commit(origin, write_tree(origin, files), [], "one"))
+    for label, umask, extra in (
+        ("umask_022", 0o022, []),
+        ("umask_022_shared_repository_0600", 0o022, ["core.sharedRepository=0600"]),
+        ("umask_077", 0o077, []),
+    ):
+        store = work / f"{label}.git"
+        remove(store)
+        argv = clone_args(
+            layout="bare", strategy="blobless", url=file_url(origin), destination=store
+        )
+        for item in extra:
+            argv[argv.index("--template=") + 1 : argv.index("--template=") + 1] = ["--config", item]
+        must(git(argv, umask=umask))
+        head = text(git(["rev-parse", "HEAD"], git_dir=store))
+        must(prefetch_oids(store, tree_oids(store, head), traces, timeout, umask=umask))
+        must(git(["gc", "--prune=now"], git_dir=store, umask=umask))
+        recorder.add(case="store_modes", variant=label, **mode_census(store))
+    if not args.keep:
+        remove(work)
     print(recorder.write())
 
 
@@ -2139,11 +2714,19 @@ def missing_oids(git_dir: Path, revisions: Sequence[str]) -> list[str]:
     ]
 
 
-def prefetch_oids(git_dir: Path, oids: Sequence[str], traces: Path, timeout: float) -> Outcome:
+def prefetch_oids(
+    git_dir: Path,
+    oids: Sequence[str],
+    traces: Path,
+    timeout: float,
+    extra: Sequence[str] = (),
+    umask: int = -1,
+) -> Outcome:
     """One explicit promisor fetch for a known OID list, as the object-job port would issue."""
     return git(
         [
             *PROTOCOL_ARGS,
+            *extra,
             "-c",
             "fetch.negotiationAlgorithm=noop",
             "-c",
@@ -2162,6 +2745,7 @@ def prefetch_oids(git_dir: Path, oids: Sequence[str], traces: Path, timeout: flo
         stdin=("\n".join(oids) + "\n").encode(),
         trace_dir=traces,
         timeout=timeout,
+        umask=umask,
     )
 
 
@@ -2486,6 +3070,9 @@ def suite_precheck(scratch: Path, args: argparse.Namespace) -> None:
 
 
 SUITES: dict[str, Callable[[Path, argparse.Namespace], None]] = {
+    "gitlinks": suite_gitlinks,
+    "mailmap": suite_mailmap,
+    "umask": suite_umask,
     "precheck": suite_precheck,
     "fetches": suite_fetches,
     "autogc": suite_autogc,

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metabrowser.test/schemas/repository-cache-object-requests-v1.json",
+  "title": "Repository cache object requests",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "decided", "scope", "change_set", "request", "classification_cases", "request_cases"],
+  "$defs": {
+    "oids": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  },
+  "properties": {
+    "schema": { "const": "metabrowser-repository-cache-object-requests-v1" },
+    "decided": { "type": "string", "format": "date" },
+    "scope": { "type": "string" },
+    "change_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["listing", "modes", "rules"],
+      "properties": {
+        "listing": { "type": "string" },
+        "modes": { "type": "object", "additionalProperties": { "enum": ["blob", "submodule", "tree"] } },
+        "rules": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["split", "per_object_rejections", "terminal_failures", "terminal_rule", "request_bound"],
+      "properties": {
+        "split": { "type": "string" },
+        "per_object_rejections": { "type": "array", "items": { "type": "string" } },
+        "terminal_failures": { "type": "array", "items": { "type": "string" } },
+        "terminal_rule": { "type": "string" },
+        "request_bound": { "type": "string" }
+      }
+    },
+    "classification_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "entries", "expected"],
+        "properties": {
+          "id": { "type": "string" },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["mode", "oid"],
+              "properties": { "mode": { "type": "string", "pattern": "^[0-7]{6}$" }, "oid": { "type": "string" } }
+            }
+          },
+          "expected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["request", "submodules", "unsupported"],
+            "properties": {
+              "request": { "$ref": "#/$defs/oids" },
+              "submodules": { "$ref": "#/$defs/oids" },
+              "unsupported": { "$ref": "#/$defs/oids" }
+            }
+          }
+        }
+      }
+    },
+    "request_cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "wants", "rejected_by_server", "failure_class", "expected"],
+        "properties": {
+          "id": { "type": "string" },
+          "why": { "type": "string" },
+          "wants": { "$ref": "#/$defs/oids" },
+          "rejected_by_server": { "$ref": "#/$defs/oids" },
+          "failure_class": { "type": "string" },
+          "expected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["outcome", "accepted", "rejected", "request_sizes"],
+            "properties": {
+              "outcome": { "enum": ["complete", "partial", "job_failed"] },
+              "accepted": { "$ref": "#/$defs/oids" },
+              "rejected": { "$ref": "#/$defs/oids" },
+              "request_sizes": { "type": "array", "items": { "type": "integer", "minimum": 1 } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

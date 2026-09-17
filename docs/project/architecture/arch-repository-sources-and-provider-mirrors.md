@@ -169,16 +169,17 @@ of provider kind, canonical provider instance, raw stable repository opaque ID, 
 object format.
 It contains no authorization context or credential and requires no mutable
 provider-to-store pointer.
-Convergence first creates or opens that deterministically named store, prepares a
-verified transfer of required objects and Metabrowser refs, and validates object format
-and reachability. It then locks the aliases and affected stores in ascending
-`RepositoryStoreId` order, installs the transfer, and compare-and-swap repoints the
-aliases. No provider record changes in this transaction: provider snapshots name the
-stable `RepositoryRef` and exact object IDs, and resolve the derived store only when a
-content lease is requested.
-The old store remains until no alias, durable ref, or live lease reaches it.
-Failed validation leaves every alias unchanged; unique cached objects are never
-discarded.
+Convergence first leases that deterministically named store, creating it if needed,
+fetches the object IDs the aliases’ refs name directly from the provider’s promisor
+remote into it under job refs, and validates object format and reachability; objects are
+never copied from the old store, whose packs are not the new store’s promisor packs.
+It then locks the aliases and affected stores in ascending `RepositoryStoreId` order,
+publishes the refs, and compare-and-swap repoints the aliases.
+No provider record changes in this transaction: provider snapshots name the stable
+`RepositoryRef` and exact object IDs, and resolve the derived store only when a content
+lease is requested. The old store remains until no alias, durable ref, or live lease
+reaches it. Failed validation leaves every alias unchanged; unique cached objects are
+never discarded.
 
 An attached local checkout does not require an eager second clone.
 Hosted metadata can be enabled with only a provider attachment.
@@ -192,12 +193,17 @@ fetch policy.
 The revision source resolves a root tree once and caches its immutable directory index
 by tree object ID. Blob access uses a bounded pool of long-lived batch Git readers
 rather than spawning one process per file: at most four per store per process, created
-on demand. Every read runs with `GIT_NO_LAZY_FETCH=1`, and nothing on a read path lists
-blob sizes from a store that may be missing blobs, because a size-bearing `ls-tree -l`
-otherwise issues one network request per missing blob.
+on demand. Every read runs with `GIT_NO_LAZY_FETCH=1` and with `-c mailmap.blob=` and
+`-c mailmap.file=`, because a bare store’s default mailmap is `HEAD:.mailmap`, and
+nothing on a read path lists blob sizes from a store that may be missing blobs, because
+a size-bearing `ls-tree -l` otherwise issues one network request per missing blob.
+Git can report a failed read on stderr and still exit 0, so stderr from a store read
+degrades the result rather than passing as success.
 Diff, commit-detail, and comparison reads first list their change set with
-`git diff --raw -z --no-abbrev --no-renames`, check it with `cat-file --batch-check`,
-and report `deferred` while the object-job port fetches exactly the missing blobs.
+`git diff --raw -z --no-abbrev --no-renames`, check its blob-mode entries (`100644`,
+`100755`, `120000`) with `cat-file --batch-check`, and report `deferred` while the
+object-job port fetches exactly the missing blobs.
+A `160000` gitlink is a submodule entry: it is never requested and never missing.
 Diff, history, commit detail, and tree reads receive a trusted Git command target that
 may name either a worktree plus Git directory or the shared worktree-free store.
 
@@ -283,17 +289,17 @@ provider-principal run is isolated from each of them:
   Among Git configuration variables the runner sets only `GIT_CONFIG_NOSYSTEM=1`; it
   also passes platform-required variables it names, such as `SYSTEMROOT` on Windows.
 - **Configuration.** System and global Git configuration are disabled.
-  The fetch runs in a temporary repository created with an empty template, whose only
-  configuration is what Metabrowser writes; it may use the store’s object directory as
-  an alternate for negotiation.
-  Git then reads the store’s Metabrowser-written configuration only in a local
-  ref-listing child with no network access, which is one reason stores use an empty
-  template and never accept user configuration.
-  It never fetches inside the shared store or a quarantine that reads the store’s
-  configuration, and repository stores are also created with an empty template.
-  The run uses an empty credential-helper list, disables hooks, and allows only the
-  HTTPS protocol, so no helper supplies, stores, or erases the credential and no
-  `url.*.insteadOf` rewrite or `http.*.extraHeader` changes the transport or principal.
+  The fetch runs inside the repository store, because objects may enter a blobless store
+  only from its promisor remote: importing from a separate staging repository either
+  failed outright or left a non-promisor pack that made later `gc` and `repack` fail.
+  Stores are created with an empty template and carry only configuration Metabrowser
+  writes, and every credentialed run first compares that configuration with the exact
+  expected set, refusing the run and quarantining the store on any difference, so a
+  credential helper, `url.*.insteadOf` rewrite, or `http.*.extraHeader` planted in
+  repository-local configuration never reaches it.
+  The run also passes an empty credential-helper list, disables hooks, and allows only
+  the HTTPS protocol, so no helper supplies, stores, or erases the credential and no
+  rewrite or extra header changes the transport or principal.
 - **Prompt binding.** The run disables HTTP redirects and sets `credential.useHttpPath`
   and a fixed credential username, so Git asks exactly one password question that names
   the full source URL. Immediately before spawning Git, core arms exactly one answer at
@@ -318,25 +324,28 @@ configuration as authority.
 Private ref namespaces include the source and request identities, so an SSH failure or
 cancellation cannot poison an HTTPS request for the same store.
 Clients in one process join compatible in-flight work instead of starting duplicate
-fetches. Git does not do this for them: four concurrent same-ref fetches into one store
-all succeeded, and each transferred and stored its own pack.
-Across processes, staged jobs may overlap; each records the store generation and
-expected remote object IDs it observed.
-Network acquisition uses an isolated temporary repository or, for jobs without provider
-credentials, a Git quarantine, and writes a `StagedFetch` record containing the source
-and authorization policy, exact refspec, expected OID, object format, and base store
-generation. For a pull request, base, head, and optional merge objects each name a
-provider-declared credential-free HTTPS acquisition source: the repository that holds
-the object, or the base repository’s `refs/pull/<n>/head` and `refs/pull/<n>/merge`
-refs, which remain fetchable after a fork is deleted.
+fetches. Git does not do this for them: four concurrent same-ref fetches into one
+blobless store all succeeded, and together transferred four times the bytes of one.
+Across processes, jobs may overlap and the duplicates cost space until maintenance
+compacts them; each job records the store generation and expected remote object IDs it
+observed. A job writes a non-secret `StagedFetch` record containing the source and
+authorization policy, exact refspec, expected OID, object format, and base store
+generation, takes the store lease, and fetches from the promisor remote directly into
+the store with no ordered lock held, writing only `refs/metabrowser/jobs/<job-id>/`. For
+a pull request, base, head, and optional merge objects each name a provider-declared
+credential-free HTTPS acquisition source: the repository that holds the object, or the
+base repository’s `refs/pull/<n>/head` and `refs/pull/<n>/merge` refs, which remain
+fetchable after a fork is deleted.
 Every declared source belongs to the allowlist of a lease whose authorization-context
 key equals that of the observation that recorded the object IDs.
 Acquisition never inherits an attached checkout’s remote or credential helper.
-Publication briefly takes the repository-store lock, validates and imports staged
-objects, verifies the expected OIDs, and uses generation-checked compare-and-swap to
-advance only Metabrowser-owned refs.
-A slower job whose observation would regress a ref or replace a newer generation loses
-publication and discards its staged result or retries from the new generation.
+Publication briefly takes the repository-store lock, verifies the expected OIDs, and
+runs one `update-ref --stdin` transaction that advances Metabrowser-owned public refs
+from their observed old values and deletes the job’s refs.
+A job that loses the compare-and-swap to one that published the same object IDs
+succeeds; a slower job whose observation would regress a ref or replace a newer
+generation loses publication, deletes its job refs, or retries from the new generation.
+Job refs left by a crashed job are deleted once its job lock is free.
 Readers already pinned to an object ID continue unaffected.
 
 ### Git path and blob semantics
@@ -472,26 +481,35 @@ The fixed lock order is:
 
 1. application-home lock for layout migration and global enumeration;
 2. source-alias lock for alias creation or compare-and-swap repointing;
-3. one or more repository-store locks in ascending `RepositoryStoreId` order for ref
-   publication, Git maintenance, object transfer, and object reclamation; and
+3. one or more repository-store locks in ascending `RepositoryStoreId` order for store
+   directory publication and removal, store records, and ref compare-and-swap; and
 4. provider-resource lock for binding, snapshot publication, pointer movement, and
    provider reclamation.
 
-Network and long-running Git processes hold none of these locks.
-Publication reacquires only the required locks, in order, and revalidates its generation
-and authorization context.
+Network work and long-running Git processes, including `gc` and `repack`, hold none of
+these locks. Publication reacquires only the required locks, in order, and revalidates
+its generation and authorization context.
 Repository refs and provider `current` and `last-complete` pointers use compare-and-swap
 publication against the generation observed before staging; stale jobs cannot move a
 pointer backward or replace a newer observation.
 A local checkout is never a lock target.
 
-Each store is published with a maintenance lock file.
-A live subject holds a shared OS lock on that file; Git maintenance, pruning, and store
-reclamation require its exclusive lock, taken without blocking while holding the
-repository-store lock, so a long-lived subject defers maintenance instead of stalling
-publication. Process exit releases the shared lock, including after a crash.
+Each store has a lease: the maintenance lock file
+`cache/locks/stores/<store-key>.maintenance.lock`, which lives outside the store
+directory so purge and reclamation never rename it.
+A live subject, an acquisition from before its store is published until its alias is
+published, and a fetch job from before its network work until publication hold it
+shared, blocking only while holding no ordered lock.
+`gc` and `repack` run under its exclusive form alone, never under the repository-store
+lock; reclamation, purge, and quarantine take the exclusive form before their ordered
+locks. The exclusive form never blocks, so a lease defers maintenance and refuses purge.
+Process exit releases the shared lock, including after a crash.
 Automatic Git maintenance is disabled in every store’s configuration, so maintenance
 runs only under that lock.
+Because an acquisition holds the lease until its alias exists, reclamation cannot trash
+a store between its publication and its alias; an exhaustive interleaving check in
+`tests/test_repository_cache_contract_fixtures.py` proves that and finds the race in the
+design without the lease.
 Durable private refs separately keep every object promised for offline reuse reachable
 to Git when no process is running.
 Provider snapshot readers similarly hold a shared lock on the published generation while
@@ -515,7 +533,7 @@ The first implementation phases use these file- and function-level boundaries:
 | Content source | `content_source.py`: `SourceSession`, `SourceCapabilities`, `ContentSource`, `ContentHandle`, `ContentEntry`, `read_window`, `list_directory`; `inventory_engine/coordinator.py`: source-session lifecycle | Preserve the filesystem provider while adding capability-aware content sessions without fake filesystem metadata |
 | Plugin and route bridge | `plugin_api.py`: `resolve_content`, `stat_content`, `read_content_window`, filesystem-only path helpers; `server.py`, `view_routes.py`, `sse.py`, `tree.py`, `plugin_loader/classify.py`, built-in sidekicks | Move byte consumers to content handles, capability-gate filesystem-only behavior, and keep route, CLI, and golden parity |
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `resolve_tree`, `list_tree`, `read_blob`; `git/process.py`: actor-owned batched object reader lifecycle | Serve full-OID trees and blobs with bounded, byte-safe, reusable Git processes and no materialization |
-| Repository store | `cache/repository_store.py`: `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects`; `cache/records.py`: `StagedFetch`, source aliases, and store state | Own the worktree-free Git database, isolate staged fetches, converge proven aliases, publish by generation, and retain leased objects |
+| Repository store | `cache/repository_store.py`: `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects`; `cache/records.py`: `StagedFetch`, source aliases, and store state | Own the worktree-free Git database, isolate fetch jobs in private refs, converge proven aliases, publish by generation, and retain leased objects |
 | Source attachments | `provider_resources/models.py`: source binding and local-availability records; `repository_context.py`: remote candidate discovery | Map local and managed sources to stable provider repository identity without storing local paths or requiring a cache entry |
 | Provider mirror | `provider_resources/store.py`: `stage_snapshot`, `publish_manifest`, `read_current`, `read_last_complete`, `lease_snapshot`, `reclaim_snapshots` | Publish one repository-scoped, auth-scoped mirror reused by every attachment |
 | Provider ports | `provider_resources/models.py`: `AuthorizationContextRef`, `authorization_context_key`; `plugin_api.py`: opaque `GitFetchCredentialLease`, `provider_fetch_authorization_context`, `RepositoryContentPort.open_subject`, `RepositoryObjectJobPort.request_selected_refs`, `ProviderResourceStorePort.stage`, `publish`, `read`, `lease`; `cache/jobs.py`: `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`; `provider_process.py`: `issue_git_fetch_credential_lease` | Inject narrow cancellable capabilities with typed unavailable, authorization, stale-generation, and publication failures; selected-ref requests carry a non-secret context plus an unforgeable registry handle, never tokens, unrestricted sources, core stores, or paths |
@@ -620,35 +638,49 @@ are not budgets.
   into Metabrowser-owned names.
 - **Blobless acquisition with default-revision prefetch.** Serving the default
   revision’s complete tree took 5.8–5.9 s blobless against 8.8–17.8 s full for
-  `python/mypy` over HTTPS, and 3.0 s against 3.3–4.0 s for `pallets/flask`. Every
-  object took longer blobless, so convergence runs after serving.
+  `python/mypy` over HTTPS; `pallets/flask`’s advantage was small and variable.
+  Every object took longer blobless, so convergence runs after serving.
   There is no size threshold: generic Git offers no size before transfer.
 - **Explicit convergence, not `git backfill`.** Backfill left every blob outside
   `HEAD`’s history missing (1,318 objects for mypy) and did nothing when `HEAD` was
-  unborn; one object-ID request of 53,607 IDs converged in 16–25 s. Requests carry at
-  most 50,000 IDs, and HTTPS network jobs bound stalls with `http.lowSpeedLimit` and
-  `http.lowSpeedTime`.
+  unborn; one object-ID request of 53,607 IDs converged in 16–25 s, in two runs always
+  taken after backfill.
+  Requests carry at most 50,000 IDs, and object-ID fetches bound stalls with
+  `http.lowSpeedLimit` and `http.lowSpeedTime`; initial acquisition has no such bound
+  until one is measured.
 - **No implicit lazy fetch.** With Git defaults a blob read waited past 20 s on a remote
   that never answered, and `remote.<name>.promisor=false` did not prevent it; with
   `GIT_NO_LAZY_FETCH=1` it failed in 8 ms and the batch protocol stayed framed.
   Checking a diff’s `--no-renames` change set first was sufficient in 40 of 40
   comparisons.
-- **Automatic maintenance disabled.** Each fetch, including each lazy fetch, spawned
-  `git maintenance run --auto`; over HTTPS the 51st consecutive lazy fetch then failed
-  with a commit-graph error.
+- **Blob modes only, and split rejected requests.** A want list containing a gitlink
+  failed with `not our ref` and fetched nothing, so only blob-mode entries are
+  requested, and a per-object rejection splits the list down to single object IDs.
+- **No mailmap on store reads.** With Git defaults, history and commit reads loaded
+  `HEAD:.mailmap`, and with lazy fetch disabled they printed an error and exited 0.
+- **Automatic maintenance disabled, umask `077`.** Each fetch, including each lazy
+  fetch, spawned `git maintenance run --auto`; over HTTPS the 51st consecutive lazy
+  fetch then failed with a commit-graph error.
+  Under umask `022` Git wrote group- and world-readable store files; under `077` none.
 - **Four readers per store.** Whole-tree reads peaked at four batch readers and fell
   with eight. Cancellation terminates a reader (exit within 0.77 ms) and a replacement
   answers in about 9 ms, so there is no in-band cancel.
 - **Shared store for concurrent subjects.** Readers of different object IDs ran
   concurrently with byte-identical output, and readers saw no failure across
   `repack -a -d` and `gc --prune=now`.
-- **Coalesce in process; stage across processes.** Concurrent same-ref fetches into one
-  store stored four packs; staged fetches with the store as an alternate stored one.
+- **Coalesce in process; fetch directly into the store across processes.** Concurrent
+  same-ref jobs into one blobless store never failed and published once; their extra
+  promisor packs compacted under `gc --prune=now` and `repack -a -d` with no object lost
+  and no bitmap setting changed.
+  Staging through a separate repository with the store as an alternate failed on the
+  same store, at import or at the next repack.
 - **Durable refs for offline promises.** Only a ref kept an object through
   `gc --prune=now`; bare stores write no reflogs.
 - **`flock`, lock-based liveness, and locked no-replace publication.** A killed `flock`
   holder released in 2.8 ms, a `lockf` lock vanished when an unrelated descriptor
   closed, and `os.rename` replaced an empty directory.
+  Publication verifies absence under the owning lock and uses
+  `renameat2(RENAME_NOREPLACE)` or `renamex_np(RENAME_EXCL)` as defense in depth.
   The lock order and state machines are
   `tests/fixtures/repository-cache/state-machines.json`.
 
@@ -659,9 +691,13 @@ Still open, with owners:
 - refresh age and cross-process retry and contention bounds (Phase 2B and later cache
   operations);
 - prune expiry, size accounting, and retention thresholds for repository objects (later
-  cache operations) and for provider artifacts (the provider plan); and
-- lock, rename, and case semantics on Linux, Windows, and network filesystems (Phase 1A,
-  on CI).
+  cache operations) and for provider artifacts (the provider plan);
+- lock, rename, and case semantics beyond macOS: CI runs only on Linux, so Phase 1A adds
+  a runtime probe at application-home setup that refuses a home whose locks or
+  no-replace publication do not behave as frozen;
+- the initial-acquisition stall bound (Phase 1B-a); and
+- whether distribution Git builds that backport the security fixes under an older
+  version string are admitted (Phase 1B-a).
 
 These choices may tune cost.
 They may not introduce shared working-tree state, make a local checkout cache authority,

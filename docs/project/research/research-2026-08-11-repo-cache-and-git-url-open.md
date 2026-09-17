@@ -91,13 +91,14 @@ including the slug and eviction discussions — describes the superseded design.
 remeasured acquisition and every v0.10 route on Git 2.50.1, and the
 [plan’s Phase 0 decisions](../specs/active/plan-2026-08-11-open-repo-from-git-url.md#phase-0-decisions)
 supersede this brief’s acquisition recommendation in three places.
-`git backfill` is not used: it fetches only blobs reachable from `HEAD`, and one
-explicit object-ID fetch converged a blobless store as fast as backfill plus the objects
-it left behind. Lazy fetch is disabled on every read rather than tolerated, because a
-blob read against a stalled remote was still waiting when killed at 20 s, and
-size-bearing tree listings issued one request per blob.
-The 2.26 acquisition floor became a patched-release security floor, and blobless
-acquisition gates on 2.45.0, where lazy fetch can be disabled.
+`git backfill` is not used: it fetches only blobs reachable from `HEAD`, while one
+explicit object-ID fetch covers every ref.
+Lazy fetch is disabled on every read rather than tolerated, because a blob read against
+a stalled remote was still waiting when killed at 20 s, and size-bearing tree listings
+issued one request per blob.
+The 2.26 acquisition floor became a patched-release security floor, which is also the
+floor at which Git honors `GIT_NO_LAZY_FETCH` on every path that fetches missing
+objects.
 
 ## Questions to Answer
 

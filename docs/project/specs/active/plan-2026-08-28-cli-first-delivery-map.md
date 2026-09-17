@@ -345,7 +345,7 @@ def ensure_home(home: Path) -> None: # creates, writes CACHEDIR.TAG
 | `identity.py` | Conservative source identity, provider-derived store identity, aliasing, and collision-safe slugs | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` |
 | `urls.py` | Root classification, provider reducer arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` |
 | `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_repository`, `validate_staging_store`, `publish_store`, `publish_source_alias` |
-| `repository_store.py` | Selected-object staging, full-OID publication, leases, convergence, and maintenance | `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` |
+| `repository_store.py` | Selected-object fetch jobs, full-OID publication, leases, convergence, and maintenance | `resolve_store`, `stage_fetch`, `publish_refs`, `lease_revision`, `converge_store`, `reclaim_objects` |
 | `selection.py` | Pure ref/path resolution and typed missing-ref requests | `resolve_selection`, `resolve_ref_path_candidates` |
 | `service.py` | One CLI/chooser orchestration result | `resolve_open_target`, `close_open_target` |
 | `jobs.py` | Provider-neutral selected-ref jobs, the credential-lease registry and per-request validation, and stage outcomes | `RepositoryJob`, `RepositoryJobRegistry`, `fetch_selected_ref`, `request_ref_fetch`, `GitFetchCredentialLeaseRegistry`, `validate_git_fetch_credential_lease`, `close_all` |
@@ -590,8 +590,16 @@ allowed transports. Review showed that wrong: `git clone` given a path defaults 
 from later mutation of the source — and ignores `--filter`, defeating blobless
 acquisition with only a warning.
 Both were reproduced on Git 2.50.1. `file://` uses the git-aware transport and packs
-rather than hardlinks, which is what makes the testing rationale true; it does not
-rescue `--filter`, and the repository-library plan owns that open measurement.
+rather than hardlinks, which is what makes the testing rationale true.
+
+`file://` honors `--filter` only when the origin allows it, so sandbox origins in
+acquisition goldens set `uploadpack.allowFilter=true`. Measured on Git 2.50.1, an origin
+without it sent every object with only a warning while the store still recorded itself
+as a promisor. Object-ID wants for prefetch and convergence need no further permission
+under protocol v2, Git’s default above the acquisition floor; under protocol v0 the same
+blob wants were refused with `Server does not allow request for unadvertised object`
+unless the origin also set `uploadpack.allowAnySHA1InWant`, so goldens do not force v0
+([measurements](../../../explorations/repository-cache/README.md#gitlinks-and-rejected-object-requests)).
 See
 [Safety at the boundary](plan-2026-08-11-open-repo-from-git-url.md#safety-at-the-boundary).
 

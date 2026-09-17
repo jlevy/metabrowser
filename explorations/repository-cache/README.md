@@ -59,8 +59,11 @@ uv --config-file uv.toml run --frozen python explorations/repository-cache/measu
 | `lazy` | Lazy fetch over HTTPS, against stalled and refused remotes, and in the batch protocol | 1 |
 | `autogc` | Per-object lazy fetches over HTTPS with and without automatic maintenance | 2 |
 | `concurrency` | Concurrent readers, reader pools, actor latency, cancellation, readers during maintenance | 3 to 10 |
-| `fetches` | Same-ref fetches: coalesced, into one store, and staged with alternates | 3 per shape |
+| `fetches` | Same-ref job fetches into a blobless store, compare-and-swap publication, maintenance afterward, and the rejected alternate-staging design | 2 |
 | `maintenance` | Automatic maintenance, gc of blobless stores, object retention | 1 to 3 |
+| `gitlinks` | Gitlinks in a change set, want-list permission and rejection, and splitting a rejected request | 1, tiny repository |
+| `mailmap` | Which store reads load a mailmap and which configuration stops them | 1, tiny repository |
+| `umask` | File modes Git writes into a store under different umasks | 1, tiny repository |
 
 Timings are medians with the observed range.
 Network runs moved by up to 2× between repetitions (mypy full clone: 8.8 s and 17.8 s in
@@ -131,15 +134,18 @@ back to back:
 
 - **Backfill covers `HEAD` only.** Git 2.49 through 2.54 document no revision argument;
   2.55 adds one. Every other ref’s blobs remained missing.
-- **One explicit object-ID request converges as fast as backfill plus its remainder**
-  (mypy 16.2–24.9 s against 25.5–26.0 s) and needs no more space (101.5 MiB after the
-  one request, 102.3 MiB after backfill alone), without an experimental command or an
-  assumption about `HEAD`.
-- **The Files view for the default revision is complete sooner blobless.** Blobless
-  clone plus subject prefetch took 3.0 s for flask against 3.3–4.0 s full, and 5.8–5.9 s
-  for mypy against 8.8–17.8 s full.
-  Reaching every object took longer: 4.8–5.8 s against 3.3–4.0 s (flask) and 21.3–29.7 s
-  against 8.8–17.8 s (mypy).
+- **One explicit object-ID request reaches every ref, which backfill does not.** Its
+  time was comparable to backfill plus its remainder (mypy 16.2 s and 24.9 s against
+  25.5 s and 26.0 s) and it needed no more space (101.5 MiB against 102.3 MiB after
+  backfill alone), but there were only two runs and the one-request fetch always ran
+  after backfill, so order effects are not excluded; coverage, not speed, is the
+  evidence.
+- **The default revision’s content is complete sooner blobless for mypy.** Blobless
+  clone plus subject prefetch took 5.8–5.9 s against 8.8–17.8 s full.
+  For flask the difference was small and variable: 3.0 s against 3.3 s and 4.0 s, a 1.1×
+  and a 1.4× advantage across two pairs, which does not support a claim either way.
+  Reaching every object took longer blobless: 4.8–5.8 s against 3.3–4.0 s (flask) and
+  21.3–29.7 s against 8.8–17.8 s (mypy).
 
 ### Read routes on full, blobless, and backfilled stores
 
@@ -161,7 +167,12 @@ its fetch count is exact and its time is a lower bound on a real network.
 | Revision content, `cat-file blob` (149) | 1.52 s | 149 of 149 fail, 1.45 s | 8.40 s, 149 fetches | 1.47 s |
 | Whole `HEAD` tree through one `cat-file --batch` (1,927 blobs) | 59.3 ms | 60.2 ms, all missing | not run | 64.5 ms |
 
-History, refs, tree listing, and path identity never read a blob.
+Refs, history count, tree listing, and path identity never read a blob.
+The history page and `show --raw` read none of the commits’ blobs but do read one: a
+bare store’s default mailmap is `HEAD:.mailmap`, and with lazy fetch disabled Git
+printed `error: unable to read mailmap object at HEAD:.mailmap` and still exited 0 (see
+[store reads and file modes](#store-reads-and-file-modes)). This table’s `git_defaults`
+run did not detect that, because the harness counted only exit codes.
 The diff routes read blobs for line counts and rename detection, and each route
 invocation issued exactly one batched lazy fetch.
 `cat-file` and size-bearing tree listings issued one fetch per object.
@@ -239,17 +250,87 @@ The mechanism is inferred from those four conditions, not traced inside Git.
   (1.23 s) and 220 across `gc --prune=now` (1.35 s) with no failure and no missing
   object. An actor started before maintenance found 200 of 200 objects afterward.
 
-`results/fetches.json`, local origin, three repetitions per shape:
+`results/fetches.json` measures the fetch-job design on a blobless flask store with its
+default revision prefetched, from a local origin, two repetitions.
+Each job fetched the origin’s new branches (60 and then 120 commits with 16 KiB blobs)
+directly into the store under `refs/metabrowser/jobs/<job>/`, then published with one
+`update-ref --stdin` transaction that compare-and-swapped the public refs and deleted
+the job refs.
+Four concurrent object-ID fetches of the new tips’ blobs followed, and then
+`gc --prune=now`, `repack -a -d`, and `fsck --connectivity-only`.
 
-| Shape | One coalesced fetch | Four fetches into one store | Four staged fetches with alternates |
+| Measurement | One job | Four concurrent jobs |
+| --- | --- | --- |
+| Fetch failures | 0, 0 | 0, 0 |
+| Publication outcomes | published | 1 published, 3 already published, twice |
+| Job refs left | 0 | 0 |
+| Bytes received | 8,520 and 17,480 | 34,356 and 70,002 |
+| Packs after fetching, all promisor packs | 3 | 5 |
+| `gc --prune=now`, then `repack -a -d` | both succeeded, one promisor pack, no bitmap | both succeeded, one promisor pack, no bitmap |
+| Objects missing from all refs, before and after maintenance | 9,072 and 9,072 | 9,072 and 9,072 |
+
+The four concurrent blob prefetches added only one pack, because the later fetches found
+the objects already present; how often concurrent object fetches overlap is timing
+dependent.
+
+The same run tested the design the jobs replaced, staging each fetch in a separate
+repository with the store as an alternate:
+
+| Variant | Result, two of two runs |
+| --- | --- |
+| Filtered staging fetch, then import into the store | Import failed: `aborting due to possible repository corruption on the remote side` |
+| Unfiltered staging fetch, then import | Import succeeded with a non-promisor pack; `gc --prune=now` and `repack -a -d` then failed: `Failed to write bitmap index. Packfile doesn't have full closure` |
+
+A blobless store may receive objects only from its promisor remote.
+When every pack is a promisor pack Git wrote no bitmap and reported nothing, so
+`repack.writeBitmaps` needs no override.
+
+### Gitlinks and rejected object requests
+
+`results/gitlinks.json`, a tiny repository whose second commit changes four blobs, an
+executable, a symbolic link, and a `160000` gitlink:
+
+- The `--no-renames` change set had 11 blob-mode sides and 2 gitlink sides;
+  `cat-file --batch-check` reported both gitlink commit IDs missing.
+- A want list containing a gitlink failed with `not our ref` under protocol v0 and v2,
+  whether or not the origin set `uploadpack.allowAnySHA1InWant`, and fetched nothing.
+- A blob-only want list succeeded under protocol v2 without
+  `uploadpack.allowAnySHA1InWant`; under v0 without it every blob was refused with
+  `Server does not allow request for unadvertised object`.
+- After fetching only the blob-mode entries, commit detail, the raw and numstat
+  manifests, and patches all succeeded with lazy fetch disabled and wrote nothing to
+  stderr; the gitlink appears as a submodule line.
+- Splitting a 13-ID list — 11 blobs, the gitlink at position 4, and an ID absent from
+  the origin — in halves down to single IDs took 13 requests (sizes 13, 7, 4, 2, 2, 1,
+  1, 3, 6, 3, 3, 2, 1) and 0.87–1.00 s locally; it fetched all 11 blobs and rejected
+  exactly the gitlink and the absent ID.
+
+### Store reads and file modes
+
+`results/mailmap.json`, a tiny repository with a `.mailmap` at `HEAD`, read from a
+blobless store with lazy fetch disabled, from a copy with lazy fetch allowed, and from a
+full store, with and without an inherited `mailmap.file`:
+
+| Configuration | Mailmap blob reads | Error on stderr with exit 0 | `%aN` identity |
 | --- | --- | --- | --- |
-| 120 commits of 64 KiB blobs (packed), rep 0 | 9.02 MiB received, 9.04 MiB stored | 36.1 MiB received, 36.1 MiB stored | 36.1 MiB received, 9.04 MiB stored; publication 0.23 s, then 0.05 s no-ops |
-| 8 commits of 64 KiB blobs (loose), rep 0 | 0.59 MiB stored | 0.59 MiB stored | 0.59 MiB stored |
+| Git defaults | history page, `show --raw`, and `%aN` | yes | mapped |
+| `log.mailmap=false` | `%aN` only | yes, for `%aN` | mapped |
+| `mailmap.blob=` | none | no | mapped by an inherited `mailmap.file` |
+| `mailmap.blob=` and `mailmap.file=` | none | no | raw |
+| All three keys | none | no | raw |
 
-None of the 18 runs failed and every store passed `fsck --connectivity-only`, so Git’s
-ref locking never surfaced the duplicate transfers.
-Below `fetch.unpackLimit` (100 objects) objects arrive loose and deduplicate by name;
-above it every concurrent fetch writes its own pack.
+The `%an` and `%ae` placeholders the routes use were raw in every configuration, so
+disabling the mailmap changes no current route output.
+`log.mailmap=false` added nothing once the other two keys were set.
+
+`results/umask.json`, the modes Git wrote while cloning a blobless store, fetching its
+blobs, and running `gc`:
+
+| Git child | Directories | Files | Entries with group or other bits |
+| --- | --- | --- | --- |
+| umask `022` | 7 at `0755` | 5 at `0444`, 5 at `0644` | 17 |
+| umask `022`, `core.sharedRepository=0600` | 1 at `0700`, 6 at `0755` | 4 at `0400`, 1 at `0444`, 4 at `0600`, 1 at `0644` | 8 |
+| umask `077` | 7 at `0700` | 5 at `0400`, 5 at `0600` | 0 |
 
 ### Maintenance and retention
 
@@ -287,9 +368,14 @@ without a trailing slash, and sent `%72`, `//`, and uppercase path segments verb
 
 ## Not Measured
 
-- Linux and Windows rename, lock, and case semantics; network filesystems.
+- Linux and Windows rename, lock, and case semantics, and network filesystems; CI runs
+  only on `ubuntu-latest`.
+- `renameat2` with `RENAME_NOREPLACE`.
+- A stall bound on initial acquisition, where the server may send nothing while it
+  counts and compresses objects.
 - SSH acquisition, prompting, and stall behavior; no SSH credentials were used.
-- Git older than 2.50.1 and Git for Windows version strings.
+- Git older than 2.50.1, distribution builds with backported fixes, and Git for Windows
+  version strings; the lazy-fetch guard in older releases was read from source, not run.
 - Convergence requests larger than 53,607 object IDs, and repositories larger than mypy.
 - Crash during `gc` or `repack`.
 - Browser-side costs of tree indexes and immutable directory listings.

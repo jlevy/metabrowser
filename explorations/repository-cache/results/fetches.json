@@ -15,271 +15,362 @@
     "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
     "python": "3.14.7"
   },
-  "finished_at": "2026-09-17T05:49:17+00:00",
+  "finished_at": "2026-09-17T06:34:51+00:00",
   "parameters": {
-    "reps": 3
+    "reps": 2
   },
   "rows": [
     {
-      "case": "same_ref_fetches",
+      "bitmaps": 0,
+      "case": "base",
+      "head": "d73fa1cdcbd8b1465c151db8924ba58b1dd14e35",
+      "non_promisor_packs": 0,
+      "pack_bytes": 4442286,
+      "packs": 2,
+      "promisor_packs": 2
+    },
+    {
+      "after_fetch": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4451328,
+        "packs": 3,
+        "promisor_packs": 3
+      },
+      "after_prefetch": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 5435248,
+        "packs": 4,
+        "promisor_packs": 4
+      },
+      "before": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4442286,
+        "packs": 2,
+        "promisor_packs": 2
+      },
+      "blob_prefetch_failures": 0,
+      "blob_prefetch_wanted": 60,
+      "case": "direct_job_fetches",
       "error_classes": [],
       "failures": 0,
-      "fsck_ok": true,
+      "job_refs_left": 0,
       "jobs": 1,
+      "maintenance": {
+        "after": {
+          "bitmaps": 0,
+          "non_promisor_packs": 0,
+          "pack_bytes": 5434267,
+          "packs": 1,
+          "promisor_packs": 1
+        },
+        "fsck_ok": true,
+        "gc_returncode": 0,
+        "gc_stderr": [],
+        "missing_reachable_after": 9072,
+        "missing_reachable_before": 9072,
+        "repack_returncode": 0,
+        "repack_stderr": []
+      },
       "mode": "coalesced",
-      "network_s": 0.111,
-      "received_bytes": 0,
-      "refs_published": 35,
+      "network_s": 0.157,
+      "publication": ["published"],
+      "publish_ms": [121.87],
+      "received_bytes": 8520,
+      "refs_published": 60,
+      "rep": 0
+    },
+    {
+      "after_fetch": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4460488,
+        "packs": 5,
+        "promisor_packs": 5
+      },
+      "after_prefetch": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 5444408,
+        "packs": 6,
+        "promisor_packs": 6
+      },
+      "before": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4442286,
+        "packs": 2,
+        "promisor_packs": 2
+      },
+      "blob_prefetch_failures": 0,
+      "blob_prefetch_wanted": 60,
+      "case": "direct_job_fetches",
+      "error_classes": [],
+      "failures": 0,
+      "job_refs_left": 0,
+      "jobs": 4,
+      "maintenance": {
+        "after": {
+          "bitmaps": 0,
+          "non_promisor_packs": 0,
+          "pack_bytes": 5436324,
+          "packs": 1,
+          "promisor_packs": 1
+        },
+        "fsck_ok": true,
+        "gc_returncode": 0,
+        "gc_stderr": [],
+        "missing_reachable_after": 9072,
+        "missing_reachable_before": 9072,
+        "repack_returncode": 0,
+        "repack_stderr": []
+      },
+      "mode": "concurrent_direct",
+      "network_s": 0.4,
+      "publication": ["published", "already_published", "already_published", "already_published"],
+      "publish_ms": [139.31, 94.59, 98.62, 165.89],
+      "received_bytes": 34356,
+      "refs_published": 60,
+      "rep": 0
+    },
+    {
+      "after_import": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4442286,
+        "packs": 2,
+        "promisor_packs": 2
+      },
+      "case": "staged_alternates_import",
+      "import_error_class": "remote_corruption",
+      "import_returncode": 128,
+      "import_stderr": [
+        "error: git upload-pack: git-pack-objects died with error.",
+        "fatal: git upload-pack: aborting due to possible repository corruption on the remote side.",
+        "fatal: protocol error: bad pack header"
+      ],
+      "maintenance": null,
       "rep": 0,
-      "shape": "loose_8_commits",
-      "store_bytes_added": 622592
+      "stage_returncode": 0,
+      "variant": "staged_filtered_import"
     },
     {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "same_store",
-      "network_s": 0.124,
-      "received_bytes": 0,
-      "refs_published": 35,
+      "after_import": {
+        "bitmaps": 0,
+        "non_promisor_packs": 1,
+        "pack_bytes": 5434354,
+        "packs": 3,
+        "promisor_packs": 2
+      },
+      "case": "staged_alternates_import",
+      "import_error_class": "",
+      "import_returncode": 0,
+      "import_stderr": [
+        "/14 -> origin/measure/direct0/14",
+        "* [new ref]           refs/staged/direct0/15 -> origin/measure/direct0/15",
+        "* [new ref]           refs/staged/direct0/16 -> origin/measure/direct0/16"
+      ],
+      "maintenance": {
+        "after": {
+          "bitmaps": 0,
+          "non_promisor_packs": 3,
+          "pack_bytes": 7418206,
+          "packs": 5,
+          "promisor_packs": 2
+        },
+        "fsck_ok": true,
+        "gc_returncode": 128,
+        "gc_stderr": [
+          "warning: Failed to write bitmap index. Packfile doesn't have full closure (object <oid> is missing)",
+          "fatal: failed to write bitmap index",
+          "fatal: failed to run repack"
+        ],
+        "missing_reachable_after": 9072,
+        "missing_reachable_before": 9072,
+        "repack_returncode": 128,
+        "repack_stderr": [
+          "warning: Failed to write bitmap index. Packfile doesn't have full closure (object <oid> is missing)",
+          "fatal: failed to write bitmap index"
+        ]
+      },
       "rep": 0,
-      "shape": "loose_8_commits",
-      "store_bytes_added": 622592
+      "stage_returncode": 0,
+      "variant": "staged_unfiltered_import"
     },
     {
-      "case": "same_ref_fetches",
+      "after_fetch": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4478394,
+        "packs": 5,
+        "promisor_packs": 5
+      },
+      "after_prefetch": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 6446200,
+        "packs": 6,
+        "promisor_packs": 6
+      },
+      "before": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4442286,
+        "packs": 2,
+        "promisor_packs": 2
+      },
+      "blob_prefetch_failures": 0,
+      "blob_prefetch_wanted": 120,
+      "case": "direct_job_fetches",
       "error_classes": [],
       "failures": 0,
-      "fsck_ok": true,
+      "job_refs_left": 0,
       "jobs": 4,
-      "mode": "staged_alternates",
-      "network_s": 0.186,
-      "publish_s": [0.098, 0.034, 0.033, 0.033],
-      "received_bytes": 0,
-      "refs_published": 35,
-      "rep": 0,
-      "shape": "loose_8_commits",
-      "store_bytes_added": 622592
+      "maintenance": {
+        "after": {
+          "bitmaps": 0,
+          "non_promisor_packs": 0,
+          "pack_bytes": 6427370,
+          "packs": 1,
+          "promisor_packs": 1
+        },
+        "fsck_ok": true,
+        "gc_returncode": 0,
+        "gc_stderr": [],
+        "missing_reachable_after": 9072,
+        "missing_reachable_before": 9072,
+        "repack_returncode": 0,
+        "repack_stderr": []
+      },
+      "mode": "concurrent_direct",
+      "network_s": 0.295,
+      "publication": ["published", "already_published", "already_published", "already_published"],
+      "publish_ms": [200.93, 145.76, 183.95, 113.09],
+      "received_bytes": 70002,
+      "refs_published": 120,
+      "rep": 1
     },
     {
-      "case": "same_ref_fetches",
+      "after_fetch": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4460281,
+        "packs": 3,
+        "promisor_packs": 3
+      },
+      "after_prefetch": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 6428087,
+        "packs": 4,
+        "promisor_packs": 4
+      },
+      "before": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4442286,
+        "packs": 2,
+        "promisor_packs": 2
+      },
+      "blob_prefetch_failures": 0,
+      "blob_prefetch_wanted": 120,
+      "case": "direct_job_fetches",
       "error_classes": [],
       "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "staged_alternates",
-      "network_s": 0.28,
-      "publish_s": [0.17, 0.038, 0.036, 0.036],
-      "received_bytes": 0,
-      "refs_published": 43,
-      "rep": 1,
-      "shape": "loose_8_commits",
-      "store_bytes_added": 1245184
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "same_store",
-      "network_s": 0.208,
-      "received_bytes": 0,
-      "refs_published": 43,
-      "rep": 1,
-      "shape": "loose_8_commits",
-      "store_bytes_added": 1245184
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
+      "job_refs_left": 0,
       "jobs": 1,
+      "maintenance": {
+        "after": {
+          "bitmaps": 0,
+          "non_promisor_packs": 0,
+          "pack_bytes": 6428742,
+          "packs": 1,
+          "promisor_packs": 1
+        },
+        "fsck_ok": true,
+        "gc_returncode": 0,
+        "gc_stderr": [],
+        "missing_reachable_after": 9072,
+        "missing_reachable_before": 9072,
+        "repack_returncode": 0,
+        "repack_stderr": []
+      },
       "mode": "coalesced",
-      "network_s": 0.171,
-      "received_bytes": 0,
-      "refs_published": 43,
+      "network_s": 0.283,
+      "publication": ["published"],
+      "publish_ms": [120.8],
+      "received_bytes": 17480,
+      "refs_published": 120,
+      "rep": 1
+    },
+    {
+      "after_import": {
+        "bitmaps": 0,
+        "non_promisor_packs": 0,
+        "pack_bytes": 4442286,
+        "packs": 2,
+        "promisor_packs": 2
+      },
+      "case": "staged_alternates_import",
+      "import_error_class": "remote_corruption",
+      "import_returncode": 128,
+      "import_stderr": [
+        "error: git upload-pack: git-pack-objects died with error.",
+        "fatal: git upload-pack: aborting due to possible repository corruption on the remote side.",
+        "fatal: protocol error: bad pack header"
+      ],
+      "maintenance": null,
       "rep": 1,
-      "shape": "loose_8_commits",
-      "store_bytes_added": 1245184
+      "stage_returncode": 0,
+      "variant": "staged_filtered_import"
     },
     {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 1,
-      "mode": "coalesced",
-      "network_s": 0.284,
-      "received_bytes": 0,
-      "refs_published": 51,
-      "rep": 2,
-      "shape": "loose_8_commits",
-      "store_bytes_added": 1867776
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "same_store",
-      "network_s": 0.285,
-      "received_bytes": 0,
-      "refs_published": 51,
-      "rep": 2,
-      "shape": "loose_8_commits",
-      "store_bytes_added": 1867776
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "staged_alternates",
-      "network_s": 0.364,
-      "publish_s": [0.238, 0.038, 0.039, 0.036],
-      "received_bytes": 0,
-      "refs_published": 51,
-      "rep": 2,
-      "shape": "loose_8_commits",
-      "store_bytes_added": 1867776
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 1,
-      "mode": "coalesced",
-      "network_s": 0.449,
-      "received_bytes": 9458156,
-      "refs_published": 171,
-      "rep": 0,
-      "shape": "packed_120_commits",
-      "store_bytes_added": 9476096
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "same_store",
-      "network_s": 0.77,
-      "received_bytes": 37832624,
-      "refs_published": 171,
-      "rep": 0,
-      "shape": "packed_120_commits",
-      "store_bytes_added": 37905408
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "staged_alternates",
-      "network_s": 0.955,
-      "publish_s": [0.231, 0.05, 0.05, 0.054],
-      "received_bytes": 37832624,
-      "refs_published": 171,
-      "rep": 0,
-      "shape": "packed_120_commits",
-      "store_bytes_added": 9474048
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "staged_alternates",
-      "network_s": 1.523,
-      "publish_s": [0.338, 0.053, 0.055, 0.053],
-      "received_bytes": 69373788,
-      "refs_published": 291,
+      "after_import": {
+        "bitmaps": 0,
+        "non_promisor_packs": 1,
+        "pack_bytes": 6425606,
+        "packs": 3,
+        "promisor_packs": 2
+      },
+      "case": "staged_alternates_import",
+      "import_error_class": "",
+      "import_returncode": 0,
+      "import_stderr": [
+        "/14 -> origin/measure/direct1/14",
+        "* [new ref]           refs/staged/direct1/15 -> origin/measure/direct1/15",
+        "* [new ref]           refs/staged/direct1/16 -> origin/measure/direct1/16"
+      ],
+      "maintenance": {
+        "after": {
+          "bitmaps": 0,
+          "non_promisor_packs": 3,
+          "pack_bytes": 10391968,
+          "packs": 5,
+          "promisor_packs": 2
+        },
+        "fsck_ok": true,
+        "gc_returncode": 128,
+        "gc_stderr": [
+          "warning: Failed to write bitmap index. Packfile doesn't have full closure (object <oid> is missing)",
+          "fatal: failed to write bitmap index",
+          "fatal: failed to run repack"
+        ],
+        "missing_reachable_after": 9072,
+        "missing_reachable_before": 9072,
+        "repack_returncode": 128,
+        "repack_stderr": [
+          "warning: Failed to write bitmap index. Packfile doesn't have full closure (object <oid> is missing)",
+          "fatal: failed to write bitmap index"
+        ]
+      },
       "rep": 1,
-      "shape": "packed_120_commits",
-      "store_bytes_added": 17368064
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "same_store",
-      "network_s": 1.544,
-      "received_bytes": 69373788,
-      "refs_published": 291,
-      "rep": 1,
-      "shape": "packed_120_commits",
-      "store_bytes_added": 69481472
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 1,
-      "mode": "coalesced",
-      "network_s": 0.997,
-      "received_bytes": 17343447,
-      "refs_published": 291,
-      "rep": 1,
-      "shape": "packed_120_commits",
-      "store_bytes_added": 17371136
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 1,
-      "mode": "coalesced",
-      "network_s": 1.105,
-      "received_bytes": 25228739,
-      "refs_published": 411,
-      "rep": 2,
-      "shape": "packed_120_commits",
-      "store_bytes_added": 25264128
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "same_store",
-      "network_s": 1.856,
-      "received_bytes": 100914956,
-      "refs_published": 411,
-      "rep": 2,
-      "shape": "packed_120_commits",
-      "store_bytes_added": 101053440
-    },
-    {
-      "case": "same_ref_fetches",
-      "error_classes": [],
-      "failures": 0,
-      "fsck_ok": true,
-      "jobs": 4,
-      "mode": "staged_alternates",
-      "network_s": 1.955,
-      "publish_s": [0.483, 0.066, 0.064, 0.064],
-      "received_bytes": 100914956,
-      "refs_published": 411,
-      "rep": 2,
-      "shape": "packed_120_commits",
-      "store_bytes_added": 25262080
+      "stage_returncode": 0,
+      "variant": "staged_unfiltered_import"
     }
   ],
   "schema": "metabrowser-repository-cache-measurement-v1",
-  "started_at": "2026-09-17T05:48:35+00:00",
+  "started_at": "2026-09-17T06:33:46+00:00",
   "suite": "fetches"
 }

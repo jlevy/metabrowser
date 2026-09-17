@@ -4,14 +4,12 @@
   "title": "Repository cache lock, publication, lease, trash, and quarantine state machines",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "decided", "visibility", "locks", "crash_recovery", "machines", "scenarios"],
-  "$defs": {
-    "name": { "type": "string", "pattern": "^[a-z][a-z_]*$" }
-  },
+  "required": ["schema", "decided", "visibility", "locks", "publication", "crash_recovery", "machines", "scenarios", "interleaving"],
+  "$defs": {"name": {"type": "string", "pattern": "^[a-z][a-z_]*$"}},
   "properties": {
-    "schema": { "const": "metabrowser-repository-cache-state-machines-v1" },
-    "decided": { "type": "string", "format": "date" },
-    "visibility": { "type": "string" },
+    "schema": {"const": "metabrowser-repository-cache-state-machines-v1"},
+    "decided": {"type": "string", "format": "date"},
+    "visibility": {"type": "string"},
     "locks": {
       "type": "object",
       "additionalProperties": false,
@@ -21,7 +19,7 @@
           "type": "object",
           "additionalProperties": false,
           "required": ["kind", "basis", "unmeasured"],
-          "properties": { "kind": { "const": "flock" }, "basis": { "type": "string" }, "unmeasured": { "type": "string" } }
+          "properties": {"kind": {"const": "flock"}, "basis": {"type": "string"}, "unmeasured": {"type": "string"}}
         },
         "hierarchy": {
           "type": "array",
@@ -30,11 +28,11 @@
             "additionalProperties": false,
             "required": ["name", "rank", "multiple", "path", "protects"],
             "properties": {
-              "name": { "$ref": "#/$defs/name" },
-              "rank": { "type": "integer", "minimum": 1 },
-              "multiple": { "type": "boolean" },
-              "path": { "type": "string" },
-              "protects": { "type": "string" }
+              "name": {"$ref": "#/$defs/name"},
+              "rank": {"type": "integer", "minimum": 1},
+              "multiple": {"type": "boolean"},
+              "path": {"type": "string"},
+              "protects": {"type": "string"}
             }
           }
         },
@@ -45,42 +43,34 @@
             "additionalProperties": false,
             "required": ["name", "mode", "path", "acquisition", "why_outside_the_hierarchy"],
             "properties": {
-              "name": { "$ref": "#/$defs/name" },
-              "mode": { "enum": ["shared", "exclusive"] },
-              "path": { "type": "string" },
-              "acquisition": { "type": "string" },
-              "why_outside_the_hierarchy": { "type": "string" }
+              "name": {"$ref": "#/$defs/name"},
+              "mode": {"enum": ["shared", "exclusive"]},
+              "path": {"type": "string"},
+              "acquisition": {"type": "string"},
+              "why_outside_the_hierarchy": {"type": "string"}
             }
           }
         },
-        "rules": { "type": "array", "items": { "type": "string" } },
+        "rules": {"type": "array", "items": {"type": "string"}},
         "sequences": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["id", "steps", "valid", "why"],
-            "properties": {
-              "id": { "type": "string" },
-              "steps": { "type": "array", "items": { "type": "string" } },
-              "valid": { "type": "boolean" },
-              "why": { "type": "string" }
-            }
+            "properties": {"id": {"type": "string"}, "steps": {"type": "array", "items": {"type": "string"}}, "valid": {"type": "boolean"}, "why": {"type": "string"}}
           }
         }
       }
     },
     "crash_recovery": {
       "type": "object",
-      "propertyNames": { "$ref": "#/$defs/name" },
+      "propertyNames": {"$ref": "#/$defs/name"},
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
         "required": ["visible_after", "action"],
-        "properties": {
-          "visible_after": { "enum": [true, false, "unchanged"] },
-          "action": { "type": "string" }
-        }
+        "properties": {"visible_after": {"enum": [true, false, "unchanged"]}, "action": {"type": "string"}}
       }
     },
     "machines": {
@@ -90,21 +80,16 @@
         "additionalProperties": false,
         "required": ["name", "owner_phase", "initial", "states", "transitions"],
         "properties": {
-          "name": { "$ref": "#/$defs/name" },
-          "owner_phase": { "type": "string" },
-          "initial": { "$ref": "#/$defs/name" },
+          "name": {"$ref": "#/$defs/name"},
+          "owner_phase": {"type": "string"},
+          "initial": {"$ref": "#/$defs/name"},
           "states": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
               "required": ["name", "visible", "terminal"],
-              "properties": {
-                "name": { "$ref": "#/$defs/name" },
-                "visible": { "type": "boolean" },
-                "terminal": { "type": "boolean" },
-                "on_crash": { "$ref": "#/$defs/name" }
-              }
+              "properties": {"name": {"$ref": "#/$defs/name"}, "visible": {"type": "boolean"}, "terminal": {"type": "boolean"}, "on_crash": {"$ref": "#/$defs/name"}}
             }
           },
           "transitions": {
@@ -114,12 +99,12 @@
               "additionalProperties": false,
               "required": ["from", "event", "to", "holds", "network", "effect"],
               "properties": {
-                "from": { "$ref": "#/$defs/name" },
-                "event": { "$ref": "#/$defs/name" },
-                "to": { "$ref": "#/$defs/name" },
-                "holds": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true },
-                "network": { "type": "boolean" },
-                "effect": { "type": "string" }
+                "from": {"$ref": "#/$defs/name"},
+                "event": {"$ref": "#/$defs/name"},
+                "to": {"$ref": "#/$defs/name"},
+                "holds": {"type": "array", "items": {"$ref": "#/$defs/name"}, "uniqueItems": true},
+                "network": {"type": "boolean"},
+                "effect": {"type": "string"}
               }
             }
           }
@@ -133,11 +118,112 @@
         "additionalProperties": false,
         "required": ["id", "machine", "events", "expected_final", "expected_visible"],
         "properties": {
-          "id": { "type": "string" },
-          "machine": { "$ref": "#/$defs/name" },
-          "events": { "type": "array", "items": { "$ref": "#/$defs/name" } },
-          "expected_final": { "$ref": "#/$defs/name" },
-          "expected_visible": { "type": "boolean" }
+          "id": {"type": "string"},
+          "machine": {"$ref": "#/$defs/name"},
+          "events": {"type": "array", "items": {"$ref": "#/$defs/name"}},
+          "expected_final": {"$ref": "#/$defs/name"},
+          "expected_visible": {"type": "boolean"}
+        }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule", "defense_in_depth", "basis"],
+      "properties": {"rule": {"type": "string"}, "defense_in_depth": {"type": "string"}, "basis": {"type": "string"}}
+    },
+    "interleaving": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["purpose", "initial", "conditions", "invariants", "programs", "models"],
+      "properties": {
+        "purpose": {"type": "string"},
+        "initial": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["store", "alias"],
+          "properties": {"store": {"enum": ["absent", "present"]}, "alias": {"enum": ["K", null]}}
+        },
+        "conditions": {"type": "array", "items": {"type": "string"}},
+        "invariants": {"type": "array", "items": {"type": "string"}},
+        "programs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["machine", "start", "steps"],
+            "properties": {
+              "machine": {"oneOf": [{"$ref": "#/$defs/name"}, {"type": "null"}]},
+              "start": {"$ref": "#/$defs/name"},
+              "note": {"type": "string"},
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["label", "acquire", "branches"],
+                  "properties": {
+                    "label": {"type": "string"},
+                    "acquire": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["lock"],
+                        "properties": {
+                          "lock": {"enum": ["maintenance", "home", "source_alias", "repository_store", "provider_resource"]},
+                          "mode": {"enum": ["shared", "exclusive"]},
+                          "wait": {"type": "boolean"},
+                          "key": {"type": "string"}
+                        }
+                      }
+                    },
+                    "busy": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["event", "next"],
+                      "properties": {"event": {"$ref": "#/$defs/name"}, "next": {"type": "string"}}
+                    },
+                    "branches": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["when", "event", "effects", "release", "next"],
+                        "properties": {
+                          "when": {"type": "array", "items": {"enum": ["store_absent", "store_present", "alias_absent", "alias_is_store"]}},
+                          "event": {"$ref": "#/$defs/name"},
+                          "effects": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {"store": {"enum": ["absent", "present"]}, "alias": {"enum": ["K", null]}}
+                          },
+                          "release": {"type": "array", "items": {"type": "string"}},
+                          "next": {"type": "string"}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "processes", "expect", "reachable_events", "unreachable_events"],
+            "properties": {
+              "id": {"type": "string"},
+              "processes": {"type": "array", "minItems": 2, "items": {"type": "string"}},
+              "expect": {"enum": ["safe", "alias_names_absent_store"]},
+              "reachable_events": {"type": "array", "items": {"$ref": "#/$defs/name"}},
+              "unreachable_events": {"type": "array", "items": {"$ref": "#/$defs/name"}}
+            }
+          }
         }
       }
     }

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import string
 from collections import deque
@@ -44,6 +45,7 @@ def _load(name: str) -> dict[str, Any]:
         ("source-identity.json", "source-identity.schema.json"),
         ("git-version-gates.json", "git-version-gates.schema.json"),
         ("state-machines.json", "state-machines.schema.json"),
+        ("object-requests.json", "object-requests.schema.json"),
     ],
 )
 def test_fixture_matches_its_schema(fixture: str, schema_name: str) -> None:
@@ -486,18 +488,124 @@ def _meets(version: tuple[int, int, int] | None, gate: dict[str, Any]) -> bool:
 
 def test_git_version_gates_decide_every_case() -> None:
     gates = _load("git-version-gates.json")
-    by_name = {gate["name"]: gate for gate in gates["gates"]}
+    (acquisition,) = gates["gates"]
     for case in gates["cases"]:
         version = parse_git_version(case["version_output"])
         expected_version = case["parsed"]
         assert (list(version) if version else None) == expected_version, case["version_output"]
-        decided = {name: _meets(version, gate) for name, gate in by_name.items()}
-        strategy = "refused"
-        if decided["acquisition"]:
-            strategy = "blobless" if decided["blobless_acquisition"] else "full"
-        assert {**decided, "initial_strategy_for_https": strategy} == case["expected"], case[
-            "version_output"
+        admitted = _meets(version, acquisition)
+        assert {
+            "acquisition": admitted,
+            "initial_strategy_for_https": "blobless" if admitted else "refused",
+        } == case["expected"], case["version_output"]
+
+
+def test_every_admitted_git_carries_the_lazy_fetch_guard() -> None:
+    gates = _load("git-version-gates.json")
+    (acquisition,) = gates["gates"]
+    guard = gates["lazy_fetch_guard"]
+
+    def tag(value: str) -> tuple[int, int, int]:
+        parsed = parse_git_version(f"git version {value.removeprefix('v')}")
+        assert parsed is not None
+        return parsed
+
+    present = [tag(value) for value in guard["verified_present"]]
+    absent = [tag(value) for value in guard["verified_absent"]]
+    newest_unguarded_track = max((version[0], version[1]) for version in absent)
+    for track, floor in acquisition["patched_tracks"].items():
+        major, minor = (int(part) for part in track.split("."))
+        floor_version = (floor[0], floor[1], floor[2])
+        assert not any(version == floor_version for version in absent), track
+        guarded_on_track = [
+            version for version in present if (version[0], version[1]) == (major, minor)
         ]
+        if guarded_on_track:
+            assert min(guarded_on_track) <= floor_version, track
+        else:
+            assert (major, minor) > newest_unguarded_track, track
+
+
+# ----------------------------------------------------------------------------
+# Object requests: change-set classification and rejection splitting
+
+
+def classify_change_set(
+    spec: dict[str, Any], entries: list[dict[str, str]]
+) -> dict[str, list[str]]:
+    kinds = cast(dict[str, str], spec["change_set"]["modes"])
+    result: dict[str, list[str]] = {"request": [], "submodules": [], "unsupported": []}
+    for entry in entries:
+        oid = entry["oid"]
+        if set(oid) == {"0"}:
+            continue
+        kind = kinds.get(entry["mode"])
+        bucket = {"blob": "request", "submodule": "submodules"}.get(kind or "", "unsupported")
+        if kind == "tree":
+            continue
+        if oid not in result[bucket]:
+            result[bucket].append(oid)
+    return result
+
+
+class JobFailed(Exception):
+    pass
+
+
+def split_request(
+    spec: dict[str, Any], wants: list[str], rejected_by_server: set[str], failure_class: str
+) -> dict[str, Any]:
+    sizes: list[int] = []
+    accepted: list[str] = []
+    rejected: list[str] = []
+
+    def attempt(oids: list[str]) -> None:
+        sizes.append(len(oids))
+        if not rejected_by_server.intersection(oids):
+            accepted.extend(oids)
+            return
+        if failure_class not in spec["request"]["per_object_rejections"]:
+            raise JobFailed(failure_class)
+        if len(oids) == 1:
+            rejected.extend(oids)
+            return
+        middle = (len(oids) + 1) // 2
+        attempt(oids[:middle])
+        attempt(oids[middle:])
+
+    try:
+        attempt(wants)
+    except JobFailed:
+        return {"outcome": "job_failed", "accepted": [], "rejected": [], "request_sizes": sizes}
+    outcome = "partial" if rejected else "complete"
+    return {"outcome": outcome, "accepted": accepted, "rejected": rejected, "request_sizes": sizes}
+
+
+def test_change_sets_request_only_blob_modes() -> None:
+    spec = _load("object-requests.json")
+    assert {mode for mode, kind in spec["change_set"]["modes"].items() if kind == "blob"} == {
+        "100644",
+        "100755",
+        "120000",
+    }
+    for case in spec["classification_cases"]:
+        assert classify_change_set(spec, case["entries"]) == case["expected"], case["id"]
+
+
+def test_rejected_requests_split_to_single_object_ids() -> None:
+    spec = _load("object-requests.json")
+    classes = set(spec["request"]["per_object_rejections"]) | set(
+        spec["request"]["terminal_failures"]
+    )
+    for case in spec["request_cases"]:
+        assert case["failure_class"] in classes, case["id"]
+        result = split_request(
+            spec, case["wants"], set(case["rejected_by_server"]), case["failure_class"]
+        )
+        assert result == case["expected"], case["id"]
+        rejected = len(case["rejected_by_server"]) if result["outcome"] != "job_failed" else 0
+        bound = 1 + 2 * rejected * max(1, math.ceil(math.log2(max(len(case["wants"]), 1))))
+        assert len(result["request_sizes"]) <= bound, case["id"]
 
 
 # ----------------------------------------------------------------------------
@@ -636,3 +744,207 @@ def test_every_machine_has_a_crash_scenario_or_is_crash_free() -> None:
         } - {"nothing_to_recover", "sweep_restarts", "maintenance_rerun"}
         if recoveries:
             assert machine["name"] in crashing, machine["name"]
+
+
+# ----------------------------------------------------------------------------
+# Exhaustive interleaving of acquisition, reclamation, and purge
+
+_CONTENDED_SIDE_LOCKS = frozenset({"maintenance_shared", "maintenance_exclusive"})
+
+
+def _condition(atom: str, shared: dict[str, Any]) -> bool:
+    return {
+        "store_absent": shared["store"] == "absent",
+        "store_present": shared["store"] == "present",
+        "alias_absent": shared["alias"] is None,
+        "alias_is_store": shared["alias"] == "K",
+    }[atom]
+
+
+def _explore(document: dict[str, Any], model: dict[str, Any]) -> dict[str, Any]:
+    """Breadth-first search over every interleaving of the model's processes.
+
+    A global state is the shared records, every lock holder, and each process's
+    program counter, machine state, and held locks. Returns the violations found,
+    the events executed, and the number of states visited.
+    """
+    hierarchy = {lock["name"]: lock for lock in document["locks"]["hierarchy"]}
+    machines = {machine["name"]: machine for machine in document["machines"]}
+    interleaving = document["interleaving"]
+    programs = [interleaving["programs"][name] for name in model["processes"]]
+    labels = [{step["label"]: step for step in program["steps"]} for program in programs]
+
+    def freeze(shared: dict[str, Any], locks: dict[str, Any], procs: list[Any]) -> Any:
+        return (
+            tuple(sorted(shared.items())),
+            tuple(sorted((key, value) for key, value in locks.items())),
+            tuple(procs),
+        )
+
+    initial_shared = dict(interleaving["initial"])
+    initial_procs = [
+        (program["steps"][0]["label"], program["start"], frozenset()) for program in programs
+    ]
+    start: tuple[dict[str, Any], dict[str, Any], list[Any]] = (
+        initial_shared,
+        {"exclusive": None, "shared": frozenset()},
+        initial_procs,
+    )
+    seen = {freeze(*start)}
+    queue = deque([start])
+    violations: set[str] = set()
+    events: set[str] = set()
+
+    def lock_name(item: dict[str, Any]) -> str:
+        if item["lock"] == "maintenance":
+            return f"maintenance_{item['mode']}"
+        return f"{item['lock']}:{item['key']}"
+
+    while queue:
+        shared, locks, procs = queue.popleft()
+        if shared["alias"] == "K" and shared["store"] != "present":
+            violations.add("alias_names_absent_store")
+        enabled = False
+        live = False
+        for index, (label, state, held) in enumerate(procs):
+            if label == "end":
+                continue
+            live = True
+            program = programs[index]
+            step = labels[index][label]
+            new_locks = {"exclusive": locks["exclusive"], "shared": locks["shared"]}
+            new_held = set(held)
+            blocked = False
+            busy = False
+            for item in step["acquire"]:
+                name = lock_name(item)
+                hierarchy_held = [h for h in new_held if h.split(":")[0] in hierarchy]
+                if item["lock"] == "maintenance":
+                    if item.get("wait") and hierarchy_held:
+                        violations.add("blocking_side_lock_under_hierarchy_lock")
+                    if item["mode"] == "exclusive" and item.get("wait"):
+                        violations.add("exclusive_maintenance_blocks")
+                    if item["mode"] == "shared":
+                        available = new_locks["exclusive"] is None
+                    else:
+                        available = new_locks["exclusive"] is None and not new_locks["shared"]
+                    if not available:
+                        if item.get("wait"):
+                            blocked = True
+                        else:
+                            busy = True
+                        break
+                    if item["mode"] == "shared":
+                        new_locks["shared"] = new_locks["shared"] | {index}
+                    else:
+                        new_locks["exclusive"] = index
+                    new_held.add(name)
+                    continue
+                rank = hierarchy[item["lock"]]["rank"]
+                for other in hierarchy_held:
+                    other_lock, _, other_key = other.partition(":")
+                    other_rank = hierarchy[other_lock]["rank"]
+                    ordered = other_rank < rank or (
+                        other_rank == rank
+                        and hierarchy[item["lock"]]["multiple"]
+                        and other_key < item["key"]
+                    )
+                    if not ordered:
+                        violations.add("hierarchy_order")
+                if locks.get(name) is not None and locks.get(name) != index:
+                    blocked = True
+                    break
+                new_locks[name] = index
+                new_held.add(name)
+            if blocked:
+                continue
+            enabled = True
+            branch: dict[str, Any]
+            if busy:
+                branch = {
+                    "event": step["busy"]["event"],
+                    "effects": {},
+                    "release": [],
+                    "next": step["busy"]["next"],
+                }
+                new_locks = {"exclusive": locks["exclusive"], "shared": locks["shared"]}
+                new_locks.update({k: v for k, v in locks.items() if ":" in k})
+                new_held = set(held)
+            else:
+                new_locks.update(
+                    {k: v for k, v in locks.items() if ":" in k and k not in new_locks}
+                )
+                candidates = [
+                    b for b in step["branches"] if all(_condition(a, shared) for a in b["when"])
+                ]
+                if not candidates:
+                    violations.add(f"no_branch:{label}")
+                    continue
+                branch = candidates[0]
+            events.add(branch["event"])
+            next_state = state
+            if program["machine"] is not None:
+                machine = machines[program["machine"]]
+                matches = [
+                    t
+                    for t in machine["transitions"]
+                    if t["from"] == state and t["event"] == branch["event"]
+                ]
+                if len(matches) != 1:
+                    violations.add(f"unknown_transition:{state}:{branch['event']}")
+                    continue
+                transition = matches[0]
+                contended = {
+                    lock
+                    for lock in transition["holds"]
+                    if lock in hierarchy or lock in _CONTENDED_SIDE_LOCKS
+                }
+                held_names = {h.split(":")[0] for h in new_held}
+                if contended != held_names:
+                    violations.add(f"holds_mismatch:{branch['event']}")
+                next_state = transition["to"]
+            new_shared = dict(shared)
+            new_shared.update(branch["effects"])
+            releases = branch["release"]
+            if "all" in releases:
+                releases = sorted({h.split(":")[0] for h in new_held})
+            for release in releases:
+                for name in [h for h in new_held if h.split(":")[0] == release]:
+                    new_held.discard(name)
+                    if name == "maintenance_shared":
+                        new_locks["shared"] = new_locks["shared"] - {index}
+                    elif name == "maintenance_exclusive":
+                        new_locks["exclusive"] = None
+                    else:
+                        new_locks[name] = None
+            if branch["next"] == "end" and new_held:
+                violations.add(f"locks_held_at_end:{branch['event']}")
+            new_procs = list(procs)
+            new_procs[index] = (branch["next"], next_state, frozenset(new_held))
+            clean_locks = {
+                k: v for k, v in new_locks.items() if v is not None or k in ("exclusive", "shared")
+            }
+            successor = (new_shared, clean_locks, new_procs)
+            key = freeze(*successor)
+            if key not in seen:
+                seen.add(key)
+                queue.append(successor)
+        if live and not enabled:
+            violations.add("deadlock")
+    return {"violations": violations, "events": events, "states": len(seen)}
+
+
+def test_interleavings_never_strand_an_alias_or_violate_lock_order() -> None:
+    document = _load("state-machines.json")
+    for model in document["interleaving"]["models"]:
+        result = _explore(document, model)
+        if model["expect"] == "safe":
+            assert result["violations"] == set(), (model["id"], result["violations"])
+        else:
+            assert model["expect"] in result["violations"], (model["id"], result["violations"])
+        assert set(model["unreachable_events"]).isdisjoint(result["events"]), model["id"]
+        assert set(model["reachable_events"]) <= result["events"], (
+            model["id"],
+            set(model["reachable_events"]) - result["events"],
+        )
+        assert result["states"] > 1, model["id"]
