@@ -86,6 +86,18 @@ class MachineReplay:
         self.state = candidates[0]["to"]
         self.events.append(observed.event)
 
+    def advance(self, events: list[str]) -> None:
+        """Apply events a killed child performed, whose held locks this process cannot see."""
+
+        for event in events:
+            (transition,) = [
+                t
+                for t in self.machine["transitions"]
+                if t["from"] == self.state and t["event"] == event
+            ]
+            self.state = transition["to"]
+            self.events.append(event)
+
     def crash(self) -> str:
         """Apply the frozen crash recovery of the current state and return it."""
 
@@ -372,13 +384,7 @@ def test_a_reclamation_killed_while_deleting_trash_is_finished_by_the_sweep(home
 
     assert result.returncode == -signal.SIGKILL, result.stderr
     replay = MachineReplay("store_reclamation")
-    for event in scenario["events"]:
-        if event != "crash":
-            replay.state = next(
-                t["to"]
-                for t in replay.machine["transitions"]
-                if t["from"] == replay.state and t["event"] == event
-            )
+    replay.advance([event for event in scenario["events"] if event != "crash"])
     assert replay.crash() == scenario["expected_final"] == "trash_swept"
     assert not (home / f"cache/repository-stores/{STORE_KEY}").exists()
     (left,) = list((home / "cache/trash").iterdir())
@@ -393,20 +399,23 @@ def test_a_reclamation_killed_while_deleting_trash_is_finished_by_the_sweep(home
 # ── Quarantine ─────────────────────────────────────────────────────
 
 
-def test_quarantine_moves_the_alias_then_the_store_and_explicit_purge_deletes_it(
-    home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    scenario = _scenario("quarantine-explicit-purge")
-    _make_store(home)
-    _make_source_with_alias(home)
+def _recording_publish(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     moves: list[str] = []
-    real_publish = publish_entry
 
     def recording_publish(home: Path, staged: str, target: str, **kwargs: Any) -> bool:
         moves.append(staged)
-        return real_publish(home, staged, target, **kwargs)
+        return publish_entry(home, staged, target, **kwargs)
 
     monkeypatch.setattr(reclaim_module, "publish_entry", recording_publish)
+    return moves
+
+
+def test_quarantine_moves_the_alias_then_the_store(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_store(home)
+    _make_source_with_alias(home)
+    moves = _recording_publish(monkeypatch)
     replay = MachineReplay("quarantine")
 
     outcome = quarantine_entries(
@@ -418,6 +427,11 @@ def test_quarantine_moves_the_alias_then_the_store_and_explicit_purge_deletes_it
     )
 
     assert outcome.state == "quarantined" and outcome.entry is not None
+    assert replay.events == [
+        "try_exclusive",
+        "move_alias_to_quarantine",
+        "move_store_to_quarantine",
+    ]
     assert moves == [f"cache/sources/{SLUG}", f"cache/repository-stores/{STORE_KEY}"]
     assert outcome.retained == (
         f"cache/quarantine/{outcome.entry}/sources/{SLUG}",
@@ -429,6 +443,23 @@ def test_quarantine_moves_the_alias_then_the_store_and_explicit_purge_deletes_it
     sweep_staging_and_trash(home)
     assert all((home / path).is_dir() for path in outcome.retained)
 
+
+def test_a_quarantined_store_is_deleted_only_by_explicit_purge(home: Path) -> None:
+    scenario = _scenario("quarantine-explicit-purge")
+    _make_store(home)
+    replay = MachineReplay("quarantine")
+
+    # The source the store was resolved through is locked, but its alias entry is already
+    # gone, so only the store moves.
+    outcome = quarantine_entries(
+        home,
+        source_slugs=[SLUG],
+        store_keys=[STORE_KEY],
+        revalidate=lambda: False,
+        observer=replay,
+    )
+    assert outcome.entry is not None
+    assert reclaim_store(home, STORE_KEY) is StoreReclamation.ABSENT
     assert purge_quarantined(home, outcome.entry, observer=replay) is True
 
     assert replay.events == scenario["events"]
@@ -451,6 +482,26 @@ def test_quarantine_leaves_a_healthy_entry_in_place(home: Path) -> None:
     assert replay.events == ["try_exclusive", "revalidated_ok"]
     assert (home / f"cache/sources/{SLUG}").is_dir()
     assert list((home / "cache/quarantine").iterdir()) == []
+
+
+def test_quarantine_of_an_absent_store_moves_nothing(home: Path) -> None:
+    _make_source_with_alias(home)
+    replay = MachineReplay("quarantine")
+
+    outcome = quarantine_entries(
+        home,
+        source_slugs=[SLUG],
+        store_keys=[STORE_KEY],
+        revalidate=lambda: pytest.fail("revalidated a store that is absent"),
+        observer=replay,
+    )
+
+    assert outcome.state == "nothing_to_quarantine"
+    assert replay.events == ["try_exclusive", "store_absent"]
+    assert replay.state == "nothing_to_quarantine"
+    assert (home / f"cache/sources/{SLUG}").is_dir()
+    with pytest.raises(ValueError, match="at least one repository store"):
+        quarantine_entries(home, source_slugs=[SLUG], store_keys=[], revalidate=lambda: False)
 
 
 def test_quarantine_defers_while_a_lease_is_held(home: Path) -> None:
@@ -490,8 +541,9 @@ def test_a_quarantine_survives_a_crash_and_every_later_sweep(home: Path) -> None
 
     assert result.returncode == -signal.SIGKILL, result.stderr
     replay = MachineReplay("quarantine")
-    replay.state = "quarantined"
-    assert replay.crash() == scenario["expected_final"]
+    replay.advance([event for event in scenario["events"] if event != "crash"])
+    assert replay.crash() == scenario["expected_final"] == "quarantine_retained"
+    assert replay.visible is scenario["expected_visible"]
     sweep_staging_and_trash(home)
     (entry,) = list((home / "cache/quarantine").iterdir())
     assert (entry / "sources" / SLUG / "store-alias.yml").is_file()
@@ -501,6 +553,7 @@ def test_a_quarantine_survives_a_crash_and_every_later_sweep(home: Path) -> None
 def test_a_crash_between_alias_and_store_leaves_an_ordinary_unreferenced_store(
     home: Path,
 ) -> None:
+    scenario = _scenario("quarantine-crash-between-moves")
     _make_store(home)
     _make_source_with_alias(home)
 
@@ -524,6 +577,12 @@ def test_a_crash_between_alias_and_store_leaves_an_ordinary_unreferenced_store(
     )
 
     assert result.returncode == -signal.SIGKILL, result.stderr
+    replay = MachineReplay("quarantine")
+    replay.advance([event for event in scenario["events"] if event != "crash"])
+    assert replay.crash() == scenario["expected_final"] == "alias_quarantined_store_reclaimable"
+    assert replay.visible is scenario["expected_visible"]
+    (entry,) = list((home / "cache/quarantine").iterdir())
+    assert (entry / "sources" / SLUG / "store-alias.yml").is_file()
     assert not (home / f"cache/sources/{SLUG}").exists()
     assert (home / f"cache/repository-stores/{STORE_KEY}").is_dir()
     assert not store_is_referenced(home, STORE_KEY)
