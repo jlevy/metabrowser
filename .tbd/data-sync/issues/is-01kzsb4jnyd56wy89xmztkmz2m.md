@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: open
 priority: 1
-version: 26
+version: 27
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: null
 labels:
@@ -27,7 +27,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-17T04:43:26.875Z
+updated_at: 2026-09-17T06:24:53.115Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -38,4 +38,4 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
-From mb-xa0p: acquisition must create and write the application home only through src/metabrowser/home.py (ensure_private_directory, open_private_file) before any network work, so symlinked, foreign-owned, or permissive ancestors are refused. home.py does not check Git's own files inside repository.git/ individually: set core.sharedRepository=0600 on created stores or rely on the enclosing 0700 directory, and test that no store file is created group- or world-readable.
+From mb-ire2 review (decision recorded, not made): distributions backport Git CVE fixes without changing the upstream version string (Ubuntu 24.04 patched Git reports 2.43.0; Debian 12 reports 2.39.x), so an upstream-version acquisition gate refuses those builds. Decide before shipping acquisition among: refuse with an actionable message naming the upstream floor; a user-set acknowledgement setting; or a distro-package check. Also: run the no-lazy-fetch read tests against the lowest admitted Git in CI, and measure a low-speed stall bound on a large or bitmap-less initial acquisition before bounding it.
