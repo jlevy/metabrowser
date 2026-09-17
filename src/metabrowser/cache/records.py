@@ -230,18 +230,11 @@ class StoreAcquisition(_MachineRecord):
 
 
 class RepositoryStore(_MachineRecord):
-    """``store.yml``: identity and acquisition metadata of a worktree-free Git database.
-
-    ``configuration_digest`` fingerprints the store's normalized Git configuration. It
-    is recorded after the first successful fetch and before publication, and replaced
-    only under the store lock by an operation that intentionally changes that
-    configuration.
-    """
+    """``store.yml``: immutable identity and acquisition metadata of a Git database."""
 
     id: Sha256Identity
     created_at: CanonicalTimestamp
     acquisition: StoreAcquisition
-    configuration_digest: Sha256Identity
 
 
 class StoreOperation(_MachineRecord):
@@ -253,8 +246,16 @@ class StoreOperation(_MachineRecord):
 
 
 class RepositoryStoreState(_MachineRecord):
-    """A store's ``state.yml``: mutable Git observations, replaced atomically."""
+    """A store's ``state.yml``: mutable Git observations, replaced atomically.
 
+    ``configuration_digest`` is the store's configuration snapshot: the SHA-256 of
+    ``git config --file <store>/repository.git/config --list -z``. It is recorded after
+    the first successful fetch and before publication, every Git process on the store
+    verifies it first, and only an operation that intentionally changes the store's
+    configuration replaces it, under the store lock.
+    """
+
+    configuration_digest: Sha256Identity
     default_remote_ref: GitRefName | None
     default_revision: GitObjectId | None
     object_state: Literal["complete", "converging"]

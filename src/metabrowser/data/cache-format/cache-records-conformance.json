@@ -36,10 +36,10 @@
         "strategy": "blobless",
         "git_version": "2.50.1",
         "object_format": "sha1"
-      },
-      "configuration_digest": "sha256:0f0e0d0c0b0a09080706050403020100f0e0d0c0b0a09080706050403020100f"
+      }
     },
     "store_state": {
+      "configuration_digest": "sha256:0f0e0d0c0b0a09080706050403020100f0e0d0c0b0a09080706050403020100f",
       "default_remote_ref": "refs/remotes/origin/trunk",
       "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
       "object_state": "converging",
@@ -51,6 +51,7 @@
       }
     },
     "empty_store_state": {
+      "configuration_digest": "sha256:0f0e0d0c0b0a09080706050403020100f0e0d0c0b0a09080706050403020100f",
       "default_remote_ref": null,
       "default_revision": null,
       "object_state": "complete",
@@ -88,7 +89,6 @@
       "changes": [{ "path": ["created_by"], "value": "" }],
       "expect": "invalid"
     },
-
     { "name": "source-https", "record": "source", "changes": [], "expect": "valid" },
     {
       "name": "source-display-url-may-differ",
@@ -180,7 +180,6 @@
       ],
       "expect": "invalid"
     },
-
     { "name": "source-state-opened", "record": "source_state", "changes": [], "expect": "valid" },
     {
       "name": "source-state-never-opened",
@@ -194,7 +193,6 @@
       "changes": [{ "path": ["opens"], "value": 3 }],
       "expect": "invalid"
     },
-
     { "name": "alias-first-generation", "record": "store_alias", "changes": [], "expect": "valid" },
     {
       "name": "alias-later-generation",
@@ -232,7 +230,6 @@
       "changes": [{ "path": ["path"], "value": "/srv/checkouts/project" }],
       "expect": "invalid"
     },
-
     { "name": "store-blobless-sha1", "record": "store", "changes": [], "expect": "valid" },
     {
       "name": "store-full-sha256",
@@ -262,9 +259,14 @@
       "expect": "invalid"
     },
     {
-      "name": "store-requires-configuration-digest",
+      "name": "store-identity-has-no-configuration-digest",
       "record": "store",
-      "changes": [{ "path": ["configuration_digest"], "value": null }],
+      "changes": [
+        {
+          "path": ["configuration_digest"],
+          "value": "sha256:0f0e0d0c0b0a09080706050403020100f0e0d0c0b0a09080706050403020100f"
+        }
+      ],
       "expect": "invalid"
     },
     {
@@ -275,7 +277,6 @@
       ],
       "expect": "invalid"
     },
-
     { "name": "store-state-converging", "record": "store_state", "changes": [], "expect": "valid" },
     {
       "name": "store-state-sha256-revision",
@@ -313,6 +314,29 @@
       "record": "store_state",
       "changes": [{ "path": ["default_remote_ref"], "value": "main" }],
       "expect": "invalid"
+    },
+    {
+      "name": "store-state-requires-configuration-digest",
+      "record": "store_state",
+      "changes": [{ "path": ["configuration_digest"], "value": null }],
+      "expect": "invalid"
+    },
+    {
+      "name": "store-state-configuration-digest-is-a-full-sha256",
+      "record": "store_state",
+      "changes": [{ "path": ["configuration_digest"], "value": "sha256:0f0e0d0c" }],
+      "expect": "invalid"
+    },
+    {
+      "name": "store-state-records-a-changed-configuration",
+      "record": "store_state",
+      "changes": [
+        {
+          "path": ["configuration_digest"],
+          "value": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "expect": "valid"
     },
     {
       "name": "store-state-rejects-unknown-object-state",

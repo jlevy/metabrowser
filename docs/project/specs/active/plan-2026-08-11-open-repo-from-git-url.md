@@ -781,6 +781,7 @@ softschema:
   envelope: state
   status: enforced
 state:
+  configuration_digest: sha256:<configuration-snapshot-digest>
   default_remote_ref: refs/remotes/origin/main
   default_revision: <full-object-id>
   object_state: converging
@@ -790,6 +791,11 @@ state:
     outcome: succeeded
     at: "<RFC-3339 timestamp>"
 ```
+
+`configuration_digest` is the store’s configuration snapshot.
+It lives in `state.yml` rather than `store.yml` because it is mutable: it is recorded
+after the first successful fetch and before publication, and only an operation that
+intentionally changes the store’s configuration replaces it, under the store lock.
 
 Separating source, alias, store identity, and store state prevents a moving ref, an
 open, or later provider resolution from rewriting the record that decides what a source
@@ -1700,10 +1706,10 @@ detail.
 - **Store reclamation.** `reclaim_store` treats any entry under `provider-bindings/` or
   `provider-repositories/` as a reference until provider references are modeled, and
   treats an unreadable alias as a reference.
-- **Records.** `RepositoryStore` carries `configuration_digest`, the fingerprint of the
-  store’s normalized Git configuration; `RepositoryStoreState.object_state` is
-  `complete` or `converging`, and `last_operation.kind` is `acquire`, `refresh`, or
-  `converge`. Acquisition may extend these before `f01` ships.
+- **Records.** `RepositoryStoreState` carries `configuration_digest`, the store’s
+  configuration snapshot, because the snapshot changes and `store.yml` is immutable;
+  `object_state` is `complete` or `converging`, and `last_operation.kind` is `acquire`,
+  `refresh`, or `converge`. Acquisition may extend these before `f01` ships.
 
 ### Phase 1B: Generic Git cache and repository URL open
 

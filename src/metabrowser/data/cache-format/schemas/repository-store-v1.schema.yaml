@@ -37,29 +37,20 @@ $defs:
     type: object
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
-description: |-
-  ``store.yml``: identity and acquisition metadata of a worktree-free Git database.
-
-  ``configuration_digest`` fingerprints the store's normalized Git configuration. It
-  is recorded after the first successful fetch and before publication, and replaced
-  only under the store lock by an operation that intentionally changes that
-  configuration.
+description: '``store.yml``: immutable identity and acquisition metadata of a Git database.'
 properties:
   acquisition:
     $ref: '#/$defs/StoreAcquisition'
-  configuration_digest:
-    $ref: '#/$defs/Sha256Identity'
   created_at:
     $ref: '#/$defs/CanonicalTimestamp'
   id:
     $ref: '#/$defs/Sha256Identity'
 required:
 - acquisition
-- configuration_digest
 - created_at
 - id
 title: RepositoryStore
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.cache:RepositoryStore/v1
-  schema_sha256: 9da3a5a72bb2206e945d8b832d165c02d9cd7a97094fa8e6a55e063968384d9c
+  schema_sha256: 69d361b6b92a70e88bee2271b1a35f8ea442d3fdf0887b7f213ce8dc386c7b65
