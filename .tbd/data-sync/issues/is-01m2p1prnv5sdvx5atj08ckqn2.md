@@ -3,9 +3,9 @@ type: is
 id: is-01m2p1prnv5sdvx5atj08ckqn2
 title: "Shared repository/provider mirror design review: publish formal stacked PR"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/architecture/arch-repository-sources-and-provider-mirrors.md
 delegate: codex@spud10
 labels:
@@ -21,8 +21,12 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-16T21:24:31.034Z
-updated_at: 2026-09-17T01:59:22.258Z
+updated_at: 2026-09-17T02:55:50.612Z
 started_at: 2026-09-16T21:24:54.275Z
+closed_at: 2026-09-17T02:55:50.611Z
+close_reason: "PR #138 published at head 1a5188eec8cbb4870c700de8abe0e942f2eeb958 on exact base b907bb27 (PR #136), stack layer 8. Credential-boundary review closed with no actionable findings; make verify and all seven GitHub checks green. PR description updated and review record posted: https://github.com/jlevy/metabrowser/pull/138#issuecomment-5707765503. Not merged; landing remains with mb-n2ro."
+resolution: null
+duplicate_of: null
 ---
 Independently review the corrected repository-subject, shared worktree-free store, provider-mirror, capability, locking, lease, and phased-delivery architecture. Resolve every finding through the review shortcut, run make verify, and publish one formal GitHub PR with gh stacked on exact green Phase 0C.2 PR #136 head. Record PR URL, base/head branches and immutable OIDs, formal stack view, review evidence, and final green CI. Do not merge; mb-n2ro alone owns explicit-approval landing and retargeting.
 
