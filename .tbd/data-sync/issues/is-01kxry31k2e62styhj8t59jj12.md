@@ -3,9 +3,9 @@ type: is
 id: is-01kxry31k2e62styhj8t59jj12
 title: "Platform: bounded subprocess runner for provider adapters"
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 17
+version: 18
 spec_path: docs/project/architecture/arch-hosted-review-model.md
 delegate: claude-code@spud10.local
 labels:
@@ -23,7 +23,7 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-07-17T21:00:33.250Z
-updated_at: 2026-09-17T01:36:49.657Z
+updated_at: 2026-09-17T01:44:16.830Z
 started_at: 2026-09-16T22:03:41.555Z
 extensions:
   linear:
