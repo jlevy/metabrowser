@@ -42,9 +42,10 @@ Repository cache:
   config formats, what reclamation left in staging, trash, and quarantine, sources with
   their alias generation and publication state, and stores with the aliases that name
   them. Reach them with `metab <root> --api /api/cache/layout` like any other route.
-  They resolve `METABROWSER_HOME`, or `~/.metabrowser`, on each request and never create
-  it: a missing home reports `absent`, while a home other users can access, or one a
-  newer release wrote, is refused with a typed error that names no path.
+  They resolve `METABROWSER_HOME`, or `~/.metabrowser`, on each request and change
+  nothing: a missing home reports `absent` rather than being created, an entry other
+  users can reach is reported rather than tightened, and a home other users can access,
+  or one a newer release wrote, is refused with a typed error that names no path.
   Sources and stores are paged with `limit` and `after`; no response reports a cache
   path, pack file, or Git internal.
 

@@ -504,10 +504,12 @@ an elision pattern and `[ROOT]` is one of its built-ins.
 
 **State counts too.** The cache persists layout, identity, entry state, quarantine, and
 trash, none of which appears in a response envelope.
-The plan is that those be read through `/api/cache/*` like any other model rather than
-through a bespoke inspection command, which is the practical reason to prefer a route to
-a CLI mode. The records and their storage exist in `metabrowser.cache`, but no command
-writes them and the routes do not exist yet; see
+Those are read through `/api/cache/*` like any other model rather than through a bespoke
+inspection command, which is the practical reason to prefer a route to a CLI mode.
+`/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, and
+`/api/cache/stores` project those records, and `tests/golden/cli-api-cache.tryscript.md`
+pins them against homes that `tests/cache_home_fixture.py` builds with the production
+writers. No command writes the cache yet; see
 [CLI-first delivery](project/specs/active/plan-2026-08-28-cli-first-delivery-map.md).
 
 ## Compatibility and Legacy Code

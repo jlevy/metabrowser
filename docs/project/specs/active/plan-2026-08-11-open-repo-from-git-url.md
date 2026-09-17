@@ -1735,9 +1735,24 @@ detail.
   the way a record read does and never creates it.
   A missing home is `absent`; entries under a future, unknown, or unmigrated layout, or
   under no layout, are refused exactly as `migrate_layout` refuses them.
-  Pages hold at most 100 rows and store references read at most 500 aliases, from
-  measured record-read costs recorded beside the constants.
+  A read changes nothing it reads: every record read and every listing asks
+  `metabrowser.home` for `shared="refuse"`, so an entry other users can reach is
+  reported as a `not_private` problem, or refused for a directory, instead of being
+  tightened while a request is answered.
+  Pages hold at most 100 rows, store references read at most 500 aliases, and a
+  quarantine entry reports at most 50 names of each kind, from measured record-read
+  costs recorded beside the constants.
+  One entry has one publication state on both source routes, because both build the row
+  from all three of its records.
   The store’s `configuration_digest` is not reported.
+- **Same-origin exposure of these routes is a content-trust dependency.** They are the
+  first `/api` routes that answer with state from outside the served root, and an HTML
+  file inside a browsed root runs same-origin, so once the cache holds entries such a
+  file could fetch `/api/cache/sources` and read cached clone URLs and slugs.
+  Nothing in Phase 1A populates the cache, so nothing is exposed yet.
+  The sandboxed `/raw` and same-origin proof in `mb-cun0`, and the capability profile in
+  `mb-vib1`, must be evaluated against a **populated** cache before Phase 1B-a lands and
+  writes the first entries.
 
 ### Phase 1B: Generic Git cache and repository URL open
 
