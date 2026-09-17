@@ -505,10 +505,14 @@ def test_a_home_whose_locks_vanish_when_a_descriptor_closes_is_refused(
     assert refused.value.violation is PrivateStorageViolation.UNVERIFIABLE
 
 
-def test_record_locks_pass_the_exclusion_check_when_no_descriptor_closes(
+def test_record_locks_that_survive_every_close_are_still_refused_in_process(
     home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Control for the test above: the unrelated close is what exposes record locks."""
+    """With no unrelated close, record locks pass the cross-process exclusion check.
+
+    They are still refused, because a record lock never contends with another lock the
+    same process holds, which the separate-descriptor check detects.
+    """
 
     monkeypatch.setattr(probe, "fcntl", _record_lock_shim())
     monkeypatch.setattr(probe, "_CHILD_SCRIPT", _RECORD_LOCK_CHILD)
@@ -523,7 +527,20 @@ def test_record_locks_pass_the_exclusion_check_when_no_descriptor_closes(
         return real_open(home, relative, flags, **kwargs)
 
     monkeypatch.setattr(probe, "open_private_file", open_without_an_unrelated_descriptor)
-    probe.probe_application_home(home, force=True)
+    asked: list[str] = []
+    real_ask = probe._Child.ask  # pyright: ignore[reportPrivateUsage]
+
+    def recording_ask(child: Any, request: str) -> str:
+        answer = real_ask(child, request)
+        asked.append(f"{request}={answer}")
+        return answer
+
+    monkeypatch.setattr(probe._Child, "ask", recording_ask)  # pyright: ignore[reportPrivateUsage]
+
+    with pytest.raises(PrivateStorageError, match="separate descriptor"):
+        probe.probe_application_home(home, force=True)
+
+    assert asked == ["ex sh=busy busy"]
 
 
 def test_a_home_whose_locks_do_not_exclude_another_process_is_refused(

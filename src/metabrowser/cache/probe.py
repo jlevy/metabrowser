@@ -8,7 +8,9 @@ rename flag. So before the cache uses a home, this probe checks on that home tha
 - a second process cannot take an exclusive or shared lock this process holds
   exclusively, can share a shared lock but not take it exclusively, and gets the lock
   once it is released;
-- closing an unrelated descriptor for the lock file does not release the lock; and
+- closing an unrelated descriptor for the lock file does not release the lock;
+- an exclusive attempt through a separate ``open()`` in this process contends with a
+  shared lock this process holds, instead of coexisting with it; and
 - the platform no-replace rename refuses an existing directory and file, and
   publication under a held lock refuses an existing target while moving a staged entry
   to an absent one.
@@ -144,6 +146,7 @@ def _probe_locks(home: Path, relative_path: str) -> None:
                 )
             fcntl.flock(exclusive, fcntl.LOCK_UN)
             fcntl.flock(shared, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            _probe_separate_open(home, relative_path)
             if child.ask("sh ex") != "acquired busy":
                 raise _ProbeFailed("its file locks did not keep shared and exclusive holders apart")
             fcntl.flock(shared, fcntl.LOCK_UN)
@@ -154,6 +157,29 @@ def _probe_locks(home: Path, relative_path: str) -> None:
         os.close(shared)
         with contextlib.suppress(OSError):
             os.unlink(path)
+
+
+def _probe_separate_open(home: Path, relative_path: str) -> None:
+    """An exclusive attempt through its own ``open()`` must contend with a held lease.
+
+    The caller holds a shared lock on the file through another descriptor. Were the new
+    attempt to succeed, one process's lease and maintenance lock could coexist, as they
+    do through a ``dup()`` or under record locks.
+    """
+
+    assert fcntl is not None
+    other = open_private_file(home, relative_path, os.O_RDWR)
+    try:
+        try:
+            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        raise _ProbeFailed(
+            "an exclusive lock through a separate descriptor in this process did not "
+            "contend with a shared lock this process held"
+        )
+    finally:
+        os.close(other)
 
 
 def _probe_publication(home: Path, staging: str, owner: CacheLock) -> ProbeReport:
