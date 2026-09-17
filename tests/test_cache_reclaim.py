@@ -47,6 +47,7 @@ from metabrowser.cache.records import (
 from metabrowser.home import ensure_home, ensure_private_directory, write_private_file_atomic
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="cache locks are BSD flock locks")
+fcntl = pytest.importorskip("fcntl")
 
 FIXTURES = Path(__file__).parent / "fixtures" / "repository-cache"
 SLUG = "github-com--pallets--flask--e7b7fe0ffe8a"
@@ -255,6 +256,25 @@ def test_the_sweep_removes_free_orphan_lock_files_and_reports_unknown_names(home
     assert report.removed_lock_files == ("cache/locks/staging/orphan.lock",)
     assert (home / "cache/staging/Not An Entry").is_dir()
     assert (home / "cache/locks/staging/claimed-before-mkdir.lock").exists()
+
+
+def test_an_entry_with_an_unusable_lock_file_is_kept_and_the_sweep_continues(home: Path) -> None:
+    ensure_private_directory(home, "cache/staging/a-shared/objects")
+    ensure_private_directory(home, "cache/staging/b-dead/objects")
+    staging_entry_lock(home, "a-shared").release()
+    shared = home / "cache/locks/staging/a-shared.lock"
+    shared.chmod(0o644)
+    # Stands in for another principal holding the lock file it opened while shared.
+    foreign = os.open(shared, os.O_RDONLY)
+    try:
+        fcntl.flock(foreign, fcntl.LOCK_EX)
+        report = reclaim_staging(home)
+    finally:
+        os.close(foreign)
+
+    assert report.failed == ("cache/staging/a-shared",)
+    assert report.removed == ("cache/staging/b-dead",)
+    assert (home / "cache/staging/a-shared/objects").is_dir()
 
 
 def test_the_sweep_never_touches_quarantine(home: Path) -> None:

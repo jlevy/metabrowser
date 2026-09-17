@@ -169,6 +169,12 @@ def _sweep(
             _emit(observer, machine, "entry_lock_busy")
             live.append(logical)
             continue
+        except PrivateStorageError:
+            # Its lock cannot be verified, so liveness is unknown: keep the entry and
+            # report it rather than abandon the rest of the sweep.
+            log.warning("Skipped a cache entry whose lock file is unusable", exc_info=True)
+            failed.append(logical)
+            continue
         try:
             _emit(observer, machine, "entry_lock_acquired")
             (removed if _remove_tree(home / directory / name) else failed).append(logical)
@@ -199,7 +205,7 @@ def _remove_orphan_lock_files(
             continue
         try:
             lock = entry_lock(home, name)
-        except LockBusyError:
+        except (LockBusyError, PrivateStorageError):
             continue
         if os.path.lexists(home / directory / name):
             lock.release()
