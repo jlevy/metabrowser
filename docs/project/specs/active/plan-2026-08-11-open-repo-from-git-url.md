@@ -282,6 +282,34 @@ warning followed by a private write.
 This rule does not prevent read-only browsing of an ordinary local path outside the
 application home or attaching it to a provider mirror without modifying it.
 
+`metabrowser.home` enforces the rule, and cache and provider code create or open
+application-home paths only through it.
+`ensure_private_directory` creates the home and each missing directory below it `0700`
+from the start, walking by directory descriptor without following links.
+`open_private_file` opens or creates a `0600` file the same way and keeps `O_EXCL`
+no-replace semantics.
+`validate_private_home` checks without changing anything.
+A refusal is a `PrivateStorageError` with a violation, a logical location, and a
+path-free message naming a remedy; the path stays on the exception for local logs.
+The module docstring states the full rule set; three interpretations are recorded here
+because callers depend on them:
+
+- **Above the home, only write access matters.** Each directory the kernel traverses to
+  reach the home must belong to root or the current user and must not be writable by
+  others unless it is sticky.
+  A link there is followed only when root or the current user owns it, so `/home`
+  pointing into `/var/home` works and a planted link does not.
+- **The home is refused, never repaired.** Only entries below it that the current user
+  owns are tightened. Nothing above it is modified, so a workspace or checkout keeps its
+  modes.
+- **Mode bits are the verified surface.** On Linux a POSIX ACL cannot exceed the mask
+  that `0700` and `0600` clear; macOS extended ACLs and NFSv4 ACLs are not inspected.
+
+Windows fails closed: it lacks the descriptor-relative, no-follow operations the checks
+use, so every call refuses as `unverifiable` and no private content is written there.
+Current-user-only ACL verification is follow-up work that needs a Windows CI runner
+before it can be trusted, because CI runs only on Linux today.
+
 ### Lock order
 
 Locks have disjoint scopes and one fixed order:
@@ -1092,10 +1120,10 @@ state.
 
 | File | Key types and functions | Responsibility |
 | --- | --- | --- |
-| `src/metabrowser/home.py` | `application_home`, `ensure_home`, `validate_private_home` | Resolve `METABROWSER_HOME`, create owner-only layout paths, reject symlinked/foreign/permissive ancestors for remote content, and write `CACHEDIR.TAG` |
+| `src/metabrowser/home.py` | `application_home`, `ensure_home`, `validate_private_home`, `ensure_private_directory`, `open_private_file`, `PrivateStorageError` | Resolve `METABROWSER_HOME`, create owner-only layout paths and files, reject symlinked/foreign/permissive ancestors for remote content, and write `CACHEDIR.TAG` |
 | `src/metabrowser/cache/records.py` | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState` | Strict Pydantic models and SoftSchema envelope bindings |
 | `src/metabrowser/cache/layout.py` | `read_layout`, `migrate_layout`, `LAYOUT_FORMAT` | Fail closed on future formats and run ordered migrations |
-| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock` | Bounded reads, owner-only files, same-filesystem publication, fixed home → alias → ordered stores → resource order, and process-safe locking |
+| `src/metabrowser/cache/atomic.py` | `read_record`, `write_record_atomic`, `application_home_lock`, `source_alias_lock`, `repository_store_lock`, `provider_resource_lock` | Bounded reads, owner-only files through `open_private_file`, same-filesystem publication, fixed home → alias → ordered stores → resource order, and process-safe locking |
 | `src/metabrowser/cache/identity.py` | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` | Credential-free source identity, stable internal store identity, deterministic provider-identity store derivation, aliasing, and collision verification |
 | `src/metabrowser/cache/urls.py` | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` | Distinguish local paths, Git sources, and registered provider web URLs before constructing a `Path`; arbitrate declared reducer claims and terminal rejection; keep provider-specific syntax behind reducers |
 | `src/metabrowser/cache/acquire.py` | `acquire_repository`, `validate_staging_store`, `publish_store`, `publish_source_alias` | Acquire and publish a validated worktree-free store, then create the source alias as the final atomic visibility commit |
