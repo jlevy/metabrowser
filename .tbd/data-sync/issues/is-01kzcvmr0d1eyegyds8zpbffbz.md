@@ -5,7 +5,7 @@ title: "HTML P4: html kind, full-page detection, and sandboxed preview"
 kind: feature
 status: in_progress
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.996Z
-updated_at: 2026-09-18T04:44:38.208Z
+updated_at: 2026-09-18T04:53:08.128Z
 started_at: 2026-09-18T04:31:31.949Z
 extensions:
   linear:
@@ -25,4 +25,4 @@ Add a built-in html kind for .html/.htm with preview and source views. A bounded
 
 ## Notes
 
-Draft https://github.com/jlevy/metabrowser/pull/155 stacked on #154. html kind with Preview/Source, 4 KiB full-page sniff for the default tab, sandboxed iframe at path-shaped /raw/{path}, Preview omitted when active_content is off. Wheel smoke and serve banner now include html (6a0fe8a8). Bead stays open for review; do not merge. Next HTML slice is mb-d658 publication review.
+Draft https://github.com/jlevy/metabrowser/pull/155 stacked on #154. html kind with Preview/Source, 4 KiB full-page sniff for the default tab, sandboxed iframe at path-shaped /raw/{path}, Preview omitted when active_content is off. Wheel smoke and serve banner now include html (6a0fe8a8). CI green: 7 checks on 6a0fe8a8 (lint, test 3.12/3.13/3.14/3.14t, distribution, stack-integration). Bead stays open for review; do not merge. Next HTML slice is mb-d658 publication review, not more preview code.
