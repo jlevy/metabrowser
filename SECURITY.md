@@ -59,24 +59,33 @@ KPress in its sanitized mode, which strips scripts, event-handler attributes, an
 Plugin discovery never treats the served root as a plugin source (see
 [plugin trust](docs/plugins.md)).
 
-Two boundaries are documented here because they are **not yet enforced**. Until they
-are, point Metabrowser only at roots whose files you trust as much as the application
-itself, exactly as the trusted-local warning above says:
+Content responses through `/raw` are sandboxed on the wire.
+Every raw response — including gzip passthrough, SVG, HTML, and error bodies — carries
+`Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`
+and `X-Content-Type-Options: nosniff`. The sandbox assigns an opaque origin, so script
+in a browsed file cannot read the application document, cookies, storage, or `/api`
+responses. `frame-ancestors` is omitted so nested iframes and framesets in a sandboxed
+page still load: the opaque ancestor origin would never match `'self'`. `/raw` is not
+behind the API origin check, because stylesheets and images must remain loadable as
+subresources; a previewed page can still probe file existence through load and error
+events, but cannot read those bytes.
 
-- `/raw` serves in-root files at their native media type on the application origin with
-  no sandboxing headers, so following a direct `/raw` link to an HTML or SVG file
-  executes that file’s scripts with the application’s privileges.
-- `/api` routes do not require proof that a request originated from the application’s
-  own pages. The Host allowlist stops DNS rebinding, where the attacker must read the
-  response; it does not stop fire-and-forget cross-site requests, and
-  `POST /api/kpress/export` writes rendered output beneath the served root.
+`/api` routes require same-origin proof.
+The server accepts `Sec-Fetch-Site: same-origin` or an `Origin` header matching the
+application origin, and refuses `Origin: null` and foreign origins.
+Requests with neither header — `curl` and `metab --api` — still work.
+State-changing methods additionally require `Content-Type: application/json`, so a
+cross-site form or `text/plain` POST cannot reach a write path such as
+`POST /api/kpress/export`. The Host allowlist still stops DNS rebinding; the origin
+check stops fire-and-forget invocation.
 
-The
+An `--untrusted` profile that disables active content entirely is not yet implemented.
+Until it is, sandboxed scripts can still run, phone home, and use `/raw` as an existence
+oracle. The
 [HTML rendering and trust model plan](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
-closes both: content responses get a browser-enforced opaque origin, `/api` routes
-require same-origin proof, and an `--untrusted` profile disables active content
-entirely. The governing invariant it introduces: content viewed through Metabrowser gets
-exactly the privilege a browser would give the same file opened directly, and never
+owns that remaining work.
+The governing invariant it introduces: content viewed through Metabrowser gets exactly
+the privilege a browser would give the same file opened directly, and never
 Metabrowser’s server-side API.
 
 See [supply-chain security](SUPPLY-CHAIN-SECURITY.md) for dependency and build policy.

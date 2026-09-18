@@ -2,6 +2,24 @@
 
 All notable changes to Metabrowser are documented here.
 
+## 0.11.0
+
+Content trust:
+
+- `/raw` responses are sandboxed unconditionally.
+  Every branch, including gzip passthrough, SVG, HTML, and error bodies, sends
+  `Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`
+  and `X-Content-Type-Options: nosniff`. Direct `/raw` links to HTML or SVG no longer
+  execute with the application’s privileges.
+  Nested iframes and framesets still load: the policy does not include
+  `frame-ancestors`.
+
+- `/api` routes require same-origin proof.
+  The server accepts `Sec-Fetch-Site: same-origin` or a matching `Origin`, refuses
+  `Origin: null` and foreign origins, and still serves `curl` and `metab --api` (neither
+  header). State-changing methods require `Content-Type: application/json`, so a
+  cross-site form POST cannot reach `POST /api/kpress/export`.
+
 ## 0.10.0
 
 Plugin SDK:

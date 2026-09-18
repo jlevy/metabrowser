@@ -676,8 +676,45 @@ def _register_allowed_host(bind_host: str) -> None:
         _EXTRA_ALLOWED_HOSTS.add(hostname)
 
 
+_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _is_json_content_type(content_type: str) -> bool:
+    media = content_type.split(";", 1)[0].strip().lower()
+    return media == "application/json"
+
+
+def _origin_matches_request(origin: str, scheme: str, host_header: str) -> bool:
+    expected = f"{scheme}://{host_header.strip()}"
+    return origin.strip().lower() == expected.lower()
+
+
+def _has_same_origin_proof(
+    *,
+    scheme: str,
+    host_header: str,
+    origin: str,
+    sec_fetch_site: str,
+) -> bool:
+    """Return whether an ``/api`` request proved it came from this app.
+
+    ``Origin: null`` is always refused: that is what an opaque-origin
+    document sends. ``Sec-Fetch-Site: same-origin`` or a matching
+    ``Origin`` is accepted. A request with neither header (curl,
+    ``metab --api``) is accepted. ``/raw`` is not behind this check.
+    """
+
+    if origin.lower() == "null":
+        return False
+    if sec_fetch_site.lower() == "same-origin":
+        return True
+    if origin and _origin_matches_request(origin, scheme, host_header):
+        return True
+    return not origin and not sec_fetch_site
+
+
 class _HostValidationMiddleware:
-    """Reject requests whose ``Host`` header is not a permitted name.
+    """Reject rebound Host values and unproven ``/api`` callers.
 
     Metabrowser binds to loopback, but loopback alone does not stop DNS
     rebinding: a malicious page on an attacker-controlled domain can point
@@ -691,6 +728,13 @@ class _HostValidationMiddleware:
     ``METABROWSER_ALLOWED_HOSTS`` environment variable, comma-separated,
     read per request so tests and embedders can adjust it without
     rebuilding the app.
+
+    ``/api/*`` additionally requires same-origin proof so sandboxed
+    content and third-party pages cannot invoke application routes,
+    including fire-and-forget writes. The Host allowlist does not stop
+    those: they send a genuine Host. State-changing methods also require
+    ``Content-Type: application/json`` because Starlette parses JSON
+    bodies without looking at that header.
     """
 
     _DEFAULT_ALLOWED: frozenset[str] = frozenset(
@@ -714,10 +758,18 @@ class _HostValidationMiddleware:
             await self.app(scope, receive, send)
             return
         host_header = ""
+        origin = ""
+        sec_fetch_site = ""
+        content_type = ""
         for name, value in scope.get("headers") or []:
             if name == b"host":
                 host_header = value.decode("latin-1")
-                break
+            elif name == b"origin":
+                origin = value.decode("latin-1")
+            elif name == b"sec-fetch-site":
+                sec_fetch_site = value.decode("latin-1")
+            elif name == b"content-type":
+                content_type = value.decode("latin-1")
         hostname = self._hostname(host_header)
         allowed = self._DEFAULT_ALLOWED | _EXTRA_ALLOWED_HOSTS
         extra = os.environ.get("METABROWSER_ALLOWED_HOSTS", "")
@@ -738,6 +790,34 @@ class _HostValidationMiddleware:
             )
             await response(scope, receive, send)
             return
+        path = str(scope.get("path") or "")
+        if path == "/api" or path.startswith("/api/"):
+            scheme = str(scope.get("scheme") or "http")
+            if not _has_same_origin_proof(
+                scheme=scheme,
+                host_header=host_header,
+                origin=origin,
+                sec_fetch_site=sec_fetch_site,
+            ):
+                response = PlainTextResponse(
+                    "This /api request did not prove it came from this application's "
+                    "own pages. Browsers send Sec-Fetch-Site: same-origin or a "
+                    "matching Origin; Origin: null is refused because that is what "
+                    "an opaque-origin document sends. curl and metab --api send "
+                    "neither header and still work.\n",
+                    status_code=403,
+                )
+                await response(scope, receive, send)
+                return
+            method = str(scope.get("method") or "GET").upper()
+            if method in _STATE_CHANGING_METHODS and not _is_json_content_type(content_type):
+                response = PlainTextResponse(
+                    "State-changing /api routes require Content-Type: application/json "
+                    "so a cross-site form POST cannot reach a write path.\n",
+                    status_code=415,
+                )
+                await response(scope, receive, send)
+                return
         await self.app(scope, receive, send)
 
 
@@ -3018,13 +3098,29 @@ def _accepts_gzip(accept_encoding: str) -> bool:
 
 
 _RAW_STREAM_CHUNK = 64 * 1024
+_RAW_CSP_SANDBOX = "sandbox allow-scripts allow-popups allow-forms allow-downloads"
+
+
+def _with_raw_trust_headers(response: Response) -> Response:
+    """Attach the opaque-origin sandbox to every ``/raw`` response.
+
+    Applied unconditionally, including gzip passthrough and error
+    bodies, so a script-capable type list cannot miss ``.svg`` or a
+    platform MIME guess. ``frame-ancestors`` is omitted: inside a
+    sandboxed page the ancestor origin is opaque and would never match
+    ``'self'``, which would break nested iframes and framesets.
+    """
+
+    response.headers["Content-Security-Policy"] = _RAW_CSP_SANDBOX
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 async def raw_file(request: Request) -> Response:
     subpath = request.query_params.get("path", "")
     target = _safe_path_from_identity(subpath)
     if target is None or not target.is_file():
-        return PlainTextResponse("Not found", status_code=404)
+        return _with_raw_trust_headers(PlainTextResponse("Not found", status_code=404))
 
     artifact = ArtifactPath(target)
     media_type = artifact.mime_type
@@ -3036,7 +3132,7 @@ async def raw_file(request: Request) -> Response:
     # keeps the event loop responsive and bounds memory regardless of
     # file size. ``_safe_path`` already rejected paths outside ROOT_DIR.
     if not artifact.is_compressed:
-        return FileResponse(target, media_type=media_type)
+        return _with_raw_trust_headers(FileResponse(target, media_type=media_type))
 
     accepts_gzip = _accepts_gzip(request.headers.get("accept-encoding", ""))
 
@@ -3046,10 +3142,12 @@ async def raw_file(request: Request) -> Response:
     # skips responses with ``Content-Encoding`` already set, so we
     # don't double-wrap.
     if artifact.is_gzip and accepts_gzip:
-        return FileResponse(
-            target,
-            media_type=media_type,
-            headers=artifact.passthrough_headers(),
+        return _with_raw_trust_headers(
+            FileResponse(
+                target,
+                media_type=media_type,
+                headers=artifact.passthrough_headers(),
+            )
         )
 
     # Validate every compressed identity response before StreamingResponse sends
@@ -3058,9 +3156,9 @@ async def raw_file(request: Request) -> Response:
     try:
         await asyncio.to_thread(lambda: artifact.logical_size)
     except ArtifactDecompressionLimitError as exc:
-        return PlainTextResponse(str(exc), status_code=413)
+        return _with_raw_trust_headers(PlainTextResponse(str(exc), status_code=413))
     except ArtifactCompressionError as exc:
-        return PlainTextResponse(str(exc), status_code=400)
+        return _with_raw_trust_headers(PlainTextResponse(str(exc), status_code=400))
 
     # Identity fallback: client refuses gzip (rare, e.g. ``curl`` without
     # ``--compressed``). Stream-decompress so the client gets plain
@@ -3073,10 +3171,12 @@ async def raw_file(request: Request) -> Response:
                     break
                 yield chunk
 
-    return StreamingResponse(
-        _iter_decompressed(),
-        media_type=media_type,
-        headers={"Vary": "Accept-Encoding"},
+    return _with_raw_trust_headers(
+        StreamingResponse(
+            _iter_decompressed(),
+            media_type=media_type,
+            headers={"Vary": "Accept-Encoding"},
+        )
     )
 
 

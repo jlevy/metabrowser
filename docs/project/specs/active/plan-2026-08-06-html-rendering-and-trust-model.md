@@ -4,7 +4,8 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Active — `/raw` sandbox and `/api` same-origin proof have landed; preview UI
+and `--untrusted` remain
 
 ## Overview
 
@@ -24,10 +25,11 @@ rendering can default to on.
 Answer it by convenience — an iframe pointed at the existing `/raw` endpoint — and
 browsing a directory becomes equivalent to running its contents.
 
-This plan also closes two existing holes: `/raw` already serves any in-root `.html` file
-as `text/html` on the application origin with no sandbox or constraining headers, and
-`/api` accepts cross-site fire-and-forget requests, including one that writes beneath
-the served root.
+This plan also closes two holes: `/raw` served any in-root `.html` file as `text/html`
+on the application origin with no sandbox, and `/api` accepted cross-site
+fire-and-forget requests, including one that writes beneath the served root.
+The raw sandbox and the `/api` origin check have landed; the preview UI and
+`--untrusted` profile have not.
 
 ## Goals
 
@@ -516,13 +518,13 @@ Independently valuable and shippable without any UI change.
 Both halves of the boundary land together: the sandbox stops reading, the same-origin
 check stops invoking.
 
-- [ ] Add a shared response-header builder for `raw_file` covering all three branches
-- [ ] Send the unconditional CSP `sandbox` header and `nosniff` on every raw response
-- [ ] Require same-origin proof on `/api/*` in `_HostValidationMiddleware`, rejecting
+- [x] Add a shared response-header builder for `raw_file` covering all three branches
+- [x] Send the unconditional CSP `sandbox` header and `nosniff` on every raw response
+- [x] Require same-origin proof on `/api/*` in `_HostValidationMiddleware`, rejecting
   `Origin: null`
-- [ ] Add regression tests for the gzip passthrough, `.svg`, and cross-origin `/api`
+- [x] Add regression tests for the gzip passthrough, `.svg`, and cross-origin `/api`
   rejection
-- [ ] Update the SECURITY.md not-yet-enforced list to enforced guarantees
+- [x] Update the SECURITY.md not-yet-enforced list to enforced guarantees
 
 ### Phase 2: Capability plumbing
 
