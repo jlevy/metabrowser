@@ -404,6 +404,14 @@ status: 200
       "kind": "asset"
     },
     {
+      "path": "/raw/{path:path}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "asset"
+    },
+    {
       "path": "/static",
       "methods": null,
       "kind": "asset"
@@ -449,7 +457,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 35
+  "count": 36
 }
 ? 0
 ```
