@@ -5,7 +5,7 @@
 **Author:** Metabrowser maintainers
 
 **Status:** Active — `/raw` sandbox, `/api` same-origin proof, the `--untrusted`
-capability profile, and path-shaped `/raw/{path}` have landed; preview UI remains
+capability profile, path-shaped `/raw/{path}`, and the html preview kind have landed
 
 ## Overview
 
@@ -28,8 +28,8 @@ browsing a directory becomes equivalent to running its contents.
 This plan also closes two holes: `/raw` served any in-root `.html` file as `text/html`
 on the application origin with no sandbox, and `/api` accepted cross-site
 fire-and-forget requests, including one that writes beneath the served root.
-The raw sandbox, the `/api` origin check, the `--untrusted` capability profile, and
-path-shaped `/raw/{path}` have landed; the preview UI has not.
+The raw sandbox, the `/api` origin check, the `--untrusted` capability profile,
+path-shaped `/raw/{path}`, and the html preview kind have landed.
 
 ## Goals
 
@@ -542,12 +542,12 @@ check stops invoking.
 
 ### Phase 4: The HTML kind and preview
 
-- [ ] Add the bounded full-page sniff with a documented byte budget
-- [ ] Add the built-in `html` kind with `preview` and `source` views and sniff-chosen
+- [x] Add the bounded full-page sniff with a documented byte budget
+- [x] Add the built-in `html` kind with `preview` and `source` views and sniff-chosen
   default
-- [ ] Add the preview renderer with the sandbox attribute set and a disposal path
-- [ ] Suppress the preview view entirely when `active_content` is off
-- [ ] Document the preview, its containment envelope, and the invariant in SECURITY.md
+- [x] Add the preview renderer with the sandbox attribute set and a disposal path
+- [x] Suppress the preview view entirely when `active_content` is off
+- [x] Document the preview, its containment envelope, and the invariant in SECURITY.md
   as shipped guarantees
 
 ## Testing Strategy

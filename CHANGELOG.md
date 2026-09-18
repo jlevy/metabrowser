@@ -34,6 +34,14 @@ Content trust:
   The resolved block is on `GET /api/capabilities` and
   `window.METABROWSER_SETTINGS.CAPABILITIES`.
 
+- `.html` and `.htm` files are the `html` kind, with a sandboxed Preview tab and a
+  Source tab. A 4 KiB sniff (doctype or `<html>` / `<head>` / `<body>` / `<frameset>`)
+  chooses the default tab only.
+  Preview uses path-shaped `/raw/{path}` and an iframe sandbox of
+  `allow-scripts allow-popups allow-forms allow-downloads` with
+  `referrerpolicy="no-referrer"` — never `allow-same-origin` or `allow-top-navigation`.
+  `--untrusted` and `--no-active-content` omit Preview.
+
 ## 0.10.0
 
 Plugin SDK:

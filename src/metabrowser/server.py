@@ -74,6 +74,7 @@ from metabrowser import __version__, kpress_adapter
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.build_version import display_version_line
+from metabrowser.builtin_plugins.html.detect import sniff_full_page_html
 from metabrowser.capabilities import get_capabilities, raw_sandbox_csp
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
@@ -2468,8 +2469,12 @@ async def _api_file_impl(request: Request) -> JSONResponse | Response:
         # share a cached result; plugin classification may consult frontmatter
         # for specialized document detection.
         ctx = FileContext(target, ext)
-        kind = await asyncio.to_thread(_classify_with_plugins, target, ext, file_ctx=ctx)
-        views = _views_for_kind(kind)
+
+        def _classify_text_views() -> tuple[str, list[dict[str, Any]]]:
+            classified = _classify_with_plugins(target, ext, file_ctx=ctx)
+            return classified, _views_for_kind(classified, target=target)
+
+        kind, views = await asyncio.to_thread(_classify_text_views)
 
         # For .md files, expose parsed frontmatter so plugin renderers can
         # use it directly via ctx.frontmatter without re-parsing client-side.
@@ -3402,7 +3407,7 @@ def _resolve_container_child(subpath: str) -> JSONResponse | None:
     return None
 
 
-def _views_for_kind(kind: str) -> list[dict[str, Any]]:
+def _views_for_kind(kind: str, *, target: Path | None = None) -> list[dict[str, Any]]:
     """Return the merged view list for a kind: built-in registry + plugin manifests.
 
     Plugin views are appended after built-in views; an exact (kind, id)
@@ -3410,6 +3415,11 @@ def _views_for_kind(kind: str) -> list[dict[str, Any]]:
     wins; the plugin author intentionally chose to register an existing
     id). The order in which they appear in the tab strip is built-ins
     first, then plugin order.
+
+    The html kind is the exception that still uses this merger: Preview is
+    dropped when active content is off, and a bounded sniff may move the
+    default tab to Source. *target* is the file being classified; omit it
+    only when no file is in hand.
     """
     out: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
@@ -3426,9 +3436,26 @@ def _views_for_kind(kind: str) -> list[dict[str, Any]]:
         else:
             out.append(v)
             seen_ids.add(v["id"])
+    if kind == "html":
+        return _html_kind_views(out, target)
     if out and not any(v.get("default") for v in out):
         out[0] = {**out[0], "default": True}
     return out
+
+
+def _html_kind_views(views: list[dict[str, Any]], target: Path | None) -> list[dict[str, Any]]:
+    """Apply the html kind's capability gate and default-tab sniff."""
+
+    if not get_capabilities().active_content:
+        remaining = [dict(view) for view in views if view["id"] != "preview"]
+        if remaining and not any(view.get("default") for view in remaining):
+            remaining[0] = {**remaining[0], "default": True}
+        return remaining
+    if target is not None and not sniff_full_page_html(target):
+        return [{**view, "default": view["id"] == "source"} for view in views]
+    if views and not any(view.get("default") for view in views):
+        views[0] = {**views[0], "default": True}
+    return views
 
 
 def _build_plugin_asset_config_block() -> str:

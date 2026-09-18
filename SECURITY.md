@@ -91,15 +91,24 @@ Individual flags override the profile.
 The resolved block is on `window.METABROWSER_SETTINGS.CAPABILITIES` and
 `GET /api/capabilities`; the server is authoritative.
 
+`.html` and `.htm` files open as the `html` kind, with Preview and Source tabs.
+Preview loads the file in an iframe whose `src` is the path-shaped `/raw/{path}`
+document URL, so relative stylesheets, images, scripts, and sibling links resolve.
+The iframe sandbox is `allow-scripts allow-popups allow-forms allow-downloads` with
+`referrerpolicy="no-referrer"`. It never includes `allow-same-origin` or
+`allow-top-navigation`. When active content is off, Preview is omitted and Source is the
+only view.
+
+Fidelity matches opening the same file in a browser: classic scripts, styles, images,
+and nested frames work.
+`localStorage`, same-document `fetch`, ES modules, and CORS webfonts do not, and `/raw`
+never sends `Access-Control-Allow-Origin` to compensate.
+
 By default, sandboxed scripts can still run, phone home, and use `/raw` as an existence
-oracle. `--untrusted` stops script execution on content surfaces.
-HTML preview UI is not yet implemented; `/raw` remains the content-execution surface.
-The
-[HTML rendering and trust model plan](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
-owns that remaining work.
-The governing invariant it introduces: content viewed through Metabrowser gets exactly
-the privilege a browser would give the same file opened directly, and never
-Metabrowser’s server-side API.
+oracle. `--untrusted` omits the preview and stops script execution on raw responses.
+
+Content viewed through Metabrowser gets exactly the privilege a browser would give the
+same file opened directly, and never Metabrowser’s server-side API.
 
 See [supply-chain security](SUPPLY-CHAIN-SECURITY.md) for dependency and build policy.
 
