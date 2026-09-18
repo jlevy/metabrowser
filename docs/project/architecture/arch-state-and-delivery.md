@@ -124,6 +124,8 @@ totals. Git type matching uses the same bounded compound-tail logical extension 
 filesystem inventory.
 SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; blob file
 envelopes omit compressed identity because blobs are stored bytes with no gzip smudge.
+Git markdown envelopes include parsed YAML `frontmatter` and `frontmatter_error`; KPress
+on a pin uses that parse.
 `include_ignored=0` is a no-op because ignore is absent.
 The JSONL stream still returns `unsupported_for_subject` instead of the lifespan folder.
 `/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
