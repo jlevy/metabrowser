@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, and logical-extension type matching honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, and ignore-noop honor a pin."""
 
 from __future__ import annotations
 
@@ -562,10 +562,11 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
             assert recency_body["capability"] == "recency"
 
             ignored = await client.get("/api/tree", params={"include_ignored": "0"})
-            assert ignored.status_code == 409
-            ignored_body = ignored.json()
-            assert ignored_body["code"] == "unsupported_for_subject"
-            assert ignored_body["capability"] == "ignore"
+            assert ignored.status_code == 200
+            ignored_names = {entry["display"] for entry in ignored.json()["entries"]}
+            assert "README.md" in ignored_names
+            assert "docs" in ignored_names
+            assert ignored.json()["summary"]["ignored_files"] == 0
 
             min_size = await client.get("/api/tree", params={"min_size": "32"})
             assert min_size.status_code == 200
