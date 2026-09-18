@@ -76,9 +76,12 @@ Repository cache:
   A `file://` acquire that the Git version floor refuses does not create the application
   home; a cache hit still reuses a published store without fetching, including against
   an application home the process cannot write.
-  That hit does not open the cache, take a lock, or require the Git floor.
+  That hit does not open the cache or require the Git floor.
   A miss against that home fails instead of fetching.
   A future layout is still refused before any write.
+  A successful acquire or cache hit may record `last_opened_at` on the source; a
+  read-only home, full disk, or contended lock drops that write and still returns the
+  published alias.
 
 ## 0.10.0
 

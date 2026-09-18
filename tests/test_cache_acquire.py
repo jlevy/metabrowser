@@ -18,10 +18,13 @@ from metabrowser.cache.acquire import (
     acquire_file_source,
     acquire_into_staging,
 )
+from metabrowser.cache.atomic import read_record
 from metabrowser.cache.identity import source_identity
 from metabrowser.cache.layout import FutureLayoutFormatError
-from metabrowser.cache.locks import LockKind, held_locks
+from metabrowser.cache.locks import LockBusyError, LockKind, held_locks
+from metabrowser.cache.paths import source_record
 from metabrowser.cache.reclaim import sweep_staging_and_trash
+from metabrowser.cache.records import REPOSITORY_SOURCE_STATE_CONTRACT_ID, RepositorySourceState
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.git.process import (
     _REPO_PINNING_GIT_VARS,
@@ -31,6 +34,21 @@ from metabrowser.git.process import (
     detect_git_version,
 )
 from metabrowser.home import PrivateStorageError
+
+
+def _last_opened_at(home: Path, slug: str) -> str | None:
+    try:
+        record = read_record(
+            home,
+            source_record(slug, "state.yml"),
+            REPOSITORY_SOURCE_STATE_CONTRACT_ID,
+            shared="keep",
+        )
+    except FileNotFoundError:
+        return None
+    assert isinstance(record, RepositorySourceState)
+    return record.last_opened_at
+
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
 skip_as_root = pytest.mark.skipif(
@@ -387,3 +405,82 @@ def test_a_future_home_is_refused_before_opening_the_cache_for_write(
     monkeypatch.setattr(acquire_module, "open_cache", refuse_write)
     with pytest.raises(FutureLayoutFormatError, match="Upgrade Metabrowser"):
         asyncio.run(acquire_file_source(source, home=home))
+
+
+@posix_only
+def test_a_writable_cache_hit_records_last_opened_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    source = _file_source(origin)
+    first = asyncio.run(acquire_file_source(source, home=home))
+    opened = _last_opened_at(home, first.slug)
+    assert opened is not None
+    second = asyncio.run(acquire_file_source(source, home=home))
+    later = _last_opened_at(home, second.slug)
+    assert later is not None
+    assert later >= opened
+
+
+@posix_only
+@skip_as_root
+def test_a_read_only_hit_keeps_the_published_last_opened_at(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    source = _file_source(origin)
+    first = asyncio.run(acquire_file_source(source, home=home))
+    opened = _last_opened_at(home, first.slug)
+    _remove_owner_write(home)
+    try:
+        second = asyncio.run(acquire_file_source(source, home=home))
+        assert second.store_id == first.store_id
+        assert _last_opened_at(home, second.slug) == opened
+    finally:
+        _restore_owner_write(home)
+
+
+@posix_only
+def test_a_dropped_last_opened_at_write_does_not_fail_the_hit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    source = _file_source(origin)
+    first = asyncio.run(acquire_file_source(source, home=home))
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(acquire_module, "write_record_atomic", refuse)
+
+    def refuse_write(home_path: Path | None = None, *, version: str | None = None) -> object:
+        raise AssertionError("a cache hit must not open the home for write")
+
+    monkeypatch.setattr(acquire_module, "open_cache", refuse_write)
+    second = asyncio.run(acquire_file_source(source, home=home))
+    assert second.store_id == first.store_id
+    assert second.slug == first.slug
+
+
+@posix_only
+def test_a_contended_alias_lock_does_not_fail_the_hit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    source = _file_source(origin)
+    first = asyncio.run(acquire_file_source(source, home=home))
+
+    def busy(*_args: object, **_kwargs: object) -> object:
+        raise LockBusyError(LockKind.SOURCE_ALIAS, first.slug)
+
+    monkeypatch.setattr(acquire_module, "source_alias_lock", busy)
+    second = asyncio.run(acquire_file_source(source, home=home))
+    assert second.store_id == first.store_id

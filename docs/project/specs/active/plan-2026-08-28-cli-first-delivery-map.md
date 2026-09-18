@@ -441,8 +441,9 @@ A live `metab file:// --no-serve` tryscript cannot run on ubuntu-latest today: t
 runner’s Git 2.43.0 is below the acquisition floor (2.43.7 / patched tracks), and
 distro-patched Git remains refuse.
 Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep / orphan-store
-reclaim / read-only cache hit evidence is `tests/test_cli_cache_acquire_golden.py`: the
-production CLI in-process, the floor monkeypatched, a real pack fetch.
+reclaim / read-only cache hit / last-opened-at evidence is
+`tests/test_cli_cache_acquire_golden.py`: the production CLI in-process, the floor
+monkeypatched, a real pack fetch.
 Layout and future-format refusal remain `cli-api-cache.tryscript.md`. Do not add
 `<HOME>` or `<MTIME>` to `normalize.py` until a transcript emits those values; cache
 routes never report paths, and `--no-serve` does not print the home.

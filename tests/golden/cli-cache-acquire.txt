@@ -67,7 +67,9 @@ status: 200
         "generation": 1,
         "updated_at": "<TIME>"
       },
-      "state": null,
+      "state": {
+        "last_opened_at": "<TIME>"
+      },
       "problems": []
     }
   ],

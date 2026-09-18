@@ -9,6 +9,7 @@ https and ssh stay closed. A bare path never reaches here.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 import shutil
@@ -44,10 +45,12 @@ from metabrowser.cache.paths import (
 )
 from metabrowser.cache.records import (
     REPOSITORY_SOURCE_CONTRACT_ID,
+    REPOSITORY_SOURCE_STATE_CONTRACT_ID,
     REPOSITORY_STORE_ALIAS_CONTRACT_ID,
     REPOSITORY_STORE_CONTRACT_ID,
     REPOSITORY_STORE_STATE_CONTRACT_ID,
     RepositorySource,
+    RepositorySourceState,
     RepositoryStore,
     RepositoryStoreAlias,
     RepositoryStoreState,
@@ -65,6 +68,8 @@ from metabrowser.git.process import (
     run_git,
 )
 from metabrowser.home import PrivateStorageError, SharedEntryPolicy, ensure_private_directory
+
+log = logging.getLogger(__name__)
 
 _PROTOCOL: Final[tuple[str, ...]] = (
     "-c",
@@ -360,6 +365,21 @@ class PublishedSource:
 
 def _canonical_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _touch_last_opened(published: PublishedSource) -> None:
+    """Best-effort recency. A failed write must not fail the open."""
+
+    try:
+        with source_alias_lock(published.home, published.slug, blocking=False):
+            write_record_atomic(
+                published.home,
+                source_record(published.slug, "state.yml"),
+                RepositorySourceState(last_opened_at=_canonical_now()),
+                REPOSITORY_SOURCE_STATE_CONTRACT_ID,
+            )
+    except (LockBusyError, PrivateStorageError, OSError):
+        log.debug("dropped last_opened_at; the cache hit still succeeded", exc_info=True)
 
 
 def _source_id_for_slug(
@@ -682,10 +702,11 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
 async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSource:
     """Return a published ``file://`` source, fetching only on a cache miss.
 
-    A hit inspects an existing home without fetching or writing, so it does not
-    require the acquisition Git floor or owner-write on the home. A miss still
-    opens the cache (sweep, reclaim) and then fetches. A future layout is
-    refused before any write.
+    A hit inspects an existing home without fetching or opening the cache, so it
+    does not require the acquisition Git floor or owner-write on the home. It may
+    try to record ``last_opened_at``; a failed write is dropped and the hit still
+    returns. A miss still opens the cache (sweep, reclaim) and then fetches. A
+    future layout is refused before any write.
     """
 
     if source.transport != "file":
@@ -701,14 +722,17 @@ async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSour
         if layout is not None:
             found = _find_published(source, home)
             if found is not None:
+                _touch_last_opened(found)
                 return found
         cache = open_cache(home)
         home = cache.home
         found = _find_published(source, home)
         if found is not None:
+            _touch_last_opened(found)
             return found
-    staged = await acquire_into_staging(source, home=home)
-    return publish_from_staging(staged)
+    published = publish_from_staging(await acquire_into_staging(source, home=home))
+    _touch_last_opened(published)
+    return published
 
 
 __all__ = [
