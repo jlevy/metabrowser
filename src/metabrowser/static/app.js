@@ -5417,7 +5417,11 @@ function renderFolderHeader(data) {
   var segments = path ? path.split("/") : [];
   var parent = segments.length > 0 ? segments.slice(0, -1).join("/") : null;
   var parentLabel =
-    parent === null ? "" : parent === "" ? "/" : `${segments[segments.length - 2]}/`;
+    parent === null
+      ? ""
+      : parent === ""
+        ? "/"
+        : `${window.MetabrowserNavigationRoute.displayPath(segments[segments.length - 2])}/`;
   var upButton =
     parent === null
       ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'

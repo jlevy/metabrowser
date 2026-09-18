@@ -12,6 +12,7 @@ shared cat-file pool), KPress blob renders, patch-file containers, binary byte c
 extension plugin kinds, structured parsed, and agent-log JSONL. Markdown and wiki links
 on a pin resolve to `GitPath` wires.
 A Git tree folder with a README mounts Overview.
+SPA path chrome decodes GitPath wires to display names.
 LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
 disabled. Serving acquired Git remains later.
 See
@@ -275,7 +276,8 @@ A direct-child README blob sets `readme_path` to its GitPath wire and mounts Ove
 treemap stays unmounted.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
-KPress `source_path` on a pin is that wire.
+SPA path chrome and copy-path decode those wires to display names; navigation identities
+stay wires. KPress `source_path` on a pin is that wire.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an
