@@ -96,6 +96,9 @@ Content source:
   is a lossless byte-segment identity, `GitTreeSource` lists NUL-framed trees and reads
   size-gated blobs through exclusive `cat-file --batch-command` actors, and missing or
   oversized objects fail before an unbounded body read.
+  `lease_revision` holds that store’s shared maintenance lock for a live subject and
+  writes a durable `refs/metabrowser/subjects/<oid>` ref so the commit stays reachable
+  after the process exits; two processes can lease different OIDs in one store.
   File, raw, and inventory routes are not switched onto that subject yet, and acquired
   Git is still not served.
 
