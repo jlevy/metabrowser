@@ -162,6 +162,9 @@ Content source:
   Git `/api/file` markdown envelopes include parsed YAML `frontmatter` and
   `frontmatter_error` the way filesystem envelopes do; KPress on a pin uses that parse
   rather than an empty mapping.
+  Git text envelopes use the same first-window and highlight bound as filesystem
+  listings (`bytes_read`, `content_preview_limit`, `content_max_preview_limit`,
+  `highlight_disabled`) so Load more and `fetchText` can continue a truncated pin.
   `/api/stream` still returns `unsupported_for_subject` rather than the lifespan
   filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.

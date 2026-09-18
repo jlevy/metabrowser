@@ -27,6 +27,9 @@ compressed identity because blobs are stored bytes with no gzip smudge.
 Markdown blob envelopes include parsed YAML ``frontmatter`` and
 ``frontmatter_error`` the way filesystem ``/api/file`` does; KPress on a pin
 uses that parse rather than an empty mapping.
+Text blobs use the same first-window and highlight bound as filesystem
+listings, and advertise ``bytes_read`` plus preview limits so Load more and
+``fetchText`` can continue a truncated Git envelope.
 ``logical_ext`` is only the inner extension of a compressed name.
 ``include_ignored=0`` is a no-op because ignore is absent.
 The SPA hides Modified within because recency still has no honest mtime.
@@ -65,7 +68,11 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from metabrowser import kpress_adapter
 from metabrowser.content_sniff import ContentClass, classify_prefix
-from metabrowser.file_extensions import BROWSER_IMAGE_EXTS, BROWSER_TEXT_EXTS
+from metabrowser.file_extensions import (
+    BROWSER_IMAGE_EXTS,
+    BROWSER_TEXT_EXTS,
+    syntax_language_for_path,
+)
 from metabrowser.file_kinds import classify_by_ext
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.file_type_registry import load_file_type_registry
@@ -88,6 +95,7 @@ from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
     INVENTORY_MAX_FILES,
+    SYNTAX_HIGHLIGHT_MAX_BYTES,
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
 )
@@ -537,6 +545,39 @@ def _query_int(request: Request, name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _git_text_preview_fields(
+    request: Request, entry: GitTreeEntry, ext: str, body: bytes
+) -> dict[str, Any]:
+    """Bounded text window matching filesystem /api/file preview policy."""
+
+    offset = max(0, _query_int(request, "offset", 0))
+    default_limit = TEXT_PREVIEW_CHUNK_BYTES
+    if (
+        offset == 0
+        and syntax_language_for_path(_display_basename(entry.path), ext)
+        and SYNTAX_HIGHLIGHT_MAX_BYTES > 0
+    ):
+        default_limit = min(default_limit, SYNTAX_HIGHLIGHT_MAX_BYTES)
+    limit = max(
+        1,
+        min(_query_int(request, "limit", default_limit), TEXT_PREVIEW_REQUEST_MAX_BYTES),
+    )
+    window = body[offset : offset + limit]
+    bytes_read = len(window)
+    return {
+        "content": window.decode("utf-8", "replace"),
+        "content_offset": offset,
+        "content_bytes": bytes_read,
+        "bytes_read": bytes_read,
+        "content_truncated": offset + bytes_read < len(body),
+        "content_preview_limit": limit,
+        "content_max_preview_limit": TEXT_PREVIEW_REQUEST_MAX_BYTES,
+        "highlight_disabled": (
+            SYNTAX_HIGHLIGHT_MAX_BYTES <= 0 or bytes_read > SYNTAX_HIGHLIGHT_MAX_BYTES
+        ),
+    }
 
 
 def _blob_too_large_payload(exc: GitBlobTooLargeError) -> dict[str, Any]:
@@ -1131,12 +1172,6 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
             }
         )
         return payload
-    offset = max(0, _query_int(request, "offset", 0))
-    limit = max(
-        1,
-        min(_query_int(request, "limit", TEXT_PREVIEW_CHUNK_BYTES), TEXT_PREVIEW_REQUEST_MAX_BYTES),
-    )
-    window = body[offset : offset + limit]
     json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, body)
     kind = _plugin_kind_for_git_path(
         entry.path,
@@ -1149,10 +1184,7 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
             "type": "text",
             "kind": kind,
             "views": _views_for_kind(kind),
-            "content": window.decode("utf-8", "replace"),
-            "content_offset": offset,
-            "content_bytes": len(window),
-            "content_truncated": offset + len(window) < len(body),
+            **_git_text_preview_fields(request, entry, ext, body),
             **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
         }
     )
