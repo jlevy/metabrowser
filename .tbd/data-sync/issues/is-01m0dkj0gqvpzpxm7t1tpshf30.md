@@ -5,7 +5,7 @@ title: "Repository projection: immutable Git-tree source over a shared object st
 kind: feature
 status: in_progress
 priority: 1
-version: 44
+version: 45
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -21,15 +21,15 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-19T18:11:56.054Z
-updated_at: 2026-09-18T08:24:13.925Z
+updated_at: 2026-09-18T08:31:20.300Z
 started_at: 2026-09-16T21:10:44.836Z
 ---
 Implement GitRevisionSubject and GitTreeSource over a shared RepositoryStoreTarget and an opaque SourceSession. Define byte-segment GitPath identity and URL/display serialization; enumerate NUL-framed trees with stable byte ordering; read blobs through exclusive actor-style cat-file batch readers that issue info before contents, enforce size gates, drain frames, and poison/restart on cancellation or framing failure. Migrate history, repo discovery, commit detail, refs, diffs, file/raw/container/classification/KPress routes, and built-in sidekicks to exact target plus subject OID semantics. Protect live OIDs with cross-process shared maintenance locks and durable private refs; GC/repack takes the exclusive lock. Add crash/stale-lock recovery, promisor-miss, oversized-blob, invalid-UTF8/newline-name, and two-process/two-OID tests. Never create a checkout, index, branch, worktree, or fake filesystem fact.
 
 ## Notes
 
-Eighteenth z335 slice: SPA tree projection on /api/tree (nav-tree, stacked on #173 as #174). Git-native entries stay; tree is dir/file/symlink with GitPath wires, lazy children for Git trees, gitlinks as files, no invented mtimes/sizes/ignore.
+Nineteenth z335 slice: Git tree /api/file envelope is SPA folder chrome (folder-chrome, stacked on #174 as #175). git_kind stays tree; views empty; no invented dir aggregates. Gitlinks stay non-folders.
 
-Shipped through this slice: GitPath+tree (#157), lease_revision (#158), shared reader pool (#159), GitLocation collection (#160), file/raw/tree (#161), exclusive gc/repack (#162), diffs (#163), KPress (#164), patch containers (#165), binary chunks (#166), structured parsed (#167), agent-log JSONL (#168), content-key classification (#169), GitDiffSource.content pool (#170), inventory refuse (#171), LFS pointer + promisor miss (#172), /view/ GitPath (#173), SPA tree projection (this PR).
+Shipped through this slice: GitPath+tree (#157), lease_revision (#158), shared reader pool (#159), GitLocation collection (#160), file/raw/tree (#161), exclusive gc/repack (#162), diffs (#163), KPress (#164), patch containers (#165), binary chunks (#166), structured parsed (#167), agent-log JSONL (#168), content-key classification (#169), GitDiffSource.content pool (#170), inventory refuse (#171), LFS pointer + promisor miss (#172), /view/ GitPath (#173), SPA tree projection (#174), folder chrome (this PR).
 
-Still later: inventory open (needs a distinct immutable-tree index), archive containers (mb-380k), serving acquired Git (mb-ew38), folder /api/file kind=folder chrome, Markdown wiki links to GitPath wires, CLI --show of a Git pin. Do not close until review.
+Still later: inventory open (needs a distinct immutable-tree index), archive containers (mb-380k), serving acquired Git (mb-ew38), folder overview/treemap on a pin, Markdown wiki links to GitPath wires, CLI --show of a Git pin. Do not close until review.
