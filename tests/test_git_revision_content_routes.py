@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, and structured parsed honor GitPath on a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, and agent-log honor GitPath on a pin."""
 
 from __future__ import annotations
 
@@ -86,6 +86,12 @@ def _build_store(tmp_path: Path) -> tuple[Path, str]:
     _git(work, "init", "-q", "-b", "main")
     (work / "README.md").write_text("hello\n", encoding="utf-8")
     (work / "config.json").write_text('{"name": "pin", "count": 2}\n', encoding="utf-8")
+    (work / "session.jsonl").write_text(
+        '{"type":"system","subtype":"init","model":"claude-opus-4-20250514"}\n'
+        '{"type":"assistant","message":{"role":"assistant",'
+        '"content":[{"type":"text","text":"hello"}]}}\n',
+        encoding="utf-8",
+    )
     (work / "docs").mkdir()
     (work / "docs" / "note.txt").write_text("nested\n", encoding="utf-8")
     (work / "change.patch").write_text(
@@ -174,6 +180,7 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             assert names >= {
                 "README.md",
                 "config.json",
+                "session.jsonl",
                 "docs",
                 "100%.html",
                 "link",
@@ -533,5 +540,55 @@ def test_git_structured_parsed_and_plugin_kind_by_extension(tmp_path: Path) -> N
             assert any(view["id"] == "diff" for view in patch_body["views"])
             assert "mtime" not in patch_body
             assert str(store) not in patch_file.text
+
+    asyncio.run(_run())
+
+
+def test_git_agent_log_charts_and_adapter_kind(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            log_wire = _wire(b"session.jsonl")
+            envelope = await client.get("/api/file", params={"path": log_wire})
+            assert envelope.status_code == 200
+            body = envelope.json()
+            assert body["subject"] == "git_revision"
+            assert body["type"] == "jsonl"
+            assert body["kind"] == "agent-log"
+            assert body["summary"]["adapter"] == "claude"
+            assert body["events"]
+            assert "mtime" not in body
+            assert "mtime_hash" not in body
+            assert str(store) not in envelope.text
+            assert any(view["id"] == "charts" for view in body["views"])
+
+            charts = await client.get(
+                "/api/plugin/agent-log/charts",
+                params={"path": log_wire},
+            )
+            assert charts.status_code == 200
+            charts_body = charts.json()
+            assert charts_body["summary"]["metadata"]["adapter"] == "claude"
+            assert str(store) not in charts.text
+
+            relative = await client.get(
+                "/api/plugin/agent-log/charts",
+                params={"path": "session.jsonl"},
+            )
+            assert relative.status_code == 404
+
+            unsupported = await client.get(
+                "/api/plugin/agent-log/charts",
+                params={"path": _wire(b"README.md")},
+            )
+            assert unsupported.status_code == 400
+            assert unsupported.json()["error"] == "Not a JSONL file"
+
+            missing = await client.get(
+                "/api/plugin/agent-log/charts",
+                params={"path": _wire(b"absent.jsonl")},
+            )
+            assert missing.status_code == 404
 
     asyncio.run(_run())

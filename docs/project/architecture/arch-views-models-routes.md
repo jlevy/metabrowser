@@ -23,7 +23,8 @@ selected     can do              data                 is drawn
   See [Browser URL Grammar](../../architecture.md#browser-url-grammar).
 - **Resource kind** is the semantic classification a plugin claims.
   Filesystem `[[kind]]` blocks use `FileContext` (including content predicates).
-  Git blobs use extension and basename identity only.
+  Git blobs use extension, basename, and sniffed adapter identity; frontmatter and
+  content-key predicates stay filesystem-only.
   Planned `ResourceKindSpec` declarations cover route-backed resources without
   fabricating a file matcher.
   One kind, many views.
@@ -155,7 +156,7 @@ reservation and its invariants, is in
 
 | Route | Serves |
 | --- | --- |
-| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window. A `GitRevisionSubject` uses `GitPath` wire identities and Git object facts; it does not invent mtime or ignore state. Blob kinds use extension and basename plugin rules. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path |
+| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window. A `GitRevisionSubject` uses `GitPath` wire identities and Git object facts; it does not invent mtime or ignore state. Blob kinds use extension, basename, and sniffed adapter plugin rules. A Git `.jsonl` blob is a parsed JSONL envelope. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path |
 | `/api/tree` | Navigation subtrees. `types` and `min_size` work for every source that supplies them; Git tree listings have no ls-tree sizes, so `min_size` returns `unsupported_for_subject`. `recency` and `include_ignored` require those declared source capabilities and otherwise return `unsupported_for_subject` |
 | `/api/rollup` | Bounded directory rollups over the facts the active source truthfully supplies; a requested unavailable dimension returns `unsupported_for_subject` |
 | `/api/recent` | Flat newest-first matching leaves for sources with recency; unavailable for immutable Git trees rather than populated with fake mtimes |
@@ -163,7 +164,7 @@ reservation and its invariants, is in
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
 | `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache: layout and config formats, reclamation outcomes, source identity with alias generation and publication, and store records with the aliases that name them. They resolve `METABROWSER_HOME` per request without creating it, read without locks and without repairing a shared entry, page in key order, and never report a cache path, pack file, or Git internal. Wire shapes are in `cache/wire.py` |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export. On a `GitRevisionSubject`, render reads a `GitPath` blob and uses the object id as the cache key; export stays mutation-gated and unavailable |
-| `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`). On a `GitRevisionSubject`, diff document/children, binary chunk, and structured parsed honor `GitPath`; agent-log still requires a filesystem subject |
+| `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`). On a `GitRevisionSubject`, diff document/children, binary chunk, structured parsed, and agent-log charts honor `GitPath` |
 | A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
 | `/raw` | Bounded raw bytes through the active source’s content reader; oversized content is refused before an unbounded object read. A Git subject reads blobs by `GitPath` and does not follow symlinks |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
@@ -172,8 +173,8 @@ reservation and its invariants, is in
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`. On a
 `GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation`; patch
-`document`/`children`, `binary/chunk`, and `structured/parsed` honor `GitPath`.
-`agent-log/charts` stays filesystem-only.
+`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
+`GitPath`.
 
 The hosted-review slice registers these exact proposed resource routes with the browser
 address in the same implementation changes:

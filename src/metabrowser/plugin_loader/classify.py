@@ -18,7 +18,8 @@ adapter sniff (for JSONL), and a lazily-loaded YAML frontmatter dict.
 The wrapper is shared with the imperative fallback detector chain in
 ``file_kinds.py``.
 Declarative manifest rules are the supported plugin classification surface.
-``classify_identity`` is the Git-blob subset: extension and basename only.
+``classify_identity`` is the Git-blob subset: extension, basename, and an
+optional sniffed adapter.
 """
 
 from __future__ import annotations
@@ -234,7 +235,6 @@ def _match_one(rule: KindMatch, ctx: FileContext) -> bool:
 
 
 _IDENTITY_ONLY_SKIP_FIELDS: tuple[str, ...] = (
-    "adapter",
     "frontmatter_has_key",
     "frontmatter_schema_prefix",
     "json_has_key",
@@ -250,12 +250,14 @@ def classify_identity(
     *,
     ext: str,
     basename: str,
+    adapter: str | None = None,
 ) -> str | None:
-    """Match plugin kinds that need only an extension or basename.
+    """Match plugin kinds that need only an extension, basename, or adapter.
 
-    Rules that read file bytes, frontmatter, adapters, or a served-root glob
-    are skipped: a Git blob has no host path, and those predicates stay on
-    the filesystem classifier.
+    Rules that read file bytes, frontmatter, or a served-root glob are skipped:
+    a Git blob has no host path, and those predicates stay on the filesystem
+    classifier. Adapter rules match only when *adapter* was sniffed from blob
+    bytes.
     """
 
     for compiled in sorted(rules, key=lambda item: item.sort_key):
@@ -270,11 +272,14 @@ def classify_identity(
             continue
         if match.folder_marker is not None and basename != match.folder_marker:
             continue
+        if match.adapter is not None and adapter != match.adapter:
+            continue
         if (
             match.ext is None
             and match.exts is None
             and match.basename is None
             and match.folder_marker is None
+            and match.adapter is None
         ):
             continue
         return compiled.rule.id

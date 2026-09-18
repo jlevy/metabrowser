@@ -7,8 +7,8 @@ The hosted-review format and GitHub provider layer are designed only; see
 Worktree-free repository stores and immutable revision subjects are implemented for tree
 reads, Git collection routes, `GitPath` file/raw/tree routes, revision comparison
 through `GitDiffSource`, KPress blob renders, patch-file containers, binary byte chunks,
-extension plugin kinds, and structured parsed; serving acquired Git remains later.
-See
+extension plugin kinds, structured parsed, and agent-log JSONL; serving acquired Git
+remains later. See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
@@ -247,10 +247,11 @@ display text; it never becomes a host filesystem path.
 A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path, not
 another tree segment.
 `/api/plugin/binary/chunk` slices one blob by that identity and keys the window on the
-object id.
-Git blobs classify by extension and basename plugin rules, not Path or content
-predicates. `/api/plugin/structured/parsed` reads one blob by that identity and keys the
-parse on the object id.
+object id. Git blobs classify by extension, basename, and sniffed adapter plugin rules,
+not Path or content-key predicates.
+`/api/plugin/structured/parsed` reads one blob by that identity and keys the parse on
+the object id. `/api/file` for a `.jsonl` blob is a parsed JSONL envelope;
+`/api/plugin/agent-log/charts` reads that blob by the same identity.
 Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
 remain ordinary blobs.
 
