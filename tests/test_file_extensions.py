@@ -56,6 +56,7 @@ def test_client_settings_export_the_syntax_registry_and_bound() -> None:
     assert settings["SYNTAX_LANGUAGE_BY_EXTENSION"] == dict(SYNTAX_LANGUAGE_BY_EXTENSION)
     assert settings["SYNTAX_HIGHLIGHT_MAX_BYTES"] > 0
     assert client_settings_dict(syntax_highlight_max_bytes=7)["SYNTAX_HIGHLIGHT_MAX_BYTES"] == 7
+    assert settings["CAPABILITIES"] == {"active_content": True, "mutations": False}
 
 
 def test_browser_trackable_excludes_gz() -> None:

@@ -71,6 +71,7 @@ from starlette.staticfiles import StaticFiles
 from strif import file_mtime_hash
 
 from metabrowser import __version__, kpress_adapter
+from metabrowser.capabilities import get_capabilities, raw_sandbox_csp
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.build_version import display_version_line
@@ -3098,7 +3099,6 @@ def _accepts_gzip(accept_encoding: str) -> bool:
 
 
 _RAW_STREAM_CHUNK = 64 * 1024
-_RAW_CSP_SANDBOX = "sandbox allow-scripts allow-popups allow-forms allow-downloads"
 
 
 def _with_raw_trust_headers(response: Response) -> Response:
@@ -3109,9 +3109,12 @@ def _with_raw_trust_headers(response: Response) -> Response:
     platform MIME guess. ``frame-ancestors`` is omitted: inside a
     sandboxed page the ancestor origin is opaque and would never match
     ``'self'``, which would break nested iframes and framesets.
+    ``allow-scripts`` is present only while ``active_content`` is on.
     """
 
-    response.headers["Content-Security-Policy"] = _RAW_CSP_SANDBOX
+    response.headers["Content-Security-Policy"] = raw_sandbox_csp(
+        active_content=get_capabilities().active_content
+    )
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 

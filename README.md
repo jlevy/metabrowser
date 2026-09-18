@@ -242,6 +242,9 @@ The server binds to `127.0.0.1:8411` by default and walks a bounded port range i
 port is occupied.
 Do not change `--host` to expose a served root to an untrusted network;
 see the [security policy](SECURITY.md).
+`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
+disables script execution on `/raw` and keeps mutations off.
+`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch for scripts.
 For a stable diagnostic transcript of tree loading, Live filtering, and clearing the
 filter, see [real-time debugging](docs/realtime-debugging.md).
 

@@ -69,6 +69,8 @@ page still load: the opaque ancestor origin would never match `'self'`. `/raw` i
 behind the API origin check, because stylesheets and images must remain loadable as
 subresources; a previewed page can still probe file existence through load and error
 events, but cannot read those bytes.
+When active content is off, the sandbox omits `allow-scripts` so a direct `/raw` link
+still renders markup and loads subresources, but executes nothing.
 
 `/api` routes require same-origin proof.
 The server accepts `Sec-Fetch-Site: same-origin` or an `Origin` header matching the
@@ -79,9 +81,20 @@ cross-site form or `text/plain` POST cannot reach a write path such as
 `POST /api/kpress/export`. The Host allowlist still stops DNS rebinding; the origin
 check stops fire-and-forget invocation.
 
-An `--untrusted` profile that disables active content entirely is not yet implemented.
-Until it is, sandboxed scripts can still run, phone home, and use `/raw` as an existence
-oracle. The
+`--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
+disables active content and keeps mutations off.
+`--no-active-content` (`METAB_ACTIVE_CONTENT=0`) is the individual switch that drops
+`allow-scripts` from the raw sandbox.
+`--allow-edits` (`METAB_ALLOW_EDITS=1`) publishes `mutations: true`; no write route
+consumes that flag yet.
+Individual flags override the profile.
+The resolved block is on `window.METABROWSER_SETTINGS.CAPABILITIES` and
+`GET /api/capabilities`; the server is authoritative.
+
+By default, sandboxed scripts can still run, phone home, and use `/raw` as an existence
+oracle. `--untrusted` stops script execution on content surfaces.
+HTML preview UI is not yet implemented; `/raw` remains the content-execution surface.
+The
 [HTML rendering and trust model plan](docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 owns that remaining work.
 The governing invariant it introduces: content viewed through Metabrowser gets exactly

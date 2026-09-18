@@ -88,6 +88,10 @@ status: 200
   "events": {
     "stream": "live",
     "reason": "[..]"
+  },
+  "capabilities": {
+    "active_content": true,
+    "mutations": false
   }
 }
 ? 0

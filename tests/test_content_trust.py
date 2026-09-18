@@ -161,3 +161,18 @@ def test_state_changing_api_requires_json_content_type(tmp_path: Path) -> None:
     assert json_ok.status_code not in {403, 415}
     assert not form_dest.exists()
     assert not plain_dest.exists()
+
+
+def test_raw_drops_allow_scripts_when_active_content_is_off(tmp_path: Path) -> None:
+    from metabrowser.capabilities import Capabilities, set_capabilities
+
+    _write_html_tree(tmp_path)
+    server._set_root_dir(tmp_path)
+    set_capabilities(Capabilities(active_content=False, mutations=False))
+    with TestClient(app) as client:
+        resp = client.get("/raw", params={"path": "page.html"})
+    assert resp.status_code == 200
+    csp = resp.headers["content-security-policy"]
+    assert csp == "sandbox allow-popups allow-forms allow-downloads"
+    assert "allow-scripts" not in csp
+    assert resp.headers["x-content-type-options"] == "nosniff"

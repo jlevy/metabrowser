@@ -9,6 +9,7 @@ to the selected mode are usage errors (exit 2).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -83,6 +84,9 @@ def test_cli_help_shows_modes_and_examples() -> None:
     assert "--version" in output
     assert "metab ." in compact_output
     assert "metab --remote example-host --path /srv/shared-files" in compact_output
+    assert "--untrusted" in output
+    assert "--no-active-content" in output
+    assert "--allow-edits" in output
 
 
 def test_cli_version_uses_the_shared_display_line() -> None:
@@ -126,6 +130,7 @@ def test_cli_mode_flags_are_mutually_exclusive() -> None:
 @pytest.mark.parametrize(
     ("args", "rejected", "mode"),
     [
+        ([".", "--walk", "--untrusted"], "--untrusted", "--walk"),
         ([".", "--walk", "--port", "9000"], "--port", "--walk"),
         ([".", "--walk", "--no-open"], "--no-open", "--walk"),
         ([".", "--format", "json"], "--format", "serve mode"),
@@ -629,6 +634,13 @@ def test_nonserve_api_keeps_kpress_runtime_lazy(tmp_path: Path, monkeypatch) -> 
     assert result.exit_code == 0, result.exception
     assert kpress_adapter._kpress_runtime is sentinel
     prepare.assert_not_called()
+
+
+def test_cli_untrusted_publishes_conservative_capabilities(tmp_path: Path) -> None:
+    result = runner.invoke(_app, [str(tmp_path), "--api", "/api/capabilities", "--untrusted"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output[result.output.index("{") :])
+    assert payload["capabilities"] == {"active_content": False, "mutations": False}
 
 
 def test_serve_reports_sigint_as_exit_130(tmp_path: Path) -> None:

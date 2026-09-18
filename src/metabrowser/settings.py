@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from metabrowser.capabilities import get_capabilities
+
 from metabrowser.file_extensions import (
     SYNTAX_LANGUAGE_BY_BASENAME,
     SYNTAX_LANGUAGE_BY_EXTENSION,
@@ -392,6 +394,7 @@ def client_settings_dict(
         "SYNTAX_LANGUAGE_BY_EXTENSION": dict(SYNTAX_LANGUAGE_BY_EXTENSION),
         "TEXT_PREVIEW_CHUNK_BYTES": TEXT_PREVIEW_CHUNK_BYTES,
         "TEXT_PREVIEW_MAX_CHUNK_BYTES": TEXT_PREVIEW_MAX_CHUNK_BYTES,
+        "CAPABILITIES": get_capabilities().as_wire(),
     }
 
 

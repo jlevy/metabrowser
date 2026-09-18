@@ -20,6 +20,15 @@ Content trust:
   header). State-changing methods require `Content-Type: application/json`, so a
   cross-site form POST cannot reach `POST /api/kpress/export`.
 
+- `--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
+  disables active content and keeps mutations off.
+  `--no-active-content` (`METAB_ACTIVE_CONTENT=0`) drops `allow-scripts` from the `/raw`
+  sandbox; it does not downgrade bodies to `text/plain`. `--allow-edits`
+  (`METAB_ALLOW_EDITS=1`) publishes `mutations: true`; no write route consumes that flag
+  yet. Individual flags override the profile.
+  The resolved block is on `GET /api/capabilities` and
+  `window.METABROWSER_SETTINGS.CAPABILITIES`.
+
 ## 0.10.0
 
 Plugin SDK:
