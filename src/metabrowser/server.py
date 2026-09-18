@@ -71,10 +71,10 @@ from starlette.staticfiles import StaticFiles
 from strif import file_mtime_hash
 
 from metabrowser import __version__, kpress_adapter
-from metabrowser.capabilities import get_capabilities, raw_sandbox_csp
 from metabrowser.active_tracker import activity_snapshot
 from metabrowser.activity import ACTIVITY_POLL_INTERVAL_MS
 from metabrowser.build_version import display_version_line
+from metabrowser.capabilities import get_capabilities, raw_sandbox_csp
 
 # Cache invalidator: clear_charts_cache is invoked by the root-change
 # handler so chart memos don't stick across served-root swaps.

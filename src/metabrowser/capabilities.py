@@ -105,9 +105,7 @@ def resolve_capabilities(
     mutations = False
 
     env_active = env_bool("METAB_ACTIVE_CONTENT")
-    if no_active_content:
-        active_content = False
-    elif env_active is False:
+    if no_active_content or env_active is False:
         active_content = False
     elif env_active is True:
         active_content = True

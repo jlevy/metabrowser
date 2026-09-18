@@ -20,7 +20,6 @@ from __future__ import annotations
 from typing import Any
 
 from metabrowser.capabilities import get_capabilities
-
 from metabrowser.file_extensions import (
     SYNTAX_LANGUAGE_BY_BASENAME,
     SYNTAX_LANGUAGE_BY_EXTENSION,
