@@ -1011,7 +1011,7 @@ def test_git_index_status_is_complete_without_mtime_or_watcher(tmp_path: Path) -
     asyncio.run(_run())
 
 
-def test_git_tree_exposes_extension_tallies_without_ignored_or_mtime(tmp_path: Path) -> None:
+def test_git_tree_exposes_filter_tallies_without_ignored_or_mtime(tmp_path: Path) -> None:
     store, commit = _build_store(tmp_path)
 
     async def _run() -> None:
@@ -1029,6 +1029,19 @@ def test_git_tree_exposes_extension_tallies_without_ignored_or_mtime(tmp_path: P
             assert rows[".json"] == (1, 0)
             assert rows[".txt"] == (1, 0)
             assert "" not in rows
+            canonical = {row[0]: (row[1], row[2]) for row in body["canonical_extensions"]}
+            assert canonical[".md"] == (1, 0)
+            assert canonical[".bin"] == (2, 0)
+            families = {row[0]: (row[1], row[2]) for row in body["type_families"]}
+            assert families["markdown"] == (1, 0)
+            assert families["json"] == (1, 0)
+            assert families["html"] == (1, 0)
+            presets = {row[0]: (row[1], row[2]) for row in body["type_presets"]}
+            assert presets["code"] == (1, 0)
+            assert presets["docs"] == (2, 0)
+            assert presets["data"] == (1, 0)
+            assert presets["archives"] == (0, 0)
+            assert presets["media"] == (0, 0)
             assert str(store) not in tree.text
 
             docs = await client.get("/api/tree", params={"path": _wire(b"docs")})
@@ -1036,6 +1049,7 @@ def test_git_tree_exposes_extension_tallies_without_ignored_or_mtime(tmp_path: P
             docs_body = docs.json()
             assert docs_body["tally_cache_status"] == "done"
             assert {row[0]: (row[1], row[2]) for row in docs_body["extensions"]} == rows
+            assert {row[0]: (row[1], row[2]) for row in docs_body["type_presets"]} == presets
             assert str(store) not in docs.text
 
     asyncio.run(_run())

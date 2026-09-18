@@ -117,10 +117,11 @@ rather than a filesystem mtime.
 lists recursive blob names and is complete at once.
 `/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
 complete-at-once index without a watcher or invented mtime.
-`/api/tree` carries whole-tree `extensions` rows and `tally_cache_status` from that
-index. The JSONL stream still returns `unsupported_for_subject` instead of the lifespan
-folder. `/api/rollup` on a pin answers from recursive blob names and sizes and omits
-mtime. A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
+`/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
+and `type_presets` rows and `tally_cache_status` from that index.
+The JSONL stream still returns `unsupported_for_subject` instead of the lifespan folder.
+`/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
+A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
 promisor miss, is `object_unavailable` with lazy fetch disabled.
 `/view/` on a pin accepts a `GitPath` wire (and a patch-file container inner) and
 refuses a filesystem spelling.
