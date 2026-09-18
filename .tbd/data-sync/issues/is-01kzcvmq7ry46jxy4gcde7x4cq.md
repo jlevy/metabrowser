@@ -5,7 +5,7 @@ title: "HTML P1: sandbox /raw responses and require same-origin proof on /api"
 kind: task
 status: in_progress
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels:
@@ -22,7 +22,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.207Z
-updated_at: 2026-09-18T04:04:15.120Z
+updated_at: 2026-09-18T04:09:50.990Z
 started_at: 2026-09-18T04:04:15.120Z
 extensions:
   linear:
@@ -33,4 +33,4 @@ Ship independently of any UI change; both halves of the content/API boundary lan
 
 ## Notes
 
-From the Phase 1A layer review: /api/cache/layout, /api/cache/sources, /api/cache/source/{slug}, and /api/cache/stores (mb-k54c) are the first /api routes returning state from outside the served root. raw_file serves browsed files same-origin with no CSP or sandbox, so an HTML file inside any browsed root can fetch these routes and read every cached repository's clone_url, slug, and store identity. This is latent while the cache is empty; evaluate this gate against a populated cache before Phase 1B-a (mb-h51g) lands acquisition.
+From the layer review: /api/cache/* (mb-k54c) are the first /api routes returning state from outside the served root. raw_file used to serve browsed files same-origin with no CSP, so an HTML file inside any browsed root could fetch those routes. This PR closes both halves on the default branch (not stacked on the unmerged cache PRs): unconditional CSP sandbox+nosniff on every raw_file branch, same-origin proof plus JSON Content-Type on /api in _HostValidationMiddleware. /raw stays reachable as a content surface. Tests: tests/test_content_trust.py and tests/test_raw_passthrough.py. SECURITY.md rewritten to enforced guarantees. Branch: cursor/v011-html-raw-sandbox-bd04. Bead stays open for review; do not merge until CI is green.
