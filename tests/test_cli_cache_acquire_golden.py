@@ -43,7 +43,11 @@ from tests.cache_home_fixture import (
     ORPHAN_STORE_KEY,
     _stage_and_publish_store,
 )
-from tests.test_cache_acquire import _allow_installed_git
+from tests.test_cache_acquire import (
+    _allow_installed_git,
+    _remove_owner_write,
+    _restore_owner_write,
+)
 from tests.test_cli_golden import check_golden
 
 # Pinned by GIT_AUTHOR_DATE / GIT_COMMITTER_DATE and the origin recipe below.
@@ -52,6 +56,9 @@ ORIGIN_REVISION = "8f05aafe23bbeade03ef581868a59e3c944ac5c4"
 ORIGIN_REMOTE_REF = "refs/remotes/origin/topic"
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
+skip_as_root = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root is never denied by modes, so a denial cannot be staged"
+)
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git executable is required")
 
@@ -316,3 +323,29 @@ def test_golden_unreferenced_store_is_reclaimed_on_the_next_acquire(
     )
     assert str(tmp_path) not in rendered
     check_golden("cli-cache-orphan-reclaim.txt", rendered)
+
+
+@posix_only
+@skip_as_root
+def test_golden_cache_hit_against_a_home_without_owner_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate(tmp_path, monkeypatch)
+    origin = _deterministic_origin(tmp_path)
+    url = _file_url(origin)
+    first = _invoke([url, "--no-serve"])
+    _remove_owner_write(home)
+    try:
+        second = _invoke([url, "--no-serve"])
+        assert first.stdout == second.stdout
+        assert ORIGIN_REVISION in second.stdout
+        rendered = "".join(
+            [
+                _block("file://<ORIGIN> --no-serve", first, origin_url=url, api=False),
+                _block("file://<ORIGIN> --no-serve", second, origin_url=url, api=False),
+            ]
+        )
+        assert str(tmp_path) not in rendered
+        check_golden("cli-cache-readonly-hit.txt", rendered)
+    finally:
+        _restore_owner_write(home)
