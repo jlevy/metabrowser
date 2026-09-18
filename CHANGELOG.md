@@ -70,8 +70,9 @@ Repository cache:
   already published for that identity.
   After a blobless fetch, acquisition prefetches the default revision’s blob-mode tree
   entries by object ID; a prefetch failure still publishes with `object_state`
-  converging. A staging entry whose liveness lock is free is swept, and an unreferenced
-  published store is reclaimed.
+  converging. A staging entry whose liveness lock is free is swept on the next cache
+  open. A published store no alias names is reclaimed on that same open; a live store
+  lease skips it. Read routes do not reclaim.
   A `file://` acquire that the Git version floor refuses does not create the application
   home; a cache hit still reuses a published store without fetching.
 

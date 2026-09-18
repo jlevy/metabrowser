@@ -46,7 +46,11 @@ from metabrowser.cache.paths import (
     SOURCES,
 )
 from metabrowser.cache.probe import ProbeReport, probe_application_home
-from metabrowser.cache.reclaim import SweepReport, sweep_staging_and_trash
+from metabrowser.cache.reclaim import (
+    SweepReport,
+    reclaim_unreferenced_stores,
+    sweep_staging_and_trash,
+)
 from metabrowser.cache.records import (
     CACHE_LAYOUT_CONTRACT_ID,
     CONFIG_CONTRACT_ID,
@@ -375,9 +379,9 @@ def open_cache(home: Path | None = None, *, version: str | None = None) -> Cache
     """Prepare the application home for cache use.
 
     Resolves the home when none is given, creates or verifies its owner-only skeleton and
-    ``CACHEDIR.TAG``, probes its locks and publication, migrates its layout, and runs the
-    startup sweep of ``staging/`` and ``trash/``. Ordinary local browsing never calls
-    this.
+    ``CACHEDIR.TAG``, probes its locks and publication, migrates its layout, runs the
+    startup sweep of ``staging/`` and ``trash/``, and reclaims published stores no alias
+    names. Ordinary local browsing never calls this. Read routes do not.
     """
 
     home = application_home() if home is None else home
@@ -386,6 +390,7 @@ def open_cache(home: Path | None = None, *, version: str | None = None) -> Cache
     probe = probe_application_home(home)
     outcome = migrate_layout(home, version=version)
     sweep = sweep_staging_and_trash(home)
+    reclaim_unreferenced_stores(home)
     return CacheHome(home, outcome.layout, outcome.config, probe, sweep)
 
 
