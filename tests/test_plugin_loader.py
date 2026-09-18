@@ -35,6 +35,7 @@ from metabrowser.plugin_loader.classify import (
     collect_folder_markers,
     frontmatter_from_bytes,
     json_mapping_from_bytes,
+    parse_frontmatter_bytes,
     yaml_mapping_from_bytes,
 )
 from metabrowser.plugin_loader.discovery import (
@@ -567,6 +568,13 @@ def test_blob_content_mappings_from_bytes() -> None:
     assert yaml_mapping_from_bytes(b"- not a mapping\n") is None
     assert frontmatter_from_bytes(b"---\nreport: true\n---\nbody\n") == {"report": True}
     assert frontmatter_from_bytes(b"# no frontmatter\n") is None
+    assert parse_frontmatter_bytes(b"---\ntitle: Pin\n---\nbody\n") == ({"title": "Pin"}, None)
+    mapping, error = parse_frontmatter_bytes(
+        b"---\n: : : not valid yaml\nbad indent\n---\n\nbody\n"
+    )
+    assert mapping is None
+    assert error
+    assert parse_frontmatter_bytes(b"# no frontmatter\n") == (None, None)
 
 
 def test_classifier_returns_none_when_nothing_matches(tmp_path: Path) -> None:

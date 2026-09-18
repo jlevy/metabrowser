@@ -159,6 +159,9 @@ Content source:
   envelopes include that same `ext` so plugin-sdk `langForPath` and `ctx.ext` do not
   fall back to a GitPath wire; they omit compressed identity because blobs are stored
   bytes with no gzip smudge.
+  Git `/api/file` markdown envelopes include parsed YAML `frontmatter` and
+  `frontmatter_error` the way filesystem envelopes do; KPress on a pin uses that parse
+  rather than an empty mapping.
   `/api/stream` still returns `unsupported_for_subject` rather than the lifespan
   filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.

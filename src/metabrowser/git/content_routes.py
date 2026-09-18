@@ -24,6 +24,9 @@ and do not treat a basename ending in ``md`` as ``.md``.
 Blob ``/api/file`` envelopes include that same ``ext`` so plugin-sdk
 ``langForPath`` and ``ctx.ext`` do not fall back to a GitPath wire; they omit
 compressed identity because blobs are stored bytes with no gzip smudge.
+Markdown blob envelopes include parsed YAML ``frontmatter`` and
+``frontmatter_error`` the way filesystem ``/api/file`` does; KPress on a pin
+uses that parse rather than an empty mapping.
 ``logical_ext`` is only the inner extension of a compressed name.
 ``include_ignored=0`` is a no-op because ignore is absent.
 The SPA hides Modified within because recency still has no honest mtime.
@@ -266,17 +269,40 @@ def _plugin_kind_for_git_path(
 
 def _git_blob_content_predicates(
     ext: str, body: bytes
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None, str | None]:
     from metabrowser.plugin_loader.classify import (
-        frontmatter_from_bytes,
         json_mapping_from_bytes,
+        parse_frontmatter_bytes,
         yaml_mapping_from_bytes,
     )
 
     json_top = json_mapping_from_bytes(body) if ext == ".json" else None
     yaml_top = yaml_mapping_from_bytes(body) if ext in {".yaml", ".yml"} else None
-    frontmatter = frontmatter_from_bytes(body) if ext == ".md" else None
-    return json_top, yaml_top, frontmatter
+    frontmatter = None
+    frontmatter_error = None
+    if ext == ".md":
+        frontmatter, frontmatter_error = parse_frontmatter_bytes(body)
+    return json_top, yaml_top, frontmatter, frontmatter_error
+
+
+def _json_safe_git_frontmatter(value: dict[str, Any]) -> dict[str, Any]:
+    from metabrowser.server import _json_safe_frontmatter
+
+    safe = _json_safe_frontmatter(value)
+    return safe if isinstance(safe, dict) else {}
+
+
+def _git_frontmatter_envelope(
+    *,
+    mapping: dict[str, Any] | None,
+    error: str | None,
+) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
+    if mapping is not None:
+        fields["frontmatter"] = _json_safe_git_frontmatter(mapping)
+    if error is not None:
+        fields["frontmatter_error"] = error
+    return fields
 
 
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
@@ -1111,7 +1137,7 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
         min(_query_int(request, "limit", TEXT_PREVIEW_CHUNK_BYTES), TEXT_PREVIEW_REQUEST_MAX_BYTES),
     )
     window = body[offset : offset + limit]
-    json_top, yaml_top, frontmatter = _git_blob_content_predicates(ext, body)
+    json_top, yaml_top, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, body)
     kind = _plugin_kind_for_git_path(
         entry.path,
         json_top_level=json_top,
@@ -1127,6 +1153,7 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
             "content_offset": offset,
             "content_bytes": len(window),
             "content_truncated": offset + len(window) < len(body),
+            **_git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error),
         }
     )
     return payload
@@ -1262,6 +1289,12 @@ async def git_revision_kpress_render(
         logical_size = len(body)
 
     kind = classify_by_ext(ext) if ext else "text"
+    frontmatter = None
+    frontmatter_error = None
+    if ext == ".md":
+        parse_source = source_override.encode() if source_override is not None else body
+        _, _, frontmatter, frontmatter_error = _git_blob_content_predicates(ext, parse_source)
+    envelope = _git_frontmatter_envelope(mapping=frontmatter, error=frontmatter_error)
     try:
         rendered = await asyncio.to_thread(
             kpress_adapter.render_kpress_view,
@@ -1273,8 +1306,8 @@ async def git_revision_kpress_render(
             ext=ext,
             mtime_hash=entry.oid,
             size=logical_size,
-            frontmatter=None,
-            frontmatter_error=None,
+            frontmatter=envelope.get("frontmatter"),
+            frontmatter_error=envelope.get("frontmatter_error"),
             profile=profile,
             include_toc=include_toc,
         )
