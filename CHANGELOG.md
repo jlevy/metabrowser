@@ -145,8 +145,11 @@ Content source:
   and nav header counts do not wait on a filesystem walker.
   Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size`
   keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter
-  dirs are omitted. `/api/stream` still returns `unsupported_for_subject` rather than the
-  lifespan filesystem inventory.
+  dirs are omitted. Git listings, catalog rows, and type filters use the same bounded
+  compound-tail logical extension as filesystem inventory (`bundle.min.js` is
+  `.min.js`), so a basename that merely ends in `md` is not a `.md` match.
+  `/api/stream` still returns `unsupported_for_subject` rather than the lifespan
+  filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.

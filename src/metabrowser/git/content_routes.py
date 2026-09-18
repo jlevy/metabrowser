@@ -17,8 +17,9 @@ fills the whole-tree ``summary`` (``files``, ``size``, ignored 0/0) so the
 nav header has honest counts; incomplete sizes omit ``summary`` rather than
 inventing 0. ``types`` and ``min_size`` keep ancestor trees of matching blobs
 and emit subtree ``filtered`` totals; empty filter dirs are omitted. File nav
-nodes include
-``logical_ext`` from the display suffix.
+nodes include ``logical_ext`` from the same bounded compound-tail helper as
+filesystem inventory, so type filters match ``bundle.min.js`` as ``.min.js``
+and do not treat a basename ending in ``md`` as ``.md``.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
 ``tree``) with no invented mtime or ignore. Omitted mtime leaves
 SPA age chrome empty rather than pending. A direct-child README blob sets
@@ -46,7 +47,6 @@ import mimetypes
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Literal
 
 from starlette.requests import Request
@@ -194,7 +194,16 @@ def _display_basename(path: GitPath) -> str:
 
 
 def _logical_ext(path: GitPath) -> str:
-    return Path(_display_basename(path)).suffix.lower()
+    return derive_ext(_display_basename(path))
+
+
+def _semantic_extension_tokens(types: tuple[str, ...]) -> frozenset[str]:
+    registry = load_file_type_registry()
+    return frozenset(
+        token
+        for token in types
+        if token.startswith(".") and registry.classify("", token).family_id is not None
+    )
 
 
 def _plugin_kind_for_git_path(
@@ -249,13 +258,23 @@ def _passes_min_size(entry: GitTreeEntry, floor: int) -> bool:
     return entry.size is not None and entry.size >= floor
 
 
-def _matches_types(path: GitPath, types: tuple[str, ...]) -> bool:
-    name = _display_basename(path).lower()
+def _matches_types(
+    path: GitPath,
+    types: tuple[str, ...],
+    *,
+    semantic: frozenset[str] | None = None,
+) -> bool:
+    """Match like the SPA type filter: dotted tokens are logical extensions."""
+
+    name = ascii_casefold(_display_basename(path))
+    ext = _logical_ext(path)
+    semantic_tokens = semantic if semantic is not None else _semantic_extension_tokens(types)
     for token in types:
-        if token.startswith("."):
-            if name.endswith(token):
+        folded = ascii_casefold(token)
+        if folded.startswith("."):
+            if ext and (ext == folded or (folded in semantic_tokens and ext.endswith(folded))):
                 return True
-        elif name == token:
+        elif name == folded:
             return True
     return False
 
@@ -266,8 +285,9 @@ def _blob_matches_tree_filter(
     *,
     tree_filter: TreeFilter,
     sizes: Mapping[str, int],
+    semantic: frozenset[str] | None = None,
 ) -> bool:
-    if tree_filter.types and not _matches_types(path, tree_filter.types):
+    if tree_filter.types and not _matches_types(path, tree_filter.types, semantic=semantic):
         return False
     if tree_filter.min_size:
         size = sizes.get(oid)
@@ -285,6 +305,7 @@ def _git_filtered_tally(
     tree_filter: TreeFilter,
     *,
     prefix: bytes = b"",
+    semantic: frozenset[str] | None = None,
 ) -> GitTreeTally | None:
     """Matching descendant blobs under ``prefix``. None when the index is absent."""
 
@@ -294,6 +315,9 @@ def _git_filtered_tally(
     size = 0
     size_known = True
     needle = prefix + b"/" if prefix else b""
+    semantic_tokens = (
+        semantic if semantic is not None else _semantic_extension_tokens(tree_filter.types)
+    )
     for name, oid in index.blobs:
         if prefix and name != prefix and not name.startswith(needle):
             continue
@@ -302,6 +326,7 @@ def _git_filtered_tally(
             oid,
             tree_filter=tree_filter,
             sizes=index.sizes,
+            semantic=semantic_tokens,
         ):
             continue
         files += 1
@@ -317,17 +342,21 @@ def _git_entry_visible(
     entry: GitTreeEntry,
     tree_filter: TreeFilter,
     index: GitBlobIndex | None,
+    *,
+    semantic: frozenset[str] | None = None,
 ) -> bool:
     """Keep trees that have a matching descendant; drop empty filter dirs."""
 
     if not _git_filter_active(tree_filter):
         return True
     if entry.is_tree:
-        tally = _git_filtered_tally(index, tree_filter, prefix=entry.path.segments[-1])
+        tally = _git_filtered_tally(
+            index, tree_filter, prefix=entry.path.segments[-1], semantic=semantic
+        )
         if tally is None:
             return True
         return tally.total_files > 0
-    if tree_filter.types and not _matches_types(entry.path, tree_filter.types):
+    if tree_filter.types and not _matches_types(entry.path, tree_filter.types, semantic=semantic):
         return False
     if tree_filter.min_size:
         return _passes_min_size(entry, tree_filter.min_size)
@@ -337,12 +366,14 @@ def _git_entry_visible(
 def _git_tree_filtered(
     index: GitBlobIndex | None,
     tree_filter: TreeFilter,
+    *,
+    semantic: frozenset[str] | None = None,
 ) -> dict[str, int] | None:
     """Subtree filter totals. Omit when sizes are incomplete."""
 
     if not _git_filter_active(tree_filter):
         return None
-    tally = _git_filtered_tally(index, tree_filter)
+    tally = _git_filtered_tally(index, tree_filter, semantic=semantic)
     if tally is None or tally.total_size is None:
         return None
     return {
@@ -785,10 +816,15 @@ async def git_revision_tree(
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
     index = await subject.tree_source.blob_index(path)
+    semantic = _semantic_extension_tokens(tree_filter.types)
     if _git_filter_active(tree_filter):
-        entries = tuple(entry for entry in entries if _git_entry_visible(entry, tree_filter, index))
+        entries = tuple(
+            entry
+            for entry in entries
+            if _git_entry_visible(entry, tree_filter, index, semantic=semantic)
+        )
     root_index = index if not path.segments else await subject.tree_source.blob_index()
-    filtered = _git_tree_filtered(index, tree_filter)
+    filtered = _git_tree_filtered(index, tree_filter, semantic=semantic)
     payload: dict[str, Any] = {
         "subject": "git_revision",
         "path": path.to_wire(),
@@ -807,6 +843,7 @@ async def git_revision_tree(
                             index,
                             tree_filter,
                             prefix=entry.path.segments[-1],
+                            semantic=semantic,
                         )
                         if _git_filter_active(tree_filter)
                         else index.tally(entry.path.segments[-1])

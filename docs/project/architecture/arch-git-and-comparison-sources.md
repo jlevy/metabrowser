@@ -23,9 +23,10 @@ complete-at-once index.
 `/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
 and `type_presets` rows, `tally_cache_status`, and a `summary` from the same index.
 `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
-totals.
-LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy
-fetch disabled. Serving acquired Git remains later.
+totals. Git type matching uses the same bounded compound-tail logical extension as
+filesystem inventory.
+LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
+disabled. Serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -301,7 +302,9 @@ complete-at-once index.
 `/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
 and `type_presets` rows, `tally_cache_status`, and a `summary` from the same index.
 `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
-totals. Markdown and wiki destinations encode authored segments as `GitPath` wires; the
+totals. Git type matching uses the same bounded compound-tail logical extension as
+filesystem inventory.
+Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
 SPA path chrome and copy-path decode those wires to display names; navigation identities
 stay wires. Omitted mtime leaves tally chrome empty rather than pending.
