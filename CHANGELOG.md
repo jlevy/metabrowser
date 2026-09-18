@@ -2,6 +2,46 @@
 
 All notable changes to Metabrowser are documented here.
 
+## 0.11.0
+
+Content trust:
+
+- `/raw` responses are sandboxed unconditionally.
+  Every branch, including gzip passthrough, SVG, HTML, and error bodies, sends
+  `Content-Security-Policy: sandbox allow-scripts allow-popups allow-forms allow-downloads`
+  and `X-Content-Type-Options: nosniff`. Direct `/raw` links to HTML or SVG no longer
+  execute with the application’s privileges.
+  Nested iframes and framesets still load: the policy does not include
+  `frame-ancestors`.
+
+- `/api` routes require same-origin proof.
+  The server accepts `Sec-Fetch-Site: same-origin` or a matching `Origin`, refuses
+  `Origin: null` and foreign origins, and still serves `curl` and `metab --api` (neither
+  header). State-changing methods require `Content-Type: application/json`, so a
+  cross-site form POST cannot reach `POST /api/kpress/export`.
+
+- `GET /raw/{path}` serves the same bytes as `GET /raw?path=…`, so relative stylesheets,
+  images, and sibling links in a browsed HTML file resolve under `/raw/`. The query form
+  stays; it is the public API the image renderer uses.
+  Both shapes share one resolver and the same sandbox headers.
+
+- `--untrusted` (`METAB_UNTRUSTED=1`) is the conservative content-trust profile: it
+  disables active content and keeps mutations off.
+  `--no-active-content` (`METAB_ACTIVE_CONTENT=0`) drops `allow-scripts` from the `/raw`
+  sandbox; it does not downgrade bodies to `text/plain`. `--allow-edits`
+  (`METAB_ALLOW_EDITS=1`) publishes `mutations: true`; no write route consumes that flag
+  yet. Individual flags override the profile.
+  The resolved block is on `GET /api/capabilities` and
+  `window.METABROWSER_SETTINGS.CAPABILITIES`.
+
+- `.html` and `.htm` files are the `html` kind, with a sandboxed Preview tab and a
+  Source tab. A 4 KiB sniff (doctype or `<html>` / `<head>` / `<body>` / `<frameset>`)
+  chooses the default tab only.
+  Preview uses path-shaped `/raw/{path}` and an iframe sandbox of
+  `allow-scripts allow-popups allow-forms allow-downloads` with
+  `referrerpolicy="no-referrer"` — never `allow-same-origin` or `allow-top-navigation`.
+  `--untrusted` and `--no-active-content` omit Preview.
+
 ## 0.10.0
 
 Plugin SDK:

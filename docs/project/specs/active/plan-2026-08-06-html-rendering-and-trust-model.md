@@ -4,7 +4,8 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Active — `/raw` sandbox, `/api` same-origin proof, the `--untrusted`
+capability profile, path-shaped `/raw/{path}`, and the html preview kind have landed
 
 ## Overview
 
@@ -24,10 +25,11 @@ rendering can default to on.
 Answer it by convenience — an iframe pointed at the existing `/raw` endpoint — and
 browsing a directory becomes equivalent to running its contents.
 
-This plan also closes two existing holes: `/raw` already serves any in-root `.html` file
-as `text/html` on the application origin with no sandbox or constraining headers, and
-`/api` accepts cross-site fire-and-forget requests, including one that writes beneath
-the served root.
+This plan also closes two holes: `/raw` served any in-root `.html` file as `text/html`
+on the application origin with no sandbox, and `/api` accepted cross-site
+fire-and-forget requests, including one that writes beneath the served root.
+The raw sandbox, the `/api` origin check, the `--untrusted` capability profile,
+path-shaped `/raw/{path}`, and the html preview kind have landed.
 
 ## Goals
 
@@ -103,10 +105,11 @@ No CSP is emitted anywhere; it was deferred deliberately because a nominal stric
 would break the shell’s remaining inline handlers.
 
 There is no per-root configuration object at all — the root is a single mutable
-module-level `ROOT_DIR` — and no capability flags.
-The mutation gate specified for trusted-local editing (`--allow-edits`,
-`METAB_ALLOW_EDITS=1`, a `CAPABILITIES` block in `client_settings_dict()`) is designed
-but not yet implemented.
+module-level `ROOT_DIR`. The content-trust capability block is resolved at startup
+(`--untrusted`, `--no-active-content`, `--allow-edits`, and their `METAB_*` environment
+variables), published through `client_settings_dict()` as `CAPABILITIES`, and reported
+by `GET /api/capabilities`. `--allow-edits` publishes `mutations: true`;
+`POST /api/mutate` does not exist yet.
 
 ### The gap
 
@@ -516,35 +519,35 @@ Independently valuable and shippable without any UI change.
 Both halves of the boundary land together: the sandbox stops reading, the same-origin
 check stops invoking.
 
-- [ ] Add a shared response-header builder for `raw_file` covering all three branches
-- [ ] Send the unconditional CSP `sandbox` header and `nosniff` on every raw response
-- [ ] Require same-origin proof on `/api/*` in `_HostValidationMiddleware`, rejecting
+- [x] Add a shared response-header builder for `raw_file` covering all three branches
+- [x] Send the unconditional CSP `sandbox` header and `nosniff` on every raw response
+- [x] Require same-origin proof on `/api/*` in `_HostValidationMiddleware`, rejecting
   `Origin: null`
-- [ ] Add regression tests for the gzip passthrough, `.svg`, and cross-origin `/api`
+- [x] Add regression tests for the gzip passthrough, `.svg`, and cross-origin `/api`
   rejection
-- [ ] Update the SECURITY.md not-yet-enforced list to enforced guarantees
+- [x] Update the SECURITY.md not-yet-enforced list to enforced guarantees
 
 ### Phase 2: Capability plumbing
 
-- [ ] Add the capability object, resolved before application construction
-- [ ] Add `--no-active-content`, `--untrusted`, and their environment variables
-- [ ] Publish the block through `client_settings_dict()` and `/api/capabilities`
-- [ ] Drop `allow-scripts` from the raw sandbox directive when `active_content` is off
-- [ ] Document the flags in SECURITY.md and the README warning block
+- [x] Add the capability object, resolved before application construction
+- [x] Add `--no-active-content`, `--untrusted`, and their environment variables
+- [x] Publish the block through `client_settings_dict()` and `/api/capabilities`
+- [x] Drop `allow-scripts` from the raw sandbox directive when `active_content` is off
+- [x] Document the flags in SECURITY.md and the README warning block
 
 ### Phase 3: Path-shaped raw route
 
-- [ ] Add `GET /raw/{path:path}` sharing one resolution and response path with `/raw`
-- [ ] Cover traversal, symlink escape, and percent-encoding equivalence between routes
+- [x] Add `GET /raw/{path:path}` sharing one resolution and response path with `/raw`
+- [x] Cover traversal, symlink escape, and percent-encoding equivalence between routes
 
 ### Phase 4: The HTML kind and preview
 
-- [ ] Add the bounded full-page sniff with a documented byte budget
-- [ ] Add the built-in `html` kind with `preview` and `source` views and sniff-chosen
+- [x] Add the bounded full-page sniff with a documented byte budget
+- [x] Add the built-in `html` kind with `preview` and `source` views and sniff-chosen
   default
-- [ ] Add the preview renderer with the sandbox attribute set and a disposal path
-- [ ] Suppress the preview view entirely when `active_content` is off
-- [ ] Document the preview, its containment envelope, and the invariant in SECURITY.md
+- [x] Add the preview renderer with the sandbox attribute set and a disposal path
+- [x] Suppress the preview view entirely when `active_content` is off
+- [x] Document the preview, its containment envelope, and the invariant in SECURITY.md
   as shipped guarantees
 
 ## Testing Strategy

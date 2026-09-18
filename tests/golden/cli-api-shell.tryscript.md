@@ -88,6 +88,10 @@ status: 200
   "events": {
     "stream": "live",
     "reason": "[..]"
+  },
+  "capabilities": {
+    "active_content": true,
+    "mutations": false
   }
 }
 ? 0
@@ -400,6 +404,14 @@ status: 200
       "kind": "asset"
     },
     {
+      "path": "/raw/{path:path}",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "asset"
+    },
+    {
       "path": "/static",
       "methods": null,
       "kind": "asset"
@@ -445,7 +457,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 35
+  "count": 36
 }
 ? 0
 ```
