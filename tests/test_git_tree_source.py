@@ -234,12 +234,14 @@ def test_git_revision_subject_reads_trees_and_blobs_without_a_checkout(tmp_path:
             assert b"vendor" in names
 
             readme = next(entry for entry in children if entry.path.segments[-1] == b"README.md")
+            assert readme.size == 6
             assert await source.read_blob(readme.path) == b"hello\n"
             handle = source.resolve(readme.path.to_wire())
             assert handle is not None
             assert handle.is_file
 
             docs = next(entry for entry in children if entry.path.segments[-1] == b"docs")
+            assert docs.size is None
             nested = await source.list_tree(docs.path)
             note = next(entry for entry in nested if entry.path.segments[-1] == b"note.txt")
             assert await source.read_blob(note.path) == b"nested\n"
@@ -249,6 +251,7 @@ def test_git_revision_subject_reads_trees_and_blobs_without_a_checkout(tmp_path:
 
             link = next(entry for entry in children if entry.path.segments[-1] == b"link")
             assert link.is_symlink
+            assert link.size == 9
             assert await source.read_blob(link.path) == b"README.md"
 
             odd = next(entry for entry in children if entry.path.segments[-1] == b"x\xff.txt")
@@ -262,6 +265,7 @@ def test_git_revision_subject_reads_trees_and_blobs_without_a_checkout(tmp_path:
             vendor_kids = await source.list_tree(vendor.path)
             gitlink = next(entry for entry in vendor_kids if entry.path.segments[-1] == b"dep")
             assert gitlink.is_gitlink
+            assert gitlink.size is None
             assert gitlink.oid == _git(tmp_path / "work", "rev-parse", "HEAD~1").decode().strip()
             handle = source.resolve(gitlink.path.to_wire())
             assert handle is not None
@@ -566,6 +570,7 @@ def test_promisor_miss_is_object_unavailable_without_lazy_fetch(tmp_path: Path) 
                     entry for entry in children if entry.path.segments[-1] == b"README.md"
                 )
                 assert readme.oid == missing_oid
+                assert readme.size is None
                 started = time.monotonic()
                 async with asyncio.timeout(2):
                     try:

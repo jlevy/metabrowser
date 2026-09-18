@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, and Git folder Overview honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, and listing blob sizes honor a pin."""
 
 from __future__ import annotations
 
@@ -170,16 +170,19 @@ def _assert_listing_entry(entry: dict[str, object]) -> None:
     assert "mtime_ns" not in entry
     assert "mtime_hash" not in entry
     assert "gitignored" not in entry
-    assert "size" not in entry
     assert "total_files" not in entry
     for key in ("path", "display", "mode", "kind", "symlink", "gitlink", "oid"):
         assert key in entry
+    if entry["kind"] == "blob":
+        assert isinstance(entry["size"], int)
+        assert entry["size"] >= 0
+    else:
+        assert "size" not in entry
 
 
 def _assert_nav_tree_node(node: dict[str, object]) -> None:
     assert "mtime" not in node
     assert "mtime_ns" not in node
-    assert "size" not in node
     assert "total_files" not in node
     assert "total_size" not in node
     assert "gitignored" not in node
@@ -187,11 +190,15 @@ def _assert_nav_tree_node(node: dict[str, object]) -> None:
     assert node["path"]
     assert node["type"] in {"dir", "file", "symlink"}
     if node["type"] == "dir":
+        assert "size" not in node
         assert node["children"] is None
         assert node["has_children"] is True
     else:
         assert "children" not in node
         assert "has_children" not in node
+        if "size" in node:
+            assert isinstance(node["size"], int)
+            assert node["size"] >= 0
 
 
 @asynccontextmanager
@@ -251,9 +258,14 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             )
             assert readme_entry["kind"] == "blob"
             assert readme_entry["symlink"] is False
+            assert readme_entry["size"] == 6
             link_entry = next(entry for entry in body["entries"] if entry["display"] == "link")
             assert link_entry["symlink"] is True
             assert link_entry["kind"] == "blob"
+            assert link_entry["size"] == 9
+            docs_entry = next(entry for entry in body["entries"] if entry["display"] == "docs")
+            assert docs_entry["kind"] == "tree"
+            assert "size" not in docs_entry
 
             readme_wire = _wire(b"README.md")
             assert readme_entry["path"] == readme_wire
@@ -351,7 +363,10 @@ def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
             assert by_name["README.md"]["type"] == "file"
             assert by_name["README.md"]["path"] == _wire(b"README.md")
             assert by_name["README.md"]["logical_ext"] == ".md"
+            assert by_name["README.md"]["size"] == 6
             assert by_name["link"]["type"] == "symlink"
+            assert by_name["link"]["size"] == 9
+            assert "size" not in by_name["docs"]
             assert by_name["vendor"]["type"] == "dir"
             names = {entry["display"] for entry in body["entries"]}
             assert names >= {"README.md", "docs", "link", "vendor"}
@@ -363,6 +378,7 @@ def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
             _assert_nav_tree_node(dep)
             assert dep["type"] == "file"
             assert dep["path"] == _wire(b"vendor", b"dep")
+            assert "size" not in dep
             assert str(store) not in vendor.text
 
     asyncio.run(_run())
@@ -421,12 +437,32 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
             assert ignored_body["code"] == "unsupported_for_subject"
             assert ignored_body["capability"] == "ignore"
 
-            min_size = await client.get("/api/tree", params={"min_size": "1"})
-            assert min_size.status_code == 409
-            min_size_body = min_size.json()
-            assert min_size_body["code"] == "unsupported_for_subject"
-            assert min_size_body["capability"] == "min_size"
-            assert min_size_body.get("entries") is None
+            min_size = await client.get("/api/tree", params={"min_size": "32"})
+            assert min_size.status_code == 200
+            min_body = min_size.json()
+            min_displays = {entry["display"] for entry in min_body["entries"]}
+            assert "README.md" not in min_displays
+            assert "link" not in min_displays
+            assert "docs" in min_displays
+            assert "vendor" in min_displays
+            assert "big.bin" in min_displays
+            big = next(entry for entry in min_body["entries"] if entry["display"] == "big.bin")
+            assert big["size"] == 64
+            assert "size" not in next(
+                entry for entry in min_body["entries"] if entry["display"] == "docs"
+            )
+            min_names = {node["name"] for node in min_body["tree"]}
+            assert min_names == min_displays
+            assert (
+                next(node for node in min_body["tree"] if node["name"] == "big.bin")["size"] == 64
+            )
+
+            vendor_floor = await client.get(
+                "/api/tree", params={"path": _wire(b"vendor"), "min_size": "1"}
+            )
+            assert vendor_floor.status_code == 200
+            assert vendor_floor.json()["entries"] == []
+            assert vendor_floor.json()["tree"] == []
 
             typed = await client.get("/api/tree", params={"types": ".md"})
             assert typed.status_code == 200
