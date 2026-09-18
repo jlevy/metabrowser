@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import shutil
 import subprocess
@@ -424,5 +425,52 @@ def test_git_patch_container_honors_gitpath_prefix_and_inner(tmp_path: Path) -> 
                 params={"path": "change.patch/src/app.py"},
             )
             assert relative_doc.status_code == 404
+
+    asyncio.run(_run())
+
+
+def test_git_binary_chunk_honors_gitpath_without_mtime(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            nul_wire = _wire(b"nul.bin")
+            chunk = await client.get(
+                "/api/plugin/binary/chunk",
+                params={"path": nul_wire, "offset": 0, "limit": 16},
+            )
+            assert chunk.status_code == 200
+            body = chunk.json()
+            assert body["type"] == "binary_chunk"
+            assert body["path"] == nul_wire
+            assert body["offset"] == 0
+            assert body["logical_size"] == 9
+            assert body["bytes_read"] == 9
+            assert body["has_more"] is False
+            assert body["mtime_hash"]
+            assert "mtime" not in body
+            assert str(store) not in chunk.text
+            assert base64.b64decode(body["content_base64"]) == b"\x00\x01\x02BINARY"
+
+            interior = await client.get(
+                "/api/plugin/binary/chunk",
+                params={"path": nul_wire, "offset": 3, "limit": 4},
+            )
+            assert interior.status_code == 200
+            interior_body = interior.json()
+            assert interior_body["mtime_hash"] == body["mtime_hash"]
+            assert base64.b64decode(interior_body["content_base64"]) == b"BINA"
+
+            relative = await client.get(
+                "/api/plugin/binary/chunk",
+                params={"path": "nul.bin"},
+            )
+            assert relative.status_code == 404
+
+            symlink = await client.get(
+                "/api/plugin/binary/chunk",
+                params={"path": _wire(b"link")},
+            )
+            assert symlink.status_code == 404
 
     asyncio.run(_run())
