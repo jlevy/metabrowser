@@ -30,6 +30,7 @@ import typer
 
 from metabrowser import __version__
 from metabrowser.build_version import display_version_line
+from metabrowser.cache.urls import GitSource, LocalPath, RejectedRoot, classify_root_argument
 from metabrowser.cli.common import PipeTrackingStream, silence_broken_pipe, validate_log_level
 from metabrowser.cli.diff_cli import run_diff
 from metabrowser.cli.plugins import doctor_plugins, list_plugins, show_plugin
@@ -220,7 +221,7 @@ def _check_option_applicability(ctx: typer.Context, mode: str, explicit: frozens
         ctx.fail(f"{labels} not valid with {_MODE_LABELS[mode]}")
 
 
-def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
+def _require_root(ctx: typer.Context, root: str | None, mode: str) -> Path:
     if root is None:
         hints = {
             "serve": "e.g. `metab .`",
@@ -231,10 +232,20 @@ def _require_root(ctx: typer.Context, root: Path | None, mode: str) -> Path:
         }
         hint = hints.get(mode, "pass the required root")
         ctx.fail(f"ROOT is required for {_MODE_LABELS[mode]}; {hint}")
-    return root
+    classified = classify_root_argument(root)
+    if isinstance(classified, LocalPath):
+        return Path(classified.value)
+    if isinstance(classified, GitSource):
+        raise CLIError(
+            f"{classified.transport} Git sources are not opened yet "
+            f"({classified.normalized}). Serve a local directory; "
+            f"file:// acquires through the cache once that lands."
+        )
+    assert isinstance(classified, RejectedRoot)
+    raise CLIError(f"invalid ROOT ({classified.reason})")
 
 
-def _reject_root(ctx: typer.Context, root: Path | None, mode: str) -> None:
+def _reject_root(ctx: typer.Context, root: str | None, mode: str) -> None:
     if root is not None:
         message = f"ROOT is not used with {_MODE_LABELS[mode]}"
         if mode == "remote":
@@ -262,10 +273,11 @@ _app = typer.Typer(add_completion=False)
 )
 def _metab(
     ctx: typer.Context,
-    root: Path | None = typer.Argument(
+    root: str | None = typer.Argument(
         None,
         help=(
             "Root directory to serve, check, or walk; a file may be served directly. "
+            "https, ssh, and file:// clone URLs are Git sources, not local paths. "
             "With no ROOT and no mode, prints help."
         ),
         show_default=False,

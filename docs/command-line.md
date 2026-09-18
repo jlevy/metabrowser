@@ -19,6 +19,9 @@ metab ROOT [MODE] [OPTIONS]
 ```
 
 `ROOT` is the directory to serve, or a single file to open directly.
+A clone URL (`https://…`, `ssh://…`, `git@host:path`, or `file://…`) is a Git source,
+not a local path; those are classified and then refused until cache acquisition lands.
+A bare filesystem path is never treated as a clone origin.
 With no mode flag, `metab ROOT` starts the server and opens a browser, the way `open`
 opens a folder on macOS.
 
