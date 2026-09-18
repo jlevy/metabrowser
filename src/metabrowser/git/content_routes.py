@@ -4,7 +4,8 @@ These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
 invented filesystem fact. ``/view/`` accepts a GitPath wire, optionally plus
 a host container inner, and refuses a filesystem spelling. ``/api/tree`` keeps
 Git-native ``entries`` and also projects a SPA ``tree`` array so navigation
-can paint; Git trees lazy-load, gitlinks are files, and listings omit mtime
+can paint; ``depth`` nests SPA children the way filesystem listings do (default 2)
+and emits a lazy sentinel past the cap. Gitlinks are files, and listings omit mtime
 and ignore. Blob and symlink entries carry ``cat-file`` sizes; trees and
 gitlinks stay unsized, so ``min_size`` can filter without ``ls-tree -l``.
 Directory ``total_files`` / ``total_size`` come from recursive ``ls-tree -r``
@@ -80,6 +81,7 @@ from metabrowser.settings import (
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
 )
+from metabrowser.tree import _tree_depth_from_query
 from metabrowser.tree_filter import TreeFilter
 from metabrowser.view_routes import decode_view_logical_path
 
@@ -152,7 +154,17 @@ def _nav_tree_type(entry: GitTreeEntry) -> Literal["dir", "file", "symlink"]:
     return "file"
 
 
-def _nav_tree_node(entry: GitTreeEntry, *, tally: GitTreeTally | None = None) -> dict[str, Any]:
+def _join_git_prefix(prefix: bytes, name: bytes) -> bytes:
+    return name if not prefix else prefix + b"/" + name
+
+
+def _nav_tree_node(
+    entry: GitTreeEntry,
+    *,
+    tally: GitTreeTally | None = None,
+    children: list[dict[str, Any]] | None = None,
+    loaded: bool = False,
+) -> dict[str, Any]:
     """SPA nav node. Omit inventory aggregates rather than invent zeros."""
 
     node: dict[str, Any] = {
@@ -161,8 +173,13 @@ def _nav_tree_node(entry: GitTreeEntry, *, tally: GitTreeTally | None = None) ->
         "type": _nav_tree_type(entry),
     }
     if entry.is_tree:
-        node["children"] = None
-        node["has_children"] = True
+        if loaded:
+            nested = children if children is not None else []
+            node["children"] = nested
+            node["has_children"] = bool(nested)
+        else:
+            node["children"] = None
+            node["has_children"] = True
         if tally is not None:
             node["total_files"] = tally.total_files
             if tally.total_size is not None:
@@ -344,6 +361,7 @@ def _git_entry_visible(
     tree_filter: TreeFilter,
     index: GitBlobIndex | None,
     *,
+    index_prefix: bytes = b"",
     semantic: frozenset[str] | None = None,
 ) -> bool:
     """Keep trees that have a matching descendant; drop empty filter dirs."""
@@ -352,7 +370,10 @@ def _git_entry_visible(
         return True
     if entry.is_tree:
         tally = _git_filtered_tally(
-            index, tree_filter, prefix=entry.path.segments[-1], semantic=semantic
+            index,
+            tree_filter,
+            prefix=_join_git_prefix(index_prefix, entry.path.segments[-1]),
+            semantic=semantic,
         )
         if tally is None:
             return True
@@ -362,6 +383,86 @@ def _git_entry_visible(
     if tree_filter.min_size:
         return _passes_min_size(entry, tree_filter.min_size)
     return True
+
+
+def _git_dir_tally(
+    index: GitBlobIndex | None,
+    tree_filter: TreeFilter,
+    *,
+    prefix: bytes,
+    semantic: frozenset[str] | None = None,
+) -> GitTreeTally | None:
+    if index is None:
+        return None
+    if _git_filter_active(tree_filter):
+        return _git_filtered_tally(index, tree_filter, prefix=prefix, semantic=semantic)
+    return index.tally(prefix)
+
+
+def _git_visible_entries(
+    entries: tuple[GitTreeEntry, ...],
+    tree_filter: TreeFilter,
+    index: GitBlobIndex | None,
+    *,
+    index_prefix: bytes,
+    semantic: frozenset[str] | None,
+) -> tuple[GitTreeEntry, ...]:
+    if not _git_filter_active(tree_filter):
+        return entries
+    return tuple(
+        entry
+        for entry in entries
+        if _git_entry_visible(
+            entry, tree_filter, index, index_prefix=index_prefix, semantic=semantic
+        )
+    )
+
+
+async def _git_nav_tree(
+    subject: GitRevisionSubject,
+    entries: tuple[GitTreeEntry, ...],
+    *,
+    remaining_depth: int,
+    tree_filter: TreeFilter,
+    index: GitBlobIndex | None,
+    index_prefix: bytes,
+    semantic: frozenset[str] | None,
+) -> list[dict[str, Any]]:
+    """SPA ``tree`` nodes. Nest while ``remaining_depth`` allows; else a lazy sentinel."""
+
+    if remaining_depth <= 0:
+        return []
+    nodes: list[dict[str, Any]] = []
+    nest = remaining_depth > 1
+    for entry in entries:
+        prefix = _join_git_prefix(index_prefix, entry.path.segments[-1]) if entry.is_tree else b""
+        tally = (
+            _git_dir_tally(index, tree_filter, prefix=prefix, semantic=semantic)
+            if entry.is_tree
+            else None
+        )
+        if entry.is_tree and nest:
+            try:
+                nested = await subject.tree_source.list_tree(entry.path)
+            except GitObjectUnavailableError:
+                nodes.append(_nav_tree_node(entry, tally=tally))
+                continue
+            nested = _git_visible_entries(
+                nested, tree_filter, index, index_prefix=prefix, semantic=semantic
+            )
+            children = await _git_nav_tree(
+                subject,
+                nested,
+                remaining_depth=remaining_depth - 1,
+                tree_filter=tree_filter,
+                index=index,
+                index_prefix=prefix,
+                semantic=semantic,
+            )
+            nodes.append(_nav_tree_node(entry, tally=tally, children=children, loaded=True))
+            continue
+        nodes.append(_nav_tree_node(entry, tally=tally))
+    return nodes
 
 
 def _git_tree_filtered(
@@ -805,6 +906,7 @@ async def git_revision_tree(
 ) -> JSONResponse:
     """List one Git tree. ``entries`` are Git facts; ``tree`` is the SPA nav."""
 
+    remaining_depth = _tree_depth_from_query(request.query_params.get("depth", ""))
     try:
         path = _git_path_from_query(request)
     except GitPathError:
@@ -813,17 +915,28 @@ async def git_revision_tree(
         located = await subject.tree_source.resolve_path(path)
         if located is None or not located.is_tree:
             return _json(_NOT_FOUND, status_code=404)
-        entries = await subject.tree_source.list_tree(path)
+        index = await subject.tree_source.blob_index(path)
+        semantic = _semantic_extension_tokens(tree_filter.types)
+        if remaining_depth <= 0:
+            entries: tuple[GitTreeEntry, ...] = ()
+            tree_nodes: list[dict[str, Any]] = []
+        else:
+            entries = await subject.tree_source.list_tree(path)
+            entries = _git_visible_entries(
+                entries, tree_filter, index, index_prefix=b"", semantic=semantic
+            )
+            tree_nodes = await _git_nav_tree(
+                subject,
+                entries,
+                remaining_depth=remaining_depth,
+                tree_filter=tree_filter,
+                index=index,
+                index_prefix=b"",
+                semantic=semantic,
+            )
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
-    index = await subject.tree_source.blob_index(path)
-    semantic = _semantic_extension_tokens(tree_filter.types)
-    if _git_filter_active(tree_filter):
-        entries = tuple(
-            entry
-            for entry in entries
-            if _git_entry_visible(entry, tree_filter, index, semantic=semantic)
-        )
+    assert located is not None
     root_index = index if not path.segments else await subject.tree_source.blob_index()
     filtered = _git_tree_filtered(index, tree_filter, semantic=semantic)
     payload: dict[str, Any] = {
@@ -833,26 +946,7 @@ async def git_revision_tree(
         "oid": located.oid,
         "kind": "tree",
         "entries": [_listing_entry(entry) for entry in entries],
-        "tree": [
-            _nav_tree_node(
-                entry,
-                tally=(
-                    None
-                    if index is None or not entry.is_tree
-                    else (
-                        _git_filtered_tally(
-                            index,
-                            tree_filter,
-                            prefix=entry.path.segments[-1],
-                            semantic=semantic,
-                        )
-                        if _git_filter_active(tree_filter)
-                        else index.tally(entry.path.segments[-1])
-                    )
-                ),
-            )
-            for entry in entries
-        ],
+        "tree": tree_nodes,
         **_git_tree_index_chrome(root_index),
     }
     if filtered is not None:

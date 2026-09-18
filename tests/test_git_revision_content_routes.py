@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, and ignore-noop honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, and tree depth honor a pin."""
 
 from __future__ import annotations
 
@@ -190,8 +190,15 @@ def _assert_nav_tree_node(node: dict[str, object]) -> None:
     assert node["type"] in {"dir", "file", "symlink"}
     if node["type"] == "dir":
         assert "size" not in node
-        assert node["children"] is None
-        assert node["has_children"] is True
+        children = node["children"]
+        assert children is None or isinstance(children, list)
+        if children is None:
+            assert node["has_children"] is True
+        else:
+            assert node["has_children"] is bool(children)
+            for child in children:
+                assert isinstance(child, dict)
+                _assert_nav_tree_node(child)
         if "total_files" in node:
             assert isinstance(node["total_files"], int)
             assert node["total_files"] >= 0
@@ -367,7 +374,9 @@ def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
                 _assert_nav_tree_node(node)
             assert by_name["docs"]["type"] == "dir"
             assert by_name["docs"]["path"] == _wire(b"docs")
-            assert by_name["docs"]["children"] is None
+            docs_children = {child["name"]: child for child in by_name["docs"]["children"]}
+            assert docs_children["note.txt"]["type"] == "file"
+            assert docs_children["note.txt"]["path"] == _wire(b"docs", b"note.txt")
             assert by_name["docs"]["has_children"] is True
             assert by_name["docs"]["total_files"] == 1
             assert by_name["docs"]["total_size"] == 7
@@ -382,8 +391,24 @@ def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
             assert by_name["vendor"]["type"] == "dir"
             assert by_name["vendor"]["total_files"] == 0
             assert by_name["vendor"]["total_size"] == 0
+            vendor_children = {child["name"]: child for child in by_name["vendor"]["children"]}
+            assert vendor_children["dep"]["type"] == "file"
+            assert vendor_children["dep"]["path"] == _wire(b"vendor", b"dep")
             names = {entry["display"] for entry in body["entries"]}
             assert names >= {"README.md", "docs", "link", "vendor"}
+
+            shallow = await client.get("/api/tree", params={"depth": "1"})
+            assert shallow.status_code == 200
+            shallow_docs = next(node for node in shallow.json()["tree"] if node["name"] == "docs")
+            assert shallow_docs["children"] is None
+            assert shallow_docs["has_children"] is True
+
+            summary = await client.get("/api/tree", params={"depth": "0"})
+            assert summary.status_code == 200
+            summary_body = summary.json()
+            assert summary_body["tree"] == []
+            assert summary_body["entries"] == []
+            assert summary_body["summary"]["files"] == 9
 
             vendor = await client.get("/api/tree", params={"path": _wire(b"vendor")})
             assert vendor.status_code == 200
@@ -621,6 +646,7 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
             assert docs_node["type"] == "dir"
             assert docs_node["total_files"] == 1
             assert docs_node["total_size"] == 7
+            assert [child["name"] for child in docs_node["children"]] == ["note.txt"]
             assert txt_body["filtered"] == {"files": 1, "size": 7, "entries": 1}
             nested = await client.get("/api/tree", params={"path": _wire(b"docs"), "types": ".txt"})
             assert nested.status_code == 200

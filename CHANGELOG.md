@@ -150,6 +150,8 @@ Content source:
   `.min.js`), so a basename that merely ends in `md` is not a `.md` match.
   `include_ignored=0` on a pin is a no-op (ignore is absent) rather than
   `unsupported_for_subject`; the SPA hides Show ignored.
+  `/api/tree` `depth` nests SPA children the way filesystem listings do (default 2) and
+  emits a lazy sentinel past the cap; `depth=0` returns chrome without a listing.
   `/api/stream` still returns `unsupported_for_subject` rather than the lifespan
   filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
@@ -158,10 +160,10 @@ Content source:
   `/view/` on a Git pin accepts a `GitPath` wire, optionally plus a patch-file container
   inner, and refuses a filesystem spelling; missing Git objects remain valid shell
   destinations. `/api/tree` on that pin keeps Git-native `entries` and also projects a
-  SPA `tree` array (`dir` / `file` / `symlink`, `GitPath` wires, lazy `children` for Git
-  trees) with `cat-file` blob sizes on files and symlinks and recursive blob
-  `total_files` / `total_size` on directories, without mtime or ignore facts.
-  Gitlinks project as files, not directories.
+  SPA `tree` array (`dir` / `file` / `symlink`, `GitPath` wires, depth-bounded nested
+  `children` with a lazy sentinel past the cap) with `cat-file` blob sizes on files and
+  symlinks and recursive blob `total_files` / `total_size` on directories, without mtime
+  or ignore facts. Gitlinks project as files, not directories.
   A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
   recursive blob `total_files` / `total_size` and no mtime or ignore.
   Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
