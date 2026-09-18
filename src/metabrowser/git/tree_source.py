@@ -13,8 +13,10 @@ array of GitPath nav nodes. A Git tree ``/api/file`` envelope is SPA
 ``folder`` chrome. A direct-child README blob mounts Overview; treemap stays
 off. SPA path chrome decodes GitPath wires to display names. Blob listings
 carry ``cat-file`` info sizes so ``min_size`` can filter; trees and gitlinks
-have no size. Omitted mtime and dir aggregates leave tally chrome empty
-rather than pending.
+have no blob size. Recursive ``ls-tree -r`` plus ``cat-file`` info fills
+directory ``total_files`` / ``total_size``; a truncated listing or a missing
+blob size omits the incomplete dimension. Omitted mtime still leaves age
+chrome empty rather than pending. Treemap stays off.
 Markdown and wiki destinations encode authored segments
 as GitPath wires. An LFS pointer is the stored pointer bytes;
 a blob the tree names but the store lacks is ``object_unavailable`` with
@@ -26,10 +28,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import threading
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final, Literal
 
 from metabrowser.git.process import (
@@ -38,13 +41,14 @@ from metabrowser.git.process import (
     GIT_DISABLE_MAILMAP_ARGS,
     GitCommandTarget,
     GitError,
+    GitOutputTooLargeError,
     RepositoryStoreTarget,
     run_git,
     spawn_git_process,
     terminate_git_process,
 )
 from metabrowser.git.wire import is_full_revision
-from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
+from metabrowser.settings import INVENTORY_MAX_FILES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import (
     ContentHandle,
     ContentSource,
@@ -193,6 +197,41 @@ class GitTreeEntry:
     @property
     def is_symlink(self) -> bool:
         return self.mode == "120000"
+
+
+@dataclass(frozen=True, slots=True)
+class GitTreeTally:
+    """Descendant blob count and size under one tree.
+
+    ``total_size`` is ``None`` when any counted blob is missing from the store.
+    """
+
+    total_files: int
+    total_size: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class GitBlobIndex:
+    """Recursive blob names under one tree, with ``cat-file`` sizes when known."""
+
+    blobs: tuple[tuple[bytes, str], ...]
+    sizes: Mapping[str, int]
+
+    def tally(self, prefix: bytes = b"") -> GitTreeTally:
+        files = 0
+        size = 0
+        size_known = True
+        needle = prefix + b"/" if prefix else b""
+        for name, oid in self.blobs:
+            if prefix and name != prefix and not name.startswith(needle):
+                continue
+            files += 1
+            blob_size = self.sizes.get(oid)
+            if blob_size is None:
+                size_known = False
+            else:
+                size += blob_size
+        return GitTreeTally(files, size if size_known else None)
 
 
 GIT_REVISION_CAPABILITIES = SourceCapabilities(
@@ -523,8 +562,8 @@ def _parse_info_header(oid: str, header: bytes) -> _ObjectInfo:
     return _ObjectInfo(oid=oid, kind=kind, size=size)
 
 
-def _parse_ls_tree(payload: bytes, *, parent: GitPath) -> tuple[GitTreeEntry, ...]:
-    entries: list[GitTreeEntry] = []
+def _iter_ls_tree_records(payload: bytes) -> tuple[tuple[str, GitEntryKind, str, bytes], ...]:
+    records: list[tuple[str, GitEntryKind, str, bytes]] = []
     offset = 0
     length = len(payload)
     while offset < length:
@@ -547,7 +586,15 @@ def _parse_ls_tree(payload: bytes, *, parent: GitPath) -> tuple[GitTreeEntry, ..
         oid = oid_b.decode("ascii", errors="replace")
         if kind not in ("blob", "tree", "commit") or not is_full_revision(oid):
             raise GitBatchProtocolError("ls-tree record has an invalid type or oid")
-        entries.append(GitTreeEntry(path=parent.child(name), mode=mode, kind=kind, oid=oid))
+        records.append((mode, kind, oid, name))
+    return tuple(records)
+
+
+def _parse_ls_tree(payload: bytes, *, parent: GitPath) -> tuple[GitTreeEntry, ...]:
+    entries = [
+        GitTreeEntry(path=parent.child(name), mode=mode, kind=kind, oid=oid)
+        for mode, kind, oid, name in _iter_ls_tree_records(payload)
+    ]
     entries.sort(key=lambda entry: entry.path.segments[-1])
     return tuple(entries)
 
@@ -568,6 +615,7 @@ class GitTreeSource:
         self._pool = _retain_pool(target)
         self._pool_released = False
         self._trees: dict[str, tuple[GitTreeEntry, ...]] = {}
+        self._indexes: dict[str, GitBlobIndex | None] = {}
 
     @property
     def target(self) -> RepositoryStoreTarget:
@@ -656,6 +704,7 @@ class GitTreeSource:
 
     async def aclose(self) -> None:
         self._trees.clear()
+        self._indexes.clear()
         if self._pool_released:
             return
         self._pool_released = True
@@ -684,6 +733,53 @@ class GitTreeSource:
         entries = await self._attach_blob_sizes(entries)
         self._trees[tree_oid] = entries
         return entries
+
+    async def blob_index(self, path: GitPath | None = None) -> GitBlobIndex | None:
+        """Recursive blob names and sizes under *path*. ``None`` if truncated."""
+
+        located = GitPath.root() if path is None else path
+        tree_oid = await self._tree_oid_for(located)
+        if tree_oid is None:
+            return None
+        return await self._blob_index_oid(tree_oid)
+
+    async def tree_tally(self, path: GitPath | None = None) -> GitTreeTally | None:
+        index = await self.blob_index(path)
+        if index is None:
+            return None
+        return index.tally()
+
+    async def _blob_index_oid(self, tree_oid: str) -> GitBlobIndex | None:
+        if tree_oid in self._indexes:
+            return self._indexes[tree_oid]
+        try:
+            payload = await run_git(
+                [*_MAILMAP_ARGS, "ls-tree", "-r", "-z", "--full-tree", tree_oid],
+                target=self._target,
+                policy=ACQUISITION_POLICY,
+            )
+        except GitOutputTooLargeError:
+            self._indexes[tree_oid] = None
+            return None
+        blobs: list[tuple[bytes, str]] = []
+        for _mode, kind, oid, name in _iter_ls_tree_records(payload):
+            if kind != "blob":
+                continue
+            blobs.append((name, oid))
+            if len(blobs) > INVENTORY_MAX_FILES:
+                self._indexes[tree_oid] = None
+                return None
+        blob_oids = tuple(oid for _name, oid in blobs)
+        sizes: dict[str, int] = {}
+        if blob_oids:
+            async with self._pool.checkout() as reader:
+                infos = await reader.info_many(blob_oids)
+            for oid, info in infos.items():
+                if info is not None and info.kind == "blob":
+                    sizes[oid] = info.size
+        index = GitBlobIndex(blobs=tuple(blobs), sizes=MappingProxyType(sizes))
+        self._indexes[tree_oid] = index
+        return index
 
     async def _attach_blob_sizes(
         self, entries: tuple[GitTreeEntry, ...]
@@ -806,6 +902,7 @@ __all__ = [
     "GitRevisionSubject",
     "GitTreeEntry",
     "GitTreeSource",
+    "GitTreeTally",
     "git_revision_subject",
     "read_store_blob",
     "require_full_oid",

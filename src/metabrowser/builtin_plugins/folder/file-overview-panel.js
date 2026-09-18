@@ -106,8 +106,8 @@ export function createFileOverviewPanel(mb, palette, projectionPool, rollupContr
         context.raw && typeof context.raw === "object"
           ? /** @type {Record<string, unknown>} */ (context.raw)
           : {};
-      // Git folder envelopes omit dir rather than inventing rollup facts.
-      if (!raw.dir || typeof raw.dir !== "object") {
+      // Git dir tallies omit mtime. File Overview still needs inventory rollup.
+      if (!raw.dir || typeof raw.dir !== "object" || !("mtime" in raw.dir)) {
         return null;
       }
       return Object.freeze({ key: context.path || "", data: null });

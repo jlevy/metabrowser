@@ -7,10 +7,12 @@ Git-native ``entries`` and also projects a SPA ``tree`` array so navigation
 can paint; Git trees lazy-load, gitlinks are files, and listings omit mtime
 and ignore. Blob and symlink entries carry ``cat-file`` sizes; trees and
 gitlinks stay unsized, so ``min_size`` can filter without ``ls-tree -l``.
-File nav nodes include ``logical_ext`` from the display suffix.
+Directory ``total_files`` / ``total_size`` come from recursive ``ls-tree -r``
+plus ``cat-file`` info; a truncated listing or missing blob omits the
+incomplete dimension. File nav nodes include ``logical_ext`` from the display suffix.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
-``tree``) with no invented dir aggregates. Omitted mtime and dir facts leave
-SPA tally chrome empty rather than pending. A direct-child README blob sets
+``tree``) with no invented mtime or ignore. Omitted mtime leaves
+SPA age chrome empty rather than pending. A direct-child README blob sets
 ``readme_path`` to its GitPath wire and mounts the Overview view; treemap stays
 unmounted because it needs inventory rollup. SPA path chrome and copy-path
 decode GitPath wires to display names; navigation identities stay wires. KPress ``source_path``
@@ -43,6 +45,7 @@ from metabrowser.git.tree_source import (
     GitPathError,
     GitRevisionSubject,
     GitTreeEntry,
+    GitTreeTally,
 )
 from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.settings import (
@@ -120,7 +123,7 @@ def _nav_tree_type(entry: GitTreeEntry) -> Literal["dir", "file", "symlink"]:
     return "file"
 
 
-def _nav_tree_node(entry: GitTreeEntry) -> dict[str, Any]:
+def _nav_tree_node(entry: GitTreeEntry, *, tally: GitTreeTally | None = None) -> dict[str, Any]:
     """SPA nav node. Omit inventory aggregates rather than invent zeros."""
 
     node: dict[str, Any] = {
@@ -131,6 +134,10 @@ def _nav_tree_node(entry: GitTreeEntry) -> dict[str, Any]:
     if entry.is_tree:
         node["children"] = None
         node["has_children"] = True
+        if tally is not None:
+            node["total_files"] = tally.total_files
+            if tally.total_size is not None:
+                node["total_size"] = tally.total_size
     else:
         ext = _logical_ext(entry.path)
         if ext:
@@ -275,6 +282,7 @@ async def git_revision_tree(
         entries = tuple(entry for entry in entries if _matches_types(entry.path, tree_filter.types))
     if tree_filter.min_size:
         entries = tuple(entry for entry in entries if _passes_min_size(entry, tree_filter.min_size))
+    index = await subject.tree_source.blob_index(path)
     return _json(
         {
             "subject": "git_revision",
@@ -283,7 +291,17 @@ async def git_revision_tree(
             "oid": located.oid,
             "kind": "tree",
             "entries": [_listing_entry(entry) for entry in entries],
-            "tree": [_nav_tree_node(entry) for entry in entries],
+            "tree": [
+                _nav_tree_node(
+                    entry,
+                    tally=(
+                        None
+                        if index is None or not entry.is_tree
+                        else index.tally(entry.path.segments[-1])
+                    ),
+                )
+                for entry in entries
+            ],
         }
     )
 
@@ -308,13 +326,27 @@ def _git_readme_child(
 
 
 def _folder_overview_views() -> list[dict[str, Any]]:
-    """Overview only. Treemap needs inventory rollup sizes this pin does not have."""
+    """Overview only. Treemap still needs a Git-native ``/api/rollup``."""
 
     return [view for view in _views_for_kind("folder") if view.get("id") == "overview"]
 
 
-def _tree_file_payload(entry: GitTreeEntry, children: tuple[GitTreeEntry, ...]) -> dict[str, Any]:
-    """SPA folder chrome. Keep Git ``tree`` identity; omit inventory aggregates."""
+def _dir_tally_payload(tally: GitTreeTally | None) -> dict[str, Any]:
+    if tally is None:
+        return {}
+    payload: dict[str, Any] = {"total_files": tally.total_files}
+    if tally.total_size is not None:
+        payload["total_size"] = tally.total_size
+    return {"dir": payload}
+
+
+def _tree_file_payload(
+    entry: GitTreeEntry,
+    children: tuple[GitTreeEntry, ...],
+    *,
+    tally: GitTreeTally | None,
+) -> dict[str, Any]:
+    """SPA folder chrome. Keep Git ``tree`` identity; omit mtime and ignore."""
 
     readme, truncated = _git_readme_child(children)
     return {
@@ -325,6 +357,7 @@ def _tree_file_payload(entry: GitTreeEntry, children: tuple[GitTreeEntry, ...]) 
         "views": _folder_overview_views() if readme else [],
         "readme_path": readme.path.to_wire() if readme else "",
         "readme_search_truncated": truncated,
+        **_dir_tally_payload(tally),
         **_identity_fields(entry),
     }
 
@@ -481,7 +514,10 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
             return _json(_NOT_FOUND, status_code=404)
         if entry.is_tree:
             children = await subject.tree_source.list_tree(path)
-            return _json(_tree_file_payload(entry, children))
+            index = await subject.tree_source.blob_index(path)
+            return _json(
+                _tree_file_payload(entry, children, tally=None if index is None else index.tally())
+            )
         if entry.is_gitlink:
             return _json(_gitlink_file_payload(entry))
         if not entry.is_blob:
