@@ -5,10 +5,12 @@ invented filesystem fact. ``/view/`` accepts a GitPath wire, optionally plus
 a host container inner, and refuses a filesystem spelling. ``/api/tree`` keeps
 Git-native ``entries`` and also projects a SPA ``tree`` array so navigation
 can paint; Git trees lazy-load, gitlinks are files, and listings omit mtime,
-size, and ignore. Patch-file container inners use a GitPath prefix plus a
-host inner path. Blob kinds use extension, basename, sniffed adapter, and
-JSON/YAML/frontmatter mappings parsed from blob bytes. ``path_glob`` stays
-filesystem-only. Serving acquired Git from the CLI remains a later bead.
+size, and ignore. A Git tree ``/api/file`` envelope is SPA ``folder`` chrome
+(``git_kind`` stays ``tree``) with empty views and no invented dir aggregates.
+Patch-file container inners use a GitPath prefix plus a host inner path. Blob
+kinds use extension, basename, sniffed adapter, and JSON/YAML/frontmatter
+mappings parsed from blob bytes. ``path_glob`` stays filesystem-only. Serving
+acquired Git from the CLI remains a later bead.
 """
 
 from __future__ import annotations
@@ -258,10 +260,13 @@ async def git_revision_tree(
 
 
 def _tree_file_payload(entry: GitTreeEntry) -> dict[str, Any]:
+    """SPA folder chrome. Keep Git ``tree`` identity; omit inventory aggregates."""
+
     return {
         "subject": "git_revision",
-        "type": "tree",
-        "kind": "tree",
+        "type": "folder",
+        "kind": "folder",
+        "name": _display_basename(entry.path),
         "views": [],
         **_identity_fields(entry),
     }
@@ -390,7 +395,7 @@ def _patch_container_payload(entry: GitTreeEntry, *, wire: str, inner: str) -> d
 
 
 async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JSONResponse:
-    """File or tree envelope for one GitPath. No mtime or ignore state."""
+    """File or folder envelope for one GitPath. No mtime or ignore state."""
 
     wire = request.query_params.get("path", "")
     try:

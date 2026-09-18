@@ -123,6 +123,8 @@ refuses a filesystem spelling.
 `/api/tree` on that pin keeps Git-native `entries` and also projects a SPA `tree` array
 so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, no invented mtime,
 size, or ignore; gitlinks are files).
+A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
+empty views and no invented directory aggregates.
 Event, inventory open, archive containers, and serving acquired Git still wait on later
 slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
 raise `UnsupportedSourceCapabilityError` when the active subject has no folder.

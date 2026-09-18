@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, and SPA nav tree honor GitPath on a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, and folder chrome honor GitPath on a pin."""
 
 from __future__ import annotations
 
@@ -294,10 +294,15 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             folder = await client.get("/api/file", params={"path": docs_wire})
             assert folder.status_code == 200
             folder_body = folder.json()
-            assert folder_body["type"] == "tree"
+            assert folder_body["type"] == "folder"
+            assert folder_body["kind"] == "folder"
             assert folder_body["git_kind"] == "tree"
+            assert folder_body["name"] == "docs"
+            assert folder_body["path"] == docs_wire
+            assert folder_body["views"] == []
             assert "dir" not in folder_body
             assert "total_files" not in folder_body
+            assert "mtime" not in folder_body
 
             link_wire = _wire(b"link")
             link_file = await client.get("/api/file", params={"path": link_wire})
@@ -356,6 +361,38 @@ def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
             assert dep["type"] == "file"
             assert dep["path"] == _wire(b"vendor", b"dep")
             assert str(store) not in vendor.text
+
+    asyncio.run(_run())
+
+
+def test_git_file_folder_envelope_is_spa_folder_chrome(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            root = await client.get("/api/file")
+            assert root.status_code == 200
+            root_body = root.json()
+            assert root_body["kind"] == "folder"
+            assert root_body["type"] == "folder"
+            assert root_body["git_kind"] == "tree"
+            assert root_body["path"] == ""
+            assert root_body["name"] == ""
+            assert root_body["views"] == []
+            assert "dir" not in root_body
+            assert "total_files" not in root_body
+            assert "readme_path" not in root_body
+            assert str(store) not in root.text
+
+            vendor = await client.get("/api/file", params={"path": _wire(b"vendor")})
+            assert vendor.status_code == 200
+            vendor_body = vendor.json()
+            assert vendor_body["kind"] == "folder"
+            assert vendor_body["git_kind"] == "tree"
+            assert vendor_body["name"] == "vendor"
+            assert vendor_body["views"] == []
+            gitlink = await client.get("/api/file", params={"path": _wire(b"vendor", b"dep")})
+            assert gitlink.json()["kind"] != "folder"
 
     asyncio.run(_run())
 
