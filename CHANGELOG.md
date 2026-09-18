@@ -100,8 +100,11 @@ Content source:
   writes a durable `refs/metabrowser/subjects/<oid>` ref so the commit stays reachable
   after the process exits; two processes can lease different OIDs in one store.
   Batch `cat-file` actors are pooled per store, at most four in one process.
-  File, raw, and inventory routes are not switched onto that subject yet, and acquired
-  Git is still not served.
+  `/api/git/repo`, refs, summary, log, and commit detail honor a `GitRevisionSubject`
+  through `GitLocation` (a worktree path or a `RepositoryStoreTarget` plus pinned OID).
+  Discovery reports a detached HEAD at that OID and never a cache path; the default
+  history walk is the pin, not the store’s ambient HEAD. File, raw, and inventory routes
+  are not switched onto that subject yet, and acquired Git is still not served.
 
 ## 0.10.0
 

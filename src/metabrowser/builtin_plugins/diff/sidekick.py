@@ -194,7 +194,7 @@ async def comparison_handler(request: Request) -> JSONResponse:
 
     root = served_root()
     context, _info = await repo_info(root)
-    if context is None:
+    if context is None or context.git_root is None:
         return _error(
             "diff_comparison",
             "This folder is not the root of a Git repository.",

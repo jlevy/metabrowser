@@ -4,8 +4,9 @@
 `/api/git/` collection API, and the immutable-revision diff source.
 The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
-Worktree-free repository stores and immutable revision subjects are also designed only;
-see
+Worktree-free repository stores and immutable revision subjects are implemented for tree
+reads and Git collection routes; serving acquired Git and file/raw/tree migration remain
+later. See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
@@ -207,23 +208,28 @@ literal `.git` directory; anything reading per-worktree control files must resol
 through `git rev-parse --git-path` for the same reason.
 
 This exact-root gate remains correct for an attached filesystem subject.
-It is not the interface for a planned immutable revision subject.
+An immutable revision subject is not a working tree.
 That source carries a trusted repository-store identity and full object ID, enumerates a
 Git tree directly, and never claims to be a filesystem working tree.
+`GitLocation` is the command address: a resolved worktree path or a
+`RepositoryStoreTarget` plus pinned full object ID, never both.
+Discovery, history, refs, and commit detail accept that location; a pin reports a
+detached HEAD at the object ID, keeps `GitRepoInfo.root` empty, and walks that OID by
+default rather than the store’s ambient HEAD.
 
-### Planned Git command targets and revision sources
+### Git command targets and revision sources
 
-`run_git` and `spawn_git_process` currently identify a repository only through `cwd`.
-The repository-store phase adds a closed trusted `GitCommandTarget` constructed by core:
+`run_git` and `spawn_git_process` identify a repository through `cwd` or a closed
+trusted `GitCommandTarget` constructed by core.
+`GitLocation` is the caller-facing XOR of those two.
 `AttachedWorktreeTarget` names an exact worktree plus Git directory, and
 `RepositoryStoreTarget` names one Metabrowser-owned worktree-free Git directory.
 The process boundary converts that handle into fixed arguments while continuing to scrub
 ambient repository environment variables.
 Caller-supplied paths do not become `GIT_DIR`, `GIT_WORK_TREE`, or environment
-overrides. Repository discovery, routes, history, refs, commit detail, comparisons, and
-Git diff adapters all accept the target explicitly.
+overrides. Store reads disable mailmap and implicit lazy fetch.
 For a repository-store target, history and detail start from the subject’s pinned full
-object ID rather than ambient `HEAD`; refs are optional observations.
+object ID rather than ambient `HEAD`; refs remain optional observations.
 
 The immutable content source resolves a full object ID to one tree, enumerates paths
 with NUL-framed `ls-tree` output, and reads bounded blobs through owned batch `cat-file`

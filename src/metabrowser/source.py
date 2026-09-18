@@ -1,8 +1,9 @@
 """One active repository subject and its content-source ports.
 
-Filesystem browsing keeps its current Path helpers. Non-filesystem subjects
-arrive later; this module is the boundary they attach to. Git revision
-subjects, GitPath, and blob batch readers stay out of this module.
+Filesystem browsing keeps its current Path helpers. Git revision subjects
+attach here; GitPath and blob batch readers stay in ``git.tree_source``.
+Git discovery, history, refs, and commit detail honor a pinned revision.
+File, raw, and tree routes stay filesystem-only.
 """
 
 from __future__ import annotations
