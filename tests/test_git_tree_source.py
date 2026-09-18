@@ -23,6 +23,7 @@ from metabrowser.git.tree_source import (
     GitPathError,
     GitRevisionSubject,
     git_revision_subject,
+    store_batch_reader_count,
 )
 from metabrowser.plugin_api import (
     UnsupportedSourceCapabilityError,
@@ -395,3 +396,27 @@ def test_abbreviated_oid_never_enters_the_batch_protocol(tmp_path: Path) -> None
 def test_repository_store_target_rejects_a_missing_dir(tmp_path: Path) -> None:
     with pytest.raises(GitUnavailableError):
         repository_store_target(git_dir=tmp_path / "missing.git")
+
+
+def test_two_tree_sources_share_one_store_reader_pool(tmp_path: Path) -> None:
+    async def _run() -> None:
+        store, commit = _build_store(tmp_path)
+        target = repository_store_target(git_dir=store)
+        first = await git_revision_subject(target=target, commit_oid=commit)
+        second = await git_revision_subject(target=target, commit_oid=commit)
+        try:
+            assert store_batch_reader_count(target) == 1
+            path = GitPath.from_segments(b"README.md")
+            assert await first.tree_source.read_blob(path) == b"hello\n"
+            assert store_batch_reader_count(target) == 1
+            assert await second.tree_source.read_blob(path) == b"hello\n"
+            assert store_batch_reader_count(target) == 1
+        finally:
+            await first.aclose()
+        assert await second.tree_source.read_blob(GitPath.from_segments(b"README.md")) == b"hello\n"
+        assert store_batch_reader_count(target) == 1
+        await second.aclose()
+        assert store_batch_reader_count(target) == 0
+        assert (store / "index").exists() is False
+
+    asyncio.run(_run())

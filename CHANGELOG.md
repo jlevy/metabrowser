@@ -99,6 +99,7 @@ Content source:
   `lease_revision` holds that store’s shared maintenance lock for a live subject and
   writes a durable `refs/metabrowser/subjects/<oid>` ref so the commit stays reachable
   after the process exits; two processes can lease different OIDs in one store.
+  Batch `cat-file` actors are pooled per store, at most four in one process.
   File, raw, and inventory routes are not switched onto that subject yet, and acquired
   Git is still not served.
 
