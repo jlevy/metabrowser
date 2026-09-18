@@ -9,7 +9,10 @@ and ignore. Blob and symlink entries carry ``cat-file`` sizes; trees and
 gitlinks stay unsized, so ``min_size`` can filter without ``ls-tree -l``.
 Directory ``total_files`` / ``total_size`` come from recursive ``ls-tree -r``
 plus ``cat-file`` info; a truncated listing or missing blob omits the
-incomplete dimension. File nav nodes include ``logical_ext`` from the display suffix.
+incomplete dimension. ``/api/tree`` also carries whole-tree ``extensions``
+rows and ``tally_cache_status`` from that index so the type filter and
+truncation banner do not wait on a filesystem walker. File nav nodes include
+``logical_ext`` from the display suffix.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
 ``tree``) with no invented mtime or ignore. Omitted mtime leaves
 SPA age chrome empty rather than pending. A direct-child README blob sets
@@ -486,20 +489,45 @@ class _GitIndexFacts:
     suffixes: tuple[tuple[str, int], ...]
 
 
+def _git_extension_counts(index: GitBlobIndex) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for rel, _oid in index.blobs:
+        ext = _logical_ext(_git_path_from_relative(rel))
+        if ext:
+            counts[ext] += 1
+    return counts
+
+
+def _git_tree_index_chrome(index: GitBlobIndex | None) -> dict[str, Any]:
+    """Whole-tree filter tallies. Ignore is absent, so ignored counts are 0."""
+
+    truncated = index is None
+    rows: list[list[object]] = []
+    if index is not None:
+        counts = _git_extension_counts(index)
+        rows = [
+            [ext, count, 0]
+            for ext, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        ]
+    return {
+        "tally_cache_status": "truncated" if truncated else "done",
+        "tally_cache_max_files": INVENTORY_MAX_FILES,
+        "extensions": rows,
+    }
+
+
 async def _git_index_facts(subject: GitRevisionSubject) -> _GitIndexFacts:
     index = await subject.tree_source.blob_index()
     if index is None:
         return _GitIndexFacts(True, 0, 0, ())
     dirs: set[bytes] = set()
-    counts: Counter[str] = Counter()
     for rel, _oid in index.blobs:
         parts = rel.split(b"/")
         for depth in range(len(parts) - 1):
             dirs.add(b"/".join(parts[: depth + 1]))
-        ext = _logical_ext(_git_path_from_relative(rel))
-        if ext:
-            counts[ext] += 1
-    suffixes = tuple(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+    suffixes = tuple(
+        sorted(_git_extension_counts(index).items(), key=lambda item: (-item[1], item[0]))
+    )
     return _GitIndexFacts(False, len(index.blobs), len(dirs), suffixes)
 
 
@@ -594,6 +622,7 @@ async def git_revision_tree(
     if tree_filter.min_size:
         entries = tuple(entry for entry in entries if _passes_min_size(entry, tree_filter.min_size))
     index = await subject.tree_source.blob_index(path)
+    root_index = index if not path.segments else await subject.tree_source.blob_index()
     return _json(
         {
             "subject": "git_revision",
@@ -613,6 +642,7 @@ async def git_revision_tree(
                 )
                 for entry in entries
             ],
+            **_git_tree_index_chrome(root_index),
         }
     )
 
