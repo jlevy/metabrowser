@@ -148,6 +148,8 @@ Content source:
   dirs are omitted. Git listings, catalog rows, and type filters use the same bounded
   compound-tail logical extension as filesystem inventory (`bundle.min.js` is
   `.min.js`), so a basename that merely ends in `md` is not a `.md` match.
+  `include_ignored=0` on a pin is a no-op (ignore is absent) rather than
+  `unsupported_for_subject`; the SPA hides Show ignored.
   `/api/stream` still returns `unsupported_for_subject` rather than the lifespan
   filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
