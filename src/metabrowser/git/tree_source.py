@@ -18,7 +18,8 @@ as Quick File rows. ``/api/index/progress``, ``/api/index/meta``, and
 or invented mtime. ``/api/tree`` also carries whole-tree ``extensions``,
 ``canonical_extensions``, ``type_families``, and ``type_presets`` rows plus
 ``tally_cache_status`` and, when blob sizes are complete, a ``summary`` from
-that index. SPA path chrome decodes GitPath wires to
+that index. ``types`` and ``min_size`` keep ancestor trees of matching blobs
+and emit subtree ``filtered`` totals. SPA path chrome decodes GitPath wires to
 display names. Blob listings
 carry ``cat-file`` info sizes so ``min_size`` can filter; trees and gitlinks
 have no blob size. Recursive ``ls-tree -r`` plus ``cat-file`` info fills

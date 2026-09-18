@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, and tree summary honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, and filtered tree totals honor a pin."""
 
 from __future__ import annotations
 
@@ -573,18 +573,21 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
             min_displays = {entry["display"] for entry in min_body["entries"]}
             assert "README.md" not in min_displays
             assert "link" not in min_displays
-            assert "docs" in min_displays
-            assert "vendor" in min_displays
+            assert "docs" not in min_displays
+            assert "vendor" not in min_displays
             assert "big.bin" in min_displays
             big = next(entry for entry in min_body["entries"] if entry["display"] == "big.bin")
             assert big["size"] == 64
-            assert "size" not in next(
-                entry for entry in min_body["entries"] if entry["display"] == "docs"
-            )
             min_names = {node["name"] for node in min_body["tree"]}
             assert min_names == min_displays
             assert (
                 next(node for node in min_body["tree"] if node["name"] == "big.bin")["size"] == 64
+            )
+            assert min_body["filtered"]["files"] >= 1
+            assert min_body["filtered"]["size"] >= 64
+            assert min_body["filtered"]["entries"] == min_body["filtered"]["files"]
+            assert all(
+                node.get("total_files", 1) > 0 for node in min_body["tree"] if node["type"] == "dir"
             )
 
             vendor_floor = await client.get(
@@ -596,14 +599,33 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
 
             typed = await client.get("/api/tree", params={"types": ".md"})
             assert typed.status_code == 200
-            displays = [entry["display"] for entry in typed.json()["entries"]]
+            typed_body = typed.json()
+            displays = [entry["display"] for entry in typed_body["entries"]]
             assert displays == ["README.md"]
-            for entry in typed.json()["entries"]:
+            for entry in typed_body["entries"]:
                 _assert_listing_entry(entry)
-            typed_tree = typed.json()["tree"]
+            typed_tree = typed_body["tree"]
             assert [node["name"] for node in typed_tree] == ["README.md"]
             assert typed_tree[0]["type"] == "file"
             _assert_nav_tree_node(typed_tree[0])
+            assert typed_body["filtered"] == {"files": 1, "size": 6, "entries": 1}
+
+            typed_txt = await client.get("/api/tree", params={"types": ".txt"})
+            assert typed_txt.status_code == 200
+            txt_body = typed_txt.json()
+            txt_displays = [entry["display"] for entry in txt_body["entries"]]
+            assert txt_displays == ["docs"]
+            docs_node = txt_body["tree"][0]
+            assert docs_node["name"] == "docs"
+            assert docs_node["type"] == "dir"
+            assert docs_node["total_files"] == 1
+            assert docs_node["total_size"] == 7
+            assert txt_body["filtered"] == {"files": 1, "size": 7, "entries": 1}
+            nested = await client.get("/api/tree", params={"path": _wire(b"docs"), "types": ".txt"})
+            assert nested.status_code == 200
+            nested_body = nested.json()
+            assert [entry["display"] for entry in nested_body["entries"]] == ["docs/note.txt"]
+            assert nested_body["filtered"] == {"files": 1, "size": 7, "entries": 1}
 
             too_big = await client.get("/api/file", params={"path": _wire(b"big.bin")})
             assert too_big.status_code == 413
@@ -1058,6 +1080,7 @@ def test_git_tree_exposes_filter_tallies_without_ignored_or_mtime(tmp_path: Path
                 "ignored_size": 0,
             }
             assert files == 9
+            assert "filtered" not in body
             assert str(store) not in tree.text
 
             docs = await client.get("/api/tree", params={"path": _wire(b"docs")})
