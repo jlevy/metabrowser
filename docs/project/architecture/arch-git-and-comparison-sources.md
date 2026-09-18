@@ -5,8 +5,8 @@
 The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Worktree-free repository stores and immutable revision subjects are implemented for tree
-reads, Git collection routes, `GitPath` file/raw/tree routes, and revision comparison
-through `GitDiffSource`; serving acquired Git remains later.
+reads, Git collection routes, `GitPath` file/raw/tree routes, revision comparison
+through `GitDiffSource`, and KPress blob renders; serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
