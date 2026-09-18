@@ -120,16 +120,15 @@ Content source:
   read the patch blob through the shared cat-file pool.
   `/api/plugin/binary/chunk` reads a bounded window of one Git blob by `GitPath` and
   uses the object id as the cache key instead of a filesystem mtime.
-  Git blobs classify by extension, basename, and sniffed adapter plugin rules
-  (`classify_identity`); frontmatter, glob, and content-key predicates stay on the
-  filesystem classifier.
+  Git blobs classify by extension, basename, sniffed adapter, and bounded JSON, YAML,
+  and Markdown-frontmatter mappings parsed from blob bytes (`classify_identity`).
+  `path_glob` stays filesystem-only.
   `/api/plugin/structured/parsed` reads the blob by `GitPath` and uses the object id as
   the cache key instead of a filesystem mtime.
   `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope; adapter sniffing
   claims `agent-log` when the bytes match Claude, Gemini, or Pi.
   `/api/plugin/agent-log/charts` reads that blob by `GitPath`. Inventory open, archive
-  containers, plugin classification from bytes (frontmatter and content-key predicates),
-  and serving acquired Git are not switched yet.
+  containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0
 
