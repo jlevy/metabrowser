@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, and tree depth honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, and file-envelope ext honor a pin."""
 
 from __future__ import annotations
 
@@ -292,6 +292,10 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             assert file_body["git_kind"] == "blob"
             assert file_body["content"] == "hello\n"
             assert file_body["size"] == 6
+            assert file_body["ext"] == ".md"
+            assert "logical_ext" not in file_body
+            assert "compressed" not in file_body
+            assert "size_uncompressed" not in file_body
             assert "mtime" not in file_body
             assert "mtime_hash" not in file_body
             assert str(store) not in file_resp.text
@@ -317,7 +321,10 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             _assert_listing_entry(note)
             note_file = await client.get("/api/file", params={"path": note["path"]})
             assert note_file.status_code == 200
-            assert note_file.json()["content"] == "nested\n"
+            note_body = note_file.json()
+            assert note_body["content"] == "nested\n"
+            assert note_body["ext"] == ".txt"
+            assert "logical_ext" not in note_body
 
             folder = await client.get("/api/file", params={"path": docs_wire})
             assert folder.status_code == 200
@@ -333,6 +340,7 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             assert folder_body["dir"]["total_size"] == 7
             assert "total_files" not in folder_body
             assert "mtime" not in folder_body
+            assert "ext" not in folder_body
 
             link_wire = _wire(b"link")
             link_file = await client.get("/api/file", params={"path": link_wire})
@@ -340,6 +348,7 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             link_body = link_file.json()
             assert link_body["symlink"] is True
             assert link_body["content"] == "README.md"
+            assert "ext" not in link_body
             link_raw = await client.get("/raw", params={"path": link_wire})
             assert link_raw.content == b"README.md"
 
@@ -445,6 +454,7 @@ def test_git_file_folder_envelope_is_spa_folder_chrome(tmp_path: Path) -> None:
             assert "mtime" not in root_body["dir"]
             assert "unignored_files" not in root_body["dir"]
             assert "total_files" not in root_body
+            assert "ext" not in root_body
             tree = await client.get("/api/tree")
             blob_size = 0
             blob_count = 0
@@ -468,6 +478,7 @@ def test_git_file_folder_envelope_is_spa_folder_chrome(tmp_path: Path) -> None:
             assert [view["id"] for view in vendor_body["views"]] == ["overview", "treemap"]
             assert vendor_body["readme_path"] == ""
             assert vendor_body["dir"] == {"total_files": 0, "total_size": 0}
+            assert "ext" not in vendor_body
             gitlink = await client.get("/api/file", params={"path": _wire(b"vendor", b"dep")})
             assert gitlink.json()["kind"] != "folder"
 
@@ -710,6 +721,23 @@ def test_git_tree_matches_logical_extensions_not_name_suffix(tmp_path: Path) -> 
             assert files["bundle.min.js"] == ".min.js"
             assert files["notmd"] == ""
             assert files["events.jsonl.gz"] == ".jsonl.gz"
+
+            min_js = await client.get(
+                "/api/file", params={"path": by_name["bundle.min.js"]["path"]}
+            )
+            assert min_js.status_code == 200
+            min_js_body = min_js.json()
+            assert min_js_body["ext"] == ".min.js"
+            assert "logical_ext" not in min_js_body
+            notmd = await client.get("/api/file", params={"path": by_name["notmd"]["path"]})
+            assert notmd.status_code == 200
+            assert "ext" not in notmd.json()
+            gz_file = await client.get("/api/file", params={"path": gz["path"]})
+            assert gz_file.status_code == 200
+            gz_body = gz_file.json()
+            assert gz_body["ext"] == ".jsonl.gz"
+            assert "logical_ext" not in gz_body
+            assert "compressed" not in gz_body
 
             typed_md = await client.get("/api/tree", params={"types": ".md"})
             assert typed_md.status_code == 200

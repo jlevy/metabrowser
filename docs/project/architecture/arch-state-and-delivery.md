@@ -122,6 +122,8 @@ and `type_presets` rows, `tally_cache_status`, and a `summary` from that index.
 `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
 totals. Git type matching uses the same bounded compound-tail logical extension as
 filesystem inventory.
+SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; blob file
+envelopes omit compressed identity because blobs are stored bytes with no gzip smudge.
 `include_ignored=0` is a no-op because ignore is absent.
 The JSONL stream still returns `unsupported_for_subject` instead of the lifespan folder.
 `/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
