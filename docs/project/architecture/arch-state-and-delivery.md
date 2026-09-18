@@ -118,6 +118,8 @@ rather than a filesystem mtime.
 `unsupported_for_subject` instead of the lifespan folder.
 A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
 promisor miss, is `object_unavailable` with lazy fetch disabled.
+`/view/` on a pin accepts a `GitPath` wire (and a patch-file container inner) and
+refuses a filesystem spelling.
 Event, inventory open, archive containers, and serving acquired Git still wait on later
 slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
 raise `UnsupportedSourceCapabilityError` when the active subject has no folder.
