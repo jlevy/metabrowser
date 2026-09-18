@@ -37,7 +37,12 @@ from metabrowser.cache.paths import staging_entry
 from metabrowser.cli.main import _app
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
 from metabrowser.home import ensure_home, ensure_private_directory
-from tests.cache_home_fixture import FIXTURE_VERSION, LEFTOVER_STAGING_ENTRY
+from tests.cache_home_fixture import (
+    FIXTURE_VERSION,
+    LEFTOVER_STAGING_ENTRY,
+    ORPHAN_STORE_KEY,
+    _stage_and_publish_store,
+)
 from tests.test_cache_acquire import _allow_installed_git
 from tests.test_cli_golden import check_golden
 
@@ -270,3 +275,44 @@ def test_golden_lock_free_staging_is_swept_on_acquire(
     )
     assert str(tmp_path) not in rendered
     check_golden("cli-cache-recover.txt", rendered)
+
+
+@posix_only
+def test_golden_unreferenced_store_is_reclaimed_on_the_next_acquire(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = _isolate(tmp_path, monkeypatch)
+    ensure_home(home)
+    migrate_layout(home, version=FIXTURE_VERSION)
+    _stage_and_publish_store(home, ORPHAN_STORE_KEY, with_revision=False)
+    empty = tmp_path / "root"
+    empty.mkdir()
+
+    before = _invoke([str(empty), "--api", "/api/cache/stores"])
+    assert '"reference_state": "unreferenced"' in before.stdout
+    assert f"sha256:{ORPHAN_STORE_KEY}" in before.stdout
+
+    origin = _deterministic_origin(tmp_path)
+    acquired = _invoke([_file_url(origin), "--no-serve"])
+
+    after = _invoke([str(empty), "--api", "/api/cache/stores"])
+    assert '"reference_state": "unreferenced"' not in after.stdout
+    assert '"reference_state": "referenced"' in after.stdout
+    assert f"sha256:{ORPHAN_STORE_KEY}" not in after.stdout
+    assert ORIGIN_REVISION in after.stdout
+    assert list((home / "cache" / "repository-stores").iterdir()) != []
+
+    rendered = "".join(
+        [
+            _block("<ROOT> --api /api/cache/stores", before, origin_url=None, api=True),
+            _block(
+                "file://<ORIGIN> --no-serve",
+                acquired,
+                origin_url=_file_url(origin),
+                api=False,
+            ),
+            _block("<ROOT> --api /api/cache/stores", after, origin_url=None, api=True),
+        ]
+    )
+    assert str(tmp_path) not in rendered
+    check_golden("cli-cache-orphan-reclaim.txt", rendered)
