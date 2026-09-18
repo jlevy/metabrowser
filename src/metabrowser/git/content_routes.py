@@ -18,9 +18,10 @@ fills the whole-tree ``summary`` (``files``, ``size``, ignored 0/0) so the
 nav header has honest counts; incomplete sizes omit ``summary`` rather than
 inventing 0. ``types`` and ``min_size`` keep ancestor trees of matching blobs
 and emit subtree ``filtered`` totals; empty filter dirs are omitted. File nav
-nodes include ``logical_ext`` from the same bounded compound-tail helper as
+nodes include ``ext`` from the same bounded compound-tail helper as
 filesystem inventory, so type filters match ``bundle.min.js`` as ``.min.js``
 and do not treat a basename ending in ``md`` as ``.md``.
+``logical_ext`` is only the inner extension of a compressed name.
 ``include_ignored=0`` is a no-op because ignore is absent.
 The SPA hides Modified within because recency still has no honest mtime.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
@@ -50,6 +51,7 @@ import mimetypes
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 from starlette.requests import Request
@@ -73,6 +75,7 @@ from metabrowser.git.tree_source import (
     GitTreeEntry,
     GitTreeTally,
 )
+from metabrowser.gz_io import ArtifactPath
 from metabrowser.inventory_engine.contract import ascii_casefold
 from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
 from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
@@ -186,9 +189,20 @@ def _nav_tree_node(
             if tally.total_size is not None:
                 node["total_size"] = tally.total_size
     else:
-        ext = _logical_ext(entry.path)
-        if ext:
-            node["logical_ext"] = ext
+        if not entry.is_symlink and not entry.is_gitlink:
+            name = _display_basename(entry.path)
+            ext = derive_ext(name)
+            if ext:
+                node["ext"] = ext
+            artifact = ArtifactPath(Path(name))
+            if artifact.is_compressed:
+                inner = artifact.logical_ext
+                if inner:
+                    node["logical_ext"] = inner
+                node["compressed"] = True
+                compression = artifact.compression
+                if compression is not None:
+                    node["compression"] = compression
     if entry.size is not None:
         node["size"] = entry.size
     return node

@@ -2657,7 +2657,7 @@ function shouldPrefetchFile(item) {
   // For .gz files the server attaches `data-logical-ext`; key the
   // "skip prefetch for JSONL" rule off the inner extension so
   // `events.jsonl.gz` is treated identically to `events.jsonl`.
-  var ext = (item.dataset.logicalExt || getExt(path)).toLowerCase();
+  var ext = (item.dataset.logicalExt || item.dataset.ext || getExt(path)).toLowerCase();
   return ext !== ".jsonl";
 }
 
