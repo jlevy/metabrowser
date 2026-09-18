@@ -44,8 +44,8 @@ from metabrowser.git.log import read_history_summary, read_refs
 from metabrowser.git.process import GitError, GitTimeoutError, failure_detail
 from metabrowser.git.repo import RepoContext, repo_info
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
-from metabrowser.paths_safe import _resolved_root_dir
 from metabrowser.settings import GIT_LOG_DEFAULT_LIMIT, GIT_LOG_MAX_LIMIT
+from metabrowser.source import session_filesystem_root
 
 log = logging.getLogger(__name__)
 
@@ -88,13 +88,13 @@ async def api_git_repo(_request: Request) -> JSONResponse:
     ``is_repo`` decides whether the Git tab exists at all. TTL-cached in
     :mod:`metabrowser.git.repo`, so polling it is inexpensive.
     """
-    _context, info = await _resolve(_resolved_root_dir())
+    _context, info = await _resolve(session_filesystem_root())
     return JSONResponse(dict(info))
 
 
 async def api_git_refs(_request: Request) -> JSONResponse:
     """``GET /api/git/refs`` — every branch, remote branch, and tag."""
-    served_root = _resolved_root_dir()
+    served_root = session_filesystem_root()
     context, info = await _resolve(served_root)
     if context is None:
         return JSONResponse(_negative_payload(info))
@@ -119,7 +119,7 @@ async def api_git_summary(request: Request) -> JSONResponse:
     ``scope`` follows ``/api/git/log``: ``all`` counts every ref, the
     default counts the same refs the panel walks.
     """
-    served_root = _resolved_root_dir()
+    served_root = session_filesystem_root()
     context, info = await _resolve(served_root)
     if context is None:
         return JSONResponse(_negative_payload(info))
@@ -162,7 +162,7 @@ async def api_git_log(request: Request) -> JSONResponse:
         many-ref repository shows whichever branch commits most often
         and buries the rest.
     """
-    served_root = _resolved_root_dir()
+    served_root = session_filesystem_root()
     context, info = await _resolve(served_root)
     if context is None:
         return JSONResponse(_negative_payload(info))
@@ -236,7 +236,7 @@ async def api_git_commit(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    served_root = _resolved_root_dir()
+    served_root = session_filesystem_root()
     context, info = await _resolve(served_root)
     if context is None:
         return JSONResponse(_negative_payload(info))
