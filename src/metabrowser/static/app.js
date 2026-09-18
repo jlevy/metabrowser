@@ -4515,7 +4515,7 @@ function filterTypeOptions() {
 // that a DOM walk cannot. This includes Live: it is the shortest
 // server-owned mtime window, not the specialized activity tracker.
 function filesPanelUsesRecentSource() {
-  if (!filterState) {
+  if (isGitRevisionSource() || !filterState) {
     return false;
   }
   var st = filterState.get();
@@ -4534,18 +4534,21 @@ function renderNavFilterBar() {
     '<div class="nav-filter-bar-main">' +
     // Age and type ride the always-visible row: they are the two
     // dimensions people reach for, and as dropdowns they cost a
-    // fraction of the width the segmented ramps did.
-    fc.menuGroupHtml({
-      key: "recency",
-      select: "one",
-      label: "Modified within",
-      options: filterRecencyOptions(),
-      value: st.recency,
-      anyLabel: "Any age",
-      anyValue: "all",
-      open: filterOpenMenu === "recency",
-      menuId: "filter-recency-menu",
-    }) +
+    // fraction of the width the segmented ramps did. A Git pin has no
+    // mtime, so recency is omitted rather than offered as a 409.
+    (isGitRevisionSource()
+      ? ""
+      : fc.menuGroupHtml({
+          key: "recency",
+          select: "one",
+          label: "Modified within",
+          options: filterRecencyOptions(),
+          value: st.recency,
+          anyLabel: "Any age",
+          anyValue: "all",
+          open: filterOpenMenu === "recency",
+          menuId: "filter-recency-menu",
+        })) +
     fc.menuGroupHtml({
       key: "types",
       label: "File type",
