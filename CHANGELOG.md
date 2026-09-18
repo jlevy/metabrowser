@@ -143,6 +143,9 @@ Content source:
   Gitlinks project as files, not directories.
   A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
   empty views and no invented directory aggregates.
+  Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
+  known-file catalog uses the tree node’s display `name` as the basename, and KPress
+  `source_path` is the wire rather than a display path.
   Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0

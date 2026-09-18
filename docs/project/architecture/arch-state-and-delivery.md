@@ -125,6 +125,9 @@ so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, no invented mt
 size, or ignore; gitlinks are files).
 A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
 empty views and no invented directory aggregates.
+Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
+known-file catalog uses the tree node’s display `name` as the basename, and KPress
+`source_path` is the wire rather than a display path.
 Event, inventory open, archive containers, and serving acquired Git still wait on later
 slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
 raise `UnsupportedSourceCapabilityError` when the active subject has no folder.

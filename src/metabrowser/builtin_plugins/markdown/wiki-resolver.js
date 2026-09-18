@@ -746,15 +746,19 @@ function prepareWikiTarget(value, catalog, source, exactResolutionIdentity) {
     );
   }
 
-  const notePath = appendMarkdownExtension(parsed.note.replaceAll("%", "%25"));
+  const gitSource = isGitPathWire(source.sourcePath);
+  const notePath = appendMarkdownExtension(
+    gitSource ? parsed.note : parsed.note.replaceAll("%", "%25"),
+  );
   const mediaKind = value.action === "embed" ? mediaKindForAuthoredPath(notePath) : undefined;
   const explicitRelative = notePath.startsWith("./") || notePath.startsWith("../");
   const explicitRoot = notePath.startsWith("/");
   const qualified = notePath.includes("/");
   if (explicitRelative || explicitRoot) {
     const exactPath = normalizeWikiPath(
-      explicitRelative ? source : null,
+      source,
       explicitRoot ? notePath.slice(1) : notePath,
+      explicitRelative,
     );
     return typeof exactPath === "string"
       ? Object.freeze({
@@ -769,6 +773,19 @@ function prepareWikiTarget(value, catalog, source, exactResolutionIdentity) {
   }
 
   if (qualified) {
+    if (gitSource) {
+      const exactPath = normalizeWikiPath(source, notePath, false);
+      return typeof exactPath === "string"
+        ? Object.freeze({
+            action: value.action,
+            exactPath,
+            fragment,
+            mediaKind,
+            miss: /** @type {const} */ ("not-found"),
+            resolutionIdentity: exactResolutionIdentity,
+          })
+        : exactPath;
+    }
     const exactPath = normalizeWikiPath(null, notePath);
     const lookupKind =
       typeof exactPath === "string" && exactPath.includes("/")
@@ -1413,8 +1430,36 @@ function appendMarkdownExtension(path) {
   return leaf.includes(".") ? path : `${path}.md`;
 }
 
-/** @param {PreparedSourcePath | null} source @param {string} authoredPath */
-function normalizeWikiPath(source, authoredPath) {
+/** @param {string} path */
+function isGitPathWire(path) {
+  if (typeof path !== "string" || path === "") {
+    return false;
+  }
+  return path.split("/").every((part) => part.startsWith("g1-") && part.length > 3);
+}
+
+/** @param {string} name */
+function encodeGitPathSegment(name) {
+  const bytes = new TextEncoder().encode(name);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const atom = btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  return `g1-${atom}`;
+}
+
+/** @param {string[]} names */
+function encodeGitPathAuthored(names) {
+  return names.map(encodeGitPathSegment).join("/");
+}
+
+/**
+ * @param {PreparedSourcePath | null} source
+ * @param {string} authoredPath
+ * @param {boolean} [joinFromSource]
+ */
+function normalizeWikiPath(source, authoredPath, joinFromSource = source !== null) {
   if (!authoredPath || authoredPath.endsWith("/")) {
     return unsafe("non-file-path");
   }
@@ -1432,6 +1477,9 @@ function normalizeWikiPath(source, authoredPath) {
         segments.pop();
         continue;
       }
+      if (!joinFromSource) {
+        return unsafe("path-escapes-served-root");
+      }
       if (!source) {
         return unsafe("path-escapes-served-root");
       }
@@ -1443,9 +1491,10 @@ function normalizeWikiPath(source, authoredPath) {
     }
     segments.push(segment);
   }
-  const authored = segments.join("/");
+  const gitSource = source !== null && isGitPathWire(source.sourcePath);
+  const authored = gitSource ? encodeGitPathAuthored(segments) : segments.join("/");
   let base = "";
-  if (source) {
+  if (joinFromSource && source) {
     if (parentPops < source.reverseSlashes.length) {
       base = source.sourcePath.slice(0, source.reverseSlashes[parentPops]);
     } else if (source.completePrefix) {

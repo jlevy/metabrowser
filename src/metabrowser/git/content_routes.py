@@ -5,8 +5,10 @@ invented filesystem fact. ``/view/`` accepts a GitPath wire, optionally plus
 a host container inner, and refuses a filesystem spelling. ``/api/tree`` keeps
 Git-native ``entries`` and also projects a SPA ``tree`` array so navigation
 can paint; Git trees lazy-load, gitlinks are files, and listings omit mtime,
-size, and ignore. A Git tree ``/api/file`` envelope is SPA ``folder`` chrome
-(``git_kind`` stays ``tree``) with empty views and no invented dir aggregates.
+size, and ignore. File nav nodes include ``logical_ext`` from the display suffix.
+A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
+``tree``) with empty views and no invented dir aggregates. KPress ``source_path``
+is the GitPath wire so Markdown rewrite cannot emit a filesystem spelling.
 Patch-file container inners use a GitPath prefix plus a host inner path. Blob
 kinds use extension, basename, sniffed adapter, and JSON/YAML/frontmatter
 mappings parsed from blob bytes. ``path_glob`` stays filesystem-only. Serving
@@ -116,6 +118,10 @@ def _nav_tree_node(entry: GitTreeEntry) -> dict[str, Any]:
     if entry.is_tree:
         node["children"] = None
         node["has_children"] = True
+    else:
+        ext = _logical_ext(entry.path)
+        if ext:
+            node["logical_ext"] = ext
     return node
 
 
@@ -498,7 +504,8 @@ async def git_revision_kpress_render(
         rendered = await asyncio.to_thread(
             kpress_adapter.render_kpress_view,
             source_text=content,
-            source_path=path.display(),
+            # Display text is not a route identity; wiki rewrite must stay on the wire.
+            source_path=path.to_wire(),
             kind=kind,
             view=view,
             ext=ext,

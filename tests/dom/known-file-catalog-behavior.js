@@ -78,6 +78,20 @@ check(
 );
 check("file list is frozen", Object.isFrozen(snapshot.files));
 
+const gitCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+gitCatalog.observeInitialTree([
+  {
+    name: "README.md",
+    path: "g1-UkVBRE1FLm1k",
+    type: "file",
+    logical_ext: ".md",
+  },
+]);
+const gitSnapshot = gitCatalog.snapshot();
+equal("GitPath tree name is the catalog basename", gitSnapshot.files[0].basename, "README.md");
+equal("GitPath catalog path stays the wire", gitSnapshot.files[0].path, "g1-UkVBRE1FLm1k");
+equal("GitPath catalog keeps the display extension", gitSnapshot.files[0].logicalExtension, ".md");
+
 const unsafePaths = [
   "",
   "/absolute.md",
