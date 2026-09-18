@@ -106,12 +106,14 @@ mtime. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inne
 the file envelope and the diff document/children hooks use that split.
 `/api/plugin/binary/chunk` reads a Git blob window and uses the object id as its cache
 key rather than a filesystem mtime.
-Git blobs classify by extension and basename plugin rules; adapter, frontmatter, glob,
-and content-key predicates stay filesystem-only.
+Git blobs classify by extension, basename, and sniffed adapter plugin rules;
+frontmatter, glob, and content-key predicates stay filesystem-only.
 `/api/plugin/structured/parsed` reads a Git blob and uses the object id as its cache key
 rather than a filesystem mtime.
-Event, inventory open, archive containers, plugin classification from bytes, agent-log,
-and serving acquired Git still wait on later slices.
+`/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope;
+`/api/plugin/agent-log/charts` reads that blob by `GitPath`. Event, inventory open,
+archive containers, plugin classification from bytes (frontmatter and content-key
+predicates), and serving acquired Git still wait on later slices.
 `resolve_path` and `served_root` remain filesystem-only plugin helpers: they raise
 `UnsupportedSourceCapabilityError` when the active subject has no folder.
 Recency, ignore, watcher, activity, and mutation are named source capabilities with the
