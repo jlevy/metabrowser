@@ -374,6 +374,8 @@ native strings. Markdown and wiki destinations on a pin encode authored segments
 that same wire; the known-file catalog indexes the tree node’s display name, not the
 `g1-` token. SPA path chrome and copy-path decode those wires to display names;
 navigation identities stay wires.
+Omitted size, mtime, and directory aggregates leave tally chrome empty rather than
+pending.
 
 Tree enumeration uses NUL-framed Git output.
 Symlinks are entries whose blob bytes name the link target and are never followed.

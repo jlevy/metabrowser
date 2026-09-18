@@ -173,12 +173,12 @@ function sizeClass(bytes) {
   return window.MetabrowserFormatters.sizeClass(Number(bytes) || 0);
 }
 function sizeHtml(bytes, extraClass) {
-  // The provider emits ``null`` aggregates while a directory is still
-  // finalizing. Render as a skeleton cell
-  // so the row paints with shape; the SSE
-  // ``fs.change`` patch flow (applyCellPatch below) replaces it
-  // in place once the walker finalizes the dir.
-  if (bytes === null || bytes === undefined) {
+  // ``null`` means the filesystem walker is still finalizing this cell.
+  // An omitted value is not pending: Git listings have no size fact.
+  if (bytes === undefined) {
+    return "";
+  }
+  if (bytes === null) {
     var pendCls = `size tally-pending ${extraClass || ""}`.trim();
     return `<span class="${pendCls}"></span>`;
   }
@@ -197,8 +197,17 @@ function isPendingNumber(n) {
 function nullableDataValue(n) {
   return isPendingNumber(n) ? "" : String(n);
 }
+function dataTipNumberAttr(key, n) {
+  if (n === undefined) {
+    return "";
+  }
+  return ` data-tip-${key}="${esc(nullableDataValue(n))}"`;
+}
 function parseTipNumber(value) {
-  if (value === undefined || value === null || value === "") {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || value === "") {
     return null;
   }
   var n = Number(value);
@@ -211,6 +220,9 @@ function countClass(n) {
   return window.MetabrowserFormatters.countClass(Number(n) || 0);
 }
 function countHtml(n, extraClass) {
+  if (n === undefined) {
+    return "";
+  }
   if (isPendingNumber(n)) {
     var pendCls = `count tally-pending ${extraClass || ""}`.trim();
     return `<span class="${pendCls}"></span>`;
@@ -1460,6 +1472,9 @@ function treeRenderOptionsForElement(_el) {
 }
 
 function treeDirChipHtml(totalFiles, totalSize, options) {
+  if (totalFiles === undefined && totalSize === undefined) {
+    return "";
+  }
   if (treeDirMetric(options) === TREE_DIR_METRIC_COUNT) {
     return countHtml(totalFiles, "tree-item-size");
   }
@@ -1694,7 +1709,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: folderLabelId,
       });
       parts.push(
-        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}" data-tip-files="${nullableDataValue(node.total_files)}" data-tip-size="${nullableDataValue(node.total_size)}" data-tip-mtime="${nullableDataValue(node.mtime || 0)}">`,
+        `<div class="tree-item tree-folder ${stateClass}${mutedCls}"${folderAttributes} data-action="select-dir" data-path="${esc(node.path)}" data-tip-type="dir" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}"${dataTipNumberAttr("files", node.total_files)}${dataTipNumberAttr("size", node.total_size)}${dataTipNumberAttr("mtime", node.mtime)}">`,
         `<span class="tree-toggle">${ICONS.toggle}</span>`,
         `<span class="tree-item-name" id="${folderLabelId}">`,
         esc(window.MetabrowserNavigationRoute.displayPath(node.name)),
@@ -1754,7 +1769,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         labelId: linkLabelId,
       });
       parts.push(
-        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-symlink${mutedCls}"${linkAttributes} data-action="select" data-path="${esc(node.path)}" data-tip-type="symlink" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}"${dataTipNumberAttr("mtime", node.mtime)}>`,
         '<span class="tree-item-icon">',
         ICONS.fileSymlink,
         "</span>",
@@ -1814,7 +1829,7 @@ function renderTreeNodes(nodes, isRoot, options) {
         });
       }
       parts.push(
-        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}" data-tip-size="${node.size || 0}" data-tip-mtime="${node.mtime || 0}">`,
+        `<div class="tree-item tree-file${container ? " tree-container collapsed" : ""}${mutedCls}"${fileAttributes} data-action="select" data-path="${esc(node.path)}"${container ? ` data-container-kind="${esc(container.kind)}" data-container-plugin="${esc(container.plugin)}" data-container-children="${esc(container.children)}"` : ""}${logicalExtAttr}${extAttr}${compressedAttr} data-tip-type="file" data-tip-name="${esc(window.MetabrowserNavigationRoute.displayPath(node.name))}"${dataTipNumberAttr("size", node.size)}${dataTipNumberAttr("mtime", node.mtime)}>`,
         container ? `<span class="tree-toggle">${ICONS.toggle}</span>` : "",
         '<span class="',
         iconCls,
@@ -2449,6 +2464,9 @@ document.addEventListener("focusin", hideTooltip);
 // (exact bytes) for the precise-value read hovering implies; the
 // visual category (this number is a size) is carried by the class.
 function _tipSize(bytes) {
+  if (bytes === undefined) {
+    return "";
+  }
   if (isPendingNumber(bytes)) {
     return '<span class="tally-pending" role="status" aria-label="Loading size"></span>';
   }
@@ -2456,6 +2474,9 @@ function _tipSize(bytes) {
   return `<span class="${cls}">${formatExactSize(bytes || 0)}</span>`;
 }
 function _tipCount(n) {
+  if (n === undefined) {
+    return "";
+  }
   if (isPendingNumber(n)) {
     return (
       '<span class="tally-pending tally-pending-narrow" role="status"' +
@@ -2470,14 +2491,11 @@ function treeTooltipNameHtml(name, includeName) {
 }
 
 function fileTooltipHtml(name, size, mtime, includeName) {
+  var stamped = formatTimestamp(mtime);
   return (
     treeTooltipNameHtml(name, includeName) +
-    '<div class="tip-detail">' +
-    _tipSize(size) +
-    "</div>" +
-    '<div class="tip-detail">' +
-    formatTimestamp(mtime) +
-    "</div>"
+    (size === undefined ? "" : '<div class="tip-detail">' + _tipSize(size) + "</div>") +
+    (stamped ? '<div class="tip-detail">' + stamped + "</div>" : "")
   );
 }
 
@@ -2492,17 +2510,14 @@ function symlinkTooltipHtml(name, mtime, includeName) {
 }
 
 function folderTooltipHtml(name, totalFiles, totalSize, mtime, includeName) {
+  var stamped = formatTimestamp(mtime);
   return (
     treeTooltipNameHtml(name, includeName) +
-    '<div class="tip-detail">' +
-    _tipCount(totalFiles) +
-    "</div>" +
-    '<div class="tip-detail">' +
-    _tipSize(totalSize) +
-    "</div>" +
-    '<div class="tip-detail">' +
-    formatTimestamp(mtime) +
-    "</div>"
+    (totalFiles === undefined
+      ? ""
+      : '<div class="tip-detail">' + _tipCount(totalFiles) + "</div>") +
+    (totalSize === undefined ? "" : '<div class="tip-detail">' + _tipSize(totalSize) + "</div>") +
+    (stamped ? '<div class="tip-detail">' + stamped + "</div>" : "")
   );
 }
 
@@ -5426,7 +5441,10 @@ function renderFolderHeader(data) {
     parent === null
       ? '<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="No parent folder" aria-label="No parent folder" disabled><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>'
       : `<button type="button" class="btn parent-nav-btn parent-nav-btn-icon-only folder-up" data-tip-text="Open ${esc(parentLabel)}" aria-label="Open parent folder ${esc(parentLabel)}" data-nav-dir="${esc(parent)}"><span class="parent-nav-arrow" aria-hidden="true">↑</span></button>`;
-  var summary = `<span class="folder-header-summary">${folderHeaderSummaryHtml(data.dir || {})}</span>`;
+  var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
+  var summary = dir
+    ? `<span class="folder-header-summary">${folderHeaderSummaryHtml(dir)}</span>`
+    : "";
   return (
     '<div class="file-header folder-header">' +
     upButton +
@@ -5446,10 +5464,11 @@ function folderHeaderSummaryHtml(dirInfo) {
   // countHtml, and formatAge(null) all render the tally-pending
   // skeleton the tree rows use, so the header paints with shape
   // instead of blanks until the live refresher patches it.
+  // Omitted aggregates are not pending: a Git tree envelope has no dir.
   return (
     sizeHtml(dirInfo.total_size, "file-header-size") +
     countHtml(dirInfo.total_files, "folder-header-count") +
-    `<span class="folder-header-age">${formatAge(dirInfo.mtime ?? null)}</span>`
+    `<span class="folder-header-age">${formatAge(dirInfo.mtime)}</span>`
   );
 }
 
@@ -5485,7 +5504,8 @@ function startFolderHeaderSubscription(path) {
     }
     var summaryEl = document.querySelector("#preview-pane .folder-header-summary");
     if (summaryEl) {
-      summaryEl.innerHTML = folderHeaderSummaryHtml(data.dir || {});
+      var dir = data.dir && typeof data.dir === "object" ? data.dir : null;
+      summaryEl.innerHTML = dir ? folderHeaderSummaryHtml(dir) : "";
     }
   });
 }
@@ -6601,12 +6621,12 @@ function computeCellPatch(entry, options) {
   var fileMtimeSec = entry.mtime_ns ? entry.mtime_ns / 1e9 : 0;
   return {
     kind: "file",
-    sizeHtml: sizeHtml(entry.size || 0, "tree-item-size"),
+    sizeHtml: sizeHtml(entry.size, "tree-item-size"),
     ageHtml:
       '<span class="tree-item-age">' +
       formatAge(fileMtimeSec) +
       '</span><span class="tree-item-activity"></span>',
-    tipSize: entry.size || 0,
+    tipSize: nullableDataValue(entry.size),
     tipMtime: fileMtimeSec,
     active: !!entry.active,
   };
@@ -6756,15 +6776,14 @@ function _buildRowHtml(entry, options) {
     esc(entry.path) +
     '" data-tip-type="file" data-tip-name="' +
     esc(name) +
-    '" data-tip-size="' +
-    (entry.size || 0) +
-    '" data-tip-mtime="' +
-    (entry.mtime_ns || 0) / 1e9 +
+    '"' +
+    dataTipNumberAttr("size", entry.size) +
+    dataTipNumberAttr("mtime", entry.mtime_ns ? entry.mtime_ns / 1e9 : undefined) +
     // Live-inserted rows need the filter's extension too, or a row
     // arriving over the event stream would be judged on its last
     // suffix while the rendered ones are judged on the index's.
-    (entry.ext ? `" data-ext="${esc(entry.ext)}` : "") +
-    '">' +
+    (entry.ext ? ` data-ext="${esc(entry.ext)}"` : "") +
+    ">" +
     '<span class="tree-item-icon file-identity-icon ' +
     fi.cls +
     (fi.style ? `" style="${esc(fi.style)}` : "") +
@@ -6782,7 +6801,7 @@ function _buildRowHtml(entry, options) {
     "</span>" +
     '<span class="tree-item-activity"></span>' +
     "</span>" +
-    sizeHtml(entry.size || 0, "tree-item-size") +
+    sizeHtml(entry.size, "tree-item-size") +
     "</div>"
   );
 }
