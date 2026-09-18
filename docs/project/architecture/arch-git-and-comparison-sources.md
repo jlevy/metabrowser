@@ -6,9 +6,10 @@ The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Worktree-free repository stores and immutable revision subjects are implemented for tree
 reads, Git collection routes, `GitPath` file/raw/tree routes, revision comparison
-through `GitDiffSource`, KPress blob renders, patch-file containers, binary byte chunks,
-extension plugin kinds, structured parsed, and agent-log JSONL; serving acquired Git
-remains later. See
+through `GitDiffSource` (including size-gated `content` via the shared cat-file pool),
+KPress blob renders, patch-file containers, binary byte chunks, extension plugin kinds,
+structured parsed, and agent-log JSONL; serving acquired Git remains later.
+See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
@@ -360,6 +361,8 @@ sites — so the port, not a table, is the contract.
 
 Two sources exist today: `adapters/patch_file.py` and `adapters/git.py`, the latter
 accepting revision intents only.
+On a `RepositoryStoreTarget` pin, `GitDiffSource.content` reads the blob through the
+shared cat-file pool; a filesystem location still uses `cat-file blob`.
 
 ### Adding a source
 
