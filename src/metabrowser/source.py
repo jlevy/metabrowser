@@ -20,6 +20,7 @@ from metabrowser.paths_safe import _is_within, register_root_callback
 
 class RepositorySubjectKind(StrEnum):
     attached_filesystem = "attached_filesystem"
+    git_revision = "git_revision"
 
 
 @dataclass(frozen=True, slots=True)
