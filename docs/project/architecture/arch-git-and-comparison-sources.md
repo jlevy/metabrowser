@@ -295,11 +295,12 @@ sentinel past the cap; `depth=0` returns chrome without a listing.
 Whole-tree `extensions`, `canonical_extensions`, `type_families`, and `type_presets`
 rows, `tally_cache_status`, and `summary` come from the recursive blob index; ignored
 counts are 0 because ignore is absent.
-`include_ignored=0` is a no-op rather than `unsupported_for_subject`. Incomplete blob
-sizes omit `summary` rather than inventing 0. `types` and `min_size` keep ancestor trees
-of matching blobs and emit subtree `filtered` totals; empty filter dirs are omitted.
-A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
-recursive blob tallies and no mtime.
+`include_ignored=0` is a no-op rather than `unsupported_for_subject`. The SPA hides
+Modified within because recency still has no honest mtime.
+Incomplete blob sizes omit `summary` rather than inventing 0. `types` and `min_size`
+keep ancestor trees of matching blobs and emit subtree `filtered` totals; empty filter
+dirs are omitted. A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind`
+stays `tree`) with recursive blob tallies and no mtime.
 A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview.
 A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
 `/api/catalog` lists those blob names as Quick File rows.
