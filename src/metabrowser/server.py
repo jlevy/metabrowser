@@ -96,8 +96,10 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
+from metabrowser.git.content_routes import git_revision_file, git_revision_raw, git_revision_tree
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
+from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.gz_io import (
     ArtifactCompressionError,
     ArtifactDecompressionLimitError,
@@ -190,6 +192,7 @@ from metabrowser.settings import (
 )
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
+    get_source_session,
     require_filter_capabilities,
     require_source_capability,
     resolve_session_identity,
@@ -1635,11 +1638,9 @@ async def _read_tree_from_provider(
 
 
 @log_async_calls()
-async def api_tree(request: Request) -> JSONResponse:
+async def api_tree(request: Request) -> Response:
     requested = request.query_params.get("path", "")
     depth_str = request.query_params.get("depth", "")
-    subpath = parse_inventory_path(requested)
-    remaining_depth = _tree_depth_from_query(depth_str)
     tree_filter = tree_filter_from_request(request)
     require_source_capability("navigation")
     require_source_capability("index")
@@ -1647,6 +1648,11 @@ async def api_tree(request: Request) -> JSONResponse:
         recency=bool(tree_filter.recency_seconds),
         include_ignored=tree_filter.include_ignored,
     )
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_tree(request, subject, tree_filter)
+    subpath = parse_inventory_path(requested)
+    remaining_depth = _tree_depth_from_query(depth_str)
     if subpath is None or resolve_session_identity(subpath) is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
@@ -2088,6 +2094,9 @@ async def _api_folder_envelope(
 
 @log_async_calls(if_slower_than=0.1)
 async def api_file(request: Request) -> JSONResponse | Response:
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_file(request, subject)
     subpath = request.query_params.get("path", "")
     try:
         return await _api_file_impl(request)
@@ -3046,6 +3055,9 @@ _RAW_STREAM_CHUNK = 64 * 1024
 
 
 async def raw_file(request: Request) -> Response:
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_raw(request, subject)
     subpath = request.query_params.get("path", "")
     target = resolve_session_identity(subpath)
     if target is None or not target.is_file():

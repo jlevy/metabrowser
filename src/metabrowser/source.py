@@ -2,8 +2,8 @@
 
 Filesystem browsing keeps its current Path helpers. Git revision subjects
 attach here; GitPath and blob batch readers stay in ``git.tree_source``.
-Git discovery, history, refs, and commit detail honor a pinned revision.
-File, raw, and tree routes stay filesystem-only.
+Git discovery, history, refs, commit detail, file, raw, and tree honor a
+pinned revision. Inventory open and serving acquired Git stay later.
 """
 
 from __future__ import annotations
@@ -91,8 +91,8 @@ def unsupported_source_payload(exc: UnsupportedSourceCapabilityError) -> dict[st
 class ContentHandle:
     """One resolved identity on the active subject.
 
-    `path` is set only for an attached filesystem. Blob reads stay on the
-    later Git-tree subject.
+    `path` is set only for an attached filesystem. Git blob reads go
+    through ``GitTreeSource``, not this path.
     """
 
     identity: str

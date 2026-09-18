@@ -96,9 +96,9 @@ Today the attached folder is `AttachedFilesystemSubject`. A `GitRevisionSubject`
 a full-OID tree over a worktree-free store.
 A published-store pin takes `lease_revision`, which holds the store’s shared maintenance
 lock and a durable `refs/metabrowser/subjects/<oid>` ref.
-Git discovery, history, refs, and commit detail honor that pin through `GitLocation`.
-File, raw, tree, container, and event routes still resolve through the attached folder’s
-`ContentSource` until a later slice switches them.
+Git discovery, history, refs, commit detail, file, raw, and tree honor that pin through
+`GitLocation` and `GitPath`. Container, event, inventory open, and serving acquired Git
+still wait on later slices.
 `resolve_path` and `served_root` remain filesystem-only plugin helpers: they raise
 `UnsupportedSourceCapabilityError` when the active subject has no folder.
 Recency, ignore, watcher, activity, and mutation are named source capabilities with the

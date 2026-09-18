@@ -103,8 +103,12 @@ Content source:
   `/api/git/repo`, refs, summary, log, and commit detail honor a `GitRevisionSubject`
   through `GitLocation` (a worktree path or a `RepositoryStoreTarget` plus pinned OID).
   Discovery reports a detached HEAD at that OID and never a cache path; the default
-  history walk is the pin, not the store’s ambient HEAD. File, raw, and inventory routes
-  are not switched onto that subject yet, and acquired Git is still not served.
+  history walk is the pin, not the store’s ambient HEAD. `/api/tree`, `/api/file`, and
+  `/raw` honor `GitPath` wire identities on that subject: tree listings carry mode,
+  kind, oid, symlink, and gitlink without mtime, ignore, or ls-tree sizes; recency,
+  `include_ignored=0`, and `min_size` return `unsupported_for_subject`; blob reads are
+  size-gated through the shared cat-file pool.
+  Inventory open, diffs, container, and serving acquired Git are not switched yet.
 
 ## 0.10.0
 
