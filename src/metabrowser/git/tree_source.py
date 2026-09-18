@@ -4,8 +4,8 @@ Reads go through a worktree-free ``RepositoryStoreTarget``. This module
 does not check out, index, branch, or invent filesystem facts. Batch
 ``cat-file`` actors are pooled per store (at most
 :data:`MAX_BATCH_READERS_PER_STORE` in one process). Git discovery,
-history, refs, and commit detail honor a pinned revision; file, raw, and
-tree routes, and serving acquired Git, stay on later beads.
+history, refs, commit detail, file, raw, and tree honor a pinned
+revision; serving acquired Git stays on a later bead.
 """
 
 from __future__ import annotations

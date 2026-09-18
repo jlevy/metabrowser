@@ -153,8 +153,8 @@ reservation and its invariants, is in
 
 | Route | Serves |
 | --- | --- |
-| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window |
-| `/api/tree` | Navigation subtrees. `types` and `min_size` work for every source that supplies them; `recency` and `include_ignored` require those declared source capabilities and otherwise return `unsupported_for_subject` |
+| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window. A `GitRevisionSubject` uses `GitPath` wire identities and Git object facts; it does not invent mtime or ignore state |
+| `/api/tree` | Navigation subtrees. `types` and `min_size` work for every source that supplies them; Git tree listings have no ls-tree sizes, so `min_size` returns `unsupported_for_subject`. `recency` and `include_ignored` require those declared source capabilities and otherwise return `unsupported_for_subject` |
 | `/api/rollup` | Bounded directory rollups over the facts the active source truthfully supplies; a requested unavailable dimension returns `unsupported_for_subject` |
 | `/api/recent` | Flat newest-first matching leaves for sources with recency; unavailable for immutable Git trees rather than populated with fake mtimes |
 | `/api/activity`, `/api/stream` | Live inventory and activity events for sources with watcher/activity capabilities; unavailable for immutable Git trees |
@@ -163,7 +163,7 @@ reservation and its invariants, is in
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`) |
 | A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
-| `/raw` | Bounded raw bytes through the active source’s content reader; oversized content is refused before an unbounded object read |
+| `/raw` | Bounded raw bytes through the active source’s content reader; oversized content is refused before an unbounded object read. A Git subject reads blobs by `GitPath` and does not follow symlinks |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
