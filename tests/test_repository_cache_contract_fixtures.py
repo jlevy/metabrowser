@@ -7,15 +7,15 @@ and the lock, publication, lease, trash, and quarantine state machines.
 
 Rules with a production implementation replay the fixtures through it:
 source and store identity, store keys, and slugs through
-``metabrowser.cache.identity``, and the lock hierarchy, lock-file placement, and lock
+``metabrowser.cache.identity``, the root-argument URL grammar through
+``metabrowser.cache.urls``, and the lock hierarchy, lock-file placement, and lock
 sequences through ``metabrowser.cache.locks``. The sweep, trash, quarantine, and store
 reclamation machines replay against ``metabrowser.cache.reclaim`` in
 ``tests/test_cache_reclaim.py``.
 
 Rules whose implementation lands later keep a small reference oracle written from the
-fixture's own prose: the root-argument URL grammar and the Git version gates, which
-arrive with repository acquisition, and object requests, which arrive with the object-job
-port. Each oracle
+fixture's own prose: the Git version gates, which arrive with repository acquisition, and
+object requests, which arrive with the object-job port. Each oracle
 proves its frozen rules are complete and consistent, and is replaced by the production
 function when that lands; it is a specification aid, not a second implementation to
 keep. The state-machine well-formedness checks and the exhaustive interleaving
@@ -27,7 +27,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import string
 from collections import deque
 from pathlib import Path
 from typing import Any, cast
@@ -35,7 +34,7 @@ from typing import Any, cast
 import pytest
 from jsonschema import Draft202012Validator
 
-from metabrowser.cache import identity, locks
+from metabrowser.cache import identity, locks, urls
 from metabrowser.cache.locks import HIERARCHY_RANKS, LockKind, LockOrder, LockOrderError
 from metabrowser.home import ensure_home
 
@@ -63,201 +62,18 @@ def test_fixture_matches_its_schema(fixture: str, schema_name: str) -> None:
 
 
 # ----------------------------------------------------------------------------
-# URL grammar oracle
-
-
-class Rejected(Exception):
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
-
-
-_SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*)://")
-_HELPER = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*::")
-_MALFORMED = re.compile(r"^(?:https|ssh|file|http|git):(?!//)", re.IGNORECASE)
-_SCP = re.compile(
-    r"^(?P<user>[^@/:\[\]]+)@(?P<host>\[[^\]/]*\]|[^/:\[\]]*):(?P<path>.*)$", re.DOTALL
-)
-_LABEL = r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
-_REG_NAME = re.compile(rf"^{_LABEL}(?:\.{_LABEL})*$")
-_IPV6 = re.compile(r"^\[[0-9a-f:.]+\]$")
-_USER = re.compile(r"^[A-Za-z0-9._~-]+$")
-_UNRESERVED = frozenset(string.ascii_letters + string.digits + "-._~")
-_PCHAR = _UNRESERVED | frozenset("!$&'()*+,;=:@")
-_HEX = frozenset(string.hexdigits)
-
-
-def _common_checks(value: str) -> None:
-    if any(ord(ch) < 0x20 or ord(ch) == 0x7F or ch.isspace() for ch in value):
-        raise Rejected("control_or_whitespace")
-    if any(ord(ch) > 0x7F for ch in value):
-        raise Rejected("non_ascii")
-    if "\\" in value:
-        raise Rejected("backslash")
-    if "?" in value:
-        raise Rejected("query_not_allowed")
-    if "#" in value:
-        raise Rejected("fragment_not_allowed")
-
-
-def _host(host: str) -> str:
-    if host == "":
-        raise Rejected("missing_host")
-    if host.startswith("-"):
-        raise Rejected("option_like")
-    folded = host.lower()
-    pattern = _IPV6 if folded.startswith("[") else _REG_NAME
-    if not pattern.match(folded):
-        raise Rejected("invalid_host")
-    return folded
-
-
-def _user(user: str) -> str:
-    if user.startswith("-"):
-        raise Rejected("option_like")
-    if not _USER.match(user):
-        raise Rejected("invalid_user")
-    return user
-
-
-def _segment(segment: str, *, percent: bool) -> str:
-    out: list[str] = []
-    index = 0
-    while index < len(segment):
-        ch = segment[index]
-        if ch == "%":
-            if not percent:
-                raise Rejected("invalid_path_character")
-            digits = segment[index + 1 : index + 3]
-            if len(digits) != 2 or not set(digits) <= _HEX:
-                raise Rejected("invalid_percent_encoding")
-            byte = int(digits, 16)
-            if byte <= 0x20 or byte == 0x7F:
-                raise Rejected("control_or_whitespace")
-            if chr(byte) in "/\\":
-                raise Rejected("encoded_delimiter")
-            out.append(chr(byte) if chr(byte) in _UNRESERVED else "%" + digits.upper())
-            index += 3
-            continue
-        if ch not in _PCHAR:
-            raise Rejected("invalid_path_character")
-        out.append(ch)
-        index += 1
-    result = "".join(out)
-    if result in {".", ".."}:
-        raise Rejected("dot_segment")
-    return result
-
-
-def _path(path: str, *, strip_trailing: bool, percent: bool) -> str:
-    segments = path.split("/")
-    leading = segments[0] == ""
-    if leading:
-        segments = segments[1:]
-    if segments and segments[-1] == "" and strip_trailing:
-        segments = segments[:-1]
-    trailing = bool(segments) and segments[-1] == ""
-    body = segments[:-1] if trailing else segments
-    if not body:
-        raise Rejected("missing_repository_path")
-    if any(segment == "" for segment in body):
-        raise Rejected("empty_path_segment")
-    normalized = [_segment(segment, percent=percent) for segment in body]
-    return ("/" if leading else "") + "/".join(normalized) + ("/" if trailing else "")
-
-
-def classify(value: str, defaults: dict[str, str]) -> dict[str, str]:
-    """The frozen root-argument grammar, in the fixture's declared check order."""
-    if value == "":
-        raise Rejected("empty")
-    if value.startswith("-"):
-        raise Rejected("option_like")
-    if _HELPER.match(value):
-        raise Rejected("remote_helper_syntax")
-    scheme_match = _SCHEME.match(value)
-    if scheme_match is None:
-        if _MALFORMED.match(value):
-            raise Rejected("malformed_url")
-        scp = _SCP.match(value)
-        if scp is None:
-            return {"outcome": "local_path"}
-        _common_checks(value)
-        user = _user(scp.group("user"))
-        host = _host(scp.group("host"))
-        path = scp.group("path")
-        if path.startswith("-"):
-            raise Rejected("option_like")
-        if path in {"", "/"}:
-            raise Rejected("missing_repository_path")
-        normalized_path = _path(path, strip_trailing=False, percent=False)
-        return {
-            "outcome": "git_source",
-            "transport": "ssh",
-            "form": "scp",
-            "normalized": f"{user}@{host}:{normalized_path}",
-        }
-    scheme = scheme_match.group(1).lower()
-    if scheme not in {"https", "ssh", "file"}:
-        raise Rejected("unsupported_transport")
-    _common_checks(value)
-    rest = value[scheme_match.end() :]
-    authority, slash, tail = rest.partition("/")
-    path = slash + tail
-    userinfo: str | None = None
-    hostport = authority
-    if "@" in authority:
-        userinfo, _, hostport = authority.rpartition("@")
-    if scheme == "file":
-        if userinfo is not None or hostport.lower() not in {"", "localhost"}:
-            raise Rejected("file_authority_not_local")
-        prefix = "file://"
-    else:
-        if userinfo is not None and (scheme == "https" or ":" in userinfo):
-            raise Rejected("credentials_in_url")
-        user = _user(userinfo) if userinfo is not None else None
-        if hostport.startswith("["):
-            close = hostport.find("]")
-            if close < 0:
-                raise Rejected("invalid_host")
-            host_text, after = hostport[: close + 1], hostport[close + 1 :]
-            if after and not after.startswith(":"):
-                raise Rejected("invalid_host")
-            port: str | None = after[1:] if after else None
-        else:
-            host_text, separator, port_text = hostport.partition(":")
-            port = port_text if separator else None
-        host = _host(host_text)
-        if port == "":
-            port = None
-        if port is not None:
-            if not (port.isascii() and port.isdigit()) or port.startswith("0"):
-                raise Rejected("invalid_port")
-            if not 1 <= int(port) <= 65535:
-                raise Rejected("invalid_port")
-            if port == defaults[scheme]:
-                port = None
-        prefix = f"{scheme}://" + (f"{user}@" if user else "") + host + (f":{port}" if port else "")
-    if path in {"", "/"}:
-        raise Rejected("missing_repository_path")
-    normalized_path = _path(path, strip_trailing=scheme != "ssh", percent=True)
-    return {
-        "outcome": "git_source",
-        "transport": scheme,
-        "form": "url",
-        "normalized": prefix + normalized_path,
-    }
+# URL grammar: replayed through metabrowser.cache.urls
 
 
 def _outcome(value: str, defaults: dict[str, str]) -> dict[str, str]:
-    try:
-        return classify(value, defaults)
-    except Rejected as rejected:
-        return {"outcome": "rejected", "reason": rejected.reason}
+    return urls.classification_as_fixture(urls.classify_root_argument(value, defaults=defaults))
 
 
 def test_url_grammar_cases_have_one_frozen_outcome() -> None:
     grammar = _load("url-grammar.json")
     defaults = cast(dict[str, str], grammar["default_ports"])
+    assert defaults == urls.DEFAULT_PORTS
+    assert set(grammar["transports"]) == urls.GIT_SOURCE_SCHEMES
     ids = [case["id"] for case in grammar["cases"]]
     assert len(ids) == len(set(ids))
     mismatches = {
@@ -296,7 +112,7 @@ def test_url_grammar_normalization_is_idempotent_and_credential_free() -> None:
         if expected["outcome"] != "git_source":
             continue
         normalized = expected["normalized"]
-        assert classify(normalized, defaults) == expected, case["id"]
+        assert _outcome(normalized, defaults) == expected, case["id"]
         assert "?" not in normalized and "#" not in normalized
         if expected["transport"] == "https":
             assert "@" not in normalized.split("/", 3)[2]
@@ -324,7 +140,7 @@ def test_source_identity_and_slugs_are_reproducible() -> None:
     grammar = _load("url-grammar.json")
     defaults = cast(dict[str, str], grammar["default_ports"])
     for record in document["sources"]:
-        classified = classify(record["input"], defaults)
+        classified = _outcome(record["input"], defaults)
         assert classified["normalized"] == record["normalized"], record["input"]
         assert classified["transport"] == record["transport"]
         assert classified["form"] == record["form"]
@@ -349,8 +165,8 @@ def test_identity_equivalence_classes_follow_the_grammar() -> None:
     for group in document["equivalence"]:
         ids = {
             identity.source_identity(
-                cast(identity.GitTransport, classify(value, defaults)["transport"]),
-                classify(value, defaults)["normalized"],
+                cast(identity.GitTransport, _outcome(value, defaults)["transport"]),
+                _outcome(value, defaults)["normalized"],
             )
             for value in group["inputs"]
         }
