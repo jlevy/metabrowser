@@ -9,9 +9,10 @@ and ignore. Blob and symlink entries carry ``cat-file`` sizes; trees and
 gitlinks stay unsized, so ``min_size`` can filter without ``ls-tree -l``.
 Directory ``total_files`` / ``total_size`` come from recursive ``ls-tree -r``
 plus ``cat-file`` info; a truncated listing or missing blob omits the
-incomplete dimension. ``/api/tree`` also carries whole-tree ``extensions``
-rows and ``tally_cache_status`` from that index so the type filter and
-truncation banner do not wait on a filesystem walker. File nav nodes include
+incomplete dimension. ``/api/tree`` also carries whole-tree ``extensions``,
+``canonical_extensions``, ``type_families``, and ``type_presets`` rows plus
+``tally_cache_status`` from that index so the type filter and truncation
+banner do not wait on a filesystem walker. File nav nodes include
 ``logical_ext`` from the display suffix.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
 ``tree``) with no invented mtime or ignore. Omitted mtime leaves
@@ -38,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import mimetypes
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -49,6 +51,8 @@ from metabrowser import kpress_adapter
 from metabrowser.content_sniff import ContentClass, classify_prefix
 from metabrowser.file_extensions import BROWSER_IMAGE_EXTS, BROWSER_TEXT_EXTS
 from metabrowser.file_kinds import classify_by_ext
+from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
+from metabrowser.file_type_registry import load_file_type_registry
 from metabrowser.folder_discovery import choose_readme_name
 from metabrowser.fs_paths import derive_ext
 from metabrowser.git.tree_source import (
@@ -61,6 +65,7 @@ from metabrowser.git.tree_source import (
     GitTreeEntry,
     GitTreeTally,
 )
+from metabrowser.inventory_engine.contract import ascii_casefold
 from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
 from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.settings import (
@@ -74,6 +79,8 @@ from metabrowser.view_routes import decode_view_logical_path
 
 _NOT_FOUND = {"error": "Not found"}
 _PATCH_EXTS = (".patch", ".diff")
+# Same cap as ``PythonInventoryStore.navigation_tallies``.
+_GIT_FILTER_TALLY_LIMIT = 200
 
 
 def _git_path_from_query(request: Request) -> GitPath:
@@ -498,22 +505,66 @@ def _git_extension_counts(index: GitBlobIndex) -> Counter[str]:
     return counts
 
 
+def _ranked_tally_rows(counts: Mapping[str, int]) -> list[list[object]]:
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return [[key, count, 0] for key, count in ranked[:_GIT_FILTER_TALLY_LIMIT]]
+
+
 def _git_tree_index_chrome(index: GitBlobIndex | None) -> dict[str, Any]:
     """Whole-tree filter tallies. Ignore is absent, so ignored counts are 0."""
 
     truncated = index is None
-    rows: list[list[object]] = []
-    if index is not None:
-        counts = _git_extension_counts(index)
-        rows = [
-            [ext, count, 0]
-            for ext, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
-        ]
-    return {
+    preset_rows = [[preset["id"], 0, 0] for preset in FILTER_TYPE_PRESETS]
+    payload: dict[str, Any] = {
         "tally_cache_status": "truncated" if truncated else "done",
         "tally_cache_max_files": INVENTORY_MAX_FILES,
-        "extensions": rows,
+        "extensions": [],
+        "canonical_extensions": [],
+        "type_families": [],
+        "type_presets": preset_rows,
     }
+    if index is None:
+        return payload
+    registry = load_file_type_registry()
+    extension_counts: Counter[str] = Counter()
+    canonical_counts: Counter[str] = Counter()
+    family_counts: Counter[str] = Counter()
+    preset_counts: Counter[str] = Counter({preset["id"]: 0 for preset in FILTER_TYPE_PRESETS})
+    normalized_presets: list[tuple[str, frozenset[str], frozenset[str]]] = []
+    for preset in FILTER_TYPE_PRESETS:
+        extensions: set[str] = set()
+        names: set[str] = set()
+        for value in preset["values"]:
+            normalized = ascii_casefold(value)
+            (extensions if normalized.startswith(".") else names).add(normalized)
+        normalized_presets.append((preset["id"], frozenset(extensions), frozenset(names)))
+    for rel, _oid in index.blobs:
+        path = _git_path_from_relative(rel)
+        ext = _logical_ext(path)
+        name = ascii_casefold(_display_basename(path))
+        classification = registry.classify(name, ext)
+        if ext:
+            extension_counts[ext] += 1
+            canonical_counts[classification.canonical_extension or ext] += 1
+            if classification.family_id is not None:
+                family_counts[classification.family_id] += 1
+        semantic_category = classification.group_id
+        for preset_id, preset_extensions, preset_names in normalized_presets:
+            if preset_id == semantic_category or ext in preset_extensions or name in preset_names:
+                preset_counts[preset_id] += 1
+    payload["extensions"] = _ranked_tally_rows(extension_counts)
+    payload["canonical_extensions"] = _ranked_tally_rows(canonical_counts)
+    payload["type_families"] = [
+        [family_id, count, 0]
+        for family_id, count in sorted(
+            family_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )
+    ]
+    payload["type_presets"] = [
+        [preset["id"], preset_counts[preset["id"]], 0] for preset in FILTER_TYPE_PRESETS
+    ]
+    return payload
 
 
 async def _git_index_facts(subject: GitRevisionSubject) -> _GitIndexFacts:
