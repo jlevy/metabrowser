@@ -8,14 +8,14 @@ and the lock, publication, lease, trash, and quarantine state machines.
 Rules with a production implementation replay the fixtures through it:
 source and store identity, store keys, and slugs through
 ``metabrowser.cache.identity``, the root-argument URL grammar through
-``metabrowser.cache.urls``, and the lock hierarchy, lock-file placement, and lock
+``metabrowser.cache.urls``, the Git version gates through
+``metabrowser.git.process``, and the lock hierarchy, lock-file placement, and lock
 sequences through ``metabrowser.cache.locks``. The sweep, trash, quarantine, and store
 reclamation machines replay against ``metabrowser.cache.reclaim`` in
 ``tests/test_cache_reclaim.py``.
 
 Rules whose implementation lands later keep a small reference oracle written from the
-fixture's own prose: the Git version gates, which arrive with repository acquisition, and
-object requests, which arrive with the object-job port. Each oracle
+fixture's own prose: object requests, which arrive with the object-job port. Each oracle
 proves its frozen rules are complete and consistent, and is replaced by the production
 function when that lands; it is a specification aid, not a second implementation to
 keep. The state-machine well-formedness checks and the exhaustive interleaving
@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import json
 import math
-import re
 from collections import deque
 from pathlib import Path
 from typing import Any, cast
@@ -36,6 +35,7 @@ from jsonschema import Draft202012Validator
 
 from metabrowser.cache import identity, locks, urls
 from metabrowser.cache.locks import HIERARCHY_RANKS, LockKind, LockOrder, LockOrderError
+from metabrowser.git import process as git_process
 from metabrowser.home import ensure_home
 
 FIXTURES = Path(__file__).parent / "fixtures" / "repository-cache"
@@ -228,46 +228,28 @@ def test_provider_store_identity_is_domain_separated() -> None:
 
 
 # ----------------------------------------------------------------------------
-# Git version gates
+# Git version gates: replayed through metabrowser.git.process
 
 
-_VERSION = re.compile(r"^git version (\d+)\.(\d+)(?:\.(\d+))?")
-
-
-def parse_git_version(text: str) -> tuple[int, int, int] | None:
-    match = _VERSION.match(text)
-    if match is None:
-        return None
-    return (int(match.group(1)), int(match.group(2)), int(match.group(3) or 0))
-
-
-def _meets(version: tuple[int, int, int] | None, gate: dict[str, Any]) -> bool:
-    if version is None:
-        return False
-    minimum = tuple(gate["minimum"])
-    if version < minimum:
-        return False
-    tracks = cast(dict[str, list[int]], gate.get("patched_tracks", {}))
-    if not tracks:
-        return True
-    track = f"{version[0]}.{version[1]}"
-    if track in tracks:
-        return version >= tuple(tracks[track])
-    return version >= tuple(gate["newest_patched"])
+def test_acquisition_floor_constants_match_the_fixture() -> None:
+    gates = _load("git-version-gates.json")
+    (acquisition,) = gates["gates"]
+    assert list(git_process.ACQUISITION_MINIMUM) == acquisition["minimum"]
+    assert {
+        track: list(version) for track, version in git_process.ACQUISITION_PATCHED_TRACKS.items()
+    } == acquisition["patched_tracks"]
+    assert list(git_process.ACQUISITION_NEWEST_PATCHED) == acquisition["newest_patched"]
 
 
 def test_git_version_gates_decide_every_case() -> None:
     gates = _load("git-version-gates.json")
-    (acquisition,) = gates["gates"]
     for case in gates["cases"]:
-        version = parse_git_version(case["version_output"])
-        expected_version = case["parsed"]
-        assert (list(version) if version else None) == expected_version, case["version_output"]
-        admitted = _meets(version, acquisition)
-        assert {
-            "acquisition": admitted,
-            "initial_strategy_for_https": "blobless" if admitted else "refused",
-        } == case["expected"], case["version_output"]
+        assert (
+            git_process.parsed_git_version_as_fixture(case["version_output"]) == case["parsed"]
+        ), case["version_output"]
+        assert (
+            git_process.acquisition_gate_as_fixture(case["version_output"]) == case["expected"]
+        ), case["version_output"]
 
 
 def test_every_admitted_git_carries_the_lazy_fetch_guard() -> None:
@@ -276,7 +258,7 @@ def test_every_admitted_git_carries_the_lazy_fetch_guard() -> None:
     guard = gates["lazy_fetch_guard"]
 
     def tag(value: str) -> tuple[int, int, int]:
-        parsed = parse_git_version(f"git version {value.removeprefix('v')}")
+        parsed = git_process.parse_git_version(f"git version {value.removeprefix('v')}")
         assert parsed is not None
         return parsed
 
