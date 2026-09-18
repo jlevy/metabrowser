@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, and Git-native catalog honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, and index status honor a pin."""
 
 from __future__ import annotations
 
@@ -947,21 +947,66 @@ def test_git_pin_refuses_inventory_backed_routes(tmp_path: Path) -> None:
 
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
-            for path in (
-                "/api/index/progress",
-                "/api/index/meta",
-                "/api/capabilities",
-                "/api/stream",
-            ):
-                response = await client.get(path)
-                assert response.status_code == 409, path
-                body = response.json()
-                assert body["code"] == "unsupported_for_subject"
-                assert body["capability"] == "filesystem"
-                assert str(store) not in response.text
+            stream = await client.get("/api/stream")
+            assert stream.status_code == 409
+            stream_body = stream.json()
+            assert stream_body["code"] == "unsupported_for_subject"
+            assert stream_body["capability"] == "filesystem"
+            assert str(store) not in stream.text
             diagnostic = await client.post("/api/diagnostics/pending-tallies", json={"pending": {}})
             assert diagnostic.status_code == 409
             assert diagnostic.json()["capability"] == "filesystem"
+
+    asyncio.run(_run())
+
+
+def test_git_index_status_is_complete_without_mtime_or_watcher(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            progress = await client.get("/api/index/progress")
+            assert progress.status_code == 200
+            progress_body = progress.json()
+            assert progress_body["status"] == "done"
+            assert progress_body["complete"] is True
+            assert progress_body["truncated"] is False
+            assert progress_body["active"] is False
+            assert progress_body["indexed_files"] == 9
+            assert progress_body["provider"] == "git"
+            assert progress_body["contract"] == "git-revision"
+            assert "mtime" not in progress_body
+            assert str(store) not in progress.text
+
+            meta = await client.get("/api/index/meta")
+            assert meta.status_code == 200
+            meta_body = meta.json()
+            assert meta_body["status"] == "done"
+            assert meta_body["indexed_files"] == 9
+            assert meta_body["indexed_dirs"] == 1
+            assert meta_body["complete"] is True
+            assert "oldest_mtime_ns" not in meta_body
+            assert "newest_mtime_ns" not in meta_body
+            assert "watch_mode" not in meta_body
+            suffixes = {row["ext"]: row["count"] for row in meta_body["suffixes"]}
+            assert suffixes[".bin"] == 2
+            assert suffixes[".md"] == 1
+            assert suffixes[".txt"] == 1
+            assert "" not in suffixes
+            assert str(store) not in meta.text
+
+            caps = await client.get("/api/capabilities")
+            assert caps.status_code == 200
+            caps_body = caps.json()
+            assert caps_body["index"]["complete"] is True
+            assert caps_body["index"]["indexed_files"] == 9
+            assert caps_body["index"]["truncated"] is False
+            assert caps_body["index"]["provider"] == "git"
+            assert caps_body["backends"][0]["mode"] == "none"
+            assert caps_body["backends"][0]["reason"] == "git-revision-immutable"
+            assert caps_body["events"]["stream"] == "off"
+            assert caps_body["events"]["reason"] == "git-revision-no-watcher"
+            assert str(store) not in caps.text
 
     asyncio.run(_run())
 

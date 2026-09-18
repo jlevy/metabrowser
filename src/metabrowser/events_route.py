@@ -12,16 +12,18 @@ This module owns:
 * ``GET /api/index/progress`` — lightweight crawl status for the
   left-nav progress footer. Reads in-memory inventory counters
   only; never scans the tree or rebuilds suffix tallies.
+  A Git pin answers from the recursive blob index and is already done.
 * ``POST /api/diagnostics/pending-tallies`` — bounded client/server state
   captured when a rendered directory total remains unresolved.
 * ``GET /api/index/meta`` — bundled summary of index status,
   suffix tally, and oldest/newest mtime; ETag-cacheable. Folds
   what the search spec called ``/api/index/status`` and
-  ``/api/index/suffixes`` into one envelope.
+  ``/api/index/suffixes`` into one envelope. A Git pin omits mtime
+  and watcher fields.
 * ``GET /api/capabilities`` — unified capability surface with
   filesystem-type-driven watcher status.
-  A non-filesystem subject raises ``unsupported_for_subject`` rather than
-  reporting the lifespan folder's watcher.
+  A Git pin reports a complete index and ``events.stream`` off rather than
+  the lifespan folder's watcher.
 * :func:`build_lifespan` — Starlette lifespan context manager
   that bumps the asyncio default executor to 64 workers and opens the
   selected inventory provider without blocking HTTP bind.
@@ -135,7 +137,18 @@ if TYPE_CHECKING:
     from starlette.applications import Starlette
     from starlette.requests import Request
 
+    from metabrowser.git.tree_source import GitRevisionSubject
+
 LOG = logging.getLogger(__name__)
+
+
+def _git_revision_subject() -> GitRevisionSubject | None:
+    from metabrowser.git.tree_source import GitRevisionSubject
+
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return subject
+    return None
 
 
 # Aliases kept so external test imports stay stable; authoritative
@@ -951,6 +964,12 @@ async def api_index_progress(request: Request) -> Response:
     filling.
     """
 
+    subject = _git_revision_subject()
+    if subject is not None:
+        from metabrowser.git.content_routes import git_revision_index_progress
+
+        return await git_revision_index_progress(subject)
+
     require_filesystem_hooks()
     progress, session = await _read_index_progress(_runtime_for(request))
     etag = build_scoped_etag(f"{session}-{_progress_etag(progress)}")
@@ -1321,10 +1340,9 @@ async def api_catalog(request: Request) -> Response:
     """
 
     from metabrowser.git.content_routes import git_revision_catalog
-    from metabrowser.git.tree_source import GitRevisionSubject
 
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
+    subject = _git_revision_subject()
+    if subject is not None:
         return await git_revision_catalog(request, subject)
 
     require_filesystem_hooks()
@@ -1373,6 +1391,12 @@ async def api_index_meta(request: Request) -> Response:
     file count + walker generation, so a 304 is cheap when
     nothing has finalized since the last poll."""
 
+    subject = _git_revision_subject()
+    if subject is not None:
+        from metabrowser.git.content_routes import git_revision_index_meta
+
+        return await git_revision_index_meta(subject)
+
     require_filesystem_hooks()
     meta, etag = await _read_index_meta(_runtime_for(request))
     body = json.dumps(asdict(meta), separators=(",", ":")).encode()
@@ -1390,6 +1414,12 @@ async def api_index_meta(request: Request) -> Response:
 
 async def api_capabilities(request: Request) -> JSONResponse:
     """Return the selected provider's reported observation capability."""
+
+    subject = _git_revision_subject()
+    if subject is not None:
+        from metabrowser.git.content_routes import git_revision_capabilities
+
+        return await git_revision_capabilities(subject)
 
     require_filesystem_hooks()
     runtime = _runtime_for(request)
