@@ -61,8 +61,10 @@ Repository cache:
   store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
   The fetch is blobless when the origin honors `--filter=blob:none`, and complete when
   the origin ignores the filter.
-  The staging entry stays unpublished: no source alias, no `repository-stores` rename,
-  and the CLI still does not write the cache or serve acquired content.
+  A later acquire of the same `file://` source publishes that staging entry into
+  `repository-stores` and a source alias as the visibility commit, or reuses a store
+  already published for that identity.
+  The CLI still does not open Git sources or serve acquired content.
 
 ## 0.10.0
 
