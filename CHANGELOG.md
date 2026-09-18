@@ -134,9 +134,11 @@ Content source:
   answers from recursive blob names and sizes, omits mtime, and treats ignore as absent
   so unignored equals total.
   A missing blob size is `object_unavailable` rather than a partial sum.
-  Other inventory-backed routes (`/api/catalog`, `/api/index/*`, `/api/capabilities`,
-  `/api/stream`) still return `unsupported_for_subject` rather than the lifespan
-  filesystem inventory.
+  `/api/catalog` on a pin lists those blob names as Quick File rows (`p` GitPath wire,
+  `e` display suffix, `n` display basename) and is complete at once; a truncated tree is
+  an empty truncated snapshot rather than a partial list.
+  Other inventory-backed routes (`/api/index/*`, `/api/capabilities`, `/api/stream`)
+  still return `unsupported_for_subject` rather than the lifespan filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.

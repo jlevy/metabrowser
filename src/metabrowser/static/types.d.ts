@@ -2323,6 +2323,7 @@ declare global {
       show(html: string, anchor: Element | null): void;
     };
     METABROWSER_REPOSITORY_CONTEXT?: MetabrowserRepositoryContext | null;
+    METABROWSER_SOURCE_KIND?: "filesystem" | "git_revision";
     /** Container kinds by extension; see arch-nav-containers.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {

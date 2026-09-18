@@ -113,8 +113,9 @@ Markdown-frontmatter mappings parsed from blob bytes.
 `/api/plugin/structured/parsed` reads a Git blob and uses the object id as its cache key
 rather than a filesystem mtime.
 `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope;
-`/api/plugin/agent-log/charts` reads that blob by `GitPath`. Other inventory-backed
-routes (`/api/catalog`, index progress/meta, capabilities, JSONL stream) return
+`/api/plugin/agent-log/charts` reads that blob by `GitPath`. `/api/catalog` on a pin
+lists recursive blob names and is complete at once.
+Other inventory-backed routes (index progress/meta, capabilities, JSONL stream) return
 `unsupported_for_subject` instead of the lifespan folder.
 `/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
 A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
