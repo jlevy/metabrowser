@@ -165,8 +165,11 @@ Content source:
   Git text envelopes use the same first-window and highlight bound as filesystem
   listings (`bytes_read`, `content_preview_limit`, `content_max_preview_limit`,
   `highlight_disabled`) so Load more and `fetchText` can continue a truncated pin.
-  `/api/stream` still returns `unsupported_for_subject` rather than the lifespan
-  filesystem inventory.
+  `/api/file`, `/raw`, and KPress follow in-tree relative symlink blobs to the target
+  object; the requested GitPath stays the route identity.
+  Listings still show the symlink.
+  Absolute, dangling, and cyclic targets 404. `/api/stream` still returns
+  `unsupported_for_subject` rather than the lifespan filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.
