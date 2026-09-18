@@ -3,11 +3,11 @@ type: is
 id: is-01kzsb4jnyd56wy89xmztkmz2m
 title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (no serving)"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 28
+version: 31
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
-delegate: null
+delegate: unknown@cursor
 labels:
   - release:v0.11.0
 dependencies:
@@ -24,10 +24,12 @@ dependencies:
   - type: blocks
     target: is-01m2p1pshr699c6pf8xqeer16j
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
+child_order_hints:
+  - is-01m2s27ybx4dw3qde29xm6jgqn
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-17T15:00:16.288Z
+updated_at: 2026-09-18T01:31:37.721Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -38,6 +40,4 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
-From mb-xa0p: acquisition creates and writes the application home only through src/metabrowser/home.py (ensure_private_directory, open_private_file) before any network work, so symlinked, foreign-owned, or permissive ancestors are refused. Every Git child process runs with umask 077 (measured: core.sharedRepository=0600 alone still left group/world-accessible directories); test that no store entry has group or other permission bits.
-From mb-ire2 review (decision recorded, not made): distributions backport Git CVE fixes without changing the upstream version string (Ubuntu 24.04 patched Git reports 2.43.0; Debian 12 reports 2.39.x), so an upstream-version acquisition gate refuses those builds. Decide before shipping acquisition among: refuse with an actionable message naming the upstream floor; a user-set acknowledgement setting; or a distro-package check. Also: run the no-lazy-fetch read tests against the lowest admitted Git in CI, and measure a low-speed stall bound on a large or bitmap-less initial acquisition before bounding it.
-From mb-ire2 re-audit: record the store configuration snapshot digest after the first successful fetch and before publication; write only Metabrowser-recorded promisor remotes; never fetch by fork URL into a store.
+Implementation sliced. Slice A (Git runner): cursor/v011-git-runner-hardening-bd04 stacked on #141. Production version parse/admit replay git-version-gates.json; named policies; GitCommandTarget as --git-dir/--work-tree; umask 077 and stdin DEVNULL on acquisition/fetch. Distro-patched Git gate remains refuse (fixture-specified) until a later 1B-a decision. mb-cun0 is not a blocker to start implementation; evaluate it before mb-k900 publishes the first cache-writing layer. Remaining slices: staging fetch+validate (file://), publish+reuse, prefetch+crash recovery, then mb-dg00 goldens + --no-serve.
