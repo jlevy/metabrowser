@@ -135,7 +135,10 @@ Content source:
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.
-  Inventory open, archive containers, and serving acquired Git are not switched yet.
+  `/view/` on a Git pin accepts a `GitPath` wire, optionally plus a patch-file container
+  inner, and refuses a filesystem spelling; missing Git objects remain valid shell
+  destinations. Inventory open, archive containers, and serving acquired Git are not
+  switched yet.
 
 ## 0.10.0
 

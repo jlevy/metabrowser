@@ -1,11 +1,12 @@
 """GitPath adapters for ``/api/tree``, ``/api/file``, ``/raw``, and KPress.
 
 These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
-invented filesystem fact. Patch-file container inners use a GitPath prefix
-plus a host inner path. Blob kinds use extension, basename, sniffed adapter,
-and JSON/YAML/frontmatter mappings parsed from blob bytes. ``path_glob``
-stays filesystem-only. Serving acquired Git from the CLI remains a later
-bead.
+invented filesystem fact. ``/view/`` accepts a GitPath wire, optionally plus
+a host container inner, and refuses a filesystem spelling. Patch-file
+container inners use a GitPath prefix plus a host inner path. Blob kinds use
+extension, basename, sniffed adapter, and JSON/YAML/frontmatter mappings
+parsed from blob bytes. ``path_glob`` stays filesystem-only. Serving acquired
+Git from the CLI remains a later bead.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.settings import TEXT_PREVIEW_CHUNK_BYTES, TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import UnsupportedSourceCapabilityError
 from metabrowser.tree_filter import TreeFilter
+from metabrowser.view_routes import decode_view_logical_path
 
 _NOT_FOUND = {"error": "Not found"}
 _PATCH_EXTS = (".patch", ".diff")
@@ -41,6 +43,23 @@ _PATCH_EXTS = (".patch", ".diff")
 
 def _git_path_from_query(request: Request) -> GitPath:
     return GitPath.from_wire(request.query_params.get("path", ""))
+
+
+def decode_git_view_path(raw_path: bytes) -> str | None:
+    """Decode ``/view/`` as a GitPath wire, optionally plus a container inner.
+
+    Filesystem spellings are not GitPath identities. Missing Git objects stay
+    valid shell destinations, matching missing files under a served root.
+    """
+
+    logical = decode_view_logical_path(raw_path)
+    if logical is None:
+        return None
+    try:
+        split_git_container_wire(logical)
+    except GitPathError:
+        return None
+    return logical
 
 
 def split_git_container_wire(wire: str) -> tuple[GitPath, str]:
@@ -508,6 +527,7 @@ async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Res
 
 
 __all__ = [
+    "decode_git_view_path",
     "git_revision_file",
     "git_revision_kpress_render",
     "git_revision_raw",
