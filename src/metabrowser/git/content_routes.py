@@ -7,7 +7,9 @@ Git-native ``entries`` and also projects a SPA ``tree`` array so navigation
 can paint; Git trees lazy-load, gitlinks are files, and listings omit mtime,
 size, and ignore. File nav nodes include ``logical_ext`` from the display suffix.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
-``tree``) with empty views and no invented dir aggregates. KPress ``source_path``
+``tree``) with no invented dir aggregates. A direct-child README blob sets
+``readme_path`` to its GitPath wire and mounts the Overview view; treemap stays
+unmounted because it needs inventory rollup. KPress ``source_path``
 is the GitPath wire so Markdown rewrite cannot emit a filesystem spelling.
 Patch-file container inners use a GitPath prefix plus a host inner path. Blob
 kinds use extension, basename, sniffed adapter, and JSON/YAML/frontmatter
@@ -29,6 +31,7 @@ from metabrowser import kpress_adapter
 from metabrowser.content_sniff import ContentClass, classify_prefix
 from metabrowser.file_extensions import BROWSER_IMAGE_EXTS, BROWSER_TEXT_EXTS
 from metabrowser.file_kinds import classify_by_ext
+from metabrowser.folder_discovery import choose_readme_name
 from metabrowser.git.tree_source import (
     GitBlobTooLargeError,
     GitObjectUnavailableError,
@@ -38,7 +41,11 @@ from metabrowser.git.tree_source import (
     GitTreeEntry,
 )
 from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
-from metabrowser.settings import TEXT_PREVIEW_CHUNK_BYTES, TEXT_PREVIEW_REQUEST_MAX_BYTES
+from metabrowser.settings import (
+    FOLDER_DISCOVERY_MAX_ENTRIES,
+    TEXT_PREVIEW_CHUNK_BYTES,
+    TEXT_PREVIEW_REQUEST_MAX_BYTES,
+)
 from metabrowser.source import UnsupportedSourceCapabilityError
 from metabrowser.tree_filter import TreeFilter
 from metabrowser.view_routes import decode_view_logical_path
@@ -265,15 +272,43 @@ async def git_revision_tree(
     )
 
 
-def _tree_file_payload(entry: GitTreeEntry) -> dict[str, Any]:
+def _git_readme_child(
+    children: tuple[GitTreeEntry, ...],
+) -> tuple[GitTreeEntry | None, bool]:
+    """Pick a direct-child README blob. Symlinks and gitlinks are not READMEs."""
+
+    truncated = len(children) > FOLDER_DISCOVERY_MAX_ENTRIES
+    scanned = children[:FOLDER_DISCOVERY_MAX_ENTRIES]
+    by_name: dict[str, GitTreeEntry] = {}
+    for child in scanned:
+        if child.is_symlink or child.is_gitlink or not child.is_blob:
+            continue
+        name = _display_basename(child.path)
+        if name.casefold() != "readme.md":
+            continue
+        by_name[name] = child
+    chosen = choose_readme_name(list(by_name))
+    return by_name.get(chosen), truncated
+
+
+def _folder_overview_views() -> list[dict[str, Any]]:
+    """Overview only. Treemap needs inventory rollup sizes this pin does not have."""
+
+    return [view for view in _views_for_kind("folder") if view.get("id") == "overview"]
+
+
+def _tree_file_payload(entry: GitTreeEntry, children: tuple[GitTreeEntry, ...]) -> dict[str, Any]:
     """SPA folder chrome. Keep Git ``tree`` identity; omit inventory aggregates."""
 
+    readme, truncated = _git_readme_child(children)
     return {
         "subject": "git_revision",
         "type": "folder",
         "kind": "folder",
         "name": _display_basename(entry.path),
-        "views": [],
+        "views": _folder_overview_views() if readme else [],
+        "readme_path": readme.path.to_wire() if readme else "",
+        "readme_search_truncated": truncated,
         **_identity_fields(entry),
     }
 
@@ -429,7 +464,8 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
         if entry is None:
             return _json(_NOT_FOUND, status_code=404)
         if entry.is_tree:
-            return _json(_tree_file_payload(entry))
+            children = await subject.tree_source.list_tree(path)
+            return _json(_tree_file_payload(entry, children))
         if entry.is_gitlink:
             return _json(_gitlink_file_payload(entry))
         if not entry.is_blob:

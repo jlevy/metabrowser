@@ -17,7 +17,7 @@ class FolderDiscovery:
     readme_search_truncated: bool = False
 
 
-def _choose_readme(candidates: list[str]) -> str:
+def choose_readme_name(candidates: list[str]) -> str:
     """Choose a real child name with stable casing precedence."""
 
     for preferred in _PREFERRED_README_NAMES:
@@ -56,9 +56,9 @@ def discover_folder(target: Path, *, max_entries: int) -> FolderDiscovery:
     except OSError:
         return FolderDiscovery()
     return FolderDiscovery(
-        readme_name=_choose_readme(candidates),
+        readme_name=choose_readme_name(candidates),
         readme_search_truncated=truncated,
     )
 
 
-__all__ = ["FolderDiscovery", "discover_folder"]
+__all__ = ["FolderDiscovery", "choose_readme_name", "discover_folder"]

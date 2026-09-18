@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, and Markdown GitPath links honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, and Git folder Overview honor a pin."""
 
 from __future__ import annotations
 
@@ -381,10 +381,13 @@ def test_git_file_folder_envelope_is_spa_folder_chrome(tmp_path: Path) -> None:
             assert root_body["git_kind"] == "tree"
             assert root_body["path"] == ""
             assert root_body["name"] == ""
-            assert root_body["views"] == []
+            view_ids = [view["id"] for view in root_body["views"]]
+            assert view_ids == ["overview"]
+            assert "treemap" not in view_ids
+            assert root_body["readme_path"] == _wire(b"README.md")
+            assert root_body["readme_search_truncated"] is False
             assert "dir" not in root_body
             assert "total_files" not in root_body
-            assert "readme_path" not in root_body
             assert str(store) not in root.text
 
             vendor = await client.get("/api/file", params={"path": _wire(b"vendor")})
@@ -394,6 +397,7 @@ def test_git_file_folder_envelope_is_spa_folder_chrome(tmp_path: Path) -> None:
             assert vendor_body["git_kind"] == "tree"
             assert vendor_body["name"] == "vendor"
             assert vendor_body["views"] == []
+            assert vendor_body["readme_path"] == ""
             gitlink = await client.get("/api/file", params={"path": _wire(b"vendor", b"dep")})
             assert gitlink.json()["kind"] != "folder"
 
