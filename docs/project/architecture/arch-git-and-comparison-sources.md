@@ -6,8 +6,8 @@ The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Worktree-free repository stores and immutable revision subjects are implemented for tree
 reads, Git collection routes, `GitPath` file/raw/tree routes, revision comparison
-through `GitDiffSource`, KPress blob renders, and patch-file containers; serving
-acquired Git remains later.
+through `GitDiffSource`, KPress blob renders, patch-file containers, and binary byte
+chunks; serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -246,8 +246,9 @@ Their `GitPath` identity is raw byte segments with a lossless route codec and se
 display text; it never becomes a host filesystem path.
 A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path, not
 another tree segment.
-Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
-remain ordinary blobs.
+`/api/plugin/binary/chunk` slices one blob by that identity and keys the window on the
+object id. Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS
+pointers remain ordinary blobs.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an

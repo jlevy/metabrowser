@@ -20,13 +20,14 @@ requests, not in the file size: reading *S* bytes in chunks of *C* decompresses
 not dearer, which is why both kinds share one ceiling and the chunk default is
 generous.
 
-The handler is synchronous on purpose: the data-hook dispatcher runs sync
-sidekicks through ``run_in_threadpool``, so the read is already off the event
-loop without a second offloading layer.
+The handler is async so a pinned Git blob read stays on the event loop
+and does not deadlock the shared cat-file pool. Filesystem reads run in
+the thread pool.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import os
@@ -36,6 +37,13 @@ from typing import IO, TYPE_CHECKING, Any
 from starlette.responses import JSONResponse
 from strif import file_mtime_hash
 
+from metabrowser.git.tree_source import (
+    GitBlobTooLargeError,
+    GitObjectUnavailableError,
+    GitPath,
+    GitPathError,
+    GitRevisionSubject,
+)
 from metabrowser.http_caching import build_scoped_etag
 from metabrowser.plugin_api import (
     ArtifactCompressionError,
@@ -44,6 +52,7 @@ from metabrowser.plugin_api import (
     relativize_path,
     resolve_path,
 )
+from metabrowser.source import get_source_session
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -156,22 +165,44 @@ def _unavailable(subpath: str) -> JSONResponse:
     return _error("This file is no longer available.", 404, path=subpath)
 
 
-def chunk_handler(request: Request) -> JSONResponse:
-    """``GET /api/plugin/binary/chunk?path=<rel>&offset=<bytes>&limit=<bytes>``.
+def _chunk_envelope(
+    *,
+    path: str,
+    offset: int,
+    payload: bytes,
+    logical_size: int,
+    ceiling: int,
+    fingerprint: str,
+    limit: int,
+    has_more: bool,
+) -> JSONResponse:
+    readable = min(logical_size, ceiling)
+    next_offset = offset + len(payload)
+    return JSONResponse(
+        {
+            "type": "binary_chunk",
+            "path": path,
+            "offset": offset,
+            "bytes_read": len(payload),
+            "next_offset": next_offset,
+            "logical_size": logical_size,
+            "max_preview_bytes": ceiling,
+            # More bytes exist *and* they are still inside the window. Past the
+            # ceiling the answer is no, so the view stops offering Load more.
+            "has_more": has_more and next_offset < readable,
+            # The file continues past what may be loaded. Distinct from
+            # `has_more`: both are false at the ceiling, and only this one
+            # tells the reader that what they see is not the whole file.
+            "preview_limited": logical_size > ceiling,
+            "mtime_hash": fingerprint,
+            "content_base64": base64.b64encode(payload).decode("ascii"),
+        },
+        headers={"ETag": build_scoped_etag(f"{fingerprint}-{offset}-{limit}")},
+    )
 
-    Returns a ``binary_chunk`` envelope. Failures are bounded, public-safe 4xx
-    responses the bytes view turns into concise inline states; no message
-    carries raw byte content or an absolute local path.
-    """
-    started_at = time.monotonic()
+
+def _parse_window(request: Request, ceiling: int) -> tuple[int, int] | JSONResponse:
     subpath = request.query_params.get("path", "")
-    target: Path | None = resolve_path(subpath)
-    if target is None or not target.is_file():
-        return _unavailable(subpath)
-
-    artifact = ArtifactPath(target)
-    ceiling = _preview_ceiling(artifact)
-
     try:
         offset = _query_bounded_int(request, "offset", 0, minimum=0, maximum=ceiling)
         limit = _query_bounded_int(
@@ -183,6 +214,77 @@ def chunk_handler(request: Request) -> JSONResponse:
         )
     except _RangeError as exc:
         return _error("Could not load these bytes.", 400, path=subpath, detail=str(exc))
+    return offset, limit
+
+
+async def _git_chunk(request: Request, subject: GitRevisionSubject) -> JSONResponse:
+    """Bounded window of one Git blob. Cache key is the object id, not mtime."""
+
+    subpath = request.query_params.get("path", "")
+    try:
+        path = GitPath.from_wire(subpath)
+    except GitPathError:
+        return _unavailable(subpath)
+    try:
+        entry = await subject.tree_source.resolve_path(path)
+        if entry is None or not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+            return _unavailable(subpath)
+        body = await subject.tree_source.read_blob(path)
+    except GitObjectUnavailableError:
+        return _unavailable(subpath)
+    except GitBlobTooLargeError as exc:
+        return _error(
+            "Preview unavailable.",
+            413,
+            path=subpath,
+            max_preview_bytes=exc.max_bytes,
+        )
+
+    ceiling = BINARY_PREVIEW_MAX_BYTES
+    parsed = _parse_window(request, ceiling)
+    if isinstance(parsed, JSONResponse):
+        return parsed
+    offset, limit = parsed
+    logical_size = len(body)
+    readable = min(logical_size, ceiling)
+    if offset >= ceiling and offset > 0:
+        return _error(
+            "Preview unavailable.",
+            416,
+            path=subpath,
+            logical_size=logical_size,
+            max_preview_bytes=ceiling,
+        )
+    limit = min(limit, max(readable - offset, 0))
+    payload = body[offset : offset + limit]
+    return _chunk_envelope(
+        path=path.to_wire(),
+        offset=offset,
+        payload=payload,
+        logical_size=logical_size,
+        ceiling=ceiling,
+        fingerprint=entry.oid,
+        limit=limit,
+        has_more=offset + len(payload) < logical_size,
+    )
+
+
+def _filesystem_chunk(request: Request) -> JSONResponse:
+    """``GET /api/plugin/binary/chunk`` for an attached folder."""
+
+    started_at = time.monotonic()
+    subpath = request.query_params.get("path", "")
+    target: Path | None = resolve_path(subpath)
+    if target is None or not target.is_file():
+        return _unavailable(subpath)
+
+    artifact = ArtifactPath(target)
+    ceiling = _preview_ceiling(artifact)
+
+    parsed = _parse_window(request, ceiling)
+    if isinstance(parsed, JSONResponse):
+        return parsed
+    offset, limit = parsed
 
     try:
         logical_size = artifact.logical_size
@@ -231,29 +333,28 @@ def chunk_handler(request: Request) -> JSONResponse:
             elapsed,
         )
 
-    next_offset = offset + len(payload)
-    mtime_hash = file_mtime_hash(target)
-    return JSONResponse(
-        {
-            "type": "binary_chunk",
-            "path": relativize_path(str(target)) or subpath,
-            "offset": offset,
-            "bytes_read": len(payload),
-            "next_offset": next_offset,
-            "logical_size": logical_size,
-            "max_preview_bytes": ceiling,
-            # More bytes exist *and* they are still inside the window. Past the
-            # ceiling the answer is no, so the view stops offering Load more.
-            "has_more": has_more and next_offset < readable,
-            # The file continues past what may be loaded. Distinct from
-            # `has_more`: both are false at the ceiling, and only this one
-            # tells the reader that what they see is not the whole file.
-            "preview_limited": logical_size > ceiling,
-            "mtime_hash": mtime_hash,
-            "content_base64": base64.b64encode(payload).decode("ascii"),
-        },
-        # Offset and limit decide which bytes this is, so they belong in the
-        # validator. Keyed on the file alone, every window of a file shared one
-        # tag — inert while nothing checked it, and wrong the moment anything did.
-        headers={"ETag": build_scoped_etag(f"{mtime_hash}-{offset}-{limit}")},
+    return _chunk_envelope(
+        path=relativize_path(str(target)) or subpath,
+        offset=offset,
+        payload=payload,
+        logical_size=logical_size,
+        ceiling=ceiling,
+        fingerprint=file_mtime_hash(target),
+        limit=limit,
+        has_more=has_more,
     )
+
+
+async def chunk_handler(request: Request) -> JSONResponse:
+    """``GET /api/plugin/binary/chunk?path=<rel>&offset=<bytes>&limit=<bytes>``.
+
+    Returns a ``binary_chunk`` envelope. Failures are bounded, public-safe 4xx
+    responses the bytes view turns into concise inline states; no message
+    carries raw byte content or an absolute local path.
+    On a pinned revision the path is a GitPath wire identity and the
+    cache key is the blob object id.
+    """
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await _git_chunk(request, subject)
+    return await asyncio.to_thread(_filesystem_chunk, request)
