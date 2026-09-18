@@ -133,6 +133,8 @@ refuses a filesystem spelling.
 so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes,
 recursive dir `total_files`/`total_size`, no invented mtime or ignore; gitlinks are
 files and stay unsized).
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap; `depth=0` returns chrome without a listing.
 A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
 recursive blob tallies and no mtime.
 A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview.

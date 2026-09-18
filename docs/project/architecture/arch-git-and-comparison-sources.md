@@ -26,6 +26,8 @@ and `type_presets` rows, `tally_cache_status`, and a `summary` from the same ind
 totals. Git type matching uses the same bounded compound-tail logical extension as
 filesystem inventory.
 `include_ignored=0` is a no-op because ignore is absent.
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap.
 LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
 disabled. Serving acquired Git remains later.
 See
@@ -288,6 +290,8 @@ container inner, and refuses a filesystem spelling.
 `/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array
 (`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes, recursive dir
 `total_files`/`total_size`, no mtime/ignore); gitlinks are files and stay unsized.
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap; `depth=0` returns chrome without a listing.
 Whole-tree `extensions`, `canonical_extensions`, `type_families`, and `type_presets`
 rows, `tally_cache_status`, and `summary` come from the recursive blob index; ignored
 counts are 0 because ignore is absent.
@@ -307,6 +311,8 @@ and `type_presets` rows, `tally_cache_status`, and a `summary` from the same ind
 totals. Git type matching uses the same bounded compound-tail logical extension as
 filesystem inventory.
 `include_ignored=0` is a no-op because ignore is absent.
+`depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
+sentinel past the cap.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
 SPA path chrome and copy-path decode those wires to display names; navigation identities
