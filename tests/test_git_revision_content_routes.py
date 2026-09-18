@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, and folder chrome honor GitPath on a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, and Markdown GitPath links honor a pin."""
 
 from __future__ import annotations
 
@@ -12,10 +12,12 @@ import time
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
+from typing import Any
 
 import pytest
 from httpx2 import ASGITransport, AsyncClient
 
+from metabrowser import kpress_adapter
 from metabrowser.diff.format import validate_document
 from metabrowser.git.content_routes import split_git_container_wire
 from metabrowser.git.process import repository_store_target
@@ -348,6 +350,7 @@ def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
             assert by_name["docs"]["has_children"] is True
             assert by_name["README.md"]["type"] == "file"
             assert by_name["README.md"]["path"] == _wire(b"README.md")
+            assert by_name["README.md"]["logical_ext"] == ".md"
             assert by_name["link"]["type"] == "symlink"
             assert by_name["vendor"]["type"] == "dir"
             names = {entry["display"] for entry in body["entries"]}
@@ -450,8 +453,18 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
-def test_git_kpress_render_honors_gitpath_without_mtime(tmp_path: Path) -> None:
+def test_git_kpress_render_honors_gitpath_without_mtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     store, commit = _build_store(tmp_path)
+    seen: dict[str, Any] = {}
+    original = kpress_adapter.render_kpress_view
+
+    def _capture(**kwargs: Any) -> Any:
+        seen.update(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
 
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
@@ -465,6 +478,8 @@ def test_git_kpress_render_honors_gitpath_without_mtime(tmp_path: Path) -> None:
             assert "hello" in body["html"]
             assert "mtime" not in body
             assert str(store) not in rendered.text
+            assert seen["source_path"] == readme_wire
+            assert "README.md" not in str(seen["source_path"])
 
             relative = await client.get(
                 "/api/kpress/render",

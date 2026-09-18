@@ -144,6 +144,14 @@
     return separator >= 0 ? path.slice(separator + 1) : path;
   }
 
+  /** @param {string} path @param {unknown} name */
+  function displayBasename(path, name) {
+    if (typeof name === "string" && name && !name.includes("/") && name !== "." && name !== "..") {
+      return name;
+    }
+    return basenameForPath(path);
+  }
+
   /**
    * Match the provider's canonical inventory-path contract for one file.
    * Paths are nonempty POSIX-relative identities with normalized segments.
@@ -428,9 +436,17 @@
      * @param {string | null} logicalExtension
      * @param {string} source
      * @param {boolean} [appendIfOrdered=false]
+     * @param {string} [displayName]
      */
-    function putCanonicalInto(target, path, logicalExtension, source, appendIfOrdered = false) {
-      const basename = basenameForPath(path);
+    function putCanonicalInto(
+      target,
+      path,
+      logicalExtension,
+      source,
+      appendIfOrdered = false,
+      displayName,
+    ) {
+      const basename = displayBasename(path, displayName);
       const previous = target.filesByPath.get(path);
       const nextLogicalExtension = logicalExtension || previous?.logicalExtension || null;
       if (
@@ -521,7 +537,14 @@
       }
       const logicalExtension =
         typeof entry.logical_ext === "string" && entry.logical_ext ? entry.logical_ext : null;
-      return putCanonicalInto(target, entry.path, logicalExtension, source, appendIfOrdered);
+      return putCanonicalInto(
+        target,
+        entry.path,
+        logicalExtension,
+        source,
+        appendIfOrdered,
+        entry.name,
+      );
     }
 
     /** @param {CatalogState} target @param {CatalogWireEntry} entry @param {string} source */
@@ -638,15 +661,17 @@
           typeof mutation.entry.logical_ext === "string" && mutation.entry.logical_ext
             ? mutation.entry.logical_ext
             : previous?.logicalExtension || null;
+        const basename = displayBasename(path, mutation.entry.name);
         if (
           previous &&
+          previous.basename === basename &&
           previous.logicalExtension === logicalExtension &&
           previous.source === mutation.source
         ) {
           return false;
         }
         const next = Object.freeze({
-          basename: basenameForPath(path),
+          basename,
           logicalExtension,
           path,
           source: mutation.source,

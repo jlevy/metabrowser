@@ -9,9 +9,10 @@ reads, Git collection routes, `GitPath` file/raw/tree routes (including a SPA `t
 projection on `/api/tree` and SPA `folder` chrome on tree `/api/file` envelopes),
 revision comparison through `GitDiffSource` (including size-gated `content` via the
 shared cat-file pool), KPress blob renders, patch-file containers, binary byte chunks,
-extension plugin kinds, structured parsed, and agent-log JSONL. LFS pointers stay stored
-bytes; a promisor miss is `object_unavailable` with lazy fetch disabled.
-Serving acquired Git remains later.
+extension plugin kinds, structured parsed, and agent-log JSONL. Markdown and wiki links
+on a pin resolve to `GitPath` wires.
+LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
+disabled. Serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -269,6 +270,9 @@ container inner, and refuses a filesystem spelling.
 (`dir`/`file`/`symlink`, `GitPath` wires, no mtime/size/ignore); gitlinks are files.
 A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
 empty views and no invented directory aggregates.
+Markdown and wiki destinations encode authored segments as `GitPath` wires; the
+known-file catalog indexes the tree node’s display name, not the `g1-` token.
+KPress `source_path` on a pin is that wire.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an
