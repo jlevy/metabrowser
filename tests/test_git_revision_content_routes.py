@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, markdown frontmatter, and text preview windows honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, markdown frontmatter, text preview windows, and in-tree symlink follow honor a pin."""
 
 from __future__ import annotations
 
@@ -358,11 +358,15 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             link_file = await client.get("/api/file", params={"path": link_wire})
             assert link_file.status_code == 200
             link_body = link_file.json()
-            assert link_body["symlink"] is True
-            assert link_body["content"] == "README.md"
-            assert "ext" not in link_body
+            assert link_body["path"] == link_wire
+            assert link_body["display"] == "link"
+            assert link_body["type"] == "text"
+            assert link_body["kind"] == "markdown"
+            assert link_body["ext"] == ".md"
+            assert link_body["content"] == "hello\n"
+            assert link_body["symlink"] is False
             link_raw = await client.get("/raw", params={"path": link_wire})
-            assert link_raw.content == b"README.md"
+            assert link_raw.content == b"hello\n"
 
             gitlink_wire = _wire(b"vendor", b"dep")
             gitlink_file = await client.get("/api/file", params={"path": gitlink_wire})
@@ -818,7 +822,9 @@ def test_git_kpress_render_honors_gitpath_without_mtime(
                 "/api/kpress/render",
                 params={"path": _wire(b"link"), "view": "rendered"},
             )
-            assert symlink.status_code == 404
+            assert symlink.status_code == 200
+            assert "hello" in symlink.json()["html"]
+            assert seen["source_path"] == _wire(b"README.md")
 
     asyncio.run(_run())
 
@@ -938,6 +944,64 @@ def test_git_text_preview_windows_match_filesystem_highlight_bound(tmp_path: Pat
             assert txt_body["content_preview_limit"] == TEXT_PREVIEW_CHUNK_BYTES
             assert str(store) not in md.text
             assert str(store) not in txt.text
+
+    asyncio.run(_run())
+
+
+def test_git_file_raw_kpress_follow_in_tree_symlinks(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "README.md").write_text("hello\n", encoding="utf-8")
+    (work / "docs").mkdir()
+    (work / "docs" / "note.txt").write_text("nested\n", encoding="utf-8")
+    (work / "docs" / "up").symlink_to("../README.md")
+    (work / "to_docs").symlink_to("docs")
+    (work / "dangling").symlink_to("missing")
+    (work / "abs").symlink_to("/tmp/x")
+    (work / "a").symlink_to("b")
+    (work / "b").symlink_to("a")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "symlinks")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            nested = await client.get("/api/file", params={"path": _wire(b"docs", b"up")})
+            assert nested.status_code == 200
+            nested_body = nested.json()
+            assert nested_body["path"] == _wire(b"docs", b"up")
+            assert nested_body["display"].endswith("up")
+            assert nested_body["content"] == "hello\n"
+            assert nested_body["ext"] == ".md"
+            assert nested_body["symlink"] is False
+            nested_raw = await client.get("/raw", params={"path": _wire(b"docs", b"up")})
+            assert nested_raw.content == b"hello\n"
+
+            folder = await client.get("/api/file", params={"path": _wire(b"to_docs")})
+            assert folder.status_code == 200
+            folder_body = folder.json()
+            assert folder_body["type"] == "folder"
+            assert folder_body["name"] == "to_docs"
+            assert folder_body["path"] == _wire(b"to_docs")
+            assert folder_body["git_kind"] == "tree"
+
+            tree = await client.get("/api/tree")
+            by_name = {node["name"]: node for node in tree.json()["tree"]}
+            assert by_name["to_docs"]["type"] == "symlink"
+            assert by_name["dangling"]["type"] == "symlink"
+
+            assert (
+                await client.get("/api/file", params={"path": _wire(b"dangling")})
+            ).status_code == 404
+            assert (
+                await client.get("/api/file", params={"path": _wire(b"abs")})
+            ).status_code == 404
+            assert (await client.get("/api/file", params={"path": _wire(b"a")})).status_code == 404
+            assert (await client.get("/raw", params={"path": _wire(b"to_docs")})).status_code == 404
+            assert str(store) not in nested.text
 
     asyncio.run(_run())
 

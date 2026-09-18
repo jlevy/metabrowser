@@ -31,7 +31,8 @@ Blob file envelopes omit compressed identity because blobs are stored bytes with
 smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
 `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
 Git text envelopes use the same first-window and highlight bound as filesystem listings.
-`include_ignored=0` is a no-op because ignore is absent.
+`/api/file`, `/raw`, and KPress follow in-tree relative symlink blobs; listings still
+show the symlink. `include_ignored=0` is a no-op because ignore is absent.
 `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
 sentinel past the cap.
 LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
@@ -323,7 +324,8 @@ Blob file envelopes omit compressed identity because blobs are stored bytes with
 smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
 `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
 Git text envelopes use the same first-window and highlight bound as filesystem listings.
-`include_ignored=0` is a no-op because ignore is absent.
+`/api/file`, `/raw`, and KPress follow in-tree relative symlink blobs; listings still
+show the symlink. `include_ignored=0` is a no-op because ignore is absent.
 `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
 sentinel past the cap.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
