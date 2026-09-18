@@ -3,10 +3,11 @@ type: is
 id: is-01kzcvmq7ry46jxy4gcde7x4cq
 title: "HTML P1: sandbox /raw responses and require same-origin proof on /api"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
+delegate: unknown@cursor
 labels:
   - security
   - release:v0.11.0
@@ -18,8 +19,11 @@ dependencies:
   - type: blocks
     target: is-01m2pn3sm2980e2bjnfd3b4xvp
 parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
+hold: null
+hold_until: null
 created_at: 2026-08-07T00:58:17.207Z
-updated_at: 2026-09-17T20:35:16.781Z
+updated_at: 2026-09-18T04:04:15.120Z
+started_at: 2026-09-18T04:04:15.120Z
 extensions:
   linear:
     id: aa27e880-f003-4490-80ca-7e9c75b72c12
