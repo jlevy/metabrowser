@@ -132,6 +132,9 @@ Content source:
   `/api/plugin/agent-log/charts` reads that blob by `GitPath`. Inventory-backed routes
   (`/api/rollup`, `/api/catalog`, `/api/index/*`, `/api/capabilities`, `/api/stream`)
   return `unsupported_for_subject` rather than the lifespan filesystem inventory.
+  A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
+  A blob the tree names but the store lacks, including a promisor miss, is
+  `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.
   Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0

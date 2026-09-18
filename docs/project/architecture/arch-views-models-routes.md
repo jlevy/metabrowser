@@ -157,7 +157,7 @@ reservation and its invariants, is in
 
 | Route | Serves |
 | --- | --- |
-| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window. A `GitRevisionSubject` uses `GitPath` wire identities and Git object facts; it does not invent mtime or ignore state. Blob kinds use extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. A Git `.jsonl` blob is a parsed JSONL envelope. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path |
+| `/api/file` | The file or folder envelope: kind, views, capability envelope, and bounded content window. A `GitRevisionSubject` uses `GitPath` wire identities and Git object facts; it does not invent mtime or ignore state. Blob kinds use extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. A Git `.jsonl` blob is a parsed JSONL envelope. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path. An LFS pointer is stored pointer bytes; a missing blob is `object_unavailable` |
 | `/api/tree` | Navigation subtrees. `types` and `min_size` work for every source that supplies them; Git tree listings have no ls-tree sizes, so `min_size` returns `unsupported_for_subject`. `recency` and `include_ignored` require those declared source capabilities and otherwise return `unsupported_for_subject` |
 | `/api/rollup` | Bounded directory rollups over the facts the active source truthfully supplies; a requested unavailable dimension returns `unsupported_for_subject`. A `GitRevisionSubject` has no filesystem inventory, so the route is `unsupported_for_subject` rather than the lifespan folder |
 | `/api/recent` | Flat newest-first matching leaves for sources with recency; unavailable for immutable Git trees rather than populated with fake mtimes |
@@ -167,7 +167,7 @@ reservation and its invariants, is in
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export. On a `GitRevisionSubject`, render reads a `GitPath` blob and uses the object id as the cache key; export stays mutation-gated and unavailable |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`). On a `GitRevisionSubject`, diff document/children, binary chunk, structured parsed, and agent-log charts honor `GitPath` |
 | A plugin-declared mounted prefix (proposed) | Domain resource routes with path parameters and honest HTTP responses; `mb-xzj3` adds this for hosted review |
-| `/raw` | Bounded raw bytes through the active source’s content reader; oversized content is refused before an unbounded object read. A Git subject reads blobs by `GitPath` and does not follow symlinks |
+| `/raw` | Bounded raw bytes through the active source’s content reader; oversized content is refused before an unbounded object read. A Git subject reads blobs by `GitPath` and does not follow symlinks. LFS pointers are stored pointer bytes; a missing blob, including a promisor miss, is 404 |
 | `/kpress-static/<path>`, `/static/<path>`, `/plugin-static/<plugin>/<path>` | Shell, renderer, and plugin assets |
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
