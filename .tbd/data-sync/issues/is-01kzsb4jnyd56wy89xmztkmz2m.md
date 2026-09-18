@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: in_progress
 priority: 1
-version: 42
+version: 43
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -32,7 +32,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-18T02:35:36.380Z
+updated_at: 2026-09-18T02:38:08.964Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -43,4 +43,4 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
-Implementation sliced. Slice A (Git runner): PR https://github.com/jlevy/metabrowser/pull/142 HEAD bc18c718 CI green. Slice B (file:// staging fetch, mb-kf4w): PR https://github.com/jlevy/metabrowser/pull/143 HEAD b29447a3 stacked on #142; CI green. Slice C (publish+reuse, mb-t7l7): PR https://github.com/jlevy/metabrowser/pull/144 HEAD 2387b6d0 stacked on #143; all 7 CI checks green. Distro-patched Git gate remains refuse. mb-cun0 is not a blocker to start implementation; evaluate it before mb-k900 serves acquired content. Remaining slices: prefetch+crash recovery, then mb-dg00 goldens + --no-serve (mb-1i98).
+Implementation sliced. Slice A (Git runner): PR https://github.com/jlevy/metabrowser/pull/142 HEAD bc18c718 CI green. Slice B (file:// staging fetch, mb-kf4w): PR https://github.com/jlevy/metabrowser/pull/143 HEAD b29447a3 CI green. Slice C (publish+reuse, mb-t7l7): PR https://github.com/jlevy/metabrowser/pull/144 HEAD 2387b6d0 CI green. Slice D (prefetch+crash recovery, mb-h5jw): PR https://github.com/jlevy/metabrowser/pull/145 HEAD f369c4cf stacked on #144; CI watched. Distro-patched Git gate remains refuse. Remaining: mb-dg00 goldens + --no-serve (mb-1i98). Evaluate mb-cun0 before mb-k900 serves acquired content.
