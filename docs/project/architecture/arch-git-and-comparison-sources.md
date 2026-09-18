@@ -11,6 +11,7 @@ revision comparison through `GitDiffSource` (including size-gated `content` via 
 shared cat-file pool), KPress blob renders, patch-file containers, binary byte chunks,
 extension plugin kinds, structured parsed, and agent-log JSONL. Markdown and wiki links
 on a pin resolve to `GitPath` wires.
+A Git tree folder with a README mounts Overview.
 LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
 disabled. Serving acquired Git remains later.
 See
@@ -268,8 +269,10 @@ A blob the tree names but the store lacks, including a promisor miss with
 container inner, and refuses a filesystem spelling.
 `/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array
 (`dir`/`file`/`symlink`, `GitPath` wires, no mtime/size/ignore); gitlinks are files.
-A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
-empty views and no invented directory aggregates.
+A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with no
+invented directory aggregates.
+A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview;
+treemap stays unmounted.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
 KPress `source_path` on a pin is that wire.

@@ -123,8 +123,10 @@ refuses a filesystem spelling.
 `/api/tree` on that pin keeps Git-native `entries` and also projects a SPA `tree` array
 so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, no invented mtime,
 size, or ignore; gitlinks are files).
-A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
-empty views and no invented directory aggregates.
+A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with no
+invented directory aggregates.
+A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview;
+treemap stays unmounted because it needs inventory rollup.
 Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
 known-file catalog uses the tree node’s display `name` as the basename, and KPress
 `source_path` is the wire rather than a display path.
