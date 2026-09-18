@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: in_progress
 priority: 1
-version: 44
+version: 46
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -29,10 +29,11 @@ child_order_hints:
   - is-01m2s4vpjy6j5rysn5x8ah2e03
   - is-01m2s5c9jf071q4nbn7v8vxwxe
   - is-01m2s5wzeb3y0zb5qx03bkmp03
+  - is-01m2s7nv8hmezt4nt3z64qbvpp
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-18T02:43:16.270Z
+updated_at: 2026-09-18T03:06:59.893Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -43,4 +44,4 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
-Implementation sliced. Slice A–D CI green: #142 runner, #143 staging, #144 publish+reuse, #145 prefetch+crash recovery (mb-h5jw HEAD f369c4cf). Distro-patched Git gate remains refuse. Remaining: mb-dg00 goldens + --no-serve (mb-1i98). Evaluate mb-cun0 before mb-k900 serves acquired content.
+Implementation sliced. CI green: #142 runner, #143 staging, #144 publish+reuse, #145 prefetch+crash recovery, #146 --no-serve (mb-1i98 HEAD f08a2845). Distro-patched Git gate remains refuse. Remaining: mb-3639 portable acquire goldens; live tryscripts wait on a CI Git 2.50.1 pin (mb-oueh). Evaluate mb-cun0 before mb-k900 serves acquired content.
