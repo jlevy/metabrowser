@@ -104,9 +104,12 @@ patch-file containers honor that pin through `GitLocation` and `GitPath`. On a p
 `/api/kpress/render` uses the blob object id as its cache key rather than a filesystem
 mtime. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path;
 the file envelope and the diff document/children hooks use that split.
-Event, inventory open, archive containers, and serving acquired Git still wait on later
-slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
-raise `UnsupportedSourceCapabilityError` when the active subject has no folder.
+`/api/plugin/binary/chunk` reads a Git blob window and uses the object id as its cache
+key rather than a filesystem mtime.
+Event, inventory open, archive containers, plugin classification from bytes, and serving
+acquired Git still wait on later slices.
+`resolve_path` and `served_root` remain filesystem-only plugin helpers: they raise
+`UnsupportedSourceCapabilityError` when the active subject has no folder.
 Recency, ignore, watcher, activity, and mutation are named source capabilities with the
 same typed error.
 
