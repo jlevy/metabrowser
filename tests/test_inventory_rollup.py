@@ -262,3 +262,28 @@ def test_omit_mtime_drops_mtime_from_emitted_nodes() -> None:
     children = result["node"]["children"]
     assert children is not None
     assert "mtime" not in children[0]
+
+
+def test_rollup_mtime_stays_in_the_filesystem_key_order() -> None:
+    entries = {
+        "": _RollupProbe("", "", "root", "dir", "", 0, 1, False, 1),
+        "a.txt": _RollupProbe("a.txt", "", "a.txt", "file", ".txt", 4, 1, False, None),
+    }
+    result = build_rollup(
+        entries,
+        group_rollup_children(entries),
+        "",
+        RollupOptions(depth=1, top=10, ext_top=10, max_nodes=10),
+        False,
+    )
+    assert result is not None
+    dir_keys = list(result["node"].keys())
+    assert dir_keys.index("mtime") == dir_keys.index("unignored_size") + 1
+    children = result["node"]["children"]
+    assert children is not None
+    file_keys = list(children[0].keys())
+    assert file_keys[file_keys.index("size") : file_keys.index("ext") + 1] == [
+        "size",
+        "mtime",
+        "ext",
+    ]
