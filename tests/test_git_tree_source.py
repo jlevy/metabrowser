@@ -5,8 +5,11 @@ from __future__ import annotations
 import asyncio
 import os
 import shutil
+import socket
 import subprocess
-from contextlib import suppress
+import time
+from collections.abc import Generator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 import pytest
@@ -44,6 +47,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 _ZERO_OID = "0" * 40
+_LFS_POINTER = (
+    b"version https://git-lfs.github.com/spec/v1\n"
+    b"oid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\n"
+    b"size 12345\n"
+)
+# A hanging promisor without GIT_NO_LAZY_FETCH waited past 8 s in this suite.
+_PROMISOR_MISS_BUDGET_S = 1.0
 
 
 def _git_env(root: Path) -> dict[str, str]:
@@ -129,6 +139,37 @@ def _build_store(tmp_path: Path) -> tuple[Path, str]:
     commit = _git(work, "rev-parse", "HEAD").decode().strip()
     _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
     return store, commit
+
+
+def _delete_store_blob(store: Path, oid: str) -> None:
+    """Remove one object so cat-file reports a miss, not a present blob."""
+
+    loose = store / "objects" / oid[:2] / oid[2:]
+    if not loose.is_file():
+        pack_dir = store / "objects" / "pack"
+        for pack in pack_dir.glob("*.pack"):
+            subprocess.run(
+                ["git", "-C", str(store), "unpack-objects", "-q"],
+                check=True,
+                capture_output=True,
+                input=pack.read_bytes(),
+                env=_git_env(store),
+            )
+            pack.unlink()
+            pack.with_suffix(".idx").unlink(missing_ok=True)
+            pack.with_suffix(".promisor").unlink(missing_ok=True)
+    if not loose.is_file():
+        raise AssertionError(f"store blob {oid} was not a loose object")
+    loose.unlink()
+
+
+@contextmanager
+def _unanswered_promisor() -> Generator[str, None, None]:
+    """A TCP port that accepts no HTTP so a lazy fetch would stall."""
+
+    with socket.create_server(("127.0.0.1", 0)) as sock:
+        port = int(sock.getsockname()[1])
+        yield f"http://127.0.0.1:{port}/repo.git"
 
 
 def test_git_path_round_trips_invalid_utf8_and_newlines() -> None:
@@ -452,3 +493,90 @@ def test_read_store_blob_gates_size_without_a_live_subject(tmp_path: Path) -> No
         assert store_batch_reader_count(target) == 0
 
     asyncio.run(_run())
+
+
+def test_lfs_pointer_blob_is_stored_bytes_without_smudge(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / ".gitattributes").write_text(
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n", encoding="utf-8"
+    )
+    (work / "media.bin").write_bytes(_LFS_POINTER)
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "lfs pointer")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+    marker = tmp_path / "smudge-ran"
+    smudge = tmp_path / "smudge.sh"
+    smudge.write_text(
+        f"#!/bin/sh\necho SMUDGED > '{marker}'\necho SMUDGED\n",
+        encoding="utf-8",
+    )
+    smudge.chmod(0o755)
+    _git(store, "config", "filter.lfs.smudge", str(smudge))
+    _git(store, "config", "filter.lfs.required", "true")
+
+    async def _run() -> None:
+        subject = await git_revision_subject(
+            target=repository_store_target(git_dir=store),
+            commit_oid=commit,
+        )
+        source = subject.tree_source
+        try:
+            path = GitPath.from_segments(b"media.bin")
+            assert await source.read_blob(path) == _LFS_POINTER
+        finally:
+            await subject.aclose()
+
+    asyncio.run(_run())
+    assert marker.exists() is False
+
+
+def test_promisor_miss_is_object_unavailable_without_lazy_fetch(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "README.md").write_text("hello\n", encoding="utf-8")
+    (work / "keep.txt").write_text("kept\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "two blobs")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    missing_oid = _git(work, "rev-parse", "HEAD:README.md").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+    _delete_store_blob(store, missing_oid)
+    with _unanswered_promisor() as url:
+        _git(store, "config", "extensions.partialClone", "origin")
+        _git(store, "config", "remote.origin.promisor", "true")
+        _git(store, "config", "remote.origin.url", url)
+
+        async def _run() -> None:
+            subject = await git_revision_subject(
+                target=repository_store_target(git_dir=store),
+                commit_oid=commit,
+            )
+            source = subject.tree_source
+            try:
+                children = await source.list_tree()
+                names = {entry.path.segments[-1] for entry in children}
+                assert names == {b"README.md", b"keep.txt"}
+                readme = next(
+                    entry for entry in children if entry.path.segments[-1] == b"README.md"
+                )
+                assert readme.oid == missing_oid
+                started = time.monotonic()
+                async with asyncio.timeout(2):
+                    try:
+                        await source.read_blob(readme.path)
+                        raise AssertionError("promisor miss must fail closed")
+                    except GitObjectUnavailableError as exc:
+                        assert exc.code == "object_unavailable"
+                        assert exc.oid == missing_oid
+                assert time.monotonic() - started < _PROMISOR_MISS_BUDGET_S
+                assert await source.read_blob(GitPath.from_segments(b"keep.txt")) == b"kept\n"
+            finally:
+                await subject.aclose()
+
+        asyncio.run(_run())
