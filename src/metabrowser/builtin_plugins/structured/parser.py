@@ -203,26 +203,16 @@ def _parse_structured_cached(
     target = Path(target_str)
     artifact = ArtifactPath(target)
 
-    def truncated_payload() -> StructuredPayload:
-        return StructuredPayload(
-            parsed=None,
-            pretty_yaml="",
-            node_count=0,
-            max_depth=0,
-            parse_error=None,
-            truncated=True,
-        )
-
     try:
         # Compressed streams must reach the caller-specific bound before a
         # malformed trailer can obscure that they exceed it.
         if not artifact.is_compressed and artifact.logical_size > STRUCTURED_PARSE_MAX_BYTES:
-            return truncated_payload()
+            return _truncated_payload()
         with artifact.open_text(max_output_bytes=STRUCTURED_PARSE_MAX_BYTES) as fh:
             text = fh.read()
         parsed = _parse_text(text, ext)
     except ArtifactDecompressionLimitError:
-        return truncated_payload()
+        return _truncated_payload()
     except Exception as exc:
         return StructuredPayload(
             parsed=None,
@@ -233,6 +223,21 @@ def _parse_structured_cached(
             truncated=False,
         )
 
+    return _payload_from_parsed(parsed, label=target_str)
+
+
+def _truncated_payload() -> StructuredPayload:
+    return StructuredPayload(
+        parsed=None,
+        pretty_yaml="",
+        node_count=0,
+        max_depth=0,
+        parse_error=None,
+        truncated=True,
+    )
+
+
+def _payload_from_parsed(parsed: Any, *, label: str) -> StructuredPayload:
     try:
         pretty_yaml = _serialize_to_yaml(parsed)
     except Exception as exc:
@@ -240,9 +245,8 @@ def _parse_structured_cached(
         # output is just structured data the YAML serializer should
         # handle), so log loudly and ship the parsed tree with an
         # empty pretty_yaml. The client still gets the tree view.
-        LOG.warning("structured: failed to serialize %s to YAML: %s", target, exc, exc_info=True)
+        LOG.warning("structured: failed to serialize %s to YAML: %s", label, exc, exc_info=True)
         pretty_yaml = ""
-
     node_count, max_depth = _count_nodes_and_depth(parsed)
     return StructuredPayload(
         parsed=parsed,
@@ -252,3 +256,22 @@ def _parse_structured_cached(
         parse_error=None,
         truncated=False,
     )
+
+
+def parse_structured_bytes(data: bytes, ext: str) -> StructuredPayload:
+    """Parse JSON/YAML bytes. No host path; callers key caches on object id."""
+
+    if len(data) > STRUCTURED_PARSE_MAX_BYTES:
+        return _truncated_payload()
+    try:
+        parsed = _parse_text(data.decode("utf-8"), ext)
+    except Exception as exc:
+        return StructuredPayload(
+            parsed=None,
+            pretty_yaml="",
+            node_count=0,
+            max_depth=0,
+            parse_error=f"{type(exc).__name__}: {exc}",
+            truncated=False,
+        )
+    return _payload_from_parsed(parsed, label="bytes")

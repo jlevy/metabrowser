@@ -31,6 +31,7 @@ from metabrowser.plugin_loader.classify import (
     _JSON_CLASSIFICATION_MAX_BYTES,
     CompiledKindRule,
     build_classifier,
+    classify_identity,
     collect_folder_markers,
 )
 from metabrowser.plugin_loader.discovery import (
@@ -439,6 +440,70 @@ def test_classifier_priority_wins(tmp_path: Path) -> None:
     ]
     classifier = build_classifier(rules)
     assert classifier(_ctx(f)) == "report"
+
+
+def test_classify_identity_matches_ext_and_skips_content_predicates() -> None:
+    rules = [
+        CompiledKindRule(
+            rule=KindRule(
+                id="agent-log",
+                match=KindMatch(ext=".jsonl", adapter="claude"),
+                priority=100,
+            ),
+            plugin_name="agent-log",
+            discovery_index=0,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="analysis-report",
+                match=KindMatch(ext=".json", json_has_key="schema"),
+                priority=100,
+            ),
+            plugin_name="reports",
+            discovery_index=1,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="derived",
+                match=KindMatch(ext=".md", path_glob="**/derived/**/*.md"),
+                priority=50,
+            ),
+            plugin_name="derived",
+            discovery_index=2,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="structured",
+                match=KindMatch(exts=[".json", ".yaml", ".yml"]),
+                priority=0,
+            ),
+            plugin_name="structured",
+            discovery_index=3,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="diff",
+                match=KindMatch(exts=[".patch", ".diff"]),
+                priority=0,
+            ),
+            plugin_name="diff",
+            discovery_index=4,
+        ),
+        CompiledKindRule(
+            rule=KindRule(
+                id="marker",
+                match=KindMatch(folder_marker="pyproject.toml"),
+                priority=0,
+            ),
+            plugin_name="folder",
+            discovery_index=5,
+        ),
+    ]
+    assert classify_identity(rules, ext=".json", basename="config.json") == "structured"
+    assert classify_identity(rules, ext=".patch", basename="change.patch") == "diff"
+    assert classify_identity(rules, ext=".jsonl", basename="events.jsonl") is None
+    assert classify_identity(rules, ext=".md", basename="note.md") is None
+    assert classify_identity(rules, ext="", basename="pyproject.toml") == "marker"
 
 
 def test_classifier_returns_none_when_nothing_matches(tmp_path: Path) -> None:

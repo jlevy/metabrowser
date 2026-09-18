@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, and patch containers honor GitPath on a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, and structured parsed honor GitPath on a pin."""
 
 from __future__ import annotations
 
@@ -85,6 +85,7 @@ def _build_store(tmp_path: Path) -> tuple[Path, str]:
     work.mkdir()
     _git(work, "init", "-q", "-b", "main")
     (work / "README.md").write_text("hello\n", encoding="utf-8")
+    (work / "config.json").write_text('{"name": "pin", "count": 2}\n', encoding="utf-8")
     (work / "docs").mkdir()
     (work / "docs" / "note.txt").write_text("nested\n", encoding="utf-8")
     (work / "change.patch").write_text(
@@ -172,6 +173,7 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             names = {entry["display"] for entry in body["entries"]}
             assert names >= {
                 "README.md",
+                "config.json",
                 "docs",
                 "100%.html",
                 "link",
@@ -472,5 +474,64 @@ def test_git_binary_chunk_honors_gitpath_without_mtime(tmp_path: Path) -> None:
                 params={"path": _wire(b"link")},
             )
             assert symlink.status_code == 404
+
+    asyncio.run(_run())
+
+
+def test_git_structured_parsed_and_plugin_kind_by_extension(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            json_wire = _wire(b"config.json")
+            envelope = await client.get("/api/file", params={"path": json_wire})
+            assert envelope.status_code == 200
+            body = envelope.json()
+            assert body["subject"] == "git_revision"
+            assert body["kind"] == "structured"
+            assert body["type"] == "text"
+            assert body["content"] == '{"name": "pin", "count": 2}\n'
+            assert "mtime" not in body
+            assert "mtime_hash" not in body
+            assert str(store) not in envelope.text
+            assert any(view["id"] == "tree" for view in body["views"])
+
+            parsed = await client.get(
+                "/api/plugin/structured/parsed",
+                params={"path": json_wire},
+            )
+            assert parsed.status_code == 200
+            parsed_body = parsed.json()
+            assert parsed_body["type"] == "structured"
+            assert parsed_body["path"] == json_wire
+            assert parsed_body["ext"] == ".json"
+            assert parsed_body["parsed"] == {"name": "pin", "count": 2}
+            assert parsed_body["truncated"] is False
+            assert parsed_body["parse_error"] is None
+            assert parsed_body["mtime_hash"]
+            assert "mtime" not in parsed_body
+            assert str(store) not in parsed.text
+
+            relative = await client.get(
+                "/api/plugin/structured/parsed",
+                params={"path": "config.json"},
+            )
+            assert relative.status_code == 404
+
+            unsupported = await client.get(
+                "/api/plugin/structured/parsed",
+                params={"path": _wire(b"README.md")},
+            )
+            assert unsupported.status_code == 400
+            assert unsupported.json()["error"] == "Unsupported extension"
+
+            patch_wire = _wire(b"change.patch")
+            patch_file = await client.get("/api/file", params={"path": patch_wire})
+            assert patch_file.status_code == 200
+            patch_body = patch_file.json()
+            assert patch_body["kind"] == "diff"
+            assert any(view["id"] == "diff" for view in patch_body["views"])
+            assert "mtime" not in patch_body
+            assert str(store) not in patch_file.text
 
     asyncio.run(_run())
