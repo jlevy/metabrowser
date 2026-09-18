@@ -13,8 +13,10 @@ extension plugin kinds, structured parsed, and agent-log JSONL. Markdown and wik
 on a pin resolve to `GitPath` wires.
 A Git tree folder with a README mounts Overview.
 SPA path chrome decodes GitPath wires to display names.
-LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
-disabled. Serving acquired Git remains later.
+Omitted size, mtime, and directory aggregates leave tally chrome empty rather than
+pending. LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with
+lazy fetch disabled.
+Serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -277,7 +279,9 @@ treemap stays unmounted.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
 SPA path chrome and copy-path decode those wires to display names; navigation identities
-stay wires. KPress `source_path` on a pin is that wire.
+stay wires.
+Omitted size, mtime, and directory aggregates leave tally chrome empty rather
+than pending. KPress `source_path` on a pin is that wire.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an

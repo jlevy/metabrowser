@@ -10,7 +10,8 @@ Coverage:
 
 * ``sizeHtml(null)``, ``countHtml(null)``, and ``formatAge(null)`` produce
   ``tally-pending`` skeleton cells (the spec contract for
-  walker-in-progress dir aggregates).
+  walker-in-progress dir aggregates). Omitted (``undefined``) values
+  produce empty HTML: they are not pending.
 * ``startInventoryEventStream()`` opens an ``EventSource``
   against ``/api/events?scope=root-depth-2`` and registers
   listeners for ``fs.snapshot`` / ``fs.change`` /
@@ -61,7 +62,8 @@ def test_size_html_renders_tally_pending_for_null() -> None:
     # is structured and emits the expected class.
     fn_start = js.index("function sizeHtml(bytes, extraClass)")
     fn_block = js[fn_start : fn_start + 800]
-    assert "if (bytes === null || bytes === undefined)" in fn_block
+    assert "if (bytes === undefined)" in fn_block
+    assert "if (bytes === null)" in fn_block
     assert "tally-pending" in fn_block
 
 
@@ -224,10 +226,14 @@ def test_tree_tooltips_do_not_coerce_pending_aggregates_to_zero() -> None:
     js = _read_app_js()
     assert "function parseTipNumber(value)" in js
     assert "function nullableDataValue(n)" in js
+    assert "function dataTipNumberAttr(key, n)" in js
     assert "+d.tipFiles" not in js
     assert "+d.tipSize" not in js
-    assert 'data-tip-files="${nullableDataValue(node.total_files)}' in js
-    assert 'data-tip-size="${nullableDataValue(node.total_size)}' in js
+    assert 'dataTipNumberAttr("files", node.total_files)' in js
+    assert 'dataTipNumberAttr("size", node.total_size)' in js
+    assert 'dataTipNumberAttr("size", node.size)' in js
+    assert 'data-tip-size="${node.size || 0}"' not in js
+    assert 'data-tip-mtime="${node.mtime || 0}"' not in js
     # Pending aggregates render as tally skeleton blocks named for screen
     # readers, not as visible "Loading …" copy. See docs/design-system.md,
     # "Loading States Are Shapes, Not Sentences", enforced by
@@ -236,6 +242,30 @@ def test_tree_tooltips_do_not_coerce_pending_aggregates_to_zero() -> None:
     assert 'aria-label="Loading size"' in js
     assert "Loading file count…" not in js
     assert "Loading size…" not in js
+
+
+def test_omitted_tally_facts_are_not_pending() -> None:
+    """Git listings omit size/mtime; that is not a still-finalizing walker."""
+
+    js = _read_app_js()
+    size_start = js.index("function sizeHtml(bytes, extraClass)")
+    size_block = js[size_start : size_start + 700]
+    assert "if (bytes === undefined)" in size_block
+    assert "if (bytes === null)" in size_block
+    count_start = js.index("function countHtml(n, extraClass)")
+    count_block = js[count_start : count_start + 400]
+    assert "if (n === undefined)" in count_block
+    chip_start = js.index("function treeDirChipHtml(totalFiles, totalSize, options)")
+    chip_block = js[chip_start : chip_start + 500]
+    assert "totalFiles === undefined && totalSize === undefined" in chip_block
+    header_start = js.index("function renderFolderHeader(data)")
+    header_block = js[header_start : header_start + 1400]
+    assert "data.dir || {}" not in header_block
+    assert 'typeof data.dir === "object"' in header_block
+    parse_start = js.index("function parseTipNumber(value)")
+    parse_block = js[parse_start : parse_start + 500]
+    assert "if (value === undefined)" in parse_block
+    assert "return undefined" in parse_block
 
 
 def test_tree_tooltips_omit_duplicative_name() -> None:

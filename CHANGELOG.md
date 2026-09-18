@@ -150,6 +150,8 @@ Content source:
   the GitPath wire) and omits treemap, which needs inventory rollup.
   SPA path chrome and copy-path decode GitPath wires to display names; navigation
   identities stay wires.
+  Omitted Git size, mtime, and directory aggregates leave tally chrome empty rather than
+  pulsing as a still-finalizing inventory walk.
   Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0

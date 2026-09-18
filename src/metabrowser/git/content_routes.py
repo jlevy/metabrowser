@@ -7,7 +7,8 @@ Git-native ``entries`` and also projects a SPA ``tree`` array so navigation
 can paint; Git trees lazy-load, gitlinks are files, and listings omit mtime,
 size, and ignore. File nav nodes include ``logical_ext`` from the display suffix.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
-``tree``) with no invented dir aggregates. A direct-child README blob sets
+``tree``) with no invented dir aggregates. Omitted size, mtime, and dir facts
+leave SPA tally chrome empty rather than pending. A direct-child README blob sets
 ``readme_path`` to its GitPath wire and mounts the Overview view; treemap stays
 unmounted because it needs inventory rollup. SPA path chrome and copy-path
 decode GitPath wires to display names; navigation identities stay wires. KPress ``source_path``

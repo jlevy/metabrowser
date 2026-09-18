@@ -11,7 +11,8 @@ JSON/YAML/frontmatter bytes, structured parsed, agent-log JSONL, and
 ``GitPath`` wire on that pin. ``/api/tree`` also projects a SPA ``tree``
 array of GitPath nav nodes. A Git tree ``/api/file`` envelope is SPA
 ``folder`` chrome. A direct-child README blob mounts Overview; treemap stays
-off. SPA path chrome decodes GitPath wires to display names.
+off. SPA path chrome decodes GitPath wires to display names. Omitted size,
+mtime, and dir facts leave tally chrome empty rather than pending.
 Markdown and wiki destinations encode authored segments
 as GitPath wires. An LFS pointer is the stored pointer bytes;
 a blob the tree names but the store lacks is ``object_unavailable`` with
