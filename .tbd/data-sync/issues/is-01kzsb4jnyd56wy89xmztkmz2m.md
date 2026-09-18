@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: in_progress
 priority: 1
-version: 50
+version: 51
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -35,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-18T03:28:44.562Z
+updated_at: 2026-09-18T03:33:08.055Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -46,4 +46,4 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
-Implementation sliced. CI green: #142 runner, #143 staging, #144 publish+reuse, #145 prefetch+crash recovery, #146 --no-serve, #147 acquire goldens (mb-3639 HEAD f2032694), #148 Git floor before home (mb-u2x2 HEAD 51ad2997). Distro-patched Git gate remains refuse. Live tryscripts wait on a CI Git 2.50.1 pin (mb-oueh). Evaluate mb-cun0 before mb-k900 serves acquired content. Next honest 1B-a slice: reclaim unreferenced/orphan stores on open_cache.
+Implementation sliced. CI green: #142 runner, #143 staging, #144 publish+reuse, #145 prefetch+crash recovery, #146 --no-serve, #147 acquire goldens (mb-3639 HEAD f2032694), #148 Git floor before home (mb-u2x2 HEAD 51ad2997). #149 orphan-store reclaim (mb-y561 HEAD 2640ed12) stacked on #148. Distro-patched Git gate remains refuse. Live tryscripts wait on a CI Git 2.50.1 pin (mb-oueh). Evaluate mb-cun0 before mb-k900 serves acquired content.
