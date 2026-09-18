@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, and tree filter tallies honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, and tree summary honor a pin."""
 
 from __future__ import annotations
 
@@ -1042,6 +1042,22 @@ def test_git_tree_exposes_filter_tallies_without_ignored_or_mtime(tmp_path: Path
             assert presets["data"] == (1, 0)
             assert presets["archives"] == (0, 0)
             assert presets["media"] == (0, 0)
+            files = 0
+            size = 0
+            for node in body["tree"]:
+                if node["type"] == "dir":
+                    files += int(node["total_files"])
+                    size += int(node["total_size"])
+                elif "size" in node:
+                    files += 1
+                    size += int(node["size"])
+            assert body["summary"] == {
+                "files": 9,
+                "size": size,
+                "ignored_files": 0,
+                "ignored_size": 0,
+            }
+            assert files == 9
             assert str(store) not in tree.text
 
             docs = await client.get("/api/tree", params={"path": _wire(b"docs")})
@@ -1050,6 +1066,7 @@ def test_git_tree_exposes_filter_tallies_without_ignored_or_mtime(tmp_path: Path
             assert docs_body["tally_cache_status"] == "done"
             assert {row[0]: (row[1], row[2]) for row in docs_body["extensions"]} == rows
             assert {row[0]: (row[1], row[2]) for row in docs_body["type_presets"]} == presets
+            assert docs_body["summary"] == body["summary"]
             assert str(store) not in docs.text
 
     asyncio.run(_run())
@@ -1117,8 +1134,10 @@ def test_git_file_raw_promisor_miss_is_object_unavailable(tmp_path: Path) -> Non
             async with _pinned_client(store, commit) as (client, _subject):
                 tree = await client.get("/api/tree")
                 assert tree.status_code == 200
-                names = {entry["display"] for entry in tree.json()["entries"]}
+                tree_body = tree.json()
+                names = {entry["display"] for entry in tree_body["entries"]}
                 assert names == {"README.md", "keep.txt"}
+                assert "summary" not in tree_body
                 started = time.monotonic()
                 async with asyncio.timeout(2):
                     missing = await client.get("/api/file", params={"path": _wire(b"README.md")})
