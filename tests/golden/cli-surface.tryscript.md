@@ -34,14 +34,15 @@ $ metab --help
  Data modes read the same server the browser reads, without a browser or a
  listening port: --api issues one route, --show reports the four layers
  behind one selection, --walk dumps the inventory, --diff shows a change
- set. Diagnostics: --check-api, --plugins, --plugin, --doctor. Remote
- serving: --remote.
+ set. --no-serve acquires a file:// Git source into the cache without
+ starting a server. Diagnostics: --check-api, --plugins, --plugin, --doctor.
+ Remote serving: --remote.
 
 ╭─ Arguments ──────────────────────────────────────────────────────────────────╮
 │   [root]      TEXT  Root directory to serve, check, or walk; a file may be   │
 │                     served directly. https, ssh, and file:// clone URLs are  │
-│                     Git sources, not local paths. With no ROOT and no mode,  │
-│                     prints help.                                             │
+│                     Git sources, not local paths. Acquire file:// with       │
+│                     --no-serve. With no ROOT and no mode, prints help.       │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
 │ --version          Show the installed version and exit.                      │
@@ -60,6 +61,8 @@ $ metab --help
 │                           kind, views, and a model summary.                  │
 │ --check-api               Run the navigation API scenario without a browser  │
 │                           or listening port.                                 │
+│ --no-serve                Acquire a file:// Git source into the cache        │
+│                           without starting a server.                         │
 │ --remote           HOST   SSH into HOST, start metab there, and tunnel it to │
 │                           localhost. Pass the remote directory with --path.  │
 │ --plugins                 List every discovered plugin.                      │
@@ -101,8 +104,8 @@ $ metab --help
 │                                          targets + resolved paths).          │
 │                                          Overrides METABROWSER_LOG_LEVEL.    │
 │                                          Applies when serving, walking,      │
-│                                          issuing --api or --show, or         │
-│                                          checking APIs.                      │
+│                                          issuing --api or --show, checking   │
+│                                          APIs, or acquiring with --no-serve. │
 │ --format               FORMAT            Output format: text (human report)  │
 │                                          | json | yaml. Walk and diff:       │
 │                                          json/yaml dump the exact data the   │
@@ -195,6 +198,7 @@ $ metab --help
  metab . --api '/api/tree?depth=2'
  metab . --show README.md
  metab . --check-api
+ metab file:///path/to/repo.git --no-serve
  metab --remote example-host --path /srv/shared-files
  metab --plugins
  Guide: https://github.com/jlevy/metabrowser/blob/main/docs/command-line.md

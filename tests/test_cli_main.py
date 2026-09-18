@@ -81,6 +81,7 @@ def test_cli_help_shows_modes_and_examples() -> None:
     assert "--plugins" in output
     assert "--plugin" in output
     assert "--doctor" in output
+    assert "--no-serve" in output
     assert "--version" in output
     assert "metab ." in compact_output
     assert "file://" in compact_output
@@ -745,8 +746,9 @@ def test_cli_file_url_is_a_git_source_and_is_not_served() -> None:
     result = runner.invoke(_app, ["file:///srv/git/repo.git", "--no-open"])
     assert isinstance(result.exception, CLIError)
     message = str(result.exception)
-    assert "file Git sources are not opened yet" in message
+    assert "file Git sources are not served yet" in message
     assert "file:///srv/git/repo.git" in message
+    assert "--no-serve" in message
     assert "not a directory" not in message
 
 

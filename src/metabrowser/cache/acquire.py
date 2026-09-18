@@ -2,7 +2,8 @@
 
 A ``file://`` URL is fetched through Git's pack transport into staging, then
 published as an immutable store and a source alias. This module does not serve
-content; the CLI still fails closed. A bare path never reaches here.
+content. The CLI acquires through ``--no-serve`` and ``--api /api/cache/…``;
+https and ssh stay closed. A bare path never reaches here.
 """
 
 from __future__ import annotations
