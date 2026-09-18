@@ -115,8 +115,9 @@ rather than a filesystem mtime.
 `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope;
 `/api/plugin/agent-log/charts` reads that blob by `GitPath`. `/api/catalog` on a pin
 lists recursive blob names and is complete at once.
-Other inventory-backed routes (index progress/meta, capabilities, JSONL stream) return
-`unsupported_for_subject` instead of the lifespan folder.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
+complete-at-once index without a watcher or invented mtime.
+The JSONL stream still returns `unsupported_for_subject` instead of the lifespan folder.
 `/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
 A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
 promisor miss, is `object_unavailable` with lazy fetch disabled.
