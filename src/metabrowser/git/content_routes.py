@@ -1,4 +1,4 @@
-"""GitPath adapters for ``/api/tree``, ``/api/file``, ``/raw``, and KPress.
+"""GitPath adapters for ``/api/tree``, ``/api/file``, ``/raw``, KPress, and rollup.
 
 These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
 invented filesystem fact. ``/view/`` accepts a GitPath wire, optionally plus
@@ -13,8 +13,10 @@ incomplete dimension. File nav nodes include ``logical_ext`` from the display su
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
 ``tree``) with no invented mtime or ignore. Omitted mtime leaves
 SPA age chrome empty rather than pending. A direct-child README blob sets
-``readme_path`` to its GitPath wire and mounts the Overview view; treemap stays
-unmounted because it needs inventory rollup. SPA path chrome and copy-path
+``readme_path`` to its GitPath wire and mounts the Overview view. A complete
+blob-size tally also mounts treemap and File Overview; ``/api/rollup`` answers
+from the same index and omits mtime. A missing blob size 404s rollup rather
+than emitting a partial sum. SPA path chrome and copy-path
 decode GitPath wires to display names; navigation identities stay wires. KPress ``source_path``
 is the GitPath wire so Markdown rewrite cannot emit a filesystem spelling.
 Patch-file container inners use a GitPath prefix plus a host inner path. Blob
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import mimetypes
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -38,7 +41,9 @@ from metabrowser.content_sniff import ContentClass, classify_prefix
 from metabrowser.file_extensions import BROWSER_IMAGE_EXTS, BROWSER_TEXT_EXTS
 from metabrowser.file_kinds import classify_by_ext
 from metabrowser.folder_discovery import choose_readme_name
+from metabrowser.fs_paths import derive_ext
 from metabrowser.git.tree_source import (
+    GitBlobIndex,
     GitBlobTooLargeError,
     GitObjectUnavailableError,
     GitPath,
@@ -47,9 +52,11 @@ from metabrowser.git.tree_source import (
     GitTreeEntry,
     GitTreeTally,
 )
+from metabrowser.inventory_rollup import RollupOptions, build_rollup, group_rollup_children
 from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH
 from metabrowser.settings import (
     FOLDER_DISCOVERY_MAX_ENTRIES,
+    INVENTORY_MAX_FILES,
     TEXT_PREVIEW_CHUNK_BYTES,
     TEXT_PREVIEW_REQUEST_MAX_BYTES,
 )
@@ -260,6 +267,186 @@ def _json(payload: dict[str, Any], *, status_code: int = 200) -> JSONResponse:
     return JSONResponse(payload, status_code=status_code, headers={"cache-control": "no-store"})
 
 
+@dataclass(frozen=True, slots=True)
+class _GitRollupEntry:
+    path: str
+    parent: str
+    name: str
+    type: str
+    ext: str
+    size: int
+    mtime_ns: int
+    gitignored: bool
+    total_files: int | None
+
+
+def _dir_rollup_entry(path: GitPath, parent: GitPath, *, total_files: int) -> _GitRollupEntry:
+    wire = path.to_wire()
+    return _GitRollupEntry(
+        path=wire,
+        parent=parent.to_wire() if path.segments else wire,
+        name=_display_basename(path),
+        type="dir",
+        ext="",
+        size=0,
+        mtime_ns=0,
+        gitignored=False,
+        total_files=total_files,
+    )
+
+
+def _rollup_entries_from_index(
+    index: GitBlobIndex, tree_path: GitPath
+) -> dict[str, _GitRollupEntry] | None:
+    """Map one blob index to rollup entries. ``None`` when any blob size is missing."""
+
+    root_tally = index.tally()
+    if root_tally.total_size is None:
+        return None
+    root_wire = tree_path.to_wire()
+    entries: dict[str, _GitRollupEntry] = {
+        root_wire: _GitRollupEntry(
+            path=root_wire,
+            parent=root_wire,
+            name=_display_basename(tree_path),
+            type="dir",
+            ext="",
+            size=0,
+            mtime_ns=0,
+            gitignored=False,
+            total_files=root_tally.total_files,
+        )
+    }
+    for rel, oid in index.blobs:
+        size = index.sizes.get(oid)
+        if size is None:
+            return None
+        parts = rel.split(b"/")
+        cursor = tree_path
+        parent_wire = root_wire
+        for index_part, segment in enumerate(parts):
+            cursor = cursor.child(segment)
+            wire = cursor.to_wire()
+            last = index_part == len(parts) - 1
+            if last:
+                display = segment.decode("utf-8", "replace")
+                entries[wire] = _GitRollupEntry(
+                    path=wire,
+                    parent=parent_wire,
+                    name=display,
+                    type="file",
+                    ext=derive_ext(display),
+                    size=size,
+                    mtime_ns=0,
+                    gitignored=False,
+                    total_files=None,
+                )
+            elif wire not in entries:
+                rel_prefix = b"/".join(parts[: index_part + 1])
+                entries[wire] = _GitRollupEntry(
+                    path=wire,
+                    parent=parent_wire,
+                    name=segment.decode("utf-8", "replace"),
+                    type="dir",
+                    ext="",
+                    size=0,
+                    mtime_ns=0,
+                    gitignored=False,
+                    total_files=index.tally(rel_prefix).total_files,
+                )
+            parent_wire = wire
+    return entries
+
+
+def _missing_blob_oid(index: GitBlobIndex) -> str:
+    for _name, oid in index.blobs:
+        if oid not in index.sizes:
+            return oid
+    raise RuntimeError("blob index reported incomplete sizes without a missing oid")
+
+
+async def git_revision_rollup(
+    request: Request,
+    subject: GitRevisionSubject,
+    options: RollupOptions,
+) -> JSONResponse:
+    """Bounded directory rollup from recursive blob names and sizes. No mtime."""
+
+    try:
+        path = _git_path_from_query(request)
+    except GitPathError:
+        return _json(_NOT_FOUND, status_code=404)
+    try:
+        located = await subject.tree_source.resolve_path(path)
+        if located is None or not located.is_tree:
+            return _json(_NOT_FOUND, status_code=404)
+        index = await subject.tree_source.blob_index(path)
+        children = await subject.tree_source.list_tree(path)
+    except GitObjectUnavailableError as exc:
+        return _json(_object_unavailable_payload(exc), status_code=404)
+    wire = path.to_wire()
+    if index is None:
+        return _json(
+            {
+                "subject": "git_revision",
+                "root": "",
+                "path": wire,
+                "node": None,
+                "ext_tallies": [],
+                "file_type_breakdown": None,
+                "index_status": "truncated",
+                "indexed_files": 0,
+                "max_files": INVENTORY_MAX_FILES,
+                "truncated": True,
+            }
+        )
+    entries = _rollup_entries_from_index(index, path)
+    if entries is None:
+        missing_oid = _missing_blob_oid(index)
+        return _json(
+            {
+                "error": f"object_unavailable: {missing_oid}",
+                "code": "object_unavailable",
+                "oid": missing_oid,
+            },
+            status_code=404,
+        )
+    for child in children:
+        if not child.is_tree:
+            continue
+        child_wire = child.path.to_wire()
+        if child_wire in entries:
+            continue
+        child_tally = index.tally(child.path.segments[-1])
+        entries[child_wire] = _dir_rollup_entry(
+            child.path, path, total_files=child_tally.total_files
+        )
+    built = build_rollup(
+        entries,
+        group_rollup_children(entries),
+        wire,
+        options,
+        False,
+    )
+    if built is None:
+        return _json(_NOT_FOUND, status_code=404)
+    node = built["node"]
+    return _json(
+        {
+            "subject": "git_revision",
+            "root": "",
+            "path": wire,
+            "node": node,
+            "ext_tallies": built["ext_tallies"],
+            "file_type_breakdown": built["file_type_breakdown"],
+            "index_status": "complete",
+            "indexed_files": node["total_files"],
+            "max_files": INVENTORY_MAX_FILES,
+            "truncated": False,
+        }
+    )
+
+
 async def git_revision_tree(
     request: Request,
     subject: GitRevisionSubject,
@@ -325,10 +512,16 @@ def _git_readme_child(
     return by_name.get(chosen), truncated
 
 
-def _folder_overview_views() -> list[dict[str, Any]]:
-    """Overview only. Treemap still needs a Git-native ``/api/rollup``."""
+def _folder_views(*, readme: bool, tally: GitTreeTally | None) -> list[dict[str, Any]]:
+    """Overview when a README or complete tally exists; treemap needs sizes."""
 
-    return [view for view in _views_for_kind("folder") if view.get("id") == "overview"]
+    complete = tally is not None and tally.total_size is not None
+    wanted: set[str] = set()
+    if readme or complete:
+        wanted.add("overview")
+    if complete:
+        wanted.add("treemap")
+    return [view for view in _views_for_kind("folder") if view.get("id") in wanted]
 
 
 def _dir_tally_payload(tally: GitTreeTally | None) -> dict[str, Any]:
@@ -354,7 +547,7 @@ def _tree_file_payload(
         "type": "folder",
         "kind": "folder",
         "name": _display_basename(entry.path),
-        "views": _folder_overview_views() if readme else [],
+        "views": _folder_views(readme=readme is not None, tally=tally),
         "readme_path": readme.path.to_wire() if readme else "",
         "readme_search_truncated": truncated,
         **_dir_tally_payload(tally),
@@ -656,6 +849,7 @@ __all__ = [
     "git_revision_file",
     "git_revision_kpress_render",
     "git_revision_raw",
+    "git_revision_rollup",
     "git_revision_tree",
     "split_git_container_wire",
 ]
