@@ -9,6 +9,7 @@ everything the renderer could need.
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from metabrowser.diff.format import (
     dump_document,
     validate_document,
 )
+from metabrowser.git.process import GitLocation, repository_store_target
 from tests.diff_fixture_repo import build_diff_fixture, git, materialize_tree
 
 pytestmark = pytest.mark.skipif(
@@ -152,3 +154,39 @@ def test_fixture_commit_ids_are_deterministic(repo: tuple[Path, str, str]) -> No
     probe = git(root, "log", "--format=%H", "--reverse").decode().split()
     assert probe == [base, target]
     assert base.startswith("55") or len(base) == 40  # shape only; ids asserted in goldens
+
+
+def test_store_location_honors_the_pin_not_store_head(
+    repo: tuple[Path, str, str], tmp_path: Path
+) -> None:
+    """A bare store pin diffs that OID; HEAD is not the cloned default branch."""
+    root, base, target = repo
+    store = tmp_path / "store.git"
+    git(root.parent, "clone", "--bare", "--template=", str(root), str(store))
+    location = GitLocation.revision(repository_store_target(git_dir=store), base)
+    source = GitDiffSource(location)
+    head = asyncio.run(source.resolve({"revision": "HEAD"}))
+    assert head.right.id == base
+    assert head.right.id != target
+    worktree = GitDiffSource(root)
+    expected = asyncio.run(worktree.resolve({"left": base, "right": target}))
+    actual = asyncio.run(source.resolve({"left": base, "right": target}))
+    expected_manifest = asyncio.run(worktree.manifest(expected))
+    actual_manifest = asyncio.run(source.manifest(actual))
+    assert [change.kind for change in expected_manifest.files] == [
+        change.kind for change in actual_manifest.files
+    ]
+    modified = _by_new_path(actual_manifest)["a.py"]
+    patch = asyncio.run(source.file_patch(actual, modified.id))
+    ops = [line.op.value for hunk in patch.hunks for line in hunk.lines]
+    assert "del" in ops and "add" in ops
+    document = dump_document(
+        ChangeSetDocument(
+            schema="file-diff-v1",
+            schema_version=1,
+            resolved=actual,
+            manifest=actual_manifest,
+            patches={modified.id: patch},
+        )
+    )
+    assert str(store) not in json.dumps(document)

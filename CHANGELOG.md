@@ -110,7 +110,10 @@ Content source:
   kind, oid, symlink, and gitlink without mtime, ignore, or ls-tree sizes; recency,
   `include_ignored=0`, and `min_size` return `unsupported_for_subject`; blob reads are
   size-gated through the shared cat-file pool.
-  Inventory open, diffs, container, and serving acquired Git are not switched yet.
+  `/api/plugin/diff/comparison` honors that pin through `GitLocation`: `HEAD` is the
+  pinned object id, not the store’s ambient HEAD, and the document names Git object
+  facts rather than a cache path.
+  Inventory open, container, and serving acquired Git are not switched yet.
 
 ## 0.10.0
 
