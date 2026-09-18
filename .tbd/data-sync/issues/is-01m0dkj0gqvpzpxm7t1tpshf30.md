@@ -5,7 +5,7 @@ title: "Repository projection: immutable Git-tree source over a shared object st
 kind: feature
 status: in_progress
 priority: 1
-version: 38
+version: 39
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -21,11 +21,15 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-19T18:11:56.054Z
-updated_at: 2026-09-18T07:19:02.960Z
+updated_at: 2026-09-18T07:31:08.531Z
 started_at: 2026-09-16T21:10:44.836Z
 ---
 Implement GitRevisionSubject and GitTreeSource over a shared RepositoryStoreTarget and an opaque SourceSession. Define byte-segment GitPath identity and URL/display serialization; enumerate NUL-framed trees with stable byte ordering; read blobs through exclusive actor-style cat-file batch readers that issue info before contents, enforce size gates, drain frames, and poison/restart on cancellation or framing failure. Migrate history, repo discovery, commit detail, refs, diffs, file/raw/container/classification/KPress routes, and built-in sidekicks to exact target plus subject OID semantics. Protect live OIDs with cross-process shared maintenance locks and durable private refs; GC/repack takes the exclusive lock. Add crash/stale-lock recovery, promisor-miss, oversized-blob, invalid-UTF8/newline-name, and two-process/two-OID tests. Never create a checkout, index, branch, worktree, or fake filesystem fact.
 
 ## Notes
 
-CI 7-green on #157–#167. #168 stacked on #167: GitPath agent-log JSONL + adapter classify_identity. Do not close or merge. Do not serve acquired Git. Remaining: inventory open, archive containers, plugin classification from bytes (frontmatter/content keys).
+Thirteenth z335 slice: Git blobs classify from bounded JSON/YAML/frontmatter bytes (classify-bytes, stacked on #168). path_glob remains filesystem-only.
+
+Shipped on the Git-revision stack through this slice: GitPath+tree (#157), lease_revision (#158), shared reader pool (#159), GitLocation collection (#160), file/raw/tree (#161), exclusive gc/repack (#162), diffs (#163), KPress (#164), patch containers (#165), binary chunks (#166), structured parsed (#167), agent-log JSONL (#168), content-key classification (this PR).
+
+Still later, not this stack: inventory open (needs a distinct immutable-tree index), archive containers, serving acquired Git (mb-ew38). Do not close until review.
