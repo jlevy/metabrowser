@@ -64,6 +64,10 @@ Repository cache:
   A later acquire of the same `file://` source publishes that staging entry into
   `repository-stores` and a source alias as the visibility commit, or reuses a store
   already published for that identity.
+  After a blobless fetch, acquisition prefetches the default revision’s blob-mode tree
+  entries by object ID; a prefetch failure still publishes with `object_state`
+  converging. A staging entry whose liveness lock is free is swept, and an unreferenced
+  published store is reclaimed.
   The CLI still does not open Git sources or serve acquired content.
 
 ## 0.10.0

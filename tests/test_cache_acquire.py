@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import (
     AcquisitionError,
     RemoteUnavailableError,
@@ -22,6 +23,8 @@ from metabrowser.cache.reclaim import sweep_staging_and_trash
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.git.process import (
     _REPO_PINNING_GIT_VARS,
+    GitCommandError,
+    GitProcessPolicy,
     UnsupportedGitVersionError,
     detect_git_version,
 )
@@ -82,6 +85,7 @@ def _origin(tmp_path: Path, *, allow_filter: bool) -> Path:
     _git(work, "clone", "--bare", "--template=", "--", str(work), str(origin))
     if allow_filter:
         _git(origin, "config", "uploadpack.allowFilter", "true")
+        _git(origin, "config", "uploadpack.allowAnySHA1InWant", "true")
     return origin
 
 
@@ -164,6 +168,66 @@ def test_a_missing_file_origin_abandons_without_leaving_staging(
     staging = home / "cache" / "staging"
     if staging.is_dir():
         assert list(staging.iterdir()) == []
+
+
+@posix_only
+def test_a_crashed_staging_holder_is_swept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
+    lock = staged._lock
+    assert lock is not None
+    lock.release()
+    staged._lock = None
+    report = sweep_staging_and_trash(home)
+    assert f"cache/staging/{staged.entry}" in report.removed
+    assert not staged.git_dir.exists()
+
+
+@posix_only
+def test_prefetch_failure_still_leaves_a_validated_staging_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=True)
+    home = tmp_path / "home"
+    real_run = acquire_module._run
+
+    async def fail_object_fetch(
+        args: list[str],
+        *,
+        cwd: Path | None = None,
+        git_dir: Path | None = None,
+        policy: GitProcessPolicy = acquire_module.ACQUISITION_POLICY,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        if "--stdin" in args:
+            raise GitCommandError(args, 1, "prefetch failed")
+        return await real_run(args, cwd=cwd, git_dir=git_dir, policy=policy, stdin=stdin)
+
+    monkeypatch.setattr(acquire_module, "_run", fail_object_fetch)
+    staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
+    with staged:
+        assert staged.git_dir.is_dir()
+        assert staged.default_revision
+
+
+@posix_only
+def test_blobless_prefetch_makes_head_tree_blobs_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=True)
+    home = tmp_path / "home"
+    staged = asyncio.run(acquire_into_staging(_file_source(origin), home=home))
+    with staged:
+        if staged.strategy != "blobless":
+            pytest.skip("this Git ignored blob:none over file://")
+        oids = asyncio.run(acquire_module._tree_blob_oids(staged.git_dir, staged.default_revision))
+        assert oids
+        kind = asyncio.run(acquire_module._run(["cat-file", "-t", oids[0]], git_dir=staged.git_dir))
+        assert kind.strip() == b"blob"
 
 
 def test_https_sources_are_out_of_scope_for_staging_fetch() -> None:
