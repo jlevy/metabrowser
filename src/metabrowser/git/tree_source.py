@@ -31,7 +31,7 @@ bound as filesystem listings. A Git image blob is SPA ``image`` chrome;
 ``/raw`` serves the stored bytes. ``/api/file``, ``/raw``, KPress, and plugin
 sidekicks follow in-tree relative symlink blobs. ``depth`` nests SPA children the way filesystem
 listings do (default 2) and emits a lazy sentinel past the cap. SPA path chrome decodes GitPath wires to
-display names. Blob listings
+display names; C0 and invalid UTF-8 become U+FFFD. Blob listings
 carry ``cat-file`` info sizes so ``min_size`` can filter; trees and gitlinks
 have no blob size. Recursive ``ls-tree -r`` plus ``cat-file`` info fills
 directory ``total_files`` / ``total_size``; a truncated listing or a missing
@@ -122,6 +122,13 @@ class GitBatchProtocolError(GitError):
     """The cat-file actor returned a truncated or unexpected frame."""
 
 
+def _display_segment(segment: bytes) -> str:
+    """Replacement-safe UTF-8. C0 and DEL become U+FFFD so chrome cannot wrap."""
+
+    text = segment.decode("utf-8", "replace")
+    return "".join("\ufffd" if ord(ch) < 32 or ch == "\x7f" else ch for ch in text)
+
+
 def _b64encode(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
@@ -188,7 +195,7 @@ class GitPath:
         return cls(tuple(segments))
 
     def display(self) -> str:
-        return "/".join(segment.decode("utf-8", "replace") for segment in self.segments)
+        return "/".join(_display_segment(segment) for segment in self.segments)
 
 
 GitEntryKind = Literal["blob", "tree", "commit"]

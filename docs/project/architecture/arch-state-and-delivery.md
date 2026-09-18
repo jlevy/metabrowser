@@ -149,8 +149,8 @@ A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
 Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
 known-file catalog uses the tree node’s display `name` as the basename, and KPress
 `source_path` is the wire rather than a display path.
-SPA path chrome and copy-path decode GitPath wires to display names; navigation
-identities stay wires.
+SPA path chrome and copy-path decode GitPath wires to display names (C0 and invalid
+UTF-8 become U+FFFD); navigation identities stay wires.
 Omitted mtime leaves tally chrome empty rather than pending.
 Event, inventory open, archive containers, and serving acquired Git still wait on later
 slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
