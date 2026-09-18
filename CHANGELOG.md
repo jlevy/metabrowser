@@ -142,10 +142,12 @@ Content source:
   trees) without mtime, size, or ignore facts.
   Gitlinks project as files, not directories.
   A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
-  empty views and no invented directory aggregates.
+  no invented directory aggregates.
   Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
   known-file catalog uses the tree node’s display `name` as the basename, and KPress
   `source_path` is the wire rather than a display path.
+  A Git tree folder with a direct-child README blob mounts Overview (`readme_path` is
+  the GitPath wire) and omits treemap, which needs inventory rollup.
   Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0
