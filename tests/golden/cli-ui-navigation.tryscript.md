@@ -612,6 +612,8 @@ $ node tests/dom/navigation-route-behavior.js
     "display GitPath patch container inner",
     "display mixed filesystem path is not a GitPath wire",
     "display invalid GitPath atom stays a wire token",
+    "display GitPath newline name replaces C0",
+    "display GitPath invalid UTF-8 name",
     "Windows native URL for lone%D8%00.txt",
     "Windows identity from /view/lone%ED%A0%80.txt",
     "Windows native URL for lone%DF%FF.txt",

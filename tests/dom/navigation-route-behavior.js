@@ -173,6 +173,12 @@ equal(
   "docs/g1-UkVBRE1FLm1k",
 );
 equal("display invalid GitPath atom stays a wire token", route.displayPath("g1-!!!"), "g1-!!!");
+equal(
+  "display GitPath newline name replaces C0",
+  route.displayPath("g1-bmV3CmxpbmUudHh0"),
+  "new\ufffdline.txt",
+);
+equal("display GitPath invalid UTF-8 name", route.displayPath("g1-eP8udHh0"), "x\ufffd.txt");
 
 sandbox.METABROWSER_PATH_ENCODING = "utf16";
 for (const [identity, url] of [

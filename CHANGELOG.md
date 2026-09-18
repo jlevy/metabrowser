@@ -171,8 +171,10 @@ Content source:
   Listings still show the symlink.
   A Git image blob is SPA `image` chrome (`ext` from the compound tail, preview view, no
   inline content); `/raw` serves the stored bytes and the image plugin uses the display
-  name as `alt`. Absolute, dangling, and cyclic targets 404. `/api/stream` still returns
-  `unsupported_for_subject` rather than the lifespan filesystem inventory.
+  name as `alt`. Newline and invalid-UTF-8 GitPath names stay lossless on the wire;
+  display chrome replaces C0 and undecodable bytes with U+FFFD. Absolute, dangling, and
+  cyclic targets 404. `/api/stream` still returns `unsupported_for_subject` rather than
+  the lifespan filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.

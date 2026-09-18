@@ -54,7 +54,8 @@ basename) and is complete at once; a truncated index is an empty truncated
 snapshot rather than a partial list. ``/api/index/progress``, ``/api/index/meta``,
 and ``/api/capabilities`` report that same complete-at-once index without a
 watcher or invented mtime. SPA path chrome and copy-path
-decode GitPath wires to display names; navigation identities stay wires. KPress ``source_path``
+decode GitPath wires to display names; C0 and invalid UTF-8 become U+FFFD.
+Navigation identities stay wires. KPress ``source_path``
 is the GitPath wire so Markdown rewrite cannot emit a filesystem spelling.
 Patch-file container inners use a GitPath prefix plus a host inner path. Blob
 kinds use extension, basename, sniffed adapter, and JSON/YAML/frontmatter
@@ -250,7 +251,7 @@ def _identity_fields(entry: GitTreeEntry, *, path: GitPath | None = None) -> dic
 def _display_basename(path: GitPath) -> str:
     if not path.segments:
         return ""
-    return path.segments[-1].decode("utf-8", "replace")
+    return path.display().rsplit("/", 1)[-1]
 
 
 def _logical_ext(path: GitPath) -> str:
