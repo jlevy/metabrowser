@@ -5,7 +5,7 @@ title: "Repository projection: immutable Git-tree source over a shared object st
 kind: feature
 status: in_progress
 priority: 1
-version: 41
+version: 42
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -21,15 +21,15 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-19T18:11:56.054Z
-updated_at: 2026-09-18T07:48:30.557Z
+updated_at: 2026-09-18T08:01:35.743Z
 started_at: 2026-09-16T21:10:44.836Z
 ---
 Implement GitRevisionSubject and GitTreeSource over a shared RepositoryStoreTarget and an opaque SourceSession. Define byte-segment GitPath identity and URL/display serialization; enumerate NUL-framed trees with stable byte ordering; read blobs through exclusive actor-style cat-file batch readers that issue info before contents, enforce size gates, drain frames, and poison/restart on cancellation or framing failure. Migrate history, repo discovery, commit detail, refs, diffs, file/raw/container/classification/KPress routes, and built-in sidekicks to exact target plus subject OID semantics. Protect live OIDs with cross-process shared maintenance locks and durable private refs; GC/repack takes the exclusive lock. Add crash/stale-lock recovery, promisor-miss, oversized-blob, invalid-UTF8/newline-name, and two-process/two-OID tests. Never create a checkout, index, branch, worktree, or fake filesystem fact.
 
 ## Notes
 
-Fifteenth z335 slice: inventory-backed routes refuse a Git pin (inventory-refuse, stacked on #170). /api/rollup, catalog, index progress/meta, capabilities, JSONL stream, and pending-tally diagnostics return unsupported_for_subject rather than the lifespan folder.
+Sixteenth z335 slice: promisor-miss and LFS pointer blob reads (object-miss, stacked on #171). A tree-named missing blob against a hanging promisor is object_unavailable with GIT_NO_LAZY_FETCH in bounded time; a later present blob still reads. An LFS pointer is stored pointer bytes; a configured smudge filter does not run.
 
-Shipped through this slice: GitPath+tree (#157), lease_revision (#158), shared reader pool (#159), GitLocation collection (#160), file/raw/tree (#161), exclusive gc/repack (#162), diffs (#163), KPress (#164), patch containers (#165), binary chunks (#166), structured parsed (#167), agent-log JSONL (#168), content-key classification (#169), GitDiffSource.content pool (#170), inventory refuse (this PR).
+Shipped through this slice: GitPath+tree (#157), lease_revision (#158), shared reader pool (#159), GitLocation collection (#160), file/raw/tree (#161), exclusive gc/repack (#162), diffs (#163), KPress (#164), patch containers (#165), binary chunks (#166), structured parsed (#167), agent-log JSONL (#168), content-key classification (#169), GitDiffSource.content pool (#170), inventory refuse (#171), LFS pointer + promisor miss (this PR).
 
 Still later: inventory open (needs a distinct immutable-tree index), archive containers (mb-380k), serving acquired Git (mb-ew38). Do not close until review.
