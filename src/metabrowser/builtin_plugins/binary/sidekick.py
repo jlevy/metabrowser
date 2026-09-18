@@ -37,6 +37,7 @@ from typing import IO, TYPE_CHECKING, Any
 from starlette.responses import JSONResponse
 from strif import file_mtime_hash
 
+from metabrowser.git.content_routes import resolve_git_blob_entry
 from metabrowser.git.tree_source import (
     GitBlobTooLargeError,
     GitObjectUnavailableError,
@@ -226,10 +227,10 @@ async def _git_chunk(request: Request, subject: GitRevisionSubject) -> JSONRespo
     except GitPathError:
         return _unavailable(subpath)
     try:
-        entry = await subject.tree_source.resolve_path(path)
-        if entry is None or not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+        entry = await resolve_git_blob_entry(subject.tree_source, path)
+        if entry is None:
             return _unavailable(subpath)
-        body = await subject.tree_source.read_blob(path)
+        body = await subject.tree_source.read_blob(entry.path)
     except GitObjectUnavailableError:
         return _unavailable(subpath)
     except GitBlobTooLargeError as exc:

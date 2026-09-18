@@ -14,6 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from metabrowser.charts import extract_agent_charts, extract_agent_charts_bytes
+from metabrowser.git.content_routes import resolve_git_blob_entry
 from metabrowser.git.tree_source import (
     GitBlobTooLargeError,
     GitObjectUnavailableError,
@@ -55,13 +56,13 @@ async def _git_charts(request: Request, subject: GitRevisionSubject) -> JSONResp
         path = GitPath.from_wire(raw_path)
     except GitPathError:
         return JSONResponse({"error": "Not found"}, status_code=404)
-    if _logical_ext(path) != ".jsonl":
-        return JSONResponse({"error": "Not a JSONL file"}, status_code=400)
     try:
-        entry = await subject.tree_source.resolve_path(path)
-        if entry is None or not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+        entry = await resolve_git_blob_entry(subject.tree_source, path)
+        if entry is None:
             return JSONResponse({"error": "Not found"}, status_code=404)
-        data = await subject.tree_source.read_blob(path)
+        if _logical_ext(entry.path) != ".jsonl":
+            return JSONResponse({"error": "Not a JSONL file"}, status_code=400)
+        data = await subject.tree_source.read_blob(entry.path)
     except GitObjectUnavailableError:
         return JSONResponse({"error": "Not found"}, status_code=404)
     except GitBlobTooLargeError as exc:
