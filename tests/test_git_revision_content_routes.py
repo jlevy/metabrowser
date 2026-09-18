@@ -768,3 +768,32 @@ def test_git_file_raw_promisor_miss_is_object_unavailable(tmp_path: Path) -> Non
                 assert kept.json()["content"] == "kept\n"
 
         asyncio.run(_run())
+
+
+def test_git_view_shell_honors_gitpath_and_refuses_filesystem_spelling(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+    readme = _wire(b"README.md")
+    missing = _wire(b"nope.txt")
+    patch_inner = f"{_wire(b'change.patch')}/src/app.py"
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            root = await client.get("/view/")
+            assert root.status_code == 200
+            assert "text/html" in root.headers.get("content-type", "")
+            assert str(store) not in root.text
+            assert commit[:12] in root.text
+            assert "METABROWSER_REPOSITORY_CONTEXT=null" in root.text
+            blob = await client.get(f"/view/{readme}")
+            assert blob.status_code == 200
+            assert "text/html" in blob.headers.get("content-type", "")
+            absent = await client.get(f"/view/{missing}")
+            assert absent.status_code == 200
+            inner = await client.get(f"/view/{patch_inner}")
+            assert inner.status_code == 200
+            filesystem = await client.get("/view/README.md")
+            assert filesystem.status_code == 400
+            assert filesystem.text == "Invalid view path."
+            assert str(store) not in filesystem.text
+
+    asyncio.run(_run())

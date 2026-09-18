@@ -141,8 +141,8 @@ the sources that produce them.
 
 | Route | Selects | Status |
 | --- | --- | --- |
-| `/view/<path>` | Content in the active source session; `/view/` is the root | Filesystem-backed serving is implemented; immutable Git-tree subjects and `GitPath` identities are planned |
-| `/view/<container>/<inner>` | One entry inside a container file | Implemented |
+| `/view/<path>` | Content in the active source session; `/view/` is the root | Implemented. A filesystem session uses a served-root-relative path. A `GitRevisionSubject` uses a `GitPath` wire identity and refuses a filesystem spelling |
+| `/view/<container>/<inner>` | One entry inside a container file | Implemented. On a Git pin the container address is a `GitPath` prefix and the inner is a host path |
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |

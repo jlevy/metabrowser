@@ -262,6 +262,8 @@ Inventory-backed routes do not answer from the lifespan folder: `/api/rollup`,
 entries, and LFS pointers remain ordinary blobs (stored pointer bytes, no smudge).
 A blob the tree names but the store lacks, including a promisor miss with
 `GIT_NO_LAZY_FETCH`, is `object_unavailable` and does not contact the remote.
+`/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
+container inner, and refuses a filesystem spelling.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an

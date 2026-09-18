@@ -97,6 +97,7 @@ from metabrowser.file_kinds import (
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
 from metabrowser.git.content_routes import (
+    decode_git_view_path,
     git_revision_file,
     git_revision_kpress_render,
     git_revision_raw,
@@ -953,12 +954,22 @@ PREFETCH_FALLBACK_DELAY_MS = 200
 async def index(request: Request) -> HTMLResponse:
     """Serve the SPA page with linked assets and one pre-paint state machine."""
 
-    initial_path = _initial_path_html()
-    initial_root = html_escape(_display_root_str(), quote=True)
+    subject = get_source_session().subject
+    git_pin = isinstance(subject, GitRevisionSubject)
+    if git_pin:
+        pin_oid = subject.commit_oid
+        initial_path = (
+            f'<span class="path"><span class="path-base">{html_escape(pin_oid[:12])}</span></span>'
+        )
+        initial_root = html_escape(pin_oid, quote=True)
+        repository_context = None
+    else:
+        initial_path = _initial_path_html()
+        initial_root = html_escape(_display_root_str(), quote=True)
+        repository_context = await asyncio.to_thread(
+            discover_repository_context, session_filesystem_root()
+        )
     version_line = html_escape(display_version_line("metab", __version__))
-    repository_context = await asyncio.to_thread(
-        discover_repository_context, session_filesystem_root()
-    )
     styles_url = _static_asset_url("styles.css")
     asset_loader_url = _static_asset_url("asset-loader.js")
     theme_state_url = _static_asset_url("theme-state.js")
@@ -1017,7 +1028,7 @@ async def index(request: Request) -> HTMLResponse:
     # would risk painting rows the reader's filter excludes; the fetch that
     # follows owns every case but this one.
     initial_tree_block = ""
-    if _INLINE_INITIAL_TREE_ROWS:
+    if _INLINE_INITIAL_TREE_ROWS and not git_pin:
         try:
             runtime = _inventory_runtime_for(request)
             initial_read = await runtime.coordinator.read(
@@ -1400,7 +1411,15 @@ async def view_shell(request: Request) -> Response:
     """Serve the SPA shell only for one safely encoded canonical view path."""
 
     raw_path = request.scope.get("raw_path")
-    if not isinstance(raw_path, bytes) or decode_safe_view_path(raw_path) is None:
+    if not isinstance(raw_path, bytes):
+        return PlainTextResponse("Invalid view path.", status_code=400)
+    subject = get_source_session().subject
+    decoded = (
+        decode_git_view_path(raw_path)
+        if isinstance(subject, GitRevisionSubject)
+        else decode_safe_view_path(raw_path)
+    )
+    if decoded is None:
         return PlainTextResponse("Invalid view path.", status_code=400)
     return await index(request)
 
