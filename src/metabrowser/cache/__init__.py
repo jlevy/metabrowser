@@ -7,6 +7,7 @@ and the read-only ``/api/cache/`` projections of that state. Owner-only storage
 enforcement stays in :mod:`metabrowser.home`, which every module here calls before
 touching the home. Ordinary local browsing imports only the route table in
 :mod:`metabrowser.cache.routes`, which loads the rest of the package inside a cache
-request. Acquisition is not implemented yet: a classified Git source fails closed at the
-CLI rather than cloning.
+request. The CLI classifies a root only when it is not a plain local path, so
+``metab .`` never imports :mod:`metabrowser.cache.urls`. Acquisition is not implemented
+yet: a classified Git source fails closed at the CLI rather than cloning.
 """
