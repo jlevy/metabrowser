@@ -83,6 +83,17 @@ Repository cache:
   read-only home, full disk, or contended lock drops that write and still returns the
   published alias.
 
+Content source:
+
+- The server now has one active repository subject per process.
+  An attached local folder is `AttachedFilesystemSubject`. File, raw, tree, container,
+  and event routes read through its `ContentSource`, and inventory open goes through
+  `InventoryCoordinator.open_subject`. `resolve_path` and `served_root` stay
+  filesystem-only; a non-filesystem subject raises `UnsupportedSourceCapabilityError`.
+  Recency, ignore, watcher, activity, and mutation each have a typed capability gate.
+  Filesystem browsing is unchanged.
+  Git revision subjects and blob reads remain later work.
+
 ## 0.10.0
 
 Plugin SDK:
