@@ -624,3 +624,29 @@ def test_git_file_classifies_json_content_key(tmp_path: Path) -> None:
         asyncio.run(_run())
     finally:
         _PLUGIN_KIND_RULES.remove(rule)
+
+
+def test_git_pin_refuses_inventory_backed_routes(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            for path in (
+                "/api/rollup",
+                "/api/catalog",
+                "/api/index/progress",
+                "/api/index/meta",
+                "/api/capabilities",
+                "/api/stream",
+            ):
+                response = await client.get(path)
+                assert response.status_code == 409, path
+                body = response.json()
+                assert body["code"] == "unsupported_for_subject"
+                assert body["capability"] == "filesystem"
+                assert str(store) not in response.text
+            diagnostic = await client.post("/api/diagnostics/pending-tallies", json={"pending": {}})
+            assert diagnostic.status_code == 409
+            assert diagnostic.json()["capability"] == "filesystem"
+
+    asyncio.run(_run())

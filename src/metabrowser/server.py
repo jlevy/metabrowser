@@ -198,6 +198,7 @@ from metabrowser.settings import (
 from metabrowser.source import (
     UnsupportedSourceCapabilityError,
     get_source_session,
+    require_filesystem_hooks,
     require_filter_capabilities,
     require_source_capability,
     resolve_session_identity,
@@ -1682,6 +1683,7 @@ async def api_rollup(request: Request) -> Response:
     alongside a `rest` bucket for their omitted siblings.
     """
 
+    require_filesystem_hooks()
     requested = request.query_params.get("path", "")
     subpath = parse_inventory_path(requested)
     require_source_capability("navigation")

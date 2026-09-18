@@ -113,10 +113,12 @@ Markdown-frontmatter mappings parsed from blob bytes.
 `/api/plugin/structured/parsed` reads a Git blob and uses the object id as its cache key
 rather than a filesystem mtime.
 `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope;
-`/api/plugin/agent-log/charts` reads that blob by `GitPath`. Event, inventory open,
-archive containers, and serving acquired Git still wait on later slices.
-`resolve_path` and `served_root` remain filesystem-only plugin helpers: they raise
-`UnsupportedSourceCapabilityError` when the active subject has no folder.
+`/api/plugin/agent-log/charts` reads that blob by `GitPath`. Inventory-backed routes
+(`/api/rollup`, `/api/catalog`, index progress/meta, capabilities, JSONL stream) return
+`unsupported_for_subject` instead of the lifespan folder.
+Event, inventory open, archive containers, and serving acquired Git still wait on later
+slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
+raise `UnsupportedSourceCapabilityError` when the active subject has no folder.
 Recency, ignore, watcher, activity, and mutation are named source capabilities with the
 same typed error.
 

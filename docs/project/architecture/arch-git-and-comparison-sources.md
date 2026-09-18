@@ -254,8 +254,10 @@ YAML, and Markdown-frontmatter mappings parsed from blob bytes.
 `/api/plugin/structured/parsed` reads one blob by that identity and keys the parse on
 the object id. `/api/file` for a `.jsonl` blob is a parsed JSONL envelope;
 `/api/plugin/agent-log/charts` reads that blob by the same identity.
-Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
-remain ordinary blobs.
+Inventory-backed routes do not answer from the lifespan folder: `/api/rollup`,
+`/api/catalog`, index progress/meta, capabilities, and JSONL `/api/stream` return
+`unsupported_for_subject`. Symlinks are not followed, gitlinks are distinct non-folder
+entries, and LFS pointers remain ordinary blobs.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an

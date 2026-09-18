@@ -18,6 +18,8 @@ This module owns:
   ``/api/index/suffixes`` into one envelope.
 * ``GET /api/capabilities`` — unified capability surface with
   filesystem-type-driven watcher status.
+  A non-filesystem subject raises ``unsupported_for_subject`` rather than
+  reporting the lifespan folder's watcher.
 * :func:`build_lifespan` — Starlette lifespan context manager
   that bumps the asyncio default executor to 64 workers and opens the
   selected inventory provider without blocking HTTP bind.
@@ -121,7 +123,7 @@ from metabrowser.settings import (
     SSE_PER_CONNECTION_QUEUE_SIZE,
     SSE_RING_BUFFER_CAPACITY,
 )
-from metabrowser.source import require_source_capability
+from metabrowser.source import require_filesystem_hooks, require_source_capability
 
 if TYPE_CHECKING:
     from starlette.applications import Starlette
@@ -943,6 +945,7 @@ async def api_index_progress(request: Request) -> Response:
     filling.
     """
 
+    require_filesystem_hooks()
     progress, session = await _read_index_progress(_runtime_for(request))
     etag = build_scoped_etag(f"{session}-{_progress_etag(progress)}")
     if not progress.active and matches_if_none_match(request, etag):
@@ -982,6 +985,7 @@ def _pending_tally_paths(payload: dict[str, object]) -> list[str]:
 async def api_pending_tally_diagnostic(request: Request) -> JSONResponse:
     """Correlate a client-side pending-tally warning with server state."""
 
+    require_filesystem_hooks()
     content_length = request.headers.get("content-length", "")
     try:
         if content_length and int(content_length) > PENDING_TALLY_DIAGNOSTIC_MAX_BODY_BYTES:
@@ -1308,6 +1312,7 @@ async def api_catalog(request: Request) -> Response:
     ops are idempotent by path.
     """
 
+    require_filesystem_hooks()
     runtime = _runtime_for(request)
     checkpoint = await _catalog_checkpoint(runtime)
     known = _CATALOG_ETAG_BY_CHECKPOINT.get(checkpoint)
@@ -1353,6 +1358,7 @@ async def api_index_meta(request: Request) -> Response:
     file count + walker generation, so a 304 is cheap when
     nothing has finalized since the last poll."""
 
+    require_filesystem_hooks()
     meta, etag = await _read_index_meta(_runtime_for(request))
     body = json.dumps(asdict(meta), separators=(",", ":")).encode()
     if matches_if_none_match(request, etag):
@@ -1370,6 +1376,7 @@ async def api_index_meta(request: Request) -> Response:
 async def api_capabilities(request: Request) -> JSONResponse:
     """Return the selected provider's reported observation capability."""
 
+    require_filesystem_hooks()
     runtime = _runtime_for(request)
     meta, _etag = await _read_index_meta(runtime, suffix_limit=0)
 
