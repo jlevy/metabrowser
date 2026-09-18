@@ -21,6 +21,9 @@ and emit subtree ``filtered`` totals; empty filter dirs are omitted. File nav
 nodes include ``ext`` from the same bounded compound-tail helper as
 filesystem inventory, so type filters match ``bundle.min.js`` as ``.min.js``
 and do not treat a basename ending in ``md`` as ``.md``.
+Blob ``/api/file`` envelopes include that same ``ext`` so plugin-sdk
+``langForPath`` and ``ctx.ext`` do not fall back to a GitPath wire; they omit
+compressed identity because blobs are stored bytes with no gzip smudge.
 ``logical_ext`` is only the inner extension of a compressed name.
 ``include_ignored=0`` is a no-op because ignore is absent.
 The SPA hides Modified within because recency still has no honest mtime.
@@ -1048,6 +1051,8 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
         "size": len(body),
         **_identity_fields(entry),
     }
+    if ext:
+        payload["ext"] = ext
     if entry.is_symlink:
         payload.update(
             {
