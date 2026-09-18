@@ -52,10 +52,17 @@ Repository cache:
 
 - The CLI classifies `ROOT` as a string before any path is constructed.
   A bare local path is still served; `https`, `ssh`, and `file://` clone URLs are Git
-  sources and are refused until cache acquisition lands.
+  sources and are refused until a later slice opens them.
   `file://` is the only way to ask for a local origin to be acquired — a bare
   `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
-  rejected. No command writes the cache yet.
+  rejected.
+
+- A classified `file://` source can be fetched into an isolated worktree-free staging
+  store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
+  The fetch is blobless when the origin honors `--filter=blob:none`, and complete when
+  the origin ignores the filter.
+  The staging entry stays unpublished: no source alias, no `repository-stores` rename,
+  and the CLI still does not write the cache or serve acquired content.
 
 ## 0.10.0
 
