@@ -64,6 +64,13 @@ The browser’s navigation API converts these identities to human-facing `/view/
 
 Python sidekicks use `resolve_path()` or `resolve_directory()` to cross from an identity
 to the filesystem, and `relativize_path()` to convert a native path back to an identity.
+Those helpers stay filesystem-only.
+The additive content-reader helpers `content_source()`, `open_content()`,
+`source_capabilities()`, and `require_source_capability()` talk to the one active
+repository subject instead.
+On an attached folder they agree with `resolve_path`. On a non-filesystem subject,
+`resolve_path` and `served_root` raise `UnsupportedSourceCapabilityError` rather than
+pretending a path exists.
 Do not join an API path directly onto the served root.
 The [inventory contract](project/architecture/arch-inventory-provider.md) specifies the
 encoding and scope. `/commit/` comparison paths belong to Git’s separate address space.

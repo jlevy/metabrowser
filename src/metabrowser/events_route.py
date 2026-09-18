@@ -121,6 +121,7 @@ from metabrowser.settings import (
     SSE_PER_CONNECTION_QUEUE_SIZE,
     SSE_RING_BUFFER_CAPACITY,
 )
+from metabrowser.source import require_source_capability
 
 if TYPE_CHECKING:
     from starlette.applications import Starlette
@@ -745,6 +746,7 @@ async def api_events(request: Request) -> Response:
     response-level header that the gzip middleware honours
     (skipping ``text/event-stream``)."""
 
+    require_source_capability("watcher")
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",

@@ -85,6 +85,26 @@ lands in one commit across all three halves, and compatibility shims between the
 forbidden. See
 [Compatibility and Legacy Code](../../development.md#compatibility-and-legacy-code).
 
+## Server: Active subject
+
+The process serves exactly one `RepositorySubject` at a time, owned by a `SourceSession`
+(`metabrowser.source`). The session holds the subject identity, a generation that
+advances on replacement, the content reader, navigation/index capability, and a lease
+released when the next subject attaches.
+
+Today the only subject is `AttachedFilesystemSubject`, which wraps the served folder.
+File, raw, tree, container, and event routes resolve through that subject’s
+`ContentSource`, so a later Git-tree subject can attach without those routes growing a
+second path grammar.
+`resolve_path` and `served_root` remain filesystem-only plugin helpers: they raise
+`UnsupportedSourceCapabilityError` when the active subject has no folder.
+Recency, ignore, watcher, activity, and mutation are named source capabilities with the
+same typed error.
+
+Inventory still has one writer.
+`InventoryCoordinator.open_subject` is the only new open path; for an attached folder it
+delegates to the existing `open(root)`.
+
 ## Server: Concurrency Model
 
 **One provider writer, many readers.** The opened `InventoryHandle` owns filesystem

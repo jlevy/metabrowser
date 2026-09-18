@@ -49,6 +49,10 @@ from metabrowser.inventory_engine.overlay import (
     InventoryOverlay,
     OverlaySnapshot,
 )
+from metabrowser.source import (
+    RepositorySubject,
+    UnsupportedSourceCapabilityError,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -323,6 +327,20 @@ class InventoryCoordinator:
     async def replace_root(self, root: Path) -> HostVersion:
         """Close the old root completely before making the replacement visible."""
 
+        return await self.open(root)
+
+    async def open_subject(self, subject: RepositorySubject) -> HostVersion:
+        """Open the inventory for a subject that can navigate and index.
+
+        Filesystem subjects reuse :meth:`open`. Git-tree subjects stay on
+        the later revision-source bead.
+        """
+
+        subject.capabilities.require("index")
+        subject.capabilities.require("navigation")
+        root = subject.filesystem_root
+        if root is None:
+            raise UnsupportedSourceCapabilityError("filesystem")
         return await self.open(root)
 
     async def read(

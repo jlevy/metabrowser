@@ -40,6 +40,15 @@ from metabrowser.provider_resources.profiles import (
     ResourceProfileSpec,
     ResourceTargetClass,
 )
+from metabrowser.source import (
+    SourceCapabilities,
+    UnsupportedSourceCapabilityError,
+    content_source,
+    open_content,
+    require_filesystem_hooks,
+    require_source_capability,
+    source_capabilities,
+)
 
 
 def resolve_path(requested: str) -> Path | None:
@@ -47,7 +56,10 @@ def resolve_path(requested: str) -> Path | None:
 
     An empty string returns the served root. A successful result may be a file
     or directory; use :func:`resolve_directory` when a directory is required.
+    Filesystem-only: a non-filesystem subject raises
+    :class:`UnsupportedSourceCapabilityError`.
     """
+    require_filesystem_hooks()
     return _safe_path_from_identity(requested)
 
 
@@ -76,7 +88,10 @@ def served_root() -> Path:
     Hooks that reason about the tree as a whole — a repository, an
     archive — need the root itself, which ``resolve_path("")`` also
     returns; this name says why the caller wants it.
+    Filesystem-only: a non-filesystem subject raises
+    :class:`UnsupportedSourceCapabilityError`.
     """
+    require_filesystem_hooks()
     root = _safe_path("")
     if root is None:  # pragma: no cover - the served root always resolves
         raise RuntimeError("served root is unavailable")
@@ -101,12 +116,18 @@ __all__ = [
     "ResourceCollectionSpec",
     "ResourceProfileSpec",
     "ResourceTargetClass",
+    "SourceCapabilities",
+    "UnsupportedSourceCapabilityError",
+    "content_source",
     "detect_adapter",
     "extract_agent_charts_cached",
+    "open_content",
     "register_log_adapter",
+    "require_source_capability",
     "register_root_callback",
     "relativize_path",
     "resolve_directory",
     "resolve_path",
     "served_root",
+    "source_capabilities",
 ]
