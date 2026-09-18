@@ -137,8 +137,11 @@ Content source:
   `object_unavailable` with `GIT_NO_LAZY_FETCH` and does not contact the remote.
   `/view/` on a Git pin accepts a `GitPath` wire, optionally plus a patch-file container
   inner, and refuses a filesystem spelling; missing Git objects remain valid shell
-  destinations. Inventory open, archive containers, and serving acquired Git are not
-  switched yet.
+  destinations. `/api/tree` on that pin keeps Git-native `entries` and also projects a
+  SPA `tree` array (`dir` / `file` / `symlink`, `GitPath` wires, lazy `children` for Git
+  trees) without mtime, size, or ignore facts.
+  Gitlinks project as files, not directories.
+  Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0
 
