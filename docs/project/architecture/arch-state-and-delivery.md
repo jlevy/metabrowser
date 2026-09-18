@@ -120,6 +120,9 @@ A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including 
 promisor miss, is `object_unavailable` with lazy fetch disabled.
 `/view/` on a pin accepts a `GitPath` wire (and a patch-file container inner) and
 refuses a filesystem spelling.
+`/api/tree` on that pin keeps Git-native `entries` and also projects a SPA `tree` array
+so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, no invented mtime,
+size, or ignore; gitlinks are files).
 Event, inventory open, archive containers, and serving acquired Git still wait on later
 slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
 raise `UnsupportedSourceCapabilityError` when the active subject has no folder.

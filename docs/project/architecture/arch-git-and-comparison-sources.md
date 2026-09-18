@@ -5,12 +5,12 @@
 The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Worktree-free repository stores and immutable revision subjects are implemented for tree
-reads, Git collection routes, `GitPath` file/raw/tree routes, revision comparison
-through `GitDiffSource` (including size-gated `content` via the shared cat-file pool),
-KPress blob renders, patch-file containers, binary byte chunks, extension plugin kinds,
-structured parsed, and agent-log JSONL. LFS pointers stay stored bytes; a promisor miss
-is `object_unavailable` with lazy fetch disabled.
-Serving acquired Git remains later.
+reads, Git collection routes, `GitPath` file/raw/tree routes (including a SPA `tree`
+projection on `/api/tree`), revision comparison through `GitDiffSource` (including
+size-gated `content` via the shared cat-file pool), KPress blob renders, patch-file
+containers, binary byte chunks, extension plugin kinds, structured parsed, and agent-log
+JSONL. LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy
+fetch disabled. Serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -264,6 +264,8 @@ A blob the tree names but the store lacks, including a promisor miss with
 `GIT_NO_LAZY_FETCH`, is `object_unavailable` and does not contact the remote.
 `/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
 container inner, and refuses a filesystem spelling.
+`/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array
+(`dir`/`file`/`symlink`, `GitPath` wires, no mtime/size/ignore); gitlinks are files.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an

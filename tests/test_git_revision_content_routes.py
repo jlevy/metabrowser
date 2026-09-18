@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, and blob kinds honor GitPath on a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, and SPA nav tree honor GitPath on a pin."""
 
 from __future__ import annotations
 
@@ -174,6 +174,24 @@ def _assert_listing_entry(entry: dict[str, object]) -> None:
         assert key in entry
 
 
+def _assert_nav_tree_node(node: dict[str, object]) -> None:
+    assert "mtime" not in node
+    assert "mtime_ns" not in node
+    assert "size" not in node
+    assert "total_files" not in node
+    assert "total_size" not in node
+    assert "gitignored" not in node
+    assert node["name"]
+    assert node["path"]
+    assert node["type"] in {"dir", "file", "symlink"}
+    if node["type"] == "dir":
+        assert node["children"] is None
+        assert node["has_children"] is True
+    else:
+        assert "children" not in node
+        assert "has_children" not in node
+
+
 @asynccontextmanager
 async def _pinned_client(
     store: Path,
@@ -306,6 +324,42 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
     asyncio.run(_run())
 
 
+def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            tree = await client.get("/api/tree")
+            assert tree.status_code == 200
+            body = tree.json()
+            assert isinstance(body["tree"], list)
+            assert str(store) not in tree.text
+            by_name = {node["name"]: node for node in body["tree"]}
+            for node in body["tree"]:
+                _assert_nav_tree_node(node)
+            assert by_name["docs"]["type"] == "dir"
+            assert by_name["docs"]["path"] == _wire(b"docs")
+            assert by_name["docs"]["children"] is None
+            assert by_name["docs"]["has_children"] is True
+            assert by_name["README.md"]["type"] == "file"
+            assert by_name["README.md"]["path"] == _wire(b"README.md")
+            assert by_name["link"]["type"] == "symlink"
+            assert by_name["vendor"]["type"] == "dir"
+            names = {entry["display"] for entry in body["entries"]}
+            assert names >= {"README.md", "docs", "link", "vendor"}
+
+            vendor = await client.get("/api/tree", params={"path": _wire(b"vendor")})
+            assert vendor.status_code == 200
+            vendor_body = vendor.json()
+            dep = next(node for node in vendor_body["tree"] if node["name"] == "dep")
+            _assert_nav_tree_node(dep)
+            assert dep["type"] == "file"
+            assert dep["path"] == _wire(b"vendor", b"dep")
+            assert str(store) not in vendor.text
+
+    asyncio.run(_run())
+
+
 def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
     store, commit = _build_store(tmp_path)
 
@@ -336,6 +390,10 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
             assert displays == ["README.md"]
             for entry in typed.json()["entries"]:
                 _assert_listing_entry(entry)
+            typed_tree = typed.json()["tree"]
+            assert [node["name"] for node in typed_tree] == ["README.md"]
+            assert typed_tree[0]["type"] == "file"
+            _assert_nav_tree_node(typed_tree[0])
 
             too_big = await client.get("/api/file", params={"path": _wire(b"big.bin")})
             assert too_big.status_code == 413

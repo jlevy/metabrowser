@@ -2,11 +2,13 @@
 
 These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
 invented filesystem fact. ``/view/`` accepts a GitPath wire, optionally plus
-a host container inner, and refuses a filesystem spelling. Patch-file
-container inners use a GitPath prefix plus a host inner path. Blob kinds use
-extension, basename, sniffed adapter, and JSON/YAML/frontmatter mappings
-parsed from blob bytes. ``path_glob`` stays filesystem-only. Serving acquired
-Git from the CLI remains a later bead.
+a host container inner, and refuses a filesystem spelling. ``/api/tree`` keeps
+Git-native ``entries`` and also projects a SPA ``tree`` array so navigation
+can paint; Git trees lazy-load, gitlinks are files, and listings omit mtime,
+size, and ignore. Patch-file container inners use a GitPath prefix plus a
+host inner path. Blob kinds use extension, basename, sniffed adapter, and
+JSON/YAML/frontmatter mappings parsed from blob bytes. ``path_glob`` stays
+filesystem-only. Serving acquired Git from the CLI remains a later bead.
 """
 
 from __future__ import annotations
@@ -91,6 +93,28 @@ def _listing_entry(entry: GitTreeEntry) -> dict[str, Any]:
         "gitlink": entry.is_gitlink,
         "oid": entry.oid,
     }
+
+
+def _nav_tree_type(entry: GitTreeEntry) -> Literal["dir", "file", "symlink"]:
+    if entry.is_tree:
+        return "dir"
+    if entry.is_symlink:
+        return "symlink"
+    return "file"
+
+
+def _nav_tree_node(entry: GitTreeEntry) -> dict[str, Any]:
+    """SPA nav node. Omit inventory aggregates rather than invent zeros."""
+
+    node: dict[str, Any] = {
+        "name": _display_basename(entry.path),
+        "path": entry.path.to_wire(),
+        "type": _nav_tree_type(entry),
+    }
+    if entry.is_tree:
+        node["children"] = None
+        node["has_children"] = True
+    return node
 
 
 def _identity_fields(entry: GitTreeEntry) -> dict[str, Any]:
@@ -203,7 +227,7 @@ async def git_revision_tree(
     subject: GitRevisionSubject,
     tree_filter: TreeFilter,
 ) -> JSONResponse:
-    """List one Git tree. Entries carry Git facts only."""
+    """List one Git tree. ``entries`` are Git facts; ``tree`` is the SPA nav."""
 
     if tree_filter.min_size:
         raise UnsupportedSourceCapabilityError("min_size")
@@ -228,6 +252,7 @@ async def git_revision_tree(
             "oid": located.oid,
             "kind": "tree",
             "entries": [_listing_entry(entry) for entry in entries],
+            "tree": [_nav_tree_node(entry) for entry in entries],
         }
     )
 
