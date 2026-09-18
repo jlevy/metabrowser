@@ -247,8 +247,9 @@ display text; it never becomes a host filesystem path.
 A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path, not
 another tree segment.
 `/api/plugin/binary/chunk` slices one blob by that identity and keys the window on the
-object id. Git blobs classify by extension, basename, and sniffed adapter plugin rules,
-not Path or content-key predicates.
+object id. Git blobs classify by extension, basename, sniffed adapter, and bounded JSON,
+YAML, and Markdown-frontmatter mappings parsed from blob bytes.
+`path_glob` stays filesystem-only.
 `/api/plugin/structured/parsed` reads one blob by that identity and keys the parse on
 the object id. `/api/file` for a `.jsonl` blob is a parsed JSONL envelope;
 `/api/plugin/agent-log/charts` reads that blob by the same identity.

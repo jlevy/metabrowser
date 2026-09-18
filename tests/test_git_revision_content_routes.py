@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, and agent-log honor GitPath on a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, and blob kinds honor GitPath on a pin."""
 
 from __future__ import annotations
 
@@ -592,3 +592,35 @@ def test_git_agent_log_charts_and_adapter_kind(tmp_path: Path) -> None:
             assert missing.status_code == 404
 
     asyncio.run(_run())
+
+
+def test_git_file_classifies_json_content_key(tmp_path: Path) -> None:
+    from metabrowser.plugin_loader.classify import CompiledKindRule
+    from metabrowser.plugin_loader.manifest import KindMatch, KindRule
+    from metabrowser.server import _PLUGIN_KIND_RULES
+
+    rule = CompiledKindRule(
+        rule=KindRule(
+            id="pin-config",
+            match=KindMatch(ext=".json", json_has_key="name"),
+            priority=100,
+        ),
+        plugin_name="test-pin",
+        discovery_index=10_000,
+    )
+    _PLUGIN_KIND_RULES.append(rule)
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            envelope = await client.get("/api/file", params={"path": _wire(b"config.json")})
+            assert envelope.status_code == 200
+            body = envelope.json()
+            assert body["kind"] == "pin-config"
+            assert body["type"] == "text"
+            assert str(store) not in envelope.text
+
+    try:
+        asyncio.run(_run())
+    finally:
+        _PLUGIN_KIND_RULES.remove(rule)

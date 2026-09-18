@@ -2,9 +2,10 @@
 
 These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
 invented filesystem fact. Patch-file container inners use a GitPath prefix
-plus a host inner path. Blob kinds use extension, basename, and sniffed
-adapter plugin rules, not Path or content-key predicates. Serving acquired
-Git from the CLI remains a later bead.
+plus a host inner path. Blob kinds use extension, basename, sniffed adapter,
+and JSON/YAML/frontmatter mappings parsed from blob bytes. ``path_glob``
+stays filesystem-only. Serving acquired Git from the CLI remains a later
+bead.
 """
 
 from __future__ import annotations
@@ -95,7 +96,14 @@ def _logical_ext(path: GitPath) -> str:
     return Path(_display_basename(path)).suffix.lower()
 
 
-def _plugin_kind_for_git_path(path: GitPath, *, adapter: str | None = None) -> str | None:
+def _plugin_kind_for_git_path(
+    path: GitPath,
+    *,
+    adapter: str | None = None,
+    json_top_level: dict[str, Any] | None = None,
+    yaml_top_level: dict[str, Any] | None = None,
+    frontmatter: dict[str, Any] | None = None,
+) -> str | None:
     from metabrowser.plugin_loader.classify import classify_identity
     from metabrowser.server import _PLUGIN_KIND_RULES
 
@@ -104,7 +112,25 @@ def _plugin_kind_for_git_path(path: GitPath, *, adapter: str | None = None) -> s
         ext=_logical_ext(path),
         basename=_display_basename(path),
         adapter=adapter,
+        json_top_level=json_top_level,
+        yaml_top_level=yaml_top_level,
+        frontmatter=frontmatter,
     )
+
+
+def _git_blob_content_predicates(
+    ext: str, body: bytes
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+    from metabrowser.plugin_loader.classify import (
+        frontmatter_from_bytes,
+        json_mapping_from_bytes,
+        yaml_mapping_from_bytes,
+    )
+
+    json_top = json_mapping_from_bytes(body) if ext == ".json" else None
+    yaml_top = yaml_mapping_from_bytes(body) if ext in {".yaml", ".yml"} else None
+    frontmatter = frontmatter_from_bytes(body) if ext == ".md" else None
+    return json_top, yaml_top, frontmatter
 
 
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
@@ -272,7 +298,13 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
         min(_query_int(request, "limit", TEXT_PREVIEW_CHUNK_BYTES), TEXT_PREVIEW_REQUEST_MAX_BYTES),
     )
     window = body[offset : offset + limit]
-    kind = _plugin_kind_for_git_path(entry.path) or (classify_by_ext(ext) if ext else "text")
+    json_top, yaml_top, frontmatter = _git_blob_content_predicates(ext, body)
+    kind = _plugin_kind_for_git_path(
+        entry.path,
+        json_top_level=json_top,
+        yaml_top_level=yaml_top,
+        frontmatter=frontmatter,
+    ) or (classify_by_ext(ext) if ext else "text")
     payload.update(
         {
             "type": "text",
