@@ -141,6 +141,8 @@ Content source:
   SPA `tree` array (`dir` / `file` / `symlink`, `GitPath` wires, lazy `children` for Git
   trees) without mtime, size, or ignore facts.
   Gitlinks project as files, not directories.
+  A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
+  empty views and no invented directory aggregates.
   Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0
