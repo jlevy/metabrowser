@@ -5,7 +5,7 @@ title: Accept local origins as first-class Git sources under the untrusted profi
 kind: task
 status: in_progress
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
 delegate: unknown@cursor
 labels:
@@ -19,17 +19,11 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-28T03:58:15.870Z
-updated_at: 2026-09-18T01:15:32.181Z
+updated_at: 2026-09-18T01:19:21.334Z
 started_at: 2026-09-18T01:15:32.181Z
 ---
 Treat explicit file:// URLs as first-class Git acquisition sources under the untrusted profile. A bare local path is not a Git source: metab /path/to/repo keeps its existing meaning of serving that directory, while acquisition must be requested with file://. The file transport uses Git-aware packing rather than the hardlinked object store created by the implicit --local path form. Do not claim file:// supports blob filtering: verified Git 2.50.1 origins may ignore --filter even with uploadpack.allowFilter; Phase 0 owns that measurement and the full-clone fallback. Acquisition goldens use small deterministic file:// origins and never depend on partial-clone support.
 
 ## Notes
 
-Corrected 2026-08-31 after the adversarial plan review (PLAN-04).
-
-The earlier note claimed file:// "honours --filter". That does not reproduce. Cloning --filter=blob:none from a file:// origin produced a complete clone -- the blob was present -- both with a default origin, which warns "filtering not recognized by server, ignoring", and with uploadpack.allowFilter=true set on it.
-
-What survives: git clone given a bare path defaults to --local, which hardlinks .git/objects (link count 2 from both sides, so the entry is not isolated from source mutation). file:// uses the git-aware transport and produces a pack. That isolation argument is the reason to pin file://, and it stands on its own.
-
-What does not survive: any claim that file:// makes blobless acquisition work. Whether it works at all over file:// is an open measurement the repository-library plan now owns. Nothing in the golden strategy depends on it, since fixture origins are kilobytes.
+Implemented on cursor/v011-file-url-grammar-bd04, stacked on PR #140. PR https://github.com/jlevy/metabrowser/pull/141. Production classify_root_argument replays url-grammar.json; CLI ROOT stays a string; file:// / https / ssh fail closed until mb-h51g. Close when the layer is reviewed and CI is green, not when the stack merges to main.

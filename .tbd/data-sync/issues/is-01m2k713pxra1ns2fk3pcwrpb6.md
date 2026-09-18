@@ -5,7 +5,7 @@ title: "v0.11 repository and hosted-resource stack: land and retarget completed 
 kind: task
 status: open
 priority: 1
-version: 27
+version: 28
 spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
 delegate: claude-code@spud10.local
 labels:
@@ -21,11 +21,11 @@ parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-09-15T18:59:49.596Z
-updated_at: 2026-09-17T03:04:13.023Z
+updated_at: 2026-09-18T01:15:37.534Z
 started_at: 2026-09-16T21:24:51.532Z
 ---
 After explicit approval and after every publication bead records a green formal PR, land and retarget the v0.11 stack in dependency order: Phase 0A, 0B.1, 0B.2, 0B.3, 0C.1, 0C.2, shared repository/provider mirror design, Hosted Review 0D, repository Phase 1A, worktree-free acquisition, content-source boundary, immutable Git-tree source, untrusted-content profile, URL open, provider-job and selected-ref foundation, selected branch, provider foundation, direct PR cache, direct PR view, PR index/navigation, and anchors. Retarget each next PR to its landed base, inspect the exact new-base through HEAD diff, resolve only stacking conflicts, rerun make verify, obtain final green CI, and confirm main contains each layer. This is the sole landing owner; it never blocks constructing a later stack layer and never merges without explicit user approval.
 
 ## Notes
 
-PRs #125, #130, #132, #133, #134, #135, and #136 are open draft stack layers. PR #136 is the completed Phase 0C.2 installed artifact/profile inventory and distribution-evidence layer at b907bb2734929cd0858207ba5d73639aee168636, based exactly on green PR #135 head 614fef15793ff7cffd0c4e85a577342472fd9686. All seven PR #136 checks are green: lint, distribution, Python 3.12, 3.13, 3.14, 3.14t, and stack integration. Fourteen independently reviewed findings were tracked as beads and fixed; disposition map: https://github.com/jlevy/metabrowser/pull/136#issuecomment-5694591401. PR: https://github.com/jlevy/metabrowser/pull/136. Continue stacking the next phase without landing; ordered landing and retargeting still require explicit approval and exact-diff revalidation for every PR.
+Stack tip as of 2026-09-18 is PR #140 (claude/v011-cache-format-foundation@18ec8870). Layers now include #138 shared-mirror design, #139 Phase 0D, and #140 Phase 1A cache foundation in addition to #125/#130/#132-#136. Landing remains approval-gated. Next implementation layer is mb-dxmb (file:// grammar) then mb-h51g (1B-a acquisition), stacked on #140. Trust lane mb-cun0 remains parallel and must be evaluated before 1B-a publication writes the first cache entries.
