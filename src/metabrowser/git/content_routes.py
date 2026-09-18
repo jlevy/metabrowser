@@ -30,9 +30,11 @@ uses that parse rather than an empty mapping.
 Text blobs use the same first-window and highlight bound as filesystem
 listings, and advertise ``bytes_read`` plus preview limits so Load more and
 ``fetchText`` can continue a truncated Git envelope.
-``/api/file``, ``/raw``, and KPress follow in-tree relative symlink blobs to
-the target object; the requested GitPath stays the route identity. Listings
-still show the symlink node. Absolute, dangling, and cyclic targets 404.
+``/api/file``, ``/raw``, KPress, and plugin sidekicks follow in-tree relative
+symlink blobs to the target object; the requested GitPath stays the route
+identity. Kind checks (JSONL, structured, patch) use the leaf path.
+Listings still show the symlink node. Absolute, dangling, and cyclic
+targets 404.
 ``logical_ext`` is only the inner extension of a compressed name.
 ``include_ignored=0`` is a no-op because ignore is absent.
 The SPA hides Modified within because recency still has no honest mtime.
@@ -111,7 +113,7 @@ _NOT_FOUND = {"error": "Not found"}
 _PATCH_EXTS = (".patch", ".diff")
 # Same cap as ``PythonInventoryStore.navigation_tallies``.
 _GIT_FILTER_TALLY_LIMIT = 200
-# Relative in-tree symlink hops on file/raw/KPress. Listings still show the link.
+# Relative in-tree symlink hops on file/raw/KPress/sidekicks. Listings still show the link.
 _MAX_GIT_SYMLINK_FOLLOW = 8
 
 
@@ -593,6 +595,24 @@ async def _follow_git_symlinks(source: GitTreeSource, entry: GitTreeEntry) -> Gi
             return None
         current = nxt
     return current
+
+
+async def resolve_git_blob_entry(source: GitTreeSource, path: GitPath) -> GitTreeEntry | None:
+    """Resolve a GitPath to a blob, following in-tree relative symlink blobs.
+
+    None when missing, a tree, a gitlink, or an unusable symlink target.
+    """
+
+    entry = await source.resolve_path(path)
+    if entry is None:
+        return None
+    if entry.is_symlink:
+        entry = await _follow_git_symlinks(source, entry)
+        if entry is None:
+            return None
+    if not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+        return None
+    return entry
 
 
 def _with_requested_path(
@@ -1248,7 +1268,9 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
     return payload
 
 
-def _patch_container_payload(entry: GitTreeEntry, *, wire: str, inner: str) -> dict[str, Any]:
+def _patch_container_payload(
+    entry: GitTreeEntry, *, wire: str, inner: str, path: GitPath
+) -> dict[str, Any]:
     ext = _logical_ext(entry.path)
     return {
         "subject": "git_revision",
@@ -1256,8 +1278,8 @@ def _patch_container_payload(entry: GitTreeEntry, *, wire: str, inner: str) -> d
         "kind": "diff",
         "views": _views_for_kind("diff"),
         "path": wire,
-        "display": entry.path.display(),
-        "container": entry.path.to_wire(),
+        "display": path.display(),
+        "container": path.to_wire(),
         "container_inner": inner,
         "ext": ext,
         "size": 0,
@@ -1286,18 +1308,12 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
         if inner.count("/") + 1 > MAX_CONTAINER_INNER_DEPTH:
             return _json(_NOT_FOUND, status_code=404)
         try:
-            entry = await subject.tree_source.resolve_path(path)
-            if (
-                entry is None
-                or not entry.is_blob
-                or entry.is_symlink
-                or entry.is_gitlink
-                or _logical_ext(entry.path) not in _PATCH_EXTS
-            ):
+            entry = await resolve_git_blob_entry(subject.tree_source, path)
+            if entry is None or _logical_ext(entry.path) not in _PATCH_EXTS:
                 return _json(_NOT_FOUND, status_code=404)
         except GitObjectUnavailableError:
             return _json(_NOT_FOUND, status_code=404)
-        return _json(_patch_container_payload(entry, wire=wire, inner=inner))
+        return _json(_patch_container_payload(entry, wire=wire, inner=inner, path=path))
     try:
         entry = await subject.tree_source.resolve_path(path)
         if entry is None:
@@ -1478,5 +1494,6 @@ __all__ = [
     "git_revision_raw",
     "git_revision_rollup",
     "git_revision_tree",
+    "resolve_git_blob_entry",
     "split_git_container_wire",
 ]

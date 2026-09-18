@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, markdown frontmatter, text preview windows, and in-tree symlink follow honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, markdown frontmatter, text preview windows, in-tree symlink follow, and plugin-sidekick symlink follow honor a pin."""
 
 from __future__ import annotations
 
@@ -1006,6 +1006,121 @@ def test_git_file_raw_kpress_follow_in_tree_symlinks(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
+def test_git_plugin_sidekicks_follow_in_tree_symlinks(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "README.md").write_text("hello\n", encoding="utf-8")
+    (work / "config.json").write_text('{"name": "pin", "count": 2}\n', encoding="utf-8")
+    (work / "session.jsonl").write_text(
+        '{"type":"system","subtype":"init","model":"claude-opus-4-20250514"}\n'
+        '{"type":"assistant","message":{"role":"assistant",'
+        '"content":[{"type":"text","text":"hello"}]}}\n',
+        encoding="utf-8",
+    )
+    (work / "change.patch").write_text(
+        "diff --git a/src/app.py b/src/app.py\n"
+        "--- a/src/app.py\n"
+        "+++ b/src/app.py\n"
+        "@@ -1,1 +1,1 @@\n"
+        "-old\n"
+        "+new\n"
+        "diff --git a/gone.txt b/gone.txt\n"
+        "deleted file mode 100644\n"
+        "--- a/gone.txt\n"
+        "+++ /dev/null\n"
+        "@@ -1,1 +0,0 @@\n"
+        "-bye\n",
+        encoding="utf-8",
+    )
+    (work / "nul.bin").write_bytes(b"\x00\x01\x02BINARY")
+    (work / "log").symlink_to("session.jsonl")
+    (work / "cfg").symlink_to("config.json")
+    (work / "binlink").symlink_to("nul.bin")
+    (work / "patchlink").symlink_to("change.patch")
+    (work / "dangling").symlink_to("missing")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "sidekick-symlinks")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            charts = await client.get(
+                "/api/plugin/agent-log/charts",
+                params={"path": _wire(b"log")},
+            )
+            assert charts.status_code == 200
+            assert charts.json()["summary"]["metadata"]["adapter"] == "claude"
+
+            parsed = await client.get(
+                "/api/plugin/structured/parsed",
+                params={"path": _wire(b"cfg")},
+            )
+            assert parsed.status_code == 200
+            parsed_body = parsed.json()
+            assert parsed_body["path"] == _wire(b"cfg")
+            assert parsed_body["ext"] == ".json"
+            assert parsed_body["parsed"] == {"name": "pin", "count": 2}
+
+            chunk = await client.get(
+                "/api/plugin/binary/chunk",
+                params={"path": _wire(b"binlink"), "offset": 0, "limit": 16},
+            )
+            assert chunk.status_code == 200
+            chunk_body = chunk.json()
+            assert chunk_body["path"] == _wire(b"binlink")
+            assert base64.b64decode(chunk_body["content_base64"]) == b"\x00\x01\x02BINARY"
+
+            patch_wire = _wire(b"patchlink")
+            children = await client.get("/api/plugin/diff/children", params={"path": patch_wire})
+            assert children.status_code == 200
+            rows = children.json()["children"]
+            assert [row["path"] for row in rows] == [
+                f"{patch_wire}/src/app.py",
+                f"{patch_wire}/gone.txt",
+            ]
+
+            inner = await client.get(
+                "/api/file",
+                params={"path": f"{patch_wire}/src/app.py"},
+            )
+            assert inner.status_code == 200
+            inner_body = inner.json()
+            assert inner_body["kind"] == "diff"
+            assert inner_body["container"] == patch_wire
+            assert inner_body["container_inner"] == "src/app.py"
+            assert inner_body["path"] == f"{patch_wire}/src/app.py"
+
+            document = await client.get(
+                "/api/plugin/diff/document",
+                params={"path": f"{patch_wire}/src/app.py"},
+            )
+            assert document.status_code == 200
+            parsed_doc = validate_document(document.json())
+            assert parsed_doc.manifest.totals.files == 1
+            only = parsed_doc.manifest.files[0]
+            assert only.new is not None and only.new.path == "src/app.py"
+
+            dangling = _wire(b"dangling")
+            assert (
+                await client.get("/api/plugin/agent-log/charts", params={"path": dangling})
+            ).status_code == 404
+            assert (
+                await client.get("/api/plugin/structured/parsed", params={"path": dangling})
+            ).status_code == 404
+            assert (
+                await client.get("/api/plugin/binary/chunk", params={"path": dangling})
+            ).status_code == 404
+            assert (
+                await client.get("/api/plugin/diff/children", params={"path": dangling})
+            ).status_code == 404
+            assert str(store) not in charts.text
+
+    asyncio.run(_run())
+
+
 def test_split_git_container_wire_keeps_g1_prefix_and_host_inner() -> None:
     patch = GitPath.from_segments(b"docs", b"change.patch")
     path, inner = split_git_container_wire(f"{patch.to_wire()}/src/app.py")
@@ -1129,7 +1244,10 @@ def test_git_binary_chunk_honors_gitpath_without_mtime(tmp_path: Path) -> None:
                 "/api/plugin/binary/chunk",
                 params={"path": _wire(b"link")},
             )
-            assert symlink.status_code == 404
+            assert symlink.status_code == 200
+            symlink_body = symlink.json()
+            assert symlink_body["path"] == _wire(b"link")
+            assert base64.b64decode(symlink_body["content_base64"]) == b"hello\n"
 
     asyncio.run(_run())
 

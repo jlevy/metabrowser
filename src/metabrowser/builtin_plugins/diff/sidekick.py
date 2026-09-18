@@ -43,7 +43,7 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
-from metabrowser.git.content_routes import split_git_container_wire
+from metabrowser.git.content_routes import resolve_git_blob_entry, split_git_container_wire
 from metabrowser.git.process import GitError
 from metabrowser.git.repo import repo_info
 from metabrowser.git.routes import session_git_location
@@ -169,19 +169,16 @@ async def _git_patch_bytes(subpath: str, *, error_kind: str) -> tuple[bytes, str
         path, inner = split_git_container_wire(subpath)
     except GitPathError:
         return _error(error_kind, "This file is not available.", 404, path=subpath)
-    display = path.display().lower()
-    if not display.endswith(_PATCH_EXTS):
-        return _error(error_kind, "This file is not available.", 404, path=subpath)
     if inner and inner.count("/") + 1 > MAX_CONTAINER_INNER_DEPTH:
         return _error(error_kind, "This file is not available.", 404, path=subpath)
     subject = get_source_session().subject
     if not isinstance(subject, GitRevisionSubject):
         return _error(error_kind, "This file is not available.", 404, path=subpath)
     try:
-        entry = await subject.tree_source.resolve_path(path)
-        if entry is None or not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+        entry = await resolve_git_blob_entry(subject.tree_source, path)
+        if entry is None or not entry.path.display().lower().endswith(_PATCH_EXTS):
             return _error(error_kind, "This file is not available.", 404, path=subpath)
-        data = await subject.tree_source.read_blob(path)
+        data = await subject.tree_source.read_blob(entry.path)
     except (GitObjectUnavailableError, GitBlobTooLargeError):
         return _error(error_kind, "This file is not available.", 404, path=subpath)
     return data, inner

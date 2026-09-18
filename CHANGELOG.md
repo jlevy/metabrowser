@@ -165,8 +165,9 @@ Content source:
   Git text envelopes use the same first-window and highlight bound as filesystem
   listings (`bytes_read`, `content_preview_limit`, `content_max_preview_limit`,
   `highlight_disabled`) so Load more and `fetchText` can continue a truncated pin.
-  `/api/file`, `/raw`, and KPress follow in-tree relative symlink blobs to the target
-  object; the requested GitPath stays the route identity.
+  `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink
+  blobs to the target object; the requested GitPath stays the route identity.
+  Kind checks (JSONL, structured, patch) use the leaf path.
   Listings still show the symlink.
   Absolute, dangling, and cyclic targets 404. `/api/stream` still returns
   `unsupported_for_subject` rather than the lifespan filesystem inventory.
