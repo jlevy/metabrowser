@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, and file-envelope ext honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, and markdown frontmatter honor a pin."""
 
 from __future__ import annotations
 
@@ -296,6 +296,8 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             assert "logical_ext" not in file_body
             assert "compressed" not in file_body
             assert "size_uncompressed" not in file_body
+            assert "frontmatter" not in file_body
+            assert "frontmatter_error" not in file_body
             assert "mtime" not in file_body
             assert "mtime_hash" not in file_body
             assert str(store) not in file_resp.text
@@ -786,6 +788,8 @@ def test_git_kpress_render_honors_gitpath_without_mtime(
             assert str(store) not in rendered.text
             assert seen["source_path"] == readme_wire
             assert "README.md" not in str(seen["source_path"])
+            assert seen["frontmatter"] is None
+            assert seen["frontmatter_error"] is None
 
             relative = await client.get(
                 "/api/kpress/render",
@@ -805,6 +809,74 @@ def test_git_kpress_render_honors_gitpath_without_mtime(
                 params={"path": _wire(b"link"), "view": "rendered"},
             )
             assert symlink.status_code == 404
+
+    asyncio.run(_run())
+
+
+def test_git_file_and_kpress_surface_markdown_frontmatter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "note.md").write_text("---\ntitle: Pin\n---\nbody\n", encoding="utf-8")
+    (work / "broken.md").write_text(
+        "---\n: : : not valid yaml\nbad indent\n---\n\nbody\n",
+        encoding="utf-8",
+    )
+    (work / "plain.md").write_text("# heading\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "frontmatter")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+    seen: dict[str, Any] = {}
+    original = kpress_adapter.render_kpress_view
+
+    def _capture(**kwargs: Any) -> Any:
+        seen.update(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            note = await client.get("/api/file", params={"path": _wire(b"note.md")})
+            assert note.status_code == 200
+            note_body = note.json()
+            assert note_body["kind"] == "markdown"
+            assert note_body["frontmatter"] == {"title": "Pin"}
+            assert "frontmatter_error" not in note_body
+            assert str(store) not in note.text
+
+            broken = await client.get("/api/file", params={"path": _wire(b"broken.md")})
+            assert broken.status_code == 200
+            broken_body = broken.json()
+            assert broken_body["kind"] == "markdown"
+            assert "frontmatter" not in broken_body
+            assert broken_body["frontmatter_error"]
+
+            plain = await client.get("/api/file", params={"path": _wire(b"plain.md")})
+            assert plain.status_code == 200
+            assert "frontmatter" not in plain.json()
+            assert "frontmatter_error" not in plain.json()
+
+            rendered = await client.get(
+                "/api/kpress/render",
+                params={"path": _wire(b"note.md"), "view": "rendered"},
+            )
+            assert rendered.status_code == 200
+            assert seen["frontmatter"] == {"title": "Pin"}
+            assert seen["frontmatter_error"] is None
+
+            seen.clear()
+            broken_render = await client.get(
+                "/api/kpress/render",
+                params={"path": _wire(b"broken.md"), "view": "rendered"},
+            )
+            assert broken_render.status_code == 200
+            assert seen["frontmatter"] is None
+            assert seen["frontmatter_error"]
 
     asyncio.run(_run())
 

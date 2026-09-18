@@ -102,8 +102,15 @@ def yaml_mapping_from_bytes(
     return parsed if isinstance(parsed, dict) else None
 
 
-def frontmatter_from_bytes(data: bytes, byte_limit: int = 256 * 1024) -> dict[str, Any] | None:
-    """Parse YAML frontmatter from Markdown bytes. None if absent or unparsable."""
+def parse_frontmatter_bytes(
+    data: bytes, byte_limit: int = 256 * 1024
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Parse YAML frontmatter from Markdown bytes.
+
+    Returns ``(mapping, None)`` on success, ``(None, None)`` if the opening
+    fence is absent, and ``(None, reason)`` when the fence is present but
+    unparsable. Classification still treats a parse failure as no mapping.
+    """
 
     from frontmatter_format import FmFormatError, FmStyle, from_yaml_string
     from ruamel.yaml.error import YAMLError
@@ -111,20 +118,29 @@ def frontmatter_from_bytes(data: bytes, byte_limit: int = 256 * 1024) -> dict[st
     text = data[:byte_limit].decode("utf-8", errors="replace")
     lines = text.splitlines(keepends=True)
     if not lines or lines[0].rstrip() != FmStyle.yaml.start:
-        return None
+        return None, None
     metadata_lines: list[str] = []
     for line in lines[1:]:
         if line.rstrip() == FmStyle.yaml.end:
             metadata_text = "".join(metadata_lines)
             if not metadata_text:
-                return None
+                return None, None
             try:
                 parsed = from_yaml_string(metadata_text)
-            except (FmFormatError, YAMLError, ValueError, TypeError):
-                return None
-            return parsed if isinstance(parsed, dict) else None
+            except (FmFormatError, YAMLError, ValueError, TypeError) as exc:
+                return None, str(exc)
+            if not isinstance(parsed, dict):
+                return None, None
+            return parsed, None
         metadata_lines.append(line)
-    return None
+    return None, f"Delimiter `{FmStyle.yaml.end}` for end of frontmatter not found"
+
+
+def frontmatter_from_bytes(data: bytes, byte_limit: int = 256 * 1024) -> dict[str, Any] | None:
+    """Parse YAML frontmatter from Markdown bytes. None if absent or unparsable."""
+
+    mapping, _error = parse_frontmatter_bytes(data, byte_limit)
+    return mapping
 
 
 def _yaml_top_level(path: Path, byte_limit: int = _YAML_PREFIX_BYTES) -> dict[str, Any] | None:
