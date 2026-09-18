@@ -5,7 +5,7 @@ title: Reuse a cache hit against a home the process cannot write
 kind: task
 status: in_progress
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -15,7 +15,7 @@ parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 hold: null
 hold_until: null
 created_at: 2026-09-18T03:40:00.138Z
-updated_at: 2026-09-18T03:50:09.848Z
+updated_at: 2026-09-18T03:53:25.537Z
 started_at: 2026-09-18T03:40:03.454Z
 ---
 A published file:// cache hit must inspect without writing: no open_cache, no lock files, no Git floor, no fetch. acquire_file_source currently always open_cache when the home exists, so a 0500 home fails even when the alias is already published.
@@ -26,4 +26,4 @@ Pin: second --no-serve after dropping owner-write on the home prints the same sl
 
 ## Notes
 
-PR #150 (draft) stacked on #149 / cursor/v011-cache-orphan-reclaim-bd04. HEAD 9ec9a8d0. Local pytest 2774 passed; overlay --api goldens fail in this environment as before. Waiting on GitHub CI. Do not close until review.
+PR #150 CI green: all 7 checks on 9ec9a8d0 (lint, test 3.12/3.13/3.14/3.14t, distribution, stack-integration). Read-only file:// hit reuses without open_cache. Do not close until review.
