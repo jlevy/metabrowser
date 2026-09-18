@@ -2,8 +2,9 @@
 
 These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
 invented filesystem fact. Patch-file container inners use a GitPath prefix
-plus a host inner path. Serving acquired Git from the CLI remains a later
-bead.
+plus a host inner path. Blob kinds use extension and basename plugin rules,
+not Path or content predicates. Serving acquired Git from the CLI remains a
+later bead.
 """
 
 from __future__ import annotations
@@ -92,6 +93,17 @@ def _display_basename(path: GitPath) -> str:
 
 def _logical_ext(path: GitPath) -> str:
     return Path(_display_basename(path)).suffix.lower()
+
+
+def _plugin_kind_for_git_path(path: GitPath) -> str | None:
+    from metabrowser.plugin_loader.classify import classify_identity
+    from metabrowser.server import _PLUGIN_KIND_RULES
+
+    return classify_identity(
+        _PLUGIN_KIND_RULES,
+        ext=_logical_ext(path),
+        basename=_display_basename(path),
+    )
 
 
 def _views_for_kind(kind: str) -> list[dict[str, Any]]:
@@ -241,7 +253,7 @@ def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> di
         min(_query_int(request, "limit", TEXT_PREVIEW_CHUNK_BYTES), TEXT_PREVIEW_REQUEST_MAX_BYTES),
     )
     window = body[offset : offset + limit]
-    kind = classify_by_ext(ext) if ext else "text"
+    kind = _plugin_kind_for_git_path(entry.path) or (classify_by_ext(ext) if ext else "text")
     payload.update(
         {
             "type": "text",

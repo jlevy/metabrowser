@@ -120,8 +120,12 @@ Content source:
   read the patch blob through the shared cat-file pool.
   `/api/plugin/binary/chunk` reads a bounded window of one Git blob by `GitPath` and
   uses the object id as the cache key instead of a filesystem mtime.
-  Inventory open, archive containers, plugin classification from bytes, and serving
-  acquired Git are not switched yet.
+  Git blobs classify by extension and basename plugin rules (`classify_identity`);
+  adapter, frontmatter, glob, and content-key predicates stay on the filesystem
+  classifier. `/api/plugin/structured/parsed` reads the blob by `GitPath` and uses the
+  object id as the cache key instead of a filesystem mtime.
+  Inventory open, archive containers, plugin classification from bytes, agent-log, and
+  serving acquired Git are not switched yet.
 
 ## 0.10.0
 
