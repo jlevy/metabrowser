@@ -30,6 +30,9 @@ uses that parse rather than an empty mapping.
 Text blobs use the same first-window and highlight bound as filesystem
 listings, and advertise ``bytes_read`` plus preview limits so Load more and
 ``fetchText`` can continue a truncated Git envelope.
+``/api/file``, ``/raw``, and KPress follow in-tree relative symlink blobs to
+the target object; the requested GitPath stays the route identity. Listings
+still show the symlink node. Absolute, dangling, and cyclic targets 404.
 ``logical_ext`` is only the inner extension of a compressed name.
 ``include_ignored=0`` is a no-op because ignore is absent.
 The SPA hides Modified within because recency still has no honest mtime.
@@ -86,6 +89,7 @@ from metabrowser.git.tree_source import (
     GitPathError,
     GitRevisionSubject,
     GitTreeEntry,
+    GitTreeSource,
     GitTreeTally,
 )
 from metabrowser.gz_io import ArtifactPath
@@ -107,6 +111,8 @@ _NOT_FOUND = {"error": "Not found"}
 _PATCH_EXTS = (".patch", ".diff")
 # Same cap as ``PythonInventoryStore.navigation_tallies``.
 _GIT_FILTER_TALLY_LIMIT = 200
+# Relative in-tree symlink hops on file/raw/KPress. Listings still show the link.
+_MAX_GIT_SYMLINK_FOLLOW = 8
 
 
 def _git_path_from_query(request: Request) -> GitPath:
@@ -222,10 +228,11 @@ def _nav_tree_node(
     return node
 
 
-def _identity_fields(entry: GitTreeEntry) -> dict[str, Any]:
+def _identity_fields(entry: GitTreeEntry, *, path: GitPath | None = None) -> dict[str, Any]:
+    ident = entry.path if path is None else path
     return {
-        "path": entry.path.to_wire(),
-        "display": entry.path.display(),
+        "path": ident.to_wire(),
+        "display": ident.display(),
         "mode": entry.mode,
         "git_kind": entry.kind,
         "symlink": entry.is_symlink,
@@ -545,6 +552,56 @@ def _query_int(request: Request, name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _git_symlink_target(link_path: GitPath, raw: bytes) -> GitPath | None:
+    """Resolve a relative POSIX symlink body against the link's parent tree."""
+
+    if not raw or b"\x00" in raw or raw.startswith(b"/"):
+        return None
+    cursor = link_path.parent()
+    for part in raw.split(b"/"):
+        if part in {b"", b"."}:
+            continue
+        if part == b"..":
+            cursor = cursor.parent()
+            continue
+        try:
+            cursor = cursor.child(part)
+        except GitPathError:
+            return None
+    return cursor
+
+
+async def _follow_git_symlinks(source: GitTreeSource, entry: GitTreeEntry) -> GitTreeEntry | None:
+    """Follow in-tree relative symlink blobs. None when the target is unusable."""
+
+    current = entry
+    seen: set[GitPath] = set()
+    hops = 0
+    while current.is_symlink:
+        if current.path in seen or hops >= _MAX_GIT_SYMLINK_FOLLOW:
+            return None
+        seen.add(current.path)
+        hops += 1
+        raw = await source.read_blob(current.path)
+        target = _git_symlink_target(current.path, raw)
+        if target is None:
+            return None
+        nxt = await source.resolve_path(target)
+        if nxt is None:
+            return None
+        current = nxt
+    return current
+
+
+def _with_requested_path(
+    payload: dict[str, Any], entry: GitTreeEntry, requested: GitPath
+) -> dict[str, Any]:
+    payload.update(_identity_fields(entry, path=requested))
+    if payload.get("type") == "folder":
+        payload["name"] = _display_basename(requested)
+    return payload
 
 
 def _git_text_preview_fields(
@@ -1245,22 +1302,28 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
         entry = await subject.tree_source.resolve_path(path)
         if entry is None:
             return _json(_NOT_FOUND, status_code=404)
+        if entry.is_symlink:
+            followed = await _follow_git_symlinks(subject.tree_source, entry)
+            if followed is None:
+                return _json(_NOT_FOUND, status_code=404)
+            entry = followed
         if entry.is_tree:
-            children = await subject.tree_source.list_tree(path)
-            index = await subject.tree_source.blob_index(path)
-            return _json(
-                _tree_file_payload(entry, children, tally=None if index is None else index.tally())
+            children = await subject.tree_source.list_tree(entry.path)
+            index = await subject.tree_source.blob_index(entry.path)
+            payload = _tree_file_payload(
+                entry, children, tally=None if index is None else index.tally()
             )
+            return _json(_with_requested_path(payload, entry, path))
         if entry.is_gitlink:
-            return _json(_gitlink_file_payload(entry))
+            return _json(_with_requested_path(_gitlink_file_payload(entry), entry, path))
         if not entry.is_blob:
             return _json(_NOT_FOUND, status_code=404)
-        body = await subject.tree_source.read_blob(path)
+        body = await subject.tree_source.read_blob(entry.path)
     except GitObjectUnavailableError as exc:
         return _json(_object_unavailable_payload(exc), status_code=404)
     except GitBlobTooLargeError as exc:
         return _json(_blob_too_large_payload(exc), status_code=413)
-    return _json(_blob_file_payload(entry, body, request))
+    return _json(_with_requested_path(_blob_file_payload(entry, body, request), entry, path))
 
 
 async def git_revision_kpress_render(
@@ -1281,9 +1344,18 @@ async def git_revision_kpress_render(
         return _json(_NOT_FOUND, status_code=404)
     try:
         entry = await subject.tree_source.resolve_path(path)
-        if entry is None or not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+        if entry is None:
             return _json(_NOT_FOUND, status_code=404)
-        body = b"" if source_override is not None else await subject.tree_source.read_blob(path)
+        if entry.is_symlink:
+            followed = await _follow_git_symlinks(subject.tree_source, entry)
+            if followed is None:
+                return _json(_NOT_FOUND, status_code=404)
+            entry = followed
+        if not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+            return _json(_NOT_FOUND, status_code=404)
+        body = (
+            b"" if source_override is not None else await subject.tree_source.read_blob(entry.path)
+        )
     except GitObjectUnavailableError:
         return _json(_NOT_FOUND, status_code=404)
     except GitBlobTooLargeError as exc:
@@ -1332,7 +1404,7 @@ async def git_revision_kpress_render(
             kpress_adapter.render_kpress_view,
             source_text=content,
             # Display text is not a route identity; wiki rewrite must stay on the wire.
-            source_path=path.to_wire(),
+            source_path=entry.path.to_wire(),
             kind=kind,
             view=view,
             ext=ext,
@@ -1367,7 +1439,7 @@ async def git_revision_kpress_render(
 
 
 async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Response:
-    """Blob bytes for one GitPath. Symlink targets are not followed."""
+    """Blob bytes for one GitPath. In-tree relative symlink blobs are followed."""
 
     try:
         path = _git_path_from_query(request)
@@ -1377,12 +1449,17 @@ async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Res
         entry = await subject.tree_source.resolve_path(path)
         if entry is None or not entry.is_blob:
             return PlainTextResponse("Not found", status_code=404)
-        body = await subject.tree_source.read_blob(path)
+        if entry.is_symlink:
+            followed = await _follow_git_symlinks(subject.tree_source, entry)
+            if followed is None or not followed.is_blob or followed.is_gitlink:
+                return PlainTextResponse("Not found", status_code=404)
+            entry = followed
+        body = await subject.tree_source.read_blob(entry.path)
     except GitObjectUnavailableError:
         return PlainTextResponse("Not found", status_code=404)
     except GitBlobTooLargeError as exc:
         return _json(_blob_too_large_payload(exc), status_code=413)
-    media_type, _ = mimetypes.guess_type(_display_basename(path))
+    media_type, _ = mimetypes.guess_type(_display_basename(entry.path))
     return Response(
         content=body,
         media_type=media_type or "application/octet-stream",
