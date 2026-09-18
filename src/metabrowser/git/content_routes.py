@@ -1,4 +1,4 @@
-"""GitPath adapters for ``/api/tree``, ``/api/file``, ``/raw``, KPress, and rollup.
+"""GitPath adapters for ``/api/tree``, ``/api/file``, ``/raw``, KPress, rollup, and catalog.
 
 These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
 invented filesystem fact. ``/view/`` accepts a GitPath wire, optionally plus
@@ -16,7 +16,10 @@ SPA age chrome empty rather than pending. A direct-child README blob sets
 ``readme_path`` to its GitPath wire and mounts the Overview view. A complete
 blob-size tally also mounts treemap and File Overview; ``/api/rollup`` answers
 from the same index and omits mtime. A missing blob size 404s rollup rather
-than emitting a partial sum. SPA path chrome and copy-path
+than emitting a partial sum. ``/api/catalog`` lists those blob names as
+Quick File rows (``p`` GitPath wire, ``e`` display suffix, ``n`` display
+basename) and is complete at once; a truncated index is an empty truncated
+snapshot rather than a partial list. SPA path chrome and copy-path
 decode GitPath wires to display names; navigation identities stay wires. KPress ``source_path``
 is the GitPath wire so Markdown rewrite cannot emit a filesystem spelling.
 Patch-file container inners use a GitPath prefix plus a host inner path. Blob
@@ -447,6 +450,27 @@ async def git_revision_rollup(
     )
 
 
+async def git_revision_catalog(request: Request, subject: GitRevisionSubject) -> JSONResponse:
+    """One-shot Quick File catalog from recursive blob names. No watcher."""
+
+    del request
+    try:
+        index = await subject.tree_source.blob_index()
+    except GitObjectUnavailableError as exc:
+        return _json(_object_unavailable_payload(exc), status_code=404)
+    if index is None:
+        return _json({"complete": True, "truncated": True, "revision": 1, "files": []})
+    files: list[dict[str, str]] = []
+    for rel, _oid in index.blobs:
+        path = _git_path_from_relative(rel)
+        files.append({"p": path.to_wire(), "e": _logical_ext(path), "n": _display_basename(path)})
+    return _json({"complete": True, "truncated": False, "revision": 1, "files": files})
+
+
+def _git_path_from_relative(name: bytes) -> GitPath:
+    return GitPath.from_segments(*name.split(b"/"))
+
+
 async def git_revision_tree(
     request: Request,
     subject: GitRevisionSubject,
@@ -846,6 +870,7 @@ async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Res
 
 __all__ = [
     "decode_git_view_path",
+    "git_revision_catalog",
     "git_revision_file",
     "git_revision_kpress_render",
     "git_revision_raw",

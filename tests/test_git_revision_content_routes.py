@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, and Git-native rollup honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, and Git-native catalog honor a pin."""
 
 from __future__ import annotations
 
@@ -517,6 +517,39 @@ def test_git_rollup_uses_blob_index_without_mtime(tmp_path: Path) -> None:
     asyncio.run(_run())
 
 
+def test_git_catalog_lists_blob_wires_with_display_names(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+    readme_wire = _wire(b"README.md")
+    note_wire = _wire(b"docs", b"note.txt")
+    percent_wire = _wire(b"100%.html")
+    gitlink_wire = _wire(b"vendor", b"dep")
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            response = await client.get("/api/catalog")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["complete"] is True
+            assert body["truncated"] is False
+            assert body["revision"] == 1
+            files = {file["p"]: file for file in body["files"]}
+            assert readme_wire in files
+            assert files[readme_wire]["e"] == ".md"
+            assert files[readme_wire]["n"] == "README.md"
+            assert note_wire in files
+            assert files[note_wire]["e"] == ".txt"
+            assert files[note_wire]["n"] == "note.txt"
+            assert percent_wire in files
+            assert files[percent_wire]["n"] == "100%.html"
+            assert gitlink_wire not in files
+            assert "vendor/dep" not in files
+            assert "README.md" not in files
+            assert len(files) == 9
+            assert str(store) not in response.text
+
+    asyncio.run(_run())
+
+
 def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
     store, commit = _build_store(tmp_path)
 
@@ -915,7 +948,6 @@ def test_git_pin_refuses_inventory_backed_routes(tmp_path: Path) -> None:
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
             for path in (
-                "/api/catalog",
                 "/api/index/progress",
                 "/api/index/meta",
                 "/api/capabilities",
@@ -1016,6 +1048,14 @@ def test_git_file_raw_promisor_miss_is_object_unavailable(tmp_path: Path) -> Non
                 assert rollup.status_code == 404
                 assert rollup.json()["code"] == "object_unavailable"
                 assert rollup.json()["oid"] == missing_oid
+                catalog = await client.get("/api/catalog")
+                assert catalog.status_code == 200
+                catalog_body = catalog.json()
+                assert catalog_body["complete"] is True
+                paths = {file["p"] for file in catalog_body["files"]}
+                assert _wire(b"README.md") in paths
+                assert _wire(b"keep.txt") in paths
+                assert str(store) not in catalog.text
 
         asyncio.run(_run())
 
@@ -1034,6 +1074,7 @@ def test_git_view_shell_honors_gitpath_and_refuses_filesystem_spelling(tmp_path:
             assert str(store) not in root.text
             assert commit[:12] in root.text
             assert "METABROWSER_REPOSITORY_CONTEXT=null" in root.text
+            assert 'METABROWSER_SOURCE_KIND="git_revision"' in root.text
             blob = await client.get(f"/view/{readme}")
             assert blob.status_code == 200
             assert "text/html" in blob.headers.get("content-type", "")

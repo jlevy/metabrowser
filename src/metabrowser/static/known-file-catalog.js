@@ -1104,7 +1104,7 @@
      * steps. The caller owns task scheduling; the bulk stage stays invisible
      * until ingestion and concurrent-mutation replay both finish.
      *
-     * @param {Array<{p: string, e: string}>} files
+     * @param {Array<{p: string, e: string, n?: string}>} files
      * @param {CatalogCoverage} bulkCoverage the root coverage this payload
      *   establishes; it can raise, but never lower, the current coverage
      * @param {boolean} authoritative whether omitted feed paths are stale
@@ -1165,7 +1165,7 @@
        * model sorts UTF-16 code units. Recording maximal natural runs here
        * makes the common ASCII case one run and leaves every cross-runtime
        * ordering inversion to the bounded merge phase.
-       * @param {{p: string, e: string}} file
+       * @param {{p: string, e: string, n?: string}} file
        */
       function stageFeedFile(file) {
         if (!isCanonicalFilePath(file?.p)) {
@@ -1181,7 +1181,7 @@
           return;
         }
         const next = Object.freeze({
-          basename: basenameForPath(file.p),
+          basename: displayBasename(file.p, file.n),
           logicalExtension,
           path: file.p,
           source: FEED_SOURCE,

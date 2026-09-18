@@ -92,6 +92,21 @@ equal("GitPath tree name is the catalog basename", gitSnapshot.files[0].basename
 equal("GitPath catalog path stays the wire", gitSnapshot.files[0].path, "g1-UkVBRE1FLm1k");
 equal("GitPath catalog keeps the display extension", gitSnapshot.files[0].logicalExtension, ".md");
 
+const gitFeedCatalog = sandbox.MetabrowserKnownFileCatalog.create();
+applyBulkSnapshot(
+  gitFeedCatalog,
+  [{ e: ".txt", n: "note.txt", p: "g1-ZG9jcw/g1-bm90ZS50eHQ" }],
+  "complete",
+  true,
+);
+const gitFeedSnapshot = gitFeedCatalog.snapshot();
+equal("GitPath feed basename uses the display name", gitFeedSnapshot.files[0].basename, "note.txt");
+equal(
+  "GitPath feed path stays the wire",
+  gitFeedSnapshot.files[0].path,
+  "g1-ZG9jcw/g1-bm90ZS50eHQ",
+);
+
 const unsafePaths = [
   "",
   "/absolute.md",
