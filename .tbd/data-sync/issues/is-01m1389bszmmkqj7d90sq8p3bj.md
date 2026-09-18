@@ -5,7 +5,7 @@ title: Accept local origins as first-class Git sources under the untrusted profi
 kind: task
 status: in_progress
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
 delegate: unknown@cursor
 labels:
@@ -17,11 +17,13 @@ dependencies:
     target: is-01m2p1pshr699c6pf8xqeer16j
   - type: blocks
     target: is-01m2s27ybx4dw3qde29xm6jgqn
+  - type: blocks
+    target: is-01m2s4vpjy6j5rysn5x8ah2e03
 parent_id: is-01kzs5m38dz1egphfwf30c8h7n
 hold: null
 hold_until: null
 created_at: 2026-08-28T03:58:15.870Z
-updated_at: 2026-09-18T01:34:47.453Z
+updated_at: 2026-09-18T02:17:21.758Z
 started_at: 2026-09-18T01:15:32.181Z
 ---
 Treat explicit file:// URLs as first-class Git acquisition sources under the untrusted profile. A bare local path is not a Git source: metab /path/to/repo keeps its existing meaning of serving that directory, while acquisition must be requested with file://. The file transport uses Git-aware packing rather than the hardlinked object store created by the implicit --local path form. Do not claim file:// supports blob filtering: verified Git 2.50.1 origins may ignore --filter even with uploadpack.allowFilter; Phase 0 owns that measurement and the full-clone fallback. Acquisition goldens use small deterministic file:// origins and never depend on partial-clone support.
