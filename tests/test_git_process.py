@@ -12,6 +12,8 @@ import pytest
 
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
+    BATCH_OBJECT_POLICY,
+    FETCH_POLICY,
     READ_POLICY,
     UnsupportedGitVersionError,
     acquisition_allowed,
@@ -98,6 +100,20 @@ def test_acquisition_policy_creates_owner_only_store_entries(tmp_path: Path) -> 
         if path.exists() and path.stat().st_mode & (stat.S_IRWXG | stat.S_IRWXO)
     ]
     assert leaked == []
+
+
+def test_run_git_accepts_bounded_stdin(tmp_path: Path) -> None:
+    digest = asyncio.run(
+        run_git(
+            ["hash-object", "--stdin"],
+            cwd=tmp_path,
+            policy=BATCH_OBJECT_POLICY,
+            stdin=b"hello\n",
+        )
+    )
+    assert len(digest.strip()) == 40
+    isolated = git_environment(FETCH_POLICY)
+    assert isolated["GIT_NO_LAZY_FETCH"] == "1"
 
 
 def test_require_acquisition_git_matches_the_installed_binary() -> None:

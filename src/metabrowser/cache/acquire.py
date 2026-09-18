@@ -56,7 +56,9 @@ from metabrowser.cache.records import (
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
+    FETCH_POLICY,
     GitCommandError,
+    GitProcessPolicy,
     repository_store_target,
     require_acquisition_git,
     run_git,
@@ -76,6 +78,7 @@ _STORE_CONFIG: Final[tuple[tuple[str, str], ...]] = (
     ("transfer.bundleURI", "false"),
     ("core.hooksPath", "/dev/null"),
 )
+_BLOB_MODES: Final[frozenset[bytes]] = frozenset({b"100644", b"100755", b"120000"})
 _ENTRY_ATTEMPTS: Final = 8
 
 
@@ -153,15 +156,20 @@ async def _run(
     *,
     cwd: Path | None = None,
     git_dir: Path | None = None,
+    policy: GitProcessPolicy = ACQUISITION_POLICY,
+    stdin: bytes | None = None,
 ) -> bytes:
     require_no_hierarchy_locks("git")
     if git_dir is not None:
         return await run_git(
-            args, target=repository_store_target(git_dir=git_dir), policy=ACQUISITION_POLICY
+            args,
+            target=repository_store_target(git_dir=git_dir),
+            policy=policy,
+            stdin=stdin,
         )
     if cwd is None:
         raise TypeError("cwd or git_dir is required")
-    return await run_git(args, cwd=cwd, policy=ACQUISITION_POLICY)
+    return await run_git(args, cwd=cwd, policy=policy, stdin=stdin)
 
 
 def _parse_symref_head(stdout: bytes) -> tuple[str | None, str]:
@@ -193,6 +201,59 @@ async def _configuration_digest(git_dir: Path) -> str:
 async def _filter_honored(git_dir: Path, revision: str) -> bool:
     listing = await _run(["rev-list", "--objects", "--missing=print", revision], git_dir=git_dir)
     return any(line.startswith(b"?") for line in listing.splitlines())
+
+
+async def _tree_blob_oids(git_dir: Path, revision: str) -> tuple[str, ...]:
+    raw = await _run(["ls-tree", "-r", "-z", "--full-tree", revision], git_dir=git_dir)
+    oids: list[str] = []
+    seen: set[str] = set()
+    for record in raw.split(b"\0"):
+        if not record:
+            continue
+        meta, _, _path = record.partition(b"\t")
+        parts = meta.split(b" ")
+        if len(parts) != 3:
+            continue
+        mode, kind, oid_raw = parts
+        if kind != b"blob" or mode not in _BLOB_MODES:
+            continue
+        oid = oid_raw.decode("ascii")
+        if oid not in seen:
+            seen.add(oid)
+            oids.append(oid)
+    return tuple(oids)
+
+
+async def _prefetch_default_tree(git_dir: Path, revision: str) -> None:
+    """Fetch HEAD tree blobs by object ID. A transport failure defers them."""
+
+    oids = await _tree_blob_oids(git_dir, revision)
+    if not oids:
+        return
+    try:
+        await _run(
+            [
+                *_PROTOCOL,
+                "-c",
+                "fetch.negotiationAlgorithm=noop",
+                "-c",
+                "http.lowSpeedLimit=1000",
+                "-c",
+                "http.lowSpeedTime=30",
+                "fetch",
+                "--no-tags",
+                "--no-write-fetch-head",
+                "--recurse-submodules=no",
+                "--filter=blob:none",
+                "--stdin",
+                "origin",
+            ],
+            git_dir=git_dir,
+            policy=FETCH_POLICY,
+            stdin=("\n".join(oids) + "\n").encode("ascii"),
+        )
+    except GitCommandError:
+        return
 
 
 async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcquisition:
@@ -255,6 +316,8 @@ async def acquire_into_staging(source: GitSource, *, home: Path) -> StagingAcqui
         strategy: Literal["blobless", "full"] = (
             "blobless" if await _filter_honored(git_dir, revision) else "full"
         )
+        if strategy == "blobless":
+            await _prefetch_default_tree(git_dir, revision)
         digest = await _configuration_digest(git_dir)
         return StagingAcquisition(
             home=home,
