@@ -5,8 +5,8 @@
 The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Worktree-free repository stores and immutable revision subjects are implemented for tree
-reads and Git collection routes; serving acquired Git and file/raw/tree migration remain
-later. See
+reads, Git collection routes, and `GitPath` file/raw/tree routes; serving acquired Git
+remains later. See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
@@ -237,8 +237,9 @@ processes. One actor serializes each batch process, issues `info` before `conten
 enforces the declared size bound, drains the complete frame, and restarts the process
 after cancellation or framing failure.
 Implicit promisor fetch is disabled.
-Tree entries have Git mode, kind, size, and object ID; they do not invent filesystem
-mtimes, ignore state, ownership, or watcher events.
+Tree entries have Git mode, kind, and object ID; blob size comes from `cat-file` info at
+read time, not from `ls-tree -l`. They do not invent filesystem mtimes, ignore state,
+ownership, or watcher events.
 Their `GitPath` identity is raw byte segments with a lossless route codec and separate
 display text; it never becomes a host filesystem path.
 Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
