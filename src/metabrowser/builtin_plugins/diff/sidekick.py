@@ -5,7 +5,8 @@ File Diff Format and returns the hydrated document — the same shape
 ``metab --diff`` emits and the conformance corpus validates, so the
 browser model never sees a plugin-specific envelope. A virtual path
 ``<patch>/<inner>`` (the container contract) returns the same document
-narrowed to that one file change.
+narrowed to that one file change. On a pinned Git revision the patch
+address is a ``GitPath`` ``g1-`` prefix; the inner path is the remainder.
 
 ``GET /api/plugin/diff/children?path=<rel>`` lists the change entries as
 nav-tree child rows for the container affordance.
@@ -16,13 +17,15 @@ serves the same document for a Git comparison at the active subject's
 view instead of growing a diff surface of its own. A pinned revision
 does not need a working tree.
 
-The patch handlers are synchronous on purpose: the data-hook dispatcher
-runs sync sidekicks in the thread pool, and the parser is a bounded pure
-function. The comparison handler is async because ``git`` is.
+The patch handlers are async so a pinned Git blob read stays on the
+event loop and does not deadlock the shared cat-file pool. Filesystem
+reads and the bounded parser run in the thread pool. The comparison
+handler is async because ``git`` is.
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse
@@ -40,11 +43,19 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
+from metabrowser.git.content_routes import split_git_container_wire
 from metabrowser.git.process import GitError
 from metabrowser.git.repo import repo_info
 from metabrowser.git.routes import session_git_location
+from metabrowser.git.tree_source import (
+    GitBlobTooLargeError,
+    GitObjectUnavailableError,
+    GitPathError,
+    GitRevisionSubject,
+)
 from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
 from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH, resolve_path
+from metabrowser.source import get_source_session
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -100,13 +111,17 @@ def _resolve_patch(subpath: str) -> tuple[Path, str] | None:
     return None
 
 
+def _parse_bytes(data: bytes) -> ChangeSetDocument:
+    return parse_unified_patch(data[: MAX_PATCH_BYTES + 1])
+
+
 def _parse(target: Path) -> ChangeSetDocument:
     # One byte past the cap keeps the parser's own truncation reporting
     # authoritative; bounding the read itself keeps a multi-GB file from
     # ever landing in memory on the request path.
     with target.open("rb") as handle:
         data = handle.read(MAX_PATCH_BYTES + 1)
-    return parse_unified_patch(data)
+    return _parse_bytes(data)
 
 
 def _change_display_path(change: FileChange) -> str:
@@ -147,14 +162,47 @@ def _narrow_to_path(document: ChangeSetDocument, inner: str) -> ChangeSetDocumen
     return document.model_copy(update={"manifest": manifest, "patches": patches})
 
 
-def document_handler(request: Request) -> JSONResponse:
+async def _git_patch_bytes(subpath: str, *, error_kind: str) -> tuple[bytes, str] | JSONResponse:
+    """Read a patch blob at a GitPath prefix. Inner is the virtual child."""
+
+    try:
+        path, inner = split_git_container_wire(subpath)
+    except GitPathError:
+        return _error(error_kind, "This file is not available.", 404, path=subpath)
+    display = path.display().lower()
+    if not display.endswith(_PATCH_EXTS):
+        return _error(error_kind, "This file is not available.", 404, path=subpath)
+    if inner and inner.count("/") + 1 > MAX_CONTAINER_INNER_DEPTH:
+        return _error(error_kind, "This file is not available.", 404, path=subpath)
+    subject = get_source_session().subject
+    if not isinstance(subject, GitRevisionSubject):
+        return _error(error_kind, "This file is not available.", 404, path=subpath)
+    try:
+        entry = await subject.tree_source.resolve_path(path)
+        if entry is None or not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+            return _error(error_kind, "This file is not available.", 404, path=subpath)
+        data = await subject.tree_source.read_blob(path)
+    except (GitObjectUnavailableError, GitBlobTooLargeError):
+        return _error(error_kind, "This file is not available.", 404, path=subpath)
+    return data, inner
+
+
+async def document_handler(request: Request) -> JSONResponse:
     """One patch file — or one change inside it — as a ChangeSetDocument."""
     subpath = request.query_params.get("path", "")
-    resolved = _resolve_patch(subpath)
-    if resolved is None:
-        return _error("diff_document", "This file is not available.", 404, path=subpath)
-    target, inner = resolved
-    document = _parse(target)
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        loaded = await _git_patch_bytes(subpath, error_kind="diff_document")
+        if isinstance(loaded, JSONResponse):
+            return loaded
+        data, inner = loaded
+        document = await asyncio.to_thread(_parse_bytes, data)
+    else:
+        resolved = _resolve_patch(subpath)
+        if resolved is None:
+            return _error("diff_document", "This file is not available.", 404, path=subpath)
+        target, inner = resolved
+        document = await asyncio.to_thread(_parse, target)
     if inner:
         narrowed = _narrow_to_path(document, inner)
         if narrowed is None:
@@ -285,13 +333,23 @@ def _document_from(
     )
 
 
-def children_handler(request: Request) -> JSONResponse:
+async def children_handler(request: Request) -> JSONResponse:
     """The change entries of one patch file, as nav-tree child rows."""
     subpath = request.query_params.get("path", "")
-    target = resolve_path(subpath)
-    if target is None or not target.is_file() or not subpath.lower().endswith(_PATCH_EXTS):
-        return _error("diff_children", "This file is not available.", 404, path=subpath)
-    document = _parse(target)
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        loaded = await _git_patch_bytes(subpath, error_kind="diff_children")
+        if isinstance(loaded, JSONResponse):
+            return loaded
+        data, inner = loaded
+        if inner:
+            return _error("diff_children", "This file is not available.", 404, path=subpath)
+        document = await asyncio.to_thread(_parse_bytes, data)
+    else:
+        target = resolve_path(subpath)
+        if target is None or not target.is_file() or not subpath.lower().endswith(_PATCH_EXTS):
+            return _error("diff_children", "This file is not available.", 404, path=subpath)
+        document = await asyncio.to_thread(_parse, target)
     # One row per path, not per change: a patch file spells a type change
     # as delete-plus-add at the same path, and two rows sharing a virtual
     # path would be two rows that open the same thing.

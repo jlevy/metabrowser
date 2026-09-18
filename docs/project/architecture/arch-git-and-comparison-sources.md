@@ -6,7 +6,8 @@ The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Worktree-free repository stores and immutable revision subjects are implemented for tree
 reads, Git collection routes, `GitPath` file/raw/tree routes, revision comparison
-through `GitDiffSource`, and KPress blob renders; serving acquired Git remains later.
+through `GitDiffSource`, KPress blob renders, and patch-file containers; serving
+acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -243,6 +244,8 @@ read time, not from `ls-tree -l`. They do not invent filesystem mtimes, ignore s
 ownership, or watcher events.
 Their `GitPath` identity is raw byte segments with a lossless route codec and separate
 display text; it never becomes a host filesystem path.
+A patch-file container inner is that `GitPath` `g1-` prefix plus a host inner path, not
+another tree segment.
 Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
 remain ordinary blobs.
 
