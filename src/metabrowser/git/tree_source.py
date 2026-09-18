@@ -12,7 +12,8 @@ JSON/YAML/frontmatter bytes, structured parsed, agent-log JSONL, and
 array of GitPath nav nodes. A Git tree ``/api/file`` envelope is SPA
 ``folder`` chrome. A direct-child README blob mounts Overview. A complete
 blob-size tally also mounts treemap; ``/api/rollup`` answers from the same
-recursive index and omits mtime. SPA path chrome decodes GitPath wires to
+recursive index and omits mtime. ``/api/catalog`` lists those blob names
+as Quick File rows. SPA path chrome decodes GitPath wires to
 display names. Blob listings
 carry ``cat-file`` info sizes so ``min_size`` can filter; trees and gitlinks
 have no blob size. Recursive ``ls-tree -r`` plus ``cat-file`` info fills

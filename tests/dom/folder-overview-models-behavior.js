@@ -493,6 +493,18 @@ async function importSource(relative) {
     "treemap parent navigation is absent at the served root",
     treemapModel.parentNavigation("") === null,
   );
+  globalThis.window = {
+    MetabrowserNavigationRoute: {
+      displayPath(path) {
+        return path === "g1-ZG9jcw" ? "docs" : path;
+      },
+    },
+  };
+  check(
+    "treemap parent navigation decodes GitPath labels and keeps the wire",
+    JSON.stringify(treemapModel.parentNavigation("g1-ZG9jcw/g1-bm90ZS50eHQ")) ===
+      JSON.stringify({ path: "g1-ZG9jcw", label: "docs/" }),
+  );
 
   // A row cap bounds how long a list gets and says nothing about whether the
   // rows in it are worth reading. These two cases pin the other half: an entry

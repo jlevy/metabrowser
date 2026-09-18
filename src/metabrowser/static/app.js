@@ -3468,7 +3468,7 @@ async function refreshIndexProgress(force) {
 }
 
 function startIndexProgressPolling() {
-  if (indexProgressTimer) {
+  if (isGitRevisionSource() || indexProgressTimer) {
     return;
   }
   refreshIndexProgress(true);
@@ -6301,6 +6301,9 @@ var fileStore = new Map(); // path -> FsEntry
 var fileStoreSubscribers = [];
 var inventoryEventSource = null;
 var catalogFeedCanStart = false;
+function isGitRevisionSource() {
+  return window.METABROWSER_SOURCE_KIND === "git_revision";
+}
 // The startup crawl establishes the navigation baseline. Its snapshot and
 // incremental walker upserts are not user-visible file changes, so newly
 // mounted rows stay neutral until the first terminal inventory event. A
@@ -7481,9 +7484,9 @@ function _createInventoryEventSource() {
 }
 
 function startInventoryEventStream() {
-  if (typeof EventSource === "undefined") {
-    // Graceful degradation: no live deltas, but the one-shot bulk
-    // fetch still gives the palette complete-as-of-fetch coverage.
+  if (isGitRevisionSource() || typeof EventSource === "undefined") {
+    // A Git pin is already complete and has no watcher. Missing EventSource
+    // is the same one-shot catalog path without live deltas.
     catalogFeedCanStart = true;
     quickFileCatalogFeed?.start();
     return;

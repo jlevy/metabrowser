@@ -7,6 +7,8 @@ This module owns:
   connect, then projects provider invalidations into ``fs.change`` ops.
   Heartbeat every 15 s. Reconnects receive a new coherent snapshot boundary;
   pre-snapshot deltas are never replayed after it.
+* ``GET /api/catalog`` — one-shot Quick File universe. A filesystem
+  subject reads the inventory; a Git pin lists recursive blob names.
 * ``GET /api/index/progress`` — lightweight crawl status for the
   left-nav progress footer. Reads in-memory inventory counters
   only; never scans the tree or rebuilds suffix tallies.
@@ -123,7 +125,11 @@ from metabrowser.settings import (
     SSE_PER_CONNECTION_QUEUE_SIZE,
     SSE_RING_BUFFER_CAPACITY,
 )
-from metabrowser.source import require_filesystem_hooks, require_source_capability
+from metabrowser.source import (
+    get_source_session,
+    require_filesystem_hooks,
+    require_source_capability,
+)
 
 if TYPE_CHECKING:
     from starlette.applications import Starlette
@@ -1310,7 +1316,16 @@ async def api_catalog(request: Request) -> Response:
     Live updates arrive as ``catalog.change`` events on the existing
     stream; the pair converges without a shared transaction because
     ops are idempotent by path.
+    A Git pin has no watcher: the payload is the recursive blob set
+    and is already complete.
     """
+
+    from metabrowser.git.content_routes import git_revision_catalog
+    from metabrowser.git.tree_source import GitRevisionSubject
+
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_catalog(request, subject)
 
     require_filesystem_hooks()
     runtime = _runtime_for(request)

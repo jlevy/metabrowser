@@ -1016,6 +1016,7 @@ async def index(request: Request) -> HTMLResponse:
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
     )
     repository_context_json = _json.dumps(repository_context).replace("<", "\\u003c")
+    source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
     # The tree's first rows, inlined. Without this the reader waits for a round
     # trip the server did not have to make them take: time to first row is
     # DOMContentLoaded plus the whole /api/tree request, and during a walk that
@@ -1062,6 +1063,7 @@ async def index(request: Request) -> HTMLResponse:
                 f"<script>window.METABROWSER_INITIAL_TREE={initial_tree_json};</script>"
             )
     repository_context_block = (
+        f"<script>window.METABROWSER_SOURCE_KIND={source_kind_json};</script>"
         f"<script>window.METABROWSER_REPOSITORY_CONTEXT={repository_context_json};</script>"
     )
     # Read preferences from host-only cookies (not localStorage): cookies

@@ -4,6 +4,15 @@ export function parentPath(path) {
   return index === -1 ? "" : path.slice(0, index);
 }
 
+/** @param {string} path */
+function identityDisplay(path) {
+  const displayPath = globalThis.window?.MetabrowserNavigationRoute?.displayPath;
+  if (typeof displayPath === "function") {
+    return displayPath(path);
+  }
+  return path;
+}
+
 /**
  * Visible parent target for Treemap zoom-out navigation.
  * Canonical navigation paths are root-relative and use an empty string
@@ -21,6 +30,7 @@ export function parentNavigation(path) {
   if (!parent) {
     return { path: "", label: "/" };
   }
-  const segment = parent.slice(parent.lastIndexOf("/") + 1);
+  const displayed = identityDisplay(parent);
+  const segment = displayed.slice(displayed.lastIndexOf("/") + 1);
   return { path: parent, label: `${segment}/` };
 }
