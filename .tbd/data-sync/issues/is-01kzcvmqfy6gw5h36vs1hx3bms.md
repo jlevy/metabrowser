@@ -5,7 +5,7 @@ title: "HTML P2: capability set, --untrusted profile, and client publication"
 kind: task
 status: in_progress
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels:
@@ -27,7 +27,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.469Z
-updated_at: 2026-09-18T04:14:57.486Z
+updated_at: 2026-09-18T04:24:41.909Z
 started_at: 2026-09-18T04:14:57.485Z
 extensions:
   linear:
@@ -35,3 +35,7 @@ extensions:
     linked_at: 2026-08-16T08:05:43.354Z
 ---
 Resolve an immutable capability object before app construction. Add --no-active-content / METAB_ACTIVE_CONTENT=0 and the --untrusted / METAB_UNTRUSTED=1 profile, with individual flags overriding the profile. Publish through client_settings_dict() as CAPABILITIES and via GET /api/capabilities. When active_content is off, drop allow-scripts from the raw sandbox directive (NOT a text/plain downgrade — that reintroduces the type enumeration the unconditional header removed and breaks innocent styled pages). Document the flags in SECURITY.md and the README warning block in the same change. Generalizes the mechanism the file-actions plan defines for mutations rather than adding a parallel one.
+
+## Notes
+
+Draft https://github.com/jlevy/metabrowser/pull/153 stacked on cursor/v011-html-raw-sandbox-bd04. Capability block resolved after dotenv; published on GET /api/capabilities and CAPABILITIES. --untrusted / --no-active-content / --allow-edits wired through serve, --api, --show, --check-api. /raw drops allow-scripts when active_content is off. Bead stays open for review; do not merge.
