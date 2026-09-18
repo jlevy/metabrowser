@@ -20,6 +20,7 @@ and emit subtree ``filtered`` totals; empty filter dirs are omitted. File nav
 nodes include ``logical_ext`` from the same bounded compound-tail helper as
 filesystem inventory, so type filters match ``bundle.min.js`` as ``.min.js``
 and do not treat a basename ending in ``md`` as ``.md``.
+``include_ignored=0`` is a no-op because ignore is absent.
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
 ``tree``) with no invented mtime or ignore. Omitted mtime leaves
 SPA age chrome empty rather than pending. A direct-child README blob sets

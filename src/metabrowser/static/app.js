@@ -4605,12 +4605,14 @@ function renderNavFilterBar() {
       open: filterOpenMenu === "size",
       menuId: "filter-size-menu",
     }) +
-    fc.checkHtml({
-      key: "showIgnored",
-      label: "Show ignored",
-      checked: st.showIgnored,
-      tip: "Show gitignored entries, dimmed",
-    }) +
+    (isGitRevisionSource()
+      ? ""
+      : fc.checkHtml({
+          key: "showIgnored",
+          label: "Show ignored",
+          checked: st.showIgnored,
+          tip: "Show gitignored entries, dimmed",
+        })) +
     "</div></div>";
   bar.innerHTML = main + drawer;
 }

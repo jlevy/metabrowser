@@ -1672,12 +1672,15 @@ async def api_tree(request: Request) -> Response:
     tree_filter = tree_filter_from_request(request)
     require_source_capability("navigation")
     require_source_capability("index")
+    subject = get_source_session().subject
+    git_pin = isinstance(subject, GitRevisionSubject)
     require_filter_capabilities(
         recency=bool(tree_filter.recency_seconds),
-        include_ignored=tree_filter.include_ignored,
+        # Ignore is absent on a pin: unignored equals total, so hiding
+        # ignored files is a no-op rather than unsupported_for_subject.
+        include_ignored=True if git_pin else tree_filter.include_ignored,
     )
-    subject = get_source_session().subject
-    if isinstance(subject, GitRevisionSubject):
+    if git_pin:
         return await git_revision_tree(request, subject, tree_filter)
     subpath = parse_inventory_path(requested)
     remaining_depth = _tree_depth_from_query(depth_str)
