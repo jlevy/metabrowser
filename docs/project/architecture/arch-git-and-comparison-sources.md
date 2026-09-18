@@ -9,8 +9,8 @@ reads, Git collection routes, `GitPath` file/raw/tree routes (including a SPA `t
 projection on `/api/tree` and SPA `folder` chrome on tree `/api/file` envelopes),
 revision comparison through `GitDiffSource` (including size-gated `content` via the
 shared cat-file pool), KPress blob renders, patch-file containers, binary byte chunks,
-extension plugin kinds, structured parsed, and agent-log JSONL. Markdown and wiki links
-on a pin resolve to `GitPath` wires.
+extension plugin kinds, structured parsed, agent-log JSONL, and image preview.
+Markdown and wiki links on a pin resolve to `GitPath` wires.
 A Git tree folder with a README mounts Overview.
 SPA path chrome decodes GitPath wires to display names.
 Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
@@ -31,6 +31,7 @@ Blob file envelopes omit compressed identity because blobs are stored bytes with
 smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
 `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
 Git text envelopes use the same first-window and highlight bound as filesystem listings.
+A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes.
 `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs;
 listings still show the symlink.
 Kind checks use the leaf path.
@@ -329,6 +330,7 @@ Blob file envelopes omit compressed identity because blobs are stored bytes with
 smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
 `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
 Git text envelopes use the same first-window and highlight bound as filesystem listings.
+A Git image blob is SPA `image` chrome; `/raw` serves the stored bytes.
 `/api/file`, `/raw`, KPress, and plugin sidekicks follow in-tree relative symlink blobs;
 listings still show the symlink.
 Kind checks use the leaf path.

@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, markdown frontmatter, text preview windows, in-tree symlink follow, and plugin-sidekick symlink follow honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, logical-extension type matching, ignore-noop, tree depth, tree-ext, file-envelope ext, markdown frontmatter, text preview windows, in-tree symlink follow, plugin-sidekick symlink follow, and image preview honor a pin."""
 
 from __future__ import annotations
 
@@ -46,6 +46,12 @@ _LFS_POINTER = (
     b"version https://git-lfs.github.com/spec/v1\n"
     b"oid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\n"
     b"size 12345\n"
+)
+# 1x1 transparent PNG. Classification is by extension; bytes pin /raw.
+_PNG_1X1 = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\xda\x63\x00"
+    b"\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
 _PROMISOR_MISS_BUDGET_S = 1.0
 
@@ -1117,6 +1123,57 @@ def test_git_plugin_sidekicks_follow_in_tree_symlinks(tmp_path: Path) -> None:
                 await client.get("/api/plugin/diff/children", params={"path": dangling})
             ).status_code == 404
             assert str(store) not in charts.text
+
+    asyncio.run(_run())
+
+
+def test_git_image_file_and_raw_honor_gitpath_without_mtime(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "pic.png").write_bytes(_PNG_1X1)
+    (work / "logo").symlink_to("pic.png")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "image")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            png_wire = _wire(b"pic.png")
+            envelope = await client.get("/api/file", params={"path": png_wire})
+            assert envelope.status_code == 200
+            body = envelope.json()
+            assert body["subject"] == "git_revision"
+            assert body["type"] == "image"
+            assert body["kind"] == "image"
+            assert body["ext"] == ".png"
+            assert body["path"] == png_wire
+            assert body["size"] == len(_PNG_1X1)
+            assert "content" not in body
+            assert "mtime" not in body
+            assert "mtime_hash" not in body
+            assert any(view["id"] == "preview" for view in body["views"])
+            assert str(store) not in envelope.text
+
+            raw = await client.get("/raw", params={"path": png_wire})
+            assert raw.status_code == 200
+            assert raw.content == _PNG_1X1
+            assert raw.headers["content-type"].startswith("image/png")
+
+            logo_wire = _wire(b"logo")
+            followed = await client.get("/api/file", params={"path": logo_wire})
+            assert followed.status_code == 200
+            followed_body = followed.json()
+            assert followed_body["path"] == logo_wire
+            assert followed_body["type"] == "image"
+            assert followed_body["ext"] == ".png"
+            followed_raw = await client.get("/raw", params={"path": logo_wire})
+            assert followed_raw.content == _PNG_1X1
+
+            relative = await client.get("/api/file", params={"path": "pic.png"})
+            assert relative.status_code == 404
 
     asyncio.run(_run())
 

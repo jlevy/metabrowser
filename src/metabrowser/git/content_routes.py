@@ -30,6 +30,10 @@ uses that parse rather than an empty mapping.
 Text blobs use the same first-window and highlight bound as filesystem
 listings, and advertise ``bytes_read`` plus preview limits so Load more and
 ``fetchText`` can continue a truncated Git envelope.
+A Git image blob is SPA ``image`` chrome (``ext`` from the compound tail,
+preview view, no inline content); ``/raw`` serves the stored bytes so the
+image plugin can paint. Alternative text uses the display name, not the
+GitPath wire.
 ``/api/file``, ``/raw``, KPress, and plugin sidekicks follow in-tree relative
 symlink blobs to the target object; the requested GitPath stays the route
 identity. Kind checks (JSONL, structured, patch) use the leaf path.
