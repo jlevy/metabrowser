@@ -1,14 +1,17 @@
 """Immutable Git-tree source: GitPath, revision subject, and batch blob reads.
 
 Reads go through a worktree-free ``RepositoryStoreTarget``. This module
-does not check out, index, branch, or invent filesystem facts. Route
-migration and serving acquired Git stay on later beads.
+does not check out, index, branch, or invent filesystem facts. Batch
+``cat-file`` actors are pooled per store (at most
+:data:`MAX_BATCH_READERS_PER_STORE` in one process). Route migration and
+serving acquired Git stay on later beads.
 """
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
@@ -46,6 +49,8 @@ _BATCH_ARGS: Final[tuple[str, ...]] = (
 # docs/project/architecture/arch-repository-sources-and-provider-mirrors.md.
 MAX_BATCH_READERS_PER_STORE: Final[int] = 4
 _STDERR_MAX_BYTES: Final[int] = 64 * 1024
+_POOLS_GUARD = threading.Lock()
+_POOLS: dict[Path, _StoreReaderPool] = {}
 
 
 class GitPathError(ValueError):
@@ -195,14 +200,8 @@ class _ObjectInfo:
 class _BatchObjectReader:
     """One exclusive ``cat-file --batch-command --buffer`` actor."""
 
-    def __init__(
-        self,
-        target: RepositoryStoreTarget,
-        *,
-        max_blob_bytes: int,
-    ) -> None:
+    def __init__(self, target: RepositoryStoreTarget) -> None:
         self._target = target
-        self._max_blob_bytes = max_blob_bytes
         self._proc: asyncio.subprocess.Process | None = None
         self._stderr_task: asyncio.Task[tuple[bytes, bool]] | None = None
 
@@ -212,12 +211,12 @@ class _BatchObjectReader:
             raise GitBatchProtocolError("info transaction returned a body")
         return result
 
-    async def read_blob(self, oid: str) -> bytes:
+    async def read_blob(self, oid: str, *, max_blob_bytes: int) -> bytes:
         info = await self.info(oid)
         if info.kind != "blob":
             raise GitBatchProtocolError(f"{oid} is {info.kind}, not a blob")
-        if info.size > self._max_blob_bytes:
-            raise GitBlobTooLargeError(oid=oid, size=info.size, max_bytes=self._max_blob_bytes)
+        if info.size > max_blob_bytes:
+            raise GitBlobTooLargeError(oid=oid, size=info.size, max_bytes=max_blob_bytes)
         body = await self._transact(oid, contents=True, expected=info)
         if isinstance(body, _ObjectInfo):
             raise GitBatchProtocolError("contents transaction returned info")
@@ -306,13 +305,15 @@ class _BatchObjectReader:
 
 
 class _StoreReaderPool:
-    def __init__(self, target: RepositoryStoreTarget, *, max_blob_bytes: int) -> None:
+    """At most ``MAX_BATCH_READERS_PER_STORE`` actors, shared by every source on a store."""
+
+    def __init__(self, target: RepositoryStoreTarget) -> None:
         self._target = target
-        self._max_blob_bytes = max_blob_bytes
         self._available: asyncio.Queue[_BatchObjectReader] = asyncio.Queue()
         self._readers: list[_BatchObjectReader] = []
         self._create_lock = asyncio.Lock()
         self._closed = False
+        self._holders = 0
 
     @asynccontextmanager
     async def checkout(self) -> AsyncGenerator[_BatchObjectReader]:
@@ -342,7 +343,7 @@ class _StoreReaderPool:
             pass
         async with self._create_lock:
             if len(self._readers) < MAX_BATCH_READERS_PER_STORE:
-                reader = _BatchObjectReader(self._target, max_blob_bytes=self._max_blob_bytes)
+                reader = _BatchObjectReader(self._target)
                 self._readers.append(reader)
                 return reader
         return await self._available.get()
@@ -351,6 +352,43 @@ class _StoreReaderPool:
         if self._closed:
             return
         await self._available.put(reader)
+
+
+def _pool_key(target: RepositoryStoreTarget) -> Path:
+    return target.git_dir.resolve()
+
+
+def _retain_pool(target: RepositoryStoreTarget) -> _StoreReaderPool:
+    key = _pool_key(target)
+    with _POOLS_GUARD:
+        pool = _POOLS.get(key)
+        if pool is None:
+            pool = _StoreReaderPool(target)
+            _POOLS[key] = pool
+        pool._holders += 1
+        return pool
+
+
+async def _release_pool(pool: _StoreReaderPool) -> None:
+    close = False
+    with _POOLS_GUARD:
+        pool._holders -= 1
+        if pool._holders <= 0:
+            pool._holders = 0
+            key = _pool_key(pool._target)
+            if _POOLS.get(key) is pool:
+                del _POOLS[key]
+            close = True
+    if close:
+        await pool.aclose()
+
+
+def store_batch_reader_count(target: RepositoryStoreTarget) -> int:
+    """Live cat-file actors for *target*'s store in this process."""
+
+    with _POOLS_GUARD:
+        pool = _POOLS.get(_pool_key(target))
+        return 0 if pool is None else len(pool._readers)
 
 
 async def _drain_stderr(proc: asyncio.subprocess.Process) -> tuple[bytes, bool]:
@@ -442,7 +480,8 @@ class GitTreeSource:
         self._target = target
         self._root_tree_oid = require_full_oid(root_tree_oid)
         self._max_blob_bytes = max_blob_bytes
-        self._pool = _StoreReaderPool(target, max_blob_bytes=max_blob_bytes)
+        self._pool = _retain_pool(target)
+        self._pool_released = False
         self._trees: dict[str, tuple[GitTreeEntry, ...]] = {}
 
     def resolve(self, identity: str) -> ContentHandle | None:
@@ -514,11 +553,13 @@ class GitTreeSource:
         if entry is None or not entry.is_blob:
             raise GitObjectUnavailableError(path.to_wire())
         async with self._pool.checkout() as reader:
-            return await reader.read_blob(entry.oid)
+            return await reader.read_blob(entry.oid, max_blob_bytes=self._max_blob_bytes)
 
     async def read_blob_oid(self, oid: str) -> bytes:
         async with self._pool.checkout() as reader:
-            return await reader.read_blob(require_full_oid(oid))
+            return await reader.read_blob(
+                require_full_oid(oid), max_blob_bytes=self._max_blob_bytes
+            )
 
     async def object_info(self, oid: str) -> _ObjectInfo:
         async with self._pool.checkout() as reader:
@@ -526,7 +567,10 @@ class GitTreeSource:
 
     async def aclose(self) -> None:
         self._trees.clear()
-        await self._pool.aclose()
+        if self._pool_released:
+            return
+        self._pool_released = True
+        await _release_pool(self._pool)
 
     async def _tree_oid_for(self, path: GitPath) -> str | None:
         if not path.segments:
@@ -648,4 +692,5 @@ __all__ = [
     "GitTreeSource",
     "git_revision_subject",
     "require_full_oid",
+    "store_batch_reader_count",
 ]
