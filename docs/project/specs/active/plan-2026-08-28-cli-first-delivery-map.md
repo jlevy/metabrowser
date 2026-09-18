@@ -344,7 +344,7 @@ def ensure_home(home: Path) -> Path: # creates the f01 skeleton, writes CACHEDIR
 | `probe.py` | Application-home lock and publication probe | `probe_application_home` |
 | `contracts.py` | Packaged SoftSchema bindings and drift checks | `compile_contracts`, `cache_contract_registry`, `repository_cache_capabilities` |
 | `records.py` | Closed source/store and staged-fetch contracts | `ApplicationConfig`, `CacheLayout`, `RepositorySource`, `RepositorySourceState`, `RepositoryStoreAlias`, `RepositoryStore`, `RepositoryStoreState`, `StagedFetch` |
-| `reclaim.py` | Startup staging/trash sweep, trash, quarantine, store reclamation, and lease-aware object reclamation | `reclaim_staging`, `reclaim_trash`, `quarantine_entries`, `reclaim_store`, `reclaim_repository_objects` |
+| `reclaim.py` | Startup staging/trash sweep, trash, quarantine, store reclamation, and lease-aware object reclamation | `reclaim_staging`, `reclaim_trash`, `quarantine_entries`, `reclaim_store`, `reclaim_unreferenced_stores`, `reclaim_repository_objects` |
 | `identity.py` | Conservative source identity, provider-derived store identity, aliasing, and collision-safe slugs | `normalize_git_source`, `source_identity`, `repository_store_id`, `provider_repository_store_id`, `cache_slug` |
 | `urls.py` | Root classification, provider reducer arbitration, and terminal rejection | `classify_root_argument`, `ProviderUrlReducer`, `ReducerOutcome`, `RepositorySelection` |
 | `acquire.py` | Worktree-free staged acquisition and atomic store/alias publication | `acquire_repository`, `validate_staging_store`, `publish_store`, `publish_source_alias` |
@@ -440,9 +440,9 @@ network behavior.
 A live `metab file:// --no-serve` tryscript cannot run on ubuntu-latest today: the
 runner’s Git 2.43.0 is below the acquisition floor (2.43.7 / patched tracks), and
 distro-patched Git remains refuse.
-Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep evidence is
-`tests/test_cli_cache_acquire_golden.py`: the production CLI in-process, the floor
-monkeypatched, a real pack fetch.
+Until CI pins Git 2.50.1 (`mb-oueh`), acquire / reuse / staging-sweep / orphan-store
+reclaim evidence is `tests/test_cli_cache_acquire_golden.py`: the production CLI
+in-process, the floor monkeypatched, a real pack fetch.
 Layout and future-format refusal remain `cli-api-cache.tryscript.md`. Do not add
 `<HOME>` or `<MTIME>` to `normalize.py` until a transcript emits those values; cache
 routes never report paths, and `--no-serve` does not print the home.

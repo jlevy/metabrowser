@@ -53,6 +53,15 @@ from metabrowser.home import (
     ensure_home,
     write_private_file_atomic,
 )
+from tests.cache_home_fixture import (
+    ALIASED_AT,
+    FLASK_HTTPS,
+    FLASK_STORE_KEY,
+    ORPHAN_STORE_KEY,
+    _attach,
+    _stage_and_publish_source,
+    _stage_and_publish_store,
+)
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only storage is POSIX-only")
 CHILD_TIMEOUT = 120
@@ -657,6 +666,24 @@ def test_open_cache_prepares_probes_migrates_and_sweeps(tmp_path: Path) -> None:
     assert opened.sweep.removed == ("cache/staging/crashed-clone",)
     assert not (home / "cache/staging/crashed-clone").exists()
     assert (home / "cache/CACHEDIR.TAG").exists()
+
+
+@posix_only
+def test_open_cache_reclaims_an_unreferenced_store_and_keeps_an_aliased_one(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    ensure_home(home)
+    migrate_layout(home, version="0.11.0")
+    _stage_and_publish_store(home, ORPHAN_STORE_KEY, with_revision=False)
+    _stage_and_publish_store(home, FLASK_STORE_KEY, with_revision=True)
+    _stage_and_publish_source(home, FLASK_HTTPS, opened=True)
+    _attach(home, FLASK_HTTPS, FLASK_STORE_KEY, generation=1, at=ALIASED_AT)
+
+    open_cache(home, version="0.11.0")
+
+    assert not (home / f"cache/repository-stores/{ORPHAN_STORE_KEY}").exists()
+    assert (home / f"cache/repository-stores/{FLASK_STORE_KEY}").is_dir()
 
 
 @posix_only
