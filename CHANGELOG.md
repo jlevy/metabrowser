@@ -107,8 +107,9 @@ Content source:
   Discovery reports a detached HEAD at that OID and never a cache path; the default
   history walk is the pin, not the store’s ambient HEAD. `/api/tree`, `/api/file`, and
   `/raw` honor `GitPath` wire identities on that subject: tree listings carry mode,
-  kind, oid, symlink, and gitlink without mtime, ignore, or ls-tree sizes; recency,
-  `include_ignored=0`, and `min_size` return `unsupported_for_subject`; blob reads are
+  kind, oid, symlink, gitlink, and `cat-file` blob sizes (trees and gitlinks stay
+  unsized; no mtime or ignore); recency and `include_ignored=0` return
+  `unsupported_for_subject`; `min_size` filters blobs that have a size; blob reads are
   size-gated through the shared cat-file pool.
   `/api/plugin/diff/comparison` honors that pin through `GitLocation`: `HEAD` is the
   pinned object id, not the store’s ambient HEAD, and the document names Git object
@@ -139,8 +140,8 @@ Content source:
   inner, and refuses a filesystem spelling; missing Git objects remain valid shell
   destinations. `/api/tree` on that pin keeps Git-native `entries` and also projects a
   SPA `tree` array (`dir` / `file` / `symlink`, `GitPath` wires, lazy `children` for Git
-  trees) without mtime, size, or ignore facts.
-  Gitlinks project as files, not directories.
+  trees) with `cat-file` blob sizes on files and symlinks, without mtime or ignore
+  facts. Gitlinks project as files, not directories.
   A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
   no invented directory aggregates.
   Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
@@ -152,7 +153,9 @@ Content source:
   identities stay wires.
   Omitted Git size, mtime, and directory aggregates leave tally chrome empty rather than
   pulsing as a still-finalizing inventory walk.
-  Inventory open, archive containers, and serving acquired Git are not switched yet.
+  Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
+  stay unsized. Inventory open, archive containers, and serving acquired Git are not
+  switched yet.
 
 ## 0.10.0
 
