@@ -80,46 +80,55 @@ def extract_agent_charts(filepath: Path) -> dict[str, Any]:
         if hit is not None:
             return hit
 
-    # Read first lines to detect adapter
-    first_lines: list[str] = []
     with artifact.open_text(errors="replace", max_output_bytes=parse_max_bytes) as fh:
-        for raw_line in fh:
-            stripped = raw_line.strip()
-            if stripped:
-                first_lines.append(stripped)
+        text = fh.read()
+    result = _charts_from_text(text)
+    if key is not None:
+        _CHARTS_CACHE[key] = result
+    return result
+
+
+def extract_agent_charts_bytes(data: bytes) -> dict[str, Any]:
+    """Extract chart data from JSONL bytes. No host path or mtime cache."""
+
+    parse_max_bytes = jsonl_view._JSONL_PARSE_MAX_BYTES
+    if len(data) > parse_max_bytes:
+        raise jsonl_view.JsonlParseLimitError(
+            f"JSONL content exceeds {parse_max_bytes} decompressed bytes"
+        )
+    return _charts_from_text(data.decode("utf-8", errors="replace"))
+
+
+def _charts_from_text(text: str) -> dict[str, Any]:
+    first_lines: list[str] = []
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if stripped:
+            first_lines.append(stripped)
             if len(first_lines) >= 20:
                 break
 
     adapter = detect_adapter(first_lines)
     parser = create_parser(adapter)
 
-    # Parse all events
     events: list[LogEvent] = []
-    with artifact.open_text(errors="replace", max_output_bytes=parse_max_bytes) as fh:
-        for raw_line in fh:
-            stripped = raw_line.strip()
-            if not stripped or len(stripped) > 256 * 1024:
-                continue
-            events.extend(parser.parse_line(stripped))
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or len(stripped) > 256 * 1024:
+            continue
+        events.extend(parser.parse_line(stripped))
     events.extend(parser.flush())
 
     if not events:
-        result: dict[str, Any] = {"summary": None, "charts": []}
-        if key is not None:
-            _CHARTS_CACHE[key] = result
-        return result
+        return {"summary": None, "charts": []}
 
-    counts = _agent_taxonomy_counts(events)
-    metadata = _agent_metadata(events, adapter)
-    charts = _agent_chart_specs(events)
-
-    result = {
-        "summary": {"counts": counts, "metadata": metadata},
-        "charts": charts,
+    return {
+        "summary": {
+            "counts": _agent_taxonomy_counts(events),
+            "metadata": _agent_metadata(events, adapter),
+        },
+        "charts": _agent_chart_specs(events),
     }
-    if key is not None:
-        _CHARTS_CACHE[key] = result
-    return result
 
 
 def _agent_taxonomy_counts(events: list[LogEvent]) -> dict[str, int]:

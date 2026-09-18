@@ -10,6 +10,7 @@ from pathlib import Path
 
 from metabrowser.charts import (
     extract_agent_charts,
+    extract_agent_charts_bytes,
 )
 
 # ── Fixtures ────────────────────────────────────────────────────
@@ -86,6 +87,9 @@ class TestExtractAgentCharts:
         result = extract_agent_charts(path)
         meta = result["summary"]["metadata"]
         assert meta["adapter"] == "claude"
+        from_bytes = extract_agent_charts_bytes(path.read_bytes())
+        assert from_bytes["summary"]["metadata"]["adapter"] == "claude"
+        assert from_bytes["summary"]["counts"] == result["summary"]["counts"]
 
     def test_empty_file(self):
         path = _write_jsonl([])

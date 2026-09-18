@@ -502,6 +502,10 @@ def test_classify_identity_matches_ext_and_skips_content_predicates() -> None:
     assert classify_identity(rules, ext=".json", basename="config.json") == "structured"
     assert classify_identity(rules, ext=".patch", basename="change.patch") == "diff"
     assert classify_identity(rules, ext=".jsonl", basename="events.jsonl") is None
+    assert (
+        classify_identity(rules, ext=".jsonl", basename="events.jsonl", adapter="claude")
+        == "agent-log"
+    )
     assert classify_identity(rules, ext=".md", basename="note.md") is None
     assert classify_identity(rules, ext="", basename="pyproject.toml") == "marker"
 
