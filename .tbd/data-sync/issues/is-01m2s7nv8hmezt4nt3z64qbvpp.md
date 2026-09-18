@@ -5,7 +5,7 @@ title: Golden-pin file:// acquire, reuse, and staging sweep without a live Git f
 kind: task
 status: in_progress
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-08-28-cli-first-delivery-map.md
 delegate: unknown@cursor
 labels:
@@ -18,7 +18,7 @@ parent_id: is-01kzsb4jnyd56wy89xmztkmz2m
 hold: null
 hold_until: null
 created_at: 2026-09-18T03:06:35.665Z
-updated_at: 2026-09-18T03:10:33.157Z
+updated_at: 2026-09-18T03:11:45.573Z
 started_at: 2026-09-18T03:06:44.122Z
 ---
 Portable pytest golden for Cache 1B-a acquire evidence. ubuntu-latest and this VM report Git 2.43.0, below the acquisition floor (2.43.7 / patched tracks); distro-patched Git remains refuse, so a live `metab file:// --no-serve` tryscript cannot run in current CI.
@@ -35,4 +35,4 @@ No serving. Live cli-cache-acquire.tryscript.md waits on a CI Git 2.50.1 pin. Do
 
 ## Notes
 
-PR https://github.com/jlevy/metabrowser/pull/147 on cursor/v011-cache-acquire-golden-bd04 HEAD 6c6a385b, stacked on #146. Pytest in-process goldens: acquire+reuse (cli-cache-acquire.txt) and lock-free staging sweep (cli-cache-recover.txt). Monkeypatch only require_acquisition_git. Origin recipe pins revision 8f05aafe23bbeade03ef581868a59e3c944ac5c4, strategy full. Fail-closed https/ssh added to cli-errors.tryscript.md. Live tryscripts wait on mb-oueh (CI Git 2.50.1). Do not close until review.
+PR https://github.com/jlevy/metabrowser/pull/147 on cursor/v011-cache-acquire-golden-bd04 HEAD f2032694, stacked on #146. Pytest in-process goldens: acquire+reuse (cli-cache-acquire.txt) and lock-free staging sweep (cli-cache-recover.txt). Monkeypatch only require_acquisition_git. Origin recipe pins revision 8f05aafe23bbeade03ef581868a59e3c944ac5c4, strategy full, branch topic (remote-tracking spelling public hygiene accepts). Fail-closed https/ssh added to cli-errors.tryscript.md. Live tryscripts wait on mb-oueh (CI Git 2.50.1). Do not close until review.
