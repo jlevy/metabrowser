@@ -82,6 +82,7 @@ def _build_store(tmp_path: Path) -> tuple[Path, str]:
     (work / "100%.html").write_text("<p>ok</p>\n", encoding="utf-8")
     (work / "link").symlink_to("README.md")
     (work / "big.bin").write_bytes(b"x" * 64)
+    (work / "nul.bin").write_bytes(b"\x00\x01\x02BINARY")
     _git(work, "add", "-A")
     _git(work, "commit", "-qm", "one")
     first = _git(work, "rev-parse", "HEAD").decode().strip()
@@ -274,5 +275,43 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
             still_ok = await client.get("/api/file", params={"path": _wire(b"README.md")})
             assert still_ok.status_code == 200
             assert still_ok.json()["content"] == "hello\n"
+
+    asyncio.run(_run())
+
+
+def test_git_kpress_render_honors_gitpath_without_mtime(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            readme_wire = _wire(b"README.md")
+            rendered = await client.get(
+                "/api/kpress/render",
+                params={"path": readme_wire, "view": "rendered"},
+            )
+            assert rendered.status_code == 200
+            body = rendered.json()
+            assert "hello" in body["html"]
+            assert "mtime" not in body
+            assert str(store) not in rendered.text
+
+            relative = await client.get(
+                "/api/kpress/render",
+                params={"path": "README.md", "view": "rendered"},
+            )
+            assert relative.status_code == 404
+
+            binary = await client.get(
+                "/api/kpress/render",
+                params={"path": _wire(b"nul.bin"), "view": "rendered"},
+            )
+            assert binary.status_code == 415
+            assert binary.json()["error"] == "KPress render supports text-like files only"
+
+            symlink = await client.get(
+                "/api/kpress/render",
+                params={"path": _wire(b"link"), "view": "rendered"},
+            )
+            assert symlink.status_code == 404
 
     asyncio.run(_run())

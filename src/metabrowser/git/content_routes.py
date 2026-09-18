@@ -1,4 +1,4 @@
-"""GitPath adapters for ``/api/tree``, ``/api/file``, and ``/raw``.
+"""GitPath adapters for ``/api/tree``, ``/api/file``, ``/raw``, and KPress.
 
 These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
 invented filesystem fact. Serving acquired Git from the CLI remains a
@@ -7,13 +7,15 @@ later bead.
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
+from metabrowser import kpress_adapter
 from metabrowser.content_sniff import ContentClass, classify_prefix
 from metabrowser.file_extensions import BROWSER_IMAGE_EXTS, BROWSER_TEXT_EXTS
 from metabrowser.file_kinds import VIEW_REGISTRY, classify_by_ext
@@ -257,6 +259,102 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
     return _json(_blob_file_payload(entry, body, request))
 
 
+async def git_revision_kpress_render(
+    subject: GitRevisionSubject,
+    *,
+    subpath: str,
+    view: str,
+    profile: str | None,
+    source_override: str | None,
+    include_toc: Literal["auto", "on", "off"],
+    max_bytes: int,
+) -> JSONResponse:
+    """Render one Git blob through KPress. No mtime; the cache key is the OID."""
+
+    try:
+        path = GitPath.from_wire(subpath)
+    except GitPathError:
+        return _json(_NOT_FOUND, status_code=404)
+    try:
+        entry = await subject.tree_source.resolve_path(path)
+        if entry is None or not entry.is_blob or entry.is_symlink or entry.is_gitlink:
+            return _json(_NOT_FOUND, status_code=404)
+        body = b"" if source_override is not None else await subject.tree_source.read_blob(path)
+    except GitObjectUnavailableError:
+        return _json(_NOT_FOUND, status_code=404)
+    except GitBlobTooLargeError as exc:
+        return _json(_blob_too_large_payload(exc), status_code=413)
+
+    ext = _logical_ext(entry.path)
+    if source_override is not None:
+        content = source_override
+        logical_size = len(source_override.encode())
+    else:
+        if len(body) > max_bytes:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "File is too large for full document rendering",
+                    "path": path.to_wire(),
+                    "size": len(body),
+                    "max_size": max_bytes,
+                },
+                status_code=413,
+            )
+        content_class = classify_prefix(body)
+        if ext not in BROWSER_TEXT_EXTS and content_class is not ContentClass.TEXT:
+            return JSONResponse(
+                {
+                    "type": "kpress_render_error",
+                    "error": "KPress render supports text-like files only",
+                    "path": path.to_wire(),
+                    "ext": ext,
+                    "size": len(body),
+                },
+                status_code=415,
+            )
+        content = body.decode("utf-8", "replace")
+        logical_size = len(body)
+
+    kind = classify_by_ext(ext) if ext else "text"
+    try:
+        rendered = await asyncio.to_thread(
+            kpress_adapter.render_kpress_view,
+            source_text=content,
+            source_path=path.display(),
+            kind=kind,
+            view=view,
+            ext=ext,
+            mtime_hash=entry.oid,
+            size=logical_size,
+            frontmatter=None,
+            frontmatter_error=None,
+            profile=profile,
+            include_toc=include_toc,
+        )
+    except kpress_adapter.KPressInvalidRequestError as exc:
+        return JSONResponse(
+            {
+                "type": "kpress_render_error",
+                "error": "Invalid KPress render request",
+                "detail": str(exc),
+                "diagnostics": [str(exc)],
+            },
+            status_code=400,
+        )
+    except kpress_adapter.KPressRenderError as exc:
+        return JSONResponse(
+            {
+                "type": "kpress_render_error",
+                "error": "KPress render failed",
+                "detail": str(exc),
+                "diagnostics": [str(exc)],
+            },
+            status_code=502,
+        )
+    return JSONResponse(rendered, headers={"cache-control": "no-cache"})
+
+
 async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Response:
     """Blob bytes for one GitPath. Symlink targets are not followed."""
 
@@ -283,6 +381,7 @@ async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Res
 
 __all__ = [
     "git_revision_file",
+    "git_revision_kpress_render",
     "git_revision_raw",
     "git_revision_tree",
 ]
