@@ -25,6 +25,7 @@ from metabrowser.git.tree_source import (
     GitPath,
     GitPathError,
     GitRevisionSubject,
+    GitTreeTally,
     git_revision_subject,
     read_store_blob,
     store_batch_reader_count,
@@ -277,6 +278,20 @@ def test_git_revision_subject_reads_trees_and_blobs_without_a_checkout(tmp_path:
                 raise AssertionError("gitlink must not be read as a blob")
             except GitObjectUnavailableError:
                 pass
+
+            root_tally = await source.tree_tally()
+            assert root_tally is not None
+            assert root_tally.total_files == 7
+            docs_tally = await source.tree_tally(docs.path)
+            assert docs_tally == GitTreeTally(total_files=1, total_size=7)
+            vendor_tally = await source.tree_tally(vendor.path)
+            assert vendor_tally == GitTreeTally(total_files=0, total_size=0)
+            listed_size = (readme.size or 0) + 7 + (percent.size or 0) + (link.size or 0)
+            big = next(entry for entry in children if entry.path.segments[-1] == b"big.bin")
+            listed_size += big.size or 0
+            listed_size += odd.size or 0
+            listed_size += newline.size or 0
+            assert root_tally.total_size == listed_size
 
             missing = GitPath.from_segments(b"nope.txt")
             assert await source.resolve_path(missing) is None
@@ -571,6 +586,10 @@ def test_promisor_miss_is_object_unavailable_without_lazy_fetch(tmp_path: Path) 
                 )
                 assert readme.oid == missing_oid
                 assert readme.size is None
+                miss_tally = await source.tree_tally()
+                assert miss_tally is not None
+                assert miss_tally.total_files == 2
+                assert miss_tally.total_size is None
                 started = time.monotonic()
                 async with asyncio.timeout(2):
                     try:
