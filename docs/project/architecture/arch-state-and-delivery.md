@@ -96,6 +96,8 @@ Today the attached folder is `AttachedFilesystemSubject`. A `GitRevisionSubject`
 a full-OID tree over a worktree-free store.
 A published-store pin takes `lease_revision`, which holds the store’s shared maintenance
 lock and a durable `refs/metabrowser/subjects/<oid>` ref.
+`maintain_store` runs `gc` and `repack` under the exclusive maintenance lock; a live
+lease makes that busy.
 Git discovery, history, refs, commit detail, file, raw, and tree honor that pin through
 `GitLocation` and `GitPath`. Container, event, inventory open, and serving acquired Git
 still wait on later slices.
