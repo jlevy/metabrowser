@@ -6,9 +6,11 @@ import asyncio
 import base64
 import os
 import shutil
+import socket
 import subprocess
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+import time
+from collections.abc import AsyncGenerator, Generator
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 
 import pytest
@@ -31,6 +33,13 @@ pytestmark = pytest.mark.skipif(
     shutil.which("git") is None,
     reason="git executable is required",
 )
+
+_LFS_POINTER = (
+    b"version https://git-lfs.github.com/spec/v1\n"
+    b"oid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\n"
+    b"size 12345\n"
+)
+_PROMISOR_MISS_BUDGET_S = 1.0
 
 
 def _git_env(root: Path) -> dict[str, str]:
@@ -121,6 +130,33 @@ def _build_store(tmp_path: Path) -> tuple[Path, str]:
     commit = _git(work, "rev-parse", "HEAD").decode().strip()
     _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
     return store, commit
+
+
+def _delete_store_blob(store: Path, oid: str) -> None:
+    loose = store / "objects" / oid[:2] / oid[2:]
+    if not loose.is_file():
+        pack_dir = store / "objects" / "pack"
+        for pack in pack_dir.glob("*.pack"):
+            subprocess.run(
+                ["git", "-C", str(store), "unpack-objects", "-q"],
+                check=True,
+                capture_output=True,
+                input=pack.read_bytes(),
+                env=_git_env(store),
+            )
+            pack.unlink()
+            pack.with_suffix(".idx").unlink(missing_ok=True)
+            pack.with_suffix(".promisor").unlink(missing_ok=True)
+    if not loose.is_file():
+        raise AssertionError(f"store blob {oid} was not a loose object")
+    loose.unlink()
+
+
+@contextmanager
+def _unanswered_promisor() -> Generator[str, None, None]:
+    with socket.create_server(("127.0.0.1", 0)) as sock:
+        port = int(sock.getsockname()[1])
+        yield f"http://127.0.0.1:{port}/repo.git"
 
 
 def _wire(*names: bytes) -> str:
@@ -650,3 +686,85 @@ def test_git_pin_refuses_inventory_backed_routes(tmp_path: Path) -> None:
             assert diagnostic.json()["capability"] == "filesystem"
 
     asyncio.run(_run())
+
+
+def test_git_file_raw_return_lfs_pointer_bytes_without_smudge(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / ".gitattributes").write_text(
+        "*.bin filter=lfs diff=lfs merge=lfs -text\n", encoding="utf-8"
+    )
+    (work / "media.bin").write_bytes(_LFS_POINTER)
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "lfs pointer")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+    marker = tmp_path / "smudge-ran"
+    smudge = tmp_path / "smudge.sh"
+    smudge.write_text(
+        f"#!/bin/sh\necho SMUDGED > '{marker}'\necho SMUDGED\n",
+        encoding="utf-8",
+    )
+    smudge.chmod(0o755)
+    _git(store, "config", "filter.lfs.smudge", str(smudge))
+    _git(store, "config", "filter.lfs.required", "true")
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            raw = await client.get("/raw", params={"path": _wire(b"media.bin")})
+            assert raw.status_code == 200
+            assert raw.content == _LFS_POINTER
+            envelope = await client.get("/api/file", params={"path": _wire(b"media.bin")})
+            assert envelope.status_code == 200
+            body = envelope.json()
+            assert body["size"] == len(_LFS_POINTER)
+            assert body["oid"] == _git(store, "rev-parse", f"{commit}:media.bin").decode().strip()
+            assert "git-lfs" in body["content"]
+            assert str(store) not in envelope.text
+
+    asyncio.run(_run())
+    assert marker.exists() is False
+
+
+def test_git_file_raw_promisor_miss_is_object_unavailable(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "README.md").write_text("hello\n", encoding="utf-8")
+    (work / "keep.txt").write_text("kept\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "two blobs")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    missing_oid = _git(work, "rev-parse", "HEAD:README.md").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+    _delete_store_blob(store, missing_oid)
+    with _unanswered_promisor() as url:
+        _git(store, "config", "extensions.partialClone", "origin")
+        _git(store, "config", "remote.origin.promisor", "true")
+        _git(store, "config", "remote.origin.url", url)
+
+        async def _run() -> None:
+            async with _pinned_client(store, commit) as (client, _subject):
+                tree = await client.get("/api/tree")
+                assert tree.status_code == 200
+                names = {entry["display"] for entry in tree.json()["entries"]}
+                assert names == {"README.md", "keep.txt"}
+                started = time.monotonic()
+                async with asyncio.timeout(2):
+                    missing = await client.get("/api/file", params={"path": _wire(b"README.md")})
+                assert time.monotonic() - started < _PROMISOR_MISS_BUDGET_S
+                assert missing.status_code == 404
+                body = missing.json()
+                assert body["code"] == "object_unavailable"
+                assert body["oid"] == missing_oid
+                assert str(store) not in missing.text
+                raw = await client.get("/raw", params={"path": _wire(b"README.md")})
+                assert raw.status_code == 404
+                kept = await client.get("/api/file", params={"path": _wire(b"keep.txt")})
+                assert kept.status_code == 200
+                assert kept.json()["content"] == "kept\n"
+
+        asyncio.run(_run())

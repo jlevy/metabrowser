@@ -46,6 +46,9 @@ def test_acquisition_policy_isolates_config_and_disables_lazy_fetch() -> None:
     assert "GIT_NO_LAZY_FETCH" not in read_env
     assert "GIT_CONFIG_NOSYSTEM" not in read_env
     assert "GIT_SSH_COMMAND" not in read_env
+    batch_env = git_environment(BATCH_OBJECT_POLICY)
+    assert BATCH_OBJECT_POLICY.no_lazy_fetch is True
+    assert batch_env["GIT_NO_LAZY_FETCH"] == "1"
 
 
 def test_run_git_rejects_cwd_and_target_together(tmp_path: Path) -> None:

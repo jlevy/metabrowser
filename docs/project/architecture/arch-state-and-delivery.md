@@ -116,6 +116,8 @@ rather than a filesystem mtime.
 `/api/plugin/agent-log/charts` reads that blob by `GitPath`. Inventory-backed routes
 (`/api/rollup`, `/api/catalog`, index progress/meta, capabilities, JSONL stream) return
 `unsupported_for_subject` instead of the lifespan folder.
+A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
+promisor miss, is `object_unavailable` with lazy fetch disabled.
 Event, inventory open, archive containers, and serving acquired Git still wait on later
 slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
 raise `UnsupportedSourceCapabilityError` when the active subject has no folder.

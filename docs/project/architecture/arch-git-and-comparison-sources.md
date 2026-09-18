@@ -8,7 +8,9 @@ Worktree-free repository stores and immutable revision subjects are implemented 
 reads, Git collection routes, `GitPath` file/raw/tree routes, revision comparison
 through `GitDiffSource` (including size-gated `content` via the shared cat-file pool),
 KPress blob renders, patch-file containers, binary byte chunks, extension plugin kinds,
-structured parsed, and agent-log JSONL; serving acquired Git remains later.
+structured parsed, and agent-log JSONL. LFS pointers stay stored bytes; a promisor miss
+is `object_unavailable` with lazy fetch disabled.
+Serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -257,7 +259,9 @@ the object id. `/api/file` for a `.jsonl` blob is a parsed JSONL envelope;
 Inventory-backed routes do not answer from the lifespan folder: `/api/rollup`,
 `/api/catalog`, index progress/meta, capabilities, and JSONL `/api/stream` return
 `unsupported_for_subject`. Symlinks are not followed, gitlinks are distinct non-folder
-entries, and LFS pointers remain ordinary blobs.
+entries, and LFS pointers remain ordinary blobs (stored pointer bytes, no smudge).
+A blob the tree names but the store lacks, including a promisor miss with
+`GIT_NO_LAZY_FETCH`, is `object_unavailable` and does not contact the remote.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an
