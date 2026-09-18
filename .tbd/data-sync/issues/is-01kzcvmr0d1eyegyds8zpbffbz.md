@@ -5,7 +5,7 @@ title: "HTML P4: html kind, full-page detection, and sandboxed preview"
 kind: feature
 status: in_progress
 priority: 1
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.996Z
-updated_at: 2026-09-18T04:42:59.779Z
+updated_at: 2026-09-18T04:44:38.208Z
 started_at: 2026-09-18T04:31:31.949Z
 extensions:
   linear:
@@ -25,4 +25,4 @@ Add a built-in html kind for .html/.htm with preview and source views. A bounded
 
 ## Notes
 
-Draft https://github.com/jlevy/metabrowser/pull/155 stacked on #154. html kind with Preview/Source, 4 KiB full-page sniff for the default tab, sandboxed iframe at path-shaped /raw/{path}, Preview omitted when active_content is off. Bead stays open for review; do not merge. Next HTML slice is mb-d658 publication review.
+Draft https://github.com/jlevy/metabrowser/pull/155 stacked on #154. html kind with Preview/Source, 4 KiB full-page sniff for the default tab, sandboxed iframe at path-shaped /raw/{path}, Preview omitted when active_content is off. Wheel smoke and serve banner now include html (6a0fe8a8). Bead stays open for review; do not merge. Next HTML slice is mb-d658 publication review.
