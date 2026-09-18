@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, and filtered tree totals honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, Git-native rollup, catalog, index status, tree filter tallies, tree summary, filtered tree totals, and logical-extension type matching honor a pin."""
 
 from __future__ import annotations
 
@@ -641,6 +641,55 @@ def test_git_tree_filters_and_blob_size_gate(tmp_path: Path) -> None:
             still_ok = await client.get("/api/file", params={"path": _wire(b"README.md")})
             assert still_ok.status_code == 200
             assert still_ok.json()["content"] == "hello\n"
+
+    asyncio.run(_run())
+
+
+def test_git_tree_matches_logical_extensions_not_name_suffix(tmp_path: Path) -> None:
+    work = tmp_path / "work"
+    store = tmp_path / "store.git"
+    work.mkdir()
+    _git(work, "init", "-q", "-b", "main")
+    (work / "README.md").write_text("hello\n", encoding="utf-8")
+    (work / "notmd").write_text("nope\n", encoding="utf-8")
+    (work / "bundle.min.js").write_text("x\n", encoding="utf-8")
+    _git(work, "add", "-A")
+    _git(work, "commit", "-qm", "compound")
+    commit = _git(work, "rev-parse", "HEAD").decode().strip()
+    _git(tmp_path, "clone", "--bare", "--template=", str(work), str(store), env_root=tmp_path)
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            tree = await client.get("/api/tree")
+            assert tree.status_code == 200
+            body = tree.json()
+            by_name = {node["name"]: node for node in body["tree"]}
+            assert by_name["bundle.min.js"]["logical_ext"] == ".min.js"
+            assert "logical_ext" not in by_name["notmd"]
+            rows = {row[0]: (row[1], row[2]) for row in body["extensions"]}
+            assert rows[".min.js"] == (1, 0)
+            assert ".js" not in rows
+            catalog = await client.get("/api/catalog")
+            files = {file["n"]: file["e"] for file in catalog.json()["files"]}
+            assert files["bundle.min.js"] == ".min.js"
+            assert files["notmd"] == ""
+
+            typed_md = await client.get("/api/tree", params={"types": ".md"})
+            assert typed_md.status_code == 200
+            md_names = [entry["display"] for entry in typed_md.json()["entries"]]
+            assert md_names == ["README.md"]
+            assert typed_md.json()["filtered"]["files"] == 1
+
+            typed_compound = await client.get("/api/tree", params={"types": ".min.js"})
+            assert typed_compound.status_code == 200
+            compound_names = [entry["display"] for entry in typed_compound.json()["entries"]]
+            assert compound_names == ["bundle.min.js"]
+            assert typed_compound.json()["filtered"] == {"files": 1, "size": 2, "entries": 1}
+
+            typed_js = await client.get("/api/tree", params={"types": ".js"})
+            assert typed_js.status_code == 200
+            js_names = [entry["display"] for entry in typed_js.json()["entries"]]
+            assert js_names == ["bundle.min.js"]
 
     asyncio.run(_run())
 

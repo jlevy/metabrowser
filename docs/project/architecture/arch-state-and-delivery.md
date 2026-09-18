@@ -120,9 +120,11 @@ complete-at-once index without a watcher or invented mtime.
 `/api/tree` carries whole-tree `extensions`, `canonical_extensions`, `type_families`,
 and `type_presets` rows, `tally_cache_status`, and a `summary` from that index.
 `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
-totals. The JSONL stream still returns `unsupported_for_subject` instead of the lifespan
-folder. `/api/rollup` on a pin answers from recursive blob names and sizes and omits
-mtime. A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
+totals. Git type matching uses the same bounded compound-tail logical extension as
+filesystem inventory.
+The JSONL stream still returns `unsupported_for_subject` instead of the lifespan folder.
+`/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
+A Git LFS pointer is stored pointer bytes; a tree-named missing blob, including a
 promisor miss, is `object_unavailable` with lazy fetch disabled.
 `/view/` on a pin accepts a `GitPath` wire (and a patch-file container inner) and
 refuses a filesystem spelling.
