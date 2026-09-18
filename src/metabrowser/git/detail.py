@@ -32,7 +32,7 @@ from __future__ import annotations
 import re
 
 from metabrowser.git.log import parse_decoration, parse_epoch
-from metabrowser.git.process import GitCommandError, run_git
+from metabrowser.git.process import GitCommandError, run_git_at
 from metabrowser.git.repo import RepoContext
 from metabrowser.git.wire import (
     GitAuthor,
@@ -109,9 +109,12 @@ def translate_repo_path(raw_path: str, context: RepoContext) -> tuple[str, bool]
     """Map a repository-relative path to a served-root-relative one.
 
     Returns ``(path, outside_root)``. Repository discovery requires the
-    served root and git root to match, so production contexts always
-    produce ``outside_root=False``. The containment check remains here as
-    defense in depth at the wire boundary.
+    served root and git root to match, so production filesystem contexts
+    always produce ``outside_root=False``. The containment check remains
+    here as defense in depth at the wire boundary.
+
+    A pinned revision has no working tree. Git paths stay Git paths and
+    are never flagged as outside a served folder.
 
     A file inside the repository but outside the served root keeps its
     repository-relative path and is flagged. Both alternatives are worse:
@@ -119,6 +122,8 @@ def translate_repo_path(raw_path: str, context: RepoContext) -> tuple[str, bool]
     safe-path layer must then reject, and omitting it would misreport
     what the commit changed.
     """
+    if context.git_root is None or context.served_root is None:
+        return raw_path, False
     absolute = context.git_root / raw_path
     try:
         return str(absolute.relative_to(context.served_root)), False
@@ -356,7 +361,7 @@ async def read_commit_detail(
 ) -> GitCommitDetail | None:
     """Read one commit's detail. ``None`` when the revision is unknown."""
     try:
-        raw = await run_git(_show_args(revision), cwd=context.served_root)
+        raw = await run_git_at(_show_args(revision), context.command_location())
     except GitCommandError as exc:
         if any(marker in exc.stderr_summary.lower() for marker in _UNKNOWN_REVISION_MARKERS):
             return None

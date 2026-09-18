@@ -25,7 +25,6 @@ Every route is read-only. Four shared rules hold across all of them:
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -41,13 +40,23 @@ from metabrowser.git.history import (
     resolve_history_scope,
 )
 from metabrowser.git.log import read_history_summary, read_refs
-from metabrowser.git.process import GitError, GitTimeoutError, failure_detail
+from metabrowser.git.process import GitError, GitLocation, GitTimeoutError, failure_detail
 from metabrowser.git.repo import RepoContext, repo_info
+from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.git.wire import GitRepoInfo, is_full_revision
 from metabrowser.settings import GIT_LOG_DEFAULT_LIMIT, GIT_LOG_MAX_LIMIT
-from metabrowser.source import session_filesystem_root
+from metabrowser.source import get_source_session, session_filesystem_root
 
 log = logging.getLogger(__name__)
+
+
+def session_git_location() -> GitLocation:
+    """The Git command location for the active repository subject."""
+
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return GitLocation.revision(subject.command_target, subject.commit_oid)
+    return GitLocation.filesystem(session_filesystem_root())
 
 
 def _negative_payload(info: GitRepoInfo) -> dict[str, object]:
@@ -55,7 +64,7 @@ def _negative_payload(info: GitRepoInfo) -> dict[str, object]:
     return {"is_repo": False, "reason": info.get("reason", "not_a_repo")}
 
 
-async def _resolve(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]:
+async def _resolve(location: GitLocation) -> tuple[RepoContext | None, GitRepoInfo]:
     """Resolve the repository, translating discovery failures to a negative.
 
     Discovery already converts the ordinary failures into a negative
@@ -63,7 +72,7 @@ async def _resolve(served_root: Path) -> tuple[RepoContext | None, GitRepoInfo]:
     no route has to repeat the handling.
     """
     try:
-        return await repo_info(served_root)
+        return await repo_info(location)
     except GitError as exc:
         log.warning("git repository resolution failed: %s", failure_detail(exc))
         return None, GitRepoInfo(is_repo=False, root=None, head=None, reason="git_failed")
@@ -88,19 +97,19 @@ async def api_git_repo(_request: Request) -> JSONResponse:
     ``is_repo`` decides whether the Git tab exists at all. TTL-cached in
     :mod:`metabrowser.git.repo`, so polling it is inexpensive.
     """
-    _context, info = await _resolve(session_filesystem_root())
+    _context, info = await _resolve(session_git_location())
     return JSONResponse(dict(info))
 
 
 async def api_git_refs(_request: Request) -> JSONResponse:
     """``GET /api/git/refs`` — every branch, remote branch, and tag."""
-    served_root = session_filesystem_root()
-    context, info = await _resolve(served_root)
+    location = session_git_location()
+    context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))
 
     try:
-        refs = await read_refs(served_root, head_ref=context.head["ref"])
+        refs = await read_refs(location, head_ref=context.head["ref"])
     except GitError as exc:
         log.warning("git refs failed: %s", failure_detail(exc))
         return _git_failure_response(exc)
@@ -119,8 +128,8 @@ async def api_git_summary(request: Request) -> JSONResponse:
     ``scope`` follows ``/api/git/log``: ``all`` counts every ref, the
     default counts the same refs the panel walks.
     """
-    served_root = session_filesystem_root()
-    context, info = await _resolve(served_root)
+    location = session_git_location()
+    context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))
     if context.head.get("unborn"):
@@ -128,9 +137,9 @@ async def api_git_summary(request: Request) -> JSONResponse:
 
     wants_all = request.query_params.get("scope") == "all"
     try:
-        scope = await resolve_history_scope(served_root, wants_all=wants_all)
+        scope = await resolve_history_scope(location, wants_all=wants_all)
         commit_count, first_commit_at = await read_history_summary(
-            served_root,
+            location,
             revisions=scope.arguments,
             all_refs=wants_all,
         )
@@ -160,10 +169,11 @@ async def api_git_log(request: Request) -> JSONResponse:
         ``all`` walks every ref. The default walks HEAD, its upstream,
         and whichever trunk refs exist, because ``--all`` in a
         many-ref repository shows whichever branch commits most often
-        and buries the rest.
+        and buries the rest. A pinned revision's default walk is that
+        object id only, not the store's ambient HEAD.
     """
-    served_root = session_filesystem_root()
-    context, info = await _resolve(served_root)
+    location = session_git_location()
+    context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))
 
@@ -180,7 +190,7 @@ async def api_git_log(request: Request) -> JSONResponse:
     wants_all = raw_scope == "all" if raw_scope is not None else None
     try:
         page = await HISTORY_SESSIONS.read_page(
-            served_root,
+            location,
             wants_all=wants_all,
             limit=limit,
             cursor=cursor,
@@ -236,8 +246,8 @@ async def api_git_commit(request: Request) -> JSONResponse:
             status_code=400,
         )
 
-    served_root = session_filesystem_root()
-    context, info = await _resolve(served_root)
+    location = session_git_location()
+    context, info = await _resolve(location)
     if context is None:
         return JSONResponse(_negative_payload(info))
 
@@ -280,4 +290,5 @@ __all__ = [
     "api_git_log",
     "api_git_refs",
     "api_git_repo",
+    "session_git_location",
 ]

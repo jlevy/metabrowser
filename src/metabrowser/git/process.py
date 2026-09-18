@@ -65,6 +65,14 @@ _STDERR_MAX_BYTES = 64 * 1024
 # unescaped in each parser.
 GIT_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
 
+# Store reads must not apply the operator's mailmap to acquired objects.
+GIT_DISABLE_MAILMAP_ARGS: Final[tuple[str, ...]] = (
+    "-c",
+    "mailmap.blob=",
+    "-c",
+    "mailmap.file=",
+)
+
 # Acquisition has no measured low-speed stall bound yet.
 # This wall-clock cap is only so a forgotten child cannot live forever; user
 # cancellation is the product guard. The 900s value is the measurement-harness
@@ -162,6 +170,59 @@ class RepositoryStoreTarget:
 
 
 type GitCommandTarget = AttachedWorktreeTarget | RepositoryStoreTarget
+
+
+@dataclass(frozen=True, slots=True)
+class GitLocation:
+    """Where Git commands run: a worktree path or a trusted target, never both.
+
+    ``identity`` is the discovery-cache and history-session key. It is never
+    placed on the wire. A revision location always carries the pinned full
+    object id so two pins over one store do not share HEAD or history.
+    """
+
+    cwd: Path | None
+    target: GitCommandTarget | None
+    identity: str
+    pinned_revision: str | None
+
+    def __post_init__(self) -> None:
+        if (self.cwd is None) == (self.target is None):
+            raise TypeError("GitLocation requires cwd XOR target")
+        if self.target is not None and self.pinned_revision is None:
+            raise TypeError("a command-target location requires a pinned revision")
+        if self.cwd is not None and self.pinned_revision is not None:
+            raise TypeError("a filesystem location cannot pin a revision")
+
+    @classmethod
+    def filesystem(cls, root: Path) -> GitLocation:
+        resolved = root.expanduser().resolve()
+        return cls(cwd=resolved, target=None, identity=str(resolved), pinned_revision=None)
+
+    @classmethod
+    def revision(cls, target: RepositoryStoreTarget, commit_oid: str) -> GitLocation:
+        return cls(
+            cwd=None,
+            target=target,
+            identity=f"git-revision:{target.git_dir}:{commit_oid}",
+            pinned_revision=commit_oid,
+        )
+
+    @property
+    def read_policy(self) -> GitProcessPolicy:
+        return ACQUISITION_POLICY if self.target is not None else READ_POLICY
+
+    @property
+    def config_args(self) -> tuple[str, ...]:
+        return GIT_DISABLE_MAILMAP_ARGS if self.target is not None else ()
+
+
+def as_location(value: Path | GitLocation) -> GitLocation:
+    """Accept the historical ``Path`` overload or an explicit location."""
+
+    if isinstance(value, GitLocation):
+        return value
+    return GitLocation.filesystem(value)
 
 
 class GitError(Exception):
@@ -493,6 +554,46 @@ async def spawn_git_process(
         raise GitUnavailableError(f"could not run git: {exc}") from exc
 
 
+async def run_git_at(
+    args: Sequence[str],
+    location: GitLocation,
+    *,
+    policy: GitProcessPolicy | None = None,
+    timeout_s: float | None = None,
+    max_bytes: int | None = None,
+    stdin: bytes | None = None,
+) -> bytes:
+    """Run ``git`` at *location*, applying store isolation when it is a pin."""
+
+    return await run_git(
+        [*location.config_args, *args],
+        cwd=location.cwd,
+        target=location.target,
+        policy=policy if policy is not None else location.read_policy,
+        timeout_s=timeout_s,
+        max_bytes=max_bytes,
+        stdin=stdin,
+    )
+
+
+async def spawn_git_at(
+    args: Sequence[str],
+    location: GitLocation,
+    *,
+    policy: GitProcessPolicy | None = None,
+    pipe_stdin: bool = False,
+) -> asyncio.subprocess.Process:
+    """Start a Git process at *location*, applying store isolation when pinned."""
+
+    return await spawn_git_process(
+        [*location.config_args, *args],
+        cwd=location.cwd,
+        target=location.target,
+        policy=policy if policy is not None else location.read_policy,
+        pipe_stdin=pipe_stdin,
+    )
+
+
 async def terminate_git_process(proc: asyncio.subprocess.Process) -> None:
     """Kill *proc* and reap it, so a timeout cannot leak a child.
 
@@ -619,8 +720,10 @@ __all__ = [
     "BATCH_OBJECT_POLICY",
     "FETCH_POLICY",
     "GIT_ACQUISITION_TIMEOUT_S",
+    "GIT_DISABLE_MAILMAP_ARGS",
     "GitCommandError",
     "GitError",
+    "GitLocation",
     "GitOutputTooLargeError",
     "GitProcessPolicy",
     "GitTimeoutError",
@@ -629,6 +732,7 @@ __all__ = [
     "UnsupportedGitVersionError",
     "acquisition_allowed",
     "acquisition_gate_as_fixture",
+    "as_location",
     "attached_worktree_target",
     "detect_git_version",
     "failure_detail",
@@ -640,6 +744,8 @@ __all__ = [
     "repository_store_target",
     "require_acquisition_git",
     "run_git",
+    "run_git_at",
+    "spawn_git_at",
     "spawn_git_process",
     "terminate_git_process",
 ]
