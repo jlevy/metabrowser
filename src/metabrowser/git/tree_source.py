@@ -6,8 +6,9 @@ does not check out, index, branch, or invent filesystem facts. Batch
 :data:`MAX_BATCH_READERS_PER_STORE` in one process). Git discovery,
 history, refs, commit detail, file, raw, tree, diffs, KPress, patch-file
 containers, binary byte chunks, plugin kinds from identity and bounded
-JSON/YAML/frontmatter bytes, structured parsed, and agent-log JSONL honor a
-pinned revision; serving acquired Git stays on a later bead.
+JSON/YAML/frontmatter bytes, structured parsed, agent-log JSONL, and
+``GitDiffSource.content`` honor a pinned revision; serving acquired Git
+stays on a later bead.
 """
 
 from __future__ import annotations
@@ -395,6 +396,27 @@ def store_batch_reader_count(target: RepositoryStoreTarget) -> int:
         return 0 if pool is None else len(pool._readers)
 
 
+async def read_store_blob(
+    target: RepositoryStoreTarget,
+    oid: str,
+    *,
+    max_blob_bytes: int = TEXT_PREVIEW_REQUEST_MAX_BYTES,
+) -> bytes:
+    """Read one blob through the shared per-store cat-file pool.
+
+    Callers that are not a live ``GitTreeSource`` still share the pool and
+    the size gate. The retain/release pair closes the pool when nothing
+    else holds it.
+    """
+
+    pool = _retain_pool(target)
+    try:
+        async with pool.checkout() as reader:
+            return await reader.read_blob(require_full_oid(oid), max_blob_bytes=max_blob_bytes)
+    finally:
+        await _release_pool(pool)
+
+
 async def _drain_stderr(proc: asyncio.subprocess.Process) -> tuple[bytes, bool]:
     stream = proc.stderr
     if stream is None:
@@ -703,6 +725,7 @@ __all__ = [
     "GitTreeEntry",
     "GitTreeSource",
     "git_revision_subject",
+    "read_store_blob",
     "require_full_oid",
     "store_batch_reader_count",
 ]

@@ -173,7 +173,8 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`. On a
-`GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation`; patch
+`GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
+`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
 `document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
 `GitPath`.
 

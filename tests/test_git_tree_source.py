@@ -23,6 +23,7 @@ from metabrowser.git.tree_source import (
     GitPathError,
     GitRevisionSubject,
     git_revision_subject,
+    read_store_blob,
     store_batch_reader_count,
 )
 from metabrowser.plugin_api import (
@@ -418,5 +419,36 @@ def test_two_tree_sources_share_one_store_reader_pool(tmp_path: Path) -> None:
         await second.aclose()
         assert store_batch_reader_count(target) == 0
         assert (store / "index").exists() is False
+
+    asyncio.run(_run())
+
+
+def test_read_store_blob_gates_size_without_a_live_subject(tmp_path: Path) -> None:
+    async def _run() -> None:
+        store, commit = _build_store(tmp_path)
+        target = repository_store_target(git_dir=store)
+        subject = await git_revision_subject(target=target, commit_oid=commit)
+        source = subject.tree_source
+        try:
+            readme = next(
+                entry
+                for entry in await source.list_tree()
+                if entry.path.segments[-1] == b"README.md"
+            )
+            big = next(
+                entry for entry in await source.list_tree() if entry.path.segments[-1] == b"big.bin"
+            )
+            readme_oid, big_oid = readme.oid, big.oid
+        finally:
+            await subject.aclose()
+        assert store_batch_reader_count(target) == 0
+        assert await read_store_blob(target, readme_oid) == b"hello\n"
+        try:
+            await read_store_blob(target, big_oid, max_blob_bytes=16)
+            raise AssertionError("oversized blob must be refused")
+        except GitBlobTooLargeError as exc:
+            assert exc.size == 64
+            assert exc.max_bytes == 16
+        assert store_batch_reader_count(target) == 0
 
     asyncio.run(_run())

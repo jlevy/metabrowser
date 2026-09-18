@@ -101,6 +101,7 @@ lease makes that busy.
 Git discovery, history, refs, commit detail, file, raw, tree, diffs, KPress, and
 patch-file containers honor that pin through `GitLocation` and `GitPath`. On a pin,
 `/api/plugin/diff/comparison` treats `HEAD` as the pinned object id.
+`GitDiffSource.content` reads that blob through the shared cat-file pool.
 `/api/kpress/render` uses the blob object id as its cache key rather than a filesystem
 mtime. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path;
 the file envelope and the diff document/children hooks use that split.
