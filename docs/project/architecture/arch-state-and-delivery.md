@@ -122,9 +122,10 @@ promisor miss, is `object_unavailable` with lazy fetch disabled.
 refuses a filesystem spelling.
 `/api/tree` on that pin keeps Git-native `entries` and also projects a SPA `tree` array
 so navigation can paint (`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes,
-no invented mtime or ignore; gitlinks are files and stay unsized).
-A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with no
-invented directory aggregates.
+recursive dir `total_files`/`total_size`, no invented mtime or ignore; gitlinks are
+files and stay unsized).
+A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
+recursive blob tallies and no mtime.
 A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview;
 treemap stays unmounted because it needs inventory rollup.
 Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
@@ -132,10 +133,10 @@ known-file catalog uses the tree node’s display `name` as the basename, and KP
 `source_path` is the wire rather than a display path.
 SPA path chrome and copy-path decode GitPath wires to display names; navigation
 identities stay wires.
-Omitted size, mtime, and directory aggregates leave tally chrome empty rather than
-pending. Event, inventory open, archive containers, and serving acquired Git still wait
-on later slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers:
-they raise `UnsupportedSourceCapabilityError` when the active subject has no folder.
+Omitted mtime leaves tally chrome empty rather than pending.
+Event, inventory open, archive containers, and serving acquired Git still wait on later
+slices. `resolve_path` and `served_root` remain filesystem-only plugin helpers: they
+raise `UnsupportedSourceCapabilityError` when the active subject has no folder.
 Recency, ignore, watcher, activity, and mutation are named source capabilities with the
 same typed error.
 

@@ -14,11 +14,11 @@ on a pin resolve to `GitPath` wires.
 A Git tree folder with a README mounts Overview.
 SPA path chrome decodes GitPath wires to display names.
 Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
-stay unsized.
-Omitted mtime and directory aggregates leave tally chrome empty rather than
-pending. LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with
-lazy fetch disabled.
-Serving acquired Git remains later.
+stay unsized as blobs.
+Recursive `ls-tree -r` tallies fill directory `total_files` / `total_size`. Omitted
+mtime leaves age chrome empty rather than pending.
+LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
+disabled. Serving acquired Git remains later.
 See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
@@ -273,19 +273,18 @@ A blob the tree names but the store lacks, including a promisor miss with
 `/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
 container inner, and refuses a filesystem spelling.
 `/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array
-(`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes, no mtime/ignore);
-gitlinks are files and stay unsized.
+(`dir`/`file`/`symlink`, `GitPath` wires, `cat-file` blob sizes, recursive dir
+`total_files`/`total_size`, no mtime/ignore); gitlinks are files and stay unsized.
 `min_size` filters sized blobs and keeps trees.
-A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with no
-invented directory aggregates.
+A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
+recursive blob tallies and no mtime.
 A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview;
 treemap stays unmounted.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
 SPA path chrome and copy-path decode those wires to display names; navigation identities
-stay wires.
-Omitted size, mtime, and directory aggregates leave tally chrome empty rather
-than pending. KPress `source_path` on a pin is that wire.
+stay wires. Omitted mtime leaves tally chrome empty rather than pending.
+KPress `source_path` on a pin is that wire.
 
 Views pin the full object ID before reading.
 Ref refresh may make another object current for a later selection, but cannot change an

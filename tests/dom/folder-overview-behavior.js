@@ -103,8 +103,18 @@ global.window = { METABROWSER_SETTINGS: {} };
       fileOverviewPanel.resolve({ path: "g1-UkVBRE1FLm1k", raw: { git_kind: "tree" } }) === null,
   );
   check(
+    "File Overview hides Git dir tallies that omit mtime",
+    fileOverviewPanel.resolve({
+      path: "",
+      raw: { git_kind: "tree", dir: { total_files: 9, total_size: 100 } },
+    }) === null,
+  );
+  check(
     "File Overview still mounts when dir aggregates are present",
-    fileOverviewPanel.resolve({ path: "src", raw: { dir: { state: "complete" } } }).key === "src",
+    fileOverviewPanel.resolve({
+      path: "src",
+      raw: { dir: { state: "complete", mtime: null } },
+    }).key === "src",
   );
   check(
     "neither body registers a section of its own",

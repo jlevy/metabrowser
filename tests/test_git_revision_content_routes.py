@@ -183,8 +183,6 @@ def _assert_listing_entry(entry: dict[str, object]) -> None:
 def _assert_nav_tree_node(node: dict[str, object]) -> None:
     assert "mtime" not in node
     assert "mtime_ns" not in node
-    assert "total_files" not in node
-    assert "total_size" not in node
     assert "gitignored" not in node
     assert node["name"]
     assert node["path"]
@@ -193,9 +191,17 @@ def _assert_nav_tree_node(node: dict[str, object]) -> None:
         assert "size" not in node
         assert node["children"] is None
         assert node["has_children"] is True
+        if "total_files" in node:
+            assert isinstance(node["total_files"], int)
+            assert node["total_files"] >= 0
+        if "total_size" in node:
+            assert isinstance(node["total_size"], int)
+            assert node["total_size"] >= 0
     else:
         assert "children" not in node
         assert "has_children" not in node
+        assert "total_files" not in node
+        assert "total_size" not in node
         if "size" in node:
             assert isinstance(node["size"], int)
             assert node["size"] >= 0
@@ -314,7 +320,9 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             assert folder_body["name"] == "docs"
             assert folder_body["path"] == docs_wire
             assert folder_body["views"] == []
-            assert "dir" not in folder_body
+            assert "dir" not in folder_body or "mtime" not in folder_body["dir"]
+            assert folder_body["dir"]["total_files"] == 1
+            assert folder_body["dir"]["total_size"] == 7
             assert "total_files" not in folder_body
             assert "mtime" not in folder_body
 
@@ -360,6 +368,9 @@ def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
             assert by_name["docs"]["path"] == _wire(b"docs")
             assert by_name["docs"]["children"] is None
             assert by_name["docs"]["has_children"] is True
+            assert by_name["docs"]["total_files"] == 1
+            assert by_name["docs"]["total_size"] == 7
+            assert "mtime" not in by_name["docs"]
             assert by_name["README.md"]["type"] == "file"
             assert by_name["README.md"]["path"] == _wire(b"README.md")
             assert by_name["README.md"]["logical_ext"] == ".md"
@@ -368,6 +379,8 @@ def test_git_tree_projects_spa_nav_nodes(tmp_path: Path) -> None:
             assert by_name["link"]["size"] == 9
             assert "size" not in by_name["docs"]
             assert by_name["vendor"]["type"] == "dir"
+            assert by_name["vendor"]["total_files"] == 0
+            assert by_name["vendor"]["total_size"] == 0
             names = {entry["display"] for entry in body["entries"]}
             assert names >= {"README.md", "docs", "link", "vendor"}
 
@@ -402,8 +415,22 @@ def test_git_file_folder_envelope_is_spa_folder_chrome(tmp_path: Path) -> None:
             assert "treemap" not in view_ids
             assert root_body["readme_path"] == _wire(b"README.md")
             assert root_body["readme_search_truncated"] is False
-            assert "dir" not in root_body
+            assert root_body["dir"]["total_files"] == 9
+            assert "mtime" not in root_body["dir"]
+            assert "unignored_files" not in root_body["dir"]
             assert "total_files" not in root_body
+            tree = await client.get("/api/tree")
+            blob_size = 0
+            blob_count = 0
+            for node in tree.json()["tree"]:
+                if node["type"] == "dir":
+                    blob_count += int(node["total_files"])
+                    blob_size += int(node["total_size"])
+                elif "size" in node:
+                    blob_count += 1
+                    blob_size += int(node["size"])
+            assert root_body["dir"]["total_size"] == blob_size
+            assert root_body["dir"]["total_files"] == blob_count
             assert str(store) not in root.text
 
             vendor = await client.get("/api/file", params={"path": _wire(b"vendor")})
@@ -414,6 +441,7 @@ def test_git_file_folder_envelope_is_spa_folder_chrome(tmp_path: Path) -> None:
             assert vendor_body["name"] == "vendor"
             assert vendor_body["views"] == []
             assert vendor_body["readme_path"] == ""
+            assert vendor_body["dir"] == {"total_files": 0, "total_size": 0}
             gitlink = await client.get("/api/file", params={"path": _wire(b"vendor", b"dep")})
             assert gitlink.json()["kind"] != "folder"
 

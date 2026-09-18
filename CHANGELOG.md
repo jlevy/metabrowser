@@ -140,10 +140,11 @@ Content source:
   inner, and refuses a filesystem spelling; missing Git objects remain valid shell
   destinations. `/api/tree` on that pin keeps Git-native `entries` and also projects a
   SPA `tree` array (`dir` / `file` / `symlink`, `GitPath` wires, lazy `children` for Git
-  trees) with `cat-file` blob sizes on files and symlinks, without mtime or ignore
-  facts. Gitlinks project as files, not directories.
+  trees) with `cat-file` blob sizes on files and symlinks and recursive blob
+  `total_files` / `total_size` on directories, without mtime or ignore facts.
+  Gitlinks project as files, not directories.
   A Git tree `/api/file` envelope is SPA `folder` chrome (`git_kind` stays `tree`) with
-  no invented directory aggregates.
+  recursive blob `total_files` / `total_size` and no mtime or ignore.
   Markdown and wiki links on that pin encode authored segments as `GitPath` wires; the
   known-file catalog uses the tree node’s display `name` as the basename, and KPress
   `source_path` is the wire rather than a display path.
@@ -151,11 +152,12 @@ Content source:
   the GitPath wire) and omits treemap, which needs inventory rollup.
   SPA path chrome and copy-path decode GitPath wires to display names; navigation
   identities stay wires.
-  Omitted Git size, mtime, and directory aggregates leave tally chrome empty rather than
-  pulsing as a still-finalizing inventory walk.
+  Omitted Git mtime still leaves age chrome empty rather than pulsing as a
+  still-finalizing inventory walk.
   Blob listings carry `cat-file` info sizes so `min_size` can filter; trees and gitlinks
-  stay unsized. Inventory open, archive containers, and serving acquired Git are not
-  switched yet.
+  stay unsized. Recursive `ls-tree -r` tallies fill directory `total_files` /
+  `total_size`. Inventory open, archive containers, serving acquired Git, and Git-native
+  treemap rollup are not switched yet.
 
 ## 0.10.0
 
