@@ -266,11 +266,11 @@ def _file_node(entry: RollupEntry, parent_ignored: bool, options: RollupOptions)
         "path": entry.path,
         "type": "file",
         "size": entry.size,
-        "ext": entry.ext,
-        "gitignored": parent_ignored or entry.gitignored,
     }
     if not options.omit_mtime:
         node["mtime"] = entry.mtime_ns / 1_000_000_000.0
+    node["ext"] = entry.ext
+    node["gitignored"] = parent_ignored or entry.gitignored
     return node
 
 
@@ -293,11 +293,11 @@ def _directory_node(
         "total_size": aggregate.size_all,
         "unignored_files": aggregate.files_unignored,
         "unignored_size": aggregate.size_unignored,
-        "gitignored": ignored,
-        "dominant_ext": ranked_extensions[0] if ranked_extensions else "",
     }
     if not options.omit_mtime:
         node["mtime"] = aggregate.newest_mtime_ns / 1_000_000_000.0
+    node["gitignored"] = ignored
+    node["dominant_ext"] = ranked_extensions[0] if ranked_extensions else ""
     return node
 
 
