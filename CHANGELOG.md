@@ -129,8 +129,10 @@ Content source:
   the cache key instead of a filesystem mtime.
   `/api/file` for a Git `.jsonl` blob is a parsed JSONL envelope; adapter sniffing
   claims `agent-log` when the bytes match Claude, Gemini, or Pi.
-  `/api/plugin/agent-log/charts` reads that blob by `GitPath`. Inventory open, archive
-  containers, and serving acquired Git are not switched yet.
+  `/api/plugin/agent-log/charts` reads that blob by `GitPath`. Inventory-backed routes
+  (`/api/rollup`, `/api/catalog`, `/api/index/*`, `/api/capabilities`, `/api/stream`)
+  return `unsupported_for_subject` rather than the lifespan filesystem inventory.
+  Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0
 
