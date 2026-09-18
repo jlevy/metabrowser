@@ -8,7 +8,8 @@ history, refs, commit detail, file, raw, tree, diffs, KPress, patch-file
 containers, binary byte chunks, plugin kinds from identity and bounded
 JSON/YAML/frontmatter bytes, structured parsed, agent-log JSONL, and
 ``GitDiffSource.content`` honor a pinned revision. ``/view/`` accepts a
-``GitPath`` wire on that pin. An LFS pointer is the stored pointer bytes;
+``GitPath`` wire on that pin. ``/api/tree`` also projects a SPA ``tree``
+array of GitPath nav nodes. An LFS pointer is the stored pointer bytes;
 a blob the tree names but the store lacks is ``object_unavailable`` with
 lazy fetch disabled. Serving acquired Git stays on a later bead.
 """
