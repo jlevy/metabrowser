@@ -72,6 +72,8 @@ Repository cache:
   entries by object ID; a prefetch failure still publishes with `object_state`
   converging. A staging entry whose liveness lock is free is swept, and an unreferenced
   published store is reclaimed.
+  A `file://` acquire that the Git version floor refuses does not create the application
+  home; a cache hit still reuses a published store without fetching.
 
 ## 0.10.0
 

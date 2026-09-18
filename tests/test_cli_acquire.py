@@ -12,6 +12,11 @@ from typer.testing import CliRunner
 from metabrowser.cache.paths import SOURCES, STAGING, source_record
 from metabrowser.cli.main import _app
 from metabrowser.errors import CLIError
+from metabrowser.git.process import (
+    UnsupportedGitVersionError,
+    acquisition_allowed,
+    detect_git_version,
+)
 from tests.test_cache_acquire import _allow_installed_git, _origin
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only cache is POSIX-only")
@@ -127,3 +132,37 @@ def test_api_on_a_local_root_sees_a_prior_no_serve_acquire(
     assert listed.exit_code == 0, listed.output
     assert slug in listed.output
     assert '"publication": "published"' in listed.output
+
+
+@posix_only
+def test_no_serve_refuses_below_floor_git_without_creating_the_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+
+    def refuse() -> tuple[int, int, int]:
+        raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
+
+    monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--no-serve"])
+    assert isinstance(result.exception, CLIError)
+    assert "unsupported Git version" in str(result.exception)
+    assert not home.exists()
+
+
+@posix_only
+def test_installed_git_below_the_floor_is_refused_by_no_serve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version, _raw = detect_git_version()
+    if acquisition_allowed(version):
+        pytest.skip("installed git meets the acquisition floor")
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_HOME", str(home))
+    url = _file_url(_origin(tmp_path, allow_filter=False))
+    result = runner.invoke(_app, [url, "--no-serve"])
+    assert isinstance(result.exception, CLIError)
+    assert "unsupported Git version" in str(result.exception)
+    assert not home.exists()

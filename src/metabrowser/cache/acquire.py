@@ -671,17 +671,23 @@ def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
 
 
 async def acquire_file_source(source: GitSource, *, home: Path) -> PublishedSource:
-    """Return a published ``file://`` source, fetching only on a cache miss."""
+    """Return a published ``file://`` source, fetching only on a cache miss.
+
+    A hit inspects an existing home without fetching, so it does not require the
+    acquisition Git floor. A miss must pass that floor before ``open_cache``
+    creates the home.
+    """
 
     if source.transport != "file":
         raise AcquisitionError(
             f"{source.transport} Git sources are not acquired yet ({source.normalized})"
         )
-    cache = open_cache(home)
-    home = cache.home
-    found = _find_published(source, home)
-    if found is not None:
-        return found
+    if home.exists():
+        cache = open_cache(home)
+        home = cache.home
+        found = _find_published(source, home)
+        if found is not None:
+            return found
     staged = await acquire_into_staging(source, home=home)
     return publish_from_staging(staged)
 

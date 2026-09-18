@@ -15,6 +15,7 @@ from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import (
     AcquisitionError,
     RemoteUnavailableError,
+    acquire_file_source,
     acquire_into_staging,
 )
 from metabrowser.cache.identity import source_identity
@@ -253,3 +254,38 @@ def test_git_below_the_acquisition_floor_is_refused(
         not (home / "cache" / "staging").exists()
         or list((home / "cache" / "staging").iterdir()) == []
     )
+
+
+@posix_only
+def test_acquire_file_source_refuses_below_floor_git_before_creating_the_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+
+    def refuse() -> tuple[int, int, int]:
+        raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
+
+    monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
+    with pytest.raises(UnsupportedGitVersionError):
+        asyncio.run(acquire_file_source(_file_source(origin), home=home))
+    assert not home.exists()
+
+
+@posix_only
+def test_a_cache_hit_does_not_require_the_acquisition_floor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path, allow_filter=False)
+    home = tmp_path / "home"
+    source = _file_source(origin)
+    first = asyncio.run(acquire_file_source(source, home=home))
+
+    def refuse() -> tuple[int, int, int]:
+        raise UnsupportedGitVersionError("git version 2.39.5", "2.43.7")
+
+    monkeypatch.setattr("metabrowser.cache.acquire.require_acquisition_git", refuse)
+    second = asyncio.run(acquire_file_source(source, home=home))
+    assert second.store_id == first.store_id
+    assert second.slug == first.slug
