@@ -5,7 +5,7 @@ title: "Repository library Phase 1B-a: hardened worktree-free Git acquisition (n
 kind: task
 status: in_progress
 priority: 1
-version: 55
+version: 56
 spec_path: docs/project/specs/active/plan-2026-08-11-open-repo-from-git-url.md
 delegate: unknown@cursor
 labels:
@@ -37,7 +37,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-08-11T21:19:58.653Z
-updated_at: 2026-09-18T03:53:25.648Z
+updated_at: 2026-09-18T03:56:05.616Z
 started_at: 2026-09-16T21:10:44.811Z
 extensions:
   linear:
@@ -48,4 +48,4 @@ Extend the one Git runner with core-constructed trusted command targets, version
 
 ## Notes
 
-CI green through #149. Next slice shipped as draft #150 (mb-5edg, read-only cache hit, HEAD 9ec9a8d0). Do not merge. Live tryscripts still wait on mb-oueh. Evaluate mb-cun0 before mb-k900 serves. No further 1B-a child after mb-5edg; remaining acquisition work is Git pin, HTML trust, or serving.
+CI green through #150 (mb-5edg). Next slice shipped as draft #151 (mb-hodu, last_opened_at). Do not merge. Live tryscripts still wait on mb-oueh. Evaluate mb-cun0 before mb-k900 serves.
