@@ -23,6 +23,7 @@ import metabrowser.builtin_plugins.structured.parser as parser_mod
 from metabrowser.builtin_plugins.structured.parser import (
     _count_nodes_and_depth,
     parse_structured,
+    parse_structured_bytes,
 )
 
 
@@ -119,6 +120,26 @@ def test_parse_error_malformed_json(tmp_path: Path) -> None:
     payload = parse_structured(f, ".json", "h1")
     assert payload.parse_error is not None
     assert payload.parsed is None
+
+
+def test_parse_structured_bytes_json_malformed_and_truncated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = parse_structured_bytes(b'{"name": "pin", "count": 2}', ".json")
+    assert payload.parse_error is None
+    assert payload.truncated is False
+    assert payload.parsed == {"name": "pin", "count": 2}
+
+    bad = parse_structured_bytes(b'{"a": 1, "b":}', ".json")
+    assert bad.parse_error is not None
+    assert bad.parsed is None
+    assert bad.truncated is False
+
+    monkeypatch.setattr(parser_mod, "STRUCTURED_PARSE_MAX_BYTES", 8)
+    huge = parse_structured_bytes(b'{"x": "' + b"y" * 32 + b'"}', ".json")
+    assert huge.truncated is True
+    assert huge.parsed is None
+    assert huge.parse_error is None
 
 
 def test_truncated_for_oversize(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

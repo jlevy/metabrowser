@@ -18,6 +18,7 @@ adapter sniff (for JSONL), and a lazily-loaded YAML frontmatter dict.
 The wrapper is shared with the imperative fallback detector chain in
 ``file_kinds.py``.
 Declarative manifest rules are the supported plugin classification surface.
+``classify_identity`` is the Git-blob subset: extension and basename only.
 """
 
 from __future__ import annotations
@@ -230,6 +231,54 @@ def _match_one(rule: KindMatch, ctx: FileContext) -> bool:
             if not isinstance(value, str) or not value.startswith(rule.yaml_value_prefix):
                 return False
     return True
+
+
+_IDENTITY_ONLY_SKIP_FIELDS: tuple[str, ...] = (
+    "adapter",
+    "frontmatter_has_key",
+    "frontmatter_schema_prefix",
+    "json_has_key",
+    "json_value_prefix",
+    "yaml_has_key",
+    "yaml_value_prefix",
+    "path_glob",
+)
+
+
+def classify_identity(
+    rules: list[CompiledKindRule],
+    *,
+    ext: str,
+    basename: str,
+) -> str | None:
+    """Match plugin kinds that need only an extension or basename.
+
+    Rules that read file bytes, frontmatter, adapters, or a served-root glob
+    are skipped: a Git blob has no host path, and those predicates stay on
+    the filesystem classifier.
+    """
+
+    for compiled in sorted(rules, key=lambda item: item.sort_key):
+        match = compiled.rule.match
+        if any(getattr(match, field) is not None for field in _IDENTITY_ONLY_SKIP_FIELDS):
+            continue
+        if match.ext is not None and ext != match.ext:
+            continue
+        if match.exts is not None and ext not in match.exts:
+            continue
+        if match.basename is not None and basename != match.basename:
+            continue
+        if match.folder_marker is not None and basename != match.folder_marker:
+            continue
+        if (
+            match.ext is None
+            and match.exts is None
+            and match.basename is None
+            and match.folder_marker is None
+        ):
+            continue
+        return compiled.rule.id
+    return None
 
 
 def build_classifier(rules: list[CompiledKindRule]) -> KindClassifier:
