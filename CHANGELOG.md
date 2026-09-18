@@ -113,6 +113,8 @@ Content source:
   `/api/plugin/diff/comparison` honors that pin through `GitLocation`: `HEAD` is the
   pinned object id, not the store’s ambient HEAD, and the document names Git object
   facts rather than a cache path.
+  `/api/kpress/render` reads the blob by `GitPath` and uses the object id as the render
+  cache key instead of a filesystem mtime.
   Inventory open, container, and serving acquired Git are not switched yet.
 
 ## 0.10.0

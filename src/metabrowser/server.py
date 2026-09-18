@@ -96,7 +96,12 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
-from metabrowser.git.content_routes import git_revision_file, git_revision_raw, git_revision_tree
+from metabrowser.git.content_routes import (
+    git_revision_file,
+    git_revision_kpress_render,
+    git_revision_raw,
+    git_revision_tree,
+)
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
 from metabrowser.git.tree_source import GitRevisionSubject
@@ -2506,7 +2511,7 @@ _KPRESS_EXPORT_REQUEST_MAX_BYTES = 64 * 1024
 
 
 @log_async_calls(if_slower_than=0.1)
-async def api_kpress_render(request: Request) -> JSONResponse:
+async def api_kpress_render(request: Request) -> Response:
     """Render a safe served-root-relative file through the KPress adapter."""
 
     source_override: str | None = None
@@ -2589,6 +2594,18 @@ async def api_kpress_render(request: Request) -> JSONResponse:
                 "diagnostics": [],
             },
             status_code=400,
+        )
+
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_kpress_render(
+            subject,
+            subpath=subpath,
+            view=view,
+            profile=profile,
+            source_override=source_override,
+            include_toc=include_toc,
+            max_bytes=_TEXT_PREVIEW_MAX_CHUNK_BYTES,
         )
 
     target = resolve_session_identity(subpath)
