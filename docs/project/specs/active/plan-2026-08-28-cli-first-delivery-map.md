@@ -606,14 +606,17 @@ unless the origin also set `uploadpack.allowAnySHA1InWant`, so goldens do not fo
 See
 [Safety at the boundary](plan-2026-08-11-open-repo-from-git-url.md#safety-at-the-boundary).
 
+**Closed 2026-09-18: acquisition is a side effect of `metab <url>`, with `--no-serve`.**
+`--no-serve` acquires a `file://` source and prints logical identity without starting
+the ASGI server. `metab file://… --api /api/cache/…` acquires, then inspects cache state
+against an empty throwaway root.
+There is no `/api/cache/acquire` write route.
+Serving, walking, and other modes refuse Git sources without acquiring; https and ssh
+stay closed; acquired content is not served.
+
 Still open:
 
-1. **Where acquisition is triggered from.** Everything in `metab` is read-only today,
-   and acquisition writes.
-   Recommendation: keep it a side effect of `metab <url>`, and add `--no-serve` so a
-   golden can acquire and inspect without starting a server.
-   No `/api/cache/acquire` write route; the state clause covers reads only.
-2. **Whether `--show` recurses into containers.** Carried forward from the parity plan,
+1. **Whether `--show` recurses into containers.** Carried forward from the parity plan,
    unresolved, and not on the critical path.
 
 ## References

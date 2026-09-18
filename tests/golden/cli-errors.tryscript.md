@@ -77,6 +77,18 @@ Try 'metab --help' for help.
 ? 2
 ```
 
+## Test: --no-serve requires ROOT
+
+```console
+$ metab --no-serve 2>&1
+Usage: metab [OPTIONS] [ROOT_ARG]
+Try 'metab --help' for help.
+╭─ Error ──────────────────────────────────────────────────────────────────────╮
+│ ROOT is required for --no-serve; e.g. `metab file://repo.git --no-serve`     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+? 2
+```
+
 ## Test: API check requires ROOT
 
 ```console

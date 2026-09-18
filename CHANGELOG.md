@@ -51,11 +51,15 @@ Repository cache:
   most; no response reports a cache path, pack file, or Git internal.
 
 - The CLI classifies `ROOT` as a string before any path is constructed.
-  A bare local path is still served; `https`, `ssh`, and `file://` clone URLs are Git
-  sources and are refused until a later slice opens them.
+  A bare local path is still served; `https` and `ssh` clone URLs stay closed.
   `file://` is the only way to ask for a local origin to be acquired — a bare
   `/path/to/repo` is never rewritten into one — and `ext::` remote-helper syntax is
-  rejected.
+  rejected. `metab file://… --no-serve` fetches into the cache and prints slug, store
+  identity, and strategy without starting a server.
+  `metab file://… --api /api/cache/…` acquires as a side effect, then inspects cache
+  state against an empty throwaway root so `/api/tree` cannot expose the cache or the
+  origin. Serving, walking, and other modes refuse Git sources without acquiring, and
+  acquired content is not served.
 
 - A classified `file://` source can be fetched into an isolated worktree-free staging
   store using Git’s pack transport (`git fetch`, not `clone --local` hardlinks).
@@ -68,7 +72,6 @@ Repository cache:
   entries by object ID; a prefetch failure still publishes with `object_state`
   converging. A staging entry whose liveness lock is free is swept, and an unreferenced
   published store is reclaimed.
-  The CLI still does not open Git sources or serve acquired content.
 
 ## 0.10.0
 
