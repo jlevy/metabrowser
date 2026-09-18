@@ -148,6 +148,8 @@ Content source:
   `source_path` is the wire rather than a display path.
   A Git tree folder with a direct-child README blob mounts Overview (`readme_path` is
   the GitPath wire) and omits treemap, which needs inventory rollup.
+  SPA path chrome and copy-path decode GitPath wires to display names; navigation
+  identities stay wires.
   Inventory open, archive containers, and serving acquired Git are not switched yet.
 
 ## 0.10.0

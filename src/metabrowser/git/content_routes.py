@@ -9,7 +9,8 @@ size, and ignore. File nav nodes include ``logical_ext`` from the display suffix
 A Git tree ``/api/file`` envelope is SPA ``folder`` chrome (``git_kind`` stays
 ``tree``) with no invented dir aggregates. A direct-child README blob sets
 ``readme_path`` to its GitPath wire and mounts the Overview view; treemap stays
-unmounted because it needs inventory rollup. KPress ``source_path``
+unmounted because it needs inventory rollup. SPA path chrome and copy-path
+decode GitPath wires to display names; navigation identities stay wires. KPress ``source_path``
 is the GitPath wire so Markdown rewrite cannot emit a filesystem spelling.
 Patch-file container inners use a GitPath prefix plus a host inner path. Blob
 kinds use extension, basename, sniffed adapter, and JSON/YAML/frontmatter

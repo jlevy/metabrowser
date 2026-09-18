@@ -258,10 +258,81 @@
     return encodePath(path).replace(/%25([0-9A-F]{2})/g, "%$1");
   }
 
-  /** Display literal percent signs; undecodable platform bytes stay visibly escaped.
+  /** @param {string} token */
+  function isGitPathToken(token) {
+    return token.startsWith("g1-") && token.length > 3;
+  }
+
+  /** Canonical unpadded base64url atom to replacement-safe UTF-8, or null.
+   * @param {string} atom
+   */
+  function decodeGitPathAtom(atom) {
+    if (!atom || /[^A-Za-z0-9_-]/.test(atom)) {
+      return null;
+    }
+    const padded = atom + "=".repeat((4 - (atom.length % 4)) % 4);
+    let binary;
+    try {
+      binary = atob(padded.replaceAll("-", "+").replaceAll("_", "/"));
+    } catch (_error) {
+      return null;
+    }
+    let encoded;
+    try {
+      encoded = btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+    } catch (_error) {
+      return null;
+    }
+    if (encoded !== atom) {
+      return null;
+    }
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const text = new TextDecoder("utf-8").decode(bytes);
+    if (!text || text.includes("\0") || text.includes("/")) {
+      return null;
+    }
+    return text;
+  }
+
+  /** Decode a contiguous GitPath wire prefix. Null when this is not a GitPath identity.
+   * @param {string} path
+   */
+  function displayGitPathWire(path) {
+    const parts = path.split("/");
+    let cut = 0;
+    while (cut < parts.length && isGitPathToken(parts[cut])) {
+      cut += 1;
+    }
+    if (cut === 0) {
+      return null;
+    }
+    const decoded = [];
+    for (let i = 0; i < cut; i += 1) {
+      const segment = decodeGitPathAtom(parts[i].slice(3));
+      if (segment === null) {
+        return null;
+      }
+      decoded.push(segment);
+    }
+    const gitDisplay = decoded.join("/");
+    if (cut === parts.length) {
+      return gitDisplay;
+    }
+    return `${gitDisplay}/${parts.slice(cut).join("/").replaceAll("%25", "%")}`;
+  }
+
+  /** Display a path identity. GitPath wires decode to UTF-8 names; inventory
+   * identities show literal percent signs. Undecodable platform bytes stay escaped.
    * @param {string} path
    */
   function displayPath(path) {
+    const gitDisplay = displayGitPathWire(path);
+    if (gitDisplay !== null) {
+      return gitDisplay;
+    }
     return path.replaceAll("%25", "%");
   }
 
