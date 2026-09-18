@@ -1,4 +1,4 @@
-"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, and listing blob sizes honor a pin."""
+"""File, raw, tree, KPress, patch containers, binary chunks, structured parsed, agent-log, blob kinds, SPA nav tree, folder chrome, Markdown GitPath links, Git folder Overview, listing blob sizes, and Git-native rollup honor a pin."""
 
 from __future__ import annotations
 
@@ -30,6 +30,7 @@ from metabrowser.git.tree_source import (
 from metabrowser.server import app
 from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
 from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.wire_models import validate_rollup_node
 
 pytestmark = pytest.mark.skipif(
     shutil.which("git") is None,
@@ -319,7 +320,7 @@ def test_git_file_raw_tree_honor_gitpath_without_filesystem_facts(tmp_path: Path
             assert folder_body["git_kind"] == "tree"
             assert folder_body["name"] == "docs"
             assert folder_body["path"] == docs_wire
-            assert folder_body["views"] == []
+            assert [view["id"] for view in folder_body["views"]] == ["overview", "treemap"]
             assert "dir" not in folder_body or "mtime" not in folder_body["dir"]
             assert folder_body["dir"]["total_files"] == 1
             assert folder_body["dir"]["total_size"] == 7
@@ -411,8 +412,7 @@ def test_git_file_folder_envelope_is_spa_folder_chrome(tmp_path: Path) -> None:
             assert root_body["path"] == ""
             assert root_body["name"] == ""
             view_ids = [view["id"] for view in root_body["views"]]
-            assert view_ids == ["overview"]
-            assert "treemap" not in view_ids
+            assert view_ids == ["overview", "treemap"]
             assert root_body["readme_path"] == _wire(b"README.md")
             assert root_body["readme_search_truncated"] is False
             assert root_body["dir"]["total_files"] == 9
@@ -439,11 +439,80 @@ def test_git_file_folder_envelope_is_spa_folder_chrome(tmp_path: Path) -> None:
             assert vendor_body["kind"] == "folder"
             assert vendor_body["git_kind"] == "tree"
             assert vendor_body["name"] == "vendor"
-            assert vendor_body["views"] == []
+            assert [view["id"] for view in vendor_body["views"]] == ["overview", "treemap"]
             assert vendor_body["readme_path"] == ""
             assert vendor_body["dir"] == {"total_files": 0, "total_size": 0}
             gitlink = await client.get("/api/file", params={"path": _wire(b"vendor", b"dep")})
             assert gitlink.json()["kind"] != "folder"
+
+    asyncio.run(_run())
+
+
+def test_git_rollup_uses_blob_index_without_mtime(tmp_path: Path) -> None:
+    store, commit = _build_store(tmp_path)
+    docs_wire = _wire(b"docs")
+    note_wire = _wire(b"docs", b"note.txt")
+    vendor_wire = _wire(b"vendor")
+
+    async def _run() -> None:
+        async with _pinned_client(store, commit) as (client, _subject):
+            spelling = await client.get("/api/rollup", params={"path": "docs"})
+            assert spelling.status_code == 404
+
+            blob = await client.get("/api/rollup", params={"path": _wire(b"README.md")})
+            assert blob.status_code == 404
+
+            root = await client.get("/api/rollup", params={"depth": "1"})
+            assert root.status_code == 200
+            body = root.json()
+            assert body["subject"] == "git_revision"
+            assert body["root"] == ""
+            assert body["path"] == ""
+            assert body["index_status"] == "complete"
+            assert body["truncated"] is False
+            node = body["node"]
+            validate_rollup_node(node)
+            assert node["type"] == "dir"
+            assert node["state"] == "complete"
+            assert node["total_files"] == 9
+            assert node["unignored_files"] == 9
+            assert node["unignored_size"] == node["total_size"]
+            assert "mtime" not in node
+            names = {child["name"] for child in node["children"]}
+            assert "docs" in names
+            assert "vendor" in names
+            assert "README.md" in names
+            docs = next(child for child in node["children"] if child["name"] == "docs")
+            assert docs["path"] == docs_wire
+            assert docs["total_files"] == 1
+            assert docs["total_size"] == 7
+            assert "mtime" not in docs
+            vendor = next(child for child in node["children"] if child["name"] == "vendor")
+            assert vendor["path"] == vendor_wire
+            assert vendor["total_files"] == 0
+            assert vendor["total_size"] == 0
+            readme = next(child for child in node["children"] if child["name"] == "README.md")
+            assert "mtime" not in readme
+            assert readme["size"] == 6
+            assert str(store) not in root.text
+
+            nested = await client.get("/api/rollup", params={"path": docs_wire, "depth": "1"})
+            assert nested.status_code == 200
+            nested_node = nested.json()["node"]
+            validate_rollup_node(nested_node)
+            assert nested_node["path"] == docs_wire
+            assert nested_node["total_files"] == 1
+            assert nested_node["total_size"] == 7
+            assert nested_node["children"][0]["path"] == note_wire
+            assert "mtime" not in nested_node
+            assert str(store) not in nested.text
+
+            empty = await client.get("/api/rollup", params={"path": vendor_wire})
+            assert empty.status_code == 200
+            empty_node = empty.json()["node"]
+            assert empty_node["total_files"] == 0
+            assert empty_node["total_size"] == 0
+            assert empty_node["children"] == []
 
     asyncio.run(_run())
 
@@ -846,7 +915,6 @@ def test_git_pin_refuses_inventory_backed_routes(tmp_path: Path) -> None:
     async def _run() -> None:
         async with _pinned_client(store, commit) as (client, _subject):
             for path in (
-                "/api/rollup",
                 "/api/catalog",
                 "/api/index/progress",
                 "/api/index/meta",
@@ -944,6 +1012,10 @@ def test_git_file_raw_promisor_miss_is_object_unavailable(tmp_path: Path) -> Non
                 kept = await client.get("/api/file", params={"path": _wire(b"keep.txt")})
                 assert kept.status_code == 200
                 assert kept.json()["content"] == "kept\n"
+                rollup = await client.get("/api/rollup")
+                assert rollup.status_code == 404
+                assert rollup.json()["code"] == "object_unavailable"
+                assert rollup.json()["oid"] == missing_oid
 
         asyncio.run(_run())
 

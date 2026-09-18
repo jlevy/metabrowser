@@ -106,8 +106,12 @@ export function createFileOverviewPanel(mb, palette, projectionPool, rollupContr
         context.raw && typeof context.raw === "object"
           ? /** @type {Record<string, unknown>} */ (context.raw)
           : {};
-      // Git dir tallies omit mtime. File Overview still needs inventory rollup.
-      if (!raw.dir || typeof raw.dir !== "object" || !("mtime" in raw.dir)) {
+      // Git dir tallies omit mtime. File Overview mounts once sizes exist so
+      // /api/rollup can answer without inventing recency.
+      if (!raw.dir || typeof raw.dir !== "object") {
+        return null;
+      }
+      if (!("mtime" in raw.dir) && !("total_size" in raw.dir)) {
         return null;
       }
       return Object.freeze({ key: context.path || "", data: null });

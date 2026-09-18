@@ -103,11 +103,18 @@ global.window = { METABROWSER_SETTINGS: {} };
       fileOverviewPanel.resolve({ path: "g1-UkVBRE1FLm1k", raw: { git_kind: "tree" } }) === null,
   );
   check(
-    "File Overview hides Git dir tallies that omit mtime",
+    "File Overview hides Git dir tallies that omit sizes",
+    fileOverviewPanel.resolve({
+      path: "",
+      raw: { git_kind: "tree", dir: { total_files: 9 } },
+    }) === null,
+  );
+  check(
+    "File Overview mounts Git dir tallies that include sizes",
     fileOverviewPanel.resolve({
       path: "",
       raw: { git_kind: "tree", dir: { total_files: 9, total_size: 100 } },
-    }) === null,
+    }).key === "",
   );
   check(
     "File Overview still mounts when dir aggregates are present",

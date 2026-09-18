@@ -101,6 +101,7 @@ from metabrowser.git.content_routes import (
     git_revision_file,
     git_revision_kpress_render,
     git_revision_raw,
+    git_revision_rollup,
     git_revision_tree,
 )
 from metabrowser.git.history import close_history_sessions
@@ -151,7 +152,7 @@ from metabrowser.inventory_engine.tree_page_assembly import (
     TreePageQuery,
     assemble_tree_pages,
 )
-from metabrowser.inventory_rollup import RollupRank
+from metabrowser.inventory_rollup import RollupOptions, RollupRank
 from metabrowser.jsonl_view import _parse_jsonl_file
 
 # Document rendering is delegated through the KPress adapter and built-in plugin route.
@@ -1700,16 +1701,11 @@ async def api_rollup(request: Request) -> Response:
     cover the full subtree. Depth truncation is represented by `children: null`
     without a rest bucket; node-budget truncation can retain emitted `children`
     alongside a `rest` bucket for their omitted siblings.
+    A Git pin answers from recursive blob names and sizes and omits mtime.
     """
 
-    require_filesystem_hooks()
-    requested = request.query_params.get("path", "")
-    subpath = parse_inventory_path(requested)
     require_source_capability("navigation")
     require_source_capability("index")
-    if subpath is None or resolve_session_identity(subpath) is None:
-        return JSONResponse({"error": "Not found"}, status_code=404)
-
     depth = _query_bounded_int(
         request, "depth", ROLLUP_DEFAULT_DEPTH, minimum=0, maximum=ROLLUP_MAX_DEPTH
     )
@@ -1743,6 +1739,29 @@ async def api_rollup(request: Request) -> Response:
         )
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
+
+    subject = get_source_session().subject
+    if isinstance(subject, GitRevisionSubject):
+        return await git_revision_rollup(
+            request,
+            subject,
+            RollupOptions(
+                depth=depth,
+                top=top,
+                ext_top=ext_top,
+                max_nodes=ROLLUP_MAX_NODES,
+                remaining_top=remaining_top,
+                filename_top=filename_top,
+                ext_rank=ext_rank,
+                omit_mtime=True,
+            ),
+        )
+
+    require_filesystem_hooks()
+    requested = request.query_params.get("path", "")
+    subpath = parse_inventory_path(requested)
+    if subpath is None or resolve_session_identity(subpath) is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
 
     runtime = _inventory_runtime_for(request)
     preflight = await runtime.coordinator.read(
