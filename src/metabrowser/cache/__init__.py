@@ -10,5 +10,6 @@ touching the home. Ordinary local browsing imports only the route table in
 request. The CLI classifies a root only when it is not a plain local path, so
 ``metab .`` never imports :mod:`metabrowser.cache.urls`. :mod:`metabrowser.cache.acquire`
 can fetch a classified ``file://`` source into a published store and source alias; it
-does not serve content, and the CLI still fails closed.
+does not serve content. The CLI acquires that source with ``--no-serve`` or as a side
+effect of ``--api /api/cache/…``, and still refuses to serve acquired content.
 """
