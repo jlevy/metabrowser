@@ -11,9 +11,10 @@ narrowed to that one file change.
 nav-tree child rows for the container affordance.
 
 ``GET /api/plugin/diff/comparison?revision=<rev>`` (or ``?left=&right=``)
-serves the same document for a Git comparison in the served repository,
-so the history view renders diffs through this plugin's view instead of
-growing a diff surface of its own.
+serves the same document for a Git comparison at the active subject's
+``GitLocation``, so the history view renders diffs through this plugin's
+view instead of growing a diff surface of its own. A pinned revision
+does not need a working tree.
 
 The patch handlers are synchronous on purpose: the data-hook dispatcher
 runs sync sidekicks in the thread pool, and the parser is a bounded pure
@@ -41,8 +42,9 @@ from metabrowser.diff.format import (
 )
 from metabrowser.git.process import GitError
 from metabrowser.git.repo import repo_info
+from metabrowser.git.routes import session_git_location
 from metabrowser.inventory_engine.contract import canonical_inventory_path, native_inventory_path
-from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH, resolve_path, served_root
+from metabrowser.plugin_api import MAX_CONTAINER_INNER_DEPTH, resolve_path
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -167,7 +169,7 @@ def document_handler(request: Request) -> JSONResponse:
 
 
 async def comparison_handler(request: Request) -> JSONResponse:
-    """A Git comparison in the served repository, as a ChangeSetDocument.
+    """A Git comparison at the active subject's location, as a ChangeSetDocument.
 
     ``?revision=<rev>`` compares a commit against its first parent — the
     same resolution ``metab --diff REV`` performs. ``?left=&right=``
@@ -175,6 +177,7 @@ async def comparison_handler(request: Request) -> JSONResponse:
     stay ``deferred``, which the renderer states rather than eliding.
     ``&file=<path>`` narrows to one change and hydrates it regardless of
     the bound — the deferred sections' on-demand loader.
+    On a pinned revision, ``HEAD`` is that object id.
     """
     revision = request.query_params.get("revision", "").strip()
     wanted_file = request.query_params.get("file", "").strip()
@@ -192,9 +195,16 @@ async def comparison_handler(request: Request) -> JSONResponse:
             path=revision or f"{left}..{right}",
         )
 
-    root = served_root()
-    context, _info = await repo_info(root)
-    if context is None or context.git_root is None:
+    location = session_git_location()
+    context, _info = await repo_info(location)
+    if context is None:
+        if location.pinned_revision is not None:
+            return _error(
+                "diff_comparison",
+                "This revision is not a readable Git repository.",
+                404,
+                path=revision,
+            )
         return _error(
             "diff_comparison",
             "This folder is not the root of a Git repository.",
@@ -202,7 +212,7 @@ async def comparison_handler(request: Request) -> JSONResponse:
             path=revision,
         )
 
-    source = GitDiffSource(context.git_root)
+    source = GitDiffSource(context.command_location())
     try:
         resolved = await source.resolve(intent)
         manifest = await source.manifest(resolved)
