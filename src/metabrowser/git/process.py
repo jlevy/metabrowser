@@ -65,7 +65,7 @@ _STDERR_MAX_BYTES = 64 * 1024
 # unescaped in each parser.
 GIT_COMMON_ARGS: tuple[str, ...] = ("--no-optional-locks", "-c", "core.quotepath=false")
 
-# Acquisition has no measured low-speed stall bound yet (plan Phase 1B-a).
+# Acquisition has no measured low-speed stall bound yet.
 # This wall-clock cap is only so a forgotten child cannot live forever; user
 # cancellation is the product guard. The 900s value is the measurement-harness
 # timeout in explorations/repository-cache/measure.py.
