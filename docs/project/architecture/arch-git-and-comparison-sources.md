@@ -5,8 +5,9 @@
 The hosted-review format and GitHub provider layer are designed only; see
 [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
 Worktree-free repository stores and immutable revision subjects are implemented for tree
-reads, Git collection routes, and `GitPath` file/raw/tree routes; serving acquired Git
-remains later. See
+reads, Git collection routes, `GitPath` file/raw/tree routes, and revision comparison
+through `GitDiffSource`; serving acquired Git remains later.
+See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
