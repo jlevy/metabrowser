@@ -99,6 +99,8 @@ Content source:
   `lease_revision` holds that store’s shared maintenance lock for a live subject and
   writes a durable `refs/metabrowser/subjects/<oid>` ref so the commit stays reachable
   after the process exits; two processes can lease different OIDs in one store.
+  `maintain_store` runs `gc --prune=now` and `repack -a -d` under that store’s exclusive
+  maintenance lock, never under the store lock, and refuses while a live lease is held.
   Batch `cat-file` actors are pooled per store, at most four in one process.
   `/api/git/repo`, refs, summary, log, and commit detail honor a `GitRevisionSubject`
   through `GitLocation` (a worktree path or a `RepositoryStoreTarget` plus pinned OID).
