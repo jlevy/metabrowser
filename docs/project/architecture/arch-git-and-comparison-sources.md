@@ -18,6 +18,8 @@ stay unsized as blobs.
 Recursive `ls-tree -r` tallies fill directory `total_files` / `total_size`. A complete
 tally mounts treemap; `/api/rollup` answers from that index and omits mtime.
 `/api/catalog` lists those blob names as Quick File rows.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that
+complete-at-once index.
 LFS pointers stay stored bytes; a promisor miss is `object_unavailable` with lazy fetch
 disabled. Serving acquired Git remains later.
 See
@@ -265,9 +267,11 @@ YAML, and Markdown-frontmatter mappings parsed from blob bytes.
 `/api/plugin/structured/parsed` reads one blob by that identity and keys the parse on
 the object id. `/api/file` for a `.jsonl` blob is a parsed JSONL envelope;
 `/api/plugin/agent-log/charts` reads that blob by the same identity.
-Inventory-backed index, capabilities, and JSONL `/api/stream` routes do not answer from
-the lifespan folder: they return `unsupported_for_subject`. `/api/catalog` on a pin
-lists recursive blob names and is complete at once.
+Inventory-backed JSONL `/api/stream` does not answer from the lifespan folder: it
+returns `unsupported_for_subject`. `/api/catalog` on a pin lists recursive blob names
+and is complete at once.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that same
+complete-at-once index without a watcher or invented mtime.
 `/api/rollup` on a pin answers from recursive blob names and sizes and omits mtime.
 Symlinks are not followed, gitlinks are distinct non-folder entries, and LFS pointers
 remain ordinary blobs (stored pointer bytes, no smudge).
@@ -284,6 +288,8 @@ recursive blob tallies and no mtime.
 A direct-child README blob sets `readme_path` to its GitPath wire and mounts Overview.
 A complete blob-size tally also mounts treemap; `/api/rollup` omits mtime.
 `/api/catalog` lists those blob names as Quick File rows.
+`/api/index/progress`, `/api/index/meta`, and `/api/capabilities` report that
+complete-at-once index.
 Markdown and wiki destinations encode authored segments as `GitPath` wires; the
 known-file catalog indexes the tree node’s display name, not the `g1-` token.
 SPA path chrome and copy-path decode those wires to display names; navigation identities

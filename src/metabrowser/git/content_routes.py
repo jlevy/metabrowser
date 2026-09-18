@@ -1,4 +1,4 @@
-"""GitPath adapters for ``/api/tree``, ``/api/file``, ``/raw``, KPress, rollup, and catalog.
+"""GitPath adapters for ``/api/tree``, ``/api/file``, ``/raw``, KPress, rollup, catalog, and index status.
 
 These honor a pinned ``GitRevisionSubject`` without a checkout, index, or
 invented filesystem fact. ``/view/`` accepts a GitPath wire, optionally plus
@@ -19,7 +19,9 @@ from the same index and omits mtime. A missing blob size 404s rollup rather
 than emitting a partial sum. ``/api/catalog`` lists those blob names as
 Quick File rows (``p`` GitPath wire, ``e`` display suffix, ``n`` display
 basename) and is complete at once; a truncated index is an empty truncated
-snapshot rather than a partial list. SPA path chrome and copy-path
+snapshot rather than a partial list. ``/api/index/progress``, ``/api/index/meta``,
+and ``/api/capabilities`` report that same complete-at-once index without a
+watcher or invented mtime. SPA path chrome and copy-path
 decode GitPath wires to display names; navigation identities stay wires. KPress ``source_path``
 is the GitPath wire so Markdown rewrite cannot emit a filesystem spelling.
 Patch-file container inners use a GitPath prefix plus a host inner path. Blob
@@ -32,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import mimetypes
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -471,6 +474,103 @@ def _git_path_from_relative(name: bytes) -> GitPath:
     return GitPath.from_segments(*name.split(b"/"))
 
 
+_GIT_INDEX_PROVIDER = "git"
+_GIT_INDEX_CONTRACT = "git-revision"
+
+
+@dataclass(frozen=True, slots=True)
+class _GitIndexFacts:
+    truncated: bool
+    indexed_files: int
+    indexed_dirs: int
+    suffixes: tuple[tuple[str, int], ...]
+
+
+async def _git_index_facts(subject: GitRevisionSubject) -> _GitIndexFacts:
+    index = await subject.tree_source.blob_index()
+    if index is None:
+        return _GitIndexFacts(True, 0, 0, ())
+    dirs: set[bytes] = set()
+    counts: Counter[str] = Counter()
+    for rel, _oid in index.blobs:
+        parts = rel.split(b"/")
+        for depth in range(len(parts) - 1):
+            dirs.add(b"/".join(parts[: depth + 1]))
+        ext = _logical_ext(_git_path_from_relative(rel))
+        if ext:
+            counts[ext] += 1
+    suffixes = tuple(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+    return _GitIndexFacts(False, len(index.blobs), len(dirs), suffixes)
+
+
+def _git_index_common(facts: _GitIndexFacts) -> dict[str, Any]:
+    return {
+        "status": "truncated" if facts.truncated else "done",
+        "indexed_files": facts.indexed_files,
+        "max_files": INVENTORY_MAX_FILES,
+        "truncated": facts.truncated,
+        "complete": True,
+        "provider": _GIT_INDEX_PROVIDER,
+        "contract": _GIT_INDEX_CONTRACT,
+    }
+
+
+async def git_revision_index_progress(subject: GitRevisionSubject) -> JSONResponse:
+    """Terminal crawl footer for a pin. There is no walker."""
+
+    try:
+        facts = await _git_index_facts(subject)
+    except GitObjectUnavailableError as exc:
+        return _json(_object_unavailable_payload(exc), status_code=404)
+    return _json({**_git_index_common(facts), "active": False})
+
+
+async def git_revision_index_meta(subject: GitRevisionSubject) -> JSONResponse:
+    """Index summary from blob names. No mtime or watcher facts."""
+
+    try:
+        facts = await _git_index_facts(subject)
+    except GitObjectUnavailableError as exc:
+        return _json(_object_unavailable_payload(exc), status_code=404)
+    return _json(
+        {
+            **_git_index_common(facts),
+            "indexed_dirs": facts.indexed_dirs,
+            "suffixes": [{"ext": ext, "count": count} for ext, count in facts.suffixes],
+        }
+    )
+
+
+async def git_revision_capabilities(subject: GitRevisionSubject) -> JSONResponse:
+    """Observation surface for a pin: complete, no watcher, events off."""
+
+    try:
+        facts = await _git_index_facts(subject)
+    except GitObjectUnavailableError as exc:
+        return _json(_object_unavailable_payload(exc), status_code=404)
+    return _json(
+        {
+            "backends": [
+                {
+                    "prefix": ".",
+                    "mode": "none",
+                    "reason": "git-revision-immutable",
+                    "state": "idle",
+                }
+            ],
+            "index": {
+                "complete": True,
+                "indexed_files": facts.indexed_files,
+                "max_files": INVENTORY_MAX_FILES,
+                "truncated": facts.truncated,
+                "provider": _GIT_INDEX_PROVIDER,
+                "contract": _GIT_INDEX_CONTRACT,
+            },
+            "events": {"stream": "off", "reason": "git-revision-no-watcher"},
+        }
+    )
+
+
 async def git_revision_tree(
     request: Request,
     subject: GitRevisionSubject,
@@ -870,8 +970,11 @@ async def git_revision_raw(request: Request, subject: GitRevisionSubject) -> Res
 
 __all__ = [
     "decode_git_view_path",
+    "git_revision_capabilities",
     "git_revision_catalog",
     "git_revision_file",
+    "git_revision_index_meta",
+    "git_revision_index_progress",
     "git_revision_kpress_render",
     "git_revision_raw",
     "git_revision_rollup",
