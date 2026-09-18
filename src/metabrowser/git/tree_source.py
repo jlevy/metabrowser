@@ -27,7 +27,8 @@ extension of a compressed name on tree nodes. Blob file envelopes omit
 compressed identity because blobs are stored bytes with no gzip smudge.
 Markdown blob envelopes include parsed YAML ``frontmatter`` and
 ``frontmatter_error``. Text blobs use the same first-window and highlight
-bound as filesystem listings. ``/api/file``, ``/raw``, KPress, and plugin
+bound as filesystem listings. A Git image blob is SPA ``image`` chrome;
+``/raw`` serves the stored bytes. ``/api/file``, ``/raw``, KPress, and plugin
 sidekicks follow in-tree relative symlink blobs. ``depth`` nests SPA children the way filesystem
 listings do (default 2) and emits a lazy sentinel past the cap. SPA path chrome decodes GitPath wires to
 display names. Blob listings

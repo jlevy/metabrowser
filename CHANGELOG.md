@@ -169,7 +169,9 @@ Content source:
   blobs to the target object; the requested GitPath stays the route identity.
   Kind checks (JSONL, structured, patch) use the leaf path.
   Listings still show the symlink.
-  Absolute, dangling, and cyclic targets 404. `/api/stream` still returns
+  A Git image blob is SPA `image` chrome (`ext` from the compound tail, preview view, no
+  inline content); `/raw` serves the stored bytes and the image plugin uses the display
+  name as `alt`. Absolute, dangling, and cyclic targets 404. `/api/stream` still returns
   `unsupported_for_subject` rather than the lifespan filesystem inventory.
   A Git LFS pointer blob is the stored pointer bytes, with no smudge filter.
   A blob the tree names but the store lacks, including a promisor miss, is
